@@ -185,7 +185,14 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public Dictionary<string, Type> SpotFactories { get; } = new(StringComparer.Ordinal);
 
+    public ZLinkEntrySpotOptions EntrySpotOptions { get; } = new();
+
     public Type? EntrySpotType { get; set; }
+}
+
+internal sealed class ZLinkEntrySpotOptions : IZLinkEntrySpotOptions
+{
+    public RoutingId RoutingId { get; set; }
 }
 
 internal sealed class ZLinkSpotRouteChannelAcceptanceRegistration

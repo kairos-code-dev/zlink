@@ -344,8 +344,8 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | 상수 | 설명 |
 |---|---|
 | `ZLINK_OPT_LINGER` | 종료 시 대기 (ms, `int`; -1=무한, 0=즉시) |
-| `ZLINK_OPT_RCVTIMEO` | 수신 타임아웃 (ms, `int`; -1=무한) |
-| `ZLINK_OPT_SNDTIMEO` | 송신 타임아웃 (ms, `int`; -1=무한) |
+| `ZLINK_OPT_RCVTIMEO` | 수신 타임아웃 (ms, `int`; 기본 `1000`; 명시적으로 -1 설정 시 무한) |
+| `ZLINK_OPT_SNDTIMEO` | 송신 타임아웃 (ms, `int`; 기본 `1000`; 명시적으로 -1 설정 시 무한) |
 | `ZLINK_OPT_CONNECT_TIMEOUT` | 연결 타임아웃 (ms, `int`) |
 | `ZLINK_OPT_RECONNECT_IVL` | 초기 재연결 간격 (ms, `int`) |
 | `ZLINK_OPT_RECONNECT_IVL_MAX` | 최대 재연결 간격 (ms, `int`; 0=IVL만 사용) |

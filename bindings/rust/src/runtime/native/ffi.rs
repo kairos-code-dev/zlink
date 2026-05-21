@@ -86,8 +86,8 @@ pub struct zlink_actor_lookup_result_t {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct zlink_actor_route_t {
     pub actor: zlink_actor_ref_t,
-    pub joined: u32,
-    pub joined_spot_rid: zlink_routing_id_t,
+    pub current_spot_rid: zlink_routing_id_t,
+    pub current_spot_kind: zlink_spot_kind_t,
 }
 
 pub type zlink_free_fn = unsafe extern "C" fn(data: *mut c_void, hint: *mut c_void);
@@ -465,6 +465,7 @@ pub struct zlink_spot_node_socket_snapshot_entry_t {
 #[derive(Copy, Clone)]
 pub struct zlink_spot_node_spot_entry_t {
     pub spot_rid: zlink_routing_id_t,
+    pub spot_kind: zlink_spot_kind_t,
     pub dispatch_handler_attached: u32,
     pub joined_actor_count: u32,
     pub pending_actor_join_count: u32,
@@ -476,8 +477,8 @@ pub struct zlink_spot_node_spot_entry_t {
 #[derive(Copy, Clone)]
 pub struct zlink_spot_node_actor_entry_t {
     pub actor: zlink_actor_ref_t,
-    pub joined: u32,
-    pub joined_spot_rid: zlink_routing_id_t,
+    pub current_spot_rid: zlink_routing_id_t,
+    pub current_spot_kind: zlink_spot_kind_t,
     pub route_synced: u32,
     pub pending_message_count: u32,
     pub last_changed_ms: u64,
@@ -706,6 +707,14 @@ pub enum zlink_spot_peer_state_t {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_spot_kind_t {
+    ZLINK_SPOT_KIND_INVALID = 0,
+    ZLINK_SPOT_KIND_ENTRY = 1,
+    ZLINK_SPOT_KIND_USER = 2,
+}
+
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct zlink_spot_node_peer_entry_t {
     pub channel_name: [c_char; 256],
@@ -837,6 +846,15 @@ pub struct zlink_registry_topology_entry_t {
     pub ready_count: u32,
     pub error_code: u32,
     pub last_reported_ms: u64,
+    pub spot_kind: zlink_spot_kind_t,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct zlink_spot_route_t {
+    pub spot_rid: zlink_routing_id_t,
+    pub owner_node_rid: zlink_routing_id_t,
+    pub spot_kind: zlink_spot_kind_t,
 }
 
 #[repr(C)]
@@ -1287,7 +1305,7 @@ unsafe extern "C" {
     pub fn zlink_discovery_resolve_spot(
         discovery: *mut c_void,
         spot_rid: *const zlink_routing_id_t,
-        owner_node_rid_out: *mut zlink_routing_id_t,
+        route_out: *mut zlink_spot_route_t,
     ) -> c_int;
     pub fn zlink_discovery_resolve_actor(
         discovery: *mut c_void,

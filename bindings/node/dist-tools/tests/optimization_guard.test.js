@@ -85,11 +85,9 @@ test('TypeScript facade does not depend on dynamic ffi packages', () => {
     assert.equal(text.includes('node-ffi'), false);
 });
 test('node multi spot drain checks fallback deadline inside each burst', () => {
-    const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_spot_client.ts');
+    const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_spot_recv_worker.ts');
     const body = fs.readFileSync(file, 'utf8');
-    const innerBurst = body.match(/while \(drained < burstCap\) \{(?<body>[\s\S]*?)if \(!trySpotSubscribeInto/);
-    assert.ok(innerBurst?.groups?.body, 'missing spot inner burst drain loop');
-    assert.match(innerBurst.groups.body, /currentEpochNs\(\) >= fallbackDeadlineNs/);
+    assert.match(body, /while \(drained < burstCap && currentEpochNs\(\) < fallbackDeadlineNs\)/);
 });
 test('node multi non-routed single-part sends use public sendFrom fast path', () => {
     const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_runtime.ts');
@@ -109,7 +107,7 @@ test('node multi dealer-dealer receiver uses raw public recvInto path', () => {
 test('node multi pubsub client reuses caller-provided topic storage', () => {
     const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_pubsub_client.ts');
     const body = fs.readFileSync(file, 'utf8');
-    assert.match(body, /subscribeNoWaitInto/);
+    assert.match(body, /subscribePayloadInto/);
     assert.doesNotMatch(body, /\bsubscribeNoWait\b/);
 });
 test('node multi orchestrator ignores closed child stdin pipes', () => {

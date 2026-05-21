@@ -151,8 +151,8 @@ zlink_send(server, parts, 2, 0);
 | `ZLINK_OPT_SNDHWM` | int | automatic (floor 4 by default) | Automatic HWM default for the control role. Manual settings take precedence |
 | `ZLINK_OPT_RCVHWM` | int | automatic (floor 4 by default) | Automatic HWM default for the control role. Manual settings take precedence |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time for unsent messages on close (ms), -1=infinite |
-| `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms), -1=infinite |
-| `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms), -1=infinite |
+| `ZLINK_OPT_SNDTIMEO` | int | 1000 | Send timeout (ms); set `-1` explicitly for infinite wait |
+| `ZLINK_OPT_RCVTIMEO` | int | 1000 | Receive timeout (ms); set `-1` explicitly for infinite wait |
 
 ```c
 int hwm = 5000;

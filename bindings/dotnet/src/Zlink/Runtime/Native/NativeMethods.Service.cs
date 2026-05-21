@@ -107,7 +107,7 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_resolve_spot(IntPtr discovery,
-        ref ZlinkRoutingId spotRoutingId, out ZlinkRoutingId ownerNodeRoutingId);
+        ref ZlinkRoutingId spotRoutingId, out ZlinkSpotRoute route);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_resolve_actor(IntPtr discovery,

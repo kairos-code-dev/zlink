@@ -314,6 +314,31 @@ delivered. A higher-level framework must therefore use the resolver's channel
 id to select the actual router-capable channel `ROUTER` socket, not only store
 the channel id as metadata.
 
+#### Sending through a Spot route resolved from an Actor id
+
+Core does not expose Actor-direct ROUTER APIs such as
+`zlink_router_send_actor()`. A caller that starts from an Actor id first calls
+`zlink_discovery_resolve_actor()` and then passes `route.actor.node_rid` and
+`route.current_spot_rid` to the existing Spot routed API.
+
+```c
+zlink_actor_route_t route;
+if (zlink_discovery_resolve_actor(discovery, actor_id, &route)
+    == ZLINK_CONFIG_OK) {
+    zlink_router_send_spot(router,
+                           &route.actor.node_rid,
+                           &route.current_spot_rid,
+                           parts,
+                           part_count,
+                           flags);
+}
+```
+
+`route.current_spot_kind` tells the caller whether the target is the Entry Spot
+or a user Spot. The application protocol decides how a payload delivered to
+that Spot identifies the target Actor. The ROUTER contract only covers
+delivery to the resolved Spot.
+
 ---
 
 ### zlink_recv

@@ -415,6 +415,7 @@ void discovery_t::store_summary_entry_locked (
     summary.dirty = dirty_;
     summary.tombstone = tombstone_;
     summary.validated_service_seq = validated_service_seq_;
+    summary.validated_at_ms = clock_t ().now_ms ();
 }
 
 bool discovery_t::should_publish_summary_entry_locked (

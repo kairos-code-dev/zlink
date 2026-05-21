@@ -315,8 +315,8 @@ flowchart TD
 
 ## 10. Spot 소유 노드 조회 (`zlink_discovery_resolve_spot`)
 
-`zlink_discovery_resolve_spot(discovery, spot_rid, &owner_node_rid_out)`
-는 **논리적 SPOT routing id** 를 **현재 소유 SpotNode 의 routing id** 로
+`zlink_discovery_resolve_spot(discovery, spot_rid, &route_out)`는
+**논리적 SPOT routing id** 를 **현재 소유 SpotNode 의 routing id** 와 Spot kind로
 매핑한다. 호출자가 `(owner_node_rid, spot_rid)` 쌍을 만들어
 ROUTER 쪽 직접 전달 함수(`zlink_router_send_spot()` /
 `zlink_router_request_spot()`)의 대상으로 사용할 수 있게 해주는
@@ -336,22 +336,22 @@ SpotNode를 Discovery에 붙였더라도 이 옵션이 꺼져 있으면 Discover
 
 ### 10.1 계약 요약
 
-`from_errno()` 는 `EINVAL`/`EFAULT`/`ENOTSUP`/`EOPNOTSUPP` 만 명명된
-`zlink_config_result_t` 로 매핑한다. 그 외 errno (아래의 `ENOENT`,
-`EAGAIN` 포함) 는 `default` 분기로 `ZLINK_CONFIG_INTERNAL_ERROR` 가
-되고, 구체 errno 는 `zlink_errno()` 로 조회한다.
+`from_errno()` 는 `EINVAL`/`EFAULT`/`ENOTSUP`/`EOPNOTSUPP`/`ENOENT` 를
+명명된 `zlink_config_result_t` 로 매핑한다. `EAGAIN` 같은 다른 errno 는
+`default` 분기로 `ZLINK_CONFIG_INTERNAL_ERROR` 가 되고, 구체 errno 는
+`zlink_errno()` 로 조회한다.
 
 | 항목 | 값 |
 |---|---|
 | 선행 조건 | `discovery->_auto_connect_type == SPOT_NODE`, 아니면 `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
-| 출력 | `owner_node_rid_out` 에 owner SpotNode rid 기록 |
+| 출력 | `route_out` 에 `spot_rid`, owner SpotNode rid, Spot kind 기록 |
 | Registry publish 조건 | owner Discovery의 `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC == 1`; 기본값은 `0` |
 | 캐시 TTL | `resolve_spot_cache_ttl_ms = 250` ms |
-| 캐시 유효 조건 | `validated_service_seq == current_service_seq` 또는 `now − last_reported_ms ≤ 250 ms` |
+| 캐시 유효 조건 | `validated_service_seq == current_service_seq` 그리고 `now - validated_at_ms <= 250 ms` |
 | 미스 동작 | transient DEALER 로 Registry 조회 후 캐시 재시도 |
-| 최종 미스 (cache + registry 결과 없음) | `errno = ENOENT`, 결과 = `ZLINK_CONFIG_INTERNAL_ERROR` (`zlink_errno()` 로 확인) |
-| 잘못된 입력 | `EINVAL` → `ZLINK_CONFIG_INVALID_ARGUMENT` (`spot_rid` null/size 0, `owner_node_rid_out` null) |
-| null handle | `EFAULT` → `ZLINK_CONFIG_INVALID_HANDLE` |
+| 최종 미스 (cache + registry 결과 없음) | `errno = ENOENT`, 결과 = `ZLINK_CONFIG_NOT_FOUND` |
+| 잘못된 입력 | `EINVAL` → `ZLINK_CONFIG_INVALID_ARGUMENT` (`discovery` null, `spot_rid` null/size 0, `route_out` null) |
+| 잘못된 handle | `EFAULT` → `ZLINK_CONFIG_INVALID_HANDLE` |
 | uplink 없음 | Registry 조회 단계에서 `errno = EAGAIN`, 결과 = `ZLINK_CONFIG_INTERNAL_ERROR` |
 
 ### 10.2 캐시 hit (fast path)
@@ -370,10 +370,10 @@ sequenceDiagram
     Disc->>Disc: scoped_lock(_sync)
     Disc->>Store: key 조회
     Store-->>Disc: topology_summary_t
-    Note over Disc: state == READY?<br/>endpoint 비어있지 않음?<br/>validated_service_seq == current<br/>또는 age ≤ 250ms?
+    Note over Disc: state == READY?<br/>endpoint 비어있지 않음?<br/>validated_service_seq == current<br/>검증 age ≤ 250ms?
     Disc->>Prov: provider 목록 스캔 (role=SPOT, endpoint 일치)
     Prov-->>Disc: provider.routing_id
-    Disc-->>API: 0, owner_node_rid_out 채움
+    Disc-->>API: 0, route_out 채움
     API-->>App: ZLINK_CONFIG_OK
 ```
 
@@ -404,34 +404,39 @@ sequenceDiagram
 
     Disc->>Disc: scoped_lock(_sync)
     Disc->>Store: refresh_spot_owner_cache_locked(key, entries)
-    Note over Store: key 지운 뒤 각 엔트리를<br/>current validated_service_seq 도장 찍어 저장
+    Note over Store: key 지운 뒤 각 엔트리를<br/>현재 검증 메타데이터와 함께 저장
     Disc->>Store: key 재조회
     alt 이제 resolve 가능
         Store-->>Disc: 신선한 엔트리
-        Disc-->>API: 0, owner_node_rid_out 채움
+        Disc-->>API: 0, route_out 채움
         API-->>App: ZLINK_CONFIG_OK
     else 여전히 resolve 불가
         Disc-->>API: -1, errno=ENOENT
-        API-->>App: ZLINK_CONFIG_INTERNAL_ERROR<br/>(zlink_errno() → ENOENT)
+        API-->>App: ZLINK_CONFIG_NOT_FOUND<br/>(zlink_errno() -> ENOENT)
     end
 ```
 
 ### 10.4 캐시 신선도 규칙
 
-두 가지 독립 조건 중 하나라도 맞으면 캐시 엔트리를 신선한 것으로 본다.
+두 가지 조건이 모두 맞으면 캐시 엔트리를 신선한 것으로 본다.
 
-1. **Membership-seq 일치** — `validated_service_seq == _service_state.service_update_seq()`. 이 시퀀스 번호는 Discovery 의 provider 뷰가 바뀔 때마다(새 peer 추가, peer 이탈, role 변경) 증가한다. 번호가 일치하면 해당 엔트리가 현재 멤버십에서 생성된 값이므로 벽시계 나이와 관계없이 신뢰한다.
-2. **벽시계 TTL** — `last_reported_ms > 0 && now − last_reported_ms ≤ 250 ms`. membership-seq 는 바뀌었지만 엔트리 자체가 아주 최근에 갱신된 경우의 fallback 으로 작동한다.
+1. **Membership-seq 일치** — `validated_service_seq == _service_state.service_update_seq()`. 이 시퀀스 번호는 Discovery 의 provider 뷰가 바뀔 때마다(새 peer 추가, peer 이탈, role 변경) 증가한다.
+2. **검증 TTL** — `validated_at_ms > 0 && now - validated_at_ms <= 250 ms`.
 
-둘 다 아니면 stale(오래된 캐시 값)로 간주하고 Registry 왕복을 강제한다. TTL 이 250 ms 로 짧은 이유는 stale 조회가 옛 소유 노드로 잘못 라우팅될 수 있기 때문이다. 짧은 시간 창으로 그 위험을 제한하면서, 짧은 시간 안에 집중되는 bursty lookup 은 캐시로 흡수한다.
+둘 중 하나라도 실패하면 stale(오래된 캐시 값)로 간주하고 Registry 왕복을
+강제한다. TTL 이 250 ms 로 짧은 이유는 stale 조회가 옛 소유 노드로 잘못
+라우팅될 수 있기 때문이다. TTL 은 topology row 의 원래 `last_reported_ms` 가
+아니라 이 Discovery 인스턴스가 현재 provider 뷰와 함께 row 를 검증한 시각을
+기준으로 한다. 짧은 시간 창으로 그 위험을 제한하면서, 짧은 시간 안에 집중되는
+bursty lookup 은 캐시로 흡수한다.
 
 ### 10.5 endpoint → owner rid 역변환
 
 topology summary 에는 `endpoint`(전송 URI) 만 저장되며, owner SpotNode 의 routing id 는 직접 저장되지 않는다. 캐시 hit 후 Discovery 는 `resolve_owner_node_from_endpoint_locked(endpoint, ...)` 를 호출해 다음 순서로 역변환한다.
 
-1. `_service_state` 에서 현재 provider 목록의 스냅샷을 만든다.
-2. `service_role == SPOT` 이고 `endpoint` 가 일치하며 `routing_id.size > 0` 인 provider 를 고른다.
-3. 해당 provider 의 `routing_id` 를 출력 파라미터에 복사한다.
+1. 먼저 이 Discovery 가 직접 등록한 local service 중 `service_role == SPOT` 이고 `endpoint` 가 일치하며 `routing_id.size > 0` 인 항목을 찾는다.
+2. local service 에서 찾지 못하면 `_service_state` 의 현재 provider 목록 스냅샷에서 같은 조건의 provider 를 고른다.
+3. 찾은 항목의 `routing_id` 를 `route_out->owner_node_rid`에 복사한다.
 
 이 2단계 설계 덕분에 spot 소유 노드가 endpoint 를 변경해도, 메시의 provider 명단이 SERVICE_LIST 브로드캐스트 경로로 갱신되어 있기만 하면 resolve_spot 은 일관된 답을 반환할 수 있다.
 

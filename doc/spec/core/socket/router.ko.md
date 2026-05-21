@@ -309,6 +309,30 @@ ROUTER not-connected 계열 오류와 같은 방식으로 실패하거나 전송
 따라서 상위 framework는 channel id를 resolver metadata로만 보관하지 말고 실제
 router-capable channel의 `ROUTER` socket을 transport로 선택해야 한다.
 
+#### Actor id로 조회한 Spot route로 보내기
+
+core는 `zlink_router_send_actor()` 같은 Actor direct ROUTER API를 제공하지
+않는다. Actor id에서 현재 위치를 찾아야 하는 호출자는 먼저 Discovery로
+`zlink_discovery_resolve_actor()`를 호출하고, 반환된 `route.actor.node_rid`와
+`route.current_spot_rid`를 기존 Spot routed API에 넘긴다.
+
+```c
+zlink_actor_route_t route;
+if (zlink_discovery_resolve_actor(discovery, actor_id, &route)
+    == ZLINK_CONFIG_OK) {
+    zlink_router_send_spot(router,
+                           &route.actor.node_rid,
+                           &route.current_spot_rid,
+                           parts,
+                           part_count,
+                           flags);
+}
+```
+
+`route.current_spot_kind`는 target이 Entry Spot인지 user Spot인지 알려 주는 조회
+결과다. target Spot에 도착한 payload를 어떤 Actor로 dispatch할지는 application
+프로토콜의 책임이며, ROUTER 소켓 계약은 target Spot까지의 delivery만 보장한다.
+
 ---
 
 ### zlink_recv

@@ -358,6 +358,12 @@ class SpotPeerState(IntEnum):
     CONNECTED = 3
 
 
+class SpotKind(IntEnum):
+    INVALID = 0
+    ENTRY = 1
+    USER = 2
+
+
 class SpotSocketRole(IntEnum):
     PUB = 1
     SUB = 2

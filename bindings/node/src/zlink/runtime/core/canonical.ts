@@ -103,6 +103,7 @@ import {
   type SpotPeerSourceValue,
   type SpotPeerKindValue,
   type SpotPeerStateValue,
+  type SpotKindValue,
   type SpotNodeStateValue,
   type SpotNodeSocketOwnerValue,
   type SocketTypeValue,
@@ -131,6 +132,7 @@ import {
   type SpotRoutedHandler,
   type ActorRef,
   type ActorRoute,
+  type SpotRoute,
   type ActorRecvInfo,
   type ActorJoinInfo,
   type ActorPart,
@@ -199,6 +201,7 @@ export type {
   SpotPeerSourceValue,
   SpotPeerKindValue,
   SpotPeerStateValue,
+  SpotKindValue,
   SpotNodeStateValue,
   SpotNodeSocketOwnerValue,
   SocketTypeValue,
@@ -227,6 +230,7 @@ export type {
   SpotRoutedHandler,
   ActorRef,
   ActorRoute,
+  SpotRoute,
   ActorRecvInfo,
   ActorJoinInfo,
   ActorPart,
@@ -428,6 +432,7 @@ function mapRegistryTopologyEntry(entry: {
   readyCount: number;
   errorCode: number;
   lastReportedMs: number | bigint;
+  spotKind: number;
 }): RegistryTopologyEntry {
   return {
     autoConnectType: entry.autoConnectType as AutoConnectType,
@@ -441,7 +446,8 @@ function mapRegistryTopologyEntry(entry: {
     desiredCount: entry.desiredCount,
     readyCount: entry.readyCount,
     errorCode: entry.errorCode,
-    lastReportedMs: BigInt(entry.lastReportedMs)
+    lastReportedMs: BigInt(entry.lastReportedMs),
+    spotKind: entry.spotKind as SpotKindValue
   };
 }
 
@@ -669,13 +675,13 @@ function actorJoinInfoToRaw(info: ActorJoinInfo): Record<string, unknown> {
 
 function actorRouteFromRaw(raw: {
   actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
-  joined: boolean;
-  joinedSpotRid: Buffer;
+  currentSpotRid: Buffer;
+  currentSpotKind: number;
 }): ActorRoute {
   return {
     actor: actorRefFromRaw(raw.actor),
-    joined: Boolean(raw.joined),
-    joinedSpotRid: wrapRoutingId(raw.joinedSpotRid)
+    currentSpotRid: RoutingId.fromBytes(raw.currentSpotRid),
+    currentSpotKind: raw.currentSpotKind as SpotKindValue
   };
 }
 
@@ -936,6 +942,7 @@ function invokeStreamSendBoundActor(
 
 function spotNodeSpotEntryFromRaw(raw: {
   spotRid: Buffer;
+  spotKind: number;
   dispatchHandlerAttached: boolean;
   joinedActorCount: number;
   pendingActorJoinCount: number;
@@ -944,6 +951,7 @@ function spotNodeSpotEntryFromRaw(raw: {
 }): SpotNodeSpotEntry {
   return {
     spotRid: RoutingId.fromBytes(raw.spotRid),
+    spotKind: raw.spotKind as SpotKindValue,
     dispatchHandlerAttached: Boolean(raw.dispatchHandlerAttached),
     joinedActorCount: raw.joinedActorCount,
     pendingActorJoinCount: raw.pendingActorJoinCount,
@@ -954,16 +962,16 @@ function spotNodeSpotEntryFromRaw(raw: {
 
 function spotNodeActorEntryFromRaw(raw: {
   actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
-  joined: boolean;
-  joinedSpotRid: Buffer;
+  currentSpotRid: Buffer;
+  currentSpotKind: number;
   routeSynced: boolean;
   pendingMessageCount: number;
   lastChangedMs: bigint | number;
 }): SpotNodeActorEntry {
   return {
     actor: actorRefFromRaw(raw.actor),
-    joined: Boolean(raw.joined),
-    joinedSpotRid: wrapRoutingId(raw.joinedSpotRid),
+    currentSpotRid: RoutingId.fromBytes(raw.currentSpotRid),
+    currentSpotKind: raw.currentSpotKind as SpotKindValue,
     routeSynced: Boolean(raw.routeSynced),
     pendingMessageCount: raw.pendingMessageCount,
     lastChangedMs: BigInt(raw.lastChangedMs)
@@ -2513,13 +2521,20 @@ export class Discovery extends NativeHandle {
       requireNative().discoveryGetValue(this._native) as number
     );
   }
-  resolveSpot(spotRid: RoutingId): RoutingId {
+  resolveSpot(spotRid: RoutingId): SpotRoute {
     const normalizedSpotRid = normalizeRoutingId(spotRid);
-    return RoutingId.fromBytes(
-      configCall('discovery spot resolve failed', () =>
-        requireNative().discoveryResolveSpot(this._native, normalizedSpotRid) as Buffer
-      )
+    const raw = configCall('discovery spot resolve failed', () =>
+      requireNative().discoveryResolveSpot(this._native, normalizedSpotRid) as {
+        spotRid: Buffer;
+        ownerNodeRid: Buffer;
+        spotKind: number;
+      }
     );
+    return {
+      spotRid: RoutingId.fromBytes(raw.spotRid),
+      ownerNodeRid: RoutingId.fromBytes(raw.ownerNodeRid),
+      spotKind: raw.spotKind as SpotKindValue
+    };
   }
   resolveActor(actorId: string): ActorRoute {
     const normalizedActorId = validateCString(actorId, 'actorId', 255);

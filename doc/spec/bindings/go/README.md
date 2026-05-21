@@ -254,6 +254,22 @@ is `true` only for the call that created the logical spot.
   from data-plane caller-provided storage.
 - Perf, samples, and tests use only exported package APIs.
 
+## Actor And Spot Route Results
+
+Go exposes Actor and Spot route lookup results through exported value types.
+
+- `ActorRoute` preserves the resolved Actor ref, Actor node RID, current Spot
+  RID, and current Spot kind.
+- `SpotRoute` preserves Spot RID, owner node RID, and Spot kind.
+- `SpotKind` distinguishes Entry Spot from user Spot. Invalid kind is not a
+  successful route result.
+- SpotNode snapshot entries expose the same Spot kind/current Spot fields as the
+  core snapshots.
+
+Go must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
+Callers compose `ResolveActor` or `ResolveSpot` with the existing Spot routed
+send/request APIs.
+
 ## SpotNode Router Channel Peers
 
 Go exposes router channel peer wiring as public `SpotNode` methods:

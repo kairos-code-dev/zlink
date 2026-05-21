@@ -104,8 +104,12 @@ internal static class ActorInterop
 
     internal static ActorRoute FromNative(ref ZlinkActorRoute native)
     {
-        return new ActorRoute(FromNative(ref native.Actor), native.Joined != 0,
-            RoutingIdInterop.FromNative(ref native.JoinedSpotRid));
+        return new ActorRoute(
+            FromNative(ref native.Actor),
+            RoutingIdInterop.FromNative(ref native.CurrentSpotRid)
+                ?? throw new ZlinkConfigException(
+                    ZlinkConfigException.ErrorCode.InternalError),
+            (SpotKind)native.CurrentSpotKind);
     }
 
     internal static SpotActorLifecycleInfo FromNative(

@@ -282,12 +282,16 @@ public sealed partial class SpotIntegrationTests
         var resolver = frameworkHost.Services.GetRequiredService<IZLinkSpotRouteResolver>();
 
         var created = await manager.CreateAsync("registry-stage");
-        var route = await resolver.ResolveSpotRouteAsync(
-            "registry-stage",
-            CancellationToken.None);
+        var route = await RetryAsync(
+            () => resolver.ResolveSpotRouteAsync(
+                "registry-stage",
+                CancellationToken.None).AsTask(),
+            static result => result.SpotRid.Size > 0,
+            TimeSpan.FromSeconds(5));
 
         Assert.Equal("play", route.RouterChannelId);
         Assert.Equal(created.SpotRid, route.SpotRid);
+        Assert.Equal(ZLinkSpotKind.User, route.SpotKind);
 
         Assert.True(await manager.RemoveAsync(created.SpotRid));
         var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
@@ -605,6 +609,40 @@ public sealed partial class SpotIntegrationTests
 
         await frameworkHost.StopAsync();
         await registryHost.StopAsync();
+    }
+
+    [Fact]
+    public async Task EntrySpotRoutingId_IsApplied_ToNativeEntrySpot()
+    {
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var entryRid = RoutingId.FromUtf8("entry");
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddSpotNode("entry-rid-node", spot =>
+            {
+                spot.Bind(spotNodeEndpoint);
+                spot.ConfigureEntrySpot(entry =>
+                {
+                    entry.RoutingId = entryRid;
+                });
+                spot.AddEntrySpot<GeneralEntrySpot>();
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var activation = runtime
+            .GetSpotNodeRuntime("entry-rid-node")
+            .EntrySpotActivation
+            ?? throw new InvalidOperationException("Entry Spot activation is required.");
+
+        Assert.Equal(entryRid, activation.SpotRid);
+
+        await host.StopAsync();
     }
 
     [Fact]
@@ -2997,7 +3035,11 @@ public sealed partial class SpotIntegrationTests
             RoutingId targetNodeRid,
             RoutingId spotRid)
         {
-            _route = new ZLinkSpotRoute(routerChannelId, targetNodeRid, spotRid);
+            _route = new ZLinkSpotRoute(
+                routerChannelId,
+                targetNodeRid,
+                spotRid,
+                ZLinkSpotKind.User);
         }
 
         public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(

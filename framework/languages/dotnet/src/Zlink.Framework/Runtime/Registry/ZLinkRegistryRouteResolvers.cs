@@ -5,11 +5,7 @@ internal sealed class ZLinkRegistryActorRouteResolver(
     ZLinkFrameworkRuntime runtime,
     ZLinkFrameworkRegistration registration) : IZLinkActorPlayRouteResolver
 {
-    private const byte ActorRoutePayloadVersion = 2;
-    private const string ActorRouteTooLarge = "Actor route payload is too large.";
-    private const string InvalidActorRoutePayload = "Invalid actor route payload.";
-
-    public async ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+    public async ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
         string actorId,
         CancellationToken cancellationToken)
     {
@@ -20,163 +16,22 @@ internal sealed class ZLinkRegistryActorRouteResolver(
         var routerChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
             state,
             options.RouterChannelId);
-        var discovery = ZLinkRegistryRouteRuntime.ResolveDiscoveryAttachedRouteChannel(
-            state,
-            routerChannelId,
-            "Registry actor route resolver");
-        var routeKey = BuildActorRouteKey(options.Namespace, actorId);
+        var discovery = ZLinkRegistryRouteRuntime.ResolveSingleSpotDiscovery(state);
 
         try
         {
-            using var route = discovery.ResolveRoute(DiscoveryRouteKind.Actor, routeKey);
-            var (targetNodeRid, actorGeneration) = DecodeActorRouteValue(
-                route.Value,
-                options.Namespace,
-                actorId);
-            if (actorGeneration == 0)
-            {
-                throw new FormatException("Invalid actor route generation.");
-            }
-
-            return new ZLinkActorRoute(routerChannelId, targetNodeRid, actorGeneration);
+            var route = discovery.ResolveActor(actorId);
+            return new ZLinkActorLocationRoute(
+                routerChannelId,
+                route.Actor.ActorId,
+                route.Actor.NodeRid,
+                route.CurrentSpotRid,
+                route.CurrentSpotKind.ToFramework());
         }
         catch (ZlinkConfigException error) when (error.InternalErrno == 2)
         {
             throw NotFound(actorId, error);
         }
-        catch (FormatException error)
-        {
-            throw NotFound(actorId, error);
-        }
-    }
-
-    internal static async ValueTask PublishActorRouteAsync(
-        ZLinkFrameworkRuntime runtime,
-        ZLinkFrameworkRegistration registration,
-        string actorId,
-        CancellationToken cancellationToken)
-    {
-        var options = registration.RegistryActorRoutes;
-        if (options is null)
-        {
-            return;
-        }
-
-        var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
-            .ConfigureAwait(false);
-        var routerChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
-            state,
-            options.RouterChannelId);
-        var targetNodeRid = runtime.ResolveSessionRouterId(routerChannelId);
-        var actorState = runtime.GetOrCreateActorState(actorId);
-        var actorGeneration = actorState.CurrentActorGeneration;
-        if (actorGeneration == 0)
-        {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor route for '{actorId}' does not have a concrete generation.",
-                isRetriable: false);
-        }
-
-        var discovery = ZLinkRegistryRouteRuntime.ResolveDiscoveryAttachedRouteChannel(
-            state,
-            routerChannelId,
-            "Registry actor route resolver");
-        var key = BuildActorRouteKey(options.Namespace, actorId);
-        var value = EncodeActorRouteValue(
-            options.Namespace,
-            actorId,
-            targetNodeRid,
-            actorGeneration);
-
-        await ZLinkRegistryRouteRuntime.RetryRouteOperationAsync(
-                () => discovery.BindRoute(DiscoveryRouteKind.Actor, key, value),
-                $"Actor route publish failed for '{actorId}'.",
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                registration.DefaultTimeout,
-                TimeSpan.FromMilliseconds(150),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    internal static byte[] BuildActorRouteKey(
-        string namespaceName,
-        string actorId)
-    {
-        if (string.IsNullOrWhiteSpace(actorId))
-        {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                "Actor route requires a non-empty actor id.",
-                isRetriable: false);
-        }
-
-        return EncodeActorRouteIdentity(namespaceName, actorId);
-    }
-
-    internal static byte[] EncodeActorRouteValue(
-        string namespaceName,
-        string actorId,
-        RoutingId targetNodeRid,
-        ulong actorGeneration)
-    {
-        var identity = ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
-            ActorRoutePayloadVersion,
-            namespaceName,
-            actorId,
-            ActorRouteTooLarge);
-
-        if (actorGeneration == 0)
-        {
-            throw new ZLinkConfigurationException("Actor route generation must not be zero.");
-        }
-
-        var value = new byte[
-            identity.Length
-            + ZLinkRegistryRoutePayloadCodec.EncodedRoutingIdLength(targetNodeRid, ActorRouteTooLarge)
-            + sizeof(ulong)];
-        var span = value.AsSpan();
-        identity.CopyTo(span);
-        var offset = identity.Length;
-        ZLinkRegistryRoutePayloadCodec.WriteRoutingId(
-            span,
-            ref offset,
-            targetNodeRid,
-            ActorRouteTooLarge);
-        ZLinkRegistryRoutePayloadCodec.WriteUInt64(span, ref offset, actorGeneration);
-        return value;
-    }
-
-    private static (RoutingId TargetNodeRid, ulong ActorGeneration) DecodeActorRouteValue(
-        Message value,
-        string expectedNamespace,
-        string expectedActorId)
-    {
-        var bytes = value.AsReadOnlySpan();
-        var identity = ZLinkRegistryRoutePayloadCodec.DecodeIdentity(
-            bytes,
-            ActorRoutePayloadVersion,
-            InvalidActorRoutePayload);
-
-        if (!identity.Matches(expectedNamespace, expectedActorId))
-        {
-            throw new FormatException("Actor route payload identity mismatch.");
-        }
-
-        var offset = identity.Offset;
-        var targetNodeRid = ZLinkRegistryRoutePayloadCodec.ReadRoutingId(
-            bytes,
-            ref offset,
-            InvalidActorRoutePayload);
-        var actorGeneration = ZLinkRegistryRoutePayloadCodec.ReadUInt64(
-            bytes,
-            ref offset,
-            InvalidActorRoutePayload);
-        ZLinkRegistryRoutePayloadCodec.EnsureFullyRead(
-            bytes,
-            offset,
-            InvalidActorRoutePayload);
-        return (targetNodeRid, actorGeneration);
     }
 
     private static ZLinkFrameworkException NotFound(
@@ -187,17 +42,6 @@ internal sealed class ZLinkRegistryActorRouteResolver(
             $"Actor route was not found for '{actorId}'.",
             isRetriable: true,
             innerException: inner);
-
-    private static byte[] EncodeActorRouteIdentity(
-        string namespaceName,
-        string actorId)
-    {
-        return ZLinkRegistryRoutePayloadCodec.EncodeIdentity(
-            ActorRoutePayloadVersion,
-            namespaceName,
-            actorId,
-            ActorRouteTooLarge);
-    }
 
 }
 
@@ -222,15 +66,20 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
 
         try
         {
-            using var route = discovery.ResolveRoute(DiscoveryRouteKind.SpotName, routeKey);
+            using var nameRoute = discovery.ResolveRoute(DiscoveryRouteKind.SpotName, routeKey);
             var spotRid = DecodeSpotNameRouteValue(
-                route.Value,
+                nameRoute.Value,
                 options.Namespace,
                 spotName);
             var routerChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
                 state,
                 options.RouterChannelId);
-            return new ZLinkSpotRoute(routerChannelId, route.OwnerRoutingId, spotRid);
+            var spotRoute = discovery.ResolveSpot(spotRid);
+            return new ZLinkSpotRoute(
+                routerChannelId,
+                spotRoute.OwnerNodeRid,
+                spotRoute.SpotRid,
+                spotRoute.SpotKind.ToFramework());
         }
         catch (ZlinkConfigException error) when (error.InternalErrno == 2)
         {
@@ -257,8 +106,12 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
 
         try
         {
-            var ownerRid = discovery.ResolveSpot(spotRid);
-            return new ZLinkSpotRoute(routerChannelId, ownerRid, spotRid);
+            var spotRoute = discovery.ResolveSpot(spotRid);
+            return new ZLinkSpotRoute(
+                routerChannelId,
+                spotRoute.OwnerNodeRid,
+                spotRoute.SpotRid,
+                spotRoute.SpotKind.ToFramework());
         }
         catch (ZlinkConfigException error) when (error.InternalErrno == 2)
         {
@@ -340,6 +193,7 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
             $"SPOT route was not found for '{identity}'.",
             isRetriable: true,
             innerException: inner);
+
 }
 
 internal sealed class ZLinkRegistryActorSessionBindingStore(

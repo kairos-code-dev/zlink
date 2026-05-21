@@ -846,6 +846,7 @@ public sealed class SpotNode : ISpotNode
                         IntPtr.Add(entries, i * entrySize));
                 result[i] = new SpotNodeSpotEntry(
                     RoutingIdInterop.FromNative(ref native.SpotRid),
+                    (SpotKind)native.SpotKind,
                     native.DispatchHandlerAttached != 0,
                     native.JoinedActorCount,
                     native.PendingActorJoinCount,
@@ -887,8 +888,10 @@ public sealed class SpotNode : ISpotNode
                         IntPtr.Add(entries, i * entrySize));
                 result[i] = new SpotNodeActorEntry(
                     ActorInterop.FromNative(ref native.Actor),
-                    native.Joined != 0,
-                    RoutingIdInterop.FromNative(ref native.JoinedSpotRid),
+                    RoutingIdInterop.FromNative(ref native.CurrentSpotRid)
+                        ?? throw new ZlinkConfigException(
+                            ZlinkConfigException.ErrorCode.InternalError),
+                    (SpotKind)native.CurrentSpotKind,
                     native.RouteSynced != 0,
                     native.PendingMessageCount,
                     native.LastChangedMs);

@@ -116,8 +116,8 @@ Key options:
 |--------|------|---------|-------------|
 | `ZLINK_OPT_SNDHWM` | int | automatic | Derived from the active auto-HWM profile (`balanced` by default), socket role, and message unit. Set `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` on the context to change the profile globally; see [Socket Options Guide](./12-socket-options.md) for profile values and per-socket overrides |
 | `ZLINK_OPT_RCVHWM` | int | automatic | Same as `SNDHWM`: profile-driven unless overridden manually |
-| `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: unlimited) |
-| `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms, -1: unlimited) |
+| `ZLINK_OPT_SNDTIMEO` | int | 1000 | Send timeout (ms). Set `-1` explicitly for unlimited wait |
+| `ZLINK_OPT_RCVTIMEO` | int | 1000 | Receive timeout (ms). Set `-1` explicitly for unlimited wait |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on socket close (ms) |
 
 Routing ID is now set/queried via dedicated functions:

@@ -537,6 +537,7 @@ typedef struct zlink_registry_topology_entry_t
     uint32_t ready_count;
     uint32_t error_code;
     uint64_t last_reported_ms;
+    zlink_spot_kind_t spot_kind;
 } zlink_registry_topology_entry_t;
 ```
 
@@ -554,6 +555,7 @@ typedef struct zlink_registry_topology_entry_t
 | `ready_count` | 현재 준비된 인스턴스 수. |
 | `error_code` | 상태가 `ERROR`인 경우 에러 코드. |
 | `last_reported_ms` | 마지막 하트비트 또는 업데이트 타임스탬프 (에포크 ms). |
+| `spot_kind` | Spot owner row이면 `ZLINK_SPOT_KIND_ENTRY` 또는 `ZLINK_SPOT_KIND_USER`. Spot owner가 아닌 row는 `ZLINK_SPOT_KIND_INVALID`. |
 
 #### zlink_registry_topology_filter_t
 

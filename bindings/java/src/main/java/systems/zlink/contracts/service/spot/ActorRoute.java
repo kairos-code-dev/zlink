@@ -4,13 +4,13 @@ package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.RoutingId;
 import java.util.Objects;
-import java.util.Optional;
 
 public record ActorRoute(ActorRef actor,
-                         boolean joined,
-                         Optional<RoutingId> joinedSpotRid) {
+                         RoutingId currentSpotRid,
+                         SpotKind currentSpotKind) {
     public ActorRoute {
         Objects.requireNonNull(actor, "actor");
-        joinedSpotRid = joinedSpotRid == null ? Optional.empty() : joinedSpotRid;
+        Objects.requireNonNull(currentSpotRid, "currentSpotRid");
+        Objects.requireNonNull(currentSpotKind, "currentSpotKind");
     }
 }

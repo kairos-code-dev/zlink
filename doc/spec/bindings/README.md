@@ -48,6 +48,18 @@ path는 언어 관례에 맞게 정한다. 언어별 README가 지정한 실제 
 이 문서는 “각 언어가 어떻게 보일 수 있는가”보다 “각 언어가 무엇을 보장해야
 하는가”를 정의한다.
 
+## Actor/Spot Route Surface
+
+모든 바인딩은 core의 Actor route와 Spot route 결과를 손실 없이 노출해야 한다.
+언어별 타입 이름은 달라도 아래 의미는 유지한다.
+
+- Actor route는 Actor ref의 node rid, current Spot rid, current Spot kind를
+  노출한다.
+- Spot route는 조회한 Spot rid, owner node rid, Spot kind를 노출한다.
+- Spot kind는 Entry Spot, user Spot, invalid 값을 구분한다.
+- 바인딩은 `router -> actor` 또는 `actor -> router` direct API를 새로 만들지 않는다.
+  사용자는 route 조회 결과를 기존 Spot routed API와 조합한다.
+
 ## High-Performance Binding Policy
 
 zlink는 고성능 메시징 라이브러리다. 바인딩은 언어별 편의성을 제공하더라도
@@ -1912,15 +1924,15 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 | 객체 | 필수 의미 |
 |---|---|
 | `ActorRef` | `node_rid`, `actor_id`, `generation` |
-| `ActorRoute` | route 대상 Actor, join 여부, join된 Spot routing id |
+| `ActorRoute` | route 대상 Actor, current Spot routing id, current Spot kind |
 | `ActorRecvInfo` | 수신 Actor, source node/session routing id, flags |
 | `ActorPart` | `ActorRecvInfo`, message part, more 여부 |
 | `ActorJoinInfo` + join message | join 요청 판단과 응답에 필요한 `source_actor`, `target_actor`, `source_node_rid`, `source_spot_rid`, `target_node_rid`, `target_spot_rid`, `join_epoch`, `flags`, join message. 언어 관례에 따라 `ActorJoinRequest` wrapper나 tuple/pair로 묶을 수 있다. native reply context는 binding 내부에서만 보관하며 public field로 노출하지 않는다 |
 | `ActorJoinResult` | join completion에 전달. `result`, 최종 `actor` ref(remote join이면 target node ref), `joined_spot_rid`, `join_epoch`, `flags` |
 | `ActorLookupResult` | remote Actor lookup completion에 전달. `result`, checked `actor` ref, `flags` |
 | `SpotActorLifecycleInfo` | Spot lifecycle handler에 전달. `previous_actor`, `current_actor`, `previous_spot_rid`, `current_spot_rid`, `join_epoch`, `flags` |
-| `SpotNodeSpotEntry` | Spot routing id, dispatch handler 여부, joined/pending Actor 수, route sync 상태, 변경 시각 |
-| `SpotNodeActorEntry` | Actor ref, joined 여부, joined Spot routing id, route sync 상태, pending message 수, 변경 시각 |
+| `SpotNodeSpotEntry` | Spot routing id, Entry/User Spot kind, dispatch handler 여부, joined/pending Actor 수, route sync 상태, 변경 시각 |
+| `SpotNodeActorEntry` | Actor ref, current Spot routing id, current Spot kind, route sync 상태, pending message 수, 변경 시각 |
 
 세부 규칙은 아래와 같다.
 

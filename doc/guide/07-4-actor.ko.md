@@ -6,6 +6,32 @@
 SPOT 기본 설정과 디스패치 핸들러 등록은 [SPOT 가이드](./07-3-spot.ko.md)를 본다.
 정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
 
+## Actor 위치 조회와 전송
+
+Actor id로 현재 위치를 알아낸 뒤에는 Actor 전용 transport API를 쓰지 않는다.
+Discovery가 반환한 `actor.node_rid`와 `current_spot_rid`를 기존 Spot routed API에
+넘긴다. `current_spot_kind`는 대상이 Entry Spot인지 user Spot인지 구분해야 할 때만
+사용한다.
+
+```c
+zlink_actor_route_t route;
+zlink_config_result_t rc =
+  zlink_discovery_resolve_actor(discovery, "player-42", &route);
+if (rc == ZLINK_CONFIG_OK) {
+  zlink_router_send_spot(
+    router,
+    &route.actor.node_rid,
+    &route.current_spot_rid,
+    parts,
+    part_count,
+    flags);
+}
+```
+
+이 흐름에서 target Spot에 도착한 메시지를 어떤 Actor에게 넘길지는 application이
+정의하는 packet/handler 계약이다. core는 `router -> actor` direct send/request API를
+추가하지 않는다.
+
 ## 1. Actor로 세션 메시지 분배하기
 
 Actor는 세션 메시지를 특정 처리 단위로 모으고, Spot 디스패치 콜백에서

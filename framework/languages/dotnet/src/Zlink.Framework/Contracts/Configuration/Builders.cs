@@ -167,6 +167,8 @@ public interface IZLinkSpotNodeBuilder
         string channelName,
         Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null);
 
+    void ConfigureEntrySpot(Action<IZLinkEntrySpotOptions> configure);
+
     void AddSpotFactory<TSpot>(string spotName)
         where TSpot : IZLinkSpot;
 

@@ -68,3 +68,8 @@ public interface IZLinkSpotSubscriberConfig
 
     TimeSpan? Linger { set; }
 }
+
+public interface IZLinkEntrySpotOptions
+{
+    RoutingId RoutingId { get; set; }
+}

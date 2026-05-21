@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"time"
 
 	zlink "zlink.systems/zlink/contracts"
@@ -13,6 +12,7 @@ import (
 type recvSocket interface {
 	zlink.SocketTarget
 	Recv(*zlink.Received, zlink.RecvFlags) (bool, error)
+	RecvPart(*zlink.Message, zlink.RecvFlags) (zlink.RecvPartResult, bool, error)
 }
 
 func runSingleOneWay(
@@ -40,38 +40,20 @@ func runSingleOneWayWithTransient(
 			return err
 		}
 	}
-	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
+	stats := perfcommon.NewSingleStats(cfg.duration, cfg.msgSize)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
-	poller := perfcommon.NewSocketPoller(receiver, perfcommon.ZLinkPollIn)
-	defer poller.Close()
+	recvPart, err := zlink.NewMessageWithSize(0)
+	perfcommon.Must(err)
+	defer recvPart.Close()
 
 	// perf_single_one_way.hpp run_active_phase starts the receiver thread
-	// before the sender thread. Keep that ordering so small messages do
-	// not build an initial queue before the receiver is scheduled.
+	// before the sender thread and waits with a blocking recv. Only the
+	// burst drain after the first payload uses DONTWAIT.
 	receiverDone := make(chan error, 1)
 	go func() {
-		// PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait (-1 ms). The
-		// loop exits when the wire-level stop token arrives.
 		for {
-			event, err := poller.Wait(-1 * time.Millisecond)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					continue
-				}
-				if os.Getenv("PERF_DEBUG") != "" {
-					fmt.Fprintf(os.Stderr, "single active poller wait error: %v\n", err)
-				}
-				receiverDone <- err
-				return
-			}
-			if event == nil {
-				continue
-			}
-			if event.Events&perfcommon.ZLinkPollIn == 0 {
-				continue
-			}
-			stop, drainErr := drainSingleOneWayUntilStop(receiver, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
+			stop, drainErr := recvSingleOneWayUntilStop(receiver, recvPart, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
 			if drainErr != nil {
 				receiverDone <- drainErr
 				return
@@ -96,15 +78,15 @@ func runSingleOneWayWithTransient(
 			perfcommon.Must(err)
 		}
 		if !sent {
-			runtime.Gosched()
 			continue
 		}
-		runtime.Gosched()
 	}
 	// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
 	// stop token. Blocking send uses bounded transient-backpressure attempts
 	// so the receiver always observes the terminator.
-	sendStopTokenSingle(sendStop, isTransient)
+	if !sendStopTokenSingle(sendStop, isTransient) {
+		perfcommon.Must(fmt.Errorf("single stop token send failed"))
+	}
 	if err := <-receiverDone; err != nil {
 		perfcommon.Must(err)
 	}
@@ -112,38 +94,72 @@ func runSingleOneWayWithTransient(
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
 }
 
-// drainSingleOneWayUntilStop drains the receiver until either a transient
-// EAGAIN-style condition or the wire-level stop token arrives. It returns
-// stop=true when the stop token has been observed.
-func drainSingleOneWayUntilStop(
+func recvSingleOneWayUntilStop(
 	receiver recvSocket,
+	part *zlink.Message,
 	stats *perfcommon.Stats,
 	msgSize int,
 	activeAt time.Time,
 	stopAt time.Time,
 ) (bool, error) {
-	var received zlink.Received
+	stop, _, err := recvSingleOneWayOnce(receiver, part, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsNone)
+	if err != nil || stop {
+		return stop, err
+	}
+	return drainSingleOneWayUntilStop(receiver, part, stats, msgSize, activeAt, stopAt)
+}
+
+// drainSingleOneWayUntilStop drains the receiver until either a transient
+// EAGAIN-style condition or the wire-level stop token arrives. It returns
+// stop=true when the stop token has been observed.
+func drainSingleOneWayUntilStop(
+	receiver recvSocket,
+	part *zlink.Message,
+	stats *perfcommon.Stats,
+	msgSize int,
+	activeAt time.Time,
+	stopAt time.Time,
+) (bool, error) {
 	for {
-		ok, err := receiver.Recv(&received, zlink.RecvFlagsDontWait)
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				return false, nil
-			}
-			return false, err
+		stop, processed, err := recvSingleOneWayOnce(receiver, part, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsDontWait)
+		if err != nil || stop {
+			return stop, err
 		}
-		if !ok {
+		if !processed {
 			return false, nil
 		}
-		part, err := perfPayloadPart(&received)
-		if err == nil && perfcommon.IsStopTokenMessage(part) {
-			_ = received.Close()
-			return true, nil
-		}
-		if err == nil && stats != nil {
-			perfcommon.RecordMessageLatency(stats, activeAt, stopAt, msgSize, part)
-		}
-		_ = received.Close()
 	}
+}
+
+func recvSingleOneWayOnce(
+	receiver recvSocket,
+	part *zlink.Message,
+	stats *perfcommon.Stats,
+	msgSize int,
+	activeAt time.Time,
+	stopAt time.Time,
+	flags zlink.RecvFlags,
+) (bool, bool, error) {
+	result, ok, err := receiver.RecvPart(part, flags)
+	if err != nil {
+		if perfcommon.IsTransient(err) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	if !ok {
+		return false, false, nil
+	}
+	if result.More {
+		return false, true, fmt.Errorf("unexpected multipart receive in single one-way")
+	}
+	if perfcommon.IsStopTokenMessage(part) {
+		return true, true, nil
+	}
+	if stats != nil {
+		perfcommon.RecordMessageLatency(stats, activeAt, stopAt, msgSize, part)
+	}
+	return false, true, nil
 }
 
 // drainSingleOneWayProbe drains the receiver of pending messages once
@@ -174,26 +190,27 @@ func drainSingleOneWayProbe(receiver recvSocket) bool {
 // connection. The send is bounded: each transient backpressure /
 // EAGAIN response yields for `StopTokenSendBackoff`, capped by
 // `StopTokenSendAttempts`. A non-transient error is fatal.
-func sendStopTokenSingle(send func([]byte) error, isTransient func(error) bool) {
+func sendStopTokenSingle(send func([]byte) error, isTransient func(error) bool) bool {
 	if isTransient == nil {
 		isTransient = perfcommon.IsTransient
 	}
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		err := send(perfcommon.StopToken)
 		if err == nil {
-			return
+			return true
 		}
 		if !isTransient(err) {
 			if os.Getenv("PERF_DEBUG") != "" {
 				fmt.Fprintf(os.Stderr, "single stop token send error: %v\n", err)
 			}
-			return
+			return false
 		}
 		time.Sleep(perfcommon.StopTokenSendBackoff)
 	}
 	if os.Getenv("PERF_DEBUG") != "" {
 		fmt.Fprintln(os.Stderr, "single stop token send: attempts exhausted")
 	}
+	return false
 }
 
 func waitSingleRouteReady(

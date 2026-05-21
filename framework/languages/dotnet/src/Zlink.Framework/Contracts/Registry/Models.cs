@@ -107,7 +107,8 @@ public sealed record ZLinkRegistryTopologyEntry(
     uint DesiredCount,
     uint ReadyCount,
     uint ErrorCode,
-    ulong LastReportedMs);
+    ulong LastReportedMs,
+    ZLinkSpotKind SpotKind);
 
 public sealed record ZLinkMemberPeerEntry(
     ZLinkAutoConnectType AutoConnectType,

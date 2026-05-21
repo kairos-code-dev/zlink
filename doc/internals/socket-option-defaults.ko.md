@@ -39,8 +39,8 @@
 | `ZLINK_OPT_MAXMSGSIZE` | `-1` | 무제한 |
 | `ZLINK_OPT_MULTICAST_HOPS` | `1` | 멀티캐스트 TTL |
 | `ZLINK_OPT_MULTICAST_MAXTPDU` | `1500` | 멀티캐스트 max TPDU |
-| `ZLINK_OPT_RCVTIMEO` | `-1` | 수신 타임아웃 무한 |
-| `ZLINK_OPT_SNDTIMEO` | `-1` | 송신 타임아웃 무한 |
+| `ZLINK_OPT_RCVTIMEO` | `1000` | 기본 수신 타임아웃(ms) |
+| `ZLINK_OPT_SNDTIMEO` | `1000` | 기본 송신 타임아웃(ms) |
 | `ZLINK_OPT_IPV6` | 컨텍스트 상속 | 컨텍스트의 IPv6 기본값을 상속 (기본 `0`) |
 | `ZLINK_OPT_IMMEDIATE` | `0` | 연결 중인 pipe를 즉시 등록 |
 | `ZLINK_OPT_CONFLATE` | `0` | 비활성 |

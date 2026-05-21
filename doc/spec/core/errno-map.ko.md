@@ -419,6 +419,27 @@ typedef enum zlink_config_result_t
 | `INVALID_STATE` | `EBUSY`, `ESHUTDOWN` | 핸들의 lifecycle 상태가 해당 config 호출을 거부함 (예: 이미 시작됨, 이미 닫힘) |
 | `NOT_FOUND` | `ENOENT` | 로컬 조회 대상(예: Spot rid, actor id)을 찾지 못함 |
 
+### Actor/Spot route 조회 오류
+
+`zlink_discovery_resolve_actor()`는 `actor_id`가 없거나 너무 길거나 출력 포인터가
+없으면 `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`을 반환합니다. Actor route row가
+없거나, row value 크기가 `sizeof(zlink_actor_route_t)`가 아니거나, key와 value의
+Actor id가 다르거나, current Spot rid/kind가 유효하지 않으면
+`ZLINK_CONFIG_NOT_FOUND`와 `ENOENT`를 반환합니다.
+
+`zlink_discovery_resolve_spot()`는 `discovery`, `spot_rid`, 출력 포인터가 없거나
+`spot_rid`가 비어 있으면 `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`을 반환합니다.
+Spot owner topology row가 없거나 owner node rid가 비어 있거나 `spot_kind`가
+Entry/User가 아니면 `ZLINK_CONFIG_NOT_FOUND`와 `ENOENT`를 반환합니다.
+
+조회가 성공한 뒤 `zlink_router_send_spot()` 또는 `zlink_spot_request_spot()` 전송이
+실패하는 경우는 route 조회 오류가 아닙니다. 이 경우에는 기존 routed send/request
+경로의 not-connected, not-found, timeout, backpressure 의미를 따릅니다.
+
+socket `ZLINK_OPT_SNDTIMEO`와 `ZLINK_OPT_RCVTIMEO`의 기본값은 `1000`ms입니다. 따라서
+명시적으로 `-1`을 설정하지 않은 send/recv 경로는 무한 대기하지 않고 timeout에 따른
+기존 오류 의미를 낼 수 있습니다.
+
 ### 적용 대상 함수
 
 | 분류 | 함수 |

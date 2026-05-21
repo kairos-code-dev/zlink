@@ -238,12 +238,20 @@ builder.Services.AddZLinkFramework(options =>
         {
             node.Bind("tcp://0.0.0.0:9000");
 
+            node.ConfigureEntrySpot(entry =>
+            {
+                entry.RoutingId = RoutingId.FromUtf8("entry");
+            });
             node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>("stage");
         });
     });
 });
 ```
+
+`ConfigureEntrySpot(...)`은 Entry Spot facade의 routing id 같은 native 설정을
+적용한다. 이 설정은 actor 생성과 route publish 전에 적용되며,
+`AddEntrySpot<TEntrySpot>()`은 Entry Spot에서 실행할 handler registry 타입만 등록한다.
 
 Entry Spot 클래스는 `IZLinkEntrySpot` 을 구현한다. `Configure()` 안에서
 Entry 단계의 handler 를 등록한다. Entry Spot 과 user Spot 은 등록할 수 있는
@@ -455,10 +463,18 @@ public interface IZLinkSpotRouteResolver
         CancellationToken cancellationToken);
 }
 
+public enum ZLinkSpotKind
+{
+    Invalid = 0,
+    Entry = 1,
+    User = 2,
+}
+
 public readonly record struct ZLinkSpotRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
-    RoutingId SpotRid);
+    RoutingId SpotRid,
+    ZLinkSpotKind SpotKind);
 ```
 
 resolver 입력은 spot key 하나로 제한한다. 즉 packet 이름, metadata, request

@@ -10,6 +10,7 @@ from .discovery import (
     RegistryStatus,
     RegistryTopologyEntry,
     RegistryTopologyFilter,
+    SpotRoute,
 )
 from .spot import (
     Actor,
@@ -44,6 +45,7 @@ __all__ = [
     "RegistryServiceSummaryFilter",
     "RegistryTopologyEntry",
     "RegistryTopologyFilter",
+    "SpotRoute",
     "SpotNode",
     "Spot",
     "Actor",

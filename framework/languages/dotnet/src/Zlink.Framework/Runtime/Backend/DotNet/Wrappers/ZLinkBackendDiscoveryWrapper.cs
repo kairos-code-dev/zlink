@@ -29,7 +29,7 @@ internal sealed class ZLinkBackendDiscoveryWrapper(Discovery nativeDiscovery) : 
             .ToArray();
     }
 
-    public RoutingId ResolveSpot(RoutingId spotRid)
+    public SpotRoute ResolveSpot(RoutingId spotRid)
     {
         return nativeDiscovery.ResolveSpot(spotRid);
     }

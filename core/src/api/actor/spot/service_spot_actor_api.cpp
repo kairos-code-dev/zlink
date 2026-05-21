@@ -2118,6 +2118,7 @@ extern "C" zlink_config_result_t zlink_spot_node_actor_new (
         return zlink::config_result_internal::from_errno (errno);
     fill_ref (actor, actor_out_);
     actor->join_epoch = next_commit_epoch_locked ();
+    create_active_route_locked (actor);
     zlink_actor_ref_t zero_actor;
     zlink_routing_id_t zero_spot;
     memset (&zero_actor, 0, sizeof (zero_actor));
@@ -3198,12 +3199,6 @@ extern "C" zlink_config_result_t zlink_discovery_resolve_actor (
 
     if (zlink_msg_size (&value) != sizeof (*route_out_)) {
         (void) zlink_msg_close (&value);
-        {
-            std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
-            if (find_active_route_locked (actor_id_, route_out_)
-                && actor_route_is_current_location (*route_out_, actor_id_))
-                return ZLINK_CONFIG_OK;
-        }
         errno = ENOENT;
         return ZLINK_CONFIG_NOT_FOUND;
     }

@@ -325,11 +325,10 @@ static napi_value create_actor_route_value(napi_env env,
     napi_create_object(env, &obj);
     napi_set_named_property(env, obj, "actor",
                             create_actor_ref_value(env, route.actor));
-    napi_value joined;
-    napi_get_boolean(env, route.joined != 0, &joined);
-    napi_set_named_property(env, obj, "joined", joined);
-    napi_set_named_property(env, obj, "joinedSpotRid",
-                            create_routing_id_value(env, route.joined_spot_rid));
+    napi_set_named_property(env, obj, "currentSpotRid",
+                            create_routing_id_value(env, route.current_spot_rid));
+    set_uint32_property(env, obj, "currentSpotKind",
+                        static_cast<uint32_t>(route.current_spot_kind));
     return obj;
 }
 
@@ -340,6 +339,8 @@ static napi_value create_spot_node_spot_entry_value(
     napi_create_object(env, &obj);
     napi_set_named_property(env, obj, "spotRid",
                             create_routing_id_value(env, entry.spot_rid));
+    set_uint32_property(env, obj, "spotKind",
+                        static_cast<uint32_t>(entry.spot_kind));
     napi_value dispatch_attached;
     napi_get_boolean(env, entry.dispatch_handler_attached != 0,
                      &dispatch_attached);
@@ -365,11 +366,10 @@ static napi_value create_spot_node_actor_entry_value(
     napi_create_object(env, &obj);
     napi_set_named_property(env, obj, "actor",
                             create_actor_ref_value(env, entry.actor));
-    napi_value joined;
-    napi_get_boolean(env, entry.joined != 0, &joined);
-    napi_set_named_property(env, obj, "joined", joined);
-    napi_set_named_property(env, obj, "joinedSpotRid",
-                            create_routing_id_value(env, entry.joined_spot_rid));
+    napi_set_named_property(env, obj, "currentSpotRid",
+                            create_routing_id_value(env, entry.current_spot_rid));
+    set_uint32_property(env, obj, "currentSpotKind",
+                        static_cast<uint32_t>(entry.current_spot_kind));
     napi_value route_synced;
     napi_get_boolean(env, entry.route_synced != 0, &route_synced);
     napi_set_named_property(env, obj, "routeSynced", route_synced);

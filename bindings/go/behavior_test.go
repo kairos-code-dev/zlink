@@ -90,6 +90,47 @@ func TestPairRecvEmpty(t *testing.T) {
 	}
 }
 
+func TestPairRecvPartRoundTrip(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	endpoint := inprocEndpoint("pair-recv-part")
+	server, _ := ctx.PairSocket()
+	client, _ := ctx.PairSocket()
+	defer server.Close()
+	defer client.Close()
+
+	_ = server.Bind(endpoint)
+	_ = client.Connect(endpoint)
+	_ = server.SetRecvTimeout(5 * time.Second)
+
+	if _, err := client.Send().Message(newMessage(t, "hello-part")).Submit(nil); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	part, err := zlink.NewMessageWithSize(0)
+	if err != nil {
+		t.Fatalf("NewMessageWithSize() error = %v", err)
+	}
+	defer part.Close()
+	result, ok, err := server.RecvPart(part, zlink.RecvFlagsNone)
+	if err != nil {
+		t.Fatalf("RecvPart() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("RecvPart() returned ok=false")
+	}
+	if result.More {
+		t.Fatalf("RecvPart() More = true, want false")
+	}
+	if result.RoutingID.Size() != 0 {
+		t.Fatalf("RecvPart() RoutingID size = %d, want 0", result.RoutingID.Size())
+	}
+	if got := string(part.Data()); got != "hello-part" {
+		t.Fatalf("payload = %q, want %q", got, "hello-part")
+	}
+}
+
 func TestSubSubscribeEmpty(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()
@@ -147,6 +188,88 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 	part, _ := response.SinglePartOrError()
 	if !bytes.Equal(part.Data(), []byte("response")) {
 		t.Fatalf("unexpected response = %q", string(part.Data()))
+	}
+}
+
+func TestPairSendPartRoundTrip(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	endpoint := inprocEndpoint("pair-send-part")
+	server, _ := ctx.PairSocket()
+	client, _ := ctx.PairSocket()
+	defer server.Close()
+	defer client.Close()
+
+	if err := server.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := client.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	msg := newMessage(t, "send-part")
+	if ok, err := client.SendPart(msg, zlink.SendFlagsNone); err != nil || !ok {
+		t.Fatalf("SendPart() ok=%v error=%v", ok, err)
+	}
+	if data := msg.Data(); data != nil {
+		t.Fatalf("SendPart should consume message, got %q", string(data))
+	}
+	var out zlink.Received
+	ok, err := server.Recv(&out, zlink.RecvFlagsNone)
+	if err != nil || !ok {
+		t.Fatalf("Recv() ok=%v error=%v", ok, err)
+	}
+	defer out.Close()
+	part, err := out.SinglePartOrError()
+	if err != nil {
+		t.Fatalf("SinglePartOrError() error=%v", err)
+	}
+	if got := string(part.Data()); got != "send-part" {
+		t.Fatalf("payload=%q", got)
+	}
+}
+
+func TestRouterRecvPartRoundTrip(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	endpoint := inprocEndpoint("router-recv-part")
+	router, _ := ctx.RouterSocket()
+	dealer, _ := ctx.DealerSocket()
+	defer router.Close()
+	defer dealer.Close()
+
+	rid := zlink.NewRoutingID([]byte("dealer-part"))
+	_ = router.Bind(endpoint)
+	_ = dealer.SetRoutingID(rid)
+	_ = dealer.Connect(endpoint)
+	_ = router.SetRecvTimeout(5 * time.Second)
+
+	if _, err := dealer.Send().Message(newMessage(t, "routed-part")).Submit(nil); err != nil {
+		t.Fatalf("dealer Send() error = %v", err)
+	}
+
+	part, err := zlink.NewMessageWithSize(0)
+	if err != nil {
+		t.Fatalf("NewMessageWithSize() error = %v", err)
+	}
+	defer part.Close()
+	result, ok, err := router.RecvPart(part, zlink.RecvFlagsNone)
+	if err != nil {
+		t.Fatalf("router RecvPart() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("router RecvPart() returned ok=false")
+	}
+	if result.More {
+		t.Fatalf("router RecvPart() More = true, want false")
+	}
+	if !bytes.Equal(result.RoutingID.Bytes(), rid.Bytes()) {
+		t.Fatalf("RoutingID = %q, want %q", string(result.RoutingID.Bytes()), string(rid.Bytes()))
+	}
+	if got := string(part.Data()); got != "routed-part" {
+		t.Fatalf("payload = %q, want %q", got, "routed-part")
 	}
 }
 

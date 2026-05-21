@@ -88,6 +88,17 @@ int discovery_t::resolve_spot (const zlink_routing_id_t *spot_rid_,
         }
     }
 
+    flush_topology_reports ();
+
+    const uint64_t flushed_now_ms = zlink::clock_t ().now_ms ();
+    {
+        scoped_lock_t lock (_sync);
+        if (try_resolve_spot_from_cache_locked (key, flushed_now_ms,
+                                                route_out_)) {
+            return 0;
+        }
+    }
+
     std::vector<zlink_registry_topology_entry_t> entries;
     if (query_spot_owner_entries_from_registry (spot_rid_, &entries) != 0)
         return -1;
@@ -95,7 +106,9 @@ int discovery_t::resolve_spot (const zlink_routing_id_t *spot_rid_,
     {
         scoped_lock_t lock (_sync);
         refresh_spot_owner_cache_locked (key, entries);
-        if (try_resolve_spot_from_cache_locked (key, now_ms, route_out_)) {
+        const uint64_t refreshed_now_ms = zlink::clock_t ().now_ms ();
+        if (try_resolve_spot_from_cache_locked (key, refreshed_now_ms,
+                                                route_out_)) {
             return 0;
         }
     }
@@ -116,6 +129,18 @@ bool discovery_t::resolve_owner_node_from_endpoint_locked (
 {
     if (!endpoint_ || endpoint_[0] == '\0' || !owner_node_rid_out_)
         return false;
+
+    for (std::map<registered_service_key_t, registered_service_t>::const_iterator
+           it = _registered_services.begin ();
+         it != _registered_services.end (); ++it) {
+        if (it->second.service_role != discovery_protocol::service_role_spot
+            || it->second.endpoint != endpoint_
+            || it->second.routing_id.size == 0) {
+            continue;
+        }
+        *owner_node_rid_out_ = it->second.routing_id;
+        return true;
+    }
 
     std::vector<provider_info_t> providers;
     _service_state.snapshot_providers (&providers);
@@ -148,10 +173,14 @@ bool discovery_t::try_resolve_spot_from_cache_locked (
     }
 
     const uint64_t current_service_seq = _service_state.service_update_seq ();
+    const bool validated_recently =
+      it->second.validated_at_ms > 0
+      && (it->second.validated_at_ms >= now_ms_
+          || now_ms_ - it->second.validated_at_ms
+               <= resolve_spot_cache_ttl_ms);
     const bool cache_is_fresh =
       it->second.validated_service_seq == current_service_seq
-      && it->second.entry.last_reported_ms > 0
-      && now_ms_ - it->second.entry.last_reported_ms <= resolve_spot_cache_ttl_ms;
+      && validated_recently;
     if (!cache_is_fresh) {
         // Provider membership changed or the cache aged out, so the owner may
         // have moved even if the old endpoint still exists.

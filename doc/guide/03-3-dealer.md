@@ -128,8 +128,8 @@ zlink_send(dealer, parts, 2, 0);
 | `ZLINK_OPT_SNDHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
 | `ZLINK_OPT_RCVHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
-| `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms) |
-| `ZLINK_OPT_RCVTIMEO` | int | -1 | Receive timeout (ms) |
+| `ZLINK_OPT_SNDTIMEO` | int | 1000 | Send timeout (ms); set `-1` explicitly for infinite wait |
+| `ZLINK_OPT_RCVTIMEO` | int | 1000 | Receive timeout (ms); set `-1` explicitly for infinite wait |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | binary | -- | Alias applied to the next connect |
 
 ### Setting routing_id

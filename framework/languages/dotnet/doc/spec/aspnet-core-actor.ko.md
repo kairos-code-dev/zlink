@@ -603,19 +603,24 @@ namespace Zlink.Framework.Contracts.Actors;
 
 public interface IZLinkActorPlayRouteResolver
 {
-    ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+    ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
         string actorId,
         CancellationToken cancellationToken);
 }
 
-public readonly record struct ZLinkActorRoute(
+public readonly record struct ZLinkActorLocationRoute(
     string RouterChannelId,
+    string ActorId,
     RoutingId TargetNodeRid,
-    ulong ActorGeneration);
+    RoutingId CurrentSpotRid,
+    ZLinkSpotKind CurrentSpotKind);
 ```
 
-`ActorGeneration` 은 concrete actor ref 의 generation 이다. `0` 은 unchecked
-route 이므로 session attach 와 backend actor messaging 입력으로 사용할 수 없다.
+이 route 는 backend service 가 actor id 로 현재 위치를 조회한 결과다.
+`TargetNodeRid` 와 `CurrentSpotRid` 는 기존 Spot routed API 의 destination 으로
+사용된다. `CurrentSpotKind` 는 대상이 Entry Spot 인지 user Spot 인지를 구분한다.
+이 logical route 는 `ActorGeneration` 을 요구하지 않는다. session attach 는
+별도의 concrete route snapshot 과 generation 검증을 계속 사용한다.
 
 resolver 의 실제 저장소는 application 이 원하는 곳 어디든 채울 수 있다. 예를
 들어 in-memory 캐시, Redis, Registry 기반 lookup 등이 모두 가능하다. Registry 를
@@ -938,22 +943,31 @@ application 이 시작한 close 이므로 session 의 `OnDisconnectedAsync(...)`
 
 ### 9.3 라우팅 record
 
-handler-interfaces.ko.md §5.7 과 동일한 actor route 필드 구성을 그대로
-사용한다. session binding 에 필요한 session rid, session id, binding token 은
-framework / core runtime 내부 metadata 로 관리한다. 즉 public resolver record
-로는 노출하지 않는다.
+handler-interfaces.ko.md §5.7 의 route 타입은 두 가지 의미로 나뉜다. backend
+service 가 actor id 로 현재 위치를 찾을 때는 generation 없는
+`ZLinkActorLocationRoute` 를 사용한다. session attach 처럼 이미 붙은 concrete
+Actor instance를 보호해야 하는 경로는 generation을 가진 `ZLinkActorRoute`
+snapshot을 사용한다.
 
 ```csharp
+public readonly record struct ZLinkActorLocationRoute(
+    string RouterChannelId,
+    string ActorId,
+    RoutingId TargetNodeRid,
+    RoutingId CurrentSpotRid,
+    ZLinkSpotKind CurrentSpotKind);
+
 public readonly record struct ZLinkActorRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     ulong ActorGeneration);
 ```
 
-- **`ZLinkActorRoute`** -- "이 actor 가 사는 Play 서버의 위치" 를 나타낸다.
-  session attach 에서는 ensure actor 응답처럼 이미 확인된 route snapshot 으로
-  전달하고, backend actor messaging 에서는 `IZLinkActorPlayRouteResolver` 의
-  결과로 돌려준다.
+- **`ZLinkActorLocationRoute`** -- "이 actor id 가 현재 어느 node와 Spot에
+  있는가"를 나타낸다. backend actor messaging은 이 값을 기존 Spot routed API의
+  destination으로 사용한다.
+- **`ZLinkActorRoute`** -- session attach가 concrete Actor instance를 고정할 때
+  쓰는 snapshot이다. 이 route에서는 generation 검증이 유지된다.
 - actor-session binding 은 public route resolver 결과가 아니다. 이전 stream
   의 뒤늦은 close 가 새 binding 을 지우지 못하도록, 내부에서 binding token
   으로 조건부 갱신을 수행한다.

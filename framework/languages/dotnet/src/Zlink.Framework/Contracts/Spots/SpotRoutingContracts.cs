@@ -11,7 +11,15 @@ public interface IZLinkSpotRouteResolver
         CancellationToken cancellationToken);
 }
 
+public enum ZLinkSpotKind
+{
+    Invalid = 0,
+    Entry = 1,
+    User = 2,
+}
+
 public readonly record struct ZLinkSpotRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
-    RoutingId SpotRid);
+    RoutingId SpotRid,
+    ZLinkSpotKind SpotKind);

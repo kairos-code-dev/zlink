@@ -130,6 +130,8 @@ napi_value create_registry_topology_array(napi_env env,
         set_uint32_property(env, obj, "errorCode", entries[i].error_code);
         set_int64_property(env, obj, "lastReportedMs",
                            static_cast<int64_t>(entries[i].last_reported_ms));
+        set_uint32_property(env, obj, "spotKind",
+                            static_cast<uint32_t>(entries[i].spot_kind));
         napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
     }
     return arr;
@@ -804,12 +806,20 @@ napi_value discovery_resolve_spot(napi_env env, napi_callback_info info)
     zlink_routing_id_t spot_rid;
     if (!parse_routing_id(env, argv[1], &spot_rid))
         return NULL;
-    zlink_routing_id_t owner_node_rid;
-    memset(&owner_node_rid, 0, sizeof(owner_node_rid));
-    int rc = zlink_discovery_resolve_spot(discovery, &spot_rid, &owner_node_rid);
+    zlink_spot_route_t route;
+    memset(&route, 0, sizeof(route));
+    int rc = zlink_discovery_resolve_spot(discovery, &spot_rid, &route);
     if (rc != 0)
         return throw_last_error(env, "discovery_resolve_spot failed");
-    return create_routing_id_value(env, owner_node_rid);
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "spotRid",
+                            create_routing_id_value(env, route.spot_rid));
+    napi_set_named_property(env, obj, "ownerNodeRid",
+                            create_routing_id_value(env, route.owner_node_rid));
+    set_uint32_property(env, obj, "spotKind",
+                        static_cast<uint32_t>(route.spot_kind));
+    return obj;
 }
 
 napi_value discovery_destroy(napi_env env, napi_callback_info info)

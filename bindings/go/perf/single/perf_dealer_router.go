@@ -39,8 +39,8 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 		return err
 	}, router)
 
-	result := runSingleOneWay(cfg, router, func(payload []byte) (bool, error) {
-		return dealer.Send().Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+	result := runSingleRoutedOneWay(cfg, router, func(payload []byte) (bool, error) {
+		return dealer.Send().Message(perfcommon.NewMessage(payload)).Submit(nil)
 	}, func(payload []byte) error {
 		_, err := dealer.Send().Message(perfcommon.NewMessage(payload)).Submit(nil)
 		return err

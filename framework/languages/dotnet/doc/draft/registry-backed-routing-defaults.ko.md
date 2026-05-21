@@ -41,15 +41,17 @@ Bingo 와 TicTacToe session gateway 샘플은 Registry 를 사용하는 구조�
 ```csharp
 public interface IZLinkActorPlayRouteResolver
 {
-    ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+    ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
         string actorId,
         CancellationToken cancellationToken);
 }
 
-public readonly record struct ZLinkActorRoute(
+public readonly record struct ZLinkActorLocationRoute(
     string RouterChannelId,
+    string ActorId,
     RoutingId TargetNodeRid,
-    ulong ActorGeneration);
+    RoutingId CurrentSpotRid,
+    ZLinkSpotKind CurrentSpotKind);
 
 public interface IZLinkSpotRouteResolver
 {

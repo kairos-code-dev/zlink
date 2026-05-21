@@ -2051,10 +2051,12 @@ void test_actor_route_move_joined_publish_and_provider_cleanup ()
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor_b, &ref_b));
 
     zlink_actor_route_t route;
-    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_FOUND,
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
                        zlink_discovery_resolve_actor (
                          discovery_a, "route-move", &route));
-    TEST_ASSERT_EQUAL (ENOENT, zlink_errno ());
+    TEST_ASSERT_TRUE (route.current_spot_kind == ZLINK_SPOT_KIND_ENTRY
+                      || route.current_spot_kind == ZLINK_SPOT_KIND_USER);
+    TEST_ASSERT_TRUE (route.current_spot_rid.size > 0);
 
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
                        wait_stream_bind_actor (node_a, stream, &session_b,

@@ -175,8 +175,9 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 |------|------|
 | **하는 일** | send/recv 최대 대기 시간 설정 |
 | **적용 위치** | `zlink_send()` / `zlink_recv()` blocking 경로 |
-| **기본값** | `-1` (무한 대기) |
+| **기본값** | `1000` ms |
 | **0** | non-blocking과 동일 (즉시 반환) |
+| **-1** | 명시적으로 설정한 경우 무한 대기 |
 | **>0** | 지정 시간(ms)까지 대기 후 `ZLINK_SUBMIT_BACKPRESSURED` 반환 |
 
 **서비스 적용:** SPOT에서 pub/sub 내부 소켓에 전파.

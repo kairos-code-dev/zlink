@@ -24,8 +24,6 @@ internal sealed class ZLinkSpotNodeInitializer(
         {
             var node = spotAdapter.CreateSpotNode(state.Context);
             node.SetRoutingId(CreateNodeRoutingId(spotNodeRegistration));
-            node.Bind(spotNodeRegistration.BindEndpoint!);
-
             var nodeRuntime = new ZLinkSpotNodeRuntime(
                 services,
                 runtime,
@@ -35,6 +33,9 @@ internal sealed class ZLinkSpotNodeInitializer(
                 channelAdapter,
                 node,
                 registration.SpotDiscovery?.ChannelName ?? spotNodeRegistration.SpotNodeName);
+
+            nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
+            node.Bind(spotNodeRegistration.BindEndpoint!);
 
             AttachDiscoveryIfConfigured(state, channelAdapter, spotNodeRegistration, node, nodeRuntime);
             ConnectManualPeers(spotNodeRegistration, nodeRuntime);
@@ -68,6 +69,10 @@ internal sealed class ZLinkSpotNodeInitializer(
         if (registration.RegistrySpotRoutes is not null)
         {
             discovery.SpotOwnerSyncEnabled = true;
+        }
+        if (registration.RegistryActorRoutes is not null)
+        {
+            discovery.ActorRouteSyncEnabled = true;
         }
 
         node.AttachDiscovery(discovery);

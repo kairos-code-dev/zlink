@@ -207,6 +207,8 @@ export const SpotPeerKind = Object.freeze({ SpotMesh: 1, RouterChannel: 2 } as c
 export type SpotPeerKindValue = typeof SpotPeerKind[keyof typeof SpotPeerKind];
 export const SpotPeerState = Object.freeze({ Configured: 1, Connecting: 2, Connected: 3 } as const);
 export type SpotPeerStateValue = typeof SpotPeerState[keyof typeof SpotPeerState];
+export const SpotKind = Object.freeze({ Invalid: 0, Entry: 1, User: 2 } as const);
+export type SpotKindValue = typeof SpotKind[keyof typeof SpotKind];
 export const SpotNodeState = Object.freeze({ Idle: 1, Connecting: 2, PartialReady: 3, Ready: 4, Error: 5 } as const);
 export type SpotNodeStateValue = typeof SpotNodeState[keyof typeof SpotNodeState];
 export const SpotNodeMode = Object.freeze({ PubSub: 1, Routed: 2, All: 3 } as const);
@@ -255,6 +257,13 @@ export interface RegistryTopologyEntry {
   readonly readyCount: number;
   readonly errorCode: number;
   readonly lastReportedMs: bigint;
+  readonly spotKind: SpotKindValue;
+}
+
+export interface SpotRoute {
+  readonly spotRid: RoutingId;
+  readonly ownerNodeRid: RoutingId;
+  readonly spotKind: SpotKindValue;
 }
 
 export interface RegistryServiceSummaryEntry {
@@ -379,8 +388,8 @@ export interface ActorRef {
 }
 export interface ActorRoute {
   readonly actor: ActorRef;
-  readonly joined: boolean;
-  readonly joinedSpotRid: RoutingId | null;
+  readonly currentSpotRid: RoutingId;
+  readonly currentSpotKind: SpotKindValue;
 }
 export interface ActorRecvInfo {
   readonly actor: ActorRef;
@@ -433,6 +442,7 @@ export type ActorLifecycleHandler = (spot: Spot, info: SpotActorLifecycleInfo) =
 export type ReplyHandler = (result: RequestResult, parts: Message[]) => void;
 export interface SpotNodeSpotEntry {
   readonly spotRid: RoutingId;
+  readonly spotKind: SpotKindValue;
   readonly dispatchHandlerAttached: boolean;
   readonly joinedActorCount: number;
   readonly pendingActorJoinCount: number;
@@ -441,8 +451,8 @@ export interface SpotNodeSpotEntry {
 }
 export interface SpotNodeActorEntry {
   readonly actor: ActorRef;
-  readonly joined: boolean;
-  readonly joinedSpotRid: RoutingId | null;
+  readonly currentSpotRid: RoutingId;
+  readonly currentSpotKind: SpotKindValue;
   readonly routeSynced: boolean;
   readonly pendingMessageCount: number;
   readonly lastChangedMs: bigint;

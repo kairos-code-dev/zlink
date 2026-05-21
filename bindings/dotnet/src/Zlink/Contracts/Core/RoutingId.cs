@@ -43,6 +43,13 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         return new RoutingId(bytes, takeOwnership: false);
     }
 
+    public static RoutingId FromUtf8(string value)
+    {
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        return FromBytes(Encoding.UTF8.GetBytes(value));
+    }
+
     public static RoutingId FromString(string value)
     {
         if (value == null)

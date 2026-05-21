@@ -31,9 +31,13 @@ static_assert (std::is_class<zlink::service::actor_t>::value,
 static_assert (std::is_same<decltype (zlink::actor_part_t::has_more), bool>::value,
                "actor.hpp must expose actor_part_t");
 static_assert (
-  std::is_same<decltype (zlink::actor_route_t::joined_spot_rid),
+  std::is_same<decltype (zlink::actor_route_t::current_spot_rid),
                std::optional<zlink::routing_id_t>>::value,
-  "actor.hpp must expose actor_route_t with optional joined_spot_rid");
+  "actor.hpp must expose actor_route_t with optional current_spot_rid");
+static_assert (
+  std::is_same<decltype (zlink::actor_route_t::current_spot_kind),
+               zlink::spot_kind>::value,
+  "actor.hpp must expose actor_route_t current_spot_kind");
 static_assert (
   std::is_same<
     decltype (std::declval<zlink::stream_socket_t &> ().bind_actor (

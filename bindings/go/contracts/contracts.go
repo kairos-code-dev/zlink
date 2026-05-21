@@ -63,6 +63,7 @@ type (
 	AutoConnectType              = root.AutoConnectType
 	ServiceRole                  = root.ServiceRole
 	ServiceKind                  = root.ServiceKind
+	SpotKind                     = root.SpotKind
 	SubjectKind                  = root.SubjectKind
 	SpotRole                     = root.SpotRole
 	SpotNodeState                = root.SpotNodeState
@@ -75,6 +76,7 @@ type (
 	Discovery                    = root.Discovery
 	Registry                     = root.Registry
 	RegistryQueryClient          = root.RegistryQueryClient
+	SpotRoute                    = root.SpotRoute
 	SpotNodeStatus               = root.SpotNodeStatus
 	SpotNodePeerEntry            = root.SpotNodePeerEntry
 	SpotNodePeerFilter           = root.SpotNodePeerFilter
@@ -127,6 +129,7 @@ type (
 	SpotDispatchSubjectKind      = root.SpotDispatchSubjectKind
 	SpotDispatchInfo             = root.SpotDispatchInfo
 	Received                     = root.Received
+	RecvPartResult               = root.RecvPartResult
 	TopicMessage                 = root.TopicMessage
 	SubscriptionEvent            = root.SubscriptionEvent
 	SocketTarget                 = root.SocketTarget
@@ -187,6 +190,9 @@ const (
 	ServiceKindSpotSub                    = root.ServiceKindSpotSub
 	ServiceKindSpotPub                    = root.ServiceKindSpotPub
 	ServiceKindSocket                     = root.ServiceKindSocket
+	SpotKindInvalid                       = root.SpotKindInvalid
+	SpotKindEntry                         = root.SpotKindEntry
+	SpotKindUser                          = root.SpotKindUser
 	SubjectKindNone                       = root.SubjectKindNone
 	SubjectKindTopic                      = root.SubjectKindTopic
 	SubjectKindPattern                    = root.SubjectKindPattern

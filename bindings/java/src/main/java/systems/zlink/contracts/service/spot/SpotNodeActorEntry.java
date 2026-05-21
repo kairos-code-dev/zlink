@@ -4,16 +4,16 @@ package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.RoutingId;
 import java.util.Objects;
-import java.util.Optional;
 
 public record SpotNodeActorEntry(ActorRef actor,
-                                 boolean joined,
-                                 Optional<RoutingId> joinedSpotRid,
+                                 RoutingId currentSpotRid,
+                                 SpotKind currentSpotKind,
                                  boolean routeSynced,
                                  int pendingMessageCount,
                                  long lastChangedMs) {
     public SpotNodeActorEntry {
         Objects.requireNonNull(actor, "actor");
-        joinedSpotRid = joinedSpotRid == null ? Optional.empty() : joinedSpotRid;
+        Objects.requireNonNull(currentSpotRid, "currentSpotRid");
+        Objects.requireNonNull(currentSpotKind, "currentSpotKind");
     }
 }

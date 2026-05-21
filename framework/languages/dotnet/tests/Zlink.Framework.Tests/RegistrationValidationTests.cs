@@ -1029,16 +1029,17 @@ public sealed class RegistrationValidationTests
 
     private sealed class TestActorPlayRouteResolver : IZLinkActorPlayRouteResolver
     {
-        public ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+        public ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
             string actorId,
             CancellationToken cancellationToken)
         {
-            _ = actorId;
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new ZLinkActorRoute(
+            return ValueTask.FromResult(new ZLinkActorLocationRoute(
                 "play",
+                actorId,
                 global::Systems.Zlink.RoutingId.FromString("01"),
-                1));
+                global::Systems.Zlink.RoutingId.FromString("02"),
+                ZLinkSpotKind.User));
         }
     }
 
@@ -1063,7 +1064,8 @@ public sealed class RegistrationValidationTests
             return ValueTask.FromResult(new ZLinkSpotRoute(
                 "spots",
                 global::Systems.Zlink.RoutingId.FromString("03"),
-                spotRid));
+                spotRid,
+                ZLinkSpotKind.User));
         }
     }
 

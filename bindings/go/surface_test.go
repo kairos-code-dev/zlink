@@ -70,6 +70,12 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.PairSocket)(nil), "Recv") {
 		t.Fatalf("PairSocket should expose Recv")
 	}
+	if !hasMethod((*zlink.PairSocket)(nil), "RecvPart") {
+		t.Fatalf("PairSocket should expose RecvPart")
+	}
+	if !hasMethod((*zlink.PairSocket)(nil), "SendPart") {
+		t.Fatalf("PairSocket should expose SendPart")
+	}
 	if hasMethod((*zlink.PairSocket)(nil), "TrySend") {
 		t.Fatalf("PairSocket should not expose TrySend")
 	}
@@ -81,6 +87,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.PubSocket)(nil), "Publish") {
 		t.Fatalf("PubSocket should expose Publish")
+	}
+	if !hasMethod((*zlink.PubSocket)(nil), "PublishPart") {
+		t.Fatalf("PubSocket should expose PublishPart")
 	}
 	if hasMethod((*zlink.PubSocket)(nil), "TryPublish") {
 		t.Fatalf("PubSocket should not expose TryPublish")
@@ -99,6 +108,15 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.RouterSocket)(nil), "SendTo") {
 		t.Fatalf("RouterSocket should expose SendTo")
+	}
+	if !hasMethod((*zlink.DealerSocket)(nil), "RecvPart") {
+		t.Fatalf("DealerSocket should expose RecvPart")
+	}
+	if !hasMethod((*zlink.DealerSocket)(nil), "SendPart") {
+		t.Fatalf("DealerSocket should expose SendPart")
+	}
+	if !hasMethod((*zlink.RouterSocket)(nil), "RecvPart") {
+		t.Fatalf("RouterSocket should expose RecvPart")
 	}
 	if hasMethod((*zlink.DealerSocket)(nil), "TryRequestCallback") {
 		t.Fatalf("DealerSocket should not expose TryRequestCallback")
@@ -201,6 +219,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Spot)(nil), "Publish") {
 		t.Fatalf("Spot should expose Publish")
+	}
+	if !hasMethod((*zlink.Spot)(nil), "PublishPart") {
+		t.Fatalf("Spot should expose PublishPart")
 	}
 	if !hasMethod((*zlink.Spot)(nil), "SendChannel") {
 		t.Fatalf("Spot should expose SendChannel")

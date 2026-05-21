@@ -428,6 +428,29 @@ typedef enum zlink_config_result_t
 | `INVALID_STATE` | `EBUSY`, `ESHUTDOWN` | Handle lifecycle state rejects the config call (e.g. already started, already closed) |
 | `NOT_FOUND` | `ENOENT` | Local lookup target (e.g. Spot rid, actor id) not found |
 
+### Actor/Spot Route Lookup Errors
+
+`zlink_discovery_resolve_actor()` returns `ZLINK_CONFIG_INVALID_ARGUMENT` and
+`EINVAL` when the Actor id is missing, empty, too long, or the output pointer is
+missing. It returns `ZLINK_CONFIG_NOT_FOUND` and `ENOENT` when the Actor route
+row is missing, the row value is not exactly `sizeof(zlink_actor_route_t)`, the
+route key does not match `value.actor.actor_id`, or the current Spot rid/kind is
+not valid.
+
+`zlink_discovery_resolve_spot()` returns `ZLINK_CONFIG_INVALID_ARGUMENT` and
+`EINVAL` when `discovery`, `spot_rid`, or the output pointer is missing, or when
+`spot_rid` is empty. It returns `ZLINK_CONFIG_NOT_FOUND` and `ENOENT` when the
+Spot owner topology row is missing, the owner node rid is empty, or `spot_kind`
+is not Entry or user.
+
+A send/request failure after a successful lookup is not a route lookup error.
+It follows the existing routed send/request meanings such as not-connected,
+not-found, timeout, and backpressure.
+
+The default values for socket `ZLINK_OPT_SNDTIMEO` and `ZLINK_OPT_RCVTIMEO` are
+`1000` ms. Send/receive paths that do not explicitly set `-1` no longer wait
+forever by default.
+
 ### Applicable functions
 
 | Category | Functions |

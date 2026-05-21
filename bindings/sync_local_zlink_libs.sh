@@ -62,9 +62,12 @@ copy_libs() {
 
 copy_headers() {
   local dir="$1"
+
   mkdir -p "${dir}"
-  cp -f "${ROOT_DIR}/core/include/zlink.h" "${dir}/zlink.h"
-  cp -f "${ROOT_DIR}/core/include/zlink_enum.h" "${dir}/zlink_enum.h"
+  mkdir -p "${dir}/zlink"
+  rm -f "${dir}"/zlink/*.h
+  cp -f "${ROOT_DIR}"/core/include/*.h "${dir}/"
+  cp -f "${ROOT_DIR}"/core/include/zlink/*.h "${dir}/zlink/"
 }
 
 copy_headers "${ROOT_DIR}/bindings/c/include"
@@ -103,7 +106,7 @@ int main(void) {
   return 0;
 }
 C
-cc -I"${ROOT_DIR}/core/include" "${check_program}.c" \
+cc -I"${ROOT_DIR}/bindings/c/include" "${check_program}.c" \
   -L"${ROOT_DIR}/bindings/cpp/native/linux-${arch_dash}" -lzlink \
   -Wl,-rpath,"${ROOT_DIR}/bindings/cpp/native/linux-${arch_dash}" \
   -o "${check_program}"

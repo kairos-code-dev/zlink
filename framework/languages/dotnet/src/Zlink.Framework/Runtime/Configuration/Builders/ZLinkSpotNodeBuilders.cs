@@ -96,6 +96,12 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
             registration.AcceptedSpotRouteChannels[channelName]));
     }
 
+    public void ConfigureEntrySpot(Action<IZLinkEntrySpotOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        configure(registration.EntrySpotOptions);
+    }
+
     public void AddSpotFactory<TSpot>(string spotName)
         where TSpot : IZLinkSpot
     {

@@ -141,8 +141,8 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 | `ZLINK_OPT_SNDHWM` | int | 자동 (routed 기본 floor 8) | routed 역할 기본값. 수동 설정 시 자동값보다 우선 |
 | `ZLINK_OPT_RCVHWM` | int | 자동 (routed 기본 floor 8) | routed 역할 기본값. 수동 설정 시 자동값보다 우선 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
-| `ZLINK_OPT_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms) |
-| `ZLINK_OPT_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms) |
+| `ZLINK_OPT_SNDTIMEO` | int | 1000 | 송신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |
+| `ZLINK_OPT_RCVTIMEO` | int | 1000 | 수신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |
 | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | binary | — | 다음 connect에 적용할 alias |
 
 ### routing_id 설정

@@ -228,6 +228,24 @@ impl ServiceKind {
     }
 }
 
+/// Entry/user classification for a SPOT owner route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpotKind {
+    Invalid,
+    Entry,
+    User,
+}
+
+impl SpotKind {
+    fn from_raw(raw: ffi::zlink_spot_kind_t) -> Self {
+        match raw {
+            ffi::zlink_spot_kind_t::ZLINK_SPOT_KIND_ENTRY => Self::Entry,
+            ffi::zlink_spot_kind_t::ZLINK_SPOT_KIND_USER => Self::User,
+            ffi::zlink_spot_kind_t::ZLINK_SPOT_KIND_INVALID => Self::Invalid,
+        }
+    }
+}
+
 /// The SPOT role used in subject snapshots and queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpotRole {
@@ -807,6 +825,7 @@ pub struct RegistryTopologyEntry {
     pub ready_count: u32,
     pub error_code: u32,
     pub last_reported_ms: u64,
+    pub spot_kind: SpotKind,
 }
 
 impl RegistryTopologyEntry {
@@ -824,6 +843,7 @@ impl RegistryTopologyEntry {
             ready_count: raw.ready_count,
             error_code: raw.error_code,
             last_reported_ms: raw.last_reported_ms,
+            spot_kind: SpotKind::from_raw(raw.spot_kind),
         }
     }
 }
@@ -938,16 +958,12 @@ impl Discovery {
         Ok(value != 0)
     }
 
-    pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<RoutingId, ConfigError> {
-        let mut owner_node_rid = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
+    pub fn resolve_spot(&self, spot_rid: &RoutingId) -> Result<SpotRoute, ConfigError> {
+        let mut raw = MaybeUninit::<ffi::zlink_spot_route_t>::zeroed();
         check_config_rc(unsafe {
-            ffi::zlink_discovery_resolve_spot(
-                self.handle,
-                spot_rid.as_raw(),
-                owner_node_rid.as_mut_ptr(),
-            )
+            ffi::zlink_discovery_resolve_spot(self.handle, spot_rid.as_raw(), raw.as_mut_ptr())
         })?;
-        Ok(RoutingId::from_raw(unsafe { owner_node_rid.assume_init() }))
+        Ok(SpotRoute::from_raw(&unsafe { raw.assume_init() }))
     }
 
     pub fn resolve_actor(&self, actor_id: &str) -> Result<ActorRoute, ConfigError> {
@@ -1062,16 +1078,33 @@ fn routing_id_from_handle(handle: *mut c_void) -> Result<RoutingId, ConfigError>
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActorRoute {
     pub actor: ActorRef,
-    pub joined: bool,
-    pub joined_spot_rid: Option<RoutingId>,
+    pub current_spot_rid: RoutingId,
+    pub current_spot_kind: SpotKind,
 }
 
 impl ActorRoute {
     fn from_raw(raw: &ffi::zlink_actor_route_t) -> Self {
         Self {
             actor: ActorRef::from_raw(&raw.actor),
-            joined: raw.joined != 0,
-            joined_spot_rid: RoutingId::from_raw_optional(raw.joined_spot_rid),
+            current_spot_rid: RoutingId::from_raw(raw.current_spot_rid),
+            current_spot_kind: SpotKind::from_raw(raw.current_spot_kind),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpotRoute {
+    pub spot_rid: RoutingId,
+    pub owner_node_rid: RoutingId,
+    pub spot_kind: SpotKind,
+}
+
+impl SpotRoute {
+    fn from_raw(raw: &ffi::zlink_spot_route_t) -> Self {
+        Self {
+            spot_rid: RoutingId::from_raw(raw.spot_rid),
+            owner_node_rid: RoutingId::from_raw(raw.owner_node_rid),
+            spot_kind: SpotKind::from_raw(raw.spot_kind),
         }
     }
 }
@@ -1147,6 +1180,7 @@ impl ActorJoinInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpotNodeSpotEntry {
     pub spot_rid: RoutingId,
+    pub spot_kind: SpotKind,
     pub dispatch_handler_attached: bool,
     pub joined_actor_count: u32,
     pub pending_actor_join_count: u32,
@@ -1158,6 +1192,7 @@ impl SpotNodeSpotEntry {
     fn from_raw(raw: &ffi::zlink_spot_node_spot_entry_t) -> Self {
         Self {
             spot_rid: RoutingId::from_raw(raw.spot_rid),
+            spot_kind: SpotKind::from_raw(raw.spot_kind),
             dispatch_handler_attached: raw.dispatch_handler_attached != 0,
             joined_actor_count: raw.joined_actor_count,
             pending_actor_join_count: raw.pending_actor_join_count,
@@ -1170,8 +1205,8 @@ impl SpotNodeSpotEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpotNodeActorEntry {
     pub actor: ActorRef,
-    pub joined: bool,
-    pub joined_spot_rid: Option<RoutingId>,
+    pub current_spot_rid: RoutingId,
+    pub current_spot_kind: SpotKind,
     pub route_synced: bool,
     pub pending_message_count: u32,
     pub last_changed_ms: u64,
@@ -1181,8 +1216,8 @@ impl SpotNodeActorEntry {
     fn from_raw(raw: &ffi::zlink_spot_node_actor_entry_t) -> Self {
         Self {
             actor: ActorRef::from_raw(&raw.actor),
-            joined: raw.joined != 0,
-            joined_spot_rid: RoutingId::from_raw_optional(raw.joined_spot_rid),
+            current_spot_rid: RoutingId::from_raw(raw.current_spot_rid),
+            current_spot_kind: SpotKind::from_raw(raw.current_spot_kind),
             route_synced: raw.route_synced != 0,
             pending_message_count: raw.pending_message_count,
             last_changed_ms: raw.last_changed_ms,

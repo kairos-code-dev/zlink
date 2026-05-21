@@ -47,8 +47,8 @@ static inline int zlink_socket_monitor_handler_go(void *m, uintptr_t userdata) {
     return zlink_socket_monitor_handler(m, (zlink_socket_monitor_handler_fn)goZlinkMonitorTrampoline, (void *)userdata);
 }
 
-static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_routing_id_t *owner_node_rid_out) {
-    return zlink_discovery_resolve_spot(discovery, spot_rid, owner_node_rid_out);
+static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_spot_route_t *route_out) {
+    return zlink_discovery_resolve_spot(discovery, spot_rid, route_out);
 }
 */
 import "C"

@@ -258,6 +258,23 @@ logical spot.
   from data-plane caller-provided storage.
 - Perf meaning matches `bindings/c/perf`.
 
+## Actor And Spot Route Results
+
+Python exposes Actor and Spot route lookup results through public result
+objects.
+
+- `ActorRoute` preserves the resolved Actor ref, Actor node RID, current Spot
+  RID, and current Spot kind.
+- `SpotRoute` preserves Spot RID, owner node RID, and Spot kind.
+- `SpotKind` distinguishes Entry Spot from user Spot. Invalid kind is not a
+  successful route result.
+- SpotNode snapshot entries expose the same Spot kind/current Spot fields as the
+  core snapshots.
+
+Python must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging
+methods. Callers compose `resolve_actor()` or `resolve_spot()` with the existing
+Spot routed APIs.
+
 ## SpotNode Router Channel Peers
 
 Python exposes router channel peer wiring on the public `SpotNode` object:

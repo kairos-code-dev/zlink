@@ -75,11 +75,12 @@ pub use service::{
     RegistryQueryClient, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState,
     RegistryStatus, RegistryTopologyEntry, RegistryTopologyFilter, ReplyOp, RequestOp, SendOp,
     ServiceKind, ServiceRole, SocketType, Spot, SpotDispatchEvent, SpotDispatchInfo,
-    SpotDispatchSubject, SpotDispatchSubjectKind, SpotNode, SpotNodeActorEntry, SpotNodeMode,
-    SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketOwner,
+    SpotDispatchSubject, SpotDispatchSubjectKind, SpotKind, SpotNode, SpotNodeActorEntry,
+    SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketOwner,
     SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter, SpotNodeSpotEntry, SpotNodeState,
     SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerKind, SpotPeerSource,
-    SpotPeerState, SpotRole, SpotServiceAttachmentRole, SubjectKind, TopologySource, TopologyState,
+    SpotPeerState, SpotRole, SpotRoute, SpotServiceAttachmentRole, SubjectKind, TopologySource,
+    TopologyState,
 };
 pub use socket::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, SendHandle, StreamSocket, SubSocket,

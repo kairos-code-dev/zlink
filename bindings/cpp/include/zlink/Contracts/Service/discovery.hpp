@@ -194,16 +194,16 @@ class discovery_t
         return entries;
     }
 
-    routing_id_t resolve_spot (const routing_id_t &spot_rid_)
+    spot_route_t resolve_spot (const routing_id_t &spot_rid_)
     {
-        routing_id_t owner_node_rid =
-          zlink::detail::unchecked_empty_routing_id ();
+        zlink_spot_route_t native;
+        std::memset (&native, 0, sizeof (native));
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
             zlink_discovery_resolve_spot (
               _discovery, zlink::detail::routing_id_native (spot_rid_),
-              zlink::detail::routing_id_native (owner_node_rid))));
-        return owner_node_rid;
+              &native)));
+        return spot_route_t (native);
     }
 
     actor_route_t resolve_actor (const std::string &actor_id_)

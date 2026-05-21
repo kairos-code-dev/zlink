@@ -43,6 +43,7 @@ from ...contracts.enums.enums import (  # noqa: F401
     SpotNodeSocketOwner,
     SpotNodeSocketRole,
     SpotNodeState,
+    SpotKind,
     SpotPeerKind,
     SpotPeerSource,
     SpotPeerState,

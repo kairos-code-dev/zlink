@@ -7,8 +7,8 @@ package zlink
 #include <stdlib.h>
 #include "zlink.h"
 
-static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_routing_id_t *owner_node_rid_out) {
-    return zlink_discovery_resolve_spot(discovery, spot_rid, owner_node_rid_out);
+static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_spot_route_t *route_out) {
+    return zlink_discovery_resolve_spot(discovery, spot_rid, route_out);
 }
 */
 import "C"
@@ -49,6 +49,14 @@ const (
 	ServiceKindSpotSub   ServiceKind = ServiceKind(C.ZLINK_SERVICE_KIND_SPOT_SUB)
 	ServiceKindSpotPub   ServiceKind = ServiceKind(C.ZLINK_SERVICE_KIND_SPOT_PUB)
 	ServiceKindSocket    ServiceKind = ServiceKind(C.ZLINK_SERVICE_KIND_SOCKET)
+)
+
+type SpotKind uint32
+
+const (
+	SpotKindInvalid SpotKind = SpotKind(C.ZLINK_SPOT_KIND_INVALID)
+	SpotKindEntry   SpotKind = SpotKind(C.ZLINK_SPOT_KIND_ENTRY)
+	SpotKindUser    SpotKind = SpotKind(C.ZLINK_SPOT_KIND_USER)
 )
 
 type SubjectKind uint32
@@ -244,6 +252,13 @@ type RegistryTopologyEntry struct {
 	ReadyCount      uint32
 	ErrorCode       uint32
 	LastReportedMs  uint64
+	SpotKind        SpotKind
+}
+
+type SpotRoute struct {
+	SpotRID      RoutingID
+	OwnerNodeRID RoutingID
+	SpotKind     SpotKind
 }
 
 type RegistryTopologyFilter struct {
@@ -427,16 +442,16 @@ func (d *Discovery) ActorRouteSyncEnabled() (bool, error) {
 	return value != 0, nil
 }
 
-func (d *Discovery) ResolveSpot(spotRid RoutingID) (RoutingID, error) {
+func (d *Discovery) ResolveSpot(spotRid RoutingID) (SpotRoute, error) {
 	if d == nil || d.closed {
-		return RoutingID{}, stateError("discovery is closed")
+		return SpotRoute{}, stateError("discovery is closed")
 	}
 	nativeSpotRID := spotRid.toC()
-	var ownerNodeRID C.zlink_routing_id_t
-	if err := checkRC(C.zlink_discovery_resolve_spot_go(d.raw(), &nativeSpotRID, &ownerNodeRID)); err != nil {
-		return RoutingID{}, err
+	var raw C.zlink_spot_route_t
+	if err := checkRC(C.zlink_discovery_resolve_spot_go(d.raw(), &nativeSpotRID, &raw)); err != nil {
+		return SpotRoute{}, err
 	}
-	return routingIDFromC(ownerNodeRID), nil
+	return spotRouteFromC(raw), nil
 }
 
 func (d *Discovery) GetValue() (int64, error) {
@@ -1072,6 +1087,15 @@ func registryTopologyEntryFromC(raw C.zlink_registry_topology_entry_t) RegistryT
 		ReadyCount:      uint32(raw.ready_count),
 		ErrorCode:       uint32(raw.error_code),
 		LastReportedMs:  uint64(raw.last_reported_ms),
+		SpotKind:        SpotKind(raw.spot_kind),
+	}
+}
+
+func spotRouteFromC(raw C.zlink_spot_route_t) SpotRoute {
+	return SpotRoute{
+		SpotRID:      routingIDFromC(raw.spot_rid),
+		OwnerNodeRID: routingIDFromC(raw.owner_node_rid),
+		SpotKind:     SpotKind(raw.spot_kind),
 	}
 }
 

@@ -352,6 +352,14 @@ type TopicMessage struct {
 	parts     []*Message
 }
 
+type RecvPartResult struct {
+	RoutingID     RoutingID
+	SpotRID       RoutingID
+	RequestSeq    uint64
+	HasRequestSeq bool
+	More          bool
+}
+
 type SubscribePartResult struct {
 	RoutingID RoutingID
 	TopicLen  int

@@ -26,6 +26,7 @@ from ..enums.enums import (
     SpotNodeOption,
     SpotNodeSocketOwner,
     SpotNodeState,
+    SpotKind,
     SpotPeerKind,
     SpotPeerSource,
     SpotPeerState,
@@ -260,8 +261,8 @@ class ActorRef:
 @dataclass(frozen=True)
 class ActorRoute:
     actor: ActorRef
-    joined: bool
-    joined_spot_rid: RoutingId | None
+    current_spot_rid: RoutingId
+    current_spot_kind: SpotKind
 
 
 @dataclass(frozen=True)
@@ -331,6 +332,7 @@ class SpotActorLifecycleInfo:
 @dataclass(frozen=True)
 class SpotNodeSpotEntry:
     spot_rid: RoutingId
+    spot_kind: SpotKind
     dispatch_handler_attached: bool
     joined_actor_count: int
     pending_actor_join_count: int
@@ -341,8 +343,8 @@ class SpotNodeSpotEntry:
 @dataclass(frozen=True)
 class SpotNodeActorEntry:
     actor: ActorRef
-    joined: bool
-    joined_spot_rid: RoutingId | None
+    current_spot_rid: RoutingId
+    current_spot_kind: SpotKind
     route_synced: bool
     pending_message_count: int
     last_changed_ms: int
@@ -1588,6 +1590,7 @@ class SpotNode:
         return [
             SpotNodeSpotEntry(
                 spot_rid=_routing_id_bytes(entry.spot_rid),
+                spot_kind=SpotKind(int(entry.spot_kind)),
                 dispatch_handler_attached=bool(entry.dispatch_handler_attached),
                 joined_actor_count=int(entry.joined_actor_count),
                 pending_actor_join_count=int(entry.pending_actor_join_count),
@@ -1613,8 +1616,8 @@ class SpotNode:
         return [
             SpotNodeActorEntry(
                 actor=_actor_ref_from_native(entry.actor),
-                joined=bool(entry.joined),
-                joined_spot_rid=_routing_id_bytes(entry.joined_spot_rid),
+                current_spot_rid=_routing_id_bytes(entry.current_spot_rid),
+                current_spot_kind=SpotKind(int(entry.current_spot_kind)),
                 route_synced=bool(entry.route_synced),
                 pending_message_count=int(entry.pending_message_count),
                 last_changed_ms=int(entry.last_changed_ms),

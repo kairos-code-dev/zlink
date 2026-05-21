@@ -184,6 +184,23 @@ Before declaring the C binding aligned:
 - Perf output prints the runtime library path and does not run against a stale
   `core/build` runtime.
 
+## Actor And Spot Route Results
+
+The C binding exposes the core route result structs exactly as public ABI.
+
+- `zlink_actor_route_t` contains the resolved Actor ref, including
+  `actor.node_rid`, plus `current_spot_rid` and `current_spot_kind`.
+- `zlink_spot_route_t` contains the requested `spot_rid`, the
+  `owner_node_rid`, and `spot_kind`.
+- `zlink_spot_kind_t` distinguishes Entry Spot from user Spot. Invalid kind is
+  not a successful Actor or Spot route result.
+- C samples that route by Actor id resolve the Actor first, then pass
+  `actor.node_rid` and `current_spot_rid` to the existing Spot routed APIs.
+
+The C binding must not add `zlink_router_send_actor`,
+`zlink_router_request_actor`, or Actor-to-ROUTER request helpers. Actor-directed
+delivery remains a route lookup followed by existing Spot routed send/request.
+
 ## SpotNode Router Channel Peers
 
 The C binding exposes the core router channel peer functions without renaming:

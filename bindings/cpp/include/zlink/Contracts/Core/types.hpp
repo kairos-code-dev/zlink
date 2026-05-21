@@ -1346,24 +1346,59 @@ using actor_lookup_callback_t =
 using spot_actor_lifecycle_callback_t =
   std::function<void(service::spot_t &, const spot_actor_lifecycle_info_t &)>;
 
+enum class spot_kind : int
+{
+    invalid = ZLINK_SPOT_KIND_INVALID,
+    entry = ZLINK_SPOT_KIND_ENTRY,
+    user = ZLINK_SPOT_KIND_USER
+};
+
 struct actor_route_t
 {
-    actor_route_t () : actor (), joined (false), joined_spot_rid (std::nullopt) {}
+    actor_route_t ()
+        : actor (),
+          current_spot_rid (std::nullopt),
+          current_spot_kind (spot_kind::invalid)
+    {
+    }
 
     explicit actor_route_t (const zlink_actor_route_t &native_)
         : actor (native_.actor),
-          joined (native_.joined != 0),
-          joined_spot_rid (
-            native_.joined_spot_rid.size > 0
+          current_spot_rid (
+            native_.current_spot_rid.size > 0
               ? std::optional<routing_id_t> (
-                  detail::native_routing_id (native_.joined_spot_rid))
-              : std::nullopt)
+                  detail::native_routing_id (native_.current_spot_rid))
+              : std::nullopt),
+          current_spot_kind (static_cast<spot_kind> (native_.current_spot_kind))
     {
     }
 
     actor_ref_t actor;
-    bool joined;
-    std::optional<routing_id_t> joined_spot_rid;
+    std::optional<routing_id_t> current_spot_rid;
+    spot_kind current_spot_kind;
+};
+
+struct spot_route_t
+{
+    spot_route_t ()
+        : spot_rid (detail::unchecked_empty_routing_id ()),
+          owner_node_rid (detail::unchecked_empty_routing_id ()),
+          spot_kind_value (spot_kind::invalid)
+    {
+    }
+
+    explicit spot_route_t (const zlink_spot_route_t &native_)
+        : spot_rid (detail::native_routing_id (native_.spot_rid)),
+          owner_node_rid (detail::native_routing_id (native_.owner_node_rid)),
+          spot_kind_value (static_cast<spot_kind> (native_.spot_kind))
+    {
+    }
+
+    spot_kind kind () const noexcept { return spot_kind_value; }
+
+    routing_id_t spot_rid;
+    routing_id_t owner_node_rid;
+    spot_kind spot_kind_value;
 };
 
 struct actor_part_t
@@ -2800,6 +2835,7 @@ class spot_node_spot_entry_t
   public:
     spot_node_spot_entry_t ()
         : spot_rid_ (detail::unchecked_empty_routing_id ()),
+          spot_kind_ (spot_kind::invalid),
           dispatch_handler_attached_ (false),
           joined_actor_count_ (0), pending_actor_join_count_ (0),
           route_synced_ (false), last_changed_ms_ (0)
@@ -2809,6 +2845,7 @@ class spot_node_spot_entry_t
     explicit spot_node_spot_entry_t (
       const zlink_spot_node_spot_entry_t &entry_)
         : spot_rid_ (detail::native_routing_id (entry_.spot_rid)),
+          spot_kind_ (static_cast<spot_kind> (entry_.spot_kind)),
           dispatch_handler_attached_ (entry_.dispatch_handler_attached != 0),
           joined_actor_count_ (entry_.joined_actor_count),
           pending_actor_join_count_ (entry_.pending_actor_join_count),
@@ -2818,6 +2855,8 @@ class spot_node_spot_entry_t
     }
 
     const routing_id_t &spot_rid () const noexcept { return spot_rid_; }
+
+    spot_kind kind () const noexcept { return spot_kind_; }
 
     bool dispatch_handler_attached () const noexcept
     {
@@ -2843,6 +2882,7 @@ class spot_node_spot_entry_t
 
   private:
     routing_id_t spot_rid_;
+    spot_kind spot_kind_;
     bool dispatch_handler_attached_;
     uint32_t joined_actor_count_;
     uint32_t pending_actor_join_count_;
@@ -2854,7 +2894,8 @@ class spot_node_actor_entry_t
 {
   public:
     spot_node_actor_entry_t ()
-        : actor_ (), joined_ (false), joined_spot_rid_ (std::nullopt),
+        : actor_ (), current_spot_rid_ (std::nullopt),
+          current_spot_kind_ (spot_kind::invalid),
           route_synced_ (false), pending_message_count_ (0),
           last_changed_ms_ (0)
     {
@@ -2863,12 +2904,12 @@ class spot_node_actor_entry_t
     explicit spot_node_actor_entry_t (
       const zlink_spot_node_actor_entry_t &entry_)
         : actor_ (entry_.actor),
-          joined_ (entry_.joined != 0),
-          joined_spot_rid_ (
-            entry_.joined_spot_rid.size > 0
+          current_spot_rid_ (
+            entry_.current_spot_rid.size > 0
               ? std::optional<routing_id_t> (
-                  detail::native_routing_id (entry_.joined_spot_rid))
+                  detail::native_routing_id (entry_.current_spot_rid))
               : std::nullopt),
+          current_spot_kind_ (static_cast<spot_kind> (entry_.current_spot_kind)),
           route_synced_ (entry_.route_synced != 0),
           pending_message_count_ (entry_.pending_message_count),
           last_changed_ms_ (entry_.last_changed_ms)
@@ -2877,12 +2918,12 @@ class spot_node_actor_entry_t
 
     const actor_ref_t &actor () const noexcept { return actor_; }
 
-    bool joined () const noexcept { return joined_; }
-
-    const std::optional<routing_id_t> &joined_spot_rid () const noexcept
+    const std::optional<routing_id_t> &current_spot_rid () const noexcept
     {
-        return joined_spot_rid_;
+        return current_spot_rid_;
     }
+
+    spot_kind current_spot_kind () const noexcept { return current_spot_kind_; }
 
     bool route_synced () const noexcept { return route_synced_; }
 
@@ -2898,8 +2939,8 @@ class spot_node_actor_entry_t
 
   private:
     actor_ref_t actor_;
-    bool joined_;
-    std::optional<routing_id_t> joined_spot_rid_;
+    std::optional<routing_id_t> current_spot_rid_;
+    spot_kind current_spot_kind_;
     bool route_synced_;
     uint32_t pending_message_count_;
     uint64_t last_changed_ms_;

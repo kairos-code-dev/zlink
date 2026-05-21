@@ -344,7 +344,7 @@ public API 추가 대상으로 분리한다.
 | 2 | .NET | `bindings/dotnet/perf` | `tcp/ws/wss/tls 통과` | `ws/wss/tls MULTI_SPOT_REQREP 보류, wss/tls MULTI_SPOT_SENDSEND 보류 외 통과` | .NET 완료, 다음은 Java `tcp` multi |
 | 3 | Java | `bindings/java/perf` | `tcp/ws/wss/tls 통과` | `tcp 통과, ws MULTI_SPOT_REQREP 1024 보류, wss 통과, tls MULTI_SPOT_REQREP 1024/131072 보류 외 통과` | Java `tls` multi 보류 항목 원인 분리 |
 | 4 | Node | `bindings/node/perf` | `tcp/ws single routed large 보류, wss PAIR 64B 보류, tls PAIR 64B 및 DEALER_DEALER 64B 보류 외 통과` | `tcp/ws/wss/tls multi 통과` | Go `tcp`부터 새 측정 라운드 시작 |
-| 5 | Go | `bindings/go/perf` | `tcp single 통과, ws/wss/tls 미측정` | `미측정` | Go `ws` single 측정 시작 |
+| 5 | Go | `bindings/go/perf` | `tcp single 통과, ws single latency 미달, wss/tls 미측정` | `미측정` | Go `ws` single latency 병목 분리 |
 | 6 | Rust | `bindings/rust/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
 | 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
 
@@ -665,12 +665,12 @@ server latency buffer를 `START` 전에 준비한
 | `tcp` | `DEALER_ROUTER` | `통과(50.9%)` | `통과(50.6%)` | `통과(57.2%)` | `통과(44.0%)` | `통과(43.9%)` | `통과(43.2%)` | C/Go full 파일은 위 PAIR 행과 같다. full run의 65536B `exit_nonzero`는 제한 재측정 `perf_go_single_linux_20260521_061433_codex_go_tcp_single_dealer_router_65536_debug_20260521.txt`에서 complete로 확인했다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `tcp` | `ROUTER_ROUTER` | `통과(55.4%)` | `통과(54.6%)` | `통과(58.6%)` | `통과(43.8%)` | `통과(40.4%)` | `통과(45.8%)` | C/Go 파일은 위 PAIR 행과 같다. routed one-way 기준을 통과했고 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `tcp` | `SPOT` | `통과(152.0%)` | `통과(121.6%)` | `통과(112.4%)` | `통과(82.8%)` | `통과(81.5%)` | `통과(71.0%)` | C: `perf_c_single_linux_20260521_055144_codex_c_tcp_single_current_for_go_20260521.txt`; Go: `perf_go_single_linux_20260521_065622_codex_go_tcp_single_spot_sender_yield_20260521.txt`. `Spot.SubscribePart(out, topicBuffer, flags)`를 추가해 C `zlink_spot_subscribe_part`와 같은 단일 part receive 의미로 맞췄다. active publish는 C처럼 `DONTWAIT`를 사용하고 backpressure 때 1ms 대기한다. SPOT active receive는 C처럼 poller 없이 `DONTWAIT` drain과 yield를 사용한다. Go sender는 C의 별도 sender/receiver thread 진행 의미를 맞추기 위해 성공 send 뒤 `runtime.Gosched()`로 receiver goroutine에 양보한다. C SPOT은 `NODROP`을 설정하지 않으므로 Go SPOT에서도 `SetNoDrop(true)`를 제거했다. timeout은 없고 auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. 짧은 topic C 문자열 변환 제거와 단일 part publish 직접 메서드 후보는 제한 재측정 `perf_go_single_linux_20260521_061807_codex_go_tcp_single_pubsub_spot_small_cstring_20260521.txt`, `perf_go_single_linux_20260521_062619_codex_go_tcp_single_pubsub_spot_small_publishpart_20260521.txt`에서 개선 근거가 없어 반영하지 않았다. |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `ws` | `PAIR` | `통과(73.7%)` | `미달(66.6%)` | `통과(88.6%)` | `통과(97.1%)` | `통과(95.5%)` | `통과(91.4%)` | C: `perf_c_single_linux_20260521_090653_codex_c_ws_single_current_after_core_rebuild_for_go_20260521.txt`; Go: `perf_go_single_linux_20260521_085525_codex_go_ws_single_full_after_routed_timestamp_20260521.txt`. 256B는 throughput 비율은 목표권이지만 latency가 C 대비 139.0x라 미달로 둔다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `ws` | `PUBSUB` | `미달(58.5%)` | `미달(57.3%)` | `통과(89.2%)` | `통과(97.0%)` | `통과(95.6%)` | `통과(90.1%)` | C/Go 파일은 위 PAIR 행과 같다. 64B와 256B는 throughput 비율은 목표권이지만 latency가 각각 C 대비 86.0x, 63.9x라 미달로 둔다. receive hot path는 C처럼 첫 수신 blocking, 이후 `DONTWAIT` burst drain이며 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `ws` | `DEALER_DEALER` | `통과(73.9%)` | `미달(66.7%)` | `통과(95.4%)` | `통과(97.5%)` | `통과(95.7%)` | `통과(91.4%)` | C/Go 파일은 위 PAIR 행과 같다. 256B는 throughput 비율은 목표권이지만 latency가 C 대비 149.7x라 미달로 둔다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `ws` | `DEALER_ROUTER` | `통과(56.1%)` | `통과(58.1%)` | `통과(74.9%)` | `통과(83.5%)` | `통과(97.8%)` | `통과(81.3%)` | C/Go 파일은 위 PAIR 행과 같다. Go routed active phase를 C `perf_dealer_router.cpp`처럼 sender goroutine의 blocking send와 receiver의 blocking `RecvPart` stop-token 루프로 맞췄다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `ws` | `ROUTER_ROUTER` | `통과(65.4%)` | `통과(55.9%)` | `통과(67.5%)` | `통과(90.9%)` | `통과(94.6%)` | `통과(81.7%)` | C/Go 파일은 위 PAIR 행과 같다. ROUTER-ROUTER도 C처럼 PING/PONG으로 target route를 확인한 뒤 active와 stop token을 blocking send 의미로 보낸다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `ws` | `SPOT` | `미달(144.5%)` | `미달(118.4%)` | `통과(110.3%)` | `통과(103.4%)` | `통과(94.1%)` | `통과(83.6%)` | C/Go 파일은 위 PAIR 행과 같다. 64B와 256B는 throughput은 C보다 높지만 latency가 각각 C 대비 527.4x, 38.5x라 미달로 둔다. SPOT은 C와 같은 `DONTWAIT` publish/backpressure 대기 의미와 `SubscribePart` 수신 경로를 유지하며 auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. |
 | `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
 | `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
 | `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |

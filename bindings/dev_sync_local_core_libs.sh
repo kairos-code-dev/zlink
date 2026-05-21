@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# dev_sync_local_core_libs.sh — copy a locally built core/build/lib/libzlink.so*
-# into every binding's native directory so binding-side perf tests, samples,
-# and contract tests pick up an in-progress core change without waiting for
-# a GitHub release.
+# dev_sync_local_core_libs.sh — copy locally built core headers and
+# core/build/lib/libzlink.so* into binding workspaces so binding-side perf
+# tests, samples, and contract tests pick up an in-progress core change
+# without waiting for a GitHub release.
 #
 # This is for local development only. The committed contents of
 # bindings/*/native/ are produced by the release CI from a tagged version of
@@ -54,6 +54,16 @@ for f in "${base}" "${soname}" "${versioned}"; do
   fi
 done
 
+copy_public_headers() {
+  local dir="$1"
+
+  mkdir -p "${dir}"
+  mkdir -p "${dir}/zlink"
+  rm -f "${dir}"/zlink/*.h
+  cp -f "${ROOT_DIR}"/core/include/*.h "${dir}/"
+  cp -f "${ROOT_DIR}"/core/include/zlink/*.h "${dir}/zlink/"
+}
+
 copy_libs() {
   local dir="$1"
   if [[ ! -d "${dir}" ]]; then
@@ -85,11 +95,22 @@ dirs=(
   "${ROOT_DIR}/bindings/rust/native/linux-${arch_dash}"
 )
 
+header_dirs=(
+  "${ROOT_DIR}/bindings/c/include"
+  "${ROOT_DIR}/bindings/cpp/include"
+  "${ROOT_DIR}/bindings/go/include"
+  "${ROOT_DIR}/bindings/rust/include"
+)
+
+for dir in "${header_dirs[@]}"; do
+  copy_public_headers "${dir}"
+done
+
 for dir in "${dirs[@]}"; do
   copy_libs "${dir}"
 done
 
-echo "synced libzlink ${VERSION} from ${CORE_LIB_DIR} into binding native dirs"
+echo "synced zlink headers and libzlink ${VERSION} from ${CORE_LIB_DIR} into binding workspaces"
 echo
 echo "WARNING: bindings/*/native/libzlink.so* are release artifacts. Do NOT"
 echo "commit the files written by this script. Run"

@@ -15,39 +15,29 @@ public interface IZLinkHandlerContext
     CancellationToken ConnectionAborted { get; }
 }
 
-public abstract class ZLinkHandlerContext : IZLinkHandlerContext
+public abstract class ZLinkHandlerContext(
+    string? channelName,
+    string? packetName,
+    string? contentType,
+    string? correlationId,
+    DateTimeOffset? deadline,
+    IServiceProvider services,
+    CancellationToken connectionAborted)
+    : IZLinkHandlerContext
 {
-    protected ZLinkHandlerContext(
-        string? channelName,
-        string? packetName,
-        string? contentType,
-        string? correlationId,
-        DateTimeOffset? deadline,
-        IServiceProvider services,
-        CancellationToken connectionAborted)
-    {
-        ChannelName = channelName;
-        PacketName = packetName;
-        ContentType = contentType;
-        CorrelationId = correlationId;
-        Deadline = deadline;
-        Services = services;
-        ConnectionAborted = connectionAborted;
-    }
+    public string? ChannelName { get; } = channelName;
 
-    public string? ChannelName { get; }
+    public string? PacketName { get; } = packetName;
 
-    public string? PacketName { get; }
+    public string? ContentType { get; } = contentType;
 
-    public string? ContentType { get; }
+    public string? CorrelationId { get; } = correlationId;
 
-    public string? CorrelationId { get; }
+    public DateTimeOffset? Deadline { get; } = deadline;
 
-    public DateTimeOffset? Deadline { get; }
+    internal IServiceProvider Services { get; } = services;
 
-    internal IServiceProvider Services { get; }
-
-    public CancellationToken ConnectionAborted { get; }
+    public CancellationToken ConnectionAborted { get; } = connectionAborted;
 }
 
 public sealed class ZLinkRequestContext : ZLinkHandlerContext

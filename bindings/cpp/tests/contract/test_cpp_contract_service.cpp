@@ -245,8 +245,9 @@ template<typename T> class has_resolve_spot_t
   private:
     template<typename U>
     static auto test (int)
-      -> decltype (std::declval<U &> ().resolve_spot (
-                      std::declval<const zlink::routing_id_t &> ()),
+      -> decltype (std::declval<zlink::spot_route_t &> () =
+                     std::declval<U &> ().resolve_spot (
+                       std::declval<const zlink::routing_id_t &> ()),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);

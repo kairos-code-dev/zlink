@@ -3,6 +3,7 @@
 package systems.zlink.contracts.service.registry;
 
 import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.service.spot.SpotKind;
 import systems.zlink.runtime.nativebridge.EnumCodecs;
 import systems.zlink.runtime.nativebridge.NativeHelpers;
 import java.lang.foreign.MemorySegment;
@@ -16,7 +17,8 @@ public record RegistryTopologyEntry(AutoConnectType autoConnectType,
                                     TopologySource source, TopologyState state,
                                     int desiredCount,
                                     int readyCount, int errorCode,
-                                    long lastReportedMs) {
+                                    long lastReportedMs,
+                                    SpotKind spotKind) {
     static RegistryTopologyEntry fromNative(MemorySegment segment) {
         int routingSize = segment.get(ValueLayout.JAVA_BYTE, 4) & 0xFF;
         byte[] routing = new byte[routingSize];
@@ -36,6 +38,7 @@ public record RegistryTopologyEntry(AutoConnectType autoConnectType,
           segment.get(ValueLayout.JAVA_INT, 788),
           segment.get(ValueLayout.JAVA_INT, 792),
           segment.get(ValueLayout.JAVA_INT, 796),
-          segment.get(ValueLayout.JAVA_LONG_UNALIGNED, 800));
+          segment.get(ValueLayout.JAVA_LONG_UNALIGNED, 800),
+          EnumCodecs.spotKindFromValue(segment.get(ValueLayout.JAVA_INT, 808)));
     }
 }

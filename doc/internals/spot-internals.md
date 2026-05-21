@@ -627,16 +627,16 @@ preserves part order within the same Actor.
 
 ### 9.3 Active route publish
 
-The Actor active route is not published when the Actor is created or when a
-STREAM session is bound. It is published at the **user Spot join success
-commit** and is updated to the Entry Spot location when an explicit leave
-moves the Actor from a user Spot back to the Entry Spot. Session bind and
-unbind do not publish or remove the active route. When the Actor named by an
-active route is destroyed, the route is removed; when a destroy targets an
-Actor of a different generation than the one in the route, the route is
-preserved. These updates become Registry-visible when the owning `SpotNode`'s
-Discovery has `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` enabled and is connected
-to the Registry.
+The Actor active route can be published at Actor creation with the Entry Spot
+as the current location. It is updated to the user Spot at the user Spot join
+success commit, and updated back to the Entry Spot when an explicit leave moves
+the Actor from a user Spot back to the Entry Spot. Session bind and unbind are
+not prerequisites for the active route and do not change the Actor location.
+When the Actor named by an active route is destroyed, the route is removed;
+when a destroy targets an Actor of a different generation than the one in the
+route, the route is preserved. These updates become Registry-visible when the
+owning `SpotNode`'s Discovery has `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`
+enabled and is connected to the Registry.
 
 ### 9.4 Actor lifecycle callback
 
@@ -745,7 +745,7 @@ sequenceDiagram
   Stream->>Node: stream callback(session_rid)
   Node->>List: bind actor_ref
   List->>ActorObj: attach bound session ref
-  Note over Node: bind does not publish active route<br/>(route is published at user Spot join)
+  Note over Node: bind does not change active route
 
   Node->>List: relay to actor_id
   List->>ActorObj: resolve local actor
@@ -781,7 +781,7 @@ sequenceDiagram
   ActorNode->>ActorObj: attach bound session ref
   ActorNode-->>SessNode: bind OK
   SessNode->>List: store actor_ref
-  Note over ActorNode: bind does not publish active route<br/>(route is published at user Spot join)
+  Note over ActorNode: bind does not change active route
 
   SessNode->>List: relay to actor_id
   List-->>SessNode: actor_ref

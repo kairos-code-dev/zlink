@@ -59,6 +59,13 @@ public enum SpotPeerState
     Connected = 3
 }
 
+public enum SpotKind
+{
+    Invalid = 0,
+    Entry = 1,
+    User = 2
+}
+
 public enum RegistryState
 {
     Idle = 1,
@@ -155,7 +162,8 @@ public sealed record RegistryTopologyEntry(
     uint DesiredCount,
     uint ReadyCount,
     uint ErrorCode,
-    ulong LastReportedMs);
+    ulong LastReportedMs,
+    SpotKind SpotKind);
 
 public sealed record MemberPeerEntry(
     AutoConnectType AutoConnectType,

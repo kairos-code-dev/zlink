@@ -324,6 +324,23 @@ Before declaring the .NET binding aligned:
 - Perf semantics match `bindings/c/perf`; private runtime shortcuts are not
   used to change measurement meaning.
 
+## Actor And Spot Route Results
+
+`.NET` exposes route lookup results through public contract records.
+
+- `ActorRoute` preserves the resolved `ActorRef`, `Actor.NodeRid`,
+  `CurrentSpotRid`, and `CurrentSpotKind`.
+- `SpotRoute` preserves `SpotRid`, `OwnerNodeRid`, and `SpotKind`.
+- `SpotKind` distinguishes Entry Spot from user Spot. Invalid kind is not a
+  successful route result.
+- `SpotNodeSpotEntry` and `SpotNodeActorEntry` expose the same Spot kind/current
+  Spot fields as the core snapshots.
+
+The binding must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging
+methods. Framework code and applications resolve Actor or Spot routes through
+`Discovery.ResolveActor()` and `Discovery.ResolveSpot()`, then use existing Spot
+routed send/request APIs.
+
 ## SpotNode Router Channel Peers
 
 `.NET` exposes router channel peer wiring on the public `SpotNode` and

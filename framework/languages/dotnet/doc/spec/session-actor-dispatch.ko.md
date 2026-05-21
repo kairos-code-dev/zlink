@@ -1194,20 +1194,24 @@ namespace Zlink.Framework.Contracts.Actors;
 
 public interface IZLinkActorPlayRouteResolver
 {
-    ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+    ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
         string actorId,
         CancellationToken cancellationToken);
 }
 
-public readonly record struct ZLinkActorRoute(
+public readonly record struct ZLinkActorLocationRoute(
     string RouterChannelId,
+    string ActorId,
     RoutingId TargetNodeRid,
-    ulong ActorGeneration);
+    RoutingId CurrentSpotRid,
+    ZLinkSpotKind CurrentSpotKind);
 ```
 
-`ActorGeneration == 0` 은 concrete actor route 가 아니므로 session attach 와
-backend actor messaging 입력으로 사용할 수 없다. session attach 는 이 값을
-`ActorRouteNotFound` 로 거부한다.
+이 route 는 session attach 에 쓰는 concrete route snapshot 이 아니다.
+backend service 가 actor id 로 현재 Actor 위치를 조회한 결과이며,
+`TargetNodeRid` 와 `CurrentSpotRid` 는 기존 Spot routed API 의 destination 으로
+사용된다. `CurrentSpotKind` 는 대상이 Entry Spot 인지 user Spot 인지를 구분한다.
+session attach 는 별도의 concrete route snapshot 과 generation 검증을 계속 사용한다.
 
 ```csharp
 namespace Zlink.Framework.Contracts.Spots;
@@ -1223,10 +1227,18 @@ public interface IZLinkSpotRouteResolver
         CancellationToken cancellationToken);
 }
 
+public enum ZLinkSpotKind
+{
+    Invalid = 0,
+    Entry = 1,
+    User = 2,
+}
+
 public readonly record struct ZLinkSpotRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
-    RoutingId SpotRid);
+    RoutingId SpotRid,
+    ZLinkSpotKind SpotKind);
 ```
 
 DI 등록 (Session 서버):

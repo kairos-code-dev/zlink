@@ -165,15 +165,21 @@ public sealed class Discovery : IDiscovery
         }
     }
 
-    public RoutingId ResolveSpot(RoutingId spotRid)
+    public SpotRoute ResolveSpot(RoutingId spotRid)
     {
         EnsureNotDisposed();
         ZlinkRoutingId nativeSpotRid = spotRid.ToNative();
         int rc = NativeMethods.zlink_discovery_resolve_spot(_handle,
-            ref nativeSpotRid, out ZlinkRoutingId ownerNodeRoutingId);
+            ref nativeSpotRid, out ZlinkSpotRoute route);
         ZlinkException.ThrowConfigIfError(rc);
-        return RoutingId.FromBytes(
-            NativeHelpers.ReadRoutingId(ref ownerNodeRoutingId));
+        return new SpotRoute(
+            RoutingIdInterop.FromNative(ref route.SpotRid)
+                ?? throw new ZlinkConfigException(
+                    ZlinkConfigException.ErrorCode.InternalError),
+            RoutingIdInterop.FromNative(ref route.OwnerNodeRid)
+                ?? throw new ZlinkConfigException(
+                    ZlinkConfigException.ErrorCode.InternalError),
+            (SpotKind)route.SpotKind);
     }
 
     public ActorRoute ResolveActor(string actorId)

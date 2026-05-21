@@ -78,6 +78,10 @@ zlink_config_result_t zlink_discovery_resolve_spot (
   const zlink_routing_id_t *spot_rid_,
   zlink_spot_route_t *route_out_)
 {
+    if (!discovery_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
     zlink::discovery_t *discovery =
       zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery) {

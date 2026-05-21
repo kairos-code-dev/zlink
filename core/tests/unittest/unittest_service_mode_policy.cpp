@@ -923,6 +923,10 @@ void test_discovery_resolve_spot_rejects_invalid_arguments ()
     memset (&route, 0, sizeof (route));
 
     TEST_ASSERT_NOT_EQUAL (
+      ZLINK_CONFIG_OK, zlink_discovery_resolve_spot (NULL, &spot_rid, &route));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
+    TEST_ASSERT_NOT_EQUAL (
       ZLINK_CONFIG_OK,
       zlink_discovery_resolve_spot (discovery, NULL, &route));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());

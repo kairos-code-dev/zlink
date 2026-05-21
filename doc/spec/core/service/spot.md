@@ -778,11 +778,12 @@ snapshot/query functions.
 - Insufficient `*count` fails with `ENOBUFS` and writes the required count.
 - `zlink_spot_node_spots_snapshot()` returns the list of local Spots.
   Entry Spot is also included in this list.
+  `spot_kind` distinguishes Entry Spot rows from user Spot rows.
   `joined_actor_count`, `pending_actor_join_count`, `route_synced`, and
   `last_changed_ms` are diagnostic values.
 - `zlink_spot_node_actors_snapshot()` returns live local Actor rows. Each row
-  contains the Actor ref, joined state, joined Spot rid, route sync state,
-  unread message count, and `last_changed_ms`.
+  contains the Actor ref, current Spot rid, current Spot kind, route sync
+  state, unread message count, and `last_changed_ms`.
 - `zlink_spot_actors_snapshot()` returns the list of Actor refs that are joined
   to a given Spot.
 - Snapshot values must not be used as flow-control contracts.
@@ -841,8 +842,8 @@ typedef struct zlink_actor_join_info_t {
 
 typedef struct zlink_actor_route_t {
   zlink_actor_ref_t actor;
-  uint32_t joined;
-  zlink_routing_id_t joined_spot_rid;
+  zlink_routing_id_t current_spot_rid;
+  zlink_spot_kind_t current_spot_kind;
 } zlink_actor_route_t;
 
 typedef struct zlink_actor_join_result_t {
@@ -884,9 +885,10 @@ typedef void (*zlink_spot_actor_lifecycle_handler_fn)(
   void *userdata);
 ```
 
-`zlink_actor_route_t` is returned by `zlink_discovery_resolve_actor()`. The
-`joined` field is non-zero when the actor is currently joined to a Spot; in
-that case `joined_spot_rid` holds the Spot's routing id.
+`zlink_actor_route_t` is returned by `zlink_discovery_resolve_actor()`.
+`actor.node_rid` is the node that owns the current Actor slot,
+`current_spot_rid` is the Actor's current Spot, and `current_spot_kind`
+is `ZLINK_SPOT_KIND_ENTRY` or `ZLINK_SPOT_KIND_USER`.
 
 `zlink_actor_join_result_t` is delivered to the join completion handler.
 `result` is the final outcome of the join operation. On success, `actor` is the
@@ -1494,8 +1496,8 @@ to the Registry. Otherwise `zlink_discovery_resolve_actor()` may return a
 not-found-class failure even after the local Actor location changes.
 
 - `actor` is the final Actor ref the route points to.
-- `joined != 0` means `joined_spot_rid` is the Actor's current Spot.
-- A normal live Actor exposed in a route must have `joined != 0`.
+- `current_spot_rid` is the Actor's current Spot.
+- `current_spot_kind` identifies Entry Spot or user Spot.
 - The route is published after a join commit.
 - The route does not indicate whether a session is bound.
 

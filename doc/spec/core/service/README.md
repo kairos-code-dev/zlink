@@ -74,13 +74,15 @@ When the caller starts from only a `spot_rid`, it can resolve the owner
 zlink_config_result_t zlink_discovery_resolve_spot (
   void *discovery,
   const zlink_routing_id_t *spot_rid,
-  zlink_routing_id_t *owner_node_rid_out);
+  zlink_spot_route_t *route_out);
 ```
 
-If this call succeeds, the caller pairs `owner_node_rid_out` with the original
-`spot_rid` and uses the ROUTER-side direct functions
+If this call succeeds, `route_out` contains the requested `spot_rid`, the owner
+`node_rid`, and the Spot kind. The caller pairs `route_out->owner_node_rid`
+with `route_out->spot_rid` and uses the ROUTER-side direct functions
 (`zlink_router_send_spot()`, `zlink_router_request_spot()`). That resolved
-result is valid only inside the current Discovery `service_name` scope.
+result is valid only inside the current Discovery `service_name` scope. Spot
+kind lets callers distinguish Entry Spot from user Spot when that matters.
 Replies are different: they must use the concrete source address delivered with
 the incoming request and must not perform a fresh lookup.
 

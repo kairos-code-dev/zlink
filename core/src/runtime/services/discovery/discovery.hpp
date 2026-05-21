@@ -170,6 +170,7 @@ class discovery_t
         bool dirty;
         bool tombstone;
         uint64_t validated_service_seq;
+        uint64_t validated_at_ms;
     };
 
     topology_key_t make_summary_key (uint16_t service_kind_,

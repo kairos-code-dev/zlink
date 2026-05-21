@@ -21,6 +21,7 @@ import systems.zlink.contracts.service.registry.TopologyState;
 import systems.zlink.contracts.service.spot.SpotNodeMode;
 import systems.zlink.contracts.service.spot.SpotNodeSocketOwner;
 import systems.zlink.contracts.service.spot.SpotNodeState;
+import systems.zlink.contracts.service.spot.SpotKind;
 import systems.zlink.contracts.service.spot.SpotPeerKind;
 import systems.zlink.contracts.service.spot.SpotPeerSource;
 import systems.zlink.contracts.service.spot.SpotPeerState;
@@ -480,6 +481,15 @@ public final class EnumCodecs {
             case 1 -> SpotPeerKind.SPOT_MESH;
             case 2 -> SpotPeerKind.ROUTER_CHANNEL;
             default -> throw invalid("SpotPeerKind", value);
+        };
+    }
+
+    public static SpotKind spotKindFromValue(int value) {
+        return switch (value) {
+            case 0 -> SpotKind.INVALID;
+            case 1 -> SpotKind.ENTRY;
+            case 2 -> SpotKind.USER;
+            default -> throw invalid("SpotKind", value);
         };
     }
 

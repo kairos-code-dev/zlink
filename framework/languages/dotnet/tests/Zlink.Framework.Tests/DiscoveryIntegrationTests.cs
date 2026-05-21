@@ -55,17 +55,25 @@ public sealed class DiscoveryIntegrationTests
         var discovery = state.RouteChannels["play"].Discovery;
         Assert.NotNull(discovery);
         Assert.False(discovery.ActorRouteSyncEnabled);
+        var spotDiscovery = Assert.Single(state.SpotDiscoveries.Values);
+        Assert.True(spotDiscovery.ActorRouteSyncEnabled);
 
         var manager = frameworkHost.Services.GetRequiredService<IZLinkActorManager>();
         _ = await manager.GetOrCreateAsync("actor-sync-player", "player");
         var resolver = frameworkHost.Services.GetRequiredService<IZLinkActorPlayRouteResolver>();
         var route = await RetryAsync(
             () => resolver.ResolvePlayRouteAsync("actor-sync-player", CancellationToken.None).AsTask(),
-            result => result.TargetNodeRid == routeRid,
+            result => result.TargetNodeRid == routeRid
+                && result.ActorId == "actor-sync-player"
+                && result.CurrentSpotRid.Size > 0
+                && result.CurrentSpotKind == ZLinkSpotKind.Entry,
             TimeSpan.FromSeconds(5));
 
         Assert.Equal("play", route.RouterChannelId);
+        Assert.Equal("actor-sync-player", route.ActorId);
         Assert.Equal(routeRid, route.TargetNodeRid);
+        Assert.True(route.CurrentSpotRid.Size > 0);
+        Assert.Equal(ZLinkSpotKind.Entry, route.CurrentSpotKind);
 
         await frameworkHost.StopAsync();
         await registryHost.StopAsync();
@@ -113,9 +121,12 @@ public sealed class DiscoveryIntegrationTests
 
         var manager = frameworkHost.Services.GetRequiredService<IZLinkSpotManager>();
         var created = await manager.CreateAsync("registry-stage");
-        var ownerRid = discovery.ResolveSpot(created.SpotRid);
+        var spotRoute = discovery.ResolveSpot(created.SpotRid);
 
-        Assert.Equal(runtime.GetSpotNodeRuntime("spot-sync-node").Node.RoutingId, ownerRid);
+        Assert.Equal(runtime.GetSpotNodeRuntime("spot-sync-node").Node.RoutingId,
+            spotRoute.OwnerNodeRid);
+        Assert.Equal(created.SpotRid, spotRoute.SpotRid);
+        Assert.Equal(SpotKind.User, spotRoute.SpotKind);
 
         await frameworkHost.StopAsync();
         await registryHost.StopAsync();

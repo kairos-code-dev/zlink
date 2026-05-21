@@ -9,6 +9,7 @@ from ..enums.enums import (
     ServiceKind,
     ServiceRole,
     SocketOption,
+    SpotKind,
     TopologySource,
     TopologyState,
 )
@@ -21,6 +22,7 @@ from ..._native.ffi import (
     ZlinkRegistryStatus,
     ZlinkRegistryTopologyEntry,
     ZlinkRegistryTopologyFilter,
+    ZlinkSpotRoute,
     lib,
 )
 from .spot import ActorRoute, _actor_id_bytes, _actor_ref_from_native
@@ -106,6 +108,14 @@ class RegistryTopologyEntry:
     ready_count: int
     error_code: int
     last_reported_ms: int
+    spot_kind: SpotKind
+
+
+@dataclass(frozen=True)
+class SpotRoute:
+    spot_rid: RoutingId
+    owner_node_rid: RoutingId
+    spot_kind: SpotKind
 
 
 @dataclass(frozen=True)
@@ -160,6 +170,7 @@ def _topology_entry_from_native(entry):
         ready_count=int(entry.ready_count),
         error_code=int(entry.error_code),
         last_reported_ms=int(entry.last_reported_ms),
+        spot_kind=SpotKind(int(entry.spot_kind)),
     )
 
 
@@ -442,15 +453,19 @@ class Discovery:
 
     def resolve_spot(self, spot_rid):
         native_spot_rid = _copy_routing_id(spot_rid)
-        owner_node_rid = type(native_spot_rid)()
+        native_route = ZlinkSpotRoute()
         rc = lib().zlink_discovery_resolve_spot(
             self._handle,
             ctypes.byref(native_spot_rid),
-            ctypes.byref(owner_node_rid),
+            ctypes.byref(native_route),
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return _routing_id_bytes(owner_node_rid)
+        return SpotRoute(
+            spot_rid=_routing_id_bytes(native_route.spot_rid),
+            owner_node_rid=_routing_id_bytes(native_route.owner_node_rid),
+            spot_kind=SpotKind(int(native_route.spot_kind)),
+        )
 
     def resolve_actor(self, actor_id):
         native = ZlinkActorRoute()
@@ -461,8 +476,8 @@ class Discovery:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return ActorRoute(
             actor=_actor_ref_from_native(native.actor),
-            joined=bool(native.joined),
-            joined_spot_rid=_routing_id_bytes(native.joined_spot_rid),
+            current_spot_rid=_routing_id_bytes(native.current_spot_rid),
+            current_spot_kind=SpotKind(int(native.current_spot_kind)),
         )
 
     @property

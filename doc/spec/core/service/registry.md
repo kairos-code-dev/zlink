@@ -538,6 +538,7 @@ typedef struct zlink_registry_topology_entry_t
     uint32_t ready_count;
     uint32_t error_code;
     uint64_t last_reported_ms;
+    zlink_spot_kind_t spot_kind;
 } zlink_registry_topology_entry_t;
 ```
 
@@ -555,6 +556,7 @@ typedef struct zlink_registry_topology_entry_t
 | `ready_count` | Number of instances currently ready. |
 | `error_code` | Error code if state is `ERROR`. |
 | `last_reported_ms` | Timestamp (epoch ms) of the last heartbeat or update. |
+| `spot_kind` | `ZLINK_SPOT_KIND_ENTRY` or `ZLINK_SPOT_KIND_USER` for Spot owner rows. Non-Spot-owner rows use `ZLINK_SPOT_KIND_INVALID`. |
 
 #### zlink_registry_topology_filter_t
 

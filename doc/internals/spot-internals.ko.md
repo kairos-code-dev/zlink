@@ -623,12 +623,13 @@ Actor에 대해 part 순서를 유지한다.
 
 ### 9.3 Active route publish
 
-Actor active route는 Actor 생성 시점이나 STREAM session bind 시점이 아니라 **user
-Spot join 성공 commit 시점**에 publish한다. user Spot에서 Entry Spot으로 leave가
-성공해 위치가 실제로 바뀌면 Entry Spot 위치로 갱신한다. session bind/unbind는 active
-route를 만들거나 제거하지 않는다. active route가 가리키는 Actor가 destroy되면 route를
-제거하고, active route가 다른 generation의 Actor를 가리키면 destroy는 그 route를
-건드리지 않는다. 위 동작은 Actor owner `SpotNode`의 Discovery에서
+Actor active route는 Actor 생성 시점에 Entry Spot 위치로 publish할 수 있고, user
+Spot join 성공 commit 시점에 user Spot 위치로 갱신한다. user Spot에서 Entry Spot으로
+leave가 성공해 위치가 실제로 바뀌면 Entry Spot 위치로 다시 갱신한다.
+session bind/unbind는 active route의 필수 조건이 아니며, 위치를 직접 바꾸지 않는다.
+active route가 가리키는 Actor가 destroy되면 route를 제거하고, active route가 다른
+generation의 Actor를 가리키면 destroy는 그 route를 건드리지 않는다. 위 동작은 Actor
+owner `SpotNode`의 Discovery에서
 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜져 있고 Registry와 통신할 수 있을 때 Registry
 visible 상태가 된다.
 
@@ -735,7 +736,7 @@ sequenceDiagram
   Stream->>Node: stream callback(session_rid)
   Node->>List: bind actor_ref
   List->>ActorObj: attach bound session ref
-  Note over Node: bind does not publish active route<br/>(route is published at user Spot join)
+  Note over Node: bind does not change active route
 
   Node->>List: relay to actor_id
   List->>ActorObj: resolve local actor
@@ -771,7 +772,7 @@ sequenceDiagram
   ActorNode->>ActorObj: attach bound session ref
   ActorNode-->>SessNode: bind OK
   SessNode->>List: store actor_ref
-  Note over ActorNode: bind does not publish active route<br/>(route is published at user Spot join)
+  Note over ActorNode: bind does not change active route
 
   SessNode->>List: relay to actor_id
   List-->>SessNode: actor_ref
@@ -922,6 +923,23 @@ handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot 
 | `g_live_join_requests` | `set<queued_join_request_t*>` | 현재 pending join. timeout 스윕에 사용 |
 | `g_retired_join_requests` | `set<queued_join_request_t*>` | completion frame 전달 확인 뒤 cleanup 대기 join |
 | `g_actor_protocol_drop_count` | `uint64_t` | protocol 오류(stale ref, unknown actor id 등)로 drop된 relay frame 누적 카운터. relay 손실 진단에 활용 |
+
+Actor active route row는 `ZLINK_ROUTE_KIND_ACTOR`와 Actor id key로 Registry에
+게시된다. value는 `zlink_actor_route_t`의 byte copy이며, Actor ref의 node rid와
+Actor id, current Spot rid, current Spot kind를 담는다. generation은 session attach
+같은 concrete Actor instance 검증에 쓰일 수 있지만, Actor id로 현재 위치를 찾는
+logical route의 필수 routing key가 아니다.
+
+Spot owner route는 별도 route value가 아니라 Registry topology entry에 저장된다.
+Spot owner topology row는 owner node의 endpoint와 logical Spot rid, 그리고
+`spot_kind`를 함께 담는다. Entry Spot row는 `ZLINK_SPOT_KIND_ENTRY`, user Spot row는
+`ZLINK_SPOT_KIND_USER`를 사용하고, Spot owner가 아닌 topology row는
+`ZLINK_SPOT_KIND_INVALID`를 사용한다.
+
+외부 ROUTER나 backend Spot이 Actor id에서 시작하는 메시지를 보낼 때 core 내부에서
+Actor queue로 직접 delivery하지 않는다. Discovery가 `actor_id`를 current Spot route로
+해석하고, caller가 기존 Spot routed transport에 `node_rid + current_spot_rid`를 넘긴다.
+target Spot에 도착한 payload를 어떤 Actor로 처리할지는 상위 프로토콜의 책임이다.
 
 `queued_join_request_t`는 request와 reply payload를 owned multipart parts로
 저장한다. `zlink_spot_actor_join_recv()`는 호출자에게 thread-local parts view를

@@ -34,12 +34,14 @@ Discovery는 Registry가 알려 주는 서비스 목록을 받아서, 응용이 
 zlink_config_result_t zlink_discovery_resolve_spot (
   void *discovery,
   const zlink_routing_id_t *spot_rid,
-  zlink_routing_id_t *owner_node_rid_out);
+  zlink_spot_route_t *route_out);
 ```
 
 이 함수는 현재 Discovery의 `channel_name` 범위 안에서 `spot_rid`에 대한 현재
-`SpotNode`의 `node_rid`를 구합니다. 성공하면 호출자는 반환된
-`owner_node_rid_out`과 원래의 `spot_rid`를 묶어 ROUTER 쪽 direct 함수
+`SpotNode`의 `node_rid`와 Spot kind를 구합니다. 성공하면
+`route_out->owner_node_rid`는 owner node, `route_out->spot_rid`는 조회한 Spot,
+`route_out->spot_kind`는 Entry Spot 또는 user Spot 여부를 담습니다. 호출자는 반환된
+owner node와 Spot rid를 묶어 ROUTER 쪽 direct 함수
 (`zlink_router_send_spot()` 또는 `zlink_router_request_spot()`)에 전달할 수
 있습니다.
 
@@ -49,7 +51,7 @@ Discovery가 들고 있는 주소 캐시는 전체 주소표를 전부 복제한
 
 - Discovery는 최근에 조회했거나 자주 쓰는 주소만 들고 있는 부분 캐시로 동작할
   수 있어야 합니다.
-- 각 캐시 항목은 `spot_rid -> owner_node_rid` 결과와 함께, 새 정보와 오래된
+- 각 캐시 항목은 `spot_rid -> owner_node_rid`, Spot kind, 새 정보와 오래된
   정보를 구분할 수 있는 순서 판정 값을 보존해야 합니다.
 - 더 새로운 주소 정보가 들어오면 기존 항목을 바로 바꿔야 합니다.
 - 더 오래된 정보가 뒤늦게 도착하면 무시해야 합니다.
@@ -293,7 +295,7 @@ typedef uint32_t zlink_route_kind_t;
 
 | 상수 | 설명 |
 |------|------|
-| `ZLINK_ROUTE_KIND_ACTOR` | actor active route sync 가 사용하는 actor route. framework adapter 는 actor node rid 와 actor generation 을 함께 읽어 concrete route snapshot 으로 사용한다 |
+| `ZLINK_ROUTE_KIND_ACTOR` | actor active route sync 가 사용하는 actor location route. value 는 `zlink_actor_route_t` byte copy이며 actor node rid, current Spot rid, current Spot kind를 함께 담는다 |
 | `ZLINK_ROUTE_KIND_SPOT_NAME` | framework adapter 가 Spot name 을 Spot RID 로 찾기 위한 route |
 | `ZLINK_ROUTE_KIND_ACTOR_SESSION` | framework adapter 가 actor-session binding 을 찾기 위한 route |
 
@@ -361,13 +363,13 @@ Registry 응답에서 내부 broadcast/uplink 엔드포인트를 학습하고, D
 zlink_config_result_t zlink_discovery_resolve_spot (
   void *discovery,
   const zlink_routing_id_t *spot_rid,
-  zlink_routing_id_t *owner_node_rid_out);
+  zlink_spot_route_t *route_out);
 ```
 
 이 함수는 현재 Discovery가 보고 있는 `channel_name` 범위 안에서 `spot_rid`를
-받아, 지금 그 이름을 맡고 있는 `SpotNode`의 `node_rid`를 구합니다. Discovery는
-먼저 로컬 캐시를 확인할 수 있고, 필요하면 Registry 기준으로 다시 확인할 수
-있습니다.
+받아, 지금 그 이름을 맡고 있는 `SpotNode`의 `node_rid`, 조회한 Spot rid, Spot kind를
+구합니다. Discovery는 먼저 로컬 캐시를 확인할 수 있고, 필요하면 Registry 기준으로
+다시 확인할 수 있습니다.
 현재 core 구현은 캐시를 아무 때나 오래 믿지 않습니다. Discovery는 cached owner
 row가 현재 channel view와 같은 갱신 순번에서 검증된 값인지 확인하고, 그렇지
 않으면 아주 짧은 로컬 TTL 안에 있는 값만 잠시 재사용합니다. channel view가
@@ -381,8 +383,8 @@ handle에서 `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`를 `int` 값 `1`로 설정해
 `zlink_discovery_resolve_spot()`의 Registry refresh 결과에 나타나지 않으며,
 조회는 `ENOENT`로 실패할 수 있습니다.
 
-성공하면 `owner_node_rid_out`에 현재 owner node의 routing id가 채워집니다.
-호출자는 이 값을 원래 `spot_rid`와 함께 ROUTER 쪽 direct 함수
+성공하면 `route_out`에 현재 owner node의 routing id, Spot rid, Spot kind가 채워집니다.
+호출자는 owner node와 Spot rid를 ROUTER 쪽 direct 함수
 (`zlink_router_send_spot()` 또는 `zlink_router_request_spot()`)에 전달하면
 됩니다.
 
@@ -614,13 +616,19 @@ zlink_config_result_t zlink_discovery_resolve_actor(void *discovery,
 
 `actor_id`는 비어 있지 않은 NUL 종료 문자열이어야 하며,
 `ZLINK_ACTOR_ID_MAX - 1` byte를 넘을 수 없습니다. 성공하면 `route_out->actor`에
-현재 active Actor ref가 기록됩니다. Actor가 현재 Spot에 join되어 있으면
-`route_out->joined != 0`이고 `route_out->joined_spot_rid`가 유효합니다.
+현재 active Actor ref가 기록됩니다. `route_out->current_spot_rid`는 Actor의 현재
+Spot이고, `route_out->current_spot_kind`는 Entry Spot 또는 user Spot 여부입니다.
 
-Actor active route는 Actor 생성이나 join만으로 만들어지지 않습니다.
-Actor owner `SpotNode`에 연결된 Discovery에서
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜져 있고, `zlink_stream_bind_actor()`가
-성공했을 때 publish됩니다.
+Actor active route는 Actor owner `SpotNode`에 연결된 Discovery에서
+`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜져 있을 때 publish됩니다. Actor가
+Entry Spot에 있는 생성 직후에도 current Spot route가 될 수 있고, user Spot으로
+join하면 user Spot route로 갱신되며, leave하면 같은 node의 Entry Spot route로
+다시 갱신됩니다.
+
+route row의 value 크기가 `sizeof(zlink_actor_route_t)`와 다르거나, key의 Actor id와
+`value.actor.actor_id`가 다르거나, `current_spot_rid`가 비어 있거나,
+`current_spot_kind`가 Entry/User가 아니면 성공 결과가 아닙니다. 이 경우 조회는
+`ZLINK_CONFIG_NOT_FOUND`와 `ENOENT`로 실패합니다.
 
 **오류:**
 - `EINVAL` -- handle, actor id, 출력 포인터가 올바르지 않습니다.

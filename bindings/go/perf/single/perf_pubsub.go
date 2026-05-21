@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"runtime"
 	"time"
 
 	zlink "zlink.systems/zlink/contracts"
@@ -43,11 +42,9 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(subscriber.SetSubscription(""))
 	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.SinglePubSubRecvTimeout()))
 	perfcommon.PostReadySettle(cfg.pattern)
-	poller := perfcommon.NewSocketPoller(subscriber, perfcommon.ZLinkPollIn)
-	defer poller.Close()
 
-	stats := perfcommon.NewStats()
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
+	stats := perfcommon.NewSingleStats(cfg.duration, cfg.msgSize)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	recvPart, err := zlink.NewMessageWithSize(0)
 	perfcommon.Must(err)
@@ -56,24 +53,8 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 
 	receiverDone := make(chan error, 1)
 	go func() {
-		// PERF_SINGLE_TEST_POLICY § 1.4: signal-driven wait (-1 ms). Loop
-		// exits when the wire-level stop token arrives.
 		for {
-			event, err := poller.Wait(-1 * time.Millisecond)
-			if err != nil {
-				if perfcommon.IsTransient(err) {
-					continue
-				}
-				receiverDone <- err
-				return
-			}
-			if event == nil {
-				continue
-			}
-			if event.Events&perfcommon.ZLinkPollIn == 0 {
-				continue
-			}
-			stop, drainErr := drainSinglePubSubUntilStop(subscriber, recvPart, topicBuffer, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
+			stop, drainErr := recvSinglePubSubUntilStop(subscriber, recvPart, topicBuffer, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
 			if drainErr != nil {
 				receiverDone <- drainErr
 				return
@@ -87,7 +68,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		sent, err := publisher.Publish(singlePubSubTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		sent, err := publisher.PublishPart(singlePubSubTopic, perfcommon.NewMessage(payload), zlink.SendFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -95,15 +76,15 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 			perfcommon.Must(err)
 		}
 		if !sent {
-			runtime.Gosched()
 			continue
 		}
-		runtime.Gosched()
 	}
 	// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
 	// stop token published on the same topic so the subscriber sees
 	// it as the last message in the active stream.
-	sendPubSubStopToken(publisher)
+	if !sendPubSubStopToken(publisher) {
+		perfcommon.Must(fmt.Errorf("PUBSUB stop token send failed"))
+	}
 	if err := <-receiverDone; err != nil {
 		perfcommon.Must(err)
 	}
@@ -112,6 +93,22 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.PrintSingleAutoHWMDetail(pubMon, cfg.pattern, cfg.transport, "publisher", zlink.SocketTypePub, cfg.msgSize)
 	perfcommon.PrintSingleAutoHWMDetail(subMon, cfg.pattern, cfg.transport, "subscriber", zlink.SocketTypeSub, cfg.msgSize)
 	return result
+}
+
+func recvSinglePubSubUntilStop(
+	subscriber *zlink.SubSocket,
+	part *zlink.Message,
+	topicBuffer []byte,
+	stats *perfcommon.Stats,
+	msgSize int,
+	activeAt time.Time,
+	stopAt time.Time,
+) (bool, error) {
+	stop, _, err := recvSinglePubSubOnce(subscriber, part, topicBuffer, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsNone)
+	if err != nil || stop {
+		return stop, err
+	}
+	return drainSinglePubSubUntilStop(subscriber, part, topicBuffer, stats, msgSize, activeAt, stopAt)
 }
 
 // drainSinglePubSubUntilStop drains the subscriber until either a
@@ -127,24 +124,44 @@ func drainSinglePubSubUntilStop(
 	stopAt time.Time,
 ) (bool, error) {
 	for {
-		result, ok, err := subscriber.SubscribePart(part, topicBuffer, zlink.RecvFlagsDontWait)
-		if err != nil {
-			if perfcommon.IsTransient(err) {
-				return false, nil
-			}
-			return false, err
+		stop, processed, err := recvSinglePubSubOnce(subscriber, part, topicBuffer, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsDontWait)
+		if err != nil || stop {
+			return stop, err
 		}
-		if !ok {
+		if !processed {
 			return false, nil
 		}
-		if result.More || !topicMatches(topicBuffer, result.TopicLen, singlePubSubTopic) {
-			return false, fmt.Errorf("unexpected PUBSUB part metadata topic_len=%d more=%v", result.TopicLen, result.More)
-		}
-		if perfcommon.IsStopTokenMessage(part) {
-			return true, nil
-		}
-		perfcommon.RecordMessageLatency(stats, activeAt, stopAt, msgSize, part)
 	}
+}
+
+func recvSinglePubSubOnce(
+	subscriber *zlink.SubSocket,
+	part *zlink.Message,
+	topicBuffer []byte,
+	stats *perfcommon.Stats,
+	msgSize int,
+	activeAt time.Time,
+	stopAt time.Time,
+	flags zlink.RecvFlags,
+) (bool, bool, error) {
+	result, ok, err := subscriber.SubscribePart(part, topicBuffer, flags)
+	if err != nil {
+		if perfcommon.IsTransient(err) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	if !ok {
+		return false, false, nil
+	}
+	if result.More || !topicMatches(topicBuffer, result.TopicLen, singlePubSubTopic) {
+		return false, true, fmt.Errorf("unexpected PUBSUB part metadata topic_len=%d more=%v", result.TopicLen, result.More)
+	}
+	if perfcommon.IsStopTokenMessage(part) {
+		return true, true, nil
+	}
+	perfcommon.RecordMessageLatency(stats, activeAt, stopAt, msgSize, part)
+	return false, true, nil
 }
 
 func topicMatches(buffer []byte, topicLen int, expected string) bool {
@@ -162,17 +179,18 @@ func topicMatches(buffer []byte, topicLen int, expected string) bool {
 // sendPubSubStopToken pushes the wire-level stop token on the bench
 // topic. Bounded attempts through transient backpressure mirror the
 // pattern used in single one-way / spot. The token is published on the
-// same `bench.topic` channel so it is delivered to subscribers that
+// same `bench` topic so it is delivered to subscribers that
 // matched the active stream.
-func sendPubSubStopToken(publisher *zlink.PubSocket) {
+func sendPubSubStopToken(publisher *zlink.PubSocket) bool {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		_, err := publisher.Publish(singlePubSubTopic).Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
 		if err == nil {
-			return
+			return true
 		}
 		if !perfcommon.IsTransient(err) {
-			return
+			return false
 		}
 		time.Sleep(perfcommon.StopTokenSendBackoff)
 	}
+	return false
 }

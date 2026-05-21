@@ -1868,7 +1868,7 @@ public sealed class StreamIntegrationTests
 
     public sealed class ThrowingActorPlayRouteResolver : IZLinkActorPlayRouteResolver
     {
-        public ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+        public ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
             string actorId,
             CancellationToken cancellationToken)
         {
@@ -1884,14 +1884,18 @@ public sealed class StreamIntegrationTests
 
         public int CallCount => Volatile.Read(ref _callCount);
 
-        public ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+        public ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
             string actorId,
             CancellationToken cancellationToken)
         {
-            _ = actorId;
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _callCount);
-            return ValueTask.FromResult(route);
+            return ValueTask.FromResult(new ZLinkActorLocationRoute(
+                route.RouterChannelId,
+                actorId,
+                route.TargetNodeRid,
+                RoutingId.FromString("0102"),
+                ZLinkSpotKind.User));
         }
     }
 

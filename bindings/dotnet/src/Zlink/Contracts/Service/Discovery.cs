@@ -23,7 +23,7 @@ public interface IDiscovery : IDisposable, IAsyncDisposable
 
     MemberPeerEntry[] MemberPeers();
 
-    RoutingId ResolveSpot(RoutingId spotRid);
+    SpotRoute ResolveSpot(RoutingId spotRid);
 
     ActorRoute ResolveActor(string actorId);
 
@@ -43,6 +43,9 @@ public static class DiscoveryRouteKind
     public const uint SpotName = 2;
     public const uint ActorSession = 3;
 }
+
+public sealed record SpotRoute(RoutingId SpotRid, RoutingId OwnerNodeRid,
+    SpotKind SpotKind);
 
 public sealed class DiscoveryRoute : IDisposable, IAsyncDisposable
 {

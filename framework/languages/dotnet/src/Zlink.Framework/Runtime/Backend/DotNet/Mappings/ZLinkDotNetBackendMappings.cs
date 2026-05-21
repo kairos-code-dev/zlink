@@ -45,7 +45,8 @@ internal static class ZLinkDotNetBackendMappings
             entry.DesiredCount,
             entry.ReadyCount,
             entry.ErrorCode,
-            entry.LastReportedMs);
+            entry.LastReportedMs,
+            entry.SpotKind.ToFramework());
     }
 
     public static ZLinkMemberPeerEntry ToFramework(this MemberPeerEntry entry)
@@ -58,6 +59,16 @@ internal static class ZLinkDotNetBackendMappings
             entry.RoutingId,
             entry.Value,
             entry.Weight);
+    }
+
+    public static ZLinkSpotKind ToFramework(this SpotKind spotKind)
+    {
+        return spotKind switch
+        {
+            SpotKind.Entry => ZLinkSpotKind.Entry,
+            SpotKind.User => ZLinkSpotKind.User,
+            _ => ZLinkSpotKind.Invalid,
+        };
     }
 
     public static ZLinkSpotNodeStatus ToFramework(this SpotNodeStatus status)

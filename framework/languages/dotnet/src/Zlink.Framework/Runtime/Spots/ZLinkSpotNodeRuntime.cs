@@ -86,9 +86,20 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public IZLinkBackendDiscovery? SpotDiscovery { get; set; }
 
+    public void ApplyEntrySpotRoutingIdBeforeBind()
+    {
+        if (_registration.EntrySpotOptions.RoutingId.Size == 0)
+        {
+            return;
+        }
+
+        _entrySpot = Node.EntrySpot();
+        _entrySpot.SetRoutingId(_registration.EntrySpotOptions.RoutingId);
+    }
+
     public async ValueTask InitializeEntrySpotAsync()
     {
-        _entrySpot = Node.EntrySpot();
+        _entrySpot ??= Node.EntrySpot();
         var entrySpot = _entrySpot;
 
         _entrySpotActivation = await CreateEntrySpotActivationAsync(entrySpot)

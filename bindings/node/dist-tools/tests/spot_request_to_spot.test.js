@@ -17,12 +17,15 @@ async function reservePort() {
 async function waitForPeer(node) {
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
-        if (node.statusSnapshot().connectedPeerCount > 0) {
+        const peers = node.peersSnapshot();
+        if (peers.some((peer) => peer.channelName === 'api'
+            && peer.kind === zlink.SpotPeerKind.RouterChannel)) {
+            await new Promise((resolve) => setTimeout(resolve, 250));
             return;
         }
         await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    throw new Error('spot peer connection timed out');
+    throw new Error('spot router channel peer connection timed out');
 }
 test('router requestToSpot promise resolves through spot routed reply', async () => {
     const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
@@ -31,8 +34,9 @@ test('router requestToSpot promise resolves through spot routed reply', async ()
     const requester = new zlink.RouterSocket(ctx);
     const responder = responderNode.createSpot();
     try {
-        responderNode.bind(endpoint);
-        requester.connect(endpoint);
+        requester.bind(endpoint);
+        responderNode.connectRouterChannelPeer('api', endpoint);
+        await waitForPeer(responderNode);
         const handled = new Promise((resolve, reject) => {
             const deadline = Date.now() + 5000;
             const received = new zlink.Received();

@@ -625,6 +625,18 @@ func submitSinglePartFromCopy(part *Message, submit multipartSubmitFunc) error {
 	return nil
 }
 
+func submitOwnedSinglePart(part *Message, flags SendFlags, submit multipartSubmitFunc) (bool, error) {
+	if part == nil {
+		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	if part.closed {
+		return false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	err := submit(&part.msg, C.zlink_part_flag_t(C.ZLINK_PART_FINAL))
+	part.moved()
+	return submitBackpressureResult(err)
+}
+
 func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) {
 	parts := make([]*Message, 0, 1)
 	recvFlags := C.zlink_recv_flags_t(flags)
@@ -840,6 +852,76 @@ func recvSubscribePartInto(
 		RoutingID: routingIDFromCPtr(sourceRID),
 		TopicLen:  int(topicLen),
 		More:      hasMore != C.ZLINK_PART_FINAL,
+	}, nil
+}
+
+func adoptRecvPart(out *Message, part *C.zlink_msg_t) error {
+	_ = out.Close()
+	if err := configErrorFromResult(C.zlink_msg_adopt(&out.msg, part)); err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(part))
+		return err
+	}
+	out.closed = false
+	return nil
+}
+
+func recvDirectPartInto(
+	out *Message,
+	flags RecvFlags,
+	call func(**C.zlink_routing_id_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
+) (RecvPartResult, error) {
+	if out == nil {
+		return RecvPartResult{}, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
+	var sourceRID *C.zlink_routing_id_t
+	var part C.zlink_msg_t
+	if err := configErrorFromResult(C.zlink_msg_init(&part)); err != nil {
+		return RecvPartResult{}, err
+	}
+	var hasMore C.zlink_part_flag_t
+	if err := call(&sourceRID, &part, &hasMore, C.zlink_recv_flags_t(flags)); err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(&part))
+		return RecvPartResult{}, err
+	}
+	if err := adoptRecvPart(out, &part); err != nil {
+		return RecvPartResult{}, err
+	}
+	return RecvPartResult{
+		RoutingID: routingIDFromCPtr(sourceRID),
+		More:      hasMore != C.ZLINK_PART_FINAL,
+	}, nil
+}
+
+func recvRoutedPartInto(
+	out *Message,
+	flags RecvFlags,
+	call func(**C.zlink_routing_id_t, **C.zlink_routing_id_t, *C.uint64_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
+) (RecvPartResult, error) {
+	if out == nil {
+		return RecvPartResult{}, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
+	}
+	var sourceNodeRID *C.zlink_routing_id_t
+	var sourceSpotRID *C.zlink_routing_id_t
+	var requestSeq C.uint64_t
+	var part C.zlink_msg_t
+	if err := configErrorFromResult(C.zlink_msg_init(&part)); err != nil {
+		return RecvPartResult{}, err
+	}
+	var hasMore C.zlink_part_flag_t
+	if err := call(&sourceNodeRID, &sourceSpotRID, &requestSeq, &part, &hasMore, C.zlink_recv_flags_t(flags)); err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(&part))
+		return RecvPartResult{}, err
+	}
+	if err := adoptRecvPart(out, &part); err != nil {
+		return RecvPartResult{}, err
+	}
+	seq := uint64(requestSeq)
+	return RecvPartResult{
+		RoutingID:     routingIDFromCPtr(sourceNodeRID),
+		SpotRID:       routingIDFromCPtr(sourceSpotRID),
+		RequestSeq:    seq,
+		HasRequestSeq: seq != 0,
+		More:          hasMore != C.ZLINK_PART_FINAL,
 	}, nil
 }
 
@@ -1109,6 +1191,20 @@ func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	return true, nil
 }
 
+func (s *directSocket) RecvPart(out *Message, flags RecvFlags) (RecvPartResult, bool, error) {
+	result, err := recvDirectPartInto(out, flags, func(rid **C.zlink_routing_id_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return recvErrorFromResult(C.zlink_recv_part(s.raw(), rid, part, hasMore, recvFlags))
+	})
+	if err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return RecvPartResult{}, false, nil
+		}
+		return RecvPartResult{}, false, err
+	}
+	return result, true, nil
+}
+
 func (s *directSocket) onReceive(handler func(*Received)) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
@@ -1213,6 +1309,21 @@ func (s *publishSocket) submitPublish(topic string, flags SendFlags, parts ...*M
 		})
 	})
 	return submitBackpressureResult(err)
+}
+
+func (s *publishSocket) PublishPart(topic string, message *Message, flags SendFlags) (bool, error) {
+	var ok bool
+	err := s.withCString(topic, func(cstr *C.char) error {
+		var submitErr error
+		ok, submitErr = submitOwnedSinglePart(message, flags, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
+		})
+		return submitErr
+	})
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
 }
 
 type routedSocket struct {
@@ -1377,6 +1488,20 @@ func (s *routedSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	return true, nil
 }
 
+func (s *routedSocket) RecvPart(out *Message, flags RecvFlags) (RecvPartResult, bool, error) {
+	result, err := recvRoutedPartInto(out, flags, func(nodeRID **C.zlink_routing_id_t, spotRID **C.zlink_routing_id_t, requestSeq *C.uint64_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return recvErrorFromResult(C.zlink_router_recv_part(s.raw(), nodeRID, spotRID, requestSeq, part, hasMore, recvFlags))
+	})
+	if err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return RecvPartResult{}, false, nil
+		}
+		return RecvPartResult{}, false, err
+	}
+	return result, true, nil
+}
+
 func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
@@ -1533,6 +1658,12 @@ func (s *PairSocket) Send() SendOp {
 	})
 }
 
+func (s *PairSocket) SendPart(message *Message, flags SendFlags) (bool, error) {
+	return submitOwnedSinglePart(message, flags, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
+	})
+}
+
 type PubSocket struct {
 	*publishSocket
 }
@@ -1667,6 +1798,12 @@ func (s *DealerSocket) Send() SendOp {
 		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
 		})
+	})
+}
+
+func (s *DealerSocket) SendPart(message *Message, flags SendFlags) (bool, error) {
+	return submitOwnedSinglePart(message, flags, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
 	})
 }
 

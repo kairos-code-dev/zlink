@@ -2299,20 +2299,24 @@ namespace Zlink.Framework.Contracts.Actors;
 
 public interface IZLinkActorPlayRouteResolver
 {
-    ValueTask<ZLinkActorRoute> ResolvePlayRouteAsync(
+    ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
         string actorId,
         CancellationToken cancellationToken);
 }
 
-public readonly record struct ZLinkActorRoute(
+public readonly record struct ZLinkActorLocationRoute(
     string RouterChannelId,
+    string ActorId,
     RoutingId TargetNodeRid,
-    ulong ActorGeneration);
+    RoutingId CurrentSpotRid,
+    ZLinkSpotKind CurrentSpotKind);
 ```
 
-`ActorGeneration == 0` 은 concrete actor route 가 아니므로 session attach 에서
-`ActorRouteNotFound` 로 거부한다. 내부 actor route update 는 이 generation 으로
-stale update 를 구분하지만, public application API 로 노출하지 않는다.
+이 route 는 backend service 가 actor id 로 현재 Actor 위치를 조회한 결과다.
+`TargetNodeRid` 와 `CurrentSpotRid` 는 기존 Spot routed API 의 destination 으로
+사용된다. `CurrentSpotKind` 는 대상이 Entry Spot 인지 user Spot 인지를 구분한다.
+이 logical route 는 `ActorGeneration` 을 요구하지 않는다. session attach 는
+별도의 concrete route snapshot 과 generation 검증을 계속 사용한다.
 
 ```csharp
 namespace Zlink.Framework.Contracts.Spots;
@@ -2328,10 +2332,18 @@ public interface IZLinkSpotRouteResolver
         CancellationToken cancellationToken);
 }
 
+public enum ZLinkSpotKind
+{
+    Invalid = 0,
+    Entry = 1,
+    User = 2,
+}
+
 public readonly record struct ZLinkSpotRoute(
     string RouterChannelId,
     RoutingId TargetNodeRid,
-    RoutingId SpotRid);
+    RoutingId SpotRid,
+    ZLinkSpotKind SpotKind);
 ```
 
 `RouterChannelId`는 실제 router-capable channel 이름이다. 이 값이 가리키는 channel은
@@ -3032,6 +3044,9 @@ public interface IZLinkSpotNodeBuilder
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
+    void ConfigureEntrySpot(
+        Action<IZLinkEntrySpotOptions> configure);
+
     void AddSpotFactory<TSpot>(string spotName)
         where TSpot : class;
 
@@ -3069,8 +3084,16 @@ public interface IZLinkSpotMeshNodeBuilder
     void AddSpotFactory<TSpot>(string spotName)
         where TSpot : class;
 
+    void ConfigureEntrySpot(
+        Action<IZLinkEntrySpotOptions> configure);
+
     void AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot;
+}
+
+public interface IZLinkEntrySpotOptions
+{
+    RoutingId RoutingId { get; set; }
 }
 ```
 

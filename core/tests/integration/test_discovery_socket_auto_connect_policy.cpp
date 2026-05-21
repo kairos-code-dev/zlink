@@ -408,6 +408,20 @@ bool wait_for_route_not_found_local (void *discovery_,
     });
 }
 
+bool wait_for_actor_route_not_found_local (void *discovery_,
+                                           const char *actor_id_,
+                                           int timeout_ms_)
+{
+    return zlink_test_wait_until (timeout_ms_, [=] {
+        zlink_actor_route_t route;
+        memset (&route, 0, sizeof (route));
+        errno = 0;
+        return zlink_discovery_resolve_actor (discovery_, actor_id_, &route)
+                 == ZLINK_CONFIG_NOT_FOUND
+               && zlink_errno () == ENOENT;
+    });
+}
+
 void init_socket_topology_filter_local (
   zlink_registry_topology_filter_t *filter_,
   const char *channel_name_,
@@ -1369,6 +1383,94 @@ void test_discovery_route_binding_follows_owner_provider_lifecycle ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_discovery_resolve_actor_rejects_invalid_route_rows ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    char owner_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, 6030, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
+
+    const char channel[] = "actor-route-invalid";
+    void *owner_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, channel);
+    void *resolver_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, channel);
+    TEST_ASSERT_NOT_NULL (owner_discovery);
+    TEST_ASSERT_NOT_NULL (resolver_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      owner_discovery, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      resolver_discovery, registry_router, 3000));
+
+    void *owner = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (owner);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (owner, "actor-own", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (owner, owner_discovery));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      owner, 6032, owner_endpoint, sizeof (owner_endpoint)));
+    TEST_ASSERT_TRUE (
+      wait_for_registry_member_count_local (registry, channel, 1, 10000));
+
+    const char actor_id[] = "actor-invalid-route";
+    const char short_value[] = "old-node-only";
+    TEST_ASSERT_TRUE (wait_for_route_bind_ok_local (
+      owner_discovery, ZLINK_ROUTE_KIND_ACTOR, actor_id, strlen (actor_id),
+      short_value, strlen (short_value), 10000));
+    TEST_ASSERT_TRUE (wait_for_actor_route_not_found_local (
+      resolver_discovery, actor_id, 10000));
+
+    zlink_actor_route_t route;
+    memset (&route, 0, sizeof (route));
+    route.actor.node_rid.size = 9;
+    memcpy (route.actor.node_rid.data, "actor-own", 9);
+    strncpy (route.actor.actor_id, "different-actor",
+             sizeof (route.actor.actor_id) - 1);
+    route.current_spot_rid.size = 8;
+    memcpy (route.current_spot_rid.data, "spot-rid", 8);
+    route.current_spot_kind = ZLINK_SPOT_KIND_USER;
+    TEST_ASSERT_TRUE (wait_for_route_bind_ok_local (
+      owner_discovery, ZLINK_ROUTE_KIND_ACTOR, actor_id, strlen (actor_id),
+      &route, sizeof (route), 10000));
+    TEST_ASSERT_TRUE (wait_for_actor_route_not_found_local (
+      resolver_discovery, actor_id, 10000));
+
+    memset (&route, 0, sizeof (route));
+    route.actor.node_rid.size = 9;
+    memcpy (route.actor.node_rid.data, "actor-own", 9);
+    strncpy (route.actor.actor_id, actor_id, sizeof (route.actor.actor_id) - 1);
+    route.current_spot_rid.size = 8;
+    memcpy (route.current_spot_rid.data, "spot-rid", 8);
+    route.current_spot_kind = ZLINK_SPOT_KIND_INVALID;
+    TEST_ASSERT_TRUE (wait_for_route_bind_ok_local (
+      owner_discovery, ZLINK_ROUTE_KIND_ACTOR, actor_id, strlen (actor_id),
+      &route, sizeof (route), 10000));
+    TEST_ASSERT_TRUE (wait_for_actor_route_not_found_local (
+      resolver_discovery, actor_id, 10000));
+
+    TEST_ASSERT_TRUE (
+      destroy_discovery_with_retry_local (&resolver_discovery, 3000));
+    TEST_ASSERT_TRUE (
+      destroy_discovery_with_retry_local (&owner_discovery, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_registry_peer_sync_propagates_route_binding_snapshot ()
 {
     if (!zlink_has ("tcp")) {
@@ -1470,6 +1572,7 @@ int main ()
     RUN_TEST (test_registry_peer_sync_conflict_keeps_deterministic_winner_projection);
     RUN_TEST (test_wss_discovery_destroy_releases_canonicalized_bootstrap_dealer);
     RUN_TEST (test_discovery_route_binding_follows_owner_provider_lifecycle);
+    RUN_TEST (test_discovery_resolve_actor_rejects_invalid_route_rows);
     RUN_TEST (test_registry_peer_sync_propagates_route_binding_snapshot);
     return UNITY_END ();
 }

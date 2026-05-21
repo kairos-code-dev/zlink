@@ -58,7 +58,6 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.CountDownLatch;
@@ -456,20 +455,20 @@ public class SocketContractTest {
     }
 
     @Test
-    public void actorRouteSnapshotsUseOptionalJoinedSpotRid() {
+    public void actorRouteSnapshotsExposeCurrentSpotRidAndKind() {
         RoutingId nodeRid = RoutingId.fromBytes(new byte[] {1});
         ActorRef actor = new ActorRef(nodeRid, "actor", 1L);
-        Optional<RoutingId> joinedSpotRid =
-            Optional.of(RoutingId.fromBytes(new byte[] {2}));
+        RoutingId currentSpotRid = RoutingId.fromBytes(new byte[] {2});
 
-        ActorRoute route = new ActorRoute(actor, true, joinedSpotRid);
-        Optional<RoutingId> routeSpot = route.joinedSpotRid();
-        assertEquals(joinedSpotRid, routeSpot);
+        ActorRoute route = new ActorRoute(actor, currentSpotRid,
+            SpotKind.USER);
+        assertEquals(currentSpotRid, route.currentSpotRid());
+        assertEquals(SpotKind.USER, route.currentSpotKind());
 
-        SpotNodeActorEntry entry = new SpotNodeActorEntry(actor, true,
-            joinedSpotRid, true, 0, 0L);
-        Optional<RoutingId> entrySpot = entry.joinedSpotRid();
-        assertEquals(joinedSpotRid, entrySpot);
+        SpotNodeActorEntry entry = new SpotNodeActorEntry(actor,
+            currentSpotRid, SpotKind.ENTRY, true, 0, 0L);
+        assertEquals(currentSpotRid, entry.currentSpotRid());
+        assertEquals(SpotKind.ENTRY, entry.currentSpotKind());
     }
 
     @Test

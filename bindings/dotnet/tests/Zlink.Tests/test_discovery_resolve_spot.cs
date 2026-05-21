@@ -45,8 +45,10 @@ public sealed class test_discovery_resolve_spot
             Assert.True(CoreTestSupport.WaitUntil(
                 () => RegistryHasNodeMember(registry, nodeEndpoint, nodeRid)
                     && RegistryHasSpotTopology(registry, nodeEndpoint, spotRid)
-                    && TryResolveSpot(discovery, spotRid, out RoutingId resolved)
-                    && resolved == nodeRid,
+                    && TryResolveSpot(discovery, spotRid, out SpotRoute route)
+                    && route.SpotRid == spotRid
+                    && route.OwnerNodeRid == nodeRid
+                    && route.SpotKind == SpotKind.User,
                 timeoutMs: 10000,
                 sleepMs: 25));
 
@@ -91,16 +93,16 @@ public sealed class test_discovery_resolve_spot
     }
 
     private static bool TryResolveSpot(Discovery discovery, RoutingId spotRid,
-        out RoutingId resolved)
+        out SpotRoute route)
     {
         try
         {
-            resolved = discovery.ResolveSpot(spotRid);
+            route = discovery.ResolveSpot(spotRid);
             return true;
         }
         catch (ZlinkConfigException)
         {
-            resolved = default;
+            route = default!;
             return false;
         }
     }

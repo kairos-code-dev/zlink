@@ -265,6 +265,22 @@ Before declaring the C++ binding aligned:
   from data-plane caller-provided storage.
 - Perf tests use the same measurement meaning as C perf.
 
+## Actor And Spot Route Results
+
+C++ exposes Actor and Spot route lookup results as concrete contract types.
+
+- `actor_route_t` preserves the resolved Actor ref, `actor.node_rid`,
+  `current_spot_rid`, and `current_spot_kind`.
+- `spot_route_t` preserves `spot_rid`, `owner_node_rid`, and `spot_kind`.
+- `spot_kind` distinguishes Entry Spot from user Spot. Invalid kind is not a
+  successful route result.
+- `spot_node_spot_entry_t` and `spot_node_actor_entry_t` expose the same Spot
+  kind/current Spot fields as the core snapshots.
+
+C++ must not introduce ROUTER-to-Actor or Actor-to-ROUTER direct messaging
+methods. Applications compose `discovery_t::resolve_actor()` or
+`discovery_t::resolve_spot()` with the existing Spot routed APIs.
+
 ## SpotNode Router Channel Peers
 
 C++ exposes router channel peer wiring as public `spot_node_t` methods:

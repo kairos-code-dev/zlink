@@ -74,9 +74,9 @@ func (r ActorRef) IsUnchecked() bool {
 
 // ActorRoute is the resolution result from Discovery.ResolveActor.
 type ActorRoute struct {
-	Actor         ActorRef
-	Joined        bool
-	JoinedSpotRID *RoutingID
+	Actor           ActorRef
+	CurrentSpotRID  RoutingID
+	CurrentSpotKind SpotKind
 }
 
 // ActorJoinRequest is the value yielded by Spot.RecvActorJoin. The Message
@@ -117,6 +117,7 @@ type ActorPart struct {
 // SpotNodeSpotEntry is an entry from SpotNode.SpotsSnapshot.
 type SpotNodeSpotEntry struct {
 	SpotRID                 RoutingID
+	SpotKind                SpotKind
 	DispatchHandlerAttached bool
 	JoinedActorCount        uint32
 	PendingActorJoinCount   uint32
@@ -127,8 +128,8 @@ type SpotNodeSpotEntry struct {
 // SpotNodeActorEntry is an entry from SpotNode.ActorsSnapshot.
 type SpotNodeActorEntry struct {
 	Actor               ActorRef
-	Joined              bool
-	JoinedSpotRID       RoutingID
+	CurrentSpotRID      RoutingID
+	CurrentSpotKind     SpotKind
 	RouteSynced         bool
 	PendingMessageCount uint32
 	LastChangedMs       uint64
@@ -864,12 +865,9 @@ func actorJoinInfoFromC(raw C.zlink_actor_join_info_t) *ActorJoinInfo {
 
 func actorRouteFromC(raw C.zlink_actor_route_t) *ActorRoute {
 	route := &ActorRoute{
-		Actor:  actorRefFromC(raw.actor),
-		Joined: raw.joined != 0,
-	}
-	if raw.joined != 0 {
-		rid := routingIDFromC(raw.joined_spot_rid)
-		route.JoinedSpotRID = &rid
+		Actor:           actorRefFromC(raw.actor),
+		CurrentSpotRID:  routingIDFromC(raw.current_spot_rid),
+		CurrentSpotKind: SpotKind(raw.current_spot_kind),
 	}
 	return route
 }
@@ -877,6 +875,7 @@ func actorRouteFromC(raw C.zlink_actor_route_t) *ActorRoute {
 func spotNodeSpotEntryFromC(raw C.zlink_spot_node_spot_entry_t) SpotNodeSpotEntry {
 	return SpotNodeSpotEntry{
 		SpotRID:                 routingIDFromC(raw.spot_rid),
+		SpotKind:                SpotKind(raw.spot_kind),
 		DispatchHandlerAttached: raw.dispatch_handler_attached != 0,
 		JoinedActorCount:        uint32(raw.joined_actor_count),
 		PendingActorJoinCount:   uint32(raw.pending_actor_join_count),
@@ -888,8 +887,8 @@ func spotNodeSpotEntryFromC(raw C.zlink_spot_node_spot_entry_t) SpotNodeSpotEntr
 func spotNodeActorEntryFromC(raw C.zlink_spot_node_actor_entry_t) SpotNodeActorEntry {
 	return SpotNodeActorEntry{
 		Actor:               actorRefFromC(raw.actor),
-		Joined:              raw.joined != 0,
-		JoinedSpotRID:       routingIDFromC(raw.joined_spot_rid),
+		CurrentSpotRID:      routingIDFromC(raw.current_spot_rid),
+		CurrentSpotKind:     SpotKind(raw.current_spot_kind),
 		RouteSynced:         raw.route_synced != 0,
 		PendingMessageCount: uint32(raw.pending_message_count),
 		LastChangedMs:       uint64(raw.last_changed_ms),

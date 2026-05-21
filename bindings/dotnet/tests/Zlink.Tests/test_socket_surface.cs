@@ -582,6 +582,7 @@ public sealed class test_socket_surface
             typeof(SpotDispatchEvent).FullName!,
             typeof(SpotDispatchInfo).FullName!,
             typeof(SpotDispatchSubjectKind).FullName!,
+            typeof(SpotKind).FullName!,
             typeof(SpotNode).FullName!,
             typeof(SpotNodeActorEntry).FullName!,
             typeof(SpotNodeMode).FullName!,
@@ -599,6 +600,7 @@ public sealed class test_socket_surface
             typeof(SpotPeerKind).FullName!,
             typeof(SpotPeerSource).FullName!,
             typeof(SpotPeerState).FullName!,
+            typeof(SpotRoute).FullName!,
             typeof(SpotRole).FullName!,
             typeof(StreamPacketHandler).FullName!,
             typeof(StreamSocket).FullName!,
@@ -796,6 +798,9 @@ public sealed class test_socket_surface
         Assert.Null(registryTopologyQueryFilter.DefaultValue);
         Assert.True(HasPublicInstanceMethod(typeof(Discovery),
             nameof(Discovery.ResolveSpot), typeof(RoutingId)));
+        Assert.Equal(typeof(SpotRoute),
+            typeof(Discovery).GetMethod(nameof(Discovery.ResolveSpot),
+                new[] { typeof(RoutingId) })!.ReturnType);
         Assert.False(HasPublicInstanceMethod(typeof(Discovery),
             "SetSpotOwnerSyncEnabled", typeof(bool)));
         Assert.False(HasPublicInstanceMethod(typeof(Discovery),

@@ -189,14 +189,23 @@ internal struct ZlinkSpotActorLifecycleInfo
 internal struct ZlinkActorRoute
 {
     public ZlinkActorRef Actor;
-    public uint Joined;
-    public ZlinkRoutingId JoinedSpotRid;
+    public ZlinkRoutingId CurrentSpotRid;
+    public int CurrentSpotKind;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotRoute
+{
+    public ZlinkRoutingId SpotRid;
+    public ZlinkRoutingId OwnerNodeRid;
+    public int SpotKind;
 }
 
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkSpotNodeSpotEntry
 {
     public ZlinkRoutingId SpotRid;
+    public int SpotKind;
     public uint DispatchHandlerAttached;
     public uint JoinedActorCount;
     public uint PendingActorJoinCount;
@@ -208,8 +217,8 @@ internal struct ZlinkSpotNodeSpotEntry
 internal struct ZlinkSpotNodeActorEntry
 {
     public ZlinkActorRef Actor;
-    public uint Joined;
-    public ZlinkRoutingId JoinedSpotRid;
+    public ZlinkRoutingId CurrentSpotRid;
+    public int CurrentSpotKind;
     public uint RouteSynced;
     public uint PendingMessageCount;
     public ulong LastChangedMs;
@@ -278,6 +287,7 @@ internal unsafe struct ZlinkRegistryTopologyEntry
     public uint ReadyCount;
     public uint ErrorCode;
     public ulong LastReportedMs;
+    public int SpotKind;
 }
 
 [StructLayout(LayoutKind.Sequential)]

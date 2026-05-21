@@ -541,12 +541,21 @@ free(peers);
 #### Actor Active Route 조회
 
 Actor 주소는 애플리케이션 키-값 저장소가 아닌 핵심 Actor 활성 경로(active route)로
-조회한다. Actor 소유 Discovery에서 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고,
-해당 Actor가 user Spot으로 join된 뒤 `zlink_discovery_resolve_actor()`로 현재 Actor
-ref를 읽는다. 활성 경로는 user Spot join 성공 시점에 공개되며, user Spot에서 Entry
-Spot으로 leave 성공 시점에 Entry Spot 위치로 갱신된다. STREAM 세션 바인딩/해제는
-활성 경로에 영향을 주지 않는다. 매치 ID, 사용자 ID 같은 도메인 키는 Redis나 DB
-같은 외부 저장소에서 관리한다.
+조회한다. Actor 소유 Discovery에서 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜면
+`zlink_discovery_resolve_actor()`가 `actor_id -> node_rid + current_spot_rid +
+current_spot_kind`를 반환한다. Actor가 생성 직후 Entry Spot에 있으면 Entry Spot
+route가 반환되고, user Spot으로 join하면 user Spot route로 갱신된다. user Spot에서
+leave하면 같은 node의 Entry Spot 위치로 다시 갱신된다.
+
+Spot rid의 owner를 찾을 때는 `zlink_discovery_resolve_spot()`를 사용한다. 이 함수는
+`spot_rid -> owner_node_rid + spot_kind`를 반환하므로 Entry Spot과 user Spot을
+구분할 수 있다. Spot name 같은 도메인 이름은 core route 계약이 아니므로, 필요하면
+framework나 애플리케이션의 보조 색인에서 Spot rid로 변환한 뒤 core Spot route 조회를
+사용한다.
+
+STREAM 세션 바인딩/해제는 Actor 활성 경로의 필수 조건이 아니다. session attach처럼
+concrete Actor instance를 고정해야 하는 경로에서는 별도의 generation 검증을 사용한다.
+매치 ID, 사용자 ID 같은 도메인 키는 Redis나 DB 같은 외부 저장소에서 관리한다.
 
 ## 7. 운영 패턴
 

@@ -179,8 +179,9 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 |---|---|
 | **What it does** | Sets maximum wait time for send/recv operations |
 | **Applied at** | `zlink_send()` / `zlink_recv()` blocking paths, logical multipart send module |
-| **Default** | `-1` (infinite wait) |
+| **Default** | `1000` ms |
 | **0** | Equivalent to non-blocking (immediate return) |
+| **-1** | Infinite wait when explicitly set |
 | **>0** | Wait up to specified time (ms), then return `ZLINK_SUBMIT_BACKPRESSURED` |
 
 **Service application:** Propagated to SPOT pub/sub internal sockets.

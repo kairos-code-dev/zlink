@@ -10,7 +10,7 @@ internal interface IZLinkBackendDiscovery : IZLinkBackendObject, IAsyncDisposabl
 
     IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers();
 
-    RoutingId ResolveSpot(RoutingId spotRid);
+    SpotRoute ResolveSpot(RoutingId spotRid);
 
     ActorRoute ResolveActor(string actorId);
 

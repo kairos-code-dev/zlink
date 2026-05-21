@@ -73,20 +73,28 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    /** Resolves the current owner node routing id for one logical spot id. */
-    public RoutingId resolveSpot(RoutingId spotRid) {
+    /** Resolves the current owner node and Spot kind for one logical spot id. */
+    public SpotRoute resolveSpot(RoutingId spotRid) {
         Objects.requireNonNull(spotRid, "spotRid");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeSpotRid = nativeRoutingId(arena, spotRid);
-            MemorySegment ownerNodeRidOut = arena.allocate(
-              NativeLayouts.ROUTING_ID_LAYOUT);
+            MemorySegment routeOut = arena.allocate(
+              NativeLayouts.SPOT_ROUTE_LAYOUT);
             int rc = Native.discoveryResolveSpot(handle, nativeSpotRid,
-              ownerNodeRidOut);
+              routeOut);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_discovery_resolve_spot");
             }
-            return readRoutingId(ownerNodeRidOut);
+            return new SpotRoute(
+              readRoutingId(routeOut.asSlice(
+                NativeLayouts.SPOT_ROUTE_SPOT_RID_OFFSET,
+                NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+              readRoutingId(routeOut.asSlice(
+                NativeLayouts.SPOT_ROUTE_OWNER_NODE_RID_OFFSET,
+                NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+              EnumCodecs.spotKindFromValue(routeOut.get(ValueLayout.JAVA_INT,
+                NativeLayouts.SPOT_ROUTE_SPOT_KIND_OFFSET)));
         }
     }
 

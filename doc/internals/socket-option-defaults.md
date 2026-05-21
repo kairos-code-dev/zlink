@@ -40,8 +40,8 @@ For detailed behavior and scope of each option, see the
 | `ZLINK_OPT_MAXMSGSIZE` | `-1` | Unlimited |
 | `ZLINK_OPT_MULTICAST_HOPS` | `1` | Multicast TTL |
 | `ZLINK_OPT_MULTICAST_MAXTPDU` | `1500` | Multicast max TPDU |
-| `ZLINK_OPT_RCVTIMEO` | `-1` | Infinite receive timeout |
-| `ZLINK_OPT_SNDTIMEO` | `-1` | Infinite send timeout |
+| `ZLINK_OPT_RCVTIMEO` | `1000` | Default receive timeout in ms |
+| `ZLINK_OPT_SNDTIMEO` | `1000` | Default send timeout in ms |
 | `ZLINK_OPT_IPV6` | context-derived | Inherits the context IPv6 default (default `0`) |
 | `ZLINK_OPT_IMMEDIATE` | `0` | Attach connecting pipes immediately |
 | `ZLINK_OPT_CONFLATE` | `0` | Disabled |

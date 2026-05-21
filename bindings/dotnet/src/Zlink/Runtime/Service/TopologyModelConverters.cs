@@ -49,7 +49,8 @@ internal static class TopologyModelConverters
                 NativeHelpers.ReadFixedString(endpoint, 256),
                 (TopologySource)native.Source, (TopologyState)native.State,
                 native.DesiredCount, native.ReadyCount, native.ErrorCode,
-                native.LastReportedMs);
+                native.LastReportedMs,
+                (SpotKind)native.SpotKind);
         }
     }
 

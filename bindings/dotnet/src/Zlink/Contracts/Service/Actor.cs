@@ -45,8 +45,8 @@ public readonly struct ActorRef : IEquatable<ActorRef>
         => !left.Equals(right);
 }
 
-public sealed record ActorRoute(ActorRef Actor, bool Joined,
-    RoutingId? JoinedSpotRid);
+public sealed record ActorRoute(ActorRef Actor, RoutingId CurrentSpotRid,
+    SpotKind CurrentSpotKind);
 
 public sealed record ActorRecvInfo(ActorRef Actor, RoutingId SourceNodeRid,
     RoutingId SourceSessionRid, uint Flags);
@@ -90,12 +90,12 @@ public sealed class ActorJoinRequest
     internal object? RuntimeState { get; }
 }
 
-public sealed record SpotNodeSpotEntry(RoutingId? SpotRid,
+public sealed record SpotNodeSpotEntry(RoutingId? SpotRid, SpotKind SpotKind,
     bool DispatchHandlerAttached, uint JoinedActorCount,
     uint PendingActorJoinCount, bool RouteSynced, ulong LastChangedMs);
 
-public sealed record SpotNodeActorEntry(ActorRef Actor, bool Joined,
-    RoutingId? JoinedSpotRid, bool RouteSynced, uint PendingMessageCount,
+public sealed record SpotNodeActorEntry(ActorRef Actor, RoutingId CurrentSpotRid,
+    SpotKind CurrentSpotKind, bool RouteSynced, uint PendingMessageCount,
     ulong LastChangedMs);
 
 

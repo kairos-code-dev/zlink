@@ -2991,10 +2991,10 @@ public final class Native {
 
     public static int discoveryResolveSpot(MemorySegment discovery,
                                            MemorySegment spotRid,
-                                           MemorySegment ownerNodeRidOut) {
+                                           MemorySegment routeOut) {
         try {
             return (int) MH_DISC_RESOLVE_SPOT.invokeExact(discovery, spotRid,
-              ownerNodeRidOut);
+              routeOut);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_resolve_spot failed",
               t);

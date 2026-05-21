@@ -71,13 +71,15 @@ destination 직접 지정이 정말 필요할 때만 ROUTER direct 경로를 사
 zlink_config_result_t zlink_discovery_resolve_spot (
   void *discovery,
   const zlink_routing_id_t *spot_rid,
-  zlink_routing_id_t *owner_node_rid_out);
+  zlink_spot_route_t *route_out);
 ```
 
-이 함수가 성공하면, 호출자는 반환된 `owner_node_rid_out`과 원래의 `spot_rid`를
-묶어 ROUTER 쪽 direct 함수(`zlink_router_send_spot()`,
+이 함수가 성공하면 `route_out`에는 조회한 `spot_rid`, owner `node_rid`,
+Spot kind가 채워집니다. 호출자는 `route_out->owner_node_rid`와
+`route_out->spot_rid`를 묶어 ROUTER 쪽 direct 함수(`zlink_router_send_spot()`,
 `zlink_router_request_spot()`)에 전달할 수 있습니다. 이 조회 결과는 현재
-Discovery의 `service_name` 범위 안에서만 유효합니다. reply는 예외입니다.
+Discovery의 `service_name` 범위 안에서만 유효합니다. Spot kind는 Entry Spot과
+user Spot을 구분해야 할 때 사용합니다. reply는 예외입니다.
 reply는 새로 조회하지 않고, request를 받을 때 함께 전달된 source 주소를 그대로
 사용해야 합니다.
 

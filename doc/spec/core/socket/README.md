@@ -360,8 +360,8 @@ based on the following classification:
 | Constant | Description |
 |---|---|
 | `ZLINK_OPT_LINGER` | Linger period for socket shutdown in milliseconds (`int`; -1 = infinite, 0 = discard immediately) |
-| `ZLINK_OPT_RCVTIMEO` | Receive timeout in milliseconds (`int`; -1 = infinite) |
-| `ZLINK_OPT_SNDTIMEO` | Send timeout in milliseconds (`int`; -1 = infinite) |
+| `ZLINK_OPT_RCVTIMEO` | Receive timeout in milliseconds (`int`; default `1000`; -1 = infinite when set explicitly) |
+| `ZLINK_OPT_SNDTIMEO` | Send timeout in milliseconds (`int`; default `1000`; -1 = infinite when set explicitly) |
 | `ZLINK_OPT_CONNECT_TIMEOUT` | Connection timeout in milliseconds (`int`) |
 | `ZLINK_OPT_RECONNECT_IVL` | Initial reconnection interval in milliseconds (`int`) |
 | `ZLINK_OPT_RECONNECT_IVL_MAX` | Maximum reconnection interval in milliseconds (`int`; 0 = use RECONNECT_IVL only) |

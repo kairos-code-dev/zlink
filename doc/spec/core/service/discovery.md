@@ -34,11 +34,13 @@ This document version exposes that lookup through the following public API.
 zlink_config_result_t zlink_discovery_resolve_spot (
   void *discovery,
   const zlink_routing_id_t *spot_rid,
-  zlink_routing_id_t *owner_node_rid_out);
+  zlink_spot_route_t *route_out);
 ```
 
-On success, the caller combines `owner_node_rid_out` with the original
-`spot_rid` and passes them to the ROUTER-side direct functions
+On success, `route_out->owner_node_rid` is the current owner node,
+`route_out->spot_rid` is the requested Spot, and `route_out->spot_kind`
+distinguishes Entry Spot from user Spot. The caller combines the owner node
+with the Spot rid and passes them to the ROUTER-side direct functions
 (`zlink_router_send_spot()` or `zlink_router_request_spot()`). That
 lookup result is scoped to the current Discovery `channel_name`.
 
@@ -49,8 +51,8 @@ ownership table.
 
 - Discovery may operate as a hot cache that keeps only the subset of ownership
   entries it recently resolved or frequently uses.
-- A cache entry must preserve both `spot_rid -> owner_node_rid` and the
-  ordering token.
+- A cache entry must preserve `spot_rid -> owner_node_rid`, Spot kind, and
+  the ordering token.
 - A newer ownership update must replace the previous cache entry immediately.
 - An older ownership update must be ignored.
 - A withdrawn or tombstone update must remove the active owner from cache.
@@ -346,13 +348,13 @@ Resolve which `SpotNode` currently owns a logical `spot_rid`.
 ```c
 zlink_config_result_t zlink_discovery_resolve_spot (void *discovery,
                                                     const zlink_routing_id_t *spot_rid,
-                                                    zlink_routing_id_t *owner_node_rid_out);
+                                                    zlink_spot_route_t *route_out);
 ```
 
 This function accepts a logical `spot_rid` inside the current Discovery
-`channel_name` view and returns the `node_rid` of the `SpotNode` that
-currently owns that name. Discovery may answer from local cache first and
-refresh against Registry when needed.
+`channel_name` view and returns the owner node, Spot rid, and Spot kind of
+the current owner row. Discovery may answer from local cache first and refresh
+against Registry when needed.
 
 The current core implementation does not trust that cache indefinitely.
 Discovery first checks whether the cached owner row was validated against the
@@ -368,8 +370,8 @@ option is not enabled on the publishing Discovery, Registry refresh will not
 return the SpotNode's owner row and `zlink_discovery_resolve_spot()` may fail
 with `ENOENT`.
 
-On success, `owner_node_rid_out` receives the current owner node routing id.
-The caller then combines that node id with the original `spot_rid` and passes
+On success, `route_out` receives the current owner node routing id, Spot rid,
+and Spot kind. The caller then combines the owner node id with the Spot rid and passes
 them to the ROUTER-side direct functions (`zlink_router_send_spot()` or
 `zlink_router_request_spot()`).
 
@@ -539,13 +541,19 @@ zlink_config_result_t zlink_discovery_resolve_actor(void *discovery,
 
 `actor_id` must be a non-empty NUL-terminated string no longer than
 `ZLINK_ACTOR_ID_MAX - 1` bytes. On success, `route_out->actor` receives the
-current active Actor ref. If the Actor is currently joined to a Spot,
-`route_out->joined != 0` and `route_out->joined_spot_rid` is valid.
+current active Actor ref. `route_out->current_spot_rid` is the Actor's current
+Spot and `route_out->current_spot_kind` identifies Entry Spot or user Spot.
 
-Actor active routes are not created by Actor creation or join alone. A route is
-published when the Actor owner `SpotNode` has
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` enabled and `zlink_stream_bind_actor()`
-completes successfully.
+Actor active routes are published when the Actor owner `SpotNode` has
+`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` enabled. A newly created Actor can be
+resolved while it is still in the Entry Spot. Joining a user Spot updates the
+route to that user Spot, and leaving updates it back to the same node's Entry
+Spot.
+
+The route value must be exactly `sizeof(zlink_actor_route_t)`. The route key
+must match `value.actor.actor_id`, `value.current_spot_rid` must be non-empty,
+and `value.current_spot_kind` must be Entry or user. Otherwise the lookup fails
+with `ZLINK_CONFIG_NOT_FOUND` and `ENOENT`.
 
 **Errors:**
 - `EINVAL` -- Invalid handle, actor id, or output pointer.

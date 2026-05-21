@@ -117,8 +117,8 @@ zlink_get_option(socket, ZLINK_OPT_SNDHWM, &value, &len);
 |------|------|--------|------|
 | `ZLINK_OPT_SNDHWM` | int | 자동 | 활성 auto-HWM 프로파일(`balanced` 기본), 소켓 역할, message unit에서 산출. 컨텍스트에 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`로 프로파일을 전역 변경하거나 소켓별로 수동 지정할 수 있다. 프로파일 값 및 소켓별 설정은 [소켓 옵션 가이드](./12-socket-options.ko.md)를 참고 |
 | `ZLINK_OPT_RCVHWM` | int | 자동 | `SNDHWM`과 동일: 수동 설정이 없으면 프로파일 기반으로 결정 |
-| `ZLINK_OPT_SNDTIMEO` | int | -1 | Send timeout (ms, -1: 무제한) |
-| `ZLINK_OPT_RCVTIMEO` | int | -1 | Recv timeout (ms, -1: 무제한) |
+| `ZLINK_OPT_SNDTIMEO` | int | 1000 | 송신 타임아웃(ms). 무제한 대기는 `-1`을 명시적으로 설정 |
+| `ZLINK_OPT_RCVTIMEO` | int | 1000 | 수신 타임아웃(ms). 무제한 대기는 `-1`을 명시적으로 설정 |
 | `ZLINK_OPT_LINGER` | int | -1 | Socket close 시 linger (ms) |
 
 Routing ID는 전용 함수로 설정/조회한다:

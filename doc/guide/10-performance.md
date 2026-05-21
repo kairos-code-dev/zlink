@@ -417,8 +417,8 @@ int main(void)
 | Option | Default | Tuning Point |
 |------|--------|-------------|
 | `ZLINK_OPT_LINGER` | -1 (infinite) | Testing: 0, Production: 1000~5000ms |
-| `ZLINK_OPT_SNDTIMEO` | -1 (infinite) | Set according to response time requirements |
-| `ZLINK_OPT_RCVTIMEO` | -1 (infinite) | Set when used in polling loops |
+| `ZLINK_OPT_SNDTIMEO` | 1000ms | Tune according to response time requirements. Set `-1` explicitly for infinite wait |
+| `ZLINK_OPT_RCVTIMEO` | 1000ms | Tune lower for polling loops, or set `-1` explicitly for infinite wait |
 | `ZLINK_OPT_SNDHWM` | automatic | Leave auto HWM on unless the workload needs a fixed queue depth |
 | `ZLINK_OPT_RCVHWM` | automatic | Leave auto HWM on unless the workload needs a fixed queue depth |
 | `ZLINK_OPT_MAXMSGSIZE` | -1 (unlimited) | Set for security on STREAM sockets |

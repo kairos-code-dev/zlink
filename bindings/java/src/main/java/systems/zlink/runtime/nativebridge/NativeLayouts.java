@@ -283,16 +283,31 @@ public final class NativeLayouts {
     public static final MemoryLayout ACTOR_ROUTE_LAYOUT =
             MemoryLayout.structLayout(
                     ACTOR_REF_LAYOUT.withName("actor"),
-                    ValueLayout.JAVA_INT.withName("joined"),
-                    ROUTING_ID_LAYOUT.withName("joined_spot_rid"),
+                    ROUTING_ID_LAYOUT.withName("current_spot_rid"),
+                    ValueLayout.JAVA_INT.withName("current_spot_kind"),
                     MemoryLayout.paddingLayout(4));
     public static final long ACTOR_ROUTE_ACTOR_OFFSET =
             ACTOR_ROUTE_LAYOUT.byteOffset(PathElement.groupElement("actor"));
-    public static final long ACTOR_ROUTE_JOINED_OFFSET =
-            ACTOR_ROUTE_LAYOUT.byteOffset(PathElement.groupElement("joined"));
-    public static final long ACTOR_ROUTE_JOINED_SPOT_RID_OFFSET =
+    public static final long ACTOR_ROUTE_CURRENT_SPOT_RID_OFFSET =
             ACTOR_ROUTE_LAYOUT.byteOffset(
-                    PathElement.groupElement("joined_spot_rid"));
+                    PathElement.groupElement("current_spot_rid"));
+    public static final long ACTOR_ROUTE_CURRENT_SPOT_KIND_OFFSET =
+            ACTOR_ROUTE_LAYOUT.byteOffset(
+                    PathElement.groupElement("current_spot_kind"));
+
+    public static final MemoryLayout SPOT_ROUTE_LAYOUT =
+            MemoryLayout.structLayout(
+                    ROUTING_ID_LAYOUT.withName("spot_rid"),
+                    ROUTING_ID_LAYOUT.withName("owner_node_rid"),
+                    ValueLayout.JAVA_INT.withName("spot_kind"),
+                    MemoryLayout.paddingLayout(4));
+    public static final long SPOT_ROUTE_SPOT_RID_OFFSET =
+            SPOT_ROUTE_LAYOUT.byteOffset(PathElement.groupElement("spot_rid"));
+    public static final long SPOT_ROUTE_OWNER_NODE_RID_OFFSET =
+            SPOT_ROUTE_LAYOUT.byteOffset(
+                    PathElement.groupElement("owner_node_rid"));
+    public static final long SPOT_ROUTE_SPOT_KIND_OFFSET =
+            SPOT_ROUTE_LAYOUT.byteOffset(PathElement.groupElement("spot_kind"));
 
     public static final MemoryLayout ACTOR_JOIN_RESULT_LAYOUT =
             MemoryLayout.structLayout(
@@ -454,10 +469,12 @@ public final class NativeLayouts {
     public static final MemoryLayout SPOT_NODE_SPOT_ENTRY_LAYOUT =
             MemoryLayout.structLayout(
                     ROUTING_ID_LAYOUT.withName("spot_rid"),
+                    ValueLayout.JAVA_INT.withName("spot_kind"),
                     ValueLayout.JAVA_INT.withName("dispatch_handler_attached"),
                     ValueLayout.JAVA_INT.withName("joined_actor_count"),
                     ValueLayout.JAVA_INT.withName("pending_actor_join_count"),
                     ValueLayout.JAVA_INT.withName("route_synced"),
+                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("last_changed_ms"));
     public static final long SPOT_NODE_SPOT_ENTRY_SPOT_RID_OFFSET =
             SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
@@ -465,6 +482,9 @@ public final class NativeLayouts {
     public static final long SPOT_NODE_SPOT_ENTRY_DISPATCH_HANDLER_ATTACHED_OFFSET =
             SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("dispatch_handler_attached"));
+    public static final long SPOT_NODE_SPOT_ENTRY_SPOT_KIND_OFFSET =
+            SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
+                    PathElement.groupElement("spot_kind"));
     public static final long SPOT_NODE_SPOT_ENTRY_JOINED_ACTOR_COUNT_OFFSET =
             SPOT_NODE_SPOT_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("joined_actor_count"));
@@ -481,8 +501,8 @@ public final class NativeLayouts {
     public static final MemoryLayout SPOT_NODE_ACTOR_ENTRY_LAYOUT =
             MemoryLayout.structLayout(
                     ACTOR_REF_LAYOUT.withName("actor"),
-                    ValueLayout.JAVA_INT.withName("joined"),
-                    ROUTING_ID_LAYOUT.withName("joined_spot_rid"),
+                    ROUTING_ID_LAYOUT.withName("current_spot_rid"),
+                    ValueLayout.JAVA_INT.withName("current_spot_kind"),
                     ValueLayout.JAVA_INT.withName("route_synced"),
                     ValueLayout.JAVA_INT.withName("pending_message_count"),
                     MemoryLayout.paddingLayout(4),
@@ -490,12 +510,12 @@ public final class NativeLayouts {
     public static final long SPOT_NODE_ACTOR_ENTRY_ACTOR_OFFSET =
             SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("actor"));
-    public static final long SPOT_NODE_ACTOR_ENTRY_JOINED_OFFSET =
+    public static final long SPOT_NODE_ACTOR_ENTRY_CURRENT_SPOT_RID_OFFSET =
             SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
-                    PathElement.groupElement("joined"));
-    public static final long SPOT_NODE_ACTOR_ENTRY_JOINED_SPOT_RID_OFFSET =
+                    PathElement.groupElement("current_spot_rid"));
+    public static final long SPOT_NODE_ACTOR_ENTRY_CURRENT_SPOT_KIND_OFFSET =
             SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
-                    PathElement.groupElement("joined_spot_rid"));
+                    PathElement.groupElement("current_spot_kind"));
     public static final long SPOT_NODE_ACTOR_ENTRY_ROUTE_SYNCED_OFFSET =
             SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteOffset(
                     PathElement.groupElement("route_synced"));
@@ -584,7 +604,9 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("desired_count"),
                     ValueLayout.JAVA_INT.withName("ready_count"),
                     ValueLayout.JAVA_INT.withName("error_code"),
-                    ValueLayout.JAVA_LONG_UNALIGNED.withName("last_reported_ms"));
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("last_reported_ms"),
+                    ValueLayout.JAVA_INT.withName("spot_kind"),
+                    MemoryLayout.paddingLayout(4));
 
     public static final MemoryLayout REGISTRY_TOPOLOGY_FILTER_LAYOUT =
             MemoryLayout.structLayout(

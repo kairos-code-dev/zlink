@@ -711,8 +711,8 @@ typedef struct zlink_actor_join_info_t {
 
 typedef struct zlink_actor_route_t {
   zlink_actor_ref_t actor;
-  uint32_t joined;
-  zlink_routing_id_t joined_spot_rid;
+  zlink_routing_id_t current_spot_rid;
+  zlink_spot_kind_t current_spot_kind;
 } zlink_actor_route_t;
 
 typedef struct zlink_actor_join_result_t {
@@ -755,8 +755,9 @@ typedef void (*zlink_spot_actor_lifecycle_handler_fn)(
 ```
 
 `zlink_actor_route_t`는 `zlink_discovery_resolve_actor()`의 출력 타입입니다.
-`joined` 필드가 0이 아니면 actor가 현재 Spot에 join된 상태이며,
-`joined_spot_rid`가 해당 Spot의 routing id를 담습니다.
+`actor.node_rid`는 현재 Actor slot을 소유한 node이고,
+`current_spot_rid`는 Actor의 현재 Spot이다. `current_spot_kind`는
+Entry Spot이면 `ZLINK_SPOT_KIND_ENTRY`, user Spot이면 `ZLINK_SPOT_KIND_USER`다.
 
 `zlink_actor_join_result_t`는 join completion handler에 전달된다.
 `result`는 join operation의 최종 결과이고, 성공이면 `actor`는 최종 Actor ref(remote
@@ -1300,8 +1301,8 @@ zlink_handler_result_t zlink_spot_actor_lifecycle_handler(
 있다.
 
 - `actor`는 active route가 가리키는 최종 Actor ref다.
-- `joined != 0`이면 `joined_spot_rid`가 Actor의 current Spot이다.
-- 정상 live Actor가 route에 공개되어 있다면 `joined != 0`이어야 한다.
+- `current_spot_rid`는 Actor의 current Spot이다.
+- `current_spot_kind`는 Entry Spot 또는 user Spot 여부를 나타낸다.
 - route는 join commit 뒤 공개된다.
 - route는 session bind 여부를 나타내지 않는다.
 
@@ -1490,10 +1491,10 @@ zlink_config_result_t zlink_spot_actors_snapshot(
   있다. 현재 HWM 정책은 delivery queue가 깊어졌다는 이유로 local subscribe 또는
   routed target을 끊지 않는다.
 - `zlink_spot_node_spots_snapshot()`은 local Spot 목록을 반환한다. Entry Spot도 이 목록에 포함된다.
-  `joined_actor_count`, `pending_actor_join_count`, `route_synced`,
-  `last_changed_ms`는 진단용 값이다.
+  `spot_kind`는 Entry Spot과 user Spot을 구분한다. `joined_actor_count`,
+  `pending_actor_join_count`, `route_synced`, `last_changed_ms`는 진단용 값이다.
 - `zlink_spot_node_actors_snapshot()`은 live local Actor row를 반환한다. 각 row에는
-  Actor ref, joined 여부, joined Spot rid, route sync 여부, unread message count,
+  Actor ref, current Spot rid, current Spot kind, route sync 여부, unread message count,
   `last_changed_ms`가 들어간다.
 - `zlink_spot_actors_snapshot()`은 특정 Spot에 join된 Actor ref 목록을 반환한다.
 - snapshot 값은 flow control 계약으로 쓰지 않는다.

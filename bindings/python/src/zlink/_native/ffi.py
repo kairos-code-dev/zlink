@@ -77,8 +77,16 @@ class ZlinkActorLookupResult(ctypes.Structure):
 class ZlinkActorRoute(ctypes.Structure):
     _fields_ = [
         ("actor", ZlinkActorRef),
-        ("joined", ctypes.c_uint32),
-        ("joined_spot_rid", ZlinkRoutingId),
+        ("current_spot_rid", ZlinkRoutingId),
+        ("current_spot_kind", ctypes.c_int),
+    ]
+
+
+class ZlinkSpotRoute(ctypes.Structure):
+    _fields_ = [
+        ("spot_rid", ZlinkRoutingId),
+        ("owner_node_rid", ZlinkRoutingId),
+        ("spot_kind", ctypes.c_int),
     ]
 
 
@@ -220,6 +228,7 @@ class ZlinkSpotNodeSocketSnapshotEntry(ctypes.Structure):
 class ZlinkSpotNodeSpotEntry(ctypes.Structure):
     _fields_ = [
         ("spot_rid", ZlinkRoutingId),
+        ("spot_kind", ctypes.c_int),
         ("dispatch_handler_attached", ctypes.c_uint32),
         ("joined_actor_count", ctypes.c_uint32),
         ("pending_actor_join_count", ctypes.c_uint32),
@@ -231,8 +240,8 @@ class ZlinkSpotNodeSpotEntry(ctypes.Structure):
 class ZlinkSpotNodeActorEntry(ctypes.Structure):
     _fields_ = [
         ("actor", ZlinkActorRef),
-        ("joined", ctypes.c_uint32),
-        ("joined_spot_rid", ZlinkRoutingId),
+        ("current_spot_rid", ZlinkRoutingId),
+        ("current_spot_kind", ctypes.c_int),
         ("route_synced", ctypes.c_uint32),
         ("pending_message_count", ctypes.c_uint32),
         ("last_changed_ms", ctypes.c_uint64),
@@ -309,6 +318,7 @@ class ZlinkRegistryTopologyEntry(ctypes.Structure):
         ("ready_count", ctypes.c_uint32),
         ("error_code", ctypes.c_uint32),
         ("last_reported_ms", ctypes.c_uint64),
+        ("spot_kind", ctypes.c_int),
     ]
 
 
@@ -963,7 +973,7 @@ class _Lib:
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRoutingId),
-                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ZlinkSpotRoute),
             ],
             ctypes.c_int,
         )

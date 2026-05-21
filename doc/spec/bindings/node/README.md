@@ -271,6 +271,23 @@ logical spot.
   from data-plane caller-provided storage.
 - Perf meaning matches `bindings/c/perf`.
 
+## Actor And Spot Route Results
+
+Node exposes Actor and Spot route lookup results through public JavaScript
+objects and matching TypeScript declarations.
+
+- `ActorRoute` preserves the resolved Actor ref, Actor node RID, current Spot
+  RID, and current Spot kind.
+- `SpotRoute` preserves Spot RID, owner node RID, and Spot kind.
+- `SpotKind` distinguishes Entry Spot from user Spot. Invalid kind is not a
+  successful route result.
+- SpotNode snapshot entries expose the same Spot kind/current Spot fields as the
+  core snapshots.
+
+Node must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
+Callers compose `resolveActor()` or `resolveSpot()` with the existing Spot
+routed APIs.
+
 ## SpotNode Router Channel Peers
 
 Node exposes router channel peer wiring on the public `SpotNode` object:

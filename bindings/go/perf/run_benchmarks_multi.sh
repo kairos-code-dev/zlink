@@ -422,7 +422,7 @@ esac
 
 run_go_perf() {
   if [[ "${PIN_CPU}" != "on" ]]; then
-    go run "$@"
+    exec go run "$@"
     return
   fi
 
@@ -432,7 +432,7 @@ run_go_perf() {
         echo "Error: --pin-cpu requires taskset on Linux" >&2
         return 1
       fi
-      taskset -c 0 go run "$@"
+      exec taskset -c 0 go run "$@"
       ;;
     *)
       echo "Error: --pin-cpu is not supported by this runner on $(uname -s)" >&2
@@ -816,6 +816,16 @@ wait_for_pid() {
   return 0
 }
 
+kill_process_tree() {
+  local pid="$1"
+  local child
+  while read -r child; do
+    [[ -z "${child}" ]] && continue
+    kill_process_tree "${child}"
+  done < <(pgrep -P "${pid}" 2>/dev/null || true)
+  kill "${pid}" 2>/dev/null || true
+}
+
 shutdown_server() {
   local pid="$1"
   local control_fd="$2"
@@ -829,7 +839,7 @@ shutdown_server() {
     wait "${pid}" 2>/dev/null || true
     return
   fi
-  kill "${pid}" 2>/dev/null || true
+  kill_process_tree "${pid}"
   if wait_for_pid "${pid}" "${SERVER_SHUTDOWN_TIMEOUT_SECONDS}"; then
     wait "${pid}" 2>/dev/null || true
     return
@@ -944,14 +954,14 @@ run_multi_process_case() {
     client_ready_line="$(wait_for_file_prefix "${client_out}" "CLIENT_READY," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
     if [[ "${client_ready_line}" != "CLIENT_READY,${size}" ]]; then
       case_status=1
-      kill "${client_pid}" 2>/dev/null || true
+      kill_process_tree "${client_pid}"
       wait "${client_pid}" 2>/dev/null || true
     else
       printf 'START,%s\n' "${size}" >&"${server_control_fd}" || true
       printf 'START,%s\n' "${size}" >&"${client_control_fd}" || true
       if ! wait_for_pid "${client_pid}" "${client_timeout}"; then
         case_status=1
-        kill "${client_pid}" 2>/dev/null || true
+        kill_process_tree "${client_pid}"
         wait "${client_pid}" 2>/dev/null || true
       elif ! wait "${client_pid}"; then
         case_status=1
@@ -977,7 +987,7 @@ run_multi_process_case() {
     client_control_line="$(wait_for_file_prefix "${client_out}" "CLIENT_CONTROL_ENDPOINT," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
     if [[ "${client_control_line}" != CLIENT_CONTROL_ENDPOINT,* ]]; then
       case_status=1
-      kill "${client_pid}" 2>/dev/null || true
+      kill_process_tree "${client_pid}"
       wait "${client_pid}" 2>/dev/null || true
     else
       client_control_endpoint="${client_control_line#CLIENT_CONTROL_ENDPOINT,}"
@@ -985,21 +995,21 @@ run_multi_process_case() {
       control_connected="$(wait_for_file_prefix "${srv_out}" "CONTROL_CONNECTED," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
       if [[ "${control_connected}" != "CONTROL_CONNECTED,${client_control_endpoint}" ]]; then
         case_status=1
-        kill "${client_pid}" 2>/dev/null || true
+        kill_process_tree "${client_pid}"
         wait "${client_pid}" 2>/dev/null || true
       else
         printf '%s\n' "${control_connected}" >&"${client_control_fd}" || true
         client_ready_line="$(wait_for_file_prefix "${client_out}" "CLIENT_READY," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
         if [[ "${client_ready_line}" != "CLIENT_READY,${size}" ]]; then
           case_status=1
-          kill "${client_pid}" 2>/dev/null || true
+          kill_process_tree "${client_pid}"
           wait "${client_pid}" 2>/dev/null || true
         else
           printf 'START,%s\n' "${size}" >&"${server_control_fd}" || true
           printf 'START,%s\n' "${size}" >&"${client_control_fd}" || true
           if ! wait_for_pid "${client_pid}" "${client_timeout}"; then
             case_status=1
-            kill "${client_pid}" 2>/dev/null || true
+            kill_process_tree "${client_pid}"
             wait "${client_pid}" 2>/dev/null || true
           elif ! wait "${client_pid}"; then
             case_status=1
@@ -1017,7 +1027,7 @@ run_multi_process_case() {
     client_pid=$!
     if ! wait_for_pid "${client_pid}" "${client_timeout}"; then
       case_status=1
-      kill "${client_pid}" 2>/dev/null || true
+      kill_process_tree "${client_pid}"
       wait "${client_pid}" 2>/dev/null || true
     elif ! wait "${client_pid}"; then
       case_status=1
@@ -1035,7 +1045,7 @@ run_multi_process_case() {
     client_pid=$!
     if ! wait_for_pid "${client_pid}" "${client_timeout}"; then
       case_status=1
-      kill "${client_pid}" 2>/dev/null || true
+      kill_process_tree "${client_pid}"
       wait "${client_pid}" 2>/dev/null || true
     elif ! wait "${client_pid}"; then
       case_status=1

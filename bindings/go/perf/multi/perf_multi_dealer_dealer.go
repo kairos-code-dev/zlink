@@ -2,12 +2,17 @@ package main
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	zlink "zlink.systems/zlink/contracts"
 	"zlink.systems/zlink/perf/internal/perfcommon"
 )
+
+type dealerDealerClient struct {
+	ctx    *zlink.Context
+	socket *zlink.DealerSocket
+	mon    *zlink.SocketMonitor
+}
 
 func runMultiDealerDealerServer(cfg multiConfig) {
 	serverCtx, err := perfcommon.NewMultiServerContext()
@@ -76,16 +81,60 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 			_ = received.Close()
 		}
 	}
+	drainMultiDealerDealerActiveTail(server, poller, events, cfg)
 	printMultiResult(cfg, stats.Snapshot(cfg.duration, cfg.msgSize))
 }
 
-func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
-	type dealerClient struct {
-		ctx    *zlink.Context
-		socket *zlink.DealerSocket
-		mon    *zlink.SocketMonitor
+func drainMultiDealerDealerActiveTail(
+	server *zlink.DealerSocket,
+	poller *zlink.Poller,
+	events []zlink.PollEvent,
+	cfg multiConfig,
+) {
+	maxWait := cfg.duration
+	if cfg.msgSize >= 65536 {
+		maxWait = 2 * cfg.duration
+		if maxWait < 10*time.Second {
+			maxWait = 10 * time.Second
+		}
+	} else if maxWait < 2*time.Second {
+		maxWait = 2 * time.Second
 	}
-	clients := make([]dealerClient, 0, cfg.clients)
+	deadline := time.Now().Add(maxWait)
+	idleWait := 50 * time.Millisecond
+	idleDeadline := time.Now().Add(idleWait)
+	var received zlink.Received
+	for time.Now().Before(deadline) {
+		ok, recvErr := server.Recv(&received, zlink.RecvFlagsDontWait)
+		if recvErr != nil {
+			if !perfcommon.IsTransient(recvErr) {
+				perfcommon.Must(fmt.Errorf("multi dealer/dealer server tail drain recv: %w", recvErr))
+			}
+			if !time.Now().Before(idleDeadline) {
+				return
+			}
+			wait := time.Until(idleDeadline)
+			if wait <= 0 || wait > idleWait {
+				wait = idleWait
+			}
+			if _, waitErr := perfcommon.WaitPollerOne(poller, events, wait); waitErr != nil && !perfcommon.IsTransient(waitErr) {
+				perfcommon.Must(fmt.Errorf("multi dealer/dealer server tail drain poll: %w", waitErr))
+			}
+			continue
+		}
+		if !ok {
+			if !time.Now().Before(idleDeadline) {
+				return
+			}
+			continue
+		}
+		idleDeadline = time.Now().Add(idleWait)
+		_ = received.Close()
+	}
+}
+
+func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
+	clients := make([]dealerDealerClient, 0, cfg.clients)
 	for i := 0; i < cfg.clients; i++ {
 		clientCtx, err := perfcommon.NewMultiClientContext()
 		perfcommon.Must(err)
@@ -98,7 +147,7 @@ func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
 		perfcommon.Must(client.Connect(endpoint))
 		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), clientMon)
-		clients = append(clients, dealerClient{ctx: clientCtx, socket: client, mon: clientMon})
+		clients = append(clients, dealerDealerClient{ctx: clientCtx, socket: client, mon: clientMon})
 	}
 	defer func() {
 		for _, client := range clients {
@@ -113,43 +162,68 @@ func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 		return
 	}
 	window := activeDeadline(cfg.duration)
-	var wg sync.WaitGroup
-	for _, client := range clients {
-		wg.Add(1)
-		go func(socket *zlink.DealerSocket) {
-			defer wg.Done()
-			// perf_multi_dealer_dealer_client.cpp run_send_window:
-			// nonblocking send; on send_blocked set send_pending and
-			// wait POLLOUT (-1), then retry. No immediate busy-retry.
-			poller := perfcommon.NewSocketPoller(socket, perfcommon.ZLinkPollOut)
-			defer poller.Close()
-			events := make([]zlink.PollEvent, 1)
-			payload := perfcommon.PreparePayload(cfg.msgSize)
+	runMultiDealerDealerSendWindow(clients, cfg, window)
+	if len(clients) > 0 {
+		sendMultiDealerStopToken(clients[0].socket)
+	}
+	flushControlLine("CLIENT_DONE,%d", cfg.msgSize)
+}
+
+func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfig, window perfcommon.BenchmarkWindow) {
+	if len(clients) == 0 {
+		return
+	}
+	poller, err := zlink.NewPoller()
+	perfcommon.Must(err)
+	defer poller.Close()
+	events := make([]zlink.PollEvent, len(clients))
+	pending := make([]bool, len(clients))
+	payloads := make([][]byte, len(clients))
+	for i, client := range clients {
+		perfcommon.Must(poller.AddSocket(client.socket, perfcommon.ZLinkPollOut, uintptr(i)))
+		payloads[i] = perfcommon.PreparePayload(cfg.msgSize)
+	}
+	for time.Now().Before(window.StopAt) {
+		pendingCount := 0
+		for i, client := range clients {
+			if pending[i] {
+				pendingCount++
+				continue
+			}
 			for time.Now().Before(window.StopAt) {
-				perfcommon.StampWindowPayload(payload, window.ActiveAt)
-				_, sendErr := socket.Send().Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+				perfcommon.StampWindowPayload(payloads[i], window.ActiveAt)
+				_, sendErr := client.socket.Send().Message(perfcommon.NewMessage(payloads[i])).Flags(zlink.SendFlagsDontWait).Submit(nil)
 				if sendErr == nil {
 					continue
 				}
 				if !perfcommon.IsTransient(sendErr) {
 					perfcommon.Must(fmt.Errorf("multi dealer/dealer client send: %w", sendErr))
 				}
-				// send_pending: block on POLLOUT until the socket is
-				// writable again (signal-driven, -1 wait).
-				if _, waitErr := perfcommon.WaitPollerOne(poller, events, -1*time.Millisecond); waitErr != nil {
-					if perfcommon.IsTransient(waitErr) {
-						continue
-					}
-					perfcommon.Must(fmt.Errorf("multi dealer/dealer client poll: %w", waitErr))
-				}
+				pending[i] = true
+				pendingCount++
+				break
 			}
-		}(client.socket)
+		}
+		if !time.Now().Before(window.StopAt) || pendingCount == 0 {
+			continue
+		}
+		n, waitErr := poller.Wait(events, -1*time.Millisecond)
+		if waitErr != nil {
+			if perfcommon.IsTransient(waitErr) {
+				continue
+			}
+			perfcommon.Must(fmt.Errorf("multi dealer/dealer client poll: %w", waitErr))
+		}
+		for i := 0; i < n; i++ {
+			if events[i].Revents&perfcommon.ZLinkPollOut == 0 {
+				continue
+			}
+			idx := int(events[i].Slot)
+			if idx >= 0 && idx < len(pending) {
+				pending[idx] = false
+			}
+		}
 	}
-	wg.Wait()
-	if len(clients) > 0 {
-		sendMultiDealerStopToken(clients[0].socket)
-	}
-	flushControlLine("CLIENT_DONE,%d", cfg.msgSize)
 }
 
 // sendMultiDealerStopToken pushes the wire-level stop token through the

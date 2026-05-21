@@ -4,7 +4,7 @@
 
 [Framework 문서](../../../doc/README.ko.md) | [공통 스펙](../../../doc/spec/README.ko.md)
 
-[공통 스펙](../../../doc/spec/README.ko.md) | [인터페이스](./spec/handler-interfaces.ko.md) | [channel](./spec/aspnet-core-channel-messaging.ko.md) | [SPOT](./spec/aspnet-core-spot.ko.md) | [SpotNode](./spec/spot-node.ko.md) | [Stage wrapper](./spec/stage-wrapper-on-spot.ko.md) | [STREAM](./spec/aspnet-core-stream.ko.md) | [Actor](./spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | [Stream Connector](./guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | [STREAM Decisions](./draft/stream-open-items.ko.md) | [SPOT Timer Draft](./draft/spot-timer-policy.ko.md) | [Registry Routing Defaults Draft](./draft/registry-backed-routing-defaults.ko.md) | [Session Attached Actor Route Draft](./draft/session-attached-actor-route.ko.md) | [Monitoring](./spec/aspnet-core-monitoring.ko.md) | [Registry](./spec/aspnet-core-registry.ko.md) | [Behavior Matrix](./internals/behavior-matrix.ko.md) | [DI Capability](./internals/di-capability-exposure-policy.ko.md) | [Regression Matrix](./internals/regression-test-matrix.ko.md) | [Lifecycle](./internals/lifecycle-and-failure-semantics.ko.md) | [Scope](./internals/implementation-scope-and-nongoals.ko.md) | [Backend Policy](./internals/backend-dependency-policy.ko.md) | [channel 샘플](./guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](./guide/samples/spot-samples.ko.md) | [STREAM 샘플](./guide/samples/stream-samples.ko.md)
+[공통 스펙](../../../doc/spec/README.ko.md) | [인터페이스](./spec/handler-interfaces.ko.md) | [channel](./spec/aspnet-core-channel-messaging.ko.md) | [SPOT](./spec/aspnet-core-spot.ko.md) | [SpotNode](./spec/spot-node.ko.md) | [Stage wrapper](./spec/stage-wrapper-on-spot.ko.md) | [STREAM](./spec/aspnet-core-stream.ko.md) | [Actor](./spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | [Stream Connector](./guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | [STREAM Decisions](./draft/stream-open-items.ko.md) | [SPOT Timer Draft](./draft/spot-timer-policy.ko.md) | [Registry Routing Defaults Draft](./draft/registry-backed-routing-defaults.ko.md) | [Session Attached Actor Route Draft](./draft/session-attached-actor-route.ko.md) | [Channel Handler Exposure Draft](./draft/channel-handler-exposure-and-spot-route-transport.ko.md) | [Monitoring](./spec/aspnet-core-monitoring.ko.md) | [Registry](./spec/aspnet-core-registry.ko.md) | [Behavior Matrix](./internals/behavior-matrix.ko.md) | [DI Capability](./internals/di-capability-exposure-policy.ko.md) | [Regression Matrix](./internals/regression-test-matrix.ko.md) | [Lifecycle](./internals/lifecycle-and-failure-semantics.ko.md) | [Scope](./internals/implementation-scope-and-nongoals.ko.md) | [Backend Policy](./internals/backend-dependency-policy.ko.md) | [channel 샘플](./guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](./guide/samples/spot-samples.ko.md) | [STREAM 샘플](./guide/samples/stream-samples.ko.md)
 
 # ZLink Framework for .NET
 
@@ -174,6 +174,7 @@
 | [backend-dependency-policy.ko.md](./internals/backend-dependency-policy.ko.md) | 현재 backend 의존 관계와 향후 저수준 라이브러리 교체 기준 |
 | [registry-backed-routing-defaults.ko.md](./draft/registry-backed-routing-defaults.ko.md) | Registry 기반 actor route, Spot route, actor-session binding 기본 구현 초안 |
 | [session-attached-actor-route.ko.md](./draft/session-attached-actor-route.ko.md) | session attach 시점의 actor route 저장, route update, resolver 사용 범위 초안 |
+| [channel-handler-exposure-and-spot-route-transport.ko.md](./draft/channel-handler-exposure-and-spot-route-transport.ko.md) | channel handler group/typed handler 노출 정책과 Spot route transport 분리 초안 |
 
 ### 2.4 샘플 문서
 
@@ -215,14 +216,16 @@
   소유하지 않고 channel registration 이 소유한다.
 - `SPOT` 도 별도의 low-level runtime 으로 떼어 두지 않고, framework lifecycle
   안에서 다룰 수 있어야 한다.
-- 일반 channel messaging 은 `channelName` 기반 호출을 기본으로 한다. 반면
-  spot-to-spot 경로는 `IZLinkSpotClient.SendSpot(...)` /
-  `RequestSpot(...)` 이 spot name / id 를 받고, resolver 가 transport 위치값을
-  안에서 숨긴다.
+- 일반 channel messaging 은 target channel 을 뜻하는 `channelName` 기반 호출을 기본으로
+  한다. 반면 routed Spot 경로는 caller 가 사용할 local egress channel 을 별도로 명시하고,
+  source channel registration 에 target SpotNode ingress channel 이름을 둔다. target Spot
+  은 `RoutingId`로 넘긴다. local egress socket 은 channel type 에 따라 route mesh `ROUTER`
+  또는 client-server `DEALER`가 될 수 있다.
 - `SPOT` 의 high-level 표면은 다음 세 가지를 다룬다.
   1. 현재 channel 의 publish / subscribe
   2. attach 된 channel 의 send / request
-  3. spot name / id 기반 routed send / request
+  3. local egress channel, target SpotNode ingress channel, Spot routing id 기반 routed
+     send / request
 - `IZLinkClient` 와 `IZLinkSpotClient` 는 서로 다른 C API 를 감싸는 별개의
   인터페이스다. 다만 하부 기능이 일부 겹치므로, 두 인터페이스가 비슷한 모양의
   send / request 계열 함수를 함께 가질 수 있다.

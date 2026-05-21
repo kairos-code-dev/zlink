@@ -38,7 +38,7 @@ func runMultiRouterRouterServer(cfg multiConfig) {
 	flushControlLine("READY,%s", endpoint)
 
 	serverDone := make(chan struct{})
-	go startMultiRouterRouterEchoServer(server, serverDone)
+	go startMultiRouterRouterEchoServer(server, serverDone, useMultiRouterServerRecvPart(cfg.pattern, cfg.msgSize))
 	select {
 	case <-serverDone:
 	case <-waitForStopAsync():
@@ -229,7 +229,7 @@ func validateMultiRouterRoutes(serverID zlink.RoutingID, clients []multiRouterCl
 // main goroutine. PERF_MULTI_TEST_POLICY § 1.3.1: poller waits with -1
 // (signal-driven) and the loop exits on stop token, not on a stop
 // channel.
-func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- struct{}) {
+func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- struct{}, useRecvPart bool) {
 	defer close(done)
 
 	poller := perfcommon.NewSocketPoller(server, perfcommon.ZLinkPollIn)
@@ -279,6 +279,12 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- st
 		if event.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
+		if useRecvPart {
+			if drainMultiRouterRouterServerRecvPart(server, &pending, &stopRequested) {
+				break
+			}
+			continue
+		}
 		var received zlink.Received
 		for {
 			ok, recvErr := server.Recv(&received, zlink.RecvFlagsDontWait)
@@ -322,6 +328,58 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- st
 	}
 }
 
+func useMultiRouterServerRecvPart(pattern string, msgSize int) bool {
+	return msgSize == 262144 &&
+		(pattern == "MULTI_DEALER_ROUTER" || pattern == "MULTI_ROUTER_ROUTER")
+}
+
+func drainMultiRouterRouterServerRecvPart(
+	server *zlink.RouterSocket,
+	pending *[]pendingRouterReply,
+	stopRequested *bool,
+) bool {
+	var received zlink.Message
+	for {
+		result, ok, recvErr := server.RecvPart(&received, zlink.RecvFlagsDontWait)
+		if recvErr != nil {
+			if perfcommon.IsTransient(recvErr) {
+				break
+			}
+			perfcommon.Must(fmt.Errorf("multi router/router server recv: %w", recvErr))
+		}
+		if !ok {
+			break
+		}
+
+		if !result.More {
+			if perfcommon.IsStopTokenMessage(&received) {
+				*stopRequested = true
+				_ = received.Close()
+				return true
+			}
+			routingID := result.RoutingID
+			payload := received.Data()
+			if len(*pending) == 0 {
+				sent, sendErr := tryRouterSend(server, routingID, payload)
+				if sendErr != nil {
+					_ = received.Close()
+					perfcommon.Must(fmt.Errorf("multi router/router server send: %w", sendErr))
+				}
+				if sent {
+					_ = received.Close()
+					continue
+				}
+			}
+			*pending = append(*pending, pendingRouterReply{
+				routingID: routingID,
+				payload:   append([]byte(nil), payload...),
+			})
+		}
+		_ = received.Close()
+	}
+	return false
+}
+
 // startMultiRouterEchoServer returns a `done` channel closed when the
 // echo loop exits after observing a wire-level stop token. The legacy
 // callers expected a (stop, done) pair where `stop` was closed by the
@@ -333,7 +391,7 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- st
 func startMultiRouterEchoServer(server *zlink.RouterSocket) (chan struct{}, chan struct{}) {
 	stop := make(chan struct{})
 	done := make(chan struct{})
-	go startMultiRouterRouterEchoServer(server, done)
+	go startMultiRouterRouterEchoServer(server, done, false)
 	return stop, done
 }
 

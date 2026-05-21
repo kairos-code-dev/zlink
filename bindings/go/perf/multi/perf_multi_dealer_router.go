@@ -31,7 +31,7 @@ func runMultiDealerRouterServer(cfg multiConfig) {
 	flushControlLine("READY,%s", endpoint)
 
 	serverDone := make(chan struct{})
-	go startMultiRouterRouterEchoServer(router, serverDone)
+	go startMultiRouterRouterEchoServer(router, serverDone, useMultiRouterServerRecvPart(cfg.pattern, cfg.msgSize))
 	select {
 	case <-serverDone:
 	case <-waitForStopAsync():

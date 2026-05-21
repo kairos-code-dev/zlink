@@ -60,7 +60,10 @@ fn main() {
     }
 
     let poller = Poller::new().expect("poller");
-    poller.add_socket(&pub_sock, POLLOUT).expect("poller add");
+    poller
+        .add_socket(&pub_sock, POLLOUT, 0)
+        .expect("poller add");
+    let mut events = vec![PollEvent::default(); 1];
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let mut buf = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
     let mut seq: u64 = 1;
@@ -91,11 +94,11 @@ fn main() {
         }
 
         // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no timer cap.
-        match poller.wait(-1) {
-            Ok(Some(event)) if event.is_writable() => {
+        match poller.wait(&mut events, -1) {
+            Ok(n) if n > 0 && events[0].is_writable() => {
                 pending = false;
             }
-            Ok(Some(_)) | Ok(None) => {}
+            Ok(_) => {}
             Err(err) => panic!("poller wait failed: {err}"),
         }
     }

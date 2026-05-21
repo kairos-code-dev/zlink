@@ -276,6 +276,7 @@ async function main() {
     });
     let seq = 1n;
     const poller = new zlink.Poller();
+    const pollBuffer = new zlink.PollEvents(Math.max(1, slots.length));
     for (let i = 0; i < slots.length; i += 1) {
       poller.add(slots[i].spot, [POLLIN], i);
     }
@@ -303,15 +304,16 @@ async function main() {
           progressed = true;
         }
         if (!progressed) {
-          poller.waitMany(Math.max(1, poller.size), 50);
+          poller.wait(pollBuffer, 50);
           await sleepImmediate();
         }
       }
       while (activeSlots.some((slot) => slot.inflight)) {
-        poller.waitMany(Math.max(1, poller.size), 50);
+        poller.wait(pollBuffer, 50);
         await sleepImmediate();
       }
     } finally {
+      pollBuffer.close();
       poller.close();
     }
     trace('requests-complete');

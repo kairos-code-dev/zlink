@@ -66,7 +66,8 @@ pub use options::{
     RouterSocketOptions, StreamSocketOptions, SubSocketOptions,
 };
 pub use poller::{
-    POLLIN, POLLOUT, PollEvent, PollItem, PollTarget, Poller, Stopwatch, Timer, poll,
+    POLLIN, POLLOUT, PollEvent, PollItem, PollSourceKind, PollTarget, Poller, Stopwatch, Timer,
+    poll,
 };
 pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{

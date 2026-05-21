@@ -8,7 +8,7 @@ import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Context;
 import systems.zlink.contracts.Message;
-import systems.zlink.contracts.PollEvent;
+import systems.zlink.contracts.PollEvents;
 import systems.zlink.contracts.PollEventFlag;
 import systems.zlink.contracts.Poller;
 import systems.zlink.contracts.RecvException;
@@ -199,11 +199,12 @@ final class PerfMultiSpotReqRep {
         }
         Poller completionPoller = null;
         try {
-            List<PollEvent> completionEvents = new ArrayList<>(activeClients);
+            PollEvents completionEvents = new PollEvents(
+                Math.max(1, activeClients));
             if (config.size() >= 65_536) {
                 completionPoller = new Poller();
                 for (int i = 0; i < activeClients; i++) {
-                    completionPoller.add(requesters.get(i), Integer.valueOf(i),
+                    completionPoller.add(requesters.get(i), i,
                         PollEventFlag.POLLCOMPLETION);
                 }
             }

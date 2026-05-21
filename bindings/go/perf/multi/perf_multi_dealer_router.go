@@ -91,6 +91,7 @@ func runMultiDealerRouterClient(cfg multiConfig, endpoint string) perfcommon.Res
 func runEchoDealer(socket *zlink.DealerSocket, stats *perfcommon.Stats, msgSize int, window perfcommon.BenchmarkWindow) {
 	poller := perfcommon.NewSocketPoller(socket, perfcommon.ZLinkPollOut)
 	defer poller.Close()
+	events := make([]zlink.PollEvent, 1)
 	payload := perfcommon.PreparePayload(msgSize)
 	awaitingReply := false
 	for time.Now().Before(window.StopAt) {
@@ -106,7 +107,7 @@ func runEchoDealer(socket *zlink.DealerSocket, stats *perfcommon.Stats, msgSize 
 				perfcommon.Must(fmt.Errorf("multi dealer/router client send: %w", err))
 			}
 			// send_pending: wait POLLOUT (-1) until writable.
-			if _, waitErr := poller.Wait(-1 * time.Millisecond); waitErr != nil {
+			if _, waitErr := perfcommon.WaitPollerOne(poller, events, -1*time.Millisecond); waitErr != nil {
 				if perfcommon.IsTransient(waitErr) {
 					continue
 				}
@@ -116,14 +117,14 @@ func runEchoDealer(socket *zlink.DealerSocket, stats *perfcommon.Stats, msgSize 
 		}
 
 		// awaiting_reply: wait POLLIN (-1) for the echo.
-		event, waitErr := poller.Wait(-1 * time.Millisecond)
+		event, waitErr := perfcommon.WaitPollerOne(poller, events, -1*time.Millisecond)
 		if waitErr != nil {
 			if perfcommon.IsTransient(waitErr) {
 				continue
 			}
 			perfcommon.Must(fmt.Errorf("multi dealer/router client poll: %w", waitErr))
 		}
-		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+		if event == nil || event.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
 		var reply zlink.Received

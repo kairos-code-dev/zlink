@@ -44,6 +44,105 @@ func TestPairSendRecvRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPollerWaitWritesCallerOwnedEvents(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	endpoint := inprocEndpoint("poller-wait")
+	server, _ := ctx.PairSocket()
+	client, _ := ctx.PairSocket()
+	defer server.Close()
+	defer client.Close()
+
+	if err := server.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := client.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	poller, err := zlink.NewPoller()
+	if err != nil {
+		t.Fatalf("NewPoller() error = %v", err)
+	}
+	defer poller.Close()
+
+	if err := poller.AddSocket(server, zlink.PollIn, 7); err != nil {
+		t.Fatalf("AddSocket() error = %v", err)
+	}
+	if _, err := client.Send().Message(newMessage(t, "poller")).Submit(nil); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	events := make([]zlink.PollEvent, 4)
+	n, err := poller.Wait(events, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("Wait() count = %d, want 1", n)
+	}
+	if events[0].SourceKind != zlink.PollSourceSocket {
+		t.Fatalf("SourceKind = %v, want socket", events[0].SourceKind)
+	}
+	if events[0].Slot != 7 {
+		t.Fatalf("Slot = %d, want 7", events[0].Slot)
+	}
+	if events[0].Revents&zlink.PollIn == 0 {
+		t.Fatalf("Revents = %v, want PollIn", events[0].Revents)
+	}
+}
+
+func TestPollerRejectsEmptyEventSlice(t *testing.T) {
+	poller, err := zlink.NewPoller()
+	if err != nil {
+		t.Fatalf("NewPoller() error = %v", err)
+	}
+	defer poller.Close()
+
+	if _, err := poller.Wait(nil, 0); err == nil {
+		t.Fatalf("Wait(nil) error = nil, want invalid argument")
+	}
+	if _, err := poller.Wait([]zlink.PollEvent{}, 0); err == nil {
+		t.Fatalf("Wait(empty) error = nil, want invalid argument")
+	}
+}
+
+func TestPollerTimerEventUsesSlot(t *testing.T) {
+	timer, err := zlink.NewTimer()
+	if err != nil {
+		t.Fatalf("NewTimer() error = %v", err)
+	}
+	defer timer.Close()
+	poller, err := zlink.NewPoller()
+	if err != nil {
+		t.Fatalf("NewPoller() error = %v", err)
+	}
+	defer poller.Close()
+
+	if err := poller.AddTimer(timer, 11); err != nil {
+		t.Fatalf("AddTimer() error = %v", err)
+	}
+	if err := timer.Start(uint64(time.Millisecond), 1); err != nil {
+		t.Fatalf("Timer.Start() error = %v", err)
+	}
+
+	events := make([]zlink.PollEvent, 2)
+	n, err := poller.Wait(events, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("Wait() count = %d, want 1", n)
+	}
+	if events[0].SourceKind != zlink.PollSourceTimer {
+		t.Fatalf("SourceKind = %v, want timer", events[0].SourceKind)
+	}
+	if events[0].Slot != 11 {
+		t.Fatalf("Slot = %d, want 11", events[0].Slot)
+	}
+}
+
 func TestPairMultipartRoundTrip(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

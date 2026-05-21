@@ -109,8 +109,16 @@ func MultiSpotControlSettleDuration() time.Duration {
 func NewSocketPoller(socket zlink.SocketTarget, events zlink.PollEventFlag) *zlink.Poller {
 	poller, err := zlink.NewPoller()
 	Must(err)
-	Must(poller.AddSocket(socket, events))
+	Must(poller.AddSocket(socket, events, 0))
 	return poller
+}
+
+func WaitPollerOne(poller *zlink.Poller, events []zlink.PollEvent, timeout time.Duration) (*zlink.PollEvent, error) {
+	n, err := poller.Wait(events, timeout)
+	if err != nil || n == 0 {
+		return nil, err
+	}
+	return &events[0], nil
 }
 
 func durationFromEnv(name string, fallback time.Duration) time.Duration {

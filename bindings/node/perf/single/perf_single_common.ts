@@ -331,7 +331,7 @@ async function waitForPostReadySettle(timeoutMs) {
 // we match C and bound the poller wait by the same RCVTIMEO budget rather
 // than blocking on `-1`.
 //
-// This is also load-bearing for correctness: `Poller.waitMany` is a
+// This is also load-bearing for correctness: `Poller.wait(events, timeout)` is a
 // synchronous N-API call that blocks the JS event loop. An unbounded
 // (`-1`) wait blocks the receiver — and the JS loop — forever when the
 // peer Worker stalls (observed: a hung DEALER_DEALER/ipc case with the

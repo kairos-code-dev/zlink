@@ -33,13 +33,19 @@ import (
 type PollEventFlag int16
 
 const (
-    PollIn         PollEventFlag = 1
-    PollOut        PollEventFlag = 2
-    PollCompletion PollEventFlag = 32
+	PollIn         PollEventFlag = 1
+	PollOut        PollEventFlag = 2
+	PollCompletion PollEventFlag = 32
 )
 
 // PollSourceKind identifies the kind of source in a PollEvent.
-type PollSourceKind int
+type PollSourceKind int32
+
+const (
+	PollSourceSocket PollSourceKind = 1
+	PollSourceFD     PollSourceKind = 2
+	PollSourceTimer  PollSourceKind = 3
+)
 
 type PollItem struct {
 	Socket  SocketTarget
@@ -50,11 +56,13 @@ type PollItem struct {
 
 type PollEvent struct {
 	SourceKind PollSourceKind
-	Socket     SocketTarget
-	Fd         int
-	Timer      *Timer
-	UserData   interface{}
-	Events     PollEventFlag
+	_          int32
+	socket     uintptr
+	Fd         int32
+	_          int32
+	timer      uintptr
+	Slot       uintptr
+	Revents    PollEventFlag
 }
 
 type pollerEntryKind int
@@ -70,7 +78,7 @@ type pollerEntry struct {
 	socket SocketTarget
 	fd     int
 	timer  *Timer
-	handle cgo.Handle
+	slot   uintptr
 }
 
 type Poller struct {
@@ -238,7 +246,7 @@ func (p *Poller) Size() int {
 	return int(size)
 }
 
-func (p *Poller) AddSocket(socket SocketTarget, events PollEventFlag, userData ...interface{}) error {
+func (p *Poller) AddSocket(socket SocketTarget, events PollEventFlag, slot uintptr) error {
 	if p == nil || p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
@@ -246,19 +254,14 @@ func (p *Poller) AddSocket(socket SocketTarget, events PollEventFlag, userData .
 	if err != nil {
 		return err
 	}
-	entry := p.makeEntry(pollerEntrySocket, socket, 0, nil, userData)
+	entry := p.makeEntry(pollerEntrySocket, socket, 0, nil, slot)
 	if err := configErrorFromResult(C.zlink_poller_add(p.handle, raw, entry.userDataPtr(), C.short(events))); err != nil {
-		entry.close()
 		return err
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed {
-		entry.close()
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	if old := p.sockets[uintptr(raw)]; old != nil {
-		old.close()
 	}
 	p.sockets[uintptr(raw)] = entry
 	return nil
@@ -288,30 +291,22 @@ func (p *Poller) RemoveSocket(socket SocketTarget) error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if entry := p.sockets[uintptr(raw)]; entry != nil {
-		entry.close()
-		delete(p.sockets, uintptr(raw))
-	}
+	delete(p.sockets, uintptr(raw))
 	return nil
 }
 
-func (p *Poller) AddFd(fd int, events PollEventFlag, userData ...interface{}) error {
+func (p *Poller) AddFd(fd int, events PollEventFlag, slot uintptr) error {
 	if p == nil || p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	entry := p.makeEntry(pollerEntryFD, nil, fd, nil, userData)
+	entry := p.makeEntry(pollerEntryFD, nil, fd, nil, slot)
 	if err := configErrorFromResult(C.zlink_poller_add_fd(p.handle, C.zlink_fd_t(fd), entry.userDataPtr(), C.short(events))); err != nil {
-		entry.close()
 		return err
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed {
-		entry.close()
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	if old := p.fds[fd]; old != nil {
-		old.close()
 	}
 	p.fds[fd] = entry
 	return nil
@@ -333,33 +328,25 @@ func (p *Poller) RemoveFd(fd int) error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if entry := p.fds[fd]; entry != nil {
-		entry.close()
-		delete(p.fds, fd)
-	}
+	delete(p.fds, fd)
 	return nil
 }
 
-func (p *Poller) AddTimer(timer *Timer, userData ...interface{}) error {
+func (p *Poller) AddTimer(timer *Timer, slot uintptr) error {
 	if p == nil || p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	if timer == nil || timer.closed || timer.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	entry := p.makeEntry(pollerEntryTimer, nil, 0, timer, userData)
+	entry := p.makeEntry(pollerEntryTimer, nil, 0, timer, slot)
 	if err := configErrorFromResult(C.zlink_poller_add_timer(p.handle, timer.handle, entry.userDataPtr())); err != nil {
-		entry.close()
 		return err
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed {
-		entry.close()
 		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	if old := p.timers[uintptr(timer.handle)]; old != nil {
-		old.close()
 	}
 	p.timers[uintptr(timer.handle)] = entry
 	return nil
@@ -377,77 +364,41 @@ func (p *Poller) RemoveTimer(timer *Timer) error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if entry := p.timers[uintptr(timer.handle)]; entry != nil {
-		entry.close()
-		delete(p.timers, uintptr(timer.handle))
-	}
+	delete(p.timers, uintptr(timer.handle))
 	return nil
 }
 
-func (p *Poller) Wait(timeout time.Duration) (*PollEvent, error) {
+func (p *Poller) Wait(events []PollEvent, timeout time.Duration) (int, error) {
 	if p == nil || p.closed || p.handle == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		return 0, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
-	var raw C.zlink_poller_event_t
+	if len(events) == 0 {
+		return 0, configErrorFromResult(C.ZLINK_CONFIG_INVALID_ARGUMENT)
+	}
 	var errCode C.zlink_config_result_t
 	ms, err := durationToMillis(timeout)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	count := C.zlink_poller_wait(p.handle, &raw, 1, C.long(ms), &errCode)
+	count := C.zlink_poller_wait(
+		p.handle,
+		(*C.zlink_poller_event_t)(unsafe.Pointer(&events[0])),
+		C.int(len(events)),
+		C.long(ms),
+		&errCode)
 	if count < 0 {
 		if errCode != 0 {
 			if errCode == C.ZLINK_CONFIG_INTERNAL_ERROR && currentErrno() == int(C.EINTR) {
-				return nil, nil
+				return 0, nil
 			}
-			return nil, configErrorFromResult(errCode)
+			return 0, configErrorFromResult(errCode)
 		}
 		if currentErrno() == int(C.EINTR) {
-			return nil, nil
+			return 0, nil
 		}
-		return nil, configErrorFromErrno(currentErrno())
+		return 0, configErrorFromErrno(currentErrno())
 	}
-	if count == 0 {
-		return nil, nil
-	}
-	return p.eventFromC(raw), nil
-}
-
-func (p *Poller) WaitMany(timeout time.Duration) ([]PollEvent, error) {
-	if p == nil || p.closed || p.handle == nil {
-		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	size := p.Size()
-	if size <= 0 {
-		return nil, nil
-	}
-	events := make([]C.zlink_poller_event_t, size)
-	var errCode C.zlink_config_result_t
-	ms, err := durationToMillis(timeout)
-	if err != nil {
-		return nil, err
-	}
-	count := C.zlink_poller_wait(p.handle, &events[0], C.int(size), C.long(ms), &errCode)
-	if count < 0 {
-		if errCode != 0 {
-			if errCode == C.ZLINK_CONFIG_INTERNAL_ERROR && currentErrno() == int(C.EINTR) {
-				return []PollEvent{}, nil
-			}
-			return nil, configErrorFromResult(errCode)
-		}
-		if currentErrno() == int(C.EINTR) {
-			return []PollEvent{}, nil
-		}
-		return nil, configErrorFromErrno(currentErrno())
-	}
-	if count == 0 {
-		return []PollEvent{}, nil
-	}
-	out := make([]PollEvent, 0, int(count))
-	for i := 0; i < int(count) && i < len(events); i++ {
-		out = append(out, *p.eventFromC(events[i]))
-	}
-	return out, nil
+	return int(count), nil
 }
 
 func (p *Poller) Close() error {
@@ -455,16 +406,13 @@ func (p *Poller) Close() error {
 		return nil
 	}
 	p.mu.Lock()
-	for k, entry := range p.sockets {
-		entry.close()
+	for k := range p.sockets {
 		delete(p.sockets, k)
 	}
-	for k, entry := range p.fds {
-		entry.close()
+	for k := range p.fds {
 		delete(p.fds, k)
 	}
-	for k, entry := range p.timers {
-		entry.close()
+	for k := range p.timers {
 		delete(p.timers, k)
 	}
 	p.mu.Unlock()
@@ -477,82 +425,15 @@ func (p *Poller) Close() error {
 	return nil
 }
 
-func (p *Poller) makeEntry(kind pollerEntryKind, socket SocketTarget, fd int, timer *Timer, userData []interface{}) *pollerEntry {
-	entry := &pollerEntry{kind: kind, socket: socket, fd: fd, timer: timer}
-	if len(userData) > 0 && userData[0] != nil {
-		entry.handle = cgo.NewHandle(userData[0])
-	}
-	return entry
+func (p *Poller) makeEntry(kind pollerEntryKind, socket SocketTarget, fd int, timer *Timer, slot uintptr) *pollerEntry {
+	return &pollerEntry{kind: kind, socket: socket, fd: fd, timer: timer, slot: slot}
 }
 
 func (e *pollerEntry) userDataPtr() unsafe.Pointer {
-	if e == nil || e.handle == 0 {
+	if e == nil {
 		return nil
 	}
-	return C.zlink_userdata_from_handle(C.uintptr_t(e.handle))
-}
-
-func (e *pollerEntry) close() {
-	if e == nil || e.handle == 0 {
-		return
-	}
-	e.handle.Delete()
-	e.handle = 0
-}
-
-func (p *Poller) eventFromC(raw C.zlink_poller_event_t) *PollEvent {
-	event := &PollEvent{
-		SourceKind: PollSourceKind(raw.source_kind),
-		Fd:         int(raw.fd),
-		Events:     PollEventFlag(raw.events),
-	}
-	if raw.user_data != nil {
-		event.UserData = cgo.Handle(C.zlink_handle_from_userdata(raw.user_data)).Value()
-	}
-	switch raw.source_kind {
-	case C.ZLINK_POLLER_SOURCE_SOCKET:
-		event.Socket = p.lookupSocket(raw.socket)
-	case C.ZLINK_POLLER_SOURCE_FD:
-		event.Fd = int(raw.fd)
-	case C.ZLINK_POLLER_SOURCE_TIMER:
-		event.Timer = p.lookupTimer(raw.timer)
-	}
-	return event
-}
-
-func (p *Poller) lookupSocket(handle unsafe.Pointer) SocketTarget {
-	if handle == nil {
-		return nil
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if entry := p.sockets[uintptr(handle)]; entry != nil {
-		return entry.socket
-	}
-	return &pollerSocketTarget{handle: handle}
-}
-
-func (p *Poller) lookupTimer(handle unsafe.Pointer) *Timer {
-	if handle == nil {
-		return nil
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if entry := p.timers[uintptr(handle)]; entry != nil {
-		return entry.timer
-	}
-	return &Timer{handle: handle}
-}
-
-type pollerSocketTarget struct {
-	handle unsafe.Pointer
-}
-
-func (p *pollerSocketTarget) raw() unsafe.Pointer {
-	if p == nil {
-		return nil
-	}
-	return p.handle
+	return C.zlink_userdata_from_handle(C.uintptr_t(e.slot))
 }
 
 func Poll(items []PollItem, timeout time.Duration) (int, error) {

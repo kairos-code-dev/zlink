@@ -102,20 +102,22 @@ func waitRouterRouterRouteReady(
 	defer serverPoller.Close()
 	clientPoller := perfcommon.NewSocketPoller(client, perfcommon.ZLinkPollIn)
 	defer clientPoller.Close()
+	serverEvents := make([]zlink.PollEvent, 1)
+	clientEvents := make([]zlink.PollEvent, 1)
 
 	for time.Now().Before(stopAt) {
 		_, sendErr := client.SendTo(serverID).Message(perfcommon.NewMessage(ping)).Submit(nil)
 		if sendErr != nil && !perfcommon.IsTransient(sendErr) {
 			perfcommon.Must(sendErr)
 		}
-		event, waitErr := serverPoller.Wait(time.Until(stopAt))
+		event, waitErr := perfcommon.WaitPollerOne(serverPoller, serverEvents, time.Until(stopAt))
 		if waitErr != nil {
 			if perfcommon.IsTransient(waitErr) {
 				continue
 			}
 			perfcommon.Must(waitErr)
 		}
-		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+		if event == nil || event.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
 		var received zlink.Received
@@ -142,14 +144,14 @@ func waitRouterRouterRouteReady(
 		}
 		_, err := server.SendTo(clientID).Message(perfcommon.NewMessage(pong)).Submit(nil)
 		perfcommon.Must(err)
-		clientEvent, clientWaitErr := clientPoller.Wait(time.Until(stopAt))
+		clientEvent, clientWaitErr := perfcommon.WaitPollerOne(clientPoller, clientEvents, time.Until(stopAt))
 		if clientWaitErr != nil {
 			if perfcommon.IsTransient(clientWaitErr) {
 				continue
 			}
 			perfcommon.Must(clientWaitErr)
 		}
-		if clientEvent == nil || clientEvent.Events&perfcommon.ZLinkPollIn == 0 {
+		if clientEvent == nil || clientEvent.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
 		for {

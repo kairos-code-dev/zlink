@@ -65,8 +65,9 @@ def main(argv=None):
                 active_deadline = time.perf_counter() + args.duration
                 send_pending = [False] * len(sockets)
                 with zlink.Poller() as poller:
-                    for sock in sockets:
-                        poller.add_socket(sock, zlink.PollEventFlag.POLLOUT)
+                    poll_events = zlink.PollEvents(max(1, len(sockets)))
+                    for index, sock in enumerate(sockets):
+                        poller.add_socket(sock, zlink.PollEventFlag.POLLOUT, index)
                     # C run_send_window: per socket, send DONTWAIT until
                     # EAGAIN -> mark pending; once all attempted, POLLOUT
                     # poll(-1) the pending sockets and clear on writable.
@@ -94,18 +95,17 @@ def main(argv=None):
                         if not any(send_pending):
                             continue
                         # C perf_socket_poll(..., -1) on the pending sockets.
-                        events = safe_poll(poller, -1)
-                        if not events:
+                        ready_count = safe_poll(poller, poll_events, -1)
+                        if not ready_count:
                             continue
-                        for event in events:
+                        for offset in range(ready_count):
                             if not (
-                                int(event.events)
+                                poll_events.revents(offset)
                                 & int(zlink.PollEventFlag.POLLOUT)
                             ):
                                 continue
-                            try:
-                                idx = sockets.index(event.socket)
-                            except ValueError:
+                            idx = poll_events.slot(offset)
+                            if idx < 0 or idx >= len(sockets):
                                 continue
                             send_pending[idx] = False
                 # C run_single_size_case: send a wire stop token per socket

@@ -28,10 +28,18 @@ function pollEvents(mask) {
 }
 
 function pollEventHas(event, mask) {
-  if (Array.isArray(event?.revents)) {
-    return event.revents.some((flag) => (flag & mask) !== 0);
-  }
-  return ((event?.events ?? 0) & mask) !== 0;
+  return ((event?.revents ?? event?.events ?? 0) & mask) !== 0;
+}
+
+function waitPollerOne(poller, events, timeoutMs) {
+  const count = poller.wait(events, timeoutMs);
+  if (count <= 0) return null;
+  return {
+    sourceKind: events.sourceKind(0),
+    slot: events.slot(0),
+    revents: events.revents(0),
+    fd: events.fd(0)
+  };
 }
 
 function applySocketPolicy(socket, options = {}) {
@@ -753,7 +761,8 @@ async function waitForControlStart(controlSub, waiter, msgSize) {
 
 function createSocketEventWaiter(socket, events) {
   const poller = new zlink.Poller();
-  poller.add(socket, pollEvents(events));
+  poller.add(socket, pollEvents(events), 0);
+  const eventBuffer = new zlink.PollEvents(1);
 
   return {
     // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven `-1` wait. The core
@@ -765,7 +774,7 @@ function createSocketEventWaiter(socket, events) {
         await sleepImmediate();
         let ready = null;
         try {
-          ready = poller.wait(-1);
+          ready = waitPollerOne(poller, eventBuffer, -1);
         } catch (error) {
           const text = String(error && error.message ? error.message : error);
           if ((error && error.code === 'EAGAIN') || text.includes('Resource temporarily unavailable')) {
@@ -779,6 +788,7 @@ function createSocketEventWaiter(socket, events) {
       }
     },
     close() {
+      eventBuffer.close();
       poller.close();
     }
   };
@@ -796,6 +806,7 @@ module.exports = {
   emitMultiSocketHwmDetail,
   pollEvents,
   pollEventHas,
+  waitPollerOne,
   publishControlUntilSent,
   recvNoWait,
   recvNoWaitInto,

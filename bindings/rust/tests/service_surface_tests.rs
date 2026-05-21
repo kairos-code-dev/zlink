@@ -264,7 +264,7 @@ fn typed_poller_surface_exists() {
     let socket = ctx.pair_socket().unwrap();
     socket.bind("inproc://typed-poller-surface").unwrap();
     let poller = Poller::new().unwrap();
-    poller.add_socket(&socket, POLLIN).unwrap();
+    poller.add_socket(&socket, POLLIN, 7).unwrap();
     let _ = poller.size();
     poller.modify_socket(&socket, POLLOUT).unwrap();
     poller.remove_socket(&socket).unwrap();
@@ -288,13 +288,27 @@ fn typed_poller_wait_on_pair_socket_does_not_crash() {
     client_mon.recv().unwrap();
 
     let poller = Poller::new().unwrap();
-    poller.add_socket(&server, POLLIN).unwrap();
+    poller.add_socket(&server, POLLIN, 7).unwrap();
+    client
+        .send()
+        .message(Message::copy_from(b"poller").unwrap())
+        .submit()
+        .unwrap();
 
-    let wait_result = poller.wait(0).unwrap();
-    if let Some(event) = wait_result {
-        assert!(
-            event.is_readable() || event.is_writable(),
-            "poller event must carry readiness bits"
-        );
-    }
+    let mut events = vec![PollEvent::default(); 4];
+    let count = poller.wait(&mut events, 1000).unwrap();
+    assert_eq!(count, 1);
+    assert_eq!(events[0].source_kind, PollSourceKind::Socket);
+    assert_eq!(events[0].slot, 7);
+    assert!(
+        events[0].is_readable(),
+        "poller event must carry readiness bits"
+    );
+}
+
+#[test]
+fn typed_poller_rejects_empty_event_buffer() {
+    let poller = Poller::new().unwrap();
+    let mut events = Vec::<PollEvent>::new();
+    assert!(poller.wait(&mut events, 0).is_err());
 }

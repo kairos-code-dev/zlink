@@ -79,11 +79,12 @@ fn main() {
     // driven perf_socket_poll(...,-1) when no socket made progress; inflight==1
     // per socket via waiting_reply/send_pending. No hot-loop sleep(1ms).
     let poller = Poller::new().expect("poller");
-    for sock in &sockets {
+    for (index, sock) in sockets.iter().enumerate() {
         poller
-            .add_socket(sock, POLLIN | POLLOUT)
+            .add_socket(sock, POLLIN | POLLOUT, index)
             .expect("poller add");
     }
+    let mut poll_events = vec![PollEvent::default(); sockets.len().max(1)];
 
     let mut latency = common::LatencyStats::new();
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
@@ -133,7 +134,7 @@ fn main() {
             .saturating_duration_since(Instant::now())
             .as_millis()
             .max(1) as i64;
-        match poller.wait(remaining_ms) {
+        match poller.wait(&mut poll_events, remaining_ms) {
             Ok(_) => {}
             Err(err) => panic!("poller wait failed: {err}"),
         }

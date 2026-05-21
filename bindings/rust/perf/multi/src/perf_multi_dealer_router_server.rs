@@ -58,7 +58,8 @@ fn main() {
     // No DONT_WAIT busy-spin with sleep(1ms). Real send errors propagate (we
     // panic instead of silently swallowing the data-path send).
     let poller = Poller::new().expect("poller");
-    poller.add_socket(&router, POLLIN).expect("poller add");
+    poller.add_socket(&router, POLLIN, 0).expect("poller add");
+    let mut events = vec![PollEvent::default(); 1];
     let mut want_pollout = false;
     let mut received = zlink::Received::empty();
     while !stop.load(Ordering::Acquire) {
@@ -67,14 +68,20 @@ fn main() {
         } else {
             POLLIN | POLLOUT
         };
-        if desired != (if want_pollout { POLLIN | POLLOUT } else { POLLIN }) {
+        if desired
+            != (if want_pollout {
+                POLLIN | POLLOUT
+            } else {
+                POLLIN
+            })
+        {
             poller
                 .modify_socket(&router, desired)
                 .expect("poller modify");
             want_pollout = !pending.is_empty();
         }
-        match poller.wait(-1) {
-            Ok(Some(_)) | Ok(None) => {}
+        match poller.wait(&mut events, -1) {
+            Ok(_) => {}
             Err(err) => panic!("poller wait failed: {err}"),
         }
         if stop.load(Ordering::Acquire) {

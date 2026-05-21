@@ -52,7 +52,8 @@ def main(argv=None):
                 dealer.bind(endpoint)
                 print(f"READY,{endpoint}", flush=True)
                 with zlink.Poller() as poller:
-                    poller.add_socket(dealer, zlink.PollEventFlag.POLLIN)
+                    poller.add_socket(dealer, zlink.PollEventFlag.POLLIN, 0)
+                    poll_events = zlink.PollEvents(1)
                     start_event.wait()
                     if stop_event.is_set():
                         return
@@ -89,10 +90,10 @@ def main(argv=None):
                     # C run_receive_window: poll(-1) POLLIN, count until the
                     # measure deadline, then break.
                     while not stop_event.is_set():
-                        events = safe_poll(poller, -1)
-                        if events:
-                            for event in events:
-                                if int(event.events) & int(
+                        ready_count = safe_poll(poller, poll_events, -1)
+                        if ready_count:
+                            for offset in range(ready_count):
+                                if poll_events.revents(offset) & int(
                                     zlink.PollEventFlag.POLLIN
                                 ):
                                     drain_ready()
@@ -115,7 +116,7 @@ def main(argv=None):
                             continue
                         if time.perf_counter() >= idle_deadline:
                             break
-                        events = safe_poll(poller, 50)
+                        safe_poll(poller, poll_events, 50)
 
                     if count <= 0:
                         raise RuntimeError(

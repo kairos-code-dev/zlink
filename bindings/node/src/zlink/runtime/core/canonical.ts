@@ -3903,52 +3903,105 @@ export class Spot extends NativeHandle {
   }
 }
 
-interface RawPollerEvent {
-  readonly sourceKind: number;
-  readonly fd: number | bigint;
-  readonly userData: any;
-  readonly events: number;
-}
-
 export interface PollEvent {
-  readonly socket: BasePollable | null;
-  readonly fd: number | null;
-  readonly timer: Timer | null;
-  readonly tag: any;
-  readonly events: readonly PollEventFlagValue[];
-  readonly revents: readonly PollEventFlagValue[];
+  readonly sourceKind: number;
+  readonly slot: number;
+  readonly revents: number;
+  readonly fd: number;
 }
 
 type BasePollable = BaseSocket | Spot;
 
+function validateSlot(slot: number): number {
+  if (!Number.isSafeInteger(slot) || slot < 0) {
+    throw new RangeError('slot must be a non-negative safe integer');
+  }
+  return slot;
+}
+
+export class PollEvents {
+  private _native: unknown | null;
+  private _readyCount = 0;
+  readonly capacity: number;
+
+  constructor(capacity: number) {
+    if (!Number.isInteger(capacity) || capacity <= 0) {
+      throw new RangeError('capacity must be a positive integer');
+    }
+    this.capacity = capacity;
+    this._native = requireNative().pollEventsNew(capacity);
+  }
+
+  get readyCount(): number { return this._readyCount; }
+
+  sourceKind(index: number): number {
+    this.checkReadyIndex(index);
+    return requireNative().pollEventsSourceKind(this._native, index | 0) as number;
+  }
+
+  slot(index: number): number {
+    this.checkReadyIndex(index);
+    return requireNative().pollEventsSlot(this._native, index | 0) as number;
+  }
+
+  revents(index: number): number {
+    this.checkReadyIndex(index);
+    return requireNative().pollEventsRevents(this._native, index | 0) as number;
+  }
+
+  fd(index: number): number {
+    this.checkReadyIndex(index);
+    return Number(requireNative().pollEventsFd(this._native, index | 0));
+  }
+
+  hasEvent(index: number, event: PollEventFlagValue): boolean {
+    return (this.revents(index) & (event as number)) !== 0;
+  }
+
+  /** @internal */
+  nativeHandle(): unknown {
+    if (!this._native) throw new Error('PollEvents is closed');
+    return this._native;
+  }
+
+  /** @internal */
+  markReadyCount(count: number): void {
+    if (count < 0 || count > this.capacity) {
+      throw new RangeError('ready count out of range');
+    }
+    this._readyCount = count;
+  }
+
+  close(): void {
+    if (!this._native) return;
+    closeCall('poll events close failed', () => {
+      requireNative().pollEventsDestroy(this._native);
+    });
+    this._native = null;
+    this._readyCount = 0;
+  }
+
+  private checkReadyIndex(index: number): void {
+    if (!Number.isInteger(index) || index < 0 || index >= this._readyCount) {
+      throw new RangeError(`ready index ${index}`);
+    }
+  }
+}
+
 export class Poller {
   private _native: unknown | null;
-  private _nextTagId = 1n;
-  private readonly _registrations = new Map<bigint, {
-    socket: BasePollable | null;
-    fd: number | null;
-    timer: Timer | null;
-    tag: any;
-    events: readonly PollEventFlagValue[];
-  }>();
-  private readonly _socketIds = new WeakMap<BasePollable, bigint>();
-  private readonly _timerIds = new WeakMap<Timer, bigint>();
-  private readonly _fdIds = new Map<number, bigint>();
   constructor() { this._native = requireNative().pollerNew(); }
-  add(socket: BasePollable, events: readonly PollEventFlagValue[], tag?: any): void;
-  add(timer: Timer, tag?: any): void;
-  add(item: BasePollable | Timer, eventsOrTag?: readonly PollEventFlagValue[] | any, tag?: any): void {
+  add(socket: BasePollable, events: readonly PollEventFlagValue[], slot: number): void;
+  add(timer: Timer, slot: number): void;
+  add(item: BasePollable | Timer, eventsOrSlot?: readonly PollEventFlagValue[] | number, slot?: number): void {
     if (item instanceof Timer) {
-      this.addTimerInternal(item, eventsOrTag);
+      this.addTimerInternal(item, eventsOrSlot as number);
       return;
     }
-    this.addSocketInternal(item, flagsToMask(eventsOrTag as readonly PollEventFlagValue[]), tag, eventsOrTag as readonly PollEventFlagValue[]);
+    this.addSocketInternal(item, flagsToMask(eventsOrSlot as readonly PollEventFlagValue[]), slot as number);
   }
   modify(socket: BasePollable, events: readonly PollEventFlagValue[]): void {
     this.modifySocketInternal(socket, flagsToMask(events));
-    const id = this._socketIds.get(socket);
-    const current = id ? this._registrations.get(id) : undefined;
-    if (id && current) this._registrations.set(id, { ...current, events: Object.freeze(events.slice()) });
   }
   remove(socket: BasePollable): boolean;
   remove(timer: Timer): boolean;
@@ -3958,63 +4011,11 @@ export class Poller {
     }
     return this.removeSocketInternal(item);
   }
-  private registerSocket(socket: BasePollable, tag: any, events: readonly PollEventFlagValue[]): bigint {
-    const id = this._nextTagId++;
-    this._socketIds.set(socket, id);
-    this._registrations.set(id, {
-      socket,
-      fd: null,
-      timer: null,
-      tag: tag ?? null,
-      events: Object.freeze(events.slice())
-    });
-    return id;
-  }
-  private registerFd(fd: number, tag: any, events: readonly PollEventFlagValue[]): bigint {
-    const id = this._nextTagId++;
-    this._fdIds.set(fd, id);
-    this._registrations.set(id, {
-      socket: null,
-      fd,
-      timer: null,
-      tag: tag ?? null,
-      events: Object.freeze(events.slice())
-    });
-    return id;
-  }
-  private registerTimer(timer: Timer, tag: any): bigint {
-    const id = this._nextTagId++;
-    this._timerIds.set(timer, id);
-    this._registrations.set(id, {
-      socket: null,
-      fd: null,
-      timer,
-      tag: tag ?? null,
-      events: Object.freeze([PollEventFlag.PollIn])
-    });
-    return id;
-  }
-  private eventFromRaw(raw: RawPollerEvent): PollEvent {
-    const id = typeof raw.userData === 'bigint' ? raw.userData : null;
-    const registration = id ? this._registrations.get(id) : undefined;
-    const fd = registration?.fd ?? ((raw.sourceKind | 0) === 2 ? Number(raw.fd) : null);
-    const revents = maskToFlags(raw.events | 0);
-    return {
-      socket: registration?.socket ?? null,
-      fd,
-      timer: registration?.timer ?? null,
-      tag: registration?.tag ?? null,
-      events: registration?.events ?? revents,
-      revents
-    };
-  }
-  private addSocketInternal(socket: BasePollable, events: number, userData?: any, eventList: readonly PollEventFlagValue[] = maskToFlags(events)): void {
-    const id = this.registerSocket(socket, userData, eventList);
+  private addSocketInternal(socket: BasePollable, events: number, slot: number): void {
+    const normalizedSlot = validateSlot(slot);
     try {
-      requireNative().pollerAdd(this._native, socket.nativeHandle(), id, events | 0);
+      requireNative().pollerAdd(this._native, socket.nativeHandle(), BigInt(normalizedSlot), events | 0);
     } catch (error) {
-      this._registrations.delete(id);
-      this._socketIds.delete(socket);
       throw createError('config', readErrno(), nativeErrorMessage(error, 'poller socket add failed'));
     }
   }
@@ -4027,21 +4028,15 @@ export class Poller {
     configCall('poller socket remove failed', () => {
       requireNative().pollerRemove(this._native, socket.nativeHandle());
     });
-    const id = this._socketIds.get(socket);
-    if (id) this._registrations.delete(id);
-    this._socketIds.delete(socket);
     return true;
   }
-  addFd(fd: number, events: readonly PollEventFlagValue[], tag?: any): void {
+  addFd(fd: number, events: readonly PollEventFlagValue[], slot: number): void {
     const mask = flagsToMask(events);
-    const eventList = events;
     const normalizedFd = fd | 0;
-    const id = this.registerFd(normalizedFd, tag, eventList);
+    const normalizedSlot = validateSlot(slot);
     try {
-      requireNative().pollerAddFd(this._native, normalizedFd, id, mask);
+      requireNative().pollerAddFd(this._native, normalizedFd, BigInt(normalizedSlot), mask);
     } catch (error) {
-      this._registrations.delete(id);
-      this._fdIds.delete(normalizedFd);
       throw createError('config', readErrno(), nativeErrorMessage(error, 'poller fd add failed'));
     }
   }
@@ -4051,32 +4046,19 @@ export class Poller {
     configCall('poller fd modify failed', () => {
       requireNative().pollerModifyFd(this._native, normalizedFd, mask);
     });
-    const id = this._fdIds.get(normalizedFd);
-    const current = id ? this._registrations.get(id) : undefined;
-    if (id && current) {
-      this._registrations.set(id, {
-        ...current,
-        events: Object.freeze(events.slice())
-      });
-    }
   }
   removeFd(fd: number): boolean {
     const normalizedFd = fd | 0;
     configCall('poller fd remove failed', () => {
       requireNative().pollerRemoveFd(this._native, normalizedFd);
     });
-    const id = this._fdIds.get(normalizedFd);
-    if (id) this._registrations.delete(id);
-    this._fdIds.delete(normalizedFd);
     return true;
   }
-  private addTimerInternal(timer: Timer, userData?: any): void {
-    const id = this.registerTimer(timer, userData);
+  private addTimerInternal(timer: Timer, slot: number): void {
+    const normalizedSlot = validateSlot(slot);
     try {
-      requireNative().pollerAddTimer(this._native, timer.nativeHandle(), id);
+      requireNative().pollerAddTimer(this._native, timer.nativeHandle(), BigInt(normalizedSlot));
     } catch (error) {
-      this._registrations.delete(id);
-      this._timerIds.delete(timer);
       throw createError('config', readErrno(), nativeErrorMessage(error, 'poller timer add failed'));
     }
   }
@@ -4084,9 +4066,6 @@ export class Poller {
     configCall('poller timer remove failed', () => {
       requireNative().pollerRemoveTimer(this._native, timer.nativeHandle());
     });
-    const id = this._timerIds.get(timer);
-    if (id) this._registrations.delete(id);
-    this._timerIds.delete(timer);
     return true;
   }
   get size(): number {
@@ -4094,31 +4073,23 @@ export class Poller {
       requireNative().pollerSize(this._native) as number
     );
   }
-  wait(timeoutMs: number): PollEvent | null {
+  wait(events: PollEvents, timeoutMs: number): number {
     try {
-      const raw = requireNative().pollerWait(this._native, timeoutMs | 0) as RawPollerEvent | null;
-      return raw ? this.eventFromRaw(raw) : null;
+      const count = requireNative().pollerWaitInto(
+        this._native,
+        events.nativeHandle(),
+        events.capacity | 0,
+        timeoutMs | 0
+      ) as number;
+      events.markReadyCount(count | 0);
+      return count | 0;
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : String(error);
       if (/Resource temporarily unavailable|temporarily unavailable|would block/i.test(message)) {
-        return null;
+        events.markReadyCount(0);
+        return 0;
       }
       throw recvNativeError(error, RecvFlags.None, 'poller wait failed');
-    }
-  }
-  waitMany(maxEvents: number, timeoutMs: number): PollEvent[] {
-    if (!Number.isInteger(maxEvents) || maxEvents <= 0) {
-      throw new RangeError('maxEvents must be a positive integer');
-    }
-    try {
-      return (requireNative().pollerWaitMany(this._native, maxEvents | 0, timeoutMs | 0) as RawPollerEvent[])
-        .map((raw) => this.eventFromRaw(raw));
-    } catch (error) {
-      const message = error instanceof Error && error.message ? error.message : String(error);
-      if (/Resource temporarily unavailable|temporarily unavailable|would block/i.test(message)) {
-        return [];
-      }
-      throw recvNativeError(error, RecvFlags.None, 'poller waitMany failed');
     }
   }
   destroy(): void {

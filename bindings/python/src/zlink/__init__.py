@@ -142,4 +142,5 @@ __all__ = [
     "SpotRole",
     "PollSourceKind",
     "PollEvent",
+    "PollEvents",
 ]

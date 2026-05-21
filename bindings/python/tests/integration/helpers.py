@@ -43,9 +43,10 @@ def try_transport(name, fn):
 
 def wait_for_socket_event(sock, events, timeout_ms):
     with zlink.Poller() as poller:
-        poller.add_socket(sock, events)
+        poller.add_socket(sock, events, 0)
+        poll_events = zlink.PollEvents(1)
         try:
-            ready = poller.poll(timeout_ms)
+            ready = poller.wait(poll_events, timeout_ms)
         except zlink.ZlinkError as exc:
             if exc.internal_errno == 11:
                 return False

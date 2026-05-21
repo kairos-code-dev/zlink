@@ -3,6 +3,7 @@ package zlink_test
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"zlink.systems/zlink"
 )
@@ -703,8 +704,24 @@ func TestSurfaceSpotDoesNotExposeDirectMessaging(t *testing.T) {
 	if !hasMethod((*zlink.Timer)(nil), "Start") || !hasMethod((*zlink.Timer)(nil), "Recv") || !hasMethod((*zlink.Timer)(nil), "OnFire") {
 		t.Fatalf("Timer should expose canonical timer methods")
 	}
-	if !hasMethod((*zlink.Poller)(nil), "Wait") || !hasMethod((*zlink.Poller)(nil), "WaitMany") || !hasMethod((*zlink.Poller)(nil), "AddTimer") {
+	if !hasMethod((*zlink.Poller)(nil), "Wait") || !hasMethod((*zlink.Poller)(nil), "AddTimer") {
 		t.Fatalf("Poller should expose canonical poller methods")
+	}
+	if hasMethod((*zlink.Poller)(nil), "WaitMany") {
+		t.Fatalf("Poller should not expose allocation-returning WaitMany")
+	}
+	waitMethod := methodType((*zlink.Poller)(nil), "Wait")
+	pollEventSlice := reflect.TypeOf([]zlink.PollEvent{})
+	if waitMethod == nil || waitMethod.NumIn() != 3 || waitMethod.In(1) != pollEventSlice || waitMethod.In(2) != reflect.TypeOf(time.Duration(0)) {
+		t.Fatalf("Poller.Wait signature = %v, want Wait([]PollEvent, time.Duration)", waitMethod)
+	}
+	if waitMethod.NumOut() != 2 || waitMethod.Out(0).Kind() != reflect.Int || !waitMethod.Out(1).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+		t.Fatalf("Poller.Wait return signature = %v, want (int, error)", waitMethod)
+	}
+	addSocketMethod := methodType((*zlink.Poller)(nil), "AddSocket")
+	socketTarget := reflect.TypeOf((*zlink.SocketTarget)(nil)).Elem()
+	if addSocketMethod == nil || addSocketMethod.NumIn() != 4 || addSocketMethod.In(1) != socketTarget || addSocketMethod.In(2) != reflect.TypeOf(zlink.PollEventFlag(0)) || addSocketMethod.In(3).Kind() != reflect.Uintptr {
+		t.Fatalf("Poller.AddSocket signature = %v, want AddSocket(SocketTarget, PollEventFlag, uintptr)", addSocketMethod)
 	}
 	if hasMethod((*zlink.XPubSocket)(nil), "OnSubscribe") {
 		t.Fatalf("XPubSocket should not expose OnSubscribe")

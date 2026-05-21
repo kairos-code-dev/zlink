@@ -59,8 +59,9 @@ fn main() {
 
     let poller = Poller::new().expect("poller");
     for socket in &sockets {
-        poller.add_socket(socket, POLLOUT).expect("poller add");
+        poller.add_socket(socket, POLLOUT, 0).expect("poller add");
     }
+    let mut poll_events = vec![PollEvent::default(); sockets.len().max(1)];
 
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let mut payloads = (0..sockets.len())
@@ -101,8 +102,8 @@ fn main() {
                 .saturating_duration_since(Instant::now())
                 .as_millis()
                 .max(1) as i64;
-            match poller.wait(remaining_ms) {
-                Ok(Some(_)) | Ok(None) => {}
+            match poller.wait(&mut poll_events, remaining_ms) {
+                Ok(_) => {}
                 Err(err) => panic!("poller wait failed: {err}"),
             }
         }

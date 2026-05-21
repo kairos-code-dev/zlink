@@ -68,7 +68,8 @@ def main(argv=None):
             # POLLIN data path is the installed packet handler above.
             aux_wait_ms = 100
             with zlink.Poller() as poller:
-                poller.add_socket(server, zlink.PollEventFlag.POLLOUT)
+                poller.add_socket(server, zlink.PollEventFlag.POLLOUT, 0)
+                poll_events = zlink.PollEvents(1)
                 while not stop.is_set():
                     with pending_lock:
                         has_pending = bool(pending)
@@ -79,10 +80,10 @@ def main(argv=None):
                     if not has_pending:
                         stop.wait(aux_wait_ms / 1000.0)
                         continue
-                    events = safe_poll(poller, aux_wait_ms)
-                    if events:
-                        for event in events:
-                            if int(event.events) & int(
+                    ready_count = safe_poll(poller, poll_events, aux_wait_ms)
+                    if ready_count:
+                        for offset in range(ready_count):
+                            if poll_events.revents(offset) & int(
                                 zlink.PollEventFlag.POLLOUT
                             ):
                                 drain_pending()

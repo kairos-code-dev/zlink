@@ -31,6 +31,7 @@ async function main() {
     const waiting = [];
     const sendPending = [];
     const poller = new zlink.Poller();
+    const pollBuffer = new zlink.PollEvents(Math.max(1, options.clients));
     try {
         for (let i = 0; i < options.clients; i += 1) {
             const router = new zlink.RouterSocket(ctx);
@@ -113,15 +114,16 @@ async function main() {
                 continue;
             }
             // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven `-1` wait.
-            const ready = poller.waitMany(poller.size, -1);
-            if (ready.length === 0) {
+            const readyCount = poller.wait(pollBuffer, -1);
+            if (readyCount === 0) {
                 continue;
             }
-            for (const event of ready) {
-                const index = event.tag ?? event.userData;
-                if (!Number.isInteger(index)) {
+            for (let offset = 0; offset < readyCount; offset += 1) {
+                const index = pollBuffer.slot(offset);
+                if (!Number.isInteger(index) || index < 0 || index >= routers.length) {
                     continue;
                 }
+                const event = { revents: pollBuffer.revents(offset) };
                 if (pollEventHas(event, POLLOUT)) {
                     sendPending[index] = false;
                 }
@@ -138,6 +140,7 @@ async function main() {
         }
     }
     finally {
+        pollBuffer.close();
         poller.close();
         for (const reply of replyMessages) {
             reply.close();

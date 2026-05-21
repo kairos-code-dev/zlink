@@ -82,6 +82,12 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink, "SpotServiceAttachmentRole"))
         self.assertTrue(hasattr(zlink, "MonitorEvent"))
         self.assertTrue(hasattr(zlink, "MonitorEventMask"))
+        self.assertTrue(hasattr(zlink, "Poller"))
+        self.assertTrue(hasattr(zlink, "PollEvents"))
+        self.assertTrue(hasattr(zlink, "PollEvent"))
+        self.assertTrue(hasattr(zlink, "PollSourceKind"))
+        self.assertTrue(hasattr(zlink.Poller, "wait"))
+        self.assertFalse(hasattr(zlink.Poller, "poll"))
         self.assertEqual(zlink.MonitorEventMask.PEER_WEIGHT_CHANGED.value, 1 << 15)
         self.assertIs(zlink.SocketMonitorEvent, zlink.MonitorEvent)
         self.assertTrue(hasattr(zlink, "Actor"))
@@ -181,6 +187,35 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         self.assertTrue(received.is_single_part())
                         self.assertEqual(received.first_part().to_bytes(), b"payload")
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
+
+    def test_poller_wait_uses_reusable_event_buffer(self):
+        ctx = zlink.Context()
+
+        with ctx:
+            with zlink.PairSocket(ctx) as sender:
+                with zlink.PairSocket(ctx) as receiver:
+                    endpoint = "inproc://py-poller-wait"
+                    sender.bind(endpoint)
+                    receiver.connect(endpoint)
+                    with zlink.Poller() as poller:
+                        poller.add_socket(receiver, zlink.PollEventFlag.POLLIN, 7)
+                        sender.send().message(b"poller").submit()
+                        events = zlink.PollEvents(4)
+                        count = poller.wait(events, 1000)
+                        self.assertEqual(count, 1)
+                        self.assertEqual(events.ready_count, 1)
+                        self.assertEqual(events.source_kind(0), zlink.PollSourceKind.SOCKET)
+                        self.assertEqual(events.slot(0), 7)
+                        self.assertTrue(
+                            events.has_event(0, zlink.PollEventFlag.POLLIN)
+                        )
+
+    def test_poller_rejects_empty_event_buffer_and_negative_slot(self):
+        with self.assertRaises(ValueError):
+            zlink.PollEvents(0)
+        with zlink.Poller() as poller:
+            with self.assertRaises(ValueError):
+                poller.add_fd(0, zlink.PollEventFlag.POLLIN, -1)
 
     def test_nonblocking_send_raises_submit_error(self):
         ctx = zlink.Context()

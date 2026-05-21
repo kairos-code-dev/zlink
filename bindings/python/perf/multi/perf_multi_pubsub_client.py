@@ -62,20 +62,20 @@ def main(argv=None):
             stopped = [False] * len(sockets)
             recv_storage = [zlink.TopicMessage() for _ in sockets]
             with zlink.Poller() as poller:
-                for sock in sockets:
-                    poller.add_socket(sock, zlink.PollEventFlag.POLLIN)
+                poll_events = zlink.PollEvents(max(1, len(sockets)))
+                for index, sock in enumerate(sockets):
+                    poller.add_socket(sock, zlink.PollEventFlag.POLLIN, index)
                 # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. Each
                 # subscriber exits on the wire-level stop token.
                 while not all(stopped):
-                    events = safe_poll(poller, -1)
-                    if not events:
+                    ready_count = safe_poll(poller, poll_events, -1)
+                    if not ready_count:
                         continue
-                    for event in events:
-                        current_sock = event.socket
-                        try:
-                            index = sockets.index(current_sock)
-                        except ValueError:
+                    for offset in range(ready_count):
+                        index = poll_events.slot(offset)
+                        if index < 0 or index >= len(sockets):
                             continue
+                        current_sock = sockets[index]
                         if stopped[index]:
                             continue
                         while True:

@@ -7,10 +7,9 @@ import systems.zlink.contracts.service.registry.*;
 import systems.zlink.contracts.service.spot.*;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import systems.zlink.contracts.PollEvent;
+import systems.zlink.contracts.PollEvents;
 import systems.zlink.contracts.PollEventFlag;
 import systems.zlink.contracts.Poller;
 import systems.zlink.contracts.Socket;
@@ -28,7 +27,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private final int[] readyIndexes;
     private final int[] currentMasks;
     private final Poller poller = new Poller();
-    private final List<PollEvent> readyEventsBuffer = new ArrayList<>();
+    private final PollEvents readyEventsBuffer;
     private int readyCount;
 
     private PerfSocketPollSet(List<Socket> sockets,
@@ -40,11 +39,13 @@ public final class PerfSocketPollSet implements AutoCloseable {
         this.readyPri = new boolean[this.sockets.length];
         this.readyIndexes = new int[this.sockets.length];
         this.currentMasks = new int[this.sockets.length];
+        this.readyEventsBuffer = new PollEvents(
+            Math.max(1, this.sockets.length));
         clearReadyEvents();
         int initialMask = mask(initialEvents);
         for (int i = 0; i < this.sockets.length; i++) {
             Socket socket = Objects.requireNonNull(this.sockets[i], "socket");
-            poller.add(socket, Integer.valueOf(i), initialEvents);
+            poller.add(socket, i, initialEvents);
             currentMasks[i] = initialMask;
         }
     }
@@ -100,16 +101,19 @@ public final class PerfSocketPollSet implements AutoCloseable {
             }
             throw ex;
         }
-        for (PollEvent event : readyEventsBuffer) {
-            Object tag = event.tag();
-            Integer index = tag instanceof Integer readyIndex
-                ? readyIndex
-                : null;
-            if (index != null && index >= 0 && index < sockets.length) {
-                boolean hasIn = event.revents().contains(PollEventFlag.POLLIN);
-                boolean hasOut = event.revents().contains(PollEventFlag.POLLOUT);
-                boolean hasErr = event.revents().contains(PollEventFlag.POLLERR);
-                boolean hasPri = event.revents().contains(PollEventFlag.POLLPRI);
+        int count = readyEventsBuffer.readyCount();
+        for (int i = 0; i < count; i++) {
+            long slot = readyEventsBuffer.slot(i);
+            if (slot >= 0 && slot < sockets.length) {
+                int index = (int) slot;
+                boolean hasIn = readyEventsBuffer.hasEvent(i,
+                    PollEventFlag.POLLIN);
+                boolean hasOut = readyEventsBuffer.hasEvent(i,
+                    PollEventFlag.POLLOUT);
+                boolean hasErr = readyEventsBuffer.hasEvent(i,
+                    PollEventFlag.POLLERR);
+                boolean hasPri = readyEventsBuffer.hasEvent(i,
+                    PollEventFlag.POLLPRI);
                 readyIn[index] = hasIn;
                 readyOut[index] = hasOut;
                 readyErr[index] = hasErr;

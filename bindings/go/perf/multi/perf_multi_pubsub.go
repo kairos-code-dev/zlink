@@ -101,8 +101,9 @@ func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	// deadline (enforced inside drainMultiPubSubAvailable).
 	stopSeen := make([]bool, len(subs))
 	stopsRemaining := len(subs)
+	events := make([]zlink.PollEvent, 1)
 	for stopsRemaining > 0 {
-		event, err := pollers[0].Wait(-1 * time.Millisecond)
+		event, err := perfcommon.WaitPollerOne(pollers[0], events, -1*time.Millisecond)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue

@@ -13,58 +13,46 @@ pub const POLLOUT: i16 = ffi::ZLINK_POLLOUT;
 pub const POLLCOMPLETION: i16 = ffi::ZLINK_POLLCOMPLETION;
 
 /// Source kind reported by the poller when an event fires.
+#[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PollSourceKind {
-    Socket,
-    Fd,
-    Timer,
+    Socket = 1,
+    Fd = 2,
+    Timer = 3,
 }
 
 /// A single poll result event.
-#[derive(Debug, Clone)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct PollEvent {
     pub source_kind: PollSourceKind,
-    pub socket: Option<*mut c_void>,
+    socket: *mut c_void,
     pub fd: RawFd,
-    pub timer: Option<*mut c_void>,
-    pub user_data: Option<*mut c_void>,
-    pub events: i16,
+    timer: *mut c_void,
+    pub slot: usize,
+    pub revents: i16,
 }
 
 impl PollEvent {
     pub fn is_readable(&self) -> bool {
-        self.events & POLLIN != 0
+        self.revents & POLLIN != 0
     }
 
     pub fn is_writable(&self) -> bool {
-        self.events & POLLOUT != 0
+        self.revents & POLLOUT != 0
     }
 }
 
-fn empty_event() -> ffi::zlink_poller_event_t {
-    ffi::zlink_poller_event_t {
-        source_kind: ffi::zlink_poller_source_kind_t::ZLINK_POLLER_SOURCE_SOCKET,
-        socket: std::ptr::null_mut(),
-        fd: 0 as ffi::zlink_fd_t,
-        timer: std::ptr::null_mut(),
-        user_data: std::ptr::null_mut(),
-        events: 0,
-    }
-}
-
-fn map_event(raw: &ffi::zlink_poller_event_t) -> PollEvent {
-    let source_kind = match raw.source_kind {
-        ffi::zlink_poller_source_kind_t::ZLINK_POLLER_SOURCE_SOCKET => PollSourceKind::Socket,
-        ffi::zlink_poller_source_kind_t::ZLINK_POLLER_SOURCE_FD => PollSourceKind::Fd,
-        ffi::zlink_poller_source_kind_t::ZLINK_POLLER_SOURCE_TIMER => PollSourceKind::Timer,
-    };
-    PollEvent {
-        source_kind,
-        socket: (!raw.socket.is_null()).then_some(raw.socket),
-        fd: raw.fd as RawFd,
-        timer: (!raw.timer.is_null()).then_some(raw.timer),
-        user_data: (!raw.user_data.is_null()).then_some(raw.user_data),
-        events: raw.events,
+impl Default for PollEvent {
+    fn default() -> Self {
+        Self {
+            source_kind: PollSourceKind::Socket,
+            socket: std::ptr::null_mut(),
+            fd: 0,
+            timer: std::ptr::null_mut(),
+            slot: 0,
+            revents: 0,
+        }
     }
 }
 
@@ -103,10 +91,11 @@ impl Poller {
         &self,
         socket: impl Into<PollTarget<'a>>,
         events: i16,
+        slot: usize,
     ) -> Result<(), ConfigError> {
         let target = socket.into();
         check_config_rc(unsafe {
-            ffi::zlink_poller_add(self.handle, target.raw(), std::ptr::null_mut(), events)
+            ffi::zlink_poller_add(self.handle, target.raw(), slot as *mut c_void, events)
         })
     }
 
@@ -126,17 +115,12 @@ impl Poller {
         check_config_rc(unsafe { ffi::zlink_poller_remove(self.handle, target.raw()) })
     }
 
-    pub fn add_fd(
-        &self,
-        fd: RawFd,
-        events: i16,
-        user_data: Option<*mut c_void>,
-    ) -> Result<(), ConfigError> {
+    pub fn add_fd(&self, fd: RawFd, events: i16, slot: usize) -> Result<(), ConfigError> {
         check_config_rc(unsafe {
             ffi::zlink_poller_add_fd(
                 self.handle,
                 fd as ffi::zlink_fd_t,
-                user_data.unwrap_or(std::ptr::null_mut()),
+                slot as *mut c_void,
                 events,
             )
         })
@@ -152,14 +136,9 @@ impl Poller {
         check_config_rc(unsafe { ffi::zlink_poller_remove_fd(self.handle, fd as ffi::zlink_fd_t) })
     }
 
-    pub fn add_timer(
-        &self,
-        timer: &Timer,
-        user_data: Option<*mut c_void>,
-    ) -> Result<(), ConfigError> {
-        let user_data = user_data.unwrap_or(std::ptr::null_mut());
+    pub fn add_timer(&self, timer: &Timer, slot: usize) -> Result<(), ConfigError> {
         check_config_rc(unsafe {
-            ffi::zlink_poller_add_timer(self.handle, timer.raw_handle(), user_data)
+            ffi::zlink_poller_add_timer(self.handle, timer.raw_handle(), slot as *mut c_void)
         })
     }
 
@@ -167,19 +146,24 @@ impl Poller {
         check_config_rc(unsafe { ffi::zlink_poller_remove_timer(self.handle, timer.raw_handle()) })
     }
 
-    /// Wait for events on any registered socket.
+    /// Wait for events on any registered source.
     ///
     /// `timeout_ms`: -1 = block indefinitely, 0 = return immediately,
     /// positive = timeout in milliseconds.
     ///
-    /// Returns `Ok(None)` on timeout, `Ok(Some(event))` when an event occurs.
-    pub fn wait(&self, timeout_ms: i64) -> Result<Option<PollEvent>, RecvError> {
-        let mut raw = empty_event();
+    /// Returns the number of entries written to `events`.
+    pub fn wait(&self, events: &mut [PollEvent], timeout_ms: i64) -> Result<usize, RecvError> {
+        if events.is_empty() {
+            return Err(crate::error::RecvError::new(
+                crate::error::RecvResult::InternalError,
+                libc::EINVAL,
+            ));
+        }
         let rc = unsafe {
             ffi::zlink_poller_wait(
                 self.handle,
-                &mut raw,
-                1,
+                events.as_mut_ptr() as *mut ffi::zlink_poller_event_t,
+                events.len() as i32,
                 timeout_ms as std::ffi::c_long,
                 std::ptr::null_mut(),
             )
@@ -187,7 +171,7 @@ impl Poller {
         if rc < 0 {
             let errno = crate::error::last_errno();
             if errno == libc::EAGAIN || errno == libc::ETIMEDOUT {
-                return Ok(None);
+                return Ok(0);
             }
             return Err(crate::error::RecvError::new(
                 crate::error::RecvResult::Terminated,
@@ -195,45 +179,9 @@ impl Poller {
             ));
         }
         if rc == 0 {
-            return Ok(None);
+            return Ok(0);
         }
-        Ok(Some(map_event(&raw)))
-    }
-
-    /// Wait for multiple events at once.
-    ///
-    /// Returns the events that fired. Empty vec on timeout.
-    pub fn wait_many(&self, timeout_ms: i64) -> Result<Vec<PollEvent>, RecvError> {
-        let max_events = self.size().max(1) as usize;
-        let mut raw = vec![empty_event(); max_events];
-        let rc = unsafe {
-            ffi::zlink_poller_wait(
-                self.handle,
-                raw.as_mut_ptr(),
-                max_events as i32,
-                timeout_ms as std::ffi::c_long,
-                std::ptr::null_mut(),
-            )
-        };
-        if rc < 0 {
-            let errno = crate::error::last_errno();
-            if errno == libc::EAGAIN || errno == libc::ETIMEDOUT {
-                return Ok(Vec::new());
-            }
-            return Err(crate::error::RecvError::new(
-                crate::error::RecvResult::Terminated,
-                errno,
-            ));
-        }
-        if rc == 0 {
-            return Ok(Vec::new());
-        }
-        let n = rc as usize;
-        let mut out = Vec::with_capacity(n);
-        for event in raw.iter().take(n) {
-            out.push(map_event(event));
-        }
-        Ok(out)
+        Ok(rc as usize)
     }
 
     pub fn size(&self) -> i32 {

@@ -10,6 +10,7 @@ import systems.zlink.contracts.DealerSocket;
 import systems.zlink.contracts.Message;
 import systems.zlink.contracts.MonitorSocket;
 import systems.zlink.contracts.PairSocket;
+import systems.zlink.contracts.PollEvents;
 import systems.zlink.contracts.PollEventFlag;
 import systems.zlink.contracts.Poller;
 import systems.zlink.contracts.PubSocket;
@@ -438,14 +439,25 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(SubSocket.class, "subscriptionAt",
             int.class));
         assertFalse(hasPublicMethod(Spot.class, "options"));
-        assertTrue(hasPublicMethod(Poller.class, "add", Timer.class));
+        assertFalse(hasPublicMethod(Poller.class, "add", Timer.class));
         assertTrue(hasPublicMethod(Poller.class, "add", Timer.class,
+            long.class));
+        assertFalse(hasPublicMethod(Poller.class, "add", Timer.class,
             Object.class));
         assertTrue(hasPublicMethod(Poller.class, "remove", Timer.class));
         assertTrue(hasPublicMethod(Poller.class, "add", Spot.class,
+            long.class, PollEventFlag[].class));
+        assertFalse(hasPublicMethod(Poller.class, "add", Spot.class,
             PollEventFlag[].class));
-        assertTrue(hasPublicMethod(Poller.class, "add", Spot.class,
+        assertFalse(hasPublicMethod(Poller.class, "add", Spot.class,
             Object.class, PollEventFlag[].class));
+        assertTrue(hasPublicMethod(Poller.class, "wait", PollEvents.class,
+            Duration.class));
+        assertFalse(hasPublicMethod(Poller.class, "wait", Duration.class));
+        assertFalse(hasPublicMethod(Poller.class, "wait", int.class,
+            Duration.class));
+        assertFalse(hasPublicMethod(Poller.class, "wait", List.class,
+            Duration.class));
         assertTrue(hasPublicMethod(Poller.class, "modify", Spot.class,
             PollEventFlag[].class));
         assertTrue(hasPublicMethod(Poller.class, "remove", Spot.class));

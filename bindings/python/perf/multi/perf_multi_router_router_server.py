@@ -42,7 +42,9 @@ def main(argv=None):
                 poller.add_socket(
                     router,
                     zlink.PollEventFlag.POLLIN | zlink.PollEventFlag.POLLOUT,
+                    0,
                 )
+                poll_events = zlink.PollEvents(1)
                 recv_storage = zlink.Received()
                 # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait.
                 while not stop.is_set():
@@ -68,7 +70,7 @@ def main(argv=None):
                                 )
                         if not sent:
                             pending.append((routing_id, payload))
-                    safe_poll(poller, -1)
+                    safe_poll(poller, poll_events, -1)
 
 
 if __name__ == "__main__":

@@ -6339,6 +6339,134 @@ napi_value poller_wait_many(napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value poll_events_new(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    int32_t capacity = 0;
+    napi_get_value_int32(env, argv[0], &capacity);
+    if (capacity <= 0) {
+        napi_throw_range_error(env, NULL, "capacity must be a positive integer");
+        return NULL;
+    }
+    zlink_poller_event_t *events =
+      new zlink_poller_event_t[static_cast<size_t>(capacity)]();
+    napi_value out;
+    napi_create_external(env, events, NULL, NULL, &out);
+    return out;
+}
+
+napi_value poll_events_destroy(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *ptr = NULL;
+    napi_get_value_external(env, argv[0], &ptr);
+    delete[] static_cast<zlink_poller_event_t *>(ptr);
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+static bool poll_events_args(napi_env env,
+                             napi_callback_info info,
+                             zlink_poller_event_t **events,
+                             int32_t *index)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *ptr = NULL;
+    napi_get_value_external(env, argv[0], &ptr);
+    napi_get_value_int32(env, argv[1], index);
+    if (!ptr || *index < 0) {
+        napi_throw_range_error(env, NULL, "invalid poll event index");
+        return false;
+    }
+    *events = static_cast<zlink_poller_event_t *>(ptr);
+    return true;
+}
+
+napi_value poll_events_source_kind(napi_env env, napi_callback_info info)
+{
+    zlink_poller_event_t *events = NULL;
+    int32_t index = 0;
+    if (!poll_events_args(env, info, &events, &index))
+        return NULL;
+    napi_value out;
+    napi_create_int32(env, static_cast<int32_t>(events[index].source_kind), &out);
+    return out;
+}
+
+napi_value poll_events_slot(napi_env env, napi_callback_info info)
+{
+    zlink_poller_event_t *events = NULL;
+    int32_t index = 0;
+    if (!poll_events_args(env, info, &events, &index))
+        return NULL;
+    napi_value out;
+    napi_create_double(
+      env,
+      static_cast<double>(reinterpret_cast<uintptr_t>(events[index].user_data)),
+      &out);
+    return out;
+}
+
+napi_value poll_events_revents(napi_env env, napi_callback_info info)
+{
+    zlink_poller_event_t *events = NULL;
+    int32_t index = 0;
+    if (!poll_events_args(env, info, &events, &index))
+        return NULL;
+    napi_value out;
+    napi_create_int32(env, static_cast<int32_t>(events[index].events), &out);
+    return out;
+}
+
+napi_value poll_events_fd(napi_env env, napi_callback_info info)
+{
+    zlink_poller_event_t *events = NULL;
+    int32_t index = 0;
+    if (!poll_events_args(env, info, &events, &index))
+        return NULL;
+    napi_value out;
+    napi_create_int64(env, static_cast<int64_t>(events[index].fd), &out);
+    return out;
+}
+
+napi_value poller_wait_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *poller = NULL;
+    void *events_ptr = NULL;
+    int32_t capacity = 0;
+    int32_t timeout = 0;
+    napi_get_value_external(env, argv[0], &poller);
+    napi_get_value_external(env, argv[1], &events_ptr);
+    napi_get_value_int32(env, argv[2], &capacity);
+    napi_get_value_int32(env, argv[3], &timeout);
+    if (!events_ptr || capacity <= 0) {
+        napi_throw_range_error(env, NULL, "events capacity must be positive");
+        return NULL;
+    }
+    zlink_config_result_t err = ZLINK_CONFIG_OK;
+    int rc = zlink_poller_wait(
+      poller,
+      static_cast<zlink_poller_event_t *>(events_ptr),
+      capacity,
+      timeout,
+      &err);
+    if (err != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "poller_wait_into failed");
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
 napi_value timer_new(napi_env env, napi_callback_info info)
 {
     (void) info;

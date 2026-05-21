@@ -199,11 +199,19 @@ monitor.snapshot();
 monitor.close();
 
 const poller = new zlink.Poller();
-poller.add(pub, [zlink.PollEventFlag.PollIn], 'pub');
+const pollEvents = new zlink.PollEvents(1);
+poller.add(pub, [zlink.PollEventFlag.PollIn], 1);
 poller.modify(pub, [zlink.PollEventFlag.PollIn, zlink.PollEventFlag.PollOut]);
-poller.waitMany(1, 0);
+const pollCount = poller.wait(pollEvents, 0);
+if (pollCount > 0) {
+  pollEvents.sourceKind(0);
+  pollEvents.slot(0);
+  pollEvents.revents(0);
+  pollEvents.fd(0);
+}
 poller.remove(pub);
 poller.size;
+pollEvents.close();
 poller.close();
 
 const thread = new zlink.Thread(() => {});

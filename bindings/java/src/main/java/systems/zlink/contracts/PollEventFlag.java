@@ -12,8 +12,12 @@ public enum PollEventFlag {
     POLLPRI,
     POLLCOMPLETION;
 
-    int value() {
+    public int mask() {
         return EnumCodecs.pollEventFlagValue(this);
+    }
+
+    int value() {
+        return mask();
     }
 
     static int combine(PollEventFlag... flags) {

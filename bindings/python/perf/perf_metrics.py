@@ -299,13 +299,13 @@ def _require_zlink():
     return _zlink
 
 
-def safe_poll(poller, timeout_ms):
+def safe_poll(poller, events, timeout_ms):
     zlink_mod = _require_zlink()
     try:
-        return poller.poll(timeout_ms)
+        return poller.wait(events, timeout_ms)
     except zlink_mod.ZlinkError as exc:
         if exc.internal_errno == 11:
-            return []
+            return 0
         raise
 
 

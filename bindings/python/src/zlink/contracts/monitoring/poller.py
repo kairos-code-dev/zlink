@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: MPL-2.0
 
-import ctypes
 from dataclasses import dataclass
+import ctypes
 
 from ..enums.enums import (
     CloseResult,
     ConfigResult,
-    PollEventFlag,
     PollSourceKind,
     RecvResult,
 )
@@ -18,11 +17,64 @@ from ..._runtime.core.core import _raise_last_error, _raise_result_error
 @dataclass(frozen=True)
 class PollEvent:
     source_kind: PollSourceKind
-    events: PollEventFlag
-    socket: object | None = None
-    fd: int | None = None
-    timer: object | None = None
-    tag: object | None = None
+    slot: int
+    revents: int
+    fd: int = 0
+
+
+class PollEvents:
+    def __init__(self, capacity):
+        capacity = int(capacity)
+        if capacity <= 0:
+            raise ValueError("capacity must be > 0")
+        self._capacity = capacity
+        self._events = (ZlinkPollerEvent * capacity)()
+        self._ready_count = 0
+
+    @property
+    def capacity(self):
+        return self._capacity
+
+    @property
+    def ready_count(self):
+        return self._ready_count
+
+    def source_kind(self, index):
+        event = self._event(index)
+        return PollSourceKind(int(event.source_kind))
+
+    def slot(self, index):
+        return int(self._event(index).user_data or 0)
+
+    def revents(self, index):
+        return int(self._event(index).events)
+
+    def has_event(self, index, event):
+        return (self.revents(index) & int(event)) != 0
+
+    def fd(self, index):
+        return int(self._event(index).fd)
+
+    def event(self, index):
+        native = self._event(index)
+        return PollEvent(
+            source_kind=PollSourceKind(int(native.source_kind)),
+            slot=int(native.user_data or 0),
+            revents=int(native.events),
+            fd=int(native.fd),
+        )
+
+    def _mark_ready_count(self, count):
+        count = int(count)
+        if count < 0 or count > self._capacity:
+            raise ValueError("ready count out of range")
+        self._ready_count = count
+
+    def _event(self, index):
+        index = int(index)
+        if index < 0 or index >= self._ready_count:
+            raise IndexError(f"ready index {index}")
+        return self._events[index]
 
 
 class Poller:
@@ -30,49 +82,26 @@ class Poller:
         self._handle = lib().zlink_poller_new()
         if not self._handle:
             _raise_last_error()
-        self._items = {}
-        self._next_user_data = 1
 
-    def add_socket(self, socket, events, tag=None):
-        user_data = ctypes.c_void_p(self._next_user_data)
-        self._next_user_data += 1
+    def add_socket(self, socket, events, slot):
+        user_data = ctypes.c_void_p(_validate_slot(slot))
         rc = lib().zlink_poller_add(
             self._handle, socket._handle, user_data, int(events)
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._items[user_data.value] = {
-            "socket": socket,
-            "fd": None,
-            "timer": None,
-            "tag": tag,
-        }
 
-    def add_fd(self, fd, events, tag=None):
-        user_data = ctypes.c_void_p(self._next_user_data)
-        self._next_user_data += 1
+    def add_fd(self, fd, events, slot):
+        user_data = ctypes.c_void_p(_validate_slot(slot))
         rc = lib().zlink_poller_add_fd(self._handle, fd, user_data, int(events))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._items[user_data.value] = {
-            "socket": None,
-            "fd": int(fd),
-            "timer": None,
-            "tag": tag,
-        }
 
-    def add_timer(self, timer, user_data=None):
-        user_data_ptr = ctypes.c_void_p(self._next_user_data)
-        self._next_user_data += 1
-        rc = lib().zlink_poller_add_timer(self._handle, timer._handle, user_data_ptr)
+    def add_timer(self, timer, slot):
+        user_data = ctypes.c_void_p(_validate_slot(slot))
+        rc = lib().zlink_poller_add_timer(self._handle, timer._handle, user_data)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._items[user_data_ptr.value] = {
-            "socket": None,
-            "fd": None,
-            "timer": timer,
-            "tag": user_data,
-        }
 
     def modify_socket(self, socket, events):
         rc = lib().zlink_poller_modify(self._handle, socket._handle, int(events))
@@ -88,19 +117,16 @@ class Poller:
         rc = lib().zlink_poller_remove(self._handle, socket._handle)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._remove_item(lambda item: item["socket"] is socket)
 
     def remove_fd(self, fd):
         rc = lib().zlink_poller_remove_fd(self._handle, int(fd))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._remove_item(lambda item: item["fd"] == int(fd))
 
     def remove_timer(self, timer):
         rc = lib().zlink_poller_remove_timer(self._handle, timer._handle)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._remove_item(lambda item: item["timer"] is timer)
 
     def size(self):
         error_out = ctypes.c_int()
@@ -109,43 +135,21 @@ class Poller:
             _raise_result_error(ConfigError, ConfigResult, error_out.value, lib().zlink_errno())
         return int(rc)
 
-    def poll(self, timeout_ms):
-        if not self._items:
-            return []
-        events = (ZlinkPollerEvent * len(self._items))()
+    def wait(self, events, timeout_ms):
+        if not isinstance(events, PollEvents):
+            raise TypeError("events must be PollEvents")
         error_out = ctypes.c_int()
         ready = lib().zlink_poller_wait(
             self._handle,
-            events,
-            len(self._items),
+            events._events,
+            events.capacity,
             int(timeout_ms),
             ctypes.byref(error_out),
         )
         if ready < 0:
             _raise_result_error(RecvError, RecvResult, error_out.value, lib().zlink_errno())
-        results = []
-        for index in range(ready):
-            event = events[index]
-            item = self._items.get(event.user_data)
-            if item is None:
-                continue
-            if item["socket"] is not None:
-                source_kind = PollSourceKind.SOCKET
-            elif item["fd"] is not None:
-                source_kind = PollSourceKind.FD
-            else:
-                source_kind = PollSourceKind.TIMER
-            results.append(
-                PollEvent(
-                    source_kind=source_kind,
-                    events=PollEventFlag(int(event.events)),
-                    socket=item["socket"],
-                    fd=item["fd"],
-                    timer=item["timer"],
-                    tag=item["tag"],
-                )
-            )
-        return results
+        events._mark_ready_count(ready)
+        return int(ready)
 
     def close(self):
         if not self._handle:
@@ -153,7 +157,6 @@ class Poller:
         handle = ctypes.c_void_p(self._handle)
         rc = lib().zlink_poller_destroy(ctypes.byref(handle))
         self._handle = None
-        self._items = {}
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
@@ -169,8 +172,9 @@ class Poller:
     async def __aexit__(self, exc_type, exc, tb):
         self.close()
 
-    def _remove_item(self, predicate):
-        for key, item in list(self._items.items()):
-            if predicate(item):
-                del self._items[key]
-                return
+def _validate_slot(slot):
+    if not isinstance(slot, int) or slot < 0:
+        raise ValueError("slot must be a non-negative int")
+    if slot > ctypes.c_size_t(-1).value:
+        raise ValueError("slot is too large for uintptr_t")
+    return slot

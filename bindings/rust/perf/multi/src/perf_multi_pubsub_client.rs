@@ -89,8 +89,9 @@ fn main() {
     // No hot-loop sleep(1ms).
     let poller = Poller::new().expect("poller");
     for socket in &sockets {
-        poller.add_socket(socket, POLLIN).expect("poller add");
+        poller.add_socket(socket, POLLIN, 0).expect("poller add");
     }
+    let mut events = vec![PollEvent::default(); sockets.len().max(1)];
 
     let active_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let mut latency_stats = common::LatencyStats::new();
@@ -98,8 +99,8 @@ fn main() {
     let mut phase_done = false;
 
     while !phase_done {
-        match poller.wait(-1) {
-            Ok(Some(_)) | Ok(None) => {}
+        match poller.wait(&mut events, -1) {
+            Ok(_) => {}
             Err(err) => panic!("poller wait failed: {err}"),
         }
         for socket in &sockets {

@@ -97,6 +97,13 @@ napi_value poller_add_timer(napi_env env, napi_callback_info info);
 napi_value poller_remove_timer(napi_env env, napi_callback_info info);
 napi_value poller_wait(napi_env env, napi_callback_info info);
 napi_value poller_wait_many(napi_env env, napi_callback_info info);
+napi_value poll_events_new(napi_env env, napi_callback_info info);
+napi_value poll_events_destroy(napi_env env, napi_callback_info info);
+napi_value poll_events_source_kind(napi_env env, napi_callback_info info);
+napi_value poll_events_slot(napi_env env, napi_callback_info info);
+napi_value poll_events_revents(napi_env env, napi_callback_info info);
+napi_value poll_events_fd(napi_env env, napi_callback_info info);
+napi_value poller_wait_into(napi_env env, napi_callback_info info);
 
 napi_value timer_new(napi_env env, napi_callback_info info);
 napi_value spot_timer_new(napi_env env, napi_callback_info info);

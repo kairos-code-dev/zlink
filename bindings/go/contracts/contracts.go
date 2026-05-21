@@ -234,6 +234,10 @@ const (
 	RIDDuplicateHandover                  = root.RIDDuplicateHandover
 	PollIn                                = root.PollIn
 	PollOut                               = root.PollOut
+	PollCompletion                        = root.PollCompletion
+	PollSourceSocket                      = root.PollSourceSocket
+	PollSourceFD                          = root.PollSourceFD
+	PollSourceTimer                       = root.PollSourceTimer
 	SendFlagsNone                         = root.SendFlagsNone
 	SendFlagsDontWait                     = root.SendFlagsDontWait
 	RecvFlagsNone                         = root.RecvFlagsNone

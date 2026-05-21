@@ -8,7 +8,7 @@ import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Context;
 import systems.zlink.contracts.Message;
-import systems.zlink.contracts.PollEvent;
+import systems.zlink.contracts.PollEvents;
 import systems.zlink.contracts.PollEventFlag;
 import systems.zlink.contracts.Poller;
 import systems.zlink.contracts.RecvException;
@@ -224,14 +224,13 @@ final class PerfMultiSpotSendSend {
         int activeSlots = activeSpotSlotLimit(n, msgSize);
         Message[] payloads = new Message[n];
         boolean[] waitingReply = new boolean[n];
-        List<PollEvent> events = new ArrayList<>(n);
+        PollEvents events = new PollEvents(Math.max(1, n));
         for (int i = 0; i < n; i++) {
             payloads[i] = PerfUtil.payloadTemplate(msgSize);
         }
         try (Poller poller = new Poller()) {
             for (int i = 0; i < n; i++) {
-                poller.add(spots.get(i), Integer.valueOf(i),
-                    PollEventFlag.POLLIN);
+                poller.add(spots.get(i), i, PollEventFlag.POLLIN);
             }
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
@@ -262,12 +261,14 @@ final class PerfMultiSpotSendSend {
                 }
                 Duration waitDuration = Duration.ofNanos(
                     Math.max(1L, remainingNs));
-                poller.wait(events, waitDuration);
-                for (PollEvent event : events) {
-                    if (!event.revents().contains(PollEventFlag.POLLIN)
-                        || !(event.tag() instanceof Integer index)) {
+                int count = poller.wait(events, waitDuration);
+                for (int i = 0; i < count; i++) {
+                    if (!events.hasEvent(i, PollEventFlag.POLLIN)) {
                         continue;
                     }
+                    int index = (int) events.slot(i);
+                    if (index < 0 || index >= activeSlots)
+                        continue;
                     drainClientReply(spots.get(index), msgSize, metrics,
                         waitingReply, index, activeEnd);
                 }

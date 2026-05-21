@@ -66,7 +66,8 @@ fn main() {
     let mut received = Received::empty();
 
     let poller = Poller::new().expect("poller");
-    poller.add_socket(&server, POLLIN).expect("poller add");
+    poller.add_socket(&server, POLLIN, 0).expect("poller add");
+    let mut events = vec![PollEvent::default(); 1];
 
     let mut record = |received: &Received, latency_stats: &mut common::LatencyStats| {
         let data = common::message_payload(received.parts());
@@ -81,8 +82,8 @@ fn main() {
     };
 
     'outer: loop {
-        match poller.wait(-1) {
-            Ok(Some(ev)) if ev.is_readable() => {}
+        match poller.wait(&mut events, -1) {
+            Ok(n) if n > 0 && events[0].is_readable() => {}
             Ok(_) => continue,
             Err(err) => panic!("poller wait failed: {err}"),
         }

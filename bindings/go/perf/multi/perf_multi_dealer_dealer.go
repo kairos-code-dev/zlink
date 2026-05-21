@@ -32,10 +32,11 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 	window := activeDeadline(cfg.duration)
 	poller := perfcommon.NewSocketPoller(server, perfcommon.ZLinkPollIn)
 	defer poller.Close()
+	events := make([]zlink.PollEvent, 1)
 
 	stopRequested := false
 	for !stopRequested {
-		event, pollErr := poller.Wait(time.Until(window.StopAt))
+		event, pollErr := perfcommon.WaitPollerOne(poller, events, time.Until(window.StopAt))
 		if pollErr != nil {
 			if perfcommon.IsTransient(pollErr) {
 				continue
@@ -45,7 +46,7 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 		if event == nil {
 			break
 		}
-		if event.Events&perfcommon.ZLinkPollIn == 0 {
+		if event.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
 		var received zlink.Received
@@ -122,6 +123,7 @@ func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 			// wait POLLOUT (-1), then retry. No immediate busy-retry.
 			poller := perfcommon.NewSocketPoller(socket, perfcommon.ZLinkPollOut)
 			defer poller.Close()
+			events := make([]zlink.PollEvent, 1)
 			payload := perfcommon.PreparePayload(cfg.msgSize)
 			for time.Now().Before(window.StopAt) {
 				perfcommon.StampWindowPayload(payload, window.ActiveAt)
@@ -134,7 +136,7 @@ func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 				}
 				// send_pending: block on POLLOUT until the socket is
 				// writable again (signal-driven, -1 wait).
-				if _, waitErr := poller.Wait(-1 * time.Millisecond); waitErr != nil {
+				if _, waitErr := perfcommon.WaitPollerOne(poller, events, -1*time.Millisecond); waitErr != nil {
 					if perfcommon.IsTransient(waitErr) {
 						continue
 					}

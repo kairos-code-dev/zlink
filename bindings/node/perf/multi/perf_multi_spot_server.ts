@@ -111,7 +111,8 @@ async function main() {
     node.bind(dataBindEndpoint);
     spot = node.createSpot();
     const spotPoller = new zlink.Poller();
-    spotPoller.add(spot, [POLLOUT], 'spot');
+    const spotEvents = new zlink.PollEvents(1);
+    spotPoller.add(spot, [POLLOUT], 0);
     applySocketPolicy(controlPub);
     applySocketPolicy(controlSub);
     applyAutoHwmMsgUnit(ctx, options.msgSize);
@@ -228,10 +229,11 @@ async function main() {
             nextPublishAtNs = process.hrtime.bigint() + latencyOnlyIntervalNs;
           }
         } else {
-          spotPoller.waitMany(1, -1);
+          spotPoller.wait(spotEvents, -1);
         }
       }
     } finally {
+      spotEvents.close();
       spotPoller.close();
     }
     while (!stopRequested) {

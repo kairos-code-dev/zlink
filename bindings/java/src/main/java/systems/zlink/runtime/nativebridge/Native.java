@@ -2785,8 +2785,8 @@ public final class Native {
 
     public static int pollerWait(MemorySegment poller, MemorySegment events,
                                  int count, int timeoutMs) {
-        if (events == null || events.address() == 0 || count <= 0)
-            return 0;
+        if (events == null || events.address() == 0)
+            throw new NullPointerException("events");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
             errorOut.set(ValueLayout.JAVA_INT, 0, 0);

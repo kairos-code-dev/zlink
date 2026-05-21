@@ -224,6 +224,7 @@ func waitSingleRouteReady(
 	}
 	poller := perfcommon.NewSocketPoller(receiver, perfcommon.ZLinkPollIn)
 	defer poller.Close()
+	events := make([]zlink.PollEvent, 1)
 	perfcommon.StampProbePayload(payload)
 	if os.Getenv("PERF_DEBUG") != "" {
 		fmt.Fprintf(os.Stderr, "%s ready probe send\n", name)
@@ -240,14 +241,14 @@ func waitSingleRouteReady(
 		if timeout <= 0 {
 			break
 		}
-		event, err := poller.Wait(timeout)
+		event, err := perfcommon.WaitPollerOne(poller, events, timeout)
 		if err != nil {
 			if os.Getenv("PERF_DEBUG") != "" {
 				fmt.Fprintf(os.Stderr, "%s ready probe poller wait error: %v\n", name, err)
 			}
 			perfcommon.Must(err)
 		}
-		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+		if event == nil || event.Revents&perfcommon.ZLinkPollIn == 0 {
 			if os.Getenv("PERF_DEBUG") != "" {
 				fmt.Fprintf(os.Stderr, "%s ready probe poller wait timeout\n", name)
 			}

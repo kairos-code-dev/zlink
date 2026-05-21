@@ -2,10 +2,6 @@
 
 package systems.zlink.contracts;
 
-
-import java.util.EnumSet;
-
-public record PollEvent(Socket socket, Integer fd, Timer timer, Object tag,
-                        EnumSet<PollEventFlag> events,
-                        EnumSet<PollEventFlag> revents) {
+public record PollEvent(PollSourceKind sourceKind, long slot, int revents,
+                        int fd) {
 }

@@ -6,7 +6,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, HEADER_SIZE, summarizeMetrics } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, waitForConnectionReady } = require('./perf_multi_runtime');
 const { isStopToken } = require('../perf_stop_token');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
@@ -45,6 +45,7 @@ async function main() {
                     activeStopNs,
                 });
                 const poller = new zlink.Poller();
+                const pollBuffer = new zlink.PollEvents(Math.max(1, subs.length));
                 try {
                     for (let i = 0; i < subs.length; i += 1) {
                         poller.add(subs[i], pollEvents(POLLIN), i);
@@ -61,13 +62,14 @@ async function main() {
                     // run_active_until_stop_token ~239-246).
                     let stopReceived = false;
                     while (!stopReceived) {
-                        const ready = poller.waitMany(poller.size, -1);
-                        if (!ready || ready.length === 0) {
+                        const readyCount = poller.wait(pollBuffer, -1);
+                        if (readyCount === 0) {
                             continue;
                         }
-                        for (const event of ready) {
-                            const index = event.tag ?? event.userData;
-                            if (!Number.isInteger(index)) {
+                        for (let offset = 0; offset < readyCount; offset += 1) {
+                            const index = pollBuffer.slot(offset);
+                            if (!Number.isInteger(index) || index < 0 || index >= subs.length
+                                || !pollEventHas({ revents: pollBuffer.revents(offset) }, POLLIN)) {
                                 continue;
                             }
                             const payload = payloadBuffers[index];
@@ -87,6 +89,7 @@ async function main() {
                     }
                 }
                 finally {
+                    pollBuffer.close();
                     poller.close();
                 }
                 break;

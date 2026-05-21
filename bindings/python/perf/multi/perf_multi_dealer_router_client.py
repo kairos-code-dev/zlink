@@ -62,10 +62,12 @@ def main(argv=None):
                 active_deadline = time.perf_counter() + args.duration
                 recv_storage = [zlink.Received() for _ in sockets]
                 with zlink.Poller() as poller:
-                    for sock in sockets:
+                    poll_events = zlink.PollEvents(max(1, len(sockets)))
+                    for index, sock in enumerate(sockets):
                         poller.add_socket(
                             sock,
                             zlink.PollEventFlag.POLLIN | zlink.PollEventFlag.POLLOUT,
+                            index,
                         )
                     # C run_echo_window_round_robin: loop until the steady
                     # deadline (no stop token). Each iteration sends pending
@@ -103,16 +105,15 @@ def main(argv=None):
                         # sockets registered for POLLIN|POLLOUT; -1 wait is
                         # signal-driven and the result identifies ready
                         # sources for dispatch.
-                        events = safe_poll(poller, -1)
-                        if not events:
+                        ready_count = safe_poll(poller, poll_events, -1)
+                        if not ready_count:
                             continue
-                        for event in events:
-                            current_sock = event.socket
-                            try:
-                                index = sockets.index(current_sock)
-                            except ValueError:
+                        for offset in range(ready_count):
+                            index = poll_events.slot(offset)
+                            if index < 0 or index >= len(sockets):
                                 continue
-                            ev = int(event.events)
+                            current_sock = sockets[index]
+                            ev = poll_events.revents(offset)
                             if (
                                 ev & int(zlink.PollEventFlag.POLLOUT)
                                 and not waiting_reply[index]

@@ -6,7 +6,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createRunId, decodeMetricHeader, currentEpochNs, HEADER_SIZE, summarizeMetrics } = require('../common/perf_metrics');
 const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, waitForConnectionReadyCount } = require('./perf_multi_runtime');
+const { POLLIN, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, waitPollerOne, waitForConnectionReadyCount } = require('./perf_multi_runtime');
 const { isStopToken } = require('../perf_stop_token');
 // MULTI_DEALER_DEALER server == RECEIVER / MEASURER.
 //
@@ -33,6 +33,7 @@ async function main() {
     const poller = new zlink.Poller();
     const payloadSize = Math.max(options.msgSize, HEADER_SIZE);
     const recvBuffer = Buffer.allocUnsafe(payloadSize);
+    let pollBuffer = null;
     let rl = null;
     let collector = null;
     try {
@@ -42,7 +43,8 @@ async function main() {
         applyAutoHwmMsgUnit(ctx, options.msgSize);
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(server, 'endpoint', options.transport, options.msgSize);
-        poller.add(server, pollEvents(POLLIN));
+        poller.add(server, pollEvents(POLLIN), 0);
+        pollBuffer = new zlink.PollEvents(1);
         const readyBarrier = waitForConnectionReadyCount(server, options.clients);
         console.log(`READY,${options.endpoint}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -70,7 +72,7 @@ async function main() {
             // wait; the duration deadline bounds the phase (C line 299 ignores
             // the stop count).
             while (currentEpochNs() < activeStopNs) {
-                const ready = poller.wait(-1);
+                const ready = waitPollerOne(poller, pollBuffer, -1);
                 if (!ready || !pollEventHas(ready, POLLIN)) {
                     continue;
                 }
@@ -109,7 +111,7 @@ async function main() {
                     idleDeadlineNs = currentEpochNs() + idleNs;
                     continue;
                 }
-                const ready = poller.wait(50);
+                const ready = waitPollerOne(poller, pollBuffer, 50);
                 if (ready && pollEventHas(ready, POLLIN)) {
                     idleDeadlineNs = currentEpochNs() + idleNs;
                 }
@@ -124,6 +126,7 @@ async function main() {
     }
     finally {
         rl?.close();
+        pollBuffer?.close();
         poller.close();
         server.close();
         ctx.close();

@@ -125,17 +125,21 @@ def main(argv=None):
         received_count = 0
         active_deadline = time.perf_counter() + args.duration
         with zlink.Poller() as poller:
+            poll_events = zlink.PollEvents(max(1, len(spots)))
             for index, spot in enumerate(spots):
-                poller.add_socket(spot, zlink.PollEventFlag.POLLIN, tag=index)
+                poller.add_socket(spot, zlink.PollEventFlag.POLLIN, index)
             while time.perf_counter() < active_deadline:
-                events = poller.poll(10)
-                if not events:
+                ready_count = poller.wait(poll_events, 10)
+                if not ready_count:
                     continue
                 now = time.perf_counter()
                 if now > active_deadline:
                     break
-                for event in events:
-                    current_spot = event.socket
+                for offset in range(ready_count):
+                    index = poll_events.slot(offset)
+                    if index < 0 or index >= len(spots):
+                        continue
+                    current_spot = spots[index]
                     while True:
                         message = zlink.TopicMessage()
                         try:

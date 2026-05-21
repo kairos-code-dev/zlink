@@ -15,6 +15,7 @@ const {
   applySocketPolicy,
   emitMultiSocketHwmDetail,
   pollEvents,
+  waitPollerOne,
   waitForConnectionReadyCount
 } = require('./perf_multi_runtime');
 
@@ -24,6 +25,7 @@ async function main() {
   applyContextPolicy(ctx, 'server', 'MULTI_ROUTER_ROUTER');
   const router = new zlink.RouterSocket(ctx);
   const poller = new zlink.Poller();
+  let pollBuffer = null;
   let rl = null;
   let stop = false;
 
@@ -37,7 +39,8 @@ async function main() {
     applyAutoHwmMsgUnit(ctx, options.msgSize);
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(router, 'endpoint', options.transport, options.msgSize);
-    poller.add(router, pollEvents(POLLIN));
+    poller.add(router, pollEvents(POLLIN), 0);
+    pollBuffer = new zlink.PollEvents(1);
     const readyBarrier = waitForConnectionReadyCount(router, options.clients);
     console.log(`READY,${options.endpoint}`);
 
@@ -55,7 +58,7 @@ async function main() {
 
     while (!stop) {
       poller.modify(router, pollEvents(POLLIN | POLLOUT));
-      const ready = poller.wait(-1);
+      const ready = waitPollerOne(poller, pollBuffer, -1);
       if (!ready) {
         continue;
       }
@@ -63,6 +66,7 @@ async function main() {
     }
   } finally {
     rl?.close();
+    pollBuffer?.close();
     poller.close();
     router.close();
     ctx.close();

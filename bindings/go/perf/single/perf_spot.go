@@ -194,6 +194,7 @@ func waitForSpotReady(
 	msgSize int,
 ) {
 	payload := perfcommon.PreparePayload(msgSize)
+	events := make([]zlink.PollEvent, 1)
 	deadline := time.Now().Add(perfcommon.SingleReadyTimeout())
 	for time.Now().Before(deadline) {
 		perfcommon.StampProbePayload(payload)
@@ -208,14 +209,14 @@ func waitForSpotReady(
 		if timeout <= 0 {
 			break
 		}
-		event, waitErr := poller.Wait(timeout)
+		event, waitErr := perfcommon.WaitPollerOne(poller, events, timeout)
 		if waitErr != nil {
 			if perfcommon.IsTransient(waitErr) {
 				continue
 			}
 			perfcommon.Must(waitErr)
 		}
-		if event == nil || event.Events&perfcommon.ZLinkPollIn == 0 {
+		if event == nil || event.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
 		if drainSingleSpotProbe(subscriber) {

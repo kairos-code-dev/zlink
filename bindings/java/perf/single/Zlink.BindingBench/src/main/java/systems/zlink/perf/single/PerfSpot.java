@@ -5,7 +5,7 @@ package systems.zlink.perf.single;
 import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Message;
-import systems.zlink.contracts.PollEvent;
+import systems.zlink.contracts.PollEvents;
 import systems.zlink.contracts.PollEventFlag;
 import systems.zlink.contracts.Poller;
 import systems.zlink.contracts.RecvFlags;
@@ -170,7 +170,7 @@ final class PerfSpot {
                                             CountDownLatch stopped,
                                             AtomicReference<Throwable> failure) {
         try (Poller poller = new Poller()) {
-            poller.add(subscriber, PollEventFlag.POLLIN);
+            poller.add(subscriber, 0L, PollEventFlag.POLLIN);
             while (true) {
                 waitFor(poller, PollEventFlag.POLLIN);
                 while (true) {
@@ -277,14 +277,12 @@ final class PerfSpot {
     }
 
     private static void waitFor(Poller poller, PollEventFlag expected) {
-        List<PollEvent> events = new ArrayList<>(1);
+        PollEvents events = new PollEvents(1);
         for (;;) {
-            poller.wait(events, Duration.ofMillis(-1));
-            for (PollEvent event : events) {
-                if (event.revents().contains(expected)) {
+            int count = poller.wait(events, Duration.ofMillis(-1));
+            for (int i = 0; i < count; i++)
+                if (events.hasEvent(i, expected))
                     return;
-                }
-            }
         }
     }
 

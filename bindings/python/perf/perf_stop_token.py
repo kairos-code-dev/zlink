@@ -4,7 +4,7 @@ PERF_SINGLE_TEST_POLICY § 1.4 and PERF_MULTI_TEST_POLICY § 1.3.1 require
 that sender / phase termination is signalled on the data wire by sending
 this literal token once, instead of using out-of-band ``threading.Event``
 flags combined with short polling cadences. Receivers wait with
-``poller.poll(-1)`` (signal-driven, indefinite) and exit when an inbound
+``poller.wait(events, -1)`` (signal-driven, indefinite) and exit when an inbound
 message matches ``STOP_TOKEN``.
 """
 

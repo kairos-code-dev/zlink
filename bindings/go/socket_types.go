@@ -625,18 +625,6 @@ func submitSinglePartFromCopy(part *Message, submit multipartSubmitFunc) error {
 	return nil
 }
 
-func submitOwnedSinglePart(part *Message, flags SendFlags, submit multipartSubmitFunc) (bool, error) {
-	if part == nil {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	if part.closed {
-		return false, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	err := submit(&part.msg, C.zlink_part_flag_t(C.ZLINK_PART_FINAL))
-	part.moved()
-	return submitBackpressureResult(err)
-}
-
 func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) {
 	parts := make([]*Message, 0, 1)
 	recvFlags := C.zlink_recv_flags_t(flags)
@@ -1311,21 +1299,6 @@ func (s *publishSocket) submitPublish(topic string, flags SendFlags, parts ...*M
 	return submitBackpressureResult(err)
 }
 
-func (s *publishSocket) PublishPart(topic string, message *Message, flags SendFlags) (bool, error) {
-	var ok bool
-	err := s.withCString(topic, func(cstr *C.char) error {
-		var submitErr error
-		ok, submitErr = submitOwnedSinglePart(message, flags, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-			return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
-		})
-		return submitErr
-	})
-	if err != nil {
-		return false, err
-	}
-	return ok, nil
-}
-
 type routedSocket struct {
 	*connectionSocket
 }
@@ -1658,12 +1631,6 @@ func (s *PairSocket) Send() SendOp {
 	})
 }
 
-func (s *PairSocket) SendPart(message *Message, flags SendFlags) (bool, error) {
-	return submitOwnedSinglePart(message, flags, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-		return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
-	})
-}
-
 type PubSocket struct {
 	*publishSocket
 }
@@ -1798,12 +1765,6 @@ func (s *DealerSocket) Send() SendOp {
 		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
 		})
-	})
-}
-
-func (s *DealerSocket) SendPart(message *Message, flags SendFlags) (bool, error) {
-	return submitOwnedSinglePart(message, flags, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-		return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
 	})
 }
 

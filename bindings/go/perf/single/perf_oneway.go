@@ -41,7 +41,7 @@ func runSingleOneWayWithTransient(
 		}
 	}
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
-	stats := perfcommon.NewSingleStats(cfg.duration, cfg.msgSize)
+	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	recvPart, err := zlink.NewMessageWithSize(0)
 	perfcommon.Must(err)

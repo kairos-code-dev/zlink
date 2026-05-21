@@ -53,7 +53,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	poller := perfcommon.NewSocketPoller(subscriber, perfcommon.ZLinkPollIn)
 	defer poller.Close()
 
-	stats := perfcommon.NewSingleStats(cfg.duration, cfg.msgSize)
+	stats := perfcommon.NewStats()
 	recvPart, err := zlink.NewMessageWithSize(0)
 	perfcommon.Must(err)
 	defer recvPart.Close()
@@ -89,7 +89,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		sent, err := publisher.PublishPart(singleSpotTopic, perfcommon.NewMessage(payload), zlink.SendFlagsDontWait)
+		sent, err := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				time.Sleep(time.Millisecond)

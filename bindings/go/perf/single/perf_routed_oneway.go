@@ -34,7 +34,7 @@ func runSingleRoutedOneWayWithTransient(
 		isTransient = perfcommon.IsTransient
 	}
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
-	stats := perfcommon.NewSingleStats(cfg.duration, cfg.msgSize)
+	stats := perfcommon.NewStats()
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 
 	senderDone := make(chan error, 1)

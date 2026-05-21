@@ -20,11 +20,10 @@ import (
 var endpointCounter uint64
 
 type Stats struct {
-	count        uint64
-	mu           sync.Mutex
-	latNs        []float64
-	sumNs        float64
-	singleWriter bool
+	count uint64
+	mu    sync.Mutex
+	latNs []float64
+	sumNs float64
 }
 
 type Result struct {
@@ -46,48 +45,11 @@ func NewStats() *Stats {
 	}
 }
 
-func NewSingleStats(duration time.Duration, msgSize int) *Stats {
-	return &Stats{
-		latNs:        make([]float64, 0, estimateSingleLatencyCapacity(duration, msgSize)),
-		singleWriter: true,
-	}
-}
-
-func estimateSingleLatencyCapacity(duration time.Duration, msgSize int) int {
-	seconds := duration.Seconds()
-	if seconds <= 0 {
-		seconds = 1
-	}
-	rate := 1500000.0
-	switch {
-	case msgSize >= 262144:
-		rate = 25000
-	case msgSize >= 131072:
-		rate = 50000
-	case msgSize >= 65536:
-		rate = 70000
-	case msgSize >= 1024:
-		rate = 900000
-	}
-	capacity := int(seconds*rate) + 1024
-	const maxCapacity = 8_000_000
-	if capacity > maxCapacity {
-		return maxCapacity
-	}
-	return capacity
-}
-
 func (s *Stats) Add(sentAt time.Time) {
 	s.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()))
 }
 
 func (s *Stats) AddLatencyNs(latencyNs float64) {
-	if s.singleWriter {
-		s.count++
-		s.sumNs += latencyNs
-		s.latNs = append(s.latNs, latencyNs)
-		return
-	}
 	atomic.AddUint64(&s.count, 1)
 	s.mu.Lock()
 	s.sumNs += latencyNs
@@ -98,22 +60,6 @@ func (s *Stats) AddLatencyNs(latencyNs float64) {
 }
 
 func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
-	if s.singleWriter {
-		sort.Float64s(s.latNs)
-		count := s.count
-		latencyMean := 0.0
-		if count > 0 {
-			latencyMean = s.sumNs / float64(count)
-		}
-		return Result{
-			Throughput:   float64(count) / duration.Seconds(),
-			Bandwidth:    float64(count*uint64(msgSize)) / duration.Seconds() / 1_000_000.0,
-			LatencyNs:    latencyMean,
-			LatencyP95Ns: percentile(s.latNs, 95),
-			LatencyP99Ns: percentile(s.latNs, 99),
-			Valid:        count > 0 && len(s.latNs) > 0,
-		}
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sort.Float64s(s.latNs)

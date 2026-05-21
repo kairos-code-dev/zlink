@@ -1033,21 +1033,6 @@ func (s *Spot) Publish(topic string) SendOp {
 	})
 }
 
-func (s *Spot) PublishPart(topic string, message *Message, flags SendFlags) (bool, error) {
-	var ok bool
-	err := s.core.withCString(topic, func(topicC *C.char) error {
-		var submitErr error
-		ok, submitErr = submitOwnedSinglePart(message, flags, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-			return submitErrorFromResult(C.zlink_spot_publish_part(s.raw(), topicC, part, C.zlink_send_flags_t(flags), partFlag))
-		})
-		return submitErr
-	})
-	if err != nil {
-		return false, err
-	}
-	return ok, nil
-}
-
 func (s *Spot) SendChannel(channelName string) SendOp {
 	return newSendBuilder(s, func(parts []*Message, flags SendFlags) error {
 		return s.core.withCString(channelName, func(cstr *C.char) error {

@@ -191,45 +191,6 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPairSendPartRoundTrip(t *testing.T) {
-	ctx := newContext(t)
-	defer ctx.Close()
-
-	endpoint := inprocEndpoint("pair-send-part")
-	server, _ := ctx.PairSocket()
-	client, _ := ctx.PairSocket()
-	defer server.Close()
-	defer client.Close()
-
-	if err := server.Bind(endpoint); err != nil {
-		t.Fatalf("Bind() error = %v", err)
-	}
-	if err := client.Connect(endpoint); err != nil {
-		t.Fatalf("Connect() error = %v", err)
-	}
-
-	msg := newMessage(t, "send-part")
-	if ok, err := client.SendPart(msg, zlink.SendFlagsNone); err != nil || !ok {
-		t.Fatalf("SendPart() ok=%v error=%v", ok, err)
-	}
-	if data := msg.Data(); data != nil {
-		t.Fatalf("SendPart should consume message, got %q", string(data))
-	}
-	var out zlink.Received
-	ok, err := server.Recv(&out, zlink.RecvFlagsNone)
-	if err != nil || !ok {
-		t.Fatalf("Recv() ok=%v error=%v", ok, err)
-	}
-	defer out.Close()
-	part, err := out.SinglePartOrError()
-	if err != nil {
-		t.Fatalf("SinglePartOrError() error=%v", err)
-	}
-	if got := string(part.Data()); got != "send-part" {
-		t.Fatalf("payload=%q", got)
-	}
-}
-
 func TestRouterRecvPartRoundTrip(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

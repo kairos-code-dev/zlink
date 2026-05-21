@@ -53,6 +53,7 @@ class poller_t
           _native_events (std::move (other._native_events)),
           _poll_items (std::move (other._poll_items)),
           _poll_item_indexes (std::move (other._poll_item_indexes)),
+          _poll_item_positions (std::move (other._poll_item_positions)),
           _socket_item_indexes (std::move (other._socket_item_indexes)),
           _socket_native_events_dirty (other._socket_native_events_dirty),
           _socket_poll_items_dirty (other._socket_poll_items_dirty),
@@ -60,6 +61,7 @@ class poller_t
     {
         other._poller = NULL;
         other._socket_item_indexes.clear ();
+        other._poll_item_positions.clear ();
         other._socket_native_events_dirty = false;
         other._socket_poll_items_dirty = true;
         other._non_socket_item_count = 0;
@@ -76,12 +78,14 @@ class poller_t
         _native_events = std::move (other._native_events);
         _poll_items = std::move (other._poll_items);
         _poll_item_indexes = std::move (other._poll_item_indexes);
+        _poll_item_positions = std::move (other._poll_item_positions);
         _socket_item_indexes = std::move (other._socket_item_indexes);
         _socket_native_events_dirty = other._socket_native_events_dirty;
         _socket_poll_items_dirty = other._socket_poll_items_dirty;
         _non_socket_item_count = other._non_socket_item_count;
         other._poller = NULL;
         other._socket_item_indexes.clear ();
+        other._poll_item_positions.clear ();
         other._socket_native_events_dirty = false;
         other._socket_poll_items_dirty = true;
         other._non_socket_item_count = 0;
@@ -141,9 +145,9 @@ class poller_t
         }
 
         if (is_socket_only ()) {
-            _items[static_cast<size_t> (index)]->events = events_;
             _socket_native_events_dirty = true;
-            _socket_poll_items_dirty = true;
+            update_socket_poll_item_if_clean (
+              static_cast<size_t> (index), events_);
             return;
         }
 
@@ -254,6 +258,7 @@ class poller_t
             _native_events.clear ();
             _poll_items.clear ();
             _poll_item_indexes.clear ();
+            _poll_item_positions.clear ();
             _socket_item_indexes.clear ();
             _socket_native_events_dirty = false;
             _socket_poll_items_dirty = true;
@@ -270,6 +275,7 @@ class poller_t
         _native_events.clear ();
         _poll_items.clear ();
         _poll_item_indexes.clear ();
+        _poll_item_positions.clear ();
         _socket_item_indexes.clear ();
         _socket_native_events_dirty = false;
         _socket_poll_items_dirty = true;
@@ -329,6 +335,7 @@ class poller_t
         _native_events.clear ();
         _poll_items.clear ();
         _poll_item_indexes.clear ();
+        _poll_item_positions.clear ();
         _socket_item_indexes.clear ();
         _socket_native_events_dirty = false;
         _socket_poll_items_dirty = true;
@@ -656,6 +663,7 @@ class poller_t
 
         _poll_items.clear ();
         _poll_item_indexes.clear ();
+        _poll_item_positions.assign (_items.size (), npos);
         _poll_items.reserve (_items.size ());
         _poll_item_indexes.reserve (_items.size ());
 
@@ -673,6 +681,7 @@ class poller_t
             poll_item.fd = 0;
             poll_item.events = events;
             poll_item.revents = 0;
+            _poll_item_positions[i] = _poll_items.size ();
             _poll_items.push_back (poll_item);
             _poll_item_indexes.push_back (i);
         }
@@ -680,15 +689,82 @@ class poller_t
         _socket_poll_items_dirty = false;
     }
 
+    void update_socket_poll_item_if_clean (size_t index_,
+                                           poll_event_flag_t events_)
+    {
+        item_t &item = *_items[index_];
+        if (_socket_poll_items_dirty) {
+            item.events = events_;
+            return;
+        }
+
+        if (_poll_item_positions.size () != _items.size ()) {
+            _socket_poll_items_dirty = true;
+            item.events = events_;
+            return;
+        }
+
+        const short old_events = static_cast<short> (item.events);
+        const short new_events = static_cast<short> (events_);
+        const bool old_active = old_events != 0 && !item.native_poller_only
+                                && item.source_kind == poll_source_kind_t::socket;
+        const bool new_active = new_events != 0 && !item.native_poller_only
+                                && item.source_kind == poll_source_kind_t::socket;
+
+        item.events = events_;
+
+        const size_t position = _poll_item_positions[index_];
+        if (old_active && position >= _poll_items.size ()) {
+            _socket_poll_items_dirty = true;
+            return;
+        }
+
+        if (old_active && new_active) {
+            _poll_items[position].events = new_events;
+            return;
+        }
+
+        if (old_active && !new_active) {
+            _poll_items.erase (_poll_items.begin () + position);
+            _poll_item_indexes.erase (_poll_item_indexes.begin () + position);
+            _poll_item_positions[index_] = npos;
+            for (size_t i = position; i < _poll_item_indexes.size (); ++i)
+                _poll_item_positions[_poll_item_indexes[i]] = i;
+            return;
+        }
+
+        if (!old_active && new_active) {
+            size_t insert_at = _poll_item_indexes.size ();
+            for (size_t i = 0; i < _poll_item_indexes.size (); ++i) {
+                if (_poll_item_indexes[i] > index_) {
+                    insert_at = i;
+                    break;
+                }
+            }
+            zlink_pollitem_t poll_item;
+            poll_item.socket = item.socket_handle;
+            poll_item.fd = 0;
+            poll_item.events = new_events;
+            poll_item.revents = 0;
+            _poll_items.insert (_poll_items.begin () + insert_at, poll_item);
+            _poll_item_indexes.insert (_poll_item_indexes.begin () + insert_at,
+                                       index_);
+            for (size_t i = insert_at; i < _poll_item_indexes.size (); ++i)
+                _poll_item_positions[_poll_item_indexes[i]] = i;
+        }
+    }
+
     void *_poller;
     std::vector<std::unique_ptr<item_t>> _items;
     std::vector<zlink_poller_event_t> _native_events;
     std::vector<zlink_pollitem_t> _poll_items;
     std::vector<size_t> _poll_item_indexes;
+    std::vector<size_t> _poll_item_positions;
     std::unordered_map<const void *, size_t> _socket_item_indexes;
     bool _socket_native_events_dirty;
     bool _socket_poll_items_dirty;
     size_t _non_socket_item_count;
+    static constexpr size_t npos = static_cast<size_t> (-1);
 };
 
 } // namespace zlink

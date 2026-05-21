@@ -2,24 +2,12 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, HEADER_SIZE, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, sendStopTokenOnce, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
 const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
-function tryBorrowedRoutingSend(socket, routingIdBytes, payload, length) {
-    const result = requireNative().socketSendRoutingBorrowedNoWaitResult(socket.nativeHandle(), routingIdBytes, payload, length | 0);
-    if (result === zlink.SubmitResult.Ok) {
-        return true;
-    }
-    if (result === zlink.SubmitResult.Backpressured ||
-        result === zlink.SubmitResult.NotConnected) {
-        return false;
-    }
-    throw new zlink.SubmitError(result, 0, 'borrowed routed send failed');
-}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -96,9 +84,7 @@ async function main() {
                     continue;
                 }
                 stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-                const sent = options.transport === 'tcp'
-                    ? tryBorrowedRoutingSend(routers[i], SERVER_ID, payloads[i], options.msgSize)
-                    : trySocketSend(routers[i], SERVER_ROUTING_ID, payloads[i]);
+                const sent = trySocketSend(routers[i], SERVER_ROUTING_ID, payloads[i]);
                 if (!sent) {
                     sendPending[i] = true;
                     continue;

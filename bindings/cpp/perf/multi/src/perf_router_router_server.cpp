@@ -7,7 +7,6 @@
 
 #include <atomic>
 #include <cerrno>
-#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <deque>
@@ -128,10 +127,7 @@ bool perf_router_router_server (const std::string &lib_name,
 
     bool failed = false;
     std::deque<pending_reply_t> pending_replies;
-    zlink::poller_t poller;
-    std::vector<zlink::poll_event_t> events (1);
     zlink::message_t part;
-    poller.add (server, zlink::poll_event_flag_t::pollin, 0);
 
     auto flush_pending = [&] () -> bool {
         while (!pending_replies.empty ()) {
@@ -160,49 +156,28 @@ bool perf_router_router_server (const std::string &lib_name,
         return true;
     };
 
-    int poll_event_mask =
-      static_cast<int> (zlink::poll_event_flag_t::pollin);
-    // Bounded poll wait so the stdin/signal stop flag is observed promptly
-    // without depending solely on a SIGTERM interrupting an infinite poll
-    // (the C reference uses -1 + SIGTERM; this is the equivalent outcome,
-    // just more responsive). 200ms keeps idle wakeups negligible.
-    const std::chrono::milliseconds poll_timeout (200);
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        const zlink::poll_event_flag_t mask =
-          pending_replies.empty ()
-            ? zlink::poll_event_flag_t::pollin
-            : static_cast<zlink::poll_event_flag_t> (
-                static_cast<int> (zlink::poll_event_flag_t::pollin)
-                | static_cast<int> (zlink::poll_event_flag_t::pollout));
-        const int next_mask = static_cast<int> (mask);
-        if (next_mask != poll_event_mask) {
-            poller.modify (server, mask);
-            poll_event_mask = next_mask;
-        }
-
-        try {
-            const size_t ready_count =
-              poller.wait (events.data (), events.size (), poll_timeout);
-            if (ready_count == 0)
-                continue;
-        }
-        catch (const zlink::zlink_error_t &err) {
-            const int err_no = err.internal_errno ();
+        zlink_pollitem_t item;
+        item.socket = zlink::detail::native_handle (server);
+        item.fd = 0;
+        item.events = ZLINK_POLLIN;
+        if (!pending_replies.empty ())
+            item.events = static_cast<short> (item.events | ZLINK_POLLOUT);
+        item.revents = 0;
+        const int poll_rc = zlink_poll (&item, 1, -1, NULL);
+        if (poll_rc < 0) {
+            const int err_no = zlink_errno ();
             if (err_no == EINTR)
                 continue;
             debug_log ("poll failed errno=" + std::to_string (err_no));
             failed = true;
             break;
         }
-        const auto revents_value = static_cast<int> (events[0].revents);
-        const bool readable = (revents_value
-                               & static_cast<int> (
-                                 zlink::poll_event_flag_t::pollin))
-                              != 0;
-        const bool writable = (revents_value
-                               & static_cast<int> (
-                                 zlink::poll_event_flag_t::pollout))
-                              != 0;
+        if (poll_rc == 0)
+            continue;
+
+        const bool readable = (item.revents & ZLINK_POLLIN) != 0;
+        const bool writable = (item.revents & ZLINK_POLLOUT) != 0;
 
         if (writable && !pending_replies.empty ()) {
             if (!flush_pending ()) {

@@ -5,8 +5,10 @@ package systems.zlink.contracts;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.spot.RequestOp;
 import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.SendSubmitOp;
 import systems.zlink.runtime.nativebridge.Native;
 import systems.zlink.runtime.nativebridge.NativeLayouts;
+import systems.zlink.runtime.nativebridge.MessagePartsBuffer;
 import systems.zlink.runtime.nativebridge.RequestReplySupport;
 import systems.zlink.runtime.nativebridge.RoutedRequestSupport;
 import systems.zlink.runtime.nativebridge.SocketOperations;
@@ -43,10 +45,7 @@ public final class DealerSocket extends Socket {
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
     public RoutingId routingId() { return super.routingId(); }
     public SendOp send() {
-        return SocketOperations.send(
-            (part, flags) -> super.send(part, SendFlag.fromValue(flags.value())),
-            (parts, flags) ->
-            super.send(parts, SendFlag.fromValue(flags.value())));
+        return new DealerSendBuilder();
     }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
@@ -115,6 +114,60 @@ public final class DealerSocket extends Socket {
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             } catch (Exception ignored) {
             }
+        }
+    }
+
+    private final class DealerSendBuilder implements SendOp, SendSubmitOp {
+        private Message singlePart;
+        private MessagePartsBuffer parts;
+        private int partCount;
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        @Override
+        public SendSubmitOp message(Message part) {
+            ensureNotSubmitted();
+            Objects.requireNonNull(part, "part");
+            if (partCount == 0) {
+                singlePart = part;
+            } else {
+                if (parts == null) {
+                    parts = new MessagePartsBuffer();
+                    parts.add(singlePart);
+                    singlePart = null;
+                }
+                parts.add(part);
+            }
+            partCount++;
+            return this;
+        }
+
+        @Override
+        public SendSubmitOp flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public boolean submit() {
+            markSubmitted();
+            SendFlag nativeFlags = SendFlag.fromValue(flags.value());
+            if (partCount == 1)
+                return DealerSocket.super.send(singlePart, nativeFlags);
+            return DealerSocket.super.send(parts.asList(), nativeFlags);
+        }
+
+        private void markSubmitted() {
+            ensureNotSubmitted();
+            if (partCount == 0)
+                throw new IllegalArgumentException("at least one message required");
+            submitted = true;
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
         }
     }
 

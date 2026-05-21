@@ -209,8 +209,8 @@ zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 zlink_connect(socket, "tcp://127.0.0.1:5555");
 
 /* 5. Poll and recv */
-void *poller = zlink_poller_new(ctx);
-zlink_poller_add(poller, socket, ZLINK_POLLIN, user_data);
+void *poller = zlink_poller_new();
+zlink_poller_add(poller, socket, user_data, ZLINK_POLLIN);
 
 while (running) {
     zlink_poller_event_t ev;
@@ -228,7 +228,7 @@ while (running) {
 }
 
 /* 6. Cleanup */
-zlink_poller_destroy(poller);
+zlink_poller_destroy(&poller);
 zlink_close(socket);
 zlink_ctx_term(ctx);
 ```

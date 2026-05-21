@@ -550,9 +550,9 @@ poller API 변경 후 수치가 좋아져도 C perf와 테스트 의미가 달�
 - [x] Phase 3. 바인딩 public API 반영
 - [x] Phase 4. 회귀 테스트 추가
 - [x] Phase 5. samples 반영
-- [ ] Phase 6. perf 반영
-- [ ] Phase 7. framework 반영
-- [ ] Phase 8. 문서 승격과 정리
+- [x] Phase 6. perf 반영
+- [x] Phase 7. framework 반영
+- [x] Phase 8. 문서 승격과 정리
 
 ## 8. 작업 중 주의 사항
 

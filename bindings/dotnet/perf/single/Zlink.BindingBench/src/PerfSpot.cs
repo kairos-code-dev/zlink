@@ -237,34 +237,9 @@ internal static class PerfSpot
 
         receiverThread.Start();
 
-        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: bound the publisher's
-        // in-flight (published-but-not-received) credit so the multi-hop
-        // SPOT pipeline holds a shallow standing set like C's. C's native
-        // subscriber consumes one-for-one so its pipeline never deep-fills;
-        // uncapped, the managed publisher floods the multi-hop pipeline far
-        // past C's working set and that depth never drains at steady-state
-        // rate-match, so each delivered message carries a much older
-        // timestamp and measured one-way latency explodes ~175x with no
-        // throughput gain. The credit reproduces C's implicit shallow-queue
-        // discipline; it does not change the measured timestamp (latency
-        // stays recv_now_ns - sent_ts_ns) and is orthogonal to the existing
-        // SPOT backpressure Thread.Sleep(1) pacing, which is retained.
-        long spotInflightCap = PerfEnv.ReadNonNegative(
-            "PERF_SINGLE_INFLIGHT_CAP", 256);
-
         ulong seq = 1;
-        long sent2 = 0;
         while (Stopwatch.GetTimestamp() < activeDeadlineTicks)
         {
-            if (spotInflightCap > 0)
-            {
-                while (sent2 - Interlocked.Read(ref activeReceived)
-                           >= spotInflightCap
-                       && Stopwatch.GetTimestamp() < activeDeadlineTicks)
-                {
-                    Thread.SpinWait(1);
-                }
-            }
             if (!PublishMetricPayload(publisher, payload, msgSize, seq,
                     ActivePhase, out bool sent))
             {
@@ -275,7 +250,6 @@ internal static class PerfSpot
             if (sent)
             {
                 seq++;
-                sent2++;
             }
             else
             {

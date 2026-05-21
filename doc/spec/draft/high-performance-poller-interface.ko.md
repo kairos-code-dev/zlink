@@ -1,9 +1,10 @@
 # 고성능 Poller 인터페이스 초안
 
-이 문서는 구현 전 초안이며 현재 공개 계약이 아니다.
-아래 내용은 모든 바인딩의 poller public API를 C poller의 고성능 의미에 맞추기
-위한 설계안이다. 정식 spec 문서와 공개 헤더, 언어별 회귀 테스트에 반영되기 전까지
-응용은 이 동작에 의존하면 안 된다.
+이 문서는 구현 전 초안으로 작성되었고, 고성능 poller public API 반영이 끝난 뒤
+정식 spec과 guide로 승격되었다. 현재 공개 계약은 `doc/spec/core/polling.ko.md`,
+`doc/spec/core/polling.md`, `doc/guide/06-monitoring.ko.md`,
+`doc/guide/06-monitoring.md` 및 각 바인딩의 public surface가 기준이다.
+이 문서는 설계 이력 보존용이며 새 계약의 단일 기준이 아니다.
 
 ## 배경
 

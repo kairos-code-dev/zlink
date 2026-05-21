@@ -22,6 +22,7 @@ import systems.zlink.contracts.SendFlags;
 import systems.zlink.contracts.SpotDispatchEvent;
 import systems.zlink.contracts.SubmitException;
 import systems.zlink.contracts.SubmitResult;
+import systems.zlink.contracts.Timer;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.contracts.service.spot.Spot;
@@ -39,6 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfMultiSpotReqRep {
+    private static final long ACTIVE_DEADLINE_SLOT = Integer.MAX_VALUE;
     private static final RoutingId SERVER_NODE_RID =
         routingId("SPOT-REQREP-SERVER-NODE");
     private static final RoutingId SERVER_SPOT_RID =
@@ -197,17 +199,19 @@ final class PerfMultiSpotReqRep {
             payloads[i] = PerfUtil.payloadTemplate(config.size());
             waitingReply[i] = new AtomicBoolean();
         }
-        Poller completionPoller = null;
-        try {
+        try (Poller completionPoller = new Poller();
+             Timer activeTimer = new Timer()) {
             PollEvents completionEvents = new PollEvents(
-                Math.max(1, activeClients));
-            completionPoller = new Poller();
+                Math.max(1, activeClients + 1));
             for (int i = 0; i < activeClients; i++) {
                 completionPoller.add(requesters.get(i), i,
                     PollEventFlag.POLLCOMPLETION);
             }
+            completionPoller.add(activeTimer, ACTIVE_DEADLINE_SLOT);
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
+            activeTimer.start(Duration.ofSeconds(
+                Math.max(1, config.durationSeconds())), 1);
             Duration requestTimeout = Duration.ofMillis(
                 Math.max(1, config.recvTimeoutMs()));
             RequestMetricsCallback[] callbacks =
@@ -240,19 +244,34 @@ final class PerfMultiSpotReqRep {
                     }
                 }
                 if (!sendProgress && hasWaitingReply) {
-                    completionPoller.wait(completionEvents, Duration.ofMillis(1));
-                } else {
-                    completionPoller.wait(completionEvents, Duration.ZERO);
+                    if (!waitForCompletion(completionPoller, completionEvents,
+                            activeTimer, true)) {
+                        break;
+                    }
+                } else if (sendProgress) {
+                    waitForCompletion(completionPoller, completionEvents,
+                        activeTimer, false);
                 }
             }
             waitForOutstandingCallbacks(waitingReply, failure,
-                completionPoller, completionEvents);
+                completionPoller, completionEvents, activeTimer);
         } finally {
-            if (completionPoller != null) {
-                completionPoller.close();
-            }
             Message.closeAll(List.of(payloads));
         }
+    }
+
+    private static boolean waitForCompletion(Poller poller, PollEvents events,
+                                             Timer activeTimer,
+                                             boolean block) {
+        int count = poller.wait(events,
+            block ? Duration.ofMillis(-1) : Duration.ZERO);
+        for (int i = 0; i < count; i++) {
+            if (events.slot(i) == ACTIVE_DEADLINE_SLOT) {
+                activeTimer.recv();
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean submitRequest(Spot requester,
@@ -326,8 +345,10 @@ final class PerfMultiSpotReqRep {
     private static void waitForOutstandingCallbacks(AtomicBoolean[] waitingReply,
                                                     AtomicReference<Throwable> failure,
                                                     Poller completionPoller,
-                                                    PollEvents completionEvents) {
+                                                    PollEvents completionEvents,
+                                                    Timer activeTimer) {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500);
+        activeTimer.start(Duration.ofMillis(500), 1);
         while (System.nanoTime() < deadline) {
             Throwable error = failure.get();
             if (error != null) {
@@ -344,7 +365,10 @@ final class PerfMultiSpotReqRep {
             if (!hasWaitingReply) {
                 return;
             }
-            completionPoller.wait(completionEvents, Duration.ofMillis(1));
+            if (!waitForCompletion(completionPoller, completionEvents,
+                    activeTimer, true)) {
+                return;
+            }
         }
     }
 

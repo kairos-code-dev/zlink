@@ -117,14 +117,8 @@ final class PerfMultiDealerDealer {
                     // counted window (matches C, which ignores stop_count).
                     continue;
                 }
-                PerfUtil.Header header = PerfUtil.decodeHeader(
-                    received.firstPart(), config.size());
-                if (header == null) {
-                    continue;
-                }
-                if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                    metrics.recordNanos(header.latencyNanos());
-                }
+                PerfUtil.recordActiveLatency(metrics, received.firstPart(),
+                    config.size(), false);
             }
         }
     }
@@ -299,38 +293,6 @@ final class PerfMultiDealerDealer {
             }
             throw ex;
         }
-    }
-
-    private static boolean trySend(DealerSocket socket, PerfSocketPollSet pollSet,
-                                   boolean[] pending, int index, Message payload,
-                                   int size, byte phase) {
-        PerfUtil.resetAndWritePayload(payload, size, phase, System.nanoTime());
-        try {
-            try (Message outbound = Message.copyOf(payload)) {
-                if (socket.send().message(outbound).flags(SendFlags.DONT_WAIT).submit()) {
-                    pending[index] = false;
-                    pollSet.setEvents(index);
-                    return true;
-                }
-            }
-        } catch (SubmitException ex) {
-            if (!isTransient(ex)) {
-                throw ex;
-            }
-            pending[index] = true;
-            pollSet.setEvents(index, PollEventFlag.POLLOUT);
-            return true;
-        } catch (ZlinkException ex) {
-            if (!isTransient(ex)) {
-                throw ex;
-            }
-            pending[index] = true;
-            pollSet.setEvents(index, PollEventFlag.POLLOUT);
-            return true;
-        }
-        pending[index] = true;
-        pollSet.setEvents(index, PollEventFlag.POLLOUT);
-        return true;
     }
 
     private static void sendStopTokenBlocking(DealerSocket socket) {

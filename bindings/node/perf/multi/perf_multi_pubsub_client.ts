@@ -7,7 +7,6 @@ const zlink = require('@zlink-systems/zlink');
 const {
   createMetricCollector,
   createRunId,
-  decodeMetricHeader,
   currentEpochNs,
   HEADER_SIZE,
   summarizeMetrics
@@ -24,7 +23,20 @@ const {
   pollEventHas,
   waitForConnectionReady
 } = require('./perf_multi_runtime');
-const { isStopToken } = require('../perf_stop_token');
+const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
+const TOPIC = 'bench';
+
+function isStopTokenPayload(buffer, size) {
+  if (size !== STOP_TOKEN_BYTES.length) {
+    return false;
+  }
+  for (let i = 0; i < STOP_TOKEN_BYTES.length; i += 1) {
+    if (buffer[i] !== STOP_TOKEN_BYTES[i]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -40,7 +52,7 @@ async function main() {
       const sub = new zlink.SubSocket(ctx);
       applySocketPolicy(sub);
       configureTlsClient(sub, options.transport);
-      sub.setSubscription('perf.topic');
+      sub.setSubscription(TOPIC);
       await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
       applyAutoHwmMsgUnit(ctx, options.msgSize);
       subs.push(sub);
@@ -57,7 +69,6 @@ async function main() {
       if (line === `START,${options.msgSize}`) {
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
-        const payloadSize = Math.max(options.msgSize, HEADER_SIZE);
         collector = createMetricCollector({
           runId: createRunId(1),
           msgSize: options.msgSize,
@@ -98,15 +109,11 @@ async function main() {
                 if (!received) {
                   break;
                 }
-                const body = payload.subarray(0, received.size);
-                if (isStopToken(body)) {
+                if (isStopTokenPayload(payload, received.size)) {
                   stopReceived = true;
                   continue;
                 }
-                collector.record(
-                  decodeMetricHeader(body.subarray(0, payloadSize)),
-                  currentEpochNs()
-                );
+                collector.recordPayload(payload, currentEpochNs());
               }
             }
           }

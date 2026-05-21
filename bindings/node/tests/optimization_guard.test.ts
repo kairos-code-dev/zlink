@@ -129,7 +129,56 @@ test('node multi pubsub client reuses caller-provided topic storage', () => {
   const body = fs.readFileSync(file, 'utf8');
 
   assert.match(body, /subscribePayloadInto/);
+  assert.match(body, /recordPayload/);
+  assert.match(body, /const TOPIC = 'bench'/);
   assert.doesNotMatch(body, /\bsubscribeNoWait\b/);
+});
+
+test('node multi publish helper stays on public publish operation', () => {
+  const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_runtime.ts');
+  const body = fs.readFileSync(file, 'utf8');
+  const helper = body.match(
+    /function trySocketPublish\(socket, topic, payload\) \{(?<body>[\s\S]*?)\n\}\n\nfunction sleepMs/
+  );
+
+  assert.ok(helper?.groups?.body, 'missing trySocketPublish helper');
+  assert.match(helper.groups.body, /socket\.publish\(topic\)/);
+  assert.doesNotMatch(helper.groups.body, /publishDirect/);
+  assert.doesNotMatch(helper.groups.body, /requireNative\(\)/);
+});
+
+test('node multi router-router client uses public routed send path', () => {
+  const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_router_router_client.ts');
+  const body = fs.readFileSync(file, 'utf8');
+
+  assert.match(body, /trySocketSend\(routers\[i\], SERVER_ROUTING_ID, payloads\[i\]\)/);
+  assert.doesNotMatch(body, /requireNative\(\)/);
+  assert.doesNotMatch(body, /socketSendRoutingBorrowedNoWaitResult/);
+});
+
+test('router payload recv maps nonblocking no-data without exceptions', () => {
+  const file = path.join(ROOT, 'native', 'src', 'addon_core.cc');
+  const body = fs.readFileSync(file, 'utf8');
+  const helper = body.match(
+    /napi_value router_recv_payload_into\(napi_env env, napi_callback_info info\)(?<body>[\s\S]*?)\n\}\n\nnapi_value monitor_open/
+  );
+
+  assert.ok(helper?.groups?.body, 'missing routerRecvPayloadInto helper');
+  assert.match(helper.groups.body, /flags & ZLINK_RECV_FLAGS_DONTWAIT/);
+  assert.match(helper.groups.body, /err == EAGAIN/);
+  assert.match(helper.groups.body, /napi_get_null/);
+});
+
+test('subscribe payload hot path skips null routing id property', () => {
+  const file = path.join(ROOT, 'native', 'src', 'addon_core.cc');
+  const body = fs.readFileSync(file, 'utf8');
+  const helper = body.match(
+    /napi_value socket_subscribe_payload_into\(napi_env env, napi_callback_info info\)(?<body>[\s\S]*?)\n\}\n\nnapi_value socket_subscribe_handler/
+  );
+
+  assert.ok(helper?.groups?.body, 'missing socketSubscribePayloadInto helper');
+  assert.match(helper.groups.body, /if \(routing_id\.size > 0\)/);
+  assert.doesNotMatch(helper.groups.body, /napi_get_null\(env, &rid_value\)/);
 });
 
 test('node multi orchestrator ignores closed child stdin pipes', () => {

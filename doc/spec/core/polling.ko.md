@@ -238,6 +238,8 @@ zlink_config_result_t zlink_poller_add (void *poller_, void *socket_, void *user
 `socket_`을 폴러에 추가하고 `events_`에 지정된 이벤트를 모니터링합니다.
 `user_data_` 포인터는 저장되어 이벤트 발생 시 `zlink_poller_event_t`에
 반환됩니다.
+라이브러리는 `user_data_` 값을 해석하지 않으며, 호출자는 이 값을 정수 slot 같은
+자체 dispatch key로 사용할 수 있습니다.
 
 **매개변수:**
 
@@ -417,6 +419,13 @@ int zlink_poller_wait (void *poller_,
 배열과 `n_events_ == 1`을 넘깁니다. 실패 시 `*error_out_`에 설정
 결과(`zlink_config_result_t`)가 기록되고, 성공 시 이벤트 수가 기본 반환값으로
 반환됩니다.
+
+성공 시 반환값 `n`은 이번 호출에서 `events_[0]`부터 실제 기록한 이벤트 개수입니다.
+반환값은 `n_events_`보다 클 수 없습니다. 호출자는 `events_[0:n]` 범위만 읽어야
+하며, 그 뒤 영역은 유효한 결과로 보장되지 않습니다. 폴러는 준비된 이벤트만 앞쪽에
+채우며, 전체 등록 소스 수나 전체 ready 수를 별도로 반환하지 않습니다.
+각 이벤트의 `user_data` 필드는 등록 시 전달한 값을 그대로 돌려주므로, 호출자는
+socket/timer 핸들 비교 대신 이 값을 빠른 dispatch key로 사용할 수 있습니다.
 
 `n_events_`는 1 이상이어야 하며, `events_`는 유효한 배열이어야 합니다.
 빈 배열은 성공한 타임아웃으로 처리하지 않고 invalid argument 오류로 처리합니다.

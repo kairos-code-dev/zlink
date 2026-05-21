@@ -1174,6 +1174,8 @@ public sealed partial class Spot : ISpot
         OnBorrowedBufferFree;
     private static readonly IntPtr BorrowedBufferFreePtr =
         Marshal.GetFunctionPointerForDelegate(BorrowedBufferFree);
+    [ThreadStatic]
+    private static RoutedPartRoutingIdCache? t_routedPartRoutingIdCache;
     private const int StackPublishPartLimit = 8;
     private const int TopicBufferSize = 256;
     private const int DontWaitFlag = 1;
@@ -1757,11 +1759,10 @@ public sealed partial class Spot : ISpot
         EnsureNotDisposed();
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
-        Message cloned = RequestReplySupport.CloneMessage(message);
         try
         {
-            int rc = SubmitClonedSpotSendSingle(ref nodeRid, ref spotRid,
-                cloned, (int)flags);
+            int rc = SubmitCopiedSpotSendSingle(ref nodeRid, ref spotRid,
+                message, (int)flags);
             if (rc == 0)
                 return true;
             throw ZlinkException.CreateSubmitException(NativeMethods.zlink_errno());
@@ -1770,13 +1771,7 @@ public sealed partial class Spot : ISpot
             && RequestReplySupport.MapSendNoWaitResult(ex)
                 == SendResult.Backpressured)
         {
-            cloned.Dispose();
             return false;
-        }
-        catch
-        {
-            cloned.Dispose();
-            throw;
         }
     }
 
@@ -1811,25 +1806,13 @@ public sealed partial class Spot : ISpot
         }
     }
 
-    private unsafe int SubmitClonedSpotSendSingle(
-        ref ZlinkRoutingId nodeRid, ref ZlinkRoutingId spotRid, Message cloned,
+    private unsafe int SubmitCopiedSpotSendSingle(
+        ref ZlinkRoutingId nodeRid, ref ZlinkRoutingId spotRid, Message source,
         int flags)
     {
-        if (cloned.TryPrepareBorrowedSend(out IntPtr data, out int length,
-                out IntPtr hint))
-        {
-            int borrowedRc = SubmitBorrowedSpotSendSingle(ref nodeRid,
-                ref spotRid, data, length, hint, flags);
-            if (borrowedRc == 0)
-                cloned.DetachAfterPreparedSend();
-            else
-                cloned.CancelBorrowedSendPrepare();
-            return borrowedRc;
-        }
-
         ZlinkMsg nativePart = default;
-        cloned.MoveTo(ref nativePart);
         bool submitted = false;
+        source.CopyTo(ref nativePart);
         try
         {
             int rc = NativeMethods.zlink_spot_send_spot_part(_handle,
@@ -1841,32 +1824,6 @@ public sealed partial class Spot : ISpot
         finally
         {
             if (!submitted)
-                NativeMethods.zlink_msg_close(ref nativePart);
-        }
-    }
-
-    private unsafe int SubmitBorrowedSpotSendSingle(
-        ref ZlinkRoutingId nodeRid, ref ZlinkRoutingId spotRid, IntPtr data,
-        int length, IntPtr hint, int flags)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        try
-        {
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            int rc = NativeMethods.zlink_spot_send_spot_part(_handle,
-                ref nodeRid, ref spotRid, ref nativePart, flags,
-                NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
-            return rc;
-        }
-        finally
-        {
-            if (initialized)
                 NativeMethods.zlink_msg_close(ref nativePart);
         }
     }
@@ -2016,9 +1973,10 @@ public sealed partial class Spot : ISpot
 
             initialized = false;
             result.ReplaceNativeOwned(ref part);
-            routingId = RoutingIdSnapshot.FromPointer(sourceRoutingId)
-                .ToRoutingId();
-            spotRid = RoutingIdSnapshot.FromPointer(sourceSpotRid).ToRoutingId();
+            RoutedPartRoutingIdCache cache =
+                t_routedPartRoutingIdCache ??= new RoutedPartRoutingIdCache();
+            routingId = cache.NodeFromPointer(sourceRoutingId);
+            spotRid = cache.SpotFromPointer(sourceSpotRid);
             requestSeq = nativeRequestSeq == 0 ? null : nativeRequestSeq;
             hasMore = more != 0;
             return true;
@@ -2028,6 +1986,59 @@ public sealed partial class Spot : ISpot
             if (initialized)
                 NativeMethods.zlink_msg_close(ref part);
             throw;
+        }
+    }
+
+    private sealed unsafe class RoutedPartRoutingIdCache
+    {
+        private byte[]? _nodeBytes;
+        private RoutingId? _nodeRoutingId;
+        private byte[]? _spotBytes;
+        private RoutingId? _spotRoutingId;
+
+        internal RoutingId? NodeFromPointer(IntPtr routingIdPtr)
+            => FromPointer(routingIdPtr, ref _nodeBytes, ref _nodeRoutingId);
+
+        internal RoutingId? SpotFromPointer(IntPtr routingIdPtr)
+            => FromPointer(routingIdPtr, ref _spotBytes, ref _spotRoutingId);
+
+        private static RoutingId? FromPointer(IntPtr routingIdPtr,
+            ref byte[]? cachedBytes, ref RoutingId? cachedRoutingId)
+        {
+            if (routingIdPtr == IntPtr.Zero)
+                return null;
+
+            ref ZlinkRoutingId native =
+                ref *(ZlinkRoutingId*)routingIdPtr;
+            int size = native.Size;
+            if (size <= 0)
+                return null;
+
+            fixed (byte* source = native.Data)
+            {
+                byte[]? cached = cachedBytes;
+                if (cached != null && cached.Length == size)
+                {
+                    bool same = true;
+                    for (int i = 0; i < size; i++)
+                    {
+                        if (cached[i] != source[i])
+                        {
+                            same = false;
+                            break;
+                        }
+                    }
+                    if (same)
+                        return cachedRoutingId;
+                }
+
+                byte[] bytes = new byte[size];
+                new ReadOnlySpan<byte>(source, size).CopyTo(bytes);
+                RoutingId? routingId = RoutingId.FromOwnedOptionalBytes(bytes);
+                cachedBytes = bytes;
+                cachedRoutingId = routingId;
+                return routingId;
+            }
         }
     }
 
@@ -2514,13 +2525,6 @@ public sealed partial class Spot : ISpot
             state = new SpotRequestCallbackState(callback,
                 RequestProgressPump.AttachSpotCallback(_handle));
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
-            if (timeoutMs > 0)
-            {
-                state.SetTimeoutTimer(new System.Threading.Timer(static userdata =>
-                {
-                    SpotRequestCallbackState.TimeoutFromUserData(userdata);
-                }, handle, (int)timeoutMs, Timeout.Infinite));
-            }
 
             for (int i = 0; i < cloned.Length; i++)
             {
@@ -2650,7 +2654,6 @@ public sealed partial class Spot : ISpot
     {
         private readonly Action<RequestResult, IReadOnlyList<Message>> _callback;
         private readonly RequestProgressPump.ProgressLease _progress;
-        private System.Threading.Timer? _timeoutTimer;
         private int _completed;
 
         internal SpotRequestCallbackState(
@@ -2669,11 +2672,6 @@ public sealed partial class Spot : ISpot
             return true;
         }
 
-        internal void SetTimeoutTimer(System.Threading.Timer timeoutTimer)
-        {
-            _timeoutTimer = timeoutTimer;
-        }
-
         internal void Invoke(RequestResult result,
             IReadOnlyList<Message> payload)
         {
@@ -2689,26 +2687,7 @@ public sealed partial class Spot : ISpot
 
         internal void DisposeProgress()
         {
-            _timeoutTimer?.Dispose();
             _progress.Dispose();
-        }
-
-        internal static void TimeoutFromUserData(object? userdata)
-        {
-            if (userdata is not GCHandle handle || !handle.IsAllocated)
-                return;
-            SpotRequestCallbackState? state;
-            try
-            {
-                state = handle.Target as SpotRequestCallbackState;
-            }
-            catch (InvalidOperationException)
-            {
-                return;
-            }
-            if (state == null || !state.TryStartCompletion())
-                return;
-            state.Invoke(RequestResult.TimedOut, Array.Empty<Message>());
         }
     }
 

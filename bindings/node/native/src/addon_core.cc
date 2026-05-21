@@ -4013,8 +4013,17 @@ napi_value socket_try_publish(napi_env env, napi_callback_info info)
     if (is_array) {
         if (!build_msg_vector(env, argv[2], &parts))
             return NULL;
-    } else if ((napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf)
-               || payload_type == napi_object) {
+    } else if (napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf) {
+        void *data = NULL;
+        size_t len = 0;
+        if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
+            napi_throw_type_error(env, NULL, "publish buffer invalid");
+            return NULL;
+        }
+        if (!init_msg_borrowed_from_bytes(&single_part, data, len))
+            return throw_last_error(env, "publishNoWaitResult failed");
+        use_single_part = true;
+    } else if (payload_type == napi_object) {
         if (!init_msg_from_value(env, argv[2], &single_part))
             return throw_last_error(env, "publishNoWaitResult failed");
         use_single_part = true;
@@ -4450,6 +4459,11 @@ napi_value socket_subscribe_payload_into(napi_env env, napi_callback_info info)
             break;
         const int err = zlink_errno();
         zlink_msg_close(&part);
+        if (err == EAGAIN || err == EINTR) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
         if (err == EMSGSIZE) {
             topic.assign(topic_len > 0 ? topic_len : 1, '\0');
             continue;
@@ -4479,13 +4493,10 @@ napi_value socket_subscribe_payload_into(napi_env env, napi_callback_info info)
     napi_value topic_value;
     napi_create_string_utf8(env, topic.data(), topic_len, &topic_value);
     napi_set_named_property(env, out, "topic", topic_value);
-    napi_value rid_value;
     if (routing_id.size > 0) {
-        rid_value = create_routing_id_value(env, routing_id);
-    } else {
-        napi_get_null(env, &rid_value);
+        napi_value rid_value = create_routing_id_value(env, routing_id);
+        napi_set_named_property(env, out, "routingId", rid_value);
     }
-    napi_set_named_property(env, out, "routingId", rid_value);
     return out;
 }
 
@@ -5542,7 +5553,14 @@ napi_value router_recv_payload_into(napi_env env, napi_callback_info info)
       router, &peer_rid, &spot_rid, &request_seq, &part, &has_more,
       static_cast<zlink_recv_flags_t>(flags));
     if (rc != ZLINK_RECV_OK) {
+        const int err = zlink_errno();
         zlink_msg_close(&part);
+        if ((flags & ZLINK_RECV_FLAGS_DONTWAIT) != 0
+            && (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)) {
+            napi_value out;
+            napi_get_null(env, &out);
+            return out;
+        }
         return throw_last_error(env, "routerRecvPayloadInto failed");
     }
     if (!peer_rid || peer_rid->size == 0 || !spot_rid || spot_rid->size != 0

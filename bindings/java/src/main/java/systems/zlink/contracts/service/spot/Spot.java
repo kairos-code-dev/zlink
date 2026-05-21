@@ -145,6 +145,8 @@ public final class Spot implements AutoCloseable {
         final MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
         byte[] cachedTopicBytes;
         String cachedTopicString = "";
+        byte[] cachedRoutingIdBytes;
+        RoutingId cachedRoutingId;
     }
 
     private static final class SpotSendScratch {
@@ -821,7 +823,7 @@ public final class Spot implements AutoCloseable {
                         result.adoptFrom(fresh.get());
                         return true;
                     }
-                    RoutingId routingId = readRoutingIdPtr(
+                    RoutingId routingId = cachedSpotRoutingId(scratch,
                       scratch.ridOut.get(ValueLayout.ADDRESS, 0));
                     int topicLength = normalizeTopicLength(scratch.topicOut,
                       TOPIC_CAPACITY,
@@ -876,6 +878,41 @@ public final class Spot implements AutoCloseable {
         String decoded = new String(raw, StandardCharsets.UTF_8);
         scratch.cachedTopicBytes = raw;
         scratch.cachedTopicString = decoded;
+        return decoded;
+    }
+
+    private static RoutingId cachedSpotRoutingId(SpotRecvScratch scratch,
+                                                 MemorySegment nativeRidPtr) {
+        if (nativeRidPtr == null || nativeRidPtr.address() == 0) {
+            return null;
+        }
+        MemorySegment routingId = nativeRidPtr.reinterpret(
+          NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        int size = routingId.get(ValueLayout.JAVA_BYTE,
+          NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (size == 0) {
+            return null;
+        }
+        byte[] cached = scratch.cachedRoutingIdBytes;
+        if (cached != null && cached.length == size) {
+            boolean same = true;
+            for (int i = 0; i < size; i++) {
+                if (cached[i] != routingId.get(ValueLayout.JAVA_BYTE,
+                        NativeLayouts.ROUTING_ID_DATA_OFFSET + i)) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) {
+                return scratch.cachedRoutingId;
+            }
+        }
+        byte[] value = new byte[size];
+        MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
+          MemorySegment.ofArray(value), 0, size);
+        RoutingId decoded = InternalAccess.routingIdFromTrusted(value);
+        scratch.cachedRoutingIdBytes = value;
+        scratch.cachedRoutingId = decoded;
         return decoded;
     }
 

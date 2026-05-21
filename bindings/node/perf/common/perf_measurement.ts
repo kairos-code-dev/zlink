@@ -267,6 +267,33 @@ function createMetricCollector(config) {
   let closed = false;
 
   return {
+    recordPayload(buffer, receivedAtNs) {
+      if (closed || !Buffer.isBuffer(buffer) || buffer.length < HEADER_SIZE) {
+        return;
+      }
+      if (buffer.readUInt32LE(0) !== METRIC_MAGIC) {
+        return;
+      }
+      if ((buffer.readUInt32LE(4) >>> 0) !== runId
+          || (buffer.readUInt32LE(9) >>> 0) !== msgSize) {
+        rejected += 1;
+        return;
+      }
+      if (buffer.readUInt8(8) !== 1) {
+        return;
+      }
+      const recvTsNs = BigInt(receivedAtNs);
+      if (recvTsNs < activeStartNs || recvTsNs > activeStopNs) {
+        return;
+      }
+      const sentTsNs = buffer.readBigInt64LE(21);
+      if (recvTsNs < sentTsNs) {
+        rejected += 1;
+        return;
+      }
+      accepted += 1;
+      latenciesNs.push(Number((recvTsNs - sentTsNs) / rttDivisor));
+    },
     record(header, receivedAtNs) {
       if (!header || closed) {
         return;

@@ -633,9 +633,6 @@ async function sendStopTokenOnce(_socket, sendFn) {
 
 function trySocketPublish(socket, topic, payload) {
   try {
-    if (typeof socket.publishDirect === 'function') {
-      return socket.publishDirect(topic, payload, zlink.SendFlags.DontWait);
-    }
     let op = socket.publish(topic);
     const parts = Array.isArray(payload) ? payload : [payload];
     for (const part of parts) {

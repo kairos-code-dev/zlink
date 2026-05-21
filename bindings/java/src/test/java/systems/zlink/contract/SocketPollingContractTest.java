@@ -208,6 +208,34 @@ public class SocketPollingContractTest {
     }
 
     @Test
+    public void pollerTracksSpotPublishReadinessThroughPublicSpotApi() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             SpotNode publisherNode = new SpotNode(ctx);
+             SpotNode subscriberNode = new SpotNode(ctx);
+             Spot publisher = publisherNode.createSpot();
+             Spot subscriber = subscriberNode.createSpot();
+             Poller poller = new Poller()) {
+            String endpoint = TestSupport.tcpEndpoint();
+            publisherNode.bind(endpoint);
+            subscriberNode.connectPeer(endpoint);
+            subscriber.setSubscription("pollout-topic");
+            TestSupport.awaitCondition(() -> subscriberNode.statusSnapshot()
+                .connectedPeerCount() > 0);
+
+            poller.add(publisher, 51L, PollEventFlag.POLLOUT);
+
+            PollEvents events = new PollEvents(1);
+            int count = poller.wait(events,
+                Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS));
+            assertEquals(1, count);
+            assertEquals(51L, events.slot(0));
+            assertTrue(events.hasEvent(0, PollEventFlag.POLLOUT));
+        }
+    }
+
+    @Test
     public void pollerSurfaceDoesNotExposeAllocationWaitOrObjectTags()
         throws Exception {
         assertFalse(hasPublicMethod(Poller.class, "wait", Duration.class));

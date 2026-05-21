@@ -19,6 +19,7 @@ const {
   trySocketPublish
 } = require('./perf_multi_runtime');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
+const TOPIC = 'bench';
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -64,7 +65,7 @@ async function main() {
       // its own START (and the deadline would never be re-evaluated).
       while (process.hrtime.bigint() < activeStopNs) {
         stampPayload(payload, { phase: 1, runId, msgSize: options.msgSize, seq });
-        if (trySocketPublish(pub, 'perf.topic', payload)) {
+        if (trySocketPublish(pub, TOPIC, payload)) {
           seq += 1n;
         }
       }
@@ -77,7 +78,7 @@ async function main() {
       // in-flight payloads naturally precede the token, which wakes the
       // subscriber's `-1` poller wait. Mirrors the already-fixed cpp
       // perf_pubsub_server.cpp publish_stop_token.
-      while (!trySocketPublish(pub, 'perf.topic', STOP_TOKEN_BYTES)) {
+      while (!trySocketPublish(pub, TOPIC, STOP_TOKEN_BYTES)) {
         // tight retry through transient backpressure (matches C for(;;))
       }
       // Keep the PUB socket open until the runner sends STOP (after the

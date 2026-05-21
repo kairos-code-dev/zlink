@@ -8,6 +8,9 @@ import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Context;
 import systems.zlink.contracts.Message;
+import systems.zlink.contracts.PollEventFlag;
+import systems.zlink.contracts.PollEvents;
+import systems.zlink.contracts.Poller;
 import systems.zlink.contracts.RecvException;
 import systems.zlink.contracts.RecvFlags;
 import systems.zlink.contracts.RecvResult;
@@ -15,6 +18,7 @@ import systems.zlink.contracts.RoutingId;
 import systems.zlink.contracts.SendFlags;
 import systems.zlink.contracts.SubmitException;
 import systems.zlink.contracts.SubmitResult;
+import systems.zlink.contracts.Timer;
 import systems.zlink.contracts.TopicMessage;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
@@ -35,6 +39,8 @@ import java.util.concurrent.atomic.AtomicReference;
 final class PerfMultiSpot {
     private static final String TOPIC = "bench";
     private static final String CHANNEL_NAME = "bench-svc";
+    private static final long PUBLISHER_SLOT = 0L;
+    private static final long ACTIVE_DEADLINE_SLOT = 1L;
 
     private PerfMultiSpot() {
     }
@@ -60,7 +66,15 @@ final class PerfMultiSpot {
             long latencyOnlyIntervalNanos = Math.max(1,
                 latencyOnlyIntervalMicros()) * 1_000L;
             long nextSendNanos = System.nanoTime();
-            try (Message active = PerfUtil.payloadTemplate(config.size())) {
+            PollEvents publishEvents = new PollEvents(2);
+            try (Message active = PerfUtil.payloadTemplate(config.size());
+                 Poller publishPoller = new Poller();
+                 Timer activeTimer = new Timer()) {
+                publishPoller.add(publisher, PUBLISHER_SLOT,
+                    PollEventFlag.POLLOUT);
+                publishPoller.add(activeTimer, ACTIVE_DEADLINE_SLOT);
+                activeTimer.start(Duration.ofNanos(Math.max(1L,
+                    activeEnd - System.nanoTime())), 1L);
                 while (System.nanoTime() < activeEnd) {
                     if (latencyOnly) {
                         long now = System.nanoTime();
@@ -72,7 +86,7 @@ final class PerfMultiSpot {
                     PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     if (!publishWhenWritableUntil(publisher, active,
-                            activeEnd, config.transport())) {
+                            publishPoller, publishEvents, activeTimer)) {
                         break;
                     }
                     if (latencyOnly) {
@@ -157,30 +171,28 @@ final class PerfMultiSpot {
     }
 
     // C parity: perf_multi_spot_server.cpp try_publish_locked +
-    // wait_for_spot_send_progress. C publishes ZLINK_DONTWAIT and, on
-    // EAGAIN, pushes the SAME message through (a SEND_FLAGS_NONE submit
-    // bounded by the socket SNDTIMEO, with a POLLOUT settle) - it never
-    // drops. SpotNode exposes no SNDTIMEO, so an unbounded blocking submit
-    // would hang the server on persistent tls/wss backpressure
-    // (server_exit_124 -> status=partial). Use the converged bounded
-    // equivalent (PerfSpot.publishWhenWritableUntil): re-stamped DONTWAIT
-    // retry with a sub-millisecond park, never dropping, never blocking
-    // unbounded, terminated by the active deadline.
+    // wait_for_spot_send_progress. The active publisher keeps the same
+    // one-message-at-a-time, no-drop meaning, but uses the binding public
+    // Poller on the Spot POLLOUT plane plus an active-deadline Timer instead
+    // of timed sleep/backoff.
     private static boolean publishWhenWritableUntil(Spot publisher,
                                                     Message message,
-                                                    long deadlineNanos,
-                                                    String transport) {
-        while (System.nanoTime() < deadlineNanos) {
+                                                    Poller poller,
+                                                    PollEvents events,
+                                                    Timer activeTimer) {
+        while (true) {
             if (tryPublish(publisher, message, SendFlags.DONT_WAIT)) {
                 return true;
             }
-            if ("tcp".equals(transport)
-                && tryPublish(publisher, message, SendFlags.NONE)) {
-                return true;
+            int count = poller.wait(events, Duration.ofMillis(-1L));
+            for (int i = 0; i < count; i++) {
+                long slot = events.slot(i);
+                if (slot == ACTIVE_DEADLINE_SLOT) {
+                    activeTimer.recv();
+                    return false;
+                }
             }
-            java.util.concurrent.locks.LockSupport.parkNanos(200_000L);
         }
-        return false;
     }
 
     private static boolean tryPublish(Spot publisher, Message message,
@@ -282,12 +294,9 @@ final class PerfMultiSpot {
                                 return;
                             }
                             if (!progressed) {
-                                // C: perf_socket_poll(NULL,0,1) when idle.
-                                Thread.sleep(0, 200_000);
+                                Thread.onSpinWait();
                             }
                         }
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
                     } catch (Throwable ex) {
                         failure.compareAndSet(null, ex);
                     } finally {

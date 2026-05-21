@@ -716,7 +716,7 @@ internal static class PerfMultiSpotReqRep
             if (config.Mode == SpotEchoMode.SendSend)
             {
                 sendPoller.Add(slots[i].Requester,
-                    PollEventFlags.PollIn | PollEventFlags.PollOut, (nuint)i);
+                    PollEventFlags.PollIn, (nuint)i);
                 slots[i].PollRegistered = true;
             }
             else
@@ -917,8 +917,13 @@ internal static class PerfMultiSpotReqRep
             {
                 // Keep the wait signal-driven: socket readiness, callback wake,
                 // or the active deadline timer must wake the poller.
-                int written = poller.Wait(events, Timeout.InfiniteTimeSpan);
+                TimeSpan waitTimeout = config.Mode == SpotEchoMode.SendSend
+                    ? TimeSpan.FromMilliseconds(50)
+                    : Timeout.InfiniteTimeSpan;
+                int written = poller.Wait(events, waitTimeout);
                 if (written == 0 && config.Mode == SpotEchoMode.RequestReply)
+                    return true;
+                if (written == 0 && config.Mode == SpotEchoMode.SendSend)
                     return true;
                 bool progressed = false;
                 for (int i = 0; i < written; i++)

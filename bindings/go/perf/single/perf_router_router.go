@@ -62,10 +62,10 @@ func runRouterRouter(cfg benchmarkConfig) perfcommon.Result {
 	debugf("router/router wait route ready")
 	targetID := waitRouterRouterRouteReady(server, client, serverID)
 
-	result := runSingleRoutedOneWayWithTransient(cfg, server, func(payload []byte) (bool, error) {
-		return client.SendTo(targetID).Message(perfcommon.NewMessage(payload)).Submit(nil)
-	}, func(payload []byte) error {
-		_, err := client.SendTo(targetID).Message(perfcommon.NewMessage(payload)).Submit(nil)
+	result := runSingleRoutedOneWayWithTransient(cfg, server, func(message *zlink.Message) (bool, error) {
+		return client.SendTo(targetID).Message(message).Submit(nil)
+	}, func(message *zlink.Message) error {
+		_, err := client.SendTo(targetID).Message(message).Submit(nil)
 		return err
 	}, isRouterRouterSendTransient)
 	perfcommon.PrintSingleAutoHWMDetail(serverMon, cfg.pattern, cfg.transport, "receiver", zlink.SocketTypeRouter, cfg.msgSize)
@@ -106,7 +106,9 @@ func waitRouterRouterRouteReady(
 	clientEvents := make([]zlink.PollEvent, 1)
 
 	for time.Now().Before(stopAt) {
-		_, sendErr := client.SendTo(serverID).Message(perfcommon.NewMessage(ping)).Submit(nil)
+		_, sendErr := perfcommon.SubmitMessage(perfcommon.NewMessage(ping), func(message *zlink.Message) (bool, error) {
+			return client.SendTo(serverID).Message(message).Submit(nil)
+		})
 		if sendErr != nil && !perfcommon.IsTransient(sendErr) {
 			perfcommon.Must(sendErr)
 		}
@@ -142,7 +144,9 @@ func waitRouterRouterRouteReady(
 		if clientID.Size() == 0 {
 			continue
 		}
-		_, err := server.SendTo(clientID).Message(perfcommon.NewMessage(pong)).Submit(nil)
+		_, err := perfcommon.SubmitMessage(perfcommon.NewMessage(pong), func(message *zlink.Message) (bool, error) {
+			return server.SendTo(clientID).Message(message).Submit(nil)
+		})
 		perfcommon.Must(err)
 		clientEvent, clientWaitErr := perfcommon.WaitPollerOne(clientPoller, clientEvents, time.Until(stopAt))
 		if clientWaitErr != nil {

@@ -17,8 +17,8 @@ type routedRecvSocket interface {
 func runSingleRoutedOneWay(
 	cfg benchmarkConfig,
 	receiver routedRecvSocket,
-	sendActive func([]byte) (bool, error),
-	sendStop func([]byte) error,
+	sendActive func(*zlink.Message) (bool, error),
+	sendStop func(*zlink.Message) error,
 ) perfcommon.Result {
 	return runSingleRoutedOneWayWithTransient(cfg, receiver, sendActive, sendStop, perfcommon.IsTransient)
 }
@@ -26,8 +26,8 @@ func runSingleRoutedOneWay(
 func runSingleRoutedOneWayWithTransient(
 	cfg benchmarkConfig,
 	receiver routedRecvSocket,
-	sendActive func([]byte) (bool, error),
-	sendStop func([]byte) error,
+	sendActive func(*zlink.Message) (bool, error),
+	sendStop func(*zlink.Message) error,
 	isTransient func(error) bool,
 ) perfcommon.Result {
 	if isTransient == nil {
@@ -35,14 +35,14 @@ func runSingleRoutedOneWayWithTransient(
 	}
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	stats := perfcommon.NewStats()
-	payload := perfcommon.PreparePayload(cfg.msgSize)
 
 	senderDone := make(chan error, 1)
 	go func() {
 		for time.Now().Before(window.StopAt) {
-			perfcommon.StampWindowPayload(payload, window.ActiveAt)
-			sent, err := sendActive(payload)
+			message := perfcommon.NewWindowMessage(cfg.msgSize, window.ActiveAt)
+			sent, err := sendActive(message)
 			if err != nil {
+				_ = message.Close()
 				if isTransient(err) {
 					continue
 				}
@@ -53,6 +53,7 @@ func runSingleRoutedOneWayWithTransient(
 				return
 			}
 			if !sent {
+				_ = message.Close()
 				continue
 			}
 		}

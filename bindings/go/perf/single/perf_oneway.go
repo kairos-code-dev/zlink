@@ -18,8 +18,8 @@ type recvSocket interface {
 func runSingleOneWay(
 	cfg benchmarkConfig,
 	receiver recvSocket,
-	sendActive func([]byte) (bool, error),
-	sendStop func([]byte) error,
+	sendActive func(*zlink.Message) (bool, error),
+	sendStop func(*zlink.Message) error,
 ) perfcommon.Result {
 	return runSingleOneWayWithTransient(cfg, receiver, sendActive, sendStop, perfcommon.IsTransient)
 }
@@ -27,22 +27,21 @@ func runSingleOneWay(
 func runSingleOneWayWithTransient(
 	cfg benchmarkConfig,
 	receiver recvSocket,
-	sendActive func([]byte) (bool, error),
-	sendStop func([]byte) error,
+	sendActive func(*zlink.Message) (bool, error),
+	sendStop func(*zlink.Message) error,
 	isTransient func(error) bool,
 ) perfcommon.Result {
 	if isTransient == nil {
 		isTransient = perfcommon.IsTransient
 	}
 	if sendStop == nil {
-		sendStop = func(payload []byte) error {
-			_, err := sendActive(payload)
+		sendStop = func(message *zlink.Message) error {
+			_, err := sendActive(message)
 			return err
 		}
 	}
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	stats := perfcommon.NewStats()
-	payload := perfcommon.PreparePayload(cfg.msgSize)
 	recvPart, err := zlink.NewMessageWithSize(0)
 	perfcommon.Must(err)
 	defer recvPart.Close()
@@ -66,9 +65,10 @@ func runSingleOneWayWithTransient(
 	}()
 
 	for time.Now().Before(window.StopAt) {
-		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		sent, err := sendActive(payload)
+		message := perfcommon.NewWindowMessage(cfg.msgSize, window.ActiveAt)
+		sent, err := sendActive(message)
 		if err != nil {
+			_ = message.Close()
 			if isTransient(err) {
 				continue
 			}
@@ -78,6 +78,7 @@ func runSingleOneWayWithTransient(
 			perfcommon.Must(err)
 		}
 		if !sent {
+			_ = message.Close()
 			continue
 		}
 	}
@@ -190,15 +191,17 @@ func drainSingleOneWayProbe(receiver recvSocket) bool {
 // connection. The send is bounded: each transient backpressure /
 // EAGAIN response yields for `StopTokenSendBackoff`, capped by
 // `StopTokenSendAttempts`. A non-transient error is fatal.
-func sendStopTokenSingle(send func([]byte) error, isTransient func(error) bool) bool {
+func sendStopTokenSingle(send func(*zlink.Message) error, isTransient func(error) bool) bool {
 	if isTransient == nil {
 		isTransient = perfcommon.IsTransient
 	}
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
-		err := send(perfcommon.StopToken)
+		message := perfcommon.NewMessage(perfcommon.StopToken)
+		err := send(message)
 		if err == nil {
 			return true
 		}
+		_ = message.Close()
 		if !isTransient(err) {
 			if os.Getenv("PERF_DEBUG") != "" {
 				fmt.Fprintf(os.Stderr, "single stop token send error: %v\n", err)

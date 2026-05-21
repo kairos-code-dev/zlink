@@ -32,10 +32,10 @@ func runDealerDealer(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.ApplySingleBenchmarkSocketOptions(client, cfg.transport)
 	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), serverMon, clientMon)
 
-	result := runSingleOneWay(cfg, server, func(payload []byte) (bool, error) {
-		return client.Send().Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
-	}, func(payload []byte) error {
-		_, err := client.Send().Message(perfcommon.NewMessage(payload)).Submit(nil)
+	result := runSingleOneWay(cfg, server, func(message *zlink.Message) (bool, error) {
+		return client.Send().Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+	}, func(message *zlink.Message) error {
+		_, err := client.Send().Message(message).Submit(nil)
 		return err
 	})
 	perfcommon.PrintSingleAutoHWMDetail(serverMon, cfg.pattern, cfg.transport, "receiver", zlink.SocketTypeDealer, cfg.msgSize)

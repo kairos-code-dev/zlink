@@ -45,7 +45,6 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	stats := perfcommon.NewStats()
-	payload := perfcommon.PreparePayload(cfg.msgSize)
 	recvPart, err := zlink.NewMessageWithSize(0)
 	perfcommon.Must(err)
 	defer recvPart.Close()
@@ -67,8 +66,9 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	}()
 
 	for time.Now().Before(window.StopAt) {
-		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		sent, err := publisher.Publish(singlePubSubTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		sent, err := perfcommon.SubmitMessage(perfcommon.NewWindowMessage(cfg.msgSize, window.ActiveAt), func(message *zlink.Message) (bool, error) {
+			return publisher.Publish(singlePubSubTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		})
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -183,7 +183,9 @@ func topicMatches(buffer []byte, topicLen int, expected string) bool {
 // matched the active stream.
 func sendPubSubStopToken(publisher *zlink.PubSocket) bool {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
-		_, err := publisher.Publish(singlePubSubTopic).Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
+		_, err := perfcommon.SubmitMessage(perfcommon.NewMessage(perfcommon.StopToken), func(message *zlink.Message) (bool, error) {
+			return publisher.Publish(singlePubSubTopic).Message(message).Submit(nil)
+		})
 		if err == nil {
 			return true
 		}

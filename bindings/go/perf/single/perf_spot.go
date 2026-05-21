@@ -86,10 +86,10 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		}
 	}()
 
-	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
-		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		sent, err := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		sent, err := perfcommon.SubmitMessage(perfcommon.NewWindowMessage(cfg.msgSize, window.ActiveAt), func(message *zlink.Message) (bool, error) {
+			return publisher.Publish(singleSpotTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		})
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				time.Sleep(time.Millisecond)
@@ -176,7 +176,9 @@ func drainSingleSpotProbe(subscriber *zlink.Spot) bool {
 // topic with bounded attempts through transient backpressure.
 func sendSpotStopToken(publisher *zlink.Spot) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
-		_, err := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(perfcommon.StopToken)).Submit(nil)
+		_, err := perfcommon.SubmitMessage(perfcommon.NewMessage(perfcommon.StopToken), func(message *zlink.Message) (bool, error) {
+			return publisher.Publish(singleSpotTopic).Message(message).Submit(nil)
+		})
 		if err == nil {
 			return
 		}
@@ -201,7 +203,9 @@ func waitForSpotReady(
 		// perf_spot.cpp wait_for_spot_ready_barrier: DONTWAIT probe
 		// publish; the ready-probe transient set tolerates
 		// ENOTCONN/EHOSTUNREACH/ENETUNREACH while the peer connects.
-		_, probeErr := publisher.Publish(singleSpotTopic).Message(perfcommon.NewMessage(payload)).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		_, probeErr := perfcommon.SubmitMessage(perfcommon.NewMessage(payload), func(message *zlink.Message) (bool, error) {
+			return publisher.Publish(singleSpotTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		})
 		if probeErr != nil && !perfcommon.IsReadyProbeTransient(probeErr) {
 			perfcommon.Must(probeErr)
 		}

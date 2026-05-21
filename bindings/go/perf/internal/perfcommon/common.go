@@ -558,6 +558,32 @@ func NewMessage(payload []byte) *zlink.Message {
 	return msg
 }
 
+func NewMessageWithSize(size int) *zlink.Message {
+	msg, err := zlink.NewMessageWithSize(size)
+	Must(err)
+	return msg
+}
+
+func NewWindowMessage(size int, activeAt time.Time) *zlink.Message {
+	msg := NewMessageWithSize(size)
+	StampWindowPayload(msg.Data(), activeAt)
+	return msg
+}
+
+func SubmitMessage(
+	message *zlink.Message,
+	submit func(*zlink.Message) (bool, error),
+) (bool, error) {
+	if message == nil {
+		return false, fmt.Errorf("nil perf message")
+	}
+	sent, err := submit(message)
+	if err != nil || !sent {
+		_ = message.Close()
+	}
+	return sent, err
+}
+
 func NewSingleContext() (*zlink.Context, error) {
 	return newContextWithIOThreads(1, "PERF_IO_THREADS")
 }

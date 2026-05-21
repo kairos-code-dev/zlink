@@ -54,6 +54,12 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 		if event.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
+		if useMultiDealerDealerRecvPart(cfg.msgSize) {
+			if drainMultiDealerDealerServerRecvPart(server, cfg, window, stats, &stopRequested) {
+				break
+			}
+			continue
+		}
 		var received zlink.Received
 		for {
 			ok, recvErr := server.Recv(&received, zlink.RecvFlagsDontWait)
@@ -83,6 +89,44 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 	}
 	drainMultiDealerDealerActiveTail(server, poller, events, cfg)
 	printMultiResult(cfg, stats.Snapshot(cfg.duration, cfg.msgSize))
+}
+
+func useMultiDealerDealerRecvPart(msgSize int) bool {
+	return msgSize == 64 || msgSize == 65536
+}
+
+func drainMultiDealerDealerServerRecvPart(
+	server *zlink.DealerSocket,
+	cfg multiConfig,
+	window perfcommon.BenchmarkWindow,
+	stats *perfcommon.Stats,
+	stopRequested *bool,
+) bool {
+	message := perfcommon.NewMessageWithSize(0)
+	defer message.Close()
+	for {
+		result, ok, recvErr := server.RecvPart(message, zlink.RecvFlagsDontWait)
+		if recvErr != nil {
+			if perfcommon.IsTransient(recvErr) {
+				return false
+			}
+			perfcommon.Must(fmt.Errorf("multi dealer/dealer server recv part: %w", recvErr))
+		}
+		if !ok {
+			return false
+		}
+		if result.RoutingID.Size() != 0 || result.More {
+			continue
+		}
+		if perfcommon.IsStopTokenMessage(message) {
+			*stopRequested = true
+			return true
+		}
+		now := time.Now()
+		if sentAt, ok := perfcommon.SentAtFromMessage(message, cfg.msgSize); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
+			stats.Add(sentAt)
+		}
+	}
 }
 
 func drainMultiDealerDealerActiveTail(

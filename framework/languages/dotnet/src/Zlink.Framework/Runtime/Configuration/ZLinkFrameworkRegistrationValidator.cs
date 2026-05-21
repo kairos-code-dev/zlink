@@ -6,7 +6,9 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     {
         var globalSpotFactories = new HashSet<string>(StringComparer.Ordinal);
         var globalSpotPublisherChannels = new HashSet<string>(StringComparer.Ordinal);
-        var handlerGroups = BuildHandlerGroupCatalog(registration);
+        var channelHandlerEndpoints = ScanChannelHandlerEndpoints(registration);
+        var routeHandlerEndpoints = ScanRouteHandlerEndpoints(registration);
+        var handlerGroups = BuildHandlerGroupCatalog(channelHandlerEndpoints, routeHandlerEndpoints);
 
         if (registration.SpotDiscovery is { RequiresUseDiscovery: true, UseDiscoveryCalled: false })
         {
@@ -84,7 +86,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 channel,
                 registration.Discovery is not null,
                 IsAcceptedSpotRouteChannel(registration, channel.ChannelName),
-                handlerGroups);
+                handlerGroups,
+                channelHandlerEndpoints);
         }
 
         foreach (var streamNode in registration.StreamNodes.Values)
@@ -97,7 +100,9 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ValidateRouteChannel(
                 routed,
                 registration.Discovery is not null,
-                IsAcceptedSpotRouteChannel(registration, routed.RouterChannelId));
+                IsAcceptedSpotRouteChannel(registration, routed.RouterChannelId),
+                handlerGroups,
+                routeHandlerEndpoints);
         }
 
         foreach (var spotNode in registration.SpotNodes.Values)
@@ -110,28 +115,76 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
     }
 
-    private static IReadOnlyDictionary<string, HashSet<ZLinkMessageKind>> BuildHandlerGroupCatalog(
+    private static IReadOnlyList<ZLinkHandlerEndpointDescriptor> ScanChannelHandlerEndpoints(
         ZLinkFrameworkRegistration registration)
     {
-        var groups = new Dictionary<string, HashSet<ZLinkMessageKind>>(StringComparer.Ordinal);
+        var endpoints = new List<ZLinkHandlerEndpointDescriptor>();
         foreach (var assembly in registration.HandlerAssemblies)
         {
-            foreach (var endpoint in ZLinkHandlerScanner.Scan(assembly))
-            {
-                foreach (var group in endpoint.Groups)
-                {
-                    if (!groups.TryGetValue(group, out var kinds))
-                    {
-                        kinds = [];
-                        groups.Add(group, kinds);
-                    }
+            endpoints.AddRange(ZLinkHandlerScanner.Scan(assembly));
+        }
 
-                    kinds.Add(endpoint.Kind);
-                }
+        return endpoints;
+    }
+
+    private static IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> ScanRouteHandlerEndpoints(
+        ZLinkFrameworkRegistration registration)
+    {
+        var endpoints = new List<ZLinkRouteHandlerEndpointDescriptor>();
+        foreach (var assembly in registration.HandlerAssemblies)
+        {
+            endpoints.AddRange(ZLinkHandlerScanner.ScanRoute(assembly));
+        }
+
+        return endpoints;
+    }
+
+    private static IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> BuildHandlerGroupCatalog(
+        IReadOnlyList<ZLinkHandlerEndpointDescriptor> channelHandlerEndpoints,
+        IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> routeHandlerEndpoints)
+    {
+        var groups = new Dictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>>(StringComparer.Ordinal);
+        foreach (var endpoint in channelHandlerEndpoints)
+        {
+            foreach (var group in endpoint.Groups)
+            {
+                AddHandlerGroupCatalogEntry(
+                    groups,
+                    group,
+                    new ZLinkHandlerGroupCatalogEntry(
+                        ZLinkHandlerEndpointSurface.Channel,
+                        endpoint.Kind));
+            }
+        }
+
+        foreach (var endpoint in routeHandlerEndpoints)
+        {
+            foreach (var group in endpoint.Groups)
+            {
+                AddHandlerGroupCatalogEntry(
+                    groups,
+                    group,
+                    new ZLinkHandlerGroupCatalogEntry(
+                        ZLinkHandlerEndpointSurface.Route,
+                        endpoint.Kind));
             }
         }
 
         return groups;
+    }
+
+    private static void AddHandlerGroupCatalogEntry(
+        IDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> groups,
+        string group,
+        ZLinkHandlerGroupCatalogEntry entry)
+    {
+        if (!groups.TryGetValue(group, out var entries))
+        {
+            entries = [];
+            groups.Add(group, entries);
+        }
+
+        entries.Add(entry);
     }
 
     private static bool IsAcceptedSpotRouteChannel(

@@ -44,6 +44,11 @@ public static class ServiceCollectionExtensions
             services.AddSingleton(endpoint);
         }
 
+        foreach (var endpoint in ZLinkHandlerScanner.ScanRoute(assembly))
+        {
+            services.TryAddTransient(endpoint.DeclaringType);
+        }
+
         return services;
     }
 

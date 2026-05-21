@@ -5,7 +5,9 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateRouteChannel(
         ZLinkRouteChannelRegistration routed,
         bool discoveryConfigured,
-        bool acceptedBySpotRouteChannel)
+        bool acceptedBySpotRouteChannel,
+        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups,
+        IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> scannedEndpoints)
     {
         if (string.IsNullOrWhiteSpace(routed.BindEndpoint))
         {
@@ -13,9 +15,15 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"Route channel '{routed.RouterChannelId}' must define a bind endpoint.");
         }
 
-        if (!acceptedBySpotRouteChannel
-            || discoveryConfigured
-            || routed.ManualConnections.Count > 0)
+        var manualRouteEgressWithDiscoveryMetadata =
+            routed.SpotRouteEgress is not null
+            && routed.ManualConnections.Count > 0
+            && discoveryConfigured;
+
+        if (!manualRouteEgressWithDiscoveryMetadata
+            && (!acceptedBySpotRouteChannel
+                || discoveryConfigured
+                || routed.ManualConnections.Count > 0))
         {
             ZLinkPeerAcquisitionPolicy.RequireSinglePeerSource(
                 $"Route channel '{routed.RouterChannelId}'",
@@ -30,6 +38,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"Route channel '{routed.RouterChannelId}' routed SPOT egress target channel must not be empty.");
         }
 
+        ValidateRouteMappedGroups(routed, handlerGroups);
         ValidateUniqueRouteHandlers(
             routed.RouterChannelId,
             ZLinkMessageKind.Command,
@@ -40,6 +49,31 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ZLinkMessageKind.Request,
             "request",
             routed.RequestHandlers);
+        ValidateRouteHandlerConflicts(routed, scannedEndpoints);
+    }
+
+    private static void ValidateRouteMappedGroups(
+        ZLinkRouteChannelRegistration routed,
+        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups)
+    {
+        foreach (var group in routed.HandlerGroups)
+        {
+            if (!handlerGroups.TryGetValue(group, out var entries))
+            {
+                throw new ZLinkConfigurationException(
+                    $"Route channel '{routed.RouterChannelId}' maps unknown handler group '{group}'.");
+            }
+
+            foreach (var entry in entries)
+            {
+                if (entry.Surface != ZLinkHandlerEndpointSurface.Route
+                    || entry.Kind is not (ZLinkMessageKind.Command or ZLinkMessageKind.Request))
+                {
+                    throw new ZLinkConfigurationException(
+                        $"Route channel '{routed.RouterChannelId}' maps handler group '{group}' with incompatible handler kind '{entry.Kind}'.");
+                }
+            }
+        }
     }
 
     private static void ValidateUniqueRouteHandlers(
@@ -59,5 +93,66 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                     $"Duplicate routed {label} handler '{routerChannelId}:{packetName}'.");
             }
         }
+    }
+
+    private static void ValidateRouteHandlerConflicts(
+        ZLinkRouteChannelRegistration routed,
+        IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> scannedEndpoints)
+    {
+        var exposed = new Dictionary<(ZLinkMessageKind Kind, string PacketName), Type>();
+
+        foreach (var endpoint in scannedEndpoints)
+        {
+            if (endpoint.Groups.Count == 0
+                || !endpoint.Groups.Any(routed.HandlerGroups.Contains))
+            {
+                continue;
+            }
+
+            AddExposedRouteHandler(
+                routed.RouterChannelId,
+                exposed,
+                endpoint.Kind,
+                endpoint.MessageName,
+                endpoint.DeclaringType);
+        }
+
+        foreach (var handler in routed.SendHandlers)
+        {
+            AddExposedRouteHandler(
+                routed.RouterChannelId,
+                exposed,
+                ZLinkMessageKind.Command,
+                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
+                handler.HandlerType);
+        }
+
+        foreach (var handler in routed.RequestHandlers)
+        {
+            AddExposedRouteHandler(
+                routed.RouterChannelId,
+                exposed,
+                ZLinkMessageKind.Request,
+                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
+                handler.HandlerType);
+        }
+    }
+
+    private static void AddExposedRouteHandler(
+        string routerChannelId,
+        IDictionary<(ZLinkMessageKind Kind, string PacketName), Type> exposed,
+        ZLinkMessageKind kind,
+        string packetName,
+        Type handlerType)
+    {
+        var key = (kind, packetName);
+        if (exposed.TryGetValue(key, out var existing)
+            && existing != handlerType)
+        {
+            throw new ZLinkConfigurationException(
+                $"Route channel '{routerChannelId}' maps duplicate {kind} handler packet '{packetName}'.");
+        }
+
+        exposed[key] = handlerType;
     }
 }

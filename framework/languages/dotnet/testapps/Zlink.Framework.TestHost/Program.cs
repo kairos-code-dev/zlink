@@ -143,8 +143,27 @@ internal sealed class StartupStageSubscriptionHandler(TestHostEventSink sink) : 
 
 internal sealed record StartupStageEvent(string Value);
 
+internal sealed record TestHostProfileRequest(string Value);
+
+internal sealed record TestHostProfileReply(string Value);
+
+internal sealed class TestHostProfileRequestHandler
+    : IZLinkRequestHandler<TestHostProfileRequest, TestHostProfileReply>
+{
+    public ValueTask<TestHostProfileReply> HandleAsync(
+        TestHostProfileRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(new TestHostProfileReply(request.Value));
+    }
+}
+
 internal sealed record TestHostPublishedEvent(string Value);
 
+[ZLinkHandlerGroup("testhost-channel-events")]
 internal sealed class ChannelSubscriptionEventHandler(TestHostEventSink sink)
 {
     [ZLinkPublish]

@@ -1151,6 +1151,10 @@ var reply = await spots
 
 local egress channel 은 client-server channel 의 client DEALER 이거나 route mesh channel 일
 수 있다. 두 경우 모두 channel builder 에 target SpotNode ingress channel 이름을 명시한다.
+route mesh channel 을 egress 로 쓸 때는 실제 target ROUTER endpoint 에 연결되어 있어야 하고,
+target ROUTER 의 `RoutingId`는 discovery/query metadata 또는 같은 process 안의 명시적 route
+channel 등록으로 확인할 수 있어야 한다. 주소만 알고 연결하지 않은 상태에서는 routed Spot
+메시지를 보낼 수 없다.
 
 ```csharp
 options.AddClientServerChannel("gateway.client", channel =>

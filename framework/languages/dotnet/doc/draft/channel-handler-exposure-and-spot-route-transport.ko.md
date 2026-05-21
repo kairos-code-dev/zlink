@@ -749,6 +749,13 @@ registration 시 `EnableSpotRouteEgress(...)`에 저장한다.
 client-server channel 에 이 capability 를 켜려면 `EnableClient(...)`가 필요하다. 이 경우
 local DEALER socket 이 target SpotNode ingress channel 을 연 remote router peer 로 보낸다.
 route mesh channel 에 이 capability 를 켜면 local ROUTER transport 가 같은 역할을 한다.
+ROUTER 전송은 target peer 의 `RoutingId`가 필요하므로, route mesh egress 는 local route
+channel 이 실제로 연결한 target peer 로 보낸다. 수동 endpoint 연결만으로는 target peer 의
+`RoutingId`를 알 수 없기 때문에, 분산 구성에서는 Registry discovery/query metadata 로
+`targetSpotNodeChannelName`과 같은 channel 을 가진 ROUTER peer 의 `RoutingId`를 확인한다.
+즉 route mesh egress 는 **transport 연결**과 **target peer RoutingId metadata**가 모두
+필요하다. 같은 process 안의 manual topology 테스트는 명시적 routing id 를 가진 target route
+channel 등록을 fallback 으로 사용할 수 있다.
 
 전송 흐름은 다음과 같다.
 
@@ -762,7 +769,10 @@ route mesh channel 에 이 capability 를 켜면 local ROUTER transport 가 같�
    넣는다.
 5. runtime 은 선택된 local channel 의 현재 connection 상태 안에서 `"play.route"`를 accept 한
    target SpotNode router peer 로 send/request 를 보낸다. 이때 실제 local socket 은 channel
-   type 에 따라 ROUTER 일 수도 있고 DEALER 일 수도 있다.
+   type 에 따라 ROUTER 일 수도 있고 DEALER 일 수도 있다. route mesh ROUTER 경로는 connection
+   설정으로 실제 peer 에 연결하고, discovery/query metadata 로 target peer `RoutingId`를 찾는다.
+   같은 process 안에서 manual topology 를 검증하는 테스트는 명시적 routing id 를 가진 target
+   route channel 등록을 fallback 으로 사용할 수 있다.
 
 이 흐름에서 Spot name string overload 는 제공하지 않는다. string name 을 쓰는 application
 은 호출 전에 `RoutingId.Of(...)`로 target rid 를 만든다. 별도 route resolver 가 필요하면
@@ -950,7 +960,6 @@ builder.Services.AddZLinkFramework(options =>
         {
             peers.Connect("tcp://play-node-1:7201");
         });
-
         channel.EnableSpotRouteEgress(
             targetSpotNodeChannelName: "play.route");
     });
@@ -961,6 +970,11 @@ builder.Services.AddZLinkFramework(options =>
 `play.route`는 target SpotNode process 에서 `AcceptSpotRoutesFromChannel("play.route")`로
 연 ingress channel 이다. `EnableSpotRouteEgress(...)`는 이 둘을 암묵적으로 같다고 보지
 않고, target SpotNode ingress channel 이름을 명시적으로 저장한다.
+이 route mesh egress 예시는 source 가 `play.route` ROUTER endpoint 에 실제로 연결하고,
+source 와 target 이 같은 Registry discovery 에 붙어 있어 `play.route` ROUTER peer 의
+`RoutingId`를 registry metadata 로 확인할 수 있다는 전제를 둔다. discovery 없이 endpoint만
+수동으로 연결한 source process 는 target ROUTER의 `RoutingId`를 안정적으로 알 수 없으므로
+route mesh egress 전송 대상 선택에 충분하지 않다.
 
 client-server channel 을 egress 로 쓰는 source process 는 local client DEALER transport 를
 사용한다.

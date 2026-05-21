@@ -10,6 +10,7 @@ internal readonly record struct CreateActorResult(
 internal sealed partial class ZLinkFrameworkRuntime
 {
     private readonly IServiceProvider _services;
+    private readonly IZLinkBackendAdapterFactory _backendAdapterFactory;
     private readonly ZLinkFrameworkRegistration _registration;
     private readonly ZLinkRegistryRuntime? _registryRuntime;
     private readonly ZLinkChannelRuntimeManager _channels;
@@ -33,6 +34,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkRegistryRuntime? registryRuntime = null)
     {
         _services = services;
+        _backendAdapterFactory = backendAdapterFactory;
         _registration = registration;
         _registryRuntime = registryRuntime;
         var components = ZLinkFrameworkRuntimeComponentFactory.Create(

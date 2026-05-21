@@ -80,33 +80,63 @@ internal sealed class ZLinkRouteChannelInitializer(
         return discovery;
     }
 
-    private static IEnumerable<ZLinkRouteHandlerDescriptor> CreateRouteHandlerDescriptors(
+    private IEnumerable<ZLinkRouteHandlerDescriptor> CreateRouteHandlerDescriptors(
         ZLinkRouteChannelRegistration routedRegistration)
     {
         foreach (var handler in routedRegistration.SendHandlers)
         {
-            var method = handler.HandlerType.GetMethod(nameof(IZLinkRouteSendHandler<object>.HandleAsync))!;
-            yield return new ZLinkRouteHandlerDescriptor(
-                ZLinkMessageKind.Command,
+            var handlerInterface = typeof(IZLinkRouteSendHandler<>).MakeGenericType(handler.MessageType);
+            yield return CreateRouteHandlerDescriptor(
                 routedRegistration.RouterChannelId,
-                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
-                handler.HandlerType,
-                handler.MessageType,
-                null,
-                ZLinkHandlerMethodInvokerFactory.Create(method));
+                ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                    handler.HandlerType,
+                    handlerInterface,
+                    ZLinkMessageKind.Command,
+                    handler.PacketName));
         }
 
         foreach (var handler in routedRegistration.RequestHandlers)
         {
-            var method = handler.HandlerType.GetMethod(nameof(IZLinkRouteRequestHandler<object, object>.HandleAsync))!;
-            yield return new ZLinkRouteHandlerDescriptor(
-                ZLinkMessageKind.Request,
-                routedRegistration.RouterChannelId,
-                handler.PacketName ?? ZLinkMessageNameResolver.ResolveFromType(handler.MessageType),
-                handler.HandlerType,
+            var handlerInterface = typeof(IZLinkRouteRequestHandler<,>).MakeGenericType(
                 handler.MessageType,
-                handler.ReplyType,
-                ZLinkHandlerMethodInvokerFactory.Create(method));
+                handler.ReplyType!);
+            yield return CreateRouteHandlerDescriptor(
+                routedRegistration.RouterChannelId,
+                ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                    handler.HandlerType,
+                    handlerInterface,
+                    ZLinkMessageKind.Request,
+                    handler.PacketName));
         }
+
+        foreach (var assembly in registration.HandlerAssemblies)
+        {
+            foreach (var endpoint in ZLinkHandlerScanner.ScanRoute(assembly))
+            {
+                if (endpoint.Groups.Count == 0
+                    || !endpoint.Groups.Any(routedRegistration.HandlerGroups.Contains))
+                {
+                    continue;
+                }
+
+                yield return CreateRouteHandlerDescriptor(
+                    routedRegistration.RouterChannelId,
+                    endpoint);
+            }
+        }
+    }
+
+    private static ZLinkRouteHandlerDescriptor CreateRouteHandlerDescriptor(
+        string routerChannelId,
+        ZLinkRouteHandlerEndpointDescriptor endpoint)
+    {
+        return new ZLinkRouteHandlerDescriptor(
+            endpoint.Kind,
+            routerChannelId,
+            endpoint.MessageName,
+            endpoint.DeclaringType,
+            endpoint.MessageType,
+            endpoint.ReplyType,
+            endpoint.Invoker);
     }
 }

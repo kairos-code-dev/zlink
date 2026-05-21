@@ -76,6 +76,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | typed handler registration | `unit` | channel 의 `Add...Handler(...)`로 직접 등록한 handler 는 group mapping 없이도 해당 channel 에 노출된다 |
 | channel type handler compatibility | `unit` | client-server 는 send/request, fanout subscriber 는 publish, route mesh 는 route send/request handler 만 허용하고 dealer mesh 는 handler registration 을 노출하지 않는다 |
 | incompatible handler group mapping | `unit` | channel type 과 맞지 않는 handler 가 group 안에 섞이면 일부만 제외하지 않고 startup validation 오류로 실패한다 |
+| route mesh handler group mapping | `integration-single-process` | route mesh channel 의 `MapHandlerGroup(...)`은 route send/request handler group 을 실제 routed dispatch 대상으로 노출한다 |
 | Spot route transport 전용 channel | `integration-single-process` | `AcceptSpotRoutesFromChannel(...)`으로만 참조된 router-capable channel 은 handler group 없이도 Spot route transport 로 동작하지만 application handler 를 열지 않는다 |
 | 같은 channel server에 handler 중복 | `unit` | 같은 `kind + packetName` handler가 둘 이상이면 startup validation 예외 |
 | 다른 channel server에 같은 packet handler | `integration-single-process` | 같은 `kind + packetName`을 서로 다른 channel에 매핑해도 각 채널이 독립적으로 dispatch된다 |
@@ -83,6 +84,9 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | `MapHandlerGroup`이 가리키는 그룹 없음 | `unit` | 매핑한 그룹에 handler가 하나도 없으면 startup validation 오류 |
 | event handler group mapping | `unit` | `channel.MapHandlerGroup("...")`로 매핑한 그룹의 publish handler만 해당 subscriber channel에서 dispatch된다 |
 | HTTP handler에서 `IZLinkClient` 사용 | `integration-single-process` | route handler와 동일한 DI[^di] 컨테이너에서 정상 동작 |
+| channel handler에서 `IZLinkClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `IZLinkClient`로 다른 channel 에 request 하고 reply 를 받는다 |
+| dealer mesh channel client | `integration-single-process` | `IZLinkClient.Send(...)`와 `Request(...)`가 `AddDealerMeshChannel(...)` 등록의 DEALER socket 을 통해 동작한다 |
+| channel handler에서 fanout publish | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `IZLinkFanoutPublisher`로 fanout event 를 publish 하고 subscriber handler가 수신한다 |
 | send async submit backpressure[^backpressure] | `integration-single-process` | HWM[^hwm]에 도달해도 caller thread를 block하지 않고, ready 이후에 완료된다 |
 | publish async submit backpressure | `integration-single-process` | `NoDrop` 또는 HWM 조건에서 thread를 block하지 않고 `SendTimeout` 정책에 따라 완료 또는 실패 |
 | request submit/reply timeout 분리 | `integration-single-process` | request packet의 submit 지연은 `SendTimeout`으로, reply 대기는 `Timeout(...)`으로 판정 |
@@ -143,6 +147,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Spot route channel acceptance | `unit` | fanout/dealer mesh/ambiguous/missing router/missing peer source 구성을 startup validation에서 거부한다 |
 | Spot route channel manual connect | `integration-single-process` | `AcceptSpotRoutesFromChannel(...)` 수동 endpoint가 binding public API를 통해 router channel peer로 적용된다 |
 | Spot route channel transport | `integration-single-process` | caller가 명시한 local egress channel이 channel type에 맞는 ROUTER 또는 DEALER socket으로 egress 설정의 target SpotNode ingress channel을 통해 target Spot으로 routed send/request를 보낸다 |
+| route mesh Spot egress target peer 선택 | `integration-single-process` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `RoutingId`로 route mesh egress target peer 를 선택한다 |
 | Spot route egress capability validation | `unit` | routed Spot egress 는 client-server client capability 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
 | spot 제거 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddActorPacket(...)`으로 등록한 handler가 join된 `Spot` 실행 문맥에서 실행된다 |

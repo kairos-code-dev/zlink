@@ -71,13 +71,17 @@ direct 샘플은 첫 범위에서 제외한다. session 과 spot 을 한 인스�
 15. 승자가 나오면 room status 를 `Finished` 로 바꾸고 모든 참가자에게 종료
     이벤트를 push 한다.
 
-`ApiServer` 에서 `PlayServer` 의 `BingoRoomSpot` 으로 보내는 room 생성/배정 요청은
-router channel에서 SPOT으로 들어가는 routed request 예시다. `ApiServer` 같은 일반
-handler에서는 `IZLinkRoutedSpotClient`를 주입받고
-`ViaEgressChannel("api-to-play")`처럼 사용할 local egress channel을 명시한다.
-그 egress channel에는 `EnableSpotRouteEgress("play.route")`로 `PlayServer`의
-SpotNode가 accept 한 ingress channel 이름을 저장한다. `PlayServer`의 `SpotNode`는
-`AcceptSpotRoutesFromChannel("play.route")`로 SPOT route 수신을 허용한다.
+현재 샘플의 `ApiServer` 는 room 생성/배정 요청을 `PlayServer` 의 server channel 로
+보낸다. 즉 allocation 단계는 `IZLinkClientServerClient.Request(...)`를 쓰는 일반
+channel-to-channel request 이다. `PlayServer` 쪽 handler 가 요청을 받은 뒤
+`BingoRoomSpot` 을 만들거나 기존 room 을 찾아 Entry Spot 에 join 을 요청한다.
+
+이미 target Spot 의 `RoutingId`를 알고 있고, 일반 channel handler 에서 그 Spot 으로
+곧장 보내야 하는 흐름은 별도 routed Spot 패턴으로 본다. 그 경우에는
+`IZLinkRoutedSpotClient.ViaEgressChannel(localEgressChannelName)`으로 사용할 egress
+channel 을 명시하고, egress channel 등록에는
+`EnableSpotRouteEgress(targetSpotNodeChannelName)`으로 Play 서버 SpotNode가 accept 한
+ingress channel 이름을 저장한다.
 
 ## 4. Entry Spot 역할
 

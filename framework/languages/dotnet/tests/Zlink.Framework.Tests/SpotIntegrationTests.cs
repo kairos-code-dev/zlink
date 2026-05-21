@@ -950,6 +950,112 @@ public sealed partial class SpotIntegrationTests
     }
 
     [Fact]
+    public async Task RoutedSpotClient_SendSpot_UsesDiscoveryRouteMeshEgressPeer()
+    {
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
+        var gatewayRouteEndpoint = GetFreeTcpEndpoint();
+        var playRouteEndpoint = GetFreeTcpEndpoint();
+        var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var targetSpotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("egress-spot-03"));
+
+        var registryBuilder = Host.CreateApplicationBuilder();
+        registryBuilder.Services.AddZLinkRegistry(options =>
+        {
+            options.PubEndpoint = registryPubEndpoint;
+            options.RouterEndpoint = registryRouterEndpoint;
+        });
+
+        var targetBuilder = Host.CreateApplicationBuilder();
+        targetBuilder.Services.AddSingleton<SpotRouteTransportRecorder>();
+        targetBuilder.Services.AddScoped<SpotRouteTargetCommandHandler>();
+        targetBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+            options.AddRouteMeshChannel("play.route", channel =>
+            {
+                channel.Bind(playRouteEndpoint);
+                channel.ConfigureRouting(routing =>
+                {
+                    routing.RoutingId = RoutingId.FromBytes(
+                        Encoding.UTF8.GetBytes("egress-target-03"));
+                });
+            });
+            options.UseSpotDiscovery("spot.route.discovery.egress", _ => { });
+            options.AddSpotNode("route-target-node", spot =>
+            {
+                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter(router =>
+                {
+                    router.ConfigureRouting(routing =>
+                    {
+                        routing.RoutingId = RoutingId.FromBytes(
+                            Encoding.UTF8.GetBytes("egress-node-03"));
+                    });
+                });
+                spot.AcceptSpotRoutesFromChannel(
+                    "play.route",
+                    routes => routes.UseManualConnections(
+                        peers => peers.Connect(playRouteEndpoint)));
+                spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+            });
+        });
+
+        var sourceBuilder = Host.CreateApplicationBuilder();
+        sourceBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+            options.AddRouteMeshChannel("gateway.route", channel =>
+            {
+                channel.Bind(gatewayRouteEndpoint);
+                channel.ConfigureRouting(routing =>
+                {
+                    routing.RoutingId = RoutingId.FromBytes(
+                        Encoding.UTF8.GetBytes("egress-gateway-03"));
+                });
+                channel.UseManualConnections(peers => peers.Connect(playRouteEndpoint));
+                channel.EnableSpotRouteEgress("play.route");
+            });
+        });
+
+        using var registryHost = registryBuilder.Build();
+        using var targetHost = targetBuilder.Build();
+        using var sourceHost = sourceBuilder.Build();
+
+        await registryHost.StartAsync();
+        await targetHost.StartAsync();
+        await sourceHost.StartAsync();
+
+        try
+        {
+            var manager = targetHost.Services.GetRequiredService<IZLinkSpotManager>();
+            var spots = sourceHost.Services.GetRequiredService<IZLinkRoutedSpotClient>();
+            var runtime = targetHost.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var recorder = targetHost.Services.GetRequiredService<SpotRouteTransportRecorder>();
+            var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
+            _ = await manager.GetOrCreateAsync("route-target", targetSpotRid);
+            await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play.route");
+
+            await RetryAsync(
+                async () =>
+                {
+                    await spots
+                        .ViaEgressChannel("gateway.route")
+                        .SendSpot(targetSpotRid, new SpotRouteTargetCommand("route-egress-discovery-send"))
+                        .Submit(CancellationToken.None)
+                        .ConfigureAwait(false);
+                    return recorder.Commands.Contains("route-egress-discovery-send");
+                },
+                static result => result,
+                TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            await ChannelMessagingTestSupport.StopHostsAsync(sourceHost, targetHost, registryHost);
+        }
+    }
+
+    [Fact]
     public async Task RegistryActorSessionBindings_Preserve_Reconnected_Binding_On_Stale_Unbind()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();

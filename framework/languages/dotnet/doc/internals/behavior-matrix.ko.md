@@ -49,14 +49,14 @@
 | `EnableSubscriber()`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | 같은 channel에서 `server + client` 함께 등록 | 허용 | inbound와 outbound runtime을 모두 가진다 |
 | 같은 channel에서 `publisher + subscriber` 함께 등록 | 허용 | event fan-out과 수신을 모두 가진다 |
-| 같은 channel capability 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류 |
+| 같은 channel capability 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류. 단, routed Spot route mesh egress 는 수동 연결을 실제 transport 로 쓰고 discovery/query 를 target ROUTER `RoutingId` metadata 조회에만 쓰는 좁은 예외를 둔다 |
 | 같은 channel server에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 다른 channel server에 같은 `kind + packetName` handler 등록 | 허용 | channel별로 handler namespace가 분리되어 있다 |
 | `channel.MapHandlerGroup("...")`로 명시한 그룹의 handler만 그 channel에서 dispatch | 허용 | `[ZLinkHandlerGroup("...")]` attribute와 매핑을 조합해서 노출 범위를 제한한다 |
 | 같은 channel에 여러 그룹 매핑 | 허용 | `MapHandlerGroup`을 여러 번 호출해 그룹들의 합집합을 한 채널에 노출한다 |
 | `MapHandlerGroup`이 가리키는 그룹에 handler 0개 | 비허용 | startup validation 오류 |
 | client-server channel에서 `EnableSpotRouteEgress(...)`만 등록하고 client capability 없음 | 비허용 | routed Spot egress 는 local client DEALER 가 필요하다 |
-| route mesh channel에서 `EnableSpotRouteEgress(...)` 등록 | 허용 | target SpotNode ingress channel 로 routed Spot relay 를 보낼 수 있다 |
+| route mesh channel에서 `EnableSpotRouteEgress(...)` 등록 | 허용 | target SpotNode ingress channel 로 routed Spot relay 를 보낼 수 있다. 실제 target ROUTER 연결과 target ROUTER `RoutingId` metadata 가 모두 필요하다 |
 
 ## 4. Spot Capability Matrix
 

@@ -192,6 +192,207 @@ public sealed class ChannelMessagingIntegrationTests
     }
 
     [Fact]
+    public async Task ChannelHandler_Uses_IZLinkClient_To_Request_Another_Channel()
+    {
+        var backendEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
+        var apiEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
+
+        var backendBuilder = Host.CreateApplicationBuilder();
+        backendBuilder.Services.AddSingleton<ProfileCommandRecorder>();
+        backendBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingIntegrationTests>();
+            options.AddClientServerChannel("backend", channel =>
+            {
+                channel.EnableServer(server => server.Bind(backendEndpoint));
+                channel.MapHandlerGroup("profile");
+            });
+        });
+
+        var apiBuilder = Host.CreateApplicationBuilder();
+        apiBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingIntegrationTests>();
+            options.AddClientServerChannel("api", channel =>
+            {
+                channel.EnableServer(server => server.Bind(apiEndpoint));
+                channel.MapHandlerGroup("profile-forward");
+            });
+            options.AddClientServerChannel("backend", channel =>
+            {
+                channel.EnableClient(client =>
+                {
+                    client.UseManualConnections(connections => connections.Connect(backendEndpoint));
+                });
+            });
+        });
+
+        var clientBuilder = Host.CreateApplicationBuilder();
+        clientBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddClientServerChannel("api", channel =>
+            {
+                channel.EnableClient(client =>
+                {
+                    client.UseManualConnections(connections => connections.Connect(apiEndpoint));
+                });
+            });
+        });
+
+        using var backendHost = backendBuilder.Build();
+        using var apiHost = apiBuilder.Build();
+        using var clientHost = clientBuilder.Build();
+
+        await backendHost.StartAsync();
+        await apiHost.StartAsync();
+        await clientHost.StartAsync();
+
+        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
+        var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
+            async () => await client
+                .Request("api", new ForwardProfileRequest { UserId = "forwarded" })
+                .SubmitAsync<ProfileReply>(),
+            static result => result.Name == "user:forwarded");
+
+        Assert.Equal("user:forwarded", reply.Name);
+
+        await ChannelMessagingTestSupport.StopHostsAsync(clientHost, apiHost, backendHost);
+    }
+
+    [Fact]
+    public async Task ChannelHandler_Uses_IZLinkFanoutPublisher_To_Publish_Event()
+    {
+        var pubEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
+        var apiEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
+
+        var subscriberBuilder = Host.CreateApplicationBuilder();
+        subscriberBuilder.Services.AddSingleton<ProfileEventRecorder>();
+        subscriberBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingIntegrationTests>();
+            options.AddFanoutChannel("profile", channel =>
+            {
+                channel.EnableSubscriber(subscriber =>
+                {
+                    subscriber.UseManualConnections(connections => connections.Connect(pubEndpoint));
+                });
+                channel.MapHandlerGroup("profile-events");
+            });
+        });
+
+        var apiBuilder = Host.CreateApplicationBuilder();
+        apiBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddHandlersFromAssemblyOf<ChannelMessagingIntegrationTests>();
+            options.AddFanoutChannel("profile", channel =>
+            {
+                channel.EnablePublisher(publisher => publisher.Bind(pubEndpoint));
+            });
+            options.AddClientServerChannel("api", channel =>
+            {
+                channel.EnableServer(server => server.Bind(apiEndpoint));
+                channel.MapHandlerGroup("profile-publisher");
+            });
+        });
+
+        var clientBuilder = Host.CreateApplicationBuilder();
+        clientBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddClientServerChannel("api", channel =>
+            {
+                channel.EnableClient(client =>
+                {
+                    client.UseManualConnections(connections => connections.Connect(apiEndpoint));
+                });
+            });
+        });
+
+        using var subscriberHost = subscriberBuilder.Build();
+        using var apiHost = apiBuilder.Build();
+        using var clientHost = clientBuilder.Build();
+
+        await subscriberHost.StartAsync();
+        await apiHost.StartAsync();
+        await clientHost.StartAsync();
+
+        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
+        var recorder = subscriberHost.Services.GetRequiredService<ProfileEventRecorder>();
+        await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
+            async () =>
+            {
+                var reply = await client
+                    .Request("api", new PublishProfileRequest { UserId = "published" })
+                    .SubmitAsync<PublishProfileReply>();
+                Assert.True(reply.Accepted);
+                await Task.Yield();
+                return recorder.Events.Count;
+            },
+            count => count > 0);
+
+        Assert.Contains("published", recorder.Events.ToArray());
+
+        await ChannelMessagingTestSupport.StopHostsAsync(clientHost, apiHost, subscriberHost);
+    }
+
+    [Fact]
+    public async Task DealerMeshClient_Request_And_Send_Use_Registered_DealerMesh_Channel()
+    {
+        var meshEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
+        await using var context = new Context();
+        await using var router = new RouterSocket(context);
+        router.Bind(meshEndpoint);
+
+        using var stopRouter = new CancellationTokenSource();
+        var recorder = new MeshProfileRecorder();
+        var routerTask = Task.Run(
+            () => RunMeshRouterAsync(router, recorder, stopRouter.Token),
+            stopRouter.Token);
+
+        var clientBuilder = Host.CreateApplicationBuilder();
+        clientBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddDealerMeshChannel("mesh", channel =>
+            {
+                channel.EnableClient(client =>
+                {
+                    client.UseManualConnections(connections => connections.Connect(meshEndpoint));
+                });
+            });
+        });
+
+        using var clientHost = clientBuilder.Build();
+        await clientHost.StartAsync();
+
+        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
+        var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
+            async () => await client
+                .Request("mesh", new MeshProfileRequest { UserId = "mesh-request" })
+                .Timeout(TimeSpan.FromMilliseconds(500))
+                .SubmitAsync<MeshProfileReply>(),
+            static result => result.Name == "mesh:mesh-request");
+
+        Assert.Equal("mesh:mesh-request", reply.Name);
+
+        await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
+            async () =>
+            {
+                await client
+                    .Send("mesh", new MeshProfileRequest { UserId = "mesh-send" })
+                    .Submit();
+                await Task.Yield();
+                return recorder.Commands.Count;
+            },
+            count => count > 0);
+
+        Assert.Contains("mesh-request", recorder.Requests.ToArray());
+        Assert.Contains("mesh-send", recorder.Commands.ToArray());
+
+        await clientHost.StopAsync();
+        stopRouter.Cancel();
+        await routerTask.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task Filters_Run_In_Registration_Order_Around_Handler_Dispatch()
     {
         var apiEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
@@ -311,5 +512,52 @@ public sealed class ChannelMessagingIntegrationTests
         Assert.Equal("user:http-user", reply);
 
         await ChannelMessagingTestSupport.StopHostsAsync(httpHost, channelHost);
+    }
+
+    private static async Task RunMeshRouterAsync(
+        RouterSocket router,
+        MeshProfileRecorder recorder,
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            using var received = new Received();
+            if (!router.Recv(received, RecvFlags.DontWait))
+            {
+                await Task.Delay(10).ConfigureAwait(false);
+                continue;
+            }
+
+            var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            var request = (MeshProfileRequest?)ZLinkEnvelopeCodec.DecodeBody(
+                received.Parts,
+                typeof(MeshProfileRequest));
+            if (request is null)
+            {
+                continue;
+            }
+
+            if (header.Kind == ZLinkMessageKind.Command)
+            {
+                recorder.Commands.Enqueue(request.UserId);
+                continue;
+            }
+
+            recorder.Requests.Enqueue(request.UserId);
+            var reply = ZLinkEnvelopeCodec.EncodeParts(
+                new ZLinkEnvelopeHeader(
+                    ZLinkMessageKind.Response,
+                    header.ChannelName,
+                    header.MessageName,
+                    ZLinkEnvelopeCodec.DefaultContentType,
+                    header.CorrelationId,
+                    null,
+                    null,
+                    null,
+                    null),
+                new MeshProfileReply { Name = $"mesh:{request.UserId}" },
+                typeof(MeshProfileReply));
+            received.Reply().Messages(reply).Submit();
+        }
     }
 }

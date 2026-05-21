@@ -893,6 +893,110 @@ public sealed class RegistrationValidationTests
     }
 
     [Fact]
+    public void AddZLinkFramework_AllowsRouteMeshMappedHandlerGroup()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddHandlersFromAssemblyOf<RegistrationValidationTests>();
+            options.AddRouteMeshChannel("backend", channel =>
+            {
+                channel.Bind("tcp://127.0.0.1:7101");
+                channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7102"));
+                channel.MapHandlerGroup("validation-route");
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var channel = Assert.Single(registration.RouteChannels.Values);
+
+        Assert.Contains("validation-route", channel.HandlerGroups);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenRouteMeshMappedHandlerGroupIsUnknown()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddHandlersFromAssemblyOf<RegistrationValidationTests>();
+                options.AddRouteMeshChannel("backend", channel =>
+                {
+                    channel.Bind("tcp://127.0.0.1:7101");
+                    channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7102"));
+                    channel.MapHandlerGroup("missing-route-group");
+                });
+            }));
+
+        Assert.Contains("maps unknown handler group 'missing-route-group'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenRouteMeshMappedHandlerGroupHasIncompatibleKind()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddHandlersFromAssemblyOf<RegistrationValidationTests>();
+                options.AddRouteMeshChannel("backend", channel =>
+                {
+                    channel.Bind("tcp://127.0.0.1:7101");
+                    channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7102"));
+                    channel.MapHandlerGroup("validation-publish");
+                });
+            }));
+
+        Assert.Contains("incompatible handler kind", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenMappedGroupAndTypedHandlerExposeSameChannelPacket()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddHandlersFromAssemblyOf<RegistrationValidationTests>();
+                options.AddClientServerChannel("profile", channel =>
+                {
+                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                    channel.MapHandlerGroup("validation-request");
+                    channel.AddRequestHandler<AlternateTestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
+                });
+            }));
+
+        Assert.Contains("duplicate Request handler packet", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Throws_WhenMappedGroupAndTypedHandlerExposeSameRoutePacket()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddHandlersFromAssemblyOf<RegistrationValidationTests>();
+                options.AddRouteMeshChannel("backend", channel =>
+                {
+                    channel.Bind("tcp://127.0.0.1:7101");
+                    channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7102"));
+                    channel.MapHandlerGroup("validation-route");
+                    channel.AddRequestHandler<AlternateTestRouteRequestHandler, TestRouteRequest, TestRouteReply>();
+                });
+            }));
+
+        Assert.Contains("duplicate Request handler packet", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_AllowsTypedHandlerRegistrationWithoutHandlerGroup()
     {
         var services = new ServiceCollection();
@@ -1126,7 +1230,22 @@ public sealed class RegistrationValidationTests
 
     private sealed record TestChannelReply(string Value);
 
+    [ZLinkHandlerGroup("validation-request")]
     private sealed class TestChannelRequestHandler
+        : IZLinkRequestHandler<TestChannelRequest, TestChannelReply>
+    {
+        public ValueTask<TestChannelReply> HandleAsync(
+            TestChannelRequest request,
+            ZLinkRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new TestChannelReply(request.Value));
+        }
+    }
+
+    private sealed class AlternateTestChannelRequestHandler
         : IZLinkRequestHandler<TestChannelRequest, TestChannelReply>
     {
         public ValueTask<TestChannelReply> HandleAsync(
@@ -1154,6 +1273,39 @@ public sealed class RegistrationValidationTests
             _ = context;
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed record TestRouteRequest(string Value);
+
+    private sealed record TestRouteReply(string Value);
+
+    [ZLinkHandlerGroup("validation-route")]
+    private sealed class TestRouteRequestHandler
+        : IZLinkRouteRequestHandler<TestRouteRequest, TestRouteReply>
+    {
+        public ValueTask<TestRouteReply> HandleAsync(
+            TestRouteRequest request,
+            ZLinkRouteRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new TestRouteReply(request.Value));
+        }
+    }
+
+    private sealed class AlternateTestRouteRequestHandler
+        : IZLinkRouteRequestHandler<TestRouteRequest, TestRouteReply>
+    {
+        public ValueTask<TestRouteReply> HandleAsync(
+            TestRouteRequest request,
+            ZLinkRouteRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new TestRouteReply(request.Value));
         }
     }
 

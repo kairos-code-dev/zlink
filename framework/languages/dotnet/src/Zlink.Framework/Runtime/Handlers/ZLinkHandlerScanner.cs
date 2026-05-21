@@ -73,6 +73,50 @@ internal static class ZLinkHandlerScanner
         return endpoints;
     }
 
+    public static IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> ScanRoute(Assembly assembly)
+    {
+        var endpoints = new List<ZLinkRouteHandlerEndpointDescriptor>();
+
+        foreach (var type in assembly.GetTypes())
+        {
+            if (type.IsAbstract || type.IsInterface)
+            {
+                continue;
+            }
+
+            var groups = ResolveGroups(type);
+            foreach (var iface in type.GetInterfaces())
+            {
+                if (!iface.IsGenericType)
+                {
+                    continue;
+                }
+
+                var def = iface.GetGenericTypeDefinition();
+                if (def == typeof(IZLinkRouteRequestHandler<,>))
+                {
+                    endpoints.Add(CreateRouteInterfaceDescriptor(
+                        type,
+                        iface,
+                        ZLinkMessageKind.Request,
+                        groups,
+                        null));
+                }
+                else if (def == typeof(IZLinkRouteSendHandler<>))
+                {
+                    endpoints.Add(CreateRouteInterfaceDescriptor(
+                        type,
+                        iface,
+                        ZLinkMessageKind.Command,
+                        groups,
+                        null));
+                }
+            }
+        }
+
+        return endpoints;
+    }
+
     public static ZLinkHandlerEndpointDescriptor CreateExplicitInterfaceDescriptor(
         Type declaringType,
         Type handlerInterface,
@@ -86,6 +130,20 @@ internal static class ZLinkHandlerScanner
             kind,
             new HashSet<string>(StringComparer.Ordinal),
             channelName,
+            packetName);
+    }
+
+    public static ZLinkRouteHandlerEndpointDescriptor CreateExplicitRouteInterfaceDescriptor(
+        Type declaringType,
+        Type handlerInterface,
+        ZLinkMessageKind kind,
+        string? packetName)
+    {
+        return CreateRouteInterfaceDescriptor(
+            declaringType,
+            handlerInterface,
+            kind,
+            new HashSet<string>(StringComparer.Ordinal),
             packetName);
     }
 
@@ -162,6 +220,44 @@ internal static class ZLinkHandlerScanner
             HasCancellationToken: true,
             groups,
             explicitChannelName);
+    }
+
+    private static ZLinkRouteHandlerEndpointDescriptor CreateRouteInterfaceDescriptor(
+        Type declaringType,
+        Type handlerInterface,
+        ZLinkMessageKind kind,
+        IReadOnlySet<string> groups,
+        string? packetName)
+    {
+        var args = handlerInterface.GetGenericArguments();
+        var messageType = args[0];
+        var replyType = kind == ZLinkMessageKind.Request ? args[1] : null;
+
+        var map = declaringType.GetInterfaceMap(handlerInterface);
+        MethodInfo? targetMethod = null;
+        for (var i = 0; i < map.InterfaceMethods.Length; i++)
+        {
+            if (map.InterfaceMethods[i].Name == nameof(IZLinkRouteSendHandler<object>.HandleAsync))
+            {
+                targetMethod = map.TargetMethods[i];
+                break;
+            }
+        }
+
+        if (targetMethod is null)
+        {
+            throw new ZLinkConfigurationException(
+                $"Route handler '{declaringType.FullName}' does not implement HandleAsync for '{handlerInterface.Name}'.");
+        }
+
+        return new ZLinkRouteHandlerEndpointDescriptor(
+            kind,
+            packetName ?? ZLinkMessageNameResolver.ResolveFromType(messageType),
+            declaringType,
+            ZLinkHandlerMethodInvokerFactory.Create(targetMethod),
+            messageType,
+            replyType,
+            groups);
     }
 
     private static ZLinkHandlerEndpointDescriptor CreateDescriptor(

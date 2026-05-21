@@ -1,6 +1,7 @@
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Messaging;
 using Zlink.Framework.Runtime.Spots;
+using Zlink.Framework.Contracts.Registry;
 
 namespace Zlink.Framework.Runtime.Core;
 
@@ -226,13 +227,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
+        var targetPeerRid = ResolveRouteEgressTargetPeerRid(
+            localEgressChannelName,
+            targetSpotNodeChannelName);
         var relayHeader = ZLinkRoutedSpotRelayPackets.CreateRelayHeader(
             ZLinkMessageKind.Command,
             targetSpotNodeChannelName);
         var relayPayload = ZLinkRoutedSpotRelayPackets.CreateRelayPayloadParts(
             targetSpotRid,
             parts);
-        var targetPeerRid = ResolveRouteEgressTargetPeerRid(targetSpotNodeChannelName);
         return GetRouteChannel(localEgressChannelName).SubmitSendPartsAsync(
             targetPeerRid,
             relayHeader,
@@ -248,6 +251,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        var targetPeerRid = ResolveRouteEgressTargetPeerRid(
+            localEgressChannelName,
+            targetSpotNodeChannelName);
         var relayHeader = ZLinkRoutedSpotRelayPackets.CreateRelayHeader(
             ZLinkMessageKind.Request,
             targetSpotNodeChannelName,
@@ -255,7 +261,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         var relayPayload = ZLinkRoutedSpotRelayPackets.CreateRelayPayloadParts(
             targetSpotRid,
             parts);
-        var targetPeerRid = ResolveRouteEgressTargetPeerRid(targetSpotNodeChannelName);
         var reply = await GetRouteChannel(localEgressChannelName)
             .RequestPartsAsync<ZLinkRoutedSpotRelayReply>(
                 targetPeerRid,
@@ -267,8 +272,26 @@ internal sealed partial class ZLinkFrameworkRuntime
         return reply.ToMessages();
     }
 
-    private RoutingId ResolveRouteEgressTargetPeerRid(string targetSpotNodeChannelName)
+    private RoutingId ResolveRouteEgressTargetPeerRid(
+        string localEgressChannelName,
+        string targetSpotNodeChannelName)
     {
+        var localRoute = GetRouteChannel(localEgressChannelName);
+        if (TryResolveRouteEgressPeerFromDiscovery(
+                localRoute,
+                targetSpotNodeChannelName,
+                out var discoveryPeerRid))
+        {
+            return discoveryPeerRid;
+        }
+
+        if (TryResolveRouteEgressPeerFromRegistryQuery(
+                targetSpotNodeChannelName,
+                out var registryPeerRid))
+        {
+            return registryPeerRid;
+        }
+
         if (_registration.RouteChannels.TryGetValue(targetSpotNodeChannelName, out var targetRoute)
             && targetRoute.RoutingConfig.RoutingId.Size > 0)
         {
@@ -276,7 +299,128 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
 
         throw new ZLinkConfigurationException(
-            $"Routed SPOT route mesh egress target channel '{targetSpotNodeChannelName}' does not expose a target route peer routing id.");
+            $"Routed SPOT route mesh egress channel '{localEgressChannelName}' cannot find a target route peer routing id for target SPOT node channel '{targetSpotNodeChannelName}'. Configure registry discovery/query metadata for the target route mesh peer, or register the target route channel in this process with an explicit routing id for manual topology tests.");
+    }
+
+    private static bool TryResolveRouteEgressPeerFromDiscovery(
+        ZLinkRouteChannelRuntime localRoute,
+        string targetSpotNodeChannelName,
+        out RoutingId routingId)
+    {
+        routingId = default;
+        var discovery = localRoute.Discovery;
+        if (discovery is null)
+        {
+            return false;
+        }
+
+        HashSet<RoutingId>? candidates = null;
+        var matchedPeerWithoutRoutingId = false;
+        foreach (var peer in discovery.MemberPeers())
+        {
+            if (peer.AutoConnectType != ZLinkAutoConnectType.RouteMesh
+                || peer.ServiceRole != ZLinkServiceRole.Router
+                || !string.Equals(
+                    peer.ChannelName,
+                    targetSpotNodeChannelName,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (peer.RoutingId is not { Size: > 0 } peerRoutingId)
+            {
+                matchedPeerWithoutRoutingId = true;
+                continue;
+            }
+
+            candidates ??= [];
+            candidates.Add(peerRoutingId);
+        }
+
+        if (candidates is null || candidates.Count == 0)
+        {
+            if (matchedPeerWithoutRoutingId)
+            {
+                throw new ZLinkConfigurationException(
+                    $"Routed SPOT route mesh egress channel '{localRoute.RouterChannelId}' found target channel '{targetSpotNodeChannelName}' in discovery, but the peer does not expose a routing id.");
+            }
+
+            return false;
+        }
+
+        if (candidates.Count > 1)
+        {
+            throw new ZLinkConfigurationException(
+                $"Routed SPOT route mesh egress channel '{localRoute.RouterChannelId}' found multiple route peers for target channel '{targetSpotNodeChannelName}'. Use a unique target SPOT node route channel for this egress.");
+        }
+
+        routingId = candidates.Single();
+        return true;
+    }
+
+    private bool TryResolveRouteEgressPeerFromRegistryQuery(
+        string targetSpotNodeChannelName,
+        out RoutingId routingId)
+    {
+        routingId = default;
+        var discoveryEndpoints = _registration.Discovery?.Endpoints;
+        if (discoveryEndpoints is null || discoveryEndpoints.Count == 0)
+        {
+            return false;
+        }
+
+        var state = GetOrStartState();
+        var registryAdapter = _backendAdapterFactory.CreateRegistryAdapter();
+        var candidates = new HashSet<RoutingId>();
+        var matchedPeerWithoutRoutingId = false;
+        foreach (var endpoint in discoveryEndpoints)
+        {
+            var queryClient = registryAdapter.CreateRegistryQueryClient(state.Context);
+            try
+            {
+                queryClient.Connect(endpoint);
+                foreach (var entry in queryClient.Snapshot(new ZLinkRegistryTopologyFilter(
+                             AutoConnectType: ZLinkAutoConnectType.RouteMesh,
+                             ServiceKind: ZLinkServiceKind.Socket,
+                             ServiceRole: ZLinkServiceRole.Router,
+                             ChannelName: targetSpotNodeChannelName,
+                             State: ZLinkTopologyState.Ready)))
+                {
+                    if (entry.RoutingId is not { Size: > 0 } entryRoutingId)
+                    {
+                        matchedPeerWithoutRoutingId = true;
+                        continue;
+                    }
+
+                    candidates.Add(entryRoutingId);
+                }
+            }
+            finally
+            {
+                queryClient.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+        }
+
+        if (candidates.Count == 0)
+        {
+            if (matchedPeerWithoutRoutingId)
+            {
+                throw new ZLinkConfigurationException(
+                    $"Routed SPOT route mesh egress found target channel '{targetSpotNodeChannelName}' in registry, but the peer does not expose a routing id.");
+            }
+
+            return false;
+        }
+
+        if (candidates.Count > 1)
+        {
+            throw new ZLinkConfigurationException(
+                $"Routed SPOT route mesh egress found multiple route peers for target channel '{targetSpotNodeChannelName}'. Use a unique target SPOT node route channel for this egress.");
+        }
+
+        routingId = candidates.Single();
+        return true;
     }
 
     internal async ValueTask<IReadOnlyList<Message>> RequestSpotViaRouterChannelAsync(

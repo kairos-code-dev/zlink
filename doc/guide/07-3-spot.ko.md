@@ -613,10 +613,9 @@ client/server channel의 server `ROUTER`와 route mesh channel의 `ROUTER`를 �
 이 용도에 맞지 않는다.
 
 보내는 쪽에서는 이미 연결된 local egress channel 을 골라야 한다. target Spot 이름이나
-Spot rid 만으로 어떤 connection 을 사용할지 항상 알 수 없기 때문이다. framework 문서의
-`EnableSpotRouteEgress(targetSpotNodeChannelName)`과
-`ViaEgressChannel(localEgressChannelName)`은 이 구분을 사용자 코드에 드러내기 위한
-표면이다.
+Spot rid 만으로 어떤 connection 을 사용할지 항상 알 수 없기 때문이다. 상위 framework
+문서는 이 구분을 public API 로 드러내야 하며, local egress channel 이름과 target
+SpotNode ingress channel 이름을 같은 값이라고 가정하면 안 된다.
 
 core API를 직접 사용할 때는 `zlink_spot_node_connect_router_channel_peer()`로
 수동 endpoint에 연결하거나, router channel discovery view를

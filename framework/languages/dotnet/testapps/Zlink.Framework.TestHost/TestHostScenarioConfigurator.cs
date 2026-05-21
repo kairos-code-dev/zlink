@@ -71,6 +71,7 @@ internal static class TestHostScenarioConfigurator
                         server.Bind(options.ServerEndpoint
                             ?? throw new InvalidOperationException("Channel server mode requires --server-endpoint."));
                     });
+                    channel.AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
                 });
         });
     }
@@ -93,6 +94,7 @@ internal static class TestHostScenarioConfigurator
                 channel =>
                 {
                     channel.EnableSubscriber();
+                    channel.MapHandlerGroup("testhost-channel-events");
                 });
         });
     }

@@ -21,6 +21,25 @@ internal sealed record ZLinkHandlerEndpointDescriptor(
     IReadOnlySet<string> Groups,
     string? ExplicitChannelName);
 
+internal sealed record ZLinkRouteHandlerEndpointDescriptor(
+    ZLinkMessageKind Kind,
+    string MessageName,
+    Type DeclaringType,
+    ZLinkHandlerMethodInvoker Invoker,
+    Type MessageType,
+    Type? ReplyType,
+    IReadOnlySet<string> Groups);
+
+internal enum ZLinkHandlerEndpointSurface
+{
+    Channel,
+    Route
+}
+
+internal readonly record struct ZLinkHandlerGroupCatalogEntry(
+    ZLinkHandlerEndpointSurface Surface,
+    ZLinkMessageKind Kind);
+
 internal readonly record struct ZLinkHandlerSelectionKey(
     ZLinkMessageKind Kind,
     string ChannelName,

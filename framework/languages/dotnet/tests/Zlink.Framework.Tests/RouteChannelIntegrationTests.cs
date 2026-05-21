@@ -142,10 +142,64 @@ public sealed class RouteChannelIntegrationTests
         }, leftHost, rightHost);
     }
 
+    [Fact]
+    public async Task RouteRequest_UsesMappedHandlerGroup()
+    {
+        var leftEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
+        var rightEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
+        var leftRid = RoutingId.FromString("31");
+        var rightRid = RoutingId.FromString("32");
+
+        var leftBuilder = Host.CreateApplicationBuilder();
+        leftBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddRouteMeshChannel("backend.group", routed =>
+            {
+                routed.Bind(leftEndpoint);
+                routed.ConfigureRouting(routing => routing.RoutingId = leftRid);
+                routed.UseManualConnections(peers => peers.Connect(rightEndpoint));
+            });
+        });
+
+        var rightBuilder = Host.CreateApplicationBuilder();
+        rightBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddHandlersFromAssemblyOf<RouteChannelIntegrationTests>();
+            options.AddRouteMeshChannel("backend.group", routed =>
+            {
+                routed.Bind(rightEndpoint);
+                routed.ConfigureRouting(routing => routing.RoutingId = rightRid);
+                routed.UseManualConnections(peers => peers.Connect(leftEndpoint));
+                routed.MapHandlerGroup("route-shared");
+            });
+        });
+
+        using var leftHost = leftBuilder.Build();
+        using var rightHost = rightBuilder.Build();
+
+        await ChannelMessagingTestSupport.RunWithHostCleanupAsync(async () =>
+        {
+            await rightHost.StartAsync();
+            await leftHost.StartAsync();
+
+            var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
+            var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
+                async () => await client.RequestTo("backend.group", rightRid, new SharedPacketRequest("group", 1))
+                    .Timeout(TimeSpan.FromSeconds(3))
+                    .SubmitAsync<SharedPacketReply>(),
+                static result => result.Value == "group",
+                attempts: 30,
+                delayMs: 100);
+
+            Assert.Equal("group", reply.Value);
+        }, leftHost, rightHost);
+    }
+
     public sealed record SharedPacketRequest(string Value, int DelayMs);
 
     public sealed record SharedPacketReply(string Value);
 
+    [ZLinkHandlerGroup("route-shared")]
     public sealed class SharedPacketRouteHandler : IZLinkRouteRequestHandler<SharedPacketRequest, SharedPacketReply>
     {
         public async ValueTask<SharedPacketReply> HandleAsync(

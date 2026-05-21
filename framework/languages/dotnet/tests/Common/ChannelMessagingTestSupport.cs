@@ -298,6 +298,31 @@ public sealed class ProfileInvalidated
     public string UserId { get; init; } = string.Empty;
 }
 
+public sealed class ForwardProfileRequest
+{
+    public string UserId { get; init; } = string.Empty;
+}
+
+public sealed class PublishProfileRequest
+{
+    public string UserId { get; init; } = string.Empty;
+}
+
+public sealed class PublishProfileReply
+{
+    public bool Accepted { get; init; }
+}
+
+public sealed class MeshProfileRequest
+{
+    public string UserId { get; init; } = string.Empty;
+}
+
+public sealed class MeshProfileReply
+{
+    public string Name { get; init; } = string.Empty;
+}
+
 public sealed class ProfileCommandRecorder
 {
     public ConcurrentQueue<string> Commands { get; } = [];
@@ -306,6 +331,13 @@ public sealed class ProfileCommandRecorder
 public sealed class ProfileEventRecorder
 {
     public ConcurrentQueue<string> Events { get; } = [];
+}
+
+public sealed class MeshProfileRecorder
+{
+    public ConcurrentQueue<string> Requests { get; } = [];
+
+    public ConcurrentQueue<string> Commands { get; } = [];
 }
 
 public sealed class FilterOrderRecorder
@@ -340,6 +372,44 @@ public sealed class ProfileHandlers(ProfileCommandRecorder recorder)
         _ = cancellationToken;
         recorder.Commands.Enqueue(command.UserId);
         return ValueTask.CompletedTask;
+    }
+}
+
+[ZLinkHandlerGroup("profile-forward")]
+public sealed class ProfileForwardHandlers(IZLinkClient client)
+{
+    [ZLinkRequest]
+    public async ValueTask<ProfileReply> ForwardAsync(
+        ForwardProfileRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        return await client
+            .Request("backend", new GetProfileRequest { UserId = request.UserId })
+            .SubmitAsync<ProfileReply>(cancellationToken)
+            .ConfigureAwait(false);
+    }
+}
+
+[ZLinkHandlerGroup("profile-publisher")]
+public sealed class ProfilePublisherHandlers(IZLinkFanoutPublisher publisher)
+{
+    [ZLinkRequest]
+    public async ValueTask<PublishProfileReply> PublishAsync(
+        PublishProfileRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        await publisher
+            .Publish(
+                "profile",
+                "profile.cache-invalidated",
+                new ProfileInvalidated { UserId = request.UserId })
+            .Submit(cancellationToken)
+            .ConfigureAwait(false);
+        return new PublishProfileReply { Accepted = true };
     }
 }
 

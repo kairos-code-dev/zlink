@@ -215,33 +215,133 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 	stats := perfcommon.NewStats()
 	window := activeDeadline(cfg.duration)
 	activeLimit := activeMultiSpotSendSendClientLimit(len(clients), cfg.msgSize)
+	poller, err := zlink.NewPoller()
+	perfcommon.Must(err)
+	defer poller.Close()
+	pollEvents := make([]zlink.PollEvent, activeLimit)
+	for i := 0; i < activeLimit; i++ {
+		perfcommon.Must(poller.AddSocket(clients[i].spot, perfcommon.ZLinkPollIn, uintptr(i)))
+	}
 	for time.Now().Before(window.StopAt) {
-		progressed := false
+		sendProgress := false
 		for i := 0; i < activeLimit; i++ {
 			client := &clients[i]
 			if client.waitingReply {
-				if drainMultiSpotSendSend(client.spot, cfg.msgSize, window.StopAt, stats, true) {
-					client.waitingReply = false
-					progressed = true
-				}
 				continue
 			}
 			perfcommon.StampPayload(client.payload)
 			if submitMultiSpotSendSend(client.spot, client.payload) {
 				client.waitingReply = true
-				progressed = true
+				sendProgress = true
+			}
+		}
+		if sendProgress {
+			continue
+		}
+		if drainMultiSpotSendSendWaiting(clients, activeLimit, cfg.msgSize, window.StopAt, stats, true) {
+			continue
+		}
+		remaining := time.Until(window.StopAt)
+		if remaining <= 0 {
+			break
+		}
+		if remaining > time.Millisecond {
+			remaining = time.Millisecond
+		}
+		n, waitErr := poller.Wait(pollEvents, remaining)
+		if waitErr != nil {
+			if perfcommon.IsTransient(waitErr) {
 				continue
 			}
-			if drainMultiSpotSendSend(client.spot, cfg.msgSize, window.StopAt, stats, true) {
-				client.waitingReply = false
-				progressed = true
-			}
+			perfcommon.Must(fmt.Errorf("multi spot sendsend client poll: %w", waitErr))
 		}
-		if !progressed {
-			time.Sleep(time.Millisecond)
+		handleMultiSpotSendSendPollEvents(pollEvents[:n], clients, cfg.msgSize, window.StopAt, stats, true)
+	}
+	drainMultiSpotSendSendPending(poller, pollEvents, clients, activeLimit, cfg.msgSize, stats, window.StopAt)
+	return stats.Snapshot(cfg.duration, cfg.msgSize)
+}
+
+func handleMultiSpotSendSendPollEvents(
+	events []zlink.PollEvent,
+	clients []multiSpotSendSendClient,
+	msgSize int,
+	activeStopAt time.Time,
+	stats *perfcommon.Stats,
+	record bool,
+) {
+	for i := range events {
+		idx := int(events[i].Slot)
+		if idx < 0 || idx >= len(clients) || events[i].Revents&perfcommon.ZLinkPollIn == 0 {
+			continue
+		}
+		client := &clients[idx]
+		if client.waitingReply && drainMultiSpotSendSend(client.spot, msgSize, activeStopAt, stats, record) {
+			client.waitingReply = false
 		}
 	}
-	return stats.Snapshot(cfg.duration, cfg.msgSize)
+}
+
+func drainMultiSpotSendSendWaiting(
+	clients []multiSpotSendSendClient,
+	activeLimit int,
+	msgSize int,
+	activeStopAt time.Time,
+	stats *perfcommon.Stats,
+	record bool,
+) bool {
+	if activeLimit > len(clients) {
+		activeLimit = len(clients)
+	}
+	progressed := false
+	for i := 0; i < activeLimit; i++ {
+		client := &clients[i]
+		if client.waitingReply && drainMultiSpotSendSend(client.spot, msgSize, activeStopAt, stats, record) {
+			client.waitingReply = false
+			progressed = true
+		}
+	}
+	return progressed
+}
+
+func drainMultiSpotSendSendPending(
+	poller *zlink.Poller,
+	events []zlink.PollEvent,
+	clients []multiSpotSendSendClient,
+	activeLimit int,
+	msgSize int,
+	stats *perfcommon.Stats,
+	activeStopAt time.Time,
+) {
+	deadline := time.Now().Add(time.Second)
+	for anyMultiSpotSendSendWaiting(clients, activeLimit) && time.Now().Before(deadline) {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return
+		}
+		if remaining > time.Millisecond {
+			remaining = time.Millisecond
+		}
+		n, waitErr := poller.Wait(events, remaining)
+		if waitErr != nil {
+			if perfcommon.IsTransient(waitErr) {
+				continue
+			}
+			perfcommon.Must(fmt.Errorf("multi spot sendsend pending poll: %w", waitErr))
+		}
+		handleMultiSpotSendSendPollEvents(events[:n], clients, msgSize, activeStopAt, stats, true)
+	}
+}
+
+func anyMultiSpotSendSendWaiting(clients []multiSpotSendSendClient, activeLimit int) bool {
+	if activeLimit > len(clients) {
+		activeLimit = len(clients)
+	}
+	for i := 0; i < activeLimit; i++ {
+		if clients[i].waitingReply {
+			return true
+		}
+	}
+	return false
 }
 
 func activeMultiSpotSendSendClientLimit(total int, msgSize int) int {
@@ -255,12 +355,12 @@ func activeMultiSpotSendSendClientLimit(total int, msgSize int) int {
 }
 
 func submitMultiSpotSendSend(spot *zlink.Spot, payload []byte) bool {
-	message := perfcommon.NewMessage(payload)
-	defer message.Close()
-	sent, err := spot.SendToSpot(multiSpotSendSendNodeRID, multiSpotSendSendSpotRID).
-		Message(message).
-		Flags(zlink.SendFlagsDontWait).
-		Submit(nil)
+	sent, err := perfcommon.SubmitPayload(payload, func(message *zlink.Message) (bool, error) {
+		return spot.SendToSpot(multiSpotSendSendNodeRID, multiSpotSendSendSpotRID).
+			Message(message).
+			Flags(zlink.SendFlagsDontWait).
+			Submit(nil)
+	})
 	if err != nil {
 		if perfcommon.IsTransient(err) {
 			return false

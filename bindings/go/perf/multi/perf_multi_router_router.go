@@ -9,7 +9,6 @@ import (
 )
 
 type multiRouterClient struct {
-	ctx     *zlink.Context
 	socket  *zlink.RouterSocket
 	monitor *zlink.SocketMonitor
 }
@@ -48,15 +47,17 @@ func runMultiRouterRouterServer(cfg multiConfig) {
 func runMultiRouterRouterClientRole(cfg multiConfig, endpoint string) perfcommon.Result {
 	serverID := zlink.NewRoutingID([]byte("SERVER"))
 	stats := perfcommon.NewStats()
+	clientCtx, err := perfcommon.NewMultiClientContext()
+	perfcommon.Must(err)
+	defer clientCtx.Close()
+	perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
+
 	clients := make([]multiRouterClient, 0, cfg.clients)
 	for i := 0; i < cfg.clients; i++ {
-		clientCtx, createErr := perfcommon.NewMultiClientContext()
-		perfcommon.Must(createErr)
 		client, socketErr := clientCtx.RouterSocket()
 		perfcommon.Must(socketErr)
 		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
-		perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
 		perfcommon.ApplyMultiHWM(client, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
 		clientID := zlink.NewRoutingID([]byte(fmt.Sprintf("router-%06d", i)))
@@ -64,13 +65,12 @@ func runMultiRouterRouterClientRole(cfg multiConfig, endpoint string) perfcommon
 		perfcommon.Must(client.SetConnectRoutingID(serverID))
 		perfcommon.Must(client.Connect(endpoint))
 		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), clientMon)
-		clients = append(clients, multiRouterClient{ctx: clientCtx, socket: client, monitor: clientMon})
+		clients = append(clients, multiRouterClient{socket: client, monitor: clientMon})
 	}
 	defer func() {
 		for _, client := range clients {
 			_ = client.monitor.Close()
 			_ = client.socket.Close()
-			_ = client.ctx.Close()
 		}
 	}()
 

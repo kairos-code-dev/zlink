@@ -9,7 +9,6 @@ import (
 )
 
 type dealerRouterClient struct {
-	ctx     *zlink.Context
 	socket  *zlink.DealerSocket
 	monitor *zlink.SocketMonitor
 }
@@ -47,28 +46,29 @@ func runMultiDealerRouterServer(cfg multiConfig) {
 // client emits no stop token; the runner stops the server).
 func runMultiDealerRouterClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	stats := perfcommon.NewStats()
+	clientCtx, err := perfcommon.NewMultiClientContext()
+	perfcommon.Must(err)
+	defer clientCtx.Close()
+	perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
+
 	dealers := make([]dealerRouterClient, 0, cfg.clients)
 	for i := 0; i < cfg.clients; i++ {
-		clientCtx, err := perfcommon.NewMultiClientContext()
-		perfcommon.Must(err)
 		dealer, err := clientCtx.DealerSocket()
 		perfcommon.Must(err)
 		dealerMon := perfcommon.OpenMonitor(dealer)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(dealer, cfg.transport))
-		perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
 		perfcommon.ApplyMultiHWM(dealer, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(dealer, cfg.transport)
 		rid := zlink.NewRoutingID([]byte(fmt.Sprintf("dealer-%06d", i)))
 		perfcommon.Must(dealer.SetRoutingID(rid))
 		perfcommon.Must(dealer.Connect(endpoint))
 		perfcommon.WaitConnectedWithTimeout(perfcommon.MultiReadyTimeout(), dealerMon)
-		dealers = append(dealers, dealerRouterClient{ctx: clientCtx, socket: dealer, monitor: dealerMon})
+		dealers = append(dealers, dealerRouterClient{socket: dealer, monitor: dealerMon})
 	}
 	defer func() {
 		for _, dealer := range dealers {
 			_ = dealer.monitor.Close()
 			_ = dealer.socket.Close()
-			_ = dealer.ctx.Close()
 		}
 	}()
 

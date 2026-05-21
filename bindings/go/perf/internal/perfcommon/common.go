@@ -363,6 +363,7 @@ func ApplySingleAutoHWMMsgUnit(ctx *zlink.Context, msgSize int) {
 		return
 	}
 	Must(ctx.Options().SetAutoHwmMsgUnitBytes(msgSize))
+	Must(ctx.RecalculateAutoHwm())
 }
 
 func ApplySingleSpotNodeAdmission(node spotNodeAdmission) {
@@ -408,6 +409,7 @@ func ApplyMultiAutoHWMMsgUnit(ctx *zlink.Context, msgSize int) {
 		return
 	}
 	Must(ctx.Options().SetAutoHwmMsgUnitBytes(msgSize))
+	Must(ctx.RecalculateAutoHwm())
 }
 
 func ApplyMultiSpotNodeAdmission(node spotNodeAdmission, pattern string) {

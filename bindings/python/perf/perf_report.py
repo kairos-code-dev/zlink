@@ -157,7 +157,7 @@ def multi_auto_hwm_lines(pattern, msg_sizes):
     if pattern in spot_patterns:
         yield "    Auto-HWM spotnode:"
         for msg_size in msg_sizes:
-            msg_unit = max(4096, int(msg_size))
+            msg_unit = int(msg_size)
             yield f"      - Size(B)={msg_size}, MsgUnit(B)={msg_unit}"
             yield "      | Socket      | Type | Role | SNDHWM | RCVHWM | SNDBUF | RCVBUF |"
             yield "      |-------------|------|------|--------|--------|--------|--------|"

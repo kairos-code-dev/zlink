@@ -1,16 +1,18 @@
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
 
-namespace Bingo.Server.Play;
+namespace Bingo.Server.Play.EntrySpot;
 
 internal sealed class MatchBingoActorHandler
-    : IZLinkEntrySpotActorRequestHandler<PlayerActor, MatchBingoReq, MatchBingoRes>
+    : IZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, MatchBingoReq, MatchBingoRes>
 {
     public async ValueTask<MatchBingoRes> HandleAsync(
+        BingoEntrySpot entrySpot,
         PlayerActor actor,
         MatchBingoReq message,
         CancellationToken cancellationToken)
     {
+        _ = entrySpot;
         var matched = await actor.Context.RequestChannel(
                 SampleNames.ApiChannel,
                 new MatchBingoApiReq(actor.ActorId, actor.DisplayName, message.Mode))

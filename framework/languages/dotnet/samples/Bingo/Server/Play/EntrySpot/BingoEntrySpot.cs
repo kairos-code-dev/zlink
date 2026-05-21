@@ -6,6 +6,6 @@ internal sealed class BingoEntrySpot(IZLinkEntrySpotContext context) : IZLinkEnt
 
     public void Configure()
     {
-        Context.AddActorPacket<MatchBingoActorHandler, PlayerActor>();
+        Context.AddHandler<MatchBingoActorHandler>();
     }
 }

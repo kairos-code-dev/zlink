@@ -2,34 +2,38 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework for .NET](../README.ko.md) | [다음: Getting Started](./02-getting-started.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# ZLink Framework for .NET — 개요와 시작
+# ZLink Framework for .NET — 개요
 
-> 이 문서는 `.NET` 가이드의 진입점이다. 개념의 **정식 정의**는 언어 중립
-> [공통 스펙 개요](../../../../doc/spec/overview.ko.md)가 소유한다. 이 가이드는
-> 그 개념을 `.NET`/`ASP.NET Core` 개발자 관점에서 다시 풀어 설명한다.
+> 이 문서는 `.NET` 가이드의 진입점이다. 가이드는 `ASP.NET Core` 개발자가
+> ZLink Framework 의 기능을 **읽고 바로 따라 쓸 수 있도록** 개념과 사용법을
+> 직접 설명한다. 개념의 **언어 중립 정식 정의**는 [공통 스펙
+> 개요](../../../../doc/spec/overview.ko.md)가, `.NET` 표면의 **정식 계약**은
+> [spec/](../spec/handler-interfaces.ko.md) 문서가 소유한다. 두 표기가 어긋나면
+> spec 이 우선이다.
 
 ## 1. 한 줄 정의
 
-`ZLink Framework for .NET`은 zlink `.NET` 바인딩 위에 올라가, 별도 **gateway나
-전용 로드밸런서 없이** `channel name` 기준의 서버 간 호출, pub/sub, `SPOT`,
-`STREAM`을 `ASP.NET Core`의 DI와 hosted service 모델 안에서 쓰게 해 주는 상위
+`ZLink Framework for .NET`은 zlink `.NET` 바인딩 위에 올라가, 별도 **gateway 나
+전용 로드밸런서 없이** 논리 `channel name` 기준의 서버 간 호출, pub/sub, `SPOT`,
+`STREAM`을 `ASP.NET Core`의 DI 와 hosted service 모델 안에서 쓰게 해 주는 상위
 계층이다.
 
-핵심은 "raw socket과 low-level discovery를 직접 다루지 않는다"는 것이다.
-개발자는 HTTP/gRPC를 쓰던 감각으로 handler와 client만 작성하고, 연결·발견·
-라우팅은 framework가 처리한다.
+핵심은 "raw socket 과 low-level discovery 를 직접 다루지 않는다"는 것이다.
+개발자는 HTTP/gRPC 를 쓰던 감각으로 **handler 와 client 만** 작성하고,
+연결·발견·라우팅·재연결·correlation 은 framework 가 처리한다.
 
 ## 2. 어떤 문제를 푸는가
 
-기존 ASP.NET Core 서비스가 서로 통신할 때 흔히 겪는 비용은 다음과 같다.
+ASP.NET Core 서비스가 서로 통신할 때 흔히 드는 비용은 다음과 같다.
 
-- 서비스마다 주소·포트를 알아야 하고, 앞단에 gateway나 로드밸런서를 둔다.
-- 메시징 라이브러리를 쓰면 socket·endpoint·재연결·discovery를 앱이 직접 관리한다.
-- 요청/응답, 단방향 전송, 이벤트 fan-out마다 다른 코드 경로가 생긴다.
+- 서비스마다 주소·포트를 알아야 하고, 앞단에 gateway 나 로드밸런서를 둔다.
+- 메시징 라이브러리를 쓰면 socket·endpoint·재연결·discovery 를 앱이 직접 관리한다.
+- 요청/응답, 단방향 전송, 이벤트 fan-out 마다 다른 코드 경로가 생긴다.
+- 게임 room/stage 같은 동적 단위를 다루려면 라우팅과 세션 관리를 또 따로 짠다.
 
-`ZLink Framework`는 이것을 **논리 `channel name` 하나**로 좁힌다. 응용은
-"`order` channel로 요청을 보낸다"만 알면 되고, 그 channel이 어디에 몇 개
-떠 있는지는 channel별 `Discovery`가 숨긴다.
+ZLink Framework 는 이 모든 호출의 단위를 **논리 `channel name` 하나**로 좁힌다.
+응용은 "`order` channel 로 요청을 보낸다"만 알면 되고, 그 channel 이 어디에 몇 개
+떠 있는지는 channel 별 `Discovery`가 숨긴다.
 
 ## 3. 기존 방식 대비 (체감 난이도)
 
@@ -47,65 +51,125 @@
 ```csharp
 // 서버: handler 하나
 [ZLinkRequest]
-public sealed class GetPriceHandler : IZLinkRequestHandler<PriceReq, PriceRes>
+public sealed class GetPriceHandler
+    : IZLinkRequestHandler<PriceRequest, PriceReply>
 {
-    public ValueTask<PriceRes> HandleAsync(
-        PriceReq request, ZLinkRequestContext context, CancellationToken ct)
-        => ValueTask.FromResult(new PriceRes(request.Symbol, 42));
+    public ValueTask<PriceReply> HandleAsync(
+        PriceRequest request, ZLinkRequestContext context, CancellationToken ct)
+        => ValueTask.FromResult(new PriceReply(request.Symbol, 187.42m));
 }
 
 // 등록
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("price", channel => channel.EnableServer());
+    options.AddClientServerChannel("price", channel =>
+    {
+        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7301"));
+        channel.AddRequestHandler<GetPriceHandler, PriceRequest, PriceReply>();
+    });
 });
 
-// 클라이언트 측: IZLinkClient 를 주입받아 builder + 종결자로 호출
-var res = await client
-    .Request("price", new PriceReq("AAPL"))
-    .SubmitAsync<PriceRes>(ct);
+// 클라이언트: IZLinkClient 를 주입받아 builder + 종결자로 호출
+var reply = await client
+    .Request("price", new PriceRequest("AAPL"))
+    .SubmitAsync<PriceReply>(ct);
 ```
 
-배선 코드가 사라지고 남는 것은 handler와 한 줄짜리 channel 등록이다.
+배선 코드가 사라지고 남는 것은 handler 와 한 줄짜리 channel 등록뿐이다.
 
-## 4. 통합 4축 한눈에
+## 4. 아키텍처 — 어디에 올라가는가
+
+```
++-----------------------------------------------------------+
+|  ASP.NET Core app (DI, hosted service, handler)           |
++-----------------------------------------------------------+
+|  ZLink Framework for .NET (adapter surface)               |
+|   - channel messaging  - SPOT/actor  - STREAM session     |
+|   - registry/monitoring integration                       |
++-----------------------------------------------------------+
+|  zlink .NET binding (DealerSocket, RouterSocket, Spot,    |
+|   SpotNode, Registry, Discovery ...)                      |
++-----------------------------------------------------------+
+|  zlink core (C ABI) - transport, ZMP, I/O threads         |
++-----------------------------------------------------------+
+```
+
+Framework 는 새 transport 나 새 socket semantic 을 만들지 않는다. 기존 바인딩
+기능을 **DI · hosted service · handler · attribute** 모델로 감싸 노출할 뿐이다.
+backend 의존 기준은
+[internals/backend-dependency-policy](../internals/backend-dependency-policy.ko.md)
+가 소유한다.
+
+## 5. 통합 4축 한눈에
 
 ```mermaid
 flowchart LR
   App[ASP.NET Core 앱] --> FW[ZLink Framework]
-  FW --> CM[channel messaging<br/>DEALER→ROUTER]
-  FW --> PS[PUB / SUB]
-  FW --> SP[SPOT<br/>room·stage·actor]
-  FW --> ST[STREAM<br/>client connector]
+  FW --> CM[channel messaging<br/>request · send]
+  FW --> PS[PUB / SUB<br/>event fan-out]
+  FW --> SP[SPOT<br/>room·stage·zone·actor]
+  FW --> ST[STREAM<br/>외부 client connector]
   CM & PS & SP & ST --> ZB[zlink .NET 바인딩]
 ```
 
-| 축 | 사용자에게 보이는 것 | 정식 문서 |
-|----|----------------------|-----------|
-| channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkClient` | [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) |
-| PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()` | [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) |
-| SPOT | named spot factory, routed Spot client, publish/subscribe, actor | [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md), [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md) |
-| STREAM | framework session packet, Stream Connector | [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md) |
+| 축 | 사용자에게 보이는 것 | 가이드 챕터 |
+|----|----------------------|-------------|
+| channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkClient` | [04-channel-messaging](./04-channel-messaging.ko.md) |
+| PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()`, `IZLinkEventPublisher` | [04-channel-messaging](./04-channel-messaging.ko.md) |
+| SPOT | named spot factory, `IZLinkSpotClient`, `IZLinkRoutedSpotClient`, timer | [05-spot](./05-spot.ko.md) |
+| actor / session | actor factory, Entry Spot, `IZLinkSessionProxy`, session actor dispatch | [06-actor-session](./06-actor-session.ko.md) |
+| STREAM | framework session packet, Stream Connector | [07-stream](./07-stream.ko.md) |
+| 인프라 | Registry topology, runtime monitoring | [08-registry](./08-registry.ko.md), [09-monitoring](./09-monitoring.ko.md) |
 
-## 5. 누구를 위한 것인가 / 비목표
+## 6. 누구를 위한 것인가 / 비목표
 
 - **대상:** 서버 간 메시징이 필요한 `ASP.NET Core` 백엔드, 실시간 game/stage
-  서버, 외부 client(STREAM)를 받는 게이트 서버.
-- **비목표:** 새 transport나 새 socket semantic을 만드는 것이 아니다. 기존
+  서버, 외부 client(STREAM)를 받는 게이트 서버, 클러스터 topology 를 운영에서
+  들여다봐야 하는 팀.
+- **비목표:** 새 transport 나 새 socket semantic 을 만드는 것이 아니다. 기존
   `.NET` 바인딩(`DealerSocket`, `SpotNode`, `Registry` 등)을 그대로 쓰되
-  framework 친화적으로 감싼다. backend 의존 기준은
-  [internals/backend-dependency-policy](../internals/backend-dependency-policy.ko.md).
+  framework 친화적으로 감싼다.
 
-framework 는 handler 를 자동으로 모든 channel 에 열지 않는다. assembly scan 은 handler 를
-찾는 단계이고, 실제 노출은 `MapHandlerGroup(...)` 또는 개별 typed handler registration 이
-정한다. Spot route transport 도 별도 축이다. `AcceptSpotRoutesFromChannel(...)`은 SpotNode
-ingress 연결이고, 일반 handler 에서 target Spot 으로 나갈 때는
-`IZLinkRoutedSpotClient.ViaEgressChannel(...)`로 사용할 local egress channel 을 고른다.
+framework 는 handler 를 자동으로 모든 channel 에 열지 않는다. assembly scan 은
+handler 를 **찾는** 단계이고, 실제 노출은 `MapHandlerGroup(...)` 또는 개별 typed
+handler registration 이 정한다. 자세한 규칙은
+[04-channel-messaging](./04-channel-messaging.ko.md) §3 에서 다룬다.
 
-## 6. 이 가이드 읽는 순서
+## 7. 이름 표기 규칙 (혼동 주의)
 
-1. [02-getting-started](./02-getting-started.ko.md) — 패키지부터 동작 확인까지
-2. [03-concepts](./03-concepts.ko.md) — `.NET` 표면 멘탈 모델
-3. [04-feature-map](./04-feature-map.ko.md) — 기능·난이도·언제 쓰나
-4. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그부터)
-5. [guide/samples/](./samples/channel-messaging-samples.ko.md) — 기능별 실행 예제
+가이드 전체에서 다음 표기를 일관되게 쓴다.
+
+- **framework adapter 가 노출하는 모든 public 타입**(interface, record, enum,
+  attribute, exception, DI 확장 메서드)은 `ZLink` prefix(대문자 `L`)를 쓴다. 예:
+  `IZLinkClient`, `ZLinkRequestContext`, `[ZLinkRequest]`, `AddZLinkFramework`,
+  `IZLinkSpotClient`, `ZLinkFrameworkException`.
+- **단, client 측 Stream Connector 패키지**(`Systems.Zlink.Stream.Connector`)의
+  타입은 `Zlink` prefix(소문자 `l`)를 쓴다. 예: `IZlinkStreamConnector`,
+  `ZlinkStreamConnectorOptions`, `ZlinkStreamMessage`. 이는 connector 가 서버
+  framework 패키지에 의존하지 않는 독립 client 라이브러리이기 때문이다.
+- **하부 zlink core C API** 는 `zlink_*` snake_case 다.
+- NuGet package id 와 namespace 단어는 역순 도메인 규칙을 따라
+  `Systems.Zlink.*` 다(예: `Systems.Zlink.Framework`).
+
+> 정리하면: **서버 framework = `ZLink`, client connector = `Zlink`.** 한 코드에
+> 두 표기가 같이 보이면 오타가 아니라 위 규칙 때문이다.
+
+## 8. 현재 상태
+
+이 가이드가 설명하는 표면은 [spec/](../spec/handler-interfaces.ko.md) 의 draft
+계약을 따른다. 구현이 진행되는 동안에도 인터페이스의 모양과 동사(`Request`,
+`Submit`, `Bind`, `MapHandlerGroup` 등)는 고정 방향으로 유지된다. 세부 필드까지
+정확한 정식 정의가 필요하면 항상 spec 문서를 교차 참조한다.
+
+## 9. 이 가이드 읽는 순서
+
+1. [02-getting-started](./02-getting-started.ko.md) — 패키지부터 첫 동작 확인까지
+2. [03-concepts](./03-concepts.ko.md) — `.NET` 표면 멘탈 모델 (channel, capability, DI)
+3. [04-channel-messaging](./04-channel-messaging.ko.md) — request/send/pub-sub 상세
+4. [05-spot](./05-spot.ko.md) — room/stage/zone, timer, routed Spot 호출
+5. [06-actor-session](./06-actor-session.ko.md) — actor lifecycle, session actor dispatch
+6. [07-stream](./07-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
+7. [08-registry](./08-registry.ko.md) — Registry 구동과 topology 조회
+8. [09-monitoring](./09-monitoring.ko.md) — runtime 이벤트 관찰
+9. [10-feature-map](./10-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
+10. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)

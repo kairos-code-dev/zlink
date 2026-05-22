@@ -160,6 +160,14 @@ timeout, socket buffer 설정이 같은지 확인해야 한다. HWM은 numeric `
 `Effective Options`의 `routed_echo_borrow_payload` 값도 함께 확인한다. 이 값이 다르면
 메시지 복사 비용이 비교에 섞이므로, 결과를 binding 자체 성능으로 단정하지 않는다.
 
+새 pattern 또는 새 runner 조건을 처음 측정할 때는 CPU와 OS thread도 같이 관측한다.
+server/client 프로세스의 최대 `nlwp`와 대략적인 `%CPU` 피크를 결과 메모에 남긴다.
+특히 multi suite는 `clients` 값이 OS thread 수로 그대로 확장되는지 확인한다. Go는
+goroutine 실행 병렬도를 `GOMAXPROCS`로 따로 제한하므로, Go 결과에는 `go_gomaxprocs`,
+`go_gomaxprocs_source`, server/client `io_threads`, `nlwp`를 함께 기록한다. 이 값이
+이전 같은 조건보다 크게 튀면 throughput 비교 전에 runner 조건이나 runtime 설정 차이를
+먼저 확인한다.
+
 C는 개선 대상 언어가 아니라 비교군이다. 따라서 첫 비교에서는 C perf를 매번 새로
 실행하지 않고, `bindings/c/perf/baseline/` 아래의 최근 full 측정 결과를 사용한다.
 이 기준 파일은 같은 기본 옵션으로 실행한 결과여야 하며, 특정 실험이나 debug 재현을
@@ -277,6 +285,7 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 - `tcp`의 모든 대상 pattern/size가 `통과` 또는 `보류`가 되었는지
 - `tcp`에 `미달` 또는 `미측정`이 남은 상태에서 `ws`, `wss`, `tls`로 넘어가지 않았는지
 - 제한 재측정 결과의 `Effective Options`와 auto-HWM `MsgUnit(B)`가 서로 같은지
+- 새 pattern 또는 새 runner 조건에서 server/client `nlwp`와 CPU 피크를 기록했는지
 - C 기준으로 `bindings/c/perf/baseline/`의 최근 full 결과를 먼저 사용했는지
 - C 재측정은 측정 오차나 비정상 기준이 의심되는 제한 조합에서만 실행했는지
 - perf 수정이 필요한 경우 실제 버그나 정책 위반 근거가 있는지
@@ -333,7 +342,9 @@ public API 추가 대상으로 분리한다.
 
 ## 6. 신규 측정 상태 표
 
-이 표는 기존 측정 기록을 판정 근거로 재사용하지 않고, 새 측정을 시작하기 위한 상태표다. 이전 결과 파일은 참고 자료일 뿐이며, 아래 칸은 새 라운드에서 같은 조건의 C 기준과 대상 binding 결과를 다시 비교하기 전까지 모두 `미측정`으로 둔다.
+이 표는 기존 측정 기록을 그대로 통과 근거로 재사용하지 않고, 새 라운드에서 같은 조건의
+C 기준과 대상 binding 결과를 다시 비교해 갱신하는 상태표다. 이미 갱신된 칸은 결과 파일과
+C 대비 비율을 함께 남기고, 아직 같은 조건 비교가 없는 칸은 `미측정`으로 둔다.
 
 표 구조는 모든 언어에서 같다. 행은 transport와 pattern을 고정하고, 열은 message size를 고정한다. 각 size 칸은 해당 transport/pattern/size 조합의 상태를 뜻한다. `MULTI_STREAM`은 정책상 `64,256,1024,65536`만 측정하므로 `131072`, `262144`는 `해당 없음`으로 둔다.
 
@@ -356,11 +367,18 @@ public API 추가 대상으로 분리한다.
 | 6 | Rust | `bindings/rust/perf` | `tcp/ws/wss/tls 측정 완료, routed large와 SPOT/outlier 보류 남음` | `tcp/ws/wss/tls 측정 완료, SPOT/send-send/일부 PUBSUB 보류 남음` | Rust 완료 아님. single outlier와 multi SPOT/send-send hot path를 후속 재검토 |
 | 7 | Python | `bindings/python/perf` | `tcp/ws/wss/tls 측정 완료, large single outlier 재검토 필요` | `tcp/ws/wss/tls 측정 완료, TLS 설정 누락과 종료 대기 보강 뒤 결과 반영` | Python 완료 아님. multi SPOT/send-send/stream small 보류와 single small/outlier 항목 후속 개선 필요 |
 
+Core runtime 변경 중에는 새 perf 실행을 보류한다. core가 안정된 뒤 재개 순서는
+Go `GOMAXPROCS=4` single `tcp` 검증, Go single latency 보류 재측정, Go multi
+`SPOT_SENDSEND`/`SPOT`/`PUBSUB` 재검토, Rust SPOT/send-send hot path, Python
+SPOT/send-send/stream small path 순서다. 새 실행 전에는 `core/build` runtime stale
+여부와 실제 `libzlink.so` 경로를 확인한다.
+
 #### 6.1.1 언어별 평균 성능
 
-아래 지표는 현재 측정값이 있는 C++, .NET, Java, Node, Go, Python을 계산한다. 각 언어의
-Single/Multi 상태표에서 `통과(비율%)`, `미달(비율%)`, `보류(비율%)` 형식의 측정 셀을
-모두 모아 C 대비 throughput 비율을 계산한다. `해당 없음`과 `미측정`은 제외한다.
+아래 지표는 현재 측정값이 있는 C++, .NET, Java, Node, Go, Rust, Python을 계산한다.
+각 언어의 Single/Multi 상태표에서 `통과(비율%)`, `미달(비율%)`, `보류(비율%)` 형식의
+측정 셀을 모두 모아 C 대비 throughput 비율을 계산한다. `해당 없음`과 `미측정`은
+제외한다.
 
 단순 평균은 높은 outlier에 쉽게 끌려간다. 그래서 중앙값, p10, 최저 10% 평균을 함께 본다.
 p10은 하위 10% 경계값이고, 최저 10% 평균은 가장 느린 구간의 체감 위험을 보기 위한
@@ -439,6 +457,14 @@ C 대비 성능이 크게 높은 항목은 그대로 좋은 결과로 확정하�
 
 위 후보는 성능을 올리기 위한 임의 변경이 아니라, C/perf와 의미가 같은지 확인된 뒤에만
 반영한다. C보다 크게 나온 셀은 다음 측정 라운드에서 우선 재검증 대상으로 잡는다.
+
+Thread 관측은 성능 판정의 보조 지표로 함께 남긴다. 현재 `clients=100` multi 조건에서
+Python은 non-SPOT 7~8개, SPOT 12~13개 수준이었고 Rust는 일반 echo 7~8개,
+SPOT 계열 14~15개 수준이었다. 두 언어 모두 client 수가 OS thread 수로 그대로
+확장되지는 않았다. Go는 다른 런타임과 달리 goroutine 실행용 P 개수를 `GOMAXPROCS`가
+정하며, 이 값을 비워 두면 머신 CPU 수 쪽으로 열려 순간 CPU 사용률과 OS thread 수가
+크게 보일 수 있다. 따라서 Go perf runner는 명시 설정이 없을 때 `GOMAXPROCS=4`를
+기본으로 두고, 이후 thread/CPU 관측은 같은 조건에서만 비교한다.
 
 ### 6.2 C++ 상태
 
@@ -882,6 +908,37 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   public `Bytes(...)`로 submit하는 경로를 size별 선택 적용해 C 대비 92.2%까지 올렸다.
   64B latency는 이 후보를 원복한 재측정에서도 높게 나와 후보 부작용이 아니라 별도
   small latency 보류 항목으로 추적한다.
+- 2026-05-22 thread probe: 현재 Go multi runner는 `GOMAXPROCS=4`를 기본으로 내보낸다.
+  `tcp MULTI_SPOT 1024B clients=100`은 `nlwp=20~23`, `tcp MULTI_SPOT_SENDSEND 1024B
+  clients=100` server는 `nlwp=21` 수준으로 관측됐다. `clients=100`이 OS thread 100개로
+  확장되는 구조는 현재 multi 기본 경로에서 재현되지 않았다. Go CPU 사용률은 goroutine을
+  4개의 P에서 계속 실행하는 scheduler 동작과 core IO/spot worker thread가 합쳐진 값으로
+  해석한다. 새 report에서는 `go_gomaxprocs_source`도 함께 확인해 외부 `GOMAXPROCS`,
+  `PERF_GO_GOMAXPROCS`, `--io-threads`, `PERF_IO_THREADS`, 기본값 중 어느 경로로
+  정해졌는지 남긴다.
+- Go single runner도 `GOMAXPROCS`가 비어 있을 때 multi와 같은 4를 기본으로 내보내도록
+  맞췄다. `1`로 낮추면 sender/receiver goroutine 병렬성이 깨져 `tcp` single 처리량이
+  크게 떨어졌다(`perf_go_single_linux_20260522_210644_codex_go_single_tcp_gomaxprocs1_full_20260522.txt`).
+  `2`는 1024B에서는 괜찮았지만 `tcp SPOT` 131072B/262144B delivery가 1~2 msg/s 수준으로
+  무너져 기본값으로 쓰기 어렵다(`perf_go_single_linux_20260522_211400_codex_go_single_tcp_gomaxprocs2_full_20260522.txt`).
+  `PERF_GO_GOMAXPROCS`는 양수 정수만 허용하는 명시 override로 분리하고, single/multi runner 모두
+  `--io-threads`와 `PERF_IO_THREADS`가 숫자일 때만 기본 `GOMAXPROCS` 후보로 쓴다.
+  이 후보가 4보다 작으면 4로 올린다. core 작업이 안정된 뒤 `GOMAXPROCS=4` 조건으로
+  single full matrix를 다시 검증한다.
+- Core 작업 완료 후 Go 실행 큐:
+  1. `bindings/go/perf/run_benchmarks.sh --transports tcp --duration 5 --runs 1`로 single
+     `tcp` full matrix를 다시 측정한다. 목적은 새 runner 기본 `GOMAXPROCS=4`가 기존
+     single 결과를 유지하고 `SPOT` large delivery를 깨지 않는지 확인하는 것이다.
+  2. 새 report의 `Effective Options`에서 `go_gomaxprocs: 4`, `go_gomaxprocs_source`,
+     실제 `io_threads` 값을 먼저 확인한다. `PERF_GO_GOMAXPROCS`를 명시한 진단 run은
+     공식 비교 run과 분리한다.
+  3. 위 결과가 기존 `tcp` single 표와 충돌하면 C 기준 `perf_c_single_linux_20260521_055144_codex_c_tcp_single_current_for_go_20260521.txt`
+     대비 비율을 다시 계산하고 표를 갱신한다.
+  4. single `tcp`가 안정되면 `ws/wss/tls` single의 latency 보류 항목만 제한 재측정한다.
+     기존 `GOMAXPROCS=2`, `GOGC=off`, topic C 문자열 캐시 후보는 같은 병목을 해결하지
+     못했으므로 반복하지 않는다.
+  5. multi는 runner 기본 `GOMAXPROCS=4`와 `nlwp=20~23` 관측을 유지한 상태에서
+     `SPOT_SENDSEND`, `SPOT`, `PUBSUB` 순서로 보류 셀을 다시 좁힌다.
 
 ### 6.7 Rust 상태
 
@@ -1038,7 +1095,7 @@ multi suite는 아직 신규 측정이 필요하다.
 아래 조건을 모두 만족하면 해당 언어 binding 작업을 완료한다.
 
 - single과 multi의 대상 조합이 모두 목표 비율 이상이다.
-- 상세 상태 표에 `미측정` 또는 `미달`이 하나도 남아 있지 않다.
+- 상세 상태 표에 `미측정`, `미달`, `보류`가 하나도 남아 있지 않다.
 - perf 결과가 `doc/perf` 정책과 `bindings/c/perf` 의미를 유지한다.
 - perf 코드를 수정했다면 버그 또는 정책 위반 근거가 남아 있다.
 - binding 라이브러리 변경에 필요한 테스트가 통과한다.

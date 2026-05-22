@@ -137,6 +137,32 @@ is_uint() {
   [[ "${1:-}" =~ ^[0-9]+$ ]]
 }
 
+is_positive_uint() {
+  local value="${1:-}"
+  is_uint "${value}" && (( 10#${value} > 0 ))
+}
+
+go_gomaxprocs_floor4() {
+  local value="${1:-}"
+  if is_positive_uint "${value}"; then
+    local numeric=$((10#${value}))
+    if (( numeric > 4 )); then
+      printf '%s\n' "${numeric}"
+      return
+    fi
+  fi
+  printf '4\n'
+}
+
+validate_go_gomaxprocs() {
+  local source="$1"
+  local value="${2:-}"
+  if ! is_positive_uint "${value}"; then
+    echo "Error: ${source} must be a positive integer for Go perf runs." >&2
+    exit 1
+  fi
+}
+
 NOFILE_SKIP_REASON=""
 ensure_nofile_limit() {
   local clients="${1:-}"
@@ -275,7 +301,12 @@ Options:
   -h, --help
 
 Notes:
-  - Supported multi patterns: MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM
+  - Supported multi patterns:
+    MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,
+    MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM
+  - If GOMAXPROCS is unset, PERF_GO_GOMAXPROCS is an explicit positive-integer override.
+    Otherwise --io-threads/PERF_IO_THREADS derives Go scheduler parallelism
+    with a minimum of 4.
 USAGE
 }
 
@@ -426,13 +457,23 @@ fi
 if [[ -n "${SERVER_BIND_PORT}" ]]; then
   export PERF_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}"
 fi
-if [[ -z "${GOMAXPROCS:-}" ]]; then
+GO_GOMAXPROCS_SOURCE="env:GOMAXPROCS"
+if [[ -n "${GOMAXPROCS:-}" ]]; then
+  validate_go_gomaxprocs "GOMAXPROCS" "${GOMAXPROCS}"
+else
   if [[ -n "${PERF_GO_GOMAXPROCS:-}" ]]; then
+    validate_go_gomaxprocs "PERF_GO_GOMAXPROCS" "${PERF_GO_GOMAXPROCS}"
     export GOMAXPROCS="${PERF_GO_GOMAXPROCS}"
-  elif [[ -n "${IO_THREADS}" ]]; then
-    export GOMAXPROCS="${IO_THREADS}"
+    GO_GOMAXPROCS_SOURCE="PERF_GO_GOMAXPROCS"
+  elif is_positive_uint "${IO_THREADS}"; then
+    export GOMAXPROCS="$(go_gomaxprocs_floor4 "${IO_THREADS}")"
+    GO_GOMAXPROCS_SOURCE="--io-threads"
+  elif is_positive_uint "${PERF_IO_THREADS:-}"; then
+    export GOMAXPROCS="$(go_gomaxprocs_floor4 "${PERF_IO_THREADS}")"
+    GO_GOMAXPROCS_SOURCE="PERF_IO_THREADS"
   else
-    export GOMAXPROCS="${PERF_IO_THREADS:-4}"
+    export GOMAXPROCS="4"
+    GO_GOMAXPROCS_SOURCE="default"
   fi
 fi
 
@@ -685,6 +726,30 @@ effective_or_auto() {
   fi
 }
 
+effective_multi_server_io_threads() {
+  if [[ -n "${SERVER_IO_THREADS}" ]]; then
+    printf '%s\n' "${SERVER_IO_THREADS}"
+  elif [[ -n "${PERF_MULTI_SERVER_IO_THREADS:-}" ]]; then
+    printf '%s\n' "${PERF_MULTI_SERVER_IO_THREADS}"
+  elif [[ -n "${IO_THREADS}" ]]; then
+    printf '%s\n' "${IO_THREADS}"
+  else
+    printf '%s\n' "${PERF_IO_THREADS:-4 (default)}"
+  fi
+}
+
+effective_multi_client_io_threads() {
+  if [[ -n "${CLIENT_IO_THREADS}" ]]; then
+    printf '%s\n' "${CLIENT_IO_THREADS}"
+  elif [[ -n "${PERF_MULTI_CLIENT_IO_THREADS:-}" ]]; then
+    printf '%s\n' "${PERF_MULTI_CLIENT_IO_THREADS}"
+  elif [[ -n "${IO_THREADS}" ]]; then
+    printf '%s\n' "${IO_THREADS}"
+  else
+    printf '%s\n' "${PERF_IO_THREADS:-4 (default)}"
+  fi
+}
+
 emit_meta_lines() {
   local cpu_name="unknown"
   if [[ -r /proc/cpuinfo ]]; then
@@ -715,9 +780,10 @@ emit_effective_options_multi() {
   echo "- default_clients: ${PERF_MULTI_DEFAULT_CLIENTS:-100}"
   echo "- default_stream_clients: ${PERF_MULTI_STREAM_CLIENTS:-10000}"
   echo "- service_clients: auto"
-  echo "- server_io_threads: ${SERVER_IO_THREADS:-${IO_THREADS:-4 (default)}}"
-  echo "- client_io_threads: ${CLIENT_IO_THREADS:-${IO_THREADS:-4 (default)}}"
+  echo "- server_io_threads: $(effective_multi_server_io_threads)"
+  echo "- client_io_threads: $(effective_multi_client_io_threads)"
   echo "- go_gomaxprocs: ${GOMAXPROCS:-unset}"
+  echo "- go_gomaxprocs_source: ${GO_GOMAXPROCS_SOURCE}"
   echo "- hwm: $(effective_or_auto "${HWM}")"
   echo "- sndhwm: $(effective_or_auto "${SEND_HWM:-${HWM}}")"
   echo "- rcvhwm: $(effective_or_auto "${RECV_HWM:-${HWM}}")"

@@ -80,6 +80,32 @@ sleep_millis() {
   sleep "$((millis / 1000)).$(printf '%03d' "$((millis % 1000))")"
 }
 
+is_positive_uint() {
+  local value="${1:-}"
+  [[ "${value}" =~ ^[0-9]+$ ]] && (( 10#${value} > 0 ))
+}
+
+go_gomaxprocs_floor4() {
+  local value="${1:-}"
+  if is_positive_uint "${value}"; then
+    local numeric=$((10#${value}))
+    if (( numeric > 4 )); then
+      printf '%s\n' "${numeric}"
+      return
+    fi
+  fi
+  printf '4\n'
+}
+
+validate_go_gomaxprocs() {
+  local source="$1"
+  local value="${2:-}"
+  if ! is_positive_uint "${value}"; then
+    echo "Error: ${source} must be a positive integer for Go perf runs." >&2
+    exit 1
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Usage: bindings/go/perf/run_benchmarks.sh [options]
@@ -113,6 +139,9 @@ Options:
 
 Notes:
   - Supported single patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,SPOT
+  - If GOMAXPROCS is unset, PERF_GO_GOMAXPROCS is an explicit positive-integer override.
+    Otherwise --io-threads/PERF_IO_THREADS derives Go scheduler parallelism
+    with a minimum of 4.
 USAGE
 }
 
@@ -208,8 +237,24 @@ fi
 if [[ -n "${AUTO_HWM_PROFILE}" ]]; then
   export PERF_CTX_AUTO_HWM_PROFILE="${AUTO_HWM_PROFILE}"
 fi
-if [[ -z "${GOMAXPROCS:-}" && -n "${PERF_GO_GOMAXPROCS:-}" ]]; then
-  export GOMAXPROCS="${PERF_GO_GOMAXPROCS}"
+GO_GOMAXPROCS_SOURCE="env:GOMAXPROCS"
+if [[ -n "${GOMAXPROCS:-}" ]]; then
+  validate_go_gomaxprocs "GOMAXPROCS" "${GOMAXPROCS}"
+else
+  if [[ -n "${PERF_GO_GOMAXPROCS:-}" ]]; then
+    validate_go_gomaxprocs "PERF_GO_GOMAXPROCS" "${PERF_GO_GOMAXPROCS}"
+    export GOMAXPROCS="${PERF_GO_GOMAXPROCS}"
+    GO_GOMAXPROCS_SOURCE="PERF_GO_GOMAXPROCS"
+  elif is_positive_uint "${IO_THREADS}"; then
+    export GOMAXPROCS="$(go_gomaxprocs_floor4 "${IO_THREADS}")"
+    GO_GOMAXPROCS_SOURCE="--io-threads"
+  elif is_positive_uint "${PERF_IO_THREADS:-}"; then
+    export GOMAXPROCS="$(go_gomaxprocs_floor4 "${PERF_IO_THREADS}")"
+    GO_GOMAXPROCS_SOURCE="PERF_IO_THREADS"
+  else
+    export GOMAXPROCS="4"
+    GO_GOMAXPROCS_SOURCE="default"
+  fi
 fi
 
 case "$(uname -s)" in
@@ -402,8 +447,9 @@ emit_effective_options_single() {
   echo "- runs: ${RUNS}"
   echo "- duration_seconds: ${DURATION}"
   echo "- timeout_seconds: ${PERF_SINGLE_TIMEOUT_SECONDS:-30}"
-  echo "- io_threads: ${IO_THREADS:-1}"
+  echo "- io_threads: ${IO_THREADS:-${PERF_IO_THREADS:-1}}"
   echo "- go_gomaxprocs: ${GOMAXPROCS:-unset}"
+  echo "- go_gomaxprocs_source: ${GO_GOMAXPROCS_SOURCE}"
   echo "- hwm: $(effective_or_auto "${HWM}")"
   echo "- sndhwm: $(effective_or_auto "${SEND_HWM:-${HWM}}")"
   echo "- rcvhwm: $(effective_or_auto "${RECV_HWM:-${HWM}}")"

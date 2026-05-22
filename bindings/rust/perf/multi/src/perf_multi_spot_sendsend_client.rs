@@ -36,8 +36,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 fn setup_tls_server(node: &SpotNode, transport: &str) {
     if matches!(transport, "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
-        let pem = common::load_tls_pem(&tls);
-        node.set_tls_server(&pem.cert, &pem.key, false)
+        node.set_tls_server(&tls.cert, &tls.key, false)
             .expect("spot tls server");
     }
 }
@@ -45,8 +44,7 @@ fn setup_tls_server(node: &SpotNode, transport: &str) {
 fn setup_tls_client(node: &SpotNode, transport: &str) {
     if matches!(transport, "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
-        let pem = common::load_tls_pem(&tls);
-        node.set_tls_client(&pem.ca, "localhost", false)
+        node.set_tls_client(&tls.ca, "localhost", false)
             .expect("spot tls client");
     }
 }

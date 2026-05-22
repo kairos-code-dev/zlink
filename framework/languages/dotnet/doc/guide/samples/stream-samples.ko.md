@@ -103,7 +103,7 @@ public interface IZLinkActorManager
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkActorRoute> GetRouteAsync(
+    ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
@@ -133,7 +133,6 @@ public interface IZLinkSessionActorAttachmentContext
 
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
-    IZLinkSessionChannelClient,
     IZLinkSessionClientStream,
     IZLinkSessionActorDispatchContext,
     IZLinkSessionLifecycle;
@@ -185,7 +184,9 @@ builder.Services.AddZLinkFramework(options =>
     });
 });
 
-public sealed class ClientHeaderSession(IZLinkSessionContext context)
+public sealed class ClientHeaderSession(
+    IZLinkSessionContext context,
+    IZLinkClient channels)
     : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -220,8 +221,8 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context)
             {
                 ClientInput input = payload.FromJson<ClientInput>();
 
-                await context
-                    .SendChannel(
+                await channels
+                    .Send(
                         "play",
                         new ForwardInputCommand
                         {
@@ -236,8 +237,8 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context)
             {
                 Ping ping = payload.FromJson<Ping>();
 
-                await context
-                    .SendChannel(
+                await channels
+                    .Send(
                         "api",
                         new ReportPingCommand
                         {
@@ -267,9 +268,9 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context)
 - header session 이 내부 header 를 해석해 `ClientInput`, `Ping` 같은 packet
   name 을 뽑아 준다. 그러면 application 은 그 이름에 맞는 타입으로 decode 한다.
 - application 측에는 recv loop 가 없다. session callback 만 구현하면 된다.
-- 다른 서버로의 outbound 호출은 session 이 생성자에서 받은
-  `IZLinkSessionContext` 로 `SendChannel(...)` 또는 `RequestChannel(...)` 를
-  호출해 처리한다.
+- 다른 서버로의 outbound 호출은 session 이 생성자에서 함께 받은
+  `IZLinkClient` 로 `Send(...)` 또는 `Request(...)` 를 호출해 처리한다.
+  이 호출은 stream 연결이 아니라 channel client socket 을 사용한다.
 - packet decode 는 payload 의 serializer helper 를 거쳐 수행한다.
 - 타입이 protobuf generated 타입(`IMessage<T>` 계열) 이면 protobuf 로 읽는다.
 - 그 외의 일반 class 는 json 으로 읽는 것을 샘플 기본 규칙으로 둔다.

@@ -20,10 +20,11 @@ import (
 var endpointCounter uint64
 
 type Stats struct {
-	count uint64
-	mu    sync.Mutex
-	latNs []float64
-	sumNs float64
+	count        uint64
+	latencyCount uint64
+	mu           sync.Mutex
+	latNs        []float64
+	sumNs        float64
 }
 
 type Result struct {
@@ -51,6 +52,21 @@ func (s *Stats) Add(sentAt time.Time) {
 
 func (s *Stats) AddLatencyNs(latencyNs float64) {
 	atomic.AddUint64(&s.count, 1)
+	atomic.AddUint64(&s.latencyCount, 1)
+	s.mu.Lock()
+	s.sumNs += latencyNs
+	// perf_single_latency.hpp latency_stats_builder_t::add: unbounded
+	// push_back, exact percentiles, no reservoir cap.
+	s.latNs = append(s.latNs, latencyNs)
+	s.mu.Unlock()
+}
+
+func (s *Stats) AddCount() uint64 {
+	return atomic.AddUint64(&s.count, 1)
+}
+
+func (s *Stats) AddLatencySampleNs(latencyNs float64) {
+	atomic.AddUint64(&s.latencyCount, 1)
 	s.mu.Lock()
 	s.sumNs += latencyNs
 	// perf_single_latency.hpp latency_stats_builder_t::add: unbounded
@@ -64,9 +80,10 @@ func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
 	defer s.mu.Unlock()
 	sort.Float64s(s.latNs)
 	count := atomic.LoadUint64(&s.count)
+	latencyCount := atomic.LoadUint64(&s.latencyCount)
 	latencyMean := 0.0
-	if count > 0 {
-		latencyMean = s.sumNs / float64(count)
+	if latencyCount > 0 {
+		latencyMean = s.sumNs / float64(latencyCount)
 	}
 	return Result{
 		Throughput:   float64(count) / duration.Seconds(),
@@ -74,7 +91,7 @@ func (s *Stats) Snapshot(duration time.Duration, msgSize int) Result {
 		LatencyNs:    latencyMean,
 		LatencyP95Ns: percentile(s.latNs, 95),
 		LatencyP99Ns: percentile(s.latNs, 99),
-		Valid:        count > 0 && len(s.latNs) > 0,
+		Valid:        count > 0 && latencyCount > 0,
 	}
 }
 

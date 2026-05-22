@@ -10,6 +10,28 @@ internal sealed class ZLinkRoutedSpotClientService(ZLinkFrameworkRuntime runtime
         ArgumentException.ThrowIfNullOrWhiteSpace(localEgressChannelName);
         return new ZLinkRoutedSpotChannelClient(runtime, localEgressChannelName);
     }
+
+    public ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
+        ZLinkSpotRemoteAddress remoteAddress,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<IZLinkSpotRef>(new ZLinkSpotRef(
+            remoteAddress.SpotRid,
+            null,
+            remoteAddress.SpotKind,
+            isRemote: true,
+            remoteAddress));
+    }
+
+    public ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
+        IZLinkSpotRef spot,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(spot);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(spot);
+    }
 }
 
 internal sealed class ZLinkRoutedSpotChannelClient(
@@ -27,6 +49,19 @@ internal sealed class ZLinkRoutedSpotChannelClient(
             message);
     }
 
+    public IZLinkSendCall SendSpot<TMessage>(
+        IZLinkSpotRef spot,
+        TMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(spot);
+        if (!spot.IsRemote)
+        {
+            throw new InvalidOperationException("Routed SPOT send requires a remote SPOT ref.");
+        }
+
+        return SendSpot(spot.RemoteAddress.SpotRid, message);
+    }
+
     public IZLinkRequestCall RequestSpot<TRequest>(
         RoutingId spotRid,
         TRequest request)
@@ -37,6 +72,37 @@ internal sealed class ZLinkRoutedSpotChannelClient(
             spotRid,
             request);
     }
+
+    public IZLinkRequestCall RequestSpot<TRequest>(
+        IZLinkSpotRef spot,
+        TRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(spot);
+        if (!spot.IsRemote)
+        {
+            throw new InvalidOperationException("Routed SPOT request requires a remote SPOT ref.");
+        }
+
+        return RequestSpot(spot.RemoteAddress.SpotRid, request);
+    }
+}
+
+internal sealed class ZLinkSpotRef(
+    RoutingId spotRid,
+    string? spotName,
+    ZLinkSpotKind spotKind,
+    bool isRemote,
+    ZLinkSpotRemoteAddress remoteAddress) : IZLinkSpotRef
+{
+    public RoutingId SpotRid { get; } = spotRid;
+
+    public string? SpotName { get; } = spotName;
+
+    public ZLinkSpotKind SpotKind { get; } = spotKind;
+
+    public bool IsRemote { get; } = isRemote;
+
+    public ZLinkSpotRemoteAddress RemoteAddress { get; } = remoteAddress;
 }
 
 internal sealed class ZLinkExplicitRoutedSpotSendCall<TMessage>(

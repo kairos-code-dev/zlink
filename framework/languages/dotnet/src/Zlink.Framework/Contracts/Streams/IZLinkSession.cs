@@ -37,17 +37,6 @@ public interface IZLinkSessionIdentityContext
     string? RemoteAddr { get; }
 }
 
-public interface IZLinkSessionChannelClient
-{
-    IZLinkRequestCall RequestChannel<TRequest>(
-        string channelName,
-        TRequest request);
-
-    IZLinkSendCall SendChannel<TMessage>(
-        string channelName,
-        TMessage message);
-}
-
 public interface IZLinkSessionClientStream
 {
     IZLinkSessionSendCall Send<TMessage>(TMessage message);
@@ -65,7 +54,11 @@ public interface IZLinkSessionActorDispatchContext
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
-        ZLinkActorRoute route,
+        ZLinkActorRemoteAddress remoteAddress,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
 
     ValueTask RelayToActorAsync(
@@ -90,7 +83,6 @@ public interface IZLinkSessionActorAttachmentContext
 
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
-    IZLinkSessionChannelClient,
     IZLinkSessionClientStream,
     IZLinkSessionActorDispatchContext,
     IZLinkSessionLifecycle;

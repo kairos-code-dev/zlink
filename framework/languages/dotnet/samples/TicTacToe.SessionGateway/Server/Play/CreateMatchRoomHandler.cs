@@ -17,7 +17,7 @@ internal sealed class CreateMatchRoomHandler(IZLinkSpotManager spots)
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         var room = await spots.CreateAsync(SampleNames.GameSpotType, cancellationToken)
-            .ConfigureAwait(false);
+            ;
         return new CreateMatchRoomRes(room.SpotRid.ToHex());
     }
 }

@@ -110,7 +110,7 @@ public sealed class TicTacToeClient
             ConnectTimeout = options.StreamTimeout,
             RequestTimeout = options.StreamTimeout,
         });
-        await connector.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        await connector.ConnectAsync(cancellationToken);
         return connector;
     }
 

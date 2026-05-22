@@ -66,11 +66,11 @@ internal sealed class ZLinkSpotNodeInitializer(
             registration.SpotDiscovery.ChannelName,
             ZLinkAutoConnectType.SpotMesh,
             registration.SpotDiscovery.Endpoints);
-        if (registration.RegistrySpotRoutes is not null)
+        if (registration.RegistrySpotRemoteAddresses is not null)
         {
             discovery.SpotOwnerSyncEnabled = true;
         }
-        if (registration.RegistryActorRoutes is not null)
+        if (registration.RegistryActorRemoteAddresses is not null)
         {
             discovery.ActorRouteSyncEnabled = true;
         }

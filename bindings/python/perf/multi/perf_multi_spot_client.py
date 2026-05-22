@@ -33,6 +33,13 @@ def _trace(message):
         print(f"[multi-spot-client] {message}", file=sys.stderr, flush=True)
 
 
+def _latency_sample_stride():
+    try:
+        return max(1, int(os.environ.get("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", "32")))
+    except ValueError:
+        return 32
+
+
 def main(argv=None):
     args = parse_client_args(argv or sys.argv[1:], pattern="spot")
     if not args.control_endpoint:
@@ -123,24 +130,36 @@ def main(argv=None):
 
         latencies = []
         received_count = 0
+        sample_stride = _latency_sample_stride()
         active_deadline = time.perf_counter() + args.duration
+        _trace(f"active-start duration={args.duration} clients={len(spots)}")
         with zlink.Poller() as poller:
             poll_events = zlink.PollEvents(max(1, len(spots)))
             for index, spot in enumerate(spots):
                 poller.add_socket(spot, zlink.PollEventFlag.POLLIN, index)
             while time.perf_counter() < active_deadline:
-                ready_count = poller.wait(poll_events, 10)
+                remaining_ms = int((active_deadline - time.perf_counter()) * 1000)
+                if remaining_ms <= 0:
+                    break
+                ready_count = poller.wait(poll_events, min(10, remaining_ms))
                 if not ready_count:
                     continue
                 now = time.perf_counter()
                 if now > active_deadline:
                     break
+                expired = False
                 for offset in range(ready_count):
+                    if time.perf_counter() >= active_deadline:
+                        expired = True
+                        break
                     index = poll_events.slot(offset)
                     if index < 0 or index >= len(spots):
                         continue
                     current_spot = spots[index]
                     while True:
+                        if time.perf_counter() >= active_deadline:
+                            expired = True
+                            break
                         message = zlink.TopicMessage()
                         try:
                             has_message = current_spot.subscribe_into(
@@ -173,10 +192,17 @@ def main(argv=None):
                         ):
                             continue
                         received_count += 1
+                        if received_count % sample_stride != 0:
+                            continue
                         latency = latency_ns_from_message(data)
                         if latency is not None:
                             latencies.append(latency)
+                    if expired:
+                        break
+                if expired:
+                    break
 
+        _trace(f"active-end received={received_count} latencies={len(latencies)}")
         if received_count <= 0:
             raise RuntimeError("multi spot benchmark did not receive any active message")
         metrics = result_metrics(

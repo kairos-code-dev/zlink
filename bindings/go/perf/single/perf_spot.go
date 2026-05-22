@@ -86,10 +86,9 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		}
 	}()
 
+	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
-		sent, err := perfcommon.SubmitMessage(perfcommon.NewWindowMessage(cfg.msgSize, window.ActiveAt), func(message *zlink.Message) (bool, error) {
-			return publisher.Publish(singleSpotTopic).MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
-		})
+		sent, err := publishSingleSpotActive(publisher, cfg, window.ActiveAt, payload)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				time.Sleep(time.Millisecond)
@@ -115,6 +114,31 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.PrintSingleSpotNodeAutoHWMDetail(publisherNode, cfg.pattern, cfg.transport, "publisher", cfg.msgSize)
 	perfcommon.PrintSingleSpotNodeAutoHWMDetail(subscriberNode, cfg.pattern, cfg.transport, "subscriber", cfg.msgSize)
 	return result
+}
+
+func publishSingleSpotActive(
+	publisher *zlink.Spot,
+	cfg benchmarkConfig,
+	activeAt time.Time,
+	payload []byte,
+) (bool, error) {
+	if useSingleSpotBytesPublish(cfg.transport, cfg.msgSize) {
+		perfcommon.StampWindowPayload(payload, activeAt)
+		return publisher.Publish(singleSpotTopic).
+			Bytes(payload).
+			Flags(zlink.SendFlagsDontWait).
+			Submit(nil)
+	}
+	return perfcommon.SubmitMessage(perfcommon.NewWindowMessage(cfg.msgSize, activeAt), func(message *zlink.Message) (bool, error) {
+		return publisher.Publish(singleSpotTopic).
+			MoveMessage(message).
+			Flags(zlink.SendFlagsDontWait).
+			Submit(nil)
+	})
+}
+
+func useSingleSpotBytesPublish(transport string, msgSize int) bool {
+	return transport == "wss" && msgSize == 262144
 }
 
 // drainSingleSpotUntilStop drains the spot subscriber until a transient

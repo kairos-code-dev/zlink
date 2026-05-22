@@ -93,7 +93,7 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
   위해 남겨 두되, framework core의 public high-level API에서는
   `targetRid + spotRid`를 직접 받는 direct routed 호출 표면을 두지 않는다.
 - spot name 또는 spot rid를 다른 노드의 user Spot 위치로 변환해야 하면
-  `IZLinkSpotRouteResolver`[^route-resolver]를 쓴다. resolver 구현체만
+  `IZLinkSpotRemoteAddressResolver`[^route-resolver]를 쓴다. resolver 구현체만
   `RoutingId`[^routing-id]를 알고, application handler는 spot name/id만 기준으로
   호출한다.
 - 외부 `PUB -> Spot` 입력은 generic pub/sub attach가 아니라 별도의
@@ -137,7 +137,7 @@ builder.Services.AddZLinkFramework(options =>
         });
     });
 
-    options.UseRegistrySpotRoutes("game");
+    options.UseRegistrySpotRemoteAddresses("game");
 });
 ```
 
@@ -154,7 +154,7 @@ builder.Services.AddZLinkFramework(options =>
 - 필요하다면 외부 노드용 spot publish client attach
 - 자동 Entry Spot에 붙일 application registry 등록
 - spot name/id 기반 호출 또는 actor `JoinSpot(...)` 경로에서 사용할 Registry 기반
-  spot route resolver 등록
+  spot remote address resolver 등록
 - host shutdown 시 lifecycle 정리
 
 `AddSpotMesh(...)` 는 같은 channel 에 속하는 여러 `SpotNode` 를 하나의 묶음으로
@@ -440,13 +440,13 @@ builder.Services.AddZLinkFramework(options =>
 - `pub/sub` manual 연결에서 등록하는 주소는 다른 `SpotNode`의 mesh publish bind
   주소다. local `SUB/XSUB`[^sub-xsub] 쪽이 그 주소로 붙는다.
 
-### 4.3 Spot route resolver
+### 4.3 Spot remote address resolver
 
 이 소절은 application 코드가 `RoutingId` 를 직접 다루지 않고도 다른 노드의
 user Spot 으로 호출을 보낼 수 있도록, framework 가 어떤 인터페이스를 두고 그
 구현을 어떻게 위임받는지 정리한다.
 
-`IZLinkSpotRouteResolver` 는 spot name 또는 spot rid 를, 현재 user Spot 이
+`IZLinkSpotRemoteAddressResolver` 는 spot name 또는 spot rid 를, 현재 user Spot 이
 위치한 노드와 spot rid 로 변환한다. framework 는 그 resolver 가 registry, Redis,
 memory cache 중 무엇을 쓰는지 알지 못한다. handler 와 actor 코드 역시
 `RoutingId` 를 직접 들고 다니지 않는다.
@@ -454,13 +454,13 @@ memory cache 중 무엇을 쓰는지 알지 못한다. handler 와 actor 코드 
 ```csharp
 namespace Zlink.Framework.Contracts.Spots;
 
-public interface IZLinkSpotRouteResolver
+public interface IZLinkSpotRemoteAddressResolver
 {
-    ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
         string spotName,
         CancellationToken cancellationToken);
 
-    ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken);
 }
@@ -472,7 +472,7 @@ public enum ZLinkSpotKind
     User = 2,
 }
 
-public readonly record struct ZLinkSpotRoute(
+public readonly record struct ZLinkSpotRemoteAddress(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     RoutingId SpotRid,
@@ -761,7 +761,7 @@ factory resolve, activation, `OnCreateAsync(...)`, `OnInitializeAsync(...)` 실�
 
 - `SendChannel(...)` / `RequestChannel(...)` 는 attach 된 channel client 를
   사용한다.
-- `SendSpot(...)` / `RequestSpot(...)` 는 spot route resolver 가 찾은 target
+- `SendSpot(...)` / `RequestSpot(...)` 는 spot remote address resolver 가 찾은 target
   route 를 이용한다.
 - `targetRid + spotRid` 를 직접 받는 raw 호출은 하부 바인딩에 남아 있더라도,
   application guide 의 기본 API 로는 문서화하지 않는다.
@@ -776,7 +776,7 @@ registration 표면으로 두는 쪽이 더 자연스럽다.
 현재 `.NET` framework 표면은 channel 이름 기준 호출과 spot key 기반 호출을
 구분한다. `targetRid + spotRid` 를 직접 받는 raw route 함수가 하부 바인딩에 있어도,
 framework application 문서에서는 backend / internal transport helper 로만
-다룬다. 일반 application 은 `IZLinkSpotRouteResolver` 가 숨긴 위치값을 직접
+다룬다. 일반 application 은 `IZLinkSpotRemoteAddressResolver` 가 숨긴 위치값을 직접
 보지 않는다.
 
 예를 들면 다음과 같이 사용할 수 있다.
@@ -1104,7 +1104,7 @@ wrapper 축으로 본다.
 
 ## 11. Router channel route 수신
 
-`ZLinkSpotRoute.RouterChannelId`는 resolver가 반환한 위치 정보 중 하나다. 이 값은
+`ZLinkSpotRemoteAddress.RouterChannelId`는 resolver가 반환한 위치 정보 중 하나다. 이 값은
 metadata로만 남으면 안 되고, 실제 transport로 사용할 router-capable channel을
 가리켜야 한다. `SpotNode`가 그 channel에서 오는 SPOT route를 받으려면 node builder에
 다음 구성을 둔다.

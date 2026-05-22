@@ -80,7 +80,7 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 | `JoinSpot<TReply,TRequest>(spotName, request)` | user Spot 으로 join (도메인 spot 이름으로) |
 
 `RoutingId` 같은 transport 주소는 handler 표면에 노출되지 않는다. spot 이름 →
-`RoutingId` 변환은 framework 내부 spot route resolver 가 푼다.
+`RoutingId` 변환은 framework 내부 spot remote address resolver 가 푼다.
 
 ## 3. Entry Spot 과 user Spot 의 actor handler
 
@@ -295,15 +295,15 @@ session 위치 조회용 public resolver 는 없다(actor↔session binding 은 
 
 | 등록 | 역할 |
 |------|------|
-| `options.UseRegistryActorRoutes("game")` | actor id → play node route 기본 resolver |
-| `options.UseRegistrySpotRoutes("game")` | spot owner 조회 + spot 이름 directory |
+| `options.UseRegistryActorRemoteAddresses("game")` | actor id → play node route 기본 resolver |
+| `options.UseRegistrySpotRemoteAddresses("game")` | spot owner 조회 + spot 이름 directory |
 
-Redis/DB 같은 별도 저장소가 필요하면 actor route 나 spot route resolver 만
-custom 으로 등록한다: `AddActorPlayRouteResolver<T>()`,
-`AddSpotRouteResolver<T>()`. actor-session binding 은 session bind 시 actor runtime
+Redis/DB 같은 별도 저장소가 필요하면 actor remote address 나 spot remote address resolver 만
+custom 으로 등록한다: `AddActorRemoteAddressResolver<T>()`,
+`AddSpotRemoteAddressResolver<T>()`. actor-session binding 은 session bind 시 actor runtime
 state 에 저장되는 framework 내부 상태다.
 
-`IZLinkSpotRouteResolver` 는 `JoinSpot(spotName, ...)` 가 노드 경계를 넘을 때만
+`IZLinkSpotRemoteAddressResolver` 는 `JoinSpot(spotName, ...)` 가 노드 경계를 넘을 때만
 필요하다.
 
 ## 6. 오류 처리 — `ZLinkFrameworkException`
@@ -314,7 +314,7 @@ framework 가 던지는 actor/spot/session 관련 오류는 `ZLinkFrameworkExcep
 | Kind (일부) | 의미 |
 |-------------|------|
 | `ActorNotAuthenticated` | 세션에 bound 된 actor 가 아님 |
-| `ActorRouteNotFound` | actor route 미해결(`ActorGeneration == 0` 포함) |
+| `ActorRouteNotFound` | actor remote address 미해결(`ActorGeneration == 0` 포함) |
 | `ActorAlreadyExists` / `ActorTypeMismatch` | actor 생성 충돌 |
 | `SpotCreateFailed` / `SpotTypeMismatch` | spot 생성 충돌 |
 | `ActorSessionNotBound` | push 할 bound session 이 없음 |
@@ -347,8 +347,8 @@ builder.Services.AddZLinkFramework(options =>
         });
     });
 
-    options.UseRegistryActorRoutes("game");
-    options.UseRegistrySpotRoutes("game");
+    options.UseRegistryActorRemoteAddresses("game");
+    options.UseRegistrySpotRemoteAddresses("game");
 });
 ```
 

@@ -18,7 +18,7 @@ internal sealed class PlaceMarkHandler(
     {
         var result = spot.PlaceMark(actor.ActorId, request.Cell);
         await notifications.PublishAsync(result.Events, cancellationToken)
-            .ConfigureAwait(false);
+            ;
         return new PlaceMarkRes(result.Snapshot.ToContract());
     }
 }

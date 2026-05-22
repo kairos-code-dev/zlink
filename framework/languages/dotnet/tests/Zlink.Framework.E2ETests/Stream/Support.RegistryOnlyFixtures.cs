@@ -13,9 +13,9 @@ namespace Zlink.Framework.E2ETests;
 
 public abstract partial class StreamTestSupport
 {
-    public sealed class ThrowingActorPlayRouteResolver : IZLinkActorPlayRouteResolver
+    public sealed class ThrowingActorRemoteAddressResolver : IZLinkActorRemoteAddressResolver
     {
-        public ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
+        public ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
             string actorId,
             CancellationToken cancellationToken)
         {
@@ -25,22 +25,21 @@ public abstract partial class StreamTestSupport
         }
     }
 
-    public sealed class CountingActorPlayRouteResolver(ZLinkActorRoute route) : IZLinkActorPlayRouteResolver
+    public sealed class CountingActorRemoteAddressResolver(ZLinkActorRemoteAddress remoteAddress) : IZLinkActorRemoteAddressResolver
     {
         private int _callCount;
 
         public int CallCount => Volatile.Read(ref _callCount);
 
-        public ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
+        public ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
             string actorId,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _callCount);
-            return ValueTask.FromResult(new ZLinkActorLocationRoute(
-                route.RouterChannelId,
+            return ValueTask.FromResult(new ZLinkActorRemoteLocation(
                 actorId,
-                route.TargetNodeRid,
+                remoteAddress,
                 RoutingId.FromString("0102"),
                 ZLinkSpotKind.User));
         }

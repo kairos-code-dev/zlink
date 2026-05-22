@@ -107,7 +107,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _registration.RouteChannels.Keys.Single();
     }
 
-    internal ZLinkActorRoute ResolveLocalActorRoute(
+    internal ZLinkActorRemoteAddress ResolveLocalActorRemoteAddress(
         string actorId,
         string actorType)
     {
@@ -119,7 +119,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
 
         var routerChannelId = ResolveDefaultRouterChannelId();
-        return new ZLinkActorRoute(
+        return new ZLinkActorRemoteAddress(
             routerChannelId,
             ResolveSessionRouterId(routerChannelId),
             state.CurrentActorGeneration);
@@ -183,7 +183,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         return GetOrCreateActorState(actorId).TryGetBoundSession(out session);
     }
 
-    internal ValueTask<int> UpdateAttachedActorRouteAsync(
+    internal ValueTask<int> UpdateAttachedActorRemoteAddressAsync(
         string actorId,
         string routerChannelId,
         RoutingId targetNodeRid,
@@ -192,7 +192,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var updated = _sessionBindings.UpdateAttachedActorRoute(
+        var updated = _sessionBindings.UpdateAttachedActorRemoteAddress(
             actorId,
             routerChannelId,
             targetNodeRid,

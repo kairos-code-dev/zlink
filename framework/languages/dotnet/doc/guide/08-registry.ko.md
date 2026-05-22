@@ -186,8 +186,8 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddRouteMeshChannel("play", channel => channel.Bind("tcp://0.0.0.0:7201"));
 
-    options.UseRegistryActorRoutes("game");          // actor id → play node route
-    options.UseRegistrySpotRoutes("game");           // spot owner 조회 + spot 이름 directory
+    options.UseRegistryActorRemoteAddresses("game");          // actor id → play node route
+    options.UseRegistrySpotRemoteAddresses("game");           // spot owner 조회 + spot 이름 directory
 });
 ```
 

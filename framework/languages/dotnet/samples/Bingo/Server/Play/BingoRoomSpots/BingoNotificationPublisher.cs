@@ -11,7 +11,7 @@ internal sealed class BingoNotificationPublisher
     {
         foreach (var roomEvent in events)
         {
-            await PublishAsync(roomEvent, cancellationToken).ConfigureAwait(false);
+            await PublishAsync(roomEvent, cancellationToken);
         }
     }
 

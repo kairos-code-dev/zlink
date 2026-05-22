@@ -10,8 +10,8 @@ public sealed class RegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDefaults(sampleRoot, "bingo");
-        AssertSessionHandlersDoNotResolveActorPlayRoutes(sampleRoot);
-        AssertEnsureActorHandlersDoNotResolveActorPlayRoutes(sampleRoot);
+        AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
+        AssertEnsureActorHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
     }
 
     [Fact]
@@ -22,8 +22,8 @@ public sealed class RegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDefaults(sampleRoot, "tictactoe");
-        AssertSessionHandlersDoNotResolveActorPlayRoutes(sampleRoot);
-        AssertEnsureActorHandlersDoNotResolveActorPlayRoutes(sampleRoot);
+        AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
+        AssertEnsureActorHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
     }
 
     private static void AssertNoSampleRouteStore(string sampleRoot)
@@ -31,18 +31,18 @@ public sealed class RegressionTests
         var sourceFiles = EnumerateSourceFiles(sampleRoot).ToArray();
         var fileNames = sourceFiles.Select(Path.GetFileName).ToHashSet(StringComparer.Ordinal);
 
-        Assert.DoesNotContain("RegistryPlayRouteStore.cs", fileNames);
-        Assert.DoesNotContain("RegistryPlayRoutePublisher.cs", fileNames);
+        Assert.DoesNotContain("RegistryRemoteAddressStore.cs", fileNames);
+        Assert.DoesNotContain("RegistryRemoteAddressPublisher.cs", fileNames);
         Assert.DoesNotContain("SpotRouteContracts.cs", fileNames);
 
         foreach (var file in sourceFiles)
         {
             var text = File.ReadAllText(file);
-            Assert.DoesNotContain("RegistryPlayRouteStore", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("RegistryPlayRoutePublisher", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("AddActorPlayRouteResolver<RegistryPlayRouteStore>", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("AddSpotRouteResolver<RegistryPlayRouteStore>", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("BindInitialActorPlayRoutesAsync", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("RegistryRemoteAddressStore", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("RegistryRemoteAddressPublisher", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddActorRemoteAddressResolver<RegistryRemoteAddressStore>", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddSpotRemoteAddressResolver<RegistryRemoteAddressStore>", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("BindInitialActorRemoteAddressesAsync", text, StringComparison.Ordinal);
         }
     }
 
@@ -79,17 +79,17 @@ public sealed class RegressionTests
             Environment.NewLine,
             EnumerateSourceFiles(sampleRoot).Select(File.ReadAllText));
 
-        Assert.Contains($"UseRegistrySpotRoutes(\"{namespaceName}\")", allText, StringComparison.Ordinal);
-        Assert.DoesNotContain("UseRegistryActorRoutes", allText, StringComparison.Ordinal);
+        Assert.Contains($"UseRegistrySpotRemoteAddresses(\"{namespaceName}\")", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("UseRegistryActorRemoteAddresses", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("UseRegistryActorSessionBindings", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("IZLinkActorSessionClient", allText, StringComparison.Ordinal);
     }
 
-    private static void AssertSessionHandlersDoNotResolveActorPlayRoutes(string sampleRoot)
+    private static void AssertSessionHandlersDoNotResolveActorRemoteAddresses(string sampleRoot)
     {
         var sessionRoot = Path.Combine(sampleRoot, "Server", "Session");
         var sourceFiles = EnumerateSourceFiles(sessionRoot)
-            .Where(static file => file.EndsWith("PacketHandler.cs", StringComparison.Ordinal))
+            .Where(static file => file.EndsWith("Handler.cs", StringComparison.Ordinal))
             .ToArray();
 
         Assert.NotEmpty(sourceFiles);
@@ -97,12 +97,12 @@ public sealed class RegressionTests
         foreach (var file in sourceFiles)
         {
             var text = File.ReadAllText(file);
-            Assert.DoesNotContain("IZLinkActorPlayRouteResolver", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("ResolvePlayRouteAsync", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("IZLinkActorRemoteAddressResolver", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
         }
     }
 
-    private static void AssertEnsureActorHandlersDoNotResolveActorPlayRoutes(string sampleRoot)
+    private static void AssertEnsureActorHandlersDoNotResolveActorRemoteAddresses(string sampleRoot)
     {
         var playRoot = Path.Combine(sampleRoot, "Server", "Play");
         var sourceFiles = EnumerateSourceFiles(playRoot)
@@ -116,9 +116,9 @@ public sealed class RegressionTests
         foreach (var file in sourceFiles)
         {
             var text = File.ReadAllText(file);
-            Assert.DoesNotContain("IZLinkActorPlayRouteResolver", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("ResolvePlayRouteAsync", text, StringComparison.Ordinal);
-            Assert.Contains("GetRouteAsync", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("IZLinkActorRemoteAddressResolver", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
+            Assert.Contains("GetRemoteAddressAsync", text, StringComparison.Ordinal);
         }
     }
 

@@ -695,7 +695,7 @@ for run in $(seq 1 "${RUNS}"); do
         pat="${PATTERNS[pat_index]}"
         IFS=',' read -ra SIZE_LIST <<< "$(default_msg_sizes_for_pattern "${pat}")"
         PATTERN_CLIENTS="${CLIENTS}"
-        if [[ "${pat}" == "MULTI_STREAM" && "${CLIENTS}" == "100" ]]; then
+        if [[ "${pat}" == "MULTI_STREAM" && "${EXPLICIT_CLIENTS}" != "1" && "${CLIENTS}" == "100" ]]; then
             PATTERN_CLIENTS="10000"
         fi
         PATTERN_CLIENTS="$(cap_default_clients_for_memory "${PATTERN_CLIENTS}")"

@@ -77,9 +77,9 @@ public abstract partial class SpotTestSupport
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton<SpotRouteTransportRecorder>();
-        builder.Services.AddSingleton<FixedSpotRouteResolver>();
-        builder.Services.AddSingleton<IZLinkSpotRouteResolver>(
-            services => services.GetRequiredService<FixedSpotRouteResolver>());
+        builder.Services.AddSingleton<FixedSpotRemoteAddressResolver>();
+        builder.Services.AddSingleton<IZLinkSpotRemoteAddressResolver>(
+            services => services.GetRequiredService<FixedSpotRemoteAddressResolver>());
         builder.Services.AddScoped<SpotRouteTargetCommandHandler>();
         builder.Services.AddScoped<SpotRouteTargetRequestHandler>();
         builder.Services.AddScoped<SpotRouteSendCallerHandler>();

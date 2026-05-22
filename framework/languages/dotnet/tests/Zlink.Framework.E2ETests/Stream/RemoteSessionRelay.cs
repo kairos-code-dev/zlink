@@ -56,7 +56,7 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid, 1)));
+            services.AddSingleton(new TestActorRemoteAddressSnapshot(new ZLinkActorRemoteAddress("gateway", playRid, 1)));
             services.AddSingleton(new GatewaySessionRecorder());
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>

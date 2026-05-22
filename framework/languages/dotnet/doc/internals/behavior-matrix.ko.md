@@ -99,22 +99,22 @@
 | routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점에 오류 |
-| actor play route resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
-| session actor attach 에 `ActorGeneration == 0` route 전달 | 비허용 | concrete actor route 가 아니므로 `ActorRouteNotFound` 로 실패한다 |
-| session actor attach 중 `IZLinkActorPlayRouteResolver` fallback 사용 | 비허용 | session relay 는 attach 시점 route snapshot 을 저장해야 하며, hot path 에 actor id route 조회를 넣지 않는다 |
+| actor play remote address resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
+| session actor attach 에 `ActorGeneration == 0` route 전달 | 비허용 | concrete actor remote address 가 아니므로 `ActorRouteNotFound` 로 실패한다 |
+| session actor attach 중 `IZLinkActorRemoteAddressResolver` fallback 사용 | 비허용 | session relay 는 attach 시점 remote address snapshot 을 저장해야 하며, hot path 에 actor id route 조회를 넣지 않는다 |
 | route 없는 `BindActorHandleAsync(actorId, actorType, ...)` 로 remote actor bind | 비허용 | 이 overload 는 local actor compatibility 경로로만 동작하고, local actor 가 없으면 `ActorRouteNotFound` 로 실패한다 |
-| actor route update 의 expected actor generation 이 현재 attached ref 와 일치 | 허용 | target node rid 와 actor generation 을 atomic snapshot 으로 교체한다 |
-| actor route update 의 expected actor generation 이 현재 attached ref 와 다름 | 허용된 무시 | 늦게 도착한 stale update 로 보고 route 를 바꾸지 않는다 |
+| actor remote address update 의 expected actor generation 이 현재 attached ref 와 일치 | 허용 | target node rid 와 actor generation 을 atomic snapshot 으로 교체한다 |
+| actor remote address update 의 expected actor generation 이 현재 attached ref 와 다름 | 허용된 무시 | 늦게 도착한 stale update 로 보고 remote address 를 바꾸지 않는다 |
 | 같은 actor id가 새 stream session에서 다시 bind | 허용 | 기존 actor 인스턴스를 재사용하고 session binding token[^binding-token]만 갱신한다 |
 | actor factory가 요청 actor id와 다른 id를 반환 | 비허용 | actor route와 binding id가 갈라지므로 actor 생성 오류 |
 | `context.SessionProxy.Send(...)` 가 오래된 binding이나 이미 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고, route loop와 host shutdown은 계속 진행한다 |
 | converter 없는 abstract/interface payload를 reply DTO에 포함 | 비허용 | startup validation 또는 첫 submit 직전에 configuration 오류 |
-| spot route resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
-| Registry actor route 기본 구현 + custom actor route resolver 함께 등록 | 비허용 | startup validation 오류 |
-| Registry Spot route 기본 구현 + custom Spot route resolver 함께 등록 | 비허용 | startup validation 오류 |
+| spot remote address resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
+| Registry actor remote address 기본 구현 + custom actor remote address resolver 함께 등록 | 비허용 | startup validation 오류 |
+| Registry Spot route 기본 구현 + custom Spot remote address resolver 함께 등록 | 비허용 | startup validation 오류 |
 | Registry route 기본 구현 + `UseDiscovery(...)` 없음 | 비허용 | startup validation 오류 |
 | Registry route 기본 구현 + route mesh channel이 둘 이상이고 channel id 생략 | 비허용 | startup validation 오류 |
-| spot name/id 기반 client 또는 `JoinSpot(...)` 사용 + spot route resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
+| spot name/id 기반 client 또는 `JoinSpot(...)` 사용 + spot remote address resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
 | `IZLinkSessionProxy` 또는 `IZLinkSessionProxy` 사용 + actor-session binding 없음 | 비허용 | 대상 actor에 묶인 session이 없으면 명확한 오류 |
 
 ## 6. Monitoring Registration Matrix

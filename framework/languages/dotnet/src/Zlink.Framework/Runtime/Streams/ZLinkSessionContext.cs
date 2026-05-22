@@ -3,7 +3,6 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionContext(
     ZLinkFrameworkRuntime runtime,
-    IZLinkClient client,
     IZLinkStream stream,
     Func<CancellationToken, ValueTask> closeAsync,
     Func<CancellationToken, ValueTask> closeByProxyAsync)
@@ -24,20 +23,6 @@ internal sealed class ZLinkSessionContext(
     public string? LocalAddr => stream.LocalAddr;
 
     public string? RemoteAddr => stream.RemoteAddr;
-
-    public IZLinkRequestCall RequestChannel<TRequest>(
-        string channelName,
-        TRequest request)
-    {
-        return client.Request(channelName, request);
-    }
-
-    public IZLinkSendCall SendChannel<TMessage>(
-        string channelName,
-        TMessage message)
-    {
-        return client.Send(channelName, message);
-    }
 
     public IZLinkSessionSendCall Send<TMessage>(TMessage message)
     {
@@ -60,10 +45,17 @@ internal sealed class ZLinkSessionContext(
     public ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
-        ZLinkActorRoute route,
+        ZLinkActorRemoteAddress remoteAddress,
         CancellationToken cancellationToken = default)
     {
-        return _actors.BindHandleAsync(this, actorId, actorType, route, cancellationToken);
+        return _actors.BindHandleAsync(this, actorId, actorType, remoteAddress, cancellationToken);
+    }
+
+    public ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        IZLinkActorRef actor,
+        CancellationToken cancellationToken = default)
+    {
+        return _actors.BindHandleAsync(this, actor, cancellationToken);
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)

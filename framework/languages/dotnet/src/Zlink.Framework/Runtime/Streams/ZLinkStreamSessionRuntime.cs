@@ -28,7 +28,6 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         Stream = new ZLinkManagedStream(socket, routingId);
         _context = new ZLinkSessionContext(
             scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>(),
-            scope.ServiceProvider.GetRequiredService<IZLinkClient>(),
             Stream,
             CloseAsync,
             CloseByProxyAsync);

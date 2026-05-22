@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	zlink "zlink.systems/zlink/contracts"
@@ -74,6 +76,7 @@ func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	perfcommon.ApplyMultiAutoHWMMsgUnit(ctx, cfg.msgSize)
 
 	stats := perfcommon.NewStats()
+	latencyStride := resolveMultiPubSubLatencySampleStride()
 	subs := make([]*zlink.SubSocket, 0, cfg.clients)
 	for i := 0; i < cfg.clients; i++ {
 		sub, err := ctx.SubSocket()
@@ -139,7 +142,7 @@ func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
 			}
 			perfcommon.Must(fmt.Errorf("multi pubsub client poll: %w", err))
 		}
-		drainMultiPubSubReady(subs, recvParts, topicBuffers, events[:n], stats, cfg.msgSize, window.ActiveAt, window.StopAt, &phaseDone)
+		drainMultiPubSubReady(subs, recvParts, topicBuffers, events[:n], stats, cfg.msgSize, window.StopAt, latencyStride, &phaseDone)
 	}
 	flushControlLine("CLIENT_DONE,%d", cfg.msgSize)
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
@@ -152,8 +155,8 @@ func drainMultiPubSubReady(
 	events []zlink.PollEvent,
 	stats *perfcommon.Stats,
 	msgSize int,
-	activeAt time.Time,
 	recvStopAt time.Time,
+	latencyStride uint64,
 	phaseDone *bool,
 ) {
 	for _, event := range events {
@@ -164,7 +167,7 @@ func drainMultiPubSubReady(
 		if index < 0 || index >= len(subs) {
 			continue
 		}
-		drainMultiPubSubSocket(index, subs[index], recvParts[index], topicBuffers[index], stats, msgSize, activeAt, recvStopAt, phaseDone)
+		drainMultiPubSubSocket(index, subs[index], recvParts[index], topicBuffers[index], stats, msgSize, recvStopAt, latencyStride, phaseDone)
 		if *phaseDone {
 			return
 		}
@@ -177,12 +180,12 @@ func drainMultiPubSubAvailable(
 	topicBuffers [][]byte,
 	stats *perfcommon.Stats,
 	msgSize int,
-	activeAt time.Time,
 	recvStopAt time.Time,
+	latencyStride uint64,
 	phaseDone *bool,
 ) {
 	for index, socket := range subs {
-		drainMultiPubSubSocket(index, socket, recvParts[index], topicBuffers[index], stats, msgSize, activeAt, recvStopAt, phaseDone)
+		drainMultiPubSubSocket(index, socket, recvParts[index], topicBuffers[index], stats, msgSize, recvStopAt, latencyStride, phaseDone)
 		if *phaseDone {
 			return
 		}
@@ -196,8 +199,8 @@ func drainMultiPubSubSocket(
 	topicBuffer []byte,
 	stats *perfcommon.Stats,
 	msgSize int,
-	activeAt time.Time,
 	recvStopAt time.Time,
+	latencyStride uint64,
 	phaseDone *bool,
 ) {
 	for {
@@ -218,11 +221,37 @@ func drainMultiPubSubSocket(
 			*phaseDone = true
 			break
 		}
-		now := time.Now()
-		if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(part, msgSize, perfcommon.PhaseActive, now); ok && now.After(activeAt) && now.Before(recvStopAt) {
-			stats.AddLatencyNs(latencyNs)
+		if !perfcommon.HasMetricHeaderPhase(part.Data(), msgSize, perfcommon.PhaseActive) {
+			continue
+		}
+		count := stats.AddCount()
+		if shouldSampleMultiPubSubLatency(count, latencyStride) {
+			now := time.Now()
+			if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(part, msgSize, perfcommon.PhaseActive, now); ok && now.Before(recvStopAt) {
+				stats.AddLatencySampleNs(latencyNs)
+			}
 		}
 	}
+}
+
+func resolveMultiPubSubLatencySampleStride() uint64 {
+	return uint64(positiveMultiPubSubIntEnv("PERF_MULTI_PUBSUB_LATENCY_SAMPLE_STRIDE", 32))
+}
+
+func positiveMultiPubSubIntEnv(name string, fallback int) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func shouldSampleMultiPubSubLatency(index, stride uint64) bool {
+	return stride <= 1 || index == 1 || index%stride == 0
 }
 
 func sendMultiPubSubStopToken(publisher *zlink.PubSocket) {

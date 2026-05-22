@@ -12,6 +12,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         string routerChannelId,
         RoutingId actorNodeRid,
         ulong actorGeneration,
+        bool isRemote,
         Func<ZLinkActorRef, CancellationToken, ValueTask> notifyDisconnectedAsync,
         CancellationToken cancellationToken)
     {
@@ -28,11 +29,12 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         var actorRef = new ZLinkActorRef(
             actorId,
             actorType,
-            new ZLinkActorRouteState(new ZLinkActorRoute(
+            new ZLinkActorRemoteAddressState(new ZLinkActorRemoteAddress(
                 routerChannelId,
                 actorNodeRid,
                 actorGeneration)),
             binding.SessionRouterId,
+            isRemote,
             binding.BindingToken,
             notifyDisconnectedAsync);
 

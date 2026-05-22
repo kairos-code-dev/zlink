@@ -3,8 +3,9 @@ namespace Zlink.Framework.Runtime.Streams;
 internal sealed class ZLinkActorRef(
     string actorId,
     string actorType,
-    ZLinkActorRouteState routeState,
+    ZLinkActorRemoteAddressState remoteAddressState,
     RoutingId sessionRouterId,
+    bool isRemote,
     string bindingToken,
     Func<ZLinkActorRef, CancellationToken, ValueTask> notifyDisconnectedAsync)
     : IZLinkActorRef
@@ -13,25 +14,29 @@ internal sealed class ZLinkActorRef(
 
     public string ActorType { get; } = actorType;
 
-    public string RouterChannelId => RouteSnapshot.RouterChannelId;
+    public string RouterChannelId => RemoteAddressSnapshot.RouterChannelId;
 
-    public RoutingId TargetNodeRid => RouteSnapshot.TargetNodeRid;
+    public RoutingId TargetNodeRid => RemoteAddressSnapshot.TargetNodeRid;
 
-    public ulong ActorGeneration => RouteSnapshot.ActorGeneration;
+    public ulong ActorGeneration => RemoteAddressSnapshot.ActorGeneration;
+
+    public bool IsRemote { get; } = isRemote;
+
+    public ZLinkActorRemoteAddress RemoteAddress => RemoteAddressSnapshot;
 
     internal RoutingId SessionRouterId { get; } = sessionRouterId;
 
     internal string BindingToken { get; } = bindingToken;
 
-    internal ZLinkActorRoute RouteSnapshot => routeState.Snapshot;
+    internal ZLinkActorRemoteAddress RemoteAddressSnapshot => remoteAddressState.Snapshot;
 
-    internal bool TryUpdateRoute(
+    internal bool TryUpdateRemoteAddress(
         string routerChannelId,
         RoutingId targetNodeRid,
         ulong expectedActorGeneration,
         ulong newActorGeneration)
     {
-        return routeState.TryUpdate(
+        return remoteAddressState.TryUpdate(
             routerChannelId,
             targetNodeRid,
             expectedActorGeneration,

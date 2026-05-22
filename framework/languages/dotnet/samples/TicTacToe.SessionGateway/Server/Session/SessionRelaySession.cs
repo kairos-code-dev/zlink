@@ -51,6 +51,6 @@ internal sealed class SessionRelaySession(
                 header,
                 payload.Move(),
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
     }
 }

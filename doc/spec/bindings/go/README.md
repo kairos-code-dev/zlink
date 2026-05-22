@@ -150,12 +150,22 @@ the review ownership map for the aggregate public package.
 - Data-plane `Recv`, routed recv, `Subscribe`, and subscription-event receive
   fill caller-provided `*Received`, `*TopicMessage`, or `*SubscriptionEvent`
   values and return `(bool, error)`.
+- Part-level receive APIs such as `RecvPart`, `SubscribePart`, and
+  `Spot.RecvRoutedPart` fill caller-provided `*Message` values and return
+  metadata in `RecvPartResult` or `SubscribePartResult`.
+- `Spot.ForwardRouted(...)` consumes one routed Spot message and forwards it
+  back to the source Spot route without exposing the payload to the caller.
+  It is for relay paths that do not inspect or modify payload data. Callers
+  that need payload access must keep using `RecvRouted(...)`,
+  `RecvRoutedPart(...)`, and `SendToSpot(...)`.
 - Send, routed send, publish, request, reply, SPOT operations, and Actor
   location/session operations return fluent builders.
 - Builder start methods take only the target identity, topic, channel, routing
   id, or request sequence. Payload, flags, timeout, callback, and async submit
   choices are builder steps.
-- Multipart payload is accumulated by repeated `Message(...)` calls.
+- Multipart payload is accumulated by repeated `Message(...)`, `MoveMessage(...)`,
+  or `Bytes(...)` calls. `Bytes(...)` reads the caller-owned slice during
+  `Submit(...)` and does not retain it after `Submit(...)` returns.
   `Messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in the public package category.
 - Send builders also expose `MoveMessage(...)` for hot paths that can transfer

@@ -77,6 +77,9 @@ CLIENTS=""
 RESULTS_DIR="${SCRIPT_DIR}/results/multi/report"
 RESULTS_TAG=""
 OUTPUT_FILE=""
+BUILD_DIR="${SCRIPT_DIR}/build/multi"
+REUSE_BUILD=0
+CLEAN_BUILD=0
 PIN_CPU="off"
 IO_THREADS=""
 SERVER_IO_THREADS=""
@@ -289,6 +292,7 @@ while [[ $# -gt 0 ]]; do
     --results-tag) RESULTS_TAG="$2"; shift 2 ;;
     --output) OUTPUT_FILE="$2"; shift 2 ;;
     --build-dir)
+      BUILD_DIR="$2"
       shift 2 ;;
     --io-threads)
       IO_THREADS="$2"
@@ -351,7 +355,11 @@ while [[ $# -gt 0 ]]; do
     --auto-hwm-profile)
       AUTO_HWM_PROFILE="$2"
       shift 2 ;;
-    --reuse-build|--clean-build)
+    --reuse-build)
+      REUSE_BUILD=1
+      shift ;;
+    --clean-build)
+      CLEAN_BUILD=1
       shift ;;
     --pin-cpu)
       PIN_CPU="on"
@@ -361,6 +369,11 @@ while [[ $# -gt 0 ]]; do
       exit 1 ;;
   esac
 done
+
+if [[ "${REUSE_BUILD}" -eq 1 && "${CLEAN_BUILD}" -eq 1 ]]; then
+  echo "Error: --reuse-build and --clean-build are mutually exclusive." >&2
+  exit 1
+fi
 
 if [[ -n "${HWM}" ]]; then
   export PERF_MULTI_HWM="${HWM}"
@@ -413,6 +426,15 @@ fi
 if [[ -n "${SERVER_BIND_PORT}" ]]; then
   export PERF_MULTI_SERVER_BIND_PORT="${SERVER_BIND_PORT}"
 fi
+if [[ -z "${GOMAXPROCS:-}" ]]; then
+  if [[ -n "${PERF_GO_GOMAXPROCS:-}" ]]; then
+    export GOMAXPROCS="${PERF_GO_GOMAXPROCS}"
+  elif [[ -n "${IO_THREADS}" ]]; then
+    export GOMAXPROCS="${IO_THREADS}"
+  else
+    export GOMAXPROCS="${PERF_IO_THREADS:-4}"
+  fi
+fi
 
 case "$(uname -s)" in
   Linux*) PLATFORM="linux" ;;
@@ -420,9 +442,32 @@ case "$(uname -s)" in
   *) PLATFORM="windows" ;;
 esac
 
+GO_MULTI_BIN="${BUILD_DIR}/perf_multi"
+
+build_go_perf_binary() {
+  if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
+    rm -rf "${BUILD_DIR}"
+  fi
+  mkdir -p "${BUILD_DIR}"
+  if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+    if [[ ! -x "${GO_MULTI_BIN}" ]]; then
+      echo "existing Go multi perf binary not found for --reuse-build: ${GO_MULTI_BIN}" >&2
+      exit 1
+    fi
+    return
+  fi
+  go build -o "${GO_MULTI_BIN}" ./perf/multi
+}
+
 run_go_perf() {
+  local package="$1"
+  shift
+  if [[ "${package}" != "./perf/multi" ]]; then
+    echo "Error: unsupported Go perf package: ${package}" >&2
+    return 1
+  fi
   if [[ "${PIN_CPU}" != "on" ]]; then
-    exec go run "$@"
+    exec "${GO_MULTI_BIN}" "$@"
     return
   fi
 
@@ -432,7 +477,7 @@ run_go_perf() {
         echo "Error: --pin-cpu requires taskset on Linux" >&2
         return 1
       fi
-      exec taskset -c 0 go run "$@"
+      exec taskset -c 0 "${GO_MULTI_BIN}" "$@"
       ;;
     *)
       echo "Error: --pin-cpu is not supported by this runner on $(uname -s)" >&2
@@ -474,6 +519,7 @@ RESULTS_FILE="${RESULTS_DIR}/perf_go_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}
 mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
+build_go_perf_binary
 START_SECONDS="$(date +%s)"
 TOTAL_TIME_ENABLED=1
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-multi.XXXXXX")"
@@ -671,6 +717,7 @@ emit_effective_options_multi() {
   echo "- service_clients: auto"
   echo "- server_io_threads: ${SERVER_IO_THREADS:-${IO_THREADS:-4 (default)}}"
   echo "- client_io_threads: ${CLIENT_IO_THREADS:-${IO_THREADS:-4 (default)}}"
+  echo "- go_gomaxprocs: ${GOMAXPROCS:-unset}"
   echo "- hwm: $(effective_or_auto "${HWM}")"
   echo "- sndhwm: $(effective_or_auto "${SEND_HWM:-${HWM}}")"
   echo "- rcvhwm: $(effective_or_auto "${RECV_HWM:-${HWM}}")"

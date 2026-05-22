@@ -11,10 +11,10 @@ using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.E2ETests;
 
-public sealed class RouteUpdatesTests : StreamTestSupport
+public sealed class RemoteAddressUpdatesTests : StreamTestSupport
 {
     [Fact]
-    public async Task SessionActorRouteUpdate_Changes_Attached_TargetNodeRid()
+    public async Task SessionActorRemoteAddressUpdate_Changes_Attached_TargetNodeRid()
     {
         var endpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("1221");
@@ -38,7 +38,6 @@ public sealed class RouteUpdatesTests : StreamTestSupport
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
             var context = new ZLinkSessionContext(
                 runtime,
-                host.Services.GetRequiredService<IZLinkClient>(),
                 new SpotTestSupport.TestStream("route-update-session"),
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
@@ -46,9 +45,9 @@ public sealed class RouteUpdatesTests : StreamTestSupport
             var actor = (ZLinkActorRef)await context.BindActorHandleAsync(
                 "remote-player",
                 "player",
-                new ZLinkActorRoute("gateway", firstRid, 1));
+                new ZLinkActorRemoteAddress("gateway", firstRid, 1));
 
-            var updated = await runtime.UpdateAttachedActorRouteAsync(
+            var updated = await runtime.UpdateAttachedActorRemoteAddressAsync(
                 "remote-player",
                 "gateway",
                 secondRid,
@@ -57,8 +56,8 @@ public sealed class RouteUpdatesTests : StreamTestSupport
                 CancellationToken.None);
 
             Assert.Equal(1, updated);
-            Assert.Equal(secondRid, actor.TargetNodeRid);
-            Assert.Equal(2UL, actor.ActorGeneration);
+            Assert.Equal(secondRid, actor.RemoteAddress.TargetNodeRid);
+            Assert.Equal(2UL, actor.RemoteAddress.ActorGeneration);
         }
         finally
         {
@@ -67,7 +66,7 @@ public sealed class RouteUpdatesTests : StreamTestSupport
     }
 
     [Fact]
-    public async Task SessionActorRouteUpdate_Ignores_Stale_ExpectedActorGeneration()
+    public async Task SessionActorRemoteAddressUpdate_Ignores_Stale_ExpectedActorGeneration()
     {
         var endpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("1231");
@@ -91,7 +90,6 @@ public sealed class RouteUpdatesTests : StreamTestSupport
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
             var context = new ZLinkSessionContext(
                 runtime,
-                host.Services.GetRequiredService<IZLinkClient>(),
                 new SpotTestSupport.TestStream("stale-route-update-session"),
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
@@ -99,9 +97,9 @@ public sealed class RouteUpdatesTests : StreamTestSupport
             var actor = (ZLinkActorRef)await context.BindActorHandleAsync(
                 "remote-player",
                 "player",
-                new ZLinkActorRoute("gateway", firstRid, 5));
+                new ZLinkActorRemoteAddress("gateway", firstRid, 5));
 
-            var updated = await runtime.UpdateAttachedActorRouteAsync(
+            var updated = await runtime.UpdateAttachedActorRemoteAddressAsync(
                 "remote-player",
                 "gateway",
                 staleRid,
@@ -110,8 +108,8 @@ public sealed class RouteUpdatesTests : StreamTestSupport
                 CancellationToken.None);
 
             Assert.Equal(0, updated);
-            Assert.Equal(firstRid, actor.TargetNodeRid);
-            Assert.Equal(5UL, actor.ActorGeneration);
+            Assert.Equal(firstRid, actor.RemoteAddress.TargetNodeRid);
+            Assert.Equal(5UL, actor.RemoteAddress.ActorGeneration);
         }
         finally
         {
@@ -120,7 +118,7 @@ public sealed class RouteUpdatesTests : StreamTestSupport
     }
 
     [Fact]
-    public async Task SessionActorRouteUpdate_Allows_Idempotent_Same_Target()
+    public async Task SessionActorRemoteAddressUpdate_Allows_Idempotent_Same_Target()
     {
         var endpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("1241");
@@ -144,7 +142,6 @@ public sealed class RouteUpdatesTests : StreamTestSupport
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
             var context = new ZLinkSessionContext(
                 runtime,
-                host.Services.GetRequiredService<IZLinkClient>(),
                 new SpotTestSupport.TestStream("idempotent-route-update-session"),
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
@@ -152,16 +149,16 @@ public sealed class RouteUpdatesTests : StreamTestSupport
             var actor = (ZLinkActorRef)await context.BindActorHandleAsync(
                 "remote-player",
                 "player",
-                new ZLinkActorRoute("gateway", firstRid, 1));
+                new ZLinkActorRemoteAddress("gateway", firstRid, 1));
 
-            var firstUpdate = await runtime.UpdateAttachedActorRouteAsync(
+            var firstUpdate = await runtime.UpdateAttachedActorRemoteAddressAsync(
                 "remote-player",
                 "gateway",
                 secondRid,
                 expectedActorGeneration: 1,
                 newActorGeneration: 2,
                 CancellationToken.None);
-            var secondUpdate = await runtime.UpdateAttachedActorRouteAsync(
+            var secondUpdate = await runtime.UpdateAttachedActorRemoteAddressAsync(
                 "remote-player",
                 "gateway",
                 secondRid,
@@ -171,8 +168,8 @@ public sealed class RouteUpdatesTests : StreamTestSupport
 
             Assert.Equal(1, firstUpdate);
             Assert.Equal(1, secondUpdate);
-            Assert.Equal(secondRid, actor.TargetNodeRid);
-            Assert.Equal(2UL, actor.ActorGeneration);
+            Assert.Equal(secondRid, actor.RemoteAddress.TargetNodeRid);
+            Assert.Equal(2UL, actor.RemoteAddress.ActorGeneration);
         }
         finally
         {
@@ -181,7 +178,7 @@ public sealed class RouteUpdatesTests : StreamTestSupport
     }
 
     [Fact]
-    public async Task SessionActorRouteUpdate_Rejects_Conflicting_Target_For_Same_ExpectedGeneration()
+    public async Task SessionActorRemoteAddressUpdate_Rejects_Conflicting_Target_For_Same_ExpectedGeneration()
     {
         var endpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("1251");
@@ -206,7 +203,6 @@ public sealed class RouteUpdatesTests : StreamTestSupport
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
             var context = new ZLinkSessionContext(
                 runtime,
-                host.Services.GetRequiredService<IZLinkClient>(),
                 new SpotTestSupport.TestStream("conflict-route-update-session"),
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
@@ -214,16 +210,16 @@ public sealed class RouteUpdatesTests : StreamTestSupport
             var actor = (ZLinkActorRef)await context.BindActorHandleAsync(
                 "remote-player",
                 "player",
-                new ZLinkActorRoute("gateway", firstRid, 1));
+                new ZLinkActorRemoteAddress("gateway", firstRid, 1));
 
-            var applied = await runtime.UpdateAttachedActorRouteAsync(
+            var applied = await runtime.UpdateAttachedActorRemoteAddressAsync(
                 "remote-player",
                 "gateway",
                 secondRid,
                 expectedActorGeneration: 1,
                 newActorGeneration: 2,
                 CancellationToken.None);
-            var rejected = await runtime.UpdateAttachedActorRouteAsync(
+            var rejected = await runtime.UpdateAttachedActorRemoteAddressAsync(
                 "remote-player",
                 "gateway",
                 conflictingRid,
@@ -233,8 +229,8 @@ public sealed class RouteUpdatesTests : StreamTestSupport
 
             Assert.Equal(1, applied);
             Assert.Equal(0, rejected);
-            Assert.Equal(secondRid, actor.TargetNodeRid);
-            Assert.Equal(2UL, actor.ActorGeneration);
+            Assert.Equal(secondRid, actor.RemoteAddress.TargetNodeRid);
+            Assert.Equal(2UL, actor.RemoteAddress.ActorGeneration);
         }
         finally
         {

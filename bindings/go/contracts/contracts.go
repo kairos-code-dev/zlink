@@ -130,6 +130,7 @@ type (
 	SpotDispatchInfo             = root.SpotDispatchInfo
 	Received                     = root.Received
 	RecvPartResult               = root.RecvPartResult
+	SpotForwardResult            = root.SpotForwardResult
 	TopicMessage                 = root.TopicMessage
 	SubscriptionEvent            = root.SubscriptionEvent
 	SocketTarget                 = root.SocketTarget

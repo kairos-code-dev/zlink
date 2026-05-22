@@ -62,10 +62,11 @@ public sealed class SpotContracts
         typeof(IZLinkSpotClient),
         typeof(IZLinkRoutedSpotClient),
         typeof(IZLinkRoutedSpotChannelClient),
+        typeof(IZLinkSpotRef),
         typeof(IZLinkSpotMeshPublisherClient),
         typeof(IZLinkSpotPublisherClient),
         typeof(IZLinkSpotConnectionManager),
-        typeof(IZLinkSpotRouteResolver))]
+        typeof(IZLinkSpotRemoteAddressResolver))]
     public async Task Spot_clients_separate_local_spot_api_routed_egress_and_publisher_channels()
     {
         var manager = new SpotManager();
@@ -73,8 +74,8 @@ public sealed class SpotContracts
             "room",
             RoutingId.Of("room-1"),
             [new Message()]);
-        var routeResolver = new SpotRouteResolver(created.SpotRid);
-        var route = await routeResolver.ResolveSpotRouteAsync(created.SpotRid, CancellationToken.None);
+        var routeResolver = new SpotRemoteAddressResolver(created.SpotRid);
+        var route = await routeResolver.ResolveSpotRemoteAddressAsync(created.SpotRid, CancellationToken.None);
 
         var localClient = new SpotClient();
         await localClient.SendSpot(created.SpotRid, new RoomEvent("opened")).Submit();
@@ -84,9 +85,10 @@ public sealed class SpotContracts
         await localClient.Publish("room.events", new RoomEvent("opened")).Submit();
 
         var routedClient = new RoutedSpotClient();
+        var spotRef = await routedClient.BindSpotHandleAsync(route);
         await routedClient
             .ViaEgressChannel("play-router")
-            .RequestSpot(created.SpotRid, new JoinRoom("room-1"))
+            .RequestSpot(spotRef, new JoinRoom("room-1"))
             .SubmitAsync<JoinedRoom>();
 
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
@@ -380,17 +382,17 @@ public sealed class SpotContracts
             ValueTask.FromResult(_spots.Remove(spotRid));
     }
 
-    private sealed class SpotRouteResolver(RoutingId configuredSpotRid) : IZLinkSpotRouteResolver
+    private sealed class SpotRemoteAddressResolver(RoutingId configuredSpotRid) : IZLinkSpotRemoteAddressResolver
     {
-        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             string spotName,
             CancellationToken cancellationToken) =>
-            ResolveSpotRouteAsync(RoutingId.Of(spotName), cancellationToken);
+            ResolveSpotRemoteAddressAsync(RoutingId.Of(spotName), cancellationToken);
 
-        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             RoutingId spotRid,
             CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new ZLinkSpotRoute(
+            ValueTask.FromResult(new ZLinkSpotRemoteAddress(
                 "play-router",
                 RoutingId.Of("spot-node"),
                 spotRid,
@@ -421,14 +423,43 @@ public sealed class SpotContracts
     {
         public IZLinkRoutedSpotChannelClient ViaEgressChannel(string localEgressChannelName) =>
             new RoutedSpotChannelClient(localEgressChannelName);
+
+        public ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
+            ZLinkSpotRemoteAddress remoteAddress,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<IZLinkSpotRef>(new SpotRef(remoteAddress));
+
+        public ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
+            IZLinkSpotRef spot,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(spot);
     }
 
     private sealed class RoutedSpotChannelClient(string egressChannel) : IZLinkRoutedSpotChannelClient
     {
         public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message) => new SendCall();
 
+        public IZLinkSendCall SendSpot<TMessage>(IZLinkSpotRef spot, TMessage message) =>
+            SendSpot(spot.SpotRid, message);
+
         public IZLinkRequestCall RequestSpot<TRequest>(RoutingId spotRid, TRequest request) =>
             new RequestCall(new JoinedRoom(egressChannel == "play-router" ? "room-1" : "unknown"));
+
+        public IZLinkRequestCall RequestSpot<TRequest>(IZLinkSpotRef spot, TRequest request) =>
+            RequestSpot(spot.SpotRid, request);
+    }
+
+    private sealed class SpotRef(ZLinkSpotRemoteAddress remoteAddress) : IZLinkSpotRef
+    {
+        public RoutingId SpotRid => remoteAddress.SpotRid;
+
+        public string? SpotName => null;
+
+        public ZLinkSpotKind SpotKind => remoteAddress.SpotKind;
+
+        public bool IsRemote => true;
+
+        public ZLinkSpotRemoteAddress RemoteAddress => remoteAddress;
     }
 
     private sealed class SpotPublisherClient : IZLinkSpotPublisherClient

@@ -275,7 +275,7 @@ def _run_pattern(args, env, pattern, transport, msg_size):
         msg_size,
     ]
     timeout_s = resolve_single_timeout_seconds(float(args.duration))
-    if pattern.startswith("SPOT"):
+    if pattern.startswith("SPOT") and not os.environ.get("PERF_SINGLE_TIMEOUT_SECONDS"):
         timeout_s = max(timeout_s, 180)
     result = subprocess.run(
         cmd,

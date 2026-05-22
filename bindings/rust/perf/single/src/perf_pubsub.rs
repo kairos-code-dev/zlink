@@ -70,9 +70,8 @@ fn main() {
                 pub_sock
                     .publish("P")
                     .message(msg)
+                    .flags(zlink::SendFlags::DONT_WAIT)
                     .submit()
-                    .map(|_| ())
-                    .map_err(Into::into)
             });
         });
 

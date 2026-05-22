@@ -18,8 +18,8 @@ internal sealed class PlaceMarkSessionPacketHandler : ISessionRelayPacketHandler
                 context.Stream,
                 "sending game packets",
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
         await context.Stream.RelayToActorAsync(actor, header, payload, cancellationToken)
-            .ConfigureAwait(false);
+            ;
     }
 }

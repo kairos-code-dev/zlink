@@ -10,7 +10,6 @@ public sealed class StreamContracts
         typeof(IZLinkSession),
         typeof(IZLinkSessionContext),
         typeof(IZLinkSessionIdentityContext),
-        typeof(IZLinkSessionChannelClient),
         typeof(IZLinkSessionClientStream),
         typeof(IZLinkSessionActorDispatchContext),
         typeof(IZLinkSessionLifecycle),
@@ -19,7 +18,7 @@ public sealed class StreamContracts
         typeof(IZLinkSessionReplyCall),
         typeof(IZLinkActorRef),
         typeof(IZLinkStream))]
-    public async Task Session_context_collects_identity_channel_stream_and_actor_operations()
+    public async Task Session_context_collects_identity_stream_and_actor_operations()
     {
         var context = new ExampleSessionContext();
         var session = new ExampleSession(context);
@@ -52,8 +51,6 @@ public sealed class StreamContracts
             .Compress()
             .Submit();
 
-        await context.SendChannel("api", new PlayerJoined("player-1")).Submit();
-        await context.RequestChannel("api", new Authenticate("player-1")).SubmitAsync<AuthenticateReply>();
         await context.CloseAsync();
 
         IZLinkStream stream = context;
@@ -137,16 +134,6 @@ public sealed class StreamContracts
 
         public bool StreamClosed { get; private set; }
 
-        public IZLinkRequestCall RequestChannel<TRequest>(
-            string channelName,
-            TRequest request) =>
-            new RequestCall(new AuthenticateReply("player-1"));
-
-        public IZLinkSendCall SendChannel<TMessage>(
-            string channelName,
-            TMessage message) =>
-            new SendCall();
-
         public IZLinkSessionSendCall Send<TMessage>(TMessage message) => new SessionSendCall();
 
         public IZLinkSessionReplyCall Reply<TMessage>(TMessage message) => new SessionReplyCall();
@@ -160,9 +147,14 @@ public sealed class StreamContracts
         public ValueTask<IZLinkActorRef> BindActorHandleAsync(
             string actorId,
             string actorType,
-            ZLinkActorRoute route,
+            ZLinkActorRemoteAddress remoteAddress,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkActorRef>(new ActorRef(actorId, actorType));
+            ValueTask.FromResult<IZLinkActorRef>(new ActorRef(actorId, actorType, remoteAddress, isRemote: true));
+
+        public ValueTask<IZLinkActorRef> BindActorHandleAsync(
+            IZLinkActorRef actor,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(actor);
 
         public ValueTask RelayToActorAsync(
             IZLinkActorRef actor,
@@ -207,11 +199,20 @@ public sealed class StreamContracts
         }
     }
 
-    private sealed class ActorRef(string actorId, string actorType) : IZLinkActorRef
+    private sealed class ActorRef(
+        string actorId,
+        string actorType,
+        ZLinkActorRemoteAddress? remoteAddress = null,
+        bool isRemote = false) : IZLinkActorRef
     {
         public string ActorId { get; } = actorId;
 
         public string ActorType { get; } = actorType;
+
+        public bool IsRemote { get; } = isRemote;
+
+        public ZLinkActorRemoteAddress RemoteAddress { get; } =
+            remoteAddress ?? new ZLinkActorRemoteAddress("play-router", RoutingId.Of("local-node"), 1);
 
         public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;

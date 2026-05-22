@@ -6,8 +6,8 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
     {
         return new ZLinkRoutedSpotSendCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
-            RequireRouteResolver(),
-            ZLinkSpotRouteTarget.ByName(spotName),
+            RequireRemoteAddressResolver(),
+            ZLinkSpotRemoteAddressTarget.ByName(spotName),
             message);
     }
 
@@ -15,8 +15,8 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
     {
         return new ZLinkRoutedSpotSendCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
-            RequireRouteResolver(),
-            ZLinkSpotRouteTarget.ByRoutingId(spotRid),
+            RequireRemoteAddressResolver(),
+            ZLinkSpotRemoteAddressTarget.ByRoutingId(spotRid),
             message);
     }
 
@@ -24,8 +24,8 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
     {
         return new ZLinkRoutedSpotRequestCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
-            RequireRouteResolver(),
-            ZLinkSpotRouteTarget.ByName(spotName),
+            RequireRemoteAddressResolver(),
+            ZLinkSpotRemoteAddressTarget.ByName(spotName),
             request);
     }
 
@@ -33,8 +33,8 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
     {
         return new ZLinkRoutedSpotRequestCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
-            RequireRouteResolver(),
-            ZLinkSpotRouteTarget.ByRoutingId(spotRid),
+            RequireRemoteAddressResolver(),
+            ZLinkSpotRemoteAddressTarget.ByRoutingId(spotRid),
             request);
     }
 
@@ -61,19 +61,19 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
         return ZLinkSpotAmbientContext.RequireCurrent().Publish(topic, message);
     }
 
-    private IZLinkSpotRouteResolver RequireRouteResolver()
+    private IZLinkSpotRemoteAddressResolver RequireRemoteAddressResolver()
     {
-        return services.GetService(typeof(IZLinkSpotRouteResolver)) is IZLinkSpotRouteResolver resolver
+        return services.GetService(typeof(IZLinkSpotRemoteAddressResolver)) is IZLinkSpotRemoteAddressResolver resolver
             ? resolver
             : throw new ZLinkConfigurationException(
-                "IZLinkSpotClient spot routing requires AddSpotRouteResolver<TResolver>().");
+                "IZLinkSpotClient remote address lookup requires AddSpotRemoteAddressResolver<TResolver>().");
     }
 }
 
 internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
     IZLinkCurrentSpotActivation activation,
-    IZLinkSpotRouteResolver resolver,
-    ZLinkSpotRouteTarget target,
+    IZLinkSpotRemoteAddressResolver resolver,
+    ZLinkSpotRemoteAddressTarget target,
     TMessage message) : IZLinkSendCall
 {
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
@@ -87,21 +87,21 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
     public async ValueTask Submit(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var route = await ResolveRouteAsync(cancellationToken).ConfigureAwait(false);
+        var remoteAddress = await ResolveRemoteAddressAsync(cancellationToken).ConfigureAwait(false);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
-            route.RouterChannelId,
+            remoteAddress.RouterChannelId,
             _messageName ?? throw new InvalidOperationException("Message name is required."));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message);
         await activation.SendSpotAsync(
-            route.RouterChannelId,
-            route.TargetNodeRid,
-            route.SpotRid,
+            remoteAddress.RouterChannelId,
+            remoteAddress.TargetNodeRid,
+            remoteAddress.SpotRid,
             parts,
             cancellationToken).ConfigureAwait(false);
     }
 
-    private ValueTask<ZLinkSpotRoute> ResolveRouteAsync(CancellationToken cancellationToken)
+    private ValueTask<ZLinkSpotRemoteAddress> ResolveRemoteAddressAsync(CancellationToken cancellationToken)
     {
         return target.ResolveAsync(resolver, cancellationToken);
     }
@@ -109,8 +109,8 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
 
 internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     IZLinkCurrentSpotActivation activation,
-    IZLinkSpotRouteResolver resolver,
-    ZLinkSpotRouteTarget target,
+    IZLinkSpotRemoteAddressResolver resolver,
+    ZLinkSpotRemoteAddressTarget target,
     TRequest request) : IZLinkRequestCall
 {
     private string? _messageName = ZLinkMessageNameResolver.ResolveFromMessage(request);
@@ -130,18 +130,18 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
 
     public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
     {
-        var route = await ResolveRouteAsync(cancellationToken).ConfigureAwait(false);
+        var remoteAddress = await ResolveRemoteAddressAsync(cancellationToken).ConfigureAwait(false);
         var timeout = _timeout ?? activation.DefaultTimeout;
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
-            route.RouterChannelId,
+            remoteAddress.RouterChannelId,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             timeout);
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
         var reply = await activation.RequestSpotAsync(
-            route.RouterChannelId,
-            route.TargetNodeRid,
-            route.SpotRid,
+            remoteAddress.RouterChannelId,
+            remoteAddress.TargetNodeRid,
+            remoteAddress.SpotRid,
             parts,
             timeout,
             cancellationToken).ConfigureAwait(false);
@@ -151,33 +151,33 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             "SPOT request failed.");
     }
 
-    private ValueTask<ZLinkSpotRoute> ResolveRouteAsync(CancellationToken cancellationToken)
+    private ValueTask<ZLinkSpotRemoteAddress> ResolveRemoteAddressAsync(CancellationToken cancellationToken)
     {
         return target.ResolveAsync(resolver, cancellationToken);
     }
 }
 
-internal readonly record struct ZLinkSpotRouteTarget(
+internal readonly record struct ZLinkSpotRemoteAddressTarget(
     string? SpotName,
     RoutingId? SpotRid)
 {
-    public static ZLinkSpotRouteTarget ByName(string spotName)
+    public static ZLinkSpotRemoteAddressTarget ByName(string spotName)
     {
-        return new ZLinkSpotRouteTarget(spotName, null);
+        return new ZLinkSpotRemoteAddressTarget(spotName, null);
     }
 
-    public static ZLinkSpotRouteTarget ByRoutingId(RoutingId spotRid)
+    public static ZLinkSpotRemoteAddressTarget ByRoutingId(RoutingId spotRid)
     {
-        return new ZLinkSpotRouteTarget(null, spotRid);
+        return new ZLinkSpotRemoteAddressTarget(null, spotRid);
     }
 
-    public ValueTask<ZLinkSpotRoute> ResolveAsync(
-        IZLinkSpotRouteResolver resolver,
+    public ValueTask<ZLinkSpotRemoteAddress> ResolveAsync(
+        IZLinkSpotRemoteAddressResolver resolver,
         CancellationToken cancellationToken)
     {
         return SpotRid is { } rid
-            ? resolver.ResolveSpotRouteAsync(rid, cancellationToken)
-            : resolver.ResolveSpotRouteAsync(
+            ? resolver.ResolveSpotRemoteAddressAsync(rid, cancellationToken)
+            : resolver.ResolveSpotRemoteAddressAsync(
                 SpotName ?? throw new InvalidOperationException("SPOT name is required."),
                 cancellationToken);
     }

@@ -7,6 +7,7 @@ namespace TicTacToe.Server.Play.Sessions;
 sealed class PlaySession(
     IZLinkSessionContext context,
     IZLinkActorManager actors,
+    IZLinkClient channels,
     ILogger<PlaySession> logger)
     : IZLinkSession
 {
@@ -39,7 +40,7 @@ sealed class PlaySession(
 
         if (actor is not null)
         {
-            await actor.NotifyDisconnectedAsync(cancellationToken).ConfigureAwait(false);
+            await actor.NotifyDisconnectedAsync(cancellationToken);
         }
     }
 
@@ -99,7 +100,7 @@ sealed class PlaySession(
             "play stream -> api: authenticate requested. sessionId={SessionId}",
             Context.SessionId);
 
-        var reply = await Context.RequestChannel(
+        var reply = await channels.Request(
                 SampleChannels.Api,
                 new AuthenticatePlayerReq(authenticate.AccessToken))
             .Timeout(SampleTimeouts.Request)
@@ -109,13 +110,13 @@ sealed class PlaySession(
                 reply.ActorId,
                 SampleTypes.PlayerActor,
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
 
         var actor = await Context.BindActorHandleAsync(
                 reply.ActorId,
                 SampleTypes.PlayerActor,
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
         await Context.Reply(new AuthenticateRes(reply.ActorId))
             .Submit(cancellationToken);
 

@@ -90,7 +90,12 @@ fn main() {
             active_deadline,
             config.size,
             common::PHASE_ACTIVE,
-            |msg| match dealer.send().message(msg).submit() {
+            |msg| match dealer
+                .send()
+                .message(msg)
+                .flags(zlink::SendFlags::DONT_WAIT)
+                .submit()
+            {
                 Ok(sent) => sent,
                 Err(err) if err.code() == SubmitResult::NotConnected => false,
                 Err(err) if common::is_single_send_retry_error(&err) => false,
@@ -101,9 +106,8 @@ fn main() {
             dealer
                 .send()
                 .message(msg)
+                .flags(zlink::SendFlags::DONT_WAIT)
                 .submit()
-                .map(|_| ())
-                .map_err(Into::into)
         });
     });
 
@@ -111,11 +115,21 @@ fn main() {
     loop {
         match router.recv(&mut received, zlink::RecvFlags::NONE) {
             Ok(true) => {
-                let data = common::message_payload(received.parts());
-                if common::is_stop_token(data) {
+                loop {
+                    let data = common::message_payload(received.parts());
+                    if common::is_stop_token(data) {
+                        break;
+                    }
+                    common::handle_recv(data, config.size, &stats, active_deadline);
+                    match router.recv(&mut received, zlink::RecvFlags::DONT_WAIT) {
+                        Ok(true) => continue,
+                        Ok(false) => break,
+                        Err(err) => panic!("dealer-router router recv failed: {err}"),
+                    }
+                }
+                if common::is_stop_token(common::message_payload(received.parts())) {
                     break;
                 }
-                common::handle_recv(data, config.size, &stats, active_deadline);
             }
             Ok(false) => continue,
             Err(err) => panic!("dealer-router router recv failed: {err}"),

@@ -227,12 +227,12 @@ public interface IZLinkSpotMeshBuilder
         Action<IZLinkSpotMeshNodeBuilder> configure);
 }
 
-public interface IZLinkRegistryActorRoutesOptions
+public interface IZLinkRegistryActorRemoteAddressesOptions
 {
     string? RouterChannelId { get; set; }
 }
 
-public interface IZLinkRegistrySpotRoutesOptions
+public interface IZLinkRegistrySpotRemoteAddressesOptions
 {
     string? RouterChannelId { get; set; }
 }
@@ -254,23 +254,23 @@ public interface IZLinkFrameworkOptions
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
 
-    void AddActorPlayRouteResolver<TResolver>()
-        where TResolver : class, IZLinkActorPlayRouteResolver;
+    void AddActorRemoteAddressResolver<TResolver>()
+        where TResolver : class, IZLinkActorRemoteAddressResolver;
 
-    void AddSpotRouteResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRouteResolver;
+    void AddSpotRemoteAddressResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRemoteAddressResolver;
 
-    void UseRegistryActorRoutes(string namespaceName);
+    void UseRegistryActorRemoteAddresses(string namespaceName);
 
-    void UseRegistryActorRoutes(
+    void UseRegistryActorRemoteAddresses(
         string namespaceName,
-        Action<IZLinkRegistryActorRoutesOptions> configure);
+        Action<IZLinkRegistryActorRemoteAddressesOptions> configure);
 
-    void UseRegistrySpotRoutes(string namespaceName);
+    void UseRegistrySpotRemoteAddresses(string namespaceName);
 
-    void UseRegistrySpotRoutes(
+    void UseRegistrySpotRemoteAddresses(
         string namespaceName,
-        Action<IZLinkRegistrySpotRoutesOptions> configure);
+        Action<IZLinkRegistrySpotRemoteAddressesOptions> configure);
 
     void AddClientServerChannel(
         string channelName,

@@ -12,6 +12,6 @@ internal sealed class StartBingoGameHandler
         StartBingoGameReq message,
         CancellationToken cancellationToken)
     {
-        return await spot.StartAsync(actor, message, cancellationToken).ConfigureAwait(false);
+        return await spot.StartAsync(actor, message, cancellationToken);
     }
 }

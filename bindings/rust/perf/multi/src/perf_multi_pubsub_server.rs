@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use zlink::*;
 
 const TOPIC: &str = "bench";
+const STOP_TOKEN_BURST: usize = 64;
 
 fn main() {
     let args = common::MultiArgs::parse();
@@ -93,8 +94,11 @@ fn main() {
             }
         }
 
-        // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait, no timer cap.
-        match poller.wait(&mut events, -1) {
+        let remaining_ms = deadline
+            .saturating_duration_since(Instant::now())
+            .as_millis()
+            .max(1) as i64;
+        match poller.wait(&mut events, remaining_ms) {
             Ok(n) if n > 0 && events[0].is_writable() => {
                 pending = false;
             }
@@ -104,12 +108,27 @@ fn main() {
     }
 
     // PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end via wire-level stop
-    // token (blocking publish, deadline ignored). Subscribers exit on token.
-    for _ in 0..100 {
+    // token. Match the C runner by retrying until the token is actually
+    // accepted; otherwise subscribers can wait forever after large messages.
+    let mut accepted_stop_tokens = 0usize;
+    while accepted_stop_tokens < STOP_TOKEN_BURST {
         let token = Message::copy_from(common::STOP_TOKEN).expect("stop token");
-        match pub_sock.publish(TOPIC).message(token).submit().map(|_| ()) {
-            Ok(()) => break,
-            Err(_) => std::thread::sleep(Duration::from_millis(1)),
+        match pub_sock.publish(TOPIC).message(token).submit() {
+            Ok(true) => {
+                accepted_stop_tokens += 1;
+            }
+            Ok(false) => {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(err)
+                if matches!(
+                    err.code(),
+                    SubmitResult::Backpressured | SubmitResult::NotConnected
+                ) =>
+            {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(err) => panic!("stop token publish failed: {err}"),
         }
     }
 }

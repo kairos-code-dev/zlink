@@ -145,41 +145,43 @@ public abstract partial class RegistrationValidationSupport
         }
     }
 
-    protected sealed class TestActorPlayRouteResolver : IZLinkActorPlayRouteResolver
+    protected sealed class TestActorRemoteAddressResolver : IZLinkActorRemoteAddressResolver
     {
-        public ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
+        public ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
             string actorId,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new ZLinkActorLocationRoute(
-                "play",
+            return ValueTask.FromResult(new ZLinkActorRemoteLocation(
                 actorId,
-                global::Systems.Zlink.RoutingId.FromString("01"),
+                new ZLinkActorRemoteAddress(
+                    "play",
+                    global::Systems.Zlink.RoutingId.FromString("01"),
+                    1),
                 global::Systems.Zlink.RoutingId.FromString("02"),
                 ZLinkSpotKind.User));
         }
     }
 
-    protected sealed class TestSpotRouteResolver : IZLinkSpotRouteResolver
+    protected sealed class TestSpotRemoteAddressResolver : IZLinkSpotRemoteAddressResolver
     {
-        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             string spotName,
             CancellationToken cancellationToken)
         {
             _ = spotName;
             cancellationToken.ThrowIfCancellationRequested();
-            return ResolveSpotRouteAsync(
+            return ResolveSpotRemoteAddressAsync(
                 global::Systems.Zlink.RoutingId.FromString("02"),
                 cancellationToken);
         }
 
-        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             global::Systems.Zlink.RoutingId spotRid,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new ZLinkSpotRoute(
+            return ValueTask.FromResult(new ZLinkSpotRemoteAddress(
                 "spots",
                 global::Systems.Zlink.RoutingId.FromString("03"),
                 spotRid,

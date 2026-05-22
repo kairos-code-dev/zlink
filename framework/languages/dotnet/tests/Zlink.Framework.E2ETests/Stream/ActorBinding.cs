@@ -161,7 +161,6 @@ public sealed class ActorBindingTests : StreamTestSupport
         {
             var context = new ZLinkSessionContext(
                 host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
-                host.Services.GetRequiredService<IZLinkClient>(),
                 new SpotTestSupport.TestStream("missing-actor-session"),
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
@@ -179,14 +178,14 @@ public sealed class ActorBindingTests : StreamTestSupport
     }
 
     [Fact]
-    public async Task SessionActorBind_Does_Not_Resolve_PlayRoute()
+    public async Task SessionActorBind_Does_Not_Resolve_RemoteAddress()
     {
         var endpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("1201");
         var remoteRid = RoutingId.FromString("1202");
         var host = await CreateHostAsync(endpoint, services =>
         {
-            services.AddSingleton<IZLinkActorPlayRouteResolver, ThrowingActorPlayRouteResolver>();
+            services.AddSingleton<IZLinkActorRemoteAddressResolver, ThrowingActorRemoteAddressResolver>();
             services.AddZLinkFramework(options =>
             {
                 options.AddRouteMeshChannel("gateway", routed =>
@@ -202,7 +201,6 @@ public sealed class ActorBindingTests : StreamTestSupport
         {
             var context = new ZLinkSessionContext(
                 host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
-                host.Services.GetRequiredService<IZLinkClient>(),
                 new SpotTestSupport.TestStream("explicit-route-session"),
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
@@ -210,7 +208,7 @@ public sealed class ActorBindingTests : StreamTestSupport
             var actor = await context.BindActorHandleAsync(
                 "remote-player",
                 "player",
-                new ZLinkActorRoute("gateway", remoteRid, 1));
+                new ZLinkActorRemoteAddress("gateway", remoteRid, 1));
 
             Assert.Equal("remote-player", actor.ActorId);
             Assert.True(host.Services.GetRequiredService<ZLinkFrameworkRuntime>()
@@ -245,7 +243,6 @@ public sealed class ActorBindingTests : StreamTestSupport
         {
             var context = new ZLinkSessionContext(
                 host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
-                host.Services.GetRequiredService<IZLinkClient>(),
                 new SpotTestSupport.TestStream("unchecked-route-session"),
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
@@ -254,7 +251,7 @@ public sealed class ActorBindingTests : StreamTestSupport
                 () => context.BindActorHandleAsync(
                         "remote-player",
                         "player",
-                        new ZLinkActorRoute("gateway", remoteRid, 0))
+                        new ZLinkActorRemoteAddress("gateway", remoteRid, 0))
                     .AsTask());
 
             Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, ex.Kind);
@@ -274,14 +271,14 @@ public sealed class ActorBindingTests : StreamTestSupport
         var spotEndpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("1213");
         var recorder = new ActorDispatchRecorder();
-        var routeResolver = new CountingActorPlayRouteResolver(new ZLinkActorRoute(
+        var routeResolver = new CountingActorRemoteAddressResolver(new ZLinkActorRemoteAddress(
             "gateway",
             RoutingId.FromString("1214"),
             1));
         var host = await CreateHostAsync(endpoint, services =>
         {
             services.AddSingleton(recorder);
-            services.AddSingleton<IZLinkActorPlayRouteResolver>(routeResolver);
+            services.AddSingleton<IZLinkActorRemoteAddressResolver>(routeResolver);
             services.AddScoped<GatewayActorFactory>();
             services.AddZLinkFramework(options =>
             {
@@ -303,7 +300,6 @@ public sealed class ActorBindingTests : StreamTestSupport
         {
             var context = new ZLinkSessionContext(
                 host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
-                host.Services.GetRequiredService<IZLinkClient>(),
                 new SpotTestSupport.TestStream("local-only-session"),
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);

@@ -26,6 +26,7 @@ from perf_common import (
     resolve_single_spot_ready_settle_s,
     result_metrics,
     stamp_payload,
+    _env_int,
 )
 
 
@@ -34,13 +35,21 @@ TOPIC = "bench.topic"
 
 
 def _spot_publish_blocking(spot, topic, payload):
-    """Blocking spot publish with bounded transient-backpressure attempts."""
+    """DONTWAIT spot publish with bounded transient-failure attempts."""
 
     for _ in range(100):
         try:
-            return spot.publish(topic).message(payload).submit()
+            return (
+                spot.publish(topic)
+                .message(payload)
+                .flags(zlink.SendFlags.DONT_WAIT)
+                .submit()
+            )
         except zlink.SubmitError as exc:
-            if exc.result != zlink.SubmitResult.BACKPRESSURED:
+            if exc.result not in (
+                zlink.SubmitResult.BACKPRESSURED,
+                zlink.SubmitResult.NOT_CONNECTED,
+            ):
                 raise
             time.sleep(0.001)
     return False
@@ -116,9 +125,17 @@ def main(argv=None):
                                 ):
                                     return
                                 while True:
-                                    msg = recv_nonblocking(
-                                        current_spot, method="subscribe"
-                                    )
+                                    try:
+                                        msg = recv_nonblocking(
+                                            current_spot, method="subscribe"
+                                        )
+                                    except zlink.RecvError as exc:
+                                        if exc.result in (
+                                            zlink.RecvResult.TERMINATED,
+                                            zlink.RecvResult.INVALID_HANDLE,
+                                        ):
+                                            return
+                                        raise
                                     if msg is None:
                                         return
                                     with msg:
@@ -215,11 +232,14 @@ def main(argv=None):
                                 stop_publisher, TOPIC, STOP_TOKEN
                             )
 
-                            # Wait indefinitely (signal-driven) for
-                            # the dispatch callback to observe the
-                            # stop token. Bounded by the outer single
-                            # timeout; no short polling cadence.
-                            stop_received.wait()
+                            # Stop can be delayed behind saturated SPOT data
+                            # queues on slow binding paths. Keep the measured
+                            # active window fixed, then bound shutdown wait so
+                            # a lost stop token does not strand the runner.
+                            stop_received.wait(
+                                _env_int("PERF_SINGLE_STOP_WAIT_MS", 2000)
+                                / 1000.0
+                            )
 
                             with recv_lock:
                                 collected = list(latencies)

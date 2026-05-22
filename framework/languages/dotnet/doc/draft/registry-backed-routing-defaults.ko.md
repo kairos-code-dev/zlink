@@ -8,7 +8,7 @@
 
 > 이 문서는 **구현 전 초안에서 출발한 설계 정리 문서**다.
 > 아직 공개 계약[^public-contract]이 아니며, `.NET` framework 가 Registry 기반
-> discovery[^discovery] 를 사용할 때 actor route 와 Spot route 의 기본 구현을
+> discovery[^discovery] 를 사용할 때 actor remote address 와 Spot route 의 기본 구현을
 > 어디까지 제공할지 정리한다.
 
 ## 1. 목적
@@ -38,14 +38,14 @@ registration generation 이 바뀌면 그 owner 가 claim 한 route 도 함께 �
 framework 가 의존할 수 있는 것은 binding public API 로 노출된 discovery route
 bind, unbind, resolve 기능과 native Spot owner topology 조회다.
 
-### 2.2 기본 구현 범위는 actor route 와 Spot route 로 제한한다
+### 2.2 기본 구현 범위는 actor remote address 와 Spot route 로 제한한다
 
 Registry 기반 기본 구현은 다음 capability 만 맡는다.
 
 | 책임 | 기준 | 결정 |
 |------|------|------|
-| actor id -> play node route 조회 | framework-managed actor route row | 기본 `IZLinkActorPlayRouteResolver` 를 제공한다. actor 생성 경로가 route row 를 publish 하고 resolver 는 그 row 를 `ZLinkActorRoute` 로 변환한다. |
-| Spot RID -> owner node route 조회 | Spot owner sync 와 `ResolveSpot(spotRid)` | 기본 `IZLinkSpotRouteResolver` 를 제공한다. RID 조회는 native owner topology 를 사용한다. |
+| actor id -> play node route 조회 | framework-managed actor remote address row | 기본 `IZLinkActorRemoteAddressResolver` 를 제공한다. actor 생성 경로가 route row 를 publish 하고 resolver 는 그 row 를 `ZLinkActorRemoteAddress` 로 변환한다. |
+| Spot RID -> owner node route 조회 | Spot owner sync 와 `ResolveSpot(spotRid)` | 기본 `IZLinkSpotRemoteAddressResolver` 를 제공한다. RID 조회는 native owner topology 를 사용한다. |
 | Spot name -> Spot RID 조회 | framework-managed Spot name directory | string overload 를 위해 Spot name directory 를 framework 가 관리한다. |
 
 반대로 actor 가 현재 연결된 client session 으로 메시지를 보내는 경로는 Registry 기본
@@ -60,7 +60,7 @@ actor runtime state 에 저장하고, actor 의 `Context.SessionProxy` 는 그 �
 
 `UseDiscovery(...)` 만으로 모든 route resolver 가 암묵적으로 켜지지 않는다.
 `UseDiscovery(...)` 는 Registry bootstrap, service list 수신, channel/Spot peer 자동
-연결을 위한 설정이다. actor route resolver 와 Spot route resolver 는 application 이
+연결을 위한 설정이다. actor remote address resolver 와 Spot remote address resolver 는 application 이
 명시적으로 선택해야 한다.
 
 초안 API 는 capability 를 분리한다.
@@ -70,20 +70,20 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.UseDiscovery(discovery => discovery.Add(registryEndpoint));
 
-    options.UseRegistrySpotRoutes("bingo");
+    options.UseRegistrySpotRemoteAddresses("bingo");
 });
 ```
 
-actor route resolver 가 필요한 application 은 `UseRegistryActorRoutes("bingo")` 를
-명시적으로 추가한다. session gateway 샘플처럼 actor 준비 응답에서 concrete route snapshot 을
-받는 구조라면 actor route resolver 를 켜지 않는다.
+actor remote address resolver 가 필요한 application 은 `UseRegistryActorRemoteAddresses("bingo")` 를
+명시적으로 추가한다. session gateway 샘플처럼 actor 준비 응답에서 concrete remote address snapshot 을
+받는 구조라면 actor remote address resolver 를 켜지 않는다.
 
 ### 2.4 custom resolver API 는 확장 지점으로 남긴다
 
 다음 API 는 Registry 기본 구현을 쓰지 않는 고급 사용자를 위한 확장 지점이다.
 
-- `AddActorPlayRouteResolver<TResolver>()`
-- `AddSpotRouteResolver<TResolver>()`
+- `AddActorRemoteAddressResolver<TResolver>()`
+- `AddSpotRemoteAddressResolver<TResolver>()`
 
 기본 구현과 custom resolver 를 같은 capability 에 동시에 등록하면 startup validation
 오류다. `TryAdd...` 처럼 조용히 한쪽을 무시하면 실제로 어떤 경로가 쓰이는지 알기 어렵다.
@@ -92,7 +92,7 @@ actor route resolver 가 필요한 application 은 `UseRegistryActorRoutes("bing
 
 session attach 와 actor push 는 route resolver 문제로 보지 않는다.
 
-session 이 actor handle 을 bind 할 때 이미 actor route snapshot 을 갖고 있어야 한다.
+session 이 actor handle 을 bind 할 때 이미 actor remote address snapshot 을 갖고 있어야 한다.
 relay 는 이 snapshot 을 사용해서 actor 로 전달한다. actor 가 현재 client session 으로
 메시지를 보낼 때는 actor runtime state 에 붙은 session router RID 를 사용한다.
 
@@ -100,10 +100,10 @@ relay 는 이 snapshot 을 사용해서 actor 로 전달한다. actor 가 현재
 
 | 경로 | 사용하는 route |
 |------|----------------|
-| session -> attached actor relay | attach 시점에 저장한 actor route snapshot |
+| session -> attached actor relay | attach 시점에 저장한 actor remote address snapshot |
 | actor -> current client session push | actor runtime state 에 저장된 session router RID |
-| backend service -> actor messaging | `IZLinkActorPlayRouteResolver` |
-| actor -> Spot name/RID 호출 | `IZLinkSpotRouteResolver` |
+| backend service -> actor messaging | `IZLinkActorRemoteAddressResolver` |
+| actor -> Spot name/RID 호출 | `IZLinkSpotRemoteAddressResolver` |
 
 따라서 session 위치를 찾기 위한 별도 Registry capability 는 두지 않는다. 이 기능은
 설정으로 켜는 것이 아니라 session bind/unbind 흐름의 runtime 상태로 처리한다.
@@ -117,7 +117,7 @@ Registry route value 는 versioned framework payload 로 둔다. Registry 는 by
 
 | route kind | payload |
 |------------|---------|
-| actor route | format version, namespace, actor id, target node RID |
+| actor remote address | format version, namespace, actor id, target node RID |
 | Spot name route | format version, namespace, spot name, spot RID |
 
 format version 이 맞지 않거나 payload decode 에 실패하면 resolver 는 해당 row 를 사용하지
@@ -128,7 +128,7 @@ format version 이 맞지 않거나 payload decode 에 실패하면 resolver 는
 
 | 상황 | framework 오류 |
 |------|----------------|
-| actor route 를 찾지 못함 | `ZLinkFrameworkErrorKind.ActorRouteNotFound` |
+| actor remote address 를 찾지 못함 | `ZLinkFrameworkErrorKind.ActorRouteNotFound` |
 | Spot name directory 에서 Spot RID 를 찾지 못함 | `ZLinkFrameworkErrorKind.SpotRouteNotFound` |
 | Spot owner RID 를 찾지 못함 | `ZLinkFrameworkErrorKind.SpotRouteNotFound` |
 | route payload decode 실패 | route not found 로 처리하고 runtime event 또는 debug log 로 남긴다 |
@@ -148,7 +148,7 @@ Bingo 와 TicTacToe session gateway 샘플은 Registry 기본 구현을 보여 �
 builder.Services.AddZLinkFramework(options =>
 {
     options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
-    options.UseRegistrySpotRoutes("bingo");
+    options.UseRegistrySpotRemoteAddresses("bingo");
 });
 ```
 
@@ -156,8 +156,8 @@ Play 서버처럼 SpotNode 를 소유하는 host 는 기존처럼 `AddSpotMesh(.
 도 설정한다. Registry route 기본 API 는 route publish/resolve 기본 구현을 켜는 것이지,
 Spot mesh discovery 설정을 대체하지 않는다.
 
-session gateway 샘플은 actor route resolver 를 켜지 않는다. Play 서버의 인증 또는 actor
-준비 handler 는 concrete route snapshot 을 응답에 싣고, session handler 는 그 snapshot 을
+session gateway 샘플은 actor remote address resolver 를 켜지 않는다. Play 서버의 인증 또는 actor
+준비 handler 는 concrete remote address snapshot 을 응답에 싣고, session handler 는 그 snapshot 을
 actor handle bind 에 넘긴다. 인증 뒤 game packet relay 는 session state 에 붙은 actor ref
 를 재사용한다.
 
@@ -174,17 +174,17 @@ actor 가 client session 으로 push 할 때는 actor instance 의 `Context.Sess
 | `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | `EnableClient()` 와 `UseDiscovery(...)` 조합이 manual endpoint 없이 request/send 를 수행한다. |
 | `RouteChannelTests.RouteRequest_WorksAcrossDiscoveryAttachedRouters` | route mesh channel 이 Registry discovery 로 peer 를 찾고 routed request 를 처리한다. |
 | `NodesAndServicesTests.AddZLinkFramework_Registers_SessionProxy_Factory` | session proxy factory 는 actor context 에서 사용할 수 있도록 등록된다. |
-| `NodesAndServicesTests.AddZLinkFramework_Allows_SpotRouteResolver_Without_SpotNode` | Spot route resolver 는 SpotNode 가 없는 route 제공 서버에서도 등록할 수 있다. |
-| `RegistryRoutesTests.RegistryActorRoutes_Registers_Default_Service` | `UseRegistryActorRoutes(...)` 가 custom resolver 없이 기본 `IZLinkActorPlayRouteResolver` 를 등록한다. |
-| `RegistryRoutesTests.RegistrySpotRoutes_Registers_Default_Service` | `UseRegistrySpotRoutes(...)` 가 custom resolver 없이 기본 `IZLinkSpotRouteResolver` 와 Spot name directory 를 등록한다. |
-| `RegistryRoutesTests.RegistryActorRoutes_Require_Discovery` | `UseDiscovery(...)` 없이 Registry actor route resolver 를 켜면 startup validation 오류가 난다. |
-| `RegistryRoutesTests.RegistrySpotRoutes_Require_SpotDiscovery` | `UseSpotDiscovery(...)` 없이 Registry Spot route resolver 를 켜면 startup validation 오류가 난다. |
-| `RegistryRoutesTests.RegistryRouteResolvers_Reject_Custom_Duplicate` | 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다. |
-| `RegistryRoutesTests.RegistryRouteResolvers_Require_Explicit_RouterChannel_When_Ambiguous` | route channel 이 둘 이상이면 `RouterChannelId` 를 명시하지 않은 Registry resolver 설정이 startup validation 오류가 된다. |
+| `NodesAndServicesTests.AddZLinkFramework_Allows_SpotRemoteAddressResolver_Without_SpotNode` | Spot remote address resolver 는 SpotNode 가 없는 route 제공 서버에서도 등록할 수 있다. |
+| `RegistryRemoteAddressesTests.RegistryActorRemoteAddresses_Registers_Default_Service` | `UseRegistryActorRemoteAddresses(...)` 가 custom resolver 없이 기본 `IZLinkActorRemoteAddressResolver` 를 등록한다. |
+| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Registers_Default_Service` | `UseRegistrySpotRemoteAddresses(...)` 가 custom resolver 없이 기본 `IZLinkSpotRemoteAddressResolver` 와 Spot name directory 를 등록한다. |
+| `RegistryRemoteAddressesTests.RegistryActorRemoteAddresses_Require_Discovery` | `UseDiscovery(...)` 없이 Registry actor remote address resolver 를 켜면 startup validation 오류가 난다. |
+| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Require_SpotDiscovery` | `UseSpotDiscovery(...)` 없이 Registry Spot remote address resolver 를 켜면 startup validation 오류가 난다. |
+| `RegistryRemoteAddressesTests.RegistryRouteResolvers_Reject_Custom_Duplicate` | 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다. |
+| `RegistryRemoteAddressesTests.RegistryRouteResolvers_Require_Explicit_RouterChannel_When_Ambiguous` | route channel 이 둘 이상이면 `RouterChannelId` 를 명시하지 않은 Registry resolver 설정이 startup validation 오류가 된다. |
 | `SessionProxyAndHeaderTests.SessionProxy_Uses_Multipart_Routed_Client_Push` | actor -> client session push 가 actor state 의 session route 를 사용해 routed multipart packet 을 보낸다. |
 | `ActorSessionStateTests.ActorSessionState_Filters_StaleDisconnect_And_Only_Disconnects_CurrentStream` | 이전 stream 의 늦은 disconnect 가 현재 actor-session 연결을 끊지 않는다. |
-| `RegistryRoutesTests.RegistrySpotRoutes_Resolves_Created_Spot_By_Name` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다. |
-| `RegistryRoutesTests.RegistrySpotRoutes_Resolves_Created_Spot_By_Rid` | 생성된 Spot 의 RID 를 기본 resolver 로 찾는다. |
+| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Name` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다. |
+| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Rid` | 생성된 Spot 의 RID 를 기본 resolver 로 찾는다. |
 | `RegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플에 sample-only registry metadata store, play/Spot route store, route publisher 가 없고 Registry 기본 API 를 사용한다. |
 | `RegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | TicTacToe session gateway 샘플도 sample-only registry metadata store 없이 Registry 기본 API 를 사용한다. |
 
@@ -197,9 +197,9 @@ client abstraction 이 다시 들어오지 못하게 검사한다.
 
 | 문서 | 반영 내용 |
 |------|-----------|
-| `framework/languages/dotnet/doc/spec/aspnet-core-actor.ko.md` | actor route resolver 의 기본 Registry 구현과 custom resolver 의 위치 |
-| `framework/languages/dotnet/doc/spec/session-actor-dispatch.ko.md` | session attach 시점의 route snapshot 과 actor state 기반 session proxy 규칙 |
-| `framework/languages/dotnet/doc/spec/aspnet-core-spot.ko.md` | Spot route resolver 기본 구현, RID 기반 조회, Registry 기반 Spot name directory |
+| `framework/languages/dotnet/doc/spec/aspnet-core-actor.ko.md` | actor remote address resolver 의 기본 Registry 구현과 custom resolver 의 위치 |
+| `framework/languages/dotnet/doc/spec/session-actor-dispatch.ko.md` | session attach 시점의 remote address snapshot 과 actor state 기반 session proxy 규칙 |
+| `framework/languages/dotnet/doc/spec/aspnet-core-spot.ko.md` | Spot remote address resolver 기본 구현, RID 기반 조회, Registry 기반 Spot name directory |
 | `framework/languages/dotnet/doc/spec/aspnet-core-registry.ko.md` | `.NET` Registry 사용 시 framework 가 native owner-bound route/topology 를 사용하는 범위 |
 | `framework/languages/dotnet/doc/internals/behavior-matrix.ko.md` | Registry 기본 resolver 와 custom resolver 중복 등록 규칙 |
 | `framework/languages/dotnet/doc/internals/regression-test-matrix.ko.md` | §6 의 회귀 테스트 항목과 실제 테스트 이름 |
@@ -217,7 +217,7 @@ client abstraction 이 다시 들어오지 못하게 검사한다.
 | `doc/spec/core/service/discovery.ko.md` | `ResolveSpot`, Spot owner sync, discovery route bind/resolve 중 framework 기본 구현이 의존하는 범위 |
 | `doc/spec/core/service/registry.ko.md` | Registry route row 가 일반 key-value 가 아니라 owner-bound projection 이라는 공개 계약 범위 |
 | `doc/internals/registry-internals.ko.md` | 구현 변경이 생기면 route row, owner cleanup, materialized winner 설명이 실제 코드와 맞는지 재검토 |
-| `doc/internals/discovery-internals.ko.md` | 구현 변경이 생기면 sync flag, resolve actor/spot, route snapshot 설명이 실제 코드와 맞는지 재검토 |
+| `doc/internals/discovery-internals.ko.md` | 구현 변경이 생기면 sync flag, resolve actor/spot, remote address snapshot 설명이 실제 코드와 맞는지 재검토 |
 
 정식 spec 에는 이 draft 의 문제 제기 문장을 그대로 옮기지 않는다. 정식 문서는 공개 계약과
 사용 규칙만 담고, 샘플 전환 이유는 이 draft 에 남긴다.

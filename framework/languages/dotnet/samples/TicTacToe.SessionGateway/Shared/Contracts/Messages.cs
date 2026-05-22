@@ -13,14 +13,14 @@ public sealed record AuthenticateActorRes(
 
 public sealed record EnsurePlayerActorReq(string ActorId);
 
-public sealed record ActorRouteSnapshot(
+public sealed record ActorRemoteAddressSnapshot(
     string RouterChannelId,
     byte[] TargetNodeRid,
     ulong ActorGeneration);
 
 public sealed record EnsurePlayerActorRes(
     string ActorId,
-    ActorRouteSnapshot Route);
+    ActorRemoteAddressSnapshot RemoteAddress);
 
 public sealed record CreateMatchReq(string? OwnerActorId = null);
 

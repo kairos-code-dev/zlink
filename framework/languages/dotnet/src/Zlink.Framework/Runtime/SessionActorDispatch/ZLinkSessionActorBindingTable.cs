@@ -64,7 +64,7 @@ internal sealed class ZLinkSessionActorBindingTable
         }
     }
 
-    public int UpdateAttachedActorRoute(
+    public int UpdateAttachedActorRemoteAddress(
         string actorId,
         string routerChannelId,
         RoutingId targetNodeRid,
@@ -83,7 +83,7 @@ internal sealed class ZLinkSessionActorBindingTable
         var updated = 0;
         foreach (var actorRef in actorRefs)
         {
-            if (actorRef.TryUpdateRoute(
+            if (actorRef.TryUpdateRemoteAddress(
                     routerChannelId,
                     targetNodeRid,
                     expectedActorGeneration,

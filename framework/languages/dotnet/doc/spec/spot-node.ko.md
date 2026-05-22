@@ -10,7 +10,7 @@
 
 Entry Spot은 Actor가 생성 직후 머무르는 기본 Spot이다. Actor가 user Spot에서
 leave하면 같은 node의 Entry Spot으로 돌아온다. 따라서 Entry Spot의 routing id는
-Actor location route의 `CurrentSpotRid`가 될 수 있다.
+Actor remote location의 `CurrentSpotRid`가 될 수 있다.
 
 framework는 Entry Spot routing id 설정을 `SpotNode` builder에서 제공한다.
 
@@ -38,21 +38,21 @@ core는 SpotNode bind 이후 Entry Spot rid 변경을 잠그기 때문에 이 �
 4. discovery, route channel, publisher 같은 node capability를 붙인다.
 5. Entry Spot activation을 만든다.
 6. Entry Spot dispatch pump를 붙인다.
-7. 이후 Actor 생성과 Actor route publish는 설정된 Entry Spot rid를 사용한다.
+7. 이후 Actor 생성과 Actor remote address publish는 설정된 Entry Spot rid를 사용한다.
 
 이 순서는 Actor가 생성되기 전에 Entry Spot rid가 정해지도록 하기 위한 것이다.
-Actor route sync가 켜져 있으면 Entry Spot에 있는 Actor의 `CurrentSpotRid`는 설정된
+Actor remote address sync가 켜져 있으면 Entry Spot에 있는 Actor의 `CurrentSpotRid`는 설정된
 Entry Spot rid와 같아야 한다.
 
 ## Route 의미
 
 framework가 core discovery route를 노출할 때 Entry Spot과 user Spot을 구분한다.
 
-- Actor location route의 `CurrentSpotKind`가 `Entry`이면 `CurrentSpotRid`는 Entry
+- Actor remote location의 `CurrentSpotKind`가 `Entry`이면 `CurrentSpotRid`는 Entry
   Spot rid다.
-- Actor location route의 `CurrentSpotKind`가 `User`이면 `CurrentSpotRid`는 user
+- Actor remote location의 `CurrentSpotKind`가 `User`이면 `CurrentSpotRid`는 user
   Spot rid다.
-- Spot route resolver의 `ZLinkSpotRoute.SpotKind`도 core `ResolveSpot()` 결과를
+- Spot remote address resolver의 `ZLinkSpotRemoteAddress.SpotKind`도 core `ResolveSpot()` 결과를
   보존한다.
 
 Spot name route는 framework가 관리하는 이름 색인이다. 이 색인은 Spot rid를 찾는
@@ -64,5 +64,5 @@ source of truth로 사용한다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `EntryRoutingTests.EntrySpotRoutingId_IsApplied_ToNativeEntrySpot` | `ConfigureEntrySpot(...)`에서 지정한 routing id가 native Entry Spot facade에 적용되고 Entry Spot activation의 `SpotRid`로 노출된다. |
-| `DiscoveryTests.RegistryActorRoutes_Publishes_FrameworkActorRoute` | Actor location route가 Entry Spot에 있는 Actor를 `CurrentSpotKind.Entry`와 Entry Spot rid로 노출한다. |
-| `RegistryRoutesTests.RegistrySpotRoutes_Resolves_Created_Spot_By_Name` | Spot name route는 Spot rid만 찾는 색인으로 쓰고, resolver가 core `ResolveSpot()` 결과의 owner node rid와 `SpotKind.User`를 보존한다. |
+| `DiscoveryTests.RegistryActorRemoteAddresses_Publishes_FrameworkActorRemoteAddress` | Actor remote location 이 Entry Spot에 있는 Actor를 `CurrentSpotKind.Entry`와 Entry Spot rid로 노출한다. |
+| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Name` | Spot name route는 Spot rid만 찾는 색인으로 쓰고, resolver가 core `ResolveSpot()` 결과의 owner node rid와 `SpotKind.User`를 보존한다. |

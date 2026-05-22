@@ -25,18 +25,18 @@ internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
                 actorId,
                 SampleNames.PlayerActorType,
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
 
-        var route = await actors.GetRouteAsync(
+        var remoteAddress = await actors.GetRemoteAddressAsync(
                 actorId,
                 SampleNames.PlayerActorType,
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
         return new EnsurePlayerActorRes(
             actorId,
-            new ActorRouteSnapshot(
-                route.RouterChannelId,
-                route.TargetNodeRid.ToBytes().ToArray(),
-                route.ActorGeneration));
+            new ActorRemoteAddressSnapshot(
+                remoteAddress.RouterChannelId,
+                remoteAddress.TargetNodeRid.ToBytes().ToArray(),
+                remoteAddress.ActorGeneration));
     }
 }

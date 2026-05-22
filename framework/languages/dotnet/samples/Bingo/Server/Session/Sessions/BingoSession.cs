@@ -49,6 +49,6 @@ internal sealed class BingoSession(
                 header,
                 payload.Move(),
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
     }
 }

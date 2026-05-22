@@ -12,7 +12,7 @@ internal sealed class GameNotificationPublisher
     {
         foreach (var gameEvent in events)
         {
-            await PublishAsync(gameEvent, cancellationToken).ConfigureAwait(false);
+            await PublishAsync(gameEvent, cancellationToken);
         }
     }
 

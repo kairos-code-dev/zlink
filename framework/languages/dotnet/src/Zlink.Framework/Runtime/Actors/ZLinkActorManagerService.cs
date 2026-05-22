@@ -20,13 +20,13 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
             .ConfigureAwait(false);
     }
 
-    public ValueTask<ZLinkActorRoute> GetRouteAsync(
+    public ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(runtime.ResolveLocalActorRoute(actorId, actorType));
+        return ValueTask.FromResult(runtime.ResolveLocalActorRemoteAddress(actorId, actorType));
     }
 
     public async ValueTask<IZLinkActor> GetOrCreateAsync(

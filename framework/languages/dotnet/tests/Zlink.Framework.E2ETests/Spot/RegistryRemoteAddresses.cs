@@ -12,10 +12,10 @@ using Zlink.Framework.Runtime.Messaging;
 namespace Zlink.Framework.E2ETests;
 
 
-public sealed class RegistryRoutesTests : SpotTestSupport
+public sealed class RegistryRemoteAddressesTests : SpotTestSupport
 {
     [Fact]
-    public async Task RegistrySpotRoutes_Resolves_Created_Spot_By_Name()
+    public async Task RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Name()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
         var registryRouterEndpoint = GetFreeTcpEndpoint();
@@ -45,7 +45,7 @@ public sealed class RegistryRoutesTests : SpotTestSupport
             {
                 routed.Bind(routeChannelEndpoint);
             });
-            options.UseRegistrySpotRoutes("registry-route");
+            options.UseRegistrySpotRemoteAddresses("registry-route");
             options.AddSpotNode("registry-route-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
@@ -60,11 +60,11 @@ public sealed class RegistryRoutesTests : SpotTestSupport
         await frameworkHost.StartAsync();
 
         var manager = frameworkHost.Services.GetRequiredService<IZLinkSpotManager>();
-        var resolver = frameworkHost.Services.GetRequiredService<IZLinkSpotRouteResolver>();
+        var resolver = frameworkHost.Services.GetRequiredService<IZLinkSpotRemoteAddressResolver>();
 
         var created = await manager.CreateAsync("registry-stage");
         var route = await RetryAsync(
-            () => resolver.ResolveSpotRouteAsync(
+            () => resolver.ResolveSpotRemoteAddressAsync(
                 "registry-stage",
                 CancellationToken.None).AsTask(),
             static result => result.SpotRid.Size > 0,
@@ -76,7 +76,7 @@ public sealed class RegistryRoutesTests : SpotTestSupport
 
         Assert.True(await manager.RemoveAsync(created.SpotRid));
         var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
-            resolver.ResolveSpotRouteAsync("registry-stage", CancellationToken.None)
+            resolver.ResolveSpotRemoteAddressAsync("registry-stage", CancellationToken.None)
                 .AsTask());
         Assert.Equal(ZLinkFrameworkErrorKind.SpotRouteNotFound, error.Kind);
 
@@ -85,7 +85,7 @@ public sealed class RegistryRoutesTests : SpotTestSupport
     }
 
     [Fact]
-    public async Task RegistrySpotRoutes_Resolves_Created_Spot_By_Rid()
+    public async Task RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Rid()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
         var registryRouterEndpoint = GetFreeTcpEndpoint();
@@ -115,7 +115,7 @@ public sealed class RegistryRoutesTests : SpotTestSupport
             {
                 routed.Bind(routeChannelEndpoint);
             });
-            options.UseRegistrySpotRoutes("registry-route-rid");
+            options.UseRegistrySpotRemoteAddresses("registry-route-rid");
             options.AddSpotNode("registry-route-rid-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
@@ -130,11 +130,11 @@ public sealed class RegistryRoutesTests : SpotTestSupport
         await frameworkHost.StartAsync();
 
         var manager = frameworkHost.Services.GetRequiredService<IZLinkSpotManager>();
-        var resolver = frameworkHost.Services.GetRequiredService<IZLinkSpotRouteResolver>();
+        var resolver = frameworkHost.Services.GetRequiredService<IZLinkSpotRemoteAddressResolver>();
 
         var created = await manager.CreateAsync("registry-stage-rid");
         var route = await RetryAsync(
-            () => resolver.ResolveSpotRouteAsync(created.SpotRid, CancellationToken.None).AsTask(),
+            () => resolver.ResolveSpotRemoteAddressAsync(created.SpotRid, CancellationToken.None).AsTask(),
             static result => result.SpotRid.ToString().Length > 0,
             TimeSpan.FromSeconds(5));
 

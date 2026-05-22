@@ -105,6 +105,11 @@ func SentTimestampNsFromBytesPhase(data []byte, expectedMsgSize int, phase uint8
 	return header.SentTsNs, true
 }
 
+func HasMetricHeaderPhase(data []byte, expectedMsgSize int, phase uint8) bool {
+	header, ok := DecodeMetricHeader(data)
+	return ok && validHeaderPhase(header, expectedMsgSize, phase)
+}
+
 func SentTimestampNsFromMessagePhase(part *zlink.Message, expectedMsgSize int, phase uint8) (int64, bool) {
 	if part == nil {
 		return 0, false

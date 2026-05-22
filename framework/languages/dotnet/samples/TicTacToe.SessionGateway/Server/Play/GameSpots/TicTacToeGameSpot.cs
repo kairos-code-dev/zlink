@@ -52,7 +52,7 @@ internal sealed class TicTacToeGameSpot(
         var (slot, isNewActor) = _room.GetOrAddActor(actor);
         _room.StartWhenReady();
         await Context.JoinActorAsync(actor, cancellationToken)
-            .ConfigureAwait(false);
+            ;
         var snapshot = _room.Snapshot();
         return new JoinMatchSpotResult(
             snapshot.MatchId,

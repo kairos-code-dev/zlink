@@ -31,7 +31,7 @@ public static class PlayServerHostFactory
                 channel.AddHandlerGroup("play");
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.UseRegistrySpotRoutes("tictactoe");
+            options.UseRegistrySpotRemoteAddresses("tictactoe");
             options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(topology.PlayRouterEndpoint);

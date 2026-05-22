@@ -17,8 +17,8 @@ internal sealed class StartBingoBingoSessionHandler : IBingoSessionHandler
                 context.Stream,
                 "starting bingo",
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
         await context.Stream.RelayToActorAsync(actor, header, payload, cancellationToken)
-            .ConfigureAwait(false);
+            ;
     }
 }

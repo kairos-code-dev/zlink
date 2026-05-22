@@ -18,30 +18,30 @@ public sealed class BingoClientApp
                         actorId,
                         options.StreamEndpoint,
                         cancellationToken)
-                    .ConfigureAwait(false));
+                    );
             }
 
             var auth = new List<AuthenticateRes>();
             foreach (var client in clients)
             {
-                auth.Add(await client.AuthenticateAsync(cancellationToken).ConfigureAwait(false));
+                auth.Add(await client.AuthenticateAsync(cancellationToken));
             }
 
-            var firstMatch = await clients[0].MatchAsync(cancellationToken).ConfigureAwait(false);
+            var firstMatch = await clients[0].MatchAsync(cancellationToken);
             var earlyHostStartRejected = await IsRejectedAsync(
                 () => clients[0].StartAsync(firstMatch.RoomId, cancellationToken));
 
             var matches = new List<MatchBingoRes> { firstMatch };
             foreach (var client in clients.Skip(1))
             {
-                matches.Add(await client.MatchAsync(cancellationToken).ConfigureAwait(false));
+                matches.Add(await client.MatchAsync(cancellationToken));
             }
 
             var nonHostStartRejected = await IsRejectedAsync(
                 () => clients[1].StartAsync(firstMatch.RoomId, cancellationToken));
             var started = await clients[0].StartAsync(firstMatch.RoomId, cancellationToken)
-                .ConfigureAwait(false);
-            var ended = await WaitForEndedAsync(clients, cancellationToken).ConfigureAwait(false);
+                ;
+            var ended = await WaitForEndedAsync(clients, cancellationToken);
 
             var result = new BingoClientRunResult(
                 auth.ToArray(),
@@ -61,7 +61,7 @@ public sealed class BingoClientApp
         {
             foreach (var client in clients)
             {
-                await client.DisposeAsync().ConfigureAwait(false);
+                await client.DisposeAsync();
             }
         }
     }
@@ -70,7 +70,7 @@ public sealed class BingoClientApp
     {
         try
         {
-            await action().ConfigureAwait(false);
+            await action();
             return false;
         }
         catch
@@ -97,7 +97,7 @@ public sealed class BingoClientApp
             }
 
             await Task.WhenAny(clients.Select(client => client.WaitForNotificationAsync(timeout.Token)))
-                .ConfigureAwait(false);
+                ;
         }
 
         throw new TimeoutException("Timed out waiting for BingoGameEndedNotify.");

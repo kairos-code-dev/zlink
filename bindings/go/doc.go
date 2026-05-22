@@ -21,7 +21,8 @@
 // Message ownership follows the native contract. Message(...) preserves the
 // caller's message on submit failure and consumes it on success. MoveMessage(...)
 // transfers ownership to the operation at submit time and is intended for hot
-// paths that do not need to reuse a failed-send payload. Receive paths transfer
-// ownership to Go wrappers that must be closed explicitly when their lifetime
-// ends.
+// paths that do not need to reuse a failed-send payload. Bytes(...) reads
+// caller-owned bytes during Submit and does not retain the slice after Submit
+// returns. Receive paths transfer ownership to Go wrappers that must be closed
+// explicitly when their lifetime ends.
 package zlink

@@ -18,13 +18,13 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
 
-    public Type? ActorPlayRouteResolverType { get; set; }
+    public Type? ActorRemoteAddressResolverType { get; set; }
 
-    public Type? SpotRouteResolverType { get; set; }
+    public Type? SpotRemoteAddressResolverType { get; set; }
 
-    public ZLinkRegistryActorRoutesRegistration? RegistryActorRoutes { get; set; }
+    public ZLinkRegistryActorRemoteAddressesRegistration? RegistryActorRemoteAddresses { get; set; }
 
-    public ZLinkRegistrySpotRoutesRegistration? RegistrySpotRoutes { get; set; }
+    public ZLinkRegistrySpotRemoteAddressesRegistration? RegistrySpotRemoteAddresses { get; set; }
 
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
@@ -39,14 +39,14 @@ internal sealed class ZLinkFrameworkRegistration
     public ZLinkSpotDiscoveryRegistration? SpotDiscovery { get; set; }
 }
 
-internal sealed class ZLinkRegistryActorRoutesRegistration
+internal sealed class ZLinkRegistryActorRemoteAddressesRegistration
 {
     public required string Namespace { get; init; }
 
     public string? RouterChannelId { get; set; }
 }
 
-internal sealed class ZLinkRegistrySpotRoutesRegistration
+internal sealed class ZLinkRegistrySpotRemoteAddressesRegistration
 {
     public required string Namespace { get; init; }
 

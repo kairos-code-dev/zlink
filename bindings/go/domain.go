@@ -319,7 +319,7 @@ func (r *Received) Send() SendOp {
 		if r.send == nil {
 			return &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
-		if r.sendBuilder != nil && sendBuilderPartsContainMove(parts) {
+		if r.sendBuilder != nil && sendBuilderPartsNeedBuilder(parts) {
 			sent, err := r.sendBuilder(flags, parts)
 			if err != nil {
 				return err
@@ -374,6 +374,15 @@ type RecvPartResult struct {
 	RequestSeq    uint64
 	HasRequestSeq bool
 	More          bool
+}
+
+type SpotForwardResult struct {
+	SourceNodeRID RoutingID
+	SourceSpotRID RoutingID
+	RequestSeq    uint64
+	HasRequestSeq bool
+	PartCount     int
+	PayloadBytes  int
 }
 
 type SubscribePartResult struct {
@@ -505,13 +514,17 @@ func submitSendOpBuilderParts(op SendOp, flags SendFlags, parts []sendBuilderPar
 		return false, &SubmitError{Result: SubmitInvalidArgument}
 	}
 	var submitOp SendSubmitOp
-	if parts[0].move {
+	if parts[0].bytes {
+		submitOp = op.Bytes(parts[0].data)
+	} else if parts[0].move {
 		submitOp = op.MoveMessage(parts[0].message)
 	} else {
 		submitOp = op.Message(parts[0].message)
 	}
 	for _, part := range parts[1:] {
-		if part.move {
+		if part.bytes {
+			submitOp = submitOp.Bytes(part.data)
+		} else if part.move {
 			submitOp = submitOp.MoveMessage(part.message)
 		} else {
 			submitOp = submitOp.Message(part.message)

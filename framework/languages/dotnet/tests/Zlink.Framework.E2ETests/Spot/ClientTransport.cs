@@ -20,7 +20,7 @@ public sealed class ClientTransportTests : SpotTestSupport
         {
             var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
-            var resolver = host.Services.GetRequiredService<FixedSpotRouteResolver>();
+            var resolver = host.Services.GetRequiredService<FixedSpotRemoteAddressResolver>();
             var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
             var target = await manager.GetOrCreateAsync(
@@ -62,7 +62,7 @@ public sealed class ClientTransportTests : SpotTestSupport
         {
             var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
-            var resolver = host.Services.GetRequiredService<FixedSpotRouteResolver>();
+            var resolver = host.Services.GetRequiredService<FixedSpotRemoteAddressResolver>();
             var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
             var target = await manager.GetOrCreateAsync(

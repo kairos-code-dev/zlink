@@ -72,9 +72,8 @@ fn main() {
             sender
                 .send()
                 .message(msg)
+                .flags(zlink::SendFlags::DONT_WAIT)
                 .submit()
-                .map(|_| ())
-                .map_err(Into::into)
         });
     });
 
@@ -82,11 +81,21 @@ fn main() {
     loop {
         match receiver.recv(&mut received, zlink::RecvFlags::NONE) {
             Ok(true) => {
-                let data = common::message_payload(received.parts());
-                if common::is_stop_token(data) {
+                loop {
+                    let data = common::message_payload(received.parts());
+                    if common::is_stop_token(data) {
+                        break;
+                    }
+                    common::handle_recv(data, config.size, &stats, active_deadline);
+                    match receiver.recv(&mut received, zlink::RecvFlags::DONT_WAIT) {
+                        Ok(true) => continue,
+                        Ok(false) => break,
+                        Err(err) => panic!("pair receiver recv failed: {err}"),
+                    }
+                }
+                if common::is_stop_token(common::message_payload(received.parts())) {
                     break;
                 }
-                common::handle_recv(data, config.size, &stats, active_deadline);
             }
             Ok(false) => continue,
             Err(err) => panic!("pair receiver recv failed: {err}"),

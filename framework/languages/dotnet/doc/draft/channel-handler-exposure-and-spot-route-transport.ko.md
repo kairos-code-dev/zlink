@@ -936,7 +936,7 @@ target SpotNode process:
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseRegistrySpotRoutes("play");
+    options.UseRegistrySpotRemoteAddresses("play");
 
     options.AddClientServerChannel("play.route", channel =>
     {

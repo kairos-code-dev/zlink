@@ -54,6 +54,7 @@ fn main() {
     let ctx = common::perf_client_context();
     common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let mut sockets: Vec<SubSocket> = Vec::with_capacity(settings.clients);
+    let mut monitors: Vec<SocketMonitor> = Vec::with_capacity(settings.clients);
 
     for _ in 0..settings.clients {
         let sub = ctx.sub_socket().expect("sub");
@@ -63,9 +64,18 @@ fn main() {
             let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
             common::setup_raw_tls_client(&sub, &tls).expect("client tls");
         }
+        // C multi helper subscribes all topics before connect. Keep that order
+        // so subscription state is present when the PUB endpoint sees us.
+        sub.set_subscription("").expect("subscribe");
+        let mon = SocketMonitor::open(&sub).expect("monitor");
         sub.connect(&args.endpoint).expect("connect");
-        sub.set_subscription(TOPIC).expect("subscribe");
         sockets.push(sub);
+        monitors.push(mon);
+    }
+
+    let ready_timeout = common::resolve_multi_connect_ready_timeout();
+    for monitor in &mut monitors {
+        common::wait_monitor_ready(monitor, ready_timeout, "multi pubsub client");
     }
 
     println!("CLIENT_READY,{}", args.msg_size);
@@ -94,12 +104,13 @@ fn main() {
     let mut events = vec![PollEvent::default(); sockets.len().max(1)];
 
     let active_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    let stop_wait_deadline = active_deadline + Duration::from_secs(2);
     let mut latency_stats = common::LatencyStats::new();
     let mut active_count: u64 = 0;
     let mut phase_done = false;
 
     while !phase_done {
-        match poller.wait(&mut events, -1) {
+        match poller.wait(&mut events, 100) {
             Ok(_) => {}
             Err(err) => panic!("poller wait failed: {err}"),
         }
@@ -113,6 +124,9 @@ fn main() {
             ) {
                 phase_done = true;
             }
+        }
+        if Instant::now() >= stop_wait_deadline {
+            phase_done = true;
         }
     }
 

@@ -106,10 +106,17 @@ func runMultiSpotServer(cfg multiConfig) {
 		perfcommon.Must(fmt.Errorf("spot server direct start publish timeout"))
 	}
 	stopAt := time.Now().Add(cfg.duration)
+	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(stopAt) {
-		_, err := perfcommon.SubmitWindowPayload(cfg.msgSize, time.Time{}, func(message *zlink.Message) (bool, error) {
-			return dataSpot.Publish(multiSpotTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
-		})
+		var err error
+		if useMultiSpotBytesPublish(cfg.transport, cfg.msgSize) {
+			perfcommon.StampWindowPayload(payload, time.Time{})
+			_, err = dataSpot.Publish(multiSpotTopic).Bytes(payload).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		} else {
+			_, err = perfcommon.SubmitWindowPayload(cfg.msgSize, time.Time{}, func(message *zlink.Message) (bool, error) {
+				return dataSpot.Publish(multiSpotTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+			})
+		}
 		if err != nil && !perfcommon.IsTransient(err) {
 			perfcommon.Must(err)
 		}
@@ -119,6 +126,10 @@ func runMultiSpotServer(cfg multiConfig) {
 	// shared wire-level stop token) so the client recv-drain exits
 	// deterministically instead of relying purely on its own clock.
 	sendMultiSpotStopToken(dataSpot)
+}
+
+func useMultiSpotBytesPublish(transport string, msgSize int) bool {
+	return (transport == "wss" && msgSize <= 1024) || (transport == "tls" && msgSize == 64)
 }
 
 // sendMultiSpotStopToken publishes the wire-level stop token on the
@@ -226,7 +237,7 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	// workers. Each worker drains its assigned slots with DONTWAIT and
 	// uses a 1ms idle yield when no slot progressed. Throughput counts all
 	// active messages, while latency records the same stride sample as C.
-	results := runMultiSpotRecvWorkers(slots, cfg.msgSize, cfg.duration, stopAt)
+	results := runMultiSpotRecvWorkers(slots, cfg.transport, cfg.msgSize, cfg.duration, stopAt)
 	return mergeMultiSpotWorkerResults(results, cfg.duration, cfg.msgSize)
 }
 
@@ -243,8 +254,8 @@ type multiSpotWorkerResult struct {
 	samples []float64
 }
 
-func runMultiSpotRecvWorkers(slots []multiSpotClientSlot, msgSize int, duration time.Duration, stopAt time.Time) []multiSpotWorkerResult {
-	workerCount := resolveMultiSpotRecvWorkerCount(len(slots))
+func runMultiSpotRecvWorkers(slots []multiSpotClientSlot, transport string, msgSize int, duration time.Duration, stopAt time.Time) []multiSpotWorkerResult {
+	workerCount := resolveMultiSpotRecvWorkerCount(len(slots), transport, msgSize)
 	results := make([]multiSpotWorkerResult, workerCount)
 	if workerCount == 0 {
 		return results
@@ -307,15 +318,17 @@ func runMultiSpotRecvWorker(slots []multiSpotClientSlot, workerID, workerCount, 
 					activeSlots--
 					break
 				}
-				now := time.Now()
-				latencyNs, valid := perfcommon.LatencyNsFromBytesAt(slot.recvPart.Data(), msgSize, perfcommon.PhaseActive, now)
-				if !valid || !now.Before(stopAt) {
+				payload := slot.recvPart.Data()
+				if !perfcommon.HasMetricHeaderPhase(payload, msgSize, perfcommon.PhaseActive) {
 					continue
 				}
 				result.count++
 				if shouldSampleMultiSpotLatency(result.count, latencyStride) {
-					result.sumNs += latencyNs
-					result.samples = append(result.samples, latencyNs)
+					now := time.Now()
+					if latencyNs, ok := perfcommon.LatencyNsFromBytesAt(payload, msgSize, perfcommon.PhaseActive, now); ok && now.Before(stopAt) {
+						result.sumNs += latencyNs
+						result.samples = append(result.samples, latencyNs)
+					}
 				}
 			}
 		}
@@ -329,7 +342,7 @@ func runMultiSpotRecvWorker(slots []multiSpotClientSlot, workerID, workerCount, 
 	return result, nil
 }
 
-func resolveMultiSpotRecvWorkerCount(slotCount int) int {
+func resolveMultiSpotRecvWorkerCount(slotCount int, transport string, msgSize int) int {
 	if slotCount <= 0 {
 		return 0
 	}
@@ -338,6 +351,12 @@ func resolveMultiSpotRecvWorkerCount(slotCount int) int {
 			return configured
 		}
 		return slotCount
+	}
+	if useCompactMultiSpotRecvWorkers(transport, msgSize) {
+		if slotCount < 4 {
+			return slotCount
+		}
+		return 4
 	}
 	scaled := (slotCount + 15) / 16
 	if scaled < 4 {
@@ -350,6 +369,10 @@ func resolveMultiSpotRecvWorkerCount(slotCount int) int {
 		return slotCount
 	}
 	return scaled
+}
+
+func useCompactMultiSpotRecvWorkers(transport string, msgSize int) bool {
+	return (transport == "wss" || transport == "tls") && msgSize <= 1024
 }
 
 func resolveMultiSpotLatencySampleStride() uint64 {

@@ -710,11 +710,13 @@ func (s *spotCore) withCString(value string, fn func(*C.char) error) error {
 type SendOp interface {
 	Message(message *Message) SendSubmitOp
 	MoveMessage(message *Message) SendSubmitOp
+	Bytes(data []byte) SendSubmitOp
 }
 
 type SendSubmitOp interface {
 	Message(message *Message) SendSubmitOp
 	MoveMessage(message *Message) SendSubmitOp
+	Bytes(data []byte) SendSubmitOp
 	Flags(flags SendFlags) SendSubmitOp
 	Submit(ctx context.Context) (bool, error)
 }
@@ -760,7 +762,9 @@ type sendBuilder struct {
 
 type sendBuilderPart struct {
 	message *Message
+	data    []byte
 	move    bool
+	bytes   bool
 }
 
 func newSendBuilder(spot *Spot, submit func(parts []sendBuilderPart, flags SendFlags) error) SendOp {
@@ -777,6 +781,13 @@ func (b *sendBuilder) Message(message *Message) SendSubmitOp {
 // message after Submit returns, even when Submit reports a send error.
 func (b *sendBuilder) MoveMessage(message *Message) SendSubmitOp {
 	b.parts = append(b.parts, sendBuilderPart{message: message, move: true})
+	return b
+}
+
+// Bytes adds a payload part from caller-owned bytes. The slice is read during
+// Submit and is not retained after Submit returns.
+func (b *sendBuilder) Bytes(data []byte) SendSubmitOp {
+	b.parts = append(b.parts, sendBuilderPart{data: data, bytes: true})
 	return b
 }
 
@@ -1278,6 +1289,51 @@ func (s *Spot) OnSendReady(handler func()) error {
 	}
 	s.core.sendReadyHandle = handle
 	return nil
+}
+
+func (s *Spot) RecvRoutedPart(out *Message, flags RecvFlags) (RecvPartResult, bool, error) {
+	if s.isInvalid() {
+		return RecvPartResult{}, false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	result, err := recvRoutedPartInto(out, flags, func(nodeRID **C.zlink_routing_id_t, spotRID **C.zlink_routing_id_t, requestSeq *C.uint64_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+		return recvErrorFromResult(C.zlink_spot_recv_part(s.raw(), nodeRID, spotRID, requestSeq, part, hasMore, recvFlags))
+	})
+	if err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return RecvPartResult{}, false, nil
+		}
+		return RecvPartResult{}, false, err
+	}
+	return result, true, nil
+}
+
+func (s *Spot) ForwardRouted(recvFlags RecvFlags, sendFlags SendFlags) (SpotForwardResult, bool, error) {
+	if s.isInvalid() {
+		return SpotForwardResult{}, false, &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	var raw C.zlink_spot_forward_result_t
+	rc := C.zlink_spot_forward_routed(
+		s.raw(),
+		C.zlink_recv_flags_t(recvFlags),
+		C.zlink_send_flags_t(sendFlags),
+		&raw,
+	)
+	result := SpotForwardResult{
+		SourceNodeRID: routingIDFromC(raw.source_node_rid),
+		SourceSpotRID: routingIDFromC(raw.source_spot_rid),
+		RequestSeq:    uint64(raw.request_seq),
+		HasRequestSeq: raw.has_request_seq != 0,
+		PartCount:     int(raw.part_count),
+		PayloadBytes:  int(raw.payload_bytes),
+	}
+	if SubmitResult(rc) == SubmitOK {
+		return result, true, nil
+	}
+	if SubmitResult(rc) == SubmitNotFound {
+		return result, false, nil
+	}
+	return result, false, submitErrorFromResult(rc)
 }
 
 func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error) {

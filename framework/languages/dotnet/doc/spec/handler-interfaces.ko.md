@@ -52,9 +52,8 @@
 | handler | `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` | SPOT subscription handler | 4.3.1 |
 | handler | `IZLinkSpotTimerHandler<TSpot>` | SPOT lifecycle timer handler | 4.3.1 |
 | handler | `IZLinkSession` | stream session lifecycle + session packet callback | 4.4 |
-| context | `IZLinkSessionContext` | stream session의 send, channel request, actor dispatch 표면 | 4.4 |
+| context | `IZLinkSessionContext` | stream session의 send/reply, actor dispatch 표면 | 4.4 |
 | context | `IZLinkSessionIdentityContext` | stream session identity 조회 | 4.4 |
-| context | `IZLinkSessionChannelClient` | session 안에서 channel request/send 호출 | 4.4 |
 | context | `IZLinkSessionClientStream` | session에서 client stream으로 send/reply | 4.4 |
 | context | `IZLinkSessionActorDispatchContext` | session에서 actor handle binding과 dispatch 수행 | 4.4 |
 | context | `IZLinkSessionLifecycle` | session close 제어 | 4.4 |
@@ -74,8 +73,8 @@
 | handler | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | spot에 actor가 join할 때 호출되는 handler | 4.4.1 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkSessionProxy` | 현재 actor -> 현재 client session 호출 | 5.6 |
-| resolver | `IZLinkActorPlayRouteResolver` | backend actor messaging 용 actor id -> play/runtime route 조회 | 5.7 |
-| resolver | `IZLinkSpotRouteResolver` | spot name/id에서 user Spot route 조회 | 5.7 |
+| resolver | `IZLinkActorRemoteAddressResolver` | backend actor messaging 용 actor id -> play/runtime route 조회 | 5.7 |
+| resolver | `IZLinkSpotRemoteAddressResolver` | spot name/id에서 user Spot route 조회 | 5.7 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | lifecycle | `IZLinkSpot` | spot lifecycle registration base | 4.3.1 |
 | stream | `IZLinkStream` | stream I/O와 peer 식별 | 4.4 |
@@ -1169,17 +1168,6 @@ public interface IZLinkSessionIdentityContext
     string? RemoteAddr { get; }
 }
 
-public interface IZLinkSessionChannelClient
-{
-    IZLinkRequestCall RequestChannel<TRequest>(
-        string channelName,
-        TRequest request);
-
-    IZLinkSendCall SendChannel<TMessage>(
-        string channelName,
-        TMessage message);
-}
-
 public interface IZLinkSessionClientStream
 {
     IZLinkSessionSendCall Send<TMessage>(TMessage message);
@@ -1197,7 +1185,7 @@ public interface IZLinkSessionActorDispatchContext
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
-        ZLinkActorRoute route,
+        ZLinkActorRemoteAddress remoteAddress,
         CancellationToken cancellationToken = default);
 
     ValueTask RelayToActorAsync(
@@ -1218,7 +1206,7 @@ public interface IZLinkActorManager
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkActorRoute> GetRouteAsync(
+    ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
@@ -1244,7 +1232,6 @@ public interface IZLinkSessionActorAttachmentContext
 
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
-    IZLinkSessionChannelClient,
     IZLinkSessionClientStream,
     IZLinkSessionActorDispatchContext,
     IZLinkSessionLifecycle;
@@ -1288,6 +1275,11 @@ runtime 이 검증하는 계약이다.
 `Write(...)` 는 framework Header 기반 packet session 에서 stream 으로 packet 을
 보내는 low-level submit 이다. 일반 application 코드는 가능한 한 `Context.Send(...)`,
 `Context.Reply(...)`, `IZLinkSessionProxy` 같은 framework helper 를 사용한다.
+
+session handler 에서 다른 channel 로 send/request 를 보내야 한다면
+`IZLinkSessionContext` 가 아니라 DI 로 주입받은 `IZLinkClient` 를 사용한다.
+channel 호출은 현재 stream peer 로 나가지 않고, channel 이름에 맞는 framework
+client socket 으로 나가기 때문이다.
 
 backpressure 는 framework 내부에서 처리한다. actor 가 stream 을 직접 다루는
 패턴이 아니라면, 현재 actor 의 client 는 `IZLinkSessionProxy`, actor id 를
@@ -1703,7 +1695,7 @@ actor membership 변경은 actor callback 에서 처리하지 않는다. 대신
 (`string`) 을 받는다. `gameId`, `matchId`, `roomId` 같은 도메인 키를 그대로
 사용할 수 있다.
 
-`spotName -> RoutingId` 변환은 framework 내부의 spot route resolver 가
+`spotName -> RoutingId` 변환은 framework 내부의 spot remote address resolver 가
 담당한다. actor handler 표면에는 `RoutingId` 를 노출하지 않는다.
 
 `Send(...)` 는 현재 actor 에 연결되어 있는 stream client 로 packet 을
@@ -2054,7 +2046,7 @@ await client
 - attach 된 channel client 를 거치는 다른 channel 의 send/request
 - spot name/id 기반의 routed spot send/request
 
-spot name/id 기반 호출의 흐름은 다음과 같다. `IZLinkSpotRouteResolver`
+spot name/id 기반 호출의 흐름은 다음과 같다. `IZLinkSpotRemoteAddressResolver`
 가 target node 와 spot rid 를 조회한다. 그다음 framework 내부의 route
 transport 가 실제 전송을 담당한다.
 
@@ -2097,7 +2089,7 @@ public interface IZLinkSpotClient
 
 - `Publish(topic, ...)` 가 포함된다. SPOT 쪽은 현재 channel 안에서 topic
   publish 를 함께 사용하는 경우가 많기 때문에, 같은 interface 에 둔다.
-- `SendSpot(...)` / `RequestSpot(...)` 은 spot route resolver 를 사용한다.
+- `SendSpot(...)` / `RequestSpot(...)` 은 spot remote address resolver 를 사용한다.
 - `SendChannel(...)` / `RequestChannel(...)` 은 attach 된 channel client
   를 통해 해소한다.
 - 따라서 local `SpotNode` 나 local spot runtime 이 없는 앱이라면, 기본
@@ -2116,7 +2108,7 @@ framework 초안에서 말하는 "spot 용 함수" 와 "channelName 으로 호�
 함수" 는 서로 별개의 경로다. 두 경로는 다음과 같이 갈라진다.
 
 - channel 이름 기준 호출은 attach 된 channel client 를 사용한다.
-- spot name/id 기반 호출은 `IZLinkSpotRouteResolver` 가 해소한 위치값을,
+- spot name/id 기반 호출은 `IZLinkSpotRemoteAddressResolver` 가 해소한 위치값을,
   framework 내부 transport 가 사용한다.
 
 `targetRid + spotRid` 를 직접 넘기는 raw route 함수는 application public
@@ -2280,9 +2272,9 @@ session 에서 actor 로 packet 을 relay 할 때는 `IZLinkSessionContext` 의
 public client 는 두지 않는다.
 
 remote actor 위치가 필요하면 session 은 인증이나 입장 흐름에서 받은
-`ZLinkActorRoute` snapshot 을 `BindActorHandleAsync(...)` overload 에 넘긴다.
+`ZLinkActorRemoteAddress` snapshot 을 `BindActorHandleAsync(...)` overload 에 넘긴다.
 framework 는 이 값을 actor ref 안에 저장하고, relay 때마다
-`IZLinkActorPlayRouteResolver` 를 호출하지 않는다. route 없는 overload 는 local
+`IZLinkActorRemoteAddressResolver` 를 호출하지 않는다. remote address 없는 overload 는 local
 actor compatibility 경로로만 남는다.
 
 ### 5.5.1 route transport helper
@@ -2407,7 +2399,7 @@ public interface IZLinkSessionProxyRequestCall
 }
 ```
 
-### 5.7 actor/spot route resolver와 actor-session binding
+### 5.7 actor/spot remote address resolver와 actor-session binding
 
 public resolver 는 두 축으로 제한한다. actor 와 spot 이다.
 
@@ -2428,14 +2420,14 @@ session 위치 resolver 나 session 위치 저장소는 제공하지 않는다.
 ```csharp
 namespace Zlink.Framework.Contracts.Actors;
 
-public interface IZLinkActorPlayRouteResolver
+public interface IZLinkActorRemoteAddressResolver
 {
-    ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
+    ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
         string actorId,
         CancellationToken cancellationToken);
 }
 
-public readonly record struct ZLinkActorLocationRoute(
+public readonly record struct ZLinkActorRemoteLocation(
     string RouterChannelId,
     string ActorId,
     RoutingId TargetNodeRid,
@@ -2447,18 +2439,18 @@ public readonly record struct ZLinkActorLocationRoute(
 `TargetNodeRid` 와 `CurrentSpotRid` 는 기존 Spot routed API 의 destination 으로
 사용된다. `CurrentSpotKind` 는 대상이 Entry Spot 인지 user Spot 인지를 구분한다.
 이 logical route 는 `ActorGeneration` 을 요구하지 않는다. session attach 는
-별도의 concrete route snapshot 과 generation 검증을 계속 사용한다.
+별도의 concrete remote address snapshot 과 generation 검증을 계속 사용한다.
 
 ```csharp
 namespace Zlink.Framework.Contracts.Spots;
 
-public interface IZLinkSpotRouteResolver
+public interface IZLinkSpotRemoteAddressResolver
 {
-    ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
         string spotName,
         CancellationToken cancellationToken);
 
-    ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken);
 }
@@ -2470,7 +2462,7 @@ public enum ZLinkSpotKind
     User = 2,
 }
 
-public readonly record struct ZLinkSpotRoute(
+public readonly record struct ZLinkSpotRemoteAddress(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     RoutingId SpotRid,
@@ -2509,7 +2501,7 @@ bind/unbind lifecycle 과 `SessionProxy` 조회를 하나의 저장소 계약으
 - actor factory 가 호출되어 새 actor 를 만들어야 하는 경우에도, factory
   가 반환한 `ActorId` 는 요청한 actor id 와 정확히 일치해야 한다.
 
-일치하지 않으면 어떻게 될까. actor route 와 session binding 이 서로 다른
+일치하지 않으면 어떻게 될까. actor remote address 와 session binding 이 서로 다른
 id 를 가리키게 된다. 이 경우 configuration 오류로 실패한다.
 
 ## 6. 등록과 관리 인터페이스
@@ -2728,11 +2720,11 @@ public interface IZLinkFrameworkOptions
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
 
-    void AddActorPlayRouteResolver<TResolver>()
-        where TResolver : class, IZLinkActorPlayRouteResolver;
+    void AddActorRemoteAddressResolver<TResolver>()
+        where TResolver : class, IZLinkActorRemoteAddressResolver;
 
-    void AddSpotRouteResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRouteResolver;
+    void AddSpotRemoteAddressResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRemoteAddressResolver;
 
 }
 ```
@@ -2751,10 +2743,10 @@ public interface IZLinkFrameworkOptions
     등록한다.
 - `AddActorFactory(...)`
   - actor type 문자열에 대응하는 actor factory를 등록한다.
-- `AddActorPlayRouteResolver(...)`
+- `AddActorRemoteAddressResolver(...)`
   - session actor dispatch 가 actor id로 play/runtime route를 찾을 때 사용할
     resolver를 등록한다.
-- `AddSpotRouteResolver(...)`
+- `AddSpotRemoteAddressResolver(...)`
   - `IZLinkSpotClient`나 `JoinSpot(spotName, ...)`이 spot name 또는 spot rid로 user
     Spot route를 찾을 때 사용할 resolver를 등록한다.
 - actor-session binding
@@ -2971,7 +2963,7 @@ remote 생성 요청도 같은 구조를 따른다. framework metadata에는 `sp
 현재 SPOT topology 초안에서는 high-level public surface 에
 `spotRid -> targetRid` 주소를 직접 노출하지 않는다.
 
-주소 해석은 `IZLinkSpotRouteResolver` 가 담당한다. framework 의 기본
+주소 해석은 `IZLinkSpotRemoteAddressResolver` 가 담당한다. framework 의 기본
 SPOT 표면은 다음 순서로 설명한다. spot name/id, channel publish, channel
 send/request 다.
 
@@ -4017,7 +4009,7 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 | `IZLinkSpotPublisherClient`, `IZLinkSpotMeshPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
 | `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
 | `IZLinkSessionProxyFactory`, `IZLinkSessionProxy` | actor session proxy runtime 등록한다 |
-| `IZLinkActorPlayRouteResolver`, `IZLinkSpotRouteResolver` | 해당 resolver registration 이 있을 때 등록한다 |
+| `IZLinkActorRemoteAddressResolver`, `IZLinkSpotRemoteAddressResolver` | 해당 resolver registration 이 있을 때 등록한다 |
 
 local handler 가 붙는 channel 의 의미는 다음과 같다. route prefix 가
 아니라, 애플리케이션이 해당 channel 에서 server 역할을 수행한다는 의미다.

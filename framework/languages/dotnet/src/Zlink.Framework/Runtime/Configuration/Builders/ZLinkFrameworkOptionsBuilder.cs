@@ -55,56 +55,56 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             $"Duplicate actor factory '{actorType}'.");
     }
 
-    public void AddActorPlayRouteResolver<TResolver>()
-        where TResolver : class, IZLinkActorPlayRouteResolver
+    public void AddActorRemoteAddressResolver<TResolver>()
+        where TResolver : class, IZLinkActorRemoteAddressResolver
     {
-        EnsureActorPlayRouteResolverAvailable();
-        _registration.ActorPlayRouteResolverType = typeof(TResolver);
+        EnsureActorRemoteAddressResolverAvailable();
+        _registration.ActorRemoteAddressResolverType = typeof(TResolver);
     }
 
-    public void AddSpotRouteResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRouteResolver
+    public void AddSpotRemoteAddressResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRemoteAddressResolver
     {
-        EnsureSpotRouteResolverAvailable();
-        _registration.SpotRouteResolverType = typeof(TResolver);
+        EnsureSpotRemoteAddressResolverAvailable();
+        _registration.SpotRemoteAddressResolverType = typeof(TResolver);
     }
 
-    public void UseRegistryActorRoutes(string namespaceName)
+    public void UseRegistryActorRemoteAddresses(string namespaceName)
     {
-        UseRegistryActorRoutes(namespaceName, static _ => { });
+        UseRegistryActorRemoteAddresses(namespaceName, static _ => { });
     }
 
-    public void UseRegistryActorRoutes(
+    public void UseRegistryActorRemoteAddresses(
         string namespaceName,
-        Action<IZLinkRegistryActorRoutesOptions> configure)
+        Action<IZLinkRegistryActorRemoteAddressesOptions> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        EnsureActorPlayRouteResolverAvailable();
+        EnsureActorRemoteAddressResolverAvailable();
 
-        var options = new ZLinkRegistryActorRoutesOptions();
+        var options = new ZLinkRegistryActorRemoteAddressesOptions();
         configure(options);
-        _registration.RegistryActorRoutes = new ZLinkRegistryActorRoutesRegistration
+        _registration.RegistryActorRemoteAddresses = new ZLinkRegistryActorRemoteAddressesRegistration
         {
             Namespace = ValidateRegistryNamespace(namespaceName),
             RouterChannelId = NormalizeOptionalName(options.RouterChannelId, nameof(options.RouterChannelId)),
         };
     }
 
-    public void UseRegistrySpotRoutes(string namespaceName)
+    public void UseRegistrySpotRemoteAddresses(string namespaceName)
     {
-        UseRegistrySpotRoutes(namespaceName, static _ => { });
+        UseRegistrySpotRemoteAddresses(namespaceName, static _ => { });
     }
 
-    public void UseRegistrySpotRoutes(
+    public void UseRegistrySpotRemoteAddresses(
         string namespaceName,
-        Action<IZLinkRegistrySpotRoutesOptions> configure)
+        Action<IZLinkRegistrySpotRemoteAddressesOptions> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
-        EnsureSpotRouteResolverAvailable();
+        EnsureSpotRemoteAddressResolverAvailable();
 
-        var options = new ZLinkRegistrySpotRoutesOptions();
+        var options = new ZLinkRegistrySpotRemoteAddressesOptions();
         configure(options);
-        _registration.RegistrySpotRoutes = new ZLinkRegistrySpotRoutesRegistration
+        _registration.RegistrySpotRemoteAddresses = new ZLinkRegistrySpotRemoteAddressesRegistration
         {
             Namespace = ValidateRegistryNamespace(namespaceName),
             RouterChannelId = NormalizeOptionalName(options.RouterChannelId, nameof(options.RouterChannelId)),
@@ -257,21 +257,21 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             $"Duplicate channel name '{channelName}'.");
     }
 
-    private void EnsureActorPlayRouteResolverAvailable()
+    private void EnsureActorRemoteAddressResolverAvailable()
     {
-        if (_registration.ActorPlayRouteResolverType is not null
-            || _registration.RegistryActorRoutes is not null)
+        if (_registration.ActorRemoteAddressResolverType is not null
+            || _registration.RegistryActorRemoteAddresses is not null)
         {
-            throw new ZLinkConfigurationException("Actor play route resolver is already configured.");
+            throw new ZLinkConfigurationException("Actor remote address resolver is already configured.");
         }
     }
 
-    private void EnsureSpotRouteResolverAvailable()
+    private void EnsureSpotRemoteAddressResolverAvailable()
     {
-        if (_registration.SpotRouteResolverType is not null
-            || _registration.RegistrySpotRoutes is not null)
+        if (_registration.SpotRemoteAddressResolverType is not null
+            || _registration.RegistrySpotRemoteAddresses is not null)
         {
-            throw new ZLinkConfigurationException("SPOT route resolver is already registered.");
+            throw new ZLinkConfigurationException("SPOT remote address resolver is already registered.");
         }
     }
 
@@ -314,12 +314,12 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     }
 }
 
-internal sealed class ZLinkRegistryActorRoutesOptions : IZLinkRegistryActorRoutesOptions
+internal sealed class ZLinkRegistryActorRemoteAddressesOptions : IZLinkRegistryActorRemoteAddressesOptions
 {
     public string? RouterChannelId { get; set; }
 }
 
-internal sealed class ZLinkRegistrySpotRoutesOptions : IZLinkRegistrySpotRoutesOptions
+internal sealed class ZLinkRegistrySpotRemoteAddressesOptions : IZLinkRegistrySpotRemoteAddressesOptions
 {
     public string? RouterChannelId { get; set; }
 }

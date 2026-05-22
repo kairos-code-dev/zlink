@@ -19,7 +19,7 @@ internal sealed class MatchBingoActorHandler
                 new MatchBingoApiReq(actor.ActorId, actor.DisplayName, message.Mode))
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<MatchBingoApiRes>(cancellationToken)
-            .ConfigureAwait(false);
+            ;
 
         var roomRid = RoutingId.FromString(matched.RoomId);
         var joined = await actor.Context.JoinSpot(
@@ -27,7 +27,7 @@ internal sealed class MatchBingoActorHandler
                 new BingoRoomJoinReq(matched.RoomId, actor.ActorId, actor.DisplayName))
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<BingoRoomJoinRes>(cancellationToken)
-            .ConfigureAwait(false);
+            ;
 
         return new MatchBingoRes(matched.RoomId, joined.State);
     }

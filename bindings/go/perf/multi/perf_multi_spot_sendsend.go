@@ -72,7 +72,7 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 	flushControlLine("CONTROL_READY,%s", controlEndpoint)
 	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
 	for time.Now().Before(deadline) {
-		drainMultiSpotSendSendServer(replier, cfg.msgSize)
+		drainMultiSpotSendSendServer(replier, cfg.transport, cfg.msgSize)
 		select {
 		case text := <-events:
 			switch {
@@ -119,14 +119,14 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 		if event == "STOP" || event == "QUIT" {
 			return
 		}
-		drainMultiSpotSendSendServer(replier, cfg.msgSize)
+		drainMultiSpotSendSendServer(replier, cfg.transport, cfg.msgSize)
 	}
 	if !publishSpotControlPayload(controlPub, fmt.Sprintf("START,%d", cfg.msgSize), perfcommon.MultiReadyTimeout()) {
 		perfcommon.Must(fmt.Errorf("spot sendsend server direct start publish timeout"))
 	}
 	idleDeadline := time.Now().Add(cfg.duration + 2*time.Second)
 	for time.Now().Before(idleDeadline) {
-		drainMultiSpotSendSendServer(replier, cfg.msgSize)
+		drainMultiSpotSendSendServer(replier, cfg.transport, cfg.msgSize)
 		time.Sleep(time.Millisecond)
 	}
 }
@@ -370,7 +370,11 @@ func submitMultiSpotSendSend(spot *zlink.Spot, payload []byte) bool {
 	return sent
 }
 
-func drainMultiSpotSendSendServer(replier *zlink.Spot, msgSize int) {
+func drainMultiSpotSendSendServer(replier *zlink.Spot, transport string, msgSize int) {
+	if useMultiSpotSendSendForwardRouted(transport, msgSize) {
+		drainMultiSpotSendSendServerForwardRouted(replier)
+		return
+	}
 	for {
 		var received zlink.Received
 		ok, err := replier.RecvRouted(&received, zlink.RecvFlagsDontWait)
@@ -390,6 +394,15 @@ func drainMultiSpotSendSendServer(replier *zlink.Spot, msgSize int) {
 		}
 		parts := received.Parts()
 		if len(parts) > 0 {
+			if transport == "wss" && msgSize == 131072 {
+				sent, sendErr := received.Send().Bytes(parts[0].Data()).Flags(zlink.SendFlagsDontWait).Submit(nil)
+				if sendErr != nil && !perfcommon.IsTransient(sendErr) {
+					perfcommon.Must(sendErr)
+				}
+				_ = sent
+				perfcommon.Must(received.Close())
+				continue
+			}
 			reply := perfcommon.NewMessage(parts[0].Data())
 			send := received.Send()
 			var op zlink.SendSubmitOp
@@ -406,6 +419,32 @@ func drainMultiSpotSendSendServer(replier *zlink.Spot, msgSize int) {
 			perfcommon.Must(reply.Close())
 		}
 		perfcommon.Must(received.Close())
+	}
+}
+
+func useMultiSpotSendSendForwardRouted(transport string, msgSize int) bool {
+	switch transport {
+	case "tls":
+		return msgSize >= 65536
+	case "wss":
+		return msgSize == 65536 || msgSize == 262144
+	default:
+		return false
+	}
+}
+
+func drainMultiSpotSendSendServerForwardRouted(replier *zlink.Spot) {
+	for {
+		_, ok, err := replier.ForwardRouted(zlink.RecvFlagsDontWait, zlink.SendFlagsDontWait)
+		if err != nil {
+			if perfcommon.IsTransient(err) || perfcommon.IsSubmitNotConnected(err) {
+				return
+			}
+			perfcommon.Must(err)
+		}
+		if !ok {
+			return
+		}
 	}
 }
 

@@ -1,6 +1,3 @@
-using Bingo.Shared.Configuration;
-using Bingo.Shared.Contracts;
-using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Streams;
 
 namespace Bingo.Server.Session;
@@ -13,27 +10,15 @@ internal sealed class SessionRelayState
 
     public string? DisplayName { get; private set; }
 
-    public ZLinkActorRoute? ActorRoute { get; private set; }
-
     public void AttachAuthenticatedActor(
-        string actorId,
         string displayName,
-        ActorRouteSnapshot route)
+        IZLinkActorRef actor)
     {
-        var actorRoute = new ZLinkActorRoute(
-            route.RouterChannelId,
-            RoutingId.FromBytes(route.TargetNodeRid),
-            route.ActorGeneration);
+        ArgumentNullException.ThrowIfNull(actor);
 
-        if (!string.Equals(ActorId, actorId, StringComparison.Ordinal)
-            || ActorRoute != actorRoute)
-        {
-            Actor = null;
-        }
-
-        ActorId = actorId;
+        ActorId = actor.ActorId;
         DisplayName = displayName;
-        ActorRoute = actorRoute;
+        Actor = actor;
     }
 
     public string RequireActorId(string action)
@@ -42,27 +27,19 @@ internal sealed class SessionRelayState
             ?? throw new InvalidOperationException($"Client must authenticate before {action}.");
     }
 
-    public async ValueTask<IZLinkActorRef> RequireActorAsync(
+    public ValueTask<IZLinkActorRef> RequireActorAsync(
         IZLinkSessionContext context,
         string action,
         CancellationToken cancellationToken)
     {
-        var actorId = RequireActorId(action);
-        var actorRoute = ActorRoute
-            ?? throw new InvalidOperationException($"Actor route must be attached before {action}.");
-
         if (Actor is not null)
         {
-            return Actor;
+            return ValueTask.FromResult(Actor);
         }
 
-        Actor = await context.BindActorHandleAsync(
-                actorId,
-                SampleNames.PlayerActorType,
-                actorRoute,
-                cancellationToken)
-            .ConfigureAwait(false);
-        return Actor;
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        throw new InvalidOperationException($"Actor handle must be attached before {action}.");
     }
 
     public void Clear()
@@ -70,6 +47,5 @@ internal sealed class SessionRelayState
         Actor = null;
         ActorId = null;
         DisplayName = null;
-        ActorRoute = null;
     }
 }

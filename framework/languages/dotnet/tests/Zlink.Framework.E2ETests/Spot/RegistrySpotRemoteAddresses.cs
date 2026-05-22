@@ -12,10 +12,10 @@ using Zlink.Framework.Runtime.Messaging;
 namespace Zlink.Framework.E2ETests;
 
 
-public sealed class RegistrySpotRoutesTests : SpotTestSupport
+public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
 {
     [Fact]
-    public async Task RegistrySpotRoutes_RequestSend_By_Name()
+    public async Task RegistrySpotRemoteAddresses_RequestSend_By_Name()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
         var registryRouterEndpoint = GetFreeTcpEndpoint();
@@ -40,7 +40,7 @@ public sealed class RegistrySpotRoutesTests : SpotTestSupport
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
             options.UseSpotDiscovery(spotChannel, discovery => discovery.Add(registryRouterEndpoint));
-            options.UseRegistrySpotRoutes("spot-registry-request-send");
+            options.UseRegistrySpotRemoteAddresses("spot-registry-request-send");
             options.AddRouteMeshChannel("play", route =>
             {
                 route.Bind(routeChannelEndpoint);
@@ -77,13 +77,13 @@ public sealed class RegistrySpotRoutesTests : SpotTestSupport
 
         var manager = frameworkHost.Services.GetRequiredService<IZLinkSpotManager>();
         var runtime = frameworkHost.Services.GetRequiredService<ZLinkFrameworkRuntime>();
-        var resolver = frameworkHost.Services.GetRequiredService<IZLinkSpotRouteResolver>();
+        var resolver = frameworkHost.Services.GetRequiredService<IZLinkSpotRemoteAddressResolver>();
         var recorder = frameworkHost.Services.GetRequiredService<SpotRouteTransportRecorder>();
         var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
         _ = await manager.CreateAsync("route-target");
         await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play");
         var route = await RetryAsync(
-            () => resolver.ResolveSpotRouteAsync("route-target", CancellationToken.None).AsTask(),
+            () => resolver.ResolveSpotRemoteAddressAsync("route-target", CancellationToken.None).AsTask(),
             static result => result.SpotRid.Size > 0,
             TimeSpan.FromSeconds(5));
         Assert.Equal(nodeRuntime.Node.RoutingId, route.TargetNodeRid);

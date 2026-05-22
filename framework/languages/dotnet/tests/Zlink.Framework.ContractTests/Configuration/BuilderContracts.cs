@@ -9,8 +9,8 @@ public sealed class BuilderContracts
         typeof(IZLinkFrameworkOptions),
         typeof(IZLinkDiscoveryBuilder),
         typeof(IZLinkMetadataPolicyBuilder),
-        typeof(IZLinkRegistryActorRoutesOptions),
-        typeof(IZLinkRegistrySpotRoutesOptions))]
+        typeof(IZLinkRegistryActorRemoteAddressesOptions),
+        typeof(IZLinkRegistrySpotRemoteAddressesOptions))]
     public void Framework_options_register_the_top_level_runtime_surface()
     {
         var options = new FrameworkOptions();
@@ -21,10 +21,10 @@ public sealed class BuilderContracts
         options.AddHandlersFromAssembly(typeof(BuilderContracts).Assembly);
         options.ConfigureMetadata(metadata => metadata.ForwardApplicationKey("trace-id"));
         options.AddActorFactory<ActorFactory>("player");
-        options.AddActorPlayRouteResolver<ActorRouteResolver>();
-        options.AddSpotRouteResolver<SpotRouteResolver>();
-        options.UseRegistryActorRoutes("game", registry => registry.RouterChannelId = "play-router");
-        options.UseRegistrySpotRoutes("game", registry => registry.RouterChannelId = "play-router");
+        options.AddActorRemoteAddressResolver<ActorRemoteAddressResolver>();
+        options.AddSpotRemoteAddressResolver<SpotRemoteAddressResolver>();
+        options.UseRegistryActorRemoteAddresses("game", registry => registry.RouterChannelId = "play-router");
+        options.UseRegistrySpotRemoteAddresses("game", registry => registry.RouterChannelId = "play-router");
         options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6000"));
         options.UseSpotDiscovery("play-spots", discovery => discovery.Add("tcp://127.0.0.1:6001"));
         options.UseFilter<HandlerFilter>();
@@ -32,8 +32,8 @@ public sealed class BuilderContracts
 
         Assert.Contains("trace-id", options.Metadata.ForwardedKeys);
         Assert.Contains("tcp://127.0.0.1:6000", options.Discovery.Endpoints);
-        Assert.Equal("play-router", options.ActorRoutes.RouterChannelId);
-        Assert.Equal("play-router", options.SpotRoutes.RouterChannelId);
+        Assert.Equal("play-router", options.ActorRemoteAddresses.RouterChannelId);
+        Assert.Equal("play-router", options.SpotRemoteAddresses.RouterChannelId);
     }
 
     [Fact]
@@ -214,9 +214,9 @@ public sealed class BuilderContracts
 
         public DiscoveryBuilder Discovery { get; } = new();
 
-        public RegistryActorRoutesOptions ActorRoutes { get; } = new();
+        public RegistryActorRemoteAddressesOptions ActorRemoteAddresses { get; } = new();
 
-        public RegistrySpotRoutesOptions SpotRoutes { get; } = new();
+        public RegistrySpotRemoteAddressesOptions SpotRemoteAddresses { get; } = new();
 
         public List<string> Channels { get; } = [];
 
@@ -237,25 +237,25 @@ public sealed class BuilderContracts
         public void AddActorFactory<TFactory>(string actorType)
             where TFactory : class, IZLinkActorFactory { }
 
-        public void AddActorPlayRouteResolver<TResolver>()
-            where TResolver : class, IZLinkActorPlayRouteResolver { }
+        public void AddActorRemoteAddressResolver<TResolver>()
+            where TResolver : class, IZLinkActorRemoteAddressResolver { }
 
-        public void AddSpotRouteResolver<TResolver>()
-            where TResolver : class, IZLinkSpotRouteResolver { }
+        public void AddSpotRemoteAddressResolver<TResolver>()
+            where TResolver : class, IZLinkSpotRemoteAddressResolver { }
 
-        public void UseRegistryActorRoutes(string namespaceName) { }
+        public void UseRegistryActorRemoteAddresses(string namespaceName) { }
 
-        public void UseRegistryActorRoutes(
+        public void UseRegistryActorRemoteAddresses(
             string namespaceName,
-            Action<IZLinkRegistryActorRoutesOptions> configure) =>
-            configure(ActorRoutes);
+            Action<IZLinkRegistryActorRemoteAddressesOptions> configure) =>
+            configure(ActorRemoteAddresses);
 
-        public void UseRegistrySpotRoutes(string namespaceName) { }
+        public void UseRegistrySpotRemoteAddresses(string namespaceName) { }
 
-        public void UseRegistrySpotRoutes(
+        public void UseRegistrySpotRemoteAddresses(
             string namespaceName,
-            Action<IZLinkRegistrySpotRoutesOptions> configure) =>
-            configure(SpotRoutes);
+            Action<IZLinkRegistrySpotRemoteAddressesOptions> configure) =>
+            configure(SpotRemoteAddresses);
 
         public void AddClientServerChannel(
             string channelName,
@@ -350,12 +350,12 @@ public sealed class BuilderContracts
         public void ForwardApplicationKey(string key) => ForwardedKeys.Add(key);
     }
 
-    private sealed class RegistryActorRoutesOptions : IZLinkRegistryActorRoutesOptions
+    private sealed class RegistryActorRemoteAddressesOptions : IZLinkRegistryActorRemoteAddressesOptions
     {
         public string? RouterChannelId { get; set; }
     }
 
-    private sealed class RegistrySpotRoutesOptions : IZLinkRegistrySpotRoutesOptions
+    private sealed class RegistrySpotRemoteAddressesOptions : IZLinkRegistrySpotRemoteAddressesOptions
     {
         public string? RouterChannelId { get; set; }
     }
@@ -561,30 +561,29 @@ public sealed class BuilderContracts
             ValueTask.FromResult<IZLinkActor>(new Actor(actorId, context));
     }
 
-    private sealed class ActorRouteResolver : IZLinkActorPlayRouteResolver
+    private sealed class ActorRemoteAddressResolver : IZLinkActorRemoteAddressResolver
     {
-        public ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
+        public ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
             string actorId,
             CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new ZLinkActorLocationRoute(
-                "play-router",
+            ValueTask.FromResult(new ZLinkActorRemoteLocation(
                 actorId,
-                RoutingId.Of("node"),
+                new ZLinkActorRemoteAddress("play-router", RoutingId.Of("node"), 1),
                 RoutingId.Of("spot"),
                 ZLinkSpotKind.User));
     }
 
-    private sealed class SpotRouteResolver : IZLinkSpotRouteResolver
+    private sealed class SpotRemoteAddressResolver : IZLinkSpotRemoteAddressResolver
     {
-        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             string spotName,
             CancellationToken cancellationToken) =>
-            ResolveSpotRouteAsync(RoutingId.Of(spotName), cancellationToken);
+            ResolveSpotRemoteAddressAsync(RoutingId.Of(spotName), cancellationToken);
 
-        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             RoutingId spotRid,
             CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new ZLinkSpotRoute(
+            ValueTask.FromResult(new ZLinkSpotRemoteAddress(
                 "play-router",
                 RoutingId.Of("node"),
                 spotRid,

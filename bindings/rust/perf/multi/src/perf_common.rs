@@ -585,6 +585,7 @@ pub fn apply_multi_auto_hwm_msg_unit(ctx: &Context, msg_size: usize) {
     ctx.options()
         .set_auto_hwm_msg_unit_bytes(unit)
         .expect("auto hwm msg unit");
+    ctx.recalculate_auto_hwm().expect("auto hwm recalculate");
 }
 
 // SPOT only applies node admission HWM under the manual-override gate; the

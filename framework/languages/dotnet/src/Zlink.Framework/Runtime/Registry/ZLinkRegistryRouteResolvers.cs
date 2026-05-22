@@ -1,15 +1,15 @@
 using System.Collections.Concurrent;
 namespace Zlink.Framework.Runtime.Registry;
 
-internal sealed class ZLinkRegistryActorRouteResolver(
+internal sealed class ZLinkRegistryActorRemoteAddressResolver(
     ZLinkFrameworkRuntime runtime,
-    ZLinkFrameworkRegistration registration) : IZLinkActorPlayRouteResolver
+    ZLinkFrameworkRegistration registration) : IZLinkActorRemoteAddressResolver
 {
-    public async ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
+    public async ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
         string actorId,
         CancellationToken cancellationToken)
     {
-        var options = registration.RegistryActorRoutes
+        var options = registration.RegistryActorRemoteAddresses
             ?? throw new ZLinkConfigurationException("Registry actor routes are not configured.");
         var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -21,10 +21,12 @@ internal sealed class ZLinkRegistryActorRouteResolver(
         try
         {
             var route = discovery.ResolveActor(actorId);
-            return new ZLinkActorLocationRoute(
-                routerChannelId,
+            return new ZLinkActorRemoteLocation(
                 route.Actor.ActorId,
-                route.Actor.NodeRid,
+                new ZLinkActorRemoteAddress(
+                    routerChannelId,
+                    route.Actor.NodeRid,
+                    route.Actor.Generation),
                 route.CurrentSpotRid,
                 route.CurrentSpotKind.ToFramework());
         }
@@ -39,25 +41,25 @@ internal sealed class ZLinkRegistryActorRouteResolver(
         Exception? inner = null)
         => new(
             ZLinkFrameworkErrorKind.ActorRouteNotFound,
-            $"Actor route was not found for '{actorId}'.",
+            $"Actor remote address was not found for '{actorId}'.",
             isRetriable: true,
             innerException: inner);
 
 }
 
-internal sealed class ZLinkRegistrySpotRouteResolver(
+internal sealed class ZLinkRegistrySpotRemoteAddressResolver(
     ZLinkFrameworkRuntime runtime,
-    ZLinkFrameworkRegistration registration) : IZLinkSpotRouteResolver
+    ZLinkFrameworkRegistration registration) : IZLinkSpotRemoteAddressResolver
 {
     private const byte SpotNameRoutePayloadVersion = 1;
     private const string SpotNameRouteTooLarge = "SPOT name route payload is too large.";
     private const string InvalidSpotNameRoutePayload = "Invalid SPOT name route payload.";
 
-    public async ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+    public async ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
         string spotName,
         CancellationToken cancellationToken)
     {
-        var options = registration.RegistrySpotRoutes
+        var options = registration.RegistrySpotRemoteAddresses
             ?? throw new ZLinkConfigurationException("Registry SPOT routes are not configured.");
         var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -75,7 +77,7 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
                 state,
                 options.RouterChannelId);
             var spotRoute = discovery.ResolveSpot(spotRid);
-            return new ZLinkSpotRoute(
+            return new ZLinkSpotRemoteAddress(
                 routerChannelId,
                 spotRoute.OwnerNodeRid,
                 spotRoute.SpotRid,
@@ -91,11 +93,11 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
         }
     }
 
-    public async ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+    public async ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        var options = registration.RegistrySpotRoutes
+        var options = registration.RegistrySpotRemoteAddresses
             ?? throw new ZLinkConfigurationException("Registry SPOT routes are not configured.");
         var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -107,7 +109,7 @@ internal sealed class ZLinkRegistrySpotRouteResolver(
         try
         {
             var spotRoute = discovery.ResolveSpot(spotRid);
-            return new ZLinkSpotRoute(
+            return new ZLinkSpotRemoteAddress(
                 routerChannelId,
                 spotRoute.OwnerNodeRid,
                 spotRoute.SpotRid,

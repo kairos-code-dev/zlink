@@ -43,7 +43,7 @@ internal sealed class BingoRoomSpot(
         IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
-        await _createdHandler.HandleAsync(this, createParts, cancellationToken).ConfigureAwait(false);
+        await _createdHandler.HandleAsync(this, createParts, cancellationToken);
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)
@@ -52,14 +52,14 @@ internal sealed class BingoRoomSpot(
                 "bingo-draw",
                 _settings.DrawPeriod,
                 cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+            ;
     }
 
     public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {
         if (_timer is not null)
         {
-            await _timer.CancelAsync(cancellationToken).ConfigureAwait(false);
+            await _timer.CancelAsync(cancellationToken);
         }
     }
 
@@ -83,11 +83,11 @@ internal sealed class BingoRoomSpot(
         actor.JoinRoom(request.RoomId);
         var player = new RoomPlayer(actor, _players.Count, BingoCard.Create());
         _players.Add(player);
-        await Context.JoinActorAsync(actor, cancellationToken).ConfigureAwait(false);
+        await Context.JoinActorAsync(actor, cancellationToken);
 
         var state = Snapshot();
         await notifications.PublishAsync(PlayerJoinedEvents(player, state), cancellationToken)
-            .ConfigureAwait(false);
+            ;
         return new BingoRoomJoinRes(state);
     }
 
@@ -117,7 +117,7 @@ internal sealed class BingoRoomSpot(
             Status = BingoRoomStatus.Running;
             var state = Snapshot();
             await notifications.PublishAsync(EventsForAll(BingoRoomEventKind.GameStarted, state), cancellationToken)
-                .ConfigureAwait(false);
+                ;
         }
 
         return new StartBingoGameRes(Snapshot());
@@ -151,12 +151,12 @@ internal sealed class BingoRoomSpot(
 
         var state = Snapshot();
         await notifications.PublishAsync(NumberDrawnEvents(state, number), cancellationToken)
-            .ConfigureAwait(false);
+            ;
         var kind = Status == BingoRoomStatus.Finished
             ? BingoRoomEventKind.GameEnded
             : BingoRoomEventKind.State;
         await notifications.PublishAsync(EventsForAll(kind, state), cancellationToken)
-            .ConfigureAwait(false);
+            ;
     }
 
     private BingoRoomState Snapshot()

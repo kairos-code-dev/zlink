@@ -80,6 +80,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.PairSocket)(nil).Send(), "MoveMessage") {
 		t.Fatalf("SendOp should expose MoveMessage")
 	}
+	if !hasMethod((*zlink.PairSocket)(nil).Send(), "Bytes") {
+		t.Fatalf("SendOp should expose Bytes")
+	}
 	if hasMethod((*zlink.PairSocket)(nil), "TryRecv") {
 		t.Fatalf("PairSocket should not expose TryRecv")
 	}
@@ -655,6 +658,9 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Spot)(nil), "RecvRouted") {
 		t.Fatalf("Spot should expose RecvRouted")
+	}
+	if !hasMethod((*zlink.Spot)(nil), "ForwardRouted") {
+		t.Fatalf("Spot should expose ForwardRouted")
 	}
 	if !hasMethod((*zlink.Spot)(nil), "OnRoutedReceive") {
 		t.Fatalf("Spot should expose OnRoutedReceive")

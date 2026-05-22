@@ -224,7 +224,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void SessionActorDispatch_Does_Not_Require_ActorPlayRouteResolver()
+    public void SessionActorDispatch_Does_Not_Require_ActorRemoteAddressResolver()
     {
         var services = new ServiceCollection();
 
@@ -245,7 +245,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         using var provider = services.BuildServiceProvider();
         var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
 
-        Assert.Null(provider.GetService<IZLinkActorPlayRouteResolver>());
+        Assert.Null(provider.GetService<IZLinkActorRemoteAddressResolver>());
         Assert.Single(registration.StreamNodes);
         Assert.Single(registration.RouteChannels);
     }
@@ -307,17 +307,17 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Allows_SpotRouteResolver_Without_SpotNode()
+    public void AddZLinkFramework_Allows_SpotRemoteAddressResolver_Without_SpotNode()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotRouteResolver<TestSpotRouteResolver>();
+            options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
         });
 
         using var provider = services.BuildServiceProvider();
-        Assert.IsType<TestSpotRouteResolver>(provider.GetRequiredService<IZLinkSpotRouteResolver>());
+        Assert.IsType<TestSpotRemoteAddressResolver>(provider.GetRequiredService<IZLinkSpotRemoteAddressResolver>());
     }
 
     [Fact]
@@ -327,7 +327,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotRouteResolver<TestSpotRouteResolver>();
+            options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
         });
 
         using var provider = services.BuildServiceProvider();

@@ -34,6 +34,34 @@ using zlink::spot_reqrep_internal::spot_state_spot_index_t;
 
 extern "C" void zlink_actor_replay_readable_for_spot (void *spot_);
 
+zlink_submit_result_t submit_result_from_spot_forward_recv (
+  zlink_recv_result_t rc_)
+{
+    switch (rc_) {
+    case ZLINK_RECV_OK:
+        return ZLINK_SUBMIT_OK;
+    case ZLINK_RECV_NO_DATA:
+        return ZLINK_SUBMIT_NOT_FOUND;
+    case ZLINK_RECV_BUSY:
+        return ZLINK_SUBMIT_INVALID_STATE;
+    case ZLINK_RECV_TERMINATED:
+        return ZLINK_SUBMIT_TERMINATED;
+    case ZLINK_RECV_INVALID_HANDLE:
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    case ZLINK_RECV_NOT_SUPPORTED:
+        return ZLINK_SUBMIT_NOT_SUPPORTED;
+    case ZLINK_RECV_INTERNAL_ERROR:
+    default:
+        return ZLINK_SUBMIT_INTERNAL_ERROR;
+    }
+}
+
+bool has_forwardable_spot_route (const zlink_routing_id_t *node_,
+                                 const zlink_routing_id_t *spot_)
+{
+    return node_ && spot_ && node_->size > 0 && spot_->size > 0;
+}
+
 zlink_recv_result_t spot_recv_impl (void *spot_,
                                     const zlink_routing_id_t **source_rid_out_,
                                     const zlink_routing_id_t **spot_rid_out_,
@@ -331,6 +359,85 @@ zlink_recv_result_t zlink_spot_recv_part (
     zlink::part_helper_internal::complete_recv_step (helper_state,
                                                      *has_more_out_);
     return ZLINK_RECV_OK;
+}
+
+zlink_submit_result_t zlink_spot_forward_routed (
+  void *spot_,
+  zlink_recv_flags_t recv_flags_,
+  zlink_send_flags_t send_flags_,
+  zlink_spot_forward_result_t *result_out_)
+{
+    if (result_out_)
+        memset (result_out_, 0, sizeof (*result_out_));
+    if (!spot_) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+    if (validate_recv_flags (recv_flags_) != 0)
+        return ZLINK_SUBMIT_NOT_SUPPORTED;
+    if (send_flags_ != 0 && send_flags_ != ZLINK_DONTWAIT) {
+        errno = ENOTSUP;
+        return ZLINK_SUBMIT_NOT_SUPPORTED;
+    }
+
+    const zlink_routing_id_t *source_node_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    const zlink_recv_result_t recv_rc =
+      spot_recv_impl (spot_, &source_node_rid, &source_spot_rid, &request_seq,
+                      &parts, &part_count, recv_flags_);
+    if (recv_rc != ZLINK_RECV_OK)
+        return submit_result_from_spot_forward_recv (recv_rc);
+
+    zlink_routing_id_t source_node_copy = {};
+    zlink_routing_id_t source_spot_copy = {};
+    if (source_node_rid)
+        source_node_copy = *source_node_rid;
+    if (source_spot_rid)
+        source_spot_copy = *source_spot_rid;
+
+    size_t payload_bytes = 0;
+    for (size_t i = 0; i < part_count; ++i)
+        payload_bytes += zlink_msg_size (&parts[i]);
+
+    if (result_out_) {
+        result_out_->source_node_rid = source_node_copy;
+        result_out_->source_spot_rid = source_spot_copy;
+        result_out_->request_seq = request_seq;
+        result_out_->has_request_seq = request_seq != 0 ? 1u : 0u;
+        result_out_->part_count = part_count;
+        result_out_->payload_bytes = payload_bytes;
+    }
+
+    if (!has_forwardable_spot_route (&source_node_copy, &source_spot_copy)
+        || part_count == 0) {
+        zlink_multipart_close (parts, part_count);
+        errno = EPROTO;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (request_seq != 0) {
+        zlink_multipart_close (parts, part_count);
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+
+    for (size_t i = 0; i < part_count; ++i) {
+        const zlink_part_flag_t part_flag =
+          (i + 1 < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        const zlink_submit_result_t send_rc =
+          zlink_spot_send_spot_part (spot_, &source_node_copy,
+                                     &source_spot_copy, &parts[i],
+                                     send_flags_, part_flag);
+        if (send_rc != ZLINK_SUBMIT_OK) {
+            const int saved_errno = errno;
+            zlink_multipart_close (parts, part_count);
+            errno = saved_errno;
+            return send_rc;
+        }
+    }
+    return ZLINK_SUBMIT_OK;
 }
 
 extern "C" int zlink_spot_request_reply_set_default_timeout (

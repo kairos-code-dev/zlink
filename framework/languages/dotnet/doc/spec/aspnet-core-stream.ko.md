@@ -125,7 +125,11 @@ public interface IZLinkSessionActorDispatchContext
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
-        ZLinkActorRoute route,
+        ZLinkActorRemoteAddress remoteAddress,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
 
     ValueTask RelayToActorAsync(
@@ -146,7 +150,7 @@ public interface IZLinkActorManager
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkActorRoute> GetRouteAsync(
+    ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
@@ -162,6 +166,10 @@ public interface IZLinkActorRef
     string ActorId { get; }
 
     string ActorType { get; }
+
+    bool IsRemote { get; }
+
+    ZLinkActorRemoteAddress RemoteAddress { get; }
 
     ValueTask NotifyDisconnectedAsync(
         CancellationToken cancellationToken = default);
@@ -191,7 +199,6 @@ public interface IZLinkSessionReplyCall
 
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
-    IZLinkSessionChannelClient,
     IZLinkSessionClientStream,
     IZLinkSessionActorDispatchContext,
     IZLinkSessionLifecycle;
@@ -204,8 +211,10 @@ session 구현체는 이 값을 get-only property 로 그대로 노출해야 하
 여기서 기대하는 동작은 다음과 같다.
 
 - session callback 은 stream 객체를 직접 인자로 받지 않는다.
-- session 정보, channel request, stream send, actor dispatch 는 모두 `Context`
-  를 통해 호출한다.
+- session 정보, stream send, actor dispatch 는 `Context` 를 통해 호출한다.
+- 다른 channel 로 보내는 send/request 는 session context 표면이 아니라 DI 로
+  주입받은 `IZLinkClient` 를 사용한다. 이 호출은 stream socket 이 아니라
+  해당 channel 의 client socket 을 사용하기 때문이다.
 - actor stream 연결과 해제는 별도의 `IZLinkSessionActorAttachmentContext` 표면
   으로 분리한다.
 - `CloseAsync(...)` 는 현재 stream client 의 연결을 서버 쪽에서 끊는다.

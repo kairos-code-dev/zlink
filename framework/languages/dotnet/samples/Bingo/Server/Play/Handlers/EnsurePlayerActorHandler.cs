@@ -1,9 +1,8 @@
 using Bingo.Server.Play.Actors;
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
-using Zlink.Framework.Contracts.Actors;
 
-namespace Bingo.Server.Play;
+namespace Bingo.Server.Play.Handlers;
 
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
@@ -19,22 +18,22 @@ internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
                 request.ActorId,
                 SampleNames.PlayerActorType,
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
         if (actor is PlayerActor player)
         {
             player.SetDisplayName(request.DisplayName);
         }
 
-        var route = await actors.GetRouteAsync(
+        var remoteAddress = await actors.GetRemoteAddressAsync(
                 request.ActorId,
                 SampleNames.PlayerActorType,
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
         return new EnsurePlayerActorRes(
             request.ActorId,
-            new ActorRouteSnapshot(
-                route.RouterChannelId,
-                route.TargetNodeRid.ToBytes().ToArray(),
-                route.ActorGeneration));
+            new ActorRemoteAddressSnapshot(
+                remoteAddress.RouterChannelId,
+                remoteAddress.TargetNodeRid.ToBytes().ToArray(),
+                remoteAddress.ActorGeneration));
     }
 }

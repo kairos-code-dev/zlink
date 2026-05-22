@@ -45,7 +45,7 @@ public sealed class SessionActorDispatchClient
                 reconnectedXClient,
                 oClient,
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
 
         ValidateNotifications(reconnectedXClient, oClient);
         return new SessionActorDispatchClientResult(
@@ -119,7 +119,7 @@ public sealed class SessionActorDispatchClient
             await Task.WhenAny(
                     xClient.WaitForNotificationAsync(timeout.Token),
                     oClient.WaitForNotificationAsync(timeout.Token))
-                .ConfigureAwait(false);
+                ;
         }
 
         if (HasRequiredNotificationSmoke(xClient, oClient))

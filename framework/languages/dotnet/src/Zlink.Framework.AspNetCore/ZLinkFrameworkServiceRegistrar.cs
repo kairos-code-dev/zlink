@@ -152,32 +152,32 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkActorManager, ZLinkActorManagerService>();
         }
 
-        if (registration.ActorPlayRouteResolverType is not null)
+        if (registration.ActorRemoteAddressResolverType is not null)
         {
-            services.TryAddSingleton(registration.ActorPlayRouteResolverType);
+            services.TryAddSingleton(registration.ActorRemoteAddressResolverType);
             services.AddSingleton(
-                typeof(IZLinkActorPlayRouteResolver),
-                provider => provider.GetRequiredService(registration.ActorPlayRouteResolverType));
+                typeof(IZLinkActorRemoteAddressResolver),
+                provider => provider.GetRequiredService(registration.ActorRemoteAddressResolverType));
         }
-        else if (registration.RegistryActorRoutes is not null)
+        else if (registration.RegistryActorRemoteAddresses is not null)
         {
-            services.AddSingleton<ZLinkRegistryActorRouteResolver>();
-            services.AddSingleton<IZLinkActorPlayRouteResolver>(
-                static provider => provider.GetRequiredService<ZLinkRegistryActorRouteResolver>());
+            services.AddSingleton<ZLinkRegistryActorRemoteAddressResolver>();
+            services.AddSingleton<IZLinkActorRemoteAddressResolver>(
+                static provider => provider.GetRequiredService<ZLinkRegistryActorRemoteAddressResolver>());
         }
 
-        if (registration.SpotRouteResolverType is not null)
+        if (registration.SpotRemoteAddressResolverType is not null)
         {
-            services.TryAddSingleton(registration.SpotRouteResolverType);
+            services.TryAddSingleton(registration.SpotRemoteAddressResolverType);
             services.AddSingleton(
-                typeof(IZLinkSpotRouteResolver),
-                provider => provider.GetRequiredService(registration.SpotRouteResolverType));
+                typeof(IZLinkSpotRemoteAddressResolver),
+                provider => provider.GetRequiredService(registration.SpotRemoteAddressResolverType));
         }
-        else if (registration.RegistrySpotRoutes is not null)
+        else if (registration.RegistrySpotRemoteAddresses is not null)
         {
-            services.AddSingleton<ZLinkRegistrySpotRouteResolver>();
-            services.AddSingleton<IZLinkSpotRouteResolver>(
-                static provider => provider.GetRequiredService<ZLinkRegistrySpotRouteResolver>());
+            services.AddSingleton<ZLinkRegistrySpotRemoteAddressResolver>();
+            services.AddSingleton<IZLinkSpotRemoteAddressResolver>(
+                static provider => provider.GetRequiredService<ZLinkRegistrySpotRemoteAddressResolver>());
         }
 
         return services;

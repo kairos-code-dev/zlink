@@ -143,23 +143,23 @@ public abstract partial class SpotTestSupport
         }
     }
 
-    public sealed class FixedSpotRouteResolver : IZLinkSpotRouteResolver
+    public sealed class FixedSpotRemoteAddressResolver : IZLinkSpotRemoteAddressResolver
     {
-        private ZLinkSpotRoute? _route;
+        private ZLinkSpotRemoteAddress? _route;
 
         public void Configure(
             string routerChannelId,
             RoutingId targetNodeRid,
             RoutingId spotRid)
         {
-            _route = new ZLinkSpotRoute(
+            _route = new ZLinkSpotRemoteAddress(
                 routerChannelId,
                 targetNodeRid,
                 spotRid,
                 ZLinkSpotKind.User);
         }
 
-        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             string spotName,
             CancellationToken cancellationToken)
         {
@@ -168,7 +168,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.FromResult(RequireRoute());
         }
 
-        public ValueTask<ZLinkSpotRoute> ResolveSpotRouteAsync(
+        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             RoutingId spotRid,
             CancellationToken cancellationToken)
         {
@@ -177,7 +177,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.FromResult(RequireRoute());
         }
 
-        private ZLinkSpotRoute RequireRoute()
+        private ZLinkSpotRemoteAddress RequireRoute()
         {
             return _route ?? throw new InvalidOperationException("SPOT route is not configured.");
         }

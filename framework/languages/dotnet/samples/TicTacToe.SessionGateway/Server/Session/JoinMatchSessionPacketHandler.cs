@@ -19,8 +19,8 @@ internal sealed class JoinMatchSessionPacketHandler : ISessionRelayPacketHandler
                 context.Stream,
                 "joining a match",
                 cancellationToken)
-            .ConfigureAwait(false);
+            ;
         await context.Stream.RelayToActorAsync(actor, header, payload, cancellationToken)
-            .ConfigureAwait(false);
+            ;
     }
 }

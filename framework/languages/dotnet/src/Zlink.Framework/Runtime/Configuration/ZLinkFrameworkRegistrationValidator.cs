@@ -22,40 +22,40 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 "Actor factory registration requires at least one SpotNode.");
         }
 
-        if ((registration.RegistryActorRoutes is not null
-                || registration.RegistrySpotRoutes is not null)
+        if ((registration.RegistryActorRemoteAddresses is not null
+                || registration.RegistrySpotRemoteAddresses is not null)
             && registration.RouteChannels.Count == 0)
         {
             throw new ZLinkConfigurationException(
-                "Registry route resolver requires AddRouteMeshChannel(...).");
+                "Registry remote address resolver requires AddRouteMeshChannel(...).");
         }
 
-        if (registration.RegistryActorRoutes is not null
+        if (registration.RegistryActorRemoteAddresses is not null
             && (registration.Discovery is null
                 || registration.Discovery.Endpoints.Count == 0))
         {
             throw new ZLinkConfigurationException(
-                "Registry actor route resolver requires UseDiscovery(...).");
+                "Registry actor remote address resolver requires UseDiscovery(...).");
         }
 
-        if (registration.RegistrySpotRoutes is not null
+        if (registration.RegistrySpotRemoteAddresses is not null
             && (registration.SpotDiscovery is null
                 || registration.SpotDiscovery.Endpoints.Count == 0))
         {
             throw new ZLinkConfigurationException(
-                "Registry route resolver requires AddSpotMesh(...).UseDiscovery(...).");
+                "Registry remote address resolver requires AddSpotMesh(...).UseDiscovery(...).");
         }
 
         ValidateRegistryRouteChannel(
-            registration.RegistryActorRoutes is not null,
-            registration.RegistryActorRoutes?.RouterChannelId,
+            registration.RegistryActorRemoteAddresses is not null,
+            registration.RegistryActorRemoteAddresses?.RouterChannelId,
             registration,
-            "Registry actor route resolver");
+            "Registry actor remote address resolver");
         ValidateRegistryRouteChannel(
-            registration.RegistrySpotRoutes is not null,
-            registration.RegistrySpotRoutes?.RouterChannelId,
+            registration.RegistrySpotRemoteAddresses is not null,
+            registration.RegistrySpotRemoteAddresses?.RouterChannelId,
             registration,
-            "Registry SPOT route resolver");
+            "Registry SPOT remote address resolver");
 
         foreach (var channel in registration.Channels.Values)
         {

@@ -11,7 +11,7 @@ public interface IZLinkActorManager
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkActorRoute> GetRouteAsync(
+    ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);

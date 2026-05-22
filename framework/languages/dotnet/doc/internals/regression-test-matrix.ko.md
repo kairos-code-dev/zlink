@@ -108,8 +108,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Spot publisher without publisher capability | `unit` | SpotNode 가 있어도 publisher capability 가 없으면 Spot publisher service 는 DI 에 없다 |
 | Spot publisher with publisher capability | `unit` | Spot publisher capability 가 있으면 `IZLinkSpotPublisherClient` 와 `IZLinkSpotMeshPublisherClient` 가 DI 에 등록된다 |
 | session proxy factory registration | `unit` | `IZLinkSessionProxyFactory` 는 framework runtime 과 함께 등록된다 |
-| Spot route resolver without SpotNode | `unit` | route 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRouteResolver` 를 등록할 수 있다 |
-| Spot client with resolver only | `unit` | Spot route resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotClient` 는 DI 에 없다 |
+| Spot remote address resolver without SpotNode | `unit` | remote address 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
+| Spot client with resolver only | `unit` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotClient` 는 DI 에 없다 |
 | route channel missing at call time | `unit` | `IZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
 | channel client missing at call time | `unit` | `IZLinkClient` 호출 시 channel client capability 가 없으면 `ZLinkConfigurationException` |
 
@@ -158,9 +158,9 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | explicit egress channel Spot route 경로 | `integration-single-process` | routed Spot 호출은 target 정보만으로 egress transport를 고르지 않고, caller가 명시한 local egress channel, egress 설정의 target SpotNode ingress channel, `RoutingId` target으로 routed message를 보낸다 |
 | actor manager 생성 중복/타입 충돌 | `integration-single-process` | `IZLinkActorManager.CreateAsync(...)` 중복 생성은 `ActorAlreadyExists`, `GetOrCreateAsync(...)` actor type 충돌은 `ActorTypeMismatch` 로 실패한다 |
 | local actor bind 생성 금지 | `integration-single-process` | `BindActorHandleAsync(...)` 는 local actor 가 없을 때 factory 를 호출하지 않고 `ActorRouteNotFound` 로 실패한다 |
-| session actor bind resolver 제거 | `integration-single-process` | route 를 받는 `BindActorHandleAsync(...)` 는 `IZLinkActorPlayRouteResolver` 를 호출하지 않고, route 없는 overload 도 local actor 에만 붙는다 |
-| unchecked actor route 거부 | `integration-single-process` | `ZLinkActorRoute.ActorGeneration == 0` 인 session attach 는 `ActorRouteNotFound` 로 실패한다 |
-| attached actor route update | `integration-single-process` | 내부 route update 는 expected actor generation 이 일치하는 actor ref 의 target node rid 와 actor generation 만 갱신한다 |
+| session actor bind resolver 제거 | `integration-single-process` | remote address 를 받는 `BindActorHandleAsync(...)` 는 `IZLinkActorRemoteAddressResolver` 를 호출하지 않고, remote address 없는 overload 도 local actor 에만 붙는다 |
+| unchecked actor remote address 거부 | `integration-single-process` | `ZLinkActorRemoteAddress.ActorGeneration == 0` 인 session attach 는 `ActorRouteNotFound` 로 실패한다 |
+| attached actor remote address update | `integration-single-process` | 내부 remote address update 는 expected actor generation 이 일치하는 actor ref 의 target node rid 와 actor generation 만 갱신한다 |
 | remote actor dispatch 생성 금지 | `integration-single-process` | routed actor dispatch 수신 경로는 local actor 가 없을 때 factory 를 호출하지 않고 dispatch 를 실패시킨다 |
 | session actor relay bridge | `integration-single-process` | `BindActorHandleAsync(...)`, `RelayToActorAsync(IZLinkActorRef, ...)`, `IZLinkActorRef.NotifyDisconnectedAsync(...)`가 public session 표면에서 동작한다 |
 | session actor dispatch ordering | `integration-single-process` | stream session에서 actor로 relay된 packet이 actor별 순서를 보장하고, 현재 actor 위치에 맞는 handler 실행 경로로 넘어간다 |
@@ -169,8 +169,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session actor reconnect 재사용 | `integration-single-process` | 같은 actor id가 새 stream session에서 다시 bind되면 기존 actor 인스턴스와 spot membership을 유지하고, session binding token[^binding-token]만 갱신된다 |
 | session actor binding rollback | `integration-single-process` | actor-session binding 갱신이 실패하면 helper도 실패하고, local binding table의 같은 token entry도 제거된다 |
 | stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale `SessionProxy` 메시지가 새 binding을 지우거나 사용하지 못한다 |
-| Registry actor route 기본 resolver 등록 | `unit` | `UseRegistryActorRoutes(...)` 가 custom resolver 없이 기본 `IZLinkActorPlayRouteResolver` 를 등록한다 |
-| Registry Spot route 기본 resolver 등록 | `unit` | `UseRegistrySpotRoutes(...)` 가 custom resolver 없이 기본 `IZLinkSpotRouteResolver` 와 Spot name directory 를 등록한다 |
+| Registry actor remote address 기본 resolver 등록 | `unit` | `UseRegistryActorRemoteAddresses(...)` 가 custom resolver 없이 기본 `IZLinkActorRemoteAddressResolver` 를 등록한다 |
+| Registry Spot route 기본 resolver 등록 | `unit` | `UseRegistrySpotRemoteAddresses(...)` 가 custom resolver 없이 기본 `IZLinkSpotRemoteAddressResolver` 와 Spot name directory 를 등록한다 |
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
 | Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
 | Registry route 기본 구현 discovery validation | `unit` | `UseDiscovery(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
@@ -184,7 +184,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
-| actor context channel request 경로 | `integration-single-process` | join 전 `Context.RequestChannel(...)`은 일반 channel client 경로를, join 후에는 현재 `Spot`의 channel client 경로를 사용한다 |
+| spot context channel request 경로 | `integration-single-process` | `Spot.Context.RequestChannel(...)`이 현재 Spot 에 attach 된 channel client 경로를 사용한다 |
 | actor context stream send API | `integration-single-process` | actor는 `Context.Send(...)`로 client stream에 push하고, `IZLinkStream`을 직접 노출받지 않는다 |
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | Spot actor request handler reply | `unit` | Entry Spot/user Spot actor request packet은 request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |

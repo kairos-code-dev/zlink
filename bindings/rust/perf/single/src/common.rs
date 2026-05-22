@@ -475,20 +475,27 @@ pub fn handle_recv(
 /// Send the stop token once via the supplied closure with bounded attempts to
 /// ride through transient backpressure / not-connected races.
 ///
-/// The closure performs a blocking send and returns `Ok(())` on success.
+/// The closure performs a nonblocking send and returns `Ok(false)` for
+/// transient backpressure.
 /// PERF_SINGLE_TEST_POLICY § 1.4 mandates this wire-level shutdown signal in
 /// lieu of `AtomicBool sender_done` + short polling.
 pub fn send_stop_token<F>(mut send_fn: F)
 where
-    F: FnMut(Message) -> Result<(), ZlinkError>,
+    F: FnMut(Message) -> Result<bool, SubmitError>,
 {
-    for _ in 0..100 {
+    for _ in 0..5000 {
         let token = Message::copy_from(STOP_TOKEN).expect("stop token msg");
-        if send_fn(token).is_ok() {
-            return;
+        match send_fn(token) {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(err)
+                if err.code() == zlink::SubmitResult::NotConnected
+                    || is_single_send_retry_error(&err) => {}
+            Err(err) => panic!("stop token send failed: {err}"),
         }
         std::thread::sleep(Duration::from_millis(1));
     }
+    panic!("stop token send retry exhausted");
 }
 
 // -- Send loop ---------------------------------------------------------------
@@ -686,6 +693,7 @@ pub fn apply_single_auto_hwm_msg_unit(ctx: &Context, msg_size: usize) {
     ctx.options()
         .set_auto_hwm_msg_unit_bytes(unit)
         .expect("auto hwm msg unit");
+    ctx.recalculate_auto_hwm().expect("auto hwm recalculate");
 }
 
 // SPOT only applies node admission HWM under the manual-override gate; the

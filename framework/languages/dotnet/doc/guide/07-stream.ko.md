@@ -51,7 +51,9 @@ session 은 `IZLinkSession` 을 구현한다. framework 가 frame 을 디코드�
 `header.Name` 으로 분기하고 payload 를 타입으로 디코드한다.
 
 ```csharp
-public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSession
+public sealed class ClientHeaderSession(
+    IZLinkSessionContext context,
+    IZLinkClient channels) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
@@ -71,7 +73,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
         {
             case "ClientInput":
                 var input = payload.FromJson<ClientInput>();
-                await context.SendChannel("play", new ForwardInputCommand(input)).Submit(ct);
+                await channels.Send("play", new ForwardInputCommand(input)).Submit(ct);
                 break;
 
             case "Ping":
@@ -88,9 +90,13 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
 | 표면 | 용도 |
 |------|------|
 | `Send(msg).Submit(ct)` / `Reply(msg).Submit(ct)` | client 로 push / 요청에 응답 |
-| `SendChannel/RequestChannel(name, ...)` | 일반 channel 로 호출(다른 서비스 연동) |
 | `BindActorHandleAsync(...)` / `RelayToActorAsync(...)` | actor 로 relay([06-actor-session](./06-actor-session.ko.md)) |
 | `CloseAsync(...)` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
+
+다른 서비스로 channel send/request 를 보내야 할 때는 session 생성자에서
+`IZLinkClient` 를 함께 주입받아 `Send(channelName, ...)` 또는
+`Request(channelName, ...)` 를 호출한다. 이 호출은 현재 stream 연결을 사용하지 않고,
+등록된 channel 의 client socket 을 사용한다.
 
 ### lifecycle 과 실행 보장
 

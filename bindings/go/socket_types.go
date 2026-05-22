@@ -576,6 +576,19 @@ func submitPreparedMultipart(prepared *preparedMultipart, submit multipartSubmit
 	return nil
 }
 
+func initNativeMessageFromBytes(native *C.zlink_msg_t, data []byte) error {
+	if native == nil {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	if err := configErrorFromResult(C.zlink_msg_init_size(native, C.size_t(len(data)))); err != nil {
+		return err
+	}
+	if len(data) > 0 {
+		copy(unsafe.Slice((*byte)(C.zlink_msg_data(native)), len(data)), data)
+	}
+	return nil
+}
+
 func submitMultipartFromClones(parts []*Message, consumeOriginal bool, submit multipartSubmitFunc) error {
 	if consumeOriginal && len(parts) == 1 {
 		return submitSinglePartFromCopy(parts[0], submit)
@@ -648,6 +661,18 @@ func submitSinglePartMoved(part *Message, submit multipartSubmitFunc) error {
 	return err
 }
 
+func submitSinglePartFromBytes(data []byte, submit multipartSubmitFunc) error {
+	var native C.zlink_msg_t
+	if err := initNativeMessageFromBytes(&native, data); err != nil {
+		return err
+	}
+	err := submit(&native, C.zlink_part_flag_t(C.ZLINK_PART_FINAL))
+	if err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(&native))
+	}
+	return err
+}
+
 func builderMessages(parts []sendBuilderPart) []*Message {
 	messages := make([]*Message, len(parts))
 	for i, part := range parts {
@@ -664,13 +689,22 @@ func closeMovedSendBuilderParts(parts []sendBuilderPart) {
 	}
 }
 
-func sendBuilderPartsContainMove(parts []sendBuilderPart) bool {
+func sendBuilderPartsNeedBuilder(parts []sendBuilderPart) bool {
 	for _, part := range parts {
-		if part.move {
+		if part.move || part.bytes {
 			return true
 		}
 	}
 	return false
+}
+
+func sendBuilderPartsUseOnlyRetainedMessages(parts []sendBuilderPart) bool {
+	for _, part := range parts {
+		if part.move || part.bytes {
+			return false
+		}
+	}
+	return true
 }
 
 func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSubmitFunc) error {
@@ -678,24 +712,27 @@ func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSu
 		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 	}
 	if len(parts) == 1 {
+		if parts[0].bytes {
+			return submitSinglePartFromBytes(parts[0].data, submit)
+		}
 		if parts[0].move {
 			return submitSinglePartMoved(parts[0].message, submit)
 		}
 		return submitSinglePartFromCopy(parts[0].message, submit)
 	}
-	allRetained := true
-	for _, part := range parts {
-		if part.move {
-			allRetained = false
-			break
-		}
-	}
-	if allRetained {
+	if sendBuilderPartsUseOnlyRetainedMessages(parts) {
 		return submitMultipartFromClones(builderMessages(parts), true, submit)
 	}
 
 	native := make([]C.zlink_msg_t, len(parts))
 	for i, part := range parts {
+		if part.bytes {
+			if err := initNativeMessageFromBytes(&native[i], part.data); err != nil {
+				closeNativeMultipart(native, i)
+				return err
+			}
+			continue
+		}
 		if part.message == nil {
 			closeNativeMultipart(native, i)
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}

@@ -12,6 +12,6 @@ internal sealed class BingoRoomJoinHandler
         BingoRoomJoinReq request,
         CancellationToken cancellationToken)
     {
-        return await spot.JoinAsync(actor, request, cancellationToken).ConfigureAwait(false);
+        return await spot.JoinAsync(actor, request, cancellationToken);
     }
 }

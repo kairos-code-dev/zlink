@@ -38,7 +38,7 @@
 | `BingoRoomSpot` | 매칭된 한 room 의 참가자, host, 게임 상태, timer, 승리 판정을 소유한다. |
 
 서버 사이의 Spot route 는 Registry 기반 framework 기본 구현을 사용한다.
-샘플 서버는 `UseRegistrySpotRoutes("bingo")` 만 켠다. actor route 는 Play 서버의
+샘플 서버는 `UseRegistrySpotRemoteAddresses("bingo")` 만 켠다. actor remote address 는 Play 서버의
 actor 준비 응답이 넘기는 snapshot 을 사용하고, actor-session route 는 session bind 시
 actor runtime state 에 저장된다.
 일반 파일 metadata store 처럼 직접 구현하지 않고, room 배정과 게임 상태 같은 domain
@@ -260,10 +260,10 @@ public sealed record BingoGameEndedNotify(BingoRoomState State);
 3. `SessionServer` 는 `ApiServer` 로 `AuthenticatePlayerReq` 를 보내 회원 정보를
    확인한다.
 4. `SessionServer` 는 `PlayServer` 로 player actor 준비를 요청하고, 응답으로
-   actor route snapshot 을 받는다. 이 snapshot 에는 router channel id, target
+   actor remote address snapshot 을 받는다. 이 snapshot 에는 router channel id, target
    node rid, actor generation 이 들어 있다.
-5. `SessionServer` 는 route 를 받는 `BindActorHandleAsync(...)` overload 로 현재
-   stream session 과 actor 를 bind 한다. session handler 는 actor route resolver
+5. `SessionServer` 는 remote address 를 받는 `BindActorHandleAsync(...)` overload 로 현재
+   stream session 과 actor 를 bind 한다. session handler 는 actor remote address resolver
    를 직접 호출하지 않는다.
 6. client 는 `AuthenticateRes` 로 `ActorId` 와 `DisplayName` 을 받는다.
 

@@ -26,7 +26,7 @@ internal static class ZLinkRegistryRouteRuntime
         }
 
         throw new ZLinkConfigurationException(
-            "Registry route resolver requires RouterChannelId when there is not exactly one route mesh channel.");
+            "Registry remote address resolver requires RouterChannelId when there is not exactly one route mesh channel.");
     }
 
     public static IZLinkBackendDiscovery ResolveDiscoveryAttachedRouteChannel(
@@ -59,7 +59,7 @@ internal static class ZLinkRegistryRouteRuntime
         }
 
         throw new ZLinkConfigurationException(
-            "Registry route resolver requires exactly one configured SPOT discovery.");
+            "Registry remote address resolver requires exactly one configured SPOT discovery.");
     }
 
     public static async ValueTask RetryRouteOperationAsync(

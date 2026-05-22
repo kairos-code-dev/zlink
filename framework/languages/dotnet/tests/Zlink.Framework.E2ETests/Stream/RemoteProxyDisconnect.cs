@@ -53,7 +53,7 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new TestActorRouteSnapshot(new ZLinkActorRoute("gateway", playRid, 1)));
+            services.AddSingleton(new TestActorRemoteAddressSnapshot(new ZLinkActorRemoteAddress("gateway", playRid, 1)));
             services.AddSingleton(sessionRecorder);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>

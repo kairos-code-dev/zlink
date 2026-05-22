@@ -321,9 +321,13 @@ fn typed_poller_capacity_leaves_remaining_ready_source() {
     let sender2 = ctx.pair_socket().unwrap();
     let receiver2 = ctx.pair_socket().unwrap();
     sender1.bind("inproc://typed-poller-capacity-a").unwrap();
-    receiver1.connect("inproc://typed-poller-capacity-a").unwrap();
+    receiver1
+        .connect("inproc://typed-poller-capacity-a")
+        .unwrap();
     sender2.bind("inproc://typed-poller-capacity-b").unwrap();
-    receiver2.connect("inproc://typed-poller-capacity-b").unwrap();
+    receiver2
+        .connect("inproc://typed-poller-capacity-b")
+        .unwrap();
 
     let poller = Poller::new().unwrap();
     poller.add_socket(&receiver1, POLLIN, 101).unwrap();
@@ -366,7 +370,9 @@ fn typed_poller_modify_remove_and_timeout_follow_core_semantics() {
     let sender = ctx.pair_socket().unwrap();
     let receiver = ctx.pair_socket().unwrap();
     sender.bind("inproc://typed-poller-modify-remove").unwrap();
-    receiver.connect("inproc://typed-poller-modify-remove").unwrap();
+    receiver
+        .connect("inproc://typed-poller-modify-remove")
+        .unwrap();
 
     let poller = Poller::new().unwrap();
     poller.add_socket(&receiver, POLLIN, 31).unwrap();
@@ -400,7 +406,9 @@ fn typed_poller_distinguishes_timer_and_socket_in_same_buffer() {
     let sender = ctx.pair_socket().unwrap();
     let receiver = ctx.pair_socket().unwrap();
     sender.bind("inproc://typed-poller-timer-socket").unwrap();
-    receiver.connect("inproc://typed-poller-timer-socket").unwrap();
+    receiver
+        .connect("inproc://typed-poller-timer-socket")
+        .unwrap();
 
     let timer = Timer::new().unwrap();
     let poller = Poller::new().unwrap();

@@ -85,12 +85,17 @@ fn main() {
 
     if matches!(config.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
-        let pem = common::load_tls_pem(&tls);
         publisher_node
-            .set_tls_server(&pem.cert, &pem.key, false)
+            .set_tls_server(&tls.cert, &tls.key, false)
             .expect("publisher tls");
+        publisher_node
+            .set_tls_client(&tls.ca, "localhost", false)
+            .expect("publisher tls client");
         subscriber_node
-            .set_tls_client(&pem.ca, "localhost", false)
+            .set_tls_server(&tls.cert, &tls.key, false)
+            .expect("subscriber tls server");
+        subscriber_node
+            .set_tls_client(&tls.ca, "localhost", false)
             .expect("subscriber tls");
     }
 
@@ -171,9 +176,8 @@ fn main() {
                 stop_publisher
                     .publish(TOPIC)
                     .message(msg)
+                    .flags(zlink::SendFlags::DONT_WAIT)
                     .submit()
-                    .map(|_| ())
-                    .map_err(Into::into)
             });
         }
     });

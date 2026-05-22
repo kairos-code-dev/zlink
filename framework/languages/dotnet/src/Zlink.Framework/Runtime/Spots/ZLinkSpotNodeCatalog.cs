@@ -341,7 +341,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
-        var options = frameworkRegistration.RegistrySpotRoutes;
+        var options = frameworkRegistration.RegistrySpotRemoteAddresses;
         if (options is null)
         {
             return;
@@ -350,10 +350,10 @@ internal sealed class ZLinkSpotNodeCatalog(
         var discovery = discoveryProvider()
             ?? throw new ZLinkConfigurationException(
                 "Registry SPOT route publishing requires configured SPOT discovery.");
-        var key = ZLinkRegistrySpotRouteResolver.BuildSpotNameRouteKey(
+        var key = ZLinkRegistrySpotRemoteAddressResolver.BuildSpotNameRouteKey(
             options.Namespace,
             spotName);
-        var value = ZLinkRegistrySpotRouteResolver.EncodeSpotNameRouteValue(
+        var value = ZLinkRegistrySpotRemoteAddressResolver.EncodeSpotNameRouteValue(
             options.Namespace,
             spotName,
             spotRid);
@@ -371,7 +371,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         string spotName,
         CancellationToken cancellationToken)
     {
-        var options = frameworkRegistration.RegistrySpotRoutes;
+        var options = frameworkRegistration.RegistrySpotRemoteAddresses;
         if (options is null)
         {
             return;
@@ -383,7 +383,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             return;
         }
 
-        var key = ZLinkRegistrySpotRouteResolver.BuildSpotNameRouteKey(
+        var key = ZLinkRegistrySpotRemoteAddressResolver.BuildSpotNameRouteKey(
             options.Namespace,
             spotName);
         await ZLinkRegistryRouteRuntime.RetryRouteOperationAsync(

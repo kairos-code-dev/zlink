@@ -183,7 +183,7 @@ public interface IZLinkActorManager
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkActorRoute> GetRouteAsync(
+    ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
@@ -303,7 +303,7 @@ core 모델에서 비롯된 핵심 제약은 다음과 같다.
 - **destroy 는 actor 가 Entry Spot 에 있을 때만 가능하다.** 따라서 framework
   는 disconnect 시점에 user Spot 에서 자동으로 leave 한 뒤 destroy 까지 묶어
   처리한다.
-- **discovery[^discovery] actor route publish 는 user Spot join 성공 뒤에
+- **discovery[^discovery] actor remote address publish 는 user Spot join 성공 뒤에
   갱신된다.** actor 를 생성하기만 해서는 active route 가 공개되지 않는다.
   session bind / unbind 도 active route 를 새로 만들거나 지우지 않는다.
 
@@ -478,7 +478,7 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
     {
         _ = entrySpot;
         // request.MatchId는 application domain spot 이름이다.
-        // RoutingId 변환은 framework 내부 spot route resolver가 푼다.
+        // RoutingId 변환은 framework 내부 spot remote address resolver가 푼다.
         var result = await actor.Context
             .JoinSpot<JoinMatchSpotResult, JoinMatchReq>(request.MatchId, request)
             .Timeout(TimeSpan.FromSeconds(2))
@@ -599,26 +599,26 @@ session 이 actor 로 packet 을 relay 할 때는 `IZLinkSession.OnDispatchAsync
 에서 actor handle 을 만들거나 찾은 뒤 `RelayToActorAsync(...)` 를 호출한다.
 application 이 actor runtime 을 직접 호출하는 별도 public client 는 두지 않는다.
 
-### 6.1 `IZLinkActorPlayRouteResolver`
+### 6.1 `IZLinkActorRemoteAddressResolver`
 
 "이 actor id 는 지금 어느 routed channel 의 어느 노드에 있다" 는 정보를
 application 이 돌려주기 위한 resolver 다. session 에 이미 attach 된 actor 로
 relay 할 때는 이 resolver 를 쓰지 않는다. session relay 는 attach 시점에 받은
-route snapshot 을 저장해 두고, packet 마다 actor id 로 route 를 다시 조회하지
+remote address snapshot 을 저장해 두고, packet 마다 actor id 로 remote address 를 다시 조회하지
 않는다. 이 resolver 는 session actor ref 가 없는 backend service -> actor
 messaging 경로에서 actor id 를 runtime route 로 바꾸는 용도다.
 
 ```csharp
 namespace Zlink.Framework.Contracts.Actors;
 
-public interface IZLinkActorPlayRouteResolver
+public interface IZLinkActorRemoteAddressResolver
 {
-    ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
+    ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
         string actorId,
         CancellationToken cancellationToken);
 }
 
-public readonly record struct ZLinkActorLocationRoute(
+public readonly record struct ZLinkActorRemoteLocation(
     string RouterChannelId,
     string ActorId,
     RoutingId TargetNodeRid,
@@ -630,7 +630,7 @@ public readonly record struct ZLinkActorLocationRoute(
 `TargetNodeRid` 와 `CurrentSpotRid` 는 기존 Spot routed API 의 destination 으로
 사용된다. `CurrentSpotKind` 는 대상이 Entry Spot 인지 user Spot 인지를 구분한다.
 이 logical route 는 `ActorGeneration` 을 요구하지 않는다. session attach 는
-별도의 concrete route snapshot 과 generation 검증을 계속 사용한다.
+별도의 concrete remote address snapshot 과 generation 검증을 계속 사용한다.
 
 resolver 의 실제 저장소는 application 이 원하는 곳 어디든 채울 수 있다. 예를
 들어 in-memory 캐시, Redis, Registry 기반 lookup 등이 모두 가능하다. Registry 를
@@ -642,7 +642,7 @@ Registry 기반 기본 resolver 등록 예시는 다음과 같다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseRegistryActorRoutes("game");
+    options.UseRegistryActorRemoteAddresses("game");
 });
 ```
 
@@ -694,7 +694,7 @@ validation 단계에서 이루어진다. 자세한 시그니처는
 다른 곳에 사는 actor (예: session-attached actor) 가 어떤 spot 에 합류하려면
 자기 context 의 `JoinSpot(spotName, request)` 를 호출한다. 여기서 `spotName`
 은 application domain spot 이름(`string`) 이다. `RoutingId` 로의 변환은
-framework 내부 spot route resolver 가 처리한다.
+framework 내부 spot remote address resolver 가 처리한다.
 
 ```csharp
 var result = await actor.Context
@@ -753,7 +753,7 @@ public interface IZLinkSessionActorDispatchContext
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
-        ZLinkActorRoute route,
+        ZLinkActorRemoteAddress remoteAddress,
         CancellationToken cancellationToken = default);
 
     ValueTask RelayToActorAsync(...);
@@ -763,6 +763,8 @@ public interface IZLinkActorRef
 {
     string ActorId { get; }
     string ActorType { get; }
+    bool IsRemote { get; }
+    ZLinkActorRemoteAddress RemoteAddress { get; }
 
     ValueTask NotifyDisconnectedAsync(
         CancellationToken cancellationToken = default);
@@ -772,12 +774,12 @@ public interface IZLinkActorRef
 - `AttachActorAsync(...)` -- 이미 만든 actor 인스턴스를 현재 session 에
   attach 한다. session 이 끊어지면 framework 가 자동으로
   `OnDisconnectedAsync` 를 호출한다.
-- `BindActorHandleAsync(actorId, actorType, route, ...)` -- actor handle 을
+- `BindActorHandleAsync(actorId, actorType, remoteAddress, ...)` -- actor handle 을
   얻고, 현재 actor-session binding 을 기록한다. 이 API 는 actor 를 새로
   만들지 않는다. remote actor handle 은 인증이나 입장 흐름에서 받은
-  `ZLinkActorRoute` 를 명시적으로 넘겨 만든다.
-- `BindActorHandleAsync(actorId, actorType, ...)` -- local actor compatibility
-  경로다. local actor 가 이미 있을 때만 성공하고, remote actor route resolver
+  `ZLinkActorRemoteAddress` 를 명시적으로 넘겨 만든다.
+- `BindActorHandleAsync(actorId, actorType, ...)` -- local actor handle 을 바로
+  만들 때 쓰는 경로다. local actor 가 이미 있을 때만 성공하고, actor remote address resolver
   를 fallback 으로 호출하지 않는다.
 - `RelayToActorAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
   보통 framework 가 자동으로 처리한다.
@@ -804,7 +806,7 @@ sequenceDiagram
 
     C->>S: STREAM connect + authenticate
     S->>S: 인증 (AuthenticateReq → actorId)
-    S->>FW: Ensure actor request -> actor route snapshot
+    S->>FW: Ensure actor request -> actor remote address snapshot
     S->>Act: BindActorHandleAsync(actorId, "player", route)
     Note over Act: bind는 actor를 새로 만들지 않음
     S->>Loc: BindSessionAsync(actorId, sessionRouterId, token)
@@ -833,10 +835,10 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
 
 이 구조의 핵심 표면은 다음과 같다.
 
-- **actor route snapshot** -- 인증이나 입장 흐름에서 Play 서버가 actor 를
+- **actor remote address snapshot** -- 인증이나 입장 흐름에서 Play 서버가 actor 를
   준비한 뒤 Session 서버에 돌려주는 router channel id, target node rid, actor
   generation 묶음이다. Session 서버는 이 값을 actor handle attach 에 사용한다.
-- **`IZLinkSpotRouteResolver`** -- "spot name / id → user Spot routing id" 를
+- **`IZLinkSpotRemoteAddressResolver`** -- "spot name / id → user Spot routing id" 를
   푼다. actor 가 `JoinSpot(spotName, ...)` 로 node 경계를 넘을 수 있다면 이
   resolver 를 등록한다.
 - **`IZLinkSessionProxy`** -- Play 서버 actor 가 자기 client 에게 push 를 보낼
@@ -945,28 +947,28 @@ application 이 시작한 close 이므로 session 의 `OnDisconnectedAsync(...)`
 
 handler-interfaces.ko.md §5.7 의 route 타입은 두 가지 의미로 나뉜다. backend
 service 가 actor id 로 현재 위치를 찾을 때는 generation 없는
-`ZLinkActorLocationRoute` 를 사용한다. session attach 처럼 이미 붙은 concrete
-Actor instance를 보호해야 하는 경로는 generation을 가진 `ZLinkActorRoute`
+`ZLinkActorRemoteLocation` 를 사용한다. session attach 처럼 이미 붙은 concrete
+Actor instance를 보호해야 하는 경로는 generation을 가진 `ZLinkActorRemoteAddress`
 snapshot을 사용한다.
 
 ```csharp
-public readonly record struct ZLinkActorLocationRoute(
+public readonly record struct ZLinkActorRemoteLocation(
     string RouterChannelId,
     string ActorId,
     RoutingId TargetNodeRid,
     RoutingId CurrentSpotRid,
     ZLinkSpotKind CurrentSpotKind);
 
-public readonly record struct ZLinkActorRoute(
+public readonly record struct ZLinkActorRemoteAddress(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     ulong ActorGeneration);
 ```
 
-- **`ZLinkActorLocationRoute`** -- "이 actor id 가 현재 어느 node와 Spot에
+- **`ZLinkActorRemoteLocation`** -- "이 actor id 가 현재 어느 node와 Spot에
   있는가"를 나타낸다. backend actor messaging은 이 값을 기존 Spot routed API의
   destination으로 사용한다.
-- **`ZLinkActorRoute`** -- session attach가 concrete Actor instance를 고정할 때
+- **`ZLinkActorRemoteAddress`** -- session attach가 concrete Actor instance를 고정할 때
   쓰는 snapshot이다. 이 route에서는 generation 검증이 유지된다.
 - actor-session binding 은 public route resolver 결과가 아니다. 이전 stream
   의 뒤늦은 close 가 새 binding 을 지우지 못하도록, 내부에서 binding token
@@ -983,8 +985,8 @@ builder.Services.AddZLinkFramework(options =>
     {
         discovery.Add("tcp://registry1:5551");
     });
-    options.UseRegistryActorRoutes("game");
-    options.UseRegistrySpotRoutes("game");
+    options.UseRegistryActorRemoteAddresses("game");
+    options.UseRegistrySpotRemoteAddresses("game");
     // STREAM session 등록 + routed channel 등록 (별도 문서 참고)
 });
 ```
@@ -995,8 +997,8 @@ Play 서버는 다음과 같이 등록한다.
 builder.Services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<PlayerActorFactory>("player");
-    options.UseRegistryActorRoutes("game");
-    options.UseRegistrySpotRoutes("game");
+    options.UseRegistryActorRemoteAddresses("game");
+    options.UseRegistrySpotRemoteAddresses("game");
 
     options.AddSpotMesh("game.stage", mesh =>
     {
@@ -1017,19 +1019,19 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-Registry actor route resolver 는 session relay 의 필수 등록 요소가 아니다.
+Registry actor remote address resolver 는 session relay 의 필수 등록 요소가 아니다.
 session 서버는 client packet 마다 actor id route lookup 을 수행하지 않고, actor
-attach 시점에 받은 route snapshot 을 저장한다. `IZLinkActorPlayRouteResolver` 는
+attach 시점에 받은 remote address snapshot 을 저장한다. `IZLinkActorRemoteAddressResolver` 는
 session actor ref 없이 actor id 만 가진 backend actor messaging 경로에서 사용한다.
 
 actor-session binding 은 framework / core runtime 내부에서 관리한다. 각 서버의
 역할을 나누어 보면 다음과 같다.
 
-- Session 서버는 인증 후 Play 서버의 ensure actor 응답에서 route snapshot 을
-  받고, `BindActorHandleAsync(actorId, actorType, route, ...)` 로 actor handle 과
+- Session 서버는 인증 후 Play 서버의 ensure actor 응답에서 remote address snapshot 을
+  받고, `BindActorHandleAsync(actorId, actorType, remoteAddress, ...)` 로 actor handle 과
   session binding 을 얻는다.
 - Play 서버는 `IZLinkActorManager.GetOrCreateAsync(...)` 로 actor 를 준비한 뒤
-  `GetRouteAsync(...)` 로 concrete actor route snapshot 을 응답에 싣는다.
+  `GetRemoteAddressAsync(...)` 로 concrete actor remote address snapshot 을 응답에 싣는다.
 - Play actor 는 `IZLinkSessionProxy` 로 자기 client binding 을 사용한다. application
   service 가 다른 actor 의 client 로 보내야 하면 대상 actor 로 메시지를 보내서 처리한다.
 
@@ -1050,11 +1052,11 @@ public interface IZLinkFrameworkOptions
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
 
-    void AddActorPlayRouteResolver<TResolver>()
-        where TResolver : class, IZLinkActorPlayRouteResolver;
+    void AddActorRemoteAddressResolver<TResolver>()
+        where TResolver : class, IZLinkActorRemoteAddressResolver;
 
-    void AddSpotRouteResolver<TResolver>()
-        where TResolver : class, IZLinkSpotRouteResolver;
+    void AddSpotRemoteAddressResolver<TResolver>()
+        where TResolver : class, IZLinkSpotRemoteAddressResolver;
 
 }
 ```
@@ -1064,8 +1066,8 @@ public interface IZLinkFrameworkOptions
 | 메서드 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
 | `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory를 매핑 |
-| `AddActorPlayRouteResolver<>()` | actor를 외부에서 부르는 모든 서버 | actor id → play node routing |
-| `AddSpotRouteResolver<>()` | actor가 spot name/id로 user Spot에 join하거나 spot client를 쓰는 서버 | spot name/id → spot routing |
+| `AddActorRemoteAddressResolver<>()` | actor를 외부에서 부르는 모든 서버 | actor id → play node routing |
+| `AddSpotRemoteAddressResolver<>()` | actor가 spot name/id로 user Spot에 join하거나 spot client를 쓰는 서버 | spot name/id → spot routing |
 | `AddSpotMesh(...).AddNode(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
 | `AddSpotMesh(...).AddNode(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | spotName 키로 user Spot factory 매핑 |
 
@@ -1193,7 +1195,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
 [^attribute-scan]: attribute scan은 어셈블리 안의 타입과 메서드를 훑으면서
     특정 attribute가 붙은 항목을 찾아 자동으로 등록하는 방식이다.
 
-[^playroute]: **play route resolver**는 actor id를 받아 그 actor가 지금 어느
+[^playroute]: **play remote address resolver**는 actor id를 받아 그 actor가 지금 어느
     routed channel의 어느 노드에 사는지를 돌려주는 resolver다.
     session actor dispatch 의 relay hot path 에서는 사용하지 않고, session actor
     ref 가 없는 backend actor messaging 경로에서 사용한다.

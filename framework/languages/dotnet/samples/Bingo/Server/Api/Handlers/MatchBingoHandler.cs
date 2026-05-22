@@ -18,7 +18,7 @@ internal sealed class MatchBingoHandler(IZLinkClient client)
                 new AllocateBingoRoomReq(request.Mode))
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<AllocateBingoRoomRes>(cancellationToken)
-            .ConfigureAwait(false);
+            ;
         return new MatchBingoApiRes(allocated.RoomId);
     }
 }

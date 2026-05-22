@@ -20,9 +20,9 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
             .JoinSpot(request.MatchId, request)
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<JoinMatchSpotResult>(cancellationToken)
-            .ConfigureAwait(false);
+            ;
         await notifications.PublishAsync(result.Events, cancellationToken)
-            .ConfigureAwait(false);
+            ;
         var reply = new JoinMatchRes(
             result.MatchId,
             result.ActorId,

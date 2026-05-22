@@ -144,13 +144,13 @@ internal sealed class ZLinkActorJoinSpotCall<TRequest>(
             return rid;
         }
 
-        if (runtime.Services.GetService(typeof(IZLinkSpotRouteResolver)) is not IZLinkSpotRouteResolver resolver)
+        if (runtime.Services.GetService(typeof(IZLinkSpotRemoteAddressResolver)) is not IZLinkSpotRemoteAddressResolver resolver)
         {
             throw new ZLinkConfigurationException(
-                "Actor JoinSpot(string, ...) requires AddSpotRouteResolver<TResolver>().");
+                "Actor JoinSpot(string, ...) requires AddSpotRemoteAddressResolver<TResolver>().");
         }
 
-        var route = await resolver.ResolveSpotRouteAsync(
+        var route = await resolver.ResolveSpotRemoteAddressAsync(
             spotName ?? throw new InvalidOperationException("SPOT name is required."),
             cancellationToken).ConfigureAwait(false);
         return route.SpotRid;

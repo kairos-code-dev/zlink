@@ -26,7 +26,7 @@ internal sealed class CreateMatchHandler(IZLinkClient client)
                 new CreateMatchRoomReq())
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<CreateMatchRoomRes>(cancellationToken)
-            .ConfigureAwait(false);
+            ;
 
         return new CreateMatchRes(room.MatchId, ownerActorId);
     }

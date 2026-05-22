@@ -17,7 +17,7 @@ internal sealed class BingoRoomDirectory(IZLinkSpotManager spots)
     {
         var settings = BingoRoomSettings.Create(mode, _roomSeq + 1);
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _gate.WaitAsync(cancellationToken);
         try
         {
             if (_currentRoomId is null
@@ -28,7 +28,7 @@ internal sealed class BingoRoomDirectory(IZLinkSpotManager spots)
                 settings = settings with { RoomName = $"Bingo Room {++_roomSeq:000}" };
                 using var settingsPart = settings.ToJson();
                 var room = await spots.CreateAsync(SampleNames.RoomSpotType, [settingsPart], cancellationToken)
-                    .ConfigureAwait(false);
+                    ;
                 _currentRoomId = room.SpotRid.ToHex();
                 _currentRoomSettings = settings;
                 _reservedSeats = 0;

@@ -6,10 +6,10 @@ using Zlink.Framework.AspNetCore;
 namespace Zlink.Framework.UnitTests;
 
 
-public sealed class RegistryRoutesTests : RegistrationValidationSupport
+public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
 {
     [Fact]
-    public void RegistryActorRoutes_Registers_Default_Service()
+    public void RegistryActorRemoteAddresses_Registers_Default_Service()
     {
         var services = new ServiceCollection();
 
@@ -23,16 +23,16 @@ public sealed class RegistryRoutesTests : RegistrationValidationSupport
             {
                 routed.Bind("tcp://127.0.0.1:6202");
             });
-            options.UseRegistryActorRoutes("bingo");
+            options.UseRegistryActorRemoteAddresses("bingo");
         });
 
         using var provider = services.BuildServiceProvider();
-        Assert.IsType<ZLinkRegistryActorRouteResolver>(
-            provider.GetRequiredService<IZLinkActorPlayRouteResolver>());
+        Assert.IsType<ZLinkRegistryActorRemoteAddressResolver>(
+            provider.GetRequiredService<IZLinkActorRemoteAddressResolver>());
     }
 
     [Fact]
-    public void RegistrySpotRoutes_Registers_Default_Service()
+    public void RegistrySpotRemoteAddresses_Registers_Default_Service()
     {
         var services = new ServiceCollection();
 
@@ -46,16 +46,16 @@ public sealed class RegistryRoutesTests : RegistrationValidationSupport
             {
                 routed.Bind("tcp://127.0.0.1:6202");
             });
-            options.UseRegistrySpotRoutes("bingo");
+            options.UseRegistrySpotRemoteAddresses("bingo");
         });
 
         using var provider = services.BuildServiceProvider();
-        Assert.IsType<ZLinkRegistrySpotRouteResolver>(
-            provider.GetRequiredService<IZLinkSpotRouteResolver>());
+        Assert.IsType<ZLinkRegistrySpotRemoteAddressResolver>(
+            provider.GetRequiredService<IZLinkSpotRemoteAddressResolver>());
     }
 
     [Fact]
-    public void RegistrySpotRoutes_Require_SpotDiscovery()
+    public void RegistrySpotRemoteAddresses_Require_SpotDiscovery()
     {
         var services = new ServiceCollection();
 
@@ -66,14 +66,14 @@ public sealed class RegistryRoutesTests : RegistrationValidationSupport
                 {
                     routed.Bind("tcp://127.0.0.1:6202");
                 });
-                options.UseRegistrySpotRoutes("bingo");
+                options.UseRegistrySpotRemoteAddresses("bingo");
             }));
 
         Assert.Contains("requires AddSpotMesh", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void RegistryActorRoutes_Require_Discovery()
+    public void RegistryActorRemoteAddresses_Require_Discovery()
     {
         var services = new ServiceCollection();
 
@@ -84,7 +84,7 @@ public sealed class RegistryRoutesTests : RegistrationValidationSupport
                 {
                     routed.Bind("tcp://127.0.0.1:6202");
                 });
-                options.UseRegistryActorRoutes("bingo");
+                options.UseRegistryActorRemoteAddresses("bingo");
             }));
 
         Assert.Contains("requires UseDiscovery", exception.Message, StringComparison.Ordinal);
@@ -98,8 +98,8 @@ public sealed class RegistryRoutesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseRegistryActorRoutes("bingo");
-                options.AddActorPlayRouteResolver<TestActorPlayRouteResolver>();
+                options.UseRegistryActorRemoteAddresses("bingo");
+                options.AddActorRemoteAddressResolver<TestActorRemoteAddressResolver>();
             }));
 
         Assert.Contains("already configured", exception.Message, StringComparison.Ordinal);
@@ -125,7 +125,7 @@ public sealed class RegistryRoutesTests : RegistrationValidationSupport
                 {
                     routed.Bind("tcp://127.0.0.1:6203");
                 });
-                options.UseRegistrySpotRoutes("bingo");
+                options.UseRegistrySpotRemoteAddresses("bingo");
             }));
 
         Assert.Contains("requires RouterChannelId", exception.Message, StringComparison.Ordinal);

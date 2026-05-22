@@ -230,12 +230,7 @@ func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 }
 
 func useMultiDealerDealerSharedClientContext(transport string, msgSize int) bool {
-	switch transport {
-	case "ws", "wss", "tls":
-		return msgSize <= 256
-	default:
-		return false
-	}
+	return true
 }
 
 func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfig, window perfcommon.BenchmarkWindow) {

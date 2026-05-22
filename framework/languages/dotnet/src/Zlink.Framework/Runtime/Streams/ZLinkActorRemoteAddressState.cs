@@ -1,17 +1,17 @@
 namespace Zlink.Framework.Runtime.Streams;
 
-internal sealed class ZLinkActorRouteState(ZLinkActorRoute route)
+internal sealed class ZLinkActorRemoteAddressState(ZLinkActorRemoteAddress remoteAddress)
 {
     private readonly object _gate = new();
-    private ZLinkActorRoute _route = route;
+    private ZLinkActorRemoteAddress _remoteAddress = remoteAddress;
 
-    public ZLinkActorRoute Snapshot
+    public ZLinkActorRemoteAddress Snapshot
     {
         get
         {
             lock (_gate)
             {
-                return _route;
+                return _remoteAddress;
             }
         }
     }
@@ -26,25 +26,25 @@ internal sealed class ZLinkActorRouteState(ZLinkActorRoute route)
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                "Actor route update requires a concrete actor generation.",
+                "Actor remote address update requires a concrete actor generation.",
                 isRetriable: false);
         }
 
         lock (_gate)
         {
-            if (_route.ActorGeneration == newActorGeneration
-                && _route.TargetNodeRid.Equals(targetNodeRid)
-                && string.Equals(_route.RouterChannelId, routerChannelId, StringComparison.Ordinal))
+            if (_remoteAddress.ActorGeneration == newActorGeneration
+                && _remoteAddress.TargetNodeRid.Equals(targetNodeRid)
+                && string.Equals(_remoteAddress.RouterChannelId, routerChannelId, StringComparison.Ordinal))
             {
                 return true;
             }
 
-            if (_route.ActorGeneration != expectedActorGeneration)
+            if (_remoteAddress.ActorGeneration != expectedActorGeneration)
             {
                 return false;
             }
 
-            _route = new ZLinkActorRoute(
+            _remoteAddress = new ZLinkActorRemoteAddress(
                 routerChannelId,
                 targetNodeRid,
                 newActorGeneration);

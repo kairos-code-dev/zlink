@@ -1,20 +1,19 @@
 namespace Zlink.Framework.Contracts.Actors;
 
-public interface IZLinkActorPlayRouteResolver
+public interface IZLinkActorRemoteAddressResolver
 {
-    ValueTask<ZLinkActorLocationRoute> ResolvePlayRouteAsync(
+    ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
         string actorId,
         CancellationToken cancellationToken);
 }
 
-public readonly record struct ZLinkActorLocationRoute(
-    string RouterChannelId,
+public readonly record struct ZLinkActorRemoteLocation(
     string ActorId,
-    RoutingId TargetNodeRid,
+    ZLinkActorRemoteAddress RemoteAddress,
     RoutingId CurrentSpotRid,
     ZLinkSpotKind CurrentSpotKind);
 
-public readonly record struct ZLinkActorRoute(
+public readonly record struct ZLinkActorRemoteAddress(
     string RouterChannelId,
     RoutingId TargetNodeRid,
     ulong ActorGeneration);

@@ -7,7 +7,7 @@ namespace Zlink.Framework.E2ETests;
 public sealed class DiscoveryTests
 {
     [Fact]
-    public async Task RegistryActorRoutes_Publishes_FrameworkActorRoute()
+    public async Task RegistryActorRemoteAddresses_Publishes_FrameworkActorRemoteAddress()
     {
         var registryPubEndpoint = ChannelMessagingTestSupport.GetTcpEndpoint();
         var registryRouterEndpoint = ChannelMessagingTestSupport.GetTcpEndpoint();
@@ -30,7 +30,7 @@ public sealed class DiscoveryTests
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
             options.UseSpotDiscovery(spotChannel, discovery => discovery.Add(registryRouterEndpoint));
-            options.UseRegistryActorRoutes("registry-actor-sync");
+            options.UseRegistryActorRemoteAddresses("registry-actor-sync");
             options.AddActorFactory<StreamTestSupport.GatewayActorFactory>("player");
             options.AddRouteMeshChannel("play", route =>
             {
@@ -60,18 +60,18 @@ public sealed class DiscoveryTests
 
         var manager = frameworkHost.Services.GetRequiredService<IZLinkActorManager>();
         _ = await manager.GetOrCreateAsync("actor-sync-player", "player");
-        var resolver = frameworkHost.Services.GetRequiredService<IZLinkActorPlayRouteResolver>();
+        var resolver = frameworkHost.Services.GetRequiredService<IZLinkActorRemoteAddressResolver>();
         var route = await RetryAsync(
-            () => resolver.ResolvePlayRouteAsync("actor-sync-player", CancellationToken.None).AsTask(),
-            result => result.TargetNodeRid == routeRid
+            () => resolver.ResolveActorRemoteAddressAsync("actor-sync-player", CancellationToken.None).AsTask(),
+            result => result.RemoteAddress.TargetNodeRid == routeRid
                 && result.ActorId == "actor-sync-player"
                 && result.CurrentSpotRid.Size > 0
                 && result.CurrentSpotKind == ZLinkSpotKind.Entry,
             TimeSpan.FromSeconds(5));
 
-        Assert.Equal("play", route.RouterChannelId);
+        Assert.Equal("play", route.RemoteAddress.RouterChannelId);
         Assert.Equal("actor-sync-player", route.ActorId);
-        Assert.Equal(routeRid, route.TargetNodeRid);
+        Assert.Equal(routeRid, route.RemoteAddress.TargetNodeRid);
         Assert.True(route.CurrentSpotRid.Size > 0);
         Assert.Equal(ZLinkSpotKind.Entry, route.CurrentSpotKind);
 
@@ -80,7 +80,7 @@ public sealed class DiscoveryTests
     }
 
     [Fact]
-    public async Task RegistrySpotRoutes_Enables_SpotOwnerSync()
+    public async Task RegistrySpotRemoteAddresses_Enables_SpotOwnerSync()
     {
         var registryPubEndpoint = ChannelMessagingTestSupport.GetTcpEndpoint();
         var registryRouterEndpoint = ChannelMessagingTestSupport.GetTcpEndpoint();
@@ -100,7 +100,7 @@ public sealed class DiscoveryTests
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
             options.UseSpotDiscovery(spotChannel, discovery => discovery.Add(registryRouterEndpoint));
-            options.UseRegistrySpotRoutes("registry-spot-sync");
+            options.UseRegistrySpotRemoteAddresses("registry-spot-sync");
             options.AddRouteMeshChannel("play", route => route.Bind(routeEndpoint));
             options.AddSpotNode("spot-sync-node", spot =>
             {

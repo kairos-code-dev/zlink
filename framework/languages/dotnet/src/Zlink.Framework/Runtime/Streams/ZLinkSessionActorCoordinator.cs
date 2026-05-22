@@ -15,13 +15,13 @@ internal sealed class ZLinkSessionActorCoordinator(
         CancellationToken cancellationToken)
     {
         EnsureLocalActorExists(actorId, actorType);
-        var route = runtime.ResolveLocalActorRoute(actorId, actorType);
+        var remoteAddress = runtime.ResolveLocalActorRemoteAddress(actorId, actorType);
 
         return await BindHandleAsync(
                 context,
                 actorId,
                 actorType,
-                route,
+                remoteAddress,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -30,30 +30,56 @@ internal sealed class ZLinkSessionActorCoordinator(
         ZLinkSessionContext context,
         string actorId,
         string actorType,
-        ZLinkActorRoute route,
+        ZLinkActorRemoteAddress remoteAddress,
         CancellationToken cancellationToken)
     {
-        EnsureConcreteRoute(route);
-        var isLocalRoute = IsLocalRoute(route.RouterChannelId, route.TargetNodeRid);
-        if (isLocalRoute)
+        EnsureConcreteRemoteAddress(remoteAddress);
+        var isRemote = !IsLocalAddress(remoteAddress.RouterChannelId, remoteAddress.TargetNodeRid);
+        if (!isRemote)
         {
             EnsureLocalActorExists(actorId, actorType);
         }
 
         Func<ZLinkActorRef, CancellationToken, ValueTask> notifyDisconnectedAsync =
-            isLocalRoute
-            ? NotifyLocalActorDisconnectedAsync
-            : NotifyRoutedActorDisconnectedAsync;
+            isRemote
+                ? NotifyRemoteActorDisconnectedAsync
+                : NotifyLocalActorDisconnectedAsync;
         return await _bindings.BindAsync(
             context,
             context.SessionId,
             actorId,
             actorType,
-            route.RouterChannelId,
-            route.TargetNodeRid,
-            route.ActorGeneration,
+            remoteAddress.RouterChannelId,
+            remoteAddress.TargetNodeRid,
+            remoteAddress.ActorGeneration,
+            isRemote,
             notifyDisconnectedAsync,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<IZLinkActorRef> BindHandleAsync(
+        ZLinkSessionContext context,
+        IZLinkActorRef actor,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        if (!actor.IsRemote)
+        {
+            return await BindHandleAsync(
+                    context,
+                    actor.ActorId,
+                    actor.ActorType,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await BindHandleAsync(
+                context,
+                actor.ActorId,
+                actor.ActorType,
+                actor.RemoteAddress,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask AttachAsync(
@@ -77,8 +103,8 @@ internal sealed class ZLinkSessionActorCoordinator(
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
         }
 
-        var route = actorRef.RouteSnapshot;
-        if (IsLocalRoute(route.RouterChannelId, route.TargetNodeRid))
+        var remoteAddress = actorRef.RemoteAddressSnapshot;
+        if (!actorRef.IsRemote)
         {
             await DispatchLocalAsync(actorRef, header, payload, replyRawAsync, cancellationToken)
                 .ConfigureAwait(false);
@@ -87,7 +113,7 @@ internal sealed class ZLinkSessionActorCoordinator(
 
         await _relay.DispatchRemoteAsync(
                 actorRef,
-                route,
+                remoteAddress,
                 header,
                 payload,
                 replyRawAsync,
@@ -141,21 +167,21 @@ internal sealed class ZLinkSessionActorCoordinator(
         }
     }
 
-    private bool IsLocalRoute(string routerChannelId, RoutingId targetNodeRid)
+    private bool IsLocalAddress(string routerChannelId, RoutingId targetNodeRid)
     {
         return targetNodeRid.Equals(runtime.ResolveSessionRouterId(routerChannelId));
     }
 
-    private static void EnsureConcreteRoute(ZLinkActorRoute route)
+    private static void EnsureConcreteRemoteAddress(ZLinkActorRemoteAddress remoteAddress)
     {
-        if (route.ActorGeneration != 0)
+        if (remoteAddress.ActorGeneration != 0)
         {
             return;
         }
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorRouteNotFound,
-            "Actor route requires a concrete actor generation.",
+            "Actor remote address requires a concrete actor generation.",
             isRetriable: false);
     }
 
@@ -179,7 +205,7 @@ internal sealed class ZLinkSessionActorCoordinator(
             .ConfigureAwait(false);
     }
 
-    private async ValueTask NotifyRoutedActorDisconnectedAsync(
+    private async ValueTask NotifyRemoteActorDisconnectedAsync(
         ZLinkActorRef actor,
         CancellationToken cancellationToken)
     {

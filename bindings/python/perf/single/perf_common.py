@@ -248,11 +248,11 @@ def recv_into_storage(sock, storage, *, method="recv", blocking=True):
 def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                          received, latencies):
     """C perf_single_one_way.hpp run_active_phase receiver, fused for the
-    Python hot path: blocking first recv then DONTWAIT burst-drain on one
-    reused storage object; header decoded strictly at offset 0 with an
-    exact size check; latency = recv_ns - sent_ts_ns clamped to 0.0 (the
-    message still counts toward throughput). Exits only on the wire stop
-    token or a fatal recv error. Returns the updated received count."""
+    Python hot path on one reused storage object. Python uses DONTWAIT for
+    the receive loop so a lost stop token cannot leave the runner blocked
+    inside native recv. Header is decoded strictly at offset 0 with an exact
+    size check; latency = recv_ns - sent_ts_ns clamped to 0.0. Returns the
+    updated received count."""
 
     from perf_metrics import (
         HEADER_FORMAT,
@@ -270,18 +270,28 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
     perf_counter = time.perf_counter
     time_ns = time.time_ns
     count = received
+    stop_wait_end = active_end + (_env_int("PERF_SINGLE_STOP_WAIT_MS", 2000) / 1000.0)
 
     stop_received = False
     while not stop_received:
-        flags = 0  # C: blocking first recv, then DONTWAIT burst-drain
+        if perf_counter() >= stop_wait_end:
+            break
+        flags = dont_wait
         while True:
             try:
                 if not recv_method(storage, flags=flags):
+                    if flags == dont_wait and perf_counter() >= active_end:
+                        time.sleep(0.001)
                     break
             except recv_error as exc:
                 if exc.result == no_data:
+                    if flags == dont_wait and perf_counter() >= active_end:
+                        time.sleep(0.001)
                     break
                 raise
+            if perf_counter() >= stop_wait_end:
+                stop_received = True
+                break
             flags = dont_wait
             parts = storage.parts
             data = parts[-1].to_bytes() if parts else b""
@@ -355,7 +365,10 @@ def send_nonblocking(sock, payload, *, routing_id=None):
             return bool(msg_send(sock, payload, flags=flag))
         return bool(routed_send(sock, routing_id, payload, flags=flag))
     except zlink_mod.SubmitError as exc:
-        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+        if exc.result in (
+            zlink_mod.SubmitResult.BACKPRESSURED,
+            zlink_mod.SubmitResult.NOT_CONNECTED,
+        ):
             return False
         raise
 

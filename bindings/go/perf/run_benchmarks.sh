@@ -34,6 +34,9 @@ RUNS="1"
 RESULTS_DIR="${SCRIPT_DIR}/results/single/report"
 RESULTS_TAG=""
 OUTPUT_FILE=""
+BUILD_DIR="${SCRIPT_DIR}/build/single"
+REUSE_BUILD=0
+CLEAN_BUILD=0
 PIN_CPU="off"
 IO_THREADS=""
 HWM=""
@@ -125,6 +128,7 @@ while [[ $# -gt 0 ]]; do
     --results-tag) RESULTS_TAG="$2"; shift 2 ;;
     --output) OUTPUT_FILE="$2"; shift 2 ;;
     --build-dir)
+      BUILD_DIR="$2"
       shift 2 ;;
     --io-threads)
       IO_THREADS="$2"
@@ -157,7 +161,11 @@ while [[ $# -gt 0 ]]; do
     --auto-hwm-profile)
       AUTO_HWM_PROFILE="$2"
       shift 2 ;;
-    --reuse-build|--clean-build)
+    --reuse-build)
+      REUSE_BUILD=1
+      shift ;;
+    --clean-build)
+      CLEAN_BUILD=1
       shift ;;
     --pin-cpu)
       PIN_CPU="on"
@@ -167,6 +175,11 @@ while [[ $# -gt 0 ]]; do
       exit 1 ;;
   esac
 done
+
+if [[ "${REUSE_BUILD}" -eq 1 && "${CLEAN_BUILD}" -eq 1 ]]; then
+  echo "Error: --reuse-build and --clean-build are mutually exclusive." >&2
+  exit 1
+fi
 
 if [[ -n "${HWM}" ]]; then
   export PERF_SINGLE_HWM="${HWM}"
@@ -195,6 +208,9 @@ fi
 if [[ -n "${AUTO_HWM_PROFILE}" ]]; then
   export PERF_CTX_AUTO_HWM_PROFILE="${AUTO_HWM_PROFILE}"
 fi
+if [[ -z "${GOMAXPROCS:-}" && -n "${PERF_GO_GOMAXPROCS:-}" ]]; then
+  export GOMAXPROCS="${PERF_GO_GOMAXPROCS}"
+fi
 
 case "$(uname -s)" in
   Linux*) PLATFORM="linux" ;;
@@ -202,9 +218,32 @@ case "$(uname -s)" in
   *) PLATFORM="windows" ;;
 esac
 
+GO_SINGLE_BIN="${BUILD_DIR}/perf_single"
+
+build_go_perf_binary() {
+  if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
+    rm -rf "${BUILD_DIR}"
+  fi
+  mkdir -p "${BUILD_DIR}"
+  if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+    if [[ ! -x "${GO_SINGLE_BIN}" ]]; then
+      echo "existing Go single perf binary not found for --reuse-build: ${GO_SINGLE_BIN}" >&2
+      exit 1
+    fi
+    return
+  fi
+  go build -o "${GO_SINGLE_BIN}" ./perf/single
+}
+
 run_go_perf() {
+  local package="$1"
+  shift
+  if [[ "${package}" != "./perf/single" ]]; then
+    echo "Error: unsupported Go perf package: ${package}" >&2
+    return 1
+  fi
   if [[ "${PIN_CPU}" != "on" ]]; then
-    go run "$@"
+    "${GO_SINGLE_BIN}" "$@"
     return
   fi
 
@@ -214,7 +253,7 @@ run_go_perf() {
         echo "Error: --pin-cpu requires taskset on Linux" >&2
         return 1
       fi
-      taskset -c 0 go run "$@"
+      taskset -c 0 "${GO_SINGLE_BIN}" "$@"
       ;;
     *)
       echo "Error: --pin-cpu is not supported by this runner on $(uname -s)" >&2
@@ -256,6 +295,7 @@ RESULTS_FILE="${RESULTS_DIR}/perf_go_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX
 mkdir -p "${RESULTS_DIR}"
 cleanup_report_dir "${RESULTS_DIR}"
 prepare_core_runtime
+build_go_perf_binary
 START_SECONDS="$(date +%s)"
 TOTAL_TIME_ENABLED=1
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-single.XXXXXX")"
@@ -363,6 +403,7 @@ emit_effective_options_single() {
   echo "- duration_seconds: ${DURATION}"
   echo "- timeout_seconds: ${PERF_SINGLE_TIMEOUT_SECONDS:-30}"
   echo "- io_threads: ${IO_THREADS:-1}"
+  echo "- go_gomaxprocs: ${GOMAXPROCS:-unset}"
   echo "- hwm: $(effective_or_auto "${HWM}")"
   echo "- sndhwm: $(effective_or_auto "${SEND_HWM:-${HWM}}")"
   echo "- rcvhwm: $(effective_or_auto "${RECV_HWM:-${HWM}}")"

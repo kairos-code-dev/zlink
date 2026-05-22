@@ -32,7 +32,7 @@ public static class PlayServerHostFactory
                 channel.EnableClient();
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.UseRegistrySpotRoutes("bingo");
+            options.UseRegistrySpotRemoteAddresses("bingo");
             options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
             {
                 routed.Bind(topology.PlayRouterEndpoint);

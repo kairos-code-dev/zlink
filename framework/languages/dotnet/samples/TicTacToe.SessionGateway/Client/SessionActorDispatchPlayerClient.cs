@@ -25,7 +25,7 @@ internal sealed class SessionActorDispatchPlayerClient(
             RequestTimeout = SampleTimings.RequestTimeout,
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
         });
-        await connector.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        await connector.ConnectAsync(cancellationToken);
 
         var inbox = new SessionActorNotificationInbox();
         inbox.Register(connector);

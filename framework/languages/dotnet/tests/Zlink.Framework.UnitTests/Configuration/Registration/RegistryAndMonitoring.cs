@@ -83,8 +83,8 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
             options.DefaultTimeout = TimeSpan.FromSeconds(5);
             options.Codecs.AddProtobuf();
             options.UseFilter<TestFilter>();
-            options.AddActorPlayRouteResolver<TestActorPlayRouteResolver>();
-            options.AddSpotRouteResolver<TestSpotRouteResolver>();
+            options.AddActorRemoteAddressResolver<TestActorRemoteAddressResolver>();
+            options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
             options.ConfigureDispatch(dispatch =>
             {
                 dispatch.SpotDispatchMode = ZLinkDispatchMode.Dynamic;
@@ -129,10 +129,10 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         var filter = provider.GetRequiredService<TestFilter>();
 
         Assert.NotNull(filter);
-        Assert.IsType<TestActorPlayRouteResolver>(
-            provider.GetRequiredService<IZLinkActorPlayRouteResolver>());
-        Assert.IsType<TestSpotRouteResolver>(
-            provider.GetRequiredService<IZLinkSpotRouteResolver>());
+        Assert.IsType<TestActorRemoteAddressResolver>(
+            provider.GetRequiredService<IZLinkActorRemoteAddressResolver>());
+        Assert.IsType<TestSpotRemoteAddressResolver>(
+            provider.GetRequiredService<IZLinkSpotRemoteAddressResolver>());
         Assert.Equal(TimeSpan.FromSeconds(5), registration.DefaultTimeout);
         Assert.Contains("protobuf", registration.Codecs.RegisteredCodecs);
         Assert.Equal(ZLinkDispatchMode.Dynamic, registration.DispatchOptions.SpotDispatchMode);

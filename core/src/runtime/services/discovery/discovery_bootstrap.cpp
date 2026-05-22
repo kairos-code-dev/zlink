@@ -11,6 +11,7 @@
 #include "services/discovery/discovery_runtime_internal.hpp"
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/routing_id_utils.hpp"
+#include "utils/routing_id.hpp"
 
 #include <string.h>
 #if !defined _WIN32
@@ -234,9 +235,7 @@ bool discovery_bootstrap_socket_config_t::ensure_socket_routing_id (
         return false;
     }
     if (_routing_id_override.empty () && _routing_id.size > 0) {
-        _routing_id_override.assign (reinterpret_cast<const char *> (
-                                       _routing_id.data),
-                                     _routing_id.size);
+        _routing_id_override = zlink::routing_id_key (_routing_id);
     }
     return true;
 }

@@ -6,6 +6,7 @@
 #include "core/send_internal.hpp"
 #include "services/registry/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "utils/routing_id.hpp"
 
 #include <algorithm>
 #include <string.h>
@@ -181,12 +182,6 @@ struct provider_projection_state_t
     std::string endpoint;
 };
 
-std::string member_routing_id_key_local (const zlink_routing_id_t &rid_)
-{
-    if (rid_.size == 0)
-        return std::string ();
-    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
-}
 }
 
 int zlink::registry_t::topology_snapshot (zlink_registry_topology_entry_t *entries_,
@@ -297,9 +292,7 @@ bool zlink::registry_t::select_spot_owner_entry_locked (
         topology_key_t topology_key;
         topology_key.service_kind = entry.service_kind;
         topology_key.service_role = entry.service_role;
-        topology_key.routing_id_key.assign (
-          reinterpret_cast<const char *> (entry.routing_id.data),
-          entry.routing_id.size);
+        topology_key.routing_id_key = zlink::routing_id_key (entry.routing_id);
         topology_key.channel_name = entry.channel_name;
         topology_key.endpoint = entry.endpoint;
         std::map<topology_key_t, topology_entry_t>::const_iterator tit =
@@ -340,9 +333,7 @@ bool zlink::registry_t::select_spot_owner_entry_locked (
             const uint64_t registration_id = pit->second.registration_id;
             const uint64_t reported_at = entry.last_reported_ms;
             const std::string owner_rid =
-              std::string (reinterpret_cast<const char *> (
-                             pit->second.routing_id.data),
-                           pit->second.routing_id.size);
+              zlink::routing_id_key (pit->second.routing_id);
             if (!found || reported_at > best_reported_at
                 || (reported_at == best_reported_at
                     && registration_id > best_registration_id)
@@ -461,7 +452,7 @@ int zlink::registry_t::member_peers (const char *channel_name_,
                    sit->second.providers.begin ();
                  pit != sit->second.providers.end (); ++pit) {
                 const std::string rid_key =
-                  member_routing_id_key_local (pit->second.routing_id);
+                  zlink::routing_id_key (pit->second.routing_id);
                 if (rid_key.empty ())
                     continue;
                 provider_projection_key_t projection_key;
@@ -486,7 +477,7 @@ int zlink::registry_t::member_peers (const char *channel_name_,
             for (provider_map_t::const_iterator pit = sit->second.providers.begin ();
                  pit != sit->second.providers.end (); ++pit) {
                 const std::string rid_key =
-                  member_routing_id_key_local (pit->second.routing_id);
+                  zlink::routing_id_key (pit->second.routing_id);
                 if (!rid_key.empty ()) {
                     provider_projection_key_t projection_key;
                     projection_key.service_role = pit->second.service_role;

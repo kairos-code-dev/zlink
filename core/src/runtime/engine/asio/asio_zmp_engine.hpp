@@ -48,7 +48,6 @@ class asio_zmp_engine_t ZLINK_FINAL : public asio_engine_t
     void init_zmp_engine ();
     bool receive_hello ();
     bool parse_hello (const unsigned char *data_, size_t size_);
-    bool is_socket_type_compatible (int peer_type_) const;
     bool process_handshake_input ();
     int process_ready_message (msg_t *msg_);
     int process_error_message (msg_t *msg_);

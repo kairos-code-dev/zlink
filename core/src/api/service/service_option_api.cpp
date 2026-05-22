@@ -23,6 +23,26 @@ bool is_spot_service_handle_kind (zlink::service_handle_kind_t kind_)
             return false;
     }
 }
+
+int reject_unless_spot_service_handle (zlink::service_handle_kind_t kind_)
+{
+    if (is_spot_service_handle_kind (kind_))
+        return 0;
+
+    errno = EFAULT;
+    return -1;
+}
+
+int finish_spot_option_forward (int rc_)
+{
+    if (rc_ == 0)
+        return 0;
+    if (errno != EFAULT)
+        return -1;
+
+    errno = EFAULT;
+    return -1;
+}
 }
 
 int zlink_service_set_common_option (void *handle_,
@@ -37,19 +57,11 @@ int zlink_service_set_common_option (void *handle_,
     if (resolved.kind == zlink::service_handle_discovery)
         return zlink::discovery_access_t::set_option (
           resolved.discovery, socket_option_, optval_, optvallen_);
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
+    if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
-    }
-    if (zlink_service_spot_set_common_option_internal (
-          handle_, option_, socket_option_, optval_, optvallen_)
-        == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_set_common_option_internal (
+        handle_, option_, socket_option_, optval_, optvallen_));
 }
 
 int zlink_service_get_common_option (void *handle_,
@@ -64,20 +76,12 @@ int zlink_service_get_common_option (void *handle_,
     if (resolved.kind == zlink::service_handle_discovery)
         return zlink::discovery_access_t::get_option (
           resolved.discovery, socket_option_, optval_, optvallen_);
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
+    if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
-    }
     errno = 0;
-    if (zlink_service_spot_get_common_option_internal (
-          handle_, option_, socket_option_, optval_, optvallen_)
-        == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_get_common_option_internal (
+        handle_, option_, socket_option_, optval_, optvallen_));
 }
 
 int zlink_service_set_routing_id (void *handle_,
@@ -90,17 +94,10 @@ int zlink_service_set_routing_id (void *handle_,
     if (resolved.kind == zlink::service_handle_discovery)
         return zlink::discovery_access_t::set_routing_id (
           resolved.discovery, data_, size_);
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
+    if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
-    }
-    if (zlink_service_spot_set_routing_id_internal (handle_, data_, size_) == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_set_routing_id_internal (handle_, data_, size_));
 }
 
 int zlink_service_get_routing_id (void *handle_, zlink_routing_id_t *out_)
@@ -110,17 +107,10 @@ int zlink_service_get_routing_id (void *handle_, zlink_routing_id_t *out_)
 
     if (resolved.kind == zlink::service_handle_discovery)
         return zlink::discovery_access_t::routing_id (resolved.discovery, out_);
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
+    if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
-    }
-    if (zlink_service_spot_get_routing_id_internal (handle_, out_) == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_get_routing_id_internal (handle_, out_));
 }
 
 int zlink_service_set_tls_server (void *handle_,
@@ -134,19 +124,11 @@ int zlink_service_set_tls_server (void *handle_,
     if (resolved.kind == zlink::service_handle_registry)
         return zlink::registry_access_t::set_tls_server (
           resolved.registry, cert_, key_, require_client_cert_);
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
+    if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
-    }
-    if (zlink_service_spot_set_tls_server_internal (
-          handle_, cert_, key_, require_client_cert_)
-        == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_set_tls_server_internal (
+        handle_, cert_, key_, require_client_cert_));
 }
 
 int zlink_service_set_tls_client (void *handle_,
@@ -163,19 +145,11 @@ int zlink_service_set_tls_client (void *handle_,
     if (resolved.kind == zlink::service_handle_registry)
         return zlink::registry_access_t::set_tls_client (
           resolved.registry, ca_cert_, hostname_, trust_system_);
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
+    if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
-    }
-    if (zlink_service_spot_set_tls_client_internal (
-          handle_, ca_cert_, hostname_, trust_system_)
-        == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_set_tls_client_internal (
+        handle_, ca_cert_, hostname_, trust_system_));
 }
 
 int zlink_service_set_router_option (void *handle_,
@@ -214,16 +188,9 @@ int zlink_service_set_pub_option (void *handle_,
                                   const void *optval_,
                                   size_t optvallen_)
 {
-    if (zlink_service_spot_set_pub_option_internal (
-          handle_, option_, socket_option_, optval_, optvallen_)
-        == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    LIBZLINK_UNUSED (socket_option_);
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_set_pub_option_internal (
+        handle_, option_, socket_option_, optval_, optvallen_));
 }
 
 int zlink_service_get_pub_option (void *handle_,
@@ -232,15 +199,9 @@ int zlink_service_get_pub_option (void *handle_,
                                   void *optval_,
                                   size_t *optvallen_)
 {
-    if (zlink_service_spot_get_pub_option_internal (
-          handle_, option_, socket_option_, optval_, optvallen_)
-        == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_get_pub_option_internal (
+        handle_, option_, socket_option_, optval_, optvallen_));
 }
 
 int zlink_service_set_sub_option (void *handle_,
@@ -249,14 +210,9 @@ int zlink_service_set_sub_option (void *handle_,
                                   const void *optval_,
                                   size_t optvallen_)
 {
-    if (zlink_service_spot_set_sub_option_internal (
-          handle_, option_, socket_option_, optval_, optvallen_)
-        == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_set_sub_option_internal (
+        handle_, option_, socket_option_, optval_, optvallen_));
 }
 
 int zlink_service_get_sub_option (void *handle_,
@@ -265,15 +221,9 @@ int zlink_service_get_sub_option (void *handle_,
                                   void *optval_,
                                   size_t *optvallen_)
 {
-    if (zlink_service_spot_get_sub_option_internal (
-          handle_, option_, socket_option_, optval_, optvallen_)
-        == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_get_sub_option_internal (
+        handle_, option_, socket_option_, optval_, optvallen_));
 }
 
 int zlink_service_set_subscription (void *handle_, const char *filter_)
@@ -281,17 +231,10 @@ int zlink_service_set_subscription (void *handle_, const char *filter_)
     const zlink::service_handle_resolution_t resolved =
       zlink::resolve_service_handle (handle_);
 
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
+    if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
-    }
-    if (zlink_service_spot_set_subscription_internal (handle_, filter_) == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_set_subscription_internal (handle_, filter_));
 }
 
 int zlink_service_unset_subscription (void *handle_, const char *filter_)
@@ -299,17 +242,10 @@ int zlink_service_unset_subscription (void *handle_, const char *filter_)
     const zlink::service_handle_resolution_t resolved =
       zlink::resolve_service_handle (handle_);
 
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
+    if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
-    }
-    if (zlink_service_spot_unset_subscription_internal (handle_, filter_) == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_unset_subscription_internal (handle_, filter_));
 }
 
 int zlink_service_subscription_at (void *handle_,
@@ -321,17 +257,9 @@ int zlink_service_subscription_at (void *handle_,
     const zlink::service_handle_resolution_t resolved =
       zlink::resolve_service_handle (handle_);
 
-    if (!is_spot_service_handle_kind (resolved.kind)) {
-        errno = EFAULT;
+    if (reject_unless_spot_service_handle (resolved.kind) != 0)
         return -1;
-    }
-    if (zlink_service_spot_subscription_at_internal (
-          handle_, index_, filter_out_, filter_len_inout_, is_pattern_out_)
-        == 0)
-        return 0;
-    if (errno != EFAULT)
-        return -1;
-
-    errno = EFAULT;
-    return -1;
+    return finish_spot_option_forward (
+      zlink_service_spot_subscription_at_internal (
+        handle_, index_, filter_out_, filter_len_inout_, is_pattern_out_));
 }

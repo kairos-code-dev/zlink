@@ -7,6 +7,7 @@
 #include "services/discovery/discovery_protocol.hpp"
 
 #include "utils/clock.hpp"
+#include "utils/routing_id.hpp"
 
 #include <string.h>
 #include <vector>
@@ -416,10 +417,8 @@ void registry_t::handle_peer (void *sub_)
                     owner_identity_t removed_owner;
                     removed_owner.channel_name = sit->first.channel_name;
                     removed_owner.service_role = pit->second.service_role;
-                    removed_owner.routing_id_key.assign (
-                      reinterpret_cast<const char *> (
-                        pit->second.routing_id.data),
-                      pit->second.routing_id.size);
+                    removed_owner.routing_id_key =
+                      zlink::routing_id_key (pit->second.routing_id);
                     removed_owner.source_registry = pit->second.source_registry;
                     removed_owner.registration_id = pit->second.registration_id;
                     cleanup_owner_records_locked (removed_owner,
@@ -454,9 +453,8 @@ void registry_t::handle_peer (void *sub_)
                 owner_identity_t owner;
                 owner.channel_name = service_key.channel_name;
                 owner.service_role = pit->second.service_role;
-                owner.routing_id_key.assign (
-                  reinterpret_cast<const char *> (pit->second.routing_id.data),
-                  pit->second.routing_id.size);
+                owner.routing_id_key =
+                  zlink::routing_id_key (pit->second.routing_id);
                 owner.source_registry = pit->second.source_registry;
                 owner.registration_id = pit->second.registration_id;
                 promote_owner_route_records_locked (owner);
@@ -549,10 +547,8 @@ void registry_t::handle_register (void *router_,
                 owner_identity_t old_owner;
                 old_owner.channel_name = channel_name;
                 old_owner.service_role = existing->second.service_role;
-                old_owner.routing_id_key.assign (
-                  reinterpret_cast<const char *> (
-                    existing->second.routing_id.data),
-                  existing->second.routing_id.size);
+                old_owner.routing_id_key =
+                  zlink::routing_id_key (existing->second.routing_id);
                 old_owner.source_registry = existing->second.source_registry;
                 old_owner.registration_id = existing->second.registration_id;
                 cleanup_owner_records_locked (old_owner, now);
@@ -575,9 +571,7 @@ void registry_t::handle_register (void *router_,
             owner_identity_t owner;
             owner.channel_name = channel_name;
             owner.service_role = entry.service_role;
-            owner.routing_id_key.assign (
-              reinterpret_cast<const char *> (entry.routing_id.data),
-              entry.routing_id.size);
+            owner.routing_id_key = zlink::routing_id_key (entry.routing_id);
             owner.source_registry = entry.source_registry;
             owner.registration_id = entry.registration_id;
             promote_owner_route_records_locked (owner);
@@ -642,9 +636,8 @@ void registry_t::handle_unregister (void *router_,
     owner_identity_t removed_owner;
     removed_owner.channel_name = channel_name;
     removed_owner.service_role = pit->second.service_role;
-    removed_owner.routing_id_key.assign (
-      reinterpret_cast<const char *> (pit->second.routing_id.data),
-      pit->second.routing_id.size);
+    removed_owner.routing_id_key =
+      zlink::routing_id_key (pit->second.routing_id);
     removed_owner.source_registry = pit->second.source_registry;
     removed_owner.registration_id = pit->second.registration_id;
     cleanup_owner_records_locked (removed_owner, zlink::clock_t ().now_ms ());

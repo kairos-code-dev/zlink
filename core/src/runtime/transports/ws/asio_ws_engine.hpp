@@ -130,7 +130,6 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
 
     bool receive_hello ();
     bool parse_hello (const unsigned char *data_, size_t size_);
-    bool is_socket_type_compatible (int peer_type_) const;
     bool process_zmp_handshake_input ();
     int process_ready_message (msg_t *msg_);
     int process_error_message (msg_t *msg_);

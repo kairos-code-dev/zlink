@@ -10,6 +10,7 @@
 #include "services/discovery/discovery_protocol.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "utils/clock.hpp"
+#include "utils/routing_id.hpp"
 
 namespace zlink
 {
@@ -73,22 +74,13 @@ void socket_discovery_attachment_t::refresh_peers (
     std::vector<provider_info_t> providers;
     discovery_->snapshot_providers (discovery_->channel_name (), &providers);
 
+    const std::string local_rid = zlink::routing_id_key (local_routing_id);
     std::set<std::string> target_endpoints;
     std::map<std::string, std::string> target_peers_by_rid;
     for (size_t i = 0; i < providers.size (); ++i) {
         const provider_info_t &provider = providers[i];
         const std::string remote_rid =
-          provider.routing_id.size == 0
-            ? std::string ()
-            : std::string (reinterpret_cast<const char *> (
-                             provider.routing_id.data),
-                           provider.routing_id.size);
-        const std::string local_rid =
-          local_routing_id.size == 0
-            ? std::string ()
-            : std::string (reinterpret_cast<const char *> (
-                             local_routing_id.data),
-                           local_routing_id.size);
+          zlink::routing_id_key (provider.routing_id);
         if (provider.endpoint.empty ()
             || advertise_endpoint_ == provider.endpoint
             || (!local_rid.empty () && local_rid == remote_rid)

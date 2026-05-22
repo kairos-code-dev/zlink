@@ -28,18 +28,6 @@ namespace zlink
 {
 namespace
 {
-static bool valid_spot_rid_local (const zlink_routing_id_t &rid_)
-{
-    return rid_.size > 0 && rid_.size <= sizeof (rid_.data);
-}
-
-static std::string spot_rid_key_local (const zlink_routing_id_t &rid_)
-{
-    if (!valid_spot_rid_local (rid_))
-        return std::string ();
-    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
-}
-
 static bool valid_channel_name_local (const char *channel_name_)
 {
     return channel_name_ && channel_name_[0] != '\0';
@@ -266,9 +254,7 @@ int spot_node_t::disconnect_peer_pub_rid (
     if (ensure_healthy () != 0)
         return -1;
 
-    const std::string rid_key (
-      reinterpret_cast<const char *> (target_node_rid_->data),
-      target_node_rid_->size);
+    const std::string rid_key = zlink::routing_id_key (target_node_rid_);
 
     std::vector<std::string> endpoints;
     {
@@ -461,8 +447,7 @@ int spot_node_t::disconnect_router_channel_peer_rid (
     if (ensure_healthy () != 0)
         return -1;
 
-    const std::string peer (
-      reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
+    const std::string peer = zlink::routing_id_key (peer_rid_);
     std::vector<std::string> endpoints;
     {
         scoped_lock_t lock (_sync);
@@ -1086,7 +1071,7 @@ void spot_node_t::unregister_spot_facade (spot_handle_t *spot_)
         }
         removed_state = spot_->logical_state;
         _handle_state.spots_by_rid.erase (
-          spot_rid_key_local (removed_state->routing_id));
+          zlink::routing_id_key (removed_state->routing_id));
     }
     submit_spot_owner_summary (removed_state, ZLINK_TOPOLOGY_STATE_STOPPED, 0);
 }
@@ -1160,7 +1145,7 @@ spot_node_t::create_logical_spot_state_locked (
     state->entry = entry_;
     state->rid_locked = entry_ && _handle_state.entry_spot_rid_locked;
 
-    const std::string key = spot_rid_key_local (state->routing_id);
+    const std::string key = zlink::routing_id_key (state->routing_id);
     if (key.empty ()) {
         errno = EFAULT;
         return std::shared_ptr<spot_logical_state_t> ();
@@ -1190,13 +1175,13 @@ void spot_node_t::lock_entry_spot_rid ()
 std::shared_ptr<spot_logical_state_t> spot_node_t::lookup_spot_state (
   const zlink_routing_id_t *spot_rid_)
 {
-    if (!spot_rid_ || !valid_spot_rid_local (*spot_rid_)) {
+    if (!spot_rid_ || !zlink::valid_routing_id (*spot_rid_)) {
         errno = EINVAL;
         return std::shared_ptr<spot_logical_state_t> ();
     }
     scoped_lock_t lock (_sync);
     const std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
-      it = _handle_state.spots_by_rid.find (spot_rid_key_local (*spot_rid_));
+      it = _handle_state.spots_by_rid.find (zlink::routing_id_key (*spot_rid_));
     if (it == _handle_state.spots_by_rid.end ()) {
         errno = ENOENT;
         return std::shared_ptr<spot_logical_state_t> ();
@@ -1209,13 +1194,13 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::get_or_new_spot_state (
 {
     if (created_out_)
         *created_out_ = false;
-    if (!spot_rid_ || !valid_spot_rid_local (*spot_rid_)) {
+    if (!spot_rid_ || !zlink::valid_routing_id (*spot_rid_)) {
         errno = EINVAL;
         return std::shared_ptr<spot_logical_state_t> ();
     }
 
     std::shared_ptr<spot_logical_state_t> state;
-    const std::string key = spot_rid_key_local (*spot_rid_);
+    const std::string key = zlink::routing_id_key (*spot_rid_);
     std::unique_lock<mutex_t> lock (_sync);
     for (;;) {
         const std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
@@ -1250,7 +1235,7 @@ bool spot_node_t::publish_get_or_new_spot_state (
 
     bool publish_summary = false;
     bool published = false;
-    const std::string key = spot_rid_key_local (state_->routing_id);
+    const std::string key = zlink::routing_id_key (state_->routing_id);
     {
         scoped_lock_t lock (_sync);
         std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
@@ -1275,7 +1260,7 @@ void spot_node_t::cancel_get_or_new_spot_state (
     if (!state_)
         return;
 
-    const std::string key = spot_rid_key_local (state_->routing_id);
+    const std::string key = zlink::routing_id_key (state_->routing_id);
     {
         scoped_lock_t lock (_sync);
         _handle_state.pending_spot_creations.erase (key);
@@ -1299,7 +1284,7 @@ void spot_node_t::remove_spot_state_if_unfacaded (
                 return;
         }
 
-        const std::string key = spot_rid_key_local (state_->routing_id);
+        const std::string key = zlink::routing_id_key (state_->routing_id);
         std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
           it = _handle_state.spots_by_rid.find (key);
         if (it != _handle_state.spots_by_rid.end () && it->second == state_) {
@@ -1490,8 +1475,8 @@ int spot_node_t::update_spot_routing_id (spot_handle_t *spot_,
             return -1;
         }
         old_rid = spot_->logical_state->routing_id;
-        const std::string old_key = spot_rid_key_local (old_rid);
-        const std::string new_key = spot_rid_key_local (next);
+        const std::string old_key = zlink::routing_id_key (old_rid);
+        const std::string new_key = zlink::routing_id_key (next);
         std::map<std::string, std::shared_ptr<spot_logical_state_t> >::const_iterator
           existing = _handle_state.spots_by_rid.find (new_key);
         if (existing != _handle_state.spots_by_rid.end ()

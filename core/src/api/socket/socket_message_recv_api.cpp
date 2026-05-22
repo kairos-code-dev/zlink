@@ -12,6 +12,7 @@
 #include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
 #include "core/recv_tls_view.hpp"
+#include "core/scoped_msg.hpp"
 
 namespace
 {
@@ -69,40 +70,35 @@ int recv_socket_subscribe_parts (socket_handle_t handle_,
         return -1;
     }
 
-    zlink_msg_t topic_frame;
-    zlink_msg_init (&topic_frame);
     if (handle_.socket->sub_dispatch_active ()) {
         errno = EBUSY;
         return -1;
     }
 
+    zlink::scoped_msg_t topic_frame;
     if (handle_.socket->recv (
-          reinterpret_cast<zlink::msg_t *> (&topic_frame), flags_)
+          reinterpret_cast<zlink::msg_t *> (topic_frame.get ()), flags_)
         < 0) {
-        zlink_msg_close (&topic_frame);
         return -1;
     }
 
     if (zlink::copy_bytes_to_sized_output (
-          static_cast<const char *> (zlink_msg_data (&topic_frame)),
-          zlink_msg_size (&topic_frame), topic_id_out_, topic_id_len_out_)
+          static_cast<const char *> (zlink_msg_data (topic_frame.get ())),
+          zlink_msg_size (topic_frame.get ()), topic_id_out_,
+          topic_id_len_out_)
         != 0) {
-        zlink_msg_close (&topic_frame);
         return -1;
     }
 
-    if (!zlink::msg_frame_has_more (topic_frame)) {
-        zlink_msg_close (&topic_frame);
+    if (!zlink::msg_frame_has_more (topic_frame.ref ())) {
         errno = 0;
         return 0;
     }
 
     if (zlink::recv_followup_msg_socket (handle_.socket, first_slot) < 0) {
-        zlink_msg_close (&topic_frame);
         zlink::recv_tls_view::abort ();
         return -1;
     }
-    zlink_msg_close (&topic_frame);
 
     if (!zlink::msg_frame_has_more (*first_slot))
         return zlink::recv_tls_view::commit_reserved_single (parts_out_,
@@ -287,12 +283,10 @@ extern "C" int zlink_socket_xpub_recv_internal (void *socket_,
         return -1;
     }
 
-    zlink_msg_t msg;
-    zlink_msg_init (&msg);
+    zlink::scoped_msg_t msg;
     if (zlink::recv_msg_socket (
-          handle.socket, ZLINK_CORE_SOCKET_XPUB, &msg, flags_)
+          handle.socket, ZLINK_CORE_SOCKET_XPUB, msg.get (), flags_)
         < 0) {
-        zlink_msg_close (&msg);
         return -1;
     }
 
@@ -302,14 +296,13 @@ extern "C" int zlink_socket_xpub_recv_internal (void *socket_,
     }
 
     const unsigned char *data =
-      static_cast<const unsigned char *> (zlink_msg_data (&msg));
-    const size_t size = zlink_msg_size (&msg);
+      static_cast<const unsigned char *> (zlink_msg_data (msg.get ()));
+    const size_t size = zlink_msg_size (msg.get ());
     const size_t topic_len = size > 0 ? size - 1 : 0;
     *subscribed_out_ = size > 0 && data[0] != 0 ? 1 : 0;
 
     if (*topic_id_len_ < topic_len) {
         *topic_id_len_ = topic_len;
-        zlink_msg_close (&msg);
         errno = EMSGSIZE;
         return -1;
     }
@@ -318,7 +311,6 @@ extern "C" int zlink_socket_xpub_recv_internal (void *socket_,
         memcpy (topic_id_out_, data + 1, topic_len);
     *topic_id_len_ = topic_len;
 
-    zlink_msg_close (&msg);
     errno = 0;
     return 0;
 }

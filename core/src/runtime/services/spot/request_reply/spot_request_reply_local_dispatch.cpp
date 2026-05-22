@@ -5,6 +5,7 @@
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/spot/request_reply/service_spot_routed_protocol_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_utils_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
@@ -20,6 +21,7 @@ using zlink::spot_reqrep_internal::find_spot_state_by_identity;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
 using zlink::spot_reqrep_internal::pending_reply_t;
 using zlink::spot_reqrep_internal::pending_spot_key_t;
+using zlink::spot_reqrep_internal::optional_routing_id_from_key;
 using zlink::spot_reqrep_internal::router_spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 
@@ -80,32 +82,6 @@ int init_packed_spot_routed_header (zlink_msg_t *msg_,
     }
 
     return 0;
-}
-
-std::string routing_id_key_local (const zlink_routing_id_t *peer_rid_)
-{
-    if (!peer_rid_ || peer_rid_->size == 0
-        || peer_rid_->size > sizeof (peer_rid_->data))
-        return std::string ();
-
-    return std::string (reinterpret_cast<const char *> (peer_rid_->data),
-                        peer_rid_->size);
-}
-
-void routing_id_from_string_local (const std::string &value_,
-                                   zlink_routing_id_t *out_)
-{
-    if (!out_)
-        return;
-
-    memset (out_, 0, sizeof (*out_));
-    if (value_.empty ())
-        return;
-
-    const size_t size =
-      value_.size () > sizeof (out_->data) ? sizeof (out_->data) : value_.size ();
-    memcpy (out_->data, value_.data (), size);
-    out_->size = static_cast<uint8_t> (size);
 }
 
 int dispatch_spot_message_local (spot_request_reply_state_t *state_,
@@ -447,14 +423,14 @@ int dispatch_local_direct_to_spot (uint8_t source_class_,
                                            ? source_endpoint_rid_value_
                                            : &spot_rid_fallback;
     if (!source_rid) {
-        routing_id_from_string_local (
+        optional_routing_id_from_key (
           source_class_ == routed_protocol::router_endpoint_class ? source_endpoint_rid_
                                             : source_node_rid_,
           &source_rid_fallback);
         source_rid = &source_rid_fallback;
     }
     if (source_class_ == routed_protocol::spot_endpoint_class && !source_endpoint_rid_value_) {
-        routing_id_from_string_local (source_endpoint_rid_, &spot_rid_fallback);
+        optional_routing_id_from_key (source_endpoint_rid_, &spot_rid_fallback);
         spot_rid = &spot_rid_fallback;
     }
 
@@ -487,15 +463,61 @@ int dispatch_local_direct_to_router (const std::string &router_rid_,
     const zlink_routing_id_t *source_node_rid = source_node_rid_value_;
     const zlink_routing_id_t *source_spot_rid = source_spot_rid_value_;
     if (!source_node_rid) {
-        routing_id_from_string_local (source_node_rid_, &source_node_rid_fallback);
+        optional_routing_id_from_key (source_node_rid_, &source_node_rid_fallback);
         source_node_rid = &source_node_rid_fallback;
     }
     if (!source_spot_rid) {
-        routing_id_from_string_local (source_spot_rid_, &source_spot_rid_fallback);
+        optional_routing_id_from_key (source_spot_rid_, &source_spot_rid_fallback);
         source_spot_rid = &source_spot_rid_fallback;
     }
     return dispatch_router_spot_message_local (
       state.get (), source_node_rid, source_spot_rid, 0, parts_, part_count_);
+}
+
+int recv_first_router_payload_frame (zlink::socket_base_t *socket_,
+                                     zlink_msg_t *payload_out_)
+{
+    while (true) {
+        zlink_msg_t routing_id;
+        zlink_msg_init (&routing_id);
+        if (zlink::recv_msg_socket (socket_, ZLINK_CORE_SOCKET_ROUTER,
+                                    &routing_id, ZLINK_DONTWAIT)
+            != 0) {
+            if (errno != EAGAIN || !socket_->socket_has_attached_pipes ()) {
+                zlink_msg_close (&routing_id);
+                return -1;
+            }
+
+            const int wait_rc =
+              zlink::wait_socket_events_internal (socket_, ZLINK_POLLIN, 1);
+            if (wait_rc <= 0
+                || zlink::recv_msg_socket (socket_, ZLINK_CORE_SOCKET_ROUTER,
+                                           &routing_id, ZLINK_DONTWAIT)
+                     != 0) {
+                if (wait_rc <= 0 && errno == 0)
+                    errno = EAGAIN;
+                zlink_msg_close (&routing_id);
+                return -1;
+            }
+        }
+
+        const bool routing_id_has_more =
+          zlink::msg_frame_has_more (routing_id);
+        zlink_msg_close (&routing_id);
+        if (!routing_id_has_more)
+            continue;
+
+        zlink_msg_init (payload_out_);
+        if (zlink::internal_pair_queue::recv_followup_with_retry (
+              socket_, payload_out_, ZLINK_DONTWAIT)
+            != 0) {
+            const int saved_errno = errno;
+            zlink_msg_close (payload_out_);
+            errno = saved_errno;
+            return -1;
+        }
+        return 0;
+    }
 }
 }
 
@@ -510,54 +532,10 @@ int zlink::spot_reqrep_internal::recv_combined_router_message (
 
     out_->clear ();
 
-    zlink_msg_t first;
-    while (true) {
-        zlink_msg_init (&first);
-        if (zlink::recv_msg_socket (socket_, ZLINK_CORE_SOCKET_ROUTER, &first,
-                                    ZLINK_DONTWAIT)
-            != 0) {
-            if (errno == EAGAIN && socket_->socket_has_attached_pipes ()) {
-                const int wait_rc = zlink::wait_socket_events_internal (
-                  socket_, ZLINK_POLLIN, 1);
-                if (wait_rc > 0
-                    && zlink::recv_msg_socket (
-                         socket_, ZLINK_CORE_SOCKET_ROUTER, &first,
-                         ZLINK_DONTWAIT)
-                         == 0) {
-                    // Received a real frame after a short scheduler gap.
-                } else {
-                    if (wait_rc <= 0 && errno == 0)
-                        errno = EAGAIN;
-                    zlink_msg_close (&first);
-                    return -1;
-                }
-            } else {
-            zlink_msg_close (&first);
-            return -1;
-            }
-        }
-
-        const bool routing_id_has_more =
-          zlink::msg_frame_has_more (first);
-        zlink_msg_close (&first);
-
-        if (!routing_id_has_more)
-            continue;
-
-        zlink_msg_t payload_first;
-        zlink_msg_init (&payload_first);
-        if (zlink::internal_pair_queue::recv_followup_with_retry (
-              socket_, &payload_first, ZLINK_DONTWAIT)
-            != 0) {
-            const int saved_errno = errno;
-            zlink_msg_close (&payload_first);
-            errno = saved_errno;
-            return -1;
-        }
-
-        out_->push_back (payload_first);
-        break;
-    }
+    zlink_msg_t first_payload;
+    if (recv_first_router_payload_frame (socket_, &first_payload) != 0)
+        return -1;
+    out_->push_back (first_payload);
 
     while (out_->empty ()
              || zlink::msg_frame_has_more (out_->back ())) {

@@ -91,6 +91,7 @@ zlink_submit_result_t router_send_spot_impl (
 namespace
 {
 using zlink::part_helper_internal::has_valid_routing_id;
+using zlink::part_helper_internal::send_sequence_spec_t;
 
 int validate_request_send_flags (zlink_send_flags_t flags_)
 {
@@ -246,6 +247,63 @@ zlink_submit_result_t submit_staged_sequence (
     return finalize_staged_spot_submit (
       state, part_, part_flag_, final_submit_);
 }
+
+send_sequence_spec_t make_send_spec (
+  zlink::part_helper_internal::send_family_t family_,
+  zlink_send_flags_t flags_)
+{
+    send_sequence_spec_t spec;
+    spec.family = family_;
+    spec.flags = flags_;
+    return spec;
+}
+
+send_sequence_spec_t make_request_spec (
+  zlink::part_helper_internal::send_family_t family_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_)
+{
+    send_sequence_spec_t spec = make_send_spec (family_, flags_);
+    spec.timeout_ms = timeout_ms_;
+    spec.handler = handler_;
+    spec.userdata = userdata_;
+    spec.request_like = true;
+    return spec;
+}
+
+send_sequence_spec_t make_reply_spec (
+  zlink::part_helper_internal::send_family_t family_,
+  uint64_t request_seq_)
+{
+    send_sequence_spec_t spec = make_send_spec (
+      family_, ZLINK_SEND_FLAGS_NONE);
+    spec.request_like = true;
+    spec.request_seq = request_seq_;
+    return spec;
+}
+
+void set_text1 (send_sequence_spec_t *spec_, const char *text_)
+{
+    spec_->has_text1 = true;
+    spec_->text1 = text_;
+}
+
+void set_rid1 (send_sequence_spec_t *spec_, const zlink_routing_id_t *rid_)
+{
+    spec_->has_rid1 = true;
+    zlink::part_helper_internal::copy_routing_id (rid_, &spec_->rid1);
+}
+
+void set_rid_pair (send_sequence_spec_t *spec_,
+                   const zlink_routing_id_t *rid1_,
+                   const zlink_routing_id_t *rid2_)
+{
+    set_rid1 (spec_, rid1_);
+    spec_->has_rid2 = true;
+    zlink::part_helper_internal::copy_routing_id (rid2_, &spec_->rid2);
+}
 }
 
 zlink_submit_result_t zlink_spot_send_channel_part (
@@ -266,11 +324,9 @@ zlink_submit_result_t zlink_spot_send_channel_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_spot_send_channel;
-    spec.flags = flags_;
-    spec.has_text1 = true;
-    spec.text1 = channel_name_;
+    send_sequence_spec_t spec = make_send_spec (
+      zlink::part_helper_internal::send_family_spot_send_channel, flags_);
+    set_text1 (&spec, channel_name_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
@@ -299,17 +355,10 @@ zlink_submit_result_t zlink_spot_request_spot_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_spot_request_spot;
-    spec.flags = flags_;
-    spec.timeout_ms = timeout_ms_;
-    spec.handler = handler_;
-    spec.userdata = userdata_;
-    spec.request_like = true;
-    spec.has_rid1 = true;
-    spec.has_rid2 = true;
-    zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
-    zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
+    send_sequence_spec_t spec = make_request_spec (
+      zlink::part_helper_internal::send_family_spot_request_spot, flags_,
+      timeout_ms_, handler_, userdata_);
+    set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
@@ -338,15 +387,10 @@ zlink_submit_result_t zlink_spot_request_router_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_spot_request_router;
-    spec.flags = flags_;
-    spec.timeout_ms = timeout_ms_;
-    spec.handler = handler_;
-    spec.userdata = userdata_;
-    spec.request_like = true;
-    spec.has_rid1 = true;
-    zlink::part_helper_internal::copy_routing_id (peer_rid_, &spec.rid1);
+    send_sequence_spec_t spec = make_request_spec (
+      zlink::part_helper_internal::send_family_spot_request_router, flags_,
+      timeout_ms_, handler_, userdata_);
+    set_rid1 (&spec, peer_rid_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
@@ -375,15 +419,10 @@ zlink_submit_result_t zlink_spot_request_channel_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_spot_request_channel;
-    spec.flags = flags_;
-    spec.timeout_ms = timeout_ms_;
-    spec.handler = handler_;
-    spec.userdata = userdata_;
-    spec.request_like = true;
-    spec.has_text1 = true;
-    spec.text1 = channel_name_;
+    send_sequence_spec_t spec = make_request_spec (
+      zlink::part_helper_internal::send_family_spot_request_channel, flags_,
+      timeout_ms_, handler_, userdata_);
+    set_text1 (&spec, channel_name_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
@@ -411,13 +450,9 @@ zlink_submit_result_t zlink_spot_send_spot_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_spot_send_spot;
-    spec.flags = flags_;
-    spec.has_rid1 = true;
-    spec.has_rid2 = true;
-    zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
-    zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
+    send_sequence_spec_t spec = make_send_spec (
+      zlink::part_helper_internal::send_family_spot_send_spot, flags_);
+    set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
@@ -443,14 +478,9 @@ zlink_submit_result_t zlink_spot_reply_spot_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_spot_reply_spot;
-    spec.request_like = true;
-    spec.request_seq = request_seq_;
-    spec.has_rid1 = true;
-    spec.has_rid2 = true;
-    zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
-    zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
+    send_sequence_spec_t spec = make_reply_spec (
+      zlink::part_helper_internal::send_family_spot_reply_spot, request_seq_);
+    set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
@@ -475,12 +505,9 @@ zlink_submit_result_t zlink_spot_reply_router_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_spot_reply_router;
-    spec.request_like = true;
-    spec.request_seq = request_seq_;
-    spec.has_rid1 = true;
-    zlink::part_helper_internal::copy_routing_id (peer_rid_, &spec.rid1);
+    send_sequence_spec_t spec = make_reply_spec (
+      zlink::part_helper_internal::send_family_spot_reply_router, request_seq_);
+    set_rid1 (&spec, peer_rid_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
@@ -509,17 +536,10 @@ zlink_submit_result_t zlink_router_request_spot_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_router_request_spot;
-    spec.flags = flags_;
-    spec.timeout_ms = timeout_ms_;
-    spec.handler = handler_;
-    spec.userdata = userdata_;
-    spec.request_like = true;
-    spec.has_rid1 = true;
-    spec.has_rid2 = true;
-    zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
-    zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
+    send_sequence_spec_t spec = make_request_spec (
+      zlink::part_helper_internal::send_family_router_request_spot, flags_,
+      timeout_ms_, handler_, userdata_);
+    set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       router_, spec, part_, part_flag_,
@@ -546,14 +566,9 @@ zlink_submit_result_t zlink_router_reply_spot_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_router_reply_spot;
-    spec.request_like = true;
-    spec.request_seq = request_seq_;
-    spec.has_rid1 = true;
-    spec.has_rid2 = true;
-    zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
-    zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
+    send_sequence_spec_t spec = make_reply_spec (
+      zlink::part_helper_internal::send_family_router_reply_spot, request_seq_);
+    set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       router_, spec, part_, part_flag_,
@@ -581,13 +596,9 @@ zlink_submit_result_t zlink_router_send_spot_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    zlink::part_helper_internal::send_sequence_spec_t spec;
-    spec.family = zlink::part_helper_internal::send_family_router_send_spot;
-    spec.flags = flags_;
-    spec.has_rid1 = true;
-    spec.has_rid2 = true;
-    zlink::part_helper_internal::copy_routing_id (dest_node_rid_, &spec.rid1);
-    zlink::part_helper_internal::copy_routing_id (dest_spot_rid_, &spec.rid2);
+    send_sequence_spec_t spec = make_send_spec (
+      zlink::part_helper_internal::send_family_router_send_spot, flags_);
+    set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       router_, spec, part_, part_flag_,

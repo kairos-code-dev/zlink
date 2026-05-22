@@ -7,6 +7,7 @@
 #include "services/discovery/discovery_runtime_internal.hpp"
 
 #include "services/control/service_control_runtime.hpp"
+#include "utils/routing_id.hpp"
 
 #include <cstring>
 
@@ -395,10 +396,7 @@ discovery_t::topology_key_t discovery_t::make_summary_key (
     topology_key_t key;
     key.service_kind = service_kind_;
     key.service_role = service_role_;
-    if (routing_id_.size > 0) {
-        key.routing_id_key.assign (
-          reinterpret_cast<const char *> (routing_id_.data), routing_id_.size);
-    }
+    key.routing_id_key = zlink::routing_id_key (routing_id_);
     key.channel_name = channel_name_;
     return key;
 }

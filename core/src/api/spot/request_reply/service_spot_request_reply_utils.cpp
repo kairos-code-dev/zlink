@@ -16,6 +16,7 @@
 #include "services/spot/pubsub/spot_pub.hpp"
 #include "services/spot/pubsub/spot_subject_access.hpp"
 #include "sockets/common/socket_base.hpp"
+#include "utils/routing_id.hpp"
 
 zlink::ctx_t *zlink::spot_reqrep_internal::resolve_spot_ctx (void *spot_)
 {
@@ -41,18 +42,25 @@ zlink::spot_reqrep_internal::resolve_spot_runtime (void *spot_)
 bool zlink::spot_reqrep_internal::has_valid_routing_id (
   const zlink_routing_id_t *peer_rid_)
 {
-    return peer_rid_ && peer_rid_->size > 0
-           && peer_rid_->size <= sizeof (peer_rid_->data);
+    return zlink::valid_routing_id (peer_rid_);
 }
 
 std::string zlink::spot_reqrep_internal::routing_id_key (
   const zlink_routing_id_t *peer_rid_)
 {
-    if (!has_valid_routing_id (peer_rid_))
-        return std::string ();
+    return zlink::routing_id_key (peer_rid_);
+}
 
-    return std::string (reinterpret_cast<const char *> (peer_rid_->data),
-                        peer_rid_->size);
+bool zlink::spot_reqrep_internal::routing_id_from_key (
+  const std::string &value_, zlink_routing_id_t *out_)
+{
+    return zlink::routing_id_from_key (value_, out_);
+}
+
+void zlink::spot_reqrep_internal::optional_routing_id_from_key (
+  const std::string &value_, zlink_routing_id_t *out_)
+{
+    zlink::optional_routing_id_from_key (value_, out_);
 }
 
 int zlink::spot_reqrep_internal::send_combined_parts_on_socket (

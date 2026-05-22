@@ -27,6 +27,10 @@ ctx_t *resolve_spot_ctx (void *spot_);
 spot_runtime_t *resolve_spot_runtime (void *spot_);
 bool has_valid_routing_id (const zlink_routing_id_t *peer_rid_);
 std::string routing_id_key (const zlink_routing_id_t *peer_rid_);
+bool routing_id_from_key (const std::string &value_,
+                          zlink_routing_id_t *out_);
+void optional_routing_id_from_key (const std::string &value_,
+                                   zlink_routing_id_t *out_);
 bool resolve_spot_identity (void *spot_, routing_pair_t *out_);
 }
 }

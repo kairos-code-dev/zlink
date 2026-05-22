@@ -16,6 +16,7 @@
 #include "sockets/common/socket_base.hpp"
 #include "utils/err.hpp"
 #include "utils/debug_log.hpp"
+#include "utils/routing_id.hpp"
 
 namespace
 {
@@ -171,7 +172,7 @@ int zlink::part_helper_internal::validate_part_flag (zlink_part_flag_t part_flag
 bool zlink::part_helper_internal::has_valid_routing_id (
   const zlink_routing_id_t *rid_)
 {
-    return rid_ && rid_->size > 0 && rid_->size <= sizeof (rid_->data);
+    return zlink::valid_routing_id (rid_);
 }
 
 bool zlink::part_helper_internal::routing_id_equals (

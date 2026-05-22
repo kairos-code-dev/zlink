@@ -18,6 +18,7 @@
 #include "utils/likely.hpp"
 #include "protocol/zmp_decoder.hpp"
 #include "protocol/zmp_encoder.hpp"
+#include "protocol/zmp_control.hpp"
 #include "protocol/wire.hpp"
 
 #ifndef ZLINK_HAVE_WINDOWS
@@ -36,9 +37,6 @@
 
 namespace
 {
-const size_t zmp_hello_min_body = 3;
-const size_t zmp_hello_max_body = 3 + 255;
-
 const bool ws_gather_write_on =
   zlink::env::flag_enabled ("ZLINK_ASIO_GATHER_WRITE");
 
@@ -447,7 +445,7 @@ void zlink::asio_ws_engine_t::start_zmp_handshake ()
     const size_t identity_len =
       std::min (static_cast<size_t> (_options.routing_id_size),
                 static_cast<size_t> (255));
-    const size_t body_len = zmp_hello_min_body + identity_len;
+    const size_t body_len = zmp_control::hello_min_body_size + identity_len;
     _hello_send[0] = zmp_magic;
     _hello_send[1] = zmp_version;
     _hello_send[2] = zmp_flag_control;
@@ -459,7 +457,8 @@ void zlink::asio_ws_engine_t::start_zmp_handshake ()
     _hello_send[zmp_header_size + 2] =
       static_cast<unsigned char> (identity_len);
     if (identity_len > 0)
-        memcpy (_hello_send + zmp_header_size + zmp_hello_min_body,
+        memcpy (_hello_send + zmp_header_size
+                  + zmp_control::hello_min_body_size,
                 _options.routing_id, identity_len);
 
     _hello_send_size = zmp_header_size + body_len;
@@ -793,13 +792,13 @@ bool zlink::asio_ws_engine_t::receive_hello ()
             if (_hello_header_bytes < zmp_header_size)
                 return false;
             _hello_body_len = get_uint32 (_hello_recv + 4);
-            if (_hello_body_len < zmp_hello_min_body) {
+            if (_hello_body_len < zmp_control::hello_min_body_size) {
                 set_last_error (zmp_error_internal, "hello too short");
                 errno = EPROTO;
                 error (protocol_error);
                 return false;
             }
-            if (_hello_body_len > zmp_hello_max_body) {
+            if (_hello_body_len > zmp_control::hello_max_body_size) {
                 set_last_error (zmp_error_body_too_large, "hello too large");
                 errno = EPROTO;
                 error (protocol_error);
@@ -834,104 +833,25 @@ bool zlink::asio_ws_engine_t::receive_hello ()
 bool zlink::asio_ws_engine_t::parse_hello (const unsigned char *data_,
                                          size_t size_)
 {
-    if (size_ < zmp_header_size + zmp_hello_min_body) {
-        set_last_error (zmp_error_internal, "hello too short");
-        errno = EPROTO;
+    zmp_control::hello_parse_result_t result;
+    if (zmp_control::parse_hello_frame (
+          data_, size_, _options.type, &result)
+        != 0) {
+        set_last_error (result.error_code, result.error_reason);
+        if (result.malformed_hello_event) {
+            _socket->event_handshake_failed_protocol (
+              _session->get_endpoint (),
+              ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
+        }
         error (protocol_error);
         return false;
     }
 
-    if (data_[0] != zmp_magic) {
-        set_last_error (zmp_error_invalid_magic, NULL);
-        errno = EPROTO;
-        _socket->event_handshake_failed_protocol (
-          _session->get_endpoint (),
-          ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
-        error (protocol_error);
-        return false;
-    }
-
-    if (data_[1] != zmp_version) {
-        set_last_error (zmp_error_version_mismatch, NULL);
-        errno = EPROTO;
-        _socket->event_handshake_failed_protocol (
-          _session->get_endpoint (),
-          ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
-        error (protocol_error);
-        return false;
-    }
-
-    const unsigned char flags = data_[2];
-    if (data_[3] != 0 || flags != zmp_flag_control) {
-        set_last_error (zmp_error_flags_invalid, NULL);
-        errno = EPROTO;
-        _socket->event_handshake_failed_protocol (
-          _session->get_endpoint (),
-          ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
-        error (protocol_error);
-        return false;
-    }
-
-    const uint32_t body_len = get_uint32 (data_ + 4);
-    if (body_len + zmp_header_size != size_) {
-        set_last_error (zmp_error_internal, "hello length mismatch");
-        errno = EPROTO;
-        error (protocol_error);
-        return false;
-    }
-
-    const unsigned char *body = data_ + zmp_header_size;
-    if (body[0] != zmp_control_hello) {
-        set_last_error (zmp_error_internal, "missing hello");
-        errno = EPROTO;
-        error (protocol_error);
-        return false;
-    }
-
-    const int peer_type = body[1];
-    if (!is_socket_type_compatible (peer_type)) {
-        set_last_error (zmp_error_socket_type_mismatch, NULL);
-        errno = EPROTO;
-        error (protocol_error);
-        return false;
-    }
-
-    const unsigned char identity_len = body[2];
-    if (body_len != static_cast<uint32_t> (zmp_hello_min_body + identity_len)) {
-        set_last_error (zmp_error_internal, "hello identity mismatch");
-        errno = EPROTO;
-        error (protocol_error);
-        return false;
-    }
-
-    _peer_routing_id_size = identity_len;
-    if (identity_len > 0)
-        memcpy (_peer_routing_id, body + zmp_hello_min_body, identity_len);
+    _peer_routing_id_size = result.identity_len;
+    if (result.identity_len > 0)
+        memcpy (_peer_routing_id, result.identity, result.identity_len);
 
     return true;
-}
-
-bool zlink::asio_ws_engine_t::is_socket_type_compatible (int peer_type_) const
-{
-    switch (_options.type) {
-        case ZLINK_CORE_SOCKET_DEALER:
-            return peer_type_ == ZLINK_CORE_SOCKET_DEALER || peer_type_ == ZLINK_CORE_SOCKET_ROUTER;
-        case ZLINK_CORE_SOCKET_ROUTER:
-            return peer_type_ == ZLINK_CORE_SOCKET_DEALER || peer_type_ == ZLINK_CORE_SOCKET_ROUTER;
-        case ZLINK_CORE_SOCKET_PUB:
-            return peer_type_ == ZLINK_CORE_SOCKET_SUB || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
-        case ZLINK_CORE_SOCKET_SUB:
-            return peer_type_ == ZLINK_CORE_SOCKET_PUB || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
-        case ZLINK_CORE_SOCKET_XPUB:
-            return peer_type_ == ZLINK_CORE_SOCKET_SUB || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
-        case ZLINK_CORE_SOCKET_XSUB:
-            return peer_type_ == ZLINK_CORE_SOCKET_PUB || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
-        case ZLINK_CORE_SOCKET_PAIR:
-            return peer_type_ == ZLINK_CORE_SOCKET_PAIR;
-        default:
-            break;
-    }
-    return false;
 }
 
 bool zlink::asio_ws_engine_t::process_zmp_handshake_input ()
@@ -995,25 +915,14 @@ int zlink::asio_ws_engine_t::process_ready_message (msg_t *msg_)
         return -1;
     }
 
-    const size_t size = msg_->size ();
-    if (size < 1) {
-        set_last_error (zmp_error_internal, "ready too short");
-        errno = EPROTO;
-        return -1;
-    }
-
     properties_t properties;
     init_properties (properties);
-
-    if (size > 1) {
-        metadata_t::dict_t peer_props;
-        const unsigned char *data =
-          static_cast<const unsigned char *> (msg_->data ());
-        if (zmp_metadata::parse (data + 1, size - 1, peer_props) == -1) {
-            set_last_error (zmp_error_internal, "ready metadata invalid");
-            return -1;
-        }
-        properties.insert (peer_props.begin (), peer_props.end ());
+    const char *error_reason = NULL;
+    if (zmp_control::parse_ready_metadata (
+          msg_, &properties, &error_reason)
+        != 0) {
+        set_last_error (zmp_error_internal, error_reason);
+        return -1;
     }
 
     if (!properties.empty ()) {
@@ -1027,24 +936,10 @@ int zlink::asio_ws_engine_t::process_ready_message (msg_t *msg_)
 
 int zlink::asio_ws_engine_t::process_error_message (msg_t *msg_)
 {
-    const size_t size = msg_->size ();
-    if (size < 3) {
-        set_last_error (zmp_error_internal, "error frame too short");
-        errno = EPROTO;
-        return -1;
-    }
-
-    const unsigned char *data =
-      static_cast<const unsigned char *> (msg_->data ());
-    const uint8_t code = data[1];
-    const size_t reason_len = data[2];
-    if (size < 3 + reason_len) {
-        set_last_error (zmp_error_internal, "error frame invalid");
-        errno = EPROTO;
-        return -1;
-    }
-
-    set_last_error (code, NULL);
+    uint8_t code = zmp_error_internal;
+    const char *error_reason = NULL;
+    zmp_control::parse_error_frame (msg_, &code, &error_reason);
+    set_last_error (code, error_reason);
     errno = EPROTO;
     return -1;
 }
@@ -1861,15 +1756,8 @@ int zlink::asio_ws_engine_t::process_command_message (msg_t *msg_)
 
 int zlink::asio_ws_engine_t::produce_ping_message (msg_t *msg_)
 {
-    const size_t ctx_len = 0;
-    const size_t size = 4 + ctx_len;
-    int rc = msg_->init_size (size);
-    errno_assert (rc == 0);
-    msg_->set_flags (msg_t::command);
-    unsigned char *data = static_cast<unsigned char *> (msg_->data ());
-    data[0] = zmp_control_heartbeat;
-    put_uint16 (data + 1, _options.heartbeat_ttl);
-    data[3] = static_cast<unsigned char> (ctx_len);
+    zmp_control::build_heartbeat_ping (
+      msg_, static_cast<uint16_t> (_options.heartbeat_ttl));
 
     _next_msg = &asio_ws_engine_t::pull_msg_from_session;
     if (!_has_timeout_timer && _heartbeat_timeout > 0) {
@@ -1882,86 +1770,33 @@ int zlink::asio_ws_engine_t::produce_ping_message (msg_t *msg_)
 
 int zlink::asio_ws_engine_t::process_heartbeat_message (msg_t *msg_)
 {
-    if (msg_->size () < 1) {
-        set_last_error (zmp_error_internal, "heartbeat too short");
-        errno = EPROTO;
+    zmp_control::heartbeat_action_t action;
+    if (zmp_control::parse_heartbeat (
+          msg_, static_cast<uint16_t> (_options.heartbeat_ttl), &action)
+        != 0) {
+        set_last_error (zmp_error_internal, action.error_reason);
         return -1;
     }
 
-    const unsigned char *data =
-      static_cast<const unsigned char *> (msg_->data ());
-    const uint8_t type = data[0];
-
-    if (type == zmp_control_heartbeat) {
-        if (msg_->size () == 1)
-            return 0;
-        if (msg_->size () < 4) {
-            set_last_error (zmp_error_internal, "heartbeat too short");
-            errno = EPROTO;
-            return -1;
-        }
-
-        const uint16_t ttl_ds = get_uint16 (data + 1);
-        const uint16_t effective_ttl_ds =
-          zmp_effective_ttl_ds (_options.heartbeat_ttl, ttl_ds);
-        const size_t ctx_len = data[3];
-        if (ctx_len > 16) {
-            set_last_error (zmp_error_internal, "heartbeat ctx too long");
-            errno = EPROTO;
-            return -1;
-        }
-        if (msg_->size () != 4 + ctx_len) {
-            set_last_error (zmp_error_internal, "heartbeat length mismatch");
-            errno = EPROTO;
-            return -1;
-        }
-
-        if (!_has_ttl_timer && effective_ttl_ds > 0) {
-            add_timer (static_cast<int> (effective_ttl_ds) * 100,
+    if (action.kind == zmp_control::heartbeat_action_send_ack) {
+        if (!_has_ttl_timer && action.ttl_ds > 0) {
+            add_timer (static_cast<int> (action.ttl_ds) * 100,
                        heartbeat_ttl_timer_id);
             _has_ttl_timer = true;
         }
 
-        _heartbeat_ctx.assign (data + 4, data + 4 + ctx_len);
+        _heartbeat_ctx.assign (action.ctx, action.ctx + action.ctx_len);
         _next_msg = &asio_ws_engine_t::produce_pong_message;
         restart_output ();
         return 0;
     }
 
-    if (type == zmp_control_heartbeat_ack) {
-        if (msg_->size () < 2) {
-            set_last_error (zmp_error_internal, "heartbeat ack too short");
-            errno = EPROTO;
-            return -1;
-        }
-        const size_t ctx_len = data[1];
-        if (msg_->size () != 2 + ctx_len) {
-            set_last_error (zmp_error_internal, "heartbeat ack invalid");
-            errno = EPROTO;
-            return -1;
-        }
-        return 0;
-    }
-
-    set_last_error (zmp_error_internal, "unknown control");
-    errno = EPROTO;
-    return -1;
+    return 0;
 }
 
 int zlink::asio_ws_engine_t::produce_pong_message (msg_t *msg_)
 {
-    const size_t ctx_len = _heartbeat_ctx.size ();
-    const size_t size = 2 + ctx_len;
-    int rc = msg_->init_size (size);
-    errno_assert (rc == 0);
-    msg_->set_flags (msg_t::command);
-
-    unsigned char *data = static_cast<unsigned char *> (msg_->data ());
-    data[0] = zmp_control_heartbeat_ack;
-    data[1] = static_cast<unsigned char> (ctx_len);
-    if (ctx_len > 0)
-        memcpy (data + 2, &_heartbeat_ctx[0], ctx_len);
-
+    zmp_control::build_heartbeat_ack (msg_, _heartbeat_ctx);
     _heartbeat_ctx.clear ();
     _next_msg = &asio_ws_engine_t::pull_msg_from_session;
     return 0;

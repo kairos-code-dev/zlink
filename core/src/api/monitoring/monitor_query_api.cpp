@@ -11,6 +11,34 @@
 
 #include "core/c_api_copy_internal.hpp"
 #include "core/recv_internal.hpp"
+#include "core/scoped_msg.hpp"
+
+namespace
+{
+int recv_monitor_frame (void *monitor_socket_,
+                        zlink::scoped_msg_t *frame_,
+                        int flags_)
+{
+    if (!frame_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return zlink::recv_msg_internal (monitor_socket_, frame_->get (), flags_);
+}
+
+bool copy_u64_frame (const zlink::scoped_msg_t &frame_, uint64_t *out_)
+{
+    if (!out_ || zlink_msg_size (frame_.get ()) < sizeof (*out_)) {
+        errno = EPROTO;
+        return false;
+    }
+
+    memcpy (out_, zlink_msg_data (const_cast<zlink_msg_t *> (frame_.get ())),
+            sizeof (*out_));
+    return true;
+}
+}
 
 int socket_monitor_snapshot_provider (void *subject_,
                                       zlink_monitor_snapshot_t *out_)
@@ -33,91 +61,77 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
         return -1;
     }
 
-    zlink_msg_t msg;
-    zlink_msg_init (&msg);
-    int rc = zlink::recv_msg_internal (monitor_socket_, &msg, flags_);
-    if (rc == -1) {
-        zlink_msg_close (&msg);
+    zlink::scoped_msg_t first_frame;
+    int rc = recv_monitor_frame (monitor_socket_, &first_frame, flags_);
+    if (rc == -1)
         return -1;
-    }
 
     memset (event_, 0, sizeof (*event_));
 
-    if (zlink_msg_size (&msg) == sizeof (*event_)) {
-        memcpy (event_, zlink_msg_data (&msg), sizeof (*event_));
-        zlink_msg_close (&msg);
+    if (zlink_msg_size (first_frame.get ()) == sizeof (*event_)) {
+        memcpy (event_, zlink_msg_data (first_frame.get ()), sizeof (*event_));
         return 0;
     }
 
-    if (zlink_msg_size (&msg) < sizeof (uint64_t)) {
-        zlink_msg_close (&msg);
-        errno = EPROTO;
+    if (!copy_u64_frame (first_frame, &event_->event))
         return -1;
-    }
-
-    memcpy (&event_->event, zlink_msg_data (&msg), sizeof (uint64_t));
-    zlink_msg_close (&msg);
 
     const int follow_flags = flags_ & ~ZLINK_DONTWAIT;
 
-    zlink_msg_init (&msg);
-    rc = zlink::recv_msg_internal (monitor_socket_, &msg, follow_flags);
-    if (rc == -1) {
-        zlink_msg_close (&msg);
-        return -1;
-    }
-    if (zlink_msg_size (&msg) < sizeof (uint64_t)) {
-        zlink_msg_close (&msg);
-        errno = EPROTO;
-        return -1;
-    }
-
     uint64_t value_count = 0;
-    memcpy (&value_count, zlink_msg_data (&msg), sizeof (uint64_t));
-    zlink_msg_close (&msg);
+    {
+        zlink::scoped_msg_t value_count_frame;
+        rc = recv_monitor_frame (monitor_socket_, &value_count_frame,
+                                 follow_flags);
+        if (rc == -1)
+            return -1;
+        if (!copy_u64_frame (value_count_frame, &value_count))
+            return -1;
+    }
 
     for (uint64_t i = 0; i < value_count; ++i) {
-        zlink_msg_init (&msg);
-        rc = zlink::recv_msg_internal (monitor_socket_, &msg, follow_flags);
-        if (rc == -1) {
-            zlink_msg_close (&msg);
+        zlink::scoped_msg_t value_frame;
+        rc = recv_monitor_frame (monitor_socket_, &value_frame, follow_flags);
+        if (rc == -1)
             return -1;
-        }
-        if (i == 0 && zlink_msg_size (&msg) >= sizeof (uint64_t))
-            memcpy (&event_->value, zlink_msg_data (&msg), sizeof (uint64_t));
-        zlink_msg_close (&msg);
+        if (i == 0 && zlink_msg_size (value_frame.get ()) >= sizeof (uint64_t))
+            memcpy (&event_->value, zlink_msg_data (value_frame.get ()),
+                    sizeof (uint64_t));
     }
 
-    zlink_msg_init (&msg);
-    rc = zlink::recv_msg_internal (monitor_socket_, &msg, follow_flags);
-    if (rc == -1) {
-        zlink_msg_close (&msg);
-        return -1;
+    {
+        zlink::scoped_msg_t routing_id_frame;
+        rc = recv_monitor_frame (monitor_socket_, &routing_id_frame,
+                                 follow_flags);
+        if (rc == -1)
+            return -1;
+        zlink::copy_routing_id_from_msg (routing_id_frame.ref (),
+                                         &event_->routing_id);
     }
-    zlink::copy_routing_id_from_msg (msg, &event_->routing_id);
-    zlink_msg_close (&msg);
 
-    zlink_msg_init (&msg);
-    rc = zlink::recv_msg_internal (monitor_socket_, &msg, follow_flags);
-    if (rc == -1) {
-        zlink_msg_close (&msg);
-        return -1;
+    {
+        zlink::scoped_msg_t local_addr_frame;
+        rc = recv_monitor_frame (monitor_socket_, &local_addr_frame,
+                                 follow_flags);
+        if (rc == -1)
+            return -1;
+        zlink::copy_fixed_c_string_from_bytes (
+          event_->local_addr, sizeof (event_->local_addr),
+          zlink_msg_data (local_addr_frame.get ()),
+          zlink_msg_size (local_addr_frame.get ()));
     }
-    zlink::copy_fixed_c_string_from_bytes (
-      event_->local_addr, sizeof (event_->local_addr), zlink_msg_data (&msg),
-      zlink_msg_size (&msg));
-    zlink_msg_close (&msg);
 
-    zlink_msg_init (&msg);
-    rc = zlink::recv_msg_internal (monitor_socket_, &msg, follow_flags);
-    if (rc == -1) {
-        zlink_msg_close (&msg);
-        return -1;
+    {
+        zlink::scoped_msg_t remote_addr_frame;
+        rc = recv_monitor_frame (monitor_socket_, &remote_addr_frame,
+                                 follow_flags);
+        if (rc == -1)
+            return -1;
+        zlink::copy_fixed_c_string_from_bytes (
+          event_->remote_addr, sizeof (event_->remote_addr),
+          zlink_msg_data (remote_addr_frame.get ()),
+          zlink_msg_size (remote_addr_frame.get ()));
     }
-    zlink::copy_fixed_c_string_from_bytes (
-      event_->remote_addr, sizeof (event_->remote_addr), zlink_msg_data (&msg),
-      zlink_msg_size (&msg));
-    zlink_msg_close (&msg);
 
     return 0;
 }

@@ -13,6 +13,7 @@
 #include "api/socket/socket_api_internal.hpp"
 #include "api/spot/request_reply/service_spot_routed_protocol_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_utils_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
@@ -38,6 +39,7 @@ using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
 using zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_delivery;
 using zlink::spot_reqrep_internal::process_route_combined_for_local_delivery;
 using zlink::spot_reqrep_internal::resolve_runtime_for_spot_destination;
+using zlink::spot_reqrep_internal::routing_id_from_key;
 using zlink::spot_reqrep_internal::routed_spot_delivery_kind_t;
 using zlink::spot_reqrep_internal::router_spot_delivery_kind_t;
 
@@ -97,17 +99,6 @@ bool routed_queue_can_resume (
     const size_t message_limit = static_cast<size_t> (hwm_ > 0 ? hwm_ : 1);
     return queue_.messages.size () <= message_limit / 2
            && queue_.queued_bytes <= byte_limit_ / 2;
-}
-
-bool routing_id_from_string (const std::string &value_,
-                             zlink_routing_id_t *out_)
-{
-    if (!out_ || value_.empty () || value_.size () > sizeof (out_->data))
-        return false;
-    memset (out_, 0, sizeof (*out_));
-    out_->size = static_cast<uint8_t> (value_.size ());
-    memcpy (out_->data, value_.data (), value_.size ());
-    return true;
 }
 
 std::string routing_id_debug_string (const zlink_routing_id_t &route_id_)
@@ -182,7 +173,7 @@ int send_external_router_once (zlink::spot_runtime_t *runtime_,
                                zlink_send_flags_t flags_)
 {
     zlink_routing_id_t route_id;
-    if (!routing_id_from_string (route_id_, &route_id)) {
+    if (!routing_id_from_key (route_id_, &route_id)) {
         errno = EINVAL;
         return -1;
     }
@@ -304,7 +295,7 @@ int dispatch_router_socket_spot_delivery (void *router_,
     }
 
     zlink_routing_id_t target_rid;
-    if (!routing_id_from_string (destination_node_rid_, &target_rid)) {
+    if (!routing_id_from_key (destination_node_rid_, &target_rid)) {
         errno = EINVAL;
         return -1;
     }

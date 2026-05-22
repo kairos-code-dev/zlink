@@ -194,21 +194,6 @@ int dispatch_router_spot_message (router_spot_request_reply_state_t *state_,
     return 0;
 }
 
-void routing_id_from_string (const std::string &value_, zlink_routing_id_t *out_)
-{
-    if (!out_)
-        return;
-
-    memset (out_, 0, sizeof (*out_));
-    if (value_.empty ())
-        return;
-
-    const size_t size =
-      value_.size () > sizeof (out_->data) ? sizeof (out_->data) : value_.size ();
-    memcpy (out_->data, value_.data (), size);
-    out_->size = static_cast<uint8_t> (size);
-}
-
 int recv_combined_plain_message (zlink::socket_base_t *socket_,
                                  std::vector<zlink_msg_t> *out_)
 {

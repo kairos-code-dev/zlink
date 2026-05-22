@@ -8,6 +8,7 @@
 #include "services/spot/common/spot_control_protocol.hpp"
 #include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
+#include "utils/routing_id.hpp"
 
 namespace zlink
 {
@@ -74,9 +75,8 @@ void spot_node_t::refresh_discovery_peers ()
             new_weight_by_endpoint[providers[i].endpoint] =
               providers[i].weight;
             if (providers[i].routing_id.size > 0) {
-                const std::string rid_key (
-                  reinterpret_cast<const char *> (providers[i].routing_id.data),
-                  providers[i].routing_id.size);
+                const std::string rid_key =
+                  zlink::routing_id_key (providers[i].routing_id);
                 new_weight_by_rid[rid_key] = providers[i].weight;
                 new_endpoints_by_rid[rid_key].insert (providers[i].endpoint);
             }

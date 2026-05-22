@@ -1693,8 +1693,91 @@ void test_spot_snapshot_destroy_joined_and_pending_counts ()
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+void test_stream_close_aborts_pending_join_without_leaving_current_spot ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
 
-void test_stream_remote_actor_owner_not_connected_and_unbind_cleanup ()
+    zlink_spot_node_options_t options;
+    options.mode = ZLINK_SPOT_NODE_MODE_ALL;
+    void *node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *joined_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (joined_spot);
+    zlink_routing_id_t joined_spot_rid;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_get_routing_id (joined_spot,
+                                             &joined_spot_rid));
+    actor_probe_t joined_probe;
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_spot_dispatch_event_handler (
+                         joined_spot, on_join_only_dispatch, &joined_probe));
+
+    void *pending_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (pending_spot);
+
+    void *actor = zlink_spot_node_actor_new (node, "close-pending-join");
+    TEST_ASSERT_NOT_NULL (actor);
+    zlink_actor_ref_t actor_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_get_ref (actor, &actor_ref));
+
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "close-pending-join-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       wait_stream_bind_actor (node, stream, &session_rid,
+                                                &actor_ref, 1000));
+
+    zlink_msg_t join_msg;
+    init_text_msg (&join_msg, "join");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_actor_join_spot (
+                         actor, joined_spot, &join_msg, on_join_reply,
+                         &joined_probe, ZLINK_DONTWAIT, 1000));
+    {
+        std::unique_lock<std::mutex> lock (joined_probe.mutex);
+        TEST_ASSERT_TRUE (joined_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return joined_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, joined_probe.join_result);
+    }
+
+    actor_probe_t pending_probe;
+    zlink_msg_t pending_join;
+    init_text_msg (&pending_join, "pending");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_actor_join_spot (
+                         actor, pending_spot, &pending_join, on_join_reply,
+                         &pending_probe, ZLINK_DONTWAIT, 5000));
+
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    {
+        std::unique_lock<std::mutex> lock (pending_probe.mutex);
+        TEST_ASSERT_TRUE (pending_probe.cv.wait_for (
+          lock, std::chrono::seconds (2),
+          [&] { return pending_probe.join_done; }));
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_TERMINATED, pending_probe.join_result);
+    }
+
+    zlink_spot_node_spot_entry_t row;
+    TEST_ASSERT_TRUE (find_spot_snapshot_row (node, joined_spot_rid, &row));
+    TEST_ASSERT_EQUAL_UINT32 (1, row.joined_actor_count);
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_BUSY, zlink_spot_destroy (&joined_spot));
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_actor_leave_spot (actor, joined_spot));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&pending_spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&joined_spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+
+void test_stream_remote_actor_owner_missing_route_and_unbind_cleanup ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -1723,7 +1806,7 @@ void test_stream_remote_actor_owner_not_connected_and_unbind_cleanup ()
 
     zlink_msg_t part;
     init_text_msg (&part, "still-owned");
-    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_NOT_CONNECTED,
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_NOT_FOUND,
                        test_stream_send_bound_actor_part (
                          session_owner, stream, &session_rid, "remote-gone",
                          &part, ZLINK_DONTWAIT, ZLINK_PART_FINAL));
@@ -2221,7 +2304,8 @@ int main ()
     RUN_TEST (test_actor_join_timeout_without_dispatch_handler);
     RUN_TEST (test_actor_send_bound_session_raw_and_packet);
     RUN_TEST (test_spot_snapshot_destroy_joined_and_pending_counts);
-    RUN_TEST (test_stream_remote_actor_owner_not_connected_and_unbind_cleanup);
+    RUN_TEST (test_stream_close_aborts_pending_join_without_leaving_current_spot);
+    RUN_TEST (test_stream_remote_actor_owner_missing_route_and_unbind_cleanup);
     RUN_TEST (test_stream_multipart_selector_and_unbound_relay);
     RUN_TEST (test_actor_queue_dispatch_receive_and_backpressure);
     RUN_TEST (test_actor_route_move_joined_publish_and_provider_cleanup);

@@ -4,19 +4,10 @@
 
 #include "services/registry/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "utils/routing_id.hpp"
 
 namespace zlink
 {
-namespace
-{
-std::string routing_id_key_of (const zlink_routing_id_t &rid_)
-{
-    if (rid_.size == 0)
-        return std::string ();
-    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
-}
-}
-
 bool registry_t::find_provider_owner_locked (
   const std::string &channel_name_,
   uint16_t service_role_,
@@ -40,7 +31,7 @@ bool registry_t::find_provider_owner_locked (
     if (owner_out_) {
         owner_out_->channel_name = channel_name_;
         owner_out_->service_role = pit->second.service_role;
-        owner_out_->routing_id_key = routing_id_key_of (pit->second.routing_id);
+        owner_out_->routing_id_key = routing_id_key (pit->second.routing_id);
         owner_out_->source_registry = pit->second.source_registry;
         owner_out_->registration_id = pit->second.registration_id;
     }
@@ -62,7 +53,7 @@ bool registry_t::owner_is_live_locked (const owner_identity_t &owner_) const
         const provider_entry_t &provider = pit->second;
         if (provider.service_role != owner_.service_role)
             continue;
-        if (routing_id_key_of (provider.routing_id) != owner_.routing_id_key)
+        if (routing_id_key (provider.routing_id) != owner_.routing_id_key)
             continue;
         if (provider.source_registry == owner_.source_registry
             && provider.registration_id == owner_.registration_id) {
@@ -400,7 +391,7 @@ void registry_t::upsert_topology_entry (
     topology_key_t key;
     key.service_kind = entry_.service_kind;
     key.service_role = entry_.service_role;
-    key.routing_id_key = routing_id_key_of (entry_.routing_id);
+    key.routing_id_key = routing_id_key (entry_.routing_id);
     key.channel_name = entry_.channel_name;
     key.endpoint = entry_.endpoint;
 
@@ -607,7 +598,7 @@ void registry_t::remove_expired (uint64_t now_ms_)
                 removed_owner.channel_name = sit->first.channel_name;
                 removed_owner.service_role = pit->second.service_role;
                 removed_owner.routing_id_key =
-                  routing_id_key_of (pit->second.routing_id);
+                  routing_id_key (pit->second.routing_id);
                 removed_owner.source_registry = pit->second.source_registry;
                 removed_owner.registration_id = pit->second.registration_id;
                 cleanup_owner_records_locked (removed_owner, now_ms_);
@@ -643,7 +634,7 @@ void registry_t::remove_expired (uint64_t now_ms_)
                         removed_owner.channel_name = sit->first.channel_name;
                         removed_owner.service_role = eit->second.service_role;
                         removed_owner.routing_id_key =
-                          routing_id_key_of (eit->second.routing_id);
+                          routing_id_key (eit->second.routing_id);
                         removed_owner.source_registry =
                           eit->second.source_registry;
                         removed_owner.registration_id =

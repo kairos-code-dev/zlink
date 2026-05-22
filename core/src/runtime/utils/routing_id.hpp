@@ -6,6 +6,7 @@
 #include "zlink.h"
 #include "utils/random.hpp"
 
+#include <string>
 #include <string.h>
 
 namespace zlink
@@ -34,6 +35,54 @@ inline void generate_random_uuid_routing_id (zlink_routing_id_t *out_)
     }
     if (all_zero)
         out_->data[random_uuid_routing_id_size - 1] = 1;
+}
+
+inline bool valid_routing_id (const zlink_routing_id_t *rid_)
+{
+    return rid_ && rid_->size > 0 && rid_->size <= sizeof (rid_->data);
+}
+
+inline bool valid_routing_id (const zlink_routing_id_t &rid_)
+{
+    return valid_routing_id (&rid_);
+}
+
+inline std::string routing_id_key (const zlink_routing_id_t *rid_)
+{
+    if (!valid_routing_id (rid_))
+        return std::string ();
+    return std::string (reinterpret_cast<const char *> (rid_->data),
+                        rid_->size);
+}
+
+inline std::string routing_id_key (const zlink_routing_id_t &rid_)
+{
+    return routing_id_key (&rid_);
+}
+
+inline bool routing_id_from_key (const std::string &value_,
+                                 zlink_routing_id_t *out_)
+{
+    if (!out_ || value_.empty () || value_.size () > sizeof (out_->data))
+        return false;
+    memset (out_, 0, sizeof (*out_));
+    out_->size = static_cast<uint8_t> (value_.size ());
+    memcpy (out_->data, value_.data (), value_.size ());
+    return true;
+}
+
+inline void optional_routing_id_from_key (const std::string &value_,
+                                          zlink_routing_id_t *out_)
+{
+    if (!out_)
+        return;
+    memset (out_, 0, sizeof (*out_));
+    if (value_.empty ())
+        return;
+    const size_t size =
+      value_.size () > sizeof (out_->data) ? sizeof (out_->data) : value_.size ();
+    memcpy (out_->data, value_.data (), size);
+    out_->size = static_cast<uint8_t> (size);
 }
 }
 

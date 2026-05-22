@@ -6,6 +6,7 @@
 #include "api/spot/request_reply/service_spot_routed_protocol_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "services/spot/node/spot_node.hpp"
+#include "utils/routing_id.hpp"
 
 namespace
 {
@@ -136,7 +137,7 @@ bool zlink::spot_reqrep_internal::resolve_spot_node_routing_id (
     if (node_->node_routing_id (&node_rid) != 0 || node_rid.size == 0)
         return false;
 
-    out_->assign (reinterpret_cast<const char *> (node_rid.data), node_rid.size);
+    *out_ = zlink::routing_id_key (node_rid);
     return true;
 }
 

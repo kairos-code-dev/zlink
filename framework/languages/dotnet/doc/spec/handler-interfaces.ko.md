@@ -64,16 +64,15 @@
 | context | `IZLinkActorContext` | actor 상태 조회와 spot join 호출 | 4.4.1 |
 | handler | `IZLinkActorSendHandler<TMessage>` / `IZLinkActorRequestHandler<TRequest, TReply>` | actor 안에서 처리하는 session relay message handler | 4.4.1 |
 | handler | `IZLinkActorPacketHandler<TActor, TMessage>` / `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor instance 를 직접 받는 actor message handler | 4.4.1 |
-| context | `ZLinkActorSendContext` / `ZLinkActorRequestContext` | actor handler 실행 context. session proxy 와 metadata 를 제공한다 | 4.4.1 |
+| context | `ZLinkActorSendContext` / `ZLinkActorRequestContext` | actor handler 실행 context. bound session 과 metadata 를 제공한다 | 4.4.1 |
 | handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` / `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor message handler | 4.4.2 |
 | handler | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` / `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor message handler | 4.4.2 |
-| value | `ZLinkMessageMetadata` | actor/session proxy call에 전달되는 application/codec metadata snapshot | 4.4.2 |
+| value | `ZLinkMessageMetadata` | actor/bound session call에 전달되는 application/codec metadata snapshot | 4.4.2 |
 | policy | `IZLinkMessageMetadataPolicy` | application metadata forwarding 허용 여부 | 4.4.2 |
 | factory | `IZLinkActorFactory` | actor type별 actor 생성 | 4.4.1 |
 | handler | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | spot에 actor가 join할 때 호출되는 handler | 4.4.1 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
-| client | `IZLinkSessionProxy` | 현재 actor -> 현재 client session 호출 | 5.6 |
-| resolver | `IZLinkActorRemoteAddressResolver` | backend actor messaging 용 actor id -> play/runtime route 조회 | 5.7 |
+| client | `IZLinkBoundSession` | 현재 actor -> 현재 client session 호출 | 5.6 |
 | resolver | `IZLinkSpotRemoteAddressResolver` | spot name/id에서 user Spot route 조회 | 5.7 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | lifecycle | `IZLinkSpot` | spot lifecycle registration base | 4.3.1 |
@@ -1188,6 +1187,10 @@ public interface IZLinkSessionActorDispatchContext
         ZLinkActorRemoteAddress remoteAddress,
         CancellationToken cancellationToken = default);
 
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        IZLinkActorRef actor,
+        CancellationToken cancellationToken = default);
+
     ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
@@ -1204,11 +1207,6 @@ public interface IZLinkActorManager
 
     ValueTask<IZLinkActor?> FindAsync(
         string actorId,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
-        string actorId,
-        string actorType,
         CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkActor> GetOrCreateAsync(
@@ -1274,7 +1272,7 @@ runtime 이 검증하는 계약이다.
 
 `Write(...)` 는 framework Header 기반 packet session 에서 stream 으로 packet 을
 보내는 low-level submit 이다. 일반 application 코드는 가능한 한 `Context.Send(...)`,
-`Context.Reply(...)`, `IZLinkSessionProxy` 같은 framework helper 를 사용한다.
+`Context.Reply(...)`, `IZLinkBoundSession` 같은 framework helper 를 사용한다.
 
 session handler 에서 다른 channel 로 send/request 를 보내야 한다면
 `IZLinkSessionContext` 가 아니라 DI 로 주입받은 `IZLinkClient` 를 사용한다.
@@ -1282,8 +1280,8 @@ channel 호출은 현재 stream peer 로 나가지 않고, channel 이름에 맞
 client socket 으로 나가기 때문이다.
 
 backpressure 는 framework 내부에서 처리한다. actor 가 stream 을 직접 다루는
-패턴이 아니라면, 현재 actor 의 client 는 `IZLinkSessionProxy`, actor id 를
-지정하는 service 는 `IZLinkSessionProxy` 를 경유한다(actor-model §10 참고).
+패턴이 아니라면, 현재 actor 의 client 는 `IZLinkBoundSession`, actor id 를
+지정하는 service 는 `IZLinkBoundSession` 를 경유한다(actor-model §10 참고).
 
 `OnErrorAsync(...)` 는 application handler 내부에서 발생한 예외를 받는
 callback 이 아니다.
@@ -1587,7 +1585,7 @@ public sealed class ZLinkActorSendContext : ZLinkHandlerContext
     public string ActorId { get; }
     public string RouterChannelId { get; }
     public ZLinkMessageMetadata Metadata { get; }
-    public IZLinkSessionProxy SessionProxy { get; }
+    public IZLinkBoundSession BoundSession { get; }
 }
 
 public sealed class ZLinkActorRequestContext : ZLinkHandlerContext
@@ -1595,7 +1593,7 @@ public sealed class ZLinkActorRequestContext : ZLinkHandlerContext
     public string ActorId { get; }
     public string RouterChannelId { get; }
     public ZLinkMessageMetadata Metadata { get; }
-    public IZLinkSessionProxy SessionProxy { get; }
+    public IZLinkBoundSession BoundSession { get; }
     public new DateTimeOffset? Deadline { get; }
 }
 
@@ -1661,13 +1659,12 @@ actor join handler 코드가 actor membership 을 직접 다뤄야 하는 경우
 
 actor context 는 현재 client session 의 `SessionId` 만 조회값으로 노출한다.
 
-session router id 와 binding token 은 actor 가 client 로 send/request 할
-때 사용하는 runtime 내부 metadata 다. 그래서 actor context 에는 드러내지
-않는다.
+session rid 와 binding token 은 actor 가 client 로 push 할 때 사용하는
+runtime 내부 metadata 다. 그래서 actor context 에는 드러내지 않는다.
 
 이유는 단순하다. application actor 코드가 session 위치값을 직접 들고 있으면,
 재접속 시 stale 상태로 빠지기 쉽기 때문이다. framework runtime 은 필요한
-session route 를 actor state 안에서 관리하고, actor code 에는 `SessionProxy`
+session route 를 actor state 안에서 관리하고, actor code 에는 `BoundSession`
 만 노출한다.
 
 framework runtime 은 actor context 를 먼저 주입한 뒤 actor 객체를 만든다.
@@ -1680,8 +1677,8 @@ actor class 안에서 상태 분기로 섞을 필요가 없다.
 channel outbound 는 actor context 의 기능이 아니다. Entry Spot 또는 user Spot
 안에서 channel 로 메시지를 보내야 하면 handler 가 받은 `entrySpot.Context` 또는
 `spot.Context` 의 `SendChannel(...)` / `RequestChannel(...)` 을 사용한다.
-client stream 으로 push 해야 하면 `ZLinkActorSendContext.SessionProxy`,
-`ZLinkActorRequestContext.SessionProxy`, 또는 `IZLinkSessionProxy` 를
+client stream 으로 push 해야 하면 `ZLinkActorSendContext.BoundSession`,
+`ZLinkActorRequestContext.BoundSession`, 또는 `IZLinkBoundSession` 를
 사용한다.
 
 `GetSpot(...)` 은 actor 가 `Spot` 에 join 한 뒤에만 유효하다. join 전
@@ -1726,7 +1723,7 @@ session actor dispatch 는 actor 객체의 callback 을 직접 호출하지 않�
 이 registry 는 Entry Spot 또는 user Spot 의 registry 다.
 
 handler 는 저수준 정보를 직접 보지 않는다. 즉 raw routed envelope, stream
-sequence, session router id 같은 것들은 노출되지 않는다.
+sequence, session rid 같은 것들은 노출되지 않는다.
 
 각 단계의 handler 가 구현해야 할 interface 는 다음과 같다.
 
@@ -1743,7 +1740,7 @@ sequence, session router id 같은 것들은 노출되지 않는다.
   덕분에 동일 Spot 상태를 함께 보호하게 된다.
 
 공통 metadata 타입은 모든 호출 경로에서 같은 snapshot 규칙을 따른다. 즉
-actor dispatch, session proxy, channel 호출 모두 동일하다.
+actor dispatch, bound session, channel 호출 모두 동일하다.
 
 ```csharp
 public sealed class ZLinkMessageMetadata
@@ -2271,11 +2268,9 @@ session 에서 actor 로 packet 을 relay 할 때는 `IZLinkSessionContext` 의
 `RelayToActorAsync(...)` 를 사용한다. actor runtime 을 직접 호출하는 별도
 public client 는 두지 않는다.
 
-remote actor 위치가 필요하면 session 은 인증이나 입장 흐름에서 받은
-`ZLinkActorRemoteAddress` snapshot 을 `BindActorHandleAsync(...)` overload 에 넘긴다.
-framework 는 이 값을 actor ref 안에 저장하고, relay 때마다
-`IZLinkActorRemoteAddressResolver` 를 호출하지 않는다. remote address 없는 overload 는 local
-actor compatibility 경로로만 남는다.
+remote actor 위치는 session 이 직접 계산하지 않는다. session 은 actor id/type 으로
+local actor handle 을 만들거나, actor host runtime 이 발급한 `ZLinkActorRemoteAddress` 로
+remote actor handle 을 만들고, core ActorGateway 가 그 actor ref 를 기준으로 relay 한다.
 
 ### 5.5.1 route transport helper
 
@@ -2298,7 +2293,7 @@ payload 를 하나의 `Message` 로 합쳐서 직렬화하지 않는다. 대신 
 
 - framework header 는 첫 번째 part 에 둔다.
 - codec 이 생성한 payload bytes 는 별도의 part 에 둔다.
-- actor dispatch 나 session proxy 처럼 내부 metadata 가 추가로 필요한
+- actor dispatch 나 bound session 처럼 내부 metadata 가 추가로 필요한
   경로에서는, payload 앞에 metadata part 를 더 붙일 수 있다.
 
 ```csharp
@@ -2338,12 +2333,13 @@ internal interface IZLinkRouteRequestCall
 direct target helper 는 transport 위치값을 이미 알고 있는 framework 내부
 경로에 한해서만 둔다.
 
-### 5.6 IZLinkSessionProxy
+### 5.6 IZLinkBoundSession
 
-actor handler 가 client session 으로 push 또는 request 를 보낼 때 사용하는
-client 다.
+actor handler 가 현재 client session 으로 push 를 보낼 때 사용하는 client 다.
+client 에게 새 request 를 보내는 API 는 제공하지 않는다. client request 에 대한
+응답은 actor request handler 의 반환값으로 처리한다.
 
-`IZLinkSessionProxy` 자체는 연결된 client stream 을 향한 proxy 이므로
+`IZLinkBoundSession` 자체는 연결된 client stream 을 향한 proxy 이므로
 `Zlink.Framework.Contracts.Streams` 에 둔다. 다만 이 proxy 를 받는
 `ZLinkActorSendContext` / `ZLinkActorRequestContext` 와 actor handler
 인터페이스는 actor runtime 이 선택하고 실행하므로
@@ -2357,45 +2353,24 @@ framework/core 의 actor-session binding 안에만 머문다.
 - binding token
 
 ```csharp
-public interface IZLinkSessionProxy
+public interface IZLinkBoundSession
 {
-    IZLinkSessionProxySendCall Send<TMessage>(
+    IZLinkBoundSessionSendCall Send<TMessage>(
         TMessage message);
 
-    IZLinkSessionProxyRequestCall Request<TRequest>(
-        TRequest request);
-
     ValueTask DisconnectAsync(
         CancellationToken cancellationToken = default);
 }
 
-    ValueTask DisconnectAsync(
-        string actorId,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkSessionProxySendCall
+public interface IZLinkBoundSessionSendCall
 {
-    IZLinkSessionProxySendCall PacketName(string packetName);
+    IZLinkBoundSessionSendCall PacketName(string packetName);
 
-    IZLinkSessionProxySendCall Metadata(
+    IZLinkBoundSessionSendCall Metadata(
         string key,
         string value);
 
     ValueTask Submit(CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkSessionProxyRequestCall
-{
-    IZLinkSessionProxyRequestCall PacketName(string packetName);
-
-    IZLinkSessionProxyRequestCall Metadata(
-        string key,
-        string value);
-
-    IZLinkSessionProxyRequestCall Timeout(TimeSpan timeout);
-
-    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -2406,40 +2381,16 @@ public resolver 는 두 축으로 제한한다. actor 와 spot 이다.
 - actor resolver: actor id 로부터 actor runtime route 를 조회한다.
 - spot resolver: spot name 이나 spot rid 로부터 user Spot route 를 조회한다.
 
-`IZLinkSessionProxy` 는 actor context 가 현재 actor id 를 알고 있을 때만
+`IZLinkBoundSession` 는 actor context 가 현재 actor id 를 알고 있을 때만
 제공한다. 사용자는 actor id 를 다시 넘기지 않고 현재 actor 에 묶인 client
 session 으로 보낸다. 다른 actor 의 client session 으로 보내야 하면 먼저 해당
-actor 에게 메시지를 보내고, 그 actor 의 handler 가 자기 `SessionProxy` 로 push 한다.
+actor 에게 메시지를 보내고, 그 actor 의 handler 가 자기 `BoundSession` 로 push 한다.
 `DisconnectAsync(...)` 도 현재 actor 의 binding 상태를 사용한다. actor 가
 client 연결을 끊기로 결정한 경우 이 메서드를 호출하며, session callback 으로
 `OnDisconnectedAsync(...)` 를 다시 올리지 않는다.
 
 분산 배포 환경에서도 session binding 은 actor runtime state 에 저장한다. 별도 public
 session 위치 resolver 나 session 위치 저장소는 제공하지 않는다.
-
-```csharp
-namespace Zlink.Framework.Contracts.Actors;
-
-public interface IZLinkActorRemoteAddressResolver
-{
-    ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
-        string actorId,
-        CancellationToken cancellationToken);
-}
-
-public readonly record struct ZLinkActorRemoteLocation(
-    string RouterChannelId,
-    string ActorId,
-    RoutingId TargetNodeRid,
-    RoutingId CurrentSpotRid,
-    ZLinkSpotKind CurrentSpotKind);
-```
-
-이 route 는 backend service 가 actor id 로 현재 Actor 위치를 조회한 결과다.
-`TargetNodeRid` 와 `CurrentSpotRid` 는 기존 Spot routed API 의 destination 으로
-사용된다. `CurrentSpotKind` 는 대상이 Entry Spot 인지 user Spot 인지를 구분한다.
-이 logical route 는 `ActorGeneration` 을 요구하지 않는다. session attach 는
-별도의 concrete remote address snapshot 과 generation 검증을 계속 사용한다.
 
 ```csharp
 namespace Zlink.Framework.Contracts.Spots;
@@ -2475,7 +2426,7 @@ route mesh `ROUTER`여야 한다. target `SpotNode`는 같은 이름을
 `AcceptSpotRoutesFromChannel(...)`로 수락해야 하며, resolver는 연결을 만들지 않는다.
 
 actor-session route 는 public contract 가 아니다. session bind 시 framework runtime 이
-현재 actor state 에 session router id 와 binding token 을 저장하고, `IZLinkSessionProxy`
+현재 actor state 에 session rid 와 binding token 을 저장하고, `IZLinkBoundSession`
 가 그 내부 상태를 사용한다.
 
 resolver 의 입력에는 다음 값들을 넘기지 않는다. metadata, packet name,
@@ -2488,7 +2439,7 @@ resolver 의 책임은 좁다. 위치 저장소 접근만 담당한다. 작은 d
 까지 떠안아서는 안 된다.
 
 `내부 actor session state` 는 resolver 가 아니다. session
-bind/unbind lifecycle 과 `SessionProxy` 조회를 하나의 저장소 계약으로 묶는
+bind/unbind lifecycle 과 `BoundSession` 조회를 하나의 저장소 계약으로 묶는
 역할이다. 이렇게 묶어 두는 의도는 stale binding 처리를 한곳에 가두기
 위해서다.
 
@@ -2501,8 +2452,8 @@ bind/unbind lifecycle 과 `SessionProxy` 조회를 하나의 저장소 계약으
 - actor factory 가 호출되어 새 actor 를 만들어야 하는 경우에도, factory
   가 반환한 `ActorId` 는 요청한 actor id 와 정확히 일치해야 한다.
 
-일치하지 않으면 어떻게 될까. actor remote address 와 session binding 이 서로 다른
-id 를 가리키게 된다. 이 경우 configuration 오류로 실패한다.
+일치하지 않으면 어떻게 될까. logical actor handle 과 session binding 이 서로 다른
+actor id 를 가리키게 된다. 이 경우 configuration 오류로 실패한다.
 
 ## 6. 등록과 관리 인터페이스
 
@@ -2517,9 +2468,9 @@ id 를 가리키게 된다. 이 경우 configuration 오류로 실패한다.
 `AddFanoutChannel(...)`, `AddSpotMesh(...)`, `UseDiscovery(...)`,
 `UseFilter(...)` 다.
 
-`UseSpotDiscovery(...)` 는 기존 분리 등록 초안과의 호환 경로 용도로만
-남긴다. 새 샘플은 `AddSpotMesh(...)` 안에서 SPOT channel view 와 node
-등록을 한꺼번에 마무리한다.
+SPOT discovery 와 node 집합은 `AddSpotMesh(...)` 안에서 함께 등록한다.
+이렇게 하면 channel view 의 소유자가 하나로 고정되어 node 등록 순서나
+분리 호출 여부가 의미에 영향을 주지 않는다.
 
 channel discovery 의 등록 위치는 다음과 같이 정해 둔다.
 
@@ -2640,7 +2591,7 @@ public interface IZLinkStreamNodeBuilder
 {
     void Bind(string endpoint);
 
-    void AddHeaderSession<TSession>()
+    void RegisterSession<TSession>()
         where TSession : class, IZLinkSession;
 }
 
@@ -2720,9 +2671,6 @@ public interface IZLinkFrameworkOptions
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
 
-    void AddActorRemoteAddressResolver<TResolver>()
-        where TResolver : class, IZLinkActorRemoteAddressResolver;
-
     void AddSpotRemoteAddressResolver<TResolver>()
         where TResolver : class, IZLinkSpotRemoteAddressResolver;
 
@@ -2739,21 +2687,17 @@ public interface IZLinkFrameworkOptions
   - protobuf/json/messagepack 같은 codec provider를 framework registry에 등록하는
     진입점이다.
 - `ConfigureMetadata(...)`
-  - session actor dispatch와 session proxy 경로에서 전달할 application metadata key를
+  - session actor dispatch와 bound session 경로에서 전달할 application metadata key를
     등록한다.
 - `AddActorFactory(...)`
   - actor type 문자열에 대응하는 actor factory를 등록한다.
-- `AddActorRemoteAddressResolver(...)`
-  - session actor dispatch 가 actor id로 play/runtime route를 찾을 때 사용할
-    resolver를 등록한다.
 - `AddSpotRemoteAddressResolver(...)`
   - `IZLinkSpotClient`나 `JoinSpot(spotName, ...)`이 spot name 또는 spot rid로 user
     Spot route를 찾을 때 사용할 resolver를 등록한다.
 - actor-session binding
   - 별도 public registration 함수로 등록하지 않는다. stream session이 actor handle을
     만들거나 actor에 attach되면 framework/core가 binding 상태를 갱신하고,
-    `IZLinkSessionProxy`와 `IZLinkSessionProxy`는 그 상태를 사용해 client
-    stream으로 보낸다.
+    `IZLinkBoundSession`는 그 상태를 사용해 client stream으로 보낸다.
 - `AddClientServerChannel(...)`
   - request/send 용 client-server 채널을 등록한다. builder는 `EnableServer(...)`와
     `EnableClient(...)`만 노출한다.
@@ -2770,25 +2714,17 @@ public interface IZLinkFrameworkOptions
 - `UseDiscovery(...)`
   - 일반 channel capability들이 공유할 registry endpoint 집합을 등록한다.
   - `client.UseDiscovery(...)`처럼 capability 아래에 다시 두지 않는다.
-- `UseSpotDiscovery(...)`
-  - 기존 분리 등록 초안과의 호환 경로다.
-  - 앱 단위 active SPOT channel view와 registry endpoint 집합을 등록하고, 별도
-    `AddSpotNode(...)`들이 그 channel view를 공유한다.
-  - 새 문서와 샘플에서는 `AddSpotMesh(...)` 안에서 `UseDiscovery(...)`와
-    `AddNode(...)`를 함께 쓰는 방식을 우선한다.
 - `UseFilter<TFilter>()`
   - handler filter 타입을 framework pipeline에 등록한다.
-- `AddSpotNode(...)`
-  - 명명된 `SpotNode`를 등록한다. `EnableRouter()`, `EnablePubSub()`,
-    `AttachClientServerChannelClient(...)`, `AttachSpotMeshPublisherClient(...)`,
-    `AddSpotFactory<TSpot>(...)`, `AddEntrySpot<TEntrySpot>()` 같은 capability 구성은
-    builder 람다 안에서 선언한다.
 - `AddSpotMesh(...)`
   - 여러 `SpotNode`가 같은 SPOT mesh discovery view를 공유하도록 묶어 등록한다.
-    mesh builder는 자체 `UseDiscovery(...)`와 `AddNode(spotNodeName, ...)`을 노출한다.
+    mesh builder는 자체 `UseDiscovery(...)`와 `AddNode(spotNodeName, ...)`를
+    노출한다.
     mesh node builder는 `EnableRouter`, `EnablePubSub`,
     `AttachClientServerChannelClient`, `AttachSpotMeshPublisherClient`,
     `AddSpotFactory<TSpot>(...)`, `AddEntrySpot<TEntrySpot>()`를 노출한다.
+    ActorGateway 는 별도 node builder 를 갖지 않고, stream 이 router capability
+    를 켠 SpotNode 를 `AttachActorGateway(...)` 로 참조한다.
 - `EnableServer(...)`
   - local request/send handler를 받을 `ROUTER(server)` capability를 연다.
   - 이 capability는 local bind endpoint가 없으면 다른 프로세스에서 접근할 수
@@ -3063,6 +2999,8 @@ public interface ISpotNodeSubscriberOptions
 
 public interface ISpotRouterCapabilityBuilder
 {
+    void Bind(string endpoint);
+
     void ConfigureSocket(
         Action<IZLinkCommonSocketOptions> configure);
 
@@ -3238,10 +3176,10 @@ public interface IZLinkEntrySpotOptions
 소유한다. 그래서 `AddNode(...)` 안에서 같은 channel 이름을 다시 받는
 함수는 두지 않는다.
 
-기존 분리 경로에서도 동일한 원칙이 적용된다. `UseSpotDiscovery(...)` 와
-`AddSpotNode(...)` 를 분리하는 경로에서도, `UseSpotDiscovery(...)` 가
-channel 이름을 이미 소유한다. 따라서 `AddSpotNode(...)` 안에서 channel
-이름을 다시 받지 않는다.
+ActorGateway 도 같은 원칙을 따른다. 별도 `AddActorGatewayNode(...)` 표면을 두지
+않고, `AddNode(...)` 로 등록한 SpotNode 에 `EnableRouter(...)` 와 router
+`Bind(...)` 를 설정한 뒤 stream 이 `AttachActorGateway(spotNodeName)` 으로
+그 local ingress node 를 참조한다.
 
 정리하면, `SPOT` 등록 시점에도 다음 축들을 함께 드러내는 편이 맞다.
 
@@ -4008,8 +3946,8 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 | `IZLinkRoutedSpotClient` | client-server channel 또는 route mesh channel 중 `EnableSpotRouteEgress(...)`가 켜진 local egress channel 이 하나 이상 있을 때 등록한다 |
 | `IZLinkSpotPublisherClient`, `IZLinkSpotMeshPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
 | `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
-| `IZLinkSessionProxyFactory`, `IZLinkSessionProxy` | actor session proxy runtime 등록한다 |
-| `IZLinkActorRemoteAddressResolver`, `IZLinkSpotRemoteAddressResolver` | 해당 resolver registration 이 있을 때 등록한다 |
+| `IZLinkBoundSessionFactory`, `IZLinkBoundSession` | actor bound session runtime 등록한다 |
+| `IZLinkSpotRemoteAddressResolver` | 해당 resolver registration 이 있을 때 등록한다 |
 
 local handler 가 붙는 channel 의 의미는 다음과 같다. route prefix 가
 아니라, 애플리케이션이 해당 channel 에서 server 역할을 수행한다는 의미다.

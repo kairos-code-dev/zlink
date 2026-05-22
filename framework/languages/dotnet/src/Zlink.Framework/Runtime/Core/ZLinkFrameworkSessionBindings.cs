@@ -29,18 +29,4 @@ internal sealed class ZLinkFrameworkSessionBindings
         return _sessionActorBindings.TryGet(actorId, bindingToken, out context);
     }
 
-    public int UpdateAttachedActorRemoteAddress(
-        string actorId,
-        string routerChannelId,
-        RoutingId targetNodeRid,
-        ulong expectedActorGeneration,
-        ulong newActorGeneration)
-    {
-        return _sessionActorBindings.UpdateAttachedActorRemoteAddress(
-            actorId,
-            routerChannelId,
-            targetNodeRid,
-            expectedActorGeneration,
-            newActorGeneration);
-    }
 }

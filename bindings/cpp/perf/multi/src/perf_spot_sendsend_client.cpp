@@ -493,7 +493,7 @@ bool run_client (const std::string &lib_name,
         return false;
     control_sub.set_subscription (k_control_topic);
     const std::string local_data_endpoint =
-      perf::multi::bind_spot_endpoint (
+      perf::multi::bind_routed_spot_endpoint (
         data_node, transport, perf::multi::bench_port_base (52000));
     if (local_data_endpoint.empty ())
         return false;

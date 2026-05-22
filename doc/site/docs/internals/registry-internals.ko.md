@@ -86,6 +86,19 @@ struct route_entry_t {
 // Owner cleanup: owner_identity -> route_key set
 ```
 
+### 3.1 Actor route row 와 gateway 경계
+
+Actor route 는 일반 `route_entry_t` row 로 저장되며 key 는 `ZLINK_ROUTE_KIND_ACTOR` 와
+actor id 다. value 는 불투명한 `zlink_actor_route_t` blob 이고, Registry 는 이를 저장하고
+flooding 하지만 내용을 해석하지 않는다. owner SpotNode 가 Actor 의 현재 위치에서 이 row 를
+게시하고 회수하므로, **owner 가 게시하는 eventually consistent** 상태다. 최신 join 이 owner 의
+Actor table 에는 먼저 보이고, 대응하는 route row 가 모든 Registry 로 flooding 되기 전일 수 있다.
+
+그래서 STREAM session relay 는 Registry 를 조회하지 않는다. session binding 이 bound Actor
+ref 를 직접 들고 있고, owner SpotNode 의 ActorGateway 가 현재 위치를 local 에서 해석한다
+([spot-internals.ko.md](./spot-internals.ko.md) 12절 참고). Registry route row 는
+service-to-Actor routing 과 진단 용도이며 relay hot path 가 아니다.
+
 ## 4. 서비스 등록 시퀀스
 
 ```mermaid
@@ -259,7 +272,41 @@ Registry 측 주의사항:
 - Registry 는 매칭되는 모든 엔트리를 반환하지, 가장 신선한 한 건만 고르지 않는다. Discovery 클라이언트가 `refresh_spot_owner_cache_locked` 단계에서 각 엔트리에 현재의 `validated_service_seq` 도장을 찍어 저장하므로, 이후 캐시 hit 단계에서 membership 변화를 기준으로 검증할 수 있다.
 - 이 응답을 **들어오는 request 에 대한 reply 용 owner 주소로 재사용하면 안 된다**. 이 resolver 는 destination lookup 전용이고, reply 경로는 원래 request 와 함께 전달된 구체적인 source 주소를 그대로 써야 한다. 클라이언트 측 계약은 [Discovery Internals §10](./discovery-internals.ko.md#10-spot-소유-노드-조회-zlink_discovery_resolve_spot) 참고.
 
-## 8. Control Task 주기
+## 8. Owner-Bound Route 처리
+
+`BIND_ROUTE`, `UNBIND_ROUTE`, `RESOLVE_ROUTE` 는 service/provider row 와 같은 Registry
+control plane 에서 처리된다. route row 는 `kind + key` 만으로 저장되는 값이 아니라,
+어떤 owner registration 이 claim 했는지까지 함께 보관한다.
+
+```mermaid
+sequenceDiagram
+    participant Disc as Discovery DEALER
+    participant Router as Registry ROUTER
+    participant Routes as route store
+    participant Owners as owner index
+
+    Disc->>Router: BIND_ROUTE<br/>kind, key, value
+    Router->>Router: 현재 registration_id/generation 확인
+    Router->>Routes: raw observation 저장
+    Router->>Owners: owner -> route identity index 갱신
+    Router->>Routes: materialized winner 재계산
+
+    Disc->>Router: RESOLVE_ROUTE<br/>kind, key
+    Router->>Routes: materialized winner 조회
+    Routes-->>Disc: owner_rid, value
+```
+
+owner 가 timeout 되거나 unregister 되면 Registry 는 owner index 로 그 owner 가 남긴 route
+observation 을 찾고 함께 제거한다. 제거 뒤 같은 route identity 의 winner 를 다시 계산한다.
+이 과정 때문에 framework adapter 의 Spot name route 나 actor-session binding route 는
+Registry 안에서 따로 cleanup job 을 돌리지 않아도 owner lifecycle 을 따른다.
+
+`UNBIND_ROUTE` 는 요청을 보낸 현재 owner generation 이 claim 한 observation 만 제거한다.
+오래된 process 나 다른 owner 가 같은 route key 를 알고 있어도 새 owner 의 route 를 지울 수
+없다. 같은 process 안에서 더 세밀한 stale unbind 방지가 필요한 경우에는 framework 가 route
+value 안에 binding token 같은 payload 를 넣고 unbind 전에 다시 확인한다.
+
+## 9. Control Task 주기
 
 ```mermaid
 flowchart TD
@@ -274,7 +321,7 @@ flowchart TD
     broadcast --> schedule
 ```
 
-## 9. Bootstrap 메커니즘
+## 10. Bootstrap 메커니즘
 
 ```mermaid
 sequenceDiagram

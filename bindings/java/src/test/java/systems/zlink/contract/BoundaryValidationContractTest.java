@@ -5,13 +5,18 @@ import systems.zlink.contracts.service.registry.*;
 import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Context;
+import systems.zlink.contracts.ConfigException;
+import systems.zlink.contracts.ConfigResult;
 import systems.zlink.contracts.Message;
 import systems.zlink.contracts.PubSocket;
 import systems.zlink.contracts.RouterSocket;
 import systems.zlink.contracts.RouterSocketOptions;
 import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.StreamSocket;
 import systems.zlink.contracts.SubSocket;
 import systems.zlink.contracts.TestSupport;
+import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.SpotNodeMode;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -22,6 +27,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class BoundaryValidationContractTest {
+    @Test
+    public void streamAttachActorGatewayRequiresRoutedNode() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             StreamSocket stream = new StreamSocket(ctx);
+             SpotNode node = new SpotNode(ctx, SpotNodeMode.PUBSUB)) {
+            ConfigException error = assertThrows(ConfigException.class,
+                () -> stream.attachActorGateway(node));
+            assertEquals(ConfigResult.NOT_SUPPORTED, error.getResult());
+        }
+    }
+
     @Test
     public void routingIdAcceptsMaximumLengthAndRejectsOverflow() {
         byte[] max = new byte[RoutingId.MAX_LENGTH];

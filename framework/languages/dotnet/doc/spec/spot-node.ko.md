@@ -64,5 +64,4 @@ source of truth로 사용한다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `EntryRoutingTests.EntrySpotRoutingId_IsApplied_ToNativeEntrySpot` | `ConfigureEntrySpot(...)`에서 지정한 routing id가 native Entry Spot facade에 적용되고 Entry Spot activation의 `SpotRid`로 노출된다. |
-| `DiscoveryTests.RegistryActorRemoteAddresses_Publishes_FrameworkActorRemoteAddress` | Actor remote location 이 Entry Spot에 있는 Actor를 `CurrentSpotKind.Entry`와 Entry Spot rid로 노출한다. |
 | `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Name` | Spot name route는 Spot rid만 찾는 색인으로 쓰고, resolver가 core `ResolveSpot()` 결과의 owner node rid와 `SpotKind.User`를 보존한다. |

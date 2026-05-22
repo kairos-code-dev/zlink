@@ -12,12 +12,12 @@ The STREAM socket supports RAW communication with external clients (web browsers
 
 | Component | File | Role |
 |----------|------|------|
-| stream_t | src/sockets/stream.cpp | STREAM socket logic |
-| raw_encoder_t | src/protocol/raw_encoder.cpp | Length-Prefix encoding |
-| raw_decoder_t | src/protocol/raw_decoder.cpp | Length-Prefix decoding |
-| asio_raw_engine_t | src/engine/asio/asio_raw_engine.cpp | RAW I/O engine |
-| ws_transport_t | src/transports/ws/ | WebSocket transport |
-| wss_transport_t | src/transports/ws/ | WebSocket + TLS |
+| stream_t | src/runtime/sockets/stream/stream.cpp | STREAM socket logic |
+| raw_encoder_t | src/runtime/protocol/raw_encoder.cpp | Length-Prefix encoding |
+| raw_decoder_t | src/runtime/protocol/raw_decoder.cpp | Length-Prefix decoding |
+| asio_raw_engine_t | src/runtime/engine/asio/asio_raw_engine.cpp | RAW I/O engine |
+| ws_transport_t | src/runtime/transports/ws/ | WebSocket transport |
+| wss_transport_t | src/runtime/transports/ws/ | WebSocket + TLS |
 
 ### 2.2 Data Flow
 
@@ -240,3 +240,39 @@ STREAM's public routing id is the 4-byte connection id assigned by the server
 for each connection. `zlink_disconnect_rid()` interprets that id as a
 `uint32_t`, looks up the pipe in the STREAM route map, and requests
 termination. Any rid that is not 4 bytes fails as an invalid argument.
+
+## 9. Session Actor Relay (ActorGateway attach)
+
+A STREAM socket can relay client session messages to and from SpotNode Actors.
+Each client connection's `source_rid` becomes a STREAM session that may be bound
+to one or more Actors with `zlink_stream_bind_actor()`. Before any bind can run,
+the STREAM handle must know which SpotNode owns its sessions -- this is the
+ActorGateway attachment.
+
+```c
+zlink_config_result_t zlink_stream_attach_actor_gateway(void *stream,
+                                                        void *node);
+```
+
+There are two ways a STREAM handle acquires a session owner SpotNode:
+
+- **Explicit attach.** `zlink_stream_attach_actor_gateway(stream, node)` records
+  the stream as owned by a routed-capable `node`. This is required for raw STREAM
+  sockets and for connector-backed streams, because the library has no structural
+  link from such a handle to a SpotNode. The attach is one-way and sticky: it
+  rejects re-attaching to a different node (`EBUSY` /
+  `ZLINK_CONFIG_INVALID_STATE`), accepts the same stream/node pair idempotently,
+  and is released only on stream close or node destroy. A non-routed node is
+  rejected with `ENOTSUP` / `ZLINK_CONFIG_NOT_SUPPORTED`.
+- **Structural inference.** When the STREAM socket is itself owned by a SpotNode
+  (a node-internal socket), the owner is recovered from the socket registry and
+  no explicit attach is needed.
+
+The STREAM socket holds none of the relay state itself. The owner mapping, the
+session-to-Actor bindings, and the relay paths all live in the SpotNode Actor
+runtime. The wiring, the local vs remote relay paths, and the cleanup rules are
+documented in [spot-internals.md](./spot-internals.md) section 12 ("STREAM
+session and Actor binding"). What matters at the STREAM layer is only that the
+byte pipe per `source_rid` is the transport the relay rides on, and that a
+session disconnect removes that session's bindings without changing any bound
+Actor's joined Spot.

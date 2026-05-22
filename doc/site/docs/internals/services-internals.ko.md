@@ -743,7 +743,7 @@ raw ROUTER 와 DEALER 소켓은 typed option API 로 자기 피어 가중치를 
 - raw socket 쪽 변경은 socket monitor의
   `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 외부에 노출된다. Discovery에서
   배운 service peer weight 변경은
-  `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`로 외부에 노출된다.
+  `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`로 외부에 노출된다.
   내부 구현은 peer 식별자(`routing_id`)와 새 가중치를 같은
   이벤트 payload에 함께 싣는다.
 

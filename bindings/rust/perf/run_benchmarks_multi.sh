@@ -692,9 +692,16 @@ resolve_client_timeout_seconds() {
     printf '%s\n' "${timeout_seconds}"
 }
 
+stop_early=0
 for run in $(seq 1 "${RUNS}"); do
+    if [[ "${stop_early}" -eq 1 ]]; then
+        break
+    fi
     [[ "${RUNS}" -gt 1 ]] && echo "--- Run ${run}/${RUNS} ---"
     for pat_index in "${!PATTERNS[@]}"; do
+        if [[ "${stop_early}" -eq 1 ]]; then
+            break
+        fi
         pat="${PATTERNS[pat_index]}"
         IFS=',' read -ra SIZE_LIST <<< "$(default_msg_sizes_for_pattern "${pat}")"
         PATTERN_CLIENTS="${CLIENTS}"
@@ -735,8 +742,14 @@ for run in $(seq 1 "${RUNS}"); do
         esac
 
         for transport_index in "${!TRANSPORT_LIST[@]}"; do
+            if [[ "${stop_early}" -eq 1 ]]; then
+                break
+            fi
             transport="${TRANSPORT_LIST[transport_index]}"
             for size in "${SIZE_LIST[@]}"; do
+                if [[ "${stop_early}" -eq 1 ]]; then
+                    break
+                fi
                 if ! ensure_nofile_limit "${PATTERN_CLIENTS}"; then
                     printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "skip" "nofile_guard:${NOFILE_SKIP_REASON}" >> "${TMP_CASES}"
                     continue
@@ -800,6 +813,10 @@ for run in $(seq 1 "${RUNS}"); do
                     shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
                     rm -f "${SRV_OUT}"
                     printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
+                    if [[ "${PERF_FAIL_FAST:-0}" == "1" ]]; then
+                        stop_early=1
+                        break
+                    fi
                     continue
                 fi
 
@@ -816,6 +833,10 @@ for run in $(seq 1 "${RUNS}"); do
                         shutdown_server "${SERVER_PID}" "${SERVER_CONTROL_FD}"
                         rm -f "${SRV_OUT}"
                         printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
+                        if [[ "${PERF_FAIL_FAST:-0}" == "1" ]]; then
+                            stop_early=1
+                            break
+                        fi
                         continue
                     fi
                 fi
@@ -1000,16 +1021,23 @@ for run in $(seq 1 "${RUNS}"); do
                     case_reason="missing_required_result_lines run=${run}"
                 fi
                 printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
+                if [[ "${PERF_FAIL_FAST:-0}" == "1" && "${case_status}" == "fail" ]]; then
+                    stop_early=1
+                    break
+                fi
             done
         if (( transport_index + 1 < ${#TRANSPORT_LIST[@]} )); then
+            if [[ "${stop_early}" -eq 1 ]]; then
+                break
+            fi
             sleep "$(awk "BEGIN { printf \"%.3f\", ${TRANSPORT_TRANSITION_MS} / 1000 }")"
         fi
     done
-    if (( pat_index + 1 < ${#PATTERNS[@]} )); then
+    if [[ "${stop_early}" -ne 1 ]] && (( pat_index + 1 < ${#PATTERNS[@]} )); then
         sleep "$(awk "BEGIN { printf \"%.3f\", ${PATTERN_TRANSITION_MS} / 1000 }")"
     fi
 done
-    if (( run < RUNS )); then
+    if [[ "${stop_early}" -ne 1 ]] && (( run < RUNS )); then
         sleep "$(awk "BEGIN { printf \"%.3f\", ${RUN_COOLDOWN_MS} / 1000 }")"
     fi
 done
@@ -1044,6 +1072,7 @@ python3 "${PERF_REPORT_PY}" render-multi \
   --transport-transition-ms "${TRANSPORT_TRANSITION_MS}" \
   --pattern-transition-ms "${PATTERN_TRANSITION_MS}" \
   --elapsed-seconds "${SECONDS}" \
-  --lang rust
+  --lang rust \
+  --fail-fast "${PERF_FAIL_FAST:-0}"
 
 prune_reports "${REPORT_DIR}"

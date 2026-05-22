@@ -108,11 +108,11 @@ sequenceDiagram
 
     Service->>Disc: register_endpoint(type, endpoint, weight)
     Disc->>Disc: store in _registered_services
-    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, service_name,<br/>service_role, endpoint, routing_id]
+    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, channel_name,<br/>service_role, endpoint, routing_id]
     REG->>DEALER: REGISTER_ACK (0x0002)<br/>[status, resolved_endpoint]
 
     loop Every heartbeat_interval
-        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[auto_connect_type, service_role,<br/>service_name, endpoint]
+        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[auto_connect_type, service_role,<br/>channel_name, endpoint]
     end
 ```
 
@@ -302,10 +302,10 @@ flowchart TD
 
 ## 10. Spot Ownership Resolution (`zlink_discovery_resolve_spot`)
 
-`zlink_discovery_resolve_spot(discovery, spot_rid, &owner_node_rid_out)`
-maps a **logical SPOT routing id** to the **current owner SpotNode
-routing id**, so that the caller can pair `(owner_node_rid, spot_rid)`
-for the ROUTER-side direct functions (`zlink_router_send_spot()` /
+`zlink_discovery_resolve_spot(discovery, spot_rid, &route_out)` maps a
+**logical SPOT routing id** to the **current owner SpotNode routing id** and
+Spot kind, so that the caller can pair `(owner_node_rid, spot_rid)` for the
+ROUTER-side direct functions (`zlink_router_send_spot()` /
 `zlink_router_request_spot()`). The lookup is scoped to the Discovery's current
 service view.
 
@@ -322,22 +322,22 @@ may no longer match the sender of the request being replied to.
 
 ### 10.1 Contract summary
 
-`from_errno()` maps `EINVAL`/`EFAULT`/`ENOTSUP`/`EOPNOTSUPP` to named
-`zlink_config_result_t` values; every other `errno` (including `ENOENT`
-and `EAGAIN` below) falls through to `ZLINK_CONFIG_INTERNAL_ERROR` and is
-recoverable via `zlink_errno()`.
+`from_errno()` maps `EINVAL`/`EFAULT`/`ENOTSUP`/`EOPNOTSUPP`/`ENOENT` to named
+`zlink_config_result_t` values. Other errors such as `EAGAIN` fall through to
+`ZLINK_CONFIG_INTERNAL_ERROR` and remain recoverable via `zlink_errno()`.
 
 | Aspect | Value |
 |---|---|
 | Precondition | `discovery->_auto_connect_type == SPOT_NODE`; otherwise `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
-| Output | `owner_node_rid_out` populated with the owner SpotNode's rid |
+| Output | `route_out` populated with `spot_rid`, owner SpotNode rid, and Spot kind |
 | Registry publish condition | Publishing Discovery has `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC == 1`; default is `0` |
 | Cache TTL | `resolve_spot_cache_ttl_ms = 250` ms |
-| Cache validity rule | `validated_service_seq == current_service_seq` OR `now − last_reported_ms ≤ 250 ms` |
+| Cache validity rule | `validated_service_seq == current_service_seq` AND `now - validated_at_ms <= 250 ms` |
 | Miss outcome | Registry query over a transient DEALER, then retry cache |
-| Final miss (cache + registry empty) | `errno = ENOENT`, result = `ZLINK_CONFIG_INTERNAL_ERROR` (inspect via `zlink_errno()`) |
-| Bad input | `EINVAL` → `ZLINK_CONFIG_INVALID_ARGUMENT` (null or zero-size `spot_rid`, null `owner_node_rid_out`) |
-| Null handle | `EFAULT` → `ZLINK_CONFIG_INVALID_HANDLE` |
+| Final miss (cache + registry empty) | `errno = ENOENT`, result = `ZLINK_CONFIG_NOT_FOUND` |
+| Bad input | `EINVAL` → `ZLINK_CONFIG_INVALID_ARGUMENT` (null or zero-size `spot_rid`, null `route_out`) |
+| Null handle | `EINVAL` → `ZLINK_CONFIG_INVALID_ARGUMENT` |
+| Invalid handle | `EFAULT` → `ZLINK_CONFIG_INVALID_HANDLE` |
 | No uplink yet | `errno = EAGAIN` from the registry query step, result = `ZLINK_CONFIG_INTERNAL_ERROR` |
 
 ### 10.2 Cache-hit path (fast path)
@@ -356,10 +356,10 @@ sequenceDiagram
     Disc->>Disc: scoped_lock(_sync)
     Disc->>Store: lookup key
     Store-->>Disc: topology_summary_t entry
-    Note over Disc: entry.state == READY?<br/>endpoint non-empty?<br/>validated_service_seq == current_service_seq<br/>or age ≤ 250ms?
+    Note over Disc: entry.state == READY?<br/>endpoint non-empty?<br/>validated_service_seq == current_service_seq<br/>validated age ≤ 250ms?
     Disc->>Prov: scan providers by (role=SPOT, endpoint)
     Prov-->>Disc: provider.routing_id
-    Disc-->>API: 0, owner_node_rid_out filled
+    Disc-->>API: 0, route_out filled
     API-->>App: ZLINK_CONFIG_OK
 ```
 
@@ -390,36 +390,46 @@ sequenceDiagram
 
     Disc->>Disc: scoped_lock(_sync)
     Disc->>Store: refresh_spot_owner_cache_locked(key, entries)
-    Note over Store: erase(key), then store each entry<br/>stamped with current validated_service_seq
+    Note over Store: erase(key), then store each entry<br/>stamped with current validation metadata
     Disc->>Store: lookup key (retry)
     alt cache now resolvable
         Store-->>Disc: fresh entry
-        Disc-->>API: 0, owner_node_rid_out filled
+        Disc-->>API: 0, route_out filled
         API-->>App: ZLINK_CONFIG_OK
     else still unresolvable
         Disc-->>API: -1, errno=ENOENT
-        API-->>App: ZLINK_CONFIG_INTERNAL_ERROR<br/>(zlink_errno() → ENOENT)
+        API-->>App: ZLINK_CONFIG_NOT_FOUND<br/>(zlink_errno() -> ENOENT)
     end
 ```
 
 ### 10.4 Cache freshness rules
 
-Two independent conditions keep a cache entry usable:
+Two conditions keep a cache entry usable:
 
-1. **Membership-seq match** — `validated_service_seq == _service_state.service_update_seq()`. This seq bumps whenever Discovery's provider view changes (new peer, peer left, role change). If the seq matches, the cache entry was produced against the current membership and is trusted regardless of wall-clock age.
-2. **Wall-clock TTL** — `last_reported_ms > 0 && now − last_reported_ms ≤ 250 ms`. Acts as a fallback when the membership-seq moved but the entry itself was refreshed very recently.
+1. **Membership-seq match** — `validated_service_seq == _service_state.service_update_seq()`. This seq bumps whenever Discovery's provider view changes (new peer, peer left, role change).
+2. **Validation TTL** — `validated_at_ms > 0 && now - validated_at_ms <= 250 ms`.
 
-If neither holds, the entry is treated as potentially stale and a registry round-trip is forced. The TTL is deliberately small (250 ms) because a stale lookup can misroute to a former owner node; a short window limits that exposure while still absorbing bursty lookups.
+Both checks must pass. If provider membership changed or the cached owner row
+aged out, Discovery refreshes from Registry before returning a route. The TTL is
+based on when this Discovery instance validated the row against its current
+provider view, not on the topology row's original `last_reported_ms`.
+
+If either check fails, the entry is treated as potentially stale and a registry
+round-trip is forced. The TTL is deliberately small (250 ms) because a stale
+lookup can misroute to a former owner node; a short window limits that exposure
+while still absorbing bursty lookups.
 
 ### 10.5 Endpoint → owner rid resolution
 
 The topology summary stores `endpoint` (transport URI), not the owner SpotNode's routing id directly. After a cache hit, Discovery calls `resolve_owner_node_from_endpoint_locked(endpoint, ...)` which:
 
-1. Snapshots the current provider list from `_service_state`.
-2. Picks the provider whose `service_role == SPOT` and `endpoint` matches and has a non-empty `routing_id`.
-3. Copies that `routing_id` into the output parameter.
+1. First checks local services registered by this Discovery instance for a `service_role == SPOT` row whose `endpoint` matches and whose `routing_id` is non-empty.
+2. If no local service matches, snapshots the current provider list from `_service_state` and applies the same role, endpoint, and routing id checks.
+3. Copies the matched routing id into `route_out->owner_node_rid`.
 
-This two-step design means resolve_spot can answer consistently even when a spot's owner node changes endpoint, as long as the mesh's provider roster has caught up through the SERVICE_LIST broadcast path.
+This lookup order lets read-after-write cases resolve their own freshly
+registered SpotNode before the provider roster broadcast catches up, while still
+using the mesh provider roster for remote owners.
 
 ## 11. Message Protocol
 
@@ -484,3 +494,27 @@ Key points:
   handover policy.
 - Manual `zlink_connect()` calls made through the raw API bypass this
   path, so the library does not mediate them.
+
+## 13. Actor Route Resolution and the Session-Relay Boundary
+
+`zlink_discovery_resolve_actor()` resolves an actor id to its current route using
+`ZLINK_ROUTE_KIND_ACTOR` rows. The route value is a `zlink_actor_route_t` that the
+owner SpotNode published from the Actor's current location: the Actor ref (node
+rid + actor id + generation) plus the current Spot rid and kind.
+
+These rows are a **published derivative** of the Actor table's current location.
+The owner SpotNode refreshes them when it commits a location change (Actor create,
+join accept, leave), and only when `actor_route_sync_enabled()` is set on the node.
+Publishing goes one way: SpotNode → registry. Discovery never writes back into the
+Actor table.
+
+The boundary worth remembering:
+
+- Actor route rows are for **service-to-Actor routing and diagnostics**. For
+  example, an external ROUTER or backend Spot that must reach an Actor by id
+  resolves the current Spot route and sends through the existing routed transport.
+- The **STREAM session relay hot path does not consult Discovery.** A session
+  binding already holds the bound Actor ref; relay resolves it through the local
+  Actor table and ActorGateway state (see [spot-internals.md](./spot-internals.md)
+  section 12), not a route lookup. Discovery sync may lag a fresh join without
+  affecting an in-flight session relay.

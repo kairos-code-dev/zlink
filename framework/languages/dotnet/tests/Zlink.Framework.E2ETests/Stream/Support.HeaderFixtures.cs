@@ -160,5 +160,4 @@ public abstract partial class StreamTestSupport
 
     public sealed record GatewayPong(string Value, ulong RequestSeq);
 
-    public sealed record TestActorRemoteAddressSnapshot(ZLinkActorRemoteAddress RemoteAddress);
 }

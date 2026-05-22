@@ -285,6 +285,9 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 ### Topology and discovery
 
 ```c
+zlink_config_result_t zlink_spot_node_set_router_bind_endpoint(
+  void *node,
+  const char *endpoint);
 zlink_bind_result_t zlink_spot_node_bind(void *node, const char *endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
@@ -297,7 +300,19 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
-- `zlink_spot_node_bind()` binds the node endpoint.
+- `zlink_spot_node_set_router_bind_endpoint()` configures the internal router
+  socket endpoint used for routed ingress.
+- `zlink_spot_node_set_router_bind_endpoint()` must be called before
+  `zlink_spot_node_bind()`. `node == NULL` fails with
+  `ZLINK_CONFIG_INVALID_HANDLE` and `EFAULT`. `endpoint == NULL` or an empty
+  string fails with `ZLINK_CONFIG_INVALID_ARGUMENT` and `EINVAL`. Calling it
+  after `zlink_spot_node_bind()` has succeeded fails with
+  `ZLINK_CONFIG_INVALID_STATE` and `EBUSY`.
+- `zlink_spot_node_bind()` binds the mesh data endpoint. It does not derive or
+  bind a routed ingress endpoint.
+- A node that must receive routed APIs from remote peers must call
+  `zlink_spot_node_set_router_bind_endpoint()` before
+  `zlink_spot_node_bind()`.
 - `zlink_spot_node_connect_peer()` and `disconnect_peer()` are for manual SPOT
   mesh wiring when the endpoint is known.
 - `zlink_spot_node_disconnect_peer_rid()` disconnects a peer node by target
@@ -1007,8 +1022,9 @@ creates the Actor on that node directly with
    `zlink_spot_node_actor_join_spot()`.
 3. Leave back to the same node's Entry Spot via
    `zlink_spot_node_actor_leave_spot()`.
-4. Use the final Actor ref returned by the join completion for any subsequent
-   session attach or follow-up call.
+4. Use the final Actor ref returned by the join completion for follow-up Actor
+   calls. Existing logical session bindings follow a successful join without a
+   reattach step.
 
 Remote Actor destroy uses the same ref-based
 `zlink_spot_node_actor_destroy()` call. If the target node is unreachable or
@@ -1076,8 +1092,8 @@ the Actor's current Spot changes to the target.
   the completion carries the final Actor ref (the target node's ref for a
   remote join) and the joined Spot rid.
 - `handler == NULL` fails as an invalid-argument-class submit because the
-  caller must receive the final Actor ref to perform any subsequent session
-  attach or location move.
+  caller must receive the final Actor ref to perform follow-up Actor calls or
+  location moves.
 - `timeout_ms` is the operation timeout for the join reply and remote handoff
   to complete after a successful submit. `timeout_ms == 0` installs no
   operation timeout. This is not a nonblocking submit directive. Whether the
@@ -1491,9 +1507,9 @@ Delivery rules:
   order is not part of the public contract.
 - The join completion handler runs after state commit and active route update.
   Whether the lifecycle callback has already run is not guaranteed.
-- For deciding join completion order or session attach ordering, the
-  application must use the join completion handler and the returned final
-  Actor ref. Lifecycle callbacks are observation-only.
+- For deciding join completion order, the application must use the join
+  completion handler and the returned final Actor ref. Lifecycle callbacks are
+  observation-only.
 - The `info` pointer is valid only inside the callback; copy values inside
   the callback if needed later.
 - Re-entering join, leave, or destroy on the same Actor from inside a

@@ -6,12 +6,12 @@
 
 예제/가이드가 아니라 실제 구현 코드 기준의 기본값을 정리한 참조 문서다.
 
-- `core/src/core/options.cpp` (`options_t` 생성자)
-- `core/src/core/options_core_socket.cpp` (core socket 옵션 dispatch)
-- `core/src/core/options_transport_network.cpp` (transport/network 옵션 dispatch)
-- `core/src/core/options_protocol_metadata.cpp` (protocol/metadata 옵션 dispatch)
-- `core/src/sockets/socket_base_lifecycle.cpp` (컨텍스트 상속 기본값)
-- `core/src/sockets/*.cpp` (소켓 타입별 override)
+- `core/src/runtime/core/options.cpp` (`options_t` 생성자)
+- `core/src/runtime/core/options_core_socket.cpp` (core socket 옵션 dispatch)
+- `core/src/runtime/core/options_transport_network.cpp` (transport/network 옵션 dispatch)
+- `core/src/runtime/core/options_protocol_metadata.cpp` (protocol/metadata 옵션 dispatch)
+- `core/src/runtime/sockets/common/socket_base_lifecycle.cpp` (컨텍스트 상속 기본값)
+- `core/src/runtime/sockets/*/*.cpp` (소켓 타입별 override)
 
 각 옵션의 상세 동작과 영향 범위는
 [소켓 옵션 상세 가이드](../guide/12-socket-options.ko.md)를 참고한다.

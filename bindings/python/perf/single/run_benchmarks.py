@@ -364,16 +364,21 @@ def main(argv=None):
         env["PERF_CTX_AUTO_HWM_PROFILE"] = args.auto_hwm_profile
 
     options = _build_options(args, patterns, transports, msg_sizes)
+    fail_fast = os.environ.get("PERF_FAIL_FAST", "0") == "1"
+    options["fail_fast"] = "1" if fail_fast else "0"
     sections = []
     emitted_chunks = []
     status_lines = []
     failures = []
     fail_count = 0
+    stop_early = False
     case_ordinal = 1
 
     _append_line(sections, render_effective_options(options))
 
     for pattern in patterns:
+        if stop_early:
+            break
         if pattern != patterns[0]:
             _append_line(sections, "===============================================================================")
             _append_line(sections)
@@ -381,6 +386,8 @@ def main(argv=None):
         _append_line(sections, f"  > Benchmarking current for {pattern}...")
         pattern_transports = _transports_for_pattern(pattern, transports)
         for transport in pattern_transports:
+            if stop_early:
+                break
             _append_line(sections, f"    Testing {transport}:")
             if runs == 1:
                 for header_line in SINGLE_TABLE_HEADER_LINES:
@@ -396,6 +403,8 @@ def main(argv=None):
                     status_kind = _status_kind(output)
                     if status_kind == "fail":
                         fail_count += 1
+                        if fail_fast:
+                            stop_early = True
                     if output:
                         emitted_chunks.append(output)
                         status_lines.extend(_parse_status_lines(output))
@@ -410,12 +419,16 @@ def main(argv=None):
                                 f"- {pattern} current {transport} {msg_size}B: {_failure_reason(output)}"
                             )
                         _append_line(sections, _status_row(msg_size, "FAIL"))
+                    if stop_early:
+                        break
                 suffix = f"(failures={fail_count}) Done" if fail_count else "Done"
                 _append_line(sections, f"    Testing {transport}: {suffix}")
             else:
                 transport_failures = 0
                 run_outputs = {msg_size: [] for msg_size in msg_sizes}
                 for run_index in range(runs):
+                    if stop_early:
+                        break
                     _append_line(sections, f"      run {run_index + 1}/{runs}:")
                     for header_line in SINGLE_TABLE_HEADER_LINES:
                         _append_line(sections, f"        {header_line}")
@@ -431,6 +444,8 @@ def main(argv=None):
                         if status_kind == "fail":
                             fail_count += 1
                             transport_failures += 1
+                            if fail_fast:
+                                stop_early = True
                         if output:
                             emitted_chunks.append(output)
                             status_lines.extend(_parse_status_lines(output))
@@ -455,6 +470,8 @@ def main(argv=None):
                                 sections,
                                 _status_row(msg_size, "FAIL", indent="        "),
                             )
+                        if stop_early:
+                            break
                 _append_line(sections, "      median:")
                 for header_line in SINGLE_TABLE_HEADER_LINES:
                     _append_line(sections, f"        {header_line}")
@@ -522,6 +539,7 @@ def main(argv=None):
     _append_line(sections)
     _append_line(sections, "## Completion")
     _append_line(sections, f"- status: {status}")
+    _append_line(sections, f"- fail_fast_stopped: {1 if stop_early else 0}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
     _append_line(sections, f"- actual_result_lines: {len(rows)}")
     report_path = build_report_path(

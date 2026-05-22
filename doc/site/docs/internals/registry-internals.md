@@ -87,6 +87,22 @@ struct route_entry_t {
 // Owner cleanup: owner_identity → route_key set
 ```
 
+### 3.1 Actor route rows and the gateway boundary
+
+Actor routes are stored as ordinary `route_entry_t` rows, keyed with
+`ZLINK_ROUTE_KIND_ACTOR` and the actor id. The value is an opaque
+`zlink_actor_route_t` blob; the Registry stores and floods it but does not
+interpret its contents. Owner SpotNodes publish and withdraw these rows from the
+Actor's current location, so they are **owner-published and eventually
+consistent** — a fresh join may be visible in the owner's Actor table before the
+matching route row has flooded to every Registry.
+
+This is why STREAM session relay never queries the Registry. The session binding
+carries the bound Actor ref directly, and the owner SpotNode's ActorGateway
+resolves the current location locally (see [spot-internals.md](./spot-internals.md)
+section 12). Registry route rows serve service-to-Actor routing and diagnostics,
+not the relay hot path.
+
 ## 4. Service Registration Sequence
 
 ```mermaid

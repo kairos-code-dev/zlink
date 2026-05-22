@@ -18,6 +18,7 @@ int main ()
       });
 
     actor_sample_stream_session_t stream_session (ctx);
+    stream_session.stream.attach_actor_gateway (node);
     (void) stream_session.stream.bind_actor (stream_session.session, actor.ref ())
       .timeout (std::chrono::milliseconds (1000))
       .submit_async ()

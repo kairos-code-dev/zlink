@@ -71,12 +71,11 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
                     arguments[1] = descriptor.ActorType is null
                         ? new ZLinkActorRequestContext(
                             actor.ActorId,
-                            string.Empty,
                             header.Name,
                             ZLinkEnvelopeCodec.DefaultContentType,
                             null,
                             null,
-                            CreateSessionProxy(actor.ActorId),
+                            CreateBoundSession(actor.ActorId),
                             services,
                             cancellationToken,
                             metadata)
@@ -106,19 +105,18 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
     {
         return new ZLinkActorSendContext(
             actorId,
-            string.Empty,
             header.Name,
             ZLinkEnvelopeCodec.DefaultContentType,
             null,
-            CreateSessionProxy(actorId),
+            CreateBoundSession(actorId),
             services,
             cancellationToken,
             metadata);
     }
 
-    private IZLinkSessionProxy CreateSessionProxy(string actorId)
+    private IZLinkBoundSession CreateBoundSession(string actorId)
     {
-        return services.GetRequiredService<IZLinkSessionProxyFactory>()
+        return services.GetRequiredService<IZLinkBoundSessionFactory>()
             .Create(actorId);
     }
 

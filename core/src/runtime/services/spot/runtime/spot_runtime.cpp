@@ -174,33 +174,55 @@ void spot_runtime_t::set_external_route_id (
   const std::string &peer_endpoint_,
   const std::string &route_id_)
 {
+    set_external_route_id (peer_endpoint_, route_id_, peer_endpoint_);
+}
+
+void spot_runtime_t::set_external_route_id (
+  const std::string &peer_endpoint_,
+  const std::string &route_id_,
+  const std::string &route_endpoint_)
+{
     if (peer_endpoint_.empty ())
         return;
 
     scoped_lock_t lock (routed_send_sync);
-    if (route_id_.empty ())
+    if (route_id_.empty ()) {
         external_route_ids_by_endpoint.erase (peer_endpoint_);
-    else
+        external_route_endpoints_by_endpoint.erase (peer_endpoint_);
+    } else {
         external_route_ids_by_endpoint[peer_endpoint_] = route_id_;
+        external_route_endpoints_by_endpoint[peer_endpoint_] =
+          route_endpoint_.empty () ? peer_endpoint_ : route_endpoint_;
+    }
 }
 
-void spot_runtime_t::erase_external_route_id (
+std::string spot_runtime_t::erase_external_route_id (
   const std::string &peer_endpoint_)
 {
     scoped_lock_t lock (routed_send_sync);
+    std::string route_endpoint;
+    std::map<std::string, std::string>::const_iterator endpoint_it =
+      external_route_endpoints_by_endpoint.find (peer_endpoint_);
+    if (endpoint_it != external_route_endpoints_by_endpoint.end ())
+        route_endpoint = endpoint_it->second;
     external_route_ids_by_endpoint.erase (peer_endpoint_);
+    external_route_endpoints_by_endpoint.erase (peer_endpoint_);
+    return route_endpoint;
 }
 
 std::vector<std::string> spot_runtime_t::clear_external_route_ids ()
 {
-    std::vector<std::string> peer_endpoints;
+    std::vector<std::string> route_endpoints;
     scoped_lock_t lock (routed_send_sync);
     for (std::map<std::string, std::string>::const_iterator it =
-           external_route_ids_by_endpoint.begin ();
-         it != external_route_ids_by_endpoint.end (); ++it)
-        peer_endpoints.push_back (it->first);
+           external_route_endpoints_by_endpoint.begin ();
+         it != external_route_endpoints_by_endpoint.end (); ++it) {
+        if (!it->second.empty ())
+            route_endpoints.push_back (it->second);
+    }
     external_route_ids_by_endpoint.clear ();
-    return peer_endpoints;
+    external_route_endpoints_by_endpoint.clear ();
+    return route_endpoints;
 }
 
 std::vector<std::string> spot_runtime_t::external_route_ids_for_destination (

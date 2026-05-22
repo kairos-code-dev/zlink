@@ -150,11 +150,6 @@ public interface IZLinkActorManager
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
-        string actorId,
-        string actorType,
-        CancellationToken cancellationToken = default);
-
     ValueTask<IZLinkActor> GetOrCreateAsync(
         string actorId,
         string actorType,
@@ -168,8 +163,6 @@ public interface IZLinkActorRef
     string ActorType { get; }
 
     bool IsRemote { get; }
-
-    ZLinkActorRemoteAddress RemoteAddress { get; }
 
     ValueTask NotifyDisconnectedAsync(
         CancellationToken cancellationToken = default);
@@ -262,7 +255,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9100");
-        stream.AddHeaderSession<ClientHeaderSession>();
+        stream.RegisterSession<ClientHeaderSession>();
     });
 });
 ```
@@ -333,7 +326,7 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
 이 절은 STREAM 표면이 따르는 고정된 결정 사항을 모아둔 것이다.
 
 - stream session 등록은 attribute 기반으로 열지 않는다.
-  `AddStreamNode(...).AddHeaderSession<T>()` 같은 명시 등록만 기본 표면으로
+  `AddStreamNode(...).RegisterSession<T>()` 같은 명시 등록만 기본 표면으로
   둔다.
 - packet decode helper 와 encode helper 는 framework 본체가 아니라 serializer
   확장 패키지가 맡는다. framework core 는 `Message`, `AsReadOnlySpan()`,
@@ -361,8 +354,8 @@ STREAM 문서의 항목이 확인해야 하는 것은 다음이다.
 |---------------|-----------|
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleHeaderSessions` | 같은 node에 header session을 중복 등록하면 startup validation 예외가 발생한다. |
 | `ProtocolTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | transport 진입점은 public enqueue API만 노출한다. |
-| `SessionProxyAndHeaderTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
-| `SessionProxyAndHeaderTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |
+| `HeaderStreamSessionTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
+| `HeaderStreamSessionTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^framing]: framing은 연속된 바이트 스트림에서 메시지의 시작과 끝을 구분하는 방식을 가리킨다. STREAM에서는 header와 body를 묶어 하나의 packet 단위로 자른다.

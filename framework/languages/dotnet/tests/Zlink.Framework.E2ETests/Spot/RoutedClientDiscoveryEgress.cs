@@ -46,12 +46,15 @@ public sealed class RoutedClientDiscoveryEgressTests : SpotTestSupport
                         Encoding.UTF8.GetBytes("egress-target-03"));
                 });
             });
-            options.UseSpotDiscovery("spot.route.discovery.egress", _ => { });
-            options.AddSpotNode("route-target-node", spot =>
+            options.AddSpotMesh("spot.route.discovery.egress", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("route-target-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
                 spot.EnableRouter(router =>
                 {
+                    router.Bind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
                         routing.RoutingId = RoutingId.FromBytes(
@@ -63,6 +66,7 @@ public sealed class RoutedClientDiscoveryEgressTests : SpotTestSupport
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(playRouteEndpoint)));
                 spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+            });
             });
         });
 

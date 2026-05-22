@@ -161,7 +161,7 @@ options.AddSpotMesh("game.stage", mesh =>
     mesh.AddNode("stage-node", node =>
     {
         node.Bind("tcp://0.0.0.0:9000");
-        node.EnableRouter();
+        node.EnableRouter(router => router.Bind("tcp://0.0.0.0:9001"));
         node.AcceptSpotRoutesFromChannel("api");
         node.AddEntrySpot<StageEntrySpot>();
         node.AddSpotFactory<StageSpot>("stage");
@@ -190,7 +190,7 @@ options.AddSpotMesh("game.stage", mesh =>
     mesh.AddNode("stage-node", node =>
     {
         node.Bind("tcp://0.0.0.0:9000");
-        node.EnableRouter();
+        node.EnableRouter(router => router.Bind("tcp://0.0.0.0:9001"));
         node.AcceptSpotRoutesFromChannel("game.route");
         node.AddSpotFactory<StageSpot>("stage");
     });
@@ -260,7 +260,8 @@ framework startup validation은 아래 조건을 검사한다.
   둘 다 없으면 startup 실패다.
 - `AddFanoutChannel`과 `AddDealerMeshChannel`을 지정하면 startup 실패다.
 - 같은 `SpotNode`가 같은 channel에서 오는 SPOT route를 중복 수락하면 startup 실패다.
-- `node.EnableRouter()` 없이 route 수신 관계를 등록하면 startup 실패다.
+- `node.EnableRouter(router => router.Bind(endpoint))` 없이 route 수신 관계를
+  등록하면 startup 실패다.
 - manual과 discovery peer source를 같은 route 수신 관계에 동시에 쓰면 startup
   실패다.
 - `AddChannel(...)`과 `AddRouteChannel(...)`은 새 public 구성 표면에서 삭제한다.

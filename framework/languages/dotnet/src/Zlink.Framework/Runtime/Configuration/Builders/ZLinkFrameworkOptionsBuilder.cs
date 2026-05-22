@@ -55,39 +55,11 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             $"Duplicate actor factory '{actorType}'.");
     }
 
-    public void AddActorRemoteAddressResolver<TResolver>()
-        where TResolver : class, IZLinkActorRemoteAddressResolver
-    {
-        EnsureActorRemoteAddressResolverAvailable();
-        _registration.ActorRemoteAddressResolverType = typeof(TResolver);
-    }
-
     public void AddSpotRemoteAddressResolver<TResolver>()
         where TResolver : class, IZLinkSpotRemoteAddressResolver
     {
         EnsureSpotRemoteAddressResolverAvailable();
         _registration.SpotRemoteAddressResolverType = typeof(TResolver);
-    }
-
-    public void UseRegistryActorRemoteAddresses(string namespaceName)
-    {
-        UseRegistryActorRemoteAddresses(namespaceName, static _ => { });
-    }
-
-    public void UseRegistryActorRemoteAddresses(
-        string namespaceName,
-        Action<IZLinkRegistryActorRemoteAddressesOptions> configure)
-    {
-        ArgumentNullException.ThrowIfNull(configure);
-        EnsureActorRemoteAddressResolverAvailable();
-
-        var options = new ZLinkRegistryActorRemoteAddressesOptions();
-        configure(options);
-        _registration.RegistryActorRemoteAddresses = new ZLinkRegistryActorRemoteAddressesRegistration
-        {
-            Namespace = ValidateRegistryNamespace(namespaceName),
-            RouterChannelId = NormalizeOptionalName(options.RouterChannelId, nameof(options.RouterChannelId)),
-        };
     }
 
     public void UseRegistrySpotRemoteAddresses(string namespaceName)
@@ -161,30 +133,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.Discovery = discovery;
     }
 
-    public void UseSpotDiscovery(
-        string channelName,
-        Action<IZLinkDiscoveryBuilder> configure)
-    {
-        if (string.IsNullOrWhiteSpace(channelName))
-        {
-            throw new ZLinkConfigurationException("SPOT discovery channel name must not be empty.");
-        }
-
-        if (_registration.SpotDiscovery is not null)
-        {
-            throw new ZLinkConfigurationException("SPOT discovery is already configured.");
-        }
-
-        var discovery = new ZLinkSpotDiscoveryRegistration
-        {
-            ChannelName = channelName,
-            UseDiscoveryCalled = true,
-        };
-
-        configure(new ZLinkDiscoveryBuilder(discovery.Endpoints));
-        _registration.SpotDiscovery = discovery;
-    }
-
     public void UseFilter<TFilter>()
         where TFilter : class, IZLinkHandlerFilter
     {
@@ -210,13 +158,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         configure(new ZLinkStreamNodeBuilder(streamNode));
     }
 
-    public void AddSpotNode(
-        string spotNodeName,
-        Action<IZLinkSpotNodeBuilder> configure)
-    {
-        AddSpotNodeRegistration(spotNodeName, node => configure(node));
-    }
-
     public void AddSpotMesh(
         string channelName,
         Action<IZLinkSpotMeshBuilder> configure)
@@ -234,7 +175,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         var discovery = new ZLinkSpotDiscoveryRegistration
         {
             ChannelName = channelName,
-            RequiresUseDiscovery = true,
         };
 
         _registration.SpotDiscovery = discovery;
@@ -255,15 +195,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             },
             "Channel name must not be empty.",
             $"Duplicate channel name '{channelName}'.");
-    }
-
-    private void EnsureActorRemoteAddressResolverAvailable()
-    {
-        if (_registration.ActorRemoteAddressResolverType is not null
-            || _registration.RegistryActorRemoteAddresses is not null)
-        {
-            throw new ZLinkConfigurationException("Actor remote address resolver is already configured.");
-        }
     }
 
     private void EnsureSpotRemoteAddressResolverAvailable()
@@ -302,21 +233,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return value;
     }
 
-    private void AddSpotNodeRegistration(
-        string spotNodeName,
-        Action<ZLinkSpotNodeBuilder> configure)
-    {
-        var spotNode = ZLinkRegistrationBuilderGuard.AddSpotNode(
-            _registration.SpotNodes,
-            spotNodeName);
-
-        configure(new ZLinkSpotNodeBuilder(spotNode));
-    }
-}
-
-internal sealed class ZLinkRegistryActorRemoteAddressesOptions : IZLinkRegistryActorRemoteAddressesOptions
-{
-    public string? RouterChannelId { get; set; }
 }
 
 internal sealed class ZLinkRegistrySpotRemoteAddressesOptions : IZLinkRegistrySpotRemoteAddressesOptions
@@ -331,7 +247,6 @@ internal sealed class ZLinkSpotMeshBuilder(
 {
     public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure)
     {
-        discovery.UseDiscoveryCalled = true;
         configure(new ZLinkDiscoveryBuilder(discovery.Endpoints));
     }
 
@@ -345,6 +260,7 @@ internal sealed class ZLinkSpotMeshBuilder(
 
         configure(new ZLinkSpotNodeBuilder(spotNode));
     }
+
 }
 
 internal static class ZLinkRegistrationBuilderGuard

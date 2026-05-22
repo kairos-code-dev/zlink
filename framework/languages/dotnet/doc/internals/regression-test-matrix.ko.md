@@ -107,7 +107,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Spot service with SpotNode | `unit` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
 | Spot publisher without publisher capability | `unit` | SpotNode 가 있어도 publisher capability 가 없으면 Spot publisher service 는 DI 에 없다 |
 | Spot publisher with publisher capability | `unit` | Spot publisher capability 가 있으면 `IZLinkSpotPublisherClient` 와 `IZLinkSpotMeshPublisherClient` 가 DI 에 등록된다 |
-| session proxy factory registration | `unit` | `IZLinkSessionProxyFactory` 는 framework runtime 과 함께 등록된다 |
+| bound session factory registration | `unit` | `IZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록된다 |
 | Spot remote address resolver without SpotNode | `unit` | remote address 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
 | Spot client with resolver only | `unit` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotClient` 는 DI 에 없다 |
 | route channel missing at call time | `unit` | `IZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
@@ -119,10 +119,10 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 |------|------|-----------|
 | duplicate `spotName` factory | `unit` | startup validation 예외 |
 | duplicate `AddEntrySpot<TEntrySpot>()` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| `AddSpotMesh(...)`에 `UseDiscovery(...)` 없음 | `unit` | discovery 기반 mesh를 만들 수 없으므로 startup validation 예외 |
+| `AddSpotMesh(...)`에 `UseDiscovery(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
 | `AddSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
-| standalone `AddSpotNode(...)` + local-only spot factory | `integration-single-process` | discovery mesh 없이 단일 local SpotNode runtime을 시작한다 |
-| `AddSpotNode(...)` + 별도 `UseSpotDiscovery(channel, ...)` 분리 호출 | `integration-single-process` | 호환 경로로만 유지하며, 새 샘플은 `AddSpotMesh(...)`를 사용한다 |
+| `AddSpotMesh(...)` + 빈 `UseDiscovery` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
+| `AddSpotMesh(...)` + router-capable `AddNode(...)` + `AttachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
 | `CreateAsync(spotName)` | `integration-single-process` | `SpotId`, `SpotName`, `Created` 값이 일관되게 유지된다 |
 | `CreateAsync(spotName)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 multipart payload로 `IZLinkSpot.OnCreateAsync(...)`를 한 번 호출한다 |
 | `CreateAsync(spotName, createParts)` multipart | `integration-single-process` | create payload part 수와 순서가 유지되어 `IZLinkSpot.OnCreateAsync(...)`로 한 번 전달된다 |
@@ -158,9 +158,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | explicit egress channel Spot route 경로 | `integration-single-process` | routed Spot 호출은 target 정보만으로 egress transport를 고르지 않고, caller가 명시한 local egress channel, egress 설정의 target SpotNode ingress channel, `RoutingId` target으로 routed message를 보낸다 |
 | actor manager 생성 중복/타입 충돌 | `integration-single-process` | `IZLinkActorManager.CreateAsync(...)` 중복 생성은 `ActorAlreadyExists`, `GetOrCreateAsync(...)` actor type 충돌은 `ActorTypeMismatch` 로 실패한다 |
 | local actor bind 생성 금지 | `integration-single-process` | `BindActorHandleAsync(...)` 는 local actor 가 없을 때 factory 를 호출하지 않고 `ActorRouteNotFound` 로 실패한다 |
-| session actor bind resolver 제거 | `integration-single-process` | remote address 를 받는 `BindActorHandleAsync(...)` 는 `IZLinkActorRemoteAddressResolver` 를 호출하지 않고, remote address 없는 overload 도 local actor 에만 붙는다 |
-| unchecked actor remote address 거부 | `integration-single-process` | `ZLinkActorRemoteAddress.ActorGeneration == 0` 인 session attach 는 `ActorRouteNotFound` 로 실패한다 |
-| attached actor remote address update | `integration-single-process` | 내부 remote address update 는 expected actor generation 이 일치하는 actor ref 의 target node rid 와 actor generation 만 갱신한다 |
+| session actor bind resolver 제거 | `integration-single-process` | `BindActorHandleAsync(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
 | remote actor dispatch 생성 금지 | `integration-single-process` | routed actor dispatch 수신 경로는 local actor 가 없을 때 factory 를 호출하지 않고 dispatch 를 실패시킨다 |
 | session actor relay bridge | `integration-single-process` | `BindActorHandleAsync(...)`, `RelayToActorAsync(IZLinkActorRef, ...)`, `IZLinkActorRef.NotifyDisconnectedAsync(...)`가 public session 표면에서 동작한다 |
 | session actor dispatch ordering | `integration-single-process` | stream session에서 actor로 relay된 packet이 actor별 순서를 보장하고, 현재 actor 위치에 맞는 handler 실행 경로로 넘어간다 |
@@ -168,19 +166,18 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session actor dispatch wire multipart | `integration-single-process` | Session 서버와 Play 서버 사이의 actor dispatch가 route header, actor metadata, stream header, payload를 별도 part로 유지하고, payload를 JSON envelope 안의 `byte[]`로 재직렬화하지 않는다 |
 | session actor reconnect 재사용 | `integration-single-process` | 같은 actor id가 새 stream session에서 다시 bind되면 기존 actor 인스턴스와 spot membership을 유지하고, session binding token[^binding-token]만 갱신된다 |
 | session actor binding rollback | `integration-single-process` | actor-session binding 갱신이 실패하면 helper도 실패하고, local binding table의 같은 token entry도 제거된다 |
-| stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale `SessionProxy` 메시지가 새 binding을 지우거나 사용하지 못한다 |
-| Registry actor remote address 기본 resolver 등록 | `unit` | `UseRegistryActorRemoteAddresses(...)` 가 custom resolver 없이 기본 `IZLinkActorRemoteAddressResolver` 를 등록한다 |
+| stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale bound session 메시지가 새 binding을 지우거나 사용하지 못한다 |
 | Registry Spot route 기본 resolver 등록 | `unit` | `UseRegistrySpotRemoteAddresses(...)` 가 custom resolver 없이 기본 `IZLinkSpotRemoteAddressResolver` 와 Spot name directory 를 등록한다 |
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
 | Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
 | Registry route 기본 구현 discovery validation | `unit` | `UseDiscovery(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
 | Registry Spot name route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
-| sample-only session metadata store 제거 | `unit` | Bingo 와 TicTacToe session gateway 샘플이 actor-session store 없이 actor-bound session proxy 를 사용한다 |
-| stale session proxy send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
-| session proxy wire multipart | `integration-single-process` | Play 서버에서 Session 서버로 가는 `SessionProxy` send/request가 route header, proxy metadata, payload를 별도 part로 유지하면서, client STREAM에는 단일 stream packet으로 쓴다 |
-| session proxy disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
-| session proxy disconnect remote actor | `integration-single-process` | remote actor 가 actor id 없이 `IZLinkSessionProxy.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다 |
+| sample-only session metadata store 제거 | `unit` | Bingo 와 TicTacToe session gateway 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |
+| stale bound session send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
+| bound session gateway relay | `integration-single-process` | Play 서버에서 Session 서버로 가는 bound session send가 core ActorGateway binding 을 통해 client STREAM에 단일 stream packet으로 도착한다 |
+| bound session disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `IZLinkBoundSession.DisconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
+| bound session disconnect remote actor | `integration-single-process` | remote actor 가 actor id 없이 `IZLinkBoundSession.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다 |
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
@@ -248,6 +245,7 @@ backend gate 와 별도로 유지한다.
 대상 문서는 다음과 같다.
 
 - `README.ko.md`
+- `actor-gateway-session-relay.ko.md`
 - `registry-backed-routing-defaults.ko.md`
 - `spot-timer-policy.ko.md`
 - `handler-interfaces.ko.md`

@@ -158,6 +158,15 @@ public sealed class SpotNode : ISpotNode
         ZlinkException.ThrowBindIfError(rc);
     }
 
+    public void SetRouterBindEndpoint(string endpoint)
+    {
+        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_spot_node_set_router_bind_endpoint(
+            _handle, endpoint);
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
     /// <summary>
     /// Returns the resolved endpoint after bind (supports ephemeral port 0).
     /// </summary>
@@ -428,6 +437,22 @@ public sealed class SpotNode : ISpotNode
             out ZlinkActorRef actor);
         ZlinkException.ThrowConfigIfError(rc);
         return ActorInterop.FromNative(ref actor);
+    }
+
+    public SendOperation SendActorBoundSession(ActorRef actor)
+    {
+        EnsureNotDisposed();
+        return new ActorSendBoundSessionOperation(this, actor);
+    }
+
+    public void CloseActorBoundSession(ActorRef actor, TimeSpan timeout = default)
+    {
+        EnsureNotDisposed();
+        ZlinkActorRef nativeActor = ActorInterop.ToNative(actor);
+        int rc = NativeMethods.zlink_spot_node_actor_close_bound_session(
+            _handle, ref nativeActor, ActorInterop.NormalizeTimeout(timeout));
+        if (rc != 0)
+            throw ZlinkException.CreateRequestException(NativeMethods.zlink_errno());
     }
 
     internal static ActorRef RemoteActorRef(RoutingId targetNodeRid, string actorId)

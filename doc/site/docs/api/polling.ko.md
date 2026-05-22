@@ -111,7 +111,8 @@ typedef enum zlink_poller_event_flag_e
     ZLINK_POLLOUT        = 2,
     ZLINK_POLLERR        = 4,
     ZLINK_POLLPRI        = 8,
-    ZLINK_POLLITEMS_DFLT = 16
+    ZLINK_POLLITEMS_DFLT = 16,
+    ZLINK_POLLCOMPLETION = 32
 } zlink_poller_event_flag_e;
 
 #define ZLINK_HAVE_POLLER 1
@@ -124,6 +125,7 @@ typedef enum zlink_poller_event_flag_e
 | `ZLINK_POLLERR` | 4 | 디스크립터에서 오류 발생 |
 | `ZLINK_POLLPRI` | 8 | 긴급/우선순위 데이터 사용 가능 |
 | `ZLINK_POLLITEMS_DFLT` | 16 | 기본 poll-item 배열 크기 |
+| `ZLINK_POLLCOMPLETION` | 32 | request/reply 완료 readiness. 반드시 단독으로 등록해야 하며(다른 이벤트 플래그와 결합하면 `EINVAL`로 실패), request 가능한 소켓(`DEALER`/`ROUTER`)에만 유효합니다. |
 | `ZLINK_HAVE_POLLER` | 1 | 폴러 지원이 포함되어 컴파일됨 |
 
 ## 함수 -- 배열 Poll
@@ -238,6 +240,8 @@ zlink_config_result_t zlink_poller_add (void *poller_, void *socket_, void *user
 `socket_`을 폴러에 추가하고 `events_`에 지정된 이벤트를 모니터링합니다.
 `user_data_` 포인터는 저장되어 이벤트 발생 시 `zlink_poller_event_t`에
 반환됩니다.
+라이브러리는 `user_data_` 값을 해석하지 않으며, 호출자는 이 값을 정수 slot 같은
+자체 dispatch key로 사용할 수 있습니다.
 
 **매개변수:**
 
@@ -418,6 +422,16 @@ int zlink_poller_wait (void *poller_,
 결과(`zlink_config_result_t`)가 기록되고, 성공 시 이벤트 수가 기본 반환값으로
 반환됩니다.
 
+성공 시 반환값 `n`은 이번 호출에서 `events_[0]`부터 실제 기록한 이벤트 개수입니다.
+반환값은 `n_events_`보다 클 수 없습니다. 호출자는 `events_[0:n]` 범위만 읽어야
+하며, 그 뒤 영역은 유효한 결과로 보장되지 않습니다. 폴러는 준비된 이벤트만 앞쪽에
+채우며, 전체 등록 소스 수나 전체 ready 수를 별도로 반환하지 않습니다.
+각 이벤트의 `user_data` 필드는 등록 시 전달한 값을 그대로 돌려주므로, 호출자는
+socket/timer 핸들 비교 대신 이 값을 빠른 dispatch key로 사용할 수 있습니다.
+
+`n_events_`는 1 이상이어야 하며, `events_`는 유효한 배열이어야 합니다.
+빈 배열은 성공한 타임아웃으로 처리하지 않고 invalid argument 오류로 처리합니다.
+
 **매개변수:**
 
 | 이름 | 설명 |
@@ -431,6 +445,11 @@ int zlink_poller_wait (void *poller_,
 **반환값:** `events_`에 저장된 이벤트 수, 타임아웃 시 `0`, 실패 시 `-1`이며
 `*error_out_`에 `zlink_config_result_t`가 기록됩니다. `zlink_errno()`는 진단용
 내부 errno를 그대로 유지합니다.
+
+**에러:**
+- `ZLINK_CONFIG_INVALID_HANDLE` -- `poller_`가 유효하지 않습니다.
+- `ZLINK_CONFIG_INVALID_ARGUMENT` -- `events_`가 유효하지 않거나 `n_events_`가
+  1보다 작습니다.
 
 **스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
 

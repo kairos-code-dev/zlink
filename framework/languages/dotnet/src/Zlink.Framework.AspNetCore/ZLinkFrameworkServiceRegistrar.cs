@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Reflection;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.AspNetCore;
@@ -121,9 +122,9 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<IZLinkMultipartRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
-        services.AddSingleton<ZLinkSessionProxyService>();
-        services.AddSingleton<IZLinkSessionProxyFactory>(
-            provider => provider.GetRequiredService<ZLinkSessionProxyService>());
+        services.AddSingleton<ZLinkBoundSessionService>();
+        services.AddSingleton<IZLinkBoundSessionFactory>(
+            provider => provider.GetRequiredService<ZLinkBoundSessionService>());
         services.AddSingleton<ZLinkEventPublisher>();
         services.AddSingleton<IZLinkFanoutPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
         services.AddSingleton<IZLinkEventPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
@@ -150,20 +151,6 @@ internal static class ZLinkFrameworkServiceRegistrar
         if (HasSpotNode(registration) && registration.ActorFactories.Count > 0)
         {
             services.AddSingleton<IZLinkActorManager, ZLinkActorManagerService>();
-        }
-
-        if (registration.ActorRemoteAddressResolverType is not null)
-        {
-            services.TryAddSingleton(registration.ActorRemoteAddressResolverType);
-            services.AddSingleton(
-                typeof(IZLinkActorRemoteAddressResolver),
-                provider => provider.GetRequiredService(registration.ActorRemoteAddressResolverType));
-        }
-        else if (registration.RegistryActorRemoteAddresses is not null)
-        {
-            services.AddSingleton<ZLinkRegistryActorRemoteAddressResolver>();
-            services.AddSingleton<IZLinkActorRemoteAddressResolver>(
-                static provider => provider.GetRequiredService<ZLinkRegistryActorRemoteAddressResolver>());
         }
 
         if (registration.SpotRemoteAddressResolverType is not null)
@@ -194,23 +181,175 @@ internal static class ZLinkFrameworkServiceRegistrar
 
         foreach (var actorFactoryType in registration.ActorFactories.Values)
         {
-            services.AddScoped(actorFactoryType);
+            services.TryAddScoped(actorFactoryType);
+        }
+
+        foreach (var sessionType in registration.StreamNodes.Values
+                     .Select(static stream => stream.HeaderSessionType)
+                     .OfType<Type>())
+        {
+            services.TryAddScoped(sessionType);
+        }
+
+        foreach (var spotType in registration.SpotNodes.Values
+                     .SelectMany(static spotNode => spotNode.SpotFactories.Values))
+        {
+            services.TryAddScoped(spotType);
+        }
+
+        foreach (var entrySpotType in registration.SpotNodes.Values
+                     .Select(static spotNode => spotNode.EntrySpotType)
+                     .OfType<Type>())
+        {
+            services.TryAddScoped(entrySpotType);
         }
 
         foreach (var routed in registration.RouteChannels.Values)
         {
             foreach (var handler in routed.SendHandlers)
             {
-                services.AddScoped(handler.HandlerType);
+                services.TryAddScoped(handler.HandlerType);
             }
 
             foreach (var handler in routed.RequestHandlers)
             {
-                services.AddScoped(handler.HandlerType);
+                services.TryAddScoped(handler.HandlerType);
             }
         }
 
+        AddEnumerableConstructorDependencies(services, EnumerateRegisteredApplicationTypes(registration));
+
         return services;
+    }
+
+    private static IEnumerable<Type> EnumerateRegisteredApplicationTypes(
+        ZLinkFrameworkRegistration registration)
+    {
+        foreach (var filterType in registration.Filters)
+        {
+            yield return filterType;
+        }
+
+        foreach (var actorFactoryType in registration.ActorFactories.Values)
+        {
+            yield return actorFactoryType;
+        }
+
+        foreach (var stream in registration.StreamNodes.Values)
+        {
+            if (stream.HeaderSessionType is not null)
+            {
+                yield return stream.HeaderSessionType;
+            }
+        }
+
+        foreach (var spotNode in registration.SpotNodes.Values)
+        {
+            if (spotNode.EntrySpotType is not null)
+            {
+                yield return spotNode.EntrySpotType;
+            }
+
+            foreach (var spotType in spotNode.SpotFactories.Values)
+            {
+                yield return spotType;
+            }
+        }
+
+        foreach (var channel in registration.Channels.Values)
+        {
+            foreach (var handler in channel.SendHandlers)
+            {
+                yield return handler.HandlerType;
+            }
+
+            foreach (var handler in channel.RequestHandlers)
+            {
+                yield return handler.HandlerType;
+            }
+
+            foreach (var handler in channel.PublishHandlers)
+            {
+                yield return handler.HandlerType;
+            }
+        }
+
+        foreach (var routed in registration.RouteChannels.Values)
+        {
+            foreach (var handler in routed.SendHandlers)
+            {
+                yield return handler.HandlerType;
+            }
+
+            foreach (var handler in routed.RequestHandlers)
+            {
+                yield return handler.HandlerType;
+            }
+        }
+
+        foreach (var assembly in registration.HandlerAssemblies)
+        {
+            foreach (var endpoint in ZLinkHandlerScanner.Scan(assembly))
+            {
+                yield return endpoint.DeclaringType;
+            }
+
+            foreach (var endpoint in ZLinkHandlerScanner.ScanRoute(assembly))
+            {
+                yield return endpoint.DeclaringType;
+            }
+        }
+    }
+
+    private static void AddEnumerableConstructorDependencies(
+        IServiceCollection services,
+        IEnumerable<Type> registeredTypes)
+    {
+        foreach (var registeredType in registeredTypes.Distinct())
+        {
+            foreach (var serviceType in FindEnumerableConstructorServices(registeredType))
+            {
+                AddAssemblyImplementations(services, registeredType.Assembly, serviceType);
+                AddAssemblyImplementations(services, serviceType.Assembly, serviceType);
+            }
+        }
+    }
+
+    private static IEnumerable<Type> FindEnumerableConstructorServices(Type type)
+    {
+        foreach (var constructor in type.GetConstructors())
+        {
+            foreach (var parameter in constructor.GetParameters())
+            {
+                var parameterType = parameter.ParameterType;
+                if (!parameterType.IsGenericType
+                    || parameterType.GetGenericTypeDefinition() != typeof(IEnumerable<>))
+                {
+                    continue;
+                }
+
+                var serviceType = parameterType.GetGenericArguments()[0];
+                if (serviceType.IsInterface)
+                {
+                    yield return serviceType;
+                }
+            }
+        }
+    }
+
+    private static void AddAssemblyImplementations(
+        IServiceCollection services,
+        Assembly assembly,
+        Type serviceType)
+    {
+        foreach (var implementationType in assembly.GetTypes()
+                     .Where(type => type is { IsClass: true, IsAbstract: false }
+                         && type != serviceType
+                         && serviceType.IsAssignableFrom(type)))
+        {
+            services.TryAddEnumerable(ServiceDescriptor.Scoped(serviceType, implementationType));
+            services.TryAddScoped(implementationType);
+        }
     }
 
     private static bool HasSpotNode(ZLinkFrameworkRegistration registration)

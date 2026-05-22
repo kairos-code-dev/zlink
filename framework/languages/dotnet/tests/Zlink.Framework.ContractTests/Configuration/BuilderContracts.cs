@@ -23,7 +23,6 @@ public sealed class BuilderContracts
         options.AddSpotRemoteAddressResolver<SpotRemoteAddressResolver>();
         options.UseRegistrySpotRemoteAddresses("game", registry => registry.RouterChannelId = "play-router");
         options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6000"));
-        options.UseSpotDiscovery("play-spots", discovery => discovery.Add("tcp://127.0.0.1:6001"));
         options.UseFilter<HandlerFilter>();
         options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchMode.Compiled);
 
@@ -138,12 +137,16 @@ public sealed class BuilderContracts
         options.AddStreamNode("gateway", stream =>
         {
             stream.Bind("tcp://127.0.0.1:5400");
-            stream.AddHeaderSession<GatewaySession>();
+            stream.RegisterSession<GatewaySession>();
         });
 
-        options.AddSpotNode("play-spots", spot =>
+        options.AddSpotMesh("play-spots", mesh =>
         {
-            ConfigureSpotNode(spot);
+            mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6001"));
+            mesh.AddNode("play-spots", spot =>
+            {
+                ConfigureSpotNode(spot);
+            });
         });
 
         options.AddSpotMesh("play-mesh", mesh =>
@@ -165,6 +168,7 @@ public sealed class BuilderContracts
         spot.Bind("tcp://127.0.0.1:5500");
         spot.EnableRouter(router =>
         {
+            router.Bind("tcp://127.0.0.1:5501");
             router.ConfigureSocket(socket => socket.TcpNoDelay = true);
             router.ConfigureRouting(route => route.RoutingId = RoutingId.Of("spot-router"));
             router.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5501"));
@@ -275,11 +279,6 @@ public sealed class BuilderContracts
 
         public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure) => configure(Discovery);
 
-        public void UseSpotDiscovery(
-            string channelName,
-            Action<IZLinkDiscoveryBuilder> configure) =>
-            configure(Discovery);
-
         public void UseFilter<TFilter>()
             where TFilter : class, IZLinkHandlerFilter { }
 
@@ -294,20 +293,12 @@ public sealed class BuilderContracts
             configure(new StreamNodeBuilder());
         }
 
-        public void AddSpotNode(
-            string spotNodeName,
-            Action<IZLinkSpotNodeBuilder> configure)
-        {
-            SpotNodes.Add(spotNodeName);
-            configure(new SpotNodeBuilder());
-        }
-
         public void AddSpotMesh(
             string channelName,
             Action<IZLinkSpotMeshBuilder> configure)
         {
             SpotMeshes.Add(channelName);
-            configure(new SpotMeshBuilder());
+            configure(new SpotMeshBuilder(SpotNodes));
         }
     }
 
@@ -467,7 +458,7 @@ public sealed class BuilderContracts
 
         public void AttachActorGateway(string spotNodeName) { }
 
-        public void AddHeaderSession<TSession>()
+        public void RegisterSession<TSession>()
             where TSession : class, IZLinkSession { }
     }
 
@@ -522,15 +513,18 @@ public sealed class BuilderContracts
             configure(new ConnectionAndConfigContracts.ManualConnections());
     }
 
-    private sealed class SpotMeshBuilder : IZLinkSpotMeshBuilder
+    private sealed class SpotMeshBuilder(List<string> spotNodes) : IZLinkSpotMeshBuilder
     {
         public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure) =>
             configure(new DiscoveryBuilder());
 
         public void AddNode(
             string spotNodeName,
-            Action<IZLinkSpotMeshNodeBuilder> configure) =>
+            Action<IZLinkSpotMeshNodeBuilder> configure)
+        {
+            spotNodes.Add(spotNodeName);
             configure(new SpotNodeBuilder());
+        }
     }
 
     private sealed class ActorFactory : IZLinkActorFactory

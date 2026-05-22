@@ -175,7 +175,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9100");
-        stream.AddHeaderSession<ClientHeaderSession>();
+        stream.RegisterSession<ClientHeaderSession>();
     });
 });
 
@@ -335,7 +335,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9200");
-        stream.AddHeaderSession<ClientHeaderSession>();
+        stream.RegisterSession<ClientHeaderSession>();
     });
 });
 

@@ -141,6 +141,8 @@ public interface IStreamSocket : IRoutedMessageSocket
 
     void DisconnectRid(RoutingId peerRid);
 
+    void AttachActorGateway(SpotNode node);
+
     ActorBindOperation BindActor(RoutingId sessionRid, ActorRef actor);
 
     ActorUnbindOperation UnbindActor(RoutingId sessionRid, string actorId);

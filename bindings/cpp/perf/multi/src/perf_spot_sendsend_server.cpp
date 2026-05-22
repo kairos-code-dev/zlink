@@ -168,7 +168,7 @@ bool run_server (const std::string &lib_name,
                                     ? settings.server_bind_port + 512
                                     : perf::multi::bench_port_base (41000);
     const std::string endpoint =
-      perf::multi::bind_spot_endpoint (node, transport, base_port);
+      perf::multi::bind_routed_spot_endpoint (node, transport, base_port);
     const std::string control_endpoint =
       perf::multi::bind_spot_endpoint (control_node, transport, control_base_port);
     if (endpoint.empty () || control_endpoint.empty ())

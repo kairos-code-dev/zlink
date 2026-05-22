@@ -159,6 +159,10 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_set_router_bind_endpoint(
+        IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_connect_peer(IntPtr node,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 

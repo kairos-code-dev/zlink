@@ -75,6 +75,8 @@ public sealed class test_socket_surface
             nameof(StreamSocket.SetRoutingId), typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
             nameof(StreamSocket.GetRoutingId)));
+        Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
+            nameof(StreamSocket.AttachActorGateway), typeof(SpotNode)));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket),
             "OnFramedPacket"));
         Assert.False(HasPublicInstanceMethod(typeof(StreamSocket), "Send",

@@ -77,14 +77,14 @@
 raw socket public multipart send entry는 다음 경로를 탄다.
 
 - `zlink_send()` / `zlink_send_rid()`
-- [socket_message_send_api.cpp](../../core/src/api/socket_message_send_api.cpp)
+- [socket_message_send_api.cpp](../../core/src/api/socket/socket_message_send_api.cpp)
 
 single-part는 별도 fast path를 타고,
 multipart는 `logical_multipart_send*()`로 내려간다.
 
 핵심 구현은:
 
-- [multipart_send_txn.cpp](../../core/src/core/multipart_send_txn.cpp)
+- [multipart_send_txn.cpp](../../core/src/runtime/core/multipart_send_txn.cpp)
 
 ### 2. 현재 방식
 
@@ -96,7 +96,7 @@ multipart는 `logical_multipart_send*()`로 내려간다.
 
 관련 코드:
 
-- [multipart_send_txn.cpp#L28](../../core/src/core/multipart_send_txn.cpp#L28)
+- [multipart_send_txn.cpp#L28](../../core/src/runtime/core/multipart_send_txn.cpp#L28)
 
 즉 현재 구조는:
 
@@ -111,8 +111,8 @@ multipart는 `logical_multipart_send*()`로 내려간다.
 
 socket rollback은 최종적으로 pipe rollback으로 이어진다.
 
-- [socket_base_msg.cpp#L177](../../core/src/sockets/socket_base_msg.cpp#L177)
-- [pipe.cpp#L367](../../core/src/core/pipe.cpp#L367)
+- [socket_base_msg.cpp#L177](../../core/src/runtime/sockets/common/socket_base_msg.cpp#L177)
+- [pipe.cpp#L367](../../core/src/runtime/core/pipe.cpp#L367)
 
 pipe rollback은 outbound pipe에 기록된 **미완성 multipart**를 `unwrite()`로
 되감는다.
@@ -130,15 +130,15 @@ pipe rollback은 outbound pipe에 기록된 **미완성 multipart**를 `unwrite(
 예:
 
 - load balancer:
-  [lb.cpp](../../core/src/sockets/lb.cpp)
+  [lb.cpp](../../core/src/runtime/sockets/internal/lb.cpp)
 - distributor:
-  [dist.cpp](../../core/src/sockets/dist.cpp)
+  [dist.cpp](../../core/src/runtime/sockets/internal/dist.cpp)
 - router:
-  [router.cpp](../../core/src/sockets/router.cpp)
+  [router.cpp](../../core/src/runtime/sockets/router/router.cpp)
 
 특히 `lb_t`는 multipart 도중 write 실패 시 rollback을 명시적으로 사용한다.
 
-- [lb.cpp#L78](../../core/src/sockets/lb.cpp#L78)
+- [lb.cpp#L78](../../core/src/runtime/sockets/internal/lb.cpp#L78)
 
 ### 5. 현재 send 계약
 
@@ -180,18 +180,18 @@ POSD 관점에서의 구성은 다음과 같다.
 
 raw socket recv는 socket type별 `xrecv()` / `xrecv_routed()`를 통해 진행된다.
 
-- [socket_base_msg.cpp](../../core/src/sockets/socket_base_msg.cpp)
+- [socket_base_msg.cpp](../../core/src/runtime/sockets/common/socket_base_msg.cpp)
 
 multipart boundary를 실질적으로 유지하는 핵심은 `fq_t`와 `pipe_t`다.
 
-- [fq.cpp](../../core/src/sockets/fq.cpp)
-- [pipe.cpp](../../core/src/core/pipe.cpp)
+- [fq.cpp](../../core/src/runtime/sockets/internal/fq.cpp)
+- [pipe.cpp](../../core/src/runtime/core/pipe.cpp)
 
 ### 2. `fq_t`의 의미
 
 `fq_t::recvpipe()`는 첫 part를 읽은 뒤 `_more`를 유지한다.
 
-- [fq.cpp#L64](../../core/src/sockets/fq.cpp#L64)
+- [fq.cpp#L64](../../core/src/runtime/sockets/internal/fq.cpp#L64)
 
 핵심 동작:
 
@@ -201,7 +201,7 @@ multipart boundary를 실질적으로 유지하는 핵심은 `fq_t`와 `pipe_t`�
 
 관련 코드:
 
-- [fq.cpp#L91](../../core/src/sockets/fq.cpp#L91)
+- [fq.cpp#L91](../../core/src/runtime/sockets/internal/fq.cpp#L91)
 
 즉 socket 내부 semantics는 이미
 "multipart를 시작했으면 중간 part 경계에서 정상적으로 끊기지 않는다"
@@ -214,7 +214,7 @@ public raw recv는 socket 내부에서 받은 frame을 바로 caller에 하나�
 
 핵심 구현:
 
-- [socket_message_recv_api.cpp](../../core/src/api/socket_message_recv_api.cpp)
+- [socket_message_recv_api.cpp](../../core/src/api/socket/socket_message_recv_api.cpp)
 
 동작:
 
@@ -237,7 +237,7 @@ follow-up frame 은 일반 `recv timeout` 의미론이 아니라
 
 관련 코드:
 
-- [recv_internal.cpp#L88](../../core/src/core/recv_internal.cpp#L88)
+- [recv_internal.cpp#L88](../../core/src/runtime/core/recv_internal.cpp#L88)
 
 `recv_followup_msg_internal()` 의 의미:
 
@@ -268,8 +268,8 @@ public contract는 payload part만 노출한다.
 
 관련 코드:
 
-- [socket_message_recv_api.cpp#L152](../../core/src/api/socket_message_recv_api.cpp#L152)
-- [socket_message_recv_api.cpp#L216](../../core/src/api/socket_message_recv_api.cpp#L216)
+- [socket_message_recv_api.cpp#L152](../../core/src/api/socket/socket_message_recv_api.cpp#L152)
+- [socket_message_recv_api.cpp#L216](../../core/src/api/socket/socket_message_recv_api.cpp#L216)
 
 ### 6. TLS view 계약
 
@@ -279,7 +279,7 @@ public recv는 heap-owned `parts[]`를 반환하지 않는다.
 관련 문서:
 
 - [zlink.h#L828](../../core/include/zlink.h#L828)
-- [recv_tls_view.hpp](../../core/src/core/recv_tls_view.hpp)
+- [recv_tls_view.hpp](../../core/src/runtime/core/recv_tls_view.hpp)
 
 caller 규칙:
 
@@ -298,7 +298,7 @@ multipart를 aggregate shape로 설명하게 해 준다.
 
 핵심 구현:
 
-- [spot_sub_recv.cpp](../../core/src/services/spot/spot_sub_recv.cpp)
+- [spot_sub_recv.cpp](../../core/src/runtime/services/spot/pubsub/spot_sub_recv.cpp)
 
 `spot_sub_t::recv()`는 다음 성격을 가진다.
 
@@ -324,8 +324,8 @@ multipart를 aggregate shape로 설명하게 해 준다.
 직접 콜백/핸들러 경로도 결과적으로는 완성된 multipart 를 콜백에
 전달하는 방향으로 정리돼 있다.
 
-- [socket_message_handler_api.cpp](../../core/src/api/socket_message_handler_api.cpp)
-- [socket_base_dispatch.cpp](../../core/src/sockets/socket_base_dispatch.cpp)
+- [socket_message_handler_api.cpp](../../core/src/api/socket/socket_message_handler_api.cpp)
+- [socket_base_dispatch.cpp](../../core/src/runtime/sockets/common/socket_base_dispatch.cpp)
 
 핵심 원칙:
 
@@ -352,8 +352,8 @@ multipart 원자성의 최하층은 `ypipe_t`(락-프리 SPSC 큐)이다.
 
 핵심 파일:
 
-- `libzmq/src/ypipe.hpp`
-- `libzmq/src/ypipe_base.hpp`
+- `libzmq/src/runtime/core/ypipe.hpp`
+- `libzmq/src/runtime/core/ypipe_base.hpp`
 
 `ypipe_t`는 세 개의 포인터로 동작한다.
 
@@ -413,8 +413,8 @@ bool unwrite (T *value_)
 
 핵심 파일:
 
-- `libzmq/src/pipe.hpp`
-- `libzmq/src/pipe.cpp`
+- `libzmq/src/runtime/core/pipe.hpp`
+- `libzmq/src/runtime/core/pipe.cpp`
 
 `pipe_t`는 `ypipe_t` 위에 HWM(high water mark) 제어, message 카운팅,
 그리고 multipart 경계 관리를 추가한다.
@@ -541,8 +541,8 @@ rollback 후 보내므로 미완성 multipart 뒤에 delimiter가 섞이는 일�
 
 핵심 파일:
 
-- `libzmq/src/fq.hpp`
-- `libzmq/src/fq.cpp`
+- `libzmq/src/runtime/sockets/internal/fq.hpp`
+- `libzmq/src/runtime/sockets/internal/fq.cpp`
 
 `fq_t`는 복수의 inbound pipe에서 round-robin으로 message를 읽는다.
 multipart 원자성은 `_more` 상태 변수로 관리된다.
@@ -667,8 +667,8 @@ if (_more) {
 
 핵심 파일:
 
-- `libzmq/src/lb.hpp`
-- `libzmq/src/lb.cpp`
+- `libzmq/src/runtime/sockets/internal/lb.hpp`
+- `libzmq/src/runtime/sockets/internal/lb.cpp`
 
 `lb_t`는 outbound pipe에 round-robin으로 message를 보낸다.
 `DEALER`, `PUSH`, `REQ` 등이 사용한다.
@@ -806,8 +806,8 @@ multipart 전송 중 현재 pipe가 terminate되면 즉시 `_dropping = true`로
 
 핵심 파일:
 
-- `libzmq/src/dist.hpp`
-- `libzmq/src/dist.cpp`
+- `libzmq/src/runtime/sockets/internal/dist.hpp`
+- `libzmq/src/runtime/sockets/internal/dist.cpp`
 
 `dist_t`는 `PUB`, `XPUB` 등이 사용하는 fan-out distributor다.
 하나의 message를 matching하는 모든 pipe에 동시에 보낸다.
@@ -1147,7 +1147,7 @@ PUB는 XPUB의 wrapper이므로 동일한 원자성을 가진다.
 
 핵심 파일:
 
-- `libzmq/src/socket_base.cpp`
+- `libzmq/src/runtime/sockets/common/socket_base.cpp`
 
 #### 7.1. send()
 
@@ -1252,17 +1252,17 @@ caller는 매번 recv 후 `RCVMORE`를 확인하고, true이면 다음 frame을 
 `libzmq` 기준 코드:
 
 - `send`/`recv` 공통:
-  `libzmq/src/socket_base.cpp`
+  `libzmq/src/runtime/sockets/common/socket_base.cpp`
 - fair queue:
-  `libzmq/src/fq.cpp`
+  `libzmq/src/runtime/sockets/internal/fq.cpp`
 - load balancer:
-  `libzmq/src/lb.cpp`
+  `libzmq/src/runtime/sockets/internal/lb.cpp`
 - distributor:
-  `libzmq/src/dist.cpp`
+  `libzmq/src/runtime/sockets/internal/dist.cpp`
 - pipe:
-  `libzmq/src/pipe.cpp`
+  `libzmq/src/runtime/core/pipe.cpp`
 - ypipe:
-  `libzmq/src/ypipe.hpp`
+  `libzmq/src/runtime/core/ypipe.hpp`
 
 #### 1.1. ypipe incomplete flag가 동일한 역할을 한다
 
@@ -1464,31 +1464,31 @@ multipart atomicity가 유지된다고 보려면 아래가 계속 참이어야 �
 ## 관련 파일
 
 - send
-  - [core/src/core/multipart_send_txn.cpp](../../core/src/core/multipart_send_txn.cpp)
-  - [core/src/api/socket_message_send_api.cpp](../../core/src/api/socket_message_send_api.cpp)
-  - [core/src/sockets/lb.cpp](../../core/src/sockets/lb.cpp)
-  - [core/src/core/pipe.cpp](../../core/src/core/pipe.cpp)
+  - [core/src/runtime/core/multipart_send_txn.cpp](../../core/src/runtime/core/multipart_send_txn.cpp)
+  - [core/src/api/socket/socket_message_send_api.cpp](../../core/src/api/socket/socket_message_send_api.cpp)
+  - [core/src/runtime/sockets/internal/lb.cpp](../../core/src/runtime/sockets/internal/lb.cpp)
+  - [core/src/runtime/core/pipe.cpp](../../core/src/runtime/core/pipe.cpp)
 - recv
-  - [core/src/core/recv_internal.cpp](../../core/src/core/recv_internal.cpp)
-  - [core/src/api/socket_message_recv_api.cpp](../../core/src/api/socket_message_recv_api.cpp)
-  - [core/src/sockets/fq.cpp](../../core/src/sockets/fq.cpp)
-  - [core/src/core/recv_tls_view.hpp](../../core/src/core/recv_tls_view.hpp)
+  - [core/src/runtime/core/recv_internal.cpp](../../core/src/runtime/core/recv_internal.cpp)
+  - [core/src/api/socket/socket_message_recv_api.cpp](../../core/src/api/socket/socket_message_recv_api.cpp)
+  - [core/src/runtime/sockets/internal/fq.cpp](../../core/src/runtime/sockets/internal/fq.cpp)
+  - [core/src/runtime/core/recv_tls_view.hpp](../../core/src/runtime/core/recv_tls_view.hpp)
 - service / spot
-  - [core/src/services/spot/spot_sub_recv.cpp](../../core/src/services/spot/spot_sub_recv.cpp)
+  - [core/src/runtime/services/spot/pubsub/spot_sub_recv.cpp](../../core/src/runtime/services/spot/pubsub/spot_sub_recv.cpp)
 - public contract
   - [core/include/zlink.h](../../core/include/zlink.h)
 - libzmq 참조
-  - `libzmq/src/ypipe.hpp` — lock-free SPSC queue, incomplete flag
-  - `libzmq/src/ypipe_base.hpp` — ypipe 인터페이스
-  - `libzmq/src/pipe.hpp` / `pipe.cpp` — write, flush, rollback
-  - `libzmq/src/fq.hpp` / `fq.cpp` — fair queue, _more assert
-  - `libzmq/src/lb.hpp` / `lb.cpp` — load balancer, _dropping 상태
-  - `libzmq/src/dist.hpp` / `dist.cpp` — distributor, _eligible 보호
-  - `libzmq/src/socket_base.cpp` — send/recv entry, -2 처리
-  - `libzmq/src/router.cpp` — ROUTER send/recv, prefetch, rollback
-  - `libzmq/src/pair.cpp` — PAIR 단순 패턴
-  - `libzmq/src/dealer.cpp` — DEALER lb+fq 조합
-  - `libzmq/src/msg.hpp` — msg_t::more, msg_t::routing_id flag 정의
+  - `libzmq/src/runtime/core/ypipe.hpp` — lock-free SPSC queue, incomplete flag
+  - `libzmq/src/runtime/core/ypipe_base.hpp` — ypipe 인터페이스
+  - `libzmq/src/runtime/core/pipe.hpp` / `pipe.cpp` — write, flush, rollback
+  - `libzmq/src/runtime/sockets/internal/fq.hpp` / `fq.cpp` — fair queue, _more assert
+  - `libzmq/src/runtime/sockets/internal/lb.hpp` / `lb.cpp` — load balancer, _dropping 상태
+  - `libzmq/src/runtime/sockets/internal/dist.hpp` / `dist.cpp` — distributor, _eligible 보호
+  - `libzmq/src/runtime/sockets/common/socket_base.cpp` — send/recv entry, -2 처리
+  - `libzmq/src/runtime/sockets/router/router.cpp` — ROUTER send/recv, prefetch, rollback
+  - `libzmq/src/runtime/sockets/pair/pair.cpp` — PAIR 단순 패턴
+  - `libzmq/src/runtime/sockets/dealer/dealer.cpp` — DEALER lb+fq 조합
+  - `libzmq/src/runtime/core/msg.hpp` — msg_t::more, msg_t::routing_id flag 정의
 
 ---
 

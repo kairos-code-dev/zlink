@@ -178,7 +178,10 @@ struct spot_runtime_t
                             void *arg_);
     void set_external_route_id (const std::string &peer_endpoint_,
                                 const std::string &route_id_);
-    void erase_external_route_id (const std::string &peer_endpoint_);
+    void set_external_route_id (const std::string &peer_endpoint_,
+                                const std::string &route_id_,
+                                const std::string &route_endpoint_);
+    std::string erase_external_route_id (const std::string &peer_endpoint_);
     std::vector<std::string> clear_external_route_ids ();
     std::vector<std::string> external_route_ids_for_destination (
       const std::string &destination_node_rid_) const;
@@ -209,6 +212,7 @@ struct spot_runtime_t
     std::string peer_ctrl_endpoint;
     std::string external_router_bind_endpoint;
     std::map<std::string, std::string> external_route_ids_by_endpoint;
+    std::map<std::string, std::string> external_route_endpoints_by_endpoint;
     bool faulted;
     int fault_errno;
     bool abortive_shutdown;

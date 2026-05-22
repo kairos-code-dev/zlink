@@ -132,17 +132,17 @@ session actor dispatch 샘플의 DTO 는
 
 Registry 기반 Spot route 도 framework 기본 구현을 사용한다. Play 서버와 Session 서버는
 `UseRegistrySpotRemoteAddresses("tictactoe")` 만 켠다. Play 서버의 actor 준비 응답은
-logical actor handle 을 돌려주고, Session 서버는 현재 STREAM session 을 그 actor handle 에
+actor id/type 과 ActorGateway remote address snapshot 을 돌려주고, Session 서버는 현재 STREAM session 을 그 actor handle 에
 bind 한다. actor-session binding 은 framework / core runtime 내부 상태로 관리된다.
 샘플은 별도 파일 metadata store 나 route publisher 를 구현하지 않는다.
 
 핵심 계약은 다음과 같다.
 
 - `AuthenticateReq.ActorId` 가 인증 요청의 actor identity 역할을 한다.
-- 인증이 성공하면, Session 서버는 Play 서버에 actor 준비를 요청하고 logical actor
-  handle 을 받는다. 그 뒤 `BindActorHandleAsync(...)` 로 현재 stream session binding 을
+- 인증이 성공하면, Session 서버는 Play 서버에 actor 준비를 요청하고 actor id/type 과
+  remote address 를 받는다. 그 뒤 `BindActorHandleAsync(...)` 로 현재 stream session binding 을
   framework / core 내부 상태에 기록한다. session handler 는 actor remote address resolver 를
-  직접 호출하지 않는다.
+  직접 호출하지 않고, Play 서버 runtime 이 발급한 ActorGateway locator 만 사용한다.
 - `CreateMatchReq` 는 Session 서버에서 API 서버로 channel request 로 relay
   된다. 클라이언트는 match id 나 room 이름을 따로 지정하지 않는다.
 - API 서버는 Play 서버에 room 생성을 요청한다. Play 서버는

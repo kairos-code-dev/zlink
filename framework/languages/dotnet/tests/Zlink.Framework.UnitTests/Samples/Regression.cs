@@ -94,9 +94,12 @@ public sealed class RegressionTests
             .Single();
         var text = File.ReadAllText(sessionHostFactory);
 
-        Assert.Contains("AddSpotNode", text, StringComparison.Ordinal);
+        Assert.Contains("AddSpotMesh", text, StringComparison.Ordinal);
+        Assert.Contains("EnableRouter", text, StringComparison.Ordinal);
         Assert.Contains("AttachActorGateway", text, StringComparison.Ordinal);
         Assert.DoesNotContain("AddRouteMeshChannel", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddScoped<IBingoSessionHandler", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddScoped<ISessionRelayPacketHandler", text, StringComparison.Ordinal);
     }
 
     private static void AssertSessionHandlersDoNotResolveActorRemoteAddresses(string sampleRoot)

@@ -4,6 +4,15 @@ import zlink
 
 
 class BoundaryValidationContractTests(unittest.TestCase):
+    def test_stream_attach_actor_gateway_requires_routed_node(self):
+        with zlink.Context() as ctx:
+            with zlink.StreamSocket(ctx) as stream:
+                with zlink.SpotNode(ctx, zlink.SpotNodeMode.PUBSUB) as node:
+                    with self.assertRaises(zlink.ConfigError) as raised:
+                        stream.attach_actor_gateway(node)
+                    self.assertEqual(raised.exception.result,
+                                     zlink.ConfigResult.NOT_SUPPORTED)
+
     def test_routing_id_byte_boundaries_are_checked_before_native_call(self):
         self.assertEqual(zlink.RoutingId.from_bytes(b"a" * 255).size, 255)
 

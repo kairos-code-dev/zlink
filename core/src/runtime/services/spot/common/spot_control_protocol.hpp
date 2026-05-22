@@ -14,7 +14,7 @@ namespace zlink
 {
 namespace spot_control_protocol
 {
-static const int protocol_version = 1;
+static const int protocol_version = 2;
 static const char ctrl_prefix[] = "__zlink.spot.ctrl.";
 static const char bootstrap_prefix[] = "__zlink.spot.bootstrap.";
 static const char ctrl_snapshot_topic[] = "__zlink.spot.ctrl.snapshot";
@@ -214,67 +214,6 @@ inline bool derive_peer_ctrl_bind_endpoint (const std::string &data_endpoint_,
     if (derive_fixed_port_endpoint (data_endpoint_, "ws://", out_))
         return true;
     if (derive_fixed_port_endpoint (data_endpoint_, "wss://", out_))
-        return true;
-
-    return false;
-}
-
-inline bool derive_external_router_bind_endpoint (
-  const std::string &data_endpoint_,
-  uint32_t node_id_,
-  std::string *out_)
-{
-    (void) node_id_;
-    if (!out_ || data_endpoint_.empty ())
-        return false;
-
-    if (starts_with (data_endpoint_, "inproc://")) {
-        *out_ = data_endpoint_ + ".zlink-spot-route";
-        return true;
-    }
-
-    if (starts_with (data_endpoint_, "ipc://")) {
-        *out_ = data_endpoint_ + ".zlink-spot-route";
-        return true;
-    }
-
-    const auto derive_offset_port_endpoint =
-      [out_] (const std::string &endpoint_, const char *prefix_,
-              int offset_) -> bool {
-        if (!starts_with (endpoint_, prefix_))
-            return false;
-
-        const size_t host_offset = strlen (prefix_);
-        const size_t port_sep = endpoint_.rfind (':');
-        if (port_sep == std::string::npos || port_sep <= host_offset
-            || port_sep + 1 >= endpoint_.size ()) {
-            return false;
-        }
-
-        unsigned long port = 0;
-        std::string suffix;
-        if (!parse_endpoint_port_and_suffix (endpoint_, port_sep, &port, &suffix))
-            return false;
-
-        const unsigned long min_port = 1024UL;
-        const unsigned long port_space = 65535UL - min_port + 1UL;
-        const unsigned long mapped_port =
-          ((port - min_port + static_cast<unsigned long> (offset_)) % port_space)
-          + min_port;
-
-        char buf[32];
-        snprintf (buf, sizeof (buf), "%lu", mapped_port);
-        *out_ = endpoint_.substr (0, port_sep + 1) + buf + suffix;
-        return true;
-      };
-
-    if (derive_offset_port_endpoint (data_endpoint_, "tcp://", 20000))
-        return true;
-    if (derive_offset_port_endpoint (data_endpoint_, "tls://", 20000))
-        return true;
-    if (derive_offset_port_endpoint (data_endpoint_, "ws://", 20000))
-        return true;
-    if (derive_offset_port_endpoint (data_endpoint_, "wss://", 20000))
         return true;
 
     return false;

@@ -265,7 +265,11 @@ if [[ "${BIN_TIMEOUT_SECONDS}" -lt 30 ]]; then
     BIN_TIMEOUT_SECONDS=30
 fi
 
+stop_early=0
 for pat in "${PATTERNS[@]}"; do
+    if [[ "${stop_early}" -eq 1 ]]; then
+        break
+    fi
     BIN=""
     case "${pat}" in
         PAIR)            BIN="${SINGLE_DIR}/perf_pair" ;;
@@ -279,7 +283,13 @@ for pat in "${PATTERNS[@]}"; do
     current_transports="${TRANSPORTS:-$(default_transports_for_pattern "${pat}")}"
     IFS=',' read -ra TRANSPORT_LIST <<< "${current_transports}"
     for transport in "${TRANSPORT_LIST[@]}"; do
+        if [[ "${stop_early}" -eq 1 ]]; then
+            break
+        fi
         for size in "${SIZE_LIST[@]}"; do
+            if [[ "${stop_early}" -eq 1 ]]; then
+                break
+            fi
             case_status="success"
             case_reason=""
             for run in $(seq 1 "${RUNS}"); do
@@ -316,6 +326,10 @@ for pat in "${PATTERNS[@]}"; do
             done
             case_reason="${case_reason//,/;}"
             printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
+            if [[ "${PERF_FAIL_FAST:-0}" == "1" && "${case_status}" == "fail" ]]; then
+                stop_early=1
+                break
+            fi
             sleep_millis "${RUN_COOLDOWN_MS}"
         done
     done
@@ -340,6 +354,7 @@ python3 "${PERF_REPORT_PY}" render-single \
   --sndtimeo-ms "${SNDTIMEO_MS}" \
   --rcvtimeo-ms "${RCVTIMEO_MS}" \
   --elapsed-seconds "${SECONDS}" \
-  --lang rust
+  --lang rust \
+  --fail-fast "${PERF_FAIL_FAST:-0}"
 
 prune_reports "${REPORT_DIR}"

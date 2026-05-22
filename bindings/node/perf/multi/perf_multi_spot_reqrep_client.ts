@@ -191,9 +191,11 @@ async function main() {
     trace('control-connected');
 
     const dataEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-reqrep-client-${process.pid}`);
+    const dataRouterEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-reqrep-client-router-${process.pid}`);
     configureTlsServer(node, options.transport);
     configureTlsClient(node, options.transport);
     node.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_CLIENT_NODE', 'ascii')));
+    node.setRouterBindEndpoint(dataRouterEndpoint);
     node.bind(dataEndpoint);
     node.connectPeer(options.peerEndpoint);
     for (let i = 0; i < options.clients; i += 1) {

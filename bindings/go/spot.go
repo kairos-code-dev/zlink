@@ -160,6 +160,16 @@ func (n *SpotNode) Bind(endpoint string) error {
 	})
 }
 
+func (n *SpotNode) SetRouterBindEndpoint(endpoint string) error {
+	return n.withCString(endpoint, func(cstr *C.char) error {
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		return configErrorFromResult(C.zlink_spot_node_set_router_bind_endpoint(handle, cstr))
+	})
+}
+
 func (n *SpotNode) ConnectPeer(endpoint string) error {
 	return n.withCString(endpoint, func(cstr *C.char) error {
 		handle, err := n.handleOrError()

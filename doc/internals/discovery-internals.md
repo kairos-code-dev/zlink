@@ -494,3 +494,27 @@ Key points:
   handover policy.
 - Manual `zlink_connect()` calls made through the raw API bypass this
   path, so the library does not mediate them.
+
+## 13. Actor Route Resolution and the Session-Relay Boundary
+
+`zlink_discovery_resolve_actor()` resolves an actor id to its current route using
+`ZLINK_ROUTE_KIND_ACTOR` rows. The route value is a `zlink_actor_route_t` that the
+owner SpotNode published from the Actor's current location: the Actor ref (node
+rid + actor id + generation) plus the current Spot rid and kind.
+
+These rows are a **published derivative** of the Actor table's current location.
+The owner SpotNode refreshes them when it commits a location change (Actor create,
+join accept, leave), and only when `actor_route_sync_enabled()` is set on the node.
+Publishing goes one way: SpotNode → registry. Discovery never writes back into the
+Actor table.
+
+The boundary worth remembering:
+
+- Actor route rows are for **service-to-Actor routing and diagnostics**. For
+  example, an external ROUTER or backend Spot that must reach an Actor by id
+  resolves the current Spot route and sends through the existing routed transport.
+- The **STREAM session relay hot path does not consult Discovery.** A session
+  binding already holds the bound Actor ref; relay resolves it through the local
+  Actor table and ActorGateway state (see [spot-internals.md](./spot-internals.md)
+  section 12), not a route lookup. Discovery sync may lag a fresh join without
+  affecting an in-flight session relay.

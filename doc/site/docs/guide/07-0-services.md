@@ -13,7 +13,7 @@ The zlink service layer is a set of **high-level distributed service features** 
 ```mermaid
 flowchart TB
     subgraph app["Application"]
-        A1["SPOT (pub/sub) · Socket Family"]
+        A1["SPOT (pub/sub · Actor) · Socket Family"]
     end
 
     subgraph facade["Public API Facade"]
@@ -25,7 +25,7 @@ flowchart TB
     end
 
     subgraph runtime["Service Runtime"]
-        RT1["Discovery: bootstrap · state · update · uplink · registry_client<br/>SPOT: node · data_plane (forwarding · protocol) · pub · sub"]
+        RT1["Discovery: bootstrap · state · update · uplink · registry_client<br/>SPOT: node · data_plane (forwarding · protocol) · pub · sub · actor"]
     end
 
     subgraph infra["Discovery (service discovery) · Registry (service reg.)"]
@@ -53,6 +53,7 @@ flowchart TB
 | **Registry** | Service registry | Central store that registers and manages service entries |
 | **Discovery** | Service discovery | Subscribes to the Registry and maintains a local cache of the service list |
 | **SPOT** | Location (spot) transparent pub/sub | Object-level, location-transparent, topic-based publish/subscribe mesh |
+| **Actor** | SPOT session routing target | Session-based addressing unit inside SPOT that funnels STREAM session messages into a Spot dispatch context |
 
 ## 3. Service Components
 
@@ -92,6 +93,13 @@ channel send/request, peer routed communication, and publish/subscribe.
 - Monitoring uses snapshot/query APIs.
 - **Thread-safe** -- a single `spot` / `spot_node` handle admits concurrent
   operational API calls from multiple threads.
+
+- **Actor**: Session-based routing target inside SPOT. Funnels STREAM session
+  messages into a `Spot` dispatch context. `SpotNode` owns the Actor table;
+  newly created Actors start in the `Entry Spot`. Actors move to user Spots
+  via `zlink_spot_join_spot()` and return to `Entry Spot` automatically on
+  session disconnect. Actors own no socket or inproc endpoint; they are
+  identified by `zlink_actor_ref_t`.
 
 See the [SPOT Guide](./07-3-spot.md) and [SPOT Actor Guide](./07-4-actor.md) for details.
 
@@ -159,7 +167,7 @@ Recommended sequence:
    can observe this via the socket monitor event
    `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. If you need the service-layer
    view, observe the `Discovery` handle for the same peers through
-   `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`.
+   `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`.
 3. Wait long enough for in-flight replies to drain. In production this
    wait is typically driven by your request SLA.
 4. Restart or replace the peer, then rejoin the service with a positive
@@ -199,11 +207,13 @@ flowchart TB
     R -- "SERVICE_LIST broadcast" --> D1["Discovery<br/>(SPOT)"]
     R -- "SERVICE_LIST broadcast" --> D2["Discovery<br/>(Socket)"]
     D1 --> S1["SPOT<br/>(PUB + SUB)"]
+    S1 -- "Actor table / Entry Spot" --> A1["Actor<br/>(routing target)"]
     D2 --> S2["Socket Family<br/>(R/D/P/S)"]
 ```
 
 - **Discovery is the foundation infrastructure**: SPOT and Socket Family discover targets through Discovery.
-- **SPOT** propagates topic messages using the PUB/SUB pattern.
+- **SPOT** propagates topic messages using the PUB/SUB pattern and provides routed communication.
+- **Actor** is a session-based routing target inside SPOT. It funnels STREAM session messages into a `Spot` dispatch context. Actor is not a separate service — it is an addressing unit managed by `SpotNode`.
 - **Socket Family** enables raw ROUTER/DEALER/PUB/SUB sockets to register and discover peers through Discovery, providing location-transparent communication at the socket level.
 - All services operate independently and can share the same Registry cluster.
 

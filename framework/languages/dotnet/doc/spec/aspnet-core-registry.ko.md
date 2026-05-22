@@ -493,20 +493,17 @@ builder.Services.AddZLinkFramework(options =>
         channel.Bind("tcp://0.0.0.0:7201");
     });
 
-    options.UseRegistryActorRemoteAddresses("game");
     options.UseRegistrySpotRemoteAddresses("game");
 });
 ```
 
-`UseRegistryActorRemoteAddresses(...)` 는 actor id 를 play node route 로 바꾸는 기본 resolver 를
-등록한다. `UseRegistrySpotRemoteAddresses(...)` 는 Spot owner 조회와 Spot name directory 를 함께
+`UseRegistrySpotRemoteAddresses(...)` 는 Spot owner 조회와 Spot name directory 를 함께
 등록한다. actor-session route 는 session bind 시 actor runtime state 에 저장된다.
-binding 을 Registry owner-bound route 로 저장한다.
 
 이 API 들은 Registry 를 일반 key-value 저장소처럼 노출하지 않는다. framework 는
 Discovery 가 제공하는 owner-bound route/topology 를 사용하고, application 은 route key 나
 payload 형식을 알 필요가 없다. Redis 나 database 같은 별도 저장소가 필요한 경우에만
-`AddActorRemoteAddressResolver<T>()`, `AddSpotRemoteAddressResolver<T>()`,
+`AddSpotRemoteAddressResolver<T>()`,
 
 
 ## 9. 결정된 기준

@@ -43,6 +43,8 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 	perfcommon.Must(replier.SetRoutingID(multiSpotSendSendSpotRID))
 
 	dataEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend")
+	dataRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-router")
+	perfcommon.Must(serverNode.SetRouterBindEndpoint(dataRouterEndpoint))
 	perfcommon.Must(serverNode.Bind(dataEndpoint))
 	controlNode, err := serverCtx.SpotNode()
 	perfcommon.Must(err)
@@ -170,6 +172,8 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 	flushControlLine("CLIENT_CONTROL_ENDPOINT,%s", clientControlEndpoint)
 
 	localEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-client")
+	localRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-client-router")
+	perfcommon.Must(clientNode.SetRouterBindEndpoint(localRouterEndpoint))
 	perfcommon.Must(clientNode.Bind(localEndpoint))
 	perfcommon.Must(clientNode.ConnectPeer(dataEndpoint))
 

@@ -21,6 +21,12 @@ external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 
 > STREAM은 zlink 내부 소켓(PAIR/PUB/SUB/DEALER/ROUTER)과 직접 호환되지 않는다.
 
+> **client session을 Actor에 연결하기.** STREAM 서버는 SpotNode Actor의 진입점 역할도
+> 할 수 있다. 각 client session을 Actor에 bind하면 session 트래픽이 그 Actor와 주고받는
+> 형태로 relay된다. 이 패턴은 STREAM 소켓을 `zlink_stream_attach_actor_gateway()`로
+> SpotNode에 attach하는 것에서 시작한다. session-to-Actor 전체 흐름은
+> [Actor 가이드](./07-4-actor.ko.md)를 참고한다.
+
 ---
 
 ## 2. 서버 생성/바인드

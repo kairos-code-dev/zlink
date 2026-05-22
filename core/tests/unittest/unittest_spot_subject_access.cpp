@@ -445,6 +445,41 @@ void test_spot_node_admission_hwm_socket_snapshot_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_spot_node_router_bind_endpoint_is_explicit ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (node);
+
+    const char *mesh_endpoint = "inproc://explicit-router-mesh";
+    const char *router_endpoint = "inproc://explicit-router-ingress";
+    const char *derived_endpoint =
+      "inproc://explicit-router-mesh.zlink-spot-route";
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_set_router_bind_endpoint (
+                         node, router_endpoint));
+    TEST_ASSERT_EQUAL (ZLINK_BIND_OK,
+                       zlink_spot_node_bind (node, mesh_endpoint));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_STATE,
+                       zlink_spot_node_set_router_bind_endpoint (
+                         node, "inproc://late-router-ingress"));
+
+    void *conflict = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (conflict);
+    TEST_ASSERT_NOT_EQUAL (ZLINK_BIND_OK,
+                           zlink_bind (conflict, router_endpoint));
+    TEST_ASSERT_EQUAL_INT (EADDRINUSE, zlink_errno ());
+    TEST_ASSERT_EQUAL (ZLINK_BIND_OK,
+                       zlink_bind (conflict, derived_endpoint));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (conflict));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_node_admission_hwm_changes_apply_to_runtime_data_plane_sockets ()
 {
     void *ctx = zlink_ctx_new ();
@@ -768,6 +803,7 @@ int main ()
       test_spot_node_routed_mode_disables_pubsub_sockets_without_lazy_create);
     RUN_TEST (test_spot_node_internal_socket_snapshot_contract);
     RUN_TEST (test_spot_node_admission_hwm_socket_snapshot_contract);
+    RUN_TEST (test_spot_node_router_bind_endpoint_is_explicit);
     RUN_TEST (test_spot_node_admission_hwm_changes_apply_to_runtime_data_plane_sockets);
     RUN_TEST (test_spot_subject_access_resolves_composite_and_node_poller_sockets);
     RUN_TEST (test_spot_subject_access_routes_subscription_and_routing_state);

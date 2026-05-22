@@ -729,6 +729,29 @@ logical state.
 The session owner node and the Actor owner node may be the same or different. The
 internal paths differ, but the public API is identical.
 
+Before any bind can run, the session owner `SpotNode` for a STREAM handle must be
+known. This is the ActorGateway attachment. The owner is resolved through
+`actor_runtime().sessions.stream_owner(stream, nodes)`:
+
+- If the application called `zlink_stream_attach_actor_gateway(stream, node)`, the
+  pair is recorded in `sessions.stream_owners` and the handle is added to
+  `sessions.explicit_stream_owners`. Explicit owners are sticky: they survive until
+  the stream closes, the owner node is destroyed, or the application detaches. This
+  is the required path for raw and connector STREAM handles, which the library
+  cannot otherwise associate with a `SpotNode`.
+- If the stream is a `SpotNode`-internal socket, `find_socket_owner()` recovers the
+  owner structurally and caches it in `stream_owners`. No explicit attach is needed
+  in that case.
+- If neither path yields an owner, bind fails. The owner is never inferred from the
+  bind target Actor's `node_rid`; the session owner is the node the sending stream
+  is actually attached to.
+
+`zlink_stream_attach_actor_gateway()` requires `node` to be a routed-capable
+`SpotNode` (otherwise `ENOTSUP` / `ZLINK_CONFIG_NOT_SUPPORTED`) and rejects
+re-attaching a stream to a different owner (`EBUSY` /
+`ZLINK_CONFIG_INVALID_STATE`); re-attaching the same stream/node pair is
+idempotent. See [stream-socket.md](./stream-socket.md) for the STREAM-side view.
+
 ### 12.1 Local Actor binding (co-located)
 
 ```mermaid
@@ -812,10 +835,10 @@ triggers Entry Spot cleanup on the target Actor.
 
 | Condition | Outcome |
 |-----------|---------|
-| Actor owner node unreachable | `bind control request` never delivered; session owner returns bind failure after timeout; `g_session_bindings` entry is not written |
+| Actor owner node unreachable | `bind control request` never delivered; session owner returns bind failure after timeout; no `sessions.bindings` entry is written |
 | Bind control request times out mid-operation | Session owner treats it as a bind failure; any partial Actor table state on the target node is rolled back when the target node receives the timeout notification |
 | `actor_ref` stale (generation mismatch) | Target node rejects the bind control request; session owner receives `INVALID_HANDLE`; no Actor table entry is created |
-| Session disconnect before bind completes | `g_session_bindings` CAS on the session owner fails because the session rid entry was already cleared; bind is aborted and any target node Actor state is cleaned up
+| Session disconnect before bind completes | the `sessions.bindings` CAS on the session owner fails because the session entry was already cleared; bind is aborted and any target node Actor state is cleaned up
 
 ## 13. Transport logical queue internal data structures
 
@@ -872,13 +895,14 @@ by the `actors_by_id` map inside `spot_node_actor_state_t`.
 | `part_flag` | `zlink_part_flag_t` | `ZLINK_PART_MORE` or `ZLINK_PART_FINAL` |
 | `owns` | `bool` | whether this wrapper owns the part (false after move) |
 
-### 13.3 Join request queue (`g_join_queues`)
+### 13.3 Join request queue (`joins.queues`)
 
-Join requests are stored in `g_join_queues`, protected by the global
-`g_actor_mutex` in `service_spot_actor_api.cpp`:
+Join requests are stored in `actor_runtime().joins.queues` (the `queues` member of
+`actor_join_state_t`), protected by `actor_runtime().mutex` in
+`service_spot_actor_api.cpp`:
 
 ```
-g_join_queues: map<spot_logical_state_t*, deque<queued_join_request_t*>>
+joins.queues: map<spot_logical_state_t*, deque<queued_join_request_t*>>
 ```
 
 The key is the target Spot's `spot_logical_state_t` pointer. Multiple join requests
@@ -898,8 +922,9 @@ Key fields of `queued_join_request_t`:
 | `message` | `zlink_msg_t` | join payload (ownership transferred from caller) |
 | `reply` | `zlink_msg_t` | reply payload (ownership transferred from target Spot) |
 
-`g_live_join_requests` tracks all currently pending join requests.
-`g_retired_join_requests` holds requests awaiting timeout/cleanup processing.
+`joins.live_requests` tracks all currently pending join requests and drives the
+timeout sweep. Once a request completes, its record is freed inline at the end of
+the commit/abort path rather than parked in a separate retired set.
 
 ### 13.4 Signaler and dispatch connection
 
@@ -918,39 +943,51 @@ handler of `actor_handle_t.joined_spot_state`. The subject is a
 `const zlink_actor_ref_t*` valid only for the callback lifetime.
 
 Actor join dispatch posts `ACTOR_JOIN_READABLE` to the target Spot's dispatch
-handler when a request is added to `g_join_queues`. The subject is the target Spot
+handler when a request is added to `joins.queues`. The subject is the target Spot
 facade.
 
-### 13.5 Global state summary
+### 13.5 Actor runtime state summary
 
-Key global state managed by `service_spot_actor_api.cpp`. **All entries below
-are protected by `g_actor_mutex`** unless noted otherwise.
+All Actor, session, route, join, and lifecycle state lives in a single
+process-wide `actor_runtime_t` aggregate, reached through the `actor_runtime()`
+accessor in `service_spot_actor_api.cpp`. There are no free-standing `g_*`
+globals; the aggregate groups the state by responsibility. **Every member below is
+serialized by the single `actor_runtime().mutex`** unless noted otherwise.
 
-| global | type | role |
+| member | type | role |
 |--------|------|------|
-| `g_actor_mutex` | `timed_mutex` | single global lock protecting all other entries; held only for the duration of table mutations, not I/O |
-| `g_nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode reverse lookup; populated on `SpotNode` creation, removed on destroy |
-| `g_join_queues` | `map<spot_logical_state_t*, deque<...>>` | pending join requests per Spot; entries added when a join request is enqueued, removed when the request is replied or cleaned up |
-| `g_known_spots` | `set<spot_handle_t*>` | tracks live Spot facades; used to validate handles against use-after-free |
-| `g_session_bindings` | `map<string, session_binding_t>` | session rid → Actor binding; compare-and-swap on remote join commit uses this map as the transaction point |
-| `g_active_routes` | `map<string, zlink_actor_route_t>` | actor id → active route published to Discovery |
-| `g_live_join_requests` | `set<queued_join_request_t*>` | currently pending joins; used for timeout sweep |
-| `g_retired_join_requests` | `set<queued_join_request_t*>` | joins awaiting cleanup after completion frame delivery |
-| `g_actor_protocol_drop_count` | `uint64_t` | cumulative count of relay frames dropped due to protocol errors (stale ref, unknown actor id, etc.); useful for diagnosing relay loss |
+| `mutex` | `std::timed_mutex` | single lock protecting the whole runtime; held only for the duration of table mutations, not I/O |
+| `nodes` | `actor_node_registry_t` | node and Spot facade tracking (see sub-rows below) |
+| `nodes.nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode reverse lookup; populated on `SpotNode` creation, removed on destroy |
+| `nodes.known_nodes` | `set<spot_node_t*>` | live `SpotNode` handles; used to validate node pointers against use-after-free |
+| `nodes.known_spots` | `set<spot_handle_t*>` | live Spot facades; used to validate handles against use-after-free |
+| `sessions` | `actor_session_state_t` | STREAM session bindings and stream→owner map (see sub-rows below) |
+| `sessions.bindings` | `map<session_binding_key_t, session_binding_t>` | keyed by `(stream, session rid)`; holds the per-actor-id Actor entries of one session; the compare-and-swap on remote join commit uses this map as the transaction point |
+| `sessions.stream_owners` | `map<void*, spot_node_t*>` | STREAM handle → session owner SpotNode (the ActorGateway) |
+| `sessions.explicit_stream_owners` | `set<void*>` | streams whose owner was set by `zlink_stream_attach_actor_gateway()`; these owners are sticky and not garbage-collected when bindings drop |
+| `routes` | `actor_route_state_t` | published actor routes and disconnect notes (see sub-rows below) |
+| `routes.active` | `map<string, zlink_actor_route_t>` | actor id → active route published to Discovery |
+| `routes.disconnected` | `set<pair<spot_node_t*, string>>` | `(source node, target node rid)` pairs marked disconnected; used to map relay failures to route-not-found |
+| `joins` | `actor_join_state_t` | pending join queues and bookkeeping (see sub-rows below) |
+| `joins.queues` | `map<spot_logical_state_t*, deque<queued_join_request_t*>>` | pending join requests per target Spot; entries added on enqueue, removed when replied or cleaned up |
+| `joins.live_requests` | `set<queued_join_request_t*>` | currently pending joins; used for the timeout sweep |
+| `lifecycle` | `actor_lifecycle_state_t` | per-Spot `on_join`/`on_leave` registrations and their event queues |
+| `protocol_drop_count` | `uint64_t` | cumulative count of relay frames dropped due to protocol errors (stale ref, unknown actor id, etc.); useful for diagnosing relay loss |
+| `next_join_epoch` | `uint64_t` | monotonically increasing allocator for join sequence numbers |
 
 `queued_join_request_t` stores request and reply payloads as owned multipart
 parts. `zlink_spot_actor_join_recv()` exposes a thread-local parts view to the
 caller, and `zlink_spot_actor_join_reply()` moves the reply parts back into the
 request record before the completion callback runs.
 
-**Initialization**: these globals are default-initialized at program startup
-(static storage duration). There is no separate init call. The first
-`zlink_ctx_new()` call indirectly populates `g_nodes_by_rid` when the first
-`SpotNode` is created; there is no race window because the mutex is taken on
-every write and every read that can race with a write.
+**Initialization**: the `actor_runtime_t` instance is a function-local static with
+static storage duration, default-initialized on first access. There is no separate
+init call. The first `SpotNode` creation populates `nodes.nodes_by_rid`; there is
+no race window because `mutex` is taken on every write and every read that can race
+with a write.
 
-**Lock scope**: callers must not hold `g_actor_mutex` while crossing an I/O
-thread boundary (e.g., while waiting for a Mailbox reply). The lock is always
+**Lock scope**: callers must not hold `actor_runtime().mutex` while crossing an
+I/O thread boundary (e.g., while waiting for a Mailbox reply). The lock is always
 released before any blocking call. Actor table mutations and join queue mutations
 that span two SpotNode instances are serialized by taking the mutex once for the
 entire compound operation.

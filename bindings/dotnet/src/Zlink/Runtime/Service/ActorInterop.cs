@@ -66,7 +66,8 @@ internal static class ActorInterop
     internal static unsafe ZlinkActorRef ToNative(ActorRef actor)
     {
         ZlinkActorRef native = default;
-        native.NodeRid = actor.NodeRid.ToNative();
+        if (!actor.NodeRid.IsEmpty)
+            native.NodeRid = actor.NodeRid.ToNative();
         byte* actorId = native.ActorId;
         NativeHelpers.WriteFixedString(actor.ActorId, actorId,
             NativeConstants.ActorIdMax);
@@ -880,9 +881,22 @@ internal static class ActorInterop
             {
                 ZlinkActorLookupResult native = Marshal.PtrToStructure
                     <ZlinkActorLookupResult>(resultPtr);
-                ActorRef actor = FromNative(ref native.Actor);
-                r = new ActorLookupResult((RequestResult)native.Result, actor,
-                    native.Flags);
+                RequestResult result = (RequestResult)native.Result;
+                ActorRef actor = default;
+                if (result == RequestResult.Ok)
+                {
+                    ActorRef? parsedActor = FromOptionalNative(ref native.Actor);
+                    if (parsedActor is null)
+                    {
+                        result = RequestResult.InternalError;
+                    }
+                    else
+                    {
+                        actor = parsedActor.Value;
+                    }
+                }
+
+                r = new ActorLookupResult(result, actor, native.Flags);
             }
             state.Completion.TrySetResult(r);
         }

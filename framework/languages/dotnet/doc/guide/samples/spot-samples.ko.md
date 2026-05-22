@@ -407,9 +407,9 @@ app.Run();
 - `AttachClientServerChannelClient("orders")`
   - stage spot이 `orders` channel로 send / request를 보낼 때 사용할 outbound
     client를 붙인다.
-- `EnableRouter()`
+- `EnableRouter(router => router.Bind(endpoint))`
   - 같은 SPOT channel에 속한 다른 `SpotNode`와 routed packet을 주고받기 위한
-    local router를 켠다.
+    local router를 켜고 routed ingress endpoint를 명시한다.
 - `AcceptSpotRoutesFromChannel("play")`
   - `play` client/server channel의 server `ROUTER`에서 이 node의 user Spot으로
     routed send/request를 보낼 수 있게 한다.
@@ -1004,7 +1004,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode("client.stream", stream =>
     {
         stream.Bind("tcp://0.0.0.0:9100");
-        stream.AddHeaderSession<SampleSession>();
+        stream.RegisterSession<SampleSession>();
     });
 
     options.AddSpotMesh("game.room", mesh =>

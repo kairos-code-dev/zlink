@@ -34,32 +34,36 @@ public sealed class PublisherTests : SpotTestSupport
         subscriberBuilder.Services.AddScoped<ExternalStageEventHandler>();
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", discovery =>
+            options.AddSpotMesh("game.stage", mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
-
-            options.AddSpotNode("subscriber-node", spot =>
+                mesh.AddNode("subscriber-node", spot =>
             {
                 spot.Bind(subscriberNodeEndpoint);
                 spot.EnablePubSub();
                 spot.AddSpotFactory<ExternalSubscriberStageSpot>("subscriber-stage");
+            });
             });
         });
 
         var publisherBuilder = Host.CreateApplicationBuilder();
         publisherBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", discovery =>
+            options.AddSpotMesh("game.stage", mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
-
-            options.AddSpotNode("publisher-node", spot =>
+                mesh.AddNode("publisher-node", spot =>
             {
                 spot.Bind(publisherNodeEndpoint);
                 spot.EnablePubSub();
                 spot.AttachSpotMeshPublisherClient("game.stage");
+            });
             });
         });
 
@@ -172,31 +176,35 @@ public sealed class PublisherTests : SpotTestSupport
         var subscriberBuilder = Host.CreateApplicationBuilder();
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", discovery =>
+            options.AddSpotMesh("game.stage", mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
-
-            options.AddSpotNode("subscriber-node", spot =>
+                mesh.AddNode("subscriber-node", spot =>
             {
                 spot.Bind(subscriberNodeEndpoint);
                 spot.EnablePubSub();
+            });
             });
         });
 
         var publisherBuilder = Host.CreateApplicationBuilder();
         publisherBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", discovery =>
+            options.AddSpotMesh("game.stage", mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
-
-            options.AddSpotNode("publisher-node", spot =>
+                mesh.AddNode("publisher-node", spot =>
             {
                 spot.Bind(publisherNodeEndpoint);
                 spot.EnablePubSub();
                 spot.AttachSpotMeshPublisherClient("game.stage");
+            });
             });
         });
 

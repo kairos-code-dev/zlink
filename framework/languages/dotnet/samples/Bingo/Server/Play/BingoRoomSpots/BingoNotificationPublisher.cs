@@ -21,7 +21,7 @@ internal sealed class BingoNotificationPublisher
     {
         return roomEvent.Kind switch
         {
-            BingoRoomEventKind.PlayerJoined => roomEvent.Recipient.Context.SessionProxy
+            BingoRoomEventKind.PlayerJoined => roomEvent.Recipient.Context.BoundSession
                 .Send(
                     new PlayerJoinedNotify(
                         roomEvent.State.RoomId,
@@ -32,11 +32,11 @@ internal sealed class BingoNotificationPublisher
                         roomEvent.State))
                 .PacketName(SampleNames.PlayerJoinedPacket)
                 .Submit(cancellationToken),
-            BingoRoomEventKind.GameStarted => roomEvent.Recipient.Context.SessionProxy
+            BingoRoomEventKind.GameStarted => roomEvent.Recipient.Context.BoundSession
                 .Send(new BingoGameStartedNotify(roomEvent.State))
                 .PacketName(SampleNames.GameStartedPacket)
                 .Submit(cancellationToken),
-            BingoRoomEventKind.NumberDrawn => roomEvent.Recipient.Context.SessionProxy
+            BingoRoomEventKind.NumberDrawn => roomEvent.Recipient.Context.BoundSession
                 .Send(
                     new BingoNumberDrawnNotify(
                         roomEvent.State.RoomId,
@@ -45,11 +45,11 @@ internal sealed class BingoNotificationPublisher
                         roomEvent.State))
                 .PacketName(SampleNames.NumberDrawnPacket)
                 .Submit(cancellationToken),
-            BingoRoomEventKind.State => roomEvent.Recipient.Context.SessionProxy
+            BingoRoomEventKind.State => roomEvent.Recipient.Context.BoundSession
                 .Send(new BingoStateNotify(roomEvent.State))
                 .PacketName(SampleNames.StatePacket)
                 .Submit(cancellationToken),
-            BingoRoomEventKind.GameEnded => roomEvent.Recipient.Context.SessionProxy
+            BingoRoomEventKind.GameEnded => roomEvent.Recipient.Context.BoundSession
                 .Send(new BingoGameEndedNotify(roomEvent.State))
                 .PacketName(SampleNames.GameEndedPacket)
                 .Submit(cancellationToken),

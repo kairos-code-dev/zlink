@@ -36,6 +36,7 @@ public abstract partial class SpotTestSupport
         {
             Context.AddPacket<EntrySpotGeneralBlockingHandler>();
             Context.AddPacket<EntrySpotGeneralRecordingHandler>();
+            Context.AddPacket<EntrySpotChannelRequestHandler>();
         }
     }
 
@@ -110,6 +111,12 @@ public abstract partial class SpotTestSupport
 
     public sealed record EntrySpotGeneralRecordCommand(string Value);
 
+    public sealed record EntrySpotChannelRequestCommand(string Value);
+
+    public sealed record EntrySpotOrderRequest(string Value);
+
+    public sealed record EntrySpotOrderReply(string Value);
+
     public sealed class EntrySpotGeneralBlockingHandler(EntrySpotCallbackRecorder recorder)
         : IZLinkSpotPacketHandler<GeneralEntrySpot, EntrySpotGeneralBlockingCommand>
     {
@@ -137,6 +144,39 @@ public abstract partial class SpotTestSupport
             _ = cancellationToken;
             recorder.Events.Enqueue($"record:{message.Value}:{spot.Context.SpotRid.ToHex()}");
             return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class EntrySpotChannelRequestHandler(EntrySpotCallbackRecorder recorder)
+        : IZLinkSpotPacketHandler<GeneralEntrySpot, EntrySpotChannelRequestCommand>
+    {
+        public async ValueTask HandleAsync(
+            GeneralEntrySpot spot,
+            EntrySpotChannelRequestCommand message,
+            CancellationToken cancellationToken)
+        {
+            var reply = await spot.Context.RequestChannel(
+                    "orders",
+                    new EntrySpotOrderRequest(message.Value))
+                .Timeout(TimeSpan.FromSeconds(5))
+                .SubmitAsync<EntrySpotOrderReply>(cancellationToken)
+                .ConfigureAwait(false);
+
+            recorder.Events.Enqueue($"channel-reply:{reply.Value}");
+        }
+    }
+
+    public sealed class EntrySpotOrdersRequestHandler
+        : IZLinkRequestHandler<EntrySpotOrderRequest, EntrySpotOrderReply>
+    {
+        public ValueTask<EntrySpotOrderReply> HandleAsync(
+            EntrySpotOrderRequest request,
+            ZLinkRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            _ = cancellationToken;
+            return ValueTask.FromResult(new EntrySpotOrderReply($"order:{request.Value}"));
         }
     }
 

@@ -54,7 +54,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.AddNode("stage-node", node =>
                     {
                         node.Bind("tcp://127.0.0.1:9000");
-                        node.EnableRouter();
+                        node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9100"));
                         node.AcceptSpotRoutesFromChannel(
                             "events",
                             routes => routes.UseManualConnections(
@@ -81,7 +81,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.AddNode("stage-node", node =>
                     {
                         node.Bind("tcp://127.0.0.1:9000");
-                        node.EnableRouter();
+                        node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9101"));
                         node.AcceptSpotRoutesFromChannel(
                             "mesh",
                             routes => routes.UseManualConnections(
@@ -109,7 +109,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.AddNode("stage-node", node =>
                     {
                         node.Bind("tcp://127.0.0.1:9000");
-                        node.EnableRouter();
+                        node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9102"));
                         node.AcceptSpotRoutesFromChannel(
                             "route",
                             routes => routes.UseManualConnections(
@@ -128,15 +128,18 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseSpotDiscovery("spot.mesh", _ => { });
-                options.AddSpotNode("stage-node", node =>
+                options.AddSpotMesh("spot.mesh", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("stage-node", node =>
                 {
                     node.Bind("tcp://127.0.0.1:9000");
-                    node.EnableRouter();
+                    node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9103"));
                     node.AcceptSpotRoutesFromChannel(
                         "missing",
                         routes => routes.UseManualConnections(
                             peers => peers.Connect("tcp://127.0.0.1:7104")));
+                });
                 });
             }));
 
@@ -186,7 +189,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.AddNode("stage-node", node =>
                     {
                         node.Bind("tcp://127.0.0.1:9000");
-                        node.EnableRouter();
+                        node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9104"));
                         node.AcceptSpotRoutesFromChannel("api");
                     });
                 });

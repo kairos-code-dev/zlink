@@ -78,6 +78,7 @@ struct actor_handle_t
     {
         memset (&node_rid, 0, sizeof (node_rid));
         memset (&ref_cache, 0, sizeof (ref_cache));
+        memset (&bound_session_node_rid, 0, sizeof (bound_session_node_rid));
         memset (&bound_session_rid, 0, sizeof (bound_session_rid));
     }
 
@@ -92,6 +93,7 @@ struct actor_handle_t
     uint64_t join_epoch;
     std::shared_ptr<spot_logical_state_t> joined_spot_state;
     zlink::spot_node_t *bound_session_node;
+    zlink_routing_id_t bound_session_node_rid;
     void *bound_stream;
     zlink_routing_id_t bound_session_rid;
     uint64_t last_changed_ms;
@@ -283,6 +285,9 @@ struct actor_session_state_t
                      actor_handle_t *actor_,
                      uint64_t changed_ms_,
                      actor_handle_t **previous_actor_out_);
+    void bind_actor_ref (void *stream_,
+                         const zlink_routing_id_t &session_rid_,
+                         const zlink_actor_ref_t &actor_ref_);
     bool detach_actor (actor_handle_t *actor_,
                        bool erase_entry_,
                        bool erase_owner_if_unused_);

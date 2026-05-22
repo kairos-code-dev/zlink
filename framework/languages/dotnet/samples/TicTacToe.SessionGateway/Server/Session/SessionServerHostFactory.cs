@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionGateway.Infrastructure;
 using TicTacToe.SessionGateway.Infrastructure.Configuration;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using Zlink.Framework.AspNetCore;
@@ -15,20 +14,10 @@ public static class SessionServerHostFactory
         SampleSessionNode sessionNode)
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddScoped<ISessionRelayPacketHandler, AuthenticateSessionPacketHandler>();
-        builder.Services.AddScoped<ISessionRelayPacketHandler, CreateMatchSessionPacketHandler>();
-        builder.Services.AddScoped<ISessionRelayPacketHandler, JoinMatchSessionPacketHandler>();
-        builder.Services.AddScoped<ISessionRelayPacketHandler, PlaceMarkSessionPacketHandler>();
-        builder.Services.AddScoped<SessionRelaySession>();
         builder.Services.AddZLinkFramework(options =>
         {
             options.Codecs.AddJson();
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
-            options.UseSpotDiscovery(SampleNames.GameSpotDiscovery, discovery =>
-            {
-                discovery.Add(topology.RegistryRouterEndpoint);
-            });
-            options.UseRegistrySpotRemoteAddresses("tictactoe");
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableClient();
@@ -37,15 +26,23 @@ public static class SessionServerHostFactory
             {
                 channel.EnableClient();
             });
-            options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
+            options.AddSpotMesh(SampleNames.GameSpotDiscovery, mesh =>
             {
-                routed.Bind(sessionNode.RouterEndpoint);
-                routed.ConfigureRouting(routing => routing.RoutingId = sessionNode.RoutingId);
+                mesh.AddNode(SampleNames.SessionSpotNode, node =>
+                {
+                    node.Bind(sessionNode.SpotEndpoint);
+                    node.EnableRouter(router =>
+                    {
+                        router.Bind(sessionNode.RouterEndpoint);
+                        router.ConfigureRouting(routing => routing.RoutingId = sessionNode.RoutingId);
+                    });
+                });
             });
             options.AddStreamNode(SampleNames.StreamNode, stream =>
             {
+                stream.AttachActorGateway(SampleNames.SessionSpotNode);
                 stream.Bind(sessionNode.StreamEndpoint);
-                stream.AddHeaderSession<SessionRelaySession>();
+                stream.RegisterSession<SessionRelaySession>();
             });
         });
 

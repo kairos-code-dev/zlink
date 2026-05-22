@@ -40,6 +40,13 @@ static_assert (
   "actor.hpp must expose actor_route_t current_spot_kind");
 static_assert (
   std::is_same<
+    decltype (std::declval<zlink::stream_socket_t &> ()
+                .attach_actor_gateway (
+                  std::declval<zlink::service::spot_node_t &> ())),
+    void>::value,
+  "stream_socket_t must expose actor gateway attach");
+static_assert (
+  std::is_same<
     decltype (std::declval<zlink::stream_socket_t &> ().bind_actor (
       std::declval<const zlink::routing_id_t &> (),
       std::declval<const zlink::actor_ref_t &> ())),

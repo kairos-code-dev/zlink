@@ -32,12 +32,21 @@ internal sealed class ZLinkSpotAttachedChannelBundle : IAsyncDisposable
 {
     private readonly ZLinkSortedConnectionSet _manualConnections = new();
 
-    public ZLinkSpotAttachedChannelBundle(IZLinkBackendDealerSocket socket)
+    public ZLinkSpotAttachedChannelBundle(
+        IZLinkBackendDealerSocket socket,
+        TimeSpan? sendTimeout,
+        CancellationToken stopToken)
     {
         Socket = socket;
+        Submitter = new ZLinkAsyncSubmitter(
+            socket.OnSendReady,
+            sendTimeout,
+            stopToken);
     }
 
     public IZLinkBackendDealerSocket Socket { get; }
+
+    public ZLinkAsyncSubmitter Submitter { get; }
 
     public IZLinkBackendDiscovery? Discovery { get; set; }
 
@@ -67,6 +76,8 @@ internal sealed class ZLinkSpotAttachedChannelBundle : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await Submitter.DisposeAsync();
+
         if (Discovery is not null)
         {
             await Discovery.DisposeAsync();

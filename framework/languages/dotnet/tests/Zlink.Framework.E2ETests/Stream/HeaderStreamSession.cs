@@ -11,54 +11,8 @@ using Zlink.Framework.AspNetCore;
 
 namespace Zlink.Framework.E2ETests;
 
-public sealed class SessionProxyAndHeaderTests : StreamTestSupport
+public sealed class HeaderStreamSessionTests : StreamTestSupport
 {
-    [Fact]
-    public void SessionProxy_Uses_Multipart_Routed_Client_Push()
-    {
-        var routeHeader = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Request,
-            "gateway",
-            ZLinkInternalPacketNames.SessionProxy,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            "correlation",
-            DateTimeOffset.UtcNow.AddSeconds(5),
-            null,
-            null,
-            null);
-        var parts = new[]
-        {
-            ZLinkEnvelopeCodec.EncodeHeader(routeHeader),
-            ZLinkEnvelopeCodec.EncodePart(new ZLinkSessionProxyEnvelope(
-                "player-1",
-                "binding-token",
-                "client.echo",
-                true,
-                new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["trace-id"] = "trace-1"
-                })),
-            Message.FromString("{\"value\":\"ping\"}")
-        };
-
-        try
-        {
-            Assert.Equal(routeHeader, ZLinkEnvelopeCodec.DecodeHeader(parts));
-            var envelope = ZLinkEnvelopeCodec.DecodePart<ZLinkSessionProxyEnvelope>(parts[1]);
-            Assert.Equal("player-1", envelope.ActorId);
-            Assert.Equal("client.echo", envelope.PacketName);
-            Assert.True(envelope.ExpectsReply);
-            Assert.Equal("{\"value\":\"ping\"}", Encoding.UTF8.GetString(parts[2].AsReadOnlySpan()));
-            Assert.Null(typeof(ZLinkEnvelopeCodec).GetMethod(
-                "Encode",
-                BindingFlags.Public | BindingFlags.Static));
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
-        }
-    }
-
     [Fact]
     public async Task HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle()
     {
@@ -74,7 +28,7 @@ public sealed class SessionProxyAndHeaderTests : StreamTestSupport
                 options.AddStreamNode("header.node", stream =>
                 {
                     stream.Bind(endpoint);
-                    stream.AddHeaderSession<HeaderStreamSession>();
+                    stream.RegisterSession<HeaderStreamSession>();
                 });
             });
         });
@@ -179,7 +133,7 @@ public sealed class SessionProxyAndHeaderTests : StreamTestSupport
                 options.AddStreamNode("header.node", stream =>
                 {
                     stream.Bind(endpoint);
-                    stream.AddHeaderSession<HeaderStreamSession>();
+                    stream.RegisterSession<HeaderStreamSession>();
                 });
             });
         });
@@ -226,7 +180,7 @@ public sealed class SessionProxyAndHeaderTests : StreamTestSupport
                 options.AddStreamNode("header.node", stream =>
                 {
                     stream.Bind(endpoint);
-                    stream.AddHeaderSession<HeaderStreamSession>();
+                    stream.RegisterSession<HeaderStreamSession>();
                 });
             });
         });

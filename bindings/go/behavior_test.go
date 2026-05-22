@@ -802,6 +802,14 @@ func TestSpotRecvRoutedPartRoundTrip(t *testing.T) {
 
 	senderEndpoint := tcpEndpoint(t)
 	receiverEndpoint := tcpEndpoint(t)
+	senderRouterEndpoint := tcpEndpoint(t)
+	receiverRouterEndpoint := tcpEndpoint(t)
+	if err := senderNode.SetRouterBindEndpoint(senderRouterEndpoint); err != nil {
+		t.Fatalf("sender SetRouterBindEndpoint() error = %v", err)
+	}
+	if err := receiverNode.SetRouterBindEndpoint(receiverRouterEndpoint); err != nil {
+		t.Fatalf("receiver SetRouterBindEndpoint() error = %v", err)
+	}
 	if err := senderNode.Bind(senderEndpoint); err != nil {
 		t.Fatalf("sender Bind() error = %v", err)
 	}
@@ -902,6 +910,14 @@ func TestSpotForwardRoutedRoundTrip(t *testing.T) {
 
 	senderEndpoint := tcpEndpoint(t)
 	receiverEndpoint := tcpEndpoint(t)
+	senderRouterEndpoint := tcpEndpoint(t)
+	receiverRouterEndpoint := tcpEndpoint(t)
+	if err := senderNode.SetRouterBindEndpoint(senderRouterEndpoint); err != nil {
+		t.Fatalf("sender SetRouterBindEndpoint() error = %v", err)
+	}
+	if err := receiverNode.SetRouterBindEndpoint(receiverRouterEndpoint); err != nil {
+		t.Fatalf("receiver SetRouterBindEndpoint() error = %v", err)
+	}
 	if err := senderNode.Bind(senderEndpoint); err != nil {
 		t.Fatalf("sender Bind() error = %v", err)
 	}

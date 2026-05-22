@@ -61,6 +61,11 @@ internal sealed class ZLinkSpotActivationDispatcher(
             var headerPart = parts[i++];
             if (!actors.TryGetActor(headerPart.Actor.ActorId, out var actor) || actor is null)
             {
+                actor = runtime.GetOrCreateActorState(headerPart.Actor.ActorId).Actor;
+            }
+
+            if (actor is null)
+            {
                 ZLinkSpotActorFrameReader.DisposeFrame(parts, ref i, headerPart);
                 continue;
             }
@@ -75,6 +80,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
                 await DispatchActorStreamPartAsync(
                         actor,
                         frame.Actor.ActorId,
+                        frame.SourceSessionRid,
                         frame.Header,
                         frame.Body,
                         cancellationToken)
@@ -147,11 +153,55 @@ internal sealed class ZLinkSpotActivationDispatcher(
     private async ValueTask DispatchActorStreamPartAsync(
         IZLinkActor actor,
         string actorId,
+        RoutingId sourceSessionRid,
         ZlinkStreamHeader streamHeader,
         Message body,
         CancellationToken cancellationToken)
     {
         var runtimeState = runtime.GetOrCreateActorState(actorId);
+        await using var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorId);
+        runtime.BindActorSession(
+            actorId,
+            sourceSessionRid,
+            BuildNativeBoundSessionToken(sourceSessionRid));
+        if (streamHeader.RequestSeq is { })
+        {
+            var reply = await _actorPacketDispatcher.DispatchForReplyAsync(
+                    actor,
+                    runtimeState,
+                    streamHeader,
+                    body,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (reply is null)
+            {
+                return;
+            }
+
+            var responseHeader = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Response,
+                streamHeader.Codec,
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                streamHeader.RequestSeq,
+                streamHeader.Name,
+                ZlinkStreamMetadata.Empty);
+            var frame = ZLinkStreamFrameCodec.Encode(
+                ZLinkStreamProtocolDefaults.EncodeHeader(responseHeader).Span,
+                reply);
+            using var frameMessage = Message.FromBytes(frame);
+            if (!runtime.SendActorBoundSession(
+                    actorId,
+                    new[] { frameMessage },
+                    SendFlags.None))
+            {
+                throw new InvalidOperationException("Actor request reply relay failed.");
+            }
+
+            await boundSessionScope.DrainAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         await _actorPacketDispatcher.DispatchAsync(
                 actor,
                 runtimeState,
@@ -159,6 +209,11 @@ internal sealed class ZLinkSpotActivationDispatcher(
                 body,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static string BuildNativeBoundSessionToken(RoutingId sourceSessionRid)
+    {
+        return $"native:{sourceSessionRid.ToHex()}";
     }
 
     private async ValueTask InvokeSubscriptionAsync(

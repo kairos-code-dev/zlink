@@ -44,6 +44,7 @@
     <Compile Include="Spot/ActorRegistryExecution.cs" />
     <Compile Include="Spot/ActorSessionState.cs" />
     <Compile Include="Spot/ClientTransport.cs" />
+    <Compile Include="Spot/EntryOutbound.cs" />
     <Compile Include="Spot/EntryMailboxExecution.cs" />
     <Compile Include="Spot/EntryRouting.cs" />
     <Compile Include="Spot/LocalActorMailboxExecution.cs" />
@@ -80,8 +81,7 @@
     <Compile Include="Stream/Protocol.cs" />
     <Compile Include="Stream/RemoteProxyDisconnect.cs" />
     <Compile Include="Stream/RemoteSessionRelay.cs" />
-    <Compile Include="Stream/RemoteAddressUpdates.cs" />
-    <Compile Include="Stream/SessionProxyAndHeader.cs" />
+    <Compile Include="Stream/HeaderStreamSession.cs" />
     <Compile Include="Stream/Support.Common.cs" />
     <Compile Include="Stream/Support.GatewayActorFixtures.cs" />
     <Compile Include="Stream/Support.HandlerFixtures.cs" />

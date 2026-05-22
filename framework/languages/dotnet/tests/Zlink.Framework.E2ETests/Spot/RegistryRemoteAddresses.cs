@@ -37,19 +37,23 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
             {
                 discovery.Add(registryRouterEndpoint);
             });
-            options.UseSpotDiscovery(spotChannel, discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+
             options.AddRouteMeshChannel("play", routed =>
             {
                 routed.Bind(routeChannelEndpoint);
             });
             options.UseRegistrySpotRemoteAddresses("registry-route");
-            options.AddSpotNode("registry-route-node", spot =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+                mesh.AddNode("registry-route-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
                 spot.AddSpotFactory<LocalSubscriberStageSpot>("registry-stage");
+            });
             });
         });
 
@@ -107,19 +111,23 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
             {
                 discovery.Add(registryRouterEndpoint);
             });
-            options.UseSpotDiscovery(spotChannel, discovery =>
-            {
-                discovery.Add(registryRouterEndpoint);
-            });
+
             options.AddRouteMeshChannel("play", routed =>
             {
                 routed.Bind(routeChannelEndpoint);
             });
             options.UseRegistrySpotRemoteAddresses("registry-route-rid");
-            options.AddSpotNode("registry-route-rid-node", spot =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
+            {
+                discovery.Add(registryRouterEndpoint);
+            });
+                mesh.AddNode("registry-route-rid-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
                 spot.AddSpotFactory<LocalSubscriberStageSpot>("registry-stage-rid");
+            });
             });
         });
 

@@ -13,38 +13,6 @@ namespace Zlink.Framework.E2ETests;
 
 public abstract partial class StreamTestSupport
 {
-    public sealed class ThrowingActorRemoteAddressResolver : IZLinkActorRemoteAddressResolver
-    {
-        public ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
-            string actorId,
-            CancellationToken cancellationToken)
-        {
-            _ = actorId;
-            _ = cancellationToken;
-            throw new InvalidOperationException("Session actor bind must use the explicit route.");
-        }
-    }
-
-    public sealed class CountingActorRemoteAddressResolver(ZLinkActorRemoteAddress remoteAddress) : IZLinkActorRemoteAddressResolver
-    {
-        private int _callCount;
-
-        public int CallCount => Volatile.Read(ref _callCount);
-
-        public ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
-            string actorId,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Interlocked.Increment(ref _callCount);
-            return ValueTask.FromResult(new ZLinkActorRemoteLocation(
-                actorId,
-                remoteAddress,
-                RoutingId.FromString("0102"),
-                ZLinkSpotKind.User));
-        }
-    }
-
     public sealed class ActorDispatchRecorder
     {
         private int _createdCount;

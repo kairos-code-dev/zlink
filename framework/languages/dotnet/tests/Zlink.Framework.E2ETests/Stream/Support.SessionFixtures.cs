@@ -15,7 +15,6 @@ public abstract partial class StreamTestSupport
 {
     public sealed class GatewayRelaySession(
         GatewaySessionRecorder recorder,
-        IEnumerable<TestActorRemoteAddressSnapshot> actorRoutes,
         IZLinkSessionContext context) : IZLinkSession
     {
         private IZLinkActorRef? _actor;
@@ -28,15 +27,14 @@ public abstract partial class StreamTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
+            _ = cancellationToken;
             recorder.RecordDisconnected();
             var actor = _actor;
             _actor = null;
-            if (actor is not null)
-            {
-                await actor.NotifyDisconnectedAsync(cancellationToken).ConfigureAwait(false);
-            }
+            _ = actor;
+            return ValueTask.CompletedTask;
         }
 
         public ValueTask OnErrorAsync(
@@ -55,17 +53,16 @@ public abstract partial class StreamTestSupport
         {
             if (_actor is null)
             {
-                var actorRoute = actorRoutes.SingleOrDefault();
-                _actor = actorRoute is null
+                _actor = recorder.RemoteAddress is { } remoteAddress
                     ? await Context.BindActorHandleAsync(
-                            "player-1",
+                            recorder.ActorId,
                             "player",
+                            remoteAddress,
                             cancellationToken)
                         .ConfigureAwait(false)
                     : await Context.BindActorHandleAsync(
-                            "player-1",
+                            recorder.ActorId,
                             "player",
-                            actorRoute.RemoteAddress,
                             cancellationToken)
                         .ConfigureAwait(false);
             }
@@ -80,7 +77,7 @@ public abstract partial class StreamTestSupport
     }
 
     public sealed class MissingRemoteActorRelaySession(
-        TestActorRemoteAddressSnapshot actorRoute,
+        GatewaySessionRecorder recorder,
         IZLinkSessionContext context) : IZLinkSession
     {
         private IZLinkActorRef? _actor;
@@ -115,9 +112,8 @@ public abstract partial class StreamTestSupport
             CancellationToken cancellationToken)
         {
             _actor ??= await Context.BindActorHandleAsync(
-                "player-1",
+                recorder.ActorId,
                 "player",
-                actorRoute.RemoteAddress,
                 cancellationToken);
 
             await Context.RelayToActorAsync(
@@ -144,15 +140,14 @@ public abstract partial class StreamTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
         {
+            _ = cancellationToken;
             recorder.RecordDisconnected();
             var actor = _actor;
             _actor = null;
-            if (actor is not null)
-            {
-                await actor.NotifyDisconnectedAsync(cancellationToken).ConfigureAwait(false);
-            }
+            _ = actor;
+            return ValueTask.CompletedTask;
         }
 
         public ValueTask OnErrorAsync(

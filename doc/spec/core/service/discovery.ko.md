@@ -211,10 +211,9 @@ DEALER-to-ROUTER channel은 Discovery 생성 시 `ZLINK_AUTO_CONNECT_CLIENT_SERV
   `zlink_discovery_resolve_spot()`를 사용합니다.
   이 조회에 필요한 SPOT owner row는 publish하는 Discovery에서
   `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC`를 켰을 때만 Registry에 저장됩니다.
-- `ZLINK_DISCOVERY_SERVICE_UP`,
-  `ZLINK_DISCOVERY_PROVIDERS_CHANGED` 같은 상태 전이는
-  `zlink_discovery_member_peers()`로 현재 peer view를 읽습니다. 서비스 수준
-  상태 변화를 추적하려면 이 조회 결과를 주기적으로 비교합니다.
+- 현재 Discovery peer view 는 `zlink_discovery_member_peers()`로 읽습니다.
+  서비스 수준 상태를 안정적으로 보려면 이 조회를 주기적으로 폴링하고
+  스냅샷을 비교합니다.
 - Actor active route 조회에는 `zlink_discovery_resolve_actor()`를 사용합니다.
   이 조회는 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜진 Actor owner
   `SpotNode`에서 bind가 성공한 뒤에만 성공할 수 있습니다.

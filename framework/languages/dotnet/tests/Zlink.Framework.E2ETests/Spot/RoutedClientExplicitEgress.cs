@@ -57,12 +57,15 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                     });
                 });
             });
-            options.UseSpotDiscovery("spot.route.egress", _ => { });
-            options.AddSpotNode("route-target-node", spot =>
+            options.AddSpotMesh("spot.route.egress", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("route-target-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
                 spot.EnableRouter(router =>
                 {
+                    router.Bind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
                         routing.RoutingId = RoutingId.FromBytes(
@@ -74,6 +77,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(playRouteEndpoint)));
                 spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+            });
             });
         });
 
@@ -140,12 +144,15 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                         Encoding.UTF8.GetBytes("egress-target"));
                 });
             });
-            options.UseSpotDiscovery("spot.route.egress", _ => { });
-            options.AddSpotNode("route-target-node", spot =>
+            options.AddSpotMesh("spot.route.egress", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("route-target-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
                 spot.EnableRouter(router =>
                 {
+                    router.Bind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
                         routing.RoutingId = RoutingId.FromBytes(
@@ -157,6 +164,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(playRouteEndpoint)));
                 spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+            });
             });
         });
 

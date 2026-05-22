@@ -23,26 +23,34 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
     public IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context)
     {
+        var socket = new DealerSocket(context.RequireNative<Context>());
+        socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendDealerSocketWrapper(
-            new DealerSocket(context.RequireNative<Context>()));
+            socket);
     }
 
     public IZLinkBackendRouterSocket CreateRouterSocket(IZLinkBackendContext context)
     {
+        var socket = new RouterSocket(context.RequireNative<Context>());
+        socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendRouterSocketWrapper(
-            new RouterSocket(context.RequireNative<Context>()));
+            socket);
     }
 
     public IZLinkBackendPublisherSocket CreatePublisherSocket(IZLinkBackendContext context)
     {
+        var socket = new PubSocket(context.RequireNative<Context>());
+        socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendPublisherSocketWrapper(
-            new PubSocket(context.RequireNative<Context>()));
+            socket);
     }
 
     public IZLinkBackendSubscriberSocket CreateSubscriberSocket(IZLinkBackendContext context)
     {
+        var socket = new SubSocket(context.RequireNative<Context>());
+        socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendSubscriberSocketWrapper(
-            new SubSocket(context.RequireNative<Context>()));
+            socket);
     }
 }
 
@@ -59,8 +67,9 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
 {
     public IZLinkBackendStreamSocket CreateStreamSocket(IZLinkBackendContext context)
     {
+        var socket = new StreamSocket(context.RequireNative<Context>());
         return new ZLinkBackendStreamSocketWrapper(
-            new StreamSocket(context.RequireNative<Context>()));
+            socket);
     }
 }
 

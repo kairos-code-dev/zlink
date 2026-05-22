@@ -310,11 +310,14 @@ public sealed class TimerTests : SpotTestSupport
         builder.Services.AddScoped<EntryTimerRecordingHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery(spotChannel, _ => { });
-            options.AddSpotNode("entry-timer-node", spot =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("entry-timer-node", spot =>
             {
                 spot.Bind(spotNode);
                 spot.AddEntrySpot<EntryTimerSpot>();
+            });
             });
         });
 

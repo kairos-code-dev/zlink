@@ -82,8 +82,10 @@ async function main() {
 
     node.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_CLIENT_NODE', 'ascii')));
     const dataEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-sendsend-client-${process.pid}`);
+    const dataRouterEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-sendsend-client-router-${process.pid}`);
     configureTlsServer(node, options.transport);
     configureTlsClient(node, options.transport);
+    node.setRouterBindEndpoint(dataRouterEndpoint);
     node.bind(dataEndpoint);
     node.connectPeer(options.peerEndpoint);
     for (let i = 0; i < options.clients; i += 1) {

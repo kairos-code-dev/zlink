@@ -2,7 +2,6 @@ using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
 using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework.Contracts.Actors;
 
 namespace Bingo.Server.Session.Sessions.Handlers;
 
@@ -41,7 +40,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkClient channels) : I
 
             var actor = await context.Stream.BindActorHandleAsync(
                     ensured.ActorId,
-                    SampleNames.PlayerActorType,
+                    ensured.ActorType,
                     ToRemoteAddress(ensured.RemoteAddress),
                     cancellationToken)
                 ;

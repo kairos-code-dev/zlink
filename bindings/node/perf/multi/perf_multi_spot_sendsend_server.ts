@@ -7,7 +7,7 @@ const zlink = require('@zlink-systems/zlink');
 const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const { configureTlsServer } = require('../common/perf_tls');
 const { sleepImmediate } = require('../common/perf_metrics');
-const { parseMultiArgs } = require('./perf_multi_common');
+const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
 const {
   POLLOUT,
   applyAutoHwmMsgUnit,
@@ -57,6 +57,9 @@ async function main() {
     applySpotNodeAdmission(node);
     configureTlsServer(node, options.transport);
     node.setRoutingId(SERVER_NODE_ROUTING_ID);
+    node.setRouterBindEndpoint(
+      await benchmarkEndpoint(options.transport, `multi-spot-sendsend-router-${process.pid}`)
+    );
     node.bind(options.peerEndpoint);
     spot = node.createSpot();
     spot.setRoutingId(SERVER_SPOT_ROUTING_ID);

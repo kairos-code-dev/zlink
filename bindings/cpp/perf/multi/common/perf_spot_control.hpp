@@ -316,6 +316,32 @@ inline std::string bind_spot_endpoint (SpotNode &node_,
 }
 
 template<typename SpotNode>
+inline std::string bind_routed_spot_endpoint (SpotNode &node_,
+                                              const std::string &transport_,
+                                              int base_port_)
+{
+    for (int i = 0; i < 64; ++i) {
+        const std::string requested_endpoint =
+          make_transport_endpoint (transport_, base_port_ + i);
+        const std::string requested_router_endpoint =
+          make_transport_endpoint (transport_, base_port_ + 10000 + i);
+        try {
+            node_.set_router_bind_endpoint (requested_router_endpoint);
+            node_.bind (requested_endpoint);
+        }
+        catch (const std::exception &) {
+            continue;
+        }
+
+        std::string resolved_endpoint = node_.last_endpoint ();
+        if (!resolved_endpoint.empty ())
+            return normalize_spot_endpoint_host (resolved_endpoint);
+        return requested_endpoint;
+    }
+    return std::string ();
+}
+
+template<typename SpotNode>
 inline bool configure_spot_client_tls (SpotNode &node_,
                                        const std::string &transport_)
 {

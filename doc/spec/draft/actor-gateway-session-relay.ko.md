@@ -19,7 +19,7 @@ application 용도와는 별개로 route mesh channel 을 추가해서 remote Ac
 이 방식은 동작은 가능하지만 API 의미가 흐려진다.
 
 - session handler 가 어떤 router socket 을 써야 하는지 알아야 한다.
-- Actor bind 가 remote address snapshot 과 섞여 보인다.
+- Actor bind 가 application route mesh address 와 섞여 보인다.
 - Actor 가 SpotNode 사이를 이동한 뒤 session relay mapping 을 누가 갱신하는지
   불분명하다.
 - application route mesh channel 과 framework 내부 actor relay transport 가 같은
@@ -35,8 +35,7 @@ core C API 의 Actor/session 계약 자체를 `ActorGateway` 모델로 다시 �
    session owner SpotNode 의 ActorGateway 로 들어간다.
 2. Actor 에서 bound session 으로 돌아가는 메시지도 ActorGateway 가 session owner 를
    찾아 전달한다.
-3. session handler 는 route mesh channel, router socket, remote address snapshot 을
-   직접 고르지 않는다.
+3. session handler 는 route mesh channel 과 router socket 을 직접 고르지 않는다.
 4. Actor join 이 성공하면 current Actor location 과 bound session relay 대상이 함께
    갱신된다.
 5. application route mesh channel 과 ActorGateway 내부 relay transport 를 분리한다.
@@ -62,7 +61,8 @@ core C API 의 Actor/session 계약 자체를 `ActorGateway` 모델로 다시 �
 | local ActorGateway | session handler 또는 Actor handler 와 같은 process 안에서 relay 진입점이 되는 ActorGateway 다. |
 | target ActorGateway | remote Actor 의 current owner SpotNode 에 붙은 ActorGateway 다. |
 | Actor current location | Actor 메시지가 실제 dispatch 되는 현재 SpotNode 와 Spot rid 다. |
-| logical actor binding | session rid 와 actor id/generation 을 연결하는 binding 이다. remote address snapshot 이 아니다. |
+| ActorGateway locator | remote Actor 를 bind 할 때 actor host runtime 이 발급하는 target node rid/generation 정보다. application route mesh channel 이 아니다. |
+| actor binding | session rid 와 actor id/generation 을 연결하는 binding 이다. application route mesh address 가 아니다. |
 | binding generation | stale Actor ref 로 session mapping 을 덮어쓰지 않기 위한 generation 값이다. |
 | internal relay packet | ActorGateway 사이에서만 사용하는 내부 packet 이다. application handler 에 노출되지 않는다. |
 
@@ -103,8 +103,9 @@ owner ActorGateway 로 내부 packet 을 전달한다.
 ### 6.3 Actor bind 는 SpotNode 없이 사용할 수 없다
 
 STREAM session 에 Actor 를 bind 하려면 stream 이 session owner SpotNode 의
-ActorGateway 와 연결되어 있어야 한다. 주소 문자열이나 remote address snapshot 만으로는
-메시징을 할 수 없다. 실제 연결된 SpotNode/ActorGateway 가 있어야 relay 가 가능하다.
+ActorGateway 와 연결되어 있어야 한다. 주소 문자열만으로는 메시징을 할 수 없다. remote
+Actor 를 bind 할 때도 ActorGateway locator 로 remote actor ref 를 얻고, 실제 연결된
+SpotNode/ActorGateway 를 통해 relay 해야 한다.
 
 ### 6.4 Actor join 성공은 relay location 을 갱신한다
 
@@ -399,7 +400,7 @@ ActorGateway 는 public socket endpoint 가 아니라 SpotNode 내부 runtime �
 
 다만 아래 의미는 폐기한다.
 
-- session Actor bind 가 remote address snapshot 을 저장한다는 의미
+- session Actor bind 가 application route mesh address 를 저장한다는 의미
 - join 성공 뒤 application 이 final Actor ref 로 session 을 다시 attach 해야 한다는 의미
 - session relay 를 위해 application route mesh channel 을 직접 구성해야 한다는 의미
 - bind 대상 Actor 의 `node_rid` 로 session owner SpotNode 를 암묵 결정한다는 의미
@@ -598,7 +599,7 @@ remote Actor relay 를 가능하게 한다”는 방식과 source-level 호환�
 공통 binding 규칙:
 
 - binding 은 route mesh channel 이름을 Actor bind API 에 요구하지 않는다.
-- binding 은 remote address snapshot 을 session bind API 의 필수 인자로 만들지 않는다.
+- binding 은 route mesh channel 이름을 session bind API 의 필수 인자로 만들지 않는다.
 - binding 은 stream 이 gateway owner 를 갖지 않거나 attach 대상 SpotNode 가 routed-capable 이
   아닐 때 명확한 오류를 반환한다.
 - binding 은 core error code 를 언어별 예외/Result/Error 로 보존한다.
@@ -666,7 +667,7 @@ bindings 작업은 core 변경을 따라가는 순서로 진행한다. 각 언�
 | `actor_gateway_lazy_initializes_on_actor_api` | Actor create/lookup/send/close 계열 API 가 필요한 gateway state 를 지연 초기화 |
 | `stream_attach_actor_gateway_requires_routed_node` | routed-capable 이 아닌 node attach 실패 |
 | `stream_bind_actor_requires_attached_gateway` | attach 없는 stream bind 실패 |
-| `stream_bind_actor_stores_logical_binding` | bind 가 remote address snapshot 이 아니라 logical Actor binding 을 저장 |
+| `stream_bind_actor_stores_actor_gateway_binding` | bind 가 route mesh address 가 아니라 ActorGateway actor binding 을 저장 |
 | `stream_relay_local_actor_uses_gateway` | local Actor relay 도 gateway 경로를 통과 |
 | `stream_relay_remote_actor_uses_target_gateway` | remote Actor relay 가 target ActorGateway 로 전달 |
 | `actor_join_updates_bound_session_location` | join success 뒤 session relay 가 새 location 으로 전달 |
@@ -775,7 +776,7 @@ internals 에는 다이어그램 중심으로 data flow 를 설명한다. guide 
 | SpotNode builder | ActorGateway 를 명시적으로 켜는 API 를 추가하지 않는다. routed-capable SpotNode 조건만 검증 |
 | Stream builder | session stream 이 사용할 SpotNode/ActorGateway 를 지정 |
 | Session binding runtime | `BindActorHandleAsync(...)` 가 gateway attached stream 을 요구 |
-| Session relay | ActorRef remote address snapshot 대신 gateway logical binding 사용 |
+| Session relay | application route mesh dispatch 대신 gateway actor binding 사용 |
 | Actor manager | local create, join, current location update 를 gateway 모델로 정리 |
 | Actor bound session API | ActorGateway 를 통해 bound session owner 로 push |
 | validation | session actor relay 사용 시 stream attach 누락을 startup 또는 bind 시점 오류로 표시 |
@@ -806,8 +807,8 @@ options.AddStreamNode("session", stream =>
 - `AttachActorGateway("session-node")` 는 channel name 이 아니라 SpotNode registration
   name 을 가리킨다.
 - session handler 의 `BindActorHandleAsync(...)` 는 route mesh channel 이름을 받지 않는다.
-- `IZLinkActorRef` 는 logical Actor handle 이며 remote address snapshot 을 public
-  사용 흐름의 필수 값으로 만들지 않는다.
+- `IZLinkActorRef` 는 Actor handle 이며 remote ref 는 ActorGateway locator 를 보관한다.
+  이 locator 는 application route mesh channel 선택값이 아니다.
 
 ### 13.3 framework sample 적용
 
@@ -817,7 +818,7 @@ options.AddStreamNode("session", stream =>
 | Bingo play server | Actor 를 소유하는 SpotNode 를 routed-capable 조건에 맞게 정리 |
 | TicTacToe session gateway | Bingo 와 같은 폴더 구조와 stream attach 설정 사용 |
 | TicTacToe play server | EntrySpot/GameSpot Actor callback 과 routed SpotNode 조건 정리 |
-| sample contracts | remote address snapshot 을 응답 payload 로 넘기는 예제 제거 |
+| sample contracts | actor id/type 과 ActorGateway remote address snapshot 을 응답 payload 로 전달 |
 
 샘플은 사용자가 따라 읽는 guide 역할을 하므로 route mesh relay channel 을 남기지 않는다.
 
@@ -847,20 +848,21 @@ framework 적용 항목만 남긴다.
 ### 13.5 framework public contract 영향 목록
 
 이 절은 현재 `framework/languages/dotnet/src/Zlink.Framework/Contracts/` public surface 를
-기준으로 의미가 바뀌거나 제거되어야 하는 항목을 정리한다. framework 는 새 C API 위에
-올라가야 하므로 remote address snapshot, route mesh channel, session binding store 를
-직접 조합하는 현재 구조를 그대로 유지하면 안 된다.
+기준으로 의미가 바뀌거나 유지되어야 하는 항목을 정리한다. framework 는 새 C API 위에
+올라가야 하므로 application route mesh channel 과 session binding store 를 직접 조합하는
+구조를 유지하면 안 된다. 다만 `ZLinkActorRemoteAddress` 는 route mesh resolver 결과가 아니라
+remote ActorGateway actor ref 를 얻기 위한 framework 발급 locator 로 유지한다.
 
 | Framework surface | 현재 의미 | 변경 방향 |
 |-------------------|-----------|-----------|
-| `IZLinkSessionActorDispatchContext.BindActorHandleAsync(string actorId, string actorType)` | local actor 존재를 확인하고 local route mesh address 를 만든 뒤 bind 한다 | local ActorGateway attached stream 을 요구한다. Actor 생성/존재 확인과 bind 는 ActorGateway 경로로 수행한다 |
-| `IZLinkSessionActorDispatchContext.BindActorHandleAsync(string actorId, string actorType, ZLinkActorRemoteAddress remoteAddress)` | caller 가 concrete remote address snapshot 을 넘긴다 | 제거 또는 obsolete 대상이다. session bind caller 가 remote address 를 넘기지 않는다 |
-| `IZLinkSessionActorDispatchContext.BindActorHandleAsync(IZLinkActorRef actor)` | `actor.RemoteAddress`를 다시 bind 입력으로 사용한다 | `IZLinkActorRef` logical handle 만 넘긴다. remote address snapshot 을 재사용하지 않는다 |
-| `IZLinkSessionActorDispatchContext.RelayToActorAsync(...)` | `IZLinkActorRef.IsRemote`와 `RemoteAddressSnapshot`으로 local/remote dispatch 를 나눈다 | 항상 ActorGateway 로 relay 한다. local/remote 분기는 framework caller 가 아니라 gateway 가 결정한다 |
+| `IZLinkSessionActorDispatchContext.BindActorHandleAsync(string actorId, string actorType)` | local actor 존재를 확인하고 bind 한다 | local ActorGateway attached stream 을 요구한다. Actor 생성/존재 확인과 bind 는 ActorGateway 경로로 수행한다 |
+| `IZLinkSessionActorDispatchContext.BindActorHandleAsync(string actorId, string actorType, ZLinkActorRemoteAddress remoteAddress)` | caller 가 concrete remote address snapshot 을 넘긴다 | 유지한다. 단, 이 값은 actor host runtime 이 발급한 ActorGateway locator 여야 하며 route mesh channel 선택값이 아니다 |
+| `IZLinkSessionActorDispatchContext.BindActorHandleAsync(IZLinkActorRef actor)` | `actor.RemoteAddress`를 다시 bind 입력으로 사용한다 | 유지한다. remote ActorRef 는 보관한 locator 로 ActorGateway remote actor ref 를 다시 얻어 bind 한다 |
+| `IZLinkSessionActorDispatchContext.RelayToActorAsync(...)` | `IZLinkActorRef.IsRemote`와 `RemoteAddressSnapshot`으로 local/remote dispatch 를 나눈다 | 항상 ActorGateway 로 relay 한다. application route mesh 분기는 framework caller 가 하지 않는다 |
 | `IZLinkSessionActorAttachmentContext.AttachActorAsync(...)` | session 에 local actor instance 를 붙인다 | local actor attach 도 gateway logical binding 과 충돌하지 않게 정리한다. session cleanup 이 Actor 위치를 바꾸면 안 된다 |
 | `IZLinkActorRef.ActorId` / `ActorType` | logical actor identity | 유지한다 |
-| `IZLinkActorRef.IsRemote` | 현재 ref 가 remote address 를 갖는지 나타낸다 | 제거한다. caller 가 remote/local 분기를 하면 안 된다 |
-| `IZLinkActorRef.RemoteAddress` | route mesh channel id, target node rid, generation snapshot | 제거한다. ActorRef public surface 에 remote address snapshot 을 남기지 않는다 |
+| `IZLinkActorRef.IsRemote` | 현재 ref 가 remote address 를 갖는지 나타낸다 | 유지한다. rebind 와 diagnostics 에 필요한 상태 표시다 |
+| `IZLinkActorRef.RemoteAddress` | target node rid, generation snapshot | 유지한다. `RouterChannelId` 는 호환/진단 필드이며 ActorGateway bind 는 target node rid 와 generation 을 사용한다 |
 | `IZLinkActorRef.NotifyDisconnectedAsync(...)` | local notify 또는 route mesh `ActorDisconnected` packet 전송 | ActorGateway detach/close 경로로 바꾼다. route mesh packet 을 직접 보내지 않는다 |
 | `IZLinkSessionProxy.Send(...)` | actor id 로 session binding 을 찾고 local stream 또는 route mesh `SessionProxy` packet 으로 보낸다 | 제거한다. 새 API 는 `IZLinkActorContext.BoundSession.Send(...)` 로 둔다 |
 | `IZLinkSessionProxy.Request(...)` | route mesh request/reply 로 remote session 전송을 수행한다 | 제거한다. server-to-client request API 로 대체하지 않는다 |
@@ -868,20 +870,20 @@ framework 적용 항목만 남긴다.
 | `IZLinkActorManager.CreateAsync(...)` | actor factory 와 local actor runtime 에 actor 를 만든다 | routed-capable SpotNode 가 필요하다. ActorGateway state 는 native Actor create 흐름에서 lazy init 된다 |
 | `IZLinkActorManager.GetOrCreateAsync(...)` | local actor 를 만들거나 찾는다 | actor host SpotNode 기준으로 동작한다. routed-capable SpotNode 가 없으면 실패한다 |
 | `IZLinkActorManager.FindAsync(...)` | local runtime actor dictionary 조회 | local lookup 으로 유지한다. remote lookup 과 혼동하지 않는다 |
-| `IZLinkActorManager.GetRemoteAddressAsync(...)` | local actor 의 route mesh address snapshot 을 반환한다 | 제거한다. session bind 흐름과 diagnostics 흐름 모두 Actor remote address snapshot 을 public 계약으로 두지 않는다 |
+| `IZLinkActorManager.GetRemoteAddressAsync(...)` | local actor 의 remote locator snapshot 을 반환한다 | 유지한다. actor host runtime 이 session gateway 에 전달할 ActorGateway locator 를 발급하는 진입점이다 |
 | `IZLinkActorContext.SessionProxy` | actor 에 bound 된 session 으로 push 하는 proxy | 제거한다. proxy 라는 별도 개념 대신 `BoundSession` 으로 노출한다 |
 | `IZLinkActorContext.BoundSession` | 현재 없음 | 새 public API. Actor 에 bind 된 session 으로 send/disconnect 하는 사용자용 진입점이다 |
 | `IZLinkActorContext.JoinSpot(...)` / `JoinSpotAsync(...)` | spotName 은 resolver 로 Spot rid 를 찾고 native join 또는 spot facade join 을 호출한다 | join success 가 ActorGateway current location 과 session binding relay location 을 갱신한다. session rebind 를 요구하지 않는다 |
 | `IZLinkActorContext.GetSpot()` / `GetSpot<TSpot>()` | actor state 의 joined Spot instance 반환 | 유지한다. remote ActorGateway dispatch 에서 current Spot state 가 올바르게 갱신되어야 한다 |
 | `IZLinkSpotClient.SendChannel(...)` / `RequestChannel(...)` | current Spot 에서 attached channel client 로 메시징 | ActorGateway 와 직접 관련 없음. session actor relay 대체 수단으로 설명하면 안 된다 |
 | `IZLinkRoutedSpotClient` / `ViaEgressChannel(...)` | current Spot 밖에서 target Spot 으로 routed Spot 메시징 | 유지한다. ActorGateway session relay 와 별도 기능임을 문서에 분리한다 |
-| `IZLinkSpotRef.RemoteAddress` | Spot routed egress 용 remote address | 유지한다. Actor remote address 제거와 혼동하지 않게 spot-only 의미를 명시한다 |
+| `IZLinkSpotRef.RemoteAddress` | Spot routed egress 용 remote address | 유지한다. ActorGateway remote locator 와 다른 spot-only 의미를 명시한다 |
 | `IZLinkSpotNodeBuilder.EnableRouter(...)` | public routed Spot/Spot mesh router capability | ActorGateway lazy init 조건과 다르다. ActorGateway 가 내부적으로 router 를 쓰더라도 이 API 를 session relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder.AcceptSpotRoutesFromChannel(...)` | external route channel 에서 이 SpotNode 로 routed Spot packet 을 받도록 연결 | ActorGateway relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder.AttachChannelClient(...)` / `AttachClientServerChannelClient(...)` | Spot handler 가 channel client 로 나갈 수 있게 dealer 를 붙인다 | ActorGateway relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder` | SpotNode routing/bind/factory 설정 | ActorGateway 를 켜는 API 는 추가하지 않는다. ActorGateway 는 routed SpotNode 위에서 lazy init 된다 |
 | `IZLinkStreamNodeBuilder` | STREAM bind 와 session type 만 설정한다 | stream 이 사용할 ActorGateway SpotNode 를 지정하는 `AttachActorGateway(string spotNodeName)` API 를 추가한다 |
-| `IZLinkFrameworkOptions.AddActorRemoteAddressResolver<TResolver>()` | actor id 를 remote address snapshot 으로 바꾸는 resolver 등록 | 제거한다. Actor remote address snapshot 을 public framework 계약으로 유지하지 않는다 |
+| `IZLinkFrameworkOptions.AddActorRemoteAddressResolver<TResolver>()` | actor id 를 remote address snapshot 으로 바꾸는 resolver 등록 | 제거한다. remote actor locator 는 resolver 가 아니라 actor host runtime 이 발급한다 |
 | `IZLinkFrameworkOptions.UseRegistryActorRemoteAddresses(...)` | registry actor route 를 route mesh address 로 변환한다 | 제거한다. Actor route registry 는 ActorGateway session relay source of truth 가 아니다 |
 | `IZLinkFrameworkOptions.AddRouteMeshChannel(...)` | application routed channel 과 현재 internal session actor dispatch 를 함께 담당한다 | application routed messaging 으로만 남긴다. ActorGateway internal packet 은 여기에 의존하지 않는다 |
 
@@ -1010,11 +1012,11 @@ configuration 은 사용자가 가장 먼저 보는 계약이므로 route mesh �
 | Configuration surface | 변경 방향 |
 |-----------------------|-----------|
 | `IZLinkStreamNodeBuilder.AttachActorGateway(string spotNodeName)` | 새로 추가한다. stream 이 사용할 local SpotNode registration name 을 지정한다 |
-| `IZLinkStreamNodeBuilder.AddHeaderSession<TSession>()` | 유지한다. 단, session 안에서 Actor bind/relay 를 사용하면 stream gateway attach 가 필요하다는 validation 을 추가한다 |
+| `IZLinkStreamNodeBuilder.RegisterSession<TSession>()` | 유지한다. 단, session 안에서 Actor bind/relay 를 사용하면 stream gateway attach 가 필요하다는 validation 을 추가한다 |
 | `IZLinkSpotNodeBuilder.AddSpotFactory<TSpot>(...)` | 유지한다. actor-capable Spot 은 routed-capable SpotNode 에서만 동작한다는 전제를 validation 한다 |
 | `IZLinkSpotNodeBuilder.AddEntrySpot<TEntrySpot>()` | 유지한다. Entry Spot 은 Actor create/leave 위치이며 routed-capable SpotNode 에서 설정되어야 한다 |
 | `IZLinkFrameworkOptions.AddActorFactory<TFactory>(...)` | 유지한다. Actor factory 등록만으로 별도 ActorGateway 활성화 설정을 요구하지 않는다. Actor 를 배치할 routed-capable SpotNode 가 없으면 startup validation 오류로 잡는다 |
-| `IZLinkFrameworkOptions.AddActorRemoteAddressResolver<TResolver>()` | session relay 용도에서는 제거한다. 별도 service-to-Actor route lookup 용도가 남으면 이름을 `AddActorRouteResolver` 계열로 다시 설계한다 |
+| `IZLinkFrameworkOptions.AddActorRemoteAddressResolver<TResolver>()` | session relay 용도에서는 제거한다. remote actor locator 는 `IZLinkActorManager.GetRemoteAddressAsync(...)` 로 actor host runtime 에서 발급한다 |
 | `IZLinkRegistryActorRemoteAddressesOptions` | 제거한다. session bind 의 필수 설정이 아니어야 한다 |
 | `IZLinkFrameworkOptions.UseRegistryActorRemoteAddresses(...)` | session gateway hot path 에서 제거한다. registry actor route 는 gateway current location 의 source of truth 가 아니다 |
 | `IZLinkFrameworkOptions.AddSpotRemoteAddressResolver<TResolver>()` | 유지한다. routed Spot egress 와 `JoinSpot(string, ...)` target lookup 용도다 |
@@ -1029,7 +1031,7 @@ configuration 은 사용자가 가장 먼저 보는 계약이므로 route mesh �
 
 | Runtime 지점 | 현재 동작 | 변경 방향 |
 |--------------|-----------|-----------|
-| `ZLinkSessionActorCoordinator.BindHandleAsync(...)` | local actor address 를 만들거나 remote address overload 를 사용해 binding table 에 저장한다 | C binding 의 `AttachActorGateway`/`BindActor` 경로를 사용한다. remote address overload 제거 |
+| `ZLinkSessionActorCoordinator.BindHandleAsync(...)` | local actor address 를 만들거나 remote address overload 를 사용해 binding table 에 저장한다 | C binding 의 `AttachActorGateway`/`BindActor` 경로를 사용한다. remote address overload 는 ActorGateway remote lookup 뒤 bind 한다 |
 | `ZLinkSessionActorCoordinator.RelayToActorAsync(...)` | `actorRef.IsRemote`면 `ZLinkSessionActorRelay.DispatchRemoteAsync(...)`로 route mesh packet 전송 | 항상 gateway-backed `SendBoundActor` 경로를 사용한다 |
 | `ZLinkSessionActorCoordinator.CleanupAsync(...)` | attached actor disconnect 와 binding cleanup 을 수행한다 | cleanup 은 session binding 만 제거한다. Actor current Spot 을 변경하지 않는다 |
 | `ZLinkSessionActorRelay` | `IZLinkMultipartRouteClient`로 `ActorDispatch`/`ActorDisconnected` internal route packet 을 보낸다 | 제거한다. session-to-Actor relay 는 gateway-backed stream send 경로로 대체한다 |
@@ -1038,11 +1040,11 @@ configuration 은 사용자가 가장 먼저 보는 계약이므로 route mesh �
 | `ZLinkFrameworkSessionBindings.UpdateAttachedActorRemoteAddress(...)` | remote join 이후 attached actor ref snapshot 을 갱신한다 | 제거 대상이다. join success update 는 ActorGateway state 가 소유한다 |
 | `ZLinkFrameworkRuntime.ResolveDefaultRouterChannelId()` | session actor dispatch 에 route mesh channel 이 정확히 하나 있어야 한다 | session actor dispatch 에서 제거한다. application route client 에만 남긴다 |
 | `ZLinkFrameworkRuntime.ResolveSessionRouterId(...)` | session actor dispatch source router rid 를 route channel 에서 읽는다 | ActorGateway attached SpotNode/stream session rid 기준으로 대체한다 |
-| `ZLinkFrameworkRuntime.ResolveLocalActorRemoteAddress(...)` | local actor 를 route mesh address snapshot 으로 만든다 | 제거한다 |
+| `ZLinkFrameworkRuntime.ResolveLocalActorRemoteAddress(...)` | local actor 를 remote locator snapshot 으로 만든다 | 유지한다. route mesh channel 선택 없이 native actor ref 의 node rid/generation 을 담는다 |
 | `ZLinkSessionActorDispatchRoutePacketDispatcher` | route mesh internal packet 을 받아 actor dispatch/actor-to-session relay 를 처리한다 | ActorGateway internal protocol 로 이동한다. application route handler 와 분리한다 |
-| `ZLinkActorRef` runtime type | `RemoteAddressSnapshot`, `RouterChannelId`, `TargetNodeRid`, `ActorGeneration`, `TryUpdateRemoteAddress(...)` 보유 | logical Actor handle 로 축소한다. generation 은 stale 검증용 internal 값으로만 유지한다 |
-| `ZLinkActorRemoteAddressState` | remote address snapshot 을 mutable state 로 보관한다 | 제거한다 |
-| `ZLinkActorManagerService.GetRemoteAddressAsync(...)` | runtime local route mesh address 를 반환한다 | public contract 변경과 함께 제거한다 |
+| `ZLinkActorRef` runtime type | `RemoteAddressSnapshot`, `RouterChannelId`, `TargetNodeRid`, `ActorGeneration`, `TryUpdateRemoteAddress(...)` 보유 | immutable Actor handle 로 정리한다. remote ref 는 locator 를 보관하고 mutable update 는 제거한다 |
+| `ZLinkActorRemoteAddressState` | remote address snapshot 을 mutable state 로 보관한다 | 제거한다. remote locator 는 immutable 값으로 보관한다 |
+| `ZLinkActorManagerService.GetRemoteAddressAsync(...)` | runtime local route mesh address 를 반환한다 | 유지한다. actor host runtime 의 locator 발급 API 로 의미를 바꾼다 |
 | `ZLinkActorContext.JoinSpot(...)` | name resolver 로 Spot rid 를 찾고 native join 을 수행한다 | join completion 의 final Actor ref 를 session rebind 에 노출하지 않고 gateway state update 로 끝낸다 |
 | `ZLinkFrameworkActorFacade.NativeJoinActorAsync(...)` | native `JoinActor`를 호출하고 reply 만 decode 한다 | join result 의 final Actor ref/generation 을 gateway state 와 framework logical ref 에 반영한다 |
 | `ZLinkSpotNodeInitializer` | SpotNode 를 만들고 router/pubsub/accepted route channel 을 붙인다 | ActorGateway 를 켜는 호출은 하지 않는다. routed-capable node 생성과 stream attach 대상 등록만 보장한다 |
@@ -1088,7 +1090,7 @@ configuration 은 사용자가 가장 먼저 보는 계약이므로 route mesh �
 | `ZLinkActorContext.JoinSpot(string, ...)` | Spot resolver 는 target Spot 을 찾는 데만 사용한다. session binding 갱신을 위해 Actor remote address 를 재조회하지 않는다 |
 | `ZLinkActorManagerService.CreateAsync(...)` | routed-capable SpotNode 와 native Actor create 결과를 기준으로 actor context 를 만든다. ActorGateway state 는 core 가 lazy init 한다 |
 | `ZLinkActorManagerService.FindAsync(...)` | local actor dictionary 조회로 유지한다. remote route lookup 을 섞지 않는다 |
-| `ZLinkActorManagerService.GetRemoteAddressAsync(...)` | public contract 변경에 맞춰 제거한다 |
+| `ZLinkActorManagerService.GetRemoteAddressAsync(...)` | actor host runtime 이 ActorGateway remote locator 를 발급하는 API 로 유지한다 |
 
 ### 13.7 framework backend/binding adapter 영향 목록
 
@@ -1139,8 +1141,8 @@ framework 에서 native internal member 를 reflection 으로 호출하지 않�
 |----------------------|-------------------------------|-----------------------------|
 | ActorGateway lazy init | `IZLinkSpotNodeBuilder` | 별도 활성화 설정 없이 routed-capable SpotNode 에서 gateway state 를 필요할 때 준비한다 |
 | `zlink_stream_attach_actor_gateway(...)` 추가 | `IZLinkStreamNodeBuilder.AttachActorGateway(string spotNodeName)` | stream session 이 사용할 local ActorGateway 를 configuration 에서 지정한다 |
-| `zlink_stream_bind_actor(...)` 가 attached gateway 를 요구 | `IZLinkSessionActorDispatchContext.BindActorHandleAsync(string, string)` | local route mesh address 를 만들지 않고 logical Actor binding 을 core 에 위임한다 |
-| `zlink_stream_bind_actor(...)` 가 Actor node rid owner 추론을 제거 | `BindActorHandleAsync(string, string, ZLinkActorRemoteAddress)` | caller 가 remote address 를 넘기는 overload 를 제거한다 |
+| `zlink_stream_bind_actor(...)` 가 attached gateway 를 요구 | `IZLinkSessionActorDispatchContext.BindActorHandleAsync(string, string)` | local route mesh address 를 만들지 않고 local ActorGateway binding 을 core 에 위임한다 |
+| `zlink_stream_bind_actor(...)` 가 Actor node rid owner 추론을 제거 | `BindActorHandleAsync(string, string, ZLinkActorRemoteAddress)` | actor host runtime 이 발급한 locator 로 remote actor ref 를 얻은 뒤 bind 한다 |
 | `zlink_stream_unbind_actor(...)` 가 Actor location 을 바꾸지 않음 | session cleanup, `ZLinkSessionActorCoordinator.CleanupAsync(...)` | session binding 제거와 Actor Spot 위치 변경을 분리한다 |
 | `zlink_stream_send_bound_actor_part(...)` 가 gateway current location 으로 relay | `IZLinkSessionActorDispatchContext.RelayToActorAsync(...)` | local/remote 분기를 `IZLinkActorRef` 속성으로 하지 않는다 |
 | `zlink_stream_bound_actors(...)` 가 logical binding 을 반환 | session monitoring 또는 diagnostics | stale remote address snapshot 으로 설명하지 않는다 |
@@ -1160,11 +1162,12 @@ framework 수정은 route mesh relay 제거와 ActorGateway attach 적용을 한
 1. **public contract 정리**
    - `Contracts/Actors` 에서 `IZLinkActorContext.SessionProxy` 를 제거하고
      `BoundSession` property 를 추가한다.
-   - `IZLinkActorRef` 에서 remote address snapshot, router channel id, remote/local 분기용
-     public property 를 제거한다.
+   - `IZLinkActorRef` 의 `IsRemote` 와 `RemoteAddress` 를 ActorGateway locator 의미로
+     정리하고 route mesh channel 선택 의미를 제거한다.
    - `Contracts/Streams` 또는 stream builder 계약에
      `AttachActorGateway(string spotNodeName)` 를 추가한다.
-   - `BindActorHandleAsync` overload 중 `ZLinkActorRemoteAddress` 를 받는 형태를 제거한다.
+   - `BindActorHandleAsync` overload 중 `ZLinkActorRemoteAddress` 를 받는 형태는
+     remote ActorGateway bind 용도로 유지한다.
 
 2. **configuration model 과 validation**
    - `Runtime/Configuration/Builders` 에 stream node 의 attached SpotNode registration name 을
@@ -1194,10 +1197,10 @@ framework 수정은 route mesh relay 제거와 ActorGateway attach 적용을 한
    - stream close 는 session binding cleanup 만 수행하고 Actor current Spot 을 바꾸지 않는다.
 
 5. **session-to-Actor relay 교체**
-   - `Runtime/SessionActorDispatch` 에서 route mesh router id, session router id,
-     remote address snapshot 을 relay 판단 기준으로 쓰는 코드를 제거한다.
-   - `ZLinkSessionActorCoordinator.BindHandleAsync(...)` 는 logical actor id/type/ref 를 core
-     stream bind 로 넘긴다.
+   - `Runtime/SessionActorDispatch` 에서 route mesh router id 와 session router id 를
+     relay 판단 기준으로 쓰는 코드를 제거한다.
+   - `ZLinkSessionActorCoordinator.BindHandleAsync(...)` 는 local actor ref 또는
+     ActorGateway locator 로 얻은 remote actor ref 를 core stream bind 로 넘긴다.
    - `RelayToActorAsync(...)` 는 local/remote 분기 없이 backend stream `SendBoundActor` 경로를
      사용한다.
    - `ZLinkSessionActorRelay`, route mesh internal packet dispatcher, route channel receive pump
@@ -1244,8 +1247,8 @@ framework 수정은 route mesh relay 제거와 ActorGateway attach 적용을 한
 | 현재 설명/패턴 | 변경 |
 |----------------|------|
 | session actor bind 를 위해 `AddRouteMeshChannel(...)` 이 필요하다는 설명 | 제거. ActorGateway attached SpotNode 가 필요하다고 설명 |
-| `BindActorHandleAsync(..., ZLinkActorRemoteAddress)` 사용 샘플 | 제거. logical actor bind 샘플로 교체 |
-| `GetRemoteAddressAsync(...)` 결과를 session state 에 저장하는 패턴 | 제거. session 은 actor location 을 저장하지 않는다 |
+| `BindActorHandleAsync(..., ZLinkActorRemoteAddress)` 를 route mesh channel 선택으로 설명하는 샘플 | 제거. ActorGateway remote locator bind 샘플로 교체 |
+| `GetRemoteAddressAsync(...)` 결과를 session state 에 오래 저장하는 패턴 | 제거. 응답 contract 전달 뒤 framework ActorRef 가 locator 를 보관한다 |
 | registry actor remote address resolver 를 session gateway hot path 에 쓰는 설명 | 제거. discovery/registry route lookup 은 service/diagnostics 용도 |
 | remote join 뒤 final Actor ref 로 session 을 다시 bind 해야 한다는 설명 | 제거. join success 가 gateway state 를 갱신한다 |
 | `SessionProxy` public API 와 route mesh packet 설명 | 제거. 사용자 API 는 `BoundSession`, 내부 runtime 기능은 ActorGateway 로 설명 |

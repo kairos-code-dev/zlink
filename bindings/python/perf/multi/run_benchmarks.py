@@ -1065,11 +1065,14 @@ def main(argv=None):
     pattern_transition_ms = _env_int("PERF_MULTI_PATTERN_TRANSITION_MS", 3000)
 
     options = _build_options(args, patterns, transports, requested_msg_sizes, clients)
+    fail_fast = os.environ.get("PERF_FAIL_FAST", "0") == "1"
+    options["fail_fast"] = "1" if fail_fast else "0"
     sections = []
     emitted_chunks = []
     status_lines = []
     failures = []
     fail_count = 0
+    stop_early = False
     case_ordinal = 1
     for line in _meta_lines(args, clients):
         _append_line(sections, line)
@@ -1077,6 +1080,8 @@ def main(argv=None):
     _append_line(sections, render_effective_options(options))
     explicit_clients = args.clients is not None or bool(os.environ.get("PERF_MULTI_CLIENTS"))
     for pattern_index, pattern in enumerate(patterns):
+        if stop_early:
+            break
         pattern_clients = _cap_default_clients_for_memory(
             _clients_for_pattern(pattern, args.clients), explicit_clients
         )
@@ -1088,6 +1093,8 @@ def main(argv=None):
         pattern_transports = _transports_for_pattern(pattern, transports)
         pattern_msg_sizes = _msg_sizes_for_pattern(pattern, requested_msg_sizes)
         for transport_index, transport in enumerate(pattern_transports):
+            if stop_early:
+                break
             _append_line(sections, f"    Testing {transport}:")
             transport_failures = 0
             transport_all_unsupported = True
@@ -1125,6 +1132,8 @@ def main(argv=None):
                     if status_kind == "fail":
                         fail_count += 1
                         transport_failures += 1
+                        if fail_fast:
+                            stop_early = True
                     if output:
                         emitted_chunks.append(output)
                         status_lines.extend(_parse_status_lines(output))
@@ -1142,8 +1151,12 @@ def main(argv=None):
                                 f"- MULTI_{pattern} current {transport} {msg_size}B: {_failure_reason(output)}"
                             )
                         _append_line(sections, _status_row(msg_size, "FAIL"))
+                    if stop_early:
+                        break
             else:
                 for run_index in range(runs):
+                    if stop_early:
+                        break
                     _append_line(sections, f"      run {run_index + 1}/{runs}:")
                     for header_line in table_header_lines():
                         _append_line(sections, f"        {header_line}")
@@ -1181,6 +1194,8 @@ def main(argv=None):
                         if status_kind == "fail":
                             fail_count += 1
                             transport_failures += 1
+                            if fail_fast:
+                                stop_early = True
                         if output:
                             emitted_chunks.append(output)
                             status_lines.extend(_parse_status_lines(output))
@@ -1207,7 +1222,11 @@ def main(argv=None):
                                 sections,
                                 _status_row(msg_size, "FAIL", indent="        "),
                             )
+                        if stop_early:
+                            break
                     if run_index + 1 < runs:
+                        if stop_early:
+                            break
                         _append_line(sections, f"      [cooldown {run_cooldown_ms}ms]")
                         time.sleep(run_cooldown_ms / 1000.0)
                 _append_line(sections, "      median:")
@@ -1244,12 +1263,14 @@ def main(argv=None):
             for line in multi_auto_hwm_lines(pattern, pattern_msg_sizes):
                 _append_line(sections, line)
             if transport_index + 1 < len(pattern_transports):
+                if stop_early:
+                    break
                 _append_line(
                     sections,
                     f"    [transport cooldown {transport_transition_ms}ms]",
                 )
                 time.sleep(transport_transition_ms / 1000.0)
-        if pattern_index + 1 < len(patterns):
+        if not stop_early and pattern_index + 1 < len(patterns):
             time.sleep(pattern_transition_ms / 1000.0)
         _append_line(sections)
     rows = parse_result_lines("\n".join(emitted_chunks), warn=_warn_runner)
@@ -1290,6 +1311,7 @@ def main(argv=None):
     _append_line(sections, f"- skip: {skipped_cases}")
     _append_line(sections, f"- fail: {fail_count}")
     _append_line(sections, f"- status: {status}")
+    _append_line(sections, f"- fail_fast_stopped: {1 if stop_early else 0}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
     _append_line(sections, f"- actual_result_lines: {len(rows)}")
     report_path = build_report_path(

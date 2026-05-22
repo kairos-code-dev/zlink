@@ -20,12 +20,16 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         builder.Services.AddScoped<EntrySpotRecordingHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.entry-mailbox", _ => { });
+
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotNode("entry-mailbox-node", spot =>
+            options.AddSpotMesh("game.entry-mailbox", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("entry-mailbox-node", spot =>
             {
                 spot.Bind(spotNode);
                 spot.AddEntrySpot<RegistryEntrySpot>();
+            });
             });
         });
 
@@ -93,11 +97,15 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         builder.Services.AddScoped<EntrySpotGeneralRecordingHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.entry-general", _ => { });
-            options.AddSpotNode("entry-general-node", spot =>
+
+            options.AddSpotMesh("game.entry-general", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("entry-general-node", spot =>
             {
                 spot.Bind(spotNode);
                 spot.AddEntrySpot<GeneralEntrySpot>();
+            });
             });
         });
 
@@ -151,12 +159,16 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         builder.Services.AddScoped<EntrySpotRecordingHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.entry-native-batch", _ => { });
+
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotNode("entry-native-batch-node", spot =>
+            options.AddSpotMesh("game.entry-native-batch", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("entry-native-batch-node", spot =>
             {
                 spot.Bind(spotNode);
                 spot.AddEntrySpot<RegistryEntrySpot>();
+            });
             });
         });
 

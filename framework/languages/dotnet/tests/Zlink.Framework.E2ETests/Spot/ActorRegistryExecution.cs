@@ -26,13 +26,17 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         builder.Services.AddScoped<RegistryEntryLeftHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.registry", _ => { });
+
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotNode("registry-node", spot =>
+            options.AddSpotMesh("game.registry", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("registry-node", spot =>
             {
                 spot.Bind(spotNode);
                 spot.AddEntrySpot<RegistryEntrySpot>();
                 spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
+            });
             });
         });
 
@@ -129,13 +133,17 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         builder.Services.AddScoped<RegistryEntryLeftHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.registry-location", _ => { });
+
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotNode("registry-location-node", spot =>
+            options.AddSpotMesh("game.registry-location", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("registry-location-node", spot =>
             {
                 spot.Bind(spotNode);
                 spot.AddEntrySpot<RegistryEntrySpot>();
                 spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
+            });
             });
         });
 

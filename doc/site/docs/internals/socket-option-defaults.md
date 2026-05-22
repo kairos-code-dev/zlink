@@ -7,12 +7,12 @@ This document lists the default values for each socket option, broken down by so
 This page summarizes effective socket option defaults from implementation code,
 not from examples:
 
-- `core/src/core/options.cpp` (`options_t` constructor)
-- `core/src/core/options_core_socket.cpp` (core socket option dispatch)
-- `core/src/core/options_transport_network.cpp` (transport/network option dispatch)
-- `core/src/core/options_protocol_metadata.cpp` (protocol/metadata option dispatch)
-- `core/src/sockets/socket_base_lifecycle.cpp` (context-inherited defaults)
-- socket-specific constructors in `core/src/sockets/*.cpp`
+- `core/src/runtime/core/options.cpp` (`options_t` constructor)
+- `core/src/runtime/core/options_core_socket.cpp` (core socket option dispatch)
+- `core/src/runtime/core/options_transport_network.cpp` (transport/network option dispatch)
+- `core/src/runtime/core/options_protocol_metadata.cpp` (protocol/metadata option dispatch)
+- `core/src/runtime/sockets/common/socket_base_lifecycle.cpp` (context-inherited defaults)
+- socket-specific constructors in `core/src/runtime/sockets/*/*.cpp`
 
 For detailed behavior and scope of each option, see the
 [Socket Options Detailed Guide](../guide/12-socket-options.md).
@@ -40,8 +40,8 @@ For detailed behavior and scope of each option, see the
 | `ZLINK_OPT_MAXMSGSIZE` | `-1` | Unlimited |
 | `ZLINK_OPT_MULTICAST_HOPS` | `1` | Multicast TTL |
 | `ZLINK_OPT_MULTICAST_MAXTPDU` | `1500` | Multicast max TPDU |
-| `ZLINK_OPT_RCVTIMEO` | `-1` | Infinite receive timeout |
-| `ZLINK_OPT_SNDTIMEO` | `-1` | Infinite send timeout |
+| `ZLINK_OPT_RCVTIMEO` | `1000` | Default receive timeout in ms |
+| `ZLINK_OPT_SNDTIMEO` | `1000` | Default send timeout in ms |
 | `ZLINK_OPT_IPV6` | context-derived | Inherits the context IPv6 default (default `0`) |
 | `ZLINK_OPT_IMMEDIATE` | `0` | Attach connecting pipes immediately |
 | `ZLINK_OPT_CONFLATE` | `0` | Disabled |

@@ -15,8 +15,8 @@ session actor dispatch APIs:
 - Session server actor handle binding through `BindActorHandleAsync(...)`
 - Session server actor dispatch through `RelayToActorAsync(...)`
 - Play actor typed request handlers that join and update SPOT game rooms
-- Play actor client notifications through `SessionProxy`
-- registry discovery metadata adapter for session location bind, resolve, and stale unbind guard
+- Play actor client notifications through `BoundSession`
+- ActorGateway-backed session binding and cleanup
 - request/reply matching by request sequence
 - reconnect recovery for the same `actorId` through a second Session server
 - a complete two-actor TicTacToe round ending in `player-x` winning

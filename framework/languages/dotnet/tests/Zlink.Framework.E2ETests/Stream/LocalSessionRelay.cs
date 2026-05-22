@@ -17,16 +17,16 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
     public async Task LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler()
     {
         var streamEndpoint = GetFreeTcpEndpoint();
-        var routerEndpoint = GetFreeTcpEndpoint();
         var spotEndpoint = GetFreeTcpEndpoint();
-        var localRid = RoutingId.FromString("0909");
+        var spotRouterEndpoint = GetFreeTcpEndpoint();
+        var actorId = "local-relay-player-1";
         var recorder = new ActorDispatchRecorder();
         using var callbackCapture = CallbackExceptionCapture.Start();
 
-        var host = await CreateHostAsync(routerEndpoint, services =>
+        var host = await CreateHostAsync(spotEndpoint, services =>
         {
             services.AddSingleton(recorder);
-            services.AddSingleton(new GatewaySessionRecorder());
+            services.AddSingleton(new GatewaySessionRecorder(actorId));
             services.AddScoped<GatewayActorFactory>();
             services.AddScoped<GatewayActorHandler>();
             services.AddScoped<GatewaySessionDisconnectHandler>();
@@ -35,26 +35,26 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(spotEndpoint);
+                    spot.EnableRouter(router => router.Bind(spotRouterEndpoint));
                 });
-                options.AddRouteMeshChannel("gateway", routed =>
-                {
-                    routed.Bind(routerEndpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
-                    routed.UseManualConnections(connections => connections.Connect(routerEndpoint));
                 });
                 options.AddStreamNode("client.stream", stream =>
                 {
                     stream.Bind(streamEndpoint);
-                    stream.AddHeaderSession<GatewayRelaySession>();
+                    stream.AttachActorGateway("actor-node");
+                    stream.RegisterSession<GatewayRelaySession>();
                 });
             });
         });
 
         await host.Services.GetRequiredService<IZLinkActorManager>()
-            .GetOrCreateAsync("player-1", "player");
+            .GetOrCreateAsync(actorId, "player");
 
         try
         {
@@ -93,10 +93,14 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
     {
         var streamEndpoint = GetFreeTcpEndpoint();
         var sessionRouterEndpoint = GetFreeTcpEndpoint();
+        var sessionSpotEndpoint = GetFreeTcpEndpoint();
+        var sessionSpotRouterEndpoint = GetFreeTcpEndpoint();
         var playRouterEndpoint = GetFreeTcpEndpoint();
         var playSpotEndpoint = GetFreeTcpEndpoint();
-        var sessionRid = RoutingId.FromString("0707");
-        var playRid = RoutingId.FromString("0808");
+        var playSpotRouterEndpoint = GetFreeTcpEndpoint();
+        var sessionRid = RoutingId.Of($"missing-remote-session-{Guid.NewGuid():N}");
+        var playRid = RoutingId.Of($"missing-remote-play-{Guid.NewGuid():N}");
+        var actorId = "missing-remote-player-1";
         var actorRecorder = new ActorDispatchRecorder();
         using var callbackCapture = CallbackExceptionCapture.Start();
 
@@ -108,36 +112,48 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(playSpotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.Bind(playSpotRouterEndpoint);
+                        router.ConfigureRouting(routing => routing.RoutingId = playRid);
+                        router.UseManualConnections(connections => connections.Connect(sessionSpotRouterEndpoint));
+                    });
                 });
-                options.AddRouteMeshChannel("gateway", routed =>
-                {
-                    routed.Bind(playRouterEndpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = playRid);
-                    routed.UseManualConnections(connections => connections.Connect(sessionRouterEndpoint));
                 });
             });
         });
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new TestActorRemoteAddressSnapshot(new ZLinkActorRemoteAddress("gateway", playRid, 1)));
-            services.AddSingleton(new GatewaySessionRecorder());
+            services.AddSingleton(new GatewaySessionRecorder(actorId));
             services.AddScoped<MissingRemoteActorRelaySession>();
             services.AddZLinkFramework(options =>
             {
-                options.AddRouteMeshChannel("gateway", routed =>
+                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    routed.Bind(sessionRouterEndpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = sessionRid);
-                    routed.UseManualConnections(connections => connections.Connect(playRouterEndpoint));
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
+                {
+                    spot.Bind(sessionSpotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.Bind(sessionSpotRouterEndpoint);
+                        router.ConfigureRouting(routing => routing.RoutingId = sessionRid);
+                        router.UseManualConnections(connections => connections.Connect(playSpotRouterEndpoint));
+                    });
+                });
                 });
                 options.AddStreamNode("client.stream", stream =>
                 {
                     stream.Bind(streamEndpoint);
-                    stream.AddHeaderSession<MissingRemoteActorRelaySession>();
+                    stream.AttachActorGateway("actor-node");
+                    stream.RegisterSession<MissingRemoteActorRelaySession>();
                 });
             });
         });

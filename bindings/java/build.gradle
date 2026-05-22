@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'systems.zlink'
-version = '6.0.1'
+version = '6.0.3'
 description = 'zlink Java bindings — high-performance async messaging library'
 
 java {

@@ -651,6 +651,7 @@ async function main() {
   }
   emitSection('## Completion');
   emit(`- status: ${status}`);
+  emit(`- fail_fast_stopped: ${failFast && allFailures.length > 0 ? 1 : 0}`);
   emit(`- expected_result_lines: ${expectedResultLines}`);
   emit(`- actual_result_lines: ${actualResultLines}`);
 

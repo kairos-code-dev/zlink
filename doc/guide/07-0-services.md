@@ -167,7 +167,7 @@ Recommended sequence:
    can observe this via the socket monitor event
    `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. If you need the service-layer
    view, observe the `Discovery` handle for the same peers through
-   `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`.
+   `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`.
 3. Wait long enough for in-flight replies to drain. In production this
    wait is typically driven by your request SLA.
 4. Restart or replace the peer, then rejoin the service with a positive

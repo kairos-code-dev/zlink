@@ -136,11 +136,11 @@ context-switch overhead. Profile with the
 
 | File | Role |
 |------|------|
-| `core/src/core/io_thread.hpp/.cpp` | I/O thread class, mailbox processing |
-| `core/src/core/ctx_runtime_resources.cpp` | Thread creation in `start_io_threads_locked()` |
-| `core/src/engine/asio/asio_poller.hpp/.cpp` | Boost ASIO event loop and socket monitoring |
-| `core/src/core/poller_base.hpp` | Worker thread base class |
-| `core/src/core/mailbox.hpp` | Lock-free command queue with signaler |
+| `core/src/runtime/core/io_thread.hpp/.cpp` | I/O thread class, mailbox processing |
+| `core/src/runtime/core/ctx_runtime_resources.cpp` | Thread creation in `start_io_threads_locked()` |
+| `core/src/runtime/engine/asio/asio_poller.hpp/.cpp` | Boost ASIO event loop and socket monitoring |
+| `core/src/runtime/core/poller_base.hpp` | Worker thread base class |
+| `core/src/runtime/core/mailbox.hpp` | Lock-free command queue with signaler |
 
 ---
 [← Threading Model](./threading-model.md)

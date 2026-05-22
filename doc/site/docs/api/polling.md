@@ -111,7 +111,8 @@ typedef enum zlink_poller_event_flag_e
     ZLINK_POLLOUT        = 2,
     ZLINK_POLLERR        = 4,
     ZLINK_POLLPRI        = 8,
-    ZLINK_POLLITEMS_DFLT = 16
+    ZLINK_POLLITEMS_DFLT = 16,
+    ZLINK_POLLCOMPLETION = 32
 } zlink_poller_event_flag_e;
 
 #define ZLINK_HAVE_POLLER 1
@@ -124,6 +125,7 @@ typedef enum zlink_poller_event_flag_e
 | `ZLINK_POLLERR` | 4 | An error occurred on the descriptor |
 | `ZLINK_POLLPRI` | 8 | Urgent / priority data available |
 | `ZLINK_POLLITEMS_DFLT` | 16 | Default poll-item array size |
+| `ZLINK_POLLCOMPLETION` | 32 | Request/reply completion readiness. Must be registered on its own (combining it with any other event flag fails with `EINVAL`), and only on request-capable sockets (`DEALER`/`ROUTER`). |
 | `ZLINK_HAVE_POLLER` | 1 | Library was compiled with poller support |
 
 ## Functions -- Array Poll
@@ -243,6 +245,8 @@ zlink_config_result_t zlink_poller_add (void *poller_, void *socket_, void *user
 Adds `socket_` to the poller and monitors it for the events specified in
 `events_`. The `user_data_` pointer is stored and returned in
 `zlink_poller_event_t` when an event fires.
+The library does not interpret `user_data_`; callers may use it as their own
+dispatch key, such as an integer slot.
 
 **Parameters:**
 
@@ -432,6 +436,19 @@ Blocks until at least one registered source has an event ready, then fills
 with one element and `n_events_ == 1`. Writes the configuration result into
 `*error_out_` on failure; returns the count as the primary return on success.
 
+On success, the returned value `n` is the number of events actually written
+starting at `events_[0]`. It cannot exceed `n_events_`. Callers must read only
+`events_[0:n]`; entries after that range are not guaranteed to contain valid
+results. The poller writes only ready events at the front of the caller-owned
+buffer and does not return the total number of registered sources or a separate
+total-ready count. Each event's `user_data` field is the value supplied at
+registration, so callers can dispatch by that key instead of comparing socket
+or timer handles.
+
+`n_events_` must be at least 1, and `events_` must point to a valid array.
+An empty array is not treated as a successful timeout; it is an invalid
+argument error.
+
 **Parameters:**
 
 | Name | Description |
@@ -445,6 +462,11 @@ with one element and `n_events_ == 1`. Writes the configuration result into
 **Returns:** The number of events stored in `events_`, `0` on timeout, or `-1`
 on failure with the `zlink_config_result_t` written through `*error_out_`.
 `zlink_errno()` retains the detailed internal errno for diagnostics.
+
+**Errors:**
+- `ZLINK_CONFIG_INVALID_HANDLE` -- `poller_` is not valid.
+- `ZLINK_CONFIG_INVALID_ARGUMENT` -- `events_` is not valid or `n_events_`
+  is less than 1.
 
 **Thread safety:** Must not be called concurrently with other operations on
 the same poller.

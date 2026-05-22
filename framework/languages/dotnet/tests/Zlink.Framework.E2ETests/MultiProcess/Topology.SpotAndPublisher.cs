@@ -19,6 +19,7 @@ public sealed partial class TopologyTests
         var registryRouterEndpoint = GetFreeTcpEndpoint();
         var localNodeEndpoint = GetFreeTcpEndpoint();
         var remoteNodeEndpoint = GetFreeTcpEndpoint();
+        var spotChannel = $"game.stage.{Guid.NewGuid():N}";
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var registryHost = await TestHostProcess.StartAsync(
@@ -34,16 +35,18 @@ public sealed partial class TopologyTests
         builder.Services.AddScoped<LocalMonitoringStageSubscriptionHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", discovery =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
-
-            options.AddSpotNode("local-stage-node", spot =>
+                mesh.AddNode("local-stage-node", spot =>
             {
                 spot.Bind(localNodeEndpoint);
                 spot.EnablePubSub();
                 spot.AddSpotFactory<LocalMonitoringStageSpot>("stage");
+            });
             });
         });
         builder.Services.AddZLinkMonitoring(monitor =>
@@ -57,7 +60,7 @@ public sealed partial class TopologyTests
         await using var remoteHost = await TestHostProcess.StartAsync(
             timeout.Token,
             "spot-node",
-            "--discovery-channel", "game.stage",
+            "--discovery-channel", spotChannel,
             "--discovery-endpoint", registryRouterEndpoint,
             "--spot-node-name", "remote-stage-node",
             "--spot-bind-endpoint", remoteNodeEndpoint,
@@ -120,6 +123,7 @@ public sealed partial class TopologyTests
         var registryRouterEndpoint = GetFreeTcpEndpoint();
         var subscriberNodeEndpoint = GetFreeTcpEndpoint();
         var publisherNodeEndpoint = GetFreeTcpEndpoint();
+        var spotChannel = $"game.stage.{Guid.NewGuid():N}";
         var eventFilePath = Path.Combine(
             Path.GetTempPath(),
             $"zlink-framework-spot-event-{Guid.NewGuid():N}.log");
@@ -133,7 +137,7 @@ public sealed partial class TopologyTests
         await using var subscriberHost = await TestHostProcess.StartAsync(
             timeout.Token,
             "spot-node",
-            "--discovery-channel", "game.stage",
+            "--discovery-channel", spotChannel,
             "--discovery-endpoint", registryRouterEndpoint,
             "--spot-node-name", "subscriber-node",
             "--spot-bind-endpoint", subscriberNodeEndpoint,
@@ -144,12 +148,12 @@ public sealed partial class TopologyTests
         await using var publisherHost = await TestHostProcess.StartAsync(
             timeout.Token,
             "spot-node",
-            "--discovery-channel", "game.stage",
+            "--discovery-channel", spotChannel,
             "--discovery-endpoint", registryRouterEndpoint,
             "--spot-node-name", "publisher-node",
             "--spot-bind-endpoint", publisherNodeEndpoint,
             "--enable-pubsub",
-            "--attach-spot-publisher-channel", "game.stage",
+            "--attach-spot-publisher-channel", spotChannel,
             "--publish-topic", "stage.monitor",
             "--publish-value", "remote-spot");
 

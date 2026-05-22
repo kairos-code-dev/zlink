@@ -100,13 +100,14 @@ new_socket → argmin(socket_count[t] for t in io_threads)
 
 ### 3.3 어피니티 마스크
 
-Context의 어피니티 마스크로 새 소켓 할당 대상 I/O 스레드를 제한할 수 있다.
-마스크에서 제외된 스레드는 이미 할당된 소켓은 계속 처리하지만, 새 소켓은 받지 않는다.
+소켓별 `ZLINK_OPT_AFFINITY` 옵션으로 그 소켓이 할당될 수 있는 I/O 스레드를 제한한다.
+비트 N이 `1`이면 I/O 스레드 N이 후보가 되고, `0`(기본값)이면 모든 스레드를 허용한다.
+이 마스크는 소켓 생성 시 할당 시점에만 참조되며, 이미 할당된 소켓을 재배치하지는 않는다.
 
 ```c
-/* 새 소켓을 I/O 스레드 0과 2에만 할당 */
+/* 이 소켓을 I/O 스레드 0과 2로 제한 */
 uint64_t mask = (1ULL << 0) | (1ULL << 2);
-zlink_ctx_set(ctx, ZLINK_IO_THREAD_AFFINITY, (int)mask);
+zlink_set_option(socket, ZLINK_OPT_AFFINITY, &mask, sizeof(mask));
 ```
 
 ---

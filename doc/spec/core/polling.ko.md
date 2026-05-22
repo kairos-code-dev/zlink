@@ -111,7 +111,8 @@ typedef enum zlink_poller_event_flag_e
     ZLINK_POLLOUT        = 2,
     ZLINK_POLLERR        = 4,
     ZLINK_POLLPRI        = 8,
-    ZLINK_POLLITEMS_DFLT = 16
+    ZLINK_POLLITEMS_DFLT = 16,
+    ZLINK_POLLCOMPLETION = 32
 } zlink_poller_event_flag_e;
 
 #define ZLINK_HAVE_POLLER 1
@@ -124,6 +125,7 @@ typedef enum zlink_poller_event_flag_e
 | `ZLINK_POLLERR` | 4 | 디스크립터에서 오류 발생 |
 | `ZLINK_POLLPRI` | 8 | 긴급/우선순위 데이터 사용 가능 |
 | `ZLINK_POLLITEMS_DFLT` | 16 | 기본 poll-item 배열 크기 |
+| `ZLINK_POLLCOMPLETION` | 32 | request/reply 완료 readiness. 반드시 단독으로 등록해야 하며(다른 이벤트 플래그와 결합하면 `EINVAL`로 실패), request 가능한 소켓(`DEALER`/`ROUTER`)에만 유효합니다. |
 | `ZLINK_HAVE_POLLER` | 1 | 폴러 지원이 포함되어 컴파일됨 |
 
 ## 함수 -- 배열 Poll

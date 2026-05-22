@@ -33,15 +33,19 @@ The minimal flow is:
 
 1. Create an Actor on the `SpotNode`.
 2. Identify the STREAM client session routing id.
-3. Bind session and Actor with `zlink_stream_bind_actor()`.
-4. Inside the STREAM packet handler or app logic, select an Actor id and call
+3. Attach the STREAM socket to the session owner `SpotNode` with
+   `zlink_stream_attach_actor_gateway()`.
+4. Bind session and Actor with `zlink_stream_bind_actor()`.
+5. Inside the STREAM packet handler or app logic, select an Actor id and call
    `zlink_stream_send_bound_actor_part()`.
-5. When `ACTOR_READABLE` arrives in the dispatch callback, copy the `subject`
+6. When `ACTOR_READABLE` arrives in the dispatch callback, copy the `subject`
    Actor ref and drain it with `zlink_spot_node_actor_recv_part()`.
 
 ```c
 zlink_actor_ref_t ref;
 zlink_spot_node_actor_new(node, "player-42", &ref);
+
+zlink_stream_attach_actor_gateway(stream, node);
 
 /* async submit; bind completion fires through the reply handler */
 zlink_stream_bind_actor(stream, &session_rid, &ref,
@@ -164,7 +168,7 @@ static void on_join(
         /* success: result->actor is the final Actor ref
            (target node ref for remote join) */
         zlink_actor_ref_t final_ref = result->actor;
-        /* use final_ref for subsequent session attach or location moves */
+        /* use final_ref for follow-up Actor calls or location moves */
     }
     zlink_multipart_close(parts, part_count);
 }
@@ -234,9 +238,8 @@ both `NULL` removes the registered handler. Registration does not replay
 Actors that are already in the Spot; only transitions that occur after
 registration trigger callbacks.
 
-Lifecycle callbacks are observation-only. For deciding join completion or
-session attach order, the application uses the join completion handler and
-the final Actor ref it returns.
+Lifecycle callbacks are observation-only. For deciding join completion, the
+application uses the join completion handler and the final Actor ref it returns.
 
 ## 3. Spot leave
 

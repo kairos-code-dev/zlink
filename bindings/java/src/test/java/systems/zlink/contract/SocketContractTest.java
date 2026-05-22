@@ -381,6 +381,8 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(DealerSocket.class, "getChannelName"));
         assertTrue(hasPublicMethod(SpotNode.class, "setRoutingId",
             RoutingId.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "setRouterBindEndpoint",
+            String.class));
         assertTrue(hasPublicMethod(SpotNode.class, "routingId"));
         assertTrue(hasPublicMethod(SpotNode.class, "entrySpot"));
         assertTrue(hasPublicMethod(SpotNode.class, "spotLookup",
@@ -593,6 +595,9 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(StreamSocket.class, "attachStreamRaw"));
         assertFalse(hasPublicMethod(StreamSocket.class, "connect"));
         assertFalse(hasPublicMethod(StreamSocket.class, "attachDiscovery"));
+        assertEquals(void.class, StreamSocket.class
+            .getMethod("attachActorGateway", SpotNode.class)
+            .getReturnType());
         assertEquals(SendOp.class, StreamSocket.class
             .getMethod("send", RoutingId.class).getReturnType());
         assertEquals(ActorBindOp.class, StreamSocket.class

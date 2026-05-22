@@ -167,16 +167,18 @@ public sealed class ManagerTests : SpotTestSupport
         publisherBuilder.Services.AddScoped<SpotHeartbeatTimerHandler>();
         publisherBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery(spotChannel, discovery =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
-
-            options.AddSpotNode("publisher-node", spot =>
+                mesh.AddNode("publisher-node", spot =>
             {
                 spot.Bind(publisherNodeEndpoint);
                 spot.EnablePubSub();
                 spot.AddSpotFactory<PublishingStageSpot>("publisher-stage");
+            });
             });
         });
 
@@ -185,12 +187,13 @@ public sealed class ManagerTests : SpotTestSupport
         subscriberBuilder.Services.AddScoped<LocalStageEventHandler>();
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery(spotChannel, discovery =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
-
-            options.AddSpotNode("subscriber-node", spot =>
+                mesh.AddNode("subscriber-node", spot =>
             {
                 spot.Bind(subscriberNodeEndpoint);
                 spot.EnablePubSub(pubsub =>
@@ -199,6 +202,7 @@ public sealed class ManagerTests : SpotTestSupport
                         connections.Connect(publisherNodeEndpoint));
                 });
                 spot.AddSpotFactory<LocalSubscriberStageSpot>("subscriber-stage");
+            });
             });
         });
 

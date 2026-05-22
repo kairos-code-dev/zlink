@@ -85,6 +85,23 @@ public sealed class test_stream_socket
     }
 
     [Fact]
+    public void stream_attach_actor_gateway_requires_routed_node()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var stream = new StreamSocket(ctx);
+        using var node = new SpotNode(ctx, SpotNodeMode.PubSub);
+
+        ZlinkConfigException error =
+            Assert.Throws<ZlinkConfigException>(() =>
+                stream.AttachActorGateway(node));
+        Assert.Equal(ZlinkConfigException.ErrorCode.NotSupported,
+            error.Result);
+    }
+
+    [Fact]
     public void stream_callback_lifecycle_contract()
     {
         if (!CoreTestSupport.IsNativeAvailable())

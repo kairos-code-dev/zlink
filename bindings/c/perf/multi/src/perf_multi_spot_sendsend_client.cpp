@@ -228,6 +228,15 @@ std::string bind_client_spot_endpoint(void *node,
     const int base_bind_port =
       resolve_multi_int_env("PERF_MULTI_CLIENT_BIND_PORT", 0, 0);
     std::string bind_endpoint;
+    if (perf_set_spot_node_router_endpoint_raw(
+          node,
+          make_endpoint(transport,
+                        "perf-multi-spot-sendsend-client-router-"
+                          + std::to_string(slot_index)))
+        != 0) {
+        return std::string();
+    }
+
     if (base_bind_port > 0) {
         bind_endpoint = make_fixed_endpoint(
           transport, base_bind_port + static_cast<int>(slot_index));

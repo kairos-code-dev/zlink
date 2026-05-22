@@ -37,7 +37,7 @@
 
 ### 1.4 기본 routing_id 생성 위치
 
-**결정**: core/src/sockets/socket_base.cpp에서 생성 (서비스 레이어가 아닌 코어).
+**결정**: core/src/runtime/sockets/common/socket_base.cpp에서 생성 (서비스 레이어가 아닌 코어).
 
 **근거**:
 - 코어에서 이미 socket_id 기반 자동 생성 동작 중

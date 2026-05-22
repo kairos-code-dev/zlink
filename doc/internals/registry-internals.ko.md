@@ -86,6 +86,19 @@ struct route_entry_t {
 // Owner cleanup: owner_identity -> route_key set
 ```
 
+### 3.1 Actor route row 와 gateway 경계
+
+Actor route 는 일반 `route_entry_t` row 로 저장되며 key 는 `ZLINK_ROUTE_KIND_ACTOR` 와
+actor id 다. value 는 불투명한 `zlink_actor_route_t` blob 이고, Registry 는 이를 저장하고
+flooding 하지만 내용을 해석하지 않는다. owner SpotNode 가 Actor 의 현재 위치에서 이 row 를
+게시하고 회수하므로, **owner 가 게시하는 eventually consistent** 상태다. 최신 join 이 owner 의
+Actor table 에는 먼저 보이고, 대응하는 route row 가 모든 Registry 로 flooding 되기 전일 수 있다.
+
+그래서 STREAM session relay 는 Registry 를 조회하지 않는다. session binding 이 bound Actor
+ref 를 직접 들고 있고, owner SpotNode 의 ActorGateway 가 현재 위치를 local 에서 해석한다
+([spot-internals.ko.md](./spot-internals.ko.md) 12절 참고). Registry route row 는
+service-to-Actor routing 과 진단 용도이며 relay hot path 가 아니다.
+
 ## 4. 서비스 등록 시퀀스
 
 ```mermaid

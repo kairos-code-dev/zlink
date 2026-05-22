@@ -57,7 +57,7 @@ typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 
 `value` 필드 해석:
 - 다수 failure 이벤트: errno 또는 프로토콜 에러 코드
-- 연결 해제 이벤트: `ZLINK_DISCONNECT_*` 사유
+- 연결 해제 이벤트: `ZLINK_DISCONNECT_REASON_*` 사유
 - `CONNECTION_READY`: 예약된 필드이며 aggregate ready count로 해석하지 않음
 
 ### zlink_monitor_handler_fn / zlink_socket_monitor_handler_fn
@@ -211,10 +211,10 @@ typedef enum zlink_monitor_source_kind_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_DISCONNECT_UNKNOWN` | `0` | 사유를 확인할 수 없음. |
-| `ZLINK_DISCONNECT_HANDSHAKE_FAILED` | `3` | 핸드셰이크 실패. |
-| `ZLINK_DISCONNECT_TRANSPORT_ERROR` | `4` | 트랜스포트 계층 에러. |
-| `ZLINK_DISCONNECT_CTX_TERM` | `5` | Context 종료로 인한 연결 해제. |
+| `ZLINK_DISCONNECT_REASON_UNKNOWN` | `0` | 사유를 확인할 수 없음. |
+| `ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED` | `3` | 핸드셰이크 실패. |
+| `ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR` | `4` | 트랜스포트 계층 에러. |
+| `ZLINK_DISCONNECT_REASON_CTX_TERM` | `5` | Context 종료로 인한 연결 해제. |
 
 ### 프로토콜 에러
 

@@ -43,7 +43,7 @@ public abstract partial class StreamTestSupport
         {
             _ = message;
             recorder.RecordProxyDisconnect();
-            await context.SessionProxy.DisconnectAsync(cancellationToken)
+            await context.BoundSession.DisconnectAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -57,7 +57,7 @@ public abstract partial class StreamTestSupport
             CancellationToken cancellationToken)
         {
             recorder.RecordProxyDisconnect();
-            await context.SessionProxy.DisconnectAsync(cancellationToken)
+            await context.BoundSession.DisconnectAsync(cancellationToken)
                 .ConfigureAwait(false);
             return new GatewayPong($"disconnect:{request.Value}", 202);
         }
@@ -66,6 +66,18 @@ public abstract partial class StreamTestSupport
     public sealed class GatewaySessionRecorder
     {
         private int _disconnectedCount;
+
+        public GatewaySessionRecorder(
+            string actorId = "player-1",
+            ZLinkActorRemoteAddress? remoteAddress = null)
+        {
+            ActorId = actorId;
+            RemoteAddress = remoteAddress;
+        }
+
+        public string ActorId { get; }
+
+        public ZLinkActorRemoteAddress? RemoteAddress { get; }
 
         public int DisconnectedCount => Volatile.Read(ref _disconnectedCount);
 

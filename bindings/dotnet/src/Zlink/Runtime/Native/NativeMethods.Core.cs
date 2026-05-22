@@ -53,6 +53,7 @@ internal static partial class NativeMethods
         "zlink_spot_handler",
         "zlink_spot_dispatch_event_handler",
         "zlink_spot_recv_part",
+        "zlink_stream_attach_actor_gateway",
         "zlink_stream_bind_actor",
         "zlink_stream_unbind_actor",
         "zlink_stream_send_bound_actor_part",

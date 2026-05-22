@@ -193,7 +193,7 @@ bitwise OR.
 | `ZLINK_EVENT_ACCEPT_FAILED` | `0x0040` | Incoming connection accept failed. |
 | `ZLINK_EVENT_CLOSED` | `0x0080` | Connection closed normally. |
 | `ZLINK_EVENT_CLOSE_FAILED` | `0x0100` | Connection close failed. |
-| `ZLINK_EVENT_DISCONNECTED` | `0x0200` | Session disconnected. The event value carries a `ZLINK_DISCONNECT_*` reason. |
+| `ZLINK_EVENT_DISCONNECTED` | `0x0200` | Session disconnected. The event value carries a `ZLINK_DISCONNECT_REASON_*` reason. |
 | `ZLINK_EVENT_MONITOR_STOPPED` | `0x0400` | Monitor has been stopped and will produce no more events. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | Handshake failed with no further detail available. |
 | `ZLINK_EVENT_CONNECTION_READY` | `0x1000` | Ready edge for raw sockets. Messaging may start immediately after this event on supported raw socket families. |
@@ -208,10 +208,10 @@ Values carried in `zlink_monitor_event_t.value` when the event is `ZLINK_EVENT_D
 
 | Constant | Value | Description |
 |---|---|---|
-| `ZLINK_DISCONNECT_UNKNOWN` | `0` | Reason could not be determined. |
-| `ZLINK_DISCONNECT_HANDSHAKE_FAILED` | `3` | Disconnect due to a handshake failure. |
-| `ZLINK_DISCONNECT_TRANSPORT_ERROR` | `4` | Disconnect due to a transport-layer error. |
-| `ZLINK_DISCONNECT_CTX_TERM` | `5` | Disconnect caused by context termination. |
+| `ZLINK_DISCONNECT_REASON_UNKNOWN` | `0` | Reason could not be determined. |
+| `ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED` | `3` | Disconnect due to a handshake failure. |
+| `ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR` | `4` | Disconnect due to a transport-layer error. |
+| `ZLINK_DISCONNECT_REASON_CTX_TERM` | `5` | Disconnect caused by context termination. |
 
 ### Protocol Errors
 

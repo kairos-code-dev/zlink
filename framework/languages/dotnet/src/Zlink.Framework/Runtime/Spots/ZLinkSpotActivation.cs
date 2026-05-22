@@ -33,7 +33,8 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
         string spotName,
         string channelName,
         TimeSpan defaultTimeout,
-        TimeSpan? sendTimeout)
+        TimeSpan? sendTimeout,
+        Func<string, ZLinkAsyncSubmitter?>? channelSubmitter = null)
     {
         _runtime = runtime;
         _scope = scope;
@@ -47,7 +48,8 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
             nativeSpot,
             defaultTimeout,
             sendTimeout,
-            _stopSource.Token);
+            _stopSource.Token,
+            channelSubmitter);
         _serial = new ZLinkSpotSerialExecutor(this, () => IsDisposed, _stopSource.Token);
         _dispatcher = new ZLinkSpotActivationDispatcher(
             runtime,

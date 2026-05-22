@@ -58,6 +58,7 @@ using var client = SampleSupport.ConnectRawClient(port);
 SampleSupport.SendStreamPacket(client.GetStream(), "open"u8);
 if (!sessionReady.Wait(5000) || sessionRid == null)
     throw new TimeoutException("stream session");
+stream.AttachActorGateway(node);
 Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor.Ref)
     .Timeout(TimeSpan.FromSeconds(2))
     .SubmitAsync()

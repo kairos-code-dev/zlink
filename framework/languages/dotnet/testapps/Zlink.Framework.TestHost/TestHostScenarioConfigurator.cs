@@ -208,7 +208,7 @@ internal static class TestHostScenarioConfigurator
             {
                 stream.Bind(options.StreamEndpoint
                     ?? throw new InvalidOperationException("STREAM raw mode requires --stream-endpoint."));
-                stream.AddHeaderSession<TestHostRawStreamSession>();
+                stream.RegisterSession<TestHostRawStreamSession>();
             });
         });
     }

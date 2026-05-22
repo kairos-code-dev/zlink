@@ -170,7 +170,7 @@ flowchart LR
 2. 연결된 피어가 자신의 가중치 캐시를 갱신할 시간을 둔다. 이 갱신은
    소켓 모니터의 `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 확인할 수 있다.
    서비스 계층 관점이 필요하면 같은 피어를 관리하는 `Discovery`
-   핸들에서 `ZLINK_SERVICE_MONITOR_EVENT_PEER_WEIGHT_CHANGED`를
+   핸들에서 `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`를
    관찰한다.
 3. 진행 중인 reply가 완료될 때까지 기다린다. 운영 시 이 시간은 보통 SLA
    기반으로 설정한다.

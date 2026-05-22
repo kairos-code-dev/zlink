@@ -9,7 +9,7 @@ namespace Zlink.Framework.UnitTests;
 public sealed class NodesAndServicesTests : RegistrationValidationSupport
 {
     [Fact]
-    public void AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleHeaderSessions()
+    public void AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions()
     {
         var services = new ServiceCollection();
 
@@ -19,8 +19,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 options.AddStreamNode("client.stream", stream =>
                 {
                     stream.Bind("tcp://127.0.0.1:9100");
-                    stream.AddHeaderSession<TestHeaderSession>();
-                    stream.AddHeaderSession<TestHeaderSession>();
+                    stream.RegisterSession<TestHeaderSession>();
+                    stream.RegisterSession<TestHeaderSession>();
                 });
             }));
 
@@ -34,37 +34,43 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotNode("stage-node", spot =>
+            options.AddSpotMesh("stage-node", mesh =>
+            {
+                mesh.AddNode("stage-node", spot =>
             {
                 spot.Bind("tcp://127.0.0.1:9000");
                 spot.AddSpotFactory<TestSpot>("stage");
+            });
             });
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
         Assert.Single(registration.SpotNodes);
-        Assert.Null(registration.SpotDiscovery);
+        Assert.NotNull(registration.SpotDiscovery);
+        Assert.Empty(registration.SpotDiscovery.Endpoints);
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenSpotMeshHasNoUseDiscovery()
+    public void AddZLinkFramework_AllowsSpotMeshToInheritGlobalDiscovery()
     {
         var services = new ServiceCollection();
 
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.AddSpotMesh("game.stage", mesh =>
             {
-                options.AddSpotMesh("game.stage", mesh =>
+                mesh.AddNode("stage-node", spot =>
                 {
-                    mesh.AddNode("stage-node", spot =>
-                    {
-                        spot.Bind("tcp://127.0.0.1:9000");
-                        spot.AddSpotFactory<TestSpot>("stage");
-                    });
+                    spot.Bind("tcp://127.0.0.1:9000");
+                    spot.AddSpotFactory<TestSpot>("stage");
                 });
-            }));
+            });
+        });
 
-        Assert.Contains("requires spotMesh.UseDiscovery", exception.Message, StringComparison.Ordinal);
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        Assert.Empty(registration.SpotDiscovery!.Endpoints);
+        Assert.Equal(["tcp://127.0.0.1:5551"], ZLinkFrameworkRegistrationValidator.ResolveSpotDiscoveryEndpoints(registration));
     }
 
     [Fact]
@@ -75,18 +81,24 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseSpotDiscovery("game.stage", discovery => discovery.Add("tcp://127.0.0.1:5551"));
-
-                options.AddSpotNode("stage-node-a", spot =>
+                options.AddSpotMesh("game.stage", mesh =>
+                {
+                    mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                    mesh.AddNode("stage-node-a", spot =>
                 {
                     spot.Bind("tcp://127.0.0.1:6101");
                     spot.AddSpotFactory<TestSpot>("stage");
                 });
+                });
 
-                options.AddSpotNode("stage-node-b", spot =>
+                options.AddSpotMesh("stage-node-b", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("stage-node-b", spot =>
                 {
                     spot.Bind("tcp://127.0.0.1:6102");
                     spot.AddSpotFactory<TestSpot>("stage");
+                });
                 });
             }));
 
@@ -101,13 +113,15 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseSpotDiscovery("game.stage", _ => { });
-
-                options.AddSpotNode("stage-node", spot =>
+                options.AddSpotMesh("game.stage", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("stage-node", spot =>
                 {
                     spot.Bind("tcp://127.0.0.1:6101");
                     spot.AddEntrySpot<TestEntrySpot>();
                     spot.AddEntrySpot<TestEntrySpot>();
+                });
                 });
             }));
 
@@ -176,9 +190,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotNode("stage-node", spot =>
+            options.AddSpotMesh("stage-node", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("stage-node", spot =>
             {
                 spot.Bind("tcp://127.0.0.1:6200");
+            });
             });
         });
 
@@ -195,9 +213,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotNode("stage-node", spot =>
+            options.AddSpotMesh("stage-node", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("stage-node", spot =>
             {
                 spot.Bind("tcp://127.0.0.1:6203");
+            });
             });
         });
 
@@ -213,9 +235,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.AddActorFactory<TestActorFactory>("warrior");
-            options.AddSpotNode("actor-node", spot =>
+            options.AddSpotMesh("actor-node", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("actor-node", spot =>
             {
                 spot.Bind("tcp://127.0.0.1:6201");
+            });
             });
         });
 
@@ -230,15 +256,19 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotNode("actor-node", spot =>
+            options.AddSpotMesh("actor-node", mesh =>
+            {
+                mesh.AddNode("actor-node", spot =>
             {
                 spot.Bind("tcp://127.0.0.1:7301");
+                spot.EnableRouter(router => router.Bind("tcp://127.0.0.1:7302"));
+            });
             });
             options.AddStreamNode("stream.node", stream =>
             {
                 stream.Bind("tcp://127.0.0.1:9100");
                 stream.AttachActorGateway("actor-node");
-                stream.AddHeaderSession<TestHeaderSession>();
+                stream.RegisterSession<TestHeaderSession>();
             });
         });
 
@@ -253,15 +283,76 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_Throws_When_Stream_Attaches_ActorGateway_Node_Without_Router()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.AddNode("actor-node", spot =>
+                    {
+                        spot.Bind("tcp://127.0.0.1:7301");
+                    });
+                });
+                options.AddStreamNode("stream.node", stream =>
+                {
+                    stream.Bind("tcp://127.0.0.1:9100");
+                    stream.AttachActorGateway("actor-node");
+                    stream.RegisterSession<TestHeaderSession>();
+                });
+            }));
+
+        Assert.Contains("does not enable router capability", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Registers_Option_Types_And_Enumerable_Dependencies()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddStreamNode("client.stream", stream =>
+            {
+                stream.Bind("tcp://127.0.0.1:9100");
+                stream.RegisterSession<TestSessionWithEnumerableHandlers>();
+            });
+            options.AddSpotMesh("stage-node", mesh =>
+            {
+                mesh.AddNode("stage-node", spot =>
+                {
+                    spot.Bind("tcp://127.0.0.1:6204");
+                    spot.AddSpotFactory<TestSpot>("stage");
+                    spot.AddEntrySpot<TestEntrySpot>();
+                });
+            });
+        });
+
+        Assert.Contains(services, static service => service.ServiceType == typeof(TestSessionWithEnumerableHandlers));
+        Assert.Contains(services, static service => service.ServiceType == typeof(TestSpot));
+        Assert.Contains(services, static service => service.ServiceType == typeof(TestEntrySpot));
+
+        using var provider = services.BuildServiceProvider();
+        Assert.NotEmpty(provider.GetServices<ITestSessionDependencyHandler>());
+    }
+
+    [Fact]
     public void AddZLinkFramework_DoesNot_Register_SpotPublisher_Without_PublisherCapability()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotNode("stage-node", spot =>
+            options.AddSpotMesh("stage-node", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("stage-node", spot =>
             {
                 spot.Bind("tcp://127.0.0.1:6204");
+            });
             });
         });
 
@@ -277,11 +368,14 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", _ => { });
-            options.AddSpotNode("stage-node", spot =>
+            options.AddSpotMesh("game.stage", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("stage-node", spot =>
             {
                 spot.Bind("tcp://127.0.0.1:6205");
                 spot.AttachSpotMeshPublisherClient("game.stage");
+            });
             });
         });
 

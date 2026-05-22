@@ -52,14 +52,18 @@ internal sealed class PlayServer(SampleSettings settings)
             options.AddStreamNode(SampleNodes.ClientStream, stream =>
             {
                 stream.Bind(settings.PlayEndpoint);
-                stream.AddHeaderSession<PlaySession>();
+                stream.RegisterSession<PlaySession>();
             });
 
-            options.AddSpotNode(SampleNodes.PlaySpot, spot =>
+            options.AddSpotMesh(SampleNodes.PlaySpot, mesh =>
             {
-                spot.Bind(settings.SpotEndpoint);
-                spot.AddEntrySpot<PlayEntrySpot>();
-                spot.AddSpotFactory<TicTacToeGame>(SampleTypes.GameSpot);
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode(SampleNodes.PlaySpot, spot =>
+                {
+                    spot.Bind(settings.SpotEndpoint);
+                    spot.AddEntrySpot<PlayEntrySpot>();
+                    spot.AddSpotFactory<TicTacToeGame>(SampleTypes.GameSpot);
+                });
             });
         });
 

@@ -202,6 +202,14 @@ fn main() {
     else {
         return;
     };
+    let Some(data_router_bind) =
+        common::benchmark_endpoint(PATTERN, &args.transport, "multi-spot-sendsend-router-client")
+    else {
+        return;
+    };
+    data_node
+        .set_router_bind_endpoint(&data_router_bind)
+        .expect("client data router bind endpoint");
     data_node.bind(&data_bind).expect("client data bind");
     let data_endpoint_local = data_node.last_endpoint().unwrap_or(data_bind);
     data_node

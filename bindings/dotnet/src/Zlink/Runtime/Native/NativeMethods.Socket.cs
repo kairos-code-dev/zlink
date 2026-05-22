@@ -194,6 +194,10 @@ internal static partial class NativeMethods
         IntPtr discovery);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_attach_actor_gateway(IntPtr stream,
+        IntPtr node);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_stream_bind_actor(IntPtr stream,
         ref ZlinkRoutingId sessionRid,
         ref ZlinkActorRef actor,

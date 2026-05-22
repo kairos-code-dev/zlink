@@ -61,6 +61,7 @@ public final class ActorGatewayRelaySample {
             });
 
             stream.bind(endpoint);
+            stream.attachActorGateway(node);
             try (var client = SampleSupport.connectRawTcp(endpoint)) {
                 SampleSupport.waitStreamConnected(monitor);
                 SampleSupport.sendRawTcp(client, "hello".getBytes());

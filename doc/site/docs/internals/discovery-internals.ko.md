@@ -97,6 +97,20 @@ sequenceDiagram
     Note over Disc: bootstrap 완료
 ```
 
+Registry의 주기 값은 option state에 저장된다. 공개 API
+`zlink_registry_set()`은 `ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS`,
+`ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS`,
+`ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS` 값을 Registry 내부 설정에 반영한다.
+Registry는 bootstrap reply를 만들 때 heartbeat interval 값을 읽어 Discovery에
+전달한다. Discovery는 이 값을 저장하고 control task의 heartbeat 송신 주기로
+사용한다.
+
+Registry runtime tick은 같은 option state에서 heartbeat timeout과 broadcast
+interval을 읽는다. Timeout 값은 provider 만료 판단에 쓰이고, broadcast interval은
+SERVICE_LIST publish 주기를 제한한다. 이렇게 공개 설정 API와 runtime 동작 사이의
+변환 지점을 Registry 내부에 가두어 Discovery와 attachment가 scalar 설정 세부
+형식을 알 필요가 없게 한다.
+
 ## 5. 서비스 등록 흐름
 
 ```mermaid
@@ -108,11 +122,11 @@ sequenceDiagram
 
     Service->>Disc: register_endpoint(type, endpoint, weight)
     Disc->>Disc: _registered_services에 저장
-    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, service_name,<br/>service_role, endpoint, routing_id]
+    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, channel_name,<br/>service_role, endpoint, routing_id]
     REG->>DEALER: REGISTER_ACK (0x0002)<br/>[status, resolved_endpoint]
 
     loop heartbeat_interval 마다
-        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[auto_connect_type, service_role,<br/>service_name, endpoint]
+        Disc->>DEALER: HEARTBEAT (0x0004)<br/>[auto_connect_type, service_role,<br/>channel_name, endpoint]
     end
 ```
 
@@ -301,8 +315,8 @@ flowchart TD
 
 ## 10. Spot 소유 노드 조회 (`zlink_discovery_resolve_spot`)
 
-`zlink_discovery_resolve_spot(discovery, spot_rid, &owner_node_rid_out)`
-는 **논리적 SPOT routing id** 를 **현재 소유 SpotNode 의 routing id** 로
+`zlink_discovery_resolve_spot(discovery, spot_rid, &route_out)`는
+**논리적 SPOT routing id** 를 **현재 소유 SpotNode 의 routing id** 와 Spot kind로
 매핑한다. 호출자가 `(owner_node_rid, spot_rid)` 쌍을 만들어
 ROUTER 쪽 직접 전달 함수(`zlink_router_send_spot()` /
 `zlink_router_request_spot()`)의 대상으로 사용할 수 있게 해주는
@@ -322,22 +336,22 @@ SpotNode를 Discovery에 붙였더라도 이 옵션이 꺼져 있으면 Discover
 
 ### 10.1 계약 요약
 
-`from_errno()` 는 `EINVAL`/`EFAULT`/`ENOTSUP`/`EOPNOTSUPP` 만 명명된
-`zlink_config_result_t` 로 매핑한다. 그 외 errno (아래의 `ENOENT`,
-`EAGAIN` 포함) 는 `default` 분기로 `ZLINK_CONFIG_INTERNAL_ERROR` 가
-되고, 구체 errno 는 `zlink_errno()` 로 조회한다.
+`from_errno()` 는 `EINVAL`/`EFAULT`/`ENOTSUP`/`EOPNOTSUPP`/`ENOENT` 를
+명명된 `zlink_config_result_t` 로 매핑한다. `EAGAIN` 같은 다른 errno 는
+`default` 분기로 `ZLINK_CONFIG_INTERNAL_ERROR` 가 되고, 구체 errno 는
+`zlink_errno()` 로 조회한다.
 
 | 항목 | 값 |
 |---|---|
 | 선행 조건 | `discovery->_auto_connect_type == SPOT_NODE`, 아니면 `ENOTSUP` → `ZLINK_CONFIG_NOT_SUPPORTED` |
-| 출력 | `owner_node_rid_out` 에 owner SpotNode rid 기록 |
+| 출력 | `route_out` 에 `spot_rid`, owner SpotNode rid, Spot kind 기록 |
 | Registry publish 조건 | owner Discovery의 `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC == 1`; 기본값은 `0` |
 | 캐시 TTL | `resolve_spot_cache_ttl_ms = 250` ms |
-| 캐시 유효 조건 | `validated_service_seq == current_service_seq` 또는 `now − last_reported_ms ≤ 250 ms` |
+| 캐시 유효 조건 | `validated_service_seq == current_service_seq` 그리고 `now - validated_at_ms <= 250 ms` |
 | 미스 동작 | transient DEALER 로 Registry 조회 후 캐시 재시도 |
-| 최종 미스 (cache + registry 결과 없음) | `errno = ENOENT`, 결과 = `ZLINK_CONFIG_INTERNAL_ERROR` (`zlink_errno()` 로 확인) |
-| 잘못된 입력 | `EINVAL` → `ZLINK_CONFIG_INVALID_ARGUMENT` (`spot_rid` null/size 0, `owner_node_rid_out` null) |
-| null handle | `EFAULT` → `ZLINK_CONFIG_INVALID_HANDLE` |
+| 최종 미스 (cache + registry 결과 없음) | `errno = ENOENT`, 결과 = `ZLINK_CONFIG_NOT_FOUND` |
+| 잘못된 입력 | `EINVAL` → `ZLINK_CONFIG_INVALID_ARGUMENT` (`discovery` null, `spot_rid` null/size 0, `route_out` null) |
+| 잘못된 handle | `EFAULT` → `ZLINK_CONFIG_INVALID_HANDLE` |
 | uplink 없음 | Registry 조회 단계에서 `errno = EAGAIN`, 결과 = `ZLINK_CONFIG_INTERNAL_ERROR` |
 
 ### 10.2 캐시 hit (fast path)
@@ -356,10 +370,10 @@ sequenceDiagram
     Disc->>Disc: scoped_lock(_sync)
     Disc->>Store: key 조회
     Store-->>Disc: topology_summary_t
-    Note over Disc: state == READY?<br/>endpoint 비어있지 않음?<br/>validated_service_seq == current<br/>또는 age ≤ 250ms?
+    Note over Disc: state == READY?<br/>endpoint 비어있지 않음?<br/>validated_service_seq == current<br/>검증 age ≤ 250ms?
     Disc->>Prov: provider 목록 스캔 (role=SPOT, endpoint 일치)
     Prov-->>Disc: provider.routing_id
-    Disc-->>API: 0, owner_node_rid_out 채움
+    Disc-->>API: 0, route_out 채움
     API-->>App: ZLINK_CONFIG_OK
 ```
 
@@ -390,34 +404,39 @@ sequenceDiagram
 
     Disc->>Disc: scoped_lock(_sync)
     Disc->>Store: refresh_spot_owner_cache_locked(key, entries)
-    Note over Store: key 지운 뒤 각 엔트리를<br/>current validated_service_seq 도장 찍어 저장
+    Note over Store: key 지운 뒤 각 엔트리를<br/>현재 검증 메타데이터와 함께 저장
     Disc->>Store: key 재조회
     alt 이제 resolve 가능
         Store-->>Disc: 신선한 엔트리
-        Disc-->>API: 0, owner_node_rid_out 채움
+        Disc-->>API: 0, route_out 채움
         API-->>App: ZLINK_CONFIG_OK
     else 여전히 resolve 불가
         Disc-->>API: -1, errno=ENOENT
-        API-->>App: ZLINK_CONFIG_INTERNAL_ERROR<br/>(zlink_errno() → ENOENT)
+        API-->>App: ZLINK_CONFIG_NOT_FOUND<br/>(zlink_errno() -> ENOENT)
     end
 ```
 
 ### 10.4 캐시 신선도 규칙
 
-두 가지 독립 조건 중 하나라도 맞으면 캐시 엔트리를 신선한 것으로 본다.
+두 가지 조건이 모두 맞으면 캐시 엔트리를 신선한 것으로 본다.
 
-1. **Membership-seq 일치** — `validated_service_seq == _service_state.service_update_seq()`. 이 시퀀스 번호는 Discovery 의 provider 뷰가 바뀔 때마다(새 peer 추가, peer 이탈, role 변경) 증가한다. 번호가 일치하면 해당 엔트리가 현재 멤버십에서 생성된 값이므로 벽시계 나이와 관계없이 신뢰한다.
-2. **벽시계 TTL** — `last_reported_ms > 0 && now − last_reported_ms ≤ 250 ms`. membership-seq 는 바뀌었지만 엔트리 자체가 아주 최근에 갱신된 경우의 fallback 으로 작동한다.
+1. **Membership-seq 일치** — `validated_service_seq == _service_state.service_update_seq()`. 이 시퀀스 번호는 Discovery 의 provider 뷰가 바뀔 때마다(새 peer 추가, peer 이탈, role 변경) 증가한다.
+2. **검증 TTL** — `validated_at_ms > 0 && now - validated_at_ms <= 250 ms`.
 
-둘 다 아니면 stale(오래된 캐시 값)로 간주하고 Registry 왕복을 강제한다. TTL 이 250 ms 로 짧은 이유는 stale 조회가 옛 소유 노드로 잘못 라우팅될 수 있기 때문이다. 짧은 시간 창으로 그 위험을 제한하면서, 짧은 시간 안에 집중되는 bursty lookup 은 캐시로 흡수한다.
+둘 중 하나라도 실패하면 stale(오래된 캐시 값)로 간주하고 Registry 왕복을
+강제한다. TTL 이 250 ms 로 짧은 이유는 stale 조회가 옛 소유 노드로 잘못
+라우팅될 수 있기 때문이다. TTL 은 topology row 의 원래 `last_reported_ms` 가
+아니라 이 Discovery 인스턴스가 현재 provider 뷰와 함께 row 를 검증한 시각을
+기준으로 한다. 짧은 시간 창으로 그 위험을 제한하면서, 짧은 시간 안에 집중되는
+bursty lookup 은 캐시로 흡수한다.
 
 ### 10.5 endpoint → owner rid 역변환
 
 topology summary 에는 `endpoint`(전송 URI) 만 저장되며, owner SpotNode 의 routing id 는 직접 저장되지 않는다. 캐시 hit 후 Discovery 는 `resolve_owner_node_from_endpoint_locked(endpoint, ...)` 를 호출해 다음 순서로 역변환한다.
 
-1. `_service_state` 에서 현재 provider 목록의 스냅샷을 만든다.
-2. `service_role == SPOT` 이고 `endpoint` 가 일치하며 `routing_id.size > 0` 인 provider 를 고른다.
-3. 해당 provider 의 `routing_id` 를 출력 파라미터에 복사한다.
+1. 먼저 이 Discovery 가 직접 등록한 local service 중 `service_role == SPOT` 이고 `endpoint` 가 일치하며 `routing_id.size > 0` 인 항목을 찾는다.
+2. local service 에서 찾지 못하면 `_service_state` 의 현재 provider 목록 스냅샷에서 같은 조건의 provider 를 고른다.
+3. 찾은 항목의 `routing_id` 를 `route_out->owner_node_rid`에 복사한다.
 
 이 2단계 설계 덕분에 spot 소유 노드가 endpoint 를 변경해도, 메시의 provider 명단이 SERVICE_LIST 브로드캐스트 경로로 갱신되어 있기만 하면 resolve_spot 은 일관된 답을 반환할 수 있다.
 
@@ -479,3 +498,25 @@ sequenceDiagram
   규칙이 해결하지 않는다. 충돌은 ROUTER handover 정책으로 처리한다.
 - 사용자 raw API 로 직접 호출한 `zlink_connect()` 는 이 경로를 거치지
   않으므로 라이브러리가 중재하지 않는다.
+
+## 13. Actor route 조회와 session relay 경계
+
+`zlink_discovery_resolve_actor()` 는 actor id 를 현재 route 로 해석하며
+`ZLINK_ROUTE_KIND_ACTOR` row 를 사용한다. route value 는 owner SpotNode 가 Actor 의
+현재 위치에서 게시한 `zlink_actor_route_t` 다. Actor ref(node rid + actor id +
+generation)와 current Spot rid, current Spot kind 를 담는다.
+
+이 row 는 Actor table 현재 위치의 **게시된 파생물**이다. owner SpotNode 가 위치 변경
+(Actor 생성, join accept, leave)을 commit 할 때, 그리고 node 에 `actor_route_sync_enabled()`
+가 켜져 있을 때만 갱신한다. 게시는 SpotNode → registry 한 방향이며, Discovery 가 Actor
+table 로 되쓰지 않는다.
+
+기억할 경계는 다음과 같다.
+
+- Actor route row 는 **service-to-Actor routing 과 진단** 용도다. 예를 들어 외부 ROUTER 나
+  backend Spot 이 actor id 로 Actor 에 닿아야 할 때 current Spot route 를 해석해 기존 routed
+  transport 로 보낸다.
+- **STREAM session relay hot path 는 Discovery 를 조회하지 않는다.** session binding 은 이미
+  bound Actor ref 를 들고 있고, relay 는 그것을 local Actor table 과 ActorGateway state 로
+  해석한다([spot-internals.ko.md](./spot-internals.ko.md) 12절 참고). route 조회를 거치지
+  않는다. Discovery sync 가 최신 join 보다 늦더라도 진행 중인 session relay 에는 영향이 없다.

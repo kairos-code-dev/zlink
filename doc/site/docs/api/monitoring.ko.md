@@ -57,7 +57,7 @@ typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 
 `value` 필드 해석:
 - 다수 failure 이벤트: errno 또는 프로토콜 에러 코드
-- 연결 해제 이벤트: `ZLINK_DISCONNECT_*` 사유
+- 연결 해제 이벤트: `ZLINK_DISCONNECT_REASON_*` 사유
 - `CONNECTION_READY`: 예약된 필드이며 aggregate ready count로 해석하지 않음
 
 ### zlink_monitor_handler_fn / zlink_socket_monitor_handler_fn
@@ -104,6 +104,8 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_effective_message_bytes;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
@@ -129,6 +131,8 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 단위 바이트 |
 | `auto_hwm_applied_sndhwm` | 현재 소켓에 적용된 송신 HWM |
 | `auto_hwm_applied_rcvhwm` | 현재 소켓에 적용된 수신 HWM |
+| `auto_hwm_effective_sndbuf` | 현재 소켓에 적용된 송신 buffer 크기. 단위는 byte |
+| `auto_hwm_effective_rcvbuf` | 현재 소켓에 적용된 수신 buffer 크기. 단위는 byte |
 | `auto_hwm_last_recalc_ms` | 최근 자동 HWM 재계산 시각(ms) |
 | `auto_hwm_last_recalc_reason` | 최근 재계산 사유 enum 값 |
 | `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure(배압)로 막힌 비율(ppm) |
@@ -163,7 +167,7 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | auto-HWM role, profile, unit budget, message unit, 적용 HWM 필드가 채워질 수 있음. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | ABI 안정을 위해 남긴 호환 flag. transport buffer 필드는 더 이상 `zlink_monitor_snapshot_t`에 없으므로 현재 snapshot은 이 flag를 설정하지 않음. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | `auto_hwm_effective_sndbuf`, `auto_hwm_effective_rcvbuf` 필드가 채워짐. |
 
 ### Auto-HWM 재계산 사유
 
@@ -207,10 +211,10 @@ typedef enum zlink_monitor_source_kind_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_DISCONNECT_UNKNOWN` | `0` | 사유를 확인할 수 없음. |
-| `ZLINK_DISCONNECT_HANDSHAKE_FAILED` | `3` | 핸드셰이크 실패. |
-| `ZLINK_DISCONNECT_TRANSPORT_ERROR` | `4` | 트랜스포트 계층 에러. |
-| `ZLINK_DISCONNECT_CTX_TERM` | `5` | Context 종료로 인한 연결 해제. |
+| `ZLINK_DISCONNECT_REASON_UNKNOWN` | `0` | 사유를 확인할 수 없음. |
+| `ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED` | `3` | 핸드셰이크 실패. |
+| `ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR` | `4` | 트랜스포트 계층 에러. |
+| `ZLINK_DISCONNECT_REASON_CTX_TERM` | `5` | Context 종료로 인한 연결 해제. |
 
 ### 프로토콜 에러
 
@@ -349,7 +353,15 @@ snapshot/query API로 관찰합니다.
 - SpotNode: `zlink_spot_node_status_snapshot()`,
   `zlink_spot_node_peers_snapshot()`,
   `zlink_spot_node_peers_query()`,
-  `zlink_spot_node_subjects_snapshot()`
+  `zlink_spot_node_subjects_snapshot()`,
+  `zlink_spot_node_internal_sockets_snapshot()`,
+  `zlink_spot_node_spots_snapshot()`,
+  `zlink_spot_node_actors_snapshot()`,
+  `zlink_spot_actors_snapshot()`
+- Registry query client: `zlink_registry_query_client_new()`,
+  `zlink_registry_query_client_connect()`,
+  `zlink_registry_query_snapshot()`,
+  `zlink_registry_query_destroy()`
 
 상태 전이를 감지하려면 애플리케이션에서 연속된 snapshot 또는 query 결과를
 비교합니다. 이렇게 해야 `core/include/zlink.h` 기준의 현재 공개 계약과

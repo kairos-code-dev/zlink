@@ -26,12 +26,16 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         builder.Services.AddScoped<ActorDispatchHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", _ => { });
+
             options.AddActorFactory<TestActorFactory>("test");
-            options.AddSpotNode("actor-node", spot =>
+            options.AddSpotMesh("game.stage", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("actor-node", spot =>
             {
                 spot.Bind(spotNode);
                 spot.AddSpotFactory<ActorStageSpot>("actor-stage");
+            });
             });
         });
 
@@ -145,11 +149,15 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         builder.Services.AddSingleton<ConcurrentActorFactoryRecorder>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("actor.factory", _ => { });
+
             options.AddActorFactory<ConcurrentActorFactory>("test");
-            options.AddSpotNode("actor-node", spot =>
+            options.AddSpotMesh("actor.factory", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("actor-node", spot =>
             {
                 spot.Bind(spotNode);
+            });
             });
         });
 

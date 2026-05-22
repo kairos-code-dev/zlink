@@ -428,6 +428,11 @@ typedef enum zlink_config_result_t
 | `INVALID_STATE` | `EBUSY`, `ESHUTDOWN` | Handle lifecycle state rejects the config call (e.g. already started, already closed) |
 | `NOT_FOUND` | `ENOENT` | Local lookup target (e.g. Spot rid, actor id) not found |
 
+`zlink_stream_attach_actor_gateway()` returns `ZLINK_CONFIG_NOT_SUPPORTED` with
+`ENOTSUP` when the target node is not routed-capable. It returns
+`ZLINK_CONFIG_INVALID_STATE` with `EBUSY` when the stream is already attached to
+a different ActorGateway owner.
+
 ### Actor/Spot Route Lookup Errors
 
 `zlink_discovery_resolve_actor()` returns `ZLINK_CONFIG_INVALID_ARGUMENT` and

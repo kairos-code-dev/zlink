@@ -23,7 +23,10 @@ public sealed class EntryRoutingTests : SpotTestSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotNode("entry-rid-node", spot =>
+            options.AddSpotMesh("entry-rid-node", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("entry-rid-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
                 spot.ConfigureEntrySpot(entry =>
@@ -31,6 +34,7 @@ public sealed class EntryRoutingTests : SpotTestSupport
                     entry.RoutingId = entryRid;
                 });
                 spot.AddEntrySpot<GeneralEntrySpot>();
+            });
             });
         });
 
@@ -53,6 +57,7 @@ public sealed class EntryRoutingTests : SpotTestSupport
     {
         var channelEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var spotRouterEndpoint = GetFreeTcpEndpoint();
 
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
@@ -61,7 +66,7 @@ public sealed class EntryRoutingTests : SpotTestSupport
             {
                 discovery.Add("tcp://127.0.0.1:5551");
             });
-            options.UseSpotDiscovery("spot.route.discovery", _ => { });
+
             options.AddClientServerChannel("api", channel =>
             {
                 channel.EnableServer(server =>
@@ -73,11 +78,15 @@ public sealed class EntryRoutingTests : SpotTestSupport
                     });
                 });
             });
-            options.AddSpotNode("route-target-node", spot =>
+            options.AddSpotMesh("spot.route.discovery", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("route-target-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
-                spot.EnableRouter();
+                spot.EnableRouter(router => router.Bind(spotRouterEndpoint));
                 spot.AcceptSpotRoutesFromChannel("api");
+            });
             });
         });
 

@@ -1,5 +1,4 @@
 using Bingo.Server.Session.Sessions;
-using Bingo.Server.Session.Sessions.Handlers;
 using Bingo.Shared.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -15,19 +14,11 @@ public static class SessionServerHostFactory
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
-        builder.Services.AddScoped<IBingoSessionHandler, AuthenticateBingoSessionHandler>();
-        builder.Services.AddScoped<IBingoSessionHandler, MatchBingoBingoSessionHandler>();
-        builder.Services.AddScoped<IBingoSessionHandler, StartBingoBingoSessionHandler>();
-        builder.Services.AddScoped<Sessions.BingoSession>();
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.AddJson();
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
-            options.UseSpotDiscovery(SampleNames.RoomSpotDiscovery, discovery =>
-            {
-                discovery.Add(topology.RegistryRouterEndpoint);
-            });
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableClient();
@@ -36,15 +27,23 @@ public static class SessionServerHostFactory
             {
                 channel.EnableClient();
             });
-            options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
+            options.AddSpotMesh(SampleNames.RoomSpotDiscovery, mesh =>
             {
-                routed.Bind(session.RouterEndpoint);
-                routed.ConfigureRouting(routing => routing.RoutingId = session.RoutingId);
+                mesh.AddNode(SampleNames.SessionSpotNode, node =>
+                {
+                    node.Bind(session.SpotEndpoint);
+                    node.EnableRouter(router =>
+                    {
+                        router.Bind(session.RouterEndpoint);
+                        router.ConfigureRouting(routing => routing.RoutingId = session.RoutingId);
+                    });
+                });
             });
             options.AddStreamNode(SampleNames.StreamNode, stream =>
             {
+                stream.AttachActorGateway(SampleNames.SessionSpotNode);
                 stream.Bind(session.StreamEndpoint);
-                stream.AddHeaderSession<Sessions.BingoSession>();
+                stream.RegisterSession<Sessions.BingoSession>();
             });
         });
 

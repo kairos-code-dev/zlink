@@ -49,6 +49,42 @@ uint64_t default_bootstrap_broadcast_interval_ms (
 
     return 1000;
 }
+
+int connect_external_router_peer (spot_node_t *node_,
+                                  spot_runtime_t *runtime_,
+                                  const std::string &peer_data_endpoint_,
+                                  const std::string &peer_route_endpoint_)
+{
+    if (!node_ || !runtime_ || peer_data_endpoint_.empty ()
+        || peer_route_endpoint_.empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!runtime_->external_router)
+        return 0;
+
+    std::string route_id;
+    if (!node_->external_route_id_for_peer_endpoint (peer_data_endpoint_,
+                                                     &route_id))
+        route_id = peer_route_endpoint_;
+
+    if (runtime_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID, route_id.data (),
+          route_id.size ())
+          != 0
+        || runtime_->external_router->connect (peer_route_endpoint_.c_str ())
+             != 0) {
+        const int saved_errno = errno != 0 ? errno : EIO;
+        (void) runtime_->external_router->term_endpoint (
+          peer_route_endpoint_.c_str ());
+        errno = saved_errno;
+        return -1;
+    }
+
+    runtime_->set_external_route_id (peer_data_endpoint_, route_id,
+                                     peer_route_endpoint_);
+    return 0;
+}
 }
 
 int spot_data_plane_protocol_t::publish_bootstrap_descriptor (
@@ -78,13 +114,17 @@ int spot_data_plane_protocol_t::publish_bootstrap_descriptor (
              != 0
         || spot_io::send_ascii_frame (mesh_pub_, source_node_id, ZLINK_SNDMORE)
              != 0
-        || spot_io::send_ascii_frame (mesh_pub_, version, 0) != 0) {
+        || spot_io::send_ascii_frame (mesh_pub_, version, ZLINK_SNDMORE) != 0
+        || spot_io::send_ascii_frame (
+             mesh_pub_, runtime_->external_router_bind_endpoint, 0)
+             != 0) {
         return -1;
     }
 
-    spot_ctrl_debugf ("broadcast bootstrap data=%s ctrl=%s",
+    spot_ctrl_debugf ("broadcast bootstrap data=%s ctrl=%s route=%s",
                       public_data_endpoint.c_str (),
-                      runtime_->peer_ctrl_endpoint.c_str ());
+                      runtime_->peer_ctrl_endpoint.c_str (),
+                      runtime_->external_router_bind_endpoint.c_str ());
 
     return 0;
 }
@@ -257,7 +297,7 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
             continue;
         }
 
-        if (frames.size () < 4) {
+        if (frames.size () < 5) {
             spot_clear_msg_parts (&frames);
             continue;
         }
@@ -266,9 +306,22 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
           spot_msg_frame_to_string (frames[0]);
         const std::string peer_ctrl_endpoint =
           spot_msg_frame_to_string (frames[1]);
-        spot_clear_msg_parts (&frames);
-        if (peer_data_endpoint.empty () || peer_ctrl_endpoint.empty ())
+        const std::string peer_route_endpoint =
+          spot_msg_frame_to_string (frames[4]);
+        if (peer_data_endpoint.empty () || peer_ctrl_endpoint.empty ()) {
+            spot_clear_msg_parts (&frames);
             continue;
+        }
+
+        if (!peer_route_endpoint.empty ()
+            && connect_external_router_peer (node_, runtime_,
+                                             peer_data_endpoint,
+                                             peer_route_endpoint)
+                 != 0) {
+            spot_clear_msg_parts (&frames);
+            continue;
+        }
+        spot_clear_msg_parts (&frames);
 
         const std::map<std::string, std::string>::iterator existing =
           state_->peer_ctrl_endpoints.find (peer_data_endpoint);

@@ -36,7 +36,8 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         string spotNodeName,
         string channelName,
         TimeSpan defaultTimeout,
-        TimeSpan? sendTimeout)
+        TimeSpan? sendTimeout,
+        Func<string, ZLinkAsyncSubmitter?>? channelSubmitter = null)
     {
         _runtime = runtime;
         _nativeSpot = nativeSpot;
@@ -64,7 +65,8 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
             nativeSpot,
             defaultTimeout,
             sendTimeout,
-            _stopSource.Token);
+            _stopSource.Token,
+            channelSubmitter);
         _dispatcher = new ZLinkSpotActivationDispatcher(
             runtime,
             nativeSpot,

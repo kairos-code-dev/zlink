@@ -25,6 +25,7 @@ public sealed record ActorRemoteAddressSnapshot(
 
 public sealed record EnsurePlayerActorRes(
     string ActorId,
+    string ActorType,
     ActorRemoteAddressSnapshot RemoteAddress);
 
 public sealed record MatchBingoReq(string Mode);

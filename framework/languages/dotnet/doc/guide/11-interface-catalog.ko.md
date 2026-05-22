@@ -217,7 +217,7 @@ options.AddActorFactory<PlayerActorFactory>("player");
 options.AddSpotRemoteAddressResolver<MySpotResolver>();
 options.UseRegistrySpotRemoteAddresses("game", registry => registry.RouterChannelId = "play-router");
 options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6000"));
-options.UseSpotDiscovery("play-spots", discovery => discovery.Add("tcp://127.0.0.1:6001"));
+options.AddSpotMesh("play-spots", mesh => mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6001")));
 options.UseFilter<AuditingFilter>();
 options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchMode.Compiled);
 ```
@@ -225,7 +225,7 @@ options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchM
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkFrameworkOptions` | framework 최상위 등록 표면. channel/spot/stream node 등록, codec, handler scan, discovery, filter, dispatch, actor factory 를 모두 소유 |
-| `IZLinkDiscoveryBuilder` | discovery endpoint 추가(`Add(endpoint)`). `UseDiscovery` / `UseSpotDiscovery` / mesh `UseDiscovery` 에서 쓰인다 |
+| `IZLinkDiscoveryBuilder` | discovery endpoint 추가(`Add(endpoint)`). 전역 `UseDiscovery` 또는 mesh `UseDiscovery` 에서 쓰인다 |
 | `IZLinkMetadataPolicyBuilder` | 응용 metadata 전달 정책(`ForwardApplicationKey(key)`) |
 | `IZLinkRegistrySpotRemoteAddressesOptions` | Registry 기반 spot 주소 해석 옵션(`RouterChannelId`) |
 
@@ -275,40 +275,47 @@ options.AddRouteMeshChannel("play-router", channel => channel.Bind("tcp://127.0.
 options.AddStreamNode("gateway", stream =>
 {
     stream.Bind("tcp://127.0.0.1:5400");
-    stream.AddHeaderSession<GatewaySession>();
-});
-
-options.AddSpotNode("play-spots", spot =>
-{
-    spot.Bind("tcp://127.0.0.1:5500");
-    spot.EnableRouter(router => router.ConfigureRouting(r => r.RoutingId = RoutingId.Of("spot-router")));
-    spot.EnablePubSub(pubSub => pubSub.ConfigurePublisherConfig(p => p.NoDrop = true));
-    spot.AttachChannelClient("api", c => c.ConfigureSocket(s => s.Immediate = true));
-    spot.AttachClientServerChannelClient("api");
-    spot.AttachSpotPublisherClient("events");
-    spot.AttachSpotMeshPublisherClient("mesh-events");
-    spot.AcceptSpotRoutesFromChannel("play-router", a =>
-        a.UseManualConnections(c => c.Connect("tcp://127.0.0.1:5300")));
-    spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.Of("entry"));
-    spot.AddSpotFactory<RoomSpot>("room");
-    spot.AddEntrySpot<EntrySpot>();
+    stream.RegisterSession<GatewaySession>();
 });
 
 options.AddSpotMesh("play-mesh", mesh =>
 {
     mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6003"));
-    mesh.AddNode("play-spots", spot => { /* 위와 동일 */ });
+    mesh.AddNode("play-spots", spot =>
+    {
+        spot.Bind("tcp://127.0.0.1:5500");
+        spot.EnableRouter(router => router.ConfigureRouting(r => r.RoutingId = RoutingId.Of("spot-router")));
+        spot.EnablePubSub(pubSub => pubSub.ConfigurePublisherConfig(p => p.NoDrop = true));
+        spot.AttachChannelClient("api", c => c.ConfigureSocket(s => s.Immediate = true));
+        spot.AttachClientServerChannelClient("api");
+        spot.AttachSpotPublisherClient("events");
+        spot.AttachSpotMeshPublisherClient("mesh-events");
+        spot.AcceptSpotRoutesFromChannel("play-router", a =>
+            a.UseManualConnections(c => c.Connect("tcp://127.0.0.1:5300")));
+        spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.Of("entry"));
+        spot.AddSpotFactory<RoomSpot>("room");
+        spot.AddEntrySpot<EntrySpot>();
+    });
+    mesh.AddNode("session-node", spot =>
+    {
+        spot.Bind("tcp://127.0.0.1:5600");
+        spot.EnableRouter(router =>
+        {
+            router.Bind("tcp://127.0.0.1:5601");
+            router.ConfigureRouting(r => r.RoutingId = RoutingId.Of("session-gateway"));
+        });
+    });
 });
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkStreamNodeBuilder` | stream node(`Bind`, `AttachActorGateway`, `AddHeaderSession<TSession>`) |
+| `IZLinkStreamNodeBuilder` | stream node(`Bind`, `AttachActorGateway`, `RegisterSession<TSession>`) |
 | `IZLinkSpotNodeBuilder` | spot node 등록 표면(`Bind`, router/pubsub, channel attach, route 수용, entry/spot factory) |
 | `IZLinkSpotMeshNodeBuilder` | spot mesh 안의 노드 빌더(`IZLinkSpotNodeBuilder` 와 같은 표면, mesh 컨텍스트) |
 | `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh(`UseDiscovery`, `AddNode`) |
 | `IZLinkSpotRouteChannelAcceptanceBuilder` | `AcceptSpotRoutesFromChannel` 의 ingress 연결 설정(`UseManualConnections`) |
-| `ISpotRouterCapabilityBuilder` | spot router capability(`ConfigureSocket`/`ConfigureRouting`/`UseManualConnections`) |
+| `ISpotRouterCapabilityBuilder` | spot router capability(`Bind`/`ConfigureSocket`/`ConfigureRouting`/`UseManualConnections`) |
 | `ISpotPubSubCapabilityBuilder` | spot pub/sub capability(`ConfigurePublisherConfig`/`ConfigureSubscriberConfig`/`UseManualConnections`) |
 | `ISpotPublisherClientCapabilityBuilder` | spot publisher client attach 설정 |
 | `ISpotChannelClientCapabilityBuilder` | spot 의 일반 channel client attach 설정 |
@@ -577,7 +584,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
 | `IZLinkSessionActorAttachmentContext` | actor 를 session 에 attach(`AttachActorAsync`) |
 | `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Submit`) |
 | `IZLinkSessionReplyCall` | session reply 종결자(`Metadata`/`Compress` → `Submit`) |
-| `IZLinkActorRef` | session relay 용 logical actor handle(`ActorId`, `ActorType`) |
+| `IZLinkActorRef` | session relay 용 actor handle(`ActorId`, `ActorType`, `IsRemote`, `RemoteAddress`) |
 | `IZLinkStream` | raw stream write(`Write(Message, SendFlags)`) / `CloseAsync`. 보통은 `Send`/`Reply` 를 쓴다 |
 
 검증: `StreamContracts.Session_context_collects_identity_stream_and_actor_operations`.

@@ -1212,7 +1212,11 @@ fi
 
 echo "  > Benchmarking current for $(IFS=,; echo "${patterns[*]}")..."
 printf '  > Benchmarking current for %s...\n' "$(IFS=,; echo "${patterns[*]}")" >> "${tmp_progress}"
+stop_early=0
 for pattern_index in "${!patterns[@]}"; do
+  if [[ "${stop_early}" -eq 1 ]]; then
+    break
+  fi
   pattern="${patterns[pattern_index]}"
   bare_pattern="${pattern#MULTI_}"
   pattern_clients="$(default_clients_for_pattern "${pattern}")"
@@ -1224,6 +1228,9 @@ for pattern_index in "${!patterns[@]}"; do
     "$(IFS=,; echo "${transports[*]}")" "${pattern_msg_sizes}" >> "${tmp_plan}"
 
   for transport_index in "${!transports[@]}"; do
+    if [[ "${stop_early}" -eq 1 ]]; then
+      break
+    fi
     transport="${transports[transport_index]}"
     echo "    Testing ${transport} | ${pattern_msg_sizes}:"
     printf '    Testing %s | %s:\n' "${transport}" "${pattern_msg_sizes}" >> "${tmp_progress}"
@@ -1232,7 +1239,13 @@ for pattern_index in "${!patterns[@]}"; do
     transport_failures=0
     transport_unsupported=0
     for size in "${msg_sizes[@]}"; do
+      if [[ "${stop_early}" -eq 1 ]]; then
+        break
+      fi
       for ((run=1; run<=RUNS; run++)); do
+        if [[ "${stop_early}" -eq 1 ]]; then
+          break
+        fi
         case_connect_concurrency="$(resolve_case_connect_concurrency "${pattern_clients}")"
         expected_result_lines=$((expected_result_lines + 5))
         if (( RUNS > 1 )); then
@@ -1259,13 +1272,15 @@ for pattern_index in "${!patterns[@]}"; do
             ;;
           fail)
             transport_failures=$((transport_failures + 1))
-            continue
+            [[ "${PERF_FAIL_FAST:-0}" == "1" ]] && stop_early=1
+            break
             ;;
         esac
         if ! append_metrics "${pattern}" "${transport}" "${size}" "${run}" "${CASE_METRIC_LOG}"; then
           record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
           transport_failures=$((transport_failures + 1))
-          continue
+          [[ "${PERF_FAIL_FAST:-0}" == "1" ]] && stop_early=1
+          break
         fi
         row="$(format_progress_row "${bare_pattern}" "${transport}" "${size}" "${CASE_METRIC_LOG}" "      ")"
         echo "${row}"
@@ -1295,13 +1310,13 @@ for pattern_index in "${!patterns[@]}"; do
       echo "    Testing ${transport}: Done"
       printf '    Testing %s: Done\n' "${transport}" >> "${tmp_progress}"
     fi
-    if (( transport_index + 1 < ${#transports[@]} )); then
+    if [[ "${stop_early}" -ne 1 ]] && (( transport_index + 1 < ${#transports[@]} )); then
       echo "    [transport cooldown ${TRANSPORT_TRANSITION_MS}ms]"
       printf '    [transport cooldown %sms]\n' "${TRANSPORT_TRANSITION_MS}" >> "${tmp_progress}"
       sleep_ms "${TRANSPORT_TRANSITION_MS}"
     fi
   done
-  if (( pattern_index + 1 < ${#patterns[@]} )); then
+  if [[ "${stop_early}" -ne 1 ]] && (( pattern_index + 1 < ${#patterns[@]} )); then
     echo "[pattern cooldown ${PATTERN_TRANSITION_MS}ms]"
     printf '[pattern cooldown %sms]\n' "${PATTERN_TRANSITION_MS}" >> "${tmp_progress}"
     sleep_ms "${PATTERN_TRANSITION_MS}"
@@ -1319,7 +1334,8 @@ python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${t
   "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" "${LAT_TIMEOUT_MS}" \
   "${STREAM_NON_TCP_CLIENTS_MAX}" "${DISABLE_RESOURCE_METRICS}" "${TIMEOUT_SECONDS}" \
   "${STREAM_DEFAULT_CLIENTS}" "${RESULTS_TAG}" \
-  "${expected_result_lines}" "${actual_result_lines}" <<'PY' || python_status=$?
+  "${expected_result_lines}" "${actual_result_lines}" \
+  "${PERF_FAIL_FAST:-0}" "${stop_early}" <<'PY' || python_status=$?
 import csv
 import datetime
 import math
@@ -1340,7 +1356,7 @@ from pathlib import Path
     transport_transition_ms, pattern_transition_ms, lat_timeout_ms,
     stream_non_tcp_clients_max, disable_resource_metrics, timeout_seconds,
     default_stream_clients, results_tag,
-    expected_result_lines, actual_result_lines,
+    expected_result_lines, actual_result_lines, fail_fast, fail_fast_stopped,
 ) = sys.argv[1:]
 sys.path.insert(0, str(Path(helper_path).resolve().parent))
 from report_common import load_failures
@@ -1724,6 +1740,7 @@ def emit_options(label):
     emit(f"- transports: {','.join(all_tr) if all_tr else 'none'}")
     emit(f"- msg_sizes: {','.join(str(s) for s in all_sz) if all_sz else 'none'}")
     emit(f"- duration_seconds: {duration}")
+    emit(f"- fail_fast: {fail_fast}")
     emit(f"- clients: {clients}")
     emit("- default_clients: 100")
     emit(f"- default_stream_clients: {default_stream_clients}")
@@ -1817,6 +1834,7 @@ emit(f"- success: {success}")
 emit("- unsupported: 0")
 emit("- skip: 0")
 emit(f"- fail: {fail}")
+emit(f"- fail_fast_stopped: {fail_fast_stopped}")
 emit(f"- status: {status}")
 emit(f"- expected_result_lines: {expected_result_lines}")
 emit(f"- actual_result_lines: {actual_result_lines}")

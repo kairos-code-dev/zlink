@@ -41,60 +41,52 @@ public sealed class ZLinkActorSendContext : ZLinkHandlerContext
 {
     internal ZLinkActorSendContext(
         string actorId,
-        string routerChannelId,
         string? packetName,
         string? contentType,
         string? correlationId,
-        IZLinkSessionProxy sessionProxy,
+        IZLinkBoundSession boundSession,
         IServiceProvider services,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(routerChannelId, packetName, contentType, correlationId, null, services, connectionAborted)
+        : base(null, packetName, contentType, correlationId, null, services, connectionAborted)
     {
         ActorId = actorId;
-        RouterChannelId = routerChannelId;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
-        SessionProxy = sessionProxy;
+        BoundSession = boundSession;
     }
 
     public string ActorId { get; }
 
-    public string RouterChannelId { get; }
-
     public ZLinkMessageMetadata Metadata { get; }
 
-    public IZLinkSessionProxy SessionProxy { get; }
+    public IZLinkBoundSession BoundSession { get; }
 }
 
 public sealed class ZLinkActorRequestContext : ZLinkHandlerContext
 {
     internal ZLinkActorRequestContext(
         string actorId,
-        string routerChannelId,
         string? packetName,
         string? contentType,
         string? correlationId,
         DateTimeOffset? deadline,
-        IZLinkSessionProxy sessionProxy,
+        IZLinkBoundSession boundSession,
         IServiceProvider services,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(routerChannelId, packetName, contentType, correlationId, deadline, services, connectionAborted)
+        : base(null, packetName, contentType, correlationId, deadline, services, connectionAborted)
     {
         ActorId = actorId;
-        RouterChannelId = routerChannelId;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
-        SessionProxy = sessionProxy;
+        BoundSession = boundSession;
         Deadline = deadline;
     }
 
     public string ActorId { get; }
 
-    public string RouterChannelId { get; }
-
     public ZLinkMessageMetadata Metadata { get; }
 
-    public IZLinkSessionProxy SessionProxy { get; }
+    public IZLinkBoundSession BoundSession { get; }
 
     public new DateTimeOffset? Deadline { get; }
 }

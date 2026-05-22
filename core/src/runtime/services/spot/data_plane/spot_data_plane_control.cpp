@@ -57,46 +57,6 @@ static bool endpoint_uses_ephemeral_port (const std::string &endpoint_)
     return port == 0 && (*end == '\0' || *end == '/');
 }
 
-static int connect_external_router_peer (spot_node_t *node_,
-                                         spot_runtime_t *runtime_,
-                                         const std::string &peer_pub_endpoint_)
-{
-    if (!node_ || !runtime_ || peer_pub_endpoint_.empty ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (!runtime_->external_router)
-        return 0;
-
-    std::string route_endpoint;
-    if (!spot_control_protocol::derive_external_router_bind_endpoint (
-          peer_pub_endpoint_, runtime_->node_id, &route_endpoint)) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::string route_id;
-    if (!node_->external_route_id_for_peer_endpoint (peer_pub_endpoint_,
-                                                     &route_id))
-        route_id = route_endpoint;
-
-    if (runtime_->external_router->setsockopt (
-             ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID, route_id.data (),
-             route_id.size ())
-             != 0
-        || runtime_->external_router->connect (route_endpoint.c_str ())
-             != 0) {
-        const int saved_errno = errno != 0 ? errno : EIO;
-        (void) runtime_->external_router->term_endpoint (
-          route_endpoint.c_str ());
-        errno = saved_errno;
-        return -1;
-    }
-
-    runtime_->set_external_route_id (peer_pub_endpoint_, route_id);
-    return 0;
-}
-
 static bool parse_router_channel_peer_arg (const std::string &arg_,
                                            std::string *channel_name_out_,
                                            std::string *endpoint_out_)
@@ -205,24 +165,6 @@ int spot_data_plane_protocol_t::recv_and_process_ctrl_messages (
         const std::string &source_key = frames[1];
         if (target_endpoint.empty () || source_key.empty ())
             continue;
-
-        spot_runtime_t *runtime = spot_node_access_t::runtime (node_);
-        if (runtime && !runtime->bound_endpoint.empty ()
-            && target_endpoint == runtime->bound_endpoint) {
-            char *end = NULL;
-            const unsigned long peer_node_id =
-              strtoul (source_key.c_str (), &end, 10);
-            if (end && *end == '\0' && peer_node_id != 0
-                && peer_node_id <= UINT32_MAX) {
-                std::string route_id;
-                if (spot_control_protocol::derive_external_router_bind_endpoint (
-                      runtime->bound_endpoint,
-                      static_cast<uint32_t> (peer_node_id), &route_id)) {
-                    runtime->set_external_route_id ("ctrl:" + source_key,
-                                                    route_id);
-                }
-            }
-        }
 
         std::set<std::string> new_filters;
         for (size_t i = 3; i < frames.size (); ++i) {
@@ -387,13 +329,8 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             }
 
             std::string route_bind_endpoint;
-            if (!spot_control_protocol::derive_external_router_bind_endpoint (
-                  resolved_endpoint, runtime_->node_id, &route_bind_endpoint)) {
-                saved_errno = EINVAL;
-                if (mesh_pub_)
-                    (void) mesh_pub_->term_endpoint (resolved_endpoint.c_str ());
-                break;
-            }
+            spot_node_access_t::snapshot_router_bind_endpoint (
+              node_, &route_bind_endpoint);
 
             if (peer_ctrl_sub_->bind (ctrl_bind_endpoint.c_str ()) != 0) {
                 saved_errno = errno != 0 ? errno : EIO;
@@ -405,6 +342,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             }
 
             if (runtime_->external_router
+                && !route_bind_endpoint.empty ()
                 && (spot_node_access_t::apply_tls_server (
                       node_, runtime_->external_router, cert, key)
                       != 0
@@ -421,7 +359,24 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             }
 
             runtime_->peer_ctrl_endpoint = ctrl_bind_endpoint;
-            runtime_->external_router_bind_endpoint = route_bind_endpoint;
+            runtime_->external_router_bind_endpoint.clear ();
+            if (runtime_->external_router && !route_bind_endpoint.empty ()) {
+                runtime_->external_router_bind_endpoint = route_bind_endpoint;
+                char resolved_router[256] = {0};
+                size_t resolved_router_size = sizeof (resolved_router);
+                if (runtime_->external_router->getsockopt (
+                      ZLINK_INTERNAL_OPT_LAST_ENDPOINT, resolved_router,
+                      &resolved_router_size)
+                    == 0) {
+                    const size_t len =
+                      resolved_router_size > 0
+                        ? strnlen (resolved_router, resolved_router_size)
+                        : 0;
+                    if (len > 0)
+                        runtime_->external_router_bind_endpoint.assign (
+                          resolved_router, len);
+                }
+            }
             runtime_->bound_endpoint = resolved_endpoint;
             if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
                 std::fprintf (
@@ -430,7 +385,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
                   runtime_->external_router
                     ? runtime_->external_router->socket_id ()
                     : -1,
-                  route_bind_endpoint.c_str ());
+                  runtime_->external_router_bind_endpoint.c_str ());
             }
             spot_node_access_t::mark_bound_endpoint_and_server_tls_locked (
               node_, resolved_endpoint);
@@ -469,15 +424,6 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             && spot_node_access_t::apply_tls_client (
                  node_, runtime_->external_router, ca, host, trust)
                  != 0) {
-            const int saved_errno = errno != 0 ? errno : EIO;
-            if (mesh_xsub_)
-                (void) mesh_xsub_->term_endpoint (arg.c_str ());
-            if (send_errno_reply (ctrl_, saved_errno) != 0)
-                return -1;
-            return 0;
-        }
-
-        if (connect_external_router_peer (node_, runtime_, arg) != 0) {
             const int saved_errno = errno != 0 ? errno : EIO;
             if (mesh_xsub_)
                 (void) mesh_xsub_->term_endpoint (arg.c_str ());
@@ -648,17 +594,14 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
             (void) runtime_->external_router->term_endpoint (
               runtime_->external_router_bind_endpoint.c_str ());
         runtime_->external_router_bind_endpoint.clear ();
-        std::vector<std::string> external_route_peer_endpoints =
+        std::vector<std::string> external_route_endpoints =
           runtime_->clear_external_route_ids ();
         for (std::vector<std::string>::const_iterator it =
-               external_route_peer_endpoints.begin ();
-             it != external_route_peer_endpoints.end (); ++it) {
-            std::string route_endpoint;
-            if (spot_control_protocol::derive_external_router_bind_endpoint (
-                  *it, runtime_->node_id, &route_endpoint)
-                && runtime_->external_router) {
+               external_route_endpoints.begin ();
+             it != external_route_endpoints.end (); ++it) {
+            if (runtime_->external_router) {
                 (void) runtime_->external_router->term_endpoint (
-                  route_endpoint.c_str ());
+                  it->c_str ());
             }
         }
         runtime_->bound_endpoint.clear ();
@@ -704,14 +647,11 @@ int spot_data_plane_protocol_t::handle_ctrl_command (
                 return -1;
             return 0;
         }
-        std::string route_endpoint;
-        if (spot_control_protocol::derive_external_router_bind_endpoint (
-              arg, runtime_->node_id, &route_endpoint)
-            && runtime_->external_router) {
+        const std::string route_endpoint =
+          runtime_->erase_external_route_id (arg);
+        if (runtime_->external_router && !route_endpoint.empty ())
             (void) runtime_->external_router->term_endpoint (
               route_endpoint.c_str ());
-        }
-        runtime_->erase_external_route_id (arg);
 
         spot_data_plane_forwarder_t::drop_remote_mesh_target (
           runtime_, &runtime_->execution.data_plane_state, arg);

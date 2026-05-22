@@ -46,7 +46,10 @@ builder.Services.AddZLinkFramework(options =>
         mesh.AddNode("stage-node", node =>
         {
             node.Bind("tcp://0.0.0.0:9000");
-            node.EnableRouter();                              // routed packet 수신
+            node.EnableRouter(router =>
+            {
+                router.Bind("tcp://0.0.0.0:9001");
+            });                                               // routed packet 수신
             node.EnablePubSub();                              // 현재 channel publish/subscribe
             node.AttachClientServerChannelClient("orders");   // 다른 channel 로 send/request
             node.AddSpotFactory<StageSpot>("stage");          // "stage" 이름으로 만들 타입
@@ -60,16 +63,16 @@ node capability 는 서로 독립이다.
 | node 함수 | 의미 |
 |-----------|------|
 | `Bind(endpoint)` | 노드의 local endpoint |
-| `EnableRouter()` | 다른 SpotNode/채널에서 오는 routed packet 수신 |
+| `EnableRouter(router => router.Bind(endpoint))` | 다른 SpotNode/채널에서 오는 routed packet 수신 |
 | `EnablePubSub()` | 현재 SPOT channel 의 publish/subscribe (없으면 `Publish` 불가) |
 | `AttachClientServerChannelClient(name)` | 일반 channel 로 send/request 하는 client 부착 |
 | `AddSpotFactory<TSpot>(name)` | 이 노드가 만들 spot 타입 등록. 이름 중복은 시작 예외 |
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
 
-> mesh 기능(discovery/router/channel attach)을 쓰면 반드시 `AddSpotMesh(...)` +
-> `mesh.UseDiscovery(...)` 형태여야 하며, discovery 없는 mesh 는 시작 단계에서
-> 막힌다. discovery 없이 단일 노드만 띄우는 standalone 형태는 `AddSpotNode(...)`로
-> 등록할 수 있지만 mesh 기능과 섞을 수 없다.
+> top-level `UseDiscovery(...)` 를 등록하면 `AddSpotMesh(...)` 는 그 discovery endpoint 를
+> 기본으로 상속한다. mesh 단위로 다른 endpoint 를 쓰는 경우에만 `mesh.UseDiscovery(...)` 를 둔다.
+> 막힌다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)` 안에서 빈
+> `UseDiscovery(_ => { })` 와 `AddNode(...)` 로 표현한다.
 
 ## 3. Spot 작성 — handler 등록과 lifecycle
 
@@ -241,7 +244,8 @@ app.MapPost("/stage/{rid}/query", async (
 
 1. **local egress channel** — 호출 측 프로세스에 `EnableSpotRouteEgress(...)` 가
    걸린 client-server DEALER channel(또는 route mesh channel).
-2. **target SpotNode ingress channel** — 받는 SpotNode 에 `EnableRouter()` +
+2. **target SpotNode ingress channel** — 받는 SpotNode 에
+   `EnableRouter(router => router.Bind(endpoint))` +
    `AcceptSpotRoutesFromChannel(name)` 가 걸린 ingress.
 3. **target Spot routing id** — `RoutingId`.
 
@@ -258,7 +262,7 @@ options.AddClientServerChannel("gateway.client", channel =>
 mesh.AddNode("play-node", node =>
 {
     node.Bind("tcp://0.0.0.0:7201");
-    node.EnableRouter();
+    node.EnableRouter(router => router.Bind("tcp://0.0.0.0:7202"));
     node.AcceptSpotRoutesFromChannel("play.route");
 });
 ```

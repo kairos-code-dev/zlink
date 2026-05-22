@@ -20,8 +20,8 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
             channels.InitializePublisherChannels(state, channelAdapter);
             channels.InitializeClientChannels(state);
             channels.InitializeRouteChannels(state, channelAdapter);
-            streams.InitializeStreamNodes(state);
             await spots.InitializeSpotNodesAsync(state).ConfigureAwait(false);
+            streams.InitializeStreamNodes(state);
             return state;
         }
         catch

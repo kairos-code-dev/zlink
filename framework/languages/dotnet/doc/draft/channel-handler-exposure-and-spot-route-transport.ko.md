@@ -116,10 +116,14 @@ options.AddClientServerChannel("play.route", channel =>
     channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7201"));
 });
 
-options.AddSpotNode("play-node", node =>
+options.AddSpotMesh("play", mesh =>
 {
-    node.EnableRouter();
-    node.AcceptSpotRoutesFromChannel("play.route");
+    mesh.UseDiscovery(_ => { });
+    mesh.AddNode("play-node", node =>
+    {
+        node.EnableRouter(router => router.Bind("tcp://0.0.0.0:7202"));
+        node.AcceptSpotRoutesFromChannel("play.route");
+    });
 });
 ```
 
@@ -284,10 +288,14 @@ options.AddClientServerChannel("play.route", channel =>
     channel.AddHandlerGroup("play-admin");
 });
 
-options.AddSpotNode("play-node", node =>
+options.AddSpotMesh("play", mesh =>
 {
-    node.EnableRouter();
-    node.AcceptSpotRoutesFromChannel("play.route");
+    mesh.UseDiscovery(_ => { });
+    mesh.AddNode("play-node", node =>
+    {
+        node.EnableRouter(router => router.Bind("tcp://0.0.0.0:7202"));
+        node.AcceptSpotRoutesFromChannel("play.route");
+    });
 });
 ```
 
@@ -943,11 +951,15 @@ builder.Services.AddZLinkFramework(options =>
         channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7201"));
     });
 
-    options.AddSpotNode("play-node", node =>
+    options.AddSpotMesh("play", mesh =>
     {
-        node.EnableRouter();
-        node.AcceptSpotRoutesFromChannel("play.route");
-        node.AddSpotFactory<RoomSpot>("room");
+        mesh.UseDiscovery(_ => { });
+        mesh.AddNode("play-node", node =>
+        {
+            node.EnableRouter(router => router.Bind("tcp://0.0.0.0:7202"));
+            node.AcceptSpotRoutesFromChannel("play.route");
+            node.AddSpotFactory<RoomSpot>("room");
+        });
     });
 });
 ```
@@ -1119,8 +1131,8 @@ public sealed class DispatchJobHandler(IZLinkClient channels)
 | `ChannelsTests.AcceptSpotRoutesFromChannel_RejectsFanoutChannel` | Spot route transport 는 fanout channel 을 router-capable 대상으로 보지 않는다. |
 | `ChannelsTests.AcceptSpotRoutesFromChannel_RequiresEnableRouter` | SpotNode router 없이 route channel acceptance 를 켤 수 없다. |
 | `ChannelsTests.AcceptSpotRoutesFromChannel_RequiresDiscoveryOrManualConnections` | Spot route transport peer 를 얻을 discovery 또는 manual 경로가 필요하다. |
-| `RouteAcceptanceTests.AddSpotNode_AcceptSpotRoutesFromChannel_ClientServer_AllowsRouterSendToSpot` | client-server router channel 이 target Spot 으로 routed send 를 전달한다. |
-| `RouteAcceptanceTests.AddSpotNode_AcceptSpotRoutesFromChannel_RouteMesh_AllowsRouterSendToSpot` | route mesh router channel 이 target Spot 으로 routed send 를 전달한다. |
+| `RouteAcceptanceTests.AddSpotMesh_AcceptSpotRoutesFromChannel_ClientServer_AllowsRouterSendToSpot` | client-server router channel 이 target Spot 으로 routed send 를 전달한다. |
+| `RouteAcceptanceTests.AddSpotMesh_AcceptSpotRoutesFromChannel_RouteMesh_AllowsRouterSendToSpot` | route mesh router channel 이 target Spot 으로 routed send 를 전달한다. |
 | `ClientTransportTests.SendSpot_UsesRouterChannelIdTransport` | 현재 routed Spot send 가 기존 router channel id transport 를 타는지 확인한다. 새 API 구현 뒤에는 explicit egress channel 테스트를 추가한다. |
 | `ClientTransportTests.RequestSpot_UsesRouterChannelIdTransport` | 현재 routed Spot request 가 기존 router channel id transport 를 타는지 확인한다. 새 API 구현 뒤에는 explicit egress channel 테스트를 추가한다. |
 | `HandlerExposureTests.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | `IZLinkClient`가 없는 channel 을 자동으로 만들지 않고 설정 오류로 실패한다. |

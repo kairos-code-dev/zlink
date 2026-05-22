@@ -60,6 +60,7 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     string LastEndpoint { get; }
 
     void SetRoutingId(RoutingId routingId);
+    void SetRouterBindEndpoint(string endpoint);
     void Bind(string endpoint);
     void ConnectPeer(string peerEndpoint);
     void DisconnectPeer(string peerEndpoint);
@@ -78,6 +79,8 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     ISpot? SpotLookup(RoutingId spotRid);
     IActor CreateActor(string actorId);
     ActorRef ActorLookup(string actorId);
+    SendOperation SendActorBoundSession(ActorRef actor);
+    void CloseActorBoundSession(ActorRef actor, TimeSpan timeout = default);
     ActorLookupOperation RemoteActorGetRef(RoutingId targetNodeRid, string actorId);
     ActorDestroyOperation DestroyActor(ActorRef actor);
     ActorJoinOperation JoinActor(ActorRef actor, RoutingId destNodeRid, RoutingId destSpotRid);

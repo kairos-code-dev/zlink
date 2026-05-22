@@ -80,11 +80,11 @@ public final class InternalAccess {
         virtualMethod(Message.class, "finishReceive", void.class,
           boolean.class);
     private static final MethodHandle MESSAGE_TRANSFER_TO =
-        virtualMethod(Message.class, "transferTo", Object.class,
+        virtualMethod(Message.class, "transferTo", void.class,
           MemorySegment.class);
     private static final MethodHandle MESSAGE_RESTORE_FROM_NATIVE =
         virtualMethod(Message.class, "restoreFromNative", void.class,
-          MemorySegment.class, boolean.class, Object.class);
+          MemorySegment.class, boolean.class);
     private static final MethodHandle MESSAGE_SHARED_COPY_OF =
         staticMethod(Message.class, "sharedCopyOf", Message.class,
           Message.class);
@@ -333,7 +333,8 @@ public final class InternalAccess {
     public static Object messageTransferTo(Message message,
                                            MemorySegment destination) {
         try {
-            return MESSAGE_TRANSFER_TO.invoke(message, destination);
+            MESSAGE_TRANSFER_TO.invoke(message, destination);
+            return null;
         } catch (Throwable t) {
             throw unchecked(t);
         }
@@ -344,8 +345,7 @@ public final class InternalAccess {
                                                 boolean moreFlag,
                                                 Object anchor) {
         try {
-            MESSAGE_RESTORE_FROM_NATIVE.invoke(message, source, moreFlag,
-              anchor);
+            MESSAGE_RESTORE_FROM_NATIVE.invoke(message, source, moreFlag);
         } catch (Throwable t) {
             throw unchecked(t);
         }

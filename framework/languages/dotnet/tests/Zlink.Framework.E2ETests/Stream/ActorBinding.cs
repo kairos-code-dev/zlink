@@ -24,9 +24,13 @@ public sealed class ActorBindingTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(spotEndpoint);
+                });
                 });
             });
         });
@@ -63,9 +67,13 @@ public sealed class ActorBindingTests : StreamTestSupport
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorFactory<GatewayActorFactory>("spectator");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(spotEndpoint);
+                });
                 });
             });
         });
@@ -102,9 +110,13 @@ public sealed class ActorBindingTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<ConfigureFailureActorFactory>("player");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(spotEndpoint);
+                });
                 });
             });
         });
@@ -144,9 +156,13 @@ public sealed class ActorBindingTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(spotEndpoint);
+                });
                 });
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
@@ -178,114 +194,26 @@ public sealed class ActorBindingTests : StreamTestSupport
     }
 
     [Fact]
-    public async Task SessionActorBind_Does_Not_Resolve_RemoteAddress()
-    {
-        var endpoint = GetFreeTcpEndpoint();
-        var localRid = RoutingId.FromString("1201");
-        var remoteRid = RoutingId.FromString("1202");
-        var host = await CreateHostAsync(endpoint, services =>
-        {
-            services.AddSingleton<IZLinkActorRemoteAddressResolver, ThrowingActorRemoteAddressResolver>();
-            services.AddZLinkFramework(options =>
-            {
-                options.AddRouteMeshChannel("gateway", routed =>
-                {
-                    routed.Bind(endpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
-                    routed.UseManualConnections(connections => connections.Connect(endpoint));
-                });
-            });
-        });
-
-        try
-        {
-            var context = new ZLinkSessionContext(
-                host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
-                new SpotTestSupport.TestStream("explicit-route-session"),
-                static _ => ValueTask.CompletedTask,
-                static _ => ValueTask.CompletedTask);
-
-            var actor = await context.BindActorHandleAsync(
-                "remote-player",
-                "player",
-                new ZLinkActorRemoteAddress("gateway", remoteRid, 1));
-
-            Assert.Equal("remote-player", actor.ActorId);
-            Assert.True(host.Services.GetRequiredService<ZLinkFrameworkRuntime>()
-                .TryGetActorBoundSession("remote-player", out _));
-        }
-        finally
-        {
-            await host.StopAsync();
-        }
-    }
-
-    [Fact]
-    public async Task SessionActorBind_Rejects_Unchecked_ActorGeneration()
-    {
-        var endpoint = GetFreeTcpEndpoint();
-        var localRid = RoutingId.FromString("1211");
-        var remoteRid = RoutingId.FromString("1212");
-        var host = await CreateHostAsync(endpoint, services =>
-        {
-            services.AddZLinkFramework(options =>
-            {
-                options.AddRouteMeshChannel("gateway", routed =>
-                {
-                    routed.Bind(endpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
-                    routed.UseManualConnections(connections => connections.Connect(endpoint));
-                });
-            });
-        });
-
-        try
-        {
-            var context = new ZLinkSessionContext(
-                host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
-                new SpotTestSupport.TestStream("unchecked-route-session"),
-                static _ => ValueTask.CompletedTask,
-                static _ => ValueTask.CompletedTask);
-
-            var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-                () => context.BindActorHandleAsync(
-                        "remote-player",
-                        "player",
-                        new ZLinkActorRemoteAddress("gateway", remoteRid, 0))
-                    .AsTask());
-
-            Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, ex.Kind);
-            Assert.False(host.Services.GetRequiredService<ZLinkFrameworkRuntime>()
-                .TryGetActorBoundSession("remote-player", out _));
-        }
-        finally
-        {
-            await host.StopAsync();
-        }
-    }
-
-    [Fact]
     public async Task SessionActorBind_WithoutRoute_Is_LocalOnly()
     {
         var endpoint = GetFreeTcpEndpoint();
         var spotEndpoint = GetFreeTcpEndpoint();
         var localRid = RoutingId.FromString("1213");
         var recorder = new ActorDispatchRecorder();
-        var routeResolver = new CountingActorRemoteAddressResolver(new ZLinkActorRemoteAddress(
-            "gateway",
-            RoutingId.FromString("1214"),
-            1));
         var host = await CreateHostAsync(endpoint, services =>
         {
             services.AddSingleton(recorder);
-            services.AddSingleton<IZLinkActorRemoteAddressResolver>(routeResolver);
             services.AddScoped<GatewayActorFactory>();
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(spotEndpoint);
+                });
                 });
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
@@ -309,7 +237,6 @@ public sealed class ActorBindingTests : StreamTestSupport
 
             Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, ex.Kind);
             Assert.Equal(0, recorder.CreatedCount);
-            Assert.Equal(0, routeResolver.CallCount);
         }
         finally
         {

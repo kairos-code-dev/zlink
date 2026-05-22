@@ -45,6 +45,15 @@ public sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
         Kernel.DetachStream();
     }
 
+    public void AttachActorGateway(SpotNode node)
+    {
+        if (node == null)
+            throw new ArgumentNullException(nameof(node));
+        int rc = NativeMethods.zlink_stream_attach_actor_gateway(Handle,
+            node.Handle);
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
     /// <summary>
     /// Async Actor bind (operation builder).
     /// </summary>

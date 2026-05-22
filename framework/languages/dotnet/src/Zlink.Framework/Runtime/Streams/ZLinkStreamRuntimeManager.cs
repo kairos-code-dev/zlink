@@ -19,6 +19,11 @@ internal sealed class ZLinkStreamRuntimeManager(
         foreach (var streamNodeRegistration in registration.StreamNodes.Values)
         {
             var socket = streamAdapter.CreateStreamSocket(state.Context);
+            if (!string.IsNullOrWhiteSpace(streamNodeRegistration.ActorGatewaySpotNodeName))
+            {
+                var actorGateway = state.SpotNodes[streamNodeRegistration.ActorGatewaySpotNodeName];
+                socket.AttachActorGateway(actorGateway.Node);
+            }
             socket.Bind(streamNodeRegistration.BindEndpoint!);
             var monitor = monitoringAdapter.OpenSocketMonitor(socket);
 

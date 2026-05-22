@@ -776,6 +776,7 @@ emit_effective_options_multi() {
   echo "- transports: ${EFFECTIVE_TRANSPORTS_CSV}"
   echo "- msg_sizes: ${EFFECTIVE_MSG_SIZES_CSV}"
   echo "- duration_seconds: ${DURATION}"
+  echo "- fail_fast: ${PERF_FAIL_FAST:-0}"
   echo "- clients: ${CLIENTS_DISPLAY}"
   echo "- default_clients: ${PERF_MULTI_DEFAULT_CLIENTS:-100}"
   echo "- default_stream_clients: ${PERF_MULTI_STREAM_CLIENTS:-10000}"
@@ -1200,10 +1201,14 @@ result_lines=0
 unsupported=0
 fail=0
 expected_cases=0
+stop_early=0
 FAILURES=()
 SKIPS=()
 
 for pattern_index in "${!PATTERNS[@]}"; do
+  if [[ "${stop_early}" -eq 1 ]]; then
+    break
+  fi
   pattern="${PATTERNS[pattern_index]}"
   progress_pattern_heading "${pattern}"
   read -r -a PATTERN_XPORTS <<< "$(pattern_transports "${pattern}")"
@@ -1231,6 +1236,9 @@ for pattern_index in "${!PATTERNS[@]}"; do
   transport_seen=0
 
   for transport in "${PATTERN_XPORTS[@]}"; do
+    if [[ "${stop_early}" -eq 1 ]]; then
+      break
+    fi
     if ! transport_enabled "${transport}"; then
       continue
     fi
@@ -1240,6 +1248,9 @@ for pattern_index in "${!PATTERNS[@]}"; do
     transport_unsupported=0
 
     for run in $(seq 1 "${RUNS}"); do
+      if [[ "${stop_early}" -eq 1 ]]; then
+        break
+      fi
       if [[ "${RUNS}" -gt 1 ]]; then
         echo "      run ${run}/${RUNS}:"
       fi
@@ -1337,10 +1348,14 @@ for pattern_index in "${!PATTERNS[@]}"; do
         fi
         progress_table_header
         progress_case_row "${pattern}" "${size}" "${case_log}"
+        if [[ "${PERF_FAIL_FAST:-0}" == "1" && "${fail}" -gt 0 ]]; then
+          stop_early=1
+          break
+        fi
         sleep_millis "${RUN_COOLDOWN_MS}"
       done
 
-      if [[ "${transport_unsupported}" -eq 1 ]]; then
+      if [[ "${stop_early}" -eq 1 || "${transport_unsupported}" -eq 1 ]]; then
         break
       fi
 
@@ -1359,12 +1374,15 @@ for pattern_index in "${!PATTERNS[@]}"; do
     fi
 
     if [[ "${transport_seen}" -lt "${transport_total}" ]]; then
+      if [[ "${stop_early}" -eq 1 ]]; then
+        break
+      fi
       echo "    [transport cooldown ${TRANSPORT_TRANSITION_MS}ms]"
       sleep_millis "${TRANSPORT_TRANSITION_MS}"
     fi
   done
 
-  if [[ $((pattern_index + 1)) -lt "${#PATTERNS[@]}" ]]; then
+  if [[ "${stop_early}" -ne 1 && $((pattern_index + 1)) -lt "${#PATTERNS[@]}" ]]; then
     echo "[pattern cooldown ${PATTERN_TRANSITION_MS}ms]"
     sleep_millis "${PATTERN_TRANSITION_MS}"
   fi
@@ -1417,6 +1435,7 @@ fi
   echo "- skip: ${#SKIPS[@]}"
   echo "- fail: ${fail}"
   echo "- status: ${status}"
+  echo "- fail_fast_stopped: ${stop_early}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
   echo

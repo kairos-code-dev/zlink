@@ -15,12 +15,14 @@ enum : uint8_t
     legacy_frame_version = 0x01,
     packed_frame_version = 0x02,
     spot_endpoint_class = 0x01,
-    router_endpoint_class = 0x02
+    router_endpoint_class = 0x02,
+    actor_gateway_endpoint_class = 0x03
 };
 
 inline bool is_endpoint_class (uint8_t value_)
 {
-    return value_ == spot_endpoint_class || value_ == router_endpoint_class;
+    return value_ == spot_endpoint_class || value_ == router_endpoint_class
+           || value_ == actor_gateway_endpoint_class;
 }
 }
 }

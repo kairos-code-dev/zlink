@@ -123,6 +123,34 @@ public abstract partial class RegistrationValidationSupport
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
+    protected interface ITestSessionDependencyHandler
+    {
+    }
+
+    protected sealed class TestSessionDependencyHandler : ITestSessionDependencyHandler
+    {
+    }
+
+    protected sealed class TestSessionWithEnumerableHandlers(
+        IZLinkSessionContext context,
+        IEnumerable<ITestSessionDependencyHandler> handlers) : IZLinkSession
+    {
+        public IZLinkSessionContext Context { get; } = context;
+
+        public IReadOnlyCollection<ITestSessionDependencyHandler> Handlers { get; } = handlers.ToArray();
+
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnDispatchAsync(
+            ZlinkStreamHeader header,
+            global::Systems.Zlink.Message body,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
     protected sealed class TestSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         public IZLinkSpotContext Context { get; } = context;

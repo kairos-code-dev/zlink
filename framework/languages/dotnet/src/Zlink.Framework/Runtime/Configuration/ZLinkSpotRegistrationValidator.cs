@@ -13,6 +13,12 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             ValidateSpotNodeWithoutMesh(spotNode);
         }
 
+        if (spotNode.Router is not null && string.IsNullOrWhiteSpace(spotNode.Router.BindEndpoint))
+        {
+            throw new ZLinkConfigurationException(
+                $"SPOT node '{spotNode.SpotNodeName}' enables router capability but does not define a router bind endpoint.");
+        }
+
         foreach (var attachedChannelClient in spotNode.AttachedChannelClients.Values)
         {
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
@@ -32,8 +38,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
     private static void ValidateSpotNodeWithoutMesh(ZLinkSpotNodeRegistration spotNode)
     {
-        if (spotNode.Router is null
-            && spotNode.PubSub is null
+        if (spotNode.PubSub is null
             && spotNode.AttachedChannelClients.Count == 0
             && spotNode.AttachedSpotPublisherClients.Count == 0
             && spotNode.AcceptedSpotRouteChannels.Count == 0)
@@ -42,7 +47,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
 
         throw new ZLinkConfigurationException(
-            $"SPOT node '{spotNode.SpotNodeName}' requires AddSpotMesh(...) or UseSpotDiscovery(...) for mesh capabilities.");
+            $"SPOT node '{spotNode.SpotNodeName}' requires AddSpotMesh(...) for mesh capabilities.");
     }
 
     private static void ValidateAcceptedSpotRouteChannel(

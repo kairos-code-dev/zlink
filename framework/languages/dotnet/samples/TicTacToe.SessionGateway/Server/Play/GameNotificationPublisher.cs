@@ -22,7 +22,7 @@ internal sealed class GameNotificationPublisher
     {
         return gameEvent switch
         {
-            { Kind: TicTacToeGameEventKind.OpponentJoined } joined => joined.Recipient.Context.SessionProxy
+            { Kind: TicTacToeGameEventKind.OpponentJoined } joined => joined.Recipient.Context.BoundSession
                 .Send(
                     new OpponentJoinedNotify(
                         joined.Snapshot.MatchId,
@@ -33,7 +33,7 @@ internal sealed class GameNotificationPublisher
                         joined.Snapshot.ToContract()))
                 .PacketName(SampleNames.OpponentJoinedPacket)
                 .Submit(cancellationToken),
-            { Kind: TicTacToeGameEventKind.TurnChanged } turn => turn.Recipient.Context.SessionProxy
+            { Kind: TicTacToeGameEventKind.TurnChanged } turn => turn.Recipient.Context.BoundSession
                 .Send(
                     new TurnChangedNotify(
                         turn.Snapshot.MatchId,
@@ -41,7 +41,7 @@ internal sealed class GameNotificationPublisher
                         turn.Snapshot.ToContract()))
                 .PacketName(SampleNames.TurnChangedPacket)
                 .Submit(cancellationToken),
-            { Kind: TicTacToeGameEventKind.GameEnded } ended => ended.Recipient.Context.SessionProxy
+            { Kind: TicTacToeGameEventKind.GameEnded } ended => ended.Recipient.Context.BoundSession
                 .Send(
                     new GameEndedNotify(
                         ended.Snapshot.MatchId,

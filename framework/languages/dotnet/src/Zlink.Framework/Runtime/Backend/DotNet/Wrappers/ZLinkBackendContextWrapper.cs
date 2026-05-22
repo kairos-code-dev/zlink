@@ -5,5 +5,7 @@ internal sealed class ZLinkBackendContextWrapper(Context nativeContext) : IZLink
 {
     public object NativeInstance => nativeContext;
 
+    public void Shutdown() => nativeContext.Shutdown();
+
     public ValueTask DisposeAsync() => nativeContext.DisposeAsync();
 }

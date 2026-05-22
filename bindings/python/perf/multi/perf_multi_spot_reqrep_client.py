@@ -9,6 +9,7 @@ from perf_multi_common import (
     TOPIC,
     apply_multi_auto_hwm_msg_unit,
     apply_multi_spot_node_admission,
+    benchmark_endpoint,
     bind_spot_node_endpoint,
     benchmark_run_id,
     configure_multi_tls_client,
@@ -125,6 +126,9 @@ def main(argv=None):
         control_node.connect_peer(args.control_endpoint)
         print(f"CLIENT_CONTROL_ENDPOINT,{control_endpoint}", flush=True)
 
+        data_node.set_router_bind_endpoint(
+            benchmark_endpoint(args.transport, "multi-spot-reqrep-client-router")
+        )
         data_endpoint_local = bind_spot_node_endpoint(
             data_node, args.transport, "multi-spot-reqrep-client"
         )

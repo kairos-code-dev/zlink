@@ -28,62 +28,6 @@ public sealed class ProtocolTests : StreamTestSupport
     }
 
     [Fact]
-    public void SessionActorDispatch_Uses_Multipart_Routed_Actor_Dispatch()
-    {
-        var routeHeader = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Command,
-            "gateway",
-            ZLinkInternalPacketNames.ActorDispatch,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            "correlation",
-            null,
-            null,
-            null,
-            null);
-        var streamHeader = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Send,
-            ZlinkStreamCodec.Json,
-            ZlinkStreamHeaderFlags.HasMetadata,
-            null,
-            "relay.echo",
-            ZlinkStreamMetadata.Empty.With("trace-id", "trace-1"));
-        var payloadParts = new[]
-        {
-            ZLinkEnvelopeCodec.EncodePart(new ZLinkActorDispatchMetadata(
-                "player-1",
-                "player",
-                "0101",
-                "binding-token")),
-            Message.FromBytes(ZLinkStreamProtocolDefaults.EncodeHeader(streamHeader).Span),
-            Message.FromString("{\"value\":\"ping\"}")
-        };
-        var parts = new Message[payloadParts.Length + 1];
-        parts[0] = ZLinkEnvelopeCodec.EncodeHeader(routeHeader);
-        Array.Copy(payloadParts, 0, parts, 1, payloadParts.Length);
-
-        try
-        {
-            Assert.Equal(4, parts.Length);
-            Assert.Equal(routeHeader, ZLinkEnvelopeCodec.DecodeHeader(parts));
-            Assert.Equal(new ZLinkActorDispatchMetadata(
-                    "player-1",
-                    "player",
-                    "0101",
-                    "binding-token"),
-                ZLinkEnvelopeCodec.DecodePart<ZLinkActorDispatchMetadata>(parts[1]));
-            Assert.Equal("relay.echo", ZLinkStreamProtocolDefaults.DecodeHeader(parts[2].AsReadOnlyMemory()).Name);
-            Assert.Equal("{\"value\":\"ping\"}", Encoding.UTF8.GetString(parts[3].AsReadOnlySpan()));
-            Assert.Null(typeof(ZLinkEnvelopeCodec).GetMethod(
-                "Encode",
-                BindingFlags.Public | BindingFlags.Static));
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
-        }
-    }
-
-    [Fact]
     public void ActorPacketRegistry_DoesNot_Resolve_Request_To_Send_Handler()
     {
         var registry = new ZLinkActorPacketRegistry();

@@ -160,6 +160,18 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_close_bound_session (
   void *node_,
   const zlink_actor_ref_t *actor_,
   uint32_t timeout_ms_);
+
+/** @brief Set the routed ingress endpoint for this SPOT node.
+ *
+ * This endpoint is used by the node's internal router socket. It is
+ * independent from zlink_spot_node_bind(), which binds the mesh data endpoint.
+ *
+ * Call before zlink_spot_node_bind(). Passing NULL or an empty string is
+ * invalid. Returns EBUSY after the mesh endpoint has already been bound.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_router_bind_endpoint (
+  void *node, const char *endpoint);
+
 /** @brief Bind the SPOT node to an endpoint.
  *
  * Supports port 0 for ephemeral port allocation (e.g. "tcp://127.0.0.1:0").

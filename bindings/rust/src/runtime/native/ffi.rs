@@ -977,6 +977,10 @@ unsafe extern "C" {
         handler: zlink_stream_packet_handler_fn,
         userdata: *mut c_void,
     ) -> c_int;
+    pub fn zlink_stream_attach_actor_gateway(
+        stream: *mut c_void,
+        node: *mut c_void,
+    ) -> c_int;
     pub fn zlink_stream_bind_actor(
         stream: *mut c_void,
         session_rid: *const zlink_routing_id_t,
@@ -1398,6 +1402,10 @@ unsafe extern "C" {
         timeout_ms: u32,
     ) -> zlink_request_result_t;
     pub fn zlink_spot_node_bind(node: *mut c_void, endpoint: *const c_char) -> c_int;
+    pub fn zlink_spot_node_set_router_bind_endpoint(
+        node: *mut c_void,
+        endpoint: *const c_char,
+    ) -> c_int;
     pub fn zlink_spot_node_connect_peer(node: *mut c_void, peer_endpoint: *const c_char) -> c_int;
     pub fn zlink_spot_node_disconnect_peer(
         node: *mut c_void,

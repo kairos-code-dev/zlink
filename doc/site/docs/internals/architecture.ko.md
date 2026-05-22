@@ -261,14 +261,14 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 +-------------------------------------------------------------------------+
 |                           PUBLIC API LAYER                              |
 |                                                                         |
-|   src/api/zlink.cpp                                                     |
+|   src/api/core/zlink.cpp                                                     |
 |   - C API entry points (zlink_socket, zlink_send, zlink_recv, etc.)     |
 |   - Error handling and parameter validation                             |
 |                                                                         |
 +-------------------------------------------------------------------------+
 |                          SOCKET LOGIC LAYER                             |
 |                                                                         |
-|   src/sockets/                                                          |
+|   src/runtime/sockets/                                                          |
 |   - socket_base_t: Base class for all sockets                           |
 |   - pair_t, dealer_t, router_t, pub_t, sub_t, xpub_t, xsub_t, stream_t  |
 |   - Routing strategies: lb_t(RR), fq_t(Fair Queue), dist_t(Fan-out)     |
@@ -278,7 +278,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 +-------------------------------------------------------------------------+
 |                          ENGINE LAYER (ASIO)                            |
 |                                                                         |
-|   src/engine/asio/                                                      |
+|   src/runtime/engine/asio/                                                      |
 |   - asio_engine_t      : Proactor pattern-based async I/O engine (base) |
 |   - asio_zmp_engine_t  : ZMP protocol (8B fixed header + handshake)     |
 |   - asio_raw_engine_t  : RAW protocol (4B Length-Prefix, STREAM only)   |
@@ -288,7 +288,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 |                                                                         |
 |   +---------------------------+    +---------------------------+        |
 |   |    ZMP v1.0 Protocol      |    |     RAW Protocol          |        |
-|   |    src/protocol/zmp_*     |    |     src/protocol/raw_*    |        |
+|   |    src/runtime/protocol/zmp_*     |    |     src/runtime/protocol/raw_*    |        |
 |   |    - 8-byte fixed header  |    |     - 4-byte length prefix|        |
 |   |    - Handshake support    |    |     - No handshake        |        |
 |   +---------------------------+    +---------------------------+        |
@@ -296,7 +296,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 +-------------------------------------------------------------------------+
 |                          TRANSPORT LAYER                                |
 |                                                                         |
-|   src/transports/                                                       |
+|   src/runtime/transports/                                                       |
 |   +---------+  +---------+  +---------+  +----------+                   |
 |   |   TCP   |  |   IPC   |  |   WS    |  | TLS/WSS  |                   |
 |   |  tcp_   |  |  ipc_   |  |  ws_    |  |  ssl_    |                   |

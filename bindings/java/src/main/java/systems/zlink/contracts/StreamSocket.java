@@ -17,6 +17,7 @@ import systems.zlink.contracts.service.spot.ActorUnbindOp;
 import systems.zlink.contracts.service.spot.ReplyHandler;
 import systems.zlink.contracts.service.spot.SendOp;
 import systems.zlink.contracts.service.spot.SendSubmitOp;
+import systems.zlink.contracts.service.spot.SpotNode;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.time.Duration;
@@ -95,6 +96,15 @@ public final class StreamSocket extends Socket {
         super.attachStreamPacket(handler);
     }
     void detachStream() { super.detachStream(); }
+    public void attachActorGateway(SpotNode node) {
+        Objects.requireNonNull(node, "node");
+        int rc = Native.streamAttachActorGateway(handle(),
+          InternalAccess.spotNodeHandle(node));
+        if (rc != 0) {
+            throw new ConfigException(ConfigResult.fromValue(rc));
+        }
+    }
+
     public ActorBindOp bindActor(RoutingId sessionRid, ActorRef actor) {
         Objects.requireNonNull(sessionRid, "sessionRid");
         Objects.requireNonNull(actor, "actor");

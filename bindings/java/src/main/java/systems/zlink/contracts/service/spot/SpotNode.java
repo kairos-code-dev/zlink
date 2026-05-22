@@ -103,6 +103,17 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
+    /** Sets the routed ingress endpoint before binding the mesh endpoint. */
+    public void setRouterBindEndpoint(String endpoint) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeSetRouterBindEndpoint(
+              handle, NativeHelpers.toCString(arena, endpoint));
+            if (rc != 0)
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_spot_node_set_router_bind_endpoint");
+        }
+    }
+
     /** Connects one peer spot node endpoint. */
     public void connectPeer(String peerEndpoint) {
         try (Arena arena = Arena.ofConfined()) {

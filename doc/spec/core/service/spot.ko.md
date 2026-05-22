@@ -276,6 +276,9 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 ### 토폴로지와 discovery
 
 ```c
+zlink_config_result_t zlink_spot_node_set_router_bind_endpoint(
+  void *node,
+  const char *endpoint);
 zlink_bind_result_t zlink_spot_node_bind(void *node, const char *endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
@@ -288,7 +291,19 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
-- `zlink_spot_node_bind()`는 node endpoint를 바인딩한다.
+- `zlink_spot_node_set_router_bind_endpoint()`는 routed ingress에 사용할
+  내부 router socket endpoint를 설정한다.
+- `zlink_spot_node_set_router_bind_endpoint()`는 `zlink_spot_node_bind()`보다
+  먼저 호출해야 한다. `node == NULL`이면 `ZLINK_CONFIG_INVALID_HANDLE`과
+  `EFAULT`로 실패한다. `endpoint == NULL` 또는 빈 문자열이면
+  `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`로 실패한다. 이미
+  `zlink_spot_node_bind()`가 성공한 뒤에는 `ZLINK_CONFIG_INVALID_STATE`와
+  `EBUSY`로 실패한다.
+- `zlink_spot_node_bind()`는 mesh data endpoint를 바인딩한다. routed ingress
+  endpoint를 자동으로 만들지 않는다.
+- routed API를 원격 peer에서 받을 node는 `zlink_spot_node_bind()` 전에
+  `zlink_spot_node_set_router_bind_endpoint()`로 routed ingress endpoint를
+  명시해야 한다.
 - `zlink_spot_node_connect_peer()`와 `zlink_spot_node_disconnect_peer()`는
   endpoint를 알고 있는 수동 mesh 연결에 쓴다.
 - `zlink_spot_node_disconnect_peer_rid()`는 target node routing id를 기준으로
@@ -861,7 +876,8 @@ lobby에서 시작해야 하는 Actor는 application이 해당 SpotNode에서
    이동한다.
 3. user Spot에서 나오면 `zlink_spot_node_actor_leave_spot()`으로 같은 node의 Entry
    Spot으로 돌아간다.
-4. join completion이 반환한 최종 Actor ref를 session attach나 후속 API에 사용한다.
+4. join completion이 반환한 최종 Actor ref를 후속 Actor API에 사용한다. 기존 logical
+   session binding은 join 성공 뒤 별도 reattach 없이 새 위치를 따른다.
 
 remote Actor destroy는 `zlink_spot_node_actor_destroy()`로 ref 기반 요청을 보낸다.
 target node에 도달할 수 없거나 checked ref generation이 맞지 않으면 Actor slot을
@@ -923,8 +939,7 @@ zlink_submit_result_t zlink_spot_actor_join_reply(
   accept/reject 결과는 `zlink_actor_join_handler_fn` completion으로 전달한다. completion은
   최종 Actor ref(remote join이면 target node의 ref)와 joined Spot rid를 포함한다.
 - `handler == NULL`이면 invalid argument 계열 submit 실패다. join 성공 뒤 caller가
-  최종 Actor ref를 받아야 session attach나 후속 위치 이동을 정확히 수행할 수 있기
-  때문이다.
+  최종 Actor ref를 받아야 후속 Actor API나 위치 이동을 정확히 수행할 수 있기 때문이다.
 - `timeout_ms`는 submit 성공 뒤 join reply와 remote handoff가 완료되기까지의 operation
   timeout이다. `timeout_ms == 0`이면 operation timeout을 설치하지 않는다. 이는 submit
   nonblocking 지시가 아니다. submit 단계의 즉시 실패 여부는 `flags`의 `ZLINK_DONTWAIT`가
@@ -1302,9 +1317,8 @@ zlink_handler_result_t zlink_spot_actor_lifecycle_handler(
   두 callback이 실제로 어느 순서로 실행되는지는 공개 계약으로 보장하지 않는다.
 - join completion handler는 state commit과 active route 갱신이 끝난 뒤 호출된다.
   lifecycle callback이 이미 실행되었는지는 보장하지 않는다.
-- application state machine이 join 완료나 session attach 순서를 결정할 때는 join
-  completion handler와 반환된 최종 Actor ref를 기준으로 삼아야 한다. lifecycle
-  callback은 관측용이다.
+- application state machine이 join 완료 순서를 결정할 때는 join completion handler와
+  반환된 최종 Actor ref를 기준으로 삼아야 한다. lifecycle callback은 관측용이다.
 - `info` pointer는 callback 호출 중에만 유효하므로 필요한 값은 callback 안에서
   복사한다.
 - lifecycle callback 안에서 같은 Actor에 대해 join, leave, destroy를 재진입 호출하는

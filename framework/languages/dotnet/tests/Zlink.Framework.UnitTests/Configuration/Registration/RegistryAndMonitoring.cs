@@ -89,7 +89,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                 dispatch.SpotDispatchMode = ZLinkDispatchMode.Dynamic;
             });
             options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
-            options.UseSpotDiscovery("game.stage", discovery => discovery.Add("tcp://127.0.0.1:5551"));
+
 
             options.AddClientServerChannel("profile", channel =>
             {
@@ -107,7 +107,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
             options.AddStreamNode("stream.node", stream =>
             {
                 stream.Bind("tcp://127.0.0.1:9100");
-                stream.AddHeaderSession<TestHeaderSession>();
+                stream.RegisterSession<TestHeaderSession>();
             });
 
             options.AddRouteMeshChannel("gateway", routed =>
@@ -115,11 +115,15 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                 routed.Bind("tcp://127.0.0.1:7301");
             });
 
-            options.AddSpotNode("stage-node", spot =>
+            options.AddSpotMesh("game.stage", mesh =>
+            {
+                mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                mesh.AddNode("stage-node", spot =>
             {
                 spot.Bind("tcp://127.0.0.1:9000");
                 spot.AddSpotFactory<TestSpot>("stage");
                 spot.AttachClientServerChannelClient("profile");
+            });
             });
         });
 

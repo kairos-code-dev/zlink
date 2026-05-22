@@ -1284,6 +1284,15 @@ impl SpotNode {
         check_bind_rc(unsafe { ffi::zlink_spot_node_bind(self.handle, c.as_ptr()) })
     }
 
+    pub fn set_router_bind_endpoint(&self, endpoint: &str) -> Result<(), ConfigError> {
+        let c = CString::new(endpoint).map_err(|_| {
+            ConfigError::new(crate::error::ConfigResult::InvalidArgument, libc::EINVAL)
+        })?;
+        check_config_rc(unsafe {
+            ffi::zlink_spot_node_set_router_bind_endpoint(self.handle, c.as_ptr())
+        })
+    }
+
     pub fn last_endpoint(&self) -> Result<String, ConfigError> {
         Ok(self.status_snapshot()?.local_endpoint)
     }

@@ -51,6 +51,8 @@ func runMultiSpotReqRepServer(cfg multiConfig) {
 	perfcommon.Must(perfcommon.ConfigureTLSServer(replierNode, cfg.transport))
 	perfcommon.Must(replierNode.SetRoutingID(multiSpotReqRepNodeRID))
 	dataEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep")
+	dataRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-router")
+	perfcommon.Must(replierNode.SetRouterBindEndpoint(dataRouterEndpoint))
 	perfcommon.Must(replierNode.Bind(dataEndpoint))
 
 	replier, err := replierNode.Spot()
@@ -196,6 +198,8 @@ func runMultiSpotReqRepClientRole(cfg multiConfig, endpoint string) perfcommon.R
 	flushControlLine("CLIENT_CONTROL_ENDPOINT,%s", clientControlEndpoint)
 
 	localEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-client")
+	localRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-client-router")
+	perfcommon.Must(node.SetRouterBindEndpoint(localRouterEndpoint))
 	perfcommon.Must(node.Bind(localEndpoint))
 	perfcommon.Must(node.ConnectPeer(dataEndpoint))
 

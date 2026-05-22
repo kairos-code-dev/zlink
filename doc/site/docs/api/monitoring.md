@@ -100,6 +100,8 @@ typedef struct zlink_monitor_snapshot_t
     uint64_t auto_hwm_effective_message_bytes;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
@@ -125,6 +127,8 @@ typedef struct zlink_monitor_snapshot_t
 | `auto_hwm_effective_message_bytes` | Effective message unit in bytes used by the current policy calculation. |
 | `auto_hwm_applied_sndhwm` | Currently applied send HWM on the socket. |
 | `auto_hwm_applied_rcvhwm` | Currently applied recv HWM on the socket. |
+| `auto_hwm_effective_sndbuf` | Currently applied send buffer size in bytes. |
+| `auto_hwm_effective_rcvbuf` | Currently applied recv buffer size in bytes. |
 | `auto_hwm_last_recalc_ms` | Timestamp of the most recent auto-HWM recalculation in milliseconds. |
 | `auto_hwm_last_recalc_reason` | Enum value that records why the latest recalculation ran. |
 | `auto_hwm_send_blocked_ratio_ppm` | Parts-per-million ratio of send attempts that were blocked by backpressure. |
@@ -159,7 +163,7 @@ typedef enum zlink_monitor_source_kind_t
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` field is populated. |
 | `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | Auto-HWM role, profile, unit-budget, message-unit, and applied-HWM fields may be populated. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | Compatibility flag kept for ABI stability. Current snapshots do not set it because transport-buffer fields are no longer part of `zlink_monitor_snapshot_t`. |
+| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | `auto_hwm_effective_sndbuf` and `auto_hwm_effective_rcvbuf` fields are populated. |
 
 ### Auto-HWM Recalculation Reason
 
@@ -189,7 +193,7 @@ bitwise OR.
 | `ZLINK_EVENT_ACCEPT_FAILED` | `0x0040` | Incoming connection accept failed. |
 | `ZLINK_EVENT_CLOSED` | `0x0080` | Connection closed normally. |
 | `ZLINK_EVENT_CLOSE_FAILED` | `0x0100` | Connection close failed. |
-| `ZLINK_EVENT_DISCONNECTED` | `0x0200` | Session disconnected. The event value carries a `ZLINK_DISCONNECT_*` reason. |
+| `ZLINK_EVENT_DISCONNECTED` | `0x0200` | Session disconnected. The event value carries a `ZLINK_DISCONNECT_REASON_*` reason. |
 | `ZLINK_EVENT_MONITOR_STOPPED` | `0x0400` | Monitor has been stopped and will produce no more events. |
 | `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | Handshake failed with no further detail available. |
 | `ZLINK_EVENT_CONNECTION_READY` | `0x1000` | Ready edge for raw sockets. Messaging may start immediately after this event on supported raw socket families. |
@@ -204,10 +208,10 @@ Values carried in `zlink_monitor_event_t.value` when the event is `ZLINK_EVENT_D
 
 | Constant | Value | Description |
 |---|---|---|
-| `ZLINK_DISCONNECT_UNKNOWN` | `0` | Reason could not be determined. |
-| `ZLINK_DISCONNECT_HANDSHAKE_FAILED` | `3` | Disconnect due to a handshake failure. |
-| `ZLINK_DISCONNECT_TRANSPORT_ERROR` | `4` | Disconnect due to a transport-layer error. |
-| `ZLINK_DISCONNECT_CTX_TERM` | `5` | Disconnect caused by context termination. |
+| `ZLINK_DISCONNECT_REASON_UNKNOWN` | `0` | Reason could not be determined. |
+| `ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED` | `3` | Disconnect due to a handshake failure. |
+| `ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR` | `4` | Disconnect due to a transport-layer error. |
+| `ZLINK_DISCONNECT_REASON_CTX_TERM` | `5` | Disconnect caused by context termination. |
 
 ### Protocol Errors
 
@@ -349,7 +353,15 @@ query APIs rather than a separate public event stream.
 - SpotNode: `zlink_spot_node_status_snapshot()`,
   `zlink_spot_node_peers_snapshot()`,
   `zlink_spot_node_peers_query()`,
-  `zlink_spot_node_subjects_snapshot()`
+  `zlink_spot_node_subjects_snapshot()`,
+  `zlink_spot_node_internal_sockets_snapshot()`,
+  `zlink_spot_node_spots_snapshot()`,
+  `zlink_spot_node_actors_snapshot()`,
+  `zlink_spot_actors_snapshot()`
+- Registry query client: `zlink_registry_query_client_new()`,
+  `zlink_registry_query_client_connect()`,
+  `zlink_registry_query_snapshot()`,
+  `zlink_registry_query_destroy()`
 
 Callers that need transition detection compare successive snapshots or query
 results in application code. This keeps the public contract aligned with

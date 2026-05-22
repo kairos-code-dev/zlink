@@ -211,6 +211,12 @@ bool initialize_reqrep_server_session(
         return false;
     }
 
+    if (perf_set_spot_node_router_endpoint_raw(
+          session->node, make_endpoint(transport, token + "-router"))
+        != 0) {
+        perf_multi_spot_control::destroy_server_session(session);
+        return false;
+    }
     session->data_endpoint =
       perf_multi_spot_control::bind_data_endpoint(session->node, transport, token);
     if (session->data_endpoint.empty()) {

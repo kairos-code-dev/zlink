@@ -128,7 +128,7 @@ builder.Services.AddZLinkFramework(options =>
         mesh.AddNode("stage-node", node =>
         {
             node.Bind("tcp://0.0.0.0:9000");
-            node.EnableRouter();
+            node.EnableRouter(router => router.Bind("tcp://0.0.0.0:9001"));
             node.EnablePubSub();
             node.AttachClientServerChannelClient("orders");
             node.AttachSpotMeshPublisherClient("game.stage");
@@ -167,18 +167,16 @@ builder.Services.AddZLinkFramework(options =>
 한 앱 안에서 서로 다른 channel mesh 를 따로 등록할 수도 있고, 한 mesh 안에 같은
 channel 을 공유하는 여러 노드를 함께 둘 수도 있다.
 
-mesh 로 묶지 않고 discovery 없이 단일 노드만 띄우는 경우라면
-`options.AddSpotNode(...)` 표면을 직접 쓸 수 있다. 다만 이 standalone 등록은
-mesh discovery, `EnableRouter`, channel attach 같은 mesh 기능과 함께 사용할 수
-없다는 점에 주의한다. 노드가 mesh 기능을 쓰면서 standalone 등록을 시도하면,
-`RegistrationValidator` 가 시작 시점에 `AddSpotMesh` 등록을 강제하는 오류로
-막아 준다.
+discovery endpoint 가 없는 로컬 단일 노드도 `AddSpotMesh(...)` 안에서 표현한다.
+이 경우 `mesh.UseDiscovery(_ => { })` 로 mesh 소유권만 닫고, 필요한 노드를
+`mesh.AddNode(...)` 로 등록한다. public 등록 표면은 항상 `AddSpotMesh(...)` 가
+SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 
 이 등록 함수들은 각각 다음과 같이 역할이 나뉜다.
 
-- `EnableRouter()`
-  - local `SpotNode.router` 경로를 켠다. 같은 channel에 속한 다른 `SpotNode`와
-    routed packet을 주고받는 축이다.
+- `EnableRouter(router => router.Bind(endpoint))`
+  - local `SpotNode.router` 경로를 켜고 routed ingress endpoint를 명시한다.
+    같은 channel에 속한 다른 `SpotNode`와 routed packet을 주고받는 축이다.
 - `EnablePubSub()`
   - 현재 SPOT channel 안의 publish/subscribe 축을 켠다. local spot 안에서
     `IZLinkSpotClient.Publish(...)`를 사용하려면 이 capability가 필요하다.
@@ -213,7 +211,8 @@ mesh discovery, `EnableRouter`, channel attach 같은 mesh 기능과 함께 사�
   않는다.
 - `AddSpotMesh("game.stage", mesh => { ... })`가 이 노드의 mesh 범위를 정한다.
 - 같은 `SpotNode`에 active SPOT channel view는 하나만 둔다.
-- `EnableRouter()`와 `EnablePubSub()`는 별개의 capability다.
+- `EnableRouter(router => router.Bind(endpoint))`와 `EnablePubSub()`는 별개의
+  capability다.
 - 다른 channel에 대한 send/request는 attach된 client가 담당한다.
 - 외부 노드에서 SPOT channel로 publish하려면 별도의 spot publisher client를 쓴다.
 - 따라서 SPOT 등록 시점에도 channel client attach와 spot publisher client attach를
@@ -1073,9 +1072,11 @@ channel view 를 공급한다. 그 view 가 같은 channel 에 속한 peer mesh 
 등록했다고 하자. 이 경우 그 mesh 에 포함된 `SpotNode` 는 `game.stage` channel
 mesh 안에서 동작한다고 이해하면 된다.
 
-mesh 등록을 쓰지 않고 옛 방식으로 `UseSpotDiscovery(channelName, ...)` 와
-`AddSpotNode(...)` 를 따로 호출하는 패턴이 코드에 남아 있을 수 있다. 다만
-sample 코드는 mesh 묶음 형태를 권장한다.
+SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경로는
+제공하지 않는다. SPOT network 를 구성하는 모든 node 는
+`AddSpotMesh(...)` 안에서 `mesh.AddNode(...)` 로 등록한다. STREAM
+ActorGateway 는 별도 node builder 가 아니라, stream 이 router capability 를
+켠 SpotNode 를 `AttachActorGateway(spotNodeName)` 로 참조하는 방식으로 연결한다.
 
 ## 10. 결정된 기준
 
@@ -1110,7 +1111,7 @@ metadata로만 남으면 안 되고, 실제 transport로 사용할 router-capabl
 다음 구성을 둔다.
 
 ```csharp
-node.EnableRouter();
+node.EnableRouter(router => router.Bind("tcp://0.0.0.0:9001"));
 node.AcceptSpotRoutesFromChannel("api");
 ```
 

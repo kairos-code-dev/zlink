@@ -214,6 +214,7 @@ prepare_core_runtime() {
     echo "Run: cmake --build core/build" >&2
     exit 1
   fi
+  echo "Perf runtime libzlink: ${CORE_LIB}"
   export ZLINK_LIBRARY_PATH="${CORE_LIB}"
   sync_native_dirs "${PROJECT_DIR}/bin"
 }
@@ -1550,10 +1551,8 @@ record_failure() {
   print_line "    Testing ${transport} | ${size}B:"
   emit_failure_row "${size}"
   if [[ "${PERF_FAIL_FAST:-0}" == "1" ]]; then
-    print_line "    Testing ${transport}: Done"
-    print_failures_section "${FAILURES_FILE}"
-    SHOW_TOTAL_TIME=1
-    exit 1
+    stop_early=1
+    status=1
   fi
 }
 
@@ -1822,6 +1821,7 @@ print_effective_options() {
   print_line "- msg_sizes: ${EFFECTIVE_MSG_SIZES_DISPLAY}"
   print_line "- routed_echo_borrow_payload: ${ROUTED_ECHO_BORROW_PAYLOAD}"
   print_line "- duration_seconds: ${DURATION}"
+  print_line "- fail_fast: ${PERF_FAIL_FAST:-0}"
   print_line "- clients: ${EFFECTIVE_CLIENTS_DISPLAY}"
   print_line "- default_clients: 100"
   print_line "- default_stream_clients: 10000"
@@ -1863,8 +1863,15 @@ failure_count=0
 success_count=0
 unsupported_count=0
 skip_count=0
+stop_early=0
 for (( run_index=1; run_index<=RUNS; run_index++ )); do
+  if [[ "${stop_early}" -eq 1 ]]; then
+    break
+  fi
   for pattern_index in "${!patterns[@]}"; do
+    if [[ "${stop_early}" -eq 1 ]]; then
+      break
+    fi
     pattern="${patterns[pattern_index]}"
     pattern="${pattern//[[:space:]]/}"
     [[ -n "${pattern}" ]] || continue
@@ -1897,6 +1904,9 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
     pattern_auto_hwm_logs=()
 
     for transport_index in "${!transports[@]}"; do
+      if [[ "${stop_early}" -eq 1 ]]; then
+        break
+      fi
       transport="${transports[transport_index]}"
       transport="${transport//[[:space:]]/}"
       [[ -n "${transport}" ]] || continue
@@ -1911,6 +1921,9 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
       print_line "      |----------|--------------------|----------------|---------------|---------------|---------------|"
 
       for size in "${msg_sizes[@]}"; do
+        if [[ "${stop_early}" -eq 1 ]]; then
+          break
+        fi
         size="${size//[[:space:]]/}"
         [[ -n "${size}" ]] || continue
         if [[ "${CASE_COOLDOWN_MS}" -gt 0 ]]; then
@@ -2350,7 +2363,8 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
       done
 
       print_line "    Testing ${transport}: Done"
-      if (( transport_index + 1 < ${#transports[@]} && TRANSPORT_TRANSITION_MS > 0 )); then
+      if [[ "${stop_early}" -ne 1 ]] \
+          && (( transport_index + 1 < ${#transports[@]} && TRANSPORT_TRANSITION_MS > 0 )); then
         print_line "    [transport cooldown ${TRANSPORT_TRANSITION_MS}ms]"
         sleep_ms "${TRANSPORT_TRANSITION_MS}"
       fi
@@ -2361,7 +2375,8 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
       print_line "${auto_hwm_line}"
     done < <(emit_auto_hwm_detail_table "${pattern}" "${pattern_auto_hwm_logs[@]}")
 
-    if (( pattern_index + 1 < ${#patterns[@]} && PATTERN_TRANSITION_MS > 0 )); then
+    if [[ "${stop_early}" -ne 1 ]] \
+        && (( pattern_index + 1 < ${#patterns[@]} && PATTERN_TRANSITION_MS > 0 )); then
       print_line "[pattern cooldown ${PATTERN_TRANSITION_MS}ms]"
       sleep_ms "${PATTERN_TRANSITION_MS}"
     fi
@@ -2416,7 +2431,7 @@ else
   status=1
 fi
 print_completion_section "${completion_status}" "${expected_result_lines}" "${result_lines}" \
-  "${success_count}" "${unsupported_count}" "${skip_count}" "${failure_count}"
+  "${success_count}" "${unsupported_count}" "${skip_count}" "${failure_count}" "${stop_early}"
 # ITEM 1: C multi "## Failures" lines are
 #   - <PATTERN> current <transport> <size>B: <reason>
 # sorted by (pattern, transport, size, reason), unique. Match that exactly

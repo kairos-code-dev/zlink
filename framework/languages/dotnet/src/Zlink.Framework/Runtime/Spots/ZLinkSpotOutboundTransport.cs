@@ -7,7 +7,8 @@ internal sealed class ZLinkSpotOutboundTransport(
     IZLinkBackendSpot nativeSpot,
     TimeSpan defaultTimeout,
     TimeSpan? sendTimeout,
-    CancellationToken stopToken) : IAsyncDisposable
+    CancellationToken stopToken,
+    Func<string, ZLinkAsyncSubmitter?>? channelSubmitter = null) : IAsyncDisposable
 {
     private readonly ZLinkAsyncSubmitter _submitter = new(
         nativeSpot.OnSendReady,
@@ -21,7 +22,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         CancellationToken cancellationToken)
     {
         var requestTimeout = timeout ?? defaultTimeout;
-        return await _submitter
+        return await ResolveSubmitter(channelName)
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 message,
                 (pending, complete, fail) => nativeSpot.RequestChannel(
@@ -46,7 +47,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         CancellationToken cancellationToken)
     {
         var requestTimeout = timeout ?? defaultTimeout;
-        return await _submitter
+        return await ResolveSubmitter(channelName)
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 parts,
                 (pending, complete, fail) => nativeSpot.RequestChannel(
@@ -69,7 +70,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         Message message,
         CancellationToken cancellationToken)
     {
-        return _submitter.SubmitAsync(
+        return ResolveSubmitter(channelName).SubmitAsync(
             message,
             pending => nativeSpot.SendChannel(channelName, pending, SendFlags.DontWait),
             cancellationToken);
@@ -80,7 +81,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return _submitter.SubmitAsync(
+        return ResolveSubmitter(channelName).SubmitAsync(
             parts,
             pending => nativeSpot.SendChannel(channelName, pending, SendFlags.DontWait),
             cancellationToken);
@@ -183,6 +184,11 @@ internal sealed class ZLinkSpotOutboundTransport(
     public ValueTask DisposeAsync()
     {
         return _submitter.DisposeAsync();
+    }
+
+    private ZLinkAsyncSubmitter ResolveSubmitter(string channelName)
+    {
+        return channelSubmitter?.Invoke(channelName) ?? _submitter;
     }
 
 }

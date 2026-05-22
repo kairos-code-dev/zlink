@@ -18,10 +18,14 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
     {
         var streamEndpoint = GetFreeTcpEndpoint();
         var sessionRouterEndpoint = GetFreeTcpEndpoint();
+        var sessionSpotEndpoint = GetFreeTcpEndpoint();
+        var sessionSpotRouterEndpoint = GetFreeTcpEndpoint();
         var playRouterEndpoint = GetFreeTcpEndpoint();
         var playSpotEndpoint = GetFreeTcpEndpoint();
-        var sessionRid = RoutingId.FromString("0101");
-        var playRid = RoutingId.FromString("0202");
+        var playSpotRouterEndpoint = GetFreeTcpEndpoint();
+        var sessionRid = RoutingId.Of($"remote-relay-session-{Guid.NewGuid():N}");
+        var playRid = RoutingId.Of($"remote-relay-play-{Guid.NewGuid():N}");
+        var actorId = "remote-relay-player-1";
         var proxyRecorder = new ActorDispatchRecorder();
         using var callbackCapture = CallbackExceptionCapture.Start();
 
@@ -39,38 +43,52 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
                     metadata.ForwardApplicationKey("trace-id");
                 });
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(playSpotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.Bind(playSpotRouterEndpoint);
+                        router.ConfigureRouting(routing => routing.RoutingId = playRid);
+                        router.UseManualConnections(connections => connections.Connect(sessionSpotRouterEndpoint));
+                    });
                 });
-                options.AddRouteMeshChannel("gateway", routed =>
-                {
-                    routed.Bind(playRouterEndpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = playRid);
-                    routed.UseManualConnections(connections => connections.Connect(sessionRouterEndpoint));
                 });
             });
         });
-        await playHost.Services.GetRequiredService<IZLinkActorManager>()
-            .GetOrCreateAsync("player-1", "player");
+        var actorManager = playHost.Services.GetRequiredService<IZLinkActorManager>();
+        await actorManager
+            .GetOrCreateAsync(actorId, "player");
+        var remoteAddress = await actorManager.GetRemoteAddressAsync(actorId, "player");
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new TestActorRemoteAddressSnapshot(new ZLinkActorRemoteAddress("gateway", playRid, 1)));
-            services.AddSingleton(new GatewaySessionRecorder());
+            services.AddSingleton(new GatewaySessionRecorder(actorId, remoteAddress));
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
-                options.AddRouteMeshChannel("gateway", routed =>
+                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    routed.Bind(sessionRouterEndpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = sessionRid);
-                    routed.UseManualConnections(connections => connections.Connect(playRouterEndpoint));
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
+                {
+                    spot.Bind(sessionSpotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.Bind(sessionSpotRouterEndpoint);
+                        router.ConfigureRouting(routing => routing.RoutingId = sessionRid);
+                        router.UseManualConnections(connections => connections.Connect(playSpotRouterEndpoint));
+                    });
+                });
                 });
                 options.AddStreamNode("client.stream", stream =>
                 {
                     stream.Bind(streamEndpoint);
-                    stream.AddHeaderSession<GatewayRelaySession>();
+                    stream.AttachActorGateway("actor-node");
+                    stream.RegisterSession<GatewayRelaySession>();
                 });
             });
         });
@@ -94,7 +112,9 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
 
             var relayReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(101));
             var relayBody = JsonSerializer.Deserialize<GatewayPong>(relayReply.Payload, JsonOptions);
-            Assert.Equal(ZlinkStreamMessageKind.Response, relayReply.Header.Kind);
+            Assert.True(
+                relayReply.Header.Kind == ZlinkStreamMessageKind.Response,
+                Encoding.UTF8.GetString(relayReply.Payload));
             Assert.Equal("play:from-client", relayBody?.Value);
             Assert.Equal(101UL, relayBody?.RequestSeq);
             Assert.Equal("relay.echo", proxyRecorder.LastPacketName);
@@ -103,39 +123,10 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
 
             var sessionActor = (GatewayActor)(await playHost.Services
                     .GetRequiredService<IZLinkActorManager>()
-                    .FindAsync("player-1")
+                    .FindAsync(actorId)
                 ?? throw new InvalidOperationException("Actor was not created."));
-            var sessionProxy = sessionActor.Context.SessionProxy;
-            var clientReplyTask = Task.Run(() =>
-            {
-                var request = ReceiveFrame(network);
-                Assert.Equal(ZlinkStreamMessageKind.Request, request.Header.Kind);
-                Assert.Equal("client.echo", request.Header.Name);
-                Assert.NotNull(request.Header.RequestSeq);
-                var ping = JsonSerializer.Deserialize<GatewayPing>(request.Payload, JsonOptions);
-                Assert.Equal("from-play", ping?.Value);
-                SendAll(network, BuildStreamPacketFrame(
-                    new ZlinkStreamHeader(
-                        ZlinkStreamMessageKind.Response,
-                        ZlinkStreamCodec.Json,
-                        ZlinkStreamHeaderFlags.HasRequestSeq,
-                        request.Header.RequestSeq,
-                        request.Header.Name,
-                        ZlinkStreamMetadata.Empty),
-                    JsonSerializer.SerializeToUtf8Bytes(
-                        new GatewayPong("client:from-play", request.Header.RequestSeq!.Value.Value),
-                        JsonOptions)));
-            });
-            var gatewayReply = await sessionProxy.Request(new GatewayPing("from-play"))
-                .PacketName("client.echo")
-                .Timeout(TimeSpan.FromSeconds(10))
-                .SubmitAsync<GatewayPong>();
-
-            await clientReplyTask;
-            Assert.Equal("client:from-play", gatewayReply.Value);
-            Assert.NotEqual(0UL, gatewayReply.RequestSeq);
-
-            await sessionProxy.Send(new GatewayPing("one-way-from-play"))
+            var boundSession = sessionActor.Context.BoundSession;
+            await boundSession.Send(new GatewayPing("one-way-from-play"))
                 .PacketName("client.notify")
                 .Submit();
             var clientPush = ReceiveFrame(network);
@@ -164,8 +155,11 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
 
             client.Dispose();
             await RetryAsync(
-                () => proxyRecorder.DisconnectedCount > 0 && callbackCapture.IsEmpty,
+                () => !playHost.Services.GetRequiredService<ZLinkFrameworkRuntime>()
+                        .TryGetActorBoundSession(actorId, out _)
+                    && callbackCapture.IsEmpty,
                 TimeSpan.FromSeconds(5));
+            Assert.Equal(0, proxyRecorder.DisconnectedCount);
             callbackCapture.ThrowIfAny();
         }
         finally

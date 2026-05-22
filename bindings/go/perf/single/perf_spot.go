@@ -138,7 +138,12 @@ func publishSingleSpotActive(
 }
 
 func useSingleSpotBytesPublish(transport string, msgSize int) bool {
-	return transport == "wss" && msgSize == 262144
+	// Large SPOT publish: reuse a single payload slice via the public
+	// Bytes(...) builder instead of allocating a fresh window message per
+	// send. The per-send buffer allocation dominates large-message cost and
+	// adds GC pressure; reuse matches C publish_metric_payload semantics
+	// (reused payload vector + zlink_msg_init_size + memcpy per send).
+	return msgSize >= 65536
 }
 
 // drainSingleSpotUntilStop drains the spot subscriber until a transient

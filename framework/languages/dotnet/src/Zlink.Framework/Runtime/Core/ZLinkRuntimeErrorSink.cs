@@ -13,7 +13,10 @@ internal sealed class ZLinkRuntimeErrorSink : IZLinkRuntimeErrorSink
         string taskName,
         Exception exception)
     {
-        _ = taskName;
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_FRAMEWORK_TASKS") == "1")
+        {
+            Console.Error.WriteLine($"[zlink-framework] task '{taskName}' failed: {exception}");
+        }
         ReportUnhandledCallbackException(exception);
     }
 

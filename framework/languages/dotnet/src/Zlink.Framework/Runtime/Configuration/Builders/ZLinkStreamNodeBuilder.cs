@@ -12,7 +12,17 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
         registration.BindEndpoint = endpoint;
     }
 
-    public void AddHeaderSession<TSession>()
+    public void AttachActorGateway(string spotNodeName)
+    {
+        if (string.IsNullOrWhiteSpace(spotNodeName))
+        {
+            throw new ZLinkConfigurationException("STREAM ActorGateway SpotNode name must not be empty.");
+        }
+
+        registration.ActorGatewaySpotNodeName = spotNodeName;
+    }
+
+    public void RegisterSession<TSession>()
         where TSession : class, IZLinkSession
     {
         if (registration.HeaderSessionType is not null)

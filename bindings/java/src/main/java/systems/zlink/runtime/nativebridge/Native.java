@@ -191,6 +191,10 @@ public final class Native {
             "zlink_stream_packet_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_STREAM_ATTACH_ACTOR_GATEWAY = downcall(
+            "zlink_stream_attach_actor_gateway",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_ATTACH_LEN32BE = downcall("zlink_stream_attach_len32be",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
@@ -820,6 +824,9 @@ public final class Native {
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_BIND = downcall("zlink_spot_node_bind",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_SET_ROUTER_BIND_ENDPOINT = downcall(
+            "zlink_spot_node_set_router_bind_endpoint",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_CONN_PEER = downcall("zlink_spot_node_connect_peer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -1554,6 +1561,17 @@ public final class Native {
               sessionRid, actor, handler, userdata, timeoutMs);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_stream_bind_actor failed", t);
+        }
+    }
+
+    public static int streamAttachActorGateway(MemorySegment stream,
+                                               MemorySegment node) {
+        try {
+            return (int) MH_STREAM_ATTACH_ACTOR_GATEWAY.invokeExact(stream,
+              node);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_stream_attach_actor_gateway failed", t);
         }
     }
 
@@ -3278,6 +3296,14 @@ public final class Native {
             return (int) MH_SPOT_NODE_BIND.invokeExact(node, ep);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_bind failed", t);
+        }
+    }
+
+    public static int spotNodeSetRouterBindEndpoint(MemorySegment node, MemorySegment ep) {
+        try {
+            return (int) MH_SPOT_NODE_SET_ROUTER_BIND_ENDPOINT.invokeExact(node, ep);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_set_router_bind_endpoint failed", t);
         }
     }
 

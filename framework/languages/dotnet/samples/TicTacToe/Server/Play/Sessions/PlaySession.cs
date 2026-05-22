@@ -27,10 +27,9 @@ sealed class PlaySession(
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         var actorId = _actorId;
-        var actor = _actor;
         _actorId = null;
         _actor = null;
         logger.LogInformation(
@@ -38,10 +37,8 @@ sealed class PlaySession(
             Context.SessionId,
             actorId ?? "(unauthenticated)");
 
-        if (actor is not null)
-        {
-            await actor.NotifyDisconnectedAsync(cancellationToken);
-        }
+        _ = cancellationToken;
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnErrorAsync(

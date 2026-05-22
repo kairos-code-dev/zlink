@@ -31,6 +31,7 @@ internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
             ;
         return new EnsurePlayerActorRes(
             request.ActorId,
+            SampleNames.PlayerActorType,
             new ActorRemoteAddressSnapshot(
                 remoteAddress.RouterChannelId,
                 remoteAddress.TargetNodeRid.ToBytes().ToArray(),

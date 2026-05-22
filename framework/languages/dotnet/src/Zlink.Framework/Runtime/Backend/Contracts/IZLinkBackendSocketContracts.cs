@@ -159,6 +159,8 @@ internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
 
     void DisconnectPeer(RoutingId routingId);
 
+    void AttachActorGateway(IZLinkBackendSpotNode node);
+
     ValueTask BindActorAsync(
         RoutingId sessionRid,
         ZLinkBackendActorRef actor,

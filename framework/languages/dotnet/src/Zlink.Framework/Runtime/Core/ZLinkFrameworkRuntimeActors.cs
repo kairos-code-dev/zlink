@@ -2,6 +2,8 @@ namespace Zlink.Framework.Runtime.Core;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
+    private static readonly ZLinkActorBoundSessionIndex BoundSessionIndex = new();
+
     internal async ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
         RoutingId spotRid,
         IZLinkActor actor,
@@ -97,43 +99,22 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
         => _actors.GetOrCreateActorState(actorId);
 
-    internal string ResolveDefaultRouterChannelId()
-    {
-        if (_registration.RouteChannels.Count != 1)
-        {
-            throw new InvalidOperationException("Exactly one routed channel is required for session actor dispatch.");
-        }
-
-        return _registration.RouteChannels.Keys.Single();
-    }
-
     internal ZLinkActorRemoteAddress ResolveLocalActorRemoteAddress(
         string actorId,
         string actorType)
     {
-        if (!TryGetCreatedActorState(actorId, actorType, out var state))
+        if (!TryGetCreatedActorState(actorId, actorType, out var state)
+            || state.NativeActorRef is not { } actorRef)
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' is not created on the local actor runtime.");
+                $"Actor '{actorId}' does not have a native Actor ref.");
         }
 
-        var routerChannelId = ResolveDefaultRouterChannelId();
         return new ZLinkActorRemoteAddress(
-            routerChannelId,
-            ResolveSessionRouterId(routerChannelId),
-            state.CurrentActorGeneration);
-    }
-
-    internal RoutingId ResolveSessionRouterId(string routerChannelId)
-    {
-        if (!_registration.RouteChannels.TryGetValue(routerChannelId, out var routed)
-            || routed.RoutingConfig.RoutingId.Size == 0)
-        {
-            throw new InvalidOperationException($"Route channel '{routerChannelId}' must configure a routing id.");
-        }
-
-        return routed.RoutingConfig.RoutingId;
+            string.Empty,
+            actorRef.NodeRid,
+            actorRef.Generation);
     }
 
     internal void BindSessionActor(
@@ -163,10 +144,11 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal void BindActorSession(
         string actorId,
-        RoutingId sessionRouterId,
+        RoutingId sessionRid,
         string bindingToken)
     {
-        GetOrCreateActorState(actorId).BindSession(sessionRouterId, bindingToken);
+        GetOrCreateActorState(actorId).BindSession(sessionRid, bindingToken);
+        BoundSessionIndex.Register(this, actorId, sessionRid, bindingToken);
     }
 
     internal void UnbindActorSession(
@@ -174,6 +156,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         string bindingToken)
     {
         GetOrCreateActorState(actorId).UnbindSession(bindingToken);
+        BoundSessionIndex.Unregister(this, actorId, bindingToken);
+    }
+
+    internal void CleanupActorSessionsForSession(RoutingId sessionRid)
+    {
+        BoundSessionIndex.Cleanup(sessionRid);
     }
 
     internal bool TryGetActorBoundSession(
@@ -183,21 +171,150 @@ internal sealed partial class ZLinkFrameworkRuntime
         return GetOrCreateActorState(actorId).TryGetBoundSession(out session);
     }
 
-    internal ValueTask<int> UpdateAttachedActorRemoteAddressAsync(
+    internal bool SendActorBoundSession(
         string actorId,
-        string routerChannelId,
-        RoutingId targetNodeRid,
-        ulong expectedActorGeneration,
-        ulong newActorGeneration,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        var state = GetOrCreateActorState(actorId);
+        var node = GetActorSpotNode()
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                "Actor bound session send requires an ActorGateway SpotNode.",
+                isRetriable: false);
+        var actorRef = state.NativeActorRef
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' does not have a native Actor ref.",
+                isRetriable: false);
+
+        return node.SendActorBoundSession(actorRef, parts, flags);
+    }
+
+    internal async ValueTask CloseActorBoundSessionAsync(
+        string actorId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var updated = _sessionBindings.UpdateAttachedActorRemoteAddress(
-            actorId,
-            routerChannelId,
-            targetNodeRid,
-            expectedActorGeneration,
-            newActorGeneration);
-        return ValueTask.FromResult(updated);
+        var state = GetOrCreateActorState(actorId);
+        var node = GetActorSpotNode()
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                "Actor bound session close requires an ActorGateway SpotNode.",
+                isRetriable: false);
+        var actorRef = state.NativeActorRef
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' does not have a native Actor ref.",
+                isRetriable: false);
+
+        await node.CloseActorBoundSessionAsync(
+                actorRef,
+                Registration.DefaultTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+}
+
+internal sealed class ZLinkActorBoundSessionIndex
+{
+    private const string NativeBindingTokenPrefix = "native:";
+    private readonly object _gate = new();
+    private readonly Dictionary<string, List<Entry>> _entries = new(StringComparer.Ordinal);
+
+    public void Register(
+        ZLinkFrameworkRuntime runtime,
+        string actorId,
+        RoutingId sessionRid,
+        string bindingToken)
+    {
+        if (!IsNativeBindingToken(bindingToken))
+        {
+            return;
+        }
+
+        var key = sessionRid.ToHex();
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(key, out var entries))
+            {
+                entries = new List<Entry>();
+                _entries[key] = entries;
+            }
+
+            entries.RemoveAll(entry => entry.Matches(runtime, actorId, bindingToken) || !entry.IsAlive);
+            entries.Add(new Entry(new WeakReference<ZLinkFrameworkRuntime>(runtime), actorId, bindingToken));
+        }
+    }
+
+    public void Unregister(
+        ZLinkFrameworkRuntime runtime,
+        string actorId,
+        string bindingToken)
+    {
+        if (!IsNativeBindingToken(bindingToken))
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            foreach (var key in _entries.Keys.ToArray())
+            {
+                var entries = _entries[key];
+                entries.RemoveAll(entry => entry.Matches(runtime, actorId, bindingToken) || !entry.IsAlive);
+                if (entries.Count == 0)
+                {
+                    _entries.Remove(key);
+                }
+            }
+        }
+    }
+
+    public void Cleanup(RoutingId sessionRid)
+    {
+        Entry[] entries;
+        var key = sessionRid.ToHex();
+        lock (_gate)
+        {
+            if (!_entries.Remove(key, out var registered))
+            {
+                return;
+            }
+
+            entries = registered.ToArray();
+        }
+
+        foreach (var entry in entries)
+        {
+            if (entry.Runtime.TryGetTarget(out var runtime))
+            {
+                runtime.UnbindActorSession(entry.ActorId, entry.BindingToken);
+            }
+        }
+    }
+
+    private static bool IsNativeBindingToken(string bindingToken)
+    {
+        return bindingToken.StartsWith(NativeBindingTokenPrefix, StringComparison.Ordinal);
+    }
+
+    private sealed record Entry(
+        WeakReference<ZLinkFrameworkRuntime> Runtime,
+        string ActorId,
+        string BindingToken)
+    {
+        public bool IsAlive => Runtime.TryGetTarget(out _);
+
+        public bool Matches(
+            ZLinkFrameworkRuntime runtime,
+            string actorId,
+            string bindingToken)
+        {
+            return Runtime.TryGetTarget(out var current)
+                && ReferenceEquals(current, runtime)
+                && string.Equals(ActorId, actorId, StringComparison.Ordinal)
+                && string.Equals(BindingToken, bindingToken, StringComparison.Ordinal);
+        }
     }
 }

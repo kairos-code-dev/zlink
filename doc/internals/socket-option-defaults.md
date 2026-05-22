@@ -7,12 +7,12 @@ This document lists the default values for each socket option, broken down by so
 This page summarizes effective socket option defaults from implementation code,
 not from examples:
 
-- `core/src/core/options.cpp` (`options_t` constructor)
-- `core/src/core/options_core_socket.cpp` (core socket option dispatch)
-- `core/src/core/options_transport_network.cpp` (transport/network option dispatch)
-- `core/src/core/options_protocol_metadata.cpp` (protocol/metadata option dispatch)
-- `core/src/sockets/socket_base_lifecycle.cpp` (context-inherited defaults)
-- socket-specific constructors in `core/src/sockets/*.cpp`
+- `core/src/runtime/core/options.cpp` (`options_t` constructor)
+- `core/src/runtime/core/options_core_socket.cpp` (core socket option dispatch)
+- `core/src/runtime/core/options_transport_network.cpp` (transport/network option dispatch)
+- `core/src/runtime/core/options_protocol_metadata.cpp` (protocol/metadata option dispatch)
+- `core/src/runtime/sockets/common/socket_base_lifecycle.cpp` (context-inherited defaults)
+- socket-specific constructors in `core/src/runtime/sockets/*/*.cpp`
 
 For detailed behavior and scope of each option, see the
 [Socket Options Detailed Guide](../guide/12-socket-options.md).

@@ -157,6 +157,16 @@ internal sealed class ZLinkSpotRouteChannelConnections(ICollection<string> endpo
 internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapabilityRegistration registration)
     : ISpotRouterCapabilityBuilder
 {
+    public void Bind(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            throw new ZLinkConfigurationException("SPOT router bind endpoint must not be empty.");
+        }
+
+        registration.BindEndpoint = endpoint;
+    }
+
     public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
     {
         configure(registration.SocketConfig);

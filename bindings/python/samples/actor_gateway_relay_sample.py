@@ -38,6 +38,7 @@ def main():
                 spot.on_dispatch_event(on_dispatch)
 
                 with zlink.StreamSocket(ctx) as stream:
+                    stream.attach_actor_gateway(node)
                     with stream.monitor_open(zlink.MonitorEventMask.ACCEPTED) as monitor:
                         stream.bind(endpoint)
                         with socket.create_connection(

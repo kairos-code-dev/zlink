@@ -105,14 +105,16 @@ rebalancing after assignment.
 
 ### 3.3 Affinity mask
 
-An affinity mask on the context can restrict which I/O threads are eligible for
-new socket assignments. Threads excluded from the mask are still used for
-sockets already assigned to them; the mask affects only new assignments.
+The per-socket `ZLINK_OPT_AFFINITY` option restricts which I/O threads are
+eligible for that socket's assignment. Bit N set to `1` makes I/O thread N
+eligible; `0` (the default) allows all threads. The mask is consulted only when
+the socket is assigned at creation time; it does not rebalance a socket that is
+already assigned.
 
 ```c
-/* Restrict new sockets to I/O threads 0 and 2 */
+/* Restrict this socket to I/O threads 0 and 2 */
 uint64_t mask = (1ULL << 0) | (1ULL << 2);
-zlink_ctx_set(ctx, ZLINK_IO_THREAD_AFFINITY, (int)mask);
+zlink_set_option(socket, ZLINK_OPT_AFFINITY, &mask, sizeof(mask));
 ```
 
 ---

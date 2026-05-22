@@ -544,11 +544,12 @@ async function main() {
             emitSizeSection(msgSize, rowIndent);
             emit(`${rowIndent}${multiTableRowLine(patternName, msgSize, 'fail', null)}`);
             if (failFast) {
-              throw error;
+              break;
             }
           }
         }
-        if (showRunLabels && run + 1 < options.runs && !transportUnsupported) {
+        if (showRunLabels && run + 1 < options.runs && !transportUnsupported
+            && !(failFast && allFailures.length > 0)) {
           emit(`      [cooldown ${runCooldownMs}ms]`);
           if (runCooldownMs > 0) {
             await sleepMs(runCooldownMs);
@@ -618,7 +619,8 @@ async function main() {
       }
 
       emit(`    Testing ${transport}: Done`);
-      if (transportCooldownMs > 0 && hasNextTransport) {
+      if (transportCooldownMs > 0 && hasNextTransport
+          && !(failFast && allFailures.length > 0)) {
         emit(`    [transport cooldown ${transportCooldownMs}ms]`);
         await sleepMs(transportCooldownMs);
       }
@@ -637,7 +639,8 @@ async function main() {
       }
     }
 
-    if (patternIndex + 1 < runnablePatterns.length && patternCooldownMs > 0) {
+    if (patternIndex + 1 < runnablePatterns.length && patternCooldownMs > 0
+        && !(failFast && allFailures.length > 0)) {
       emit(`[pattern cooldown ${patternCooldownMs}ms]`);
       await sleepMs(patternCooldownMs);
     }
@@ -667,6 +670,7 @@ async function main() {
   emit(`- skip: ${statusCounts.skip}`);
   emit(`- fail: ${statusCounts.fail}`);
   emit(`- status: ${status}`);
+  emit(`- fail_fast_stopped: ${failFast && allFailures.length > 0 ? 1 : 0}`);
   emit(`- expected_result_lines: ${expectedResultLines}`);
   emit(`- actual_result_lines: ${actualResultLines}`);
 

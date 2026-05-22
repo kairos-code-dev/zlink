@@ -6,6 +6,8 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     void SetRoutingId(RoutingId routingId);
 
+    void SetRouterBindEndpoint(string endpoint);
+
     void Bind(string endpoint);
 
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
@@ -65,6 +67,16 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         CancellationToken cancellationToken);
 
     ValueTask DestroyActorAsync(
+        ZLinkBackendActorRef actor,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
+
+    bool SendActorBoundSession(
+        ZLinkBackendActorRef actor,
+        IReadOnlyList<Message> parts,
+        SendFlags flags);
+
+    ValueTask CloseActorBoundSessionAsync(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,
         CancellationToken cancellationToken);

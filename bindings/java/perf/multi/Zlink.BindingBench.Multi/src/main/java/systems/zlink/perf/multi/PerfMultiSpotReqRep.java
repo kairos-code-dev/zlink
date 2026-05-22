@@ -54,6 +54,7 @@ final class PerfMultiSpotReqRep {
         AtomicLong activeEndRef = new AtomicLong(Long.MAX_VALUE);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         String controlEndpoint = derivedEndpoint(config.endpoint(), 1);
+        String routerEndpoint = derivedEndpoint(config.endpoint(), 2);
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
              Spot replier = node.createSpot();
@@ -63,6 +64,7 @@ final class PerfMultiSpotReqRep {
             replier.setRoutingId(SERVER_SPOT_RID);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
+            node.setRouterBindEndpoint(routerEndpoint);
             node.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
@@ -112,6 +114,9 @@ final class PerfMultiSpotReqRep {
         String clientDataEndpoint = normalizeClientEndpoint(
             PerfUtil.endpoint(config.transport(), "multi-spot-reqrep-client"),
             config.transport());
+        String clientRouterEndpoint = normalizeClientEndpoint(
+            PerfUtil.endpoint(config.transport(), "multi-spot-reqrep-client-router"),
+            config.transport());
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
 
         try (Context ctx = PerfUtil.newContext(config);
@@ -121,6 +126,7 @@ final class PerfMultiSpotReqRep {
             node.setRoutingId(routingId("SPOT-REQREP-CLIENT-NODE"));
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
+            node.setRouterBindEndpoint(clientRouterEndpoint);
             node.bind(clientDataEndpoint);
             node.connectPeer(endpoint);
 

@@ -10,47 +10,27 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         var routeHandlerEndpoints = ScanRouteHandlerEndpoints(registration);
         var handlerGroups = BuildHandlerGroupCatalog(channelHandlerEndpoints, routeHandlerEndpoints);
 
-        if (registration.SpotDiscovery is { RequiresUseDiscovery: true, UseDiscoveryCalled: false })
-        {
-            throw new ZLinkConfigurationException(
-                "AddSpotMesh(...) requires spotMesh.UseDiscovery(...).");
-        }
-
         if (registration.ActorFactories.Count > 0 && registration.SpotNodes.Count == 0)
         {
             throw new ZLinkConfigurationException(
                 "Actor factory registration requires at least one SpotNode.");
         }
 
-        if ((registration.RegistryActorRemoteAddresses is not null
-                || registration.RegistrySpotRemoteAddresses is not null)
+        if (registration.RegistrySpotRemoteAddresses is not null
             && registration.RouteChannels.Count == 0)
         {
             throw new ZLinkConfigurationException(
                 "Registry remote address resolver requires AddRouteMeshChannel(...).");
         }
 
-        if (registration.RegistryActorRemoteAddresses is not null
-            && (registration.Discovery is null
-                || registration.Discovery.Endpoints.Count == 0))
-        {
-            throw new ZLinkConfigurationException(
-                "Registry actor remote address resolver requires UseDiscovery(...).");
-        }
-
         if (registration.RegistrySpotRemoteAddresses is not null
             && (registration.SpotDiscovery is null
-                || registration.SpotDiscovery.Endpoints.Count == 0))
+                || ResolveSpotDiscoveryEndpoints(registration).Count == 0))
         {
             throw new ZLinkConfigurationException(
-                "Registry remote address resolver requires AddSpotMesh(...).UseDiscovery(...).");
+                "Registry remote address resolver requires discovery endpoints from UseDiscovery(...) or AddSpotMesh(...).UseDiscovery(...).");
         }
 
-        ValidateRegistryRouteChannel(
-            registration.RegistryActorRemoteAddresses is not null,
-            registration.RegistryActorRemoteAddresses?.RouterChannelId,
-            registration,
-            "Registry actor remote address resolver");
         ValidateRegistryRouteChannel(
             registration.RegistrySpotRemoteAddresses is not null,
             registration.RegistrySpotRemoteAddresses?.RouterChannelId,
@@ -69,7 +49,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         foreach (var streamNode in registration.StreamNodes.Values)
         {
-            ValidateStreamNode(streamNode);
+            ValidateStreamNode(streamNode, registration);
         }
 
         foreach (var routed in registration.RouteChannels.Values)
@@ -201,7 +181,9 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
     }
 
-    private static void ValidateStreamNode(ZLinkStreamNodeRegistration streamNode)
+    private static void ValidateStreamNode(
+        ZLinkStreamNodeRegistration streamNode,
+        ZLinkFrameworkRegistration registration)
     {
         if (string.IsNullOrWhiteSpace(streamNode.BindEndpoint))
         {
@@ -214,6 +196,34 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             throw new ZLinkConfigurationException(
                 $"STREAM node '{streamNode.StreamNodeName}' must register a header stream session.");
         }
+
+        if (string.IsNullOrWhiteSpace(streamNode.ActorGatewaySpotNodeName))
+        {
+            return;
+        }
+
+        if (!registration.SpotNodes.TryGetValue(streamNode.ActorGatewaySpotNodeName, out var spotNode))
+        {
+            throw new ZLinkConfigurationException(
+                $"STREAM node '{streamNode.StreamNodeName}' references unknown ActorGateway SpotNode '{streamNode.ActorGatewaySpotNodeName}'.");
+        }
+
+        if (spotNode.Router is null)
+        {
+            throw new ZLinkConfigurationException(
+                $"STREAM node '{streamNode.StreamNodeName}' attaches ActorGateway to SPOT node '{streamNode.ActorGatewaySpotNodeName}' but that node does not enable router capability.");
+        }
+    }
+
+    internal static IReadOnlyList<string> ResolveSpotDiscoveryEndpoints(
+        ZLinkFrameworkRegistration registration)
+    {
+        if (registration.SpotDiscovery is { Endpoints.Count: > 0 })
+        {
+            return registration.SpotDiscovery.Endpoints;
+        }
+
+        return registration.Discovery?.Endpoints ?? [];
     }
 
 }

@@ -8,6 +8,7 @@ public static class SampleNames
     public const string PlayChannel = "bingo.play";
     public const string RouterChannel = "bingo.gateway";
     public const string StreamNode = "bingo.client.stream";
+    public const string SessionSpotNode = "bingo.session.node";
     public const string PlayerActorType = "bingo.player";
     public const string RoomSpotType = "bingo.room";
     public const string RoomSpotNode = "bingo.room.node";

@@ -100,6 +100,10 @@ internal sealed class ZLinkSessionContext(
     internal async ValueTask CleanupAsync(CancellationToken cancellationToken)
     {
         await _actors.CleanupAsync(this, cancellationToken).ConfigureAwait(false);
+        if (stream.RoutingId is { } sessionRid)
+        {
+            runtime.CleanupActorSessionsForSession(sessionRid);
+        }
     }
 
     internal void EnterDispatch(ZlinkStreamHeader header)

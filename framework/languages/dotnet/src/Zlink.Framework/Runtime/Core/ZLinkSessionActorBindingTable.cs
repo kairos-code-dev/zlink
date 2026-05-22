@@ -1,4 +1,4 @@
-namespace Zlink.Framework.Runtime.SessionActorDispatch;
+namespace Zlink.Framework.Runtime.Core;
 
 internal sealed record ZLinkSessionBindingEntry(
     ZLinkSessionContext Context,
@@ -64,35 +64,4 @@ internal sealed class ZLinkSessionActorBindingTable
         }
     }
 
-    public int UpdateAttachedActorRemoteAddress(
-        string actorId,
-        string routerChannelId,
-        RoutingId targetNodeRid,
-        ulong expectedActorGeneration,
-        ulong newActorGeneration)
-    {
-        ZLinkActorRef[] actorRefs;
-        lock (_entries)
-        {
-            actorRefs = _entries
-                .Where(entry => string.Equals(entry.Key.ActorId, actorId, StringComparison.Ordinal))
-                .Select(static entry => entry.Value.ActorRef)
-                .ToArray();
-        }
-
-        var updated = 0;
-        foreach (var actorRef in actorRefs)
-        {
-            if (actorRef.TryUpdateRemoteAddress(
-                    routerChannelId,
-                    targetNodeRid,
-                    expectedActorGeneration,
-                    newActorGeneration))
-            {
-                updated++;
-            }
-        }
-
-        return updated;
-    }
 }

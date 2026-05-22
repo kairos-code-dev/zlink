@@ -99,6 +99,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public async ValueTask InitializeEntrySpotAsync()
     {
+        EnsureAttachedChannelBundles();
         _entrySpot ??= Node.EntrySpot();
         var entrySpot = _entrySpot;
 
@@ -234,6 +235,21 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         return _bundles.GetOrCreateAttachedChannelBundle(channelName);
     }
 
+    private void EnsureAttachedChannelBundles()
+    {
+        foreach (var channelName in _registration.AttachedChannelClients.Keys)
+        {
+            _bundles.GetOrCreateAttachedChannelBundle(channelName);
+        }
+    }
+
+    private ZLinkAsyncSubmitter? ResolveAttachedChannelSubmitter(string channelName)
+    {
+        return _registration.AttachedChannelClients.ContainsKey(channelName)
+            ? _bundles.GetOrCreateAttachedChannelBundle(channelName).Submitter
+            : null;
+    }
+
     public ZLinkSpotPublisherBundle GetOrCreatePublisherBundle(string channelName)
     {
         return _bundles.GetOrCreatePublisherBundle(channelName);
@@ -355,7 +371,8 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             _frameworkRegistration.SpotDiscovery?.ChannelName ?? _registration.SpotNodeName,
             _frameworkRegistration.DefaultTimeout,
             _registration.Router?.SocketConfig.SendTimeout
-                ?? TimeSpan.FromMilliseconds(200));
+                ?? TimeSpan.FromMilliseconds(200),
+            ResolveAttachedChannelSubmitter);
         activation.Configure();
         await activation.InitializeAsync(_stopSource.Token)
             .ConfigureAwait(false);

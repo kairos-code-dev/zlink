@@ -77,7 +77,7 @@ internal static class FixtureSamples
                 spotMesh.AddNode("stage-node", spot =>
                 {
                     spot.Bind("tcp://127.0.0.1:7301");
-                    spot.EnableRouter();
+                    spot.EnableRouter(router => router.Bind("tcp://127.0.0.1:7302"));
                     spot.EnablePubSub();
                     spot.AttachClientServerChannelClient("orders", client =>
                     {
@@ -103,7 +103,7 @@ internal static class FixtureSamples
             options.AddStreamNode("stream.raw", stream =>
             {
                 stream.Bind("tcp://127.0.0.1:7401");
-                stream.AddHeaderSession<FixtureRawStreamSession>();
+                stream.RegisterSession<FixtureRawStreamSession>();
             });
         });
         return builder;
@@ -152,7 +152,7 @@ internal static class FixtureSamples
                 spotMesh.AddNode("stage-node", spot =>
                 {
                     spot.Bind("tcp://127.0.0.1:7604");
-                    spot.EnableRouter();
+                    spot.EnableRouter(router => router.Bind("tcp://127.0.0.1:7605"));
                     spot.EnablePubSub();
                     spot.AddSpotFactory<FixtureStageSpot>("stage");
                 });
@@ -179,7 +179,7 @@ internal static class FixtureSamples
             options.AddStreamNode("stream.actor", stream =>
             {
                 stream.Bind("tcp://127.0.0.1:7701");
-                stream.AddHeaderSession<FixtureActorPacketSession>();
+                stream.RegisterSession<FixtureActorPacketSession>();
             });
 
             options.AddSpotMesh("game.stage", spotMesh =>

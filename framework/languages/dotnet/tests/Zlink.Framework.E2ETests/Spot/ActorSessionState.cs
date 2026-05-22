@@ -17,12 +17,16 @@ public sealed class ActorSessionStateTests : SpotTestSupport
         builder.Services.AddScoped<ActorJoinHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery("game.stage", _ => { });
+
             options.AddActorFactory<TestActorFactory>("test");
-            options.AddSpotNode("actor-node", spot =>
+            options.AddSpotMesh("game.stage", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("actor-node", spot =>
             {
                 spot.Bind(spotNode);
                 spot.AddSpotFactory<ActorStageSpot>("actor-stage");
+            });
             });
         });
 

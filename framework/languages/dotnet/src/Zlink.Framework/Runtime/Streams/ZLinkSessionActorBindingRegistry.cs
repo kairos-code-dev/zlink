@@ -6,40 +6,35 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
 
     public ValueTask<IZLinkActorRef> BindAsync(
         ZLinkSessionContext context,
-        string sessionId,
         string actorId,
         string actorType,
-        string routerChannelId,
-        RoutingId actorNodeRid,
-        ulong actorGeneration,
+        ZLinkActorRemoteAddress remoteAddress,
         bool isRemote,
-        Func<ZLinkActorRef, CancellationToken, ValueTask> notifyDisconnectedAsync,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(actorId))
         {
             throw new InvalidOperationException("Actor id must not be empty.");
         }
+        if (context.RoutingId is not { } sessionRid)
+        {
+            throw new InvalidOperationException("Actor session binding requires a stream routing id.");
+        }
 
-        var sessionRouterId = runtime.ResolveSessionRouterId(routerChannelId);
         var binding = new ZLinkSessionActorBinding(
             actorId,
-            sessionRouterId,
+            sessionRid,
             Guid.NewGuid().ToString("N"));
         var actorRef = new ZLinkActorRef(
             actorId,
             actorType,
-            new ZLinkActorRemoteAddressState(new ZLinkActorRemoteAddress(
-                routerChannelId,
-                actorNodeRid,
-                actorGeneration)),
-            binding.SessionRouterId,
+            remoteAddress,
             isRemote,
-            binding.BindingToken,
-            notifyDisconnectedAsync);
+            binding.SessionRid,
+            binding.BindingToken);
 
         runtime.BindSessionActor(actorId, context, binding.BindingToken, actorRef);
-        runtime.BindActorSession(actorId, binding.SessionRouterId, binding.BindingToken);
+        runtime.BindActorSession(actorId, binding.SessionRid, binding.BindingToken);
 
         lock (_bindings)
         {
@@ -77,5 +72,5 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
 
 internal readonly record struct ZLinkSessionActorBinding(
     string ActorId,
-    RoutingId SessionRouterId,
+    RoutingId SessionRid,
     string BindingToken);

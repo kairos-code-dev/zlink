@@ -123,17 +123,15 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
 
 ## 8. Session Actor Route 변경 의미
 
-session 이 actor 에 attach 되면 framework 는 actor id, actor type, router
-channel id, target node rid, actor generation, session binding token 을 내부
-상태로 저장한다. 이후 session -> actor relay 는 이 attached remote address snapshot 을
-사용하고, packet 마다 `IZLinkActorRemoteAddressResolver` 를 호출하지 않는다.
+session 이 actor 에 attach 되면 framework 는 actor id, actor type, session rid,
+session owner SpotNode, session binding token 을 ActorGateway binding 으로 연결한다.
+이후 session -> actor relay 는 logical actor handle 을 core ActorGateway 로 내려보내고,
+packet 마다 application resolver 를 호출하지 않는다.
 
-actor 위치가 바뀌면 framework 내부 remote address update 경로가 attached actor ref 의
-remote address snapshot 을 갱신한다. update 의 expected actor generation 이 현재 ref 와
-일치하면 target node rid 와 actor generation 을 교체한다. expected 값이 다르면
-늦게 도착한 stale update 로 보고 무시한다. session binding token 은 disconnect
-cleanup 과 stale session 방어에 계속 쓰지만, actor remote address update 의 public 입력이
-되지는 않는다.
+actor 위치가 바뀌면 core ActorGateway 의 current location 이 relay 대상이 된다.
+framework 는 concrete route 주소를 session 상태로 갱신하지 않는다. session binding token 은
+disconnect cleanup 과 stale session 방어에 계속 쓰며, 이전 session 의 늦은 close 가 새
+binding 을 지우지 못하도록 조건부 unbind 에 사용한다.
 
 ## 9. Spot Lifecycle 의미
 

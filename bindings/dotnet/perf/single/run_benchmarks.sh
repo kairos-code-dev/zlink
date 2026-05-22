@@ -170,6 +170,7 @@ prepare_core_runtime() {
     echo "Run: cmake --build core/build" >&2
     exit 1
   fi
+  echo "Perf runtime libzlink: ${CORE_LIB}"
   export ZLINK_LIBRARY_PATH="${CORE_LIB}"
   sync_native_dirs "${PROJECT_DIR}/bin"
 }

@@ -14,9 +14,9 @@ internal sealed class ZLinkActorContext(
 
     public bool IsJoined => state.IsJoined;
 
-    public IZLinkSessionProxy SessionProxy
-        => ((IZLinkSessionProxyFactory?)runtime.Services.GetService(typeof(IZLinkSessionProxyFactory))
-            ?? throw new InvalidOperationException("Session proxy factory is not registered."))
+    public IZLinkBoundSession BoundSession
+        => ((IZLinkBoundSessionFactory?)runtime.Services.GetService(typeof(IZLinkBoundSessionFactory))
+            ?? throw new InvalidOperationException("Bound session factory is not registered."))
             .Create(state.ActorId);
 
     public void AddPacket<THandler>()

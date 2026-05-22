@@ -7,7 +7,9 @@
 #include <vector>
 
 #include "api/socket/request_reply_protocol_internal.hpp"
+#include "api/spot/request_reply/service_spot_routed_protocol_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
+#include "services/actor/service_spot_actor_internal.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
 #include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "services/spot/common/spot_message_parts_internal.hpp"
@@ -114,9 +116,18 @@ int process_route_combined_message (void *node_,
 
     if (zlink::spot_reqrep_internal::should_process_spot_routed_locally (
           static_cast<zlink::spot_node_t *> (node_), spot_envelope)) {
-        rc = zlink::spot_reqrep_internal::
-          process_parsed_route_combined_for_local_delivery (&combined,
-                                                            spot_envelope);
+        if (spot_envelope.destination_class
+            == zlink::spot_routed_protocol::actor_gateway_endpoint_class) {
+            rc = zlink::spot_actor_internal::process_gateway_delivery (
+              node_,
+              &spot_envelope.source_node_rid_value,
+              spot_envelope.payload_parts,
+              spot_envelope.payload_part_count);
+        } else {
+            rc = zlink::spot_reqrep_internal::
+              process_parsed_route_combined_for_local_delivery (&combined,
+                                                                spot_envelope);
+        }
     } else {
         if (spot_direct_route_debug_enabled ()) {
             std::string local_node_rid;

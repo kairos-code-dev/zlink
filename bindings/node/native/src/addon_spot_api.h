@@ -7,6 +7,7 @@
 napi_value spot_node_new(napi_env env, napi_callback_info info);
 napi_value spot_node_destroy(napi_env env, napi_callback_info info);
 napi_value spot_node_bind(napi_env env, napi_callback_info info);
+napi_value spot_node_set_router_bind_endpoint(napi_env env, napi_callback_info info);
 napi_value spot_node_connect_peer(napi_env env, napi_callback_info info);
 napi_value spot_node_disconnect_peer(napi_env env, napi_callback_info info);
 napi_value spot_node_disconnect_peer_rid(napi_env env, napi_callback_info info);
@@ -46,6 +47,7 @@ napi_value spot_node_actor_leave_spot(napi_env env, napi_callback_info info);
 napi_value spot_node_actor_recv_part(napi_env env, napi_callback_info info);
 napi_value spot_node_actor_send_bound_session_msg(napi_env env, napi_callback_info info);
 napi_value spot_node_actor_close_bound_session(napi_env env, napi_callback_info info);
+napi_value stream_attach_actor_gateway(napi_env env, napi_callback_info info);
 napi_value stream_bind_actor(napi_env env, napi_callback_info info);
 napi_value stream_unbind_actor(napi_env env, napi_callback_info info);
 napi_value stream_send_bound_actor_part(napi_env env, napi_callback_info info);

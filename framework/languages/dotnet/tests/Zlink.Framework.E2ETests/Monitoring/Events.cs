@@ -55,11 +55,14 @@ public sealed class EventsTests
         builder.Services.AddScoped<StageSubscriptionHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery(spotChannel, _ => { });
-            options.AddSpotNode("stage-node", spot =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("stage-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
                 spot.AddSpotFactory<MonitoringStageSpot>("stage");
+            });
             });
         });
         builder.Services.AddZLinkMonitoring(monitor =>
@@ -156,14 +159,17 @@ public sealed class EventsTests
             provider.GetRequiredService<SpotPeerProbe>());
         firstBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery(spotChannel, discovery =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
-
-            options.AddSpotNode("stage-node", spot =>
+                mesh.AddNode("stage-node", spot =>
             {
                 spot.Bind(firstNodeEndpoint);
+                spot.EnablePubSub();
+            });
             });
         });
         firstBuilder.Services.AddZLinkMonitoring(monitor =>
@@ -174,14 +180,17 @@ public sealed class EventsTests
         var secondBuilder = Host.CreateApplicationBuilder();
         secondBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseSpotDiscovery(spotChannel, discovery =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(discovery =>
             {
                 discovery.Add(registryRouterEndpoint);
             });
-
-            options.AddSpotNode("remote-stage-node", spot =>
+                mesh.AddNode("remote-stage-node", spot =>
             {
                 spot.Bind(secondNodeEndpoint);
+                spot.EnablePubSub();
+            });
             });
         });
 

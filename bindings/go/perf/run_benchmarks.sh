@@ -447,6 +447,7 @@ emit_effective_options_single() {
   echo "- runs: ${RUNS}"
   echo "- duration_seconds: ${DURATION}"
   echo "- timeout_seconds: ${PERF_SINGLE_TIMEOUT_SECONDS:-30}"
+  echo "- fail_fast: ${PERF_FAIL_FAST:-0}"
   echo "- io_threads: ${IO_THREADS:-${PERF_IO_THREADS:-1}}"
   echo "- go_gomaxprocs: ${GOMAXPROCS:-unset}"
   echo "- go_gomaxprocs_source: ${GO_GOMAXPROCS_SOURCE}"
@@ -537,13 +538,23 @@ unsupported_cases=0
 skip_cases=0
 fail=0
 expected_cases=0
+stop_early=0
 FAILURES=()
 
 for run in $(seq 1 "${RUNS}"); do
+  if [[ "${stop_early}" -eq 1 ]]; then
+    break
+  fi
   for pattern in "${PATTERNS[@]}"; do
+    if [[ "${stop_early}" -eq 1 ]]; then
+      break
+    fi
     progress_pattern_heading "${pattern}"
     read -r -a PATTERN_XPORTS <<< "$(pattern_transports "${pattern}")"
     for transport in "${PATTERN_XPORTS[@]}"; do
+      if [[ "${stop_early}" -eq 1 ]]; then
+        break
+      fi
       if ! transport_enabled "${transport}"; then
         continue
       fi
@@ -603,6 +614,10 @@ for run in $(seq 1 "${RUNS}"); do
         fi
         progress_table_header
         progress_case_row "${pattern}" "${size}" "${case_log}"
+        if [[ "${PERF_FAIL_FAST:-0}" == "1" && "${fail}" -gt 0 ]]; then
+          stop_early=1
+          break
+        fi
         sleep_millis "${RUN_COOLDOWN_MS}"
       done
       echo "    Testing ${transport}: Done"
@@ -651,6 +666,7 @@ fi
   echo
   echo "## Completion"
   echo "- status: ${status}"
+  echo "- fail_fast_stopped: ${stop_early}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
   echo

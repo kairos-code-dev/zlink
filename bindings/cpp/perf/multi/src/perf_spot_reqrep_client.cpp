@@ -325,7 +325,7 @@ class spot_reqrep_client_bench_t
         if (!perf::multi::apply_spot_auto_hwm_msg_unit (_ctx.ctx (), _msg_size))
             return false;
         _local_data_endpoint =
-          perf::multi::bind_spot_endpoint (
+          perf::multi::bind_routed_spot_endpoint (
             *_data_node, _transport, perf::multi::bench_port_base (52000));
         if (_local_data_endpoint.empty ())
             return false;

@@ -498,3 +498,25 @@ sequenceDiagram
   규칙이 해결하지 않는다. 충돌은 ROUTER handover 정책으로 처리한다.
 - 사용자 raw API 로 직접 호출한 `zlink_connect()` 는 이 경로를 거치지
   않으므로 라이브러리가 중재하지 않는다.
+
+## 13. Actor route 조회와 session relay 경계
+
+`zlink_discovery_resolve_actor()` 는 actor id 를 현재 route 로 해석하며
+`ZLINK_ROUTE_KIND_ACTOR` row 를 사용한다. route value 는 owner SpotNode 가 Actor 의
+현재 위치에서 게시한 `zlink_actor_route_t` 다. Actor ref(node rid + actor id +
+generation)와 current Spot rid, current Spot kind 를 담는다.
+
+이 row 는 Actor table 현재 위치의 **게시된 파생물**이다. owner SpotNode 가 위치 변경
+(Actor 생성, join accept, leave)을 commit 할 때, 그리고 node 에 `actor_route_sync_enabled()`
+가 켜져 있을 때만 갱신한다. 게시는 SpotNode → registry 한 방향이며, Discovery 가 Actor
+table 로 되쓰지 않는다.
+
+기억할 경계는 다음과 같다.
+
+- Actor route row 는 **service-to-Actor routing 과 진단** 용도다. 예를 들어 외부 ROUTER 나
+  backend Spot 이 actor id 로 Actor 에 닿아야 할 때 current Spot route 를 해석해 기존 routed
+  transport 로 보낸다.
+- **STREAM session relay hot path 는 Discovery 를 조회하지 않는다.** session binding 은 이미
+  bound Actor ref 를 들고 있고, relay 는 그것을 local Actor table 과 ActorGateway state 로
+  해석한다([spot-internals.ko.md](./spot-internals.ko.md) 12절 참고). route 조회를 거치지
+  않는다. Discovery sync 가 최신 join 보다 늦더라도 진행 중인 session relay 에는 영향이 없다.

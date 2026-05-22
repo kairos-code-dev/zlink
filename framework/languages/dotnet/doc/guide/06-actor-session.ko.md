@@ -337,21 +337,25 @@ bind 한다. 그래서 session handler 는 route mesh channel 이름이나 route
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
-
     // STREAM session 이 사용할 local SpotNode (ActorGateway ingress)
-    options.AddSpotNode("session-node", spot =>
+    options.AddSpotMesh("game.session", mesh =>
     {
-        spot.Bind("tcp://0.0.0.0:9100");
-        spot.EnableRouter(router =>
-            router.ConfigureRouting(routing => routing.RoutingId = sessionNodeRid));
+        mesh.AddNode("session-node", node =>
+        {
+            node.Bind("tcp://0.0.0.0:9100");
+            node.EnableRouter(router =>
+            {
+                router.Bind("tcp://0.0.0.0:9101");
+                router.ConfigureRouting(routing => routing.RoutingId = sessionNodeRid);
+            });
+        });
     });
 
     options.AddStreamNode("client-stream", stream =>
     {
         stream.AttachActorGateway("session-node");   // 이 stream 의 relay 대상 SpotNode
         stream.Bind("tcp://0.0.0.0:9000");
-        stream.AddHeaderSession<TicTacToeSession>();
+        stream.RegisterSession<TicTacToeSession>();
     });
 
     options.UseRegistrySpotRemoteAddresses("game");
@@ -373,7 +377,7 @@ builder.Services.AddZLinkFramework(options =>
         mesh.AddNode("play-node", node =>
         {
             node.Bind("tcp://0.0.0.0:9200");
-            node.EnableRouter();
+            node.EnableRouter(router => router.Bind("tcp://0.0.0.0:9201"));
             node.AddEntrySpot<PlayerEntrySpot>();
             node.AddSpotFactory<MatchSpot>("match");
         });

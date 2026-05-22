@@ -785,7 +785,7 @@ public client 로 노출하지 않는다. application code 는 다른 표면을 
 숨긴다. 즉 다음과 같은 표면을 사용한다.
 
 - `IZLinkSpotClient`
-- `IZLinkSessionProxy`
+- `IZLinkBoundSession`
 
 이들은 resolver 나 actor-session binding 이 위치값을 안에서 숨겨 주는 표면이다.
 

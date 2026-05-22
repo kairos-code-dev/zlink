@@ -101,6 +101,28 @@ int spot_node_t::bind (const char *endpoint_)
     return 0;
 }
 
+int spot_node_t::set_router_bind_endpoint (const char *endpoint_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    if (!endpoint_ || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+    if (ensure_healthy () != 0)
+        return -1;
+
+    scoped_lock_t lock (_sync);
+    if (!_endpoint_state.bound_endpoint.empty ()) {
+        errno = EBUSY;
+        return -1;
+    }
+    _endpoint_state.router_bind_endpoint = endpoint_;
+    return 0;
+}
+
 int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
 {
     service_public_api_scope_t admission (_public_api);

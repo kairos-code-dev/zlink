@@ -1,0 +1,180 @@
+namespace Zlink.Framework.Runtime.Streams;
+
+internal sealed class ZLinkBoundSessionService(
+    ZLinkFrameworkRuntime runtime) : IZLinkBoundSessionFactory
+{
+    public IZLinkBoundSession Create(string actorId)
+    {
+        return new ZLinkBoundSession(this, actorId);
+    }
+
+    internal IZLinkBoundSessionSendCall Send<TMessage>(
+        string actorId,
+        TMessage message)
+    {
+        return new ZLinkBoundSessionSendCall<TMessage>(
+            this,
+            actorId,
+            message);
+    }
+
+    public async ValueTask DisconnectAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        if (ZLinkBoundSessionDispatchScope.TryDeferClose(
+                actorId,
+                ct => DisconnectNowAsync(actorId, ct)))
+        {
+            return;
+        }
+
+        await DisconnectNowAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask DisconnectNowAsync(
+        string actorId,
+        CancellationToken cancellationToken)
+    {
+        var route = await ResolveSessionRouteAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            await runtime.CloseActorBoundSessionAsync(actorId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            if (runtime.TryGetSessionActorContext(actorId, route.BindingToken, out var context))
+            {
+                runtime.UnbindSessionActor(actorId, context, route.BindingToken);
+            }
+
+            runtime.UnbindActorSession(actorId, route.BindingToken);
+        }
+    }
+
+    internal ValueTask SendBoundSessionAsync<TMessage>(
+        string actorId,
+        string? packetName,
+        IReadOnlyDictionary<string, string> metadata,
+        TMessage message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var frame = CreateBoundSessionFrame(
+            packetName,
+            metadata,
+            message);
+        using var frameMessage = Message.FromBytes(frame);
+        if (!runtime.SendActorBoundSession(
+                actorId,
+                new[] { frameMessage },
+                SendFlags.None))
+        {
+            throw new InvalidOperationException("Actor bound session send failed.");
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    private ValueTask<ZLinkActorBoundSession> ResolveSessionRouteAsync(
+        string actorId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (runtime.TryGetActorBoundSession(actorId, out var route))
+        {
+            return ValueTask.FromResult(route);
+        }
+
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorSessionNotBound,
+            $"No current session binding exists for actor '{actorId}'.",
+            isRetriable: true);
+    }
+
+    private static byte[] CreateBoundSessionFrame<TPayload>(
+        string? packetName,
+        IReadOnlyDictionary<string, string> metadata,
+        TPayload payload)
+    {
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            MetadataFlags(metadata),
+            null,
+            packetName ?? throw new InvalidOperationException("Packet name is required."),
+            ToStreamMetadata(metadata));
+        var body = ZLinkEnvelopeCodec.EncodeJsonBytes(payload, payload?.GetType() ?? typeof(TPayload));
+        return ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, body);
+    }
+
+    private static ZlinkStreamHeaderFlags MetadataFlags(IReadOnlyDictionary<string, string> metadata)
+    {
+        return metadata.Count == 0 ? ZlinkStreamHeaderFlags.None : ZlinkStreamHeaderFlags.HasMetadata;
+    }
+
+    private static ZlinkStreamMetadata ToStreamMetadata(IReadOnlyDictionary<string, string> metadata)
+    {
+        var values = ZlinkStreamMetadata.Empty;
+        foreach (var (key, value) in metadata)
+        {
+            values = values.With(key, value);
+        }
+
+        return values;
+    }
+}
+
+internal sealed class ZLinkBoundSession(
+    ZLinkBoundSessionService service,
+    string actorId) : IZLinkBoundSession
+{
+    public IZLinkBoundSessionSendCall Send<TMessage>(
+        TMessage message)
+    {
+        return service.Send(actorId, message);
+    }
+
+    public ValueTask DisconnectAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return service.DisconnectAsync(actorId, cancellationToken);
+    }
+}
+
+internal sealed class ZLinkBoundSessionSendCall<TMessage>(
+    ZLinkBoundSessionService service,
+    string actorId,
+    TMessage message) : IZLinkBoundSessionSendCall
+{
+    private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
+    private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
+
+    public IZLinkBoundSessionSendCall PacketName(string packetName)
+    {
+        _packetName = packetName;
+        return this;
+    }
+
+    public IZLinkBoundSessionSendCall Metadata(
+        string key,
+        string value)
+    {
+        _metadata[key] = value;
+        return this;
+    }
+
+    public async ValueTask Submit(CancellationToken cancellationToken = default)
+    {
+        await service.SendBoundSessionAsync(
+                actorId,
+                _packetName,
+                _metadata,
+                message,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+}

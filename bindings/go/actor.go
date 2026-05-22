@@ -610,6 +610,19 @@ func (d *Discovery) ResolveActor(actorID string) (ActorRoute, error) {
 
 // --- StreamSocket actor methods ---
 
+// AttachActorGateway attaches this STREAM socket to the session owner SpotNode
+// used for ActorGateway session relay.
+func (s *StreamSocket) AttachActorGateway(node *SpotNode) error {
+	if s == nil || s.core == nil || s.core.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	nodeHandle, err := node.handleOrError()
+	if err != nil {
+		return err
+	}
+	return configErrorFromResult(C.zlink_stream_attach_actor_gateway(s.raw(), nodeHandle))
+}
+
 // BindActor returns an Actor bind operation builder. The stream is bound to
 // the given session_rid; the session does not need to be joined to a Spot.
 func (s *StreamSocket) BindActor(sessionRID RoutingID, actor ActorRef) ActorBindOp {

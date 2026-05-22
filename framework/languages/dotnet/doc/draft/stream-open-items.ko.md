@@ -77,7 +77,7 @@ serializer 계층은 다음 네 가지 방향으로 잡혀 있다.
   노출한다. header 는 framework 가 packet 을 만들 때 내부에서 작성하므로
   application 이 임의로 넘기는 overload 를 두지 않는다.
 - application 이 packet 을 보내야 할 때는 session context 의 `Send(...)`,
-  `Reply(...)` 또는 actor context 의 `IZLinkSessionProxy` 를 쓴다.
+  `Reply(...)` 또는 actor context 의 `BoundSession` 을 쓴다.
 - 일시적인 backpressure[^backpressure] 는 `Write(...)` 의 `false` 반환으로만
   표현한다. framework 내부의 session/actor 전송 helper 는 이 결과를 명확한
   실패로 바꿔 호출자에게 전달한다.
@@ -170,7 +170,7 @@ STREAM open item 은 이미 결정이 끝난 항목과 아직 남아 있는 항�
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `SessionProxyAndHeaderTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session의 write/reply와 lifecycle 매핑이 현재 결정과 일치한다. |
+| `HeaderStreamSessionTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session의 write/reply와 lifecycle 매핑이 현재 결정과 일치한다. |
 | `ProtocolTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | callback dispatch 정책이 transport 직접 호출로 다시 되돌아가지 않는다. |
 | `StreamConnectorTests.HeaderProtocolRoundTripsMetadataAndRequestSeq` | 내부 header protocol 이 metadata와 request sequence를 round-trip한다. |
 | `TopologyTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서 connection ready가 session connected metadata로 한 번 매핑된다. |

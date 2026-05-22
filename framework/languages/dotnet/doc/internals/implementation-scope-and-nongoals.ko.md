@@ -29,8 +29,8 @@
 - channel 의 manual connection manager (`UseManualConnections(...)`,
   `IZLinkChannelConnectionManager`, `IZLinkEndpointConnections`)
 - 클라이언트/퍼블리셔 표면인 `IZLinkClient`, `IZLinkEventPublisher`
-- `AddSpotMesh(...)`, `AddSpotNode(...)`, `UseSpotDiscovery(...)` 같은 `SPOT`[^spot]
-  등록 표면
+- `AddSpotMesh(...)`, `mesh.AddNode(...)` 같은
+  `SPOT`[^spot] 등록 표면
 - `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotPublisherClient`,
   `IZLinkSpotConnectionManager`
 - handler group mapping 모델. 즉 `[ZLinkHandlerGroup("...")]` 클래스

@@ -168,6 +168,14 @@ fn main() {
     let Some(data_bind) = common::resolve_server_bind_endpoint(PATTERN, &args.transport) else {
         return;
     };
+    let Some(data_router_bind) =
+        common::benchmark_endpoint(PATTERN, &args.transport, "multi-spot-sendsend-router-server")
+    else {
+        return;
+    };
+    data_node
+        .set_router_bind_endpoint(&data_router_bind)
+        .expect("data router bind endpoint");
     if let Err(err) = data_node.bind(&data_bind) {
         if common::handle_transport_setup_error(PATTERN, &args.transport, "bind", err) {
             return;

@@ -111,7 +111,8 @@ typedef enum zlink_poller_event_flag_e
     ZLINK_POLLOUT        = 2,
     ZLINK_POLLERR        = 4,
     ZLINK_POLLPRI        = 8,
-    ZLINK_POLLITEMS_DFLT = 16
+    ZLINK_POLLITEMS_DFLT = 16,
+    ZLINK_POLLCOMPLETION = 32
 } zlink_poller_event_flag_e;
 
 #define ZLINK_HAVE_POLLER 1
@@ -124,6 +125,7 @@ typedef enum zlink_poller_event_flag_e
 | `ZLINK_POLLERR` | 4 | An error occurred on the descriptor |
 | `ZLINK_POLLPRI` | 8 | Urgent / priority data available |
 | `ZLINK_POLLITEMS_DFLT` | 16 | Default poll-item array size |
+| `ZLINK_POLLCOMPLETION` | 32 | Request/reply completion readiness. Must be registered on its own (combining it with any other event flag fails with `EINVAL`), and only on request-capable sockets (`DEALER`/`ROUTER`). |
 | `ZLINK_HAVE_POLLER` | 1 | Library was compiled with poller support |
 
 ## Functions -- Array Poll

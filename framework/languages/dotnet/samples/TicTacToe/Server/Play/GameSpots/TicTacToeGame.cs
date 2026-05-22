@@ -251,7 +251,7 @@ sealed class TicTacToeGame(
             .Select(static player => player.Actor)
             .Where(actor => !string.Equals(actor.ActorId, excludedActorId, StringComparison.Ordinal))
             .ToArray();
-        QueueSessionPush(recipients, actor => actor.Context.SessionProxy.Send(message).Submit());
+        QueueSessionPush(recipients, actor => actor.Context.BoundSession.Send(message).Submit());
         return ValueTask.CompletedTask;
     }
 
@@ -272,7 +272,7 @@ sealed class TicTacToeGame(
             .Select(static player => player.Actor)
             .Where(actor => !string.Equals(actor.ActorId, joinedActor.ActorId, StringComparison.Ordinal))
             .ToArray();
-        QueueSessionPush(recipients, actor => actor.Context.SessionProxy.Send(message).Submit());
+        QueueSessionPush(recipients, actor => actor.Context.BoundSession.Send(message).Submit());
         return ValueTask.CompletedTask;
     }
 

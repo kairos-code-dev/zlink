@@ -112,6 +112,7 @@ struct spot_node_endpoint_state_t
     }
 
     std::string bound_endpoint;
+    std::string router_bind_endpoint;
     int local_fanout_sndhwm_cfg;
     int local_fanout_sndhwm_default;
     std::atomic<uint32_t> local_filtered_sub_count;

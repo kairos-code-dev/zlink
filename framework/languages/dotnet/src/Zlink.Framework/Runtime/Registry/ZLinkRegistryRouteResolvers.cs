@@ -1,52 +1,6 @@
 using System.Collections.Concurrent;
 namespace Zlink.Framework.Runtime.Registry;
 
-internal sealed class ZLinkRegistryActorRemoteAddressResolver(
-    ZLinkFrameworkRuntime runtime,
-    ZLinkFrameworkRegistration registration) : IZLinkActorRemoteAddressResolver
-{
-    public async ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
-        string actorId,
-        CancellationToken cancellationToken)
-    {
-        var options = registration.RegistryActorRemoteAddresses
-            ?? throw new ZLinkConfigurationException("Registry actor routes are not configured.");
-        var state = await runtime.GetStartedStateForRoutingAsync(cancellationToken)
-            .ConfigureAwait(false);
-        var routerChannelId = ZLinkRegistryRouteRuntime.ResolveRouterChannelId(
-            state,
-            options.RouterChannelId);
-        var discovery = ZLinkRegistryRouteRuntime.ResolveSingleSpotDiscovery(state);
-
-        try
-        {
-            var route = discovery.ResolveActor(actorId);
-            return new ZLinkActorRemoteLocation(
-                route.Actor.ActorId,
-                new ZLinkActorRemoteAddress(
-                    routerChannelId,
-                    route.Actor.NodeRid,
-                    route.Actor.Generation),
-                route.CurrentSpotRid,
-                route.CurrentSpotKind.ToFramework());
-        }
-        catch (ZlinkConfigException error) when (error.InternalErrno == 2)
-        {
-            throw NotFound(actorId, error);
-        }
-    }
-
-    private static ZLinkFrameworkException NotFound(
-        string actorId,
-        Exception? inner = null)
-        => new(
-            ZLinkFrameworkErrorKind.ActorRouteNotFound,
-            $"Actor remote address was not found for '{actorId}'.",
-            isRetriable: true,
-            innerException: inner);
-
-}
-
 internal sealed class ZLinkRegistrySpotRemoteAddressResolver(
     ZLinkFrameworkRuntime runtime,
     ZLinkFrameworkRegistration registration) : IZLinkSpotRemoteAddressResolver

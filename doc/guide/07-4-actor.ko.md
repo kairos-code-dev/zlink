@@ -57,15 +57,19 @@ Entry Spot 자체는 `SpotNode`가 소유하므로 파사드를 닫아도 Entry 
 
 1. `SpotNode`에서 Actor를 만든다.
 2. STREAM 클라이언트 세션 라우팅 ID를 확인한다.
-3. `zlink_stream_bind_actor()`로 세션과 Actor를 연결한다.
-4. STREAM 패킷 핸들러나 앱 로직에서 `zlink_stream_send_bound_actor_part()`를
+3. `zlink_stream_attach_actor_gateway()`로 STREAM socket을 session owner `SpotNode`에
+   연결한다.
+4. `zlink_stream_bind_actor()`로 세션과 Actor를 연결한다.
+5. STREAM 패킷 핸들러나 앱 로직에서 `zlink_stream_send_bound_actor_part()`를
    호출해 Actor ID를 지정한다.
-5. 디스패치 콜백에서 `ACTOR_READABLE`을 받으면 `subject` Actor ref를 복사하고
+6. 디스패치 콜백에서 `ACTOR_READABLE`을 받으면 `subject` Actor ref를 복사하고
    `zlink_spot_node_actor_recv_part()`로 소진(drain)한다.
 
 ```c
 zlink_actor_ref_t ref;
 zlink_spot_node_actor_new(node, "player-42", &ref);
+
+zlink_stream_attach_actor_gateway(stream, node);
 
 /* async submit; bind completion fires via reply handler */
 zlink_stream_bind_actor(stream, &session_rid, &ref,
@@ -184,7 +188,7 @@ static void on_join(
     if (result->result == ZLINK_REQUEST_OK) {
         /* 성공: result->actor가 최종 Actor ref (remote join이면 target node ref) */
         zlink_actor_ref_t final_ref = result->actor;
-        /* 후속 session attach나 위치 이동에 final_ref를 사용 */
+        /* 후속 Actor API나 위치 이동에 final_ref를 사용 */
     }
     zlink_multipart_close(parts, part_count);
 }
@@ -251,7 +255,7 @@ zlink_spot_actor_lifecycle_handler(spot, on_spot_join, on_spot_leave, userdata);
 replay하지 않으며, 등록 이후 발생한 transition만 callback 대상이다.
 
 lifecycle callback은 관측용이다. application state machine이 join 완료나 session
-attach 순서를 결정할 때는 join completion handler와 반환된 최종 Actor ref를 기준으로
+join 완료 순서를 결정할 때는 join completion handler와 반환된 최종 Actor ref를 기준으로
 삼는다.
 
 ## 3. Spot leave
@@ -305,10 +309,9 @@ route도 함께 제거된다. session attach 상태는 Actor 위치와 독립이
 `zlink_spot_node_actor_send_bound_session_msg()`를 사용한다. Actor에 활성 바인딩 세션이
 있어야 하며, 없으면 호출이 실패한다.
 
-framework adapter 를 사용할 때 session handler 는 actor route resolver 를 직접 호출하지
-않는다. 인증이나 입장 흐름에서 actor 를 준비한 쪽이 actor node rid 와 generation 이 포함된
-route snapshot 을 돌려주고, session 은 그 snapshot 으로 actor handle 을 attach 한다. 이후
-client message relay 는 attach 된 actor handle 을 사용한다.
+framework adapter 를 사용할 때 session handler 는 actor route resolver 나 route mesh channel을
+직접 고르지 않는다. STREAM은 session owner `SpotNode`의 ActorGateway에 attach되고, client
+message relay 는 logical Actor binding 을 통해 전달된다.
 
 ```c
 zlink_msg_t msg;

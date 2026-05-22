@@ -18,11 +18,7 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
 
-    public Type? ActorRemoteAddressResolverType { get; set; }
-
     public Type? SpotRemoteAddressResolverType { get; set; }
-
-    public ZLinkRegistryActorRemoteAddressesRegistration? RegistryActorRemoteAddresses { get; set; }
 
     public ZLinkRegistrySpotRemoteAddressesRegistration? RegistrySpotRemoteAddresses { get; set; }
 
@@ -37,13 +33,6 @@ internal sealed class ZLinkFrameworkRegistration
     public ZLinkDiscoveryRegistration? Discovery { get; set; }
 
     public ZLinkSpotDiscoveryRegistration? SpotDiscovery { get; set; }
-}
-
-internal sealed class ZLinkRegistryActorRemoteAddressesRegistration
-{
-    public required string Namespace { get; init; }
-
-    public string? RouterChannelId { get; set; }
 }
 
 internal sealed class ZLinkRegistrySpotRemoteAddressesRegistration
@@ -66,10 +55,6 @@ internal sealed class ZLinkMetadataPolicyRegistration
 internal sealed class ZLinkSpotDiscoveryRegistration : ZLinkDiscoveryRegistration
 {
     public required string ChannelName { get; init; }
-
-    public bool RequiresUseDiscovery { get; init; }
-
-    public bool UseDiscoveryCalled { get; set; }
 }
 
 internal sealed class ZLinkChannelRegistration
@@ -136,6 +121,8 @@ internal sealed class ZLinkStreamNodeRegistration
     public required string StreamNodeName { get; init; }
 
     public string? BindEndpoint { get; set; }
+
+    public string? ActorGatewaySpotNodeName { get; set; }
 
     public Type? HeaderSessionType { get; set; }
 }
@@ -214,6 +201,8 @@ internal sealed class ZLinkSpotRouteChannelAcceptanceRegistration
 
 internal sealed class ZLinkSpotRouterCapabilityRegistration
 {
+    public string? BindEndpoint { get; set; }
+
     public ZLinkSocketConfig SocketConfig { get; } = new();
 
     public ZLinkRouteConfig RoutingConfig { get; } = new();

@@ -9,7 +9,7 @@ use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::message::{Message, RoutingId};
 use crate::options::{CommonSocketOptions, StreamSocketOptions};
-use crate::service::{ActorBindOp, ActorRef, ActorUnbindOp, Empty, SendOp};
+use crate::service::{ActorBindOp, ActorRef, ActorUnbindOp, Empty, SendOp, SpotNode};
 
 use super::{SendHandle, SocketInner, impl_base_socket, impl_routing_id_options};
 
@@ -83,6 +83,14 @@ impl StreamSocket {
     /// `StreamSocket` must remain alive while the handle is in use.
     pub fn send_handle(&self) -> SendHandle {
         SendHandle::new(self.inner.handle)
+    }
+
+    /// Attach this STREAM socket to the session owner SpotNode used for
+    /// ActorGateway session relay.
+    pub fn attach_actor_gateway(&self, node: &SpotNode) -> Result<(), ConfigError> {
+        check_config_rc(unsafe {
+            ffi::zlink_stream_attach_actor_gateway(self.inner.handle, node.raw())
+        })
     }
 
     /// Async Actor bind (operation builder).

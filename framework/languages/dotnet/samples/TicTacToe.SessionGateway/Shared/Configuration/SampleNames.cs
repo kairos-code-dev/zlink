@@ -12,6 +12,8 @@ public static class SampleNames
 
     public const string StreamNode = "client.stream";
 
+    public const string SessionSpotNode = "tictactoe.session.node";
+
     public const string PlayerActorType = "player";
 
     public const string GameSpotType = "tictactoe.game";

@@ -12,6 +12,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
         nativeSpotNode.SetRoutingId(routingId);
     }
 
+    public void SetRouterBindEndpoint(string endpoint)
+    {
+        nativeSpotNode.SetRouterBindEndpoint(endpoint);
+    }
+
     public void Bind(string endpoint)
     {
         nativeSpotNode.Bind(endpoint);
@@ -182,6 +187,27 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
             .Timeout(timeout)
             .SubmitAsync(cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public bool SendActorBoundSession(
+        ZLinkBackendActorRef actor,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        return nativeSpotNode.SendActorBoundSession(actor.ToNative())
+            .Messages(parts)
+            .Flags(flags)
+            .Submit();
+    }
+
+    public ValueTask CloseActorBoundSessionAsync(
+        ZLinkBackendActorRef actor,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        nativeSpotNode.CloseActorBoundSession(actor.ToNative(), timeout);
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask DisposeAsync() => nativeSpotNode.DisposeAsync();

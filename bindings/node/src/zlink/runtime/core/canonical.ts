@@ -2349,6 +2349,11 @@ export class StreamSocket extends SocketBase {
       )
     );
   }
+  attachActorGateway(node: SpotNode): void {
+    configCall('stream actor gateway attachment failed', () => {
+      requireNative().streamAttachActorGateway(this.nativeHandle(), node.nativeHandle());
+    });
+  }
   bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOp {
     const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
@@ -2626,6 +2631,12 @@ export class SpotNode extends NativeHandle {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');
     bindCall('spot node bind failed', () => {
       requireNative().spotNodeBind(this._native, normalizedEndpoint);
+    });
+  }
+  setRouterBindEndpoint(endpoint: string): void {
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    configCall('spot node router bind endpoint failed', () => {
+      requireNative().spotNodeSetRouterBindEndpoint(this._native, normalizedEndpoint);
     });
   }
   connectPeer(endpoint: string): void {

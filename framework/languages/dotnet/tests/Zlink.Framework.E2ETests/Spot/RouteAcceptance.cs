@@ -19,6 +19,7 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
     {
         var channelEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var spotRouterEndpoint = GetFreeTcpEndpoint();
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
@@ -34,15 +35,18 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
                     });
                 });
             });
-            options.UseSpotDiscovery("spot.route.client-server", _ => { });
-            options.AddSpotNode("route-target-node", spot =>
+            options.AddSpotMesh("spot.route.client-server", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("route-target-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
-                spot.EnableRouter();
+                spot.EnableRouter(router => router.Bind(spotRouterEndpoint));
                 spot.AcceptSpotRoutesFromChannel(
                     "api",
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(channelEndpoint)));
+            });
             });
         });
 
@@ -64,6 +68,7 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
     {
         var routeEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var spotRouterEndpoint = GetFreeTcpEndpoint();
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
@@ -77,15 +82,18 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
                     routing.RoutingId = RoutingId.FromString("aabbcc02");
                 });
             });
-            options.UseSpotDiscovery("spot.route.mesh", _ => { });
-            options.AddSpotNode("route-target-node", spot =>
+            options.AddSpotMesh("spot.route.mesh", mesh =>
+            {
+                mesh.UseDiscovery(_ => { });
+                mesh.AddNode("route-target-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
-                spot.EnableRouter();
+                spot.EnableRouter(router => router.Bind(spotRouterEndpoint));
                 spot.AcceptSpotRoutesFromChannel(
                     "play",
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(routeEndpoint)));
+            });
             });
         });
 
@@ -103,7 +111,7 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
     }
 
     [Fact]
-    public async Task AddSpotNode_AcceptSpotRoutesFromChannel_ClientServer_AllowsRouterSendToSpot()
+    public async Task AddSpotMesh_AcceptSpotRoutesFromChannel_ClientServer_AllowsRouterSendToSpot()
     {
         await VerifyAcceptedRouteChannelSendToSpotAsync(
             SpotRouteTransportKind.ClientServer,
@@ -111,7 +119,7 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
     }
 
     [Fact]
-    public async Task AddSpotNode_AcceptSpotRoutesFromChannel_RouteMesh_AllowsRouterSendToSpot()
+    public async Task AddSpotMesh_AcceptSpotRoutesFromChannel_RouteMesh_AllowsRouterSendToSpot()
     {
         await VerifyAcceptedRouteChannelSendToSpotAsync(
             SpotRouteTransportKind.RouteMesh,

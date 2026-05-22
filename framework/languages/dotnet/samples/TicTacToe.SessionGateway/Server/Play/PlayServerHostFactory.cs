@@ -39,14 +39,10 @@ public static class PlayServerHostFactory
             });
             options.AddSpotMesh(SampleNames.GameSpotDiscovery, spotMesh =>
             {
-                spotMesh.UseDiscovery(discovery =>
-                {
-                    discovery.Add(topology.RegistryRouterEndpoint);
-                });
                 spotMesh.AddNode(SampleNames.GameSpotNode, spot =>
                 {
                     spot.Bind(topology.PlaySpotEndpoint);
-                    spot.EnableRouter();
+                    spot.EnableRouter(router => router.Bind(topology.PlaySpotRouterEndpoint));
                     spot.AcceptSpotRoutesFromChannel(SampleNames.RouterChannel);
                     spot.AddEntrySpot<TicTacToeEntrySpot>();
                     spot.AddSpotFactory<TicTacToeGameSpot>(SampleNames.GameSpotType);

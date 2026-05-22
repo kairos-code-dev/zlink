@@ -130,11 +130,11 @@ I/O 스레드를 CPU 코어 수 이상으로 설정해도 이점이 없고 conte
 
 | 파일 | 역할 |
 |------|------|
-| `core/src/core/io_thread.hpp/.cpp` | I/O thread 클래스, mailbox 처리 |
-| `core/src/core/ctx_runtime_resources.cpp` | `start_io_threads_locked()`에서 스레드 생성 |
-| `core/src/engine/asio/asio_poller.hpp/.cpp` | Boost ASIO 이벤트 루프, 소켓 모니터링 |
-| `core/src/core/poller_base.hpp` | Worker thread 기반 클래스 |
-| `core/src/core/mailbox.hpp` | Lock-free command queue + signaler |
+| `core/src/runtime/core/io_thread.hpp/.cpp` | I/O thread 클래스, mailbox 처리 |
+| `core/src/runtime/core/ctx_runtime_resources.cpp` | `start_io_threads_locked()`에서 스레드 생성 |
+| `core/src/runtime/engine/asio/asio_poller.hpp/.cpp` | Boost ASIO 이벤트 루프, 소켓 모니터링 |
+| `core/src/runtime/core/poller_base.hpp` | Worker thread 기반 클래스 |
+| `core/src/runtime/core/mailbox.hpp` | Lock-free command queue + signaler |
 
 ---
 [← Threading Model](./threading-model.ko.md)

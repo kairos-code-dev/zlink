@@ -787,6 +787,7 @@ def build_single_option_items(
         ("runs", str(args.runs)),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
         ("timeout_seconds", str(timeout_sec)),
+        ("fail_fast", "1" if FAIL_FAST else "0"),
         ("io_threads", str(io_threads)),
         ("hwm", "auto-hwm" if base_hwm <= 0 else str(base_hwm)),
         ("sndhwm", "auto-hwm" if sndhwm <= 0 else str(sndhwm)),
@@ -1189,6 +1190,7 @@ def main() -> int:
         emit_result_lines(combo_results)
     print("\n## Completion")
     print(f"- status: {completion_status}")
+    print(f"- fail_fast_stopped: {1 if FAIL_FAST and all_failures else 0}")
     print(f"- expected_result_lines: {expected_result_lines}")
     print(f"- actual_result_lines: {actual_result_lines}")
 

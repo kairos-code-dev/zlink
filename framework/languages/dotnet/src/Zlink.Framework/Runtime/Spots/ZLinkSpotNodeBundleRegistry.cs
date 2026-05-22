@@ -104,7 +104,10 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
     {
         var dealer = channelAdapter.CreateDealerSocket(context);
         dealer.SetChannelName(attached.ChannelName);
-        var bundle = new ZLinkSpotAttachedChannelBundle(dealer);
+        var bundle = new ZLinkSpotAttachedChannelBundle(
+            dealer,
+            attached.SocketConfig.SendTimeout,
+            stopToken);
 
         if (attached.ManualConnections.Count > 0)
         {
@@ -142,6 +145,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
             ZLinkAutoConnectType.ClientServer,
             frameworkRegistration.Discovery?.Endpoints ?? []);
 
+        bundle.Socket.AttachDiscovery(discovery);
         node.AttachChannelDealer(discovery, bundle.Socket);
         bundle.Discovery = discovery;
     }

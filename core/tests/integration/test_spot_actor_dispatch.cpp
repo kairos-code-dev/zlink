@@ -1806,7 +1806,7 @@ void test_stream_remote_actor_owner_missing_route_and_unbind_cleanup ()
 
     zlink_msg_t part;
     init_text_msg (&part, "still-owned");
-    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_NOT_FOUND,
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_NOT_CONNECTED,
                        test_stream_send_bound_actor_part (
                          session_owner, stream, &session_rid, "remote-gone",
                          &part, ZLINK_DONTWAIT, ZLINK_PART_FINAL));
@@ -1823,6 +1823,67 @@ void test_stream_remote_actor_owner_missing_route_and_unbind_cleanup ()
                          session_owner, stream, &session_rid, "remote-gone",
                          &part, ZLINK_DONTWAIT, ZLINK_PART_FINAL));
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&part));
+
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK,
+                       zlink_spot_node_destroy (&session_owner));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+
+void test_stream_bind_external_remote_actor_ref_keeps_logical_binding ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_spot_node_options_t options;
+    options.mode = ZLINK_SPOT_NODE_MODE_ALL;
+    void *session_owner = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (session_owner);
+
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "external-remote-session");
+
+    zlink_actor_ref_t remote_ref;
+    memset (&remote_ref, 0, sizeof (remote_ref));
+    set_rid (&remote_ref.node_rid, "external-actor-node");
+    strncpy (remote_ref.actor_id, "external-remote-actor",
+             ZLINK_ACTOR_ID_MAX - 1);
+    remote_ref.generation = 42;
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       wait_stream_bind_actor (session_owner, stream,
+                                                &session_rid, &remote_ref,
+                                                1000));
+
+    size_t count = 0;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_stream_bound_actors (stream, &session_rid, NULL,
+                                                  &count));
+    TEST_ASSERT_EQUAL_UINT64 (1, count);
+
+    zlink_actor_ref_t entries[1];
+    count = 1;
+    memset (entries, 0, sizeof (entries));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_stream_bound_actors (stream, &session_rid, entries,
+                                                  &count));
+    TEST_ASSERT_EQUAL_UINT64 (1, count);
+    TEST_ASSERT_EQUAL_UINT8 (remote_ref.node_rid.size,
+                             entries[0].node_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (remote_ref.node_rid.data,
+                              entries[0].node_rid.data,
+                              remote_ref.node_rid.size);
+    TEST_ASSERT_EQUAL_STRING (remote_ref.actor_id, entries[0].actor_id);
+    TEST_ASSERT_EQUAL_UINT64 (remote_ref.generation, entries[0].generation);
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       wait_stream_unbind_actor (session_owner, stream,
+                                                  &session_rid,
+                                                  "external-remote-actor",
+                                                  1000));
 
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK,
@@ -2306,6 +2367,7 @@ int main ()
     RUN_TEST (test_spot_snapshot_destroy_joined_and_pending_counts);
     RUN_TEST (test_stream_close_aborts_pending_join_without_leaving_current_spot);
     RUN_TEST (test_stream_remote_actor_owner_missing_route_and_unbind_cleanup);
+    RUN_TEST (test_stream_bind_external_remote_actor_ref_keeps_logical_binding);
     RUN_TEST (test_stream_multipart_selector_and_unbound_relay);
     RUN_TEST (test_actor_queue_dispatch_receive_and_backpressure);
     RUN_TEST (test_actor_route_move_joined_publish_and_provider_cleanup);

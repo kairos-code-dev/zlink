@@ -164,6 +164,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "Bind") {
 		t.Fatalf("SpotNode should expose Bind")
 	}
+	if !hasMethod((*zlink.SpotNode)(nil), "SetRouterBindEndpoint") {
+		t.Fatalf("SpotNode should expose SetRouterBindEndpoint")
+	}
 	if !hasMethod((*zlink.SpotNode)(nil), "ConnectPeer") {
 		t.Fatalf("SpotNode should expose ConnectPeer")
 	}
@@ -435,6 +438,9 @@ func TestSurfaceActorCapabilities(t *testing.T) {
 
 	if !hasMethod((*zlink.StreamSocket)(nil), "BindActor") {
 		t.Fatalf("StreamSocket should expose BindActor")
+	}
+	if !hasMethod((*zlink.StreamSocket)(nil), "AttachActorGateway") {
+		t.Fatalf("StreamSocket should expose AttachActorGateway")
 	}
 	if !hasMethod((*zlink.StreamSocket)(nil), "UnbindActor") {
 		t.Fatalf("StreamSocket should expose UnbindActor")

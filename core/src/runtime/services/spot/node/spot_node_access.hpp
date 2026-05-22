@@ -39,6 +39,8 @@ struct spot_node_access_t
     static mutex_t &sync (spot_node_t *node_);
     static spot_node_t *from_handle (void *node_);
     static int bind (spot_node_t *node_, const char *endpoint_);
+    static int set_router_bind_endpoint (spot_node_t *node_,
+                                         const char *endpoint_);
     static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
     static int disconnect_peer (spot_node_t *node_,
                                 const char *peer_endpoint_);
@@ -167,6 +169,8 @@ struct spot_node_access_t
                                             std::string *key_out_);
     static void mark_bound_endpoint_and_server_tls_locked (
       spot_node_t *node_, const std::string &bound_endpoint_);
+    static void snapshot_router_bind_endpoint (spot_node_t *node_,
+                                               std::string *out_);
     static void mark_mesh_client_tls_locked (spot_node_t *node_);
     static int apply_tls_server (spot_node_t *node_,
                                  socket_base_t *socket_,

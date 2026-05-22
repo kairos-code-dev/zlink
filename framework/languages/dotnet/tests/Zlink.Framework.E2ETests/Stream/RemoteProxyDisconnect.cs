@@ -14,16 +14,20 @@ namespace Zlink.Framework.E2ETests;
 public sealed class RemoteProxyDisconnectTests : StreamTestSupport
 {
     [Fact]
-    public async Task SessionProxyDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback()
+    public async Task BoundSessionDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback()
     {
         var streamEndpoint = GetFreeTcpEndpoint();
         var sessionRouterEndpoint = GetFreeTcpEndpoint();
+        var sessionSpotEndpoint = GetFreeTcpEndpoint();
+        var sessionSpotRouterEndpoint = GetFreeTcpEndpoint();
         var playRouterEndpoint = GetFreeTcpEndpoint();
         var playSpotEndpoint = GetFreeTcpEndpoint();
-        var sessionRid = RoutingId.FromString("0505");
-        var playRid = RoutingId.FromString("0606");
+        var playSpotRouterEndpoint = GetFreeTcpEndpoint();
+        var sessionRid = RoutingId.Of($"remote-disconnect-session-{Guid.NewGuid():N}");
+        var playRid = RoutingId.Of($"remote-disconnect-play-{Guid.NewGuid():N}");
+        var actorId = "remote-disconnect-player-1";
         var actorRecorder = new ActorDispatchRecorder();
-        var sessionRecorder = new GatewaySessionRecorder();
+        GatewaySessionRecorder? sessionRecorder = null;
         using var callbackCapture = CallbackExceptionCapture.Start();
 
         var playHost = await CreateHostAsync(playRouterEndpoint, services =>
@@ -36,38 +40,53 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(playSpotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.Bind(playSpotRouterEndpoint);
+                        router.ConfigureRouting(routing => routing.RoutingId = playRid);
+                        router.UseManualConnections(connections => connections.Connect(sessionSpotRouterEndpoint));
+                    });
                 });
-                options.AddRouteMeshChannel("gateway", routed =>
-                {
-                    routed.Bind(playRouterEndpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = playRid);
-                    routed.UseManualConnections(connections => connections.Connect(sessionRouterEndpoint));
                 });
             });
         });
-        await playHost.Services.GetRequiredService<IZLinkActorManager>()
-            .GetOrCreateAsync("player-1", "player");
+        var actorManager = playHost.Services.GetRequiredService<IZLinkActorManager>();
+        await actorManager
+            .GetOrCreateAsync(actorId, "player");
+        var remoteAddress = await actorManager.GetRemoteAddressAsync(actorId, "player");
+        sessionRecorder = new GatewaySessionRecorder(actorId, remoteAddress);
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new TestActorRemoteAddressSnapshot(new ZLinkActorRemoteAddress("gateway", playRid, 1)));
             services.AddSingleton(sessionRecorder);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
-                options.AddRouteMeshChannel("gateway", routed =>
+                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    routed.Bind(sessionRouterEndpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = sessionRid);
-                    routed.UseManualConnections(connections => connections.Connect(playRouterEndpoint));
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
+                {
+                    spot.Bind(sessionSpotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.Bind(sessionSpotRouterEndpoint);
+                        router.ConfigureRouting(routing => routing.RoutingId = sessionRid);
+                        router.UseManualConnections(connections => connections.Connect(playSpotRouterEndpoint));
+                    });
+                });
                 });
                 options.AddStreamNode("client.stream", stream =>
                 {
                     stream.Bind(streamEndpoint);
-                    stream.AddHeaderSession<GatewayRelaySession>();
+                    stream.AttachActorGateway("actor-node");
+                    stream.RegisterSession<GatewayRelaySession>();
                 });
             });
         });
@@ -88,11 +107,14 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
                 JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("bind-remote"), JsonOptions)));
             var bindReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(201));
             var bindBody = JsonSerializer.Deserialize<GatewayPong>(bindReply.Payload, JsonOptions);
+            Assert.True(
+                bindReply.Header.Kind == ZlinkStreamMessageKind.Response,
+                Encoding.UTF8.GetString(bindReply.Payload));
             Assert.Equal("play:bind-remote", bindBody?.Value);
             await RetryAsync(
                 () => actorRecorder.CreatedCount == 1
                     && playHost.Services.GetRequiredService<ZLinkFrameworkRuntime>()
-                        .TryGetActorBoundSession("player-1", out _)
+                        .TryGetActorBoundSession(actorId, out _)
                     && callbackCapture.IsEmpty,
                 TimeSpan.FromSeconds(5));
 
@@ -112,7 +134,7 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
             await RetryAsync(
                 () => actorRecorder.ProxyDisconnectCount == 1
                     && !playHost.Services.GetRequiredService<ZLinkFrameworkRuntime>()
-                        .TryGetActorBoundSession("player-1", out _)
+                        .TryGetActorBoundSession(actorId, out _)
                     && callbackCapture.IsEmpty,
                 TimeSpan.FromSeconds(5));
             Assert.Equal(0, sessionRecorder.DisconnectedCount);

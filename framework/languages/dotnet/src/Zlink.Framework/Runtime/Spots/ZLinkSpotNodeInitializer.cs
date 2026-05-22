@@ -35,6 +35,10 @@ internal sealed class ZLinkSpotNodeInitializer(
                 registration.SpotDiscovery?.ChannelName ?? spotNodeRegistration.SpotNodeName);
 
             nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
+            if (spotNodeRegistration.Router?.BindEndpoint is { Length: > 0 } routerEndpoint)
+            {
+                node.SetRouterBindEndpoint(routerEndpoint);
+            }
             node.Bind(spotNodeRegistration.BindEndpoint!);
 
             AttachDiscoveryIfConfigured(state, channelAdapter, spotNodeRegistration, node, nodeRuntime);
@@ -54,8 +58,13 @@ internal sealed class ZLinkSpotNodeInitializer(
         IZLinkBackendSpotNode node,
         ZLinkSpotNodeRuntime nodeRuntime)
     {
-        if (registration.SpotDiscovery is null
-            || registration.SpotDiscovery.Endpoints.Count == 0)
+        if (registration.SpotDiscovery is null)
+        {
+            return;
+        }
+
+        var endpoints = ZLinkFrameworkRegistrationValidator.ResolveSpotDiscoveryEndpoints(registration);
+        if (endpoints.Count == 0)
         {
             return;
         }
@@ -65,16 +74,11 @@ internal sealed class ZLinkSpotNodeInitializer(
             state.Context,
             registration.SpotDiscovery.ChannelName,
             ZLinkAutoConnectType.SpotMesh,
-            registration.SpotDiscovery.Endpoints);
+            endpoints);
         if (registration.RegistrySpotRemoteAddresses is not null)
         {
             discovery.SpotOwnerSyncEnabled = true;
         }
-        if (registration.RegistryActorRemoteAddresses is not null)
-        {
-            discovery.ActorRouteSyncEnabled = true;
-        }
-
         node.AttachDiscovery(discovery);
         nodeRuntime.SpotDiscovery = discovery;
         nodeRuntime.StartDiscoveryPeerReconciliation();

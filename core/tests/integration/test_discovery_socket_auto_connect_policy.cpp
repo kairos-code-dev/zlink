@@ -509,6 +509,27 @@ bool wait_for_dealer_router_delivery_local (void *dealer_,
     });
 }
 
+bool wait_for_spot_channel_router_delivery_local (void *spot_,
+                                                  const char *channel_name_,
+                                                  void *router_,
+                                                  const char *text_,
+                                                  int timeout_ms_)
+{
+    return zlink_test_wait_until (timeout_ms_, [=] {
+        zlink_msg_t part;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, strlen (text_)));
+        memcpy (zlink_msg_data (&part), text_, strlen (text_));
+        const zlink_submit_result_t submit_rc = zlink_spot_send_channel (
+          spot_, channel_name_, &part, 1, ZLINK_DONTWAIT);
+        if (submit_rc != ZLINK_SUBMIT_OK)
+            zlink_msg_close (&part);
+        if (wait_for_router_payload_local (
+              router_, text_, zlink_test_poll_step_ms))
+            return true;
+        return false;
+    });
+}
+
 bool wait_for_pubsub_delivery_local (void *pub_,
                                      void *sub_,
                                      const char *text_,
@@ -1031,6 +1052,75 @@ void test_client_server_dealer_connects_all_routers_and_registry_queries_use_cha
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&dealer_discovery, 3000));
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&router_b_discovery, 3000));
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&router_a_discovery, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_spot_attached_channel_dealer_uses_socket_discovery ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    char router_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, 6001, registry_pub, sizeof (registry_pub), registry_router,
+      sizeof (registry_router)));
+
+    void *router_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "spot-attached-channel");
+    void *dealer_discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER,
+                           "spot-attached-channel");
+    TEST_ASSERT_NOT_NULL (router_discovery);
+    TEST_ASSERT_NOT_NULL (dealer_discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      router_discovery, registry_router, 3000));
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      dealer_discovery, registry_router, 3000));
+
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *spot = zlink_spot_new (node);
+    void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (spot);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router, "spot-rtr", 8));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "spot-dlr", 8));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (router, router_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_socket_attach_discovery (dealer, dealer_discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_attach_channel_dealer (node, dealer_discovery, dealer));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (
+      router, 6002, router_endpoint, sizeof (router_endpoint)));
+
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      dealer_discovery, ZLINK_SERVICE_ROLE_ROUTER, 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_spot_channel_router_delivery_local (
+      spot, "spot-attached-channel", router, "attached-channel", 10000));
+
+    TEST_ASSERT_TRUE (
+      destroy_discovery_with_retry_local (&dealer_discovery, 3000));
+    TEST_ASSERT_TRUE (
+      destroy_discovery_with_retry_local (&router_discovery, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
@@ -1567,6 +1657,7 @@ int main ()
     RUN_TEST (test_socket_discovery_router_router_uses_single_initiator);
     RUN_TEST (test_discovery_channel_contract_rejects_type_conflict_and_persists);
     RUN_TEST (test_client_server_dealer_connects_all_routers_and_registry_queries_use_channel);
+    RUN_TEST (test_spot_attached_channel_dealer_uses_socket_discovery);
     RUN_TEST (test_endpointless_client_server_dealer_is_not_member_but_reports_connect_intent);
     RUN_TEST (test_fanout_sub_connects_pub_and_endpointless_sub_is_not_member);
     RUN_TEST (test_registry_peer_sync_conflict_keeps_deterministic_winner_projection);

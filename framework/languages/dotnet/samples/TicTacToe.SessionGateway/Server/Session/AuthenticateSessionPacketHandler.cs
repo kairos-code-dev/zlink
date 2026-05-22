@@ -41,7 +41,7 @@ internal sealed class AuthenticateSessionPacketHandler(IZLinkClient channels) : 
 
             var actor = await context.Stream.BindActorHandleAsync(
                     ensured.ActorId,
-                    SampleNames.PlayerActorType,
+                    ensured.ActorType,
                     ToRemoteAddress(ensured.RemoteAddress),
                     cancellationToken)
                 ;

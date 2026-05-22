@@ -99,6 +99,8 @@ internal static class PerfMultiSpotReqRep
         int expectedReadyCount = ResolveMultiClients(options);
         string dataEndpoint = MultiEndpointFor(options.Transport,
             config.DataEndpointName, options);
+        string dataRouterEndpoint = EndpointFor(options.Transport,
+            config.DataEndpointName + "-router");
         string controlEndpoint = MultiEndpointFor(options.Transport,
             config.ControlEndpointName, options);
 
@@ -125,6 +127,7 @@ internal static class PerfMultiSpotReqRep
             replier.SetRoutingId(config.ServerSpotRoutingId);
             controlSub.SetSubscription(Topic);
 
+            dataNode.SetRouterBindEndpoint(dataRouterEndpoint);
             dataNode.Bind(dataEndpoint);
             dataEndpoint = dataNode.LastEndpoint;
             controlNode.Bind(controlEndpoint);
@@ -247,6 +250,8 @@ internal static class PerfMultiSpotReqRep
             ConfigureControlNodeOptions(controlNode, readyTimeoutMs);
 
             controlSub.SetSubscription(Topic);
+            dataNode.SetRouterBindEndpoint(EndpointFor(options.Transport,
+                config.ClientDataEndpointName + "-router"));
             string dataEndpoint = BindSpotNodeWithRetry(dataNode,
                 options.Transport, config.ClientDataEndpointName, options);
             dataNode.ConnectPeer(serverDataEndpoint);

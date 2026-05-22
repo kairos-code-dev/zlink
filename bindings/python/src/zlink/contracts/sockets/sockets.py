@@ -42,7 +42,14 @@ from ..errors.errors import (
     RequestError,
     SubmitError,
 )
-from ..enums.enums import RecvResult, RequestResult, SubmitResult
+from ..enums.enums import (
+    ConfigResult,
+    ConnectResult,
+    HandlerResult,
+    RecvResult,
+    RequestResult,
+    SubmitResult,
+)
 from ..core.routing_id import RoutingId
 from ..messaging.messages import Message, Received, SubscriptionEvent
 from ..._runtime.messaging.request_reply import (
@@ -661,6 +668,11 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
         rc = lib().zlink_disconnect_rid(self._handle, ctypes.byref(native))
         if rc != 0:
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
+
+    def attach_actor_gateway(self, node):
+        rc = lib().zlink_stream_attach_actor_gateway(self._handle, node._handle)
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def bind_actor(self, session_rid, actor):
         """Async Actor bind. The stream is bound to its session/actor mapping

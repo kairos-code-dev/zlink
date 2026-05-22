@@ -3522,6 +3522,22 @@ napi_value spot_node_bind(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_node_set_router_bind_endpoint(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    std::string ep = get_string(env, argv[1]);
+    int rc = zlink_spot_node_set_router_bind_endpoint(node, ep.c_str());
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_set_router_bind_endpoint failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 napi_value spot_node_connect_peer(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -4538,6 +4554,23 @@ static int send_bound_actor_parts(void *stream,
         }
     }
     return ZLINK_SUBMIT_OK;
+}
+
+napi_value stream_attach_actor_gateway(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *stream = NULL;
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &stream);
+    napi_get_value_external(env, argv[1], &node);
+    int rc = zlink_stream_attach_actor_gateway(stream, node);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "streamAttachActorGateway failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }
 
 napi_value stream_bind_actor(napi_env env, napi_callback_info info)

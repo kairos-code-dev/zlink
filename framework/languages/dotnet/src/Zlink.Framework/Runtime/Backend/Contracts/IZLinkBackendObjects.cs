@@ -79,4 +79,5 @@ internal interface IZLinkBackendObject
 
 internal interface IZLinkBackendContext : IZLinkBackendObject, IAsyncDisposable
 {
+    void Shutdown();
 }

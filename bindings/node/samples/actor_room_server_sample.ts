@@ -47,6 +47,7 @@ async function main() {
   try {
     spot = node.createSpot();
     actor = node.createActor('room-player-1');
+    stream.attachActorGateway(node);
     stream.bind(endpoint);
     client = net.createConnection({ host: '127.0.0.1', port });
     await once(client, 'connect');

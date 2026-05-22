@@ -48,7 +48,7 @@ bind_data_endpoint (zlink::service::spot_node_t &node_,
                     const std::string &transport_,
                     int fixed_port_)
 {
-    return perf::multi::bind_spot_endpoint (
+    return perf::multi::bind_routed_spot_endpoint (
       node_, transport_,
       fixed_port_ > 0 ? fixed_port_ : perf::multi::bench_port_base (50000));
 }

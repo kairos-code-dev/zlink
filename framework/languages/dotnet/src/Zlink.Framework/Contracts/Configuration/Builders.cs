@@ -44,6 +44,8 @@ public interface IChannelSubscriberCapabilityBuilder
 
 public interface ISpotRouterCapabilityBuilder
 {
+    void Bind(string endpoint);
+
     void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
     void ConfigureRouting(Action<IZLinkRouteConfig> configure);
@@ -120,7 +122,9 @@ public interface IZLinkStreamNodeBuilder
 {
     void Bind(string endpoint);
 
-    void AddHeaderSession<TSession>()
+    void AttachActorGateway(string spotNodeName);
+
+    void RegisterSession<TSession>()
         where TSession : class, IZLinkSession;
 }
 
@@ -227,11 +231,6 @@ public interface IZLinkSpotMeshBuilder
         Action<IZLinkSpotMeshNodeBuilder> configure);
 }
 
-public interface IZLinkRegistryActorRemoteAddressesOptions
-{
-    string? RouterChannelId { get; set; }
-}
-
 public interface IZLinkRegistrySpotRemoteAddressesOptions
 {
     string? RouterChannelId { get; set; }
@@ -254,17 +253,8 @@ public interface IZLinkFrameworkOptions
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
 
-    void AddActorRemoteAddressResolver<TResolver>()
-        where TResolver : class, IZLinkActorRemoteAddressResolver;
-
     void AddSpotRemoteAddressResolver<TResolver>()
         where TResolver : class, IZLinkSpotRemoteAddressResolver;
-
-    void UseRegistryActorRemoteAddresses(string namespaceName);
-
-    void UseRegistryActorRemoteAddresses(
-        string namespaceName,
-        Action<IZLinkRegistryActorRemoteAddressesOptions> configure);
 
     void UseRegistrySpotRemoteAddresses(string namespaceName);
 
@@ -290,10 +280,6 @@ public interface IZLinkFrameworkOptions
 
     void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure);
 
-    void UseSpotDiscovery(
-        string channelName,
-        Action<IZLinkDiscoveryBuilder> configure);
-
     void UseFilter<TFilter>()
         where TFilter : class, IZLinkHandlerFilter;
 
@@ -302,10 +288,6 @@ public interface IZLinkFrameworkOptions
     void AddStreamNode(
         string streamNodeName,
         Action<IZLinkStreamNodeBuilder> configure);
-
-    void AddSpotNode(
-        string spotNodeName,
-        Action<IZLinkSpotNodeBuilder> configure);
 
     void AddSpotMesh(
         string channelName,

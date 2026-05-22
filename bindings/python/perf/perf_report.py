@@ -330,6 +330,7 @@ def _single_effective_options(args, section):
         f"- runs: {args.runs}",
         f"- duration_seconds: {args.duration}",
         "- timeout_seconds: 30",
+        f"- fail_fast: {args.fail_fast}",
         f"- io_threads: {args.io_threads or '1'}",
         f"- hwm: {args.hwm or 'auto-hwm'}",
         f"- sndhwm: {args.send_hwm or args.hwm or 'auto-hwm'}",
@@ -474,6 +475,7 @@ def _multi_effective_options(args, section):
         f"- transports: {args.transports}",
         f"- msg_sizes: {args.msg_sizes}",
         f"- duration_seconds: {args.duration}",
+        f"- fail_fast: {args.fail_fast}",
         f"- clients: {args.clients}",
         "- default_clients: 100",
         "- default_stream_clients: 10000",
@@ -782,6 +784,7 @@ def add_common_report_args(parser):
     parser.add_argument("--rcvtimeo-ms", required=True)
     parser.add_argument("--elapsed-seconds", default="")
     parser.add_argument("--lang", required=True)
+    parser.add_argument("--fail-fast", default="0")
 
 
 def main(argv=None):

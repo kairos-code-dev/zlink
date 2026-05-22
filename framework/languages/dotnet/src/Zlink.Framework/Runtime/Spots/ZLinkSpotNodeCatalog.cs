@@ -23,6 +23,9 @@ internal sealed class ZLinkSpotNodeCatalog(
         registration,
         node,
         spotChannelName,
+        channelName => registration.AttachedChannelClients.ContainsKey(channelName)
+            ? getOrCreateAttachedChannelBundle(channelName).Submitter
+            : null,
         connectDiscoveredPubSubPeers);
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();

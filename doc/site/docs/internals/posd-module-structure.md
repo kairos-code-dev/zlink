@@ -50,13 +50,13 @@ flowchart TB
         common_rt["Common: runtime_base · api_guard · monitor · bridge"]
     end
 
-    subgraph SocketRT ["Socket Semantic / Runtime (core/src/sockets/)"]
+    subgraph SocketRT ["Socket Semantic / Runtime (core/src/runtime/sockets/)"]
         families["Families: pair · pub · sub · xpub · xsub · dealer · router · stream"]
         base["Base: socket_base · api · dispatch · endpoint · lifecycle · monitor · msg · routing"]
         runtime["Runtime: socket_runtime · socket_close_ops"]
     end
 
-    subgraph Core ["Runtime Core (core/src/core/)"]
+    subgraph Core ["Runtime Core (core/src/runtime/core/)"]
         core_mods["ctx · own · reaper · mailbox · pipe"]
         multipart["multipart_send_txn"]
         options["options · options_dispatch · core_socket · transport_network · protocol_metadata"]
@@ -64,7 +64,7 @@ flowchart TB
         session["session_base · socket_poller"]
     end
 
-    subgraph Engine ["Engine (core/src/engine/)"]
+    subgraph Engine ["Engine (core/src/runtime/engine/)"]
         asio["asio/ — Boost.Asio poller, io_context, mailbox execution"]
     end
 
@@ -167,7 +167,7 @@ separate from the high-level forwarding sequence.
 | `registry_access.cpp/hpp` | Registry service API seam |
 | `registry_query_access.cpp/hpp` | Remote Registry query API seam |
 
-### 3.4 Socket Semantic/Runtime (`core/src/sockets/`)
+### 3.4 Socket Semantic/Runtime (`core/src/runtime/sockets/`)
 
 `socket_base_t` remains as the semantic entrypoint for socket families,
 while common mechanism work is separated into runtime components.
@@ -194,7 +194,7 @@ directly reference runtime internal fields.
 part-helper state now sit behind typed bridge accessors rather than
 `shared_ptr<void>` storage and repeated casts in API code.
 
-### 3.5 Runtime Core (`core/src/core/`)
+### 3.5 Runtime Core (`core/src/runtime/core/`)
 
 #### Options Dispatch
 
@@ -274,16 +274,19 @@ Prohibited directions:
 
 ```
 core/src/
-  api/           76 files — C API facade (split by concern)
-  core/          76 files — runtime core, options dispatch, multipart send
-  engine/asio/   — Boost.Asio execution backbone
-  sockets/       47 files — socket families + base runtime components
-  protocol/      — raw/zmp/metadata
-  services/
-    common/      10 files — service_runtime_base, service_public_api_guard
-    control/      2 files — service control runtime
-    discovery/   31 files — discovery + registry access + socket attachment
-    spot/        52 files — node/pub/sub/data_plane/handle/subject_access
-  transports/    — tcp/ipc/tls/ws/pgm
-  utils/         — domain-agnostic utilities
+  api/                107 files — C ABI facade (split by concern)
+  runtime/
+    core/              77 files — runtime core, options dispatch, multipart send
+    engine/            14 files — Boost.Asio execution backbone
+    protocol/          20 files — raw/zmp/metadata
+    sockets/           53 files — socket families + base runtime components
+    services/
+      common/           8 files — service_runtime_base, service_public_api_guard
+      control/          2 files — service control runtime
+      discovery/       26 files — discovery + registry access
+      registry/        13 files — registry runtime
+      spot/            70 files — node/pub/sub/data_plane/dispatch/runtime
+      actor/           11 files — actor relay multipart/packet/result/validation
+    transports/        46 files — tcp/ipc/tls/ws/pgm
+    utils/             44 files — domain-agnostic utilities
 ```

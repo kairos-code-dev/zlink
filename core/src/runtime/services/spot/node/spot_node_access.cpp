@@ -102,6 +102,14 @@ void spot_node_t::mark_bound_endpoint_and_server_tls_locked (
     _tls_state.server_tls_locked = true;
 }
 
+void spot_node_t::snapshot_router_bind_endpoint (std::string *out_) const
+{
+    if (!out_)
+        return;
+    scoped_lock_t lock (_sync);
+    *out_ = _endpoint_state.router_bind_endpoint;
+}
+
 void spot_node_t::mark_mesh_client_tls_locked ()
 {
     scoped_lock_t lock (_sync);
@@ -171,6 +179,12 @@ spot_node_t *spot_node_access_t::from_handle (void *node_)
 int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
 {
     return node_ ? node_->bind (endpoint_) : -1;
+}
+
+int spot_node_access_t::set_router_bind_endpoint (spot_node_t *node_,
+                                                  const char *endpoint_)
+{
+    return node_ ? node_->set_router_bind_endpoint (endpoint_) : -1;
 }
 
 int spot_node_access_t::connect_peer (spot_node_t *node_,
@@ -656,6 +670,17 @@ void spot_node_access_t::mark_bound_endpoint_and_server_tls_locked (
     if (!node_)
         return;
     node_->mark_bound_endpoint_and_server_tls_locked (bound_endpoint_);
+}
+
+void spot_node_access_t::snapshot_router_bind_endpoint (spot_node_t *node_,
+                                                        std::string *out_)
+{
+    if (!out_)
+        return;
+    out_->clear ();
+    if (!node_)
+        return;
+    node_->snapshot_router_bind_endpoint (out_);
 }
 
 void spot_node_access_t::mark_mesh_client_tls_locked (spot_node_t *node_)

@@ -9,7 +9,4 @@ public interface IZLinkActorRef
     bool IsRemote { get; }
 
     ZLinkActorRemoteAddress RemoteAddress { get; }
-
-    ValueTask NotifyDisconnectedAsync(
-        CancellationToken cancellationToken = default);
 }

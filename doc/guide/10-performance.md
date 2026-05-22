@@ -32,8 +32,8 @@ zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);
 | I/O Threads | Recommended Use Case | Guideline |
 |------------|---------------|------|
 | 1 | Small-scale connections (<100), simple patterns | Uses 1 CPU core |
-| 2 (default) | General use | Suitable for most scenarios |
-| 4 | Large-scale connections, high throughput | 4+ CPU cores |
+| 2 | Small-to-medium deployments | Lower core counts |
+| 4 (default) | General use, large-scale connections | Suitable for most scenarios; 4+ CPU cores |
 | Core count | Maximum throughput | Dedicated server |
 
 ### When to Increase I/O Threads

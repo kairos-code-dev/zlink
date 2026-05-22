@@ -12,7 +12,7 @@ public interface IZLinkActorContext
 
     bool IsJoined { get; }
 
-    IZLinkSessionProxy SessionProxy { get; }
+    IZLinkBoundSession BoundSession { get; }
 
     void AddPacket<THandler>()
         where THandler : class;

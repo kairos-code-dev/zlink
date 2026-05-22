@@ -348,15 +348,28 @@ case_timeout_seconds() {
 tmp_plan="$(mktemp)"
 trap 'rm -f "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${tmp_plan}"' EXIT
 
+stop_early=0
 for pattern in "${patterns[@]}"; do
+  if [[ "${stop_early}" -eq 1 ]]; then
+    break
+  fi
   current_transports="${TRANSPORTS:-$(default_transports "${pattern}")}"
   IFS=',' read -r -a transports <<< "$(trim_csv "${current_transports}")"
   printf '%s\t%s\n' "${pattern}" "${current_transports}" >> "${tmp_plan}"
   for transport_index in "${!transports[@]}"; do
+    if [[ "${stop_early}" -eq 1 ]]; then
+      break
+    fi
     transport="${transports[$transport_index]}"
     echo "    Testing ${transport}:"
     for size in "${msg_sizes[@]}"; do
+      if [[ "${stop_early}" -eq 1 ]]; then
+        break
+      fi
       for ((run=1; run<=RUNS; run++)); do
+        if [[ "${stop_early}" -eq 1 ]]; then
+          break
+        fi
         expected_result_lines=$((expected_result_lines + 5))
         cmd=("${runner_cmd[@]}" "${pattern}" "${transport}" "${size}" \
           --duration "${DURATION}")
@@ -384,7 +397,8 @@ for pattern in "${patterns[@]}"; do
             if [[ "${status}" -eq 124 ]]; then
               record_failure "${pattern}" "${transport}" "${size}" "${run}" \
                 "timeout_after_${timeout_seconds}s"
-              continue
+              [[ "${PERF_FAIL_FAST:-0}" == "1" ]] && stop_early=1
+              break
             fi
             if printf '%s\n' "${output}" | grep -q '^UNSUPPORTED,'; then
               expected_result_lines=$((expected_result_lines - 5))
@@ -392,7 +406,8 @@ for pattern in "${patterns[@]}"; do
             fi
             record_failure "${pattern}" "${transport}" "${size}" "${run}" \
               "$(failure_reason_from_output "${output}")"
-            continue
+            [[ "${PERF_FAIL_FAST:-0}" == "1" ]] && stop_early=1
+            break
           fi
           unset status
         elif ! output="$("${cmd[@]}" 2>&1)"; then
@@ -402,7 +417,8 @@ for pattern in "${patterns[@]}"; do
           fi
           record_failure "${pattern}" "${transport}" "${size}" "${run}" \
             "$(failure_reason_from_output "${output}")"
-          continue
+          [[ "${PERF_FAIL_FAST:-0}" == "1" ]] && stop_early=1
+          break
         fi
         if (( RUNS > 1 )); then
           printf '      run %s/%s:\n' "${run}" "${RUNS}"
@@ -429,6 +445,8 @@ for pattern in "${patterns[@]}"; do
           | awk -F',' '/^RESULT,/ && ($6=="throughput" || $6=="bandwidth" || $6=="latency" || $6=="latency_p95" || $6=="latency_p99") {count++} END {print count+0}')"
         if [[ "${required_count}" -ne 5 ]]; then
           record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
+          [[ "${PERF_FAIL_FAST:-0}" == "1" ]] && stop_early=1
+          break
         fi
         if (( run < RUNS )); then
           sleep_ms "${RUN_COOLDOWN_MS}"
@@ -436,7 +454,7 @@ for pattern in "${patterns[@]}"; do
       done
     done
     echo "    Testing ${transport}: Done"
-    if [[ "${TRANSPORT_TRANSITION_MS}" -gt 0 && "$((transport_index + 1))" -lt "${#transports[@]}" ]]; then
+    if [[ "${stop_early}" -ne 1 && "${TRANSPORT_TRANSITION_MS}" -gt 0 && "$((transport_index + 1))" -lt "${#transports[@]}" ]]; then
       next_transport="${transports[$((transport_index + 1))]}"
       cooldown_ms="${TRANSPORT_TRANSITION_MS}"
       if [[ "${next_transport}" == "inproc" && ( "${transport}" == "ws" || "${transport}" == "wss" ) ]]; then
@@ -472,7 +490,8 @@ python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${t
   "${RUNS}" "${DURATION}" "${TIMEOUT_SECONDS}" "${RESULTS_TAG}" "${PIN_CPU}" "${expected_result_lines}" "${actual_result_lines}" \
   "${IO_THREADS}" "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" \
   "${RCVTIMEO_MS}" "${SNDBUF}" "${RCVBUF}" \
-  "${CTX_AUTO_HWM_ENABLE_DISPLAY}" "${CTX_AUTO_HWM_PROFILE}" "${OUTPUT_PATH}" <<'PY' || python_status=$?
+  "${CTX_AUTO_HWM_ENABLE_DISPLAY}" "${CTX_AUTO_HWM_PROFILE}" "${OUTPUT_PATH}" \
+  "${PERF_FAIL_FAST:-0}" "${stop_early}" <<'PY' || python_status=$?
 import csv
 import math
 import sys
@@ -485,6 +504,7 @@ from pathlib import Path
     results_tag, pin_cpu, expected_result_lines, actual_result_lines,
     io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, sndbuf,
     rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, output_path,
+    fail_fast, fail_fast_stopped,
 ) = sys.argv[1:]
 sys.path.insert(0, str(Path(helper_path).resolve().parent))
 from report_common import load_failures
@@ -623,6 +643,7 @@ def emit_options(label):
     emit(f"- runs: {runs}")
     emit(f"- duration_seconds: {duration}")
     emit(f"- timeout_seconds: {timeout_seconds}")
+    emit(f"- fail_fast: {fail_fast}")
     emit(f"- io_threads: {io_threads or '1'}")
     emit(f"- hwm: {hwm or 'auto-hwm'}")
     emit(f"- sndhwm: {send_hwm or 'auto-hwm'}")
@@ -768,6 +789,7 @@ status = "complete" if expected_result_lines == actual_result_lines and not fail
 emit("")
 emit("## Completion")
 emit(f"- status: {status}")
+emit(f"- fail_fast_stopped: {fail_fast_stopped}")
 emit(f"- expected_result_lines: {expected_result_lines}")
 emit(f"- actual_result_lines: {actual_result_lines}")
 emit("")

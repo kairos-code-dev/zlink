@@ -40,11 +40,11 @@ public static class PlayServerHostFactory
             });
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery, spotMesh =>
             {
-                spotMesh.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
                 spotMesh.AddNode(SampleNames.RoomSpotNode, spot =>
                 {
                     spot.Bind(topology.PlaySpotEndpoint);
-                    spot.EnableRouter();
+                    spot.EnableRouter(router => router.Bind(topology.PlaySpotRouterEndpoint));
+                    spot.AttachClientServerChannelClient(SampleNames.ApiChannel);
                     spot.AcceptSpotRoutesFromChannel(SampleNames.RouterChannel);
                     spot.AddEntrySpot<BingoEntrySpot>();
                     spot.AddSpotFactory<BingoRoomSpot>(SampleNames.RoomSpotType);

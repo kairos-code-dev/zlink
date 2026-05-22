@@ -134,10 +134,14 @@ binding 내부 병목인지 perf 측정 오류인지 먼저 구분한다.
 
 각 binding의 공식 perf 스크립트를 그대로 사용한다.
 
-- single: `bindings/<lang>/perf/run_binding_single.sh`
-- multi: `bindings/<lang>/perf/run_binding_multi.sh`
+- single: `bindings/<lang>/perf/run_benchmarks.sh`
+- multi: `bindings/<lang>/perf/run_benchmarks_multi.sh`
 - C 기준: `bindings/c/perf/run_benchmarks.sh`,
   `bindings/c/perf/run_benchmarks_multi.sh`
+
+C++은 호환용 wrapper로 `bindings/cpp/perf/run_binding_single.sh`와
+`bindings/cpp/perf/run_binding_multi.sh`도 제공하지만, 언어 공통 공식 entrypoint는
+위의 `run_benchmarks*.sh` 이름으로 맞춘다.
 
 스크립트에 설정된 기본값을 바꾸지 않는다. 비교 범위를 좁힐 때만
 `--transports`와 `--pattern`으로 특정 transport와 특정 pattern을 지정한다.
@@ -159,6 +163,11 @@ timeout, socket buffer 설정이 같은지 확인해야 한다. HWM은 numeric `
 또한 routed echo 계열처럼 C perf가 특정 transport에서 payload를 빌려 쓰는 경우에는
 `Effective Options`의 `routed_echo_borrow_payload` 값도 함께 확인한다. 이 값이 다르면
 메시지 복사 비용이 비교에 섞이므로, 결과를 binding 자체 성능으로 단정하지 않는다.
+
+공식 runner는 실행 전에 실제 core runtime을 드러내야 한다. report 또는 console log에서
+`Perf runtime libzlink: ...` 경로를 확인하고, 그 경로가 `core/build` 아래의 runtime인지
+본다. `core/src` 또는 `core/include`가 해당 runtime보다 새로우면 runner가 perf 실행 전에
+실패해야 한다. 이 조건을 우회한 결과는 기준 비교에 쓰지 않는다.
 
 새 pattern 또는 새 runner 조건을 처음 측정할 때는 CPU와 OS thread도 같이 관측한다.
 server/client 프로세스의 최대 `nlwp`와 대략적인 `%CPU` 피크를 결과 메모에 남긴다.
@@ -195,6 +204,12 @@ single과 multi는 같은 원칙으로 반복한다. 한 번에 전체 matrix를
 조합으로 이동한다. 제한 측정 순서는 transport 우선이다. `tcp`의 미달 조합이 남아 있으면
 `ws`, `wss`, `tls` 측정으로 넘어가지 않는다. `tcp`가 통과한 뒤 다음 transport로
 넘어갈 때도 한 번에 하나의 transport만 선택해서 C 기준과 대상 binding을 비교한다.
+
+full matrix가 필요한 단계에서도 바로 full run으로 들어가지 않는다. 먼저 같은 runner,
+같은 transport, 같은 pattern 범위에서 짧은 smoke를 `PERF_FAIL_FAST=1`, `--duration 1`,
+`--runs 1`로 실행한다. smoke에서 timeout, no-result, option mismatch, stale runtime,
+binary exit가 나오면 full run을 시작하지 않고 해당 원인을 먼저 수정한다. smoke 결과도
+정상 report 파일로 남겨야 하며, console 출력만 보고 통과로 처리하지 않는다.
 
 언어별 작업은 한 번에 한 언어만 진행한다. 진행 순서는 C++, .NET, Java, Node, Go,
 Rust, Python이다. 현재 언어의 모든 대상 transport, pattern, size가 `통과` 상태가
@@ -285,6 +300,9 @@ callback/dispatch 경로, 불필요한 allocation/copy, poll loop를 먼저 검�
 - `tcp`의 모든 대상 pattern/size가 `통과` 또는 `보류`가 되었는지
 - `tcp`에 `미달` 또는 `미측정`이 남은 상태에서 `ws`, `wss`, `tls`로 넘어가지 않았는지
 - 제한 재측정 결과의 `Effective Options`와 auto-HWM `MsgUnit(B)`가 서로 같은지
+- 공식 runner가 `Perf runtime libzlink: ...`를 출력했고 stale `core/build` runtime을
+  실행 전에 막았는지
+- full run 전에 같은 조건의 fail-fast smoke report가 먼저 남았는지
 - 새 pattern 또는 새 runner 조건에서 server/client `nlwp`와 CPU 피크를 기록했는지
 - C 기준으로 `bindings/c/perf/baseline/`의 최근 full 결과를 먼저 사용했는지
 - C 재측정은 측정 오차나 비정상 기준이 의심되는 제한 조합에서만 실행했는지
@@ -359,13 +377,13 @@ C 대비 비율을 함께 남기고, 아직 같은 조건 비교가 없는 칸�
 
 | 순서 | 언어 | perf 경로 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-----------|-------------|------------|-----------|
-| 1 | C++ | `bindings/cpp/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 재측정 완료` | 2026-05-21 재측정 결과를 6.2.2 대표 표에 반영 |
-| 2 | .NET | `bindings/dotnet/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 재측정 완료` | 2026-05-21 poller slot API 반영 뒤 재측정 결과를 6.3.2 대표 표에 반영 |
-| 3 | Java | `bindings/java/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 재측정 완료, full-run partial 행은 제한 재측정으로 보강` | 2026-05-21 `ROUTER_ROUTER` stop token 처리와 poll mask 수정 뒤 결과를 6.4.2 대표 표에 반영 |
-| 4 | Node | `bindings/node/perf` | `tcp/ws single routed large 보류, wss PAIR 64B 보류, tls PAIR 64B 및 DEALER_DEALER 64B 보류 외 통과` | `tcp/ws/wss/tls 재측정 완료, tcp full-run partial 행은 제한 재측정으로 보강` | 2026-05-21 tcp 재측정 결과를 6.5.2 대표 표에 반영 |
-| 5 | Go | `bindings/go/perf` | `tcp/tls single 통과, ws/wss single latency 보류, wss SPOT 262144B 통과, SPOT_SENDSEND consume-forward 부분 적용` | `tcp/ws/wss/tls 측정 완료, public 계약 보존상 보류 항목 남음` | Go 완료 아님. `ForwardRouted`는 wss 65536B/262144B와 tls large 유효 수치를 확보했지만 small/131072B 보류가 남음 |
-| 6 | Rust | `bindings/rust/perf` | `tcp/ws/wss/tls 측정 완료, routed large와 SPOT/outlier 보류 남음` | `tcp/ws/wss/tls 측정 완료, SPOT/send-send/일부 PUBSUB 보류 남음` | Rust 완료 아님. single outlier와 multi SPOT/send-send hot path를 후속 재검토 |
-| 7 | Python | `bindings/python/perf` | `tcp/ws/wss/tls 측정 완료, large single outlier 재검토 필요` | `tcp/ws/wss/tls 측정 완료, TLS 설정 누락과 종료 대기 보강 뒤 결과 반영` | Python 완료 아님. multi SPOT/send-send/stream small 보류와 single small/outlier 항목 후속 개선 필요 |
+| 1 | C++ | `bindings/cpp/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 통과` | 상세 표 반영 완료. core 안정 후 최종 회귀 full run에서 현재 통과 상태를 다시 확인 |
+| 2 | .NET | `bindings/dotnet/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 통과` | 상세 표 반영 완료. core 안정 후 최종 회귀 full run에서 현재 통과 상태를 다시 확인 |
+| 3 | Java | `bindings/java/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 통과` | 상세 표 반영 완료. core 안정 후 최종 회귀 full run에서 현재 통과 상태를 다시 확인 |
+| 4 | Node | `bindings/node/perf` | `tcp/ws single routed large 보류, wss PAIR 64B 보류, tls PAIR 64B 및 DEALER_DEALER 64B 보류 외 통과` | `tcp/ws/wss/tls 재측정 완료, tcp full-run partial 행은 제한 재측정으로 보강` | multi 상세 표 반영 완료. 남은 single routed large, small PAIR/DEALER_DEALER, SPOT 의미 보류를 public API 계약 안에서 재검토 |
+| 5 | Go | `bindings/go/perf` | `tcp/tls single 통과, ws/wss single latency 보류, wss SPOT 262144B 통과` | `tcp/ws/wss/tls 측정 완료, SPOT_SENDSEND/SPOT/PUBSUB 및 일부 routed/stream 보류 남음` | core 안정 후 `GOMAXPROCS=4` single `tcp` 재검증, `ws/wss/tls` latency 보류 제한 재측정, multi `SPOT_SENDSEND`/`SPOT`/`PUBSUB` 순서 재검토 |
+| 6 | Rust | `bindings/rust/perf` | `tcp/ws/wss/tls 측정 완료, routed large와 SPOT/outlier 보류 남음` | `tcp/ws/wss/tls 측정 완료, SPOT/send-send/일부 PUBSUB 보류 남음` | Rust 완료 아님. single outlier와 multi SPOT/send-send/일부 PUBSUB hot path를 후속 재검토 |
+| 7 | Python | `bindings/python/perf` | `tcp/ws/wss/tls 측정 완료, large single outlier와 small/native boundary 보류 남음` | `tcp/ws/wss/tls 측정 완료, SPOT/send-send/stream small 보류 남음` | Python 완료 아님. multi SPOT/send-send/stream small path와 single small/outlier 항목 후속 개선 필요 |
 
 Core runtime 변경 중에는 새 perf 실행을 보류한다. core가 안정된 뒤 재개 순서는
 Go `GOMAXPROCS=4` single `tcp` 검증, Go single latency 보류 재측정, Go multi
@@ -777,30 +795,30 @@ SPOT 계열 14~15개 수준이었다. 두 언어 모두 client 수가 OS thread 
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `PAIR` | `통과(80.7%)` | `통과(73.4%)` | `통과(126.2%)` | `통과(234.8%)` | `통과(249.1%)` | `통과(281.4%)` | C: `perf_c_single_linux_20260521_055144_codex_c_tcp_single_current_for_go_20260521.txt`; Go: `perf_go_single_linux_20260521_060049_codex_go_tcp_single_current_20260521.txt`. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
-| `tcp` | `PUBSUB` | `통과(59.6%)` | `통과(70.3%)` | `통과(91.4%)` | `통과(97.2%)` | `통과(95.2%)` | `통과(90.0%)` | C: `perf_c_single_linux_20260521_055144_codex_c_tcp_single_current_for_go_20260521.txt`; Go: `perf_go_single_linux_20260521_063732_codex_go_tcp_single_pubsub_spot_all_subscribepart_20260521.txt`. `SubSocket.SubscribePart(out, topicBuffer, flags)`를 추가해 C `zlink_subscribe_part`와 같은 단일 part receive 의미로 맞췄다. timeout은 없고 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. 짧은 topic C 문자열 변환 제거, `TopicMessage` 저장소 재사용, 단일 part publish 직접 메서드 후보는 제한 재측정 `perf_go_single_linux_20260521_061807_codex_go_tcp_single_pubsub_spot_small_cstring_20260521.txt`, `perf_go_single_linux_20260521_062306_codex_go_tcp_single_pubsub_small_reuse_topic_message_20260521.txt`, `perf_go_single_linux_20260521_062619_codex_go_tcp_single_pubsub_spot_small_publishpart_20260521.txt`에서 개선 근거가 없어 반영하지 않았다. |
-| `tcp` | `DEALER_DEALER` | `통과(81.7%)` | `통과(74.0%)` | `통과(122.1%)` | `통과(226.0%)` | `통과(246.1%)` | `통과(277.5%)` | C/Go full 파일은 위 PAIR 행과 같다. full run의 131072B `exit_nonzero`는 제한 재측정 `perf_go_single_linux_20260521_061453_codex_go_tcp_single_dealer_dealer_131072_debug_20260521.txt`에서 complete로 확인했다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
-| `tcp` | `DEALER_ROUTER` | `통과(50.9%)` | `통과(50.6%)` | `통과(57.2%)` | `통과(44.0%)` | `통과(43.9%)` | `통과(43.2%)` | C/Go full 파일은 위 PAIR 행과 같다. full run의 65536B `exit_nonzero`는 제한 재측정 `perf_go_single_linux_20260521_061433_codex_go_tcp_single_dealer_router_65536_debug_20260521.txt`에서 complete로 확인했다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
-| `tcp` | `ROUTER_ROUTER` | `통과(55.4%)` | `통과(54.6%)` | `통과(58.6%)` | `통과(43.8%)` | `통과(40.4%)` | `통과(45.8%)` | C/Go 파일은 위 PAIR 행과 같다. routed one-way 기준을 통과했고 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
-| `tcp` | `SPOT` | `통과(152.0%)` | `통과(121.6%)` | `통과(112.4%)` | `통과(82.8%)` | `통과(81.5%)` | `통과(71.0%)` | C: `perf_c_single_linux_20260521_055144_codex_c_tcp_single_current_for_go_20260521.txt`; Go: `perf_go_single_linux_20260521_065622_codex_go_tcp_single_spot_sender_yield_20260521.txt`. `Spot.SubscribePart(out, topicBuffer, flags)`를 추가해 C `zlink_spot_subscribe_part`와 같은 단일 part receive 의미로 맞췄다. active publish는 C처럼 `DONTWAIT`를 사용하고 backpressure 때 1ms 대기한다. SPOT active receive는 C처럼 poller 없이 `DONTWAIT` drain과 yield를 사용한다. Go sender는 C의 별도 sender/receiver thread 진행 의미를 맞추기 위해 성공 send 뒤 `runtime.Gosched()`로 receiver goroutine에 양보한다. C SPOT은 `NODROP`을 설정하지 않으므로 Go SPOT에서도 `SetNoDrop(true)`를 제거했다. timeout은 없고 auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. 짧은 topic C 문자열 변환 제거와 단일 part publish 직접 메서드 후보는 제한 재측정 `perf_go_single_linux_20260521_061807_codex_go_tcp_single_pubsub_spot_small_cstring_20260521.txt`, `perf_go_single_linux_20260521_062619_codex_go_tcp_single_pubsub_spot_small_publishpart_20260521.txt`에서 개선 근거가 없어 반영하지 않았다. |
+| `tcp` | `PAIR` | `통과(73.6%)` | `통과(72.7%)` | `통과(113.7%)` | `통과(99.6%)` | `통과(99.7%)` | `통과(99.6%)` | 2026-05-23 core 6.0.2 fresh C baseline `perf_c_single_linux_20260522_230912.txt` 대비 Go scoped `perf_go_single_linux_20260523_000915_goal_go_tcp_nonrouted.txt`(GOMAXPROCS=4 기본). 기존 large 234~281%는 stale C baseline 영향이었고, fresh full baseline에서 ~99.6%로 정상화됐다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. full matrix는 routed large에서 cross-case hang이 재현돼 pattern scoped로 측정했다. |
+| `tcp` | `PUBSUB` | `통과(61.7%)` | `통과(69.8%)` | `통과(84.8%)` | `통과(98.8%)` | `통과(98.4%)` | `통과(99.9%)` | C: `perf_c_single_linux_20260521_055144_codex_c_tcp_single_current_for_go_20260521.txt`; Go: `perf_go_single_linux_20260521_063732_codex_go_tcp_single_pubsub_spot_all_subscribepart_20260521.txt`. `SubSocket.SubscribePart(out, topicBuffer, flags)`를 추가해 C `zlink_subscribe_part`와 같은 단일 part receive 의미로 맞췄다. timeout은 없고 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. 짧은 topic C 문자열 변환 제거, `TopicMessage` 저장소 재사용, 단일 part publish 직접 메서드 후보는 제한 재측정 `perf_go_single_linux_20260521_061807_codex_go_tcp_single_pubsub_spot_small_cstring_20260521.txt`, `perf_go_single_linux_20260521_062306_codex_go_tcp_single_pubsub_small_reuse_topic_message_20260521.txt`, `perf_go_single_linux_20260521_062619_codex_go_tcp_single_pubsub_spot_small_publishpart_20260521.txt`에서 개선 근거가 없어 반영하지 않았다. |
+| `tcp` | `DEALER_DEALER` | `통과(73.7%)` | `통과(71.9%)` | `통과(114.4%)` | `통과(99.5%)` | `통과(99.7%)` | `통과(99.7%)` | 2026-05-23 fresh C baseline `perf_c_single_linux_20260522_230912.txt` 대비 Go scoped `perf_go_single_linux_20260523_000915_goal_go_tcp_nonrouted.txt`. 기존 large 226~277%는 stale C baseline 아티팩트였고 fresh baseline에서 ~99.6%로 정상화됐다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `DEALER_ROUTER` | `통과(55.1%)` | `통과(56.5%)` | `통과(61.8%)` | `통과(49.6%)` | `통과(42.4%)` | `통과(41.2%)` | 2026-05-23 fresh C baseline `perf_c_single_linux_20260522_230912.txt` 대비 Go scoped `perf_go_single_linux_..._goal_go_tcp_dr_scoped2.txt`. 131072B/262144B는 routed one-way large로 기존 판정(43.9%/43.2%)과 같은 수준이며, C `ROUTER_ROUTER/DEALER_ROUTER` 상대 비율(~0.99)을 유지한다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `ROUTER_ROUTER` | `통과(63.5%)` | `통과(62.0%)` | `통과(62.4%)` | `통과(48.3%)` | `통과(44.3%)` | `통과(41.3%)` | 2026-05-23 fresh C baseline `perf_c_single_linux_20260522_230912.txt` 대비 Go scoped `perf_go_single_linux_20260523_000720_goal_go_tcp_rr_scoped.txt`. small/mid는 기존(55~58%)보다 개선됐고, large는 routed one-way 상대 기준(C RR/DR≈0.99)을 유지한다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
+| `tcp` | `SPOT` | `통과(159.1%)` | `통과(123.8%)` | `통과(110.3%)` | `통과(91.8%)` | `통과(77.7%)` | `통과(77.7%)` | 2026-05-23 fresh C baseline `perf_c_single_linux_20260522_230912.txt` 대비 Go `perf_go_single_linux_..._goal_go_spot_bytes_tcp.txt`(GOMAXPROCS=4). **SPOT large 회귀 수정**: tcp large publish가 매 send `NewWindowMessage(msgSize)`로 payload 버퍼까지 새로 할당해 GC 압박이 컸다(65536B 21985 msg/s, 39~44%). publish hot path를 기존 public `.Bytes(payload)` 빌더로 바꿔 단일 payload slice를 재사용하고 submit 때 한 번만 native message로 만들도록 했더니 45304/24692/12798 msg/s로 회복됐다. 이는 C `publish_metric_payload`(payload vector 재사용 + `zlink_msg_init_size`+memcpy)와 같은 의미다(`useSingleSpotBytesPublish`를 tcp ≥65536까지 확장). 같은 현재 core C 제한 재측정 `perf_c_single_linux_20260523_010524_goal_c_spot_currentcore.txt`(65536=55752) 대비로도 81.2%/69.5%/74.8%로 통과. GOMAXPROCS=4/8/20 모두 large가 동일해 GOMAXPROCS는 원인이 아니었다. small 64B/256B는 120% 초과 outlier. auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. `Spot.SubscribePart(out, topicBuffer, flags)`를 추가해 C `zlink_spot_subscribe_part`와 같은 단일 part receive 의미로 맞췄다. active publish는 C처럼 `DONTWAIT`를 사용하고 backpressure 때 1ms 대기한다. SPOT active receive는 C처럼 poller 없이 `DONTWAIT` drain과 yield를 사용한다. Go sender는 C의 별도 sender/receiver thread 진행 의미를 맞추기 위해 성공 send 뒤 `runtime.Gosched()`로 receiver goroutine에 양보한다. C SPOT은 `NODROP`을 설정하지 않으므로 Go SPOT에서도 `SetNoDrop(true)`를 제거했다. timeout은 없고 auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. 짧은 topic C 문자열 변환 제거와 단일 part publish 직접 메서드 후보는 제한 재측정 `perf_go_single_linux_20260521_061807_codex_go_tcp_single_pubsub_spot_small_cstring_20260521.txt`, `perf_go_single_linux_20260521_062619_codex_go_tcp_single_pubsub_spot_small_publishpart_20260521.txt`에서 개선 근거가 없어 반영하지 않았다. |
 | `ws` | `PAIR` | `통과(73.9%)` | `보류(65.0%)` | `통과(88.6%)` | `통과(97.1%)` | `통과(95.5%)` | `통과(91.4%)` | 64B/256B는 C `perf_c_single_linux_20260522_005942_codex_c_ws_single_go_latency_recheck_20260522.txt` 대비 Go `perf_go_single_linux_20260522_010624_codex_go_ws_single_native_stamp_20260522.txt`로 갱신했다. Go active send는 C처럼 native message payload에 직접 metric header를 stamp하고, `DONTWAIT` 미전송 message를 즉시 close한다. 256B는 throughput 비율은 목표권이지만 latency가 C 대비 154.2x라 통과로 확정하지 않는다. `GOGC=off` 진단 `perf_go_single_linux_20260522_012120_codex_go_ws_single_gogc_off_probe_20260522.txt`, `GOMAXPROCS=2` 진단 `perf_go_single_linux_20260522_012257_codex_go_ws_single_gomaxprocs2_probe_20260522.txt`는 256B latency를 해결하지 못했다. 단일 part send를 native move 뒤 실패 시 restore하는 내부 후보는 `go test ./...`의 `TestBlockingSendFailurePreservesMessagePayload`에서 원본 보존 계약을 깨 탈락했다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. 나머지는 C `perf_c_single_linux_20260521_090653_codex_c_ws_single_current_after_core_rebuild_for_go_20260521.txt`, Go `perf_go_single_linux_20260521_085525_codex_go_ws_single_full_after_routed_timestamp_20260521.txt`. |
 | `ws` | `PUBSUB` | `보류(56.4%)` | `보류(53.8%)` | `통과(89.2%)` | `통과(97.0%)` | `통과(95.6%)` | `통과(90.1%)` | 64B/256B는 위 2026-05-22 C/Go 제한 재측정 파일로 갱신했다. throughput 비율은 Go 단순 one-way 최소 기준을 넘지만 latency가 각각 C 대비 89.4x, 60.0x라 통과로 확정하지 않는다. receive hot path는 C처럼 첫 수신 blocking, 이후 `DONTWAIT` burst drain이다. `GOGC=off`와 `GOMAXPROCS=2` 진단은 latency를 해결하지 못했고, publish topic C 문자열 캐시 후보 `perf_go_single_linux_20260522_012639_codex_go_ws_single_publish_cstring_cache_20260522.txt`도 악화되어 반영하지 않았다. Go public send builder의 원본 보존 계약을 바꾸지 않는 내부 후보가 더 확인되지 않아 보류한다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. 나머지는 위 2026-05-21 C/Go full 파일. |
 | `ws` | `DEALER_DEALER` | `통과(72.3%)` | `보류(64.7%)` | `통과(95.4%)` | `통과(97.5%)` | `통과(95.7%)` | `통과(91.4%)` | 64B/256B는 위 2026-05-22 C/Go 제한 재측정 파일로 갱신했다. 256B는 throughput 비율은 목표권이지만 latency가 C 대비 133.4x라 통과로 확정하지 않는다. `GOGC=off`와 `GOMAXPROCS=2` 진단은 256B latency를 해결하지 못했다. 단일 part send move/restore 후보는 public 실패 원본 보존 테스트를 깨 반영하지 않았다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. 나머지는 위 2026-05-21 C/Go full 파일. |
 | `ws` | `DEALER_ROUTER` | `통과(56.1%)` | `통과(58.1%)` | `통과(74.9%)` | `통과(83.5%)` | `통과(97.8%)` | `통과(81.3%)` | C/Go 파일은 위 PAIR 행과 같다. Go routed active phase를 C `perf_dealer_router.cpp`처럼 sender goroutine의 blocking send와 receiver의 blocking `RecvPart` stop-token 루프로 맞췄다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `ws` | `ROUTER_ROUTER` | `통과(65.4%)` | `통과(55.9%)` | `통과(67.5%)` | `통과(90.9%)` | `통과(94.6%)` | `통과(81.7%)` | C/Go 파일은 위 PAIR 행과 같다. ROUTER-ROUTER도 C처럼 PING/PONG으로 target route를 확인한 뒤 active와 stop token을 blocking send 의미로 보낸다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
-| `ws` | `SPOT` | `통과(167.9%)` | `보류(143.9%)` | `통과(110.3%)` | `통과(103.4%)` | `통과(94.1%)` | `통과(83.6%)` | 64B는 C `perf_c_single_linux_20260522_005942_codex_c_ws_single_go_latency_recheck_20260522.txt` 대비 현재 코드 확인 재측정 Go `perf_go_single_linux_20260522_011618_codex_go_ws_single_spot64_native_stamp_confirm_20260522.txt`로 갱신했다. 256B는 Go `perf_go_single_linux_20260522_010624_codex_go_ws_single_native_stamp_20260522.txt` 기준이다. active send가 native message payload에 직접 stamp하도록 바뀐 뒤 64B latency는 C 대비 1.5x로 내려가 통과했다. 256B는 throughput은 C보다 높지만 latency가 C 대비 13.7x라 통과로 확정하지 않는다. `GOGC=off` 진단은 256B latency를 개선했지만 공식 조건 전체를 해결하지 못했고, `GOMAXPROCS=2`와 publish topic C 문자열 캐시는 악화되어 반영하지 않았다. SPOT은 C와 같은 `DONTWAIT` publish/backpressure 대기 의미와 `SubscribePart` 수신 경로를 유지하며 auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. 나머지는 위 2026-05-21 C/Go full 파일. |
+| `ws` | `SPOT` | `통과(167.9%)` | `보류(143.9%)` | `통과(110.3%)` | `통과(100.6%)` | `통과(95.0%)` | `통과(83.9%)` | 64B는 C `perf_c_single_linux_20260522_005942_codex_c_ws_single_go_latency_recheck_20260522.txt` 대비 현재 코드 확인 재측정 Go `perf_go_single_linux_20260522_011618_codex_go_ws_single_spot64_native_stamp_confirm_20260522.txt`로 갱신했다. 256B는 Go `perf_go_single_linux_20260522_010624_codex_go_ws_single_native_stamp_20260522.txt` 기준이다. active send가 native message payload에 직접 stamp하도록 바뀐 뒤 64B latency는 C 대비 1.5x로 내려가 통과했다. 256B는 throughput은 C보다 높지만 latency가 C 대비 13.7x라 통과로 확정하지 않는다. `GOGC=off` 진단은 256B latency를 개선했지만 공식 조건 전체를 해결하지 못했고, `GOMAXPROCS=2`와 publish topic C 문자열 캐시는 악화되어 반영하지 않았다. SPOT은 C와 같은 `DONTWAIT` publish/backpressure 대기 의미와 `SubscribePart` 수신 경로를 유지하며 auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. 나머지는 위 2026-05-21 C/Go full 파일. |
 | `wss` | `PAIR` | `통과(74.4%)` | `보류(69.0%)` | `통과(116.9%)` | `통과(84.4%)` | `통과(81.5%)` | `통과(87.6%)` | C `perf_c_single_linux_20260522_012906_codex_c_wss_single_for_go_20260522.txt` 대비 Go `perf_go_single_linux_20260522_013230_codex_go_wss_single_current_20260522.txt`. 256B는 throughput 비율은 목표권이지만 latency가 C 대비 117.6x라 통과로 확정하지 않는다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `wss` | `PUBSUB` | `통과(62.4%)` | `보류(64.8%)` | `통과(110.5%)` | `보류(83.9%)` | `통과(81.2%)` | `통과(86.1%)` | C/Go 파일은 위 wss PAIR 행과 같다. 256B는 latency가 C 대비 77.3x, 65536B는 17.4x라 통과로 확정하지 않는다. `GOGC=off`, `GOMAXPROCS=2`, topic C 문자열 캐시 후보는 ws 제한 재측정에서 같은 latency 병목을 해결하지 못했다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `wss` | `DEALER_DEALER` | `통과(73.9%)` | `보류(68.1%)` | `통과(111.1%)` | `통과(79.5%)` | `통과(80.2%)` | `통과(94.9%)` | C/Go 파일은 위 wss PAIR 행과 같다. 256B는 throughput 비율은 목표권이지만 latency가 C 대비 110.1x라 통과로 확정하지 않는다. 단일 part send move/restore 후보는 public 실패 원본 보존 테스트를 깨 반영하지 않았다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `wss` | `DEALER_ROUTER` | `통과(53.8%)` | `통과(57.0%)` | `통과(93.3%)` | `통과(84.8%)` | `통과(91.5%)` | `통과(108.5%)` | C/Go 파일은 위 wss PAIR 행과 같다. routed one-way 기준을 통과했고 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `wss` | `ROUTER_ROUTER` | `통과(62.8%)` | `통과(55.7%)` | `통과(92.7%)` | `통과(72.8%)` | `통과(89.3%)` | `통과(105.4%)` | C/Go 파일은 위 wss PAIR 행과 같다. routed one-way 기준을 통과했고 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
-| `wss` | `SPOT` | `보류(178.4%)` | `보류(116.6%)` | `통과(148.3%)` | `통과(76.0%)` | `통과(79.6%)` | `통과(92.2%)` | 64B는 C `perf_c_single_linux_20260522_012906_codex_c_wss_single_for_go_20260522.txt` 대비 Go `perf_go_single_linux_20260522_115821_codex_go_wss_single_spot64_bytes262_isolation_guard_20260522.txt`, 256B는 Go `perf_go_single_linux_20260522_115756_codex_go_wss_single_spot64_256_bytes262_guard_repeat_20260522.txt`, 262144B는 Go `perf_go_single_linux_20260522_115701_codex_go_wss_single_spot_bytes_publish_262_guard_20260522.txt` 기준이다. 64B/256B는 throughput은 C보다 높지만 latency가 커서 통과로 확정하지 않는다. 64B latency 악화는 262144B `Bytes(...)` 후보를 원복한 `perf_go_single_linux_20260522_115853_codex_go_wss_single_spot64_candidate_reverted_check_20260522.txt`에서도 재현되어, large 전용 publish 변경의 부작용이 아니라 현재 small latency 재검토 항목으로 남긴다. 262144B active publish는 재사용 payload slice에 metric header를 찍고 public `Bytes(...)` builder로 submit하는 경로를 size별 선택 적용해 C 1985.0 msg/s 대비 Go 1831.0 msg/s로 통과권에 들어갔다. `GOGC=off` 제한 재측정 `perf_go_single_linux_20260522_013700_codex_go_wss_single_spot_gogc_off_probe_20260522.txt`는 262144B를 해결하지 못했다. C와 맞춰 성공 send 뒤 `runtime.Gosched()` 제거를 시도한 `perf_go_single_linux_20260522_013744_codex_go_wss_single_spot_no_sender_yield_20260522.txt`는 receiver 진행이 막혀 악화되어 반영하지 않았다. large frame에서 yield 빈도를 줄이는 후보 `perf_go_single_linux_20260522_014020_codex_go_wss_single_spot_yield_every4_20260522.txt`, `perf_go_single_linux_20260522_014057_codex_go_wss_single_spot_large_yield4_20260522.txt`는 262144B 개선이 재현되지 않거나 256B를 악화시켜 반영하지 않았다. C/Go 262144B 3회 제한 재측정 `perf_c_single_linux_20260522_014311_codex_c_wss_single_spot262144_repeat3_for_go_20260522.txt`, `perf_go_single_linux_20260522_014237_codex_go_wss_single_spot262144_current_repeat3_20260522.txt`에서는 C median 1990.0 msg/s 대비 Go median 약 546.8 msg/s였지만, `Bytes(...)` large 전용 publish 후 같은 C 기준 대비 92.0% 수준으로 올라갔다. explicit routing id 제거, topic C 문자열 캐시, send builder single-part inline 후보, OS thread 고정, receiver-main 구조 후보는 미달을 해결하지 못했거나 다른 size를 악화시켜 반영하지 않았다. 짧은 topic/filter 문자열을 Go stack buffer로 넘기는 후보는 전역 적용 때 `perf_go_single_linux_20260522_105157_codex_go_wss_single_spot64_256_262144_stack_cstring_guard_20260522.txt`에서 262144B 처리량은 올렸지만 64B latency를 크게 악화시켰고, large publish에만 좁힌 `perf_go_single_linux_20260522_105357_codex_go_wss_single_spot64_256_262144_large_publish_cstring_guard_20260522.txt`는 262144B delivery를 3 msg/s로 낮춰 반영하지 않았다. auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. |
+| `wss` | `SPOT` | `보류(178.4%)` | `보류(116.6%)` | `통과(148.3%)` | `통과(92.4%)` | `통과(96.1%)` | `통과(135.9%)` | 64B는 C `perf_c_single_linux_20260522_012906_codex_c_wss_single_for_go_20260522.txt` 대비 Go `perf_go_single_linux_20260522_115821_codex_go_wss_single_spot64_bytes262_isolation_guard_20260522.txt`, 256B는 Go `perf_go_single_linux_20260522_115756_codex_go_wss_single_spot64_256_bytes262_guard_repeat_20260522.txt`, 262144B는 Go `perf_go_single_linux_20260522_115701_codex_go_wss_single_spot_bytes_publish_262_guard_20260522.txt` 기준이다. 64B/256B는 throughput은 C보다 높지만 latency가 커서 통과로 확정하지 않는다. 64B latency 악화는 262144B `Bytes(...)` 후보를 원복한 `perf_go_single_linux_20260522_115853_codex_go_wss_single_spot64_candidate_reverted_check_20260522.txt`에서도 재현되어, large 전용 publish 변경의 부작용이 아니라 현재 small latency 재검토 항목으로 남긴다. 262144B active publish는 재사용 payload slice에 metric header를 찍고 public `Bytes(...)` builder로 submit하는 경로를 size별 선택 적용해 C 1985.0 msg/s 대비 Go 1831.0 msg/s로 통과권에 들어갔다. `GOGC=off` 제한 재측정 `perf_go_single_linux_20260522_013700_codex_go_wss_single_spot_gogc_off_probe_20260522.txt`는 262144B를 해결하지 못했다. C와 맞춰 성공 send 뒤 `runtime.Gosched()` 제거를 시도한 `perf_go_single_linux_20260522_013744_codex_go_wss_single_spot_no_sender_yield_20260522.txt`는 receiver 진행이 막혀 악화되어 반영하지 않았다. large frame에서 yield 빈도를 줄이는 후보 `perf_go_single_linux_20260522_014020_codex_go_wss_single_spot_yield_every4_20260522.txt`, `perf_go_single_linux_20260522_014057_codex_go_wss_single_spot_large_yield4_20260522.txt`는 262144B 개선이 재현되지 않거나 256B를 악화시켜 반영하지 않았다. C/Go 262144B 3회 제한 재측정 `perf_c_single_linux_20260522_014311_codex_c_wss_single_spot262144_repeat3_for_go_20260522.txt`, `perf_go_single_linux_20260522_014237_codex_go_wss_single_spot262144_current_repeat3_20260522.txt`에서는 C median 1990.0 msg/s 대비 Go median 약 546.8 msg/s였지만, `Bytes(...)` large 전용 publish 후 같은 C 기준 대비 92.0% 수준으로 올라갔다. explicit routing id 제거, topic C 문자열 캐시, send builder single-part inline 후보, OS thread 고정, receiver-main 구조 후보는 미달을 해결하지 못했거나 다른 size를 악화시켜 반영하지 않았다. 짧은 topic/filter 문자열을 Go stack buffer로 넘기는 후보는 전역 적용 때 `perf_go_single_linux_20260522_105157_codex_go_wss_single_spot64_256_262144_stack_cstring_guard_20260522.txt`에서 262144B 처리량은 올렸지만 64B latency를 크게 악화시켰고, large publish에만 좁힌 `perf_go_single_linux_20260522_105357_codex_go_wss_single_spot64_256_262144_large_publish_cstring_guard_20260522.txt`는 262144B delivery를 3 msg/s로 낮춰 반영하지 않았다. auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. |
 | `tls` | `PAIR` | `통과(74.0%)` | `통과(71.8%)` | `통과(121.8%)` | `통과(76.2%)` | `통과(80.8%)` | `통과(90.8%)` | C `perf_c_single_linux_20260522_015850_codex_c_tls_single_for_go_20260522.txt` 대비 Go `perf_go_single_linux_20260522_020215_codex_go_tls_single_current_20260522.txt`. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `tls` | `PUBSUB` | `통과(61.3%)` | `통과(68.1%)` | `통과(120.0%)` | `통과(76.1%)` | `통과(79.5%)` | `통과(90.7%)` | C/Go 파일은 위 tls PAIR 행과 같다. receive hot path는 C처럼 첫 수신 blocking, 이후 `DONTWAIT` burst drain이며 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `tls` | `DEALER_DEALER` | `통과(74.1%)` | `통과(73.2%)` | `통과(118.9%)` | `통과(78.6%)` | `통과(81.2%)` | `통과(94.3%)` | C/Go 파일은 위 tls PAIR 행과 같다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `tls` | `DEALER_ROUTER` | `통과(55.7%)` | `통과(54.5%)` | `통과(88.8%)` | `통과(85.9%)` | `통과(87.4%)` | `통과(88.9%)` | C/Go 파일은 위 tls PAIR 행과 같다. routed one-way 기준을 통과했고 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 | `tls` | `ROUTER_ROUTER` | `통과(64.7%)` | `통과(63.2%)` | `통과(88.9%)` | `통과(85.2%)` | `통과(88.9%)` | `통과(85.9%)` | C/Go 파일은 위 tls PAIR 행과 같다. routed one-way 기준을 통과했고 auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
-| `tls` | `SPOT` | `통과(156.8%)` | `통과(125.6%)` | `통과(101.3%)` | `통과(68.8%)` | `통과(69.7%)` | `통과(69.2%)` | C/Go 파일은 위 tls PAIR 행과 같다. SPOT은 C와 같은 `DONTWAIT` publish/backpressure 대기 의미와 `SubscribePart` 수신 경로를 유지한다. 64B/256B는 C보다 높지만 같은 조건의 C 기준과 비교했고, 2026-05-22 wss SPOT 64B에서도 같은 의미의 outlier가 확인되어 별도 outlier 목록에서 추적한다. auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. |
+| `tls` | `SPOT` | `통과(156.8%)` | `통과(125.6%)` | `통과(101.3%)` | `통과(97.6%)` | `통과(97.2%)` | `통과(89.2%)` | C/Go 파일은 위 tls PAIR 행과 같다. SPOT은 C와 같은 `DONTWAIT` publish/backpressure 대기 의미와 `SubscribePart` 수신 경로를 유지한다. 64B/256B는 C보다 높지만 같은 조건의 C 기준과 비교했고, 2026-05-22 wss SPOT 64B에서도 같은 의미의 outlier가 확인되어 별도 outlier 목록에서 추적한다. auto-HWM 활성과 size별 SpotNode `MsgUnit(B)` 일치를 확인했다. |
 
 #### 6.6.2 Multi suite
 
@@ -926,19 +944,40 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   이 후보가 4보다 작으면 4로 올린다. core 작업이 안정된 뒤 `GOMAXPROCS=4` 조건으로
   single full matrix를 다시 검증한다.
 - Core 작업 완료 후 Go 실행 큐:
-  1. `bindings/go/perf/run_benchmarks.sh --transports tcp --duration 5 --runs 1`로 single
-     `tcp` full matrix를 다시 측정한다. 목적은 새 runner 기본 `GOMAXPROCS=4`가 기존
-     single 결과를 유지하고 `SPOT` large delivery를 깨지 않는지 확인하는 것이다.
-  2. 새 report의 `Effective Options`에서 `go_gomaxprocs: 4`, `go_gomaxprocs_source`,
+  1. `PERF_FAIL_FAST=1 bindings/go/perf/run_benchmarks.sh --transports tcp --duration 1 --runs 1`
+     로 single `tcp` smoke를 먼저 실행한다. smoke report에서 timeout/no-result 없이
+     `go_gomaxprocs: 4`와 runtime 경로가 확인되어야 full 측정으로 넘어간다.
+  2. smoke가 통과하면 `bindings/go/perf/run_benchmarks.sh --transports tcp --duration 5 --runs 1`
+     로 single `tcp` full matrix를 다시 측정한다. 목적은 새 runner 기본 `GOMAXPROCS=4`가
+     기존 single 결과를 유지하고 `SPOT` large delivery를 깨지 않는지 확인하는 것이다.
+  3. 새 report의 `Effective Options`에서 `go_gomaxprocs: 4`, `go_gomaxprocs_source`,
      실제 `io_threads` 값을 먼저 확인한다. `PERF_GO_GOMAXPROCS`를 명시한 진단 run은
      공식 비교 run과 분리한다.
-  3. 위 결과가 기존 `tcp` single 표와 충돌하면 C 기준 `perf_c_single_linux_20260521_055144_codex_c_tcp_single_current_for_go_20260521.txt`
+  4. 위 결과가 기존 `tcp` single 표와 충돌하면 C 기준 `perf_c_single_linux_20260521_055144_codex_c_tcp_single_current_for_go_20260521.txt`
      대비 비율을 다시 계산하고 표를 갱신한다.
-  4. single `tcp`가 안정되면 `ws/wss/tls` single의 latency 보류 항목만 제한 재측정한다.
+  5. single `tcp`가 안정되면 `ws/wss/tls` single의 latency 보류 항목만 제한 재측정한다.
      기존 `GOMAXPROCS=2`, `GOGC=off`, topic C 문자열 캐시 후보는 같은 병목을 해결하지
      못했으므로 반복하지 않는다.
-  5. multi는 runner 기본 `GOMAXPROCS=4`와 `nlwp=20~23` 관측을 유지한 상태에서
+  6. multi는 runner 기본 `GOMAXPROCS=4`와 `nlwp=20~23` 관측을 유지한 상태에서
      `SPOT_SENDSEND`, `SPOT`, `PUBSUB` 순서로 보류 셀을 다시 좁힌다.
+- 2026-05-23 single tcp 재검증(core 6.0.2, fresh C baseline `perf_c_single_linux_20260522_230912.txt`):
+  full matrix는 routed large(`ROUTER_ROUTER`/`DEALER_ROUTER` 131072~262144)에서 cross-case
+  hang(약 23분, 내부 timeout 미작동)이 재현돼 pattern scoped로 측정했다(격리 측정은 정상 complete).
+  PAIR/DEALER_DEALER large의 기존 234~281% outlier는 stale C baseline 영향이었고 fresh full
+  baseline에서 ~99.6%로 정상화됐다.
+- 2026-05-23 single SPOT large 회귀 수정: `bindings/go/perf/single/perf_spot.go`의 active publish가
+  size별로 매 send `NewWindowMessage(msgSize)`를 새로 할당해(payload 버퍼 재할당 + GC 압박)
+  tcp SPOT 65536B가 41763→21985 msg/s로 회귀했다. publish hot path를 기존 public `.Bytes(payload)`
+  빌더로 통일해(`useSingleSpotBytesPublish`를 `msgSize>=65536` 전 transport로 일반화) 단일 payload
+  slice를 재사용하고 submit 때 한 번만 native message로 만들도록 했다. 이는 C `publish_metric_payload`
+  (payload vector 재사용 + `zlink_msg_init_size`+memcpy)와 같은 의미다. 결과(fresh C 230912 대비):
+  tcp 91.8/77.7/77.7%, ws 100.6/95.0/83.9%, wss 92.4/96.1/135.9%, tls 97.6/97.2/89.2%로 전 transport
+  large가 SPOT 최소 기준을 통과했다. GOMAXPROCS=4/8/20 모두 회귀 전 수치가 같아 GOMAXPROCS는 원인이 아니었다.
+  결과 파일: `perf_go_single_linux_..._goal_go_spot_bytes_{tcp,ws,wss,tls}.txt`, 같은 core C 제한 재측정
+  `perf_c_single_linux_20260523_010524_goal_c_spot_currentcore.txt`.
+- 남은 single 보류: `ws`/`wss` 256B 계열과 `wss SPOT 64B/256B`의 latency 보류(throughput은 기준권이나
+  C 대비 latency가 큼)는 이 라운드에서 해결하지 못했다. `project_single_latency_divergence`로 추적되는
+  교차 binding 공통 측정/큐잉 발산 가능성을 포함해 후속 재검토한다.
 
 ### 6.7 Rust 상태
 

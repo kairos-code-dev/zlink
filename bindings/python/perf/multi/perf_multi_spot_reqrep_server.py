@@ -9,6 +9,7 @@ from perf_multi_common import (
     TOPIC,
     apply_multi_auto_hwm_msg_unit,
     apply_multi_spot_node_admission,
+    benchmark_endpoint,
     bind_spot_node_endpoint,
     configure_multi_tls_client,
     configure_multi_tls_server,
@@ -85,6 +86,9 @@ def main(argv=None):
 
         replier.on_dispatch_event(on_dispatch)
 
+        data_node.set_router_bind_endpoint(
+            benchmark_endpoint(args.transport, "multi-spot-reqrep-router")
+        )
         data_endpoint = bind_spot_node_endpoint(
             data_node, args.transport, "multi-spot-reqrep"
         )

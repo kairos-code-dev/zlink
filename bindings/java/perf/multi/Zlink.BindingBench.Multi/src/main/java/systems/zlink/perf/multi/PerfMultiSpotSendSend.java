@@ -52,6 +52,7 @@ final class PerfMultiSpotSendSend {
         AtomicLong activeEndRef = new AtomicLong(Long.MAX_VALUE);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         String controlEndpoint = derivedEndpoint(config.endpoint(), 1);
+        String routerEndpoint = derivedEndpoint(config.endpoint(), 2);
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
              Spot spot = node.createSpot();
@@ -61,6 +62,7 @@ final class PerfMultiSpotSendSend {
             spot.setRoutingId(SERVER_SPOT_RID);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
+            node.setRouterBindEndpoint(routerEndpoint);
             node.bind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
@@ -114,6 +116,9 @@ final class PerfMultiSpotSendSend {
         String clientDataEndpoint = normalizeClientEndpoint(
             PerfUtil.endpoint(config.transport(), "multi-spot-sendsend-client"),
             config.transport());
+        String clientRouterEndpoint = normalizeClientEndpoint(
+            PerfUtil.endpoint(config.transport(), "multi-spot-sendsend-client-router"),
+            config.transport());
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
              SpotNode node = new SpotNode(ctx);
@@ -122,6 +127,7 @@ final class PerfMultiSpotSendSend {
             node.setRoutingId(routingId("SPOT-SENDSEND-CLIENT-NODE"));
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
+            node.setRouterBindEndpoint(clientRouterEndpoint);
             node.bind(clientDataEndpoint);
             node.connectPeer(endpoint);
 

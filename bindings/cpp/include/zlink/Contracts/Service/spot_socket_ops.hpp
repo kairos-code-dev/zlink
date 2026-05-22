@@ -129,6 +129,15 @@ inline service::send_op_t xpub_socket_t::publish (
     return service::send_op_t (std::move (state));
 }
 
+inline void stream_socket_t::attach_actor_gateway (
+  service::spot_node_t &node_)
+{
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        zlink_stream_attach_actor_gateway (
+          handle (), detail::native_handle (node_))));
+}
+
 inline service::actor_bind_op_t stream_socket_t::bind_actor (
   const routing_id_t &session_rid_, const actor_ref_t &actor_)
 {

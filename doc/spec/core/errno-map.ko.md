@@ -419,6 +419,11 @@ typedef enum zlink_config_result_t
 | `INVALID_STATE` | `EBUSY`, `ESHUTDOWN` | 핸들의 lifecycle 상태가 해당 config 호출을 거부함 (예: 이미 시작됨, 이미 닫힘) |
 | `NOT_FOUND` | `ENOENT` | 로컬 조회 대상(예: Spot rid, actor id)을 찾지 못함 |
 
+`zlink_stream_attach_actor_gateway()`는 target node가 routed-capable이 아니면
+`ENOTSUP`와 함께 `ZLINK_CONFIG_NOT_SUPPORTED`를 반환한다. stream이 이미 다른
+ActorGateway owner에 attach되어 있으면 `EBUSY`와 함께
+`ZLINK_CONFIG_INVALID_STATE`를 반환한다.
+
 ### Actor/Spot route 조회 오류
 
 `zlink_discovery_resolve_actor()`는 `actor_id`가 없거나 너무 길거나 출력 포인터가

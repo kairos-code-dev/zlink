@@ -14,7 +14,7 @@ namespace Zlink.Framework.E2ETests;
 public sealed class LocalProxyDisconnectTests : StreamTestSupport
 {
     [Fact]
-    public async Task SessionProxyDisconnect_FromLocalActor_Closes_Client_Without_Session_Disconnect_Callback()
+    public async Task BoundSessionDisconnect_FromLocalActor_Closes_Client_Without_Session_Disconnect_Callback()
     {
         var streamEndpoint = GetFreeTcpEndpoint();
         var routerEndpoint = GetFreeTcpEndpoint();
@@ -35,9 +35,13 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotNode("actor-node", spot =>
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
                 {
                     spot.Bind(spotEndpoint);
+                });
                 });
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
@@ -48,7 +52,8 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
                 options.AddStreamNode("client.stream", stream =>
                 {
                     stream.Bind(streamEndpoint);
-                    stream.AddHeaderSession<LocalNotifyDisconnectSession>();
+                    stream.AttachActorGateway("actor-node");
+                    stream.RegisterSession<LocalNotifyDisconnectSession>();
                 });
             });
         });

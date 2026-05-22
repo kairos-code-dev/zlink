@@ -185,6 +185,7 @@ fn stream_typed_options() {
     let _get = StreamSocket::routing_id;
     let _disconnect_rid = StreamSocket::disconnect_rid;
     let _on_packet = StreamSocket::on_packet::<fn(RoutingId, Message, Message)>;
+    let _attach_actor_gateway = StreamSocket::attach_actor_gateway;
 }
 
 #[test]
@@ -197,6 +198,7 @@ fn rid_disconnect_surface_exists() {
 
     let _ = pair.disconnect_rid(&rid);
     let _ = router.disconnect_rid(&rid);
+    let _ = node.set_router_bind_endpoint("inproc://surface-router");
     let _ = node.disconnect_peer_rid(&rid);
     let _ = node.connect_router_channel_peer("", "");
     let _ = node.disconnect_router_channel_peer("", "");

@@ -397,6 +397,18 @@ zlink_bind_result_t zlink_spot_node_bind (void *node_, const char *endpoint_)
       zlink::spot_node_access_t::bind (node, endpoint_));
 }
 
+zlink_config_result_t zlink_spot_node_set_router_bind_endpoint (
+  void *node_, const char *endpoint_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    return zlink::config_result_internal::from_rc (
+      zlink::spot_node_access_t::set_router_bind_endpoint (node, endpoint_));
+}
+
 zlink_connect_result_t zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);

@@ -492,6 +492,11 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_stream_attach_actor_gateway",
+            [ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_stream_bind_actor",
             [
                 ctypes.c_void_p,
@@ -1140,6 +1145,11 @@ class _Lib:
         )
         self._require(
             "zlink_spot_node_bind",
+            [ctypes.c_void_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_set_router_bind_endpoint",
             [ctypes.c_void_p, ctypes.c_char_p],
             ctypes.c_int,
         )

@@ -61,6 +61,8 @@ class stream_socket_t : public routed_message_socket_t
         return stream_socket_options_t (handle ());
     }
 
+    void attach_actor_gateway (service::spot_node_t &node_);
+
     service::actor_bind_op_t bind_actor (const routing_id_t &session_rid_,
                                          const actor_ref_t &actor_);
 

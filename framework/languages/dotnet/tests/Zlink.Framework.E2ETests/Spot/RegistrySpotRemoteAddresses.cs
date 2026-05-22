@@ -39,7 +39,7 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
             options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
-            options.UseSpotDiscovery(spotChannel, discovery => discovery.Add(registryRouterEndpoint));
+
             options.UseRegistrySpotRemoteAddresses("spot-registry-request-send");
             options.AddRouteMeshChannel("play", route =>
             {
@@ -50,11 +50,15 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
                         Encoding.UTF8.GetBytes("registry-play-route"));
                 });
             });
-            options.AddSpotNode("route-target-node", spot =>
+            options.AddSpotMesh(spotChannel, mesh =>
+            {
+                mesh.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
+                mesh.AddNode("route-target-node", spot =>
             {
                 spot.Bind(spotNodeEndpoint);
                 spot.EnableRouter(router =>
                 {
+                    router.Bind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
                         routing.RoutingId = RoutingId.FromBytes(
@@ -67,6 +71,7 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
                         peers => peers.Connect(routeChannelEndpoint)));
                 spot.AddEntrySpot<SpotRouteCallerEntrySpot>();
                 spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+            });
             });
         });
 

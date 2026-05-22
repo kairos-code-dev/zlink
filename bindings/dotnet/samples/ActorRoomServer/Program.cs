@@ -9,6 +9,7 @@ using var node = new SpotNode(ctx);
 using var spot = node.CreateSpot();
 using var actor = node.CreateActor("room-player-1");
 using var stream = new StreamSocket(ctx);
+stream.AttachActorGateway(node);
 RoutingId sessionRid = SampleSupport.RoutingIdUtf8("room-session");
 Zlink.MultipartClose(await stream.BindActor(sessionRid, actor.Ref)
     .Timeout(TimeSpan.FromSeconds(2))

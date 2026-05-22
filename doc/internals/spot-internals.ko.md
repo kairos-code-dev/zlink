@@ -725,6 +725,26 @@ flowchart TB
 session owner node와 Actor owner node는 같거나 다를 수 있다. 내부 처리 경로가 다르지만
 공개 API는 동일하다.
 
+bind를 실행하기 전에 STREAM handle의 session owner `SpotNode`가 먼저 정해져 있어야 한다.
+이것이 ActorGateway attach다. owner는
+`actor_runtime().sessions.stream_owner(stream, nodes)`로 결정된다.
+
+- application이 `zlink_stream_attach_actor_gateway(stream, node)`를 호출했다면 그 쌍이
+  `sessions.stream_owners`에 기록되고 handle은 `sessions.explicit_stream_owners`에
+  추가된다. explicit owner는 sticky해서 stream이 닫히거나 owner node가 파괴되거나
+  application이 detach할 때까지 유지된다. library가 SpotNode와 연결할 단서가 없는 raw,
+  connector STREAM handle은 반드시 이 경로를 거쳐야 한다.
+- stream이 `SpotNode` 내부 socket이면 `find_socket_owner()`가 owner를 구조적으로 복원해
+  `stream_owners`에 캐시한다. 이 경우 명시적 attach가 필요 없다.
+- 두 경로 모두 owner를 주지 못하면 bind는 실패한다. owner는 bind 대상 Actor의 `node_rid`로
+  추론하지 않는다. session owner는 보내는 stream이 실제로 attach된 node다.
+
+`zlink_stream_attach_actor_gateway()`는 `node`가 routed-capable `SpotNode`인지
+확인하고(아니면 `ENOTSUP` / `ZLINK_CONFIG_NOT_SUPPORTED`), 이미 다른 owner에 붙은
+stream을 다른 node로 다시 붙이려 하면 거부한다(`EBUSY` / `ZLINK_CONFIG_INVALID_STATE`).
+같은 stream/node 쌍으로 다시 호출하면 멱등으로 성공한다. STREAM 쪽 관점은
+[stream-socket.ko.md](./stream-socket.ko.md)를 참고한다.
+
 ### 12.1 Local Actor binding (co-located)
 
 ```mermaid
@@ -806,10 +826,10 @@ compare-and-swap 성공 여부가 기준이다. 성공 전 disconnect는 source 
 
 | 조건 | 결과 |
 |------|------|
-| Actor owner node 도달 불가 | `bind control request` 미전달. session owner는 timeout 후 bind failure를 반환한다. `g_session_bindings`에 항목이 기록되지 않는다 |
+| Actor owner node 도달 불가 | `bind control request` 미전달. session owner는 timeout 후 bind failure를 반환한다. `sessions.bindings`에 항목이 기록되지 않는다 |
 | bind control request 중간 timeout | session owner는 bind failure로 처리한다. timeout 통지를 받은 target node는 부분적으로 생성된 Actor table 상태를 롤백한다 |
 | `actor_ref` stale (generation 불일치) | target node가 bind control request를 거부한다. session owner는 `INVALID_HANDLE`을 받는다. Actor table 항목이 생성되지 않는다 |
-| bind 완료 전 session disconnect | session owner의 session rid 항목이 이미 제거되었으므로 `g_session_bindings` CAS가 실패한다. bind가 중단되고 target node의 Actor state가 정리된다 |
+| bind 완료 전 session disconnect | session owner의 session 항목이 이미 제거되었으므로 `sessions.bindings` CAS가 실패한다. bind가 중단되고 target node의 Actor state가 정리된다 |
 
 ## 13. Transport logical queue 내부 데이터 구조
 
@@ -865,13 +885,13 @@ struct spot_logical_pubsub_message_t {
 | `part_flag` | `zlink_part_flag_t` | `ZLINK_PART_MORE` 또는 `ZLINK_PART_FINAL` |
 | `owns` | `bool` | part 소유 여부 (move 후 false) |
 
-### 13.3 Join request queue (`g_join_queues`)
+### 13.3 Join request queue (`joins.queues`)
 
-join request는 `service_spot_actor_api.cpp`의 global mutex(`g_actor_mutex`)로
-보호되는 `g_join_queues`에 저장된다.
+join request는 `service_spot_actor_api.cpp`의 `actor_runtime().mutex`로 보호되는
+`actor_runtime().joins.queues`(`actor_join_state_t`의 `queues` 멤버)에 저장된다.
 
 ```
-g_join_queues: map<spot_logical_state_t*, deque<queued_join_request_t*>>
+joins.queues: map<spot_logical_state_t*, deque<queued_join_request_t*>>
 ```
 
 key는 target Spot의 `spot_logical_state_t` 포인터다. 같은 Spot에 여러 join request가
@@ -890,8 +910,9 @@ pending 중일 수 있으며, FIFO 순서로 `zlink_spot_actor_join_recv()`로 d
 | `message` | `zlink_msg_t` | join payload (source가 소유권 이전) |
 | `reply` | `zlink_msg_t` | reply payload (target이 소유권 이전) |
 
-`g_live_join_requests`는 현재 pending 중인 모든 join request set이고,
-`g_retired_join_requests`는 timeout/cleanup이 완료되기를 기다리는 set이다.
+`joins.live_requests`는 현재 pending 중인 모든 join request set이며 timeout 스윕을
+구동한다. request가 완료되면 그 record는 별도 retired set에 두지 않고 commit/abort
+경로 끝에서 인라인으로 해제한다.
 
 ### 13.4 Signaler와 dispatch 연결
 
@@ -909,25 +930,36 @@ Actor readable dispatch는 `actor_handle_t.joined_spot_state`의 dispatch handle
 `ACTOR_READABLE` readiness를 직접 올린다. subject는 콜백 수명 동안만 유효한
 `const zlink_actor_ref_t*`다.
 
-Actor join dispatch는 `g_join_queues`에 request가 추가될 때 target Spot dispatch
+Actor join dispatch는 `joins.queues`에 request가 추가될 때 target Spot dispatch
 handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot facade다.
 
-### 13.5 Global 상태 목록
+### 13.5 Actor runtime 상태 목록
 
-`service_spot_actor_api.cpp`이 관리하는 주요 global 상태.
-**아래 항목은 별도로 명시하지 않는 한 모두 `g_actor_mutex`로 보호된다.**
+Actor, session, route, join, lifecycle 상태는 모두 프로세스 단위의 단일
+`actor_runtime_t` 집합체에 모여 있고 `service_spot_actor_api.cpp`의 `actor_runtime()`
+접근자로 닿는다. 자유 전역 `g_*`는 없으며, 집합체가 책임별로 상태를 묶는다.
+**아래 모든 멤버는 별도로 명시하지 않는 한 단일 `actor_runtime().mutex`로 직렬화된다.**
 
-| 전역 변수 | 타입 | 역할 |
-|-----------|------|------|
-| `g_actor_mutex` | `timed_mutex` | 나머지 모든 항목을 보호하는 단일 전역 잠금. 테이블 변경이 일어나는 동안만 보유하고, I/O 대기 중에는 해제한다 |
-| `g_nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode 역방향 조회. `SpotNode` 생성 시 추가, destroy 시 제거 |
-| `g_join_queues` | `map<spot_logical_state_t*, deque<...>>` | Spot별 pending join request. join 요청 enqueue 시 추가, reply 또는 cleanup 시 제거 |
-| `g_known_spots` | `set<spot_handle_t*>` | live Spot facade 추적. use-after-free 핸들 검증에 사용 |
-| `g_session_bindings` | `map<string, session_binding_t>` | session rid → Actor binding. remote join commit의 compare-and-swap 트랜잭션 지점 |
-| `g_active_routes` | `map<string, zlink_actor_route_t>` | actor id → Discovery에 게시된 active route |
-| `g_live_join_requests` | `set<queued_join_request_t*>` | 현재 pending join. timeout 스윕에 사용 |
-| `g_retired_join_requests` | `set<queued_join_request_t*>` | completion frame 전달 확인 뒤 cleanup 대기 join |
-| `g_actor_protocol_drop_count` | `uint64_t` | protocol 오류(stale ref, unknown actor id 등)로 drop된 relay frame 누적 카운터. relay 손실 진단에 활용 |
+| 멤버 | 타입 | 역할 |
+|------|------|------|
+| `mutex` | `std::timed_mutex` | runtime 전체를 보호하는 단일 잠금. 테이블 변경 동안만 보유하고 I/O 중에는 해제한다 |
+| `nodes` | `actor_node_registry_t` | node와 Spot facade 추적 (아래 하위 행 참고) |
+| `nodes.nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode 역방향 조회. `SpotNode` 생성 시 추가, destroy 시 제거 |
+| `nodes.known_nodes` | `set<spot_node_t*>` | live `SpotNode` handle. node 포인터 use-after-free 검증에 사용 |
+| `nodes.known_spots` | `set<spot_handle_t*>` | live Spot facade. handle use-after-free 검증에 사용 |
+| `sessions` | `actor_session_state_t` | STREAM session binding과 stream→owner map (아래 하위 행 참고) |
+| `sessions.bindings` | `map<session_binding_key_t, session_binding_t>` | `(stream, session rid)` 복합키. 한 session의 actor id별 Actor 항목을 담는다. remote join commit의 compare-and-swap 트랜잭션 지점 |
+| `sessions.stream_owners` | `map<void*, spot_node_t*>` | STREAM handle → session owner SpotNode(ActorGateway) |
+| `sessions.explicit_stream_owners` | `set<void*>` | `zlink_stream_attach_actor_gateway()`로 owner를 지정한 stream. sticky하며 binding이 사라져도 회수되지 않는다 |
+| `routes` | `actor_route_state_t` | 게시된 actor route와 disconnect note (아래 하위 행 참고) |
+| `routes.active` | `map<string, zlink_actor_route_t>` | actor id → Discovery에 게시된 active route |
+| `routes.disconnected` | `set<pair<spot_node_t*, string>>` | disconnected로 표시된 `(source node, target node rid)` 쌍. relay 실패를 route-not-found로 매핑하는 데 사용 |
+| `joins` | `actor_join_state_t` | pending join 큐와 부가 상태 (아래 하위 행 참고) |
+| `joins.queues` | `map<spot_logical_state_t*, deque<queued_join_request_t*>>` | target Spot별 pending join request. enqueue 시 추가, reply 또는 cleanup 시 제거 |
+| `joins.live_requests` | `set<queued_join_request_t*>` | 현재 pending join. timeout 스윕에 사용 |
+| `lifecycle` | `actor_lifecycle_state_t` | Spot별 `on_join`/`on_leave` 등록과 이벤트 큐 |
+| `protocol_drop_count` | `uint64_t` | protocol 오류(stale ref, unknown actor id 등)로 drop된 relay frame 누적 카운터. relay 손실 진단에 활용 |
+| `next_join_epoch` | `uint64_t` | join sequence 번호를 단조 증가로 발급하는 카운터 |
 
 Actor active route row는 `ZLINK_ROUTE_KIND_ACTOR`와 Actor id key로 Registry에
 게시된다. value는 `zlink_actor_route_t`의 byte copy이며, Actor ref의 node rid와
@@ -951,14 +983,14 @@ target Spot에 도착한 payload를 어떤 Actor로 처리할지는 상위 프�
 보여 주고, `zlink_spot_actor_join_reply()`는 completion callback이 실행되기 전에
 reply parts를 request record 안으로 이동한다.
 
-**초기화**: 이 전역들은 정적 저장 기간(static storage duration)을 가지므로 프로그램
-시작 시 기본 초기화된다. 별도의 init 호출은 없다. 첫 `SpotNode` 생성 시
-`g_nodes_by_rid`에 첫 항목이 추가되는데, 모든 쓰기와 경합 가능한 읽기에서 mutex를
+**초기화**: `actor_runtime_t` 인스턴스는 함수 지역 static으로 정적 저장 기간을 가지며
+첫 접근 시 기본 초기화된다. 별도의 init 호출은 없다. 첫 `SpotNode` 생성 시
+`nodes.nodes_by_rid`에 첫 항목이 추가되는데, 모든 쓰기와 경합 가능한 읽기에서 `mutex`를
 잡기 때문에 race window가 없다.
 
 **Lock 범위**: I/O 스레드 경계를 넘는 blocking 호출(예: Mailbox reply 대기) 중에는
-`g_actor_mutex`를 보유해서는 안 된다. 두 SpotNode 인스턴스에 걸친 Actor table 변경과
-join 큐 변경은 전체 compound 연산에 대해 mutex를 한 번만 잡아 직렬화된다.
+`actor_runtime().mutex`를 보유해서는 안 된다. 두 SpotNode 인스턴스에 걸친 Actor table
+변경과 join 큐 변경은 전체 compound 연산에 대해 mutex를 한 번만 잡아 직렬화된다.
 
 ## 14. Actor join 내부 lifecycle
 

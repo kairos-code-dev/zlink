@@ -10,18 +10,15 @@ public sealed class ActorContracts
         typeof(IZLinkActorContext),
         typeof(IZLinkActorJoinSpotCall),
         typeof(IZLinkActorFactory),
-        typeof(IZLinkActorManager),
-        typeof(IZLinkActorRemoteAddressResolver))]
+        typeof(IZLinkActorManager))]
     public async Task Actor_context_creates_actors_and_joins_a_spot_by_routing_id()
     {
         var spot = new RoomSpot();
         var context = new ActorContext("player-1", spot);
         var factory = new ActorFactory();
         var manager = new ActorManager(factory, context);
-        var routeResolver = new ActorRemoteAddressResolver();
 
         var actor = await manager.GetOrCreateAsync("player-1", "player");
-        var route = await routeResolver.ResolveActorRemoteAddressAsync(actor.ActorId, CancellationToken.None);
         var joinReply = await actor.Context.JoinSpotAsync<JoinRoom, JoinedRoom>(
             RoutingId.Of("room-1"),
             new JoinRoom("room-1"));
@@ -30,7 +27,6 @@ public sealed class ActorContracts
         await actor.OnDisconnectedAsync(CancellationToken.None);
 
         Assert.Equal("player-1", actor.ActorId);
-        Assert.Equal("play-router", route.RemoteAddress.RouterChannelId);
         Assert.Equal("room-1", joinReply.RoomId);
     }
 
@@ -101,7 +97,10 @@ public sealed class ActorContracts
             string actorId,
             string actorType,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkActorRemoteAddress("play-router", RoutingId.Of("play-node"), 1));
+            ValueTask.FromResult(new ZLinkActorRemoteAddress(
+                string.Empty,
+                RoutingId.Of("actor-node"),
+                1));
 
         public async ValueTask<IZLinkActor> GetOrCreateAsync(
             string actorId,
@@ -109,18 +108,6 @@ public sealed class ActorContracts
             CancellationToken cancellationToken = default) =>
             await FindAsync(actorId, cancellationToken)
                 ?? await CreateAsync(actorId, actorType, cancellationToken);
-    }
-
-    private sealed class ActorRemoteAddressResolver : IZLinkActorRemoteAddressResolver
-    {
-        public ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
-            string actorId,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new ZLinkActorRemoteLocation(
-                actorId,
-                new ZLinkActorRemoteAddress("play-router", RoutingId.Of("play-node"), 1),
-                RoutingId.Of("room-1"),
-                ZLinkSpotKind.User));
     }
 
     private sealed class ActorContext(string actorId, IZLinkSpot spot) : IZLinkActorContext
@@ -135,7 +122,7 @@ public sealed class ActorContracts
 
         public bool IsJoined => true;
 
-        public IZLinkSessionProxy SessionProxy { get; } = new SessionProxy();
+        public IZLinkBoundSession BoundSession { get; } = new BoundSession();
 
         public void AddPacket<THandler>()
             where THandler : class { }
@@ -194,11 +181,9 @@ public sealed class ActorContracts
         public IZLinkSpotContext Context => null!;
     }
 
-    private sealed class SessionProxy : IZLinkSessionProxy
+    private sealed class BoundSession : IZLinkBoundSession
     {
-        public IZLinkSessionProxySendCall Send<TMessage>(TMessage message) => null!;
-
-        public IZLinkSessionProxyRequestCall Request<TRequest>(TRequest request) => null!;
+        public IZLinkBoundSessionSendCall Send<TMessage>(TMessage message) => null!;
 
         public ValueTask DisconnectAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }

@@ -10,8 +10,9 @@ public sealed class RegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDefaults(sampleRoot, "bingo");
+        AssertSessionServerUsesActorGateway(sampleRoot);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
-        AssertEnsureActorHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
+        AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(sampleRoot);
     }
 
     [Fact]
@@ -22,8 +23,9 @@ public sealed class RegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDefaults(sampleRoot, "tictactoe");
+        AssertSessionServerUsesActorGateway(sampleRoot);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
-        AssertEnsureActorHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
+        AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(sampleRoot);
     }
 
     private static void AssertNoSampleRouteStore(string sampleRoot)
@@ -85,6 +87,18 @@ public sealed class RegressionTests
         Assert.DoesNotContain("IZLinkActorSessionClient", allText, StringComparison.Ordinal);
     }
 
+    private static void AssertSessionServerUsesActorGateway(string sampleRoot)
+    {
+        var sessionHostFactory = Directory
+            .EnumerateFiles(Path.Combine(sampleRoot, "Server", "Session"), "*HostFactory.cs", SearchOption.AllDirectories)
+            .Single();
+        var text = File.ReadAllText(sessionHostFactory);
+
+        Assert.Contains("AddSpotNode", text, StringComparison.Ordinal);
+        Assert.Contains("AttachActorGateway", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddRouteMeshChannel", text, StringComparison.Ordinal);
+    }
+
     private static void AssertSessionHandlersDoNotResolveActorRemoteAddresses(string sampleRoot)
     {
         var sessionRoot = Path.Combine(sampleRoot, "Server", "Session");
@@ -102,7 +116,7 @@ public sealed class RegressionTests
         }
     }
 
-    private static void AssertEnsureActorHandlersDoNotResolveActorRemoteAddresses(string sampleRoot)
+    private static void AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(string sampleRoot)
     {
         var playRoot = Path.Combine(sampleRoot, "Server", "Play");
         var sourceFiles = EnumerateSourceFiles(playRoot)
@@ -119,6 +133,7 @@ public sealed class RegressionTests
             Assert.DoesNotContain("IZLinkActorRemoteAddressResolver", text, StringComparison.Ordinal);
             Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
             Assert.Contains("GetRemoteAddressAsync", text, StringComparison.Ordinal);
+            Assert.Contains("RemoteAddress", text, StringComparison.Ordinal);
         }
     }
 

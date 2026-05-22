@@ -83,7 +83,6 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
             options.DefaultTimeout = TimeSpan.FromSeconds(5);
             options.Codecs.AddProtobuf();
             options.UseFilter<TestFilter>();
-            options.AddActorRemoteAddressResolver<TestActorRemoteAddressResolver>();
             options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
             options.ConfigureDispatch(dispatch =>
             {
@@ -129,8 +128,6 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         var filter = provider.GetRequiredService<TestFilter>();
 
         Assert.NotNull(filter);
-        Assert.IsType<TestActorRemoteAddressResolver>(
-            provider.GetRequiredService<IZLinkActorRemoteAddressResolver>());
         Assert.IsType<TestSpotRemoteAddressResolver>(
             provider.GetRequiredService<IZLinkSpotRemoteAddressResolver>());
         Assert.Equal(TimeSpan.FromSeconds(5), registration.DefaultTimeout);

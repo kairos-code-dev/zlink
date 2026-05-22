@@ -678,7 +678,6 @@ public enum ZlinkStreamErrorCode
     FrameDecodeFailed,
     FrameTooLarge,
     SendFailed,
-    CodecNotFound,
     CompressionFailed,
     TlsValidationFailed,
     DecompressionFailed,
@@ -734,14 +733,9 @@ namespace Systems.Zlink.Stream.Connector.Json;
 
 public static class ZlinkStreamJsonExtensions
 {
-    ZlinkStreamEncodedPayload ToJson<T>(
-        this T value,
-        JsonSerializerOptions? options = null);
+    ZlinkStreamEncodedPayload ToJson<T>(this T value);
 
-    T FromJson<T>(
-        this ZlinkStreamEncodedPayload payload,
-        JsonSerializerOptions? options = null);
-
+    T FromJson<T>(this ZlinkStreamEncodedPayload payload);
 }
 
 public static class ZlinkStreamJsonConnectorExtensions
@@ -763,13 +757,9 @@ namespace Systems.Zlink.Stream.Connector.MessagePack;
 
 public static class ZlinkStreamMessagePackExtensions
 {
-    ZlinkStreamEncodedPayload ToMsgPack<T>(
-        this T value,
-        MessagePackSerializerOptions? options = null);
+    ZlinkStreamEncodedPayload ToMsgPack<T>(this T value);
 
-    T FromMsgPack<T>(
-        this ZlinkStreamEncodedPayload payload,
-        MessagePackSerializerOptions? options = null);
+    T FromMsgPack<T>(this ZlinkStreamEncodedPayload payload);
 }
 
 namespace Systems.Zlink.Stream.Connector.Protobuf;

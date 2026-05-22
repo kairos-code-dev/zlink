@@ -14,6 +14,55 @@ channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호�
 - **one-way send** — 응답이 없는 단방향 명령 (DEALER → ROUTER)
 - **publish/subscribe** — 여러 구독자에게 이벤트 fan-out (PUB / SUB)
 
+## 0. gRPC 를 쓰던 웹 서비스라면
+
+이 축은 게임 서버 전용이 아니다. 일반 웹/마이크로서비스 백엔드에서 **서비스 간
+gRPC 를 대체**하는 용도로 그대로 쓴다. 서비스마다 host:port 를 알리거나 앞단에
+gateway/로드밸런서를 둘 필요 없이, 논리 `channel name` + discovery 로 호출을 묶는다.
+`.proto` IDL·HTTP/2 전용 인프라·코드 생성 없이 DTO(record)와 typed handler 만으로
+gRPC 의 네 가지 호출 형태를 얻는다.
+
+| gRPC 패턴 | ZLink 대체 | 이 가이드 |
+|-----------|------------|-----------|
+| Unary RPC | request/response | §2·§4 |
+| Unary `Empty` / fire-and-forget | one-way send | §2·§4 |
+| Server streaming / 이벤트 피드 | pub/sub fan-out | §4 |
+| Client/Bidi streaming | STREAM session | [07-stream](./07-stream.ko.md) |
+| Service discovery(DNS/xDS) | Registry + Discovery | [08-registry](./08-registry.ko.md) |
+| Interceptor | handler filter | §5 |
+| Deadline | request timeout | §4 |
+
+예를 들어 주문 서비스라면, gRPC `rpc PlaceOrder(...)` 가 다음과 같이 바뀐다.
+
+```csharp
+// 서버: handler 하나 (gRPC service 구현 대신)
+public sealed class PlaceOrderHandler
+    : IZLinkRequestHandler<PlaceOrder, OrderPlaced>
+{
+    private readonly IOrderStore _orders;
+    public PlaceOrderHandler(IOrderStore orders) => _orders = orders;
+
+    public async ValueTask<OrderPlaced> HandleAsync(
+        PlaceOrder request, ZLinkRequestContext context, CancellationToken ct)
+    {
+        await _orders.SaveAsync(request, ct);
+        return new OrderPlaced(request.OrderId);
+    }
+}
+
+// 클라이언트: gRPC stub 대신 IZLinkClient 주입
+var placed = await client
+    .Request("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+    .Timeout(TimeSpan.FromSeconds(2))    // gRPC deadline 에 해당
+    .SubmitAsync<OrderPlaced>(ct);
+```
+
+이 호출 표면(`Request`/`Send`/`Publish` + 종결자)은
+[11-interface-catalog](./11-interface-catalog.ko.md) §1.6 의 계약 테스트
+`ChannelContracts.Channel_messaging_replaces_grpc_unary_command_and_streaming_for_web_services`
+로 검증된다. 아래 본문 예제는 같은 표면을 profile/account/user 등 다른 웹 도메인으로
+보여 준다.
+
 ## 1. 두 가지 channel 종류
 
 | 등록 메서드 | transport | capability | 용도 |
@@ -398,6 +447,7 @@ public sealed class UserCacheRefreshedEventHandler
 
 ## 10. 더 보기
 
+- 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [11-interface-catalog](./11-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
 - dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)
 - 실행 가능한 전체 예제: [guide/samples/channel-messaging-samples](./samples/channel-messaging-samples.ko.md)

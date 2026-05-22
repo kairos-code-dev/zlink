@@ -65,41 +65,30 @@ public sealed class StreamContracts
 
     [Fact]
     [ContractExample(
-        typeof(IZLinkSessionProxy),
-        typeof(IZLinkSessionProxySendCall),
-        typeof(IZLinkSessionProxyRequestCall),
+        typeof(IZLinkBoundSession),
+        typeof(IZLinkBoundSessionSendCall),
         typeof(IZLinkMessageMetadataPolicy))]
-    public async Task Session_proxy_sends_to_the_bound_session_without_exposing_stream_transport()
+    public async Task Bound_session_sends_to_the_bound_session_without_exposing_stream_transport()
     {
-        var proxy = new ExampleSessionProxy();
+        var boundSession = new ExampleBoundSession();
 
-        await proxy
+        await boundSession
             .Send(new PlayerJoined("player-1"))
             .PacketName("player.joined")
             .Metadata("trace-id", "abc")
             .Submit();
 
-        var reply = await proxy
-            .Request(new Authenticate("player-1"))
-            .PacketName("authenticate")
-            .Metadata("trace-id", "abc")
-            .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync<AuthenticateReply>();
-
-        await proxy.DisconnectAsync();
+        await boundSession.DisconnectAsync();
 
         IZLinkMessageMetadataPolicy policy = new MetadataPolicy(
             new HashSet<string>(StringComparer.Ordinal) { "trace-id" });
 
-        Assert.Equal("player-1", reply.PlayerId);
-        Assert.True(proxy.IsDisconnected);
+        Assert.True(boundSession.IsDisconnected);
         Assert.True(policy.CanForwardApplicationKey("trace-id"));
         Assert.False(policy.CanForwardApplicationKey("internal-key"));
     }
 
     private sealed record PlayerJoined(string PlayerId);
-
-    private sealed record Authenticate(string PlayerId);
 
     private sealed record AuthenticateReply(string PlayerId);
 
@@ -149,7 +138,7 @@ public sealed class StreamContracts
             string actorType,
             ZLinkActorRemoteAddress remoteAddress,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkActorRef>(new ActorRef(actorId, actorType, remoteAddress, isRemote: true));
+            ValueTask.FromResult<IZLinkActorRef>(new ActorRef(actorId, actorType, true, remoteAddress));
 
         public ValueTask<IZLinkActorRef> BindActorHandleAsync(
             IZLinkActorRef actor,
@@ -183,14 +172,11 @@ public sealed class StreamContracts
         }
     }
 
-    private sealed class ExampleSessionProxy : IZLinkSessionProxy
+    private sealed class ExampleBoundSession : IZLinkBoundSession
     {
         public bool IsDisconnected { get; private set; }
 
-        public IZLinkSessionProxySendCall Send<TMessage>(TMessage message) => new ProxySendCall();
-
-        public IZLinkSessionProxyRequestCall Request<TRequest>(TRequest request) =>
-            new ProxyRequestCall(new AuthenticateReply("player-1"));
+        public IZLinkBoundSessionSendCall Send<TMessage>(TMessage message) => new BoundSessionSendCall();
 
         public ValueTask DisconnectAsync(CancellationToken cancellationToken = default)
         {
@@ -202,8 +188,8 @@ public sealed class StreamContracts
     private sealed class ActorRef(
         string actorId,
         string actorType,
-        ZLinkActorRemoteAddress? remoteAddress = null,
-        bool isRemote = false) : IZLinkActorRef
+        bool isRemote = false,
+        ZLinkActorRemoteAddress remoteAddress = default) : IZLinkActorRef
     {
         public string ActorId { get; } = actorId;
 
@@ -211,11 +197,7 @@ public sealed class StreamContracts
 
         public bool IsRemote { get; } = isRemote;
 
-        public ZLinkActorRemoteAddress RemoteAddress { get; } =
-            remoteAddress ?? new ZLinkActorRemoteAddress("play-router", RoutingId.Of("local-node"), 1);
-
-        public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
+        public ZLinkActorRemoteAddress RemoteAddress { get; } = remoteAddress;
     }
 
     private sealed class ExampleActor(string actorId) : IZLinkActor
@@ -264,25 +246,13 @@ public sealed class StreamContracts
         public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
-    private sealed class ProxySendCall : IZLinkSessionProxySendCall
+    private sealed class BoundSessionSendCall : IZLinkBoundSessionSendCall
     {
-        public IZLinkSessionProxySendCall PacketName(string packetName) => this;
+        public IZLinkBoundSessionSendCall PacketName(string packetName) => this;
 
-        public IZLinkSessionProxySendCall Metadata(string key, string value) => this;
+        public IZLinkBoundSessionSendCall Metadata(string key, string value) => this;
 
         public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    }
-
-    private sealed class ProxyRequestCall(object reply) : IZLinkSessionProxyRequestCall
-    {
-        public IZLinkSessionProxyRequestCall PacketName(string packetName) => this;
-
-        public IZLinkSessionProxyRequestCall Metadata(string key, string value) => this;
-
-        public IZLinkSessionProxyRequestCall Timeout(TimeSpan timeout) => this;
-
-        public ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult((TReply)reply);
     }
 
     private sealed class MetadataPolicy(IReadOnlySet<string> forwardedKeys) : IZLinkMessageMetadataPolicy

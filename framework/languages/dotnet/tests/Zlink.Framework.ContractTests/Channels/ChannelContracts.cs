@@ -81,6 +81,46 @@ public sealed class ChannelContracts
         Assert.Equal(["tcp://127.0.0.1:5001"], await connections.ListConnectionsAsync());
     }
 
+    [Fact]
+    [ContractExample(
+        typeof(IZLinkClient),
+        typeof(IZLinkSendCall),
+        typeof(IZLinkRequestCall),
+        typeof(IZLinkFanoutPublisher),
+        typeof(IZLinkPublishCall))]
+    public async Task Channel_messaging_replaces_grpc_unary_command_and_streaming_for_web_services()
+    {
+        // The same channel-messaging surface a gRPC web backend would reach for:
+        // unary RPC, fire-and-forget command, and a server-streamed status feed.
+        var orders = new ExampleClient();
+        var events = new ExampleFanoutPublisher();
+
+        // gRPC unary RPC -> request/response on a logical channel name.
+        var placed = await orders
+            .Request("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+            .PacketName("orders.place")
+            .Timeout(TimeSpan.FromSeconds(2))
+            .SubmitAsync<OrderPlaced>();
+
+        // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
+        await orders
+            .Send("inventory", new ReserveStock("order-1042", "sku-9", 3))
+            .PacketName("inventory.reserve")
+            .Submit();
+
+        // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
+        await events
+            .Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
+            .PacketName("order.status-changed")
+            .Submit();
+
+        Assert.Equal("order-1042", placed.OrderId);          // unary RPC reply correlated by type
+        Assert.Equal("inventory", orders.LastChannelName);    // last one-way send routed by channel name
+        Assert.Equal(
+            ("order.events", "order.status", "order.status-changed"),
+            events.LastPublish);
+    }
+
     private sealed record AuthenticateRequest(string PlayerId);
 
     private sealed record AuthenticateReply(string PlayerId);
@@ -90,6 +130,14 @@ public sealed class ChannelContracts
     private sealed record RoomAllocated(string RoomId);
 
     private sealed record RoomEvent(string State);
+
+    private sealed record PlaceOrder(string OrderId, string AccountId, long AmountMinor);
+
+    private sealed record OrderPlaced(string OrderId);
+
+    private sealed record ReserveStock(string OrderId, string Sku, int Quantity);
+
+    private sealed record OrderStatusChanged(string OrderId, string Status);
 
     private sealed class ExampleClient : IZLinkClient
     {
@@ -106,11 +154,13 @@ public sealed class ChannelContracts
         public IZLinkRequestCall Request<TMessage>(string channelName, TMessage request)
         {
             LastChannelName = channelName;
-            return new ExampleRequestCall(
-                packetName => LastPacketName = packetName,
-                typeof(TMessage) == typeof(AuthenticateRequest)
-                    ? new AuthenticateReply(((AuthenticateRequest)(object)request!).PlayerId)
-                    : null);
+            object? reply = request switch
+            {
+                AuthenticateRequest authenticate => new AuthenticateReply(authenticate.PlayerId),
+                PlaceOrder order => new OrderPlaced(order.OrderId),
+                _ => null,
+            };
+            return new ExampleRequestCall(packetName => LastPacketName = packetName, reply);
         }
     }
 

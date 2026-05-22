@@ -116,11 +116,12 @@ public sealed class ClientHeaderSession(
 ### 보내기와 직렬화
 
 - `IZLinkStream.Write(Message payload, ...)` 는 backpressure 를 `false` 반환으로
-  표현한다. 보통은 `Send`/`Reply`/`SessionProxy` 를 쓴다.
-- 직렬화는 transport core 에 섞지 않고 별도 extension 으로 올린다. 서버 진입점은
-  `Parse<T>()`(또는 예제의 `payload.FromJson<T>()` 류 helper)이며, 타입 특성으로
-  codec 을 고른다(생성된 protobuf 타입 → protobuf, 그 외 POCO → json). 핫패스에서는
-  `Message.AsReadOnlySpan()` 기반 helper 를 쓰고 `ToArray()` 복사를 피한다.
+  표현한다. 보통은 `Send`/`Reply`/`BoundSession` 를 쓴다.
+- payload 디코드는 transport core 에 섞지 않고 등록된 codec 에 위임한다. 위 예제의
+  `payload.FromJson<T>()` 처럼 codec helper 로 `Message` 를 타입으로 풀고, 타입
+  특성으로 codec 을 고른다(생성된 protobuf 타입 → protobuf, 그 외 POCO → json).
+  핫패스에서는 `Message.AsReadOnlySpan()` 기반 helper 를 쓰고 `ToArray()` 복사를
+  피한다.
 
 ## 2. client 측 — Stream Connector
 
@@ -227,7 +228,7 @@ Endpoint = new Uri("wss://game.example.com:443"),
   던지고, 콜백 API 는 `ErrorReceived` 이벤트로 알린다. 두 경로의 error code
   의미는 같다.
 - 주요 코드: `Disconnected`, `RequestTimeout`, `ConnectTimeout`, `FrameTooLarge`,
-  `CodecNotFound`, `TlsValidationFailed`, `RemoteError` 등.
+  `FrameDecodeFailed`, `TlsValidationFailed`, `RemoteError` 등.
 - 서버가 `kind=Error` 로 응답했고 request id 가 없으면 `RemoteError` 로 전달된다.
 
 > 서버 측 `ZLinkStreamError`(대문자 L, `Error`+`Diagnostic`)와 client 측
@@ -247,6 +248,7 @@ Endpoint = new Uri("wss://game.example.com:443"),
 
 ## 5. 더 보기
 
+- 이 챕터 계약의 실행 검증 예문(session/context/push/bound session): [11-interface-catalog](./11-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
 - 서버 정식 계약: [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md)
 - 미확정 결정 사항: [draft/stream-open-items](../draft/stream-open-items.ko.md)
 - 전체 예제: [STREAM 샘플](./samples/stream-samples.ko.md), [Stream Connector 가이드](./samples/streaming-client.ko.md)

@@ -314,6 +314,8 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 
 ## 8. 더 보기
 
+- 이 챕터 계약의 실행 검증 예문(spot/context/client/handler): [11-interface-catalog](./11-interface-catalog.ko.md) §3 — 검증 클래스 `SpotContracts`
+- 노드/채널 builder 계약: [11-interface-catalog](./11-interface-catalog.ko.md) §2.3 — 검증 클래스 `BuilderContracts`
 - 정식 계약: [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md), [spec/spot-node](../spec/spot-node.ko.md)
 - 실행 가능한 전체 예제(room/stage/zone): [guide/samples/spot-samples](./samples/spot-samples.ko.md)
 - spot 안의 참가자별 상태/세션이 필요하면: [06-actor-session](./06-actor-session.ko.md)

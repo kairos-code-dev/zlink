@@ -161,5 +161,6 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
 
 ## 5. 더 보기
 
+- 이 챕터 계약의 실행 검증 예문(monitoring options/event/handler/publisher): [11-interface-catalog](./11-interface-catalog.ko.md) §7 — 검증 클래스 `MonitoringContracts`
 - 정식 계약: [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)
 - topology 스냅샷 조회: [08-registry](./08-registry.ko.md)

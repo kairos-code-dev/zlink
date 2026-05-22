@@ -350,14 +350,14 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
-                pubsub.ConfigurePublisherOptions(pubOpt =>
+                pubsub.ConfigurePublisherConfig(pubOpt =>
                 {
                     pubOpt.SendHighWaterMark = 50_000;
                     pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
                     pubOpt.NoDrop = true;
                 });
 
-                pubsub.ConfigureSubscriberOptions(subOpt =>
+                pubsub.ConfigureSubscriberConfig(subOpt =>
                 {
                     subOpt.ReceiveHighWaterMark = 50_000;
                     subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
@@ -423,7 +423,7 @@ app.Run();
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     수 있도록 별도의 publisher client를 붙인다.
 - `ConfigureSocket(...)`, `ConfigureRouting(...)`,
-  `ConfigurePublisherOptions(...)`, `ConfigureSubscriberOptions(...)`
+  `ConfigurePublisherConfig(...)`, `ConfigureSubscriberConfig(...)`
   - 실제 `.NET` 바인딩의 `CommonSocketOptions`, route policy 옵션, outbound
     route policy 옵션, `SpotNodePublisherOptions`, `SpotNodeSubscriberOptions`
     같은 typed facade[^typed-facade]를 capability별로 등록한다.
@@ -580,14 +580,14 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
-                pubsub.ConfigurePublisherOptions(pubOpt =>
+                pubsub.ConfigurePublisherConfig(pubOpt =>
                 {
                     pubOpt.SendHighWaterMark = 50_000;
                     pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
                     pubOpt.NoDrop = true;
                 });
 
-                pubsub.ConfigureSubscriberOptions(subOpt =>
+                pubsub.ConfigureSubscriberConfig(subOpt =>
                 {
                     subOpt.ReceiveHighWaterMark = 50_000;
                     subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
@@ -630,8 +630,8 @@ builder.Services.AddZLinkFramework(options =>
 
 이 예시가 의도하는 구분은 다음과 같다.
 
-- `pubsub.ConfigurePublisherOptions(...)`,
-  `pubsub.ConfigureSubscriberOptions(...)` 는 실제 `.NET` 바인딩의
+- `pubsub.ConfigurePublisherConfig(...)`,
+  `pubsub.ConfigureSubscriberConfig(...)` 는 실제 `.NET` 바인딩의
   `SpotNode.PublisherOptions`, `SpotNode.SubscriberOptions` 처럼, `SPOT` mesh
   자체가 소유하는 옵션 facade 를 capability 표면으로 끌어올린 것이다.
 - `router.ConfigureSocket(...)`, `client.ConfigureSocket(...)` 같은 표면은
@@ -1040,16 +1040,13 @@ actor stream 의 연결과 해제는 `IZLinkSessionActorAttachmentContext` 라�
 별도의 표면에서 다룬다.
 
 ```csharp
-public sealed class SampleSpot(
-    IZLinkSpotContext context,
-    IZLinkSpotActorMembership membership) : IZLinkSpot
+public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 {
     private readonly Dictionary<string, SampleActor> _actors =
         new(StringComparer.Ordinal);
     private IZLinkTimer? _sessionTimeoutSweep;
 
     public IZLinkSpotContext Context { get; } = context;
-    public IZLinkSpotActorMembership Membership { get; } = membership;
 
     public string RoomId => Context.SpotRid.ToString();
 
@@ -1084,11 +1081,11 @@ public sealed class SampleSpot(
     {
         if (actor.Spot is SampleSpot current && !ReferenceEquals(current, this))
         {
-            await current.Membership.LeaveActorAsync(actor, cancellationToken);
+            await current.Context.LeaveActorAsync(actor, cancellationToken);
         }
 
         _actors[actor.ActorId] = actor;
-        await Membership.JoinActorAsync(actor, cancellationToken);
+        await Context.JoinActorAsync(actor, cancellationToken);
 
         PublishSampleState();
 
@@ -1109,7 +1106,7 @@ public sealed class SampleSpot(
             return;
         }
 
-        await Membership.LeaveActorAsync(actor, cancellationToken);
+        await Context.LeaveActorAsync(actor, cancellationToken);
         PublishSampleState();
     }
 
@@ -1130,11 +1127,10 @@ public sealed class SampleSpot(
     public async ValueTask BroadcastChatAsync(
         SampleActor sender,
         SampleSendRoomChatCommand command,
-        `IZLinkSessionProxy` sessionClient,
         CancellationToken cancellationToken)
     {
-        // actor가 stream을 직접 들고 broadcast하지 않는다. 같은 room의 모든 actor에게
-        // 보낼 때는 actor id마다 `IZLinkSessionProxy`로 보낸다.
+        // actor가 stream을 직접 들고 broadcast하지 않는다. 같은 room의 모든 actor는
+        // 각자 자기 Context.BoundSession 으로 client 에 push 한다.
         SampleRoomChatPushed pushed = new()
         {
             FromActorId = sender.ActorId,
@@ -1143,10 +1139,7 @@ public sealed class SampleSpot(
 
         foreach (SampleActor actor in _actors.Values)
         {
-            await sessionClient
-                .Send(actor.ActorId, pushed)
-                .PacketName("SampleRoomChatPushed")
-                .Submit(cancellationToken);
+            await actor.PushChatAsync(pushed, cancellationToken);
         }
     }
 
@@ -1230,7 +1223,7 @@ public sealed class SampleActor : IZLinkActor
     {
         LastSeenAt = DateTimeOffset.UtcNow;
 
-        await _context
+        await _context.BoundSession
             .Send(new SampleActorSnapshot
             {
                 ActorId = ActorId,
@@ -1241,6 +1234,14 @@ public sealed class SampleActor : IZLinkActor
             .PacketName("SampleActorSnapshot")
             .Submit(cancellationToken);
     }
+
+    public ValueTask PushChatAsync(
+        SampleRoomChatPushed pushed,
+        CancellationToken cancellationToken)
+        => _context.BoundSession
+            .Send(pushed)
+            .PacketName("SampleRoomChatPushed")
+            .Submit(cancellationToken);
 
     public ValueTask OnDisconnectedAsync(
         CancellationToken cancellationToken)
@@ -1531,9 +1532,8 @@ packet 의 hot path[^hot-path] 까지 다시 끌고 들어오지 않는 편이 �
 6. `SampleSession`은 room 정보를 actor packet으로 넘기고, actor 쪽 handler는
    `IZLinkActorContext.JoinSpot(...)`으로 target room의 join callback을 호출한다.
 7. 등록된 `SampleJoinRoomHandler`가 같은 `SampleSpot` 실행 문맥에서 승인 처리,
-   `Membership.JoinActorAsync(actor)`(framework가 주입하는
-   `IZLinkSpotActorMembership`) 호출, 기존 room에서의 이탈, 결과 생성을 끝까지
-   마무리한다.
+   `Context.JoinActorAsync(actor)`(`IZLinkSpotContext` 의 actor membership 표면)
+   호출, 기존 room에서의 이탈, 결과 생성을 끝까지 마무리한다.
 8. 그 뒤에 들어오는 `SampleHeartbeatCommand`, `SampleMoveActorCommand`,
    `SampleSendRoomChatCommand` 같은 패킷은 framework 내부의 `SubmitAsync(...)`를
    거쳐 actor가 속한 `Spot` 문맥으로 제출된다.

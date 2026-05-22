@@ -5,6 +5,7 @@ public sealed class RegressionTests
     private static readonly string[] DotNetDraftDocuments =
     [
         "README.ko.md",
+        "actor-gateway-session-relay.ko.md",
         "registry-backed-routing-defaults.ko.md",
         "spot-timer-policy.ko.md",
         "handler-interfaces.ko.md",
@@ -84,6 +85,7 @@ public sealed class RegressionTests
         "08-registry.ko.md",
         "09-monitoring.ko.md",
         "10-feature-map.ko.md",
+        "11-interface-catalog.ko.md",
     ];
 
     [Fact]
@@ -143,6 +145,26 @@ public sealed class RegressionTests
         Assert.DoesNotContain("NonPublic", combined, StringComparison.Ordinal);
         Assert.DoesNotContain("internal/private", combined,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DotNetDocs_BoundSession_Does_Not_Document_Request_Surface()
+    {
+        var docRoot = GetDotNetDocRoot();
+        var docs = Directory
+            .EnumerateFiles(docRoot, "*.ko.md", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains(
+                $"{Path.DirectorySeparatorChar}draft{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal))
+            .ToArray();
+
+        foreach (var path in docs)
+        {
+            var text = File.ReadAllText(path);
+            Assert.DoesNotContain("IZLinkBoundSessionRequestCall", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("BoundSession.Request", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Request<TRequest>(TRequest request)", text, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

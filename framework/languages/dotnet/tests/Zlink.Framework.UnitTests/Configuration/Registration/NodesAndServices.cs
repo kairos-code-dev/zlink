@@ -230,14 +230,14 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddRouteMeshChannel("gateway", routed =>
+            options.AddSpotNode("actor-node", spot =>
             {
-                routed.Bind("tcp://127.0.0.1:7301");
-                routed.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:7301"));
+                spot.Bind("tcp://127.0.0.1:7301");
             });
             options.AddStreamNode("stream.node", stream =>
             {
                 stream.Bind("tcp://127.0.0.1:9100");
+                stream.AttachActorGateway("actor-node");
                 stream.AddHeaderSession<TestHeaderSession>();
             });
         });
@@ -245,9 +245,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         using var provider = services.BuildServiceProvider();
         var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
 
-        Assert.Null(provider.GetService<IZLinkActorRemoteAddressResolver>());
         Assert.Single(registration.StreamNodes);
-        Assert.Single(registration.RouteChannels);
+        Assert.Empty(registration.RouteChannels);
+        Assert.Equal(
+            "actor-node",
+            registration.StreamNodes["stream.node"].ActorGatewaySpotNodeName);
     }
 
     [Fact]
@@ -289,7 +291,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Registers_SessionProxy_Factory()
+    public void AddZLinkFramework_Registers_BoundSession_Factory()
     {
         var services = new ServiceCollection();
 
@@ -303,7 +305,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         });
 
         using var provider = services.BuildServiceProvider();
-        Assert.NotNull(provider.GetService<IZLinkSessionProxyFactory>());
+        Assert.NotNull(provider.GetService<IZLinkBoundSessionFactory>());
     }
 
     [Fact]

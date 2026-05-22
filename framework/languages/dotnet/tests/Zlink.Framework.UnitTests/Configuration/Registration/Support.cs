@@ -145,24 +145,6 @@ public abstract partial class RegistrationValidationSupport
         }
     }
 
-    protected sealed class TestActorRemoteAddressResolver : IZLinkActorRemoteAddressResolver
-    {
-        public ValueTask<ZLinkActorRemoteLocation> ResolveActorRemoteAddressAsync(
-            string actorId,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new ZLinkActorRemoteLocation(
-                actorId,
-                new ZLinkActorRemoteAddress(
-                    "play",
-                    global::Systems.Zlink.RoutingId.FromString("01"),
-                    1),
-                global::Systems.Zlink.RoutingId.FromString("02"),
-                ZLinkSpotKind.User));
-        }
-    }
-
     protected sealed class TestSpotRemoteAddressResolver : IZLinkSpotRemoteAddressResolver
     {
         public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(

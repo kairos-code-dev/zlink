@@ -186,7 +186,6 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddRouteMeshChannel("play", channel => channel.Bind("tcp://0.0.0.0:7201"));
 
-    options.UseRegistryActorRemoteAddresses("game");          // actor id → play node route
     options.UseRegistrySpotRemoteAddresses("game");           // spot owner 조회 + spot 이름 directory
 });
 ```
@@ -204,5 +203,6 @@ resolver/store 를 등록한다([06-actor-session](./06-actor-session.ko.md) §5
 
 ## 8. 더 보기
 
+- 이 챕터 계약의 실행 검증 예문(options/query/query client): [11-interface-catalog](./11-interface-catalog.ko.md) §6 — 검증 클래스 `RegistryContracts`
 - 정식 계약: [spec/aspnet-core-registry](../spec/aspnet-core-registry.ko.md)
 - runtime 이벤트로 topology 변화 관찰: [09-monitoring](./09-monitoring.ko.md)

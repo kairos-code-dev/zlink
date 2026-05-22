@@ -34,7 +34,7 @@ handler · client · DI/lifecycle**.
 | command(단방향 send) | `IZLinkSendHandler<TMsg>` | `[ZLinkSend]` | `client.Send(...).Submit(ct)` |
 | publish-subscribe | `IZLinkPublishHandler<TEvt>` | `[ZLinkPublish]` | `publisher.Publish(...).Submit(ct)` |
 | SPOT 내부/외부 | `IZLinkSpot*Handler<...>` | (Spot 등록) | `IZLinkSpotClient`, `IZLinkRoutedSpotClient` |
-| STREAM session | `IZLinkSession` | (stream 등록) | `IZLinkSessionContext` / `IZLinkSessionProxy` |
+| STREAM session | `IZLinkSession` | (stream 등록) | `IZLinkSessionContext` / `IZLinkBoundSession` |
 
 handler 는 결과를 **반환값**으로 돌려준다. request handler 는 `ValueTask<TReply>`,
 send/publish handler 는 `ValueTask` 다.

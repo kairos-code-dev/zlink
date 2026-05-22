@@ -103,11 +103,6 @@ public interface IZLinkActorManager
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
-        string actorId,
-        string actorType,
-        CancellationToken cancellationToken = default);
-
     ValueTask<IZLinkActor> GetOrCreateAsync(
         string actorId,
         string actorType,
@@ -290,7 +285,7 @@ public sealed class ClientHeaderSession(
 helper 내부 구현에 숨겨 둔다.
 
 ```csharp
-public static class ZLinkSessionPayloadCodecs
+public static class SessionPayloadCodecs
 {
     public static T Decode<T>(Message payload)
     {
@@ -443,8 +438,8 @@ STREAM 샘플은 다음을 하나의 흐름으로 보여 준다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `SessionProxyAndHeaderTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session 샘플의 dispatch와 reply 흐름이 정상 동작한다. |
-| `SessionProxyAndHeaderTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context의 close 샘플 의미가 그대로 유지된다. |
+| `HeaderStreamSessionTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | header session 샘플의 dispatch와 reply 흐름이 정상 동작한다. |
+| `HeaderStreamSessionTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context의 close 샘플 의미가 그대로 유지된다. |
 | `TopologyTests.StreamRawSession_OnConnected_Emits_Metadata_Once_From_TestHostProcess` | 실제 프로세스 경계에서도 connected metadata가 한 번만 전달된다. |
 | `TopologyTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 상황이 transport error로 보고된다. |
 

@@ -76,8 +76,10 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 
 | `IZLinkActorContext` 멤버 | 용도 |
 |---------------------------|------|
-| `ActorId`, `SessionId?`, `SpotName?`, `IsJoined` | 현재 상태 조회 |
-| `JoinSpot<TReply,TRequest>(spotName, request)` | user Spot 으로 join (도메인 spot 이름으로) |
+| `ActorId`, `SessionId?`, `SpotName?`, `SpotRid?`, `IsJoined` | 현재 상태 조회 |
+| `BoundSession` | 자기 client 로 push (§4) |
+| `JoinSpot<TRequest>(spotName, request)` | user Spot 으로 join. `.SubmitAsync<TReply>(ct)` 로 종결 |
+| `JoinSpotAsync<TRequest, TReply>(spotName, request, ct)` | join 의 단축 형태 |
 
 `RoutingId` 같은 transport 주소는 handler 표면에 노출되지 않는다. spot 이름 →
 `RoutingId` 변환은 framework 내부 spot remote address resolver 가 푼다.
@@ -129,9 +131,9 @@ public sealed class JoinMatchHandler
         _ = entrySpot;
         // request.MatchId 는 도메인이 정한 spot 이름. RoutingId 변환은 framework 가.
         var joined = await actor.Context
-            .JoinSpot<JoinMatchSpotResult, JoinMatchReq>(request.MatchId, request)
+            .JoinSpot<JoinMatchReq>(request.MatchId, request)
             .Timeout(TimeSpan.FromSeconds(2))
-            .Submit(ct);
+            .SubmitAsync<JoinMatchSpotResult>(ct);
         return joined.ToReply();
     }
 }
@@ -188,7 +190,7 @@ sequenceDiagram
   C->>S: PlaceMarkReq
   S->>P: RelayToActorAsync(actor, header, payload)
   P->>P: actor handler 실행 (room 상태 변경)
-  P-->>S: SessionProxy.Send(TurnChangedNotify)
+  P-->>S: BoundSession.Send(TurnChangedNotify)
   S-->>C: STREAM push
 ```
 
@@ -230,11 +232,12 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken ct)
         => ValueTask.CompletedTask;
 
-    public async ValueTask OnDisconnectedAsync(CancellationToken ct)
+    public ValueTask OnDisconnectedAsync(CancellationToken ct)
     {
-        foreach (var actor in _authenticated.Values)
-            await actor.NotifyDisconnectedAsync(ct);
+        // bound actor 의 unbind 와 leave/destroy 는 framework 가 자동 처리한다.
+        // session 은 자기 로컬 bookkeeping 만 정리하면 된다.
         _authenticated.Clear();
+        return ValueTask.CompletedTask;
     }
 
     private readonly AuthenticatedActors _authenticated = new();
@@ -248,7 +251,7 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
 ### Play 서버: actor 가 자기 client 로 push
 
 actor handler 는 stream 을 직접 들지 않는다. 자기 client 로 보내려면
-`Context.SessionProxy` 를 쓴다.
+`Context.BoundSession` 를 쓴다.
 
 ```csharp
 public sealed class JoinMatchActorHandler
@@ -258,7 +261,7 @@ public sealed class JoinMatchActorHandler
         JoinMatchReq request, ZLinkActorRequestContext context, CancellationToken ct)
     {
         // 같은 actor 에 묶인 client 로 push
-        await context.SessionProxy
+        await context.BoundSession
             .Send(new OpponentJoinedNotify(request.MatchId))
             .Submit(ct);
 
@@ -268,40 +271,39 @@ public sealed class JoinMatchActorHandler
 ```
 
 다른 actor 의 client 로 보내야 하면 먼저 그 actor 에게 메시지를 보낸 뒤,
-해당 actor 가 자기 `Context.SessionProxy` 로 client 에 push 한다. session 위치를
+해당 actor 가 자기 `Context.BoundSession` 로 client 에 push 한다. session 위치를
 actor id 로 직접 조회하는 public client 는 제공하지 않는다.
 
 ```csharp
-public sealed class PlayerNotifyHandler : IZLinkActorPacketHandler<GameStateNotify>
+public sealed class PlayerNotifyHandler : IZLinkActorSendHandler<GameStateNotify>
 {
     public ValueTask HandleAsync(
         GameStateNotify message,
         ZLinkActorSendContext context,
         CancellationToken ct)
-        => context.SessionProxy.Send(message).Submit(ct);
+        => context.BoundSession.Send(message).Submit(ct);
 }
 ```
 
-- `SessionProxy.Send(...).Submit(...)` 는 fire-and-forget 이다(route 위임 완료이지
-  client app ack 이 아님). ack 이 필요하면 `Request(...).SubmitAsync<TReply>(...)`.
+- `IZLinkBoundSession` 의 표면은 **`Send<TMessage>(message)`** 와
+  **`DisconnectAsync(...)`** 둘뿐이다. client 로의 push 는 단방향이며 별도의
+  `Request` 표면은 없다. `Send(...).Submit(...)` 은 fire-and-forget(route 위임
+  완료이지 client app ack 이 아님)이다.
 - `DisconnectAsync(...)` 는 응용이 거는 것이라 session 의 `OnDisconnectedAsync` 를
   다시 일으키지 않는다(stream 만 닫고 binding 정리).
 
-## 5. resolver — actor 와 spot 두 축만 public
+## 5. resolver — Spot lookup 만 public
 
-framework 가 노출하는 public route resolver 는 **actor 와 spot 두 가지뿐**이다.
-session 위치 조회용 public resolver 는 없다(actor↔session binding 은 framework
-내부 상태).
+session relay 는 actor id/type logical handle 과 core ActorGateway 를 사용한다.
+actor 위치 조회용 public resolver 는 없다(actor↔session binding 은 framework 내부 상태).
 
 | 등록 | 역할 |
 |------|------|
-| `options.UseRegistryActorRemoteAddresses("game")` | actor id → play node route 기본 resolver |
 | `options.UseRegistrySpotRemoteAddresses("game")` | spot owner 조회 + spot 이름 directory |
 
-Redis/DB 같은 별도 저장소가 필요하면 actor remote address 나 spot remote address resolver 만
-custom 으로 등록한다: `AddActorRemoteAddressResolver<T>()`,
-`AddSpotRemoteAddressResolver<T>()`. actor-session binding 은 session bind 시 actor runtime
-state 에 저장되는 framework 내부 상태다.
+Redis/DB 같은 별도 저장소가 필요하면 spot remote address resolver 만
+custom 으로 등록한다: `AddSpotRemoteAddressResolver<T>()`. actor-session binding 은 session bind
+시 actor runtime state 에 저장되는 framework 내부 상태다.
 
 `IZLinkSpotRemoteAddressResolver` 는 `JoinSpot(spotName, ...)` 가 노드 경계를 넘을 때만
 필요하다.
@@ -314,24 +316,54 @@ framework 가 던지는 actor/spot/session 관련 오류는 `ZLinkFrameworkExcep
 | Kind (일부) | 의미 |
 |-------------|------|
 | `ActorNotAuthenticated` | 세션에 bound 된 actor 가 아님 |
-| `ActorRouteNotFound` | actor remote address 미해결(`ActorGeneration == 0` 포함) |
+| `ActorRouteNotFound` | actor 를 찾을 수 없거나 ActorGateway relay 경로를 열 수 없음 |
 | `ActorAlreadyExists` / `ActorTypeMismatch` | actor 생성 충돌 |
 | `SpotCreateFailed` / `SpotTypeMismatch` | spot 생성 충돌 |
 | `ActorSessionNotBound` | push 할 bound session 이 없음 |
-| `SessionProxyTimeout` / `ActorDispatchTimeout` | 대기 초과 |
+| `BoundSessionTimeout` / `ActorDispatchTimeout` | 대기 초과 |
 
 `IsRetriable` 는 분류 힌트일 뿐 framework 가 자동 retry 하지 않는다. retry 루프를
 이 값으로 만들지 않는다.
 
-## 7. 등록 골격 (Play 서버)
+## 7. 등록 골격
+
+session relay 는 application route mesh channel 로 흐르지 않는다. STREAM session 이
+쓸 local SpotNode 를 `AttachActorGateway(...)` 로 지정하면, `BindActorHandleAsync(...)`
+가 local actor ref 또는 Play 서버가 발급한 remote actor locator 를 core ActorGateway 경로에
+bind 한다. 그래서 session handler 는 route mesh channel 이름이나 router socket 을 알 필요가 없다.
+
+### Session 서버
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
     options.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
 
-    // Session↔Play routed transport
-    options.AddRouteMeshChannel("play", channel => channel.Bind("tcp://0.0.0.0:7201"));
+    // STREAM session 이 사용할 local SpotNode (ActorGateway ingress)
+    options.AddSpotNode("session-node", spot =>
+    {
+        spot.Bind("tcp://0.0.0.0:9100");
+        spot.EnableRouter(router =>
+            router.ConfigureRouting(routing => routing.RoutingId = sessionNodeRid));
+    });
+
+    options.AddStreamNode("client-stream", stream =>
+    {
+        stream.AttachActorGateway("session-node");   // 이 stream 의 relay 대상 SpotNode
+        stream.Bind("tcp://0.0.0.0:9000");
+        stream.AddHeaderSession<TicTacToeSession>();
+    });
+
+    options.UseRegistrySpotRemoteAddresses("game");
+});
+```
+
+### Play(Actor) 서버
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
 
     options.AddActorFactory<PlayerActorFactory>("player");
 
@@ -340,25 +372,28 @@ builder.Services.AddZLinkFramework(options =>
         mesh.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
         mesh.AddNode("play-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9000");
+            node.Bind("tcp://0.0.0.0:9200");
             node.EnableRouter();
             node.AddEntrySpot<PlayerEntrySpot>();
             node.AddSpotFactory<MatchSpot>("match");
         });
     });
 
-    options.UseRegistryActorRemoteAddresses("game");
     options.UseRegistrySpotRemoteAddresses("game");
 });
 ```
 
-> 노드 등록은 spec 문서에 따라 `AddSpotMesh(...).AddNode(...)`(mesh 형태)와
-> 단일 노드용 표면이 함께 등장한다. 정확한 시그니처는
-> [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와 샘플 코드를
-> 기준으로 확인한다.
+> relay transport 의 정확한 적용 상태와 회귀 기준은
+> [draft/actor-gateway-session-relay](../draft/actor-gateway-session-relay.ko.md)가
+> 소유한다. 노드 등록 시그니처는
+> [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와 샘플 코드를 기준으로
+> 확인한다.
 
 ## 8. 더 보기
 
+- 이 챕터 계약의 실행 검증 예문(actor/context/factory/handler): [11-interface-catalog](./11-interface-catalog.ko.md) §4 — 검증 클래스 `ActorContracts`
+- bound session push 계약: [11-interface-catalog](./11-interface-catalog.ko.md) §5.2 — 검증 클래스 `StreamContracts`
 - 정식 계약: [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md), [spec/session-actor-dispatch](../spec/session-actor-dispatch.ko.md)
+- ActorGateway relay 적용 상태: [draft/actor-gateway-session-relay](../draft/actor-gateway-session-relay.ko.md)
 - 전체 예제: [tictactoe 샘플](./samples/tictactoe-game-sample.ko.md), [bingo 샘플](./samples/bingo-game-sample.ko.md)
 - 외부 client 를 STREAM 으로 받는 법: [07-stream](./07-stream.ko.md)

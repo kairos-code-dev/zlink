@@ -9,29 +9,6 @@ namespace Zlink.Framework.UnitTests;
 public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
 {
     [Fact]
-    public void RegistryActorRemoteAddresses_Registers_Default_Service()
-    {
-        var services = new ServiceCollection();
-
-        services.AddZLinkFramework(options =>
-        {
-            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
-            options.UseSpotDiscovery(
-                "spot",
-                discovery => discovery.Add("tcp://127.0.0.1:5551"));
-            options.AddRouteMeshChannel("play", routed =>
-            {
-                routed.Bind("tcp://127.0.0.1:6202");
-            });
-            options.UseRegistryActorRemoteAddresses("bingo");
-        });
-
-        using var provider = services.BuildServiceProvider();
-        Assert.IsType<ZLinkRegistryActorRemoteAddressResolver>(
-            provider.GetRequiredService<IZLinkActorRemoteAddressResolver>());
-    }
-
-    [Fact]
     public void RegistrySpotRemoteAddresses_Registers_Default_Service()
     {
         var services = new ServiceCollection();
@@ -73,24 +50,6 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void RegistryActorRemoteAddresses_Require_Discovery()
-    {
-        var services = new ServiceCollection();
-
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-            {
-                options.AddRouteMeshChannel("play", routed =>
-                {
-                    routed.Bind("tcp://127.0.0.1:6202");
-                });
-                options.UseRegistryActorRemoteAddresses("bingo");
-            }));
-
-        Assert.Contains("requires UseDiscovery", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void RegistryRouteResolvers_Reject_Custom_Duplicate()
     {
         var services = new ServiceCollection();
@@ -98,11 +57,11 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseRegistryActorRemoteAddresses("bingo");
-                options.AddActorRemoteAddressResolver<TestActorRemoteAddressResolver>();
+                options.UseRegistrySpotRemoteAddresses("bingo");
+                options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
             }));
 
-        Assert.Contains("already configured", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("SPOT remote address resolver", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

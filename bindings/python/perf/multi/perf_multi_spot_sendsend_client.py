@@ -136,6 +136,14 @@ def main(argv=None):
             spot = data_node.create_spot()
             spot.set_routing_id(f"SPOT-SENDSEND-{index}".encode("ascii"))
             spots.append(spot)
+        use_poll_wait = args.msg_size < 65536
+        poller = None
+        poll_events = None
+        if use_poll_wait:
+            poller = zlink.Poller()
+            poll_events = zlink.PollEvents(max(1, len(spots)))
+            for index, spot in enumerate(spots):
+                poller.add_socket(spot, zlink.PollEventFlag.POLLIN, index)
 
         if not control_connected.wait(timeout=handshake_timeout_s):
             raise RuntimeError("runner control-connected handshake timeout")
@@ -168,7 +176,10 @@ def main(argv=None):
                 record=False,
             ):
                 break
-            time.sleep(0.001)
+            if use_poll_wait:
+                poller.wait(poll_events, 1)
+            else:
+                time.sleep(0.001)
         else:
             raise RuntimeError("spot sendsend probe-ready timeout")
 
@@ -236,7 +247,13 @@ def main(argv=None):
                         record=True,
                     )
             if not progressed:
-                time.sleep(0.001)
+                remaining_ms = int((active_deadline - time.perf_counter()) * 1000)
+                if remaining_ms <= 0:
+                    break
+                if use_poll_wait:
+                    poller.wait(poll_events, min(10, remaining_ms))
+                else:
+                    time.sleep(0.001)
 
         drain_deadline = time.perf_counter() + 1.0
         while any(waiting[:active_slots]) and time.perf_counter() < drain_deadline:
@@ -255,7 +272,10 @@ def main(argv=None):
                     waiting[index] = False
                     progressed = True
             if not progressed:
-                time.sleep(0.001)
+                if use_poll_wait:
+                    poller.wait(poll_events, 20)
+                else:
+                    time.sleep(0.001)
 
         if not latencies:
             raise RuntimeError(

@@ -567,6 +567,9 @@ wait_for_pid() {
     local timeout_seconds="$2"
     local deadline=$((SECONDS + timeout_seconds))
     while kill -0 "${pid}" 2>/dev/null; do
+        if ps -o stat= -p "${pid}" 2>/dev/null | grep -q '^[[:space:]]*Z'; then
+            return 0
+        fi
         if (( SECONDS >= deadline )); then
             return 1
         fi

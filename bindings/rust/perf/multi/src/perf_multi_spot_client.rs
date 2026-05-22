@@ -217,6 +217,9 @@ fn main() {
         let mut progressed = false;
         for spot in spots.iter() {
             loop {
+                if Instant::now() >= active_deadline {
+                    break;
+                }
                 let mut received = TopicMessage::empty();
                 match spot.subscribe(&mut received, RecvFlags::DONT_WAIT) {
                     Ok(true) => {

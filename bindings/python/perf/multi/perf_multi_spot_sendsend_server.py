@@ -103,6 +103,13 @@ def main(argv=None):
         print(f"CONTROL_READY,{control_endpoint}", flush=True)
 
         threading.Thread(target=stdin_loop, args=(control_node,), daemon=True).start()
+        use_poll_wait = args.msg_size < 65536
+        poller = None
+        poll_events = None
+        if use_poll_wait:
+            poller = zlink.Poller()
+            poll_events = zlink.PollEvents(1)
+            poller.add_socket(replier, zlink.PollEventFlag.POLLIN, 0)
 
         ready_units = 0
         deadline = time.perf_counter() + handshake_timeout_s
@@ -110,7 +117,10 @@ def main(argv=None):
             _drain_replier(replier)
             payload_text = receive_control_payload(control_sub)
             if payload_text is None:
-                time.sleep(0.001)
+                if use_poll_wait:
+                    poller.wait(poll_events, 1)
+                else:
+                    time.sleep(0.001)
                 continue
             if payload_text.startswith("DATA_ENDPOINT,"):
                 endpoint = payload_text.split(",", 1)[1]
@@ -133,8 +143,12 @@ def main(argv=None):
         start_deadline = time.perf_counter() + handshake_timeout_s
         while time.perf_counter() < start_deadline and not stop.is_set():
             _drain_replier(replier)
-            if start_runner.wait(0.001):
+            if start_runner.wait(0):
                 break
+            if use_poll_wait:
+                poller.wait(poll_events, 1)
+            else:
+                time.sleep(0.001)
         if not start_runner.is_set():
             raise RuntimeError("spot sendsend server start handshake timeout")
 
@@ -150,7 +164,12 @@ def main(argv=None):
         idle_deadline = time.perf_counter() + idle_seconds
         while not stop.is_set() and time.perf_counter() < idle_deadline:
             _drain_replier(replier)
-            stop.wait(0.001)
+            if stop.wait(0):
+                break
+            if use_poll_wait:
+                poller.wait(poll_events, 1)
+            else:
+                time.sleep(0.001)
 
 
 if __name__ == "__main__":

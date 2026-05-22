@@ -72,7 +72,7 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 	flushControlLine("CONTROL_READY,%s", controlEndpoint)
 	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
 	for time.Now().Before(deadline) {
-		drainMultiSpotSendSendServer(replier)
+		drainMultiSpotSendSendServer(replier, cfg.msgSize)
 		select {
 		case text := <-events:
 			switch {
@@ -119,14 +119,14 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 		if event == "STOP" || event == "QUIT" {
 			return
 		}
-		drainMultiSpotSendSendServer(replier)
+		drainMultiSpotSendSendServer(replier, cfg.msgSize)
 	}
 	if !publishSpotControlPayload(controlPub, fmt.Sprintf("START,%d", cfg.msgSize), perfcommon.MultiReadyTimeout()) {
 		perfcommon.Must(fmt.Errorf("spot sendsend server direct start publish timeout"))
 	}
 	idleDeadline := time.Now().Add(cfg.duration + 2*time.Second)
 	for time.Now().Before(idleDeadline) {
-		drainMultiSpotSendSendServer(replier)
+		drainMultiSpotSendSendServer(replier, cfg.msgSize)
 		time.Sleep(time.Millisecond)
 	}
 }
@@ -370,7 +370,7 @@ func submitMultiSpotSendSend(spot *zlink.Spot, payload []byte) bool {
 	return sent
 }
 
-func drainMultiSpotSendSendServer(replier *zlink.Spot) {
+func drainMultiSpotSendSendServer(replier *zlink.Spot, msgSize int) {
 	for {
 		var received zlink.Received
 		ok, err := replier.RecvRouted(&received, zlink.RecvFlagsDontWait)
@@ -391,7 +391,14 @@ func drainMultiSpotSendSendServer(replier *zlink.Spot) {
 		parts := received.Parts()
 		if len(parts) > 0 {
 			reply := perfcommon.NewMessage(parts[0].Data())
-			sent, sendErr := received.Send().Message(reply).Flags(zlink.SendFlagsDontWait).Submit(nil)
+			send := received.Send()
+			var op zlink.SendSubmitOp
+			if msgSize == 131072 {
+				op = send.MoveMessage(reply)
+			} else {
+				op = send.Message(reply)
+			}
+			sent, sendErr := op.Flags(zlink.SendFlagsDontWait).Submit(nil)
 			if sendErr != nil && !perfcommon.IsTransient(sendErr) {
 				perfcommon.Must(sendErr)
 			}
@@ -425,9 +432,10 @@ func drainMultiSpotSendSend(
 		}
 		progressed = true
 		parts := received.Parts()
-		if record && time.Now().Before(activeStopAt) && !received.HasRequestSeq() && len(parts) > 0 {
-			if sentAt, ok := perfcommon.SentAtFromMessage(parts[0], msgSize); ok {
-				stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()) / 2.0)
+		now := time.Now()
+		if record && now.Before(activeStopAt) && !received.HasRequestSeq() && len(parts) > 0 {
+			if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(parts[0], msgSize, perfcommon.PhaseActive, now); ok {
+				stats.AddLatencyNs(latencyNs / 2.0)
 			}
 		}
 		perfcommon.Must(received.Close())

@@ -80,28 +80,16 @@ inline send_status_t send_echo_message_flags (void *socket,
                                               size_t payload_size,
                                               bool router_send,
                                               zlink_send_flags_t base_flags,
-                                              bool borrow_payload)
+                                              bool per_socket_payload)
 {
     zlink_msg_t part;
     if (payload_size > payload.size ())
         return send_error;
-    if (borrow_payload) {
-        if (zlink_msg_init_data (&part,
-                                 payload_size > 0
-                                   ? static_cast<void *> (payload.data ())
-                                   : NULL,
-                                 payload_size,
-                                 NULL,
-                                 NULL)
-            != 0)
-            return send_error;
-    } else {
-        if (zlink_msg_init_size (&part, payload_size) != 0)
-            return send_error;
-        if (payload_size > 0) {
-            std::memcpy (
-              zlink_msg_data (&part), payload.data (), payload_size);
-        }
+    (void) per_socket_payload;
+    if (zlink_msg_init_size (&part, payload_size) != 0)
+        return send_error;
+    if (payload_size > 0) {
+        std::memcpy (zlink_msg_data (&part), payload.data (), payload_size);
     }
 
     if (router_send) {
@@ -142,7 +130,7 @@ inline send_status_t send_echo_message (void *socket,
                                         std::vector<char> &payload,
                                         size_t payload_size,
                                         bool router_send,
-                                        bool borrow_payload)
+                                        bool per_socket_payload)
 {
     return send_echo_message_flags (
       socket,
@@ -151,7 +139,7 @@ inline send_status_t send_echo_message (void *socket,
       payload_size,
       router_send,
       ZLINK_DONTWAIT,
-      borrow_payload);
+      per_socket_payload);
 }
 
 inline int recv_one_message (void *socket,
@@ -912,7 +900,7 @@ inline bool run_echo_window_round_robin (
   double duration_seconds,
   bool allow_send,
   bool collect_latency,
-  bool borrow_payload_per_socket,
+  bool per_socket_payload,
   long *recv_total,
   double *lat_sum,
   long *lat_count,
@@ -950,7 +938,7 @@ inline bool run_echo_window_round_robin (
 
     std::vector<char> scratch (scratch_size, '\0');
     std::vector<std::vector<char> > socket_payloads;
-    if (allow_send && borrow_payload_per_socket)
+    if (allow_send && per_socket_payload)
         socket_payloads.assign (sockets.size (), payload);
     std::vector<uint8_t> awaiting_reply (sockets.size (), 0);
     std::vector<uint8_t> send_pending (
@@ -966,7 +954,7 @@ inline bool run_echo_window_round_robin (
                     continue;
 
                 std::vector<char> &send_payload =
-                  borrow_payload_per_socket ? socket_payloads[idx] : payload;
+                  per_socket_payload ? socket_payloads[idx] : payload;
                 if (!stamp_metric_payload (
                       send_payload,
                       payload_size,
@@ -984,7 +972,7 @@ inline bool run_echo_window_round_robin (
                   send_payload,
                   payload_size,
                   client_router_send,
-                  borrow_payload_per_socket);
+                  per_socket_payload);
                 if (send_rc == send_ok) {
                     awaiting_reply[idx] = 1;
                     send_pending[idx] = 0;
@@ -1194,7 +1182,7 @@ inline bool run_echo_duration (
   size_t scratch_capacity,
   const std::string &server_id,
   bool client_router_send,
-  bool borrow_payload_per_socket,
+  bool per_socket_payload,
   uint32_t run_id,
   double *throughput_out,
   bench_latency_stats_t *latency_out)
@@ -1226,7 +1214,7 @@ inline bool run_echo_duration (
           static_cast<double> (std::max (1, settings.duration_seconds)),
           true,
           true,
-          borrow_payload_per_socket,
+          per_socket_payload,
           &recv_count,
           &lat_sum,
           &lat_count,

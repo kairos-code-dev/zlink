@@ -29,7 +29,6 @@ internal static partial class NativeMethods
         "zlink_strerror",
         "zlink_msg_init",
         "zlink_msg_init_size",
-        "zlink_msg_init_data",
         "zlink_msg_close",
         "zlink_msg_move",
         "zlink_msg_copy",
@@ -163,11 +162,6 @@ internal static partial class NativeMethods
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
     internal static partial int zlink_msg_init_size(ref ZlinkMsg msg,
         nuint size);
-
-    [LibraryImport(LibraryName)]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    internal static partial int zlink_msg_init_data(ref ZlinkMsg msg,
-        IntPtr data, nuint size, IntPtr freeFn, IntPtr hint);
 
     [LibraryImport(LibraryName)]
     [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]

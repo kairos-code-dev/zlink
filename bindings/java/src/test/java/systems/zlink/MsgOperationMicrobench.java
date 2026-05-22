@@ -93,9 +93,8 @@ public final class MsgOperationMicrobench {
 
             bench("message_transfer_to_native", size, () -> {
                 try (Message msg = Message.copyOf(payload)) {
-                    Object anchor = msg.transferTo(slotA);
+                    msg.transferTo(slotA);
                     blackhole ^= MsgFfmBenchSupport.msgSize(slotA);
-                    blackhole ^= anchor == null ? 0 : 1;
                     MsgFfmBenchSupport.msgClose(slotA);
                 }
                 return size;

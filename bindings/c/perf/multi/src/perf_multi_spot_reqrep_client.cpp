@@ -800,15 +800,11 @@ send_result_t send_request(spot_reqrep_client_slot_t *slot,
     }
 
     zlink_msg_t part;
-    if (zlink_msg_init_data(&part,
-                            payload_size > 0
-                              ? static_cast<void *>(slot->payload.data())
-                              : NULL,
-                            payload_size,
-                            NULL,
-                            NULL)
-        != 0) {
+    if (zlink_msg_init_size(&part, payload_size) != 0) {
         return send_result_error;
+    }
+    if (payload_size > 0) {
+        std::memcpy(zlink_msg_data(&part), slot->payload.data(), payload_size);
     }
 
     slot->waiting_reply.store(true, std::memory_order_release);

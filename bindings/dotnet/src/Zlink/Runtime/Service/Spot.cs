@@ -1170,10 +1170,6 @@ public sealed partial class Spot : ISpot
         OnRoutedReplyCallback;
     private static readonly IntPtr RoutedReplyCallbackHandlerPtr =
         Marshal.GetFunctionPointerForDelegate(RoutedReplyCallbackHandler);
-    private static readonly NativeMethods.ZlinkFreeFnDelegate BorrowedBufferFree =
-        OnBorrowedBufferFree;
-    private static readonly IntPtr BorrowedBufferFreePtr =
-        Marshal.GetFunctionPointerForDelegate(BorrowedBufferFree);
     [ThreadStatic]
     private static RoutedPartRoutingIdCache? t_routedPartRoutingIdCache;
     private const int StackPublishPartLimit = 8;
@@ -2310,22 +2306,6 @@ public sealed partial class Spot : ISpot
     private unsafe void PublishSingleCore(byte[] topicUtf8, Message message,
         int flags)
     {
-        if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,
-                out IntPtr hint))
-        {
-            try
-            {
-                PublishBorrowedSingleCore(topicUtf8, data, length, hint, flags);
-                message.DetachAfterPreparedSend();
-                return;
-            }
-            catch
-            {
-                message.CancelBorrowedSendPrepare();
-                throw;
-            }
-        }
-
         ZlinkMsg nativePart = default;
         bool submitted = false;
         try
@@ -2348,57 +2328,6 @@ public sealed partial class Spot : ISpot
                 message.RestoreFrom(ref nativePart);
             throw;
         }
-    }
-
-    private unsafe void PublishBorrowedSingleCore(string topic, IntPtr data,
-        int length, IntPtr hint, int flags)
-    {
-        PublishBorrowedSingleCore(GetPublishTopicUtf8(topic), data, length,
-            hint, flags);
-    }
-
-    private unsafe void PublishBorrowedSingleCore(byte[] topicUtf8, IntPtr data,
-        int length, IntPtr hint, int flags)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        try
-        {
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            fixed (byte* topicPtr = topicUtf8)
-            {
-                int rc = NativeMethods.zlink_spot_publish_part_utf8(_handle,
-                    topicPtr, ref nativePart, flags,
-                    NativeMethods.ZlinkPartFlag.Final);
-                initialized = false;
-                if (rc != 0)
-                    throw ZlinkException.CreateSubmitException(
-                        NativeMethods.zlink_errno());
-            }
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
-            throw;
-        }
-    }
-
-    private static void OnBorrowedBufferFree(IntPtr data, IntPtr hint)
-    {
-        if (hint == IntPtr.Zero)
-            return;
-        GCHandle handle = GCHandle.FromIntPtr(hint);
-        if (handle.Target is Message)
-        {
-            Message.CompleteBorrowedSend(handle);
-            return;
-        }
-        handle.Free();
     }
 
     private void EnsureNotDisposed()

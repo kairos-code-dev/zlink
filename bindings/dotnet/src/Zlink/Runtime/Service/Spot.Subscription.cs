@@ -167,18 +167,6 @@ public sealed partial class Spot
     private unsafe SendResult PublishNoWaitSingleCore(byte[] topicUtf8,
         Message message)
     {
-        if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,
-                out IntPtr hint))
-        {
-            SendResult result = PublishBorrowedNoWaitSingleCore(topicUtf8, data,
-                length, hint);
-            if (result == SendResult.Sent)
-                message.DetachAfterPreparedSend();
-            else
-                message.CancelBorrowedSendPrepare();
-            return result;
-        }
-
         ZlinkMsg nativePart = default;
         bool submitted = false;
         try
@@ -204,49 +192,6 @@ public sealed partial class Spot
         {
             if (!submitted)
                 message.RestoreFrom(ref nativePart);
-            throw;
-        }
-    }
-
-    private unsafe SendResult PublishBorrowedNoWaitSingleCore(string topic,
-        IntPtr data, int length, IntPtr hint)
-    {
-        return PublishBorrowedNoWaitSingleCore(GetPublishTopicUtf8(topic),
-            data, length, hint);
-    }
-
-    private unsafe SendResult PublishBorrowedNoWaitSingleCore(byte[] topicUtf8,
-        IntPtr data, int length, IntPtr hint)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        try
-        {
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            fixed (byte* topicPtr = topicUtf8)
-            {
-                int rc = NativeMethods.zlink_spot_publish_part_utf8(_handle,
-                    topicPtr, ref nativePart, DontWaitFlag,
-                    NativeMethods.ZlinkPartFlag.Final);
-                initialized = false;
-                if (rc == 0)
-                    return SendResult.Sent;
-            }
-
-            SendResult? sendResult = TryMapSendResultFromErrno();
-            if (sendResult == null)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
-            return sendResult.Value;
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
             throw;
         }
     }

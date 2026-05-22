@@ -13,10 +13,6 @@ namespace Systems.Zlink.Sockets.Internal;
 
 internal sealed partial class SocketKernel : IDisposable
 {
-    private static readonly NativeMethods.ZlinkFreeFnDelegate BorrowedBufferFree =
-        OnBorrowedBufferFree;
-    private static readonly IntPtr BorrowedBufferFreePtr =
-        Marshal.GetFunctionPointerForDelegate(BorrowedBufferFree);
     private const int StackSendPartLimit = 8;
     private const int TopicBufferSize = 4096;
     private const int DontWaitFlag = 1;
@@ -1899,19 +1895,6 @@ internal sealed partial class SocketKernel : IDisposable
             : RoutingId.FromBytes(Encoding.UTF8.GetBytes(value));
     }
 
-    private static void OnBorrowedBufferFree(IntPtr data, IntPtr hint)
-    {
-        if (hint == IntPtr.Zero)
-            return;
-        GCHandle handle = GCHandle.FromIntPtr(hint);
-        if (handle.Target is Message)
-        {
-            Message.CompleteBorrowedSend(handle);
-            return;
-        }
-        handle.Free();
-    }
-
     private static SendResult MapSendResult(int rc)
     {
         return rc switch
@@ -2333,187 +2316,95 @@ internal sealed partial class SocketKernel : IDisposable
 
     private unsafe void SendSingleCore(Message message, int flags)
     {
-        if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,
-                out IntPtr hint))
+        ZlinkMsg nativePart = default;
+        bool shouldRestore = false;
+        try
         {
-            try
+            message.MoveTo(ref nativePart);
+            shouldRestore = true;
+            int rc = NativeMethods.zlink_send_part(Handle, ref nativePart, flags,
+                NativeMethods.ZlinkPartFlag.Final);
+            if (rc == 0)
             {
-                SendBorrowedSingleCore(data, length, hint, flags);
-                message.DetachAfterPreparedSend();
+                shouldRestore = false;
                 return;
             }
-            catch
-            {
-                message.CancelBorrowedSendPrepare();
-                throw;
-            }
+            int errno = NativeMethods.zlink_errno();
+            message.RestoreFrom(ref nativePart);
+            shouldRestore = false;
+            throw ZlinkException.CreateSubmitException(errno);
         }
-
-        int rc = NativeMethods.zlink_send_part(Handle, ref message.Handle, flags,
-            NativeMethods.ZlinkPartFlag.Final);
-        if (rc != 0)
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        message.DetachAfterSend();
+        catch
+        {
+            if (shouldRestore)
+                message.RestoreFrom(ref nativePart);
+            throw;
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private unsafe SendResult SendSingleResultCore(Message message, int flags)
     {
-        if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,
-                out IntPtr hint))
+        ZlinkMsg nativePart = default;
+        bool shouldRestore = false;
+        try
         {
-            SendResult sendResult = SendBorrowedSingleResultCore(data, length,
-                hint, flags);
-            if (sendResult == SendResult.Sent)
+            message.MoveTo(ref nativePart);
+            shouldRestore = true;
+            int rc = NativeMethods.zlink_send_part(Handle, ref nativePart, flags,
+                NativeMethods.ZlinkPartFlag.Final);
+            if (rc == 0)
             {
-                message.DetachAfterPreparedSend();
+                shouldRestore = false;
+                return SendResult.Sent;
             }
-            else
-            {
-                message.CancelBorrowedSendPrepare();
-            }
-            return sendResult;
-        }
 
-        int rc = NativeMethods.zlink_send_part(Handle, ref message.Handle, flags,
-            NativeMethods.ZlinkPartFlag.Final);
-        if (rc == 0)
+            int errno = NativeMethods.zlink_errno();
+            message.RestoreFrom(ref nativePart);
+            shouldRestore = false;
+            SendResult? mappedResult = TryMapSendResultFromErrno(errno);
+            if (mappedResult == null)
+                throw ZlinkException.CreateSubmitException(errno);
+            return mappedResult.Value;
+        }
+        catch
         {
-            message.DetachAfterSend();
-            return SendResult.Sent;
+            if (shouldRestore)
+                message.RestoreFrom(ref nativePart);
+            throw;
         }
-
-        SendResult? mappedResult = TryMapSendResultFromErrno();
-        if (mappedResult == null)
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        return mappedResult.Value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private unsafe SendResult SendSingleNoWaitResultCore(Message message)
     {
-        if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,
-                out IntPtr hint))
-        {
-            SendResult sendResult = SendBorrowedSingleNoWaitResultCore(data,
-                length, hint);
-            if (sendResult == SendResult.Sent)
-            {
-                message.DetachAfterPreparedSend();
-            }
-            else
-            {
-                message.CancelBorrowedSendPrepare();
-            }
-            return sendResult;
-        }
-
-        // DONT_WAIT-only critical variant: contractually non-blocking.
-        int rc = NativeMethods.zlink_send_part_nowait(Handle, ref message.Handle,
-            DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
-        if (rc == 0)
-        {
-            message.DetachAfterSend();
-            return SendResult.Sent;
-        }
-
-        SendResult? mappedResult = TryMapSendResultFromErrno();
-        if (mappedResult == null)
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        return mappedResult.Value;
-    }
-
-    private unsafe void SendBorrowedSingleCore(IntPtr data, int length,
-        IntPtr hint, int flags)
-    {
         ZlinkMsg nativePart = default;
-        bool initialized = false;
+        bool shouldRestore = false;
         try
         {
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            int rc = NativeMethods.zlink_send_part(Handle, ref nativePart, flags,
-                NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
-            if (rc != 0)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
-            throw;
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private unsafe SendResult SendBorrowedSingleResultCore(IntPtr data,
-        int length, IntPtr hint, int flags)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        try
-        {
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            int rc = NativeMethods.zlink_send_part(Handle, ref nativePart, flags,
-                NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
-            if (rc == 0)
-                return SendResult.Sent;
-
-            SendResult? sendResult = TryMapSendResultFromErrno();
-            if (sendResult != null)
-                return sendResult.Value;
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
-            throw;
-        }
-    }
-
-    private unsafe SendResult SendBorrowedSingleNoWaitResultCore(IntPtr data,
-        int length, IntPtr hint)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        try
-        {
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            int rc = NativeMethods.zlink_send_part(Handle, ref nativePart,
+            message.MoveTo(ref nativePart);
+            shouldRestore = true;
+            // DONT_WAIT-only critical variant: contractually non-blocking.
+            int rc = NativeMethods.zlink_send_part_nowait(Handle, ref nativePart,
                 DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
             if (rc == 0)
+            {
+                shouldRestore = false;
                 return SendResult.Sent;
+            }
 
-            SendResult? sendResult = TryMapSendResultFromErrno();
-            if (sendResult != null)
-                return sendResult.Value;
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
+            int errno = NativeMethods.zlink_errno();
+            message.RestoreFrom(ref nativePart);
+            shouldRestore = false;
+            SendResult? mappedResult = TryMapSendResultFromErrno(errno);
+            if (mappedResult == null)
+                throw ZlinkException.CreateSubmitException(errno);
+            return mappedResult.Value;
         }
         catch
         {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
+            if (shouldRestore)
+                message.RestoreFrom(ref nativePart);
             throw;
         }
     }
@@ -2637,226 +2528,104 @@ internal sealed partial class SocketKernel : IDisposable
     private unsafe void SendSingleCore(ref ZlinkRoutingId routingId,
         Message message, int flags)
     {
-        if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,
-                out IntPtr hint))
+        ZlinkMsg nativePart = default;
+        bool shouldRestore = false;
+        try
         {
-            try
+            message.MoveTo(ref nativePart);
+            shouldRestore = true;
+            int rc = (flags & DontWaitFlag) != 0
+                ? NativeMethods.zlink_send_part_rid_nowait(Handle,
+                    ref routingId, ref nativePart, flags,
+                    NativeMethods.ZlinkPartFlag.Final)
+                : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
+                    ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
+            if (rc == 0)
             {
-                SendBorrowedSingleCore(ref routingId, data, length, hint,
-                    flags);
-                message.DetachAfterPreparedSend();
+                shouldRestore = false;
                 return;
             }
-            catch
-            {
-                message.CancelBorrowedSendPrepare();
-                throw;
-            }
+            int errno = NativeMethods.zlink_errno();
+            message.RestoreFrom(ref nativePart);
+            shouldRestore = false;
+            throw ZlinkException.CreateSubmitException(errno);
         }
-
-        // DONT_WAIT-only critical variant: contractually non-blocking.
-        int rc = (flags & DontWaitFlag) != 0
-            ? NativeMethods.zlink_send_part_rid_nowait(Handle, ref routingId,
-                ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final)
-            : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-                ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final);
-        if (rc != 0)
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        message.DetachAfterSend();
+        catch
+        {
+            if (shouldRestore)
+                message.RestoreFrom(ref nativePart);
+            throw;
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private unsafe SendResult SendSingleResultCore(ref ZlinkRoutingId routingId,
         Message message, int flags)
     {
-        if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,
-                out IntPtr hint))
+        ZlinkMsg nativePart = default;
+        bool shouldRestore = false;
+        try
         {
-            SendResult sendResult = SendBorrowedSingleResultCore(ref routingId,
-                data, length, hint, flags);
-            if (sendResult == SendResult.Sent)
+            message.MoveTo(ref nativePart);
+            shouldRestore = true;
+            int rc = (flags & DontWaitFlag) != 0
+                ? NativeMethods.zlink_send_part_rid_nowait(Handle,
+                    ref routingId, ref nativePart, flags,
+                    NativeMethods.ZlinkPartFlag.Final)
+                : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
+                    ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
+            if (rc == 0)
             {
-                message.DetachAfterPreparedSend();
+                shouldRestore = false;
+                return SendResult.Sent;
             }
-            else
-            {
-                message.CancelBorrowedSendPrepare();
-            }
-            return sendResult;
-        }
 
-        int rc = (flags & DontWaitFlag) != 0
-            ? NativeMethods.zlink_send_part_rid_nowait(Handle, ref routingId,
-                ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final)
-            : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-                ref message.Handle, flags, NativeMethods.ZlinkPartFlag.Final);
-        if (rc == 0)
+            int errno = NativeMethods.zlink_errno();
+            message.RestoreFrom(ref nativePart);
+            shouldRestore = false;
+            SendResult? mappedResult = TryMapSendResultFromErrno(errno);
+            if (mappedResult == null)
+                throw ZlinkException.CreateSubmitException(errno);
+            return mappedResult.Value;
+        }
+        catch
         {
-            message.DetachAfterSend();
-            return SendResult.Sent;
+            if (shouldRestore)
+                message.RestoreFrom(ref nativePart);
+            throw;
         }
-
-        SendResult? mappedResult = TryMapSendResultFromErrno();
-        if (mappedResult == null)
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        return mappedResult.Value;
     }
 
     private unsafe SendResult SendSingleNoWaitResultCore(ref ZlinkRoutingId routingId,
         Message message)
     {
-        if (message.TryPrepareBorrowedSend(out IntPtr data, out int length,
-                out IntPtr hint))
-        {
-            SendResult sendResult = SendBorrowedSingleNoWaitResultCore(
-                ref routingId, data, length, hint);
-            if (sendResult == SendResult.Sent)
-            {
-                message.DetachAfterPreparedSend();
-            }
-            else
-            {
-                message.CancelBorrowedSendPrepare();
-            }
-            return sendResult;
-        }
-
-        // DONT_WAIT-only variant: avoid blocking while still allowing managed
-        // free callbacks during native message handling.
-        int rc = NativeMethods.zlink_send_part_rid_nowait(Handle, ref routingId,
-            ref message.Handle, DontWaitFlag, NativeMethods.ZlinkPartFlag.Final);
-        if (rc == 0)
-        {
-            message.DetachAfterSend();
-            return SendResult.Sent;
-        }
-
-        SendResult? mappedResult = TryMapSendResultFromErrno();
-        if (mappedResult == null)
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        return mappedResult.Value;
-    }
-
-    private unsafe void SendBorrowedSingleCore(ref ZlinkRoutingId routingId,
-        byte[] payload, int flags)
-    {
-        GCHandle handle = default;
-        try
-        {
-            handle = GCHandle.Alloc(payload, GCHandleType.Pinned);
-            SendBorrowedSingleCore(ref routingId, handle.AddrOfPinnedObject(),
-                payload.Length, GCHandle.ToIntPtr(handle), flags);
-            handle = default;
-        }
-        catch
-        {
-            if (handle.IsAllocated)
-                handle.Free();
-            throw;
-        }
-    }
-
-    private unsafe void SendBorrowedSingleCore(ref ZlinkRoutingId routingId,
-        IntPtr data, int length, IntPtr hint, int flags)
-    {
         ZlinkMsg nativePart = default;
-        bool initialized = false;
+        bool shouldRestore = false;
         try
         {
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            int rc = (flags & DontWaitFlag) != 0
-                ? NativeMethods.zlink_send_part_rid_nowait(Handle,
-                    ref routingId, ref nativePart, flags,
-                    NativeMethods.ZlinkPartFlag.Final)
-                : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-                    ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
-            if (rc != 0)
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
-            throw;
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private unsafe SendResult SendBorrowedSingleResultCore(
-        ref ZlinkRoutingId routingId, IntPtr data, int length, IntPtr hint,
-        int flags)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        try
-        {
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
-            int rc = (flags & DontWaitFlag) != 0
-                ? NativeMethods.zlink_send_part_rid_nowait(Handle,
-                    ref routingId, ref nativePart, flags,
-                    NativeMethods.ZlinkPartFlag.Final)
-                : NativeMethods.zlink_send_part_rid(Handle, ref routingId,
-                    ref nativePart, flags, NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
-            if (rc == 0)
-                return SendResult.Sent;
-
-            SendResult? sendResult = TryMapSendResultFromErrno();
-            if (sendResult != null)
-                return sendResult.Value;
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
-        }
-        catch
-        {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
-            throw;
-        }
-    }
-
-    private unsafe SendResult SendBorrowedSingleNoWaitResultCore(
-        ref ZlinkRoutingId routingId, IntPtr data, int length, IntPtr hint)
-    {
-        ZlinkMsg nativePart = default;
-        bool initialized = false;
-        try
-        {
-            int initRc = NativeMethods.zlink_msg_init_data(ref nativePart,
-                data, (nuint)length, BorrowedBufferFreePtr, hint);
-            ZlinkException.ThrowSubmitIfError(initRc);
-            initialized = true;
-
+            message.MoveTo(ref nativePart);
+            shouldRestore = true;
             int rc = NativeMethods.zlink_send_part_rid_nowait(Handle,
                 ref routingId, ref nativePart, DontWaitFlag,
                 NativeMethods.ZlinkPartFlag.Final);
-            initialized = false;
             if (rc == 0)
+            {
+                shouldRestore = false;
                 return SendResult.Sent;
+            }
 
-            SendResult? sendResult = TryMapSendResultFromErrno();
-            if (sendResult != null)
-                return sendResult.Value;
-            throw ZlinkException.CreateSubmitException(
-                NativeMethods.zlink_errno());
+            int errno = NativeMethods.zlink_errno();
+            message.RestoreFrom(ref nativePart);
+            shouldRestore = false;
+            SendResult? mappedResult = TryMapSendResultFromErrno(errno);
+            if (mappedResult == null)
+                throw ZlinkException.CreateSubmitException(errno);
+            return mappedResult.Value;
         }
         catch
         {
-            if (initialized)
-                NativeMethods.zlink_msg_close(ref nativePart);
+            if (shouldRestore)
+                message.RestoreFrom(ref nativePart);
             throw;
         }
     }

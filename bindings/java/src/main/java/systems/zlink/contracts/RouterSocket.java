@@ -1205,16 +1205,16 @@ public final class RouterSocket extends Socket {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment nativeRid = nativeRoutingId(arena, routingId);
                 MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
-                Object anchor = part.transferTo(nativeMsg);
+                part.transferTo(nativeMsg);
                 try {
                     int rc = Native.routerReplyPart(socket.handle(), nativeRid,
                         requestSequence, nativeMsg, partFlag);
                     if (rc != 0) {
-                        part.restoreFromNative(nativeMsg, false, anchor);
+                        part.restoreFromNative(nativeMsg, false);
                     }
                     return rc;
                 } catch (RuntimeException ex) {
-                    part.restoreFromNative(nativeMsg, false, anchor);
+                    part.restoreFromNative(nativeMsg, false);
                     throw ex;
                 }
             }

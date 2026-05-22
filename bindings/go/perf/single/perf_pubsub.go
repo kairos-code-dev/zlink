@@ -67,7 +67,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 
 	for time.Now().Before(window.StopAt) {
 		sent, err := perfcommon.SubmitMessage(perfcommon.NewWindowMessage(cfg.msgSize, window.ActiveAt), func(message *zlink.Message) (bool, error) {
-			return publisher.Publish(singlePubSubTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+			return publisher.Publish(singlePubSubTopic).MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		})
 		if err != nil {
 			if perfcommon.IsTransient(err) {
@@ -184,7 +184,7 @@ func topicMatches(buffer []byte, topicLen int, expected string) bool {
 func sendPubSubStopToken(publisher *zlink.PubSocket) bool {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		_, err := perfcommon.SubmitMessage(perfcommon.NewMessage(perfcommon.StopToken), func(message *zlink.Message) (bool, error) {
-			return publisher.Publish(singlePubSubTopic).Message(message).Submit(nil)
+			return publisher.Publish(singlePubSubTopic).MoveMessage(message).Submit(nil)
 		})
 		if err == nil {
 			return true

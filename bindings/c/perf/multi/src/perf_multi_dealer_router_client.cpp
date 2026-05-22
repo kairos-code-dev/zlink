@@ -50,7 +50,7 @@ inline int run_client_benchmark (const std::string &lib_name,
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes (fallback_size);
     const size_t max_msg_size =
       resolve_case_max_msg_size (fallback_size, msg_sizes);
-    const bool borrow_payload_per_socket = transport == "tcp";
+    const bool per_socket_payload = transport == "tcp";
 
     ctx_guard_t ctx;
     if (!ctx.valid ())
@@ -112,7 +112,7 @@ inline int run_client_benchmark (const std::string &lib_name,
               scratch_capacity,
               server_id,
               k_client_router_send,
-              borrow_payload_per_socket,
+              per_socket_payload,
               run_id,
               &throughput,
               &latency)) {

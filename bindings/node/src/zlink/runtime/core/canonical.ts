@@ -338,44 +338,6 @@ function normalizeMessageLikePayload(message: MessageLike | readonly MessageLike
   return scalar instanceof Message ? scalar.toSnapshot() : normalizeBufferLike(scalar, 'message');
 }
 
-function submitBorrowedNoWaitResult(socket: SocketBase, payload: Buffer, message: string): boolean {
-  let result;
-  try {
-    result = requireNative().socketSendBorrowedNoWaitResult(
-      socket.nativeHandle(),
-      payload,
-      payload.length | 0
-    ) as number;
-  } catch (error) {
-    throw submitNativeError(error, SendFlags.DontWait, message);
-  }
-  if (result === SubmitResult.Ok) return true;
-  if (result === SubmitResult.Backpressured || result === SubmitResult.NotConnected) return false;
-  throw submitErrorFromResult(result as SubmitResult, message);
-}
-
-function submitRoutingBorrowedNoWaitResult(
-  socket: SocketBase,
-  routingId: Buffer,
-  payload: Buffer,
-  message: string
-): boolean {
-  let result;
-  try {
-    result = requireNative().socketSendRoutingBorrowedNoWaitResult(
-      socket.nativeHandle(),
-      routingId,
-      payload,
-      payload.length | 0
-    ) as number;
-  } catch (error) {
-    throw submitNativeError(error, SendFlags.DontWait, message);
-  }
-  if (result === SubmitResult.Ok) return true;
-  if (result === SubmitResult.Backpressured || result === SubmitResult.NotConnected) return false;
-  throw submitErrorFromResult(result as SubmitResult, message);
-}
-
 function normalizeOperationPayload(parts: MessageLike | readonly MessageLike[]): Buffer | MessageSnapshot | Array<Buffer | MessageSnapshot> {
   if (!Array.isArray(parts)) {
     const scalar = parts as MessageLike;
@@ -1574,9 +1536,6 @@ class SendSocket extends ConnectableSocket {
   protected sendDirect(payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const payload = normalizeMessageLikePayload(payloadOrParts);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {
-      if (Buffer.isBuffer(payload)) {
-        return submitBorrowedNoWaitResult(this, payload, 'send failed');
-      }
       let result;
       try {
         result = Array.isArray(payload)
@@ -1780,9 +1739,6 @@ class RoutedMessageSocket extends ConnectableSocket {
   protected sendDirectRaw(routingId: Buffer, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalized = normalizeMessageLikePayload(payload);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {
-      if (Buffer.isBuffer(normalized)) {
-        return submitRoutingBorrowedNoWaitResult(this, routingId, normalized, 'send failed');
-      }
       let result;
       try {
         result = Array.isArray(normalized)
@@ -2307,9 +2263,6 @@ export class StreamSocket extends SocketBase {
     const normalized = normalizeMessageLikePayload(payload);
     const normalizedRoutingId = normalizeRoutingId(routingId);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {
-      if (Buffer.isBuffer(normalized)) {
-        return submitRoutingBorrowedNoWaitResult(this, normalizedRoutingId, normalized, 'send failed');
-      }
       let result;
       try {
         result = Array.isArray(normalized)

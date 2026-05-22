@@ -29,13 +29,22 @@ func runMultiPubSubServer(cfg multiConfig) {
 	window := activeDeadline(cfg.duration)
 	payload := perfcommon.PreparePayload(cfg.msgSize)
 	for time.Now().Before(window.StopAt) {
-		perfcommon.StampWindowPayload(payload, window.ActiveAt)
-		msg, err := zlink.NewMessage(payload)
-		if err != nil {
-			perfcommon.Must(fmt.Errorf("multi pubsub create payload message size=%d clients=%d transport=%s: %w",
-				cfg.msgSize, cfg.clients, cfg.transport, err))
+		if useMultiPubSubWindowMessage(cfg.transport, cfg.msgSize) {
+			_, err := perfcommon.SubmitWindowPayload(cfg.msgSize, window.ActiveAt, func(message *zlink.Message) (bool, error) {
+				return publisher.Publish("bench").MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+			})
+			if err != nil {
+				if perfcommon.IsTransient(err) {
+					continue
+				}
+				perfcommon.Must(fmt.Errorf("multi pubsub publish size=%d clients=%d transport=%s: %w",
+					cfg.msgSize, cfg.clients, cfg.transport, err))
+			}
+			continue
 		}
-		_, err = publisher.Publish("bench").Message(msg).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		perfcommon.StampWindowPayload(payload, window.ActiveAt)
+		msg := perfcommon.NewMessage(payload)
+		_, err = publisher.Publish("bench").MoveMessage(msg).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -45,6 +54,17 @@ func runMultiPubSubServer(cfg multiConfig) {
 		}
 	}
 	sendMultiPubSubStopToken(publisher)
+}
+
+func useMultiPubSubWindowMessage(transport string, msgSize int) bool {
+	switch transport {
+	case "tls":
+		return msgSize <= 256
+	case "wss":
+		return msgSize == 64
+	default:
+		return false
+	}
 }
 
 func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
@@ -199,8 +219,8 @@ func drainMultiPubSubSocket(
 			break
 		}
 		now := time.Now()
-		if sentAt, ok := perfcommon.SentAtFromMessage(part, msgSize); ok && now.After(activeAt) && now.Before(recvStopAt) {
-			stats.Add(sentAt)
+		if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(part, msgSize, perfcommon.PhaseActive, now); ok && now.After(activeAt) && now.Before(recvStopAt) {
+			stats.AddLatencyNs(latencyNs)
 		}
 	}
 }
@@ -208,7 +228,7 @@ func drainMultiPubSubSocket(
 func sendMultiPubSubStopToken(publisher *zlink.PubSocket) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		sent, err := perfcommon.SubmitPayload(perfcommon.StopToken, func(message *zlink.Message) (bool, error) {
-			return publisher.Publish("bench").Message(message).Submit(nil)
+			return publisher.Publish("bench").MoveMessage(message).Submit(nil)
 		})
 		if err == nil && sent {
 			return

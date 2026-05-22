@@ -142,7 +142,7 @@ internal static class ActorInterop
             return Message.FromBytes(ReadOnlySpan<byte>.Empty);
         byte[] copy = new byte[(int)size];
         Marshal.Copy(data, copy, 0, copy.Length);
-        return Message.WrapBytes(copy);
+        return Message.FromBytes(copy);
     }
 
     internal static ActorPart? RecvActorPart(IntPtr node, ActorRef actor,

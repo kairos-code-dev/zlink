@@ -114,8 +114,9 @@ func recvSingleRoutedOneWayOnce(
 	if perfcommon.IsStopTokenMessage(part) {
 		return true, nil
 	}
-	if sentAt, ok := perfcommon.SentAtFromMessage(part, msgSize); ok {
-		stats.Add(sentAt)
+	now := time.Now()
+	if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(part, msgSize, perfcommon.PhaseActive, now); ok {
+		stats.AddLatencyNs(latencyNs)
 	}
 	return false, nil
 }

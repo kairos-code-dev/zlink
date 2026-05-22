@@ -667,6 +667,11 @@ attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관�
 - payload는 builder의 `message(part)` 반복 호출로 누적한다. 단일 payload와
   multipart payload를 별도 시작점 오버로드로 나누지 않는다. 외부 List/Vector
   컨테이너로 multipart를 포장하지 않는다.
+- 언어가 명시적 move/consume 이름을 자연스럽게 표현할 수 있으면 같은 builder 안에
+  ownership 이전 단계(`moveMessage`, `MoveMessage`, `move_message` 등)를 둘 수
+  있다. 이 단계는 새 operation 시작점이 아니며, submit 실패 뒤에도 caller가 해당
+  message를 재사용할 수 없다는 계약을 이름과 문서에서 분명히 드러내야 한다. 기존
+  `message(...)` 단계의 실패 시 원본 보존 계약은 바꾸지 않는다.
 - payload가 의미상 필수인 작업(send/request/reply/publish, Actor join,
   ActorReplyJoin 등)에서 메시지가 하나도 없는 `submit`은 금지한다. 타입
   시스템으로 막을 수 있는 언어는 compile-time에서 막고, 그렇지 않은 언어는
@@ -3260,8 +3265,14 @@ Repository placement and distribution units for codec extension modules:
   노출한다.
 - 기본 원칙:
   - **copy-based `Message` 생성 경로는 모든 바인딩에서 Required**
+  - **VM 또는 GC 기반 언어(Java, .NET, Go, Python, Node)는 VM-managed
+    buffer를 native queue에 borrowed/zero-copy 로 넘기는 public API 를
+    제공하지 않는다**
   - **release hook 없는 borrowed zero-copy wrap API 는 managed 언어 public
-    surface 에 두지 않는다**
+    surface, default send path, perf 전용 fast path 에 두지 않는다**
+  - VM 언어의 성능 경로는 caller buffer 를 native queue 에 빌려주는 방식이
+    아니라, native-owned `Message` 를 만들고 그 payload 를 채운 뒤 part 기반
+    send/recv API 로 넘기는 방식이어야 한다.
   - external buffer attach 는 **release 시점을 public contract 로 닫을 수 있을
     때만** 허용한다
 - 허용:
@@ -3272,12 +3283,18 @@ Repository placement and distribution units for codec extension modules:
   - Java / .NET / Go / Rust / Python / Node
     - generic public borrowed wrap (`wrapDirect`, `wrapNative`, `wrap_buffer`
       등) 금지
+    - VM-managed buffer 를 `zlink_msg_init_data(..., NULL, NULL)` 로 native
+      queue 에 넘기는 send/publish/request/reply fast path 금지
+    - VM-managed buffer 를 pin 한 뒤 release callback 으로 풀어 주는 public 또는
+      default fast path 금지
     - 이유: send 후 backing buffer lifetime, retain/release, arena/session,
       GC 와의 상호작용을 public contract 로 안전하게 닫기 어렵다
 - 예외:
-  - 특정 언어에서 releaser/owner contract 를 **명시적이고 안전한 public 타입**
-    으로 닫을 수 있다면 advanced API 로 재검토할 수 있다
-  - 다만 이 경우에도 canonical 기본 경로는 copy-based 생성이어야 한다
+  - C++처럼 caller 가 release hook 과 lifetime 을 명시적으로 소유하는 언어만
+    advanced external attach 를 둘 수 있다.
+  - VM 또는 GC 기반 언어에서 이 예외를 추가하려면 별도 draft spec, public
+    lifetime contract, 회귀 테스트, perf 비교가 먼저 필요하다. 정식 spec 과
+    구현에는 바로 추가하지 않는다.
 
 ## Boundary Cost Policy
 - 경계 검증은 가장 이른 안전한 위치에서 한 번 수행하는 것을 우선한다.

@@ -18,7 +18,10 @@
 //   - callback delivery hops from native threads onto Go-managed dispatcher
 //     goroutines before invoking user handlers
 //
-// Message ownership follows the native contract. Successful send paths consume
-// message ownership, while receive paths transfer ownership to Go wrappers that
-// must be closed explicitly when their lifetime ends.
+// Message ownership follows the native contract. Message(...) preserves the
+// caller's message on submit failure and consumes it on success. MoveMessage(...)
+// transfers ownership to the operation at submit time and is intended for hot
+// paths that do not need to reuse a failed-send payload. Receive paths transfer
+// ownership to Go wrappers that must be closed explicitly when their lifetime
+// ends.
 package zlink

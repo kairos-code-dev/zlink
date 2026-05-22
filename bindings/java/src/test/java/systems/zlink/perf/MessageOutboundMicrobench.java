@@ -78,9 +78,8 @@ public final class MessageOutboundMicrobench {
 
             bench("response_copy_of_bytes_send_prepare", bodySize, () -> {
                 try (Message response = Message.copyOf(replyBytes, 0, totalSize)) {
-                    Object anchor = response.transferTo(scratchMsg);
+                    response.transferTo(scratchMsg);
                     blackhole ^= MsgFfmBenchSupport.msgSize(scratchMsg);
-                    blackhole ^= anchor == null ? 0 : 1;
                     MsgFfmBenchSupport.msgClose(scratchMsg);
                 }
                 return totalSize;
@@ -92,9 +91,8 @@ public final class MessageOutboundMicrobench {
                     response.copyFrom(HEADER, 0, PREFIX_SIZE, HEADER.length);
                     response.copyFrom(bodyBytes, 0, PREFIX_SIZE + HEADER.length,
                         bodySize);
-                    Object anchor = response.transferTo(scratchMsg);
+                    response.transferTo(scratchMsg);
                     blackhole ^= MsgFfmBenchSupport.msgSize(scratchMsg);
-                    blackhole ^= anchor == null ? 0 : 1;
                     MsgFfmBenchSupport.msgClose(scratchMsg);
                 }
                 return totalSize;
@@ -107,9 +105,8 @@ public final class MessageOutboundMicrobench {
                         HEADER.length);
                     response.copyFrom(bodyMessage, 0,
                         PREFIX_SIZE + HEADER.length, bodySize);
-                    Object anchor = response.transferTo(scratchMsg);
+                    response.transferTo(scratchMsg);
                     blackhole ^= MsgFfmBenchSupport.msgSize(scratchMsg);
-                    blackhole ^= anchor == null ? 0 : 1;
                     MsgFfmBenchSupport.msgClose(scratchMsg);
                 }
                 return totalSize;

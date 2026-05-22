@@ -178,6 +178,10 @@ and published TypeScript declarations when category separation is needed.
 - Multipart payload is accumulated by repeated `message(...)` calls.
   `messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in the contract source.
+- Node `Buffer` / `Uint8Array` payload inputs must be copied into
+  message-owned native storage before the native queue can outlive the call.
+  Do not expose or use borrowed Buffer send helpers such as
+  `socketSendBorrowedNoWaitResult`.
 - Do not add operation-start method families such as `sendNoWait`,
   `publishWithFlags`, or `requestAsync`; keep one operation name and let the
   builder absorb the variation. Terminal builder methods may use idiomatic

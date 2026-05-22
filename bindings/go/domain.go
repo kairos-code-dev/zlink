@@ -177,6 +177,7 @@ type Received struct {
 	hasRequestSeq bool
 	reply         func(SendFlags, []*Message) error
 	send          func(SendFlags, []*Message) (bool, error)
+	sendBuilder   func(SendFlags, []sendBuilderPart) (bool, error)
 }
 
 func (r *Received) RoutingID() RoutingID {
@@ -218,7 +219,7 @@ func (r *Received) AdoptFrom(source *Received) {
 	if r == nil || source == nil || r == source {
 		return
 	}
-	r.replace(source.routingID, source.spotRID, source.parts, source.requestSeq, source.hasRequestSeq, source.reply, source.send)
+	r.replace(source.routingID, source.spotRID, source.parts, source.requestSeq, source.hasRequestSeq, source.reply, source.send, source.sendBuilder)
 	// Detach source so its lifecycle no-ops.
 	source.routingID = RoutingID{}
 	source.spotRID = RoutingID{}
@@ -227,6 +228,7 @@ func (r *Received) AdoptFrom(source *Received) {
 	source.hasRequestSeq = false
 	source.reply = nil
 	source.send = nil
+	source.sendBuilder = nil
 }
 
 func (r *Received) replace(
@@ -237,6 +239,7 @@ func (r *Received) replace(
 	hasRequestSeq bool,
 	reply func(SendFlags, []*Message) error,
 	send func(SendFlags, []*Message) (bool, error),
+	sendBuilder func(SendFlags, []sendBuilderPart) (bool, error),
 ) {
 	for _, part := range r.parts {
 		if part != nil {
@@ -250,6 +253,7 @@ func (r *Received) replace(
 	r.hasRequestSeq = hasRequestSeq
 	r.reply = reply
 	r.send = send
+	r.sendBuilder = sendBuilder
 }
 
 func (r *Received) RequestSeq() uint64 {
@@ -308,18 +312,30 @@ func (r *Received) Reply() ReplyOp {
 // Send returns an operation builder for a regular routed message back to
 // the sender of this Received. Source rid / spot rid are encapsulated.
 func (r *Received) Send() SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		if r == nil {
 			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
 		}
 		if r.send == nil {
 			return &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
-		sent, err := r.send(flags, parts)
+		if r.sendBuilder != nil && sendBuilderPartsContainMove(parts) {
+			sent, err := r.sendBuilder(flags, parts)
+			if err != nil {
+				return err
+			}
+			if !sent {
+				return &SubmitError{Result: SubmitBackpressured}
+			}
+			return nil
+		}
+		sent, err := r.send(flags, builderMessages(parts))
 		if err != nil {
+			closeMovedSendBuilderParts(parts)
 			return err
 		}
 		if !sent {
+			closeMovedSendBuilderParts(parts)
 			return &SubmitError{Result: SubmitBackpressured}
 		}
 		return nil
@@ -484,6 +500,26 @@ func receivedSendToRouter(send func(RoutingID, SendFlags, ...*Message) (bool, er
 	}
 }
 
+func submitSendOpBuilderParts(op SendOp, flags SendFlags, parts []sendBuilderPart) (bool, error) {
+	if len(parts) == 0 {
+		return false, &SubmitError{Result: SubmitInvalidArgument}
+	}
+	var submitOp SendSubmitOp
+	if parts[0].move {
+		submitOp = op.MoveMessage(parts[0].message)
+	} else {
+		submitOp = op.Message(parts[0].message)
+	}
+	for _, part := range parts[1:] {
+		if part.move {
+			submitOp = submitOp.MoveMessage(part.message)
+		} else {
+			submitOp = submitOp.Message(part.message)
+		}
+	}
+	return submitOp.Flags(flags).Submit(nil)
+}
+
 type routerSenderToSpot interface {
 	SendToSpot(RoutingID, RoutingID) SendOp
 }
@@ -519,6 +555,18 @@ func receivedSendFromSpot(socket *Spot, routingID RoutingID, spotRID RoutingID) 
 			return false, err
 		}
 		return sent, nil
+	}
+}
+
+func receivedSendFromSpotBuilder(socket *Spot, routingID RoutingID, spotRID RoutingID) func(SendFlags, []sendBuilderPart) (bool, error) {
+	return func(flags SendFlags, parts []sendBuilderPart) (bool, error) {
+		if len(parts) == 0 {
+			return false, &SubmitError{Result: SubmitInvalidArgument}
+		}
+		if spotRID.Size() == 0 {
+			return false, &SubmitError{Result: SubmitInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		return submitSendOpBuilderParts(socket.SendToSpot(routingID, spotRID), flags, parts)
 	}
 }
 

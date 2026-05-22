@@ -77,6 +77,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if hasMethod((*zlink.PairSocket)(nil), "TrySend") {
 		t.Fatalf("PairSocket should not expose TrySend")
 	}
+	if !hasMethod((*zlink.PairSocket)(nil).Send(), "MoveMessage") {
+		t.Fatalf("SendOp should expose MoveMessage")
+	}
 	if hasMethod((*zlink.PairSocket)(nil), "TryRecv") {
 		t.Fatalf("PairSocket should not expose TryRecv")
 	}

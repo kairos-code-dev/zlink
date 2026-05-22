@@ -97,6 +97,45 @@ func SentAtFromMessagePhase(part *zlink.Message, expectedMsgSize int, phase uint
 	return SentAtFromBytesPhase(data, expectedMsgSize, phase)
 }
 
+func SentTimestampNsFromBytesPhase(data []byte, expectedMsgSize int, phase uint8) (int64, bool) {
+	header, ok := DecodeMetricHeader(data)
+	if !ok || !validHeaderPhase(header, expectedMsgSize, phase) {
+		return 0, false
+	}
+	return header.SentTsNs, true
+}
+
+func SentTimestampNsFromMessagePhase(part *zlink.Message, expectedMsgSize int, phase uint8) (int64, bool) {
+	if part == nil {
+		return 0, false
+	}
+	return SentTimestampNsFromBytesPhase(part.Data(), expectedMsgSize, phase)
+}
+
+func LatencyNsFromMessageAt(part *zlink.Message, expectedMsgSize int, phase uint8, now time.Time) (float64, bool) {
+	sentTsNs, ok := SentTimestampNsFromMessagePhase(part, expectedMsgSize, phase)
+	if !ok {
+		return 0, false
+	}
+	nowNs := now.UnixNano()
+	if nowNs < sentTsNs {
+		return 0, false
+	}
+	return float64(nowNs - sentTsNs), true
+}
+
+func LatencyNsFromBytesAt(payload []byte, expectedMsgSize int, phase uint8, now time.Time) (float64, bool) {
+	sentTsNs, ok := SentTimestampNsFromBytesPhase(payload, expectedMsgSize, phase)
+	if !ok {
+		return 0, false
+	}
+	nowNs := now.UnixNano()
+	if nowNs < sentTsNs {
+		return 0, false
+	}
+	return float64(nowNs - sentTsNs), true
+}
+
 func percentile(values []float64, pct float64) float64 {
 	if len(values) == 0 {
 		return 0

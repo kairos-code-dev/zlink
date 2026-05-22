@@ -600,17 +600,6 @@ bool init_msg_from_bytes(zlink_msg_t *msg, const void *data, size_t len)
     return true;
 }
 
-bool init_msg_borrowed_from_bytes(zlink_msg_t *msg, void *data, size_t len)
-{
-    return zlink_msg_init_data(
-             msg,
-             len > 0 ? data : NULL,
-             len,
-             NULL,
-             NULL)
-           == 0;
-}
-
 void copy_routing_id(zlink_routing_id_t *out, const zlink_routing_id_t *in)
 {
     if (!out)
@@ -3445,82 +3434,6 @@ napi_value socket_send_parts(napi_env env, napi_callback_info info)
     return out;
 }
 
-napi_value socket_send_borrowed_no_wait_result(napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    void *data = NULL;
-    size_t cap = 0;
-    if (napi_get_buffer_info(env, argv[1], &data, &cap) != napi_ok) {
-        napi_throw_type_error(env, NULL, "payload must be Buffer");
-        return NULL;
-    }
-    int32_t len = 0;
-    napi_get_value_int32(env, argv[2], &len);
-    if (len < 0 || static_cast<size_t>(len) > cap) {
-        napi_throw_range_error(env, NULL, "payload length out of range");
-        return NULL;
-    }
-
-    zlink_msg_t msg;
-    if (!init_msg_borrowed_from_bytes(&msg, data, static_cast<size_t>(len)))
-        return throw_last_error(env, "sendBorrowedNoWaitResult failed");
-    int rc = send_parts(sock, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc != ZLINK_SUBMIT_OK) {
-        zlink_msg_close(&msg);
-        rc = classify_try_send_errno();
-    }
-    if (rc < 0)
-        return throw_last_error(env, "sendBorrowedNoWaitResult failed");
-
-    napi_value out;
-    napi_create_int32(env, rc, &out);
-    return out;
-}
-
-napi_value socket_send_routing_borrowed_no_wait_result(napi_env env,
-                                                       napi_callback_info info)
-{
-    napi_value argv[4];
-    size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    zlink_routing_id_t routing_id;
-    if (!routing_id_from_buffer(env, argv[1], &routing_id))
-        return NULL;
-    void *data = NULL;
-    size_t cap = 0;
-    if (napi_get_buffer_info(env, argv[2], &data, &cap) != napi_ok) {
-        napi_throw_type_error(env, NULL, "payload must be Buffer");
-        return NULL;
-    }
-    int32_t len = 0;
-    napi_get_value_int32(env, argv[3], &len);
-    if (len < 0 || static_cast<size_t>(len) > cap) {
-        napi_throw_range_error(env, NULL, "payload length out of range");
-        return NULL;
-    }
-
-    zlink_msg_t msg;
-    if (!init_msg_borrowed_from_bytes(&msg, data, static_cast<size_t>(len)))
-        return throw_last_error(env, "sendRoutingBorrowedNoWaitResult failed");
-    int rc = send_parts_rid(sock, &routing_id, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc != ZLINK_SUBMIT_OK) {
-        zlink_msg_close(&msg);
-        rc = classify_try_send_errno();
-    }
-    if (rc < 0)
-        return throw_last_error(env, "sendRoutingBorrowedNoWaitResult failed");
-
-    napi_value out;
-    napi_create_int32(env, rc, &out);
-    return out;
-}
-
 napi_value socket_perf_dealer_dealer_send_loop(napi_env env, napi_callback_info info)
 {
     napi_value argv[5];
@@ -4020,7 +3933,7 @@ napi_value socket_try_publish(napi_env env, napi_callback_info info)
             napi_throw_type_error(env, NULL, "publish buffer invalid");
             return NULL;
         }
-        if (!init_msg_borrowed_from_bytes(&single_part, data, len))
+        if (!init_msg_from_bytes(&single_part, data, len))
             return throw_last_error(env, "publishNoWaitResult failed");
         use_single_part = true;
     } else if (payload_type == napi_object) {

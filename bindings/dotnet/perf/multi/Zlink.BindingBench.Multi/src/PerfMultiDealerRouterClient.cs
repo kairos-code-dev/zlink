@@ -306,7 +306,7 @@ internal static class PerfMultiDealerRouterClient
     private static bool TrySend(DealerRouterClientSlot slot)
     {
         using Message message = slot.BorrowPayload
-            ? Message.WrapBytes(slot.Payload)
+            ? Message.FromBytes(slot.Payload)
             : new Message(slot.Payload.AsSpan());
         return ((DealerSocket)slot.Socket).Send().Message(message)
             .Flags(SendFlags.DontWait).Submit();

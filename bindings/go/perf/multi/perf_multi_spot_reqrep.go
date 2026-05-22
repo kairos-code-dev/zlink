@@ -379,8 +379,9 @@ func submitMultiSpotReqRepRequest(slot *multiSpotReqRepSlot, msgSize int, deadli
 			if result != zlink.RequestOK || len(parts) == 0 || parts[0] == nil {
 				return
 			}
-			if sentAt, ok := perfcommon.SentAtFromBytes(parts[0].Data(), msgSize); ok && time.Now().Before(deadline) {
-				latencies <- float64(time.Since(sentAt).Nanoseconds()) / 2.0
+			now := time.Now()
+			if latencyNs, ok := perfcommon.LatencyNsFromBytesAt(parts[0].Data(), msgSize, perfcommon.PhaseActive, now); ok && now.Before(deadline) {
+				latencies <- latencyNs / 2.0
 			}
 		})
 	if err != nil {

@@ -709,10 +709,12 @@ func (s *spotCore) withCString(value string, fn func(*C.char) error) error {
 
 type SendOp interface {
 	Message(message *Message) SendSubmitOp
+	MoveMessage(message *Message) SendSubmitOp
 }
 
 type SendSubmitOp interface {
 	Message(message *Message) SendSubmitOp
+	MoveMessage(message *Message) SendSubmitOp
 	Flags(flags SendFlags) SendSubmitOp
 	Submit(ctx context.Context) (bool, error)
 }
@@ -750,18 +752,31 @@ type ReplySubmitOp interface {
 
 type sendBuilder struct {
 	spot      *Spot
-	parts     []*Message
+	parts     []sendBuilderPart
 	flags     SendFlags
 	submitted bool
-	submit    func(parts []*Message, flags SendFlags) error
+	submit    func(parts []sendBuilderPart, flags SendFlags) error
 }
 
-func newSendBuilder(spot *Spot, submit func(parts []*Message, flags SendFlags) error) SendOp {
+type sendBuilderPart struct {
+	message *Message
+	move    bool
+}
+
+func newSendBuilder(spot *Spot, submit func(parts []sendBuilderPart, flags SendFlags) error) SendOp {
 	return &sendBuilder{spot: spot, submit: submit}
 }
 
 func (b *sendBuilder) Message(message *Message) SendSubmitOp {
-	b.parts = append(b.parts, message)
+	b.parts = append(b.parts, sendBuilderPart{message: message})
+	return b
+}
+
+// MoveMessage adds a payload part whose ownership is transferred to the
+// operation at submit time. Unlike Message, the caller must not reuse the
+// message after Submit returns, even when Submit reports a send error.
+func (b *sendBuilder) MoveMessage(message *Message) SendSubmitOp {
+	b.parts = append(b.parts, sendBuilderPart{message: message, move: true})
 	return b
 }
 
@@ -1024,9 +1039,9 @@ func (s *Spot) SetNoDrop(value bool) error {
 }
 
 func (s *Spot) Publish(topic string) SendOp {
-	return newSendBuilder(s, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(s, func(parts []sendBuilderPart, flags SendFlags) error {
 		return s.core.withCString(topic, func(topicC *C.char) error {
-			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 				return submitErrorFromResult(C.zlink_spot_publish_part(s.raw(), topicC, part, C.zlink_send_flags_t(flags), partFlag))
 			})
 		})
@@ -1034,9 +1049,9 @@ func (s *Spot) Publish(topic string) SendOp {
 }
 
 func (s *Spot) SendChannel(channelName string) SendOp {
-	return newSendBuilder(s, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(s, func(parts []sendBuilderPart, flags SendFlags) error {
 		return s.core.withCString(channelName, func(cstr *C.char) error {
-			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 				return submitErrorFromResult(C.zlink_spot_send_channel_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
 			})
 		})
@@ -1044,10 +1059,10 @@ func (s *Spot) SendChannel(channelName string) SendOp {
 }
 
 func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
-	return newSendBuilder(s, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(s, func(parts []sendBuilderPart, flags SendFlags) error {
 		node := destNodeRid.toC()
 		spot := destSpotRid.toC()
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_spot_send_spot_part(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
 		})
 	})
@@ -1293,6 +1308,7 @@ func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error) {
 		requestSeq != 0,
 		receivedReplyToSpot(s, routingID, spotRoutingID, seq),
 		receivedSendFromSpot(s, routingID, spotRoutingID),
+		receivedSendFromSpotBuilder(s, routingID, spotRoutingID),
 	)
 	return true, nil
 }

@@ -257,7 +257,7 @@ func (n *SpotNode) LeaveActor(actor ActorRef, currentSpotRID RoutingID) ActorLea
 // underlying native call is synchronous; the builder model matches the rest
 // of the spot send surface.
 func (n *SpotNode) SendBoundSessionMsg(actor ActorRef) SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		handle, err := n.handleOrError()
 		if err != nil {
 			return err
@@ -266,7 +266,7 @@ func (n *SpotNode) SendBoundSessionMsg(actor ActorRef) SendOp {
 		if err != nil {
 			return err
 		}
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			_ = partFlag
 			return submitErrorFromResult(C.zlink_spot_node_actor_send_bound_session_msg(handle, &rawActor, part, C.zlink_send_flags_t(flags)))
 		})
@@ -353,7 +353,7 @@ func (a *Actor) RecvPart(flags RecvFlags) (*ActorPart, error) {
 // SendBoundSession returns an actor-to-session relay send builder for the
 // session that this Actor is currently bound to.
 func (a *Actor) SendBoundSession() SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		if a == nil || a.closed || a.node == nil {
 			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
 		}
@@ -365,7 +365,7 @@ func (a *Actor) SendBoundSession() SendOp {
 		if err != nil {
 			return err
 		}
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			_ = partFlag
 			return submitErrorFromResult(C.zlink_spot_node_actor_send_bound_session_msg(nodeHandle, &rawActor, part, C.zlink_send_flags_t(flags)))
 		})
@@ -646,13 +646,13 @@ func (s *StreamSocket) UnbindActor(sessionRID RoutingID, actorID string) ActorUn
 
 // SendBoundActor returns a session-bound relay send operation builder.
 func (s *StreamSocket) SendBoundActor(sessionRID RoutingID, actorID string) SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		if s == nil || s.core == nil || s.core.closed {
 			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
 		}
 		session := sessionRID.toC()
 		return withActorIDCStringErr(actorID, func(actorIDC *C.char) error {
-			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 				return submitErrorFromResult(C.zlink_stream_send_bound_actor_part(s.raw(), &session, actorIDC, part, C.zlink_send_flags_t(flags), partFlag))
 			})
 		})

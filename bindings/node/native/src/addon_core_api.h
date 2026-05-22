@@ -32,8 +32,6 @@ napi_value socket_try_send_parts(napi_env env, napi_callback_info info);
 napi_value socket_try_send_routing(napi_env env, napi_callback_info info);
 napi_value socket_try_send_routing_parts(napi_env env, napi_callback_info info);
 napi_value socket_send_routing(napi_env env, napi_callback_info info);
-napi_value socket_send_borrowed_no_wait_result(napi_env env, napi_callback_info info);
-napi_value socket_send_routing_borrowed_no_wait_result(napi_env env, napi_callback_info info);
 napi_value socket_perf_dealer_dealer_send_loop(napi_env env, napi_callback_info info);
 napi_value socket_perf_dealer_router_echo_loop(napi_env env, napi_callback_info info);
 napi_value socket_send_from(napi_env env, napi_callback_info info);

@@ -17,12 +17,12 @@ import java.util.Objects;
 import sun.misc.Unsafe;
 
 /**
- * Owns one native zlink frame and exposes the canonical copy and borrow
- * factories for Java payload inputs.
+ * Owns one native zlink frame and exposes canonical copy factories for Java
+ * payload inputs.
  *
- * <p>{@code copyOf*} always copies into message-owned storage. {@code wrap*}
- * is reserved for direct or native-backed buffers and keeps the caller-owned
- * backing alive through the message lifetime.
+ * <p>{@code copyOf*} always copies into message-owned storage. Java does not
+ * expose borrowed payload wrappers because native queue lifetime is not safely
+ * bounded by Java object reachability.
  */
 public final class Message implements AutoCloseable {
     private static final Unsafe UNSAFE = lookupUnsafe();
@@ -48,7 +48,6 @@ public final class Message implements AutoCloseable {
     private boolean more;
     private int cachedSize;
     private long cachedAddress;
-    private Object zeroCopyAnchor;
 
     private Message(Arena arena, boolean raw) {
         this.arena = Objects.requireNonNull(arena, "arena");
@@ -60,7 +59,6 @@ public final class Message implements AutoCloseable {
         this.more = false;
         this.cachedSize = 0;
         this.cachedAddress = 0L;
-        this.zeroCopyAnchor = null;
     }
 
     private Message(MemorySegment adoptedMsg) {
@@ -72,7 +70,6 @@ public final class Message implements AutoCloseable {
         this.recvArmed = false;
         this.more = false;
         cachePayload((int) NativeMsg.msgSize(adoptedMsg));
-        this.zeroCopyAnchor = null;
     }
 
     private Message(long ownedMsgSlotAddress) {
@@ -86,7 +83,6 @@ public final class Message implements AutoCloseable {
         this.more = false;
         this.cachedSize = 0;
         this.cachedAddress = 0L;
-        this.zeroCopyAnchor = null;
     }
 
     private Message(boolean raw) {
@@ -162,7 +158,7 @@ public final class Message implements AutoCloseable {
         Message target = new Message(true);
         boolean moreFlag = more;
         int size = cachedSize;
-        Object anchor = transferTo(target.msg);
+        transferTo(target.msg);
         target.valid = true;
         target.recvArmed = false;
         target.more = moreFlag;
@@ -171,7 +167,6 @@ public final class Message implements AutoCloseable {
         } else {
             target.clearPayloadCache();
         }
-        target.zeroCopyAnchor = anchor;
         return target;
     }
 
@@ -268,67 +263,6 @@ public final class Message implements AutoCloseable {
             MemorySegment.copy(data, offset, msg.dataSegment((int) length), 0, length);
         }
         return msg;
-    }
-
-    /** Borrows the remaining bytes from a direct {@link ByteBuffer}. */
-    static Message wrapDirect(ByteBuffer data) {
-        Objects.requireNonNull(data, "data");
-        if (!data.isDirect())
-            throw new IllegalArgumentException("wrapDirect requires a direct ByteBuffer");
-        int length = data.remaining();
-        Message msg = new Message(true);
-        MemorySegment seg = length == 0 ? MemorySegment.NULL
-            : MemorySegment.ofBuffer(data.slice());
-        int rc = NativeMsg.msgInitData(msg.msg, seg, length, MemorySegment.NULL,
-            MemorySegment.NULL);
-        if (rc != 0) {
-            msg.arena.close();
-            msg.closed = true;
-            throw ZlinkException.fromLastError("zlink_msg_init_data");
-        }
-        msg.valid = true;
-        msg.recvArmed = false;
-        msg.more = false;
-        msg.cacheBorrowedPayload(seg, length);
-        msg.zeroCopyAnchor = data;
-        return msg;
-    }
-
-    /** Borrows the full native memory segment without copying. */
-    static Message wrapNative(MemorySegment data) {
-        Objects.requireNonNull(data, "data");
-        return wrapNative(data, 0, data.byteSize());
-    }
-
-    /** Borrows the selected native memory segment range without copying. */
-    static Message wrapNative(MemorySegment data, long offset, long length) {
-        Objects.requireNonNull(data, "data");
-        validateRange(data.byteSize(), offset, length, "data");
-        if (length > 0 && !data.isNative())
-            throw new IllegalArgumentException("wrapNative requires a native MemorySegment");
-        Message msg = new Message(true);
-        MemorySegment slice = length == 0 ? MemorySegment.NULL : data.asSlice(offset, length);
-        int rc = NativeMsg.msgInitData(msg.msg, slice, length, MemorySegment.NULL,
-            MemorySegment.NULL);
-        if (rc != 0) {
-            msg.arena.close();
-            msg.closed = true;
-            throw ZlinkException.fromLastError("zlink_msg_init_data");
-        }
-        msg.valid = true;
-        msg.recvArmed = false;
-        msg.more = false;
-        msg.cacheBorrowedPayload(slice, (int) length);
-        msg.zeroCopyAnchor = data;
-        return msg;
-    }
-
-    static Message wrap(ByteSpan span) {
-        Objects.requireNonNull(span, "span");
-        MemorySegment segment = span.segment();
-        if (span.length() > 0 && !segment.isNative())
-            throw new IllegalArgumentException("wrap(ByteSpan) requires native-backed span");
-        return wrapNative(segment, 0, span.length());
     }
 
     public int size() {
@@ -537,7 +471,6 @@ public final class Message implements AutoCloseable {
         } else {
             cachePayload(size);
         }
-        zeroCopyAnchor = null;
     }
 
     public void writeByte(int offset, byte value) {
@@ -634,10 +567,9 @@ public final class Message implements AutoCloseable {
         valid = false;
         recvArmed = false;
         clearPayloadCache();
-        zeroCopyAnchor = null;
     }
 
-    Object transferTo(MemorySegment destination) {
+    void transferTo(MemorySegment destination) {
         int rc = NativeMsg.msgInit(destination);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_init");
@@ -646,17 +578,13 @@ public final class Message implements AutoCloseable {
             NativeMsg.msgClose(destination);
             throw ZlinkException.fromLastError("zlink_msg_move");
         }
-        Object anchor = zeroCopyAnchor;
         valid = false;
         recvArmed = false;
         more = false;
         clearPayloadCache();
-        zeroCopyAnchor = null;
-        return anchor;
     }
 
-    void restoreFromNative(MemorySegment source, boolean moreFlag,
-                           Object anchor) {
+    void restoreFromNative(MemorySegment source, boolean moreFlag) {
         prepareForReceive();
         int rc = NativeMsg.msgMove(msg, source);
         if (rc != 0)
@@ -665,7 +593,6 @@ public final class Message implements AutoCloseable {
         recvArmed = false;
         more = moreFlag;
         cachePayload((int) NativeMsg.msgSize(msg));
-        zeroCopyAnchor = anchor;
     }
 
     void resetForReuse() {
@@ -686,7 +613,6 @@ public final class Message implements AutoCloseable {
         recvArmed = true;
         more = false;
         clearPayloadCache();
-        zeroCopyAnchor = null;
     }
 
     boolean isReusable() {
@@ -768,7 +694,6 @@ public final class Message implements AutoCloseable {
                     msg.recvArmed = true;
                     msg.more = false;
                     msg.clearPayloadCache();
-                    msg.zeroCopyAnchor = null;
                     out[i] = msg;
                 }
                 int rc = NativeMsg.msgMove(msg.msg, src);
@@ -779,7 +704,6 @@ public final class Message implements AutoCloseable {
                 msg.recvArmed = false;
                 msg.more = i + 1 < count;
                 msg.cachePayload((int) NativeMsg.msgSize(msg.msg));
-                msg.zeroCopyAnchor = null;
                 built++;
             }
             success = true;
@@ -871,12 +795,10 @@ public final class Message implements AutoCloseable {
         } else {
             target.clearPayloadCache();
         }
-        target.zeroCopyAnchor = zeroCopyAnchor;
         valid = false;
         recvArmed = false;
         more = false;
         clearPayloadCache();
-        zeroCopyAnchor = null;
         return target.size();
     }
 
@@ -885,7 +807,6 @@ public final class Message implements AutoCloseable {
         recvArmed = false;
         more = false;
         clearPayloadCache();
-        zeroCopyAnchor = null;
     }
 
     void setMore(boolean moreFlag) {
@@ -897,7 +818,6 @@ public final class Message implements AutoCloseable {
         recvArmed = false;
         more = moreFlag;
         cachePayload((int) NativeMsg.msgSize(msg));
-        zeroCopyAnchor = null;
     }
 
     @Override
@@ -911,7 +831,6 @@ public final class Message implements AutoCloseable {
         recvArmed = false;
         more = false;
         clearPayloadCache();
-        zeroCopyAnchor = null;
         releaseOwnedResources();
     }
 
@@ -924,11 +843,6 @@ public final class Message implements AutoCloseable {
     private void cachePayload(int size) {
         cachedSize = size;
         cachedAddress = size > 0 ? NativeMsg.msgDataAddr(msg) : 0L;
-    }
-
-    private void cacheBorrowedPayload(MemorySegment data, int size) {
-        cachedSize = size;
-        cachedAddress = size > 0 ? data.address() : 0L;
     }
 
     private void clearPayloadCache() {

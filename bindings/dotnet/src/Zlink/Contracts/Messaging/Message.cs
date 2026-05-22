@@ -218,41 +218,12 @@ public sealed class Message : IDisposable, IAsyncDisposable
     /// The caller may freely mutate or discard <paramref name="data"/> after
     /// this call returns; the message holds its own copy of the payload.
     /// </summary>
-    /// <remarks>
-    /// When the caller can guarantee the array will not be mutated before the
-    /// message is sent or disposed, prefer <see cref="WrapBytes(byte[])"/> to
-    /// avoid the snapshot copy.
-    /// </remarks>
     public static Message FromBytes(byte[] data)
     {
         if (data == null)
             throw new ArgumentNullException(nameof(data));
         var message = new Message(false);
         message.InitializeManagedCopy(data.AsSpan());
-        return message;
-    }
-
-    /// <summary>
-    /// Create a message that references <paramref name="data"/> in place,
-    /// without copying the payload bytes. The byte array is pinned only at
-    /// send time and released when the underlying transport finishes with the
-    /// message.
-    /// </summary>
-    /// <remarks>
-    /// Zero-copy. The caller MUST NOT mutate <paramref name="data"/> from when
-    /// this call returns until the message is either sent successfully or
-    /// disposed: an in-flight mutation corrupts the transmitted payload.
-    /// Use <see cref="FromBytes(byte[])"/> when the buffer might be mutated
-    /// before send.
-    /// </remarks>
-    /// <param name="data">Byte buffer the message references. Must remain
-    /// unmodified for the lifetime of the returned message.</param>
-    public static Message WrapBytes(byte[] data)
-    {
-        if (data == null)
-            throw new ArgumentNullException(nameof(data));
-        var message = new Message(false);
-        message.InitializeManagedOwned(data);
         return message;
     }
 
@@ -317,18 +288,13 @@ public sealed class Message : IDisposable, IAsyncDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Dispose()
     {
-        ManagedPayloadState? managed = _managedPayload;
-        if (!_valid && managed == null)
+        if (!_valid && _managedPayload == null)
         {
             TryReturnToPool();
             return;
         }
 
         Close();
-        if (managed is { InFlight: true })
-            managed.DisposeAfterBorrowedSend = true;
-        else
-            ReleaseSelfHandle(managed);
         TryReturnToPool();
     }
 
@@ -353,12 +319,6 @@ public sealed class Message : IDisposable, IAsyncDisposable
 
     internal void ReplaceNativeOwned(ref ZlinkMsg source)
     {
-        if (_managedPayload is { InFlight: true })
-        {
-            throw new InvalidOperationException(
-                "Cannot receive into a message with an in-flight borrowed send.");
-        }
-
         Close();
         _msg = source;
         _managedPayload = null;
@@ -822,8 +782,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
     internal void DetachAfterSend()
     {
         EnsureValid();
-        if (_managedPayload is not { InFlight: true })
-            ReleaseManagedBytes();
+        ReleaseManagedBytes();
         _valid = false;
         _knownSize = -1;
     }
@@ -842,70 +801,13 @@ public sealed class Message : IDisposable, IAsyncDisposable
         TryReturnToPool();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool TryPrepareBorrowedSend(out IntPtr data, out int length,
-        out IntPtr hint)
-    {
-        EnsureValid();
-        ManagedPayloadState? managed = _managedPayload;
-        if (managed == null || managed.InFlight)
-        {
-            data = IntPtr.Zero;
-            length = 0;
-            hint = IntPtr.Zero;
-            return false;
-        }
-
-        managed.PinnedHandle = GCHandle.Alloc(managed.Bytes, GCHandleType.Pinned);
-        managed.SelfHandle = GCHandle.Alloc(this);
-        managed.InFlight = true;
-        data = managed.Length == 0
-            ? IntPtr.Zero
-            : managed.PinnedHandle.AddrOfPinnedObject();
-        length = managed.Length;
-        hint = GCHandle.ToIntPtr(managed.SelfHandle);
-        return true;
-    }
-
-    internal void DetachAfterPreparedSend()
-    {
-        EnsureValid();
-        _managedPayload = null;
-        _valid = false;
-        _knownSize = -1;
-    }
-
-    internal void CancelBorrowedSendPrepare()
-    {
-        ManagedPayloadState? managed = _managedPayload;
-        if (managed == null)
-            return;
-        if (managed.PinnedHandle.IsAllocated)
-            managed.PinnedHandle.Free();
-        ReleaseSelfHandle(managed);
-        managed.InFlight = false;
-        managed.DisposeAfterBorrowedSend = false;
-    }
-
-    internal static void CompleteBorrowedSend(GCHandle handle)
-    {
-        if (handle.Target is Message message)
-        {
-            message.CompleteBorrowedSendCore();
-            return;
-        }
-        if (handle.IsAllocated)
-            handle.Free();
-    }
-
     private void Close()
     {
         if (!_valid)
             return;
         if (_managedPayload == null)
             NativeMethods.zlink_msg_close(ref _msg);
-        if (_managedPayload is not { InFlight: true })
-            ReleaseManagedBytes();
+        ReleaseManagedBytes();
         _valid = false;
         _knownSize = -1;
     }
@@ -924,74 +826,9 @@ public sealed class Message : IDisposable, IAsyncDisposable
         _valid = true;
     }
 
-    private void InitializeManagedOwned(byte[] data)
-    {
-        _managedPayload = new ManagedPayloadState(data, data.Length);
-        _knownSize = data.Length;
-        _valid = true;
-    }
-
-    private unsafe void MaterializeManagedBytes()
-    {
-        ManagedPayloadState? managed = _managedPayload;
-        if (managed == null)
-            return;
-
-        ZlinkMsg native = default;
-        int initRc = NativeMethods.zlink_msg_init_size(ref native,
-            (nuint)managed.Length);
-        if (initRc != 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-
-        try
-        {
-            if (managed.Length != 0)
-            {
-                IntPtr destPtr = NativeMethods.zlink_msg_data(ref native);
-                if (destPtr == IntPtr.Zero)
-                    throw new InvalidOperationException("Message data is null.");
-
-                managed.Bytes.AsSpan(0, managed.Length).CopyTo(
-                    new Span<byte>((void*)destPtr, managed.Length));
-            }
-
-            _msg = native;
-            _managedPayload = null;
-            _knownSize = managed.Length;
-        }
-        catch
-        {
-            NativeMethods.zlink_msg_close(ref native);
-            throw;
-        }
-    }
-
     private void ReleaseManagedBytes()
     {
         _managedPayload = null;
-    }
-
-    private void CompleteBorrowedSendCore()
-    {
-        ManagedPayloadState? managed = _managedPayload;
-        if (managed == null)
-            return;
-        if (managed.PinnedHandle.IsAllocated)
-            managed.PinnedHandle.Free();
-        managed.InFlight = false;
-        ReleaseManagedBytes();
-        ReleaseSelfHandle(managed);
-        if (managed.DisposeAfterBorrowedSend)
-        {
-            managed.DisposeAfterBorrowedSend = false;
-            TryReturnToPool();
-        }
-    }
-
-    private static void ReleaseSelfHandle(ManagedPayloadState? managed)
-    {
-        if (managed?.SelfHandle.IsAllocated == true)
-            managed.SelfHandle.Free();
     }
 
     private sealed class ManagedPayloadState
@@ -1004,9 +841,5 @@ public sealed class Message : IDisposable, IAsyncDisposable
 
         internal byte[] Bytes { get; }
         internal int Length { get; }
-        internal GCHandle PinnedHandle;
-        internal GCHandle SelfHandle;
-        internal bool InFlight;
-        internal bool DisposeAfterBorrowedSend;
     }
 }

@@ -80,8 +80,8 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 					break
 				}
 				now := time.Now()
-				if sentAt, ok := perfcommon.SentAtFromMessage(part, cfg.msgSize); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
-					stats.Add(sentAt)
+				if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(part, cfg.msgSize, perfcommon.PhaseActive, now); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
+					stats.AddLatencyNs(latencyNs)
 				}
 			}
 			_ = received.Close()
@@ -123,8 +123,8 @@ func drainMultiDealerDealerServerRecvPart(
 			return true
 		}
 		now := time.Now()
-		if sentAt, ok := perfcommon.SentAtFromMessage(message, cfg.msgSize); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
-			stats.Add(sentAt)
+		if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(message, cfg.msgSize, perfcommon.PhaseActive, now); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
+			stats.AddLatencyNs(latencyNs)
 		}
 	}
 }
@@ -179,14 +179,25 @@ func drainMultiDealerDealerActiveTail(
 
 func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 	clients := make([]dealerDealerClient, 0, cfg.clients)
-	for i := 0; i < cfg.clients; i++ {
-		clientCtx, err := perfcommon.NewMultiClientContext()
+	var sharedCtx *zlink.Context
+	if useMultiDealerDealerSharedClientContext(cfg.transport, cfg.msgSize) {
+		var err error
+		sharedCtx, err = perfcommon.NewMultiClientContext()
 		perfcommon.Must(err)
+		perfcommon.ApplyMultiAutoHWMMsgUnit(sharedCtx, cfg.msgSize)
+	}
+	for i := 0; i < cfg.clients; i++ {
+		clientCtx := sharedCtx
+		if clientCtx == nil {
+			var err error
+			clientCtx, err = perfcommon.NewMultiClientContext()
+			perfcommon.Must(err)
+			perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
+		}
 		client, err := clientCtx.DealerSocket()
 		perfcommon.Must(err)
 		clientMon := perfcommon.OpenMonitor(client)
 		perfcommon.Must(perfcommon.ConfigureTLSClient(client, cfg.transport))
-		perfcommon.ApplyMultiAutoHWMMsgUnit(clientCtx, cfg.msgSize)
 		perfcommon.ApplyMultiHWM(client, cfg.pattern)
 		perfcommon.ApplyMultiBenchmarkSocketOptions(client, cfg.transport)
 		perfcommon.Must(client.Connect(endpoint))
@@ -197,7 +208,12 @@ func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 		for _, client := range clients {
 			_ = client.mon.Close()
 			_ = client.socket.Close()
-			_ = client.ctx.Close()
+			if sharedCtx == nil {
+				_ = client.ctx.Close()
+			}
+		}
+		if sharedCtx != nil {
+			_ = sharedCtx.Close()
 		}
 	}()
 
@@ -211,6 +227,15 @@ func runMultiDealerDealerClient(cfg multiConfig, endpoint string) {
 		sendMultiDealerStopToken(clients[0].socket)
 	}
 	flushControlLine("CLIENT_DONE,%d", cfg.msgSize)
+}
+
+func useMultiDealerDealerSharedClientContext(transport string, msgSize int) bool {
+	switch transport {
+	case "ws", "wss", "tls":
+		return msgSize <= 256
+	default:
+		return false
+	}
 }
 
 func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfig, window perfcommon.BenchmarkWindow) {
@@ -234,7 +259,10 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 			}
 			for time.Now().Before(window.StopAt) {
 				sent, sendErr := perfcommon.SubmitWindowPayload(cfg.msgSize, window.ActiveAt, func(message *zlink.Message) (bool, error) {
-					return client.socket.Send().Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+					if !useMultiDealerDealerMoveMessage(cfg.transport, cfg.msgSize) {
+						return client.socket.Send().Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+					}
+					return client.socket.Send().MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
 				})
 				if sendErr == nil && sent {
 					continue
@@ -271,13 +299,27 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 	}
 }
 
+func useMultiDealerDealerMoveMessage(transport string, msgSize int) bool {
+	if msgSize <= 1024 {
+		return true
+	}
+	switch transport {
+	case "wss":
+		return msgSize == 131072
+	case "tls":
+		return msgSize == 131072
+	default:
+		return false
+	}
+}
+
 // sendMultiDealerStopToken pushes the wire-level stop token through the
 // dealer socket. Bounded attempts through transient backpressure mirror
 // the cpp / java / dotnet implementations.
 func sendMultiDealerStopToken(socket *zlink.DealerSocket) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		sent, err := perfcommon.SubmitPayload(perfcommon.StopToken, func(message *zlink.Message) (bool, error) {
-			return socket.Send().Message(message).Submit(nil)
+			return socket.Send().MoveMessage(message).Submit(nil)
 		})
 		if err == nil && sent {
 			return

@@ -158,6 +158,11 @@ the review ownership map for the aggregate public package.
 - Multipart payload is accumulated by repeated `Message(...)` calls.
   `Messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in the public package category.
+- Send builders also expose `MoveMessage(...)` for hot paths that can transfer
+  ownership at submit time. `Message(...)` keeps the existing contract: the
+  caller's message is preserved on submit failure and consumed on success.
+  `MoveMessage(...)` is explicit opt-in: after `Submit(...)` returns, the caller
+  must not reuse that message even if submit reports an error.
 - Do not add operation-start method families such as `SendNoWait`,
   `PublishWithFlags`, or `RequestAsync`; keep one operation name and let the
   builder absorb the variation. Terminal builder methods may use idiomatic

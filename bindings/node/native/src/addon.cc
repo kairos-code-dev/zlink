@@ -44,8 +44,6 @@ static void define_core_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("socketSendRoutingNoWaitResult", socket_try_send_routing),
         ZLINK_METHOD("socketSendRoutingNoWaitResultParts", socket_try_send_routing_parts),
         ZLINK_METHOD("socketSendRouting", socket_send_routing),
-        ZLINK_METHOD("socketSendBorrowedNoWaitResult", socket_send_borrowed_no_wait_result),
-        ZLINK_METHOD("socketSendRoutingBorrowedNoWaitResult", socket_send_routing_borrowed_no_wait_result),
         ZLINK_METHOD("socketPerfDealerDealerSendLoop", socket_perf_dealer_dealer_send_loop),
         ZLINK_METHOD("socketPerfDealerRouterEchoLoop", socket_perf_dealer_router_echo_loop),
         ZLINK_METHOD("socketSendFrom", socket_send_from),

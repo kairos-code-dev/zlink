@@ -308,13 +308,12 @@ func runMultiSpotRecvWorker(slots []multiSpotClientSlot, workerID, workerCount, 
 					break
 				}
 				now := time.Now()
-				sentAt, valid := perfcommon.SentAtFromBytes(slot.recvPart.Data(), msgSize)
+				latencyNs, valid := perfcommon.LatencyNsFromBytesAt(slot.recvPart.Data(), msgSize, perfcommon.PhaseActive, now)
 				if !valid || !now.Before(stopAt) {
 					continue
 				}
 				result.count++
 				if shouldSampleMultiSpotLatency(result.count, latencyStride) {
-					latencyNs := float64(now.Sub(sentAt).Nanoseconds())
 					result.sumNs += latencyNs
 					result.samples = append(result.samples, latencyNs)
 				}
@@ -463,7 +462,7 @@ func publishSpotControlPayload(spot *zlink.Spot, payload string, timeout time.Du
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		sent, err := perfcommon.SubmitPayload([]byte(payload), func(message *zlink.Message) (bool, error) {
-			return spot.Publish(multiSpotTopic).Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+			return spot.Publish(multiSpotTopic).MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
 		})
 		if err == nil && sent {
 			return true

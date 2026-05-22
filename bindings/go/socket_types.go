@@ -625,6 +625,117 @@ func submitSinglePartFromCopy(part *Message, submit multipartSubmitFunc) error {
 	return nil
 }
 
+func submitSinglePartMoved(part *Message, submit multipartSubmitFunc) error {
+	if part == nil {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	if part.closed {
+		return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	var native C.zlink_msg_t
+	if err := configErrorFromResult(C.zlink_msg_init(&native)); err != nil {
+		return err
+	}
+	if err := configErrorFromResult(C.zlink_msg_move(&native, &part.msg)); err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(&native))
+		return err
+	}
+	err := submit(&native, C.zlink_part_flag_t(C.ZLINK_PART_FINAL))
+	if err != nil {
+		_ = configErrorFromResult(C.zlink_msg_close(&native))
+	}
+	part.moved()
+	return err
+}
+
+func builderMessages(parts []sendBuilderPart) []*Message {
+	messages := make([]*Message, len(parts))
+	for i, part := range parts {
+		messages[i] = part.message
+	}
+	return messages
+}
+
+func closeMovedSendBuilderParts(parts []sendBuilderPart) {
+	for _, part := range parts {
+		if part.move && part.message != nil {
+			_ = part.message.Close()
+		}
+	}
+}
+
+func sendBuilderPartsContainMove(parts []sendBuilderPart) bool {
+	for _, part := range parts {
+		if part.move {
+			return true
+		}
+	}
+	return false
+}
+
+func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSubmitFunc) error {
+	if len(parts) == 0 {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	if len(parts) == 1 {
+		if parts[0].move {
+			return submitSinglePartMoved(parts[0].message, submit)
+		}
+		return submitSinglePartFromCopy(parts[0].message, submit)
+	}
+	allRetained := true
+	for _, part := range parts {
+		if part.move {
+			allRetained = false
+			break
+		}
+	}
+	if allRetained {
+		return submitMultipartFromClones(builderMessages(parts), true, submit)
+	}
+
+	native := make([]C.zlink_msg_t, len(parts))
+	for i, part := range parts {
+		if part.message == nil {
+			closeNativeMultipart(native, i)
+			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		if part.message.closed {
+			closeNativeMultipart(native, i)
+			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		}
+		if err := configErrorFromResult(C.zlink_msg_init(&native[i])); err != nil {
+			closeNativeMultipart(native, i)
+			return err
+		}
+		if part.move {
+			if err := configErrorFromResult(C.zlink_msg_move(&native[i], &part.message.msg)); err != nil {
+				closeNativeMultipart(native, i+1)
+				return err
+			}
+		} else {
+			if err := configErrorFromResult(C.zlink_msg_copy(&native[i], &part.message.msg)); err != nil {
+				closeNativeMultipart(native, i+1)
+				return err
+			}
+		}
+	}
+
+	prepared := &preparedMultipart{native: native, parts: builderMessages(parts)}
+	err := submitPreparedMultipart(prepared, submit)
+	for _, part := range parts {
+		if part.move {
+			part.message.moved()
+			continue
+		}
+		if err == nil {
+			_ = configErrorFromResult(C.zlink_msg_close(&part.message.msg))
+			part.message.moved()
+		}
+	}
+	return err
+}
+
 func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) {
 	parts := make([]*Message, 0, 1)
 	recvFlags := C.zlink_recv_flags_t(flags)
@@ -1152,6 +1263,13 @@ func (s *directSocket) submit(flags SendFlags, parts ...*Message) (bool, error) 
 	return submitBackpressureResult(err)
 }
 
+func (s *directSocket) submitBuilder(flags SendFlags, parts []sendBuilderPart) (bool, error) {
+	err := submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
+	})
+	return submitBackpressureResult(err)
+}
+
 // Recv is the canonical caller-provided storage recv. Pass a long-lived
 // *Received and the binding refills its internal state in place each
 // successful call.
@@ -1175,7 +1293,7 @@ func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 		}
 		return false, err
 	}
-	out.replace(routingIDFromCPtr(sourceRID), RoutingID{}, clonedParts, 0, false, nil, nil)
+	out.replace(routingIDFromCPtr(sourceRID), RoutingID{}, clonedParts, 0, false, nil, nil, nil)
 	return true, nil
 }
 
@@ -1317,10 +1435,27 @@ func (s *routedSocket) submitTo(target RoutingID, flags SendFlags, parts ...*Mes
 	return submitBackpressureResult(err)
 }
 
+func (s *routedSocket) submitToBuilder(target RoutingID, flags SendFlags, parts []sendBuilderPart) (bool, error) {
+	rid := target.toC()
+	err := submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_send_part_rid(s.raw(), &rid, part, C.zlink_send_flags_t(flags), partFlag))
+	})
+	return submitBackpressureResult(err)
+}
+
 func (s *routedSocket) submitToSpot(destNodeRid, destSpotRid RoutingID, flags SendFlags, parts ...*Message) (bool, error) {
 	node := destNodeRid.toC()
 	spot := destSpotRid.toC()
 	err := submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitErrorFromResult(C.zlink_router_send_spot_part_go_local(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
+	})
+	return submitBackpressureResult(err)
+}
+
+func (s *routedSocket) submitToSpotBuilder(destNodeRid, destSpotRid RoutingID, flags SendFlags, parts []sendBuilderPart) (bool, error) {
+	node := destNodeRid.toC()
+	spot := destSpotRid.toC()
+	err := submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_router_send_spot_part_go_local(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
 	})
 	return submitBackpressureResult(err)
@@ -1417,6 +1552,7 @@ func (s *routedSocket) recvInto(out *Received, flags RecvFlags) error {
 	hasSeq := requestSeq != 0
 	var reply func(SendFlags, []*Message) error
 	var send func(SendFlags, []*Message) (bool, error)
+	var sendBuilder func(SendFlags, []sendBuilderPart) (bool, error)
 	if hasSeq {
 		if spotRoutingID.Size() == 0 {
 			reply = receivedReplyToRouter(s.reply, routingID, seq)
@@ -1430,13 +1566,19 @@ func (s *routedSocket) recvInto(out *Received, flags RecvFlags) error {
 	if routingID.Size() > 0 {
 		if spotRoutingID.Size() == 0 {
 			send = receivedSendToRouter(s.submitTo, routingID)
+			sendBuilder = func(flags SendFlags, parts []sendBuilderPart) (bool, error) {
+				return s.submitToBuilder(routingID, flags, parts)
+			}
 		} else {
 			send = func(flags SendFlags, parts []*Message) (bool, error) {
 				return s.submitToSpot(routingID, spotRoutingID, flags, parts...)
 			}
+			sendBuilder = func(flags SendFlags, parts []sendBuilderPart) (bool, error) {
+				return s.submitToSpotBuilder(routingID, spotRoutingID, flags, parts)
+			}
 		}
 	}
-	out.replace(routingID, spotRoutingID, parts, seq, hasSeq, reply, send)
+	out.replace(routingID, spotRoutingID, parts, seq, hasSeq, reply, send, sendBuilder)
 	return nil
 }
 
@@ -1624,8 +1766,8 @@ func newPairSocket(ctx *Context) (*PairSocket, error) {
 }
 
 func (s *PairSocket) Send() SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
+		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
 		})
 	})
@@ -1653,9 +1795,9 @@ func (s *PubSocket) AttachDiscovery(discovery *Discovery) error {
 }
 
 func (s *PubSocket) Publish(topic string) SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		return s.withCString(topic, func(cstr *C.char) error {
-			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 				return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
 			})
 		})
@@ -1761,8 +1903,8 @@ func (s *DealerSocket) AttachDiscovery(discovery *Discovery) error {
 }
 
 func (s *DealerSocket) Send() SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
+		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_send_part(s.raw(), part, C.zlink_send_flags_t(flags), partFlag))
 		})
 	})
@@ -1874,9 +2016,9 @@ func (s *RouterSocket) AttachDiscovery(discovery *Discovery) error {
 }
 
 func (s *RouterSocket) SendTo(target RoutingID) SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		rid := target.toC()
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_send_part_rid(s.raw(), &rid, part, C.zlink_send_flags_t(flags), partFlag))
 		})
 	})
@@ -1904,10 +2046,10 @@ func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64) ReplyOp {
 }
 
 func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		node := destNodeRid.toC()
 		spot := destSpotRid.toC()
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_router_send_spot_part_go_local(s.raw(), &node, &spot, part, C.zlink_send_flags_t(flags), partFlag))
 		})
 	})
@@ -1947,9 +2089,9 @@ func newXPubSocket(ctx *Context) (*XPubSocket, error) {
 }
 
 func (s *XPubSocket) Publish(topic string) SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		return s.withCString(topic, func(cstr *C.char) error {
-			return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+			return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 				return submitErrorFromResult(C.zlink_publish_part(s.raw(), cstr, part, C.zlink_send_flags_t(flags), partFlag))
 			})
 		})
@@ -2077,9 +2219,9 @@ func (s *StreamSocket) RoutingID() (RoutingID, error) {
 }
 
 func (s *StreamSocket) SendTo(target RoutingID) SendOp {
-	return newSendBuilder(nil, func(parts []*Message, flags SendFlags) error {
+	return newSendBuilder(nil, func(parts []sendBuilderPart, flags SendFlags) error {
 		rid := target.toC()
-		return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_send_part_rid(s.raw(), &rid, part, C.zlink_send_flags_t(flags), partFlag))
 		})
 	})

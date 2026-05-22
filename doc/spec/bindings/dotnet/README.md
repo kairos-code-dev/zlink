@@ -42,9 +42,11 @@ Use these paths consistently when changing the .NET binding.
 
 `Contracts/` public signatures must stay free of P/Invoke declarations,
 `SafeHandle` details, native struct mirrors used only for marshalling, and
-request pump types. Concrete value types may use internal native-backed storage
-when that is required for ownership or zero-copy behavior, but native bridge
-declarations and marshalling-only mirrors still belong in `Runtime/Native/`.
+request pump types. Concrete value types may use internal native-backed
+storage when that is required for ownership, but .NET must not expose or use
+VM-managed buffer borrowed/zero-copy send paths as public or default behavior.
+Native bridge declarations and marshalling-only mirrors still belong in
+`Runtime/Native/`.
 `Contracts/` and `Runtime/` are fixed repository folders. The
 `Systems.Zlink` namespace and NuGet package surface are the .NET projection of
 that contract.

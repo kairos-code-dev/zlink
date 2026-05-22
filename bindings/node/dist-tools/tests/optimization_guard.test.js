@@ -128,6 +128,18 @@ test('node multi router-router client uses public routed send path', () => {
     assert.doesNotMatch(body, /requireNative\(\)/);
     assert.doesNotMatch(body, /socketSendRoutingBorrowedNoWaitResult/);
 });
+test('node binding does not expose borrowed buffer send helpers', () => {
+    const files = [
+        path.join(ROOT, 'src', 'zlink', 'runtime', 'core', 'canonical.ts'),
+        path.join(ROOT, 'native', 'src', 'addon.cc'),
+        path.join(ROOT, 'native', 'src', 'addon_core.cc'),
+        path.join(ROOT, 'native', 'src', 'addon_core_api.h')
+    ];
+    const body = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+    assert.doesNotMatch(body, /socketSendBorrowedNoWaitResult/);
+    assert.doesNotMatch(body, /socketSendRoutingBorrowedNoWaitResult/);
+    assert.doesNotMatch(body, /init_msg_borrowed_from_bytes/);
+});
 test('router payload recv maps nonblocking no-data without exceptions', () => {
     const file = path.join(ROOT, 'native', 'src', 'addon_core.cc');
     const body = fs.readFileSync(file, 'utf8');

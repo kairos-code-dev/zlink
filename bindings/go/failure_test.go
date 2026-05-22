@@ -138,6 +138,33 @@ func TestBlockingSendFailurePreservesMessagePayload(t *testing.T) {
 	}
 }
 
+func TestMoveMessageFailureConsumesMessagePayload(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	router, _ := ctx.RouterSocket()
+	defer router.Close()
+
+	if err := router.SetMandatory(true); err != nil {
+		t.Fatalf("SetMandatory() error = %v", err)
+	}
+	if err := router.Bind(inprocEndpoint("router-move-send-consumes")); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+
+	rid := zlink.NewRoutingID([]byte("missing-peer"))
+
+	msg := newMessage(t, "consume-me")
+	defer msg.Close()
+
+	if _, err := router.SendTo(rid).MoveMessage(msg).Submit(nil); err == nil {
+		t.Fatalf("MoveMessage SendTo() should surface an error when no peer exists")
+	}
+	if got := msg.Data(); got != nil {
+		t.Fatalf("message payload after MoveMessage failure = %q, want nil", string(got))
+	}
+}
+
 func TestSendDoesNotSwallowClosedSocketErrors(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

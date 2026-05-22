@@ -1070,13 +1070,11 @@ static int submit_perf_sendsend_slot(spot_perf_sendsend_slot_t *slot,
                       msg_size,
                       slot->seq);
     zlink_msg_t part;
-    if (zlink_msg_init_data(&part,
-                            slot->payload,
-                            slot->payload_len,
-                            NULL,
-                            NULL)
-        != 0) {
+    if (zlink_msg_init_size(&part, slot->payload_len) != 0) {
         return ZLINK_SUBMIT_INTERNAL_ERROR;
+    }
+    if (slot->payload_len > 0) {
+        memcpy(zlink_msg_data(&part), slot->payload, slot->payload_len);
     }
     const int rc = zlink_spot_send_spot_part(
       slot->spot,

@@ -442,29 +442,7 @@ public abstract class Socket implements AutoCloseable {
 
     private int sendDirectSegment(int rid, MemorySegment payload, int length,
                                   SendFlag flag) {
-        ensureBlockingSendAllowed(flag);
-        SendScratch scratch = sendScratch.get();
-        MemorySegment nativeMsg = scratch.nativeMsg;
-        int rc = NativeMsg.msgInitData(nativeMsg, payload, length,
-            MemorySegment.NULL, MemorySegment.NULL);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_msg_init_data");
-        boolean success = false;
-        try {
-            rc = Native.sendMultipartU32(handle, rid, nativeMsg, 1,
-                flag.getValue());
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_java_send_u32");
-            success = true;
-        } finally {
-            if (!success) {
-                try {
-                    NativeMsg.msgClose(nativeMsg);
-                } catch (RuntimeException ignored) {
-                }
-            }
-        }
-        return length;
+        return sendCopied(rid, payload, length, flag.getValue());
     }
 
     boolean send(RoutingId rid, List<Message> parts) {
@@ -1069,9 +1047,7 @@ public abstract class Socket implements AutoCloseable {
              int sendFlags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
-        try (Message msg = segment.isNative()
-            ? Message.wrapNative(segment, offset, length)
-            : Message.copyOf(segment, offset, length)) {
+        try (Message msg = Message.copyOf(segment, offset, length)) {
             sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
             return (int) length;
         }
@@ -1081,9 +1057,7 @@ public abstract class Socket implements AutoCloseable {
                     int sendFlags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
-        try (Message msg = segment.isNative()
-            ? Message.wrapNative(segment, offset, length)
-            : Message.copyOf(segment, offset, length)) {
+        try (Message msg = Message.copyOf(segment, offset, length)) {
             return sendMessageFrameNoWaitResult(msg, SendFlag.fromValue(sendFlags));
         }
     }

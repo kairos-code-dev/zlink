@@ -2,22 +2,10 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, HEADER_SIZE, currentEpochNs, metricLines, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, sendStopTokenOnce, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
-function tryBorrowedSend(socket, payload, length) {
-    const result = requireNative().socketSendBorrowedNoWaitResult(socket.nativeHandle(), payload, length | 0);
-    if (result === zlink.SubmitResult.Ok) {
-        return true;
-    }
-    if (result === zlink.SubmitResult.Backpressured ||
-        result === zlink.SubmitResult.NotConnected) {
-        return false;
-    }
-    throw new zlink.SubmitError(result, 0, 'borrowed send failed');
-}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -102,9 +90,7 @@ async function main() {
                     continue;
                 }
                 stampPayload(payloads[i], { phase: 1, runId, msgSize: options.msgSize, seq });
-                const sent = options.transport === 'tcp'
-                    ? tryBorrowedSend(dealers[i], payloads[i], options.msgSize)
-                    : trySocketSend(dealers[i], payloads[i]);
+                const sent = trySocketSend(dealers[i], payloads[i]);
                 if (!sent) {
                     sendPending[i] = true;
                     continue;

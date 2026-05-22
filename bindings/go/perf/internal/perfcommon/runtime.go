@@ -37,29 +37,29 @@ func StampWindowPayload(payload []byte, activeAt time.Time) {
 
 func RecordMessageLatency(stats *Stats, activeAt time.Time, stopAt time.Time, msgSize int, part *zlink.Message) {
 	now := time.Now()
-	if sentAt, ok := SentAtFromMessage(part, msgSize); ok && !now.Before(activeAt) && now.Before(stopAt) {
-		stats.Add(sentAt)
+	if latencyNs, ok := LatencyNsFromMessageAt(part, msgSize, PhaseActive, now); ok && !now.Before(activeAt) && now.Before(stopAt) {
+		stats.AddLatencyNs(latencyNs)
 	}
 }
 
 func RecordMessageRTTLatency(stats *Stats, activeAt time.Time, stopAt time.Time, msgSize int, part *zlink.Message) {
 	now := time.Now()
-	if sentAt, ok := SentAtFromMessage(part, msgSize); ok && !now.Before(activeAt) && now.Before(stopAt) {
-		stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()) / 2.0)
+	if latencyNs, ok := LatencyNsFromMessageAt(part, msgSize, PhaseActive, now); ok && !now.Before(activeAt) && now.Before(stopAt) {
+		stats.AddLatencyNs(latencyNs / 2.0)
 	}
 }
 
 func RecordBytesLatency(stats *Stats, activeAt time.Time, stopAt time.Time, msgSize int, payload []byte) {
 	now := time.Now()
-	if sentAt, ok := SentAtFromBytes(payload, msgSize); ok && !now.Before(activeAt) && now.Before(stopAt) {
-		stats.Add(sentAt)
+	if latencyNs, ok := LatencyNsFromBytesAt(payload, msgSize, PhaseActive, now); ok && !now.Before(activeAt) && now.Before(stopAt) {
+		stats.AddLatencyNs(latencyNs)
 	}
 }
 
 func RecordBytesRTTLatency(stats *Stats, activeAt time.Time, stopAt time.Time, msgSize int, payload []byte) {
 	now := time.Now()
-	if sentAt, ok := SentAtFromBytes(payload, msgSize); ok && !now.Before(activeAt) && now.Before(stopAt) {
-		stats.AddLatencyNs(float64(time.Since(sentAt).Nanoseconds()) / 2.0)
+	if latencyNs, ok := LatencyNsFromBytesAt(payload, msgSize, PhaseActive, now); ok && !now.Before(activeAt) && now.Before(stopAt) {
+		stats.AddLatencyNs(latencyNs / 2.0)
 	}
 }
 

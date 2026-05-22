@@ -153,7 +153,7 @@ func sendMultiDealerRouterRequest(
 ) bool {
 	perfcommon.StampWindowPayload(payload, window.ActiveAt)
 	sent, err := perfcommon.SubmitPayload(payload, func(message *zlink.Message) (bool, error) {
-		return socket.Send().Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		return socket.Send().MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
 	})
 	if err != nil {
 		if perfcommon.IsTransient(err) {

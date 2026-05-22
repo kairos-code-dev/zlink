@@ -234,12 +234,22 @@ def main(argv=None):
                             waiting[slot_index] = False
 
                 submitted = (
-                    spot.request_to_spot(SERVER_NODE_RID, SERVER_SPOT_RID)
-                    .message(bytes(payload))
-                    .timeout(0.2)
-                    .flags(zlink.SendFlags.DONT_WAIT)
-                    .submit(on_reply)
+                    False
                 )
+                try:
+                    submitted = (
+                        spot.request_to_spot(SERVER_NODE_RID, SERVER_SPOT_RID)
+                        .message(bytes(payload))
+                        .timeout(0.2)
+                        .flags(zlink.SendFlags.DONT_WAIT)
+                        .submit(on_reply)
+                    )
+                except zlink.SubmitError as exc:
+                    if exc.result not in (
+                        zlink.SubmitResult.BACKPRESSURED,
+                        zlink.SubmitResult.NOT_CONNECTED,
+                    ):
+                        raise
                 if submitted:
                     submitted_any = True
                 else:
@@ -253,6 +263,12 @@ def main(argv=None):
             if remaining_ms <= 0:
                 break
             poller.wait(poll_events, min(50, remaining_ms))
+
+        drain_deadline = time.perf_counter() + 1.0
+        while any(waiting[:active_slots]) and time.perf_counter() < drain_deadline:
+            poller.wait(poll_events, 20)
+            while not latency_queue.empty():
+                latencies.append(latency_queue.get())
 
         while not latency_queue.empty():
             latencies.append(latency_queue.get())

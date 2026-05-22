@@ -1081,6 +1081,10 @@ zlink_recv_result_t zlink_spot_node_actor_recv_part(
 ### STREAM session 연결
 
 ```c
+zlink_config_result_t zlink_stream_attach_actor_gateway(
+  void *stream,
+  void *node);
+
 zlink_submit_result_t zlink_stream_bind_actor(
   void *stream,
   const zlink_routing_id_t *session_rid,
@@ -1123,6 +1127,11 @@ zlink_request_result_t zlink_spot_node_actor_close_bound_session(
   uint32_t timeout_ms);
 ```
 
+`zlink_stream_attach_actor_gateway()`는 STREAM Actor relay에 사용할 session owner
+`SpotNode`를 정한다. `node`는 routed-capable `SpotNode`여야 한다. 같은 stream을 같은
+node에 다시 attach하면 성공한다. 같은 stream을 다른 node에 attach하면 invalid-state 계열
+config 실패다.
+
 session attach는 Actor 위치와 독립이다. session attach 성공/실패는 Actor의 current
 Spot을 바꾸지 않고, Actor 위치 이동(join/leave)은 session mapping을 바꾸지 않는다.
 
@@ -1150,8 +1159,13 @@ session owner node와 Actor owner node는 같을 수도 다를 수도 있다.
 - `timeout_ms > 0`이면 submit 뒤 completion까지의 operation timeout이고, `timeout_ms == 0`
   이면 timeout을 설치하지 않는다.
 - `stream`은 STREAM session Actor mapping을 소유한다. `stream`은 session owner
-  `SpotNode`와 연결되어 있어야 하며, remote Actor owner와의 control path와 relay는 이
-  owner `SpotNode`가 수행한다.
+  `SpotNode`와 연결되어 있어야 한다. raw 또는 connector STREAM은
+  `zlink_stream_attach_actor_gateway()`로 연결하고, SpotNode가 내부에서 소유한 stream만
+  구조적으로 owner를 알 수 있다. remote Actor owner와의 control path와 relay는 이 owner
+  `SpotNode`가 수행한다.
+- ActorGateway에 attach되지 않은 raw 또는 connector STREAM에서 bind를 호출하면
+  invalid-state 계열 completion으로 실패한다. bind 대상 Actor의 `node_rid`를 session
+  owner fallback으로 사용하지 않는다.
 - bind 대상 Actor의 owner node는 `actor->node_rid`로 찾는다. Actor가 remote node에
   있으면 stream owner `SpotNode`가 `actor->node_rid`의 `SpotNode`로 bind 정보를
   전달한다.
@@ -1193,11 +1207,10 @@ session owner node와 Actor owner node는 같을 수도 다를 수도 있다.
 - submit 성공 시 `message` 소유권은 라이브러리로 이전된다. submit 실패면 소유권은
   caller에게 남는다.
 
-remote join 뒤 application이 reattach하기 전까지 기존 session mapping은 자동으로
-target Actor를 가리키지 않는다. remote join 뒤 기존 session mapping이 retired source
-Actor ref를 가리키는 상태에서 session-bound send를 수행하면 target Actor로 우회하지
-않고 stale 또는 not-found 계열 실패로 끝난다. application은 join completion의 최종
-Actor ref를 사용해 필요한 reattach를 수행한다.
+remote join이 성공하면 기존 session mapping은 같은 Actor id/generation 조건 아래에서 target
+Actor 위치로 갱신된다. session relay를 유지하려고 application이 join completion의 최종
+Actor ref로 다시 attach할 필요는 없다. reject와 timeout은 기존 session mapping을 바꾸지
+않는다.
 
 `zlink_stream_bound_actors()` 계약:
 

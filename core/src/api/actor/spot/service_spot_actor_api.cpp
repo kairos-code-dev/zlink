@@ -261,6 +261,7 @@ struct actor_session_state_t
 
     binding_map_t bindings;
     std::map<void *, zlink::spot_node_t *> stream_owners;
+    std::set<void *> explicit_stream_owners;
 };
 
 struct actor_route_state_t
@@ -1063,7 +1064,6 @@ void erase_session_bindings_for_stream_locked (void *stream_)
             actor_handle_t *actor = actor_it->second.actor;
             if (actor && actor->bound_stream == stream_) {
                 clear_actor_bound_session_locked (actor, true);
-                clear_actor_joined_spot_locked (actor);
             }
         }
         it = actor_runtime().sessions.bindings.erase (it);
@@ -1093,6 +1093,8 @@ zlink::spot_node_t *stream_owner_locked (void *stream_)
 void erase_stream_owner_if_unused_locked (void *stream_)
 {
     if (!stream_)
+        return;
+    if (actor_runtime().sessions.explicit_stream_owners.count (stream_) != 0)
         return;
     if (stream_has_session_binding_locked (stream_))
         return;
@@ -1723,12 +1725,6 @@ zlink_request_result_t run_bind_operation_locked (
         return ZLINK_REQUEST_INVALID_STATE;
     zlink::spot_node_t *stream_owner = stream_owner_locked (arg_->stream);
     if (!stream_owner) {
-        stream_owner = resolve_node_by_rid_locked (arg_->actor.node_rid);
-        if (stream_owner)
-            actor_runtime().sessions.stream_owners[arg_->stream] =
-              stream_owner;
-    }
-    if (!stream_owner) {
         errno = EFSM;
         return ZLINK_REQUEST_INVALID_STATE;
     }
@@ -2178,6 +2174,16 @@ void erase_actor_spot_node (zlink::spot_node_t *node_)
             actor_handle_t *actor = actors_by_id_locked (node_).begin ()->second;
             actors_to_delete.push_back (remove_actor_locked (actor, false));
         }
+        for (std::map<void *, zlink::spot_node_t *>::iterator it =
+               actor_runtime().sessions.stream_owners.begin ();
+             it != actor_runtime().sessions.stream_owners.end ();) {
+            if (it->second == node_) {
+                actor_runtime().sessions.explicit_stream_owners.erase (it->first);
+                it = actor_runtime().sessions.stream_owners.erase (it);
+            } else {
+                ++it;
+            }
+        }
         actor_runtime().nodes.known_nodes.erase (node_);
     }
 }
@@ -2322,11 +2328,11 @@ void erase_actor_stream_bindings (void *stream_)
             queued_join_request_t *request = *it;
             remove_pending_join_request_locked (request);
             clear_actor_bound_session_locked (request->actor, true);
-            clear_actor_joined_spot_locked (request->actor);
             retire_join_request_locked (request);
             aborted_joins.push_back (request);
         }
         erase_session_bindings_for_stream_locked (stream_);
+        actor_runtime().sessions.explicit_stream_owners.erase (stream_);
         actor_runtime().sessions.stream_owners.erase (stream_);
     }
     for (std::deque<queued_join_request_t *>::iterator it =
@@ -2974,12 +2980,40 @@ int set_stream_owner (void *stream_, void *node_)
         errno = EINVAL;
         return -1;
     }
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->routed_enabled ()) {
+        errno = ENOTSUP;
+        return -1;
+    }
     std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
-    actor_runtime().sessions.stream_owners[stream_] =
-      static_cast<zlink::spot_node_t *> (node_);
+    std::map<void *, zlink::spot_node_t *>::const_iterator previous =
+      actor_runtime().sessions.stream_owners.find (stream_);
+    if (previous != actor_runtime().sessions.stream_owners.end ()
+        && previous->second != node) {
+        errno = EBUSY;
+        return -1;
+    }
+    actor_runtime().sessions.stream_owners[stream_] = node;
+    actor_runtime().sessions.explicit_stream_owners.insert (stream_);
     return 0;
 }
 }
+}
+
+extern "C" zlink_config_result_t zlink_stream_attach_actor_gateway (
+  void *stream_, void *node_)
+{
+    if (!stream_ || !node_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    if (!is_stream_socket (stream_) || !is_registered_spot_node_handle (node_)) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    if (zlink::spot_actor_internal::set_stream_owner (stream_, node_) != 0)
+        return zlink::config_result_internal::from_errno (errno);
+    return ZLINK_CONFIG_OK;
 }
 
 extern "C" zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg (
@@ -3156,7 +3190,6 @@ extern "C" zlink_request_result_t zlink_spot_node_actor_close_bound_session (
                 erase_session_binding_locked (binding_it);
         }
         clear_actor_bound_session_locked (actor, true);
-        clear_actor_joined_spot_locked (actor);
         if (!actor->queue.empty ())
             readable_actor = actor;
     }

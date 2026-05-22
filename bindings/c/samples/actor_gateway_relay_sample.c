@@ -32,6 +32,8 @@ int main (void)
     zlink_routing_id_t play_node_rid;
     assert (zlink_get_routing_id (play_node, &play_node_rid)
             == ZLINK_CONFIG_OK);
+    assert (zlink_stream_attach_actor_gateway (stream, gateway_node)
+            == ZLINK_CONFIG_OK);
     assert (zlink_stream_bind_actor (stream, &session_rid, &actor,
                                      actor_sample_reply, &capture, 1000)
             == ZLINK_SUBMIT_OK);

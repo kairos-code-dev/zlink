@@ -174,22 +174,27 @@ session은 여러 Actor를 bind할 수 있고, 한 Actor는 동시에 하나의 
 bind될 수 있다.
 
 ```c
-zlink_request_result_t zlink_stream_bind_actor(
-  void *node,
+zlink_config_result_t zlink_stream_attach_actor_gateway(
+  void *stream,
+  void *node);
+
+zlink_submit_result_t zlink_stream_bind_actor(
   void *stream,
   const zlink_routing_id_t *session_rid,
   const zlink_actor_ref_t *actor,
+  zlink_reply_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 
-zlink_request_result_t zlink_stream_unbind_actor(
-  void *node,
+zlink_submit_result_t zlink_stream_unbind_actor(
   void *stream,
   const zlink_routing_id_t *session_rid,
   const char *actor_id,
+  zlink_reply_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 
 zlink_submit_result_t zlink_stream_send_bound_actor_part(
-  void *node,
   void *stream,
   const zlink_routing_id_t *session_rid,
   const char *actor_id,
@@ -198,9 +203,12 @@ zlink_submit_result_t zlink_stream_send_bound_actor_part(
   zlink_part_flag_t part_flag);
 ```
 
-- `node`는 STREAM session owner `SpotNode`다. session owner node 없이 bind, unbind,
-  relay는 수행하지 않는다.
 - `stream`은 session routing id가 속한 raw STREAM socket이다.
+- `zlink_stream_attach_actor_gateway()`는 `stream`을 ActorGateway relay에 사용할
+  routed-capable session owner `SpotNode`에 연결한다. 같은 stream/node 조합으로 다시
+  호출하면 성공하고, 다른 node로 바꾸려 하면 실패한다.
+- raw 또는 connector STREAM handle은 Actor bind 전에 attach되어야 한다. SpotNode가 내부에서
+  소유한 stream만 구조적으로 owner를 알 수 있다.
 - `session_rid`는 STREAM client session routing id다.
 - 같은 session에 서로 다른 Actor id를 여러 개 bind할 수 있다.
 - 같은 session의 같은 Actor id를 다시 바인딩하면 그 Actor id 항목만 새 Actor ref로
@@ -212,11 +220,8 @@ zlink_submit_result_t zlink_stream_send_bound_actor_part(
   ref가 저장된다.
 - checked ref의 generation이 target Actor와 다르면 conflict 또는 invalid-state 계열
   실패다.
-- 바인딩 성공 시 Actor owner node에서 actor route sync가 켜져 있으면 active route가
-  publish된다. Actor 생성만으로는 active route가 publish되지 않는다.
-- framework adapter 는 session attach 성공 시 concrete Actor ref의 node rid와
-  generation을 session 쪽 route snapshot 으로 저장해야 한다. 이후 session relay 는
-  actor id route 조회가 아니라 이 snapshot 을 사용한다.
+- bind는 logical Actor binding을 저장한다. session owner를 Actor ref의 `node_rid`에서
+  고르지 않고, caller에게 route mesh channel이나 remote address snapshot을 요구하지 않는다.
 - 바인딩 해제는 없는 Actor id에 대해서도 성공으로 끝나는 idempotent 작업이다.
 - 여러 Actor가 바인딩된 session에서 한 Actor id의 바인딩을 해제해도 다른 Actor 항목은
   유지된다.

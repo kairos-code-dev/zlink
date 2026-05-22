@@ -1250,6 +1250,10 @@ zlink_recv_result_t zlink_spot_node_actor_recv_part(
 ### STREAM session binding
 
 ```c
+zlink_config_result_t zlink_stream_attach_actor_gateway(
+  void *stream,
+  void *node);
+
 zlink_submit_result_t zlink_stream_bind_actor(
   void *stream,
   const zlink_routing_id_t *session_rid,
@@ -1292,6 +1296,11 @@ zlink_request_result_t zlink_spot_node_actor_close_bound_session(
   uint32_t timeout_ms);
 ```
 
+`zlink_stream_attach_actor_gateway()` chooses the session owner `SpotNode` for
+STREAM Actor relay. `node` must be a routed-capable `SpotNode`. Reattaching the
+same stream to the same node succeeds. Attaching the same stream to a different
+node fails with an invalid-state-class config result.
+
 Session attach is independent of Actor location. A session attach or detach
 does not change the Actor's current Spot, and an Actor location move
 (join/leave) does not change the session mapping.
@@ -1323,8 +1332,13 @@ in the [Discovery active route](#discovery-active-route) section.
 - `timeout_ms > 0` is the operation timeout from submit to completion;
   `timeout_ms == 0` installs no timeout.
 - `stream` owns the STREAM session Actor mapping. `stream` must be associated
-  with a session owner `SpotNode`; the control path and relay to a remote
-  Actor owner are performed by that owner `SpotNode`.
+  with a session owner `SpotNode` through
+  `zlink_stream_attach_actor_gateway()` or by being an internal stream owned by
+  a SpotNode. The control path and relay to a remote Actor owner are performed
+  by that owner `SpotNode`.
+- Calling bind on a raw or connector STREAM that has no attached ActorGateway
+  fails with an invalid-state-class completion. The bind target Actor's
+  `node_rid` is not used as a fallback session owner.
 - The bind target Actor's owner node is identified by `actor->node_rid`. When
   the Actor is on a remote node, the stream owner `SpotNode` forwards the bind
   information to the `SpotNode` named by `actor->node_rid`.
@@ -1371,12 +1385,10 @@ in the [Discovery active route](#discovery-active-route) section.
 - On successful submit, `message` ownership transfers to the library. On
   submit failure ownership stays with the caller.
 
-After a remote join, the existing session mapping is not automatically
-redirected to the target Actor before the application reattaches. A
-session-bound send that fires against a stale (retired) source Actor ref does
-not get routed to the target Actor; it fails as stale- or not-found-class.
-The application uses the final Actor ref from the join completion to perform
-any needed reattach.
+After a successful remote join, the existing session mapping is updated to the
+target Actor location under the same Actor id/generation. The application does
+not reattach the session with the final Actor ref just to keep session relay
+working. Rejects and timeouts leave the previous session mapping unchanged.
 
 `zlink_stream_bound_actors()` contracts:
 

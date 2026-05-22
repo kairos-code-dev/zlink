@@ -178,22 +178,27 @@ on the STREAM socket. One session may be bound to multiple Actors; one Actor
 may be bound to at most one STREAM session at a time.
 
 ```c
-zlink_request_result_t zlink_stream_bind_actor(
-  void *node,
+zlink_config_result_t zlink_stream_attach_actor_gateway(
+  void *stream,
+  void *node);
+
+zlink_submit_result_t zlink_stream_bind_actor(
   void *stream,
   const zlink_routing_id_t *session_rid,
   const zlink_actor_ref_t *actor,
+  zlink_reply_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 
-zlink_request_result_t zlink_stream_unbind_actor(
-  void *node,
+zlink_submit_result_t zlink_stream_unbind_actor(
   void *stream,
   const zlink_routing_id_t *session_rid,
   const char *actor_id,
+  zlink_reply_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 
 zlink_submit_result_t zlink_stream_send_bound_actor_part(
-  void *node,
   void *stream,
   const zlink_routing_id_t *session_rid,
   const char *actor_id,
@@ -202,9 +207,12 @@ zlink_submit_result_t zlink_stream_send_bound_actor_part(
   zlink_part_flag_t part_flag);
 ```
 
-- `node` is the STREAM session owner `SpotNode`. Bind, unbind, and relay
-  require a session owner node.
 - `stream` is the raw STREAM socket that owns the session routing id.
+- `zlink_stream_attach_actor_gateway()` attaches `stream` to the routed-capable
+  session owner `SpotNode` used for ActorGateway relay. Calling it again with
+  the same stream/node pair succeeds; calling it with a different node fails.
+- Raw and connector STREAM handles must be attached before Actor bind. A
+  SpotNode-owned internal stream may infer the owner structurally.
 - `session_rid` is the STREAM client session routing id.
 - Multiple distinct actor ids may be bound to the same session.
 - Binding the same actor id again on the same session replaces only that actor
@@ -218,9 +226,9 @@ zlink_submit_result_t zlink_stream_send_bound_actor_part(
   concrete generation ref.
 - A checked ref whose generation differs from the target Actor fails with a
   conflict or invalid-state result.
-- On a successful bind, when actor route sync is enabled on the Actor owner
-  node, the active route is published. Creating an Actor alone does not
-  publish an active route.
+- Bind stores a logical Actor binding. It does not choose the session owner from
+  the Actor ref's `node_rid`, and it does not require the caller to pass a route
+  mesh channel or remote address snapshot.
 - Unbind is idempotent: it succeeds even when the actor id is not in the list.
 - Unbinding one actor id from a session that has multiple bound Actors leaves
   the other entries intact.

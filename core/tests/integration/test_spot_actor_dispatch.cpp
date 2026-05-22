@@ -117,7 +117,8 @@ zlink_request_result_t wait_stream_bind_actor (
   const zlink_actor_ref_t *actor_,
   uint32_t timeout_ms_)
 {
-    (void) zlink::actor_stream_owner_set_for_testing (stream_, node_);
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_stream_attach_actor_gateway (stream_, node_));
     request_wait_t wait;
     const zlink_submit_result_t submit = ::zlink_stream_bind_actor (
       stream_, session_rid_, actor_, request_wait_handler, &wait, timeout_ms_);
@@ -2126,6 +2127,83 @@ void test_actor_route_move_joined_publish_and_provider_cleanup ()
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+void test_stream_attach_actor_gateway_contract ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_spot_node_options_t routed_options;
+    routed_options.mode = ZLINK_SPOT_NODE_MODE_ROUTED;
+    void *node_a = zlink_spot_node_new (ctx, &routed_options);
+    void *node_b = zlink_spot_node_new (ctx, &routed_options);
+    TEST_ASSERT_NOT_NULL (node_a);
+    TEST_ASSERT_NOT_NULL (node_b);
+
+    zlink_spot_node_options_t pubsub_options;
+    pubsub_options.mode = ZLINK_SPOT_NODE_MODE_PUBSUB;
+    void *pubsub_node = zlink_spot_node_new (ctx, &pubsub_options);
+    TEST_ASSERT_NOT_NULL (pubsub_node);
+
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_NOT_SUPPORTED,
+                       zlink_stream_attach_actor_gateway (stream, pubsub_node));
+    TEST_ASSERT_EQUAL (ENOTSUP, zlink_errno ());
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_stream_attach_actor_gateway (stream, node_a));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_stream_attach_actor_gateway (stream, node_a));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_STATE,
+                       zlink_stream_attach_actor_gateway (stream, node_b));
+    TEST_ASSERT_EQUAL (EBUSY, zlink_errno ());
+
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&pubsub_node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node_b));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node_a));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_stream_bind_actor_requires_attached_gateway ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    zlink_spot_node_options_t options;
+    options.mode = ZLINK_SPOT_NODE_MODE_ROUTED;
+    void *node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+    void *actor = zlink_spot_node_actor_new (node, "attach-required");
+    TEST_ASSERT_NOT_NULL (actor);
+
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "missing-attach");
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+
+    request_wait_t wait;
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_stream_bind_actor (stream, &session_rid, &ref,
+                                                request_wait_handler, &wait,
+                                                1000));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_INVALID_STATE,
+                       wait_request_result (&wait, 1000));
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_stream_attach_actor_gateway (stream, node));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       wait_stream_bind_actor (node, stream, &session_rid, &ref,
+                                                1000));
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 
 int main ()
 {
@@ -2136,6 +2214,8 @@ int main ()
     RUN_TEST (test_spot_get_or_new_creates_and_reuses_logical_spot);
     RUN_TEST (test_spot_get_or_new_rejects_invalid_args_and_clears_outputs);
     RUN_TEST (test_spot_get_or_new_concurrent_callers_create_once);
+    RUN_TEST (test_stream_attach_actor_gateway_contract);
+    RUN_TEST (test_stream_bind_actor_requires_attached_gateway);
     RUN_TEST (test_entry_spot_dispatch_receives_bound_actor_message);
     RUN_TEST (test_actor_join_bind_relay_and_dispatch_recv);
     RUN_TEST (test_actor_join_timeout_without_dispatch_handler);

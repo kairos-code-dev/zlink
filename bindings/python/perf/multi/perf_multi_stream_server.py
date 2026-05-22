@@ -8,6 +8,7 @@ from perf_multi_common import (
     apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_endpoint,
+    configure_multi_tls_server,
     parse_server_args,
     perf_server_context,
     safe_poll,
@@ -33,6 +34,7 @@ def main(argv=None):
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         with zlink.StreamSocket(ctx) as server:
+            configure_multi_tls_server(server, args.transport)
             apply_multi_socket_options(server)
             server.options.tcp_no_delay = True
             server.bind(endpoint)

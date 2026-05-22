@@ -12,6 +12,7 @@ from perf_multi_common import (
     apply_multi_socket_options,
     benchmark_endpoint,
     benchmark_run_id,
+    configure_multi_tls_server,
     new_payload,
     parse_server_args,
     perf_server_context,
@@ -47,6 +48,7 @@ def main(argv=None):
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         with zlink.PubSocket(ctx) as publisher:
+            configure_multi_tls_server(publisher, args.transport)
             apply_multi_socket_options(publisher)
             publisher.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)

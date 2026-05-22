@@ -353,12 +353,12 @@ public API 추가 대상으로 분리한다.
 | 3 | Java | `bindings/java/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 재측정 완료, full-run partial 행은 제한 재측정으로 보강` | 2026-05-21 `ROUTER_ROUTER` stop token 처리와 poll mask 수정 뒤 결과를 6.4.2 대표 표에 반영 |
 | 4 | Node | `bindings/node/perf` | `tcp/ws single routed large 보류, wss PAIR 64B 보류, tls PAIR 64B 및 DEALER_DEALER 64B 보류 외 통과` | `tcp/ws/wss/tls 재측정 완료, tcp full-run partial 행은 제한 재측정으로 보강` | 2026-05-21 tcp 재측정 결과를 6.5.2 대표 표에 반영 |
 | 5 | Go | `bindings/go/perf` | `tcp/tls single 통과, ws/wss single latency 보류, wss SPOT 262144B 통과, SPOT_SENDSEND consume-forward 부분 적용` | `tcp/ws/wss/tls 측정 완료, public 계약 보존상 보류 항목 남음` | Go 완료 아님. `ForwardRouted`는 wss 65536B/262144B와 tls large 유효 수치를 확보했지만 small/131072B 보류가 남음 |
-| 6 | Rust | `bindings/rust/perf` | `미측정` | `미측정` | Go 보류 항목 처리 전에는 착수하지 않음 |
-| 7 | Python | `bindings/python/perf` | `미측정` | `미측정` | 새 측정 라운드에서 `tcp`부터 transport 우선으로 측정 |
+| 6 | Rust | `bindings/rust/perf` | `tcp/ws/wss/tls 측정 완료, routed large와 SPOT/outlier 보류 남음` | `tcp/ws/wss/tls 측정 완료, SPOT/send-send/일부 PUBSUB 보류 남음` | Rust 완료 아님. single outlier와 multi SPOT/send-send hot path를 후속 재검토 |
+| 7 | Python | `bindings/python/perf` | `tcp/ws/wss/tls 측정 완료, large single outlier 재검토 필요` | `tcp/ws/wss/tls 측정 완료, TLS 설정 누락과 종료 대기 보강 뒤 결과 반영` | Python 완료 아님. multi SPOT/send-send/stream small 보류와 single small/outlier 항목 후속 개선 필요 |
 
 #### 6.1.1 언어별 평균 성능
 
-아래 지표는 현재 측정값이 있는 C++, .NET, Java, Node, Go를 계산한다. 각 언어의
+아래 지표는 현재 측정값이 있는 C++, .NET, Java, Node, Go, Python을 계산한다. 각 언어의
 Single/Multi 상태표에서 `통과(비율%)`, `미달(비율%)`, `보류(비율%)` 형식의 측정 셀을
 모두 모아 C 대비 throughput 비율을 계산한다. `해당 없음`과 `미측정`은 제외한다.
 
@@ -373,6 +373,7 @@ p10은 하위 10% 경계값이고, 최저 10% 평균은 가장 느린 구간의 
 | Java | 328 | 101.4% | 95.5% | 67.2% | 60.6% | 119.2% | 87.5% |
 | Node | 328 | 76.1% | 71.5% | 37.5% | 29.3% | 78.7% | 74.1% |
 | Go | 332 | 69.3% | 62.5% | 31.6% | 16.8% | 90.8% | 52.9% |
+| Python | 336 | 32.5% | 13.8% | 2.0% | 1.3% | 39.7% | 27.2% |
 
 #### 6.1.2 C 대비 고성능 outlier 재검토
 
@@ -394,6 +395,7 @@ C 대비 성능이 크게 높은 항목은 그대로 좋은 결과로 확정하�
 | Java | Single routed/spot 계열, Multi `MULTI_SPOT` | 재측정 후 113.1% (`wss MULTI_SPOT 256B`) | 기존 390.2%는 C 기준 파일 시점 차이가 컸다. 같은 조건 제한 재측정에서 C가 5424.3 Kmsg/s, Java가 6134.2 Kmsg/s였다. | 남은 120% 이상 single routed/spot outlier는 같은 조건 C 재측정 뒤 JIT/fast path 영향만 분리한다. |
 | Node | Single `SPOT`, Multi `MULTI_SPOT_SENDSEND` | 재측정 후 296.4% (`wss SPOT 1024B`) | C 기준을 갱신해도 Node single SPOT은 높게 남았다. 현재 Node single SPOT은 한 이벤트 루프에서 publish 후 inline drain을 수행하므로 C의 별도 publisher/receiver thread 의미와 다를 수 있다. | 이 셀은 통과로 확정하지 않고 보류한다. Node single SPOT은 C와 같은 의미의 송신/수신 분리 구조를 설계한 뒤 다시 측정한다. |
 | Go | Single large one-way, Single `SPOT`, Multi `MULTI_STREAM`/`MULTI_SPOT` | 현재 281.4% (`tcp PAIR 262144B`), multi에서는 160.8% (`tls MULTI_SPOT 65536B`) | Go `tcp` large outlier는 2026-05-21 C 기준 파일을 사용한 값이라 같은 조건 C 제한 재측정으로 먼저 확인해야 한다. `wss SPOT 64B`는 2026-05-22 같은 조건 C/Go 재측정에서도 186.5%로 높게 남았다. `tls SPOT 64B/256B`도 같은 조건 C/Go 재측정에서 156.8%, 125.6%로 C보다 높게 나왔다. `ws MULTI_STREAM 262144B`는 같은 조건 C 제한 재측정 `perf_c_multi_linux_20260522_062037_codex_c_ws_multi_stream_large_for_go_20260522.txt` 대비 Go `perf_go_multi_linux_20260522_060003_codex_go_ws_multi_current_20260522.txt`에서 149.3%다. `tls MULTI_SPOT 65536B/131072B`는 같은 조건 C `perf_c_multi_linux_20260522_071155_codex_c_tls_multi_for_go_20260522.txt` 대비 Go `perf_go_multi_linux_20260522_072100_codex_go_tls_multi_current_20260522.txt`에서 160.8%, 139.8%다. | `wss/tls SPOT`은 C와 같은 sender/receiver 분리, `DONTWAIT` publish, `SubscribePart` 수신 의미를 유지한다. `MULTI_STREAM`은 shared C reference client를 쓰므로 측정 surface가 Go STREAM server라는 점을 반영해 server hot path 차이를 먼저 본다. `tls MULTI_SPOT`은 Go worker drain이 C보다 backlog를 더 공격적으로 소화하는지 확인하고, 적용 가능한 최적화가 있으면 C/perf와 다른 바인딩으로 역반영 가능한지 검토한다. tcp large outlier는 C 기준을 갱신한 뒤 public API 내부 최적화인지 다시 본다. |
+| Python | Single `PAIR` large, Multi `MULTI_STREAM` large | 재측정 후 43.1% (`tcp SPOT 131072B`), multi에서는 422.3% (`ws MULTI_STREAM 262144B`) | 기존 `tcp SPOT 131072B` 271880.0%는 C 기준 throughput이 5 msg/s로 낮게 나온 outlier였다. 같은 조건 제한 재측정에서 C가 33.7 Kmsg/s, Python이 14.6 Kmsg/s로 보류권에 내려왔다. `ws MULTI_STREAM 262144B`는 C 기준을 보강한 뒤에도 Python shared stream server 수치가 높지만, shared C stream client를 쓰므로 서버 hot path 차이와 C 기준 변동을 분리해야 한다. | `PAIR` large와 `MULTI_STREAM` large outlier는 public API 의미가 같은지 확인한 뒤, C 기준 재측정 또는 Python server hot path 차이를 별도로 기록한다. |
 
 2026-05-21 outlier 적용 결과:
 
@@ -973,7 +975,7 @@ multi suite는 아직 신규 측정이 필요하다.
 | `tcp` | `DEALER_DEALER` | `보류(3.6%)` | `보류(3.3%)` | `보류(5.1%)` | `통과(78.4%)` | `통과(86.7%)` | `통과(91.1%)` | C/Python 파일은 위 PAIR 행과 같다. small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `tcp` | `DEALER_ROUTER` | `보류(2.5%)` | `보류(2.6%)` | `보류(2.7%)` | `보류(15.1%)` | `보류(18.4%)` | `보류(15.1%)` | C/Python 파일은 위 PAIR 행과 같다. routed one-way 전 size가 Node/Python 최소 기준보다 낮아 보류한다. |
 | `tcp` | `ROUTER_ROUTER` | `보류(2.3%)` | `보류(3.0%)` | `보류(2.6%)` | `보류(14.6%)` | `보류(14.7%)` | `보류(16.1%)` | C/Python 파일은 위 PAIR 행과 같다. 최초 실행은 65536B에서 stop token 유실 후 native blocking recv에 남아 timeout됐다. Python single receiver를 bounded DONTWAIT drain으로 바꾸고 nonblocking routed send의 `NOT_CONNECTED`를 transient 실패로 처리해 complete를 확보했다. 전 size는 기준보다 낮아 보류한다. |
-| `tcp` | `SPOT` | `보류(11.8%)` | `보류(9.2%)` | `보류(9.4%)` | `통과(39.2%)` | `보류(271880.0%)` | `통과(36.7%)` | C/Python 파일은 위 PAIR 행과 같다. 65536B/262144B는 최소 기준을 넘었지만 131072B는 C 기준 throughput이 5 msg/s로 낮게 나온 outlier라 보류하고 C/Python 제한 재측정 대상으로 남긴다. small size는 기준보다 낮다. |
+| `tcp` | `SPOT` | `보류(11.8%)` | `보류(9.2%)` | `보류(9.4%)` | `통과(39.2%)` | `통과(43.1%)` | `통과(36.7%)` | C/Python 파일은 위 PAIR 행과 같고, 131072B는 C `perf_c_single_linux_20260522_201611_codex_c_single_tcp_spot131072_python_outlier_recheck_20260522.txt`, Python `perf_python_single_linux_20260522_201626_codex_python_single_tcp_spot131072_outlier_recheck_20260522.txt` 기준으로 갱신했다. 기존 131072B의 271880.0%는 C 기준 throughput이 5 msg/s로 낮게 나온 outlier였다. small size는 기준보다 낮다. |
 | `ws` | `PAIR` | `보류(3.7%)` | `보류(3.4%)` | `보류(7.1%)` | `통과(82.7%)` | `통과(84.9%)` | `통과(88.5%)` | C `perf_c_single_linux_20260522_160738_codex_c_single_ws_for_python_20260522.txt`, Python `perf_python_single_linux_20260522_160928_codex_python_single_ws_20260522.txt` 기준이다. 실행 중 Python case 프로세스는 `nlwp=5` 수준으로 thread 폭증은 아니었다. small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `ws` | `PUBSUB` | `보류(3.3%)` | `보류(4.5%)` | `보류(5.8%)` | `통과(70.0%)` | `통과(73.2%)` | `통과(80.5%)` | C/Python 파일은 위 PAIR 행과 같다. small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `ws` | `DEALER_DEALER` | `보류(3.7%)` | `보류(2.9%)` | `보류(7.6%)` | `통과(81.2%)` | `통과(85.8%)` | `통과(91.3%)` | C/Python 파일은 위 PAIR 행과 같다. small size는 기준보다 낮고, large size는 기준선을 넘었다. |
@@ -1002,33 +1004,33 @@ multi suite는 아직 신규 측정이 필요하다.
 | `tcp` | `MULTI_ROUTER_ROUTER` | `보류(9.9%)` | `보류(9.5%)` | `보류(10.2%)` | `보류(29.6%)` | `통과(34.2%)` | `통과(35.0%)` | C/Python 파일은 위 행과 같고, 1024B는 제한 재측정 `perf_python_multi_linux_20260522_164914_codex_python_multi_tcp_router_router1024_recheck_20260522.txt` 기준이다. full run의 1024B server READY 누락은 재측정에서 재현되지 않았다. 131072B/262144B만 기준선을 넘었다. |
 | `tcp` | `MULTI_PUBSUB` | `보류(6.5%)` | `보류(7.6%)` | `보류(13.8%)` | `통과(40.7%)` | `통과(54.8%)` | `통과(67.1%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. small size는 기준보다 낮고 large size는 기준선을 넘었다. |
 | `tcp` | `MULTI_SPOT` | `보류(1.9%)` | `보류(1.9%)` | `보류(1.9%)` | `보류(4.3%)` | `보류(4.7%)` | `보류(6.1%)` | C `perf_c_multi_linux_20260522_162958_codex_c_multi_tcp_for_python_duration1_20260522.txt`, Python `perf_python_multi_linux_20260522_170033_codex_python_multi_tcp_spot_duration1_sampling_20260522.txt` 기준이다. 실행 중 SPOT server/client는 각 `nlwp=12` 수준으로 thread 폭증은 아니며, context IO thread와 `spot-dispatch` worker가 붙는 고정 구조다. Python client drain에 active deadline과 latency stride sampling을 적용해 complete는 확보했지만, 전 size가 기준보다 낮고 latency가 수백 ms 이상으로 높아 보류한다. |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
+| `tcp` | `MULTI_SPOT_REQREP` | `보류(15.2%)` | `보류(14.5%)` | `보류(16.1%)` | `보류(31.0%)` | `통과(40.8%)` | `보류(39.9%)` | C `perf_c_multi_linux_20260522_162958_codex_c_multi_tcp_for_python_duration1_20260522.txt`, Python `perf_python_multi_linux_20260522_171058_codex_python_multi_tcp_spot_reqrep_duration1_20260522.txt` 기준이고, 65536B/262144B는 pending reply drain 추가 뒤 제한 재측정 `perf_python_multi_linux_20260522_171623_codex_python_multi_tcp_spot_reqrep65536_drain_recheck_20260522.txt`, `perf_python_multi_linux_20260522_171807_codex_python_multi_tcp_spot_reqrep262144_drain_recheck_20260522.txt`로 보강했다. 실행 중 server `nlwp=12`, client `nlwp=13` 수준으로 thread 폭증은 아니었다. large timeout은 active window 뒤 pending reply drain 누락 때문이었고, drain 보강 뒤 complete를 확보했다. 131072B만 기준선을 넘고 나머지는 낮다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `보류(6.9%)` | `보류(0.2%)` | `통과(46.0%)` | `보류(1.5%)` | `보류(19.6%)` | `통과(41.5%)` | C `perf_c_multi_linux_20260522_162958_codex_c_multi_tcp_for_python_duration1_20260522.txt`, Python `perf_python_multi_linux_20260522_173637_codex_python_multi_tcp_spot_sendsend_duration1_20260522.txt` 기준이고, 256B/131072B/262144B는 active slot 제한과 pending reply drain 추가 뒤 제한 재측정 `perf_python_multi_linux_20260522_174409_codex_python_multi_tcp_spot_sendsend_recheck_20260522.txt`로 보강했다. 실행 중 server/client는 각 `nlwp=12` 수준으로 thread 폭증은 아니었다. 131072B/262144B timeout은 큰 payload에서 100개 spot을 모두 active로 밀어 넣으며 pending reply drain 없이 종료하던 차이였고, 보강 뒤 complete를 확보했다. 1024B/262144B만 기준선을 넘고 나머지는 낮다. |
 | `tcp` | `MULTI_STREAM` | `보류(1.3%)` | `보류(1.3%)` | `보류(1.3%)` | `보류(4.0%)` | `보류(8.2%)` | `보류(16.0%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. Python STREAM server와 shared C stream client 조합 기준이며 전 size가 기준보다 낮다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 신규 측정 대기 |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `미측정` | `해당 없음` | `해당 없음` | 신규 측정 대기 |
+| `ws` | `MULTI_DEALER_DEALER` | `보류(5.7%)` | `보류(9.6%)` | `보류(11.7%)` | `통과(59.6%)` | `통과(53.9%)` | `통과(71.2%)` | C `perf_c_multi_linux_20260522_150505_codex_c_multi_ws_no_stream_for_rust_20260522.txt`, Python `perf_python_multi_linux_20260522_182833_codex_python_multi_ws_duration1_20260522.txt` 기준이다. large size는 기준선을 넘고 small size는 낮다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `보류(12.7%)` | `보류(13.2%)` | `보류(13.0%)` | `보류(32.6%)` | `통과(42.0%)` | `통과(46.2%)` | C/Python 파일은 위 행과 같다. 131072B/262144B만 routed multi 기준선을 넘었다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `보류(9.5%)` | `보류(9.6%)` | `보류(9.6%)` | `보류(20.0%)` | `통과(34.8%)` | `통과(51.7%)` | C/Python 파일은 위 행과 같다. 131072B/262144B만 기준선을 넘었다. |
+| `ws` | `MULTI_PUBSUB` | `보류(5.9%)` | `보류(7.4%)` | `보류(8.5%)` | `통과(67.4%)` | `통과(77.0%)` | `통과(116.1%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같고, 1024B는 stop token 유실 시 bounded stop wait를 적용한 제한 재측정 `perf_python_multi_linux_20260522_183149_codex_python_multi_ws_pubsub1024_stop_wait_recheck_20260522.txt` 기준이다. 1024B client timeout은 active 수집 실패가 아니라 일부 subscriber가 wire-level stop token을 놓치며 무한 대기하던 종료 조건 문제였다. |
+| `ws` | `MULTI_SPOT` | `보류(1.7%)` | `보류(1.9%)` | `보류(1.8%)` | `보류(4.2%)` | `보류(4.7%)` | `보류(4.0%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. 실행 중 server/client는 각 `nlwp=12` 수준으로 thread 폭증은 아니었다. 전 size가 기준보다 낮고 latency backlog가 크게 쌓인다. |
+| `ws` | `MULTI_SPOT_REQREP` | `보류(15.7%)` | `보류(16.2%)` | `보류(18.6%)` | `통과(42.7%)` | `보류(37.5%)` | `통과(50.3%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. pending reply drain 보강 경로로 전 size complete를 확보했다. 65536B/262144B만 기준선을 넘었다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `보류(0.2%)` | `보류(9.9%)` | `보류(9.7%)` | `보류(1.6%)` | `보류(18.5%)` | `보류(34.3%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. active slot 제한과 pending reply drain 보강 뒤 timeout은 없지만, 전 size가 SPOT 기준보다 낮아 send-send echo hot path 재검토가 필요하다. |
+| `ws` | `MULTI_STREAM` | `보류(1.1%)` | `보류(1.1%)` | `보류(1.1%)` | `보류(9.5%)` | `통과(63.0%)` | `통과(422.3%)` | 64~65536B는 C `perf_c_multi_linux_20260522_152456_codex_c_multi_ws_stream_clients100_for_rust_20260522.txt`, 131072B/262144B는 C `perf_c_multi_linux_20260522_062037_codex_c_ws_multi_stream_large_for_go_20260522.txt`, Python은 `perf_python_multi_linux_20260522_182833_codex_python_multi_ws_duration1_20260522.txt` 기준이다. small size는 매우 낮고 large size만 기준선을 넘었다. |
+| `wss` | `MULTI_DEALER_DEALER` | `보류(5.4%)` | `보류(9.5%)` | `보류(12.3%)` | `통과(102.2%)` | `통과(78.0%)` | `통과(73.2%)` | C `perf_c_multi_linux_20260522_152936_codex_c_multi_wss_no_stream_for_rust_20260522.txt`, Python `perf_python_multi_linux_20260522_191732_codex_python_multi_wss_tls_fix_duration1_20260522.txt` 기준이다. large size는 기준선을 넘고 small size는 낮다. |
+| `wss` | `MULTI_DEALER_ROUTER` | `보류(13.0%)` | `보류(12.7%)` | `보류(13.8%)` | `통과(58.2%)` | `통과(66.3%)` | `통과(68.6%)` | C/Python 파일은 위 행과 같다. raw echo 패턴에 TLS server/client 설정이 누락되어 초기 full run이 실패했으나, `configure_multi_tls_server/client`를 추가한 뒤 complete를 확보했다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `보류(9.8%)` | `보류(8.9%)` | `보류(10.2%)` | `통과(45.5%)` | `통과(54.1%)` | `통과(70.7%)` | C/Python 파일은 위 행과 같다. TLS 설정 누락 보강 뒤 complete를 확보했다. |
+| `wss` | `MULTI_PUBSUB` | `보류(6.1%)` | `보류(6.0%)` | `보류(9.4%)` | `통과(86.7%)` | `통과(81.2%)` | `통과(99.6%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. TLS 설정 누락과 stop token 유실 시 무한 대기하던 종료 조건을 보강했다. small size는 낮고 large size는 기준선을 넘었다. |
+| `wss` | `MULTI_SPOT` | `보류(2.0%)` | `보류(1.9%)` | `보류(1.8%)` | `보류(6.9%)` | `보류(8.1%)` | `보류(9.6%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. 실행 중 server/client는 각 `nlwp=12` 수준으로 thread 폭증은 아니었다. 전 size가 기준보다 낮고 latency backlog가 크다. |
+| `wss` | `MULTI_SPOT_REQREP` | `보류(14.8%)` | `보류(15.8%)` | `보류(19.1%)` | `통과(67.1%)` | `통과(65.0%)` | `통과(56.5%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같고, 1024B/65536B는 제한 재측정 `perf_python_multi_linux_20260522_192225_codex_python_multi_wss_spot_reqrep_failed_recheck_20260522.txt` 기준이다. full run의 일부 READY 누락은 단독 재측정에서 재현되지 않았다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `보류(0.1%)` | `보류(0.2%)` | `보류(3.3%)` | `보류(0.7%)` | `보류(38.2%)` | `통과(40.7%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같고, 65536B/262144B는 제한 재측정 `perf_python_multi_linux_20260522_192645_codex_python_multi_wss_spot_sendsend_failed_recheck_20260522.txt` 기준이다. active slot 제한과 pending reply drain 보강 뒤 timeout은 없어졌지만 대부분 기준보다 낮다. |
+| `wss` | `MULTI_STREAM` | `보류(1.2%)` | `보류(1.2%)` | `보류(1.2%)` | `보류(14.2%)` | `보류(16.5%)` | `보류(33.6%)` | 64~65536B는 C `perf_c_multi_linux_20260522_154643_codex_c_multi_wss_stream_clients100_for_rust_20260522.txt`, 131072B/262144B는 C `perf_c_multi_linux_20260522_201307_codex_c_multi_wss_tls_stream_large_for_python_20260522.txt`, Python은 `perf_python_multi_linux_20260522_192658_codex_python_multi_wss_stream_tls_fix_20260522.txt` 기준이다. Python stream server에 TLS server 설정이 누락되어 초기 full run이 실패했고, 보강 뒤 전 size complete를 확보했다. |
+| `tls` | `MULTI_DEALER_DEALER` | `보류(5.6%)` | `보류(10.3%)` | `보류(11.8%)` | `통과(67.7%)` | `통과(82.4%)` | `통과(65.9%)` | C `perf_c_multi_linux_20260522_154822_codex_c_multi_tls_no_stream_for_rust_20260522.txt`, Python `perf_python_multi_linux_20260522_200655_codex_python_multi_tls_duration1_20260522.txt` 기준이다. large size는 기준선을 넘고 small size는 낮다. |
+| `tls` | `MULTI_DEALER_ROUTER` | `보류(13.4%)` | `보류(13.8%)` | `보류(13.9%)` | `통과(48.3%)` | `통과(56.1%)` | `통과(69.7%)` | C/Python 파일은 위 행과 같다. raw echo 패턴에 TLS server/client 설정을 추가한 상태에서 complete를 확보했다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `보류(9.5%)` | `보류(10.4%)` | `보류(10.2%)` | `보류(28.8%)` | `통과(43.1%)` | `통과(58.7%)` | C/Python 파일은 위 행과 같다. 131072B/262144B만 기준선을 넘었다. |
+| `tls` | `MULTI_PUBSUB` | `보류(6.2%)` | `보류(5.6%)` | `보류(9.5%)` | `통과(85.1%)` | `통과(99.7%)` | `통과(88.9%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. TLS 설정 누락과 stop token 유실 시 무한 대기하던 종료 조건을 보강한 상태에서 complete를 확보했다. |
+| `tls` | `MULTI_SPOT` | `보류(1.9%)` | `보류(2.0%)` | `보류(2.3%)` | `보류(5.3%)` | `보류(7.2%)` | `보류(8.4%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같고, 262144B는 제한 재측정 `perf_python_multi_linux_20260522_200916_codex_python_multi_tls_spot262144_recheck_20260522.txt` 기준이다. 실행 중 server/client는 각 `nlwp=12` 수준으로 thread 폭증은 아니었다. |
+| `tls` | `MULTI_SPOT_REQREP` | `보류(14.1%)` | `보류(13.8%)` | `보류(17.0%)` | `통과(56.2%)` | `통과(54.2%)` | `통과(56.4%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. pending reply drain 보강 경로로 전 size complete를 확보했다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `보류(5.6%)` | `보류(7.8%)` | `보류(0.2%)` | `보류(5.2%)` | `보류(33.2%)` | `통과(41.6%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같고, 1024B는 제한 재측정 `perf_python_multi_linux_20260522_201131_codex_python_multi_tls_spot_sendsend1024_recheck_20260522.txt` 기준이다. active slot 제한과 pending reply drain 보강 뒤 timeout은 없어졌지만 대부분 기준보다 낮다. |
+| `tls` | `MULTI_STREAM` | `보류(1.2%)` | `보류(1.3%)` | `보류(1.2%)` | `보류(8.9%)` | `보류(15.1%)` | `보류(25.7%)` | 64~65536B는 C `perf_c_multi_linux_20260522_155155_codex_c_multi_tls_stream_clients100_for_rust_20260522.txt`, 131072B/262144B는 C `perf_c_multi_linux_20260522_201307_codex_c_multi_wss_tls_stream_large_for_python_20260522.txt`, Python은 `perf_python_multi_linux_20260522_200655_codex_python_multi_tls_duration1_20260522.txt` 기준이다. Python stream server에 TLS server 설정을 추가한 상태에서 전 size complete를 확보했다. |
 
 ## 7. 완료 기준
 

@@ -9,6 +9,7 @@ from perf_multi_common import (
     apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_run_id,
+    configure_multi_tls_client,
     is_stop_token_in_parts,
     latency_ns_from_message,
     is_active_message,
@@ -42,6 +43,7 @@ def main(argv=None):
                     monitor = stack.enter_context(
                         sock.monitor_open(zlink.MonitorEventMask.CONNECTION_READY)
                     )
+                    configure_multi_tls_client(sock, args.transport)
                     sock.set_subscription(TOPIC)
                     sock.connect(args.endpoint)
                     monitors.append(monitor)
@@ -65,10 +67,18 @@ def main(argv=None):
                 poll_events = zlink.PollEvents(max(1, len(sockets)))
                 for index, sock in enumerate(sockets):
                     poller.add_socket(sock, zlink.PollEventFlag.POLLIN, index)
+                stop_wait_deadline = active_deadline + 6.0
                 # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. Each
-                # subscriber exits on the wire-level stop token.
+                # subscriber exits on the wire-level stop token. If PubSub
+                # drops that final token for a subset of subscribers, finish
+                # after the server cooldown window once active traffic was
+                # already observed.
                 while not all(stopped):
-                    ready_count = safe_poll(poller, poll_events, -1)
+                    now = time.perf_counter()
+                    if count > 0 and now >= stop_wait_deadline:
+                        break
+                    remaining_ms = max(1, int((stop_wait_deadline - now) * 1000))
+                    ready_count = safe_poll(poller, poll_events, min(1000, remaining_ms))
                     if not ready_count:
                         continue
                     for offset in range(ready_count):

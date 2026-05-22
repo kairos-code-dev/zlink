@@ -8,6 +8,7 @@ from perf_multi_common import (
     apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_endpoint,
+    configure_multi_tls_server,
     parse_server_args,
     perf_server_context,
     recv_nonblocking,
@@ -35,6 +36,7 @@ def main(argv=None):
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
         with zlink.RouterSocket(ctx) as router:
+            configure_multi_tls_server(router, args.transport)
             apply_multi_socket_options(router)
             router.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)

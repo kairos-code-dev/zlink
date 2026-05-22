@@ -8,6 +8,7 @@ from perf_multi_common import (
     apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
     benchmark_run_id,
+    configure_multi_tls_client,
     extract_metric_payload,
     is_active_message,
     latency_ns_from_message,
@@ -49,6 +50,7 @@ def main(argv=None):
                     monitor = stack.enter_context(
                         sock.monitor_open(zlink.MonitorEventMask.CONNECTION_READY)
                     )
+                    configure_multi_tls_client(sock, args.transport)
                     apply_multi_socket_options(sock)
                     sock.connect(args.endpoint)
                     monitors.append(monitor)

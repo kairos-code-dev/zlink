@@ -32,6 +32,14 @@ SERVER_NODE_RID = b"SPOT-SENDSEND-SERVER-NODE"
 SERVER_SPOT_RID = b"SPOT-SENDSEND-SERVER-SPOT"
 
 
+def _active_slot_limit(total_slots, msg_size):
+    if msg_size >= 131072:
+        return min(total_slots, 8)
+    if msg_size >= 65536:
+        return min(total_slots, 32)
+    return total_slots
+
+
 def _drain_reply(spot, *, expected_msg_size, run_id, active_deadline, latencies, record):
     progressed = False
     received = zlink.Received()
@@ -188,10 +196,12 @@ def main(argv=None):
         if not direct_started:
             raise RuntimeError("spot sendsend direct start handshake timeout")
 
+        active_slots = _active_slot_limit(len(spots), args.msg_size)
         active_deadline = time.perf_counter() + args.duration
         while time.perf_counter() < active_deadline:
             progressed = False
-            for index, spot in enumerate(spots):
+            for index in range(active_slots):
+                spot = spots[index]
                 if waiting[index]:
                     if _drain_reply(
                         spot,
@@ -225,6 +235,25 @@ def main(argv=None):
                         latencies=latencies,
                         record=True,
                     )
+            if not progressed:
+                time.sleep(0.001)
+
+        drain_deadline = time.perf_counter() + 1.0
+        while any(waiting[:active_slots]) and time.perf_counter() < drain_deadline:
+            progressed = False
+            for index in range(active_slots):
+                if not waiting[index]:
+                    continue
+                if _drain_reply(
+                    spots[index],
+                    expected_msg_size=args.msg_size,
+                    run_id=run_id,
+                    active_deadline=active_deadline,
+                    latencies=latencies,
+                    record=True,
+                ):
+                    waiting[index] = False
+                    progressed = True
             if not progressed:
                 time.sleep(0.001)
 

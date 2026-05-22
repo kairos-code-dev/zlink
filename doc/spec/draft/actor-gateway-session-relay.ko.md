@@ -535,6 +535,31 @@ status struct 를 만들면 사용자가 내부 상태를 알아야 하는 기�
 8. route mesh application dispatch 와 internal relay dispatch 를 분리한다.
 9. 기존 snapshot API 로 확인 가능한 진단 범위를 정리하고, ActorGateway 전용 public status
    API 는 1차 구현 범위에서 제외한다.
+10. core 기능 개발과 회귀 테스트가 통과한 뒤 POSD 기반 core 코드 리뷰와 리팩토링을 수행한다.
+    이 단계가 끝나기 전에는 bindings 작업으로 넘어가지 않는다.
+
+### 8.1.1 core POSD 리팩토링 게이트
+
+core 기능 구현이 끝났다고 바로 bindings 로 넘어가지 않는다. 먼저
+`doc/principal/software-design-principles.md` 의 POSD 원칙을 기준으로 core 변경 범위를
+다시 읽고, 아래 절차를 최소 3회 반복한다.
+
+각 반복은 같은 순서로 진행한다.
+
+1. ActorGateway, STREAM attach, session binding, Actor join/leave, actor-to-session relay,
+   internal relay dispatch 코드를 전체 리뷰한다.
+2. 얕은 모듈, 패스스루 메서드, 시간적 분해, 중복된 ownership 지식, route/channel 지식 누출,
+   local/remote 분기 누출, cleanup 책임 분산 같은 리팩토링 후보를 목록으로 만든다.
+3. 리팩토링 후보를 적용한다. 단순 이름 변경보다 ownership 경계, 오류 마스킹, 정보 은닉,
+   public API 단순화에 먼저 집중한다.
+4. core C regression test 와 관련 smoke test 를 다시 실행한다.
+5. 남은 이슈와 적용 결과를 구현 메모 또는 PR 설명에 기록한다.
+
+3회 반복 후에도 의미 있는 리팩토링 후보가 남아 있으면 다음 단계로 넘어가지 않는다.
+추가 반복을 계속해서 route transport 지식, Actor location 갱신 책임, session binding cleanup
+책임이 한 곳에 모이고, 호출자가 local/remote 위치나 router channel 을 알 필요가 없어진 것을
+확인해야 한다. 더 남은 항목이 이름 취향이나 classitis 수준의 과도한 분리뿐이면 그 사유를
+기록하고 core 단계를 종료한다.
 
 ### 8.2 ABI/API 배포 정책
 
@@ -1242,6 +1267,11 @@ framework 수정은 route mesh relay 제거와 ActorGateway attach 적용을 한
 4. bind, relay, join commit, actor-to-session send/close 와 client request reply path 를
    gateway 모델로 바꾼다.
 5. core C regression test 를 먼저 실패 상태로 추가하고 통과시킨다.
+6. core 기능 개발 완료 후 POSD 기반 전체 코드 리뷰와 리팩토링을 최소 3회 반복한다.
+7. 3회 반복 뒤에도 ownership, 정보 은닉, local/remote 분기 누출, route transport 지식 누출
+   이슈가 남아 있으면 모두 수정하고 다시 검증한다.
+8. 더 남은 항목이 과도한 분리나 이름 취향 수준이라는 판단이 설득 가능할 때만 Stage 2 로
+   넘어간다.
 
 ### Stage 2: bindings
 

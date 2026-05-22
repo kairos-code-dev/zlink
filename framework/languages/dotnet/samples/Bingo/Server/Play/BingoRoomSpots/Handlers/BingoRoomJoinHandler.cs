@@ -1,3 +1,4 @@
+using Bingo.Server.Play.Actors;
 using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play.BingoRoomSpots.Handlers;

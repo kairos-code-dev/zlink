@@ -1,14 +1,10 @@
-using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.SessionGateway.Shared.Contracts;
-using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
 
-internal sealed class JoinMatchSessionPacketHandler(
-    SessionActorRouteCache actorRoutes)
-    : ISessionRelayPacketHandler
+internal sealed class JoinMatchSessionPacketHandler : ISessionRelayPacketHandler
 {
     public string PacketName => nameof(JoinMatchReq);
 
@@ -19,9 +15,9 @@ internal sealed class JoinMatchSessionPacketHandler(
         CancellationToken cancellationToken)
     {
         var request = SessionRelayJson.Decode<JoinMatchReq>(payload);
-        var actor = await actorRoutes.EnsureRouteAsync(
+        var actor = await context.State.RequireActorAsync(
                 context.Stream,
-                context.State,
+                "joining a match",
                 cancellationToken)
             .ConfigureAwait(false);
         await context.Stream.RelayToActorAsync(actor, header, payload, cancellationToken)

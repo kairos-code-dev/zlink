@@ -1,16 +1,11 @@
-using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
 
-internal sealed class AuthenticateSessionPacketHandler(
-    SessionActorRouteCache actorRoutes)
-    : ISessionRelayPacketHandler
+internal sealed class AuthenticateSessionPacketHandler : ISessionRelayPacketHandler
 {
     public string PacketName => nameof(AuthenticateReq);
 
@@ -35,7 +30,6 @@ internal sealed class AuthenticateSessionPacketHandler(
                 throw new InvalidOperationException(authenticated.Reason ?? "Actor authentication failed.");
             }
 
-            context.State.ActorId = authenticated.ActorId;
             var ensured = await context.Stream.RequestChannel(
                     SampleNames.PlayChannel,
                     new EnsurePlayerActorReq(authenticated.ActorId))
@@ -43,15 +37,10 @@ internal sealed class AuthenticateSessionPacketHandler(
                 .SubmitAsync<EnsurePlayerActorRes>(cancellationToken)
                 .ConfigureAwait(false);
 
-            var route = new ZLinkActorRoute(
-                ensured.Route.RouterChannelId,
-                RoutingId.FromBytes(ensured.Route.TargetNodeRid),
-                ensured.Route.ActorGeneration);
-            context.State.ActorId = ensured.ActorId;
-            await actorRoutes.EnsureRouteAsync(
+            context.State.AttachAuthenticatedActor(ensured.ActorId, ensured.Route);
+            await context.State.RequireActorAsync(
                     context.Stream,
-                    context.State,
-                    route,
+                    "binding authenticated player actor",
                     cancellationToken)
                 .ConfigureAwait(false);
 

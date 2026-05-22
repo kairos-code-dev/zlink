@@ -1,4 +1,6 @@
+using Bingo.Server.Play.Actors;
 using Bingo.Server.Play.BingoRoomSpots;
+using Bingo.Server.Play.EntrySpot;
 using Bingo.Shared.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

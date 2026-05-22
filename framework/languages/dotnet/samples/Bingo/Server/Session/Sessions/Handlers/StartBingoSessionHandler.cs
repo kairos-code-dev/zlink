@@ -1,21 +1,22 @@
 using Bingo.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
 
-namespace Bingo.Server.Session;
+namespace Bingo.Server.Session.Sessions.Handlers;
 
-internal sealed class StartBingoSessionPacketHandler(SessionActorRouteCache actorRoutes)
-    : ISessionRelayPacketHandler
+internal sealed class StartBingoBingoSessionHandler : IBingoSessionHandler
 {
     public string PacketName => nameof(StartBingoGameReq);
 
     public async ValueTask HandleAsync(
-        SessionRelayPacketContext context,
+        BingoSessionContext context,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken)
     {
-        _ = context.State.RequireActorId("starting bingo");
-        var actor = await actorRoutes.EnsureRouteAsync(context.Stream, context.State, cancellationToken)
+        var actor = await context.State.RequireActorAsync(
+                context.Stream,
+                "starting bingo",
+                cancellationToken)
             .ConfigureAwait(false);
         await context.Stream.RelayToActorAsync(actor, header, payload, cancellationToken)
             .ConfigureAwait(false);

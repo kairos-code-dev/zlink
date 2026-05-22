@@ -1,14 +1,12 @@
-using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework.Contracts.Streams;
 
-namespace Bingo.Server.Session;
+namespace Bingo.Server.Session.Sessions;
 
-internal sealed class SessionRelaySession(
+internal sealed class BingoSession(
     IZLinkSessionContext context,
-    IEnumerable<ISessionRelayPacketHandler> handlers) : IZLinkSession
+    IEnumerable<IBingoSessionHandler> handlers) : IZLinkSession
 {
-    private readonly IReadOnlyDictionary<string, ISessionRelayPacketHandler> _handlers =
+    private readonly IReadOnlyDictionary<string, IBingoSessionHandler> _handlers =
         handlers.ToDictionary(static handler => handler.PacketName, StringComparer.Ordinal);
     private readonly SessionRelayState _state = new();
 
@@ -47,7 +45,7 @@ internal sealed class SessionRelaySession(
         }
 
         await handler.HandleAsync(
-                new SessionRelayPacketContext(Context, _state),
+                new BingoSessionContext(Context, _state),
                 header,
                 payload.Move(),
                 cancellationToken)

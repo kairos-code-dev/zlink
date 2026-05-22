@@ -1,6 +1,6 @@
 using Bingo.Server.Play.EntrySpot.Handlers;
 
-namespace Bingo.Server.Play;
+namespace Bingo.Server.Play.EntrySpot;
 
 internal sealed class BingoEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
 {

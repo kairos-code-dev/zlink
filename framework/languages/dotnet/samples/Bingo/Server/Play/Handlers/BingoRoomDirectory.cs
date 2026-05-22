@@ -1,3 +1,4 @@
+using Bingo.Server.Play.BingoRoomSpots;
 using Bingo.Shared.Configuration;
 
 namespace Bingo.Server.Play;

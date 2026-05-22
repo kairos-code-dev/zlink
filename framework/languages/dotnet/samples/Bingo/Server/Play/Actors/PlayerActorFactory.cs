@@ -1,4 +1,4 @@
-namespace Bingo.Server.Play;
+namespace Bingo.Server.Play.Actors;
 
 internal sealed class PlayerActorFactory : IZLinkActorFactory
 {

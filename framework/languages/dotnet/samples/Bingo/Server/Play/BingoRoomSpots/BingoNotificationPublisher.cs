@@ -1,7 +1,7 @@
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
 
-namespace Bingo.Server.Play;
+namespace Bingo.Server.Play.BingoRoomSpots;
 
 internal sealed class BingoNotificationPublisher
 {

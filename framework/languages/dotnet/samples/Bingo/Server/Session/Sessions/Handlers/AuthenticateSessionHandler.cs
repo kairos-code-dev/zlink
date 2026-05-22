@@ -1,26 +1,21 @@
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
-using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework.Contracts.Actors;
 
-namespace Bingo.Server.Session;
+namespace Bingo.Server.Session.Sessions.Handlers;
 
-internal sealed class AuthenticateSessionPacketHandler(
-    SessionActorRouteCache actorRoutes)
-    : ISessionRelayPacketHandler
+internal sealed class AuthenticateBingoSessionHandler : IBingoSessionHandler
 {
     public string PacketName => nameof(AuthenticateReq);
 
     public async ValueTask HandleAsync(
-        SessionRelayPacketContext context,
+        BingoSessionContext context,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken)
     {
         _ = header;
-        using (payload)
+        await using (payload)
         {
             var request = SessionRelayJson.Decode<AuthenticateReq>(payload);
             var authenticated = await context.Stream.RequestChannel(
@@ -36,7 +31,6 @@ internal sealed class AuthenticateSessionPacketHandler(
                 throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
             }
 
-            context.State.ActorId = authenticated.ActorId;
             var ensured = await context.Stream.RequestChannel(
                     SampleNames.PlayChannel,
                     new EnsurePlayerActorReq(authenticated.ActorId, authenticated.DisplayName))
@@ -44,12 +38,15 @@ internal sealed class AuthenticateSessionPacketHandler(
                 .SubmitAsync<EnsurePlayerActorRes>(cancellationToken)
                 .ConfigureAwait(false);
 
-            var route = new ZLinkActorRoute(
-                ensured.Route.RouterChannelId,
-                RoutingId.FromBytes(ensured.Route.TargetNodeRid),
-                ensured.Route.ActorGeneration);
-            context.State.ActorId = ensured.ActorId;
-            await actorRoutes.EnsureRouteAsync(context.Stream, context.State, route, cancellationToken)
+            context.State.AttachAuthenticatedActor(
+                ensured.ActorId,
+                authenticated.DisplayName,
+                ensured.Route);
+
+            await context.State.RequireActorAsync(
+                    context.Stream,
+                    "binding authenticated player actor",
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             await context.Stream.Reply(new AuthenticateRes(ensured.ActorId, authenticated.DisplayName))

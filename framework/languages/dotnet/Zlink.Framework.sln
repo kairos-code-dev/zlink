@@ -119,6 +119,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.UnitTests",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.E2ETests", "tests\Zlink.Framework.E2ETests\Zlink.Framework.E2ETests.csproj", "{851BDFDB-F231-4A08-A08D-3A5657A4C815}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Framework.ContractTests", "tests\Zlink.Framework.ContractTests\Zlink.Framework.ContractTests.csproj", "{FB7E20EB-B2E3-456E-8535-762BE108680B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -489,6 +491,18 @@ Global
 		{851BDFDB-F231-4A08-A08D-3A5657A4C815}.Release|x64.Build.0 = Release|Any CPU
 		{851BDFDB-F231-4A08-A08D-3A5657A4C815}.Release|x86.ActiveCfg = Release|Any CPU
 		{851BDFDB-F231-4A08-A08D-3A5657A4C815}.Release|x86.Build.0 = Release|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Debug|x64.Build.0 = Debug|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Debug|x86.Build.0 = Debug|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Release|x64.ActiveCfg = Release|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Release|x64.Build.0 = Release|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Release|x86.ActiveCfg = Release|Any CPU
+		{FB7E20EB-B2E3-456E-8535-762BE108680B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -546,5 +560,6 @@ Global
 		{CCF06230-4D15-4312-838D-3D3FEDC5B2DC} = {CFEDE997-D185-819A-8B5A-9B1A33F5218B}
 		{4F6DDD4B-53A2-47AA-9291-EE018F3AD880} = {F3E5F8A1-DEF5-4540-A4B0-73ABB7129801}
 		{851BDFDB-F231-4A08-A08D-3A5657A4C815} = {F3E5F8A1-DEF5-4540-A4B0-73ABB7129801}
+		{FB7E20EB-B2E3-456E-8535-762BE108680B} = {F3E5F8A1-DEF5-4540-A4B0-73ABB7129801}
 	EndGlobalSection
 EndGlobal

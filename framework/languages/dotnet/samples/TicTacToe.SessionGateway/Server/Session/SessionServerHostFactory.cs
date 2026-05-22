@@ -15,7 +15,6 @@ public static class SessionServerHostFactory
         SampleSessionNode sessionNode)
     {
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddSingleton<SessionActorRouteCache>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, AuthenticateSessionPacketHandler>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, CreateMatchSessionPacketHandler>();
         builder.Services.AddScoped<ISessionRelayPacketHandler, JoinMatchSessionPacketHandler>();

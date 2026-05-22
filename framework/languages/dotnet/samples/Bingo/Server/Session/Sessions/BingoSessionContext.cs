@@ -1,20 +1,18 @@
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Streams;
 
-namespace Bingo.Server.Session;
+namespace Bingo.Server.Session.Sessions;
 
-internal interface ISessionRelayPacketHandler
+internal interface IBingoSessionHandler
 {
     string PacketName { get; }
 
     ValueTask HandleAsync(
-        SessionRelayPacketContext context,
+        BingoSessionContext context,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken);
 }
 
-internal readonly record struct SessionRelayPacketContext(
+internal readonly record struct BingoSessionContext(
     IZLinkSessionContext Stream,
     SessionRelayState State);

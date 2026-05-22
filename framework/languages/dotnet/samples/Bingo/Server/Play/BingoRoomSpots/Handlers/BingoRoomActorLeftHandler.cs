@@ -1,3 +1,4 @@
+using Bingo.Server.Play.Actors;
 using Microsoft.Extensions.Logging;
 
 namespace Bingo.Server.Play.BingoRoomSpots.Handlers;

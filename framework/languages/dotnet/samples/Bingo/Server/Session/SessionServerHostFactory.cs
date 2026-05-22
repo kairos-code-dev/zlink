@@ -1,3 +1,5 @@
+using Bingo.Server.Session.Sessions;
+using Bingo.Server.Session.Sessions.Handlers;
 using Bingo.Shared.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -13,11 +15,10 @@ public static class SessionServerHostFactory
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
-        builder.Services.AddSingleton<SessionActorRouteCache>();
-        builder.Services.AddScoped<ISessionRelayPacketHandler, AuthenticateSessionPacketHandler>();
-        builder.Services.AddScoped<ISessionRelayPacketHandler, MatchBingoSessionPacketHandler>();
-        builder.Services.AddScoped<ISessionRelayPacketHandler, StartBingoSessionPacketHandler>();
-        builder.Services.AddScoped<SessionRelaySession>();
+        builder.Services.AddScoped<IBingoSessionHandler, AuthenticateBingoSessionHandler>();
+        builder.Services.AddScoped<IBingoSessionHandler, MatchBingoBingoSessionHandler>();
+        builder.Services.AddScoped<IBingoSessionHandler, StartBingoBingoSessionHandler>();
+        builder.Services.AddScoped<Sessions.BingoSession>();
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
@@ -43,7 +44,7 @@ public static class SessionServerHostFactory
             options.AddStreamNode(SampleNames.StreamNode, stream =>
             {
                 stream.Bind(session.StreamEndpoint);
-                stream.AddHeaderSession<SessionRelaySession>();
+                stream.AddHeaderSession<Sessions.BingoSession>();
             });
         });
 

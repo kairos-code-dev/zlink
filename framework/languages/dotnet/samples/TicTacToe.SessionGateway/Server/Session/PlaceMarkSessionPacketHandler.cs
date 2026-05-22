@@ -1,13 +1,10 @@
-using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink;
+using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.SessionGateway.Shared.Contracts;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionActorDispatch.Session;
 
-internal sealed class PlaceMarkSessionPacketHandler(SessionActorRouteCache actorRoutes)
-    : ISessionRelayPacketHandler
+internal sealed class PlaceMarkSessionPacketHandler : ISessionRelayPacketHandler
 {
     public string PacketName => nameof(PlaceMarkReq);
 
@@ -17,10 +14,9 @@ internal sealed class PlaceMarkSessionPacketHandler(SessionActorRouteCache actor
         Message payload,
         CancellationToken cancellationToken)
     {
-        _ = context.State.RequireActorId("sending game packets");
-        var actor = await actorRoutes.EnsureRouteAsync(
+        var actor = await context.State.RequireActorAsync(
                 context.Stream,
-                context.State,
+                "sending game packets",
                 cancellationToken)
             .ConfigureAwait(false);
         await context.Stream.RelayToActorAsync(actor, header, payload, cancellationToken)

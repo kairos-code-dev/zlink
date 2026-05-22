@@ -1,6 +1,6 @@
 using Bingo.Shared.Contracts;
 
-namespace Bingo.Server.Play;
+namespace Bingo.Server.Play.Handlers;
 
 [ZLinkHandlerGroup("play")]
 internal sealed class AllocateBingoRoomHandler(BingoRoomDirectory rooms)

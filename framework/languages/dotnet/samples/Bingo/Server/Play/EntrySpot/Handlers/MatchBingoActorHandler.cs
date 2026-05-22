@@ -1,3 +1,5 @@
+using Bingo.Server.Play.Actors;
+using Bingo.Server.Play.BingoRoomSpots;
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
 

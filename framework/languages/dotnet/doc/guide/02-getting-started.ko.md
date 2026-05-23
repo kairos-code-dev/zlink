@@ -73,7 +73,6 @@ builder.Services.AddZLinkFramework(options =>
 var app = builder.Build();
 app.Run();
 
-[ZLinkRequest]
 public sealed class GetPriceHandler
     : IZLinkRequestHandler<PriceRequest, PriceReply>
 {

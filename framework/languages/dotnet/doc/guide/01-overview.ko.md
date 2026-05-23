@@ -50,7 +50,6 @@ ZLink Framework 는 이 모든 호출의 단위를 **논리 `channel name` 하�
 
 ```csharp
 // 서버: handler 하나
-[ZLinkRequest]
 public sealed class GetPriceHandler
     : IZLinkRequestHandler<PriceRequest, PriceReply>
 {
@@ -173,6 +172,6 @@ handler registration 이 정한다. 자세한 규칙은
 8. [09-monitoring](./09-monitoring.ko.md) — runtime 이벤트 관찰
 9. [10-feature-map](./10-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
 10. [11-interface-catalog](./11-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-11. [12-migration-from-grpc](./12-migration-from-grpc.ko.md) — gRPC·서버간 웹콜에서 옮겨오기(도입 판단)
+11. [12-grpc-alternative](./12-grpc-alternative.ko.md) — gRPC 대안으로 ZLink 선택하기(새 서비스 도입 판단)
 12. [guide/samples](./samples/channel-messaging-samples.ko.md) — 기능별 실행 예제
 13. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)

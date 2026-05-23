@@ -87,6 +87,11 @@ public sealed class RegressionTests
         "10-feature-map.ko.md",
         "11-interface-catalog.ko.md",
         "12-grpc-alternative.ko.md",
+        "13-case-ecommerce-checkout.ko.md",
+        "14-case-microservice-mesh.ko.md",
+        "15-case-realtime-game.ko.md",
+        "16-case-ride-hailing.ko.md",
+        "17-case-chat-messaging.ko.md",
     ];
 
     [Fact]

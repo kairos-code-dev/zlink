@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: 인터페이스 카탈로그](./11-interface-catalog.ko.md) | [다음: ZLink Framework .NET Interface Catalog (spec)](../spec/handler-interfaces.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: 인터페이스 카탈로그](./11-interface-catalog.ko.md) | [다음: 케이스 — 전자상거래 체크아웃](./13-case-ecommerce-checkout.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # gRPC 대안으로 ZLink 선택하기 — 비슷한 서비스를 새로 만든다면
@@ -11,7 +11,7 @@
 > 맞는지**도 솔직히 본다). 표면 매핑은
 > [04-channel-messaging](./04-channel-messaging.ko.md) §0 와
 > [11-interface-catalog](./11-interface-catalog.ko.md) §1.6 이, 사용법은 04 챕터가
-> 소유한다.
+> 소유한다. 도메인별 상세 사례는 §3 의 개별 케이스 문서(13~17)가 다룬다.
 
 ## 1. gRPC 는 혼자 끝나지 않는다
 
@@ -144,7 +144,7 @@ sequenceDiagram
 | L7 로드밸런싱(Envoy/Istio sidecar) | channel name + `Discovery` 로 framework 가 peer 분배 | sidecar 불필요 |
 | service discovery(Eureka/xDS) | `UseDiscovery(...)` + Registry | [08-registry](./08-registry.ko.md) |
 | interceptor | `IZLinkHandlerFilter` | [04](./04-channel-messaging.ko.md) §5 |
-| 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 경계는 §5 참고 |
+| 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 경계는 §4 참고 |
 | 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [09-monitoring](./09-monitoring.ko.md) |
 | 양방향 streaming | STREAM session | [07-stream](./07-stream.ko.md) |
 
@@ -152,270 +152,24 @@ sequenceDiagram
 > (상당 부분의) 이벤트 전파를 동시에 가져간다.** gRPC 스택에서 sidecar 와 별도
 > discovery 컴포넌트가 빠지는 자리가 여기다.
 
-## 3. 케이스 스터디 — 도메인별로 본 단순화
+## 3. 케이스 스터디 — 도메인별 개별 문서
 
-여러 도메인의 전형적 스택을 "**기존 스택 → ZLink 구성 → 사라지는 인프라**" 로
-본다. 등록 코드는 해당 기능 챕터가 소유하므로 여기서는 **아키텍처 매핑**에
-집중한다(풀 코드 워크스루는 §4 전자상거래).
+도메인별로 "**기존 스택 → ZLink 구성 → 사라지는 인프라 → 경계**" 를 개별 문서로
+정리했다. 각 문서는 실제 참조 아키텍처를 인용하며, 전자상거래는 풀 코드 워크스루,
+나머지는 아키텍처 매핑 중심이다.
 
-### 3.1 실시간 멀티플레이 게임 백엔드
+| 케이스 | 무엇을 보나 | ZLink 핵심 기능 |
+|--------|-------------|-----------------|
+| [전자상거래 체크아웃](./13-case-ecommerce-checkout.ko.md) | request/response·send·pub/sub 풀 코드 | channel messaging |
+| [내부 마이크로서비스 mesh + 운영](./14-case-microservice-mesh.ko.md) | 다수 서비스 호출·BFF·topology 운영 | channel + Registry + monitoring |
+| [실시간 멀티플레이 게임](./15-case-realtime-game.ko.md) | 영속 연결·방 상태·재접속 이전성 | STREAM + SPOT + actor + session dispatch |
+| [라이드헤일링 디스패치](./16-case-ride-hailing.ko.md) | 대량 위치 fan-out·지역 매칭 | STREAM + pub/sub + zone SPOT |
+| [채팅·메시징](./17-case-chat-messaging.ko.md) | room fan-out·presence·연결 관리 | STREAM + room SPOT + pub/sub |
 
-**시나리오.** 클라이언트가 영속 연결을 맺고, room/match 단위로 상태를 공유하며,
-재접속해도 진행이 유지돼야 한다.
+> 등록 코드의 정식 사용법은 각 기능 챕터(04~09)가 소유한다. 케이스 문서는 "어떤
+> 기능을 어떻게 조합하나"의 아키텍처 매핑을 보여 준다.
 
-**기존 스택.** matchmaking·game logic·chat·analytics 서비스를 나누고, **stateless
-gateway + sticky session** 으로 같은 세션을 같은 stateful 게임 노드로 고정한다.
-entity 는 actor 로 메모리에 깨워 다루고, 재접속·세션 영속은 **Redis/DynamoDB** 로
-받친다. 외부 client 는 별도 **WebSocket gateway** 가 수용한다.
-([Metaplay](https://docs.metaplay.io/game-server-programming/introduction-to-the-game-server-architecture.html),
-[AWS multiplayer hosting](https://aws.amazon.com/solutions/guidance/multiplayer-session-based-game-hosting-on-aws/))
-
-**ZLink 구성.**
-
-```mermaid
-flowchart LR
-  C[game client] -->|STREAM| SESS[Session 서버]
-  SESS -->|relay by actorId| PLAY[Play 서버]
-  PLAY --> ROOM[room SPOT]
-  PLAY --> ACTOR[player actor]
-  PLAY -->|BoundSession push| SESS
-  SESS -->|STREAM| C
-```
-
-- 외부 연결 = **STREAM**([07](./07-stream.ko.md)): framework 가 연결 수명·재연결·
-  framing 을 소유. 별도 WS gateway fleet 을 짤 필요 없음.
-- room/match = **SPOT**([05](./05-spot.ko.md)): 같은 spot callback 이 **단일 큐로
-  직렬** 실행 → board 같은 가변 상태를 lock 없이 만짐.
-- player = **actor**([06](./06-actor-session.ko.md)): `actorId` 기준 멱등.
-- 연결 서버/로직 서버 분리 = **session actor dispatch**: 재접속(다른 세션 서버여도)
-  시 binding 만 새 stream 으로 교체되고 actor·spot membership 은 유지된다.
-
-**사라지는 것.** WS gateway fleet, sticky-session LB 설정, "누가 어디 붙었나"를
-추적하는 재접속용 **연결 라우팅 캐시**(actor·spot membership 이전성은 framework 가
-보장), 매칭 라우팅용 mesh. 단 **장기 영속 게임 상태**(progression 등)는 여전히
-DB 가 맡는다(§5).
-
-**핵심 강점.** "재접속 이전성"과 "방 단위 직렬 상태"가 인프라가 아니라 framework
-기본기다.
-
-### 3.2 라이드헤일링 실시간 디스패치
-
-**시나리오.** 운전자 앱이 4–5초마다 위치를 보내고(영속 연결), 다운스트림(ETA·surge·
-analytics)이 그 흐름을 구독하며, 호출 요청이 들어오면 가까운 운전자를 매칭한다.
-([Uber-scale dispatch](https://dev.to/madhur_banger/architecting-an-uber-scale-real-time-tracking-dispatch-system-3a72))
-
-**기존 스택.** 위치 ingestion 엔드포인트 → **Kafka** topic → 다운스트림 consumer,
-**Redis geo-index** 로 근접 질의, dispatch service 가 ride 요청을 큐에서 소비.
-연결은 WS/gRPC stream, 서비스 간은 mesh.
-
-**ZLink 구성.**
-
-```mermaid
-flowchart LR
-  D[driver app] -->|STREAM 위치| INGEST[ingest 서버]
-  INGEST -->|Publish location| LOC(("loc.events"))
-  LOC --> ETA[ETA]
-  LOC --> SURGE[surge]
-  RIDER[rider app] -->|Request ride| DISPATCH[dispatch]
-  DISPATCH --> ZONE[zone SPOT]
-```
-
-- 운전자/승객 연결 = **STREAM**.
-- 위치 fan-out = **pub/sub**([04](./04-channel-messaging.ko.md)): 다운스트림이 topic
-  구독. 라이브 전파에 별도 broker 한 겹이 빠진다.
-- 지역 단위 매칭 상태 = **zone SPOT**: H3 셀/구역을 spot 으로 두고 그 안에서 직렬
-  처리.
-- 호출 매칭 = **request/response**.
-
-**경계(§5).** geo-index(Redis)와 **영속/replay 가 필요한 위치 이력은 Kafka 가 여전히
-맞다.** ZLink 가 접는 건 라이브 fan-out transport·연결 수용·discovery/mesh 다.
-
-**핵심 강점.** 대량 위치 fan-out + 지역(zone) 단위 상태를 한 framework 로.
-
-### 3.3 채팅·메시징 플랫폼
-
-**시나리오.** 수백만 동시 연결, room/그룹 fan-out, presence 전파, 메시지 전달.
-
-**기존 스택.** **WebSocket gateway fleet** + **Redis 연결 레지스트리**(누가 어디
-붙었나) + 메시지 영속 서비스 + **Redis pub/sub 라우팅** + group/fan-out 서비스 +
-presence fan-out(한 사람 상태가 수백 구독자로).
-([getstream](https://getstream.io/blog/chat-application-architecture/),
-[Ably](https://ably.com/blog/scaling-pub-sub-with-websockets-and-redis))
-
-**ZLink 구성.**
-
-- client 연결 = **STREAM**(연결 레지스트리·재연결을 framework 가).
-- room = **SPOT**: membership 과 room 상태를 spot 이 소유(별도 group service 불필요).
-- room fan-out·presence = **pub/sub**.
-- 연결 서버/로직 분리·재접속 = **session actor dispatch**.
-
-**사라지는 것.** WS gateway fleet, 연결 레지스트리(Registry + spot routing 이 흡수),
-group/fan-out 서비스. **메시지 durable 저장은 DB 가 여전히 맞다(§5).**
-
-**핵심 강점.** room 을 **주소 가능한 노드(SPOT)** 로 두어 fan-out·membership 을
-인프라 없이 표현.
-
-### 3.4 내부 마이크로서비스 mesh + 운영
-
-**시나리오.** 다수 내부 서비스가 서로 호출(BFF aggregation 포함)하고, 운영에서
-클러스터 topology 를 들여다봐야 한다.
-
-| | 기존 스택 | ZLink |
-|---|-----------|-------|
-| 호출 | gRPC unary + stub(서비스별) | `IZLinkClient.Request/Send`(channel 이름만) |
-| 위치 해결 | Eureka/Consul/xDS | `UseDiscovery(...)` + Registry |
-| 부하 분배 | Envoy/Istio sidecar(L7) | channel `Discovery` 가 peer 분배 |
-| 관측 | mesh telemetry + 별도 수집 | `AddZLinkMonitoring(...)` + `IZLinkRegistryQuery` topology 조회 |
-
-서비스 수가 늘어도 응용은 `Request("pricing", ...)` 처럼 **channel 이름만** 안다.
-topology 는 sidecar telemetry 가 아니라 in-process `IZLinkRegistryQuery`
-([08](./08-registry.ko.md))로 조회한다.
-
-**핵심 강점.** sidecar/control plane/별도 discovery 없이 channel name + Registry
-한 겹으로 mesh 의 호출·분배·관측을 가져간다.
-
-## 4. 새로 만든다면 — 전자상거래 체크아웃 워크스루
-
-비슷한 서비스를 ZLink 로 처음부터 짜면 어떤 모양인지 한 흐름을 끝까지 본다.
-HTTP API gateway 가 `order-service` 를 부르고,
-`order-service` 가 `payments`·`inventory` 를 호출한 뒤 `order.events` 로 상태를
-흘린다. 주문 추적은 외부 client 로의 실시간 push(STREAM)다.
-
-```mermaid
-flowchart LR
-  GW["API gateway (HTTP in)"] -->|"Request(orders, PlaceOrder)"| ORD[order-service]
-  ORD -->|"Request(payments, Charge)"| PAY[payment-service]
-  ORD -->|"Send(inventory, ReserveStock)"| INV[inventory-service]
-  ORD -->|"Publish(order.events, ...)"| EV(("order.events"))
-  EV --> NOTI[notification-service]
-  EV --> ANALYTICS[analytics-service]
-```
-
-**기존 스택에서 이 그림에 필요한 것:** 각 서비스의 gRPC stub, Envoy/Istio mesh(L7
-LB), service discovery, 이벤트용 Kafka, 그리고 주문추적용 별도 WebSocket gateway.
-
-**ZLink 에서 사라지는 것:** sidecar mesh, 별도 discovery 컴포넌트, (이벤트가
-broker 영속성을 요구하지 않는다면) Kafka, 별도 WS gateway(STREAM 으로 흡수).
-
-### order-service 등록
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddZLinkFramework(options =>
-{
-    options.Codecs.AddProtobuf();
-
-    // 들어오는 주문 요청을 받는 서버 channel
-    options.AddClientServerChannel("orders", channel =>
-    {
-        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7401"));
-        channel.AddRequestHandler<PlaceOrderHandler>();
-    });
-
-    // 나가는 호출용 client channel (gRPC stub 자리)
-    options.AddClientServerChannel("payments", channel => channel.EnableClient());
-    options.AddClientServerChannel("inventory", channel => channel.EnableClient());
-
-    // 이벤트 fan-out (Kafka producer 자리)
-    options.AddFanoutChannel("order.events", channel =>
-        channel.EnablePublisher(publisher => publisher.Bind("tcp://0.0.0.0:7402")));
-
-    // discovery 하나로 위 모든 channel 의 위치 해결 (Eureka/xDS + L7 LB 자리)
-    options.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
-    options.AddHandlersFromAssemblyOf<Program>();
-});
-
-builder.Build().Run();
-```
-
-### order-service handler
-
-```csharp
-public sealed class PlaceOrderHandler(
-    IZLinkClient services,
-    IZLinkFanoutPublisher events)
-    : IZLinkRequestHandler<PlaceOrder, OrderPlaced>
-{
-    public async ValueTask<OrderPlaced> HandleAsync(
-        PlaceOrder request, ZLinkRequestContext context, CancellationToken ct)
-    {
-        // gRPC unary RPC -> request/response. deadline 은 Timeout 으로.
-        var charge = await services
-            .Request("payments", new Charge(request.AccountId, request.AmountMinor))
-            .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync<Charged>(ct);
-
-        // 응답이 필요 없는 명령 -> one-way send
-        await services
-            .Send("inventory", new ReserveStock(request.OrderId, request.Sku, request.Quantity))
-            .Submit(ct);
-
-        // server-streaming/이벤트 피드 -> pub/sub fan-out
-        await events
-            .Publish("order.events", "order.status",
-                new OrderStatusChanged(request.OrderId, "Placed"))
-            .Submit(ct);
-
-        return new OrderPlaced(request.OrderId, charge.ReceiptId);
-    }
-}
-```
-
-### gateway 측 — client capability 만
-
-```csharp
-// API gateway: orders 를 부르는 client channel 만 열고 HTTP 를 ZLink 로 중계
-builder.Services.AddZLinkFramework(options =>
-{
-    options.Codecs.AddProtobuf();
-    options.AddClientServerChannel("orders", channel => channel.EnableClient());
-    options.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
-});
-
-app.MapPost("/orders", async (PlaceOrderHttp body, IZLinkClient client, CancellationToken ct) =>
-{
-    var placed = await client
-        .Request("orders", new PlaceOrder(body.OrderId, body.AccountId, body.AmountMinor, body.Sku, body.Quantity))
-        .Timeout(TimeSpan.FromSeconds(3))
-        .SubmitAsync<OrderPlaced>(ct);
-    return Results.Ok(placed);
-});
-```
-
-### 구독자 측 — notification-service (Kafka consumer 자리)
-
-handler 의 `[ZLinkHandlerGroup("order.events")]` 는 그 자체로 구독을 켜지 않는다.
-구독 channel 등록에서 같은 group 을 `AddHandlerGroup(...)` 으로 매핑해야 노출된다
-([03-concepts](./03-concepts.ko.md) §4).
-
-```csharp
-builder.Services.AddZLinkFramework(options =>
-{
-    options.Codecs.AddProtobuf();
-    options.AddFanoutChannel("order.events", channel =>
-    {
-        channel.EnableSubscriber();
-        channel.AddHandlerGroup("order.events");   // 위 group 의 handler 를 이 channel 에 노출
-    });
-    options.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
-    options.AddHandlersFromAssemblyOf<Program>();
-});
-
-[ZLinkHandlerGroup("order.events")]
-public sealed class OrderStatusNotifier : IZLinkPublishHandler<OrderStatusChanged>
-{
-    public ValueTask HandleAsync(
-        OrderStatusChanged message, ZLinkPublishContext context, CancellationToken ct)
-        => /* 푸시/이메일 발송 */ ValueTask.CompletedTask;
-}
-```
-
-주문 추적을 외부 client(모바일/웹)로 실시간 push 하는 부분은 STREAM 으로
-흡수한다([07-stream](./07-stream.ko.md)). 별도 WebSocket gateway 를 두지 않고
-framework session 이 연결 수명·재연결·packet framing 을 가져간다.
-
-## 5. 솔직한 경계 — 여전히 gRPC/REST 가 맞는 곳
+## 4. 솔직한 경계 — 여전히 gRPC/REST 가 맞는 곳
 
 ZLink 가 모든 server-to-server 통신의 상위 호환은 아니다. 다음은 그대로 두는 게
 낫다.
@@ -434,12 +188,12 @@ ZLink 가 모든 server-to-server 통신의 상위 호환은 아니다. 다음�
   `Submit(...)` 의 완료는 transport 위임까지만 보장한다([03-concepts](./03-concepts.ko.md) §7).
 - **데이터 영속·조회.** ZLink 는 transport·dispatch 계층이지 datastore 가 아니다.
   game progression·메시지 이력·geo-index 같은 **영속/조회 상태는 DB·캐시(Redis 등)**
-  가 맡는다. SPOT/actor 의 인메모리 상태는 그 lifetime 동안만 유지된다(§3.1·§3.3 의
-  "DB 가 맡는다"가 이 줄을 가리킨다).
+  가 맡는다. SPOT/actor 의 인메모리 상태는 그 lifetime 동안만 유지된다(게임·채팅
+  케이스의 "DB 가 맡는다"가 이 줄을 가리킨다).
 - **HTTP/2·grpc-web 그 자체.** 브라우저 grpc-web 호환이나 HTTP/2 인프라 자체가
   목적이면 ZLink 가 그 자리를 대신하지 않는다.
 
-## 6. 언제 ZLink 를 고르나 — 도입 판단
+## 5. 언제 ZLink 를 고르나 — 도입 판단
 
 이 문서는 교체를 강요하지 않는다. **이미 잘 도는 gRPC 시스템은 그대로 둔다.**
 ZLink 는 **새 서비스/바운디드 컨텍스트를 시작**하거나 **큰 확장·재작성** 시점에
@@ -453,7 +207,7 @@ ZLink 는 **새 서비스/바운디드 컨텍스트를 시작**하거나 **큰 �
   로드맵에 있다(gRPC + 별도 WebSocket gateway 조합을 피하고 싶다).
 - 서비스 위치·연결·재연결·correlation 을 framework 가 가져가길 원한다.
 
-**회피 신호 (gRPC/REST 가 나음)** — 자세한 이유는 §5.
+**회피 신호 (gRPC/REST 가 나음)** — 자세한 이유는 §4.
 
 - 서드파티가 부르는 **외부 공개 API**, polyglot **proto-first** 계약,
   broker 의 **영속성/replay** 가 핵심 요건일 때.
@@ -471,8 +225,13 @@ ZLink 는 **새 서비스/바운디드 컨텍스트를 시작**하거나 **큰 �
 기존 서비스는 그대로 둔 채, 필요할 때 한 경로씩 ZLink channel 로 노출하면 된다
 (서로 다른 transport 라 프로세스/네트워크상 충돌하지 않는다).
 
-## 7. 더 보기
+## 6. 더 보기
 
+- 케이스 스터디(개별): [13 전자상거래](./13-case-ecommerce-checkout.ko.md) ·
+  [14 mesh+운영](./14-case-microservice-mesh.ko.md) ·
+  [15 게임](./15-case-realtime-game.ko.md) ·
+  [16 라이드헤일링](./16-case-ride-hailing.ko.md) ·
+  [17 채팅](./17-case-chat-messaging.ko.md)
 - 표면 매핑 한눈에: [04-channel-messaging](./04-channel-messaging.ko.md) §0,
   [11-interface-catalog](./11-interface-catalog.ko.md) §1.6
 - 호출/handler 사용법: [04-channel-messaging](./04-channel-messaging.ko.md)

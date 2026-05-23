@@ -173,5 +173,6 @@ handler registration 이 정한다. 자세한 규칙은
 9. [10-feature-map](./10-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
 10. [11-interface-catalog](./11-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
 11. [12-grpc-alternative](./12-grpc-alternative.ko.md) — gRPC 대안으로 ZLink 선택하기(새 서비스 도입 판단)
-12. [guide/samples](./samples/channel-messaging-samples.ko.md) — 기능별 실행 예제
-13. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
+12. 케이스 스터디 — [13 전자상거래](./13-case-ecommerce-checkout.ko.md) · [14 mesh+운영](./14-case-microservice-mesh.ko.md) · [15 게임](./15-case-realtime-game.ko.md) · [16 라이드헤일링](./16-case-ride-hailing.ko.md) · [17 채팅](./17-case-chat-messaging.ko.md)
+13. [guide/samples](./samples/channel-messaging-samples.ko.md) — 기능별 실행 예제
+14. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)

@@ -13,6 +13,7 @@ public sealed class DiscoveryTests
         var registryRouterEndpoint = ChannelMessagingTestSupport.GetTcpEndpoint();
         var routeEndpoint = ChannelMessagingTestSupport.GetTcpEndpoint();
         var spotNodeEndpoint = ChannelMessagingTestSupport.GetTcpEndpoint();
+        var spotPubEndpoint = ChannelMessagingTestSupport.GetTcpEndpoint();
         var spotChannel = $"registry.spot.routes.{Guid.NewGuid():N}";
 
         var registryBuilder = Host.CreateApplicationBuilder();
@@ -34,7 +35,14 @@ public sealed class DiscoveryTests
                 mesh.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
                 mesh.AddNode("spot-sync-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNodeEndpoint);
+                });
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(spotPubEndpoint);
+                });
                 spot.AddSpotFactory<SpotTestSupport.LocalSubscriberStageSpot>("registry-stage");
             });
             });

@@ -1,6 +1,6 @@
 using Bingo.Shared.Contracts;
 
-namespace Bingo.Server.Api;
+namespace Bingo.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
 internal sealed class AuthenticatePlayerHandler

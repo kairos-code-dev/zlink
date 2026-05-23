@@ -16,7 +16,7 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
     {
         if (string.IsNullOrWhiteSpace(spotNodeName))
         {
-            throw new ZLinkConfigurationException("STREAM ActorGateway SpotNode name must not be empty.");
+            throw new ZLinkConfigurationException("STREAM ActorGateway target SpotNode name must not be empty.");
         }
 
         registration.ActorGatewaySpotNodeName = spotNodeName;

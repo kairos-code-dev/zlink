@@ -165,16 +165,16 @@ public sealed class BuilderContracts
 
     private static void ConfigureSpotNode(IZLinkSpotNodeBuilder spot)
     {
-        spot.Bind("tcp://127.0.0.1:5500");
         spot.EnableRouter(router =>
         {
-            router.Bind("tcp://127.0.0.1:5501");
+            router.SetRouterBind("tcp://127.0.0.1:5501");
             router.ConfigureSocket(socket => socket.TcpNoDelay = true);
-            router.ConfigureRouting(route => route.RoutingId = RoutingId.Of("spot-router"));
+            router.SetRoutingId(RoutingId.Of("spot-router"));
             router.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5501"));
         });
         spot.EnablePubSub(pubSub =>
         {
+            pubSub.SetPubBind("tcp://127.0.0.1:5500");
             pubSub.ConfigurePublisherConfig(publisher => publisher.NoDrop = true);
             pubSub.ConfigureSubscriberConfig(subscriber => subscriber.ReceiveHighWaterMark = 64);
             pubSub.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5502"));
@@ -343,6 +343,12 @@ public sealed class BuilderContracts
     {
         public void Bind(string endpoint) { }
 
+        public void SetRouterBind(string endpoint) { }
+
+        public void SetPubBind(string endpoint) { }
+
+        public void SetRoutingId(RoutingId routingId) { }
+
         public void ConfigureSocket(Action<IZLinkSocketConfig> configure) =>
             configure(new ConnectionAndConfigContracts.SocketConfig());
 
@@ -464,7 +470,9 @@ public sealed class BuilderContracts
 
     private sealed class SpotNodeBuilder : IZLinkSpotMeshNodeBuilder
     {
-        public void Bind(string endpoint) { }
+        public void SetRouterBind(string endpoint) { }
+
+        public void SetPubBind(string endpoint) { }
 
         public void EnableRouter(Action<ISpotRouterCapabilityBuilder>? configure = null) =>
             configure?.Invoke(new CapabilityBuilder());

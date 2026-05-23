@@ -7,6 +7,8 @@ internal sealed class ZLinkSessionActorCoordinator(
     private readonly ZLinkSessionActorBindingRegistry _bindings = new(runtime);
     private IZLinkActor? _attachedActor;
 
+    public IReadOnlyCollection<IZLinkActorRef> BoundActors => _bindings.BoundActors;
+
     public async ValueTask<IZLinkActorRef> BindHandleAsync(
         ZLinkSessionContext context,
         string actorId,
@@ -71,6 +73,13 @@ internal sealed class ZLinkSessionActorCoordinator(
             .ConfigureAwait(false);
     }
 
+    public bool TryGetBoundActor(
+        string actorId,
+        out IZLinkActorRef actor)
+    {
+        return _bindings.TryGetBoundActor(actorId, out actor);
+    }
+
     public async ValueTask AttachAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)
@@ -125,28 +134,26 @@ internal sealed class ZLinkSessionActorCoordinator(
         Func<ZlinkStreamHeader, ZlinkStreamCodec, ReadOnlyMemory<byte>, CancellationToken, ValueTask> replyRawAsync,
         CancellationToken cancellationToken)
     {
-        using (payload)
+        using var actorPayload = payload.Copy();
+        if (header.RequestSeq is not null)
         {
-            if (header.RequestSeq is not null)
-            {
-                var reply = await runtime.SubmitActorForReplyAsync(
-                        actorRef.ActorId,
-                        header,
-                        payload,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                await replyRawAsync(header, header.Codec, reply, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            await runtime.SubmitActorByIdAsync(
+            var reply = await runtime.SubmitActorForReplyAsync(
                     actorRef.ActorId,
                     header,
-                    payload,
+                    actorPayload,
                     cancellationToken)
                 .ConfigureAwait(false);
+            await replyRawAsync(header, header.Codec, reply, cancellationToken)
+                .ConfigureAwait(false);
+            return;
         }
+
+        await runtime.SubmitActorByIdAsync(
+                actorRef.ActorId,
+                header,
+                actorPayload,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private ZLinkBackendActorRef ResolveActorRefForBinding(string actorId, string actorType)
@@ -178,7 +185,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                "Actor remote address requires a target ActorGateway node and concrete actor generation.",
+                "Actor remote address requires a target SpotNode routing id and concrete actor generation.",
                 isRetriable: false);
         }
     }
@@ -211,7 +218,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         _attachedActor = null;
     }
 
-    private static ValueTask SendBoundActorAsync(
+    private async ValueTask SendBoundActorAsync(
         ZLinkManagedStream managedStream,
         ZLinkActorRef actorRef,
         ZlinkStreamHeader header,
@@ -219,19 +226,48 @@ internal sealed class ZLinkSessionActorCoordinator(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        using (payload)
-        {
-            using var headerPart = Message.FromBytes(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span);
-            using var bodyPart = payload.Move();
-            if (!managedStream.SendBoundActor(
-                    actorRef.ActorId,
-                    new[] { headerPart, bodyPart },
-                    SendFlags.None))
-            {
-                throw new InvalidOperationException("Actor session relay failed.");
-            }
-        }
+        var headerBytes = ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray();
+        var bodyBytes = payload.ToArray();
 
-        return ValueTask.CompletedTask;
+        var timeout = runtime.Registration.DefaultTimeout;
+        var retryDelay = TimeSpan.FromMilliseconds(25);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        ZlinkException? lastError = null;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var headerPart = Message.FromBytes(headerBytes);
+            using var bodyPart = Message.FromBytes(bodyBytes);
+            try
+            {
+                if (managedStream.SendBoundActor(
+                        actorRef.ActorId,
+                        new[] { headerPart, bodyPart },
+                        SendFlags.None))
+                {
+                    return;
+                }
+            }
+            catch (ZlinkSubmitException error) when (IsActorGatewayRoutePending(error))
+            {
+                lastError = error;
+            }
+
+            if (elapsed.Elapsed >= timeout)
+            {
+                throw new InvalidOperationException(
+                    "Actor session relay failed because the ActorGateway route was not ready before timeout.",
+                    lastError);
+            }
+
+            var remaining = timeout - elapsed.Elapsed;
+            var delay = remaining < retryDelay ? remaining : retryDelay;
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static bool IsActorGatewayRoutePending(ZlinkSubmitException error)
+    {
+        return error.Result == ZlinkSubmitException.ErrorCode.NotConnected;
     }
 }

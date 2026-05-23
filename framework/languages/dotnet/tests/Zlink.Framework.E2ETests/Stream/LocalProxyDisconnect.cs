@@ -40,7 +40,10 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(spotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(spotEndpoint);
+                    });
                 });
                 });
                 options.AddRouteMeshChannel("gateway", routed =>

@@ -84,8 +84,10 @@ builder.Services.AddZLinkFramework(options =>
         });
         mesh.AddNode("stage-node", spot =>
         {
-            spot.Bind("tcp://0.0.0.0:9000");
-            spot.EnablePubSub();
+            spot.EnablePubSub(pubsub =>
+            {
+                pubsub.SetPubBind("tcp://0.0.0.0:9000");
+            });
         });
     });
 });

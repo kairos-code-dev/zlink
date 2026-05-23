@@ -17,6 +17,8 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
     public async Task SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence()
     {
         var streamEndpoint = GetFreeTcpEndpoint();
+        var registryPubEndpoint = GetFreeTcpEndpoint();
+        var registryRouterEndpoint = GetFreeTcpEndpoint();
         var sessionRouterEndpoint = GetFreeTcpEndpoint();
         var sessionSpotEndpoint = GetFreeTcpEndpoint();
         var sessionSpotRouterEndpoint = GetFreeTcpEndpoint();
@@ -27,7 +29,17 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
         var playRid = RoutingId.Of($"remote-relay-play-{Guid.NewGuid():N}");
         var actorId = "remote-relay-player-1";
         var proxyRecorder = new ActorDispatchRecorder();
+        GatewaySessionRecorder? sessionRecorder = null;
         using var callbackCapture = CallbackExceptionCapture.Start();
+
+        var registryBuilder = Host.CreateApplicationBuilder();
+        registryBuilder.Services.AddZLinkRegistry(options =>
+        {
+            options.PubEndpoint = registryPubEndpoint;
+            options.RouterEndpoint = registryRouterEndpoint;
+        });
+        using var registryHost = registryBuilder.Build();
+        await registryHost.StartAsync();
 
         var playHost = await CreateHostAsync(playRouterEndpoint, services =>
         {
@@ -42,18 +54,16 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
                 {
                     metadata.ForwardApplicationKey("trace-id");
                 });
+                options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(playSpotEndpoint);
                     spot.EnableRouter(router =>
                     {
-                        router.Bind(playSpotRouterEndpoint);
-                        router.ConfigureRouting(routing => routing.RoutingId = playRid);
-                        router.UseManualConnections(connections => connections.Connect(sessionSpotRouterEndpoint));
+                        router.SetRouterBind(playSpotRouterEndpoint);
+                        router.SetRoutingId(playRid);
                     });
                 });
                 });
@@ -66,21 +76,20 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            services.AddSingleton(new GatewaySessionRecorder(actorId, remoteAddress));
+            sessionRecorder = new GatewaySessionRecorder(actorId, remoteAddress);
+            services.AddSingleton(sessionRecorder);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
+                options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
                 options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(sessionSpotEndpoint);
                     spot.EnableRouter(router =>
                     {
-                        router.Bind(sessionSpotRouterEndpoint);
-                        router.ConfigureRouting(routing => routing.RoutingId = sessionRid);
-                        router.UseManualConnections(connections => connections.Connect(playSpotRouterEndpoint));
+                        router.SetRouterBind(sessionSpotRouterEndpoint);
+                        router.SetRoutingId(sessionRid);
                     });
                 });
                 });
@@ -95,6 +104,14 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
 
         try
         {
+            var playNodeRuntime = playHost.Services
+                .GetRequiredService<ZLinkFrameworkRuntime>()
+                .GetSpotNodeRuntime("actor-node");
+            var sessionNodeRuntime = sessionHost.Services
+                .GetRequiredService<ZLinkFrameworkRuntime>()
+                .GetSpotNodeRuntime("actor-node");
+            await WaitForActorNodeRouterPeersAsync(playNodeRuntime, sessionNodeRuntime);
+
             using var client = ConnectRawClient(streamEndpoint);
             var network = client.GetStream();
 
@@ -120,6 +137,7 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             Assert.Equal("relay.echo", proxyRecorder.LastPacketName);
             Assert.Equal("trace-101", proxyRecorder.LastTraceId);
             Assert.False(proxyRecorder.ForwardedTenantId);
+            Assert.True(sessionRecorder?.PostRelayPayloadLength > 0);
 
             var sessionActor = (GatewayActor)(await playHost.Services
                     .GetRequiredService<IZLinkActorManager>()
@@ -164,7 +182,44 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
         }
         finally
         {
-            await ChannelMessagingTestSupport.StopHostsAsync(sessionHost, playHost);
+            await ChannelMessagingTestSupport.StopHostsAsync(sessionHost, playHost, registryHost);
         }
+    }
+
+    private static async Task WaitForActorNodeRouterPeersAsync(
+        ZLinkSpotNodeRuntime playNodeRuntime,
+        ZLinkSpotNodeRuntime sessionNodeRuntime)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (HasActorNodeRouterPeer(playNodeRuntime)
+                && HasActorNodeRouterPeer(sessionNodeRuntime))
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(150));
+        }
+
+        throw new TimeoutException(
+            "Actor node router peers were not discovered. "
+            + $"play=[{DescribeActorNodePeers(playNodeRuntime)}], "
+            + $"session=[{DescribeActorNodePeers(sessionNodeRuntime)}]");
+    }
+
+    private static bool HasActorNodeRouterPeer(ZLinkSpotNodeRuntime nodeRuntime)
+    {
+        return nodeRuntime.Node.PeersSnapshot().Any(
+            peer => string.Equals(peer.ChannelName, "actor-node", StringComparison.Ordinal)
+                && peer.Kind == ZLinkSpotPeerKind.RouterChannel);
+    }
+
+    private static string DescribeActorNodePeers(ZLinkSpotNodeRuntime nodeRuntime)
+    {
+        var peers = nodeRuntime.Node.PeersSnapshot()
+            .Select(static peer =>
+                $"{peer.ChannelName}:{peer.PeerEndpoint}:{peer.Source}:{peer.Kind}:{peer.State}");
+        return string.Join(", ", peers);
     }
 }

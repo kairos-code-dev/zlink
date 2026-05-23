@@ -180,7 +180,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         var node = GetActorSpotNode()
             ?? throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorSessionNotBound,
-                "Actor bound session send requires an ActorGateway SpotNode.",
+                "Actor bound session send requires a router-capable SpotNode.",
                 isRetriable: false);
         var actorRef = state.NativeActorRef
             ?? throw new ZLinkFrameworkException(
@@ -199,7 +199,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         var node = GetActorSpotNode()
             ?? throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorSessionNotBound,
-                "Actor bound session close requires an ActorGateway SpotNode.",
+                "Actor bound session close requires a router-capable SpotNode.",
                 isRetriable: false);
         var actorRef = state.NativeActorRef
             ?? throw new ZLinkFrameworkException(

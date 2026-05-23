@@ -198,28 +198,33 @@ sequenceDiagram
 
 session 콜백에서 인증 후 `BindActorHandleAsync(...)` 로 actor handle 을 잡고,
 이후 packet 은 `RelayToActorAsync(...)` 로 actor 에 넘긴다.
+이때 `payload` 는 framework runtime 이 callback 동안 빌려준 값이다.
+session 은 이 값을 해제하거나 `Move()` 로 소비하지 않는다.
+`RelayToActorAsync(...)` 는 caller payload 를 소비하지 않으므로 그대로 넘긴다.
+callback 뒤에도 payload 를 보관해야 할 때만 별도 `Copy()` 또는 `Move()` 를 쓴다.
+인증처럼 session 에서 직접 처리할 packet 이 여러 개라면
+`IZLinkSessionPacketDispatcher<TSessionContext>` 를 주입받아 등록된 packet 만
+handler 로 보낼 수 있다. dispatcher 가 `false` 를 반환한 뒤 actor 로 relay 할지,
+인증 오류를 낼지, 로그만 남길지는 session 이 정한다.
 
 ```csharp
-public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSession
+public sealed class TicTacToeSession(
+    IZLinkSessionContext context,
+    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header, Message payload, CancellationToken ct)
     {
-        if (header.Name == "auth")
+        if (await handlers.TryHandleAsync(context, header, payload, ct))
         {
-            var request = payload.FromJson<AuthReq>();
-            IZLinkActorRef actor = await context.BindActorHandleAsync(
-                request.ActorId, request.ActorType, ct);
-            _authenticated.Remember(request.ActorId, actor);
-            await context.Reply(new AuthRep(ok: true)).Submit(ct);
             return;
         }
 
-        if (_authenticated.TryGet(header, out IZLinkActorRef actor))
+        if (context.BoundActors.Count == 1)
         {
-            await context.RelayToActorAsync(actor, header, payload, ct);
+            await context.RelayToActorAsync(context.BoundActors.Single(), header, payload, ct);
             return;
         }
 
@@ -235,12 +240,27 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
     public ValueTask OnDisconnectedAsync(CancellationToken ct)
     {
         // bound actor 의 unbind 와 leave/destroy 는 framework 가 자동 처리한다.
-        // session 은 자기 로컬 bookkeeping 만 정리하면 된다.
-        _authenticated.Clear();
         return ValueTask.CompletedTask;
     }
+}
 
-    private readonly AuthenticatedActors _authenticated = new();
+public sealed class AuthenticateSessionPacketHandler
+    : IZLinkSessionPacketHandler<IZLinkSessionContext>
+{
+    public string PacketName => "auth";
+
+    public async ValueTask HandleAsync(
+        IZLinkSessionContext context,
+        ZlinkStreamHeader header,
+        Message payload,
+        CancellationToken ct)
+    {
+        _ = header;
+        var request = payload.Decode<AuthReq>();
+        await context.BindActorHandleAsync(
+            request.ActorId, request.ActorType, ct);
+        await context.Reply(new AuthRep(ok: true)).Submit(ct);
+    }
 }
 ```
 
@@ -342,11 +362,10 @@ builder.Services.AddZLinkFramework(options =>
     {
         mesh.AddNode("session-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9100");
             node.EnableRouter(router =>
             {
-                router.Bind("tcp://0.0.0.0:9101");
-                router.ConfigureRouting(routing => routing.RoutingId = sessionNodeRid);
+                router.SetRouterBind("tcp://0.0.0.0:9101");
+                router.SetRoutingId(sessionNodeRid);
             });
         });
     });
@@ -376,8 +395,10 @@ builder.Services.AddZLinkFramework(options =>
         mesh.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
         mesh.AddNode("play-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9200");
-            node.EnableRouter(router => router.Bind("tcp://0.0.0.0:9201"));
+            node.EnableRouter(router =>
+            {
+                router.SetRouterBind("tcp://0.0.0.0:9201");
+            });
             node.AddEntrySpot<PlayerEntrySpot>();
             node.AddSpotFactory<MatchSpot>("match");
         });

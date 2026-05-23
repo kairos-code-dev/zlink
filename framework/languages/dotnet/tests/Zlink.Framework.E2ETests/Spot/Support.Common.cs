@@ -39,7 +39,10 @@ public abstract partial class SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AttachClientServerChannelClient("orders", client =>
                 {
                     client.UseManualConnections(connections => connections.Connect(ordersServer));
@@ -65,7 +68,10 @@ public abstract partial class SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("payload-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AddSpotFactory<CreatePayloadStageSpot>("payload-stage");
                 spot.AddSpotFactory<CreatePayloadStageSpot>("other-payload-stage");
             });
@@ -101,10 +107,9 @@ public abstract partial class SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("route-target-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
                 spot.EnableRouter(router =>
                 {
-                    router.Bind(GetFreeTcpEndpoint());
+                    router.SetRouterBind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
                         routing.RoutingId = RoutingId.FromBytes(

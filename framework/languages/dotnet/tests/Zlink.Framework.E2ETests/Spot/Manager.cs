@@ -175,8 +175,10 @@ public sealed class ManagerTests : SpotTestSupport
             });
                 mesh.AddNode("publisher-node", spot =>
             {
-                spot.Bind(publisherNodeEndpoint);
-                spot.EnablePubSub();
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(publisherNodeEndpoint);
+                });
                 spot.AddSpotFactory<PublishingStageSpot>("publisher-stage");
             });
             });
@@ -195,9 +197,9 @@ public sealed class ManagerTests : SpotTestSupport
             });
                 mesh.AddNode("subscriber-node", spot =>
             {
-                spot.Bind(subscriberNodeEndpoint);
                 spot.EnablePubSub(pubsub =>
                 {
+                    pubsub.SetPubBind(subscriberNodeEndpoint);
                     pubsub.UseManualConnections(connections =>
                         connections.Connect(publisherNodeEndpoint));
                 });

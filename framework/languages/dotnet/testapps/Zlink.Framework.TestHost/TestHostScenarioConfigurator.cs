@@ -157,12 +157,22 @@ internal static class TestHostScenarioConfigurator
                             ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name."),
                         spot =>
                         {
-                            spot.Bind(options.SpotBindEndpoint
-                                ?? throw new InvalidOperationException("SPOT node mode requires --spot-bind-endpoint."));
+                            var spotBindEndpoint = options.SpotBindEndpoint
+                                ?? throw new InvalidOperationException("SPOT node mode requires --spot-bind-endpoint.");
 
                             if (options.EnablePubSub)
                             {
-                                spot.EnablePubSub();
+                                spot.EnablePubSub(pubsub =>
+                                {
+                                    pubsub.SetPubBind(spotBindEndpoint);
+                                });
+                            }
+                            else
+                            {
+                                spot.EnableRouter(router =>
+                                {
+                                    router.SetRouterBind(spotBindEndpoint);
+                                });
                             }
 
                             if (!string.IsNullOrWhiteSpace(options.AttachSpotPublisherChannel))

@@ -22,7 +22,8 @@ internal sealed class ZLinkFrameworkActorFacade(
 
         if (node is not null
             && actorState.NativeActorRef is { } actorRef
-            && actorState.Stream is ZLinkManagedStream)
+            && actorState.Stream is ZLinkManagedStream
+            && actorState.CurrentDispatch is null)
         {
             return await NativeJoinActorAsync<TRequest, TReply>(
                 state,

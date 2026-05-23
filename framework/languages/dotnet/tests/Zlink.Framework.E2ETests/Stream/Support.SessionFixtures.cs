@@ -73,6 +73,7 @@ public abstract partial class StreamTestSupport
                     payload,
                     cancellationToken)
                 .ConfigureAwait(false);
+            recorder.RecordPostRelayPayloadLength(payload.AsReadOnlySpan().Length);
         }
     }
 
@@ -165,33 +166,29 @@ public abstract partial class StreamTestSupport
             CancellationToken cancellationToken)
         {
             _ = header;
-            using (payload)
+            if (_actor is null)
             {
-                if (_actor is null)
-                {
-                    await actors.GetOrCreateAsync(
-                            "local-player-1",
-                            "player",
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                await actors.GetOrCreateAsync(
+                        "local-player-1",
+                        "player",
+                        cancellationToken)
+                    .ConfigureAwait(false);
 
-                    _actor = await Context.BindActorHandleAsync(
-                            "local-player-1",
-                            "player",
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                _actor = await Context.BindActorHandleAsync(
+                        "local-player-1",
+                        "player",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
-                if (!string.Equals(header.Name, "open", StringComparison.Ordinal))
-                {
-                    using var dispatchPayload = payload.Move();
-                    await Context.RelayToActorAsync(
-                            _actor,
-                            header,
-                            dispatchPayload,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
+            if (!string.Equals(header.Name, "open", StringComparison.Ordinal))
+            {
+                await Context.RelayToActorAsync(
+                        _actor,
+                        header,
+                        payload,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
     }

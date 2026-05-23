@@ -12,14 +12,14 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
         nativeSpotNode.SetRoutingId(routingId);
     }
 
-    public void SetRouterBindEndpoint(string endpoint)
+    public void SetRouterBind(string endpoint)
     {
-        nativeSpotNode.SetRouterBindEndpoint(endpoint);
+        nativeSpotNode.SetRouterBind(endpoint);
     }
 
-    public void Bind(string endpoint)
+    public void SetPubBind(string endpoint)
     {
-        nativeSpotNode.Bind(endpoint);
+        nativeSpotNode.SetPubBind(endpoint);
     }
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
@@ -40,6 +40,14 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
     public void ConnectRouterChannelPeer(string channelName, string endpoint)
     {
         nativeSpotNode.ConnectRouterChannelPeer(channelName, endpoint);
+    }
+
+    public void ConnectRouterChannelPeerRid(
+        string channelName,
+        RoutingId peerRid,
+        string endpoint)
+    {
+        nativeSpotNode.ConnectRouterChannelPeerRid(channelName, peerRid, endpoint);
     }
 
     public void DisconnectRouterChannelPeer(string channelName, string endpoint)

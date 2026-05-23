@@ -3,6 +3,18 @@ namespace Zlink.Framework.Runtime.Streams;
 internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime runtime)
 {
     private readonly Dictionary<string, ZLinkSessionActorBinding> _bindings = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ZLinkActorRef> _actorsById = new(StringComparer.Ordinal);
+
+    public IReadOnlyCollection<IZLinkActorRef> BoundActors
+    {
+        get
+        {
+            lock (_bindings)
+            {
+                return _actorsById.Values.ToArray();
+            }
+        }
+    }
 
     public ValueTask<IZLinkActorRef> BindAsync(
         ZLinkSessionContext context,
@@ -39,9 +51,33 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         lock (_bindings)
         {
             _bindings[BuildBindingKey(actorId, binding.BindingToken)] = binding;
+            _actorsById[actorId] = actorRef;
         }
 
         return ValueTask.FromResult<IZLinkActorRef>(actorRef);
+    }
+
+    public bool TryGetBoundActor(
+        string actorId,
+        out IZLinkActorRef actor)
+    {
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            actor = null!;
+            return false;
+        }
+
+        lock (_bindings)
+        {
+            if (_actorsById.TryGetValue(actorId, out var actorRef))
+            {
+                actor = actorRef;
+                return true;
+            }
+        }
+
+        actor = null!;
+        return false;
     }
 
     public ValueTask CleanupAsync(
@@ -53,6 +89,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         {
             bindings = _bindings.Values.ToArray();
             _bindings.Clear();
+            _actorsById.Clear();
         }
 
         foreach (var binding in bindings)

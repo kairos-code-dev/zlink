@@ -44,7 +44,9 @@ public interface IChannelSubscriberCapabilityBuilder
 
 public interface ISpotRouterCapabilityBuilder
 {
-    void Bind(string endpoint);
+    void SetRouterBind(string endpoint);
+
+    void SetRoutingId(RoutingId routingId);
 
     void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
@@ -55,6 +57,10 @@ public interface ISpotRouterCapabilityBuilder
 
 public interface ISpotPubSubCapabilityBuilder
 {
+    void SetPubBind(string endpoint);
+
+    void SetRoutingId(RoutingId routingId);
+
     void ConfigurePublisherConfig(Action<IZLinkSpotPublisherConfig> configure);
 
     void ConfigureSubscriberConfig(Action<IZLinkSpotSubscriberConfig> configure);
@@ -173,8 +179,6 @@ public interface IZLinkDealerMeshChannelBuilder
 
 public interface IZLinkSpotNodeBuilder
 {
-    void Bind(string endpoint);
-
     void EnableRouter(Action<ISpotRouterCapabilityBuilder>? configure = null);
 
     void EnablePubSub(Action<ISpotPubSubCapabilityBuilder>? configure = null);

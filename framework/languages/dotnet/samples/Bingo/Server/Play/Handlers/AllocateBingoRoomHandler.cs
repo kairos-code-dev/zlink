@@ -14,6 +14,7 @@ internal sealed class AllocateBingoRoomHandler(BingoRoomDirectory rooms)
         _ = context;
         var roomId = await rooms.AllocateAsync(request.Mode, cancellationToken)
             ;
+
         return new AllocateBingoRoomRes(roomId);
     }
 }

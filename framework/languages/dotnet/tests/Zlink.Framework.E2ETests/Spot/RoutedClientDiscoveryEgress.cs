@@ -51,10 +51,9 @@ public sealed class RoutedClientDiscoveryEgressTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("route-target-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
                 spot.EnableRouter(router =>
                 {
-                    router.Bind(GetFreeTcpEndpoint());
+                    router.SetRouterBind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
                         routing.RoutingId = RoutingId.FromBytes(

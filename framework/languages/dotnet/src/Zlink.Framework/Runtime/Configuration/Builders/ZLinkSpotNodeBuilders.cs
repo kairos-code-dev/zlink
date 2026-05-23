@@ -3,16 +3,6 @@ namespace Zlink.Framework.Runtime.Configuration.Builders;
 internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registration)
     : IZLinkSpotNodeBuilder, IZLinkSpotMeshNodeBuilder
 {
-    public void Bind(string endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-        {
-            throw new ZLinkConfigurationException("SPOT bind endpoint must not be empty.");
-        }
-
-        registration.BindEndpoint = endpoint;
-    }
-
     public void EnableRouter(Action<ISpotRouterCapabilityBuilder>? configure = null)
     {
         registration.Router ??= new ZLinkSpotRouterCapabilityRegistration();
@@ -157,7 +147,7 @@ internal sealed class ZLinkSpotRouteChannelConnections(ICollection<string> endpo
 internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapabilityRegistration registration)
     : ISpotRouterCapabilityBuilder
 {
-    public void Bind(string endpoint)
+    public void SetRouterBind(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
         {
@@ -165,6 +155,11 @@ internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapability
         }
 
         registration.BindEndpoint = endpoint;
+    }
+
+    public void SetRoutingId(RoutingId routingId)
+    {
+        registration.RoutingConfig.RoutingId = routingId;
     }
 
     public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
@@ -186,6 +181,21 @@ internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapability
 internal sealed class ZLinkSpotPubSubCapabilityBuilder(ZLinkSpotPubSubCapabilityRegistration registration)
     : ISpotPubSubCapabilityBuilder
 {
+    public void SetPubBind(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            throw new ZLinkConfigurationException("SPOT pub/sub bind endpoint must not be empty.");
+        }
+
+        registration.BindEndpoint = endpoint;
+    }
+
+    public void SetRoutingId(RoutingId routingId)
+    {
+        registration.RoutingId = routingId;
+    }
+
     public void ConfigurePublisherConfig(Action<IZLinkSpotPublisherConfig> configure)
     {
         configure(registration.PublisherConfig);

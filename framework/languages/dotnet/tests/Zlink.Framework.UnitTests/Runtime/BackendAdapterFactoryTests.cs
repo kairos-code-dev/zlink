@@ -24,7 +24,7 @@ public sealed class BackendAdapterFactoryTests
         await using var subscriber = channelAdapter.CreateSubscriberSocket(context);
         await using var registry = registryAdapter.CreateRegistry(context);
         await using var registryQueryClient = registryAdapter.CreateRegistryQueryClient(context);
-        await using var spotNode = spotAdapter.CreateSpotNode(context);
+        await using var spotNode = spotAdapter.CreateSpotNode(context, SpotNodeMode.All);
         await using var streamSocket = streamAdapter.CreateStreamSocket(context);
 
         Assert.IsType<global::Systems.Zlink.Context>(context.NativeInstance);

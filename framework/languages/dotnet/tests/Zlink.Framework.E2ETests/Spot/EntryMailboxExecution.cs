@@ -27,7 +27,10 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-mailbox-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AddEntrySpot<RegistryEntrySpot>();
             });
             });
@@ -103,7 +106,10 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-general-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AddEntrySpot<GeneralEntrySpot>();
             });
             });
@@ -166,7 +172,10 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-native-batch-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AddEntrySpot<RegistryEntrySpot>();
             });
             });

@@ -60,7 +60,10 @@ public sealed class EventsTests
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNodeEndpoint);
+                });
                 spot.AddSpotFactory<MonitoringStageSpot>("stage");
             });
             });
@@ -167,8 +170,10 @@ public sealed class EventsTests
             });
                 mesh.AddNode("stage-node", spot =>
             {
-                spot.Bind(firstNodeEndpoint);
-                spot.EnablePubSub();
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(firstNodeEndpoint);
+                });
             });
             });
         });
@@ -188,8 +193,10 @@ public sealed class EventsTests
             });
                 mesh.AddNode("remote-stage-node", spot =>
             {
-                spot.Bind(secondNodeEndpoint);
-                spot.EnablePubSub();
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(secondNodeEndpoint);
+                });
             });
             });
         });

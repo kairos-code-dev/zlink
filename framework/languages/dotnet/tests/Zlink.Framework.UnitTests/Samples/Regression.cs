@@ -9,10 +9,13 @@ public sealed class RegressionTests
 
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
-        AssertSampleUsesRegistryDefaults(sampleRoot, "bingo");
+        AssertSampleUsesRegistryDiscovery(sampleRoot);
         AssertSessionServerUsesActorGateway(sampleRoot);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
         AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(sampleRoot);
+        AssertNoSampleSessionRelayJson(sampleRoot);
+        AssertSessionPayloadPolicy(sampleRoot);
+        AssertUsesFrameworkSessionPacketDispatcher(sampleRoot);
     }
 
     [Fact]
@@ -26,6 +29,18 @@ public sealed class RegressionTests
         AssertSessionServerUsesActorGateway(sampleRoot);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
         AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(sampleRoot);
+        AssertNoSampleSessionRelayJson(sampleRoot);
+        AssertSessionPayloadPolicy(sampleRoot);
+        AssertUsesFrameworkSessionPacketDispatcher(sampleRoot);
+        AssertSpotRidJoinUsesRoutingId(sampleRoot);
+    }
+
+    [Fact]
+    public void TicTacToe_Play_Session_Uses_FrameworkPayloadLifetimePolicy()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+
+        AssertSessionPayloadPolicy(sampleRoot);
     }
 
     private static void AssertNoSampleRouteStore(string sampleRoot)
@@ -73,6 +88,68 @@ public sealed class RegressionTests
         }
     }
 
+    private static void AssertNoSampleSessionRelayJson(string sampleRoot)
+    {
+        var sourceFiles = EnumerateSourceFiles(sampleRoot).ToArray();
+        var fileNames = sourceFiles.Select(Path.GetFileName).ToHashSet(StringComparer.Ordinal);
+
+        Assert.DoesNotContain("SessionRelayJson.cs", fileNames);
+        foreach (var file in sourceFiles)
+        {
+            var text = File.ReadAllText(file);
+            Assert.DoesNotContain("SessionRelayJson", text, StringComparison.Ordinal);
+        }
+    }
+
+    private static void AssertSessionPayloadPolicy(string sampleRoot)
+    {
+        var sessionRoots = EnumerateSessionRoots(sampleRoot).ToArray();
+        Assert.NotEmpty(sessionRoots);
+
+        var sourceFiles = sessionRoots
+            .SelectMany(static root => EnumerateSourceFiles(root))
+            .ToArray();
+        Assert.NotEmpty(sourceFiles);
+
+        foreach (var file in sourceFiles)
+        {
+            var text = File.ReadAllText(file);
+            Assert.DoesNotContain("payload.FromJson<", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("payload.Move()", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("using (payload)", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("await using (payload)", text, StringComparison.Ordinal);
+            Assert.DoesNotContain(".Dispose()", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("IZLinkActorRef? Actor", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Actor { get; set; }", text, StringComparison.Ordinal);
+        }
+    }
+
+    private static void AssertUsesFrameworkSessionPacketDispatcher(string sampleRoot)
+    {
+        var sourceFiles = EnumerateSourceFiles(Path.Combine(sampleRoot, "Server", "Session")).ToArray();
+        var allText = string.Join(Environment.NewLine, sourceFiles.Select(File.ReadAllText));
+
+        Assert.Contains("IZLinkSessionPacketDispatcher<", allText, StringComparison.Ordinal);
+        Assert.Contains("IZLinkSessionPacketHandler<", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("IBingoSessionHandler", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("ISessionRelayPacketHandler", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToDictionary(static handler => handler.PacketName", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("BingoSessionContext", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("SessionRelayPacketContext", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("SessionRelayState", allText, StringComparison.Ordinal);
+    }
+
+    private static void AssertSpotRidJoinUsesRoutingId(string sampleRoot)
+    {
+        var joinHandler = Directory
+            .EnumerateFiles(sampleRoot, "JoinMatchHandler.cs", SearchOption.AllDirectories)
+            .Single();
+        var text = File.ReadAllText(joinHandler);
+
+        Assert.Contains("JoinSpot(RoutingId.FromString(request.MatchId), request)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("JoinSpot(request.MatchId, request)", text, StringComparison.Ordinal);
+    }
+
     private static void AssertSampleUsesRegistryDefaults(
         string sampleRoot,
         string namespaceName)
@@ -82,6 +159,18 @@ public sealed class RegressionTests
             EnumerateSourceFiles(sampleRoot).Select(File.ReadAllText));
 
         Assert.Contains($"UseRegistrySpotRemoteAddresses(\"{namespaceName}\")", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("UseRegistryActorRemoteAddresses", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("UseRegistryActorSessionBindings", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("IZLinkActorSessionClient", allText, StringComparison.Ordinal);
+    }
+
+    private static void AssertSampleUsesRegistryDiscovery(string sampleRoot)
+    {
+        var allText = string.Join(
+            Environment.NewLine,
+            EnumerateSourceFiles(sampleRoot).Select(File.ReadAllText));
+
+        Assert.Contains("UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint))", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("UseRegistryActorRemoteAddresses", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("UseRegistryActorSessionBindings", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("IZLinkActorSessionClient", allText, StringComparison.Ordinal);
@@ -146,6 +235,21 @@ public sealed class RegressionTests
             .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
             .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
                 && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+    }
+
+    private static IEnumerable<string> EnumerateSessionRoots(string sampleRoot)
+    {
+        var sessionRoot = Path.Combine(sampleRoot, "Server", "Session");
+        if (Directory.Exists(sessionRoot))
+        {
+            yield return sessionRoot;
+        }
+
+        var playSessionsRoot = Path.Combine(sampleRoot, "Server", "Play", "Sessions");
+        if (Directory.Exists(playSessionsRoot))
+        {
+            yield return playSessionsRoot;
+        }
     }
 
     private static string ResolveSampleRoot(string sampleName)

@@ -33,7 +33,10 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("registry-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AddEntrySpot<RegistryEntrySpot>();
                 spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
             });
@@ -140,7 +143,10 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("registry-location-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AddEntrySpot<RegistryEntrySpot>();
                 spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
             });

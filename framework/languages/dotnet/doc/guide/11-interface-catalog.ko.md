@@ -129,6 +129,12 @@ public sealed class AuditingFilter : IZLinkHandlerFilter
 }
 ```
 
+`OnDispatchAsync(...)` 의 `payload` 는 framework runtime 이 callback 동안 빌려준
+값이다. session 은 `Dispose()` 나 `Move()` 를 기본 사용법으로 쓰지 않고,
+`RelayToActorAsync(...)` 에도 그대로 넘긴다. raw `IZLinkStream.Write(...)` 에
+application 이 직접 만든 `Message` 를 넘길 때만 caller 가 그 `Message` 수명을
+계속 책임진다.
+
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkRequestHandler<TRequest, TReply>` | 요청-응답 handler. 결과를 반환값으로 돌려준다 |
@@ -283,9 +289,16 @@ options.AddSpotMesh("play-mesh", mesh =>
     mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:6003"));
     mesh.AddNode("play-spots", spot =>
     {
-        spot.Bind("tcp://127.0.0.1:5500");
-        spot.EnableRouter(router => router.ConfigureRouting(r => r.RoutingId = RoutingId.Of("spot-router")));
-        spot.EnablePubSub(pubSub => pubSub.ConfigurePublisherConfig(p => p.NoDrop = true));
+        spot.EnableRouter(router =>
+        {
+            router.SetRouterBind("tcp://127.0.0.1:5501");
+            router.SetRoutingId(RoutingId.Of("spot-router"));
+        });
+        spot.EnablePubSub(pubSub =>
+        {
+            pubSub.SetPubBind("tcp://127.0.0.1:5500");
+            pubSub.ConfigurePublisherConfig(p => p.NoDrop = true);
+        });
         spot.AttachChannelClient("api", c => c.ConfigureSocket(s => s.Immediate = true));
         spot.AttachClientServerChannelClient("api");
         spot.AttachSpotPublisherClient("events");
@@ -298,10 +311,9 @@ options.AddSpotMesh("play-mesh", mesh =>
     });
     mesh.AddNode("session-node", spot =>
     {
-        spot.Bind("tcp://127.0.0.1:5600");
         spot.EnableRouter(router =>
         {
-            router.Bind("tcp://127.0.0.1:5601");
+            router.SetRouterBind("tcp://127.0.0.1:5601");
             router.ConfigureRouting(r => r.RoutingId = RoutingId.Of("session-gateway"));
         });
     });
@@ -558,7 +570,10 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
     public async ValueTask OnDispatchAsync(ZlinkStreamHeader header, Message payload, CancellationToken ct)
     {
         var actorRef = await context.BindActorHandleAsync("player-1", "player", ct); // ActorDispatch
-        await context.RelayToActorAsync(actorRef, header, payload, ct);
+        if (context.TryGetBoundActor(actorRef.ActorId, out var boundActor))
+        {
+            await context.RelayToActorAsync(boundActor, header, payload, ct);
+        }
 
         await context.Send(new PlayerJoined("player-1"))      // ClientStream → IZLinkSessionSendCall
             .PacketName("player.joined").Metadata("trace-id", "abc").Compress().Submit(ct);
@@ -573,15 +588,29 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
 }
 ```
 
+`OnDispatchAsync(...)` 로 받은 `payload` 는 callback 동안만 빌린 값이다.
+session 은 이 값을 직접 해제하거나 `Move()` 로 소비하지 않는다.
+`RelayToActorAsync(...)` 는 caller payload 를 소비하지 않으므로 받은 값을 그대로
+넘기면 된다. callback 뒤에도 보관해야 할 때만 별도 `Copy()` 또는 명시적인
+소유권 이전을 선택한다.
+
+session 전용 packet handler 를 나누고 싶을 때는
+`IZLinkSessionPacketDispatcher<TSessionContext>` 를 session 생성자에 주입한다.
+dispatcher 는 `IZLinkSessionPacketHandler<TSessionContext>` 구현 중 packet name 이
+맞는 handler 만 호출하고, 미등록 packet 은 `false` 로 돌려준다. 미등록 packet 을
+actor 로 relay 할지, 거절할지, 로그만 남길지는 application session 이 결정한다.
+
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkSession` | stream session. `Context` + `OnConnectedAsync`/`OnDisconnectedAsync`/`OnErrorAsync` + 기본 구현 `OnDispatchAsync` |
 | `IZLinkSessionContext` | 아래 4개 sub-context 의 합성 |
 | `IZLinkSessionIdentityContext` | session 식별(`SessionId`, `RoutingId?`, `LocalAddr?`, `RemoteAddr?`) |
 | `IZLinkSessionClientStream` | client 로의 push(`Send(msg)`) / 요청 응답(`Reply(msg)`) |
-| `IZLinkSessionActorDispatchContext` | actor binding/relay(`BindActorHandleAsync`, `RelayToActorAsync`) |
+| `IZLinkSessionActorDispatchContext` | actor binding/lookup/relay(`BoundActors`, `BindActorHandleAsync`, `TryGetBoundActor`, `RelayToActorAsync`) |
 | `IZLinkSessionLifecycle` | 서버 측 연결 종료(`CloseAsync`) |
 | `IZLinkSessionActorAttachmentContext` | actor 를 session 에 attach(`AttachActorAsync`) |
+| `IZLinkSessionPacketHandler<TSessionContext>` | session 이 직접 처리할 packet handler. payload 는 session callback 과 같은 borrowed lifetime |
+| `IZLinkSessionPacketDispatcher<TSessionContext>` | 등록된 session packet handler 만 호출하고 미등록 packet 은 `false` 반환 |
 | `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Submit`) |
 | `IZLinkSessionReplyCall` | session reply 종결자(`Metadata`/`Compress` → `Submit`) |
 | `IZLinkActorRef` | session relay 용 actor handle(`ActorId`, `ActorType`, `IsRemote`, `RemoteAddress`) |

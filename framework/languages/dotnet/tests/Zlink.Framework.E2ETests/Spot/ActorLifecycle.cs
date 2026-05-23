@@ -33,7 +33,10 @@ public sealed class ActorLifecycleTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("actor-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AddSpotFactory<ActorStageSpot>("actor-stage");
             });
             });
@@ -156,7 +159,10 @@ public sealed class ActorLifecycleTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("actor-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
             });
             });
         });

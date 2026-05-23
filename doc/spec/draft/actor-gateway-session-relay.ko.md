@@ -447,7 +447,8 @@ ActorGateway 는 public socket endpoint 가 아니라 SpotNode 내부 runtime �
 | `zlink_spot_actor_lifecycle_handler(...)` | Spot 별 on_join/on_leave callback 을 등록한다 | signature 유지. Actor lifecycle event 는 ActorGateway state 가 lazy init 된 뒤에도 같은 callback 으로 발생한다 |
 | `zlink_stream_bound_actors(...)` | `(stream, session_rid)` binding table 의 Actor ref snapshot 을 반환한다 | 의미 변경. stale route snapshot 이 아니라 logical binding 조회다. current location 확인은 gateway/discovery 상태와 분리한다 |
 | `zlink_spot_node_actor_close_bound_session(...)` | bound session 을 제거하고 현재 구현은 Actor 를 Entry Spot 으로 되돌린다 | 수정 필요. session close 는 Actor location 을 바꾸면 안 된다. `clear_actor_joined_spot_locked(actor)` 호출을 제거해야 한다 |
-| `zlink_spot_node_bind(...)` | SpotNode endpoint 를 bind 한다 | signature 유지. gateway transport 가 같은 node runtime 을 쓰더라도 별도 public bind API 를 추가하지 않는다 |
+| `zlink_spot_node_set_router_bind(...)` | routed ingress endpoint 를 bind 한다 | ActorGateway가 remote actor ingress를 받을 때 사용하는 router endpoint다 |
+| `zlink_spot_node_set_pub_bind(...)` | PUB/SUB mesh endpoint 를 bind 한다 | ActorGateway relay만 사용하는 router-only SpotNode에서는 필요하지 않다 |
 | `zlink_spot_node_connect_peer(...)` / disconnect | Spot mesh peer 를 연결/해제한다 | signature 유지. disconnect 는 ActorGateway route disconnected state 도 갱신해야 한다. 현재 `disconnect_peer_rid` 경로의 actor disconnect note 는 유지한다 |
 | `zlink_spot_node_connect_router_channel_peer(...)` 계열 | application router channel peer 를 관리한다 | ActorGateway 내부 relay 용도로 쓰지 않는다. 이름 있는 router channel 은 application route channel 로 남긴다 |
 | `zlink_spot_node_attach_discovery(...)` | discovery-owned Spot mesh 를 붙인다 | signature 유지. gateway route sync 는 discovery actor route 와 분리해서 설명한다 |
@@ -790,10 +791,16 @@ reflection 으로 우회하지 않는다.
 framework public API 이름은 아래로 확정한다.
 
 ```csharp
-options.AddSpotNode("session-node", node =>
+options.AddSpotMesh("game.session", mesh =>
 {
-    node.Bind(sessionNodeEndpoint);
-    node.ConfigureRouting(routing => routing.RoutingId = sessionNodeRid);
+    mesh.AddNode("session-node", node =>
+    {
+        node.EnableRouter(router =>
+        {
+            router.SetRouterBind(sessionRouterEndpoint);
+            router.SetRoutingId(sessionNodeRid);
+        });
+    });
 });
 
 options.AddStreamNode("session", stream =>
@@ -882,7 +889,7 @@ remote ActorGateway actor ref 를 얻기 위한 framework 발급 locator 로 유
 | `IZLinkSpotNodeBuilder.AcceptSpotRoutesFromChannel(...)` | external route channel 에서 이 SpotNode 로 routed Spot packet 을 받도록 연결 | ActorGateway relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder.AttachChannelClient(...)` / `AttachClientServerChannelClient(...)` | Spot handler 가 channel client 로 나갈 수 있게 dealer 를 붙인다 | ActorGateway relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder` | SpotNode routing/bind/factory 설정 | ActorGateway 를 켜는 API 는 추가하지 않는다. ActorGateway 는 routed SpotNode 위에서 lazy init 된다 |
-| `IZLinkStreamNodeBuilder` | STREAM bind 와 session type 만 설정한다 | stream 이 사용할 ActorGateway SpotNode 를 지정하는 `AttachActorGateway(string spotNodeName)` API 를 추가한다 |
+| `IZLinkStreamNodeBuilder` | STREAM bind 와 session type 만 설정한다 | stream 이 사용할 ActorGateway target SpotNode 를 지정하는 `AttachActorGateway(string spotNodeName)` API 를 추가한다 |
 | `IZLinkFrameworkOptions.AddActorRemoteAddressResolver<TResolver>()` | actor id 를 remote address snapshot 으로 바꾸는 resolver 등록 | 제거한다. remote actor locator 는 resolver 가 아니라 actor host runtime 이 발급한다 |
 | `IZLinkFrameworkOptions.UseRegistryActorRemoteAddresses(...)` | registry actor route 를 route mesh address 로 변환한다 | 제거한다. Actor route registry 는 ActorGateway session relay source of truth 가 아니다 |
 | `IZLinkFrameworkOptions.AddRouteMeshChannel(...)` | application routed channel 과 현재 internal session actor dispatch 를 함께 담당한다 | application routed messaging 으로만 남긴다. ActorGateway internal packet 은 여기에 의존하지 않는다 |
@@ -1048,8 +1055,8 @@ configuration 은 사용자가 가장 먼저 보는 계약이므로 route mesh �
 | `ZLinkActorContext.JoinSpot(...)` | name resolver 로 Spot rid 를 찾고 native join 을 수행한다 | join completion 의 final Actor ref 를 session rebind 에 노출하지 않고 gateway state update 로 끝낸다 |
 | `ZLinkFrameworkActorFacade.NativeJoinActorAsync(...)` | native `JoinActor`를 호출하고 reply 만 decode 한다 | join result 의 final Actor ref/generation 을 gateway state 와 framework logical ref 에 반영한다 |
 | `ZLinkSpotNodeInitializer` | SpotNode 를 만들고 router/pubsub/accepted route channel 을 붙인다 | ActorGateway 를 켜는 호출은 하지 않는다. routed-capable node 생성과 stream attach 대상 등록만 보장한다 |
-| `ZLinkStreamNodeRuntime` | stream socket bind/session dispatch 만 관리한다 | stream socket 을 configured ActorGateway SpotNode 에 attach 해야 한다 |
-| `ZLinkFrameworkRegistrationValidator.ValidateStreamNode(...)` | bind endpoint/session type 만 검증한다 | session actor bind 를 쓰는 stream 은 ActorGateway SpotNode 참조를 요구한다 |
+| `ZLinkStreamNodeRuntime` | stream socket bind/session dispatch 만 관리한다 | stream socket 을 configured ActorGateway target SpotNode 에 attach 해야 한다 |
+| `ZLinkFrameworkRegistrationValidator.ValidateStreamNode(...)` | bind endpoint/session type 만 검증한다 | session actor bind 를 쓰는 stream 은 ActorGateway target SpotNode 참조를 요구한다 |
 | `ZLinkFrameworkRegistrationValidator.ValidateSpotNode(...)` | mesh/router/pubsub/route acceptance 를 검증한다 | stream attach 대상 또는 actor host node 는 routed-capable SpotNode 여야 하고 routing id 가 있어야 한다 |
 | `ZLinkFrameworkServiceRegistrar` | remote address resolver 와 route client 기반 session actor dispatch services 를 등록한다 | ActorGateway services 등록 조건으로 바꾼다. remote address resolver 는 session bind 용 DI 에서 제거한다 |
 

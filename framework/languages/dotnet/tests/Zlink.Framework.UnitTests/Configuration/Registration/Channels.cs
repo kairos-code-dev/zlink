@@ -53,8 +53,10 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
-                        node.Bind("tcp://127.0.0.1:9000");
-                        node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9100"));
+                        node.EnableRouter(router =>
+                        {
+                            router.SetRouterBind("tcp://127.0.0.1:9100");
+                        });
                         node.AcceptSpotRoutesFromChannel(
                             "events",
                             routes => routes.UseManualConnections(
@@ -80,8 +82,10 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
-                        node.Bind("tcp://127.0.0.1:9000");
-                        node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9101"));
+                        node.EnableRouter(router =>
+                        {
+                            router.SetRouterBind("tcp://127.0.0.1:9101");
+                        });
                         node.AcceptSpotRoutesFromChannel(
                             "mesh",
                             routes => routes.UseManualConnections(
@@ -108,8 +112,10 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
-                        node.Bind("tcp://127.0.0.1:9000");
-                        node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9102"));
+                        node.EnableRouter(router =>
+                        {
+                            router.SetRouterBind("tcp://127.0.0.1:9102");
+                        });
                         node.AcceptSpotRoutesFromChannel(
                             "route",
                             routes => routes.UseManualConnections(
@@ -133,8 +139,10 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("stage-node", node =>
                 {
-                    node.Bind("tcp://127.0.0.1:9000");
-                    node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9103"));
+                    node.EnableRouter(router =>
+                    {
+                        router.SetRouterBind("tcp://127.0.0.1:9103");
+                    });
                     node.AcceptSpotRoutesFromChannel(
                         "missing",
                         routes => routes.UseManualConnections(
@@ -161,7 +169,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
-                        node.Bind("tcp://127.0.0.1:9000");
                         node.AcceptSpotRoutesFromChannel(
                             "api",
                             routes => routes.UseManualConnections(
@@ -170,7 +177,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 });
             }));
 
-        Assert.Contains("does not enable router capability", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("must enable router", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -188,8 +195,10 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                     mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node", node =>
                     {
-                        node.Bind("tcp://127.0.0.1:9000");
-                        node.EnableRouter(router => router.Bind("tcp://127.0.0.1:9104"));
+                        node.EnableRouter(router =>
+                        {
+                            router.SetRouterBind("tcp://127.0.0.1:9104");
+                        });
                         node.AcceptSpotRoutesFromChannel("api");
                     });
                 });

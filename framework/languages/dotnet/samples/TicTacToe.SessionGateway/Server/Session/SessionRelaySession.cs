@@ -6,12 +6,8 @@ namespace TicTacToe.SessionActorDispatch.Session;
 
 internal sealed class SessionRelaySession(
     IZLinkSessionContext context,
-    IEnumerable<ISessionRelayPacketHandler> handlers) : IZLinkSession
+    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers) : IZLinkSession
 {
-    private readonly IReadOnlyDictionary<string, ISessionRelayPacketHandler> _handlers =
-        handlers.ToDictionary(static handler => handler.PacketName, StringComparer.Ordinal);
-    private readonly SessionRelayState _state = new();
-
     public IZLinkSessionContext Context { get; } = context;
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
@@ -23,7 +19,6 @@ internal sealed class SessionRelaySession(
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        _state.Clear();
         return ValueTask.CompletedTask;
     }
 
@@ -41,16 +36,33 @@ internal sealed class SessionRelaySession(
         Message payload,
         CancellationToken cancellationToken)
     {
-        if (!_handlers.TryGetValue(header.Name, out var handler))
+        if (await handlers.TryHandleAsync(
+                Context,
+                header,
+                payload,
+                cancellationToken))
         {
-            throw new InvalidOperationException($"Unsupported client packet '{header.Name}'.");
+            return;
         }
 
-        await handler.HandleAsync(
-                new SessionRelayPacketContext(Context, _state),
+        cancellationToken.ThrowIfCancellationRequested();
+        var actor = RequireSingleBoundActor($"relaying packet '{header.Name}'");
+        await Context.RelayToActorAsync(
+                actor,
                 header,
-                payload.Move(),
+                payload,
                 cancellationToken)
             ;
+    }
+
+    private IZLinkActorRef RequireSingleBoundActor(string action)
+    {
+        var actors = Context.BoundActors;
+        return actors.Count switch
+        {
+            1 => actors.Single(),
+            0 => throw new InvalidOperationException($"Client must authenticate before {action}."),
+            _ => throw new InvalidOperationException($"Exactly one actor must be bound before {action}.")
+        };
     }
 }

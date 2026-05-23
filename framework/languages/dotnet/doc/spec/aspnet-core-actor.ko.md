@@ -593,6 +593,10 @@ dispatch 되지 않는다.
 session 이 actor 로 packet 을 relay 할 때는 `IZLinkSession.OnDispatchAsync(...)`
 에서 actor handle 을 만들거나 찾은 뒤 `RelayToActorAsync(...)` 를 호출한다.
 application 이 actor runtime 을 직접 호출하는 별도 public client 는 두지 않는다.
+이때 session callback 으로 받은 payload 는 framework runtime 이 callback 동안
+빌려준 값이다. session 은 이를 직접 해제하거나 `Move()` 로 소비하지 않고,
+`RelayToActorAsync(...)` 에 그대로 넘긴다. remote ActorGateway 로 보내기 위해
+필요한 내부 frame 은 framework 가 별도로 만든다.
 
 remote actor 위치 해석은 public resolver 가 아니라 core ActorGateway 경로가 맡는다.
 session 은 local actor 를 actor id/type 으로 bind 하거나, Play 서버가 발급한
@@ -697,6 +701,8 @@ public interface IZLinkSessionActorAttachmentContext
 
 public interface IZLinkSessionActorDispatchContext
 {
+    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
@@ -712,6 +718,10 @@ public interface IZLinkSessionActorDispatchContext
         IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
 
+    bool TryGetBoundActor(
+        string actorId,
+        out IZLinkActorRef actor);
+
     ValueTask RelayToActorAsync(...);
 }
 ```
@@ -726,6 +736,11 @@ public interface IZLinkSessionActorDispatchContext
   발급한 locator 여야 한다.
 - `BindActorHandleAsync(actor, ...)` -- 이미 받은 actor handle 을 현재 session 에
   다시 묶을 때 쓴다.
+- `BoundActors` -- 현재 session 에 bind 된 actor handle snapshot 이다.
+- `TryGetBoundActor(actorId, out actor)` -- 현재 session 에 이미 bind 된 actor
+  handle 을 actor id 로 찾는다. 한 session 이 여러 actor 를 bind 할 수 있으므로
+  framework 의 session binding 을 조회하고, application 이 actor handle 목록을
+  따로 복제하지 않게 한다.
 - `RelayToActorAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
   보통 framework 가 자동으로 처리한다.
 - `IZLinkActorRef.NotifyDisconnectedAsync(...)` -- session 이 연결 종료를
@@ -915,8 +930,10 @@ builder.Services.AddZLinkFramework(options =>
         mesh.UseDiscovery(discovery => discovery.Add("tcp://registry1:5551"));
         mesh.AddNode("session-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:7201");
-            node.EnableRouter("session-node");
+            node.EnableRouter(router =>
+            {
+                router.SetRouterBind("tcp://0.0.0.0:7201");
+            });
         });
     });
 
@@ -945,7 +962,10 @@ builder.Services.AddZLinkFramework(options =>
 
         mesh.AddNode("play-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9000");
+            node.EnableRouter(router =>
+            {
+                router.SetRouterBind("tcp://0.0.0.0:9000");
+            });
             node.AddEntrySpot<PlayerEntrySpot>();
             node.AddSpotFactory<MatchSpot>("match");
         });

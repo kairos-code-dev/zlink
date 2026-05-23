@@ -1,7 +1,7 @@
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
 
-namespace Bingo.Server.Api;
+namespace Bingo.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
 internal sealed class MatchBingoHandler(IZLinkClient client)
@@ -19,6 +19,7 @@ internal sealed class MatchBingoHandler(IZLinkClient client)
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<AllocateBingoRoomRes>(cancellationToken)
             ;
+
         return new MatchBingoApiRes(allocated.RoomId);
     }
 }

@@ -23,11 +23,10 @@ options.AddSpotMesh("game.session", mesh =>
 {
     mesh.AddNode("session-node", node =>
     {
-        node.Bind(sessionSpotEndpoint);
         node.EnableRouter(router =>
         {
-            router.Bind(sessionRouterEndpoint);
-            router.ConfigureRouting(routing => routing.RoutingId = sessionNodeRid);
+            router.SetRouterBind(sessionRouterEndpoint);
+            router.SetRoutingId(sessionNodeRid);
         });
     });
 });
@@ -96,6 +95,9 @@ public interface IZLinkSessionActorDispatchContext
 `IsRemote` 와 `RemoteAddress` 는 session rebind 와 sample contract 전달에 쓰는 locator 정보다.
 일반 dispatch 는 `RelayToActorAsync(...)` 에 맡기며 caller 가 application route mesh 로 직접
 분기하지 않는다.
+`payload` 는 session callback 동안 framework runtime 이 빌려준 값이므로 caller 는
+`Dispose()` 나 `Move()` 를 호출하지 않는다. `RelayToActorAsync(...)` 는 caller payload 를
+소비하지 않고, remote ActorGateway 로 넘겨야 하는 내부 frame 은 framework 가 별도로 만든다.
 
 ### 2.2 actor side
 

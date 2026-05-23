@@ -175,28 +175,30 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
     }
 
-    public async ValueTask<ZLinkSpotInfo?> GetAsync(
+    public ValueTask<ZLinkSpotInfo?> GetAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            return _spots.TryGetValue(spotRid, out var activation)
+            ZLinkSpotInfo? result = _spots.TryGetValue(spotRid, out var activation)
                 ? new ZLinkSpotInfo(activation.SpotRid, activation.SpotName)
                 : null;
+            return ValueTask.FromResult(result);
         }
     }
 
-    public async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(CancellationToken cancellationToken)
+    public ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            return _spots.Values
+            IReadOnlyList<ZLinkSpotInfo> result = _spots.Values
                 .Select(static activation => new ZLinkSpotInfo(activation.SpotRid, activation.SpotName))
                 .OrderBy(static item => item.SpotName, StringComparer.Ordinal)
                 .ToArray();
+            return ValueTask.FromResult(result);
         }
     }
 

@@ -315,7 +315,10 @@ public sealed class TimerTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-timer-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AddEntrySpot<EntryTimerSpot>();
             });
             });

@@ -151,6 +151,78 @@ public abstract partial class RegistrationValidationSupport
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
+    protected sealed class TestSessionPacketContext
+    {
+        public int HandledCount { get; private set; }
+
+        public void MarkHandled()
+        {
+            HandledCount++;
+        }
+    }
+
+    protected sealed class TestSessionPacketHandler : IZLinkSessionPacketHandler<TestSessionPacketContext>
+    {
+        public string PacketName => "test.session.packet";
+
+        public ValueTask HandleAsync(
+            TestSessionPacketContext context,
+            ZlinkStreamHeader header,
+            global::Systems.Zlink.Message payload,
+            CancellationToken cancellationToken)
+        {
+            _ = header;
+            _ = payload;
+            cancellationToken.ThrowIfCancellationRequested();
+            context.MarkHandled();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    protected sealed class TestSessionWithPacketDispatcher(
+        IZLinkSessionContext context,
+        IZLinkSessionPacketDispatcher<TestSessionPacketContext> dispatcher) : IZLinkSession
+    {
+        public IZLinkSessionContext Context { get; } = context;
+
+        public IZLinkSessionPacketDispatcher<TestSessionPacketContext> Dispatcher { get; } = dispatcher;
+
+        public ValueTask OnConnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+        public ValueTask OnDispatchAsync(
+            ZlinkStreamHeader header,
+            global::Systems.Zlink.Message body,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    protected sealed class DuplicateSessionPacketContext;
+
+    protected sealed class DuplicateSessionPacketHandler : IZLinkSessionPacketHandler<DuplicateSessionPacketContext>
+    {
+        public string PacketName => "duplicate.session.packet";
+
+        public ValueTask HandleAsync(
+            DuplicateSessionPacketContext context,
+            ZlinkStreamHeader header,
+            global::Systems.Zlink.Message payload,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    protected sealed class SecondDuplicateSessionPacketHandler : IZLinkSessionPacketHandler<DuplicateSessionPacketContext>
+    {
+        public string PacketName => "duplicate.session.packet";
+
+        public ValueTask HandleAsync(
+            DuplicateSessionPacketContext context,
+            ZlinkStreamHeader header,
+            global::Systems.Zlink.Message payload,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
     protected sealed class TestSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         public IZLinkSpotContext Context { get; } = context;

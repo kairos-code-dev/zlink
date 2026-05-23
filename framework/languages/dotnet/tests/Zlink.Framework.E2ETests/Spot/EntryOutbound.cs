@@ -39,7 +39,10 @@ public sealed class EntryOutboundTests : SpotTestSupport
                 mesh.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
                 mesh.AddNode("entry-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
                 spot.AttachClientServerChannelClient("orders");
                 spot.AddEntrySpot<GeneralEntrySpot>();
             });

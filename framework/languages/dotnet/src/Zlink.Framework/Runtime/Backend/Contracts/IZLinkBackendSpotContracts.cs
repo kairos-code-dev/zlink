@@ -6,9 +6,9 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     void SetRoutingId(RoutingId routingId);
 
-    void SetRouterBindEndpoint(string endpoint);
+    void SetRouterBind(string endpoint);
 
-    void Bind(string endpoint);
+    void SetPubBind(string endpoint);
 
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
@@ -17,6 +17,11 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
     void DisconnectPeer(string endpoint);
 
     void ConnectRouterChannelPeer(string channelName, string endpoint);
+
+    void ConnectRouterChannelPeerRid(
+        string channelName,
+        RoutingId peerRid,
+        string endpoint);
 
     void DisconnectRouterChannelPeer(string channelName, string endpoint);
 

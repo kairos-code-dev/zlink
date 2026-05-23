@@ -28,7 +28,10 @@ public sealed class EntryRoutingTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("entry-rid-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNodeEndpoint);
+                });
                 spot.ConfigureEntrySpot(entry =>
                 {
                     entry.RoutingId = entryRid;
@@ -83,8 +86,10 @@ public sealed class EntryRoutingTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("route-target-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
-                spot.EnableRouter(router => router.Bind(spotRouterEndpoint));
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotRouterEndpoint);
+                });
                 spot.AcceptSpotRoutesFromChannel("api");
             });
             });

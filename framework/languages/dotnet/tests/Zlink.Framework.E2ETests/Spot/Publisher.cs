@@ -42,8 +42,10 @@ public sealed class PublisherTests : SpotTestSupport
             });
                 mesh.AddNode("subscriber-node", spot =>
             {
-                spot.Bind(subscriberNodeEndpoint);
-                spot.EnablePubSub();
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(subscriberNodeEndpoint);
+                });
                 spot.AddSpotFactory<ExternalSubscriberStageSpot>("subscriber-stage");
             });
             });
@@ -60,8 +62,10 @@ public sealed class PublisherTests : SpotTestSupport
             });
                 mesh.AddNode("publisher-node", spot =>
             {
-                spot.Bind(publisherNodeEndpoint);
-                spot.EnablePubSub();
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(publisherNodeEndpoint);
+                });
                 spot.AttachSpotMeshPublisherClient("game.stage");
             });
             });
@@ -184,8 +188,10 @@ public sealed class PublisherTests : SpotTestSupport
             });
                 mesh.AddNode("subscriber-node", spot =>
             {
-                spot.Bind(subscriberNodeEndpoint);
-                spot.EnablePubSub();
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(subscriberNodeEndpoint);
+                });
             });
             });
         });
@@ -201,8 +207,10 @@ public sealed class PublisherTests : SpotTestSupport
             });
                 mesh.AddNode("publisher-node", spot =>
             {
-                spot.Bind(publisherNodeEndpoint);
-                spot.EnablePubSub();
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(publisherNodeEndpoint);
+                });
                 spot.AttachSpotMeshPublisherClient("game.stage");
             });
             });

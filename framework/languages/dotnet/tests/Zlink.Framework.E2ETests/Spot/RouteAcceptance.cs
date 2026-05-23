@@ -40,8 +40,10 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("route-target-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
-                spot.EnableRouter(router => router.Bind(spotRouterEndpoint));
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotRouterEndpoint);
+                });
                 spot.AcceptSpotRoutesFromChannel(
                     "api",
                     routes => routes.UseManualConnections(
@@ -87,8 +89,10 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("route-target-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
-                spot.EnableRouter(router => router.Bind(spotRouterEndpoint));
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotRouterEndpoint);
+                });
                 spot.AcceptSpotRoutesFromChannel(
                     "play",
                     routes => routes.UseManualConnections(

@@ -49,6 +49,18 @@ builder.Services.AddZLinkFramework(options =>
 session 은 `IZLinkSession` 을 구현한다. framework 가 frame 을 디코드해
 `ZlinkStreamHeader header` + `Message payload` 두 부분으로 콜백한다. 응용은
 `header.Name` 으로 분기하고 payload 를 타입으로 디코드한다.
+framework 가 수신 payload 의 해제를 책임지므로 session callback 안에서는
+payload 를 그대로 읽거나 다른 framework API 에 넘기면 된다. callback 뒤에도
+payload 를 보관할 때만 `Copy()` 또는 `Move()` 를 사용한다.
+application 이 직접 만든 `Message` 를 raw `IZLinkStream.Write(...)` 에 넘기는
+경우에는 호출자가 그 `Message` 의 수명을 계속 책임진다. 일반적인 응답과 push 는
+`Context.Reply(...)`, `Context.Send(...)`, actor 의 `BoundSession.Send(...)` 를
+쓰면 이 수명 규칙을 직접 다룰 일이 없다.
+여러 session 전용 packet 을 나누어 처리해야 하면
+`IZLinkSessionPacketDispatcher<TSessionContext>` 를 주입받아 등록된 packet 만
+handler 로 보낼 수 있다. dispatcher 는 미등록 packet 을 자동 처리하지 않고
+`false` 를 반환한다. 그 뒤에 무시, 오류, actor relay 중 무엇을 할지는 session 이
+정한다.
 
 ```csharp
 public sealed class ClientHeaderSession(
@@ -72,12 +84,12 @@ public sealed class ClientHeaderSession(
         switch (header.Name)
         {
             case "ClientInput":
-                var input = payload.FromJson<ClientInput>();
+                var input = payload.Decode<ClientInput>();
                 await channels.Send("play", new ForwardInputCommand(input)).Submit(ct);
                 break;
 
             case "Ping":
-                var ping = payload.FromJson<Ping>();
+                var ping = payload.Decode<Ping>();
                 await context.Reply(new Pong(ping.Sequence)).Submit(ct);
                 break;
         }
@@ -90,7 +102,7 @@ public sealed class ClientHeaderSession(
 | 표면 | 용도 |
 |------|------|
 | `Send(msg).Submit(ct)` / `Reply(msg).Submit(ct)` | client 로 push / 요청에 응답 |
-| `BindActorHandleAsync(...)` / `RelayToActorAsync(...)` | actor 로 relay([06-actor-session](./06-actor-session.ko.md)) |
+| `BoundActors` / `BindActorHandleAsync(...)` / `TryGetBoundActor(...)` / `RelayToActorAsync(...)` | actor 로 relay([06-actor-session](./06-actor-session.ko.md)) |
 | `CloseAsync(...)` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
 다른 서비스로 channel send/request 를 보내야 할 때는 session 생성자에서
@@ -116,9 +128,10 @@ public sealed class ClientHeaderSession(
 ### 보내기와 직렬화
 
 - `IZLinkStream.Write(Message payload, ...)` 는 backpressure 를 `false` 반환으로
-  표현한다. 보통은 `Send`/`Reply`/`BoundSession` 를 쓴다.
+  표현하며 caller payload 를 소비하지 않는다. 보통은 `Send`/`Reply`/`BoundSession`
+  를 쓴다.
 - payload 디코드는 transport core 에 섞지 않고 등록된 codec 에 위임한다. 위 예제의
-  `payload.FromJson<T>()` 처럼 codec helper 로 `Message` 를 타입으로 풀고, 타입
+  `payload.Decode<T>()` 처럼 codec helper 로 `Message` 를 타입으로 풀고, 타입
   특성으로 codec 을 고른다(생성된 protobuf 타입 → protobuf, 그 외 POCO → json).
   핫패스에서는 `Message.AsReadOnlySpan()` 기반 helper 를 쓰고 `ToArray()` 복사를
   피한다.

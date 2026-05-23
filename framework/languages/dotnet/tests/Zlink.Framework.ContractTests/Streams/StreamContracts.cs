@@ -16,6 +16,8 @@ public sealed class StreamContracts
         typeof(IZLinkSessionActorAttachmentContext),
         typeof(IZLinkSessionSendCall),
         typeof(IZLinkSessionReplyCall),
+        typeof(IZLinkSessionPacketHandler<>),
+        typeof(IZLinkSessionPacketDispatcher<>),
         typeof(IZLinkActorRef),
         typeof(IZLinkStream))]
     public async Task Session_context_collects_identity_stream_and_actor_operations()
@@ -27,6 +29,7 @@ public sealed class StreamContracts
         await session.OnConnectedAsync(CancellationToken.None);
         await context.AttachActorAsync(actor);
         var actorRef = await context.BindActorHandleAsync("player-1", "player");
+        var foundActor = context.TryGetBoundActor("player-1", out var boundActor);
         await context.RelayToActorAsync(
             actorRef,
             new ZlinkStreamHeader(
@@ -59,8 +62,49 @@ public sealed class StreamContracts
 
         Assert.Equal("session-1", session.Context.SessionId);
         Assert.Equal("player-1", actorRef.ActorId);
+        Assert.True(foundActor);
+        Assert.Same(actorRef, boundActor);
         Assert.True(context.IsClosed);
         Assert.True(context.StreamClosed);
+    }
+
+    [Fact]
+    [ContractExample(
+        typeof(IZLinkSessionPacketHandler<>),
+        typeof(IZLinkSessionPacketDispatcher<>))]
+    public async Task Session_packet_dispatcher_handles_only_registered_packets()
+    {
+        var sessionContext = new SessionPacketContext();
+        IZLinkSessionPacketDispatcher<SessionPacketContext> dispatcher =
+            new ExampleSessionPacketDispatcher<SessionPacketContext>(
+            [
+                new AuthenticatePacketHandler()
+            ]);
+
+        var handled = await dispatcher.TryHandleAsync(
+            sessionContext,
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.None,
+                null,
+                "auth",
+                ZlinkStreamMetadata.Empty),
+            new Message());
+        var unhandled = await dispatcher.TryHandleAsync(
+            sessionContext,
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.None,
+                null,
+                "gameplay",
+                ZlinkStreamMetadata.Empty),
+            new Message());
+
+        Assert.True(handled);
+        Assert.False(unhandled);
+        Assert.Equal("auth", sessionContext.LastPacketName);
     }
 
     [Fact]
@@ -92,6 +136,51 @@ public sealed class StreamContracts
 
     private sealed record AuthenticateReply(string PlayerId);
 
+    private sealed class SessionPacketContext
+    {
+        public string? LastPacketName { get; set; }
+    }
+
+    private sealed class AuthenticatePacketHandler : IZLinkSessionPacketHandler<SessionPacketContext>
+    {
+        public string PacketName => "auth";
+
+        public ValueTask HandleAsync(
+            SessionPacketContext context,
+            ZlinkStreamHeader header,
+            Message payload,
+            CancellationToken cancellationToken)
+        {
+            _ = payload;
+            cancellationToken.ThrowIfCancellationRequested();
+            context.LastPacketName = header.Name;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class ExampleSessionPacketDispatcher<TContext>(
+        IEnumerable<IZLinkSessionPacketHandler<TContext>> handlers)
+        : IZLinkSessionPacketDispatcher<TContext>
+    {
+        private readonly IReadOnlyDictionary<string, IZLinkSessionPacketHandler<TContext>> _handlers =
+            handlers.ToDictionary(static handler => handler.PacketName, StringComparer.Ordinal);
+
+        public async ValueTask<bool> TryHandleAsync(
+            TContext context,
+            ZlinkStreamHeader header,
+            Message payload,
+            CancellationToken cancellationToken = default)
+        {
+            if (!_handlers.TryGetValue(header.Name, out var handler))
+            {
+                return false;
+            }
+
+            await handler.HandleAsync(context, header, payload, cancellationToken);
+            return true;
+        }
+    }
+
     private sealed class ExampleSession(IZLinkSessionContext context) : IZLinkSession
     {
         public IZLinkSessionContext Context { get; } = context;
@@ -119,6 +208,10 @@ public sealed class StreamContracts
 
         public string? RemoteAddr => "tcp://127.0.0.1:5001";
 
+        private readonly Dictionary<string, IZLinkActorRef> _actors = new(StringComparer.Ordinal);
+
+        public IReadOnlyCollection<IZLinkActorRef> BoundActors => _actors.Values.ToArray();
+
         public bool IsClosed { get; private set; }
 
         public bool StreamClosed { get; private set; }
@@ -130,20 +223,38 @@ public sealed class StreamContracts
         public ValueTask<IZLinkActorRef> BindActorHandleAsync(
             string actorId,
             string actorType,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkActorRef>(new ActorRef(actorId, actorType));
+            CancellationToken cancellationToken = default)
+        {
+            var actor = new ActorRef(actorId, actorType);
+            _actors[actorId] = actor;
+            return ValueTask.FromResult<IZLinkActorRef>(actor);
+        }
 
         public ValueTask<IZLinkActorRef> BindActorHandleAsync(
             string actorId,
             string actorType,
             ZLinkActorRemoteAddress remoteAddress,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkActorRef>(new ActorRef(actorId, actorType, true, remoteAddress));
+            CancellationToken cancellationToken = default)
+        {
+            var actor = new ActorRef(actorId, actorType, true, remoteAddress);
+            _actors[actorId] = actor;
+            return ValueTask.FromResult<IZLinkActorRef>(actor);
+        }
 
         public ValueTask<IZLinkActorRef> BindActorHandleAsync(
             IZLinkActorRef actor,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(actor);
+            CancellationToken cancellationToken = default)
+        {
+            _actors[actor.ActorId] = actor;
+            return ValueTask.FromResult(actor);
+        }
+
+        public bool TryGetBoundActor(
+            string actorId,
+            out IZLinkActorRef actor)
+        {
+            return _actors.TryGetValue(actorId, out actor!);
+        }
 
         public ValueTask RelayToActorAsync(
             IZLinkActorRef actor,

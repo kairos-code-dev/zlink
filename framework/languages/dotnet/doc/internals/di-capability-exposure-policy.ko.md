@@ -154,7 +154,10 @@ services.AddZLinkFramework(options =>
     {
         mesh.AddNode("play-node", node =>
         {
-            node.Bind("tcp://127.0.0.1:9000");
+            node.EnablePubSub(pubsub =>
+            {
+                pubsub.SetPubBind("tcp://127.0.0.1:9000");
+            });
             node.AddEntrySpot<GameEntrySpot>();
         });
     });

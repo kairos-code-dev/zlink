@@ -80,10 +80,16 @@ public interface IZLinkSession
 
 public interface IZLinkSessionActorDispatchContext
 {
+    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default);
+
+    bool TryGetBoundActor(
+        string actorId,
+        out IZLinkActorRef actor);
 
     ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
@@ -214,7 +220,7 @@ public sealed class ClientHeaderSession(
         {
             case "ClientInput":
             {
-                ClientInput input = payload.FromJson<ClientInput>();
+                ClientInput input = payload.Decode<ClientInput>();
 
                 await channels
                     .Send(
@@ -230,7 +236,7 @@ public sealed class ClientHeaderSession(
 
             case "Ping":
             {
-                Ping ping = payload.FromJson<Ping>();
+                Ping ping = payload.Decode<Ping>();
 
                 await channels
                     .Send(
@@ -263,6 +269,9 @@ public sealed class ClientHeaderSession(
 - header session 이 내부 header 를 해석해 `ClientInput`, `Ping` 같은 packet
   name 을 뽑아 준다. 그러면 application 은 그 이름에 맞는 타입으로 decode 한다.
 - application 측에는 recv loop 가 없다. session callback 만 구현하면 된다.
+- framework runtime 이 수신 payload 의 해제를 책임진다. 따라서 session callback
+  안에서는 payload 를 해제하거나 `Move()` 로 소비하지 않고, 바로 읽거나 다른
+  framework API 에 넘긴다.
 - 다른 서버로의 outbound 호출은 session 이 생성자에서 함께 받은
   `IZLinkClient` 로 `Send(...)` 또는 `Request(...)` 를 호출해 처리한다.
   이 호출은 stream 연결이 아니라 channel client socket 을 사용한다.

@@ -325,7 +325,6 @@ builder.Services.AddZLinkFramework(options =>
 
         mesh.AddNode("stage-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9000");
 
             node.EnableRouter(router =>
             {
@@ -350,6 +349,7 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
+                pubsub.SetPubBind("tcp://0.0.0.0:9000");
                 pubsub.ConfigurePublisherConfig(pubOpt =>
                 {
                     pubOpt.SendHighWaterMark = 50_000;
@@ -407,7 +407,7 @@ app.Run();
 - `AttachClientServerChannelClient("orders")`
   - stage spot이 `orders` channel로 send / request를 보낼 때 사용할 outbound
     client를 붙인다.
-- `EnableRouter(router => router.Bind(endpoint))`
+- `EnableRouter(router => router.SetRouterBind(endpoint))`
   - 같은 SPOT channel에 속한 다른 `SpotNode`와 routed packet을 주고받기 위한
     local router를 켜고 routed ingress endpoint를 명시한다.
 - `AcceptSpotRoutesFromChannel("play")`
@@ -458,7 +458,6 @@ builder.Services.AddZLinkFramework(options =>
 
         mesh.AddNode("stage-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9000");
 
             node.EnableRouter(router =>
             {
@@ -471,6 +470,7 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
+                pubsub.SetPubBind("tcp://0.0.0.0:9000");
                 pubsub.UseManualConnections(peers =>
                 {
                     // Remote SpotNode mesh PUB endpoint.
@@ -557,7 +557,6 @@ builder.Services.AddZLinkFramework(options =>
 
         mesh.AddNode("stage-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9000");
 
             node.EnableRouter(router =>
             {
@@ -580,6 +579,7 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
+                pubsub.SetPubBind("tcp://0.0.0.0:9000");
                 pubsub.ConfigurePublisherConfig(pubOpt =>
                 {
                     pubOpt.SendHighWaterMark = 50_000;
@@ -1331,7 +1331,7 @@ public sealed class SampleSession
     public IZLinkSessionContext Context { get; } = context;
 
     public SampleActor? Actor { get; private set; }
-    public IZLinkActorRef? ActorRef { get; private set; }
+    public string? ActorId { get; private set; }
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
@@ -1347,7 +1347,7 @@ public sealed class SampleSession
 
         SampleActor actor = Actor;
         Actor = null;
-        ActorRef = null;
+        ActorId = null;
 
         // session binding cleanup is handled by the framework disconnect path.
     }
@@ -1378,7 +1378,7 @@ public sealed class SampleSession
             }
 
             SampleAuthenticateRequest authRequest =
-                payload.FromJson<SampleAuthenticateRequest>();
+                payload.Decode<SampleAuthenticateRequest>();
 
             SampleAuthenticationResult auth =
                 await _authVerifier.VerifyAsync(
@@ -1393,10 +1393,11 @@ public sealed class SampleSession
                     cancellationToken);
 
             Actor = actor;
-            ActorRef = await Context.BindActorHandleAsync(
+            var actorRef = await Context.BindActorHandleAsync(
                 auth.AccountId,
                 auth.ActorType,
                 cancellationToken);
+            ActorId = actorRef.ActorId;
 
             await Context
                 .Reply(new SampleAuthenticateReply
@@ -1414,7 +1415,7 @@ public sealed class SampleSession
             StringComparison.Ordinal))
         {
             SampleJoinRoomRequest join =
-                payload.FromJson<SampleJoinRoomRequest>();
+                payload.Decode<SampleJoinRoomRequest>();
 
             SampleSpot room =
                 await _rooms.GetRequiredAsync(
@@ -1439,7 +1440,9 @@ public sealed class SampleSession
         }
 
         await Context.RelayToActorAsync(
-            ActorRef ?? throw new InvalidOperationException("Actor is not bound."),
+            ActorId is not null && Context.TryGetBoundActor(ActorId, out var actorRef)
+                ? actorRef
+                : throw new InvalidOperationException("Actor is not bound."),
             header,
             payload,
             cancellationToken);
@@ -1500,6 +1503,10 @@ public sealed record SampleAuthenticationResult(
     string DisplayName,
     string ActorType);
 ```
+
+`OnDispatchAsync(...)` 로 받은 `payload` 는 framework runtime 이 callback 동안
+빌려준 값이다. session 은 payload 를 직접 해제하거나 `Move()` 로 소비하지 않고,
+읽거나 `RelayToActorAsync(...)` 같은 framework API 에 그대로 넘긴다.
 
 여기서 `ISampleActorFactoryRegistry` 는 `actorType -> factory` 매핑을 잡아
 두는 샘플용 registry 로 보면 된다. 인증 결과에 따라 `SampleWarriorActor`,

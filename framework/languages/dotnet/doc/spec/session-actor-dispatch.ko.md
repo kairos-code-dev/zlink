@@ -583,6 +583,12 @@ session callback 안에서 actor 에게 packet 을 넘기는 public 표면은
 `RelayToActorAsync(...)` 같은 helper 다. 이 helper 는 session queue 를 actor
 실행 queue 로 이어 주는 bridge 역할을 한다.
 
+session callback 으로 들어온 `Message payload` 는 framework runtime 이 소유한
+수신 payload 를 callback 동안 빌려준 값이다. 따라서 `RelayToActorAsync(...)`
+는 caller payload 를 해제하거나 `Move()` 로 소비하지 않는다. actor 실행 queue 로
+수명이 넘어가야 하는 경우에는 framework 내부에서 별도 copy 또는 move 대상
+message 를 만들어 소유권을 분리한다.
+
 ```csharp
 internal sealed class ZLinkSessionContext : IZLinkSessionContext
 {
@@ -1117,6 +1123,8 @@ public client 를 사용하지 않는다. client stream 에서 받은 packet 은
 ```csharp
 public interface IZLinkSessionActorDispatchContext
 {
+    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
@@ -1132,6 +1140,10 @@ public interface IZLinkSessionActorDispatchContext
         IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
 
+    bool TryGetBoundActor(
+        string actorId,
+        out IZLinkActorRef actor);
+
     ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
         ZlinkStreamHeader header,
@@ -1145,6 +1157,10 @@ packet 을 어떤 actor 에 relay 할지"만 결정한다. 같은 process 의 ac
 overload 로 bind 하고, 다른 process 의 actor 는 actor host runtime 이 발급한
 `ZLinkActorRemoteAddress` 를 넘기는 overload 로 bind 한다. 이 값은 application route mesh
 resolver 결과가 아니라 ActorGateway 가 remote actor ref 를 얻기 위한 locator 다.
+한 session 이 여러 actor 를 bind 할 수 있으므로 이미 bind 한 actor handle 이 필요하면
+`BoundActors` 로 현재 binding snapshot 을 보거나 `TryGetBoundActor(actorId, out actor)` 로
+actor id 기준 조회를 한다. session 은 actor handle 목록을 별도 application 상태로
+복제하지 않는다.
 
 ## 6. Spot remote address resolver 등록
 
@@ -1265,7 +1281,10 @@ options.AddSpotMesh("game.rooms", mesh =>
     mesh.UseDiscovery(discovery => discovery.Add(registryEndpoint));
     mesh.AddNode("play", spot =>
     {
-        spot.Bind(spotEndpoint);
+        spot.EnableRouter(router =>
+        {
+            router.SetRouterBind(spotEndpoint);
+        });
         spot.AddEntrySpot<TicTacToeEntrySpot>();
         spot.AddSpotFactory<TicTacToeGame>("game");
     });
@@ -1324,7 +1343,7 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
     {
         if (header.Name == "auth")
         {
-            AuthReq request = payload.FromJson<AuthReq>();
+            AuthReq request = payload.Decode<AuthReq>();
 
             IZLinkActorRef actor = await context.BindActorHandleAsync(
                 request.ActorId,

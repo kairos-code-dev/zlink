@@ -117,6 +117,8 @@ public interface IZLinkSession
 
 public interface IZLinkSessionActorDispatchContext
 {
+    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
@@ -131,6 +133,10 @@ public interface IZLinkSessionActorDispatchContext
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
+
+    bool TryGetBoundActor(
+        string actorId,
+        out IZLinkActorRef actor);
 
     ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
@@ -201,6 +207,37 @@ public interface IZLinkSessionContext :
 session 구현체는 이 값을 get-only property 로 그대로 노출해야 하며, runtime 은
 생성 직후 같은 context 인스턴스인지 검증한다.
 
+low-level zlink binding 을 직접 사용할 때는 recv 또는 callback 으로 받은
+`Message` 를 application 이 해제한다. framework 에서는 이 binding 표면을
+application 에 직접 노출하지 않는다. framework runtime 이 binding 의 수신자가
+되며, 수신한 `Message` 의 해제 책임도 framework runtime 이 가진다.
+
+`OnDispatchAsync(...)` 로 전달된 `payload` 는 callback 실행 동안 session 이
+그대로 사용할 수 있는 borrowed payload 다. session 은 `Dispose()`, `await using`,
+`Move()` 를 기본 사용법으로 쓰지 않는다. `RelayToActorAsync(...)` 같은 framework
+API 에 바로 전달할 때도 `Move()` 를 호출하지 않는다. callback 이 끝난 뒤에도
+payload 를 보관해야 하는 경우에만 `Copy()` 또는 `Move()` 로 소유권을 명확히
+가져간다.
+
+반대로 application 이 직접 만든 `Message` 를 `IZLinkStream.Write(...)` 같은
+raw write API 에 넘길 때는 framework 가 그 `Message` 의 소유권을 가져가지
+않는다. write 호출자는 자신이 만든 `Message` 의 수명을 계속 책임진다. 보통의
+session 응답은 `Context.Send(...)`, `Context.Reply(...)` 같은 typed builder 를
+사용하므로 raw `Message` 수명을 직접 다룰 일이 적다.
+
+session 이 일부 packet 만 직접 처리하고 나머지 정책을 스스로 정하고 싶을 때는
+`IZLinkSessionPacketHandler<TSessionContext>` 와
+`IZLinkSessionPacketDispatcher<TSessionContext>` 를 사용할 수 있다. dispatcher 는
+등록된 handler 의 `PacketName` 과 일치하는 packet 만 처리하고, 처리한 경우
+`true` 를 반환한다. 일치하는 handler 가 없으면 `false` 를 반환하며, 이 뒤에
+actor 로 relay 할지, 오류로 거절할지, 로그만 남길지는 session 구현체가 정한다.
+framework 는 이 단계에서 자동 relay 나 자동 무시 정책을 적용하지 않는다.
+
+handler 가 받는 `payload` 도 `OnDispatchAsync(...)` 와 같은 borrowed payload 다.
+handler 는 payload 를 직접 해제하거나 `Move()` 로 소비하지 않는다. handler 구현은
+DI 를 사용할 수 있으며, framework 등록 과정은 session 이 주입받는 dispatcher 의
+context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
+
 여기서 기대하는 동작은 다음과 같다.
 
 - session callback 은 stream 객체를 직접 인자로 받지 않는다.
@@ -214,6 +251,8 @@ session 구현체는 이 값을 get-only property 로 그대로 노출해야 하
 - header session 은 C API 가 잘라 준 stream frame 을 framework 가 header 와
   payload 로 나누어 받은 뒤 처리한다.
 - application 은 packet name 을 보고 각 packet 타입으로 decode 한다.
+- session packet dispatcher 는 등록된 packet handler 호출만 돕고, 미등록 packet
+  처리 정책은 application 에 남긴다.
 - 이 decode 과정은 가능하면 payload 의 `Message.AsReadOnlySpan()` 기반
   helper 를 사용한다. 추가 복사를 피하기 위해서다.
 - `IZLinkStream` 의 `SessionId`, `RoutingId`, `LocalAddr`, `RemoteAddr` 로 peer
@@ -293,8 +332,8 @@ builder.Services.AddZLinkFramework(options =>
 예를 들면 다음과 같이 쓴다.
 
 ```csharp
-ClientInput input = payload.FromJson<ClientInput>();
-ChatRequest request = payload.FromJson<ChatRequest>();
+ClientInput input = payload.Decode<ClientInput>();
+ChatRequest request = payload.Decode<ChatRequest>();
 ```
 
 이 구조의 장점은 다음과 같다.
@@ -352,7 +391,7 @@ STREAM 문서의 항목이 확인해야 하는 것은 다음이다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleHeaderSessions` | 같은 node에 header session을 중복 등록하면 startup validation 예외가 발생한다. |
+| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions` | 같은 node에 session을 중복 등록하면 startup validation 예외가 발생한다. |
 | `ProtocolTests.StreamSessionRuntime_Only_Exposes_Enqueue_Callback_Entrypoints` | transport 진입점은 public enqueue API만 노출한다. |
 | `HeaderStreamSessionTests.HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle` | connected, dispatch, reply, metadata, disconnected/error callback이 기대한 순서대로 실행된다. |
 | `HeaderStreamSessionTests.HeaderStreamSession_Can_Close_Current_Client_Stream` | session context가 현재 client stream을 서버 쪽에서 닫을 수 있다. |

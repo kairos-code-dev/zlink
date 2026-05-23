@@ -47,7 +47,7 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
                 options.UseRegistrySpotRemoteAddresses("bingo");
             }));
 
-        Assert.Contains("requires AddSpotMesh", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("requires discovery endpoints", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

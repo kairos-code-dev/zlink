@@ -20,7 +20,6 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
         var registryPubEndpoint = GetFreeTcpEndpoint();
         var registryRouterEndpoint = GetFreeTcpEndpoint();
         var routeChannelEndpoint = GetFreeTcpEndpoint();
-        var spotNodeEndpoint = GetFreeTcpEndpoint();
         var spotChannel = $"spot.registry.request-send.{Guid.NewGuid():N}";
 
         var registryBuilder = Host.CreateApplicationBuilder();
@@ -52,13 +51,11 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
             });
             options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
                 mesh.AddNode("route-target-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
                 spot.EnableRouter(router =>
                 {
-                    router.Bind(GetFreeTcpEndpoint());
+                    router.SetRouterBind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
                         routing.RoutingId = RoutingId.FromBytes(

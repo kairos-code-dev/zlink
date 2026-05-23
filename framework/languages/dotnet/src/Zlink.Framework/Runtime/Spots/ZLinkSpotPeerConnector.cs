@@ -4,7 +4,8 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotPeerConnector(
     IZLinkBackendSpotNode node,
-    ZLinkSpotPeerConnectionSet connections)
+    ZLinkSpotPeerConnectionSet connections,
+    string routerChannelName)
 {
     public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)
     {
@@ -14,7 +15,7 @@ internal sealed class ZLinkSpotPeerConnector(
             return ValueTask.FromResult(false);
         }
 
-        ConnectPeer(endpoint);
+        ConnectRouterPeer(endpoint);
         return ValueTask.FromResult(true);
     }
 
@@ -32,7 +33,7 @@ internal sealed class ZLinkSpotPeerConnector(
 
     public void DisconnectRouter(string endpoint)
     {
-        node.DisconnectPeer(endpoint);
+        node.DisconnectRouterChannelPeer(routerChannelName, endpoint);
         connections.RemoveRouterManual(endpoint);
     }
 
@@ -47,6 +48,18 @@ internal sealed class ZLinkSpotPeerConnector(
         try
         {
             node.ConnectPeer(endpoint);
+        }
+        catch (ZlinkConnectException error)
+            when (error.Result == ZlinkConnectException.ErrorCode.Busy)
+        {
+        }
+    }
+
+    private void ConnectRouterPeer(string endpoint)
+    {
+        try
+        {
+            node.ConnectRouterChannelPeer(routerChannelName, endpoint);
         }
         catch (ZlinkConnectException error)
             when (error.Result == ZlinkConnectException.ErrorCode.Busy)

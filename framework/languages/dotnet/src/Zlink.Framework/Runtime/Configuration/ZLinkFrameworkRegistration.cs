@@ -168,8 +168,6 @@ internal sealed class ZLinkSpotNodeRegistration
 {
     public required string SpotNodeName { get; init; }
 
-    public string? BindEndpoint { get; set; }
-
     public ZLinkSpotRouterCapabilityRegistration? Router { get; set; }
 
     public ZLinkSpotPubSubCapabilityRegistration? PubSub { get; set; }
@@ -212,6 +210,10 @@ internal sealed class ZLinkSpotRouterCapabilityRegistration
 
 internal sealed class ZLinkSpotPubSubCapabilityRegistration
 {
+    public string? BindEndpoint { get; set; }
+
+    public RoutingId RoutingId { get; set; }
+
     public ZLinkSpotPublisherConfig PublisherConfig { get; } = new();
 
     public ZLinkSpotSubscriberConfig SubscriberConfig { get; } = new();

@@ -5,6 +5,7 @@ internal sealed class ZLinkSpotPeerConnectionSet
     private readonly object _gate = new();
     private readonly ZLinkSortedConnectionSet _routerManual = new();
     private readonly ZLinkSortedConnectionSet _pubSubManual = new();
+    private readonly HashSet<string> _routerDiscovered = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pubSubDiscovered = new(StringComparer.Ordinal);
 
     public bool TryAddRouterManual(string endpoint)
@@ -32,11 +33,21 @@ internal sealed class ZLinkSpotPeerConnectionSet
         }
     }
 
+    public bool TryAddRouterDiscovered(string endpoint)
+    {
+        lock (_gate)
+        {
+            return !_routerManual.Contains(endpoint)
+                && _routerDiscovered.Add(endpoint);
+        }
+    }
+
     public void RemoveRouterManual(string endpoint)
     {
         lock (_gate)
         {
             _routerManual.Remove(endpoint);
+            _routerDiscovered.Remove(endpoint);
         }
     }
 

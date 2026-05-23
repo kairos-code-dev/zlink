@@ -21,12 +21,13 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
         var spotRouterEndpoint = GetFreeTcpEndpoint();
         var actorId = "local-relay-player-1";
         var recorder = new ActorDispatchRecorder();
+        var sessionRecorder = new GatewaySessionRecorder(actorId);
         using var callbackCapture = CallbackExceptionCapture.Start();
 
         var host = await CreateHostAsync(spotEndpoint, services =>
         {
             services.AddSingleton(recorder);
-            services.AddSingleton(new GatewaySessionRecorder(actorId));
+            services.AddSingleton(sessionRecorder);
             services.AddScoped<GatewayActorFactory>();
             services.AddScoped<GatewayActorHandler>();
             services.AddScoped<GatewaySessionDisconnectHandler>();
@@ -40,8 +41,10 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(spotEndpoint);
-                    spot.EnableRouter(router => router.Bind(spotRouterEndpoint));
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(spotRouterEndpoint);
+                    });
                 });
                 });
                 options.AddStreamNode("client.stream", stream =>
@@ -80,6 +83,7 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             Assert.Equal("play:local", body?.Value);
             Assert.Equal(101UL, body?.RequestSeq);
             Assert.Equal("relay.echo", recorder.LastPacketName);
+            Assert.True(sessionRecorder.PostRelayPayloadLength > 0);
             callbackCapture.ThrowIfAny();
         }
         finally
@@ -117,11 +121,10 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(playSpotEndpoint);
                     spot.EnableRouter(router =>
                     {
-                        router.Bind(playSpotRouterEndpoint);
-                        router.ConfigureRouting(routing => routing.RoutingId = playRid);
+                        router.SetRouterBind(playSpotRouterEndpoint);
+                        router.SetRoutingId(playRid);
                         router.UseManualConnections(connections => connections.Connect(sessionSpotRouterEndpoint));
                     });
                 });
@@ -140,11 +143,10 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(sessionSpotEndpoint);
                     spot.EnableRouter(router =>
                     {
-                        router.Bind(sessionSpotRouterEndpoint);
-                        router.ConfigureRouting(routing => routing.RoutingId = sessionRid);
+                        router.SetRouterBind(sessionSpotRouterEndpoint);
+                        router.SetRoutingId(sessionRid);
                         router.UseManualConnections(connections => connections.Connect(playSpotRouterEndpoint));
                     });
                 });

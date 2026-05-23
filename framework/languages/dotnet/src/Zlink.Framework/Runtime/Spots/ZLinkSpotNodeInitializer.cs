@@ -22,7 +22,9 @@ internal sealed class ZLinkSpotNodeInitializer(
 
         foreach (var spotNodeRegistration in registration.SpotNodes.Values)
         {
-            var node = spotAdapter.CreateSpotNode(state.Context);
+            var node = spotAdapter.CreateSpotNode(
+                state.Context,
+                ResolveSpotNodeMode(spotNodeRegistration));
             node.SetRoutingId(CreateNodeRoutingId(spotNodeRegistration));
             var nodeRuntime = new ZLinkSpotNodeRuntime(
                 services,
@@ -35,11 +37,16 @@ internal sealed class ZLinkSpotNodeInitializer(
                 registration.SpotDiscovery?.ChannelName ?? spotNodeRegistration.SpotNodeName);
 
             nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
-            if (spotNodeRegistration.Router?.BindEndpoint is { Length: > 0 } routerEndpoint)
+            if (spotNodeRegistration.Router is not null
+                && spotNodeRegistration.Router.BindEndpoint is { Length: > 0 } routerEndpoint)
             {
-                node.SetRouterBindEndpoint(routerEndpoint);
+                node.SetRouterBind(routerEndpoint);
             }
-            node.Bind(spotNodeRegistration.BindEndpoint!);
+            if (spotNodeRegistration.PubSub is not null
+                && spotNodeRegistration.PubSub.BindEndpoint is { Length: > 0 } pubEndpoint)
+            {
+                node.SetPubBind(pubEndpoint);
+            }
 
             AttachDiscoveryIfConfigured(state, channelAdapter, spotNodeRegistration, node, nodeRuntime);
             ConnectManualPeers(spotNodeRegistration, nodeRuntime);
@@ -49,6 +56,18 @@ internal sealed class ZLinkSpotNodeInitializer(
             await nodeRuntime.InitializeEntrySpotAsync().ConfigureAwait(false);
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
         }
+    }
+
+    private static SpotNodeMode ResolveSpotNodeMode(ZLinkSpotNodeRegistration registration)
+    {
+        return (registration.Router is not null, registration.PubSub is not null) switch
+        {
+            (true, true) => SpotNodeMode.All,
+            (true, false) => SpotNodeMode.Routed,
+            (false, true) => SpotNodeMode.PubSub,
+            _ => throw new ZLinkConfigurationException(
+                $"SPOT node '{registration.SpotNodeName}' must enable router or pub/sub capability.")
+        };
     }
 
     private void AttachDiscoveryIfConfigured(
@@ -163,6 +182,10 @@ internal sealed class ZLinkSpotNodeInitializer(
         if (registration.Router?.RoutingConfig.RoutingId.Size > 0)
         {
             return registration.Router.RoutingConfig.RoutingId;
+        }
+        if (registration.PubSub?.RoutingId.Size > 0)
+        {
+            return registration.PubSub.RoutingId;
         }
 
         var bytes = RandomNumberGenerator.GetBytes(16);

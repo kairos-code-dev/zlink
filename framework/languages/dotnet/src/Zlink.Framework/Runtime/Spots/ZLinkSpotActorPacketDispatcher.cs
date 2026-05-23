@@ -29,7 +29,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                 runtimeState,
                 actor,
                 header,
-                body.Move(),
+                body,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -54,7 +54,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                 runtimeState,
                 actor,
                 header,
-                body.Move(),
+                body,
                 cancellationToken)
             .ConfigureAwait(false);
     }

@@ -120,7 +120,10 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                 mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
                 mesh.AddNode("stage-node", spot =>
             {
-                spot.Bind("tcp://127.0.0.1:9000");
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind("tcp://127.0.0.1:9000");
+                });
                 spot.AddSpotFactory<TestSpot>("stage");
                 spot.AttachClientServerChannelClient("profile");
             });

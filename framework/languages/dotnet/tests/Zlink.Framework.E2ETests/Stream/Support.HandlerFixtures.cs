@@ -66,6 +66,7 @@ public abstract partial class StreamTestSupport
     public sealed class GatewaySessionRecorder
     {
         private int _disconnectedCount;
+        private int _postRelayPayloadLength = -1;
 
         public GatewaySessionRecorder(
             string actorId = "player-1",
@@ -81,9 +82,16 @@ public abstract partial class StreamTestSupport
 
         public int DisconnectedCount => Volatile.Read(ref _disconnectedCount);
 
+        public int PostRelayPayloadLength => Volatile.Read(ref _postRelayPayloadLength);
+
         public void RecordDisconnected()
         {
             Interlocked.Increment(ref _disconnectedCount);
+        }
+
+        public void RecordPostRelayPayloadLength(int length)
+        {
+            Volatile.Write(ref _postRelayPayloadLength, length);
         }
     }
 

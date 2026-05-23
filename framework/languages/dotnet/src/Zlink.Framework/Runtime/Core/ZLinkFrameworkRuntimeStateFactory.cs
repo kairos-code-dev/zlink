@@ -24,8 +24,12 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
             streams.InitializeStreamNodes(state);
             return state;
         }
-        catch
+        catch (Exception error)
         {
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_FRAMEWORK_STARTUP") == "1")
+            {
+                Console.Error.WriteLine(error);
+            }
             await state.DisposeAsync();
             throw;
         }

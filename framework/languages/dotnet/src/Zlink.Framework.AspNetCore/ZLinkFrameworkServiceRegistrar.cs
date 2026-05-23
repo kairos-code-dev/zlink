@@ -96,6 +96,7 @@ internal static class ZLinkFrameworkServiceRegistrar
             new ZLinkHandlerRegistry(
                 provider.GetServices<ZLinkHandlerEndpointDescriptor>()));
         services.TryAddSingleton<ZLinkHandlerDispatcher>();
+        services.TryAddScoped(typeof(IZLinkSessionPacketDispatcher<>), typeof(ZLinkSessionPacketDispatcher<>));
         services.TryAddSingleton<ZLinkRuntimeEventDispatcher>();
         services.AddSingleton(static provider =>
             new ZLinkFrameworkRuntime(
@@ -312,6 +313,12 @@ internal static class ZLinkFrameworkServiceRegistrar
                 AddAssemblyImplementations(services, registeredType.Assembly, serviceType);
                 AddAssemblyImplementations(services, serviceType.Assembly, serviceType);
             }
+
+            foreach (var serviceType in FindSessionPacketHandlerConstructorServices(registeredType))
+            {
+                AddAssemblyImplementations(services, registeredType.Assembly, serviceType);
+                AddAssemblyImplementations(services, serviceType.Assembly, serviceType);
+            }
         }
     }
 
@@ -333,6 +340,25 @@ internal static class ZLinkFrameworkServiceRegistrar
                 {
                     yield return serviceType;
                 }
+            }
+        }
+    }
+
+    private static IEnumerable<Type> FindSessionPacketHandlerConstructorServices(Type type)
+    {
+        foreach (var constructor in type.GetConstructors())
+        {
+            foreach (var parameter in constructor.GetParameters())
+            {
+                var parameterType = parameter.ParameterType;
+                if (!parameterType.IsGenericType
+                    || parameterType.GetGenericTypeDefinition() != typeof(IZLinkSessionPacketDispatcher<>))
+                {
+                    continue;
+                }
+
+                var contextType = parameterType.GetGenericArguments()[0];
+                yield return typeof(IZLinkSessionPacketHandler<>).MakeGenericType(contextType);
             }
         }
     }

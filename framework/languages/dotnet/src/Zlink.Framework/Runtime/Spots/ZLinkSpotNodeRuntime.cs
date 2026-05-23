@@ -45,13 +45,15 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             spotChannelName,
             node,
             _peerConnections,
-            () => SpotDiscovery);
+            () => SpotDiscovery,
+            registration.Router is not null,
+            registration.PubSub is not null);
         _discoveryLoop = new ZLinkSpotDiscoveryLoop(
             registration.SpotNodeName,
             _taskRunner,
             _stopSource.Token,
             ConnectDiscoveredPubSubPeers);
-        _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections);
+        _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections, spotChannelName);
         _bundles = new ZLinkSpotNodeBundleRegistry(
             registration.SpotNodeName,
             frameworkRegistration,
@@ -99,6 +101,18 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public async ValueTask InitializeEntrySpotAsync()
     {
+        if (_registration.EntrySpotType is null)
+        {
+            if (ShouldAttachActorDispatchPump())
+            {
+                _entrySpot = Node.EntrySpot();
+                new ZLinkEntrySpotDispatchPump(_runtime, null, _taskRunner)
+                    .Attach(_entrySpot);
+            }
+
+            return;
+        }
+
         EnsureAttachedChannelBundles();
         _entrySpot ??= Node.EntrySpot();
         var entrySpot = _entrySpot;
@@ -334,6 +348,20 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public void ConnectDiscoveredPubSubPeers()
     {
+        if (SpotDiscovery is not null
+            && _registration.Router?.BindEndpoint is { Length: > 0 } routerEndpoint)
+        {
+            var bound = ZLinkSpotRouterEndpointDiscovery.TryBindLocalEndpoint(
+                SpotDiscovery,
+                Node.RoutingId,
+                routerEndpoint);
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY") == "1")
+            {
+                Console.Error.WriteLine(
+                    $"[zlink-framework-spot-discovery] bind-local rid={Node.RoutingId.ToHex()} endpoint={routerEndpoint} bound={bound}");
+            }
+        }
+
         _discoveryReconciler.ConnectDiscoveredPubSubPeers();
     }
 
@@ -377,6 +405,12 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         await activation.InitializeAsync(_stopSource.Token)
             .ConfigureAwait(false);
         return activation;
+    }
+
+    private bool ShouldAttachActorDispatchPump()
+    {
+        return _registration.Router is not null
+            && _frameworkRegistration.ActorFactories.Count > 0;
     }
 
     private ZLinkEntrySpotActivation RequireEntrySpotActivation()

@@ -91,7 +91,7 @@ sealed class PlaySession(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var authenticate = payload.FromJson<AuthenticateReq>(JsonOptions);
+        var authenticate = payload.Decode<AuthenticateReq>(JsonOptions);
 
         logger.LogInformation(
             "play stream -> api: authenticate requested. sessionId={SessionId}",

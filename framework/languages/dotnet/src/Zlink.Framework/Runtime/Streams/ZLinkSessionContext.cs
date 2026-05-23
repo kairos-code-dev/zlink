@@ -24,6 +24,8 @@ internal sealed class ZLinkSessionContext(
 
     public string? RemoteAddr => stream.RemoteAddr;
 
+    public IReadOnlyCollection<IZLinkActorRef> BoundActors => _actors.BoundActors;
+
     public IZLinkSessionSendCall Send<TMessage>(TMessage message)
     {
         return new ZLinkSessionSendCall<TMessage>(this, message);
@@ -56,6 +58,13 @@ internal sealed class ZLinkSessionContext(
         CancellationToken cancellationToken = default)
     {
         return _actors.BindHandleAsync(this, actor, cancellationToken);
+    }
+
+    public bool TryGetBoundActor(
+        string actorId,
+        out IZLinkActorRef actor)
+    {
+        return _actors.TryGetBoundActor(actorId, out actor);
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)

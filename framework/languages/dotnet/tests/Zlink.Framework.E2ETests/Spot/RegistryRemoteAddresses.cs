@@ -20,6 +20,7 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
         var registryPubEndpoint = GetFreeTcpEndpoint();
         var registryRouterEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var spotPubEndpoint = GetFreeTcpEndpoint();
         var routeChannelEndpoint = GetFreeTcpEndpoint();
         var spotChannel = $"game.registry-route.{Guid.NewGuid():N}";
 
@@ -51,7 +52,14 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
             });
                 mesh.AddNode("registry-route-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNodeEndpoint);
+                });
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(spotPubEndpoint);
+                });
                 spot.AddSpotFactory<LocalSubscriberStageSpot>("registry-stage");
             });
             });
@@ -94,6 +102,7 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
         var registryPubEndpoint = GetFreeTcpEndpoint();
         var registryRouterEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var spotPubEndpoint = GetFreeTcpEndpoint();
         var routeChannelEndpoint = GetFreeTcpEndpoint();
         var spotChannel = $"game.registry-route-rid.{Guid.NewGuid():N}";
 
@@ -125,7 +134,14 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
             });
                 mesh.AddNode("registry-route-rid-node", spot =>
             {
-                spot.Bind(spotNodeEndpoint);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNodeEndpoint);
+                });
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(spotPubEndpoint);
+                });
                 spot.AddSpotFactory<LocalSubscriberStageSpot>("registry-stage-rid");
             });
             });

@@ -129,10 +129,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             _context.EnterDispatch(decoded);
             try
             {
-                using var dispatchPayload = payload.Move();
                 await _handler.OnDispatchAsync(
                     decoded,
-                    dispatchPayload,
+                    payload,
                     CancellationToken.None);
             }
             catch (Exception ex)

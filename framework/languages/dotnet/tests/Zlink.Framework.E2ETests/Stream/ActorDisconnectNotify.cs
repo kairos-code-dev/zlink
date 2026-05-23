@@ -39,7 +39,10 @@ public sealed class ActorDisconnectNotifyTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(spotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(spotEndpoint);
+                    });
                 });
                 });
                 options.AddStreamNode("client.stream", stream =>

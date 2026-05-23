@@ -16,5 +16,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Zlink/Zlink.csproj" />
+    <ProjectReference Include="../../codecs/Zlink.Codecs.Json/Zlink.Codecs.Json.csproj" />
   </ItemGroup>
 </Project>

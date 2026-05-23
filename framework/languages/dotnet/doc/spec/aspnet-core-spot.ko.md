@@ -127,9 +127,14 @@ builder.Services.AddZLinkFramework(options =>
 
         mesh.AddNode("stage-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9000");
-            node.EnableRouter(router => router.Bind("tcp://0.0.0.0:9001"));
-            node.EnablePubSub();
+            node.EnableRouter(router =>
+            {
+                router.SetRouterBind("tcp://0.0.0.0:9001");
+            });
+            node.EnablePubSub(pubsub =>
+            {
+                pubsub.SetPubBind("tcp://0.0.0.0:9000");
+            });
             node.AttachClientServerChannelClient("orders");
             node.AttachSpotMeshPublisherClient("game.stage");
             node.AddEntrySpot<StageEntrySpot>();
@@ -174,7 +179,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 
 이 등록 함수들은 각각 다음과 같이 역할이 나뉜다.
 
-- `EnableRouter(router => router.Bind(endpoint))`
+- `EnableRouter(router => router.SetRouterBind(endpoint))`
   - local `SpotNode.router` 경로를 켜고 routed ingress endpoint를 명시한다.
     같은 channel에 속한 다른 `SpotNode`와 routed packet을 주고받는 축이다.
 - `EnablePubSub()`
@@ -211,7 +216,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
   않는다.
 - `AddSpotMesh("game.stage", mesh => { ... })`가 이 노드의 mesh 범위를 정한다.
 - 같은 `SpotNode`에 active SPOT channel view는 하나만 둔다.
-- `EnableRouter(router => router.Bind(endpoint))`와 `EnablePubSub()`는 별개의
+- `EnableRouter(router => router.SetRouterBind(endpoint))`와 `EnablePubSub()`는 별개의
   capability다.
 - 다른 channel에 대한 send/request는 attach된 client가 담당한다.
 - 외부 노드에서 SPOT channel로 publish하려면 별도의 spot publisher client를 쓴다.
@@ -235,7 +240,10 @@ builder.Services.AddZLinkFramework(options =>
     {
         mesh.AddNode("stage-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9000");
+            node.EnablePubSub(pubsub =>
+            {
+                pubsub.SetPubBind("tcp://0.0.0.0:9000");
+            });
 
             node.ConfigureEntrySpot(entry =>
             {
@@ -380,7 +388,6 @@ builder.Services.AddZLinkFramework(options =>
 
         mesh.AddNode("stage-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9000");
 
             node.EnableRouter(router =>
             {
@@ -392,6 +399,7 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
+                pubsub.SetPubBind("tcp://0.0.0.0:9000");
                 pubsub.UseManualConnections(peers =>
                 {
                     // Remote SpotNode mesh PUB endpoint.
@@ -519,7 +527,6 @@ builder.Services.AddZLinkFramework(options =>
 
         mesh.AddNode("stage-node", node =>
         {
-            node.Bind("tcp://0.0.0.0:9000");
 
             node.EnableRouter(router =>
             {
@@ -542,6 +549,7 @@ builder.Services.AddZLinkFramework(options =>
 
             node.EnablePubSub(pubsub =>
             {
+                pubsub.SetPubBind("tcp://0.0.0.0:9000");
                 pubsub.ConfigurePublisherOptions(pubOpt =>
                 {
                     pubOpt.SendHighWaterMark = 50_000;
@@ -1111,7 +1119,10 @@ metadata로만 남으면 안 되고, 실제 transport로 사용할 router-capabl
 다음 구성을 둔다.
 
 ```csharp
-node.EnableRouter(router => router.Bind("tcp://0.0.0.0:9001"));
+node.EnableRouter(router =>
+{
+    router.SetRouterBind("tcp://0.0.0.0:9001");
+});
 node.AcceptSpotRoutesFromChannel("api");
 ```
 
@@ -1188,7 +1199,7 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryNameIsDuplicatedAcrossNodes` | 같은 `spotName` factory를 중복 등록하면 startup validation 예외가 난다. |
-| `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotMeshHasNoUseDiscovery` | Discovery 없는 mesh 구성은 시작 전에 실패한다. |
+| `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery 없이도 local-only SpotNode 구성은 시작할 수 있다. |
 | `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | `CreateAsync`, `GetAsync`, `ListAsync`, `RemoveAsync`와 scope 정리가 일관된다. |
 | `ManagerTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | timer와 publish callback이 spot lifecycle 안에서 돌고, 제거 뒤에는 멈춘다. |
 | `TimerTests.SpotTimer_Provides_Tick_Metadata` | timer handler가 callback 번호, 예정/시작 시각, 지연, skip metadata를 받는다. |

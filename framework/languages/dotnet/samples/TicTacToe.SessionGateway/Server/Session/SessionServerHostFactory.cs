@@ -30,11 +30,10 @@ public static class SessionServerHostFactory
             {
                 mesh.AddNode(SampleNames.SessionSpotNode, node =>
                 {
-                    node.Bind(sessionNode.SpotEndpoint);
                     node.EnableRouter(router =>
                     {
-                        router.Bind(sessionNode.RouterEndpoint);
-                        router.ConfigureRouting(routing => routing.RoutingId = sessionNode.RoutingId);
+                        router.SetRouterBind(sessionNode.RouterEndpoint);
+                        router.SetRoutingId(sessionNode.RoutingId);
                     });
                 });
             });

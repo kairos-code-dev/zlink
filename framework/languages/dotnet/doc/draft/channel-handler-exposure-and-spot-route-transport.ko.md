@@ -121,7 +121,10 @@ options.AddSpotMesh("play", mesh =>
     mesh.UseDiscovery(_ => { });
     mesh.AddNode("play-node", node =>
     {
-        node.EnableRouter(router => router.Bind("tcp://0.0.0.0:7202"));
+        node.EnableRouter(router =>
+        {
+            router.SetRouterBind("tcp://0.0.0.0:7202");
+        });
         node.AcceptSpotRoutesFromChannel("play.route");
     });
 });
@@ -293,7 +296,10 @@ options.AddSpotMesh("play", mesh =>
     mesh.UseDiscovery(_ => { });
     mesh.AddNode("play-node", node =>
     {
-        node.EnableRouter(router => router.Bind("tcp://0.0.0.0:7202"));
+        node.EnableRouter(router =>
+        {
+            router.SetRouterBind("tcp://0.0.0.0:7202");
+        });
         node.AcceptSpotRoutesFromChannel("play.route");
     });
 });
@@ -956,7 +962,10 @@ builder.Services.AddZLinkFramework(options =>
         mesh.UseDiscovery(_ => { });
         mesh.AddNode("play-node", node =>
         {
-            node.EnableRouter(router => router.Bind("tcp://0.0.0.0:7202"));
+            node.EnableRouter(router =>
+            {
+                router.SetRouterBind("tcp://0.0.0.0:7202");
+            });
             node.AcceptSpotRoutesFromChannel("play.route");
             node.AddSpotFactory<RoomSpot>("room");
         });

@@ -32,20 +32,20 @@ public static class PlayServerHostFactory
                 channel.EnableClient();
             });
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.UseRegistrySpotRemoteAddresses("bingo");
-            options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
-            {
-                routed.Bind(topology.PlayRouterEndpoint);
-                routed.ConfigureRouting(routing => routing.RoutingId = topology.PlayRid);
-            });
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery, spotMesh =>
             {
                 spotMesh.AddNode(SampleNames.RoomSpotNode, spot =>
                 {
-                    spot.Bind(topology.PlaySpotEndpoint);
-                    spot.EnableRouter(router => router.Bind(topology.PlaySpotRouterEndpoint));
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(topology.PlaySpotRouterEndpoint);
+                        router.SetRoutingId(topology.PlayRid);
+                    });
+                    spot.EnablePubSub(pubsub =>
+                    {
+                        pubsub.SetPubBind(topology.PlaySpotEndpoint);
+                    });
                     spot.AttachClientServerChannelClient(SampleNames.ApiChannel);
-                    spot.AcceptSpotRoutesFromChannel(SampleNames.RouterChannel);
                     spot.AddEntrySpot<BingoEntrySpot>();
                     spot.AddSpotFactory<BingoRoomSpot>(SampleNames.RoomSpotType);
                 });

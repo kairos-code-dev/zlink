@@ -32,7 +32,10 @@ public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("actor-node", spot =>
             {
-                spot.Bind(spotNode);
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind(spotNode);
+                });
             });
             });
         });

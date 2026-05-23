@@ -16,21 +16,25 @@ public sealed record SampleTopology(
     string PlaySpotRouterEndpoint,
     string StreamEndpoint,
     string ReconnectStreamEndpoint,
-    RoutingId SessionRid,
-    RoutingId ReconnectSessionRid,
+    RoutingId SessionRouterRid,
+    RoutingId SessionPubRid,
+    RoutingId ReconnectSessionRouterRid,
+    RoutingId ReconnectSessionPubRid,
     RoutingId PlayRid)
 {
     public SampleSessionNode PrimarySession => new(
         SessionSpotEndpoint,
         SessionRouterEndpoint,
         StreamEndpoint,
-        SessionRid);
+        SessionRouterRid,
+        SessionPubRid);
 
     public SampleSessionNode ReconnectSession => new(
         ReconnectSessionSpotEndpoint,
         ReconnectSessionRouterEndpoint,
         ReconnectStreamEndpoint,
-        ReconnectSessionRid);
+        ReconnectSessionRouterRid,
+        ReconnectSessionPubRid);
 
     public static SampleTopology Create()
     {
@@ -50,6 +54,8 @@ public sealed record SampleTopology(
             ReadEndpoint("BINGO_RECONNECT_STREAM_ENDPOINT", "tcp://127.0.0.1:47113"),
             RoutingId.FromString("1101"),
             RoutingId.FromString("1102"),
+            RoutingId.FromString("1103"),
+            RoutingId.FromString("1104"),
             RoutingId.FromString("2202"));
     }
 
@@ -61,7 +67,8 @@ public sealed record SampleTopology(
 }
 
 public sealed record SampleSessionNode(
-    string SpotEndpoint,
+    string PubEndpoint,
     string RouterEndpoint,
     string StreamEndpoint,
-    RoutingId RoutingId);
+    RoutingId RouterRoutingId,
+    RoutingId PubRoutingId);

@@ -76,9 +76,14 @@ internal static class FixtureSamples
                 });
                 spotMesh.AddNode("stage-node", spot =>
                 {
-                    spot.Bind("tcp://127.0.0.1:7301");
-                    spot.EnableRouter(router => router.Bind("tcp://127.0.0.1:7302"));
-                    spot.EnablePubSub();
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind("tcp://127.0.0.1:7302");
+                    });
+                    spot.EnablePubSub(pubsub =>
+                    {
+                        pubsub.SetPubBind("tcp://127.0.0.1:7301");
+                    });
                     spot.AttachClientServerChannelClient("orders", client =>
                     {
                         client.UseManualConnections(connections =>
@@ -151,9 +156,14 @@ internal static class FixtureSamples
                 });
                 spotMesh.AddNode("stage-node", spot =>
                 {
-                    spot.Bind("tcp://127.0.0.1:7604");
-                    spot.EnableRouter(router => router.Bind("tcp://127.0.0.1:7605"));
-                    spot.EnablePubSub();
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind("tcp://127.0.0.1:7605");
+                    });
+                    spot.EnablePubSub(pubsub =>
+                    {
+                        pubsub.SetPubBind("tcp://127.0.0.1:7604");
+                    });
                     spot.AddSpotFactory<FixtureStageSpot>("stage");
                 });
             });
@@ -190,7 +200,10 @@ internal static class FixtureSamples
                 });
                 spotMesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind("tcp://127.0.0.1:7702");
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind("tcp://127.0.0.1:7702");
+                    });
                     spot.AddSpotFactory<FixtureActorSpot>("fixture-actor-stage");
                 });
             });

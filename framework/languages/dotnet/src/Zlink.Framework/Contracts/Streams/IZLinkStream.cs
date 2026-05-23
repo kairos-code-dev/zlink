@@ -10,6 +10,9 @@ public interface IZLinkStream
 
     string? RemoteAddr { get; }
 
+    /// <summary>
+    /// Writes a raw stream frame without taking ownership of <paramref name="payload"/>.
+    /// </summary>
     bool Write(
         Message payload,
         SendFlags flags = SendFlags.None);

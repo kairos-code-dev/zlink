@@ -43,8 +43,10 @@ public sealed partial class TopologyTests
             });
                 mesh.AddNode("local-stage-node", spot =>
             {
-                spot.Bind(localNodeEndpoint);
-                spot.EnablePubSub();
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(localNodeEndpoint);
+                });
                 spot.AddSpotFactory<LocalMonitoringStageSpot>("stage");
             });
             });

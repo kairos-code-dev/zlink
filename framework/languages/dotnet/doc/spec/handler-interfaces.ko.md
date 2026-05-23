@@ -1176,6 +1176,8 @@ public interface IZLinkSessionClientStream
 
 public interface IZLinkSessionActorDispatchContext
 {
+    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
         string actorType,
@@ -1190,6 +1192,10 @@ public interface IZLinkSessionActorDispatchContext
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
+
+    bool TryGetBoundActor(
+        string actorId,
+        out IZLinkActorRef actor);
 
     ValueTask RelayToActorAsync(
         IZLinkActorRef actor,
@@ -1324,6 +1330,13 @@ optional detail 로 본다.
 - header session
   - `OnDispatchAsync(...)`로 framework가 decode 한 `ZlinkStreamHeader`와
     `Message` payload를 받는다.
+  - callback 안에서 payload 를 바로 읽거나 `RelayToActorAsync(...)` 로 넘길
+    수 있다. framework runtime 이 수신 payload 를 해제하므로 session handler 는
+    `Dispose()` 나 `Move()` 를 기본 사용법으로 쓰지 않는다. callback 뒤에도
+    보관할 때만 `Copy()` 또는 `Move()` 를 사용한다.
+  - application 이 직접 만든 `Message` 를 raw `IZLinkStream.Write(...)` 에
+    넘길 때는 framework 가 caller payload 를 소비하지 않는다. 호출자가 그
+    `Message` 의 수명을 계속 책임진다.
   - stream에 응답을 보내거나 actor로 넘기는 동작은 `Context`를 통해 수행한다.
 - 공통 lifecycle
   - `OnConnectedAsync(...)`
@@ -2594,6 +2607,31 @@ public interface IZLinkStreamNodeBuilder
     void RegisterSession<TSession>()
         where TSession : class, IZLinkSession;
 }
+
+public interface IZLinkSessionPacketHandler<TSessionContext>
+{
+    string PacketName { get; }
+
+    ValueTask HandleAsync(
+        TSessionContext context,
+        ZlinkStreamHeader header,
+        Message payload,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkSessionPacketDispatcher<TSessionContext>
+{
+    ValueTask<bool> TryHandleAsync(
+        TSessionContext context,
+        ZlinkStreamHeader header,
+        Message payload,
+        CancellationToken cancellationToken = default);
+}
+
+session packet dispatcher 는 등록된 packet handler 호출만 담당한다. 미등록 packet 을
+actor 로 relay 할지, 무시할지, 오류로 처리할지는 session 구현체의 정책이다.
+handler 로 전달되는 payload 는 `OnDispatchAsync(...)` 의 payload 와 같은 borrowed
+lifetime 이므로 handler 는 직접 해제하거나 `Move()` 로 소비하지 않는다.
 
 public interface IZLinkClientServerChannelBuilder
 {

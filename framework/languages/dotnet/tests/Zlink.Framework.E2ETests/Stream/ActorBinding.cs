@@ -29,7 +29,10 @@ public sealed class ActorBindingTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(spotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(spotEndpoint);
+                    });
                 });
                 });
             });
@@ -72,7 +75,10 @@ public sealed class ActorBindingTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(spotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(spotEndpoint);
+                    });
                 });
                 });
             });
@@ -115,7 +121,10 @@ public sealed class ActorBindingTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(spotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(spotEndpoint);
+                    });
                 });
                 });
             });
@@ -161,7 +170,10 @@ public sealed class ActorBindingTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(spotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(spotEndpoint);
+                    });
                 });
                 });
                 options.AddRouteMeshChannel("gateway", routed =>
@@ -194,6 +206,69 @@ public sealed class ActorBindingTests : StreamTestSupport
     }
 
     [Fact]
+    public async Task BindActorHandleAsync_Can_Find_SessionBoundActor_ByActorId()
+    {
+        var endpoint = GetFreeTcpEndpoint();
+        var spotEndpoint = GetFreeTcpEndpoint();
+        var recorder = new ActorDispatchRecorder();
+        var host = await CreateHostAsync(endpoint, services =>
+        {
+            services.AddSingleton(recorder);
+            services.AddScoped<GatewayActorFactory>();
+            services.AddZLinkFramework(options =>
+            {
+                options.AddActorFactory<GatewayActorFactory>("player");
+                options.AddSpotMesh("actor-node", mesh =>
+                {
+                    mesh.UseDiscovery(_ => { });
+                    mesh.AddNode("actor-node", spot =>
+                    {
+                        spot.EnableRouter(router =>
+                        {
+                            router.SetRouterBind(spotEndpoint);
+                        });
+                    });
+                });
+                options.AddRouteMeshChannel("gateway", routed =>
+                {
+                    routed.Bind(endpoint);
+                    routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.FromString("1101"));
+                    routed.UseManualConnections(connections => connections.Connect(endpoint));
+                });
+            });
+        });
+
+        try
+        {
+            var actors = host.Services.GetRequiredService<IZLinkActorManager>();
+            await actors.CreateAsync("bound-player-1", "player");
+            await actors.CreateAsync("bound-player-2", "player");
+
+            var context = new ZLinkSessionContext(
+                host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
+                new RoutedTestStream("actor-lookup-session", RoutingId.Of("session-lookup")),
+                static _ => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+
+            var first = await context.BindActorHandleAsync("bound-player-1", "player");
+            var second = await context.BindActorHandleAsync("bound-player-2", "player");
+
+            Assert.True(context.TryGetBoundActor("bound-player-1", out var foundFirst));
+            Assert.True(context.TryGetBoundActor("bound-player-2", out var foundSecond));
+            Assert.False(context.TryGetBoundActor("missing-player", out _));
+            Assert.Same(first, foundFirst);
+            Assert.Same(second, foundSecond);
+
+            await context.CleanupActorBindingsAsync(CancellationToken.None);
+            Assert.False(context.TryGetBoundActor("bound-player-1", out _));
+        }
+        finally
+        {
+            await host.StopAsync();
+        }
+    }
+
+    [Fact]
     public async Task SessionActorBind_WithoutRoute_Is_LocalOnly()
     {
         var endpoint = GetFreeTcpEndpoint();
@@ -212,7 +287,10 @@ public sealed class ActorBindingTests : StreamTestSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("actor-node", spot =>
                 {
-                    spot.Bind(spotEndpoint);
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(spotEndpoint);
+                    });
                 });
                 });
                 options.AddRouteMeshChannel("gateway", routed =>
@@ -241,6 +319,32 @@ public sealed class ActorBindingTests : StreamTestSupport
         finally
         {
             await host.StopAsync();
+        }
+    }
+
+    private sealed class RoutedTestStream(
+        string sessionId,
+        RoutingId routingId) : IZLinkStream
+    {
+        public string SessionId { get; } = sessionId;
+
+        public RoutingId? RoutingId { get; } = routingId;
+
+        public string? LocalAddr => "local";
+
+        public string? RemoteAddr => "remote";
+
+        public bool Write(Message payload, SendFlags flags = SendFlags.None)
+        {
+            _ = payload;
+            _ = flags;
+            return true;
+        }
+
+        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+        {
+            _ = cancellationToken;
+            return ValueTask.CompletedTask;
         }
     }
 

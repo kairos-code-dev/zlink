@@ -38,7 +38,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 mesh.AddNode("stage-node", spot =>
             {
-                spot.Bind("tcp://127.0.0.1:9000");
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind("tcp://127.0.0.1:9000");
+                });
                 spot.AddSpotFactory<TestSpot>("stage");
             });
             });
@@ -62,7 +65,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 mesh.AddNode("stage-node", spot =>
                 {
-                    spot.Bind("tcp://127.0.0.1:9000");
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind("tcp://127.0.0.1:9000");
+                    });
                     spot.AddSpotFactory<TestSpot>("stage");
                 });
             });
@@ -85,20 +91,21 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 {
                     mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
                     mesh.AddNode("stage-node-a", spot =>
-                {
-                    spot.Bind("tcp://127.0.0.1:6101");
-                    spot.AddSpotFactory<TestSpot>("stage");
-                });
-                });
-
-                options.AddSpotMesh("stage-node-b", mesh =>
-                {
-                    mesh.UseDiscovery(_ => { });
+                    {
+                        spot.EnableRouter(router =>
+                        {
+                            router.SetRouterBind("tcp://127.0.0.1:6101");
+                        });
+                        spot.AddSpotFactory<TestSpot>("stage");
+                    });
                     mesh.AddNode("stage-node-b", spot =>
-                {
-                    spot.Bind("tcp://127.0.0.1:6102");
-                    spot.AddSpotFactory<TestSpot>("stage");
-                });
+                    {
+                        spot.EnableRouter(router =>
+                        {
+                            router.SetRouterBind("tcp://127.0.0.1:6102");
+                        });
+                        spot.AddSpotFactory<TestSpot>("stage");
+                    });
                 });
             }));
 
@@ -118,7 +125,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                     mesh.UseDiscovery(_ => { });
                     mesh.AddNode("stage-node", spot =>
                 {
-                    spot.Bind("tcp://127.0.0.1:6101");
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind("tcp://127.0.0.1:6101");
+                    });
                     spot.AddEntrySpot<TestEntrySpot>();
                     spot.AddEntrySpot<TestEntrySpot>();
                 });
@@ -195,7 +205,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
-                spot.Bind("tcp://127.0.0.1:6200");
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind("tcp://127.0.0.1:6200");
+                });
             });
             });
         });
@@ -218,7 +231,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
-                spot.Bind("tcp://127.0.0.1:6203");
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind("tcp://127.0.0.1:6203");
+                });
             });
             });
         });
@@ -240,7 +256,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("actor-node", spot =>
             {
-                spot.Bind("tcp://127.0.0.1:6201");
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind("tcp://127.0.0.1:6201");
+                });
             });
             });
         });
@@ -260,8 +279,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 mesh.AddNode("actor-node", spot =>
             {
-                spot.Bind("tcp://127.0.0.1:7301");
-                spot.EnableRouter(router => router.Bind("tcp://127.0.0.1:7302"));
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind("tcp://127.0.0.1:7302");
+                });
             });
             });
             options.AddStreamNode("stream.node", stream =>
@@ -294,7 +315,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 {
                     mesh.AddNode("actor-node", spot =>
                     {
-                        spot.Bind("tcp://127.0.0.1:7301");
+                        spot.EnablePubSub(pubsub =>
+                        {
+                            pubsub.SetPubBind("tcp://127.0.0.1:7301");
+                        });
                     });
                 });
                 options.AddStreamNode("stream.node", stream =>
@@ -324,7 +348,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 mesh.AddNode("stage-node", spot =>
                 {
-                    spot.Bind("tcp://127.0.0.1:6204");
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind("tcp://127.0.0.1:6204");
+                    });
                     spot.AddSpotFactory<TestSpot>("stage");
                     spot.AddEntrySpot<TestEntrySpot>();
                 });
@@ -340,6 +367,63 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public async Task AddZLinkFramework_Registers_SessionPacketDispatcher_And_Handlers()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddStreamNode("client.stream", stream =>
+            {
+                stream.Bind("tcp://127.0.0.1:9100");
+                stream.RegisterSession<TestSessionWithPacketDispatcher>();
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<IZLinkSessionPacketDispatcher<TestSessionPacketContext>>();
+        var context = new TestSessionPacketContext();
+        var handled = await dispatcher.TryHandleAsync(
+            context,
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.None,
+                null,
+                "test.session.packet",
+                ZlinkStreamMetadata.Empty),
+            new Message());
+        var unhandled = await dispatcher.TryHandleAsync(
+            context,
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.None,
+                null,
+                "test.unhandled",
+                ZlinkStreamMetadata.Empty),
+            new Message());
+
+        Assert.True(handled);
+        Assert.False(unhandled);
+        Assert.Equal(1, context.HandledCount);
+    }
+
+    [Fact]
+    public void SessionPacketDispatcher_Throws_When_PacketName_Is_Duplicated()
+    {
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ZLinkSessionPacketDispatcher<DuplicateSessionPacketContext>(
+            [
+                new DuplicateSessionPacketHandler(),
+                new SecondDuplicateSessionPacketHandler()
+            ]));
+
+        Assert.Contains("Duplicate session packet handler 'duplicate.session.packet'", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AddZLinkFramework_DoesNot_Register_SpotPublisher_Without_PublisherCapability()
     {
         var services = new ServiceCollection();
@@ -351,7 +435,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
             {
-                spot.Bind("tcp://127.0.0.1:6204");
+                spot.EnableRouter(router =>
+                {
+                    router.SetRouterBind("tcp://127.0.0.1:6204");
+                });
             });
             });
         });
@@ -372,10 +459,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 mesh.UseDiscovery(_ => { });
                 mesh.AddNode("stage-node", spot =>
-            {
-                spot.Bind("tcp://127.0.0.1:6205");
-                spot.AttachSpotMeshPublisherClient("game.stage");
-            });
+                {
+                    spot.EnablePubSub(pubsub =>
+                    {
+                        pubsub.SetPubBind("tcp://127.0.0.1:6205");
+                    });
+                    spot.AttachSpotMeshPublisherClient("game.stage");
+                });
             });
         });
 

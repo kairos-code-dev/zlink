@@ -56,10 +56,12 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
 internal sealed class ZLinkDotNetSpotBackendAdapter : IZLinkSpotBackendAdapter
 {
-    public IZLinkBackendSpotNode CreateSpotNode(IZLinkBackendContext context)
+    public IZLinkBackendSpotNode CreateSpotNode(
+        IZLinkBackendContext context,
+        SpotNodeMode mode)
     {
         return new ZLinkBackendSpotNodeWrapper(
-            new SpotNode(context.RequireNative<Context>()));
+            new SpotNode(context.RequireNative<Context>(), mode));
     }
 }
 

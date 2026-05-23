@@ -41,8 +41,11 @@ public static class PlayServerHostFactory
             {
                 spotMesh.AddNode(SampleNames.GameSpotNode, spot =>
                 {
-                    spot.Bind(topology.PlaySpotEndpoint);
-                    spot.EnableRouter(router => router.Bind(topology.PlaySpotRouterEndpoint));
+                    spot.EnableRouter(router =>
+                    {
+                        router.SetRouterBind(topology.PlaySpotRouterEndpoint);
+                        router.SetRoutingId(topology.PlayRid);
+                    });
                     spot.AcceptSpotRoutesFromChannel(SampleNames.RouterChannel);
                     spot.AddEntrySpot<TicTacToeEntrySpot>();
                     spot.AddSpotFactory<TicTacToeGameSpot>(SampleNames.GameSpotType);

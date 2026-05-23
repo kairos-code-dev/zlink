@@ -202,15 +202,11 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken)
     {
-        return ExecuteAsync(
-            static (activation, state, ct) =>
-                activation._invoker.InvokeActorLifecycleAsync(
-                    state.Descriptor,
-                    state.Actor,
-                    state.Info,
-                    ct),
-            new ActorLifecycleState(descriptor, actor, info),
-                cancellationToken);
+        return InvokeActorLifecycleWithoutGateAsync(
+            descriptor,
+            actor,
+            info,
+            cancellationToken);
     }
 
     public ValueTask InvokeActorJoinedCallbackAsync(
@@ -264,9 +260,51 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         Func<ZLinkEntrySpotActivation, ActorLifecycleCallbackState, CancellationToken, ValueTask> callback,
         CancellationToken cancellationToken)
     {
-        return ExecuteAsync(
+        return InvokeActorLifecycleCallbackWithoutGateAsync(
             callback,
             new ActorLifecycleCallbackState(info),
             cancellationToken);
+    }
+
+    private async ValueTask InvokeActorLifecycleWithoutGateAsync(
+        ZLinkSpotActorLifecycleDescriptor descriptor,
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleInfo info,
+        CancellationToken cancellationToken)
+    {
+        var previous = Current.Value;
+        Current.Value = this;
+        try
+        {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
+            await _invoker.InvokeActorLifecycleAsync(
+                    descriptor,
+                    actor,
+                    info,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Current.Value = previous;
+        }
+    }
+
+    private async ValueTask InvokeActorLifecycleCallbackWithoutGateAsync(
+        Func<ZLinkEntrySpotActivation, ActorLifecycleCallbackState, CancellationToken, ValueTask> callback,
+        ActorLifecycleCallbackState state,
+        CancellationToken cancellationToken)
+    {
+        var previous = Current.Value;
+        Current.Value = this;
+        try
+        {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
+            await callback(this, state, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Current.Value = previous;
+        }
     }
 }

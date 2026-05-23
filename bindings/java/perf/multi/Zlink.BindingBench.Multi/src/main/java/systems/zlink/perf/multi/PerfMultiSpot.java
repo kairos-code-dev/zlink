@@ -55,7 +55,7 @@ final class PerfMultiSpot {
             node.setRoutingId(routingId("z-java-multi-spot-server"));
             publisher.setRoutingId(routingId("z-java-multi-spot-server-spot"));
             PerfUtil.configureServerTls(node, config.transport());
-            node.bind(config.endpoint());
+            node.setPubBind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
             awaitDirectControlStart(control, config, "spot server");
@@ -148,7 +148,7 @@ final class PerfMultiSpot {
                         "a-java-multi-spot-client-spot-" + i));
                     subscribers.add(subscriber);
                 }
-                node.bind(normalizeClientEndpoint(PerfUtil.endpoint(
+                node.setPubBind(normalizeClientEndpoint(PerfUtil.endpoint(
                     config.transport(), "multi-spot-client"),
                     config.transport()));
                 node.connectPeer(serverDataEndpoint);

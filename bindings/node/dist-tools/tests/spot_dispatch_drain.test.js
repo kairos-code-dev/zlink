@@ -33,7 +33,7 @@ test('spot onDispatchEvent permits subscribe drain after async callback delivery
     const subscriber = subscriberNode.createSpot();
     let readableEvents = 0;
     try {
-        publisherNode.bind(endpoint);
+        publisherNode.setPubBind(endpoint);
         subscriber.setSubscription('dispatch-drain');
         subscriber.onDispatchEvent((info) => {
             if (info.event === zlink.SpotDispatchEvent.SubscribeReadable) {

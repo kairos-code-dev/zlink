@@ -365,7 +365,7 @@ int bind_spot_node_with_port_seed (void *node_,
     for (int i = 0; i < 256; ++i) {
         const int port = test_port ((*port_seed_)++);
         snprintf (endpoint_out_, MAX_SOCKET_STRING, "%s%d", prefix_, port);
-        if (zlink_spot_node_bind (node_, endpoint_out_) == 0)
+        if (zlink_spot_node_set_pub_bind (node_, endpoint_out_) == 0)
             return 0;
     }
     return -1;

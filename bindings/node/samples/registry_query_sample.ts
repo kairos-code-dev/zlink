@@ -45,7 +45,7 @@ async function main() {
     query.connect(routerEndpoint);
     discovery.connectRegistry(routerEndpoint);
     node.attachDiscovery(discovery);
-    node.bind(serviceEndpoint);
+    node.setPubBind(serviceEndpoint);
 
     const entry = await waitForTopologyEntry(query, 'sample', serviceEndpoint);
     assert.ok(entry);

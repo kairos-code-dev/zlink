@@ -2627,16 +2627,16 @@ export class SpotNode extends NativeHandle {
   }
   /** @internal */
   nativeHandle(): unknown { return this._native; }
-  bind(endpoint: string): void {
+  setPubBind(endpoint: string): void {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');
-    bindCall('spot node bind failed', () => {
-      requireNative().spotNodeBind(this._native, normalizedEndpoint);
+    configCall('spot node pub bind failed', () => {
+      requireNative().spotNodeSetPubBind(this._native, normalizedEndpoint);
     });
   }
-  setRouterBindEndpoint(endpoint: string): void {
+  setRouterBind(endpoint: string): void {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');
     configCall('spot node router bind endpoint failed', () => {
-      requireNative().spotNodeSetRouterBindEndpoint(this._native, normalizedEndpoint);
+      requireNative().spotNodeSetRouterBind(this._native, normalizedEndpoint);
     });
   }
   connectPeer(endpoint: string): void {

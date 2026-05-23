@@ -276,10 +276,12 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 ### 토폴로지와 discovery
 
 ```c
-zlink_config_result_t zlink_spot_node_set_router_bind_endpoint(
+zlink_config_result_t zlink_spot_node_set_router_bind(
   void *node,
   const char *endpoint);
-zlink_bind_result_t zlink_spot_node_bind(void *node, const char *endpoint);
+zlink_config_result_t zlink_spot_node_set_pub_bind(
+  void *node,
+  const char *endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
@@ -291,19 +293,16 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
-- `zlink_spot_node_set_router_bind_endpoint()`는 routed ingress에 사용할
-  내부 router socket endpoint를 설정한다.
-- `zlink_spot_node_set_router_bind_endpoint()`는 `zlink_spot_node_bind()`보다
-  먼저 호출해야 한다. `node == NULL`이면 `ZLINK_CONFIG_INVALID_HANDLE`과
-  `EFAULT`로 실패한다. `endpoint == NULL` 또는 빈 문자열이면
-  `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`로 실패한다. 이미
-  `zlink_spot_node_bind()`가 성공한 뒤에는 `ZLINK_CONFIG_INVALID_STATE`와
-  `EBUSY`로 실패한다.
-- `zlink_spot_node_bind()`는 mesh data endpoint를 바인딩한다. routed ingress
-  endpoint를 자동으로 만들지 않는다.
-- routed API를 원격 peer에서 받을 node는 `zlink_spot_node_bind()` 전에
-  `zlink_spot_node_set_router_bind_endpoint()`로 routed ingress endpoint를
-  명시해야 한다.
+- `zlink_spot_node_set_router_bind()`는 routed ingress에 사용할 router socket
+  endpoint를 설정한다. `ROUTED` mode node는 이 호출로 시작한다.
+- `zlink_spot_node_set_pub_bind()`는 PUB/SUB mesh endpoint를 설정하고
+  PUB/SUB plane을 시작한다. `ALL` mode에서 router와 pub/sub을 함께 쓰는
+  node는 `zlink_spot_node_set_router_bind()`를 먼저 호출한 뒤
+  `zlink_spot_node_set_pub_bind()`를 호출한다.
+- `node == NULL`이면 `ZLINK_CONFIG_INVALID_HANDLE`과 `EFAULT`로 실패한다.
+  `endpoint == NULL` 또는 빈 문자열이면 `ZLINK_CONFIG_INVALID_ARGUMENT`와
+  `EINVAL`로 실패한다. 이미 bind가 끝난 plane을 다시 bind하면
+  `ZLINK_CONFIG_INVALID_STATE`와 `EBUSY`로 실패한다.
 - `zlink_spot_node_connect_peer()`와 `zlink_spot_node_disconnect_peer()`는
   endpoint를 알고 있는 수동 mesh 연결에 쓴다.
 - `zlink_spot_node_disconnect_peer_rid()`는 target node routing id를 기준으로

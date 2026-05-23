@@ -44,8 +44,8 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 
 	dataEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend")
 	dataRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-router")
-	perfcommon.Must(serverNode.SetRouterBindEndpoint(dataRouterEndpoint))
-	perfcommon.Must(serverNode.Bind(dataEndpoint))
+	perfcommon.Must(serverNode.SetRouterBind(dataRouterEndpoint))
+	perfcommon.Must(serverNode.SetPubBind(dataEndpoint))
 	controlNode, err := serverCtx.SpotNode()
 	perfcommon.Must(err)
 	defer controlNode.Close()
@@ -61,7 +61,7 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 	defer controlSub.Close()
 	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
 	controlEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-control-server")
-	perfcommon.Must(controlNode.Bind(controlEndpoint))
+	perfcommon.Must(controlNode.SetPubBind(controlEndpoint))
 	controlEndpoint = spotNodeLastEndpoint(controlNode, controlEndpoint)
 
 	var readyCount int
@@ -166,15 +166,15 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 	defer controlSub.Close()
 	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
 	controlBind := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-control-client")
-	perfcommon.Must(controlNode.Bind(controlBind))
+	perfcommon.Must(controlNode.SetPubBind(controlBind))
 	perfcommon.Must(controlNode.ConnectPeer(controlEndpoint))
 	clientControlEndpoint := spotNodeLastEndpoint(controlNode, controlBind)
 	flushControlLine("CLIENT_CONTROL_ENDPOINT,%s", clientControlEndpoint)
 
 	localEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-client")
 	localRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-client-router")
-	perfcommon.Must(clientNode.SetRouterBindEndpoint(localRouterEndpoint))
-	perfcommon.Must(clientNode.Bind(localEndpoint))
+	perfcommon.Must(clientNode.SetRouterBind(localRouterEndpoint))
+	perfcommon.Must(clientNode.SetPubBind(localEndpoint))
 	perfcommon.Must(clientNode.ConnectPeer(dataEndpoint))
 
 	clients := make([]multiSpotSendSendClient, 0, cfg.clients)

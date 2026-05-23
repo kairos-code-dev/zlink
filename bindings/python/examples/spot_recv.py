@@ -11,7 +11,7 @@ def main():
             with zlink.SpotNode(ctx) as sub_node:
                 with pub_node.create_spot() as pub_spot:
                     with sub_node.create_spot() as sub_spot:
-                        pub_node.bind("tcp://127.0.0.1:0")
+                        pub_node.set_pub_bind("tcp://127.0.0.1:0")
                         endpoint = pub_node.last_endpoint()
                         sub_node.connect_peer(endpoint)
                         sub_spot.set_subscription(b"room:lobby")

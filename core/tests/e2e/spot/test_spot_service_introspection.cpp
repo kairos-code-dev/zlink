@@ -187,7 +187,7 @@ static int bind_node (void *node_, int *port_seed_, char *endpoint_out_)
     for (int i = 0; i < bind_retry_limit; ++i) {
         snprintf (endpoint_out_, MAX_SOCKET_STRING, "tcp://127.0.0.1:%d",
                   test_port ((*port_seed_)++));
-        if (zlink_spot_node_bind (node_, endpoint_out_) == 0)
+        if (zlink_spot_node_set_pub_bind (node_, endpoint_out_) == 0)
             return 0;
         if (zlink_errno () != EADDRINUSE)
             return -1;

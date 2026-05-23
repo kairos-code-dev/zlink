@@ -43,7 +43,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.Must(stopPublisher.SetRoutingID(zlink.NewRoutingID([]byte("m-go-perf-spot-stop-spot"))))
 	perfcommon.Must(subscriber.SetRoutingID(zlink.NewRoutingID([]byte("a-go-perf-spot-subscriber-spot"))))
 	publisherEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-spot-pub")
-	perfcommon.Must(publisherNode.Bind(publisherEndpoint))
+	perfcommon.Must(publisherNode.SetPubBind(publisherEndpoint))
 	perfcommon.Must(subscriberNode.ConnectPeer(publisherEndpoint))
 	perfcommon.Must(subscriber.SetSubscription(singleSpotTopic))
 	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)

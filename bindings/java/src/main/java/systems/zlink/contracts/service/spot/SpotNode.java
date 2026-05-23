@@ -93,24 +93,24 @@ public final class SpotNode implements AutoCloseable {
         return handle();
     }
 
-    /** Binds the local spot node endpoint. */
-    public void bind(String endpoint) {
+    /** Binds the local spot node PUB/SUB endpoint. */
+    public void setPubBind(String endpoint) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeBind(handle, NativeHelpers.toCString(arena,
+            int rc = Native.spotNodeSetPubBind(handle, NativeHelpers.toCString(arena,
               endpoint));
             if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_node_bind");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_node_set_pub_bind");
         }
     }
 
     /** Sets the routed ingress endpoint before binding the mesh endpoint. */
-    public void setRouterBindEndpoint(String endpoint) {
+    public void setRouterBind(String endpoint) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeSetRouterBindEndpoint(
+            int rc = Native.spotNodeSetRouterBind(
               handle, NativeHelpers.toCString(arena, endpoint));
             if (rc != 0)
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_set_router_bind_endpoint");
+                  "zlink_spot_node_set_router_bind");
         }
     }
 

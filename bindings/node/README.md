@@ -94,7 +94,8 @@ is not exposed as a public `StreamSocket` method.
 `setMetadata()` / `getMetadata()`, `memberPeers()`,
 `memberPeerMetadata()`, `monitorOpen(events?)`, `setTlsClient()`.
 
-`SpotNode` uses `bind()`, `connectPeer()` / `disconnectPeer()`,
+`SpotNode` uses `setPubBind()`, `setRouterBind()`,
+`connectPeer()` / `disconnectPeer()`,
 `attachDiscovery()`, `statusSnapshot()`, `peersSnapshot()`,
 `peersQuery()`, `subjectsSnapshot(filter?)`, `setTlsServer()`,
 `setTlsClient()`.

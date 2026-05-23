@@ -30,7 +30,7 @@ int main ()
     registry.bind (registry_pub, registry_router);
     discovery.connect_registry (registry_router);
     topic_node.attach_discovery (discovery);
-    topic_node.bind (topic_endpoint);
+    topic_node.set_pub_bind (topic_endpoint);
     topic_spot.set_subscription (topic);
 
     zlink::message_t published = detail::make_message (publish_payload);

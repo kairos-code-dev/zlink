@@ -183,9 +183,9 @@ fn main() {
         return;
     };
     data_node
-        .set_router_bind_endpoint(&data_router_bind)
+        .set_router_bind(&data_router_bind)
         .expect("data router bind endpoint");
-    if let Err(err) = data_node.bind(&data_bind) {
+    if let Err(err) = data_node.set_pub_bind(&data_bind) {
         if common::handle_transport_setup_error(PATTERN, &args.transport, "bind", err) {
             return;
         }
@@ -196,7 +196,7 @@ fn main() {
     else {
         return;
     };
-    control_node.bind(&control_bind).expect("control bind");
+    control_node.set_pub_bind(&control_bind).expect("control bind");
     let data_endpoint = data_node.last_endpoint().unwrap_or(data_bind);
     let control_endpoint = control_node.last_endpoint().unwrap_or(control_bind);
     common::print_ready(&data_endpoint);

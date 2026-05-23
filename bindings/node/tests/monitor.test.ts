@@ -116,7 +116,7 @@ test('spot node status snapshot starts empty', async () => {
   const spot = node.createSpot();
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
-  node.bind(endpoint);
+  node.setPubBind(endpoint);
 
   assert.equal(node.statusSnapshot().connectedPeerCount, 0);
   assert.equal(node.peersSnapshot().length, 0);
@@ -143,7 +143,7 @@ test('discovery member peers reflect service-up state', async () => {
     providerDiscovery.connectRegistry(routerEndpoint);
     watcherDiscovery.connectRegistry(routerEndpoint);
     node.attachDiscovery(providerDiscovery);
-    node.bind(serviceEndpoint);
+    node.setPubBind(serviceEndpoint);
 
     const peer = await waitFor(5000, () =>
       watcherDiscovery.memberPeers().find((entry) =>
@@ -168,8 +168,8 @@ test('spot node subject status reflects remote sub readiness after direct peer c
   const serverSpot = serverNode.createSpot();
   const clientSpot = clientNode.createSpot();
   try {
-    serverNode.bind(endpoint);
-    clientNode.bind(clientEndpoint);
+    serverNode.setPubBind(endpoint);
+    clientNode.setPubBind(clientEndpoint);
     clientNode.connectPeer(endpoint);
     clientSpot.setSubscription('topic.monitor.remote');
 
@@ -206,7 +206,7 @@ test('spot node subject status stays unready before peer connect', async () => {
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
   try {
-    node.bind(endpoint);
+    node.setPubBind(endpoint);
     spot.setSubscription('topic.monitor.local-only');
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(node.statusSnapshot().connectedPeerCount, 0);

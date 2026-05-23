@@ -80,7 +80,7 @@ async function runSpotBenchmark(msgSize, options) {
         (0, perf_single_common_1.applySpotNodeAdmission)(publisherNode, options);
         (0, perf_single_common_1.applySpotNodeAdmission)(subscriberNode, options);
         ctx.recalculateAutoHwm();
-        publisherNode.bind(publisherEndpoint);
+        publisherNode.setPubBind(publisherEndpoint);
         subscriberNode.connectPeer(publisherEndpoint);
         subscriber.setSubscription(TOPIC);
         const runId = (0, perf_metrics_1.createRunId)(options.runId ?? 1);

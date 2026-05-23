@@ -823,7 +823,7 @@ static void bind_spot_node (void *node_,
     char bind_endpoint_buf[MAX_SOCKET_STRING];
     snprintf (bind_endpoint_buf, sizeof (bind_endpoint_buf), "%s://127.0.0.1:0",
               transport_);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_, bind_endpoint_buf));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_, bind_endpoint_buf));
 
     zlink_spot_node_status_t status;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status_snapshot (node_, &status));

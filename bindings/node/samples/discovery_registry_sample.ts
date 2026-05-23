@@ -43,7 +43,7 @@ async function main() {
     registry.bind(pubEndpoint, routerEndpoint);
     discovery.connectRegistry(routerEndpoint);
     node.attachDiscovery(discovery);
-    node.bind(serviceEndpoint);
+    node.setPubBind(serviceEndpoint);
 
   const entry = await waitForTopologyEntry(registry, 'sample', serviceEndpoint);
   assert.ok(entry);

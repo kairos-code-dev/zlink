@@ -35,7 +35,8 @@ class SpotRequestAsyncTests(unittest.TestCase):
             self.ctx.close()
 
     def test_request_to_spot_async_completes_via_routed_receive_callback(self):
-        endpoint = _tcp_endpoint()
+        pub_endpoint = _tcp_endpoint()
+        router_endpoint = _tcp_endpoint()
         requester_node = zlink.SpotNode(self.ctx)
         responder_node = zlink.SpotNode(self.ctx)
         requester = requester_node.create_spot()
@@ -53,8 +54,10 @@ class SpotRequestAsyncTests(unittest.TestCase):
                 handled.set()
 
             responder.on_routed_receive(on_routed_receive)
-            responder_node.bind(endpoint)
-            requester_node.connect_peer(endpoint)
+            responder_node.set_router_bind(router_endpoint)
+            responder_node.set_pub_bind(pub_endpoint)
+            requester_node.connect_peer(pub_endpoint)
+            requester_node.connect_router_channel_peer("api", router_endpoint)
             _wait_spot_peer_connected(requester_node)
 
             async def issue_request():

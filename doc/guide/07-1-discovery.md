@@ -307,7 +307,7 @@ A `SpotNode` uses one SPOT Discovery for its own mesh wiring
 
 ```c
 void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_bind(node, "tcp://*:9000");
+zlink_spot_node_set_pub_bind(node, "tcp://*:9000");
 
 /* SPOT mesh — this node's own channel */
 void *spot_disc = zlink_discovery_new(ctx,

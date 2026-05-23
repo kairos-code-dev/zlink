@@ -327,8 +327,12 @@ bool zlink::registry_t::select_spot_owner_entry_locked (
             provider_key.endpoint = entry.endpoint;
             provider_map_t::const_iterator pit =
               sit->second.providers.find (provider_key);
-            if (pit == sit->second.providers.end ())
-                continue;
+            if (pit == sit->second.providers.end ()) {
+                provider_key.service_role = discovery_protocol::service_role_router;
+                pit = sit->second.providers.find (provider_key);
+                if (pit == sit->second.providers.end ())
+                    continue;
+            }
 
             const uint64_t registration_id = pit->second.registration_id;
             const uint64_t reported_at = entry.last_reported_ms;

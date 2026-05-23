@@ -86,7 +86,7 @@ def main(argv=None):
 
         replier.on_dispatch_event(on_dispatch)
 
-        data_node.set_router_bind_endpoint(
+        data_node.set_router_bind(
             benchmark_endpoint(args.transport, "multi-spot-reqrep-router")
         )
         data_endpoint = bind_spot_node_endpoint(

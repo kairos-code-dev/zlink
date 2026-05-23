@@ -33,7 +33,7 @@ activation or hidden resource allocation.
 ```c
 void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_bind(node, "tcp://127.0.0.1:7001");
+zlink_spot_node_set_pub_bind(node, "tcp://127.0.0.1:7001");
 
 void *spot = zlink_spot_new(node);
 
@@ -70,8 +70,8 @@ with `ENOTSUP`; they do not create hidden internal sockets.
 void *a = zlink_spot_node_new(ctx, NULL);
 void *b = zlink_spot_node_new(ctx, NULL);
 
-zlink_spot_node_bind(a, "tcp://127.0.0.1:7101");
-zlink_spot_node_bind(b, "tcp://127.0.0.1:7102");
+zlink_spot_node_set_pub_bind(a, "tcp://127.0.0.1:7101");
+zlink_spot_node_set_pub_bind(b, "tcp://127.0.0.1:7102");
 
 zlink_spot_node_connect_peer(a, "tcp://127.0.0.1:7102");
 zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
@@ -83,7 +83,7 @@ This is fine for tests and fixed topologies.
 
 ```c
 void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
+zlink_spot_node_set_pub_bind(node, "tcp://127.0.0.1:0");
 
 void *discovery = zlink_discovery_new(
   ctx,

@@ -973,7 +973,7 @@ inline int zlink_set_tls_client (void *socket_,
     return 0;
 }
 
-inline int zlink_spot_node_bind (void *node_, const char *endpoint_)
+inline int zlink_spot_node_set_pub_bind (void *node_, const char *endpoint_)
 {
     (void) node_;
     (void) endpoint_;

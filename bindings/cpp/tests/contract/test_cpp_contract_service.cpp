@@ -439,7 +439,7 @@ void test_spot_node_snapshot_contract ()
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("spot-node");
-    node.bind (endpoint);
+    node.set_pub_bind (endpoint);
 
     const zlink::spot_node_status_t status = node.status_snapshot ();
     assert (status.local_endpoint ().empty ()
@@ -503,7 +503,7 @@ void test_unified_spot_self_delivery_recv_contract ()
     assert (discovery.valid ());
     discovery.connect_registry (registry_router);
     node.attach_discovery (discovery);
-    node.bind (zlink_cpp_contract::unique_inproc ("spot-self"));
+    node.set_pub_bind (zlink_cpp_contract::unique_inproc ("spot-self"));
 
     zlink::service::spot_t spot = node.create_spot ();
     assert (spot.valid ());

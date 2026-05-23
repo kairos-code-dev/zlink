@@ -133,7 +133,8 @@ bool discovery_t::resolve_owner_node_from_endpoint_locked (
     for (std::map<registered_service_key_t, registered_service_t>::const_iterator
            it = _registered_services.begin ();
          it != _registered_services.end (); ++it) {
-        if (it->second.service_role != discovery_protocol::service_role_spot
+        if ((it->second.service_role != discovery_protocol::service_role_spot
+             && it->second.service_role != discovery_protocol::service_role_router)
             || it->second.endpoint != endpoint_
             || it->second.routing_id.size == 0) {
             continue;
@@ -145,7 +146,8 @@ bool discovery_t::resolve_owner_node_from_endpoint_locked (
     std::vector<provider_info_t> providers;
     _service_state.snapshot_providers (&providers);
     for (size_t i = 0; i < providers.size (); ++i) {
-        if (providers[i].service_role != discovery_protocol::service_role_spot
+        if ((providers[i].service_role != discovery_protocol::service_role_spot
+             && providers[i].service_role != discovery_protocol::service_role_router)
             || providers[i].endpoint != endpoint_
             || providers[i].routing_id.size == 0) {
             continue;
@@ -280,22 +282,40 @@ bool discovery_t::select_route_owner_locked (registered_service_t *owner_out_) c
 {
     if (!owner_out_)
         return false;
-    bool found = false;
+    bool found_router = false;
+    bool found_fallback = false;
+    registered_service_t fallback;
     for (std::map<registered_service_key_t, registered_service_t>::const_iterator
            it = _registered_services.begin ();
          it != _registered_services.end (); ++it) {
         if (it->second.channel_name != _channel_name)
             continue;
-        if (found) {
+        if (it->second.service_role
+            == discovery_protocol::service_role_router) {
+            if (found_router) {
+                errno = EINVAL;
+                return false;
+            }
+            *owner_out_ = it->second;
+            found_router = true;
+            continue;
+        }
+        if (found_fallback) {
             errno = EINVAL;
             return false;
         }
-        *owner_out_ = it->second;
-        found = true;
+        fallback = it->second;
+        found_fallback = true;
     }
-    if (!found)
+    if (found_router)
+        return true;
+    if (found_fallback) {
+        *owner_out_ = fallback;
+        return true;
+    }
+    if (!found_router && !found_fallback)
         errno = ENOENT;
-    return found;
+    return false;
 }
 
 int discovery_t::bind_route (zlink_route_kind_t kind_,

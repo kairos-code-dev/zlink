@@ -1126,16 +1126,16 @@ class SpotNode:
         self._actor_lookup_handler = None
         self._channel_dealers = {}
 
-    def bind(self, endpoint: str):
-        rc = lib().zlink_spot_node_bind(
+    def set_pub_bind(self, endpoint: str):
+        rc = lib().zlink_spot_node_set_pub_bind(
             self._handle,
             _validated_c_string_text(endpoint, field="endpoint", max_length=255),
         )
         if rc != 0:
-            _raise_result_error(BindError, BindResult, rc, lib().zlink_errno())
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def set_router_bind_endpoint(self, endpoint: str):
-        rc = lib().zlink_spot_node_set_router_bind_endpoint(
+    def set_router_bind(self, endpoint: str):
+        rc = lib().zlink_spot_node_set_router_bind(
             self._handle,
             _validated_c_string_text(endpoint, field="endpoint", max_length=255),
         )

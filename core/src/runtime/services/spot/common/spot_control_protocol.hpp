@@ -29,6 +29,8 @@ static const char cmd_connect_peer_pub[] = "connect_peer_pub";
 static const char cmd_disconnect_peer_pub[] = "disconnect_peer_pub";
 static const char cmd_connect_router_channel_peer[] =
   "connect_router_channel_peer";
+static const char cmd_connect_router_channel_peer_rid[] =
+  "connect_router_channel_peer_rid";
 static const char cmd_disconnect_router_channel_peer[] =
   "disconnect_router_channel_peer";
 static const char cmd_unbind_pub[] = "unbind_pub";

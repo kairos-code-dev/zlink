@@ -85,8 +85,8 @@ async function main() {
     const dataRouterEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-sendsend-client-router-${process.pid}`);
     configureTlsServer(node, options.transport);
     configureTlsClient(node, options.transport);
-    node.setRouterBindEndpoint(dataRouterEndpoint);
-    node.bind(dataEndpoint);
+    node.setRouterBind(dataRouterEndpoint);
+    node.setPubBind(dataEndpoint);
     node.connectPeer(options.peerEndpoint);
     for (let i = 0; i < options.clients; i += 1) {
       const spot = node.createSpot();

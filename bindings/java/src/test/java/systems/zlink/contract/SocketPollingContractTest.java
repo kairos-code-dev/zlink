@@ -218,7 +218,7 @@ public class SocketPollingContractTest {
              Spot subscriber = subscriberNode.createSpot();
              Poller poller = new Poller()) {
             String endpoint = TestSupport.tcpEndpoint();
-            publisherNode.bind(endpoint);
+            publisherNode.setPubBind(endpoint);
             subscriberNode.connectPeer(endpoint);
             subscriber.setSubscription("pollout-topic");
             TestSupport.awaitCondition(() -> subscriberNode.statusSnapshot()

@@ -176,15 +176,15 @@ spot_node_t *spot_node_access_t::from_handle (void *node_)
     return node;
 }
 
-int spot_node_access_t::bind (spot_node_t *node_, const char *endpoint_)
+int spot_node_access_t::set_pub_bind (spot_node_t *node_, const char *endpoint_)
 {
-    return node_ ? node_->bind (endpoint_) : -1;
+    return node_ ? node_->set_pub_bind (endpoint_) : -1;
 }
 
-int spot_node_access_t::set_router_bind_endpoint (spot_node_t *node_,
-                                                  const char *endpoint_)
+int spot_node_access_t::set_router_bind (spot_node_t *node_,
+                                         const char *endpoint_)
 {
-    return node_ ? node_->set_router_bind_endpoint (endpoint_) : -1;
+    return node_ ? node_->set_router_bind (endpoint_) : -1;
 }
 
 int spot_node_access_t::connect_peer (spot_node_t *node_,
@@ -211,6 +211,18 @@ int spot_node_access_t::connect_router_channel_peer (
 {
     return node_ ? node_->connect_router_channel_peer (channel_name_, endpoint_)
                  : -1;
+}
+
+int spot_node_access_t::connect_router_channel_peer_rid (
+  spot_node_t *node_,
+  const char *channel_name_,
+  const zlink_routing_id_t *peer_rid_,
+  const char *endpoint_)
+{
+    return node_
+             ? node_->connect_router_channel_peer_rid (channel_name_,
+                                                       peer_rid_, endpoint_)
+             : -1;
 }
 
 int spot_node_access_t::disconnect_router_channel_peer (

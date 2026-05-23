@@ -353,7 +353,7 @@ typedef enum zlink_bind_result_t
 
 | Category | Functions |
 |---|---|
-| Bind | `zlink_bind`, `zlink_spot_node_bind`, `zlink_registry_bind` |
+| Bind | `zlink_bind`, `zlink_registry_bind` |
 
 ---
 
@@ -465,7 +465,7 @@ forever by default.
 | Socket option | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls_server`, `zlink_set_tls_client`, `zlink_set_router_option`, `zlink_get_router_option`, `zlink_set_dealer_option`, `zlink_set_stream_option`, `zlink_get_stream_option`, `zlink_set_spot_option`, `zlink_get_spot_option`, `zlink_set_pub_option`, `zlink_get_pub_option`, `zlink_set_sub_option`, `zlink_get_sub_option`, `zlink_set_spot_node_option`, `zlink_get_spot_node_option`, `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name` |
 | Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
 | Service attach | `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`, `zlink_spot_node_attach_channel_dealer_manual`, `zlink_spot_node_attach_pub_ingress` |
-| SpotNode lifecycle/lookup | `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref` |
+| SpotNode lifecycle/lookup/bind | `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref` |
 | Registry config | `zlink_registry_set_id`, `zlink_registry_add_peer`, `zlink_registry_set`, `zlink_registry_get` |
 | Discovery config | `zlink_discovery_connect_registry`, `zlink_discovery_resolve_spot`, `zlink_discovery_resolve_actor`, `zlink_discovery_set_value`, `zlink_discovery_get_value`, `zlink_discovery_member_peers` |
 | Snapshot/query | `zlink_spot_node_status_snapshot`, `zlink_spot_node_peers_snapshot`, `zlink_spot_node_peers_query`, `zlink_spot_node_subjects_snapshot`, `zlink_spot_node_internal_sockets_snapshot`, `zlink_spot_node_spots_snapshot`, `zlink_spot_node_actors_snapshot`, `zlink_spot_actors_snapshot`, `zlink_registry_status_snapshot`, `zlink_registry_service_summary_snapshot`, `zlink_registry_member_peers`, `zlink_registry_topology_snapshot`, `zlink_registry_topology_query`, `zlink_registry_query_snapshot`, `zlink_monitor_snapshot` |
@@ -639,6 +639,6 @@ the same public result with `EFAULT`.
 | `zlink_recv_result_t` | `zlink_router_recv_part`, `zlink_spot_recv_part`, `zlink_recv_part`, `zlink_subscribe_part`, `zlink_xpub_recv_part`, `zlink_spot_subscribe_part`, `zlink_spot_subscription_event_recv`, `zlink_socket_monitor_recv`, `zlink_timer_recv`, `zlink_spot_node_actor_recv_part`, `zlink_spot_actor_join_recv` |
 | `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_handler`, `zlink_spot_dispatch_event_handler`, `zlink_spot_actor_lifecycle_handler`, `zlink_socket_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
-| `zlink_bind_result_t` | `zlink_bind`, `zlink_spot_node_bind`, `zlink_registry_bind` |
+| `zlink_bind_result_t` | `zlink_bind`, `zlink_registry_bind` |
 | `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_unbind`, `zlink_spot_node_connect_peer`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`, `zlink_discovery_connect_registry`, `zlink_registry_query_client_connect` |
-| `zlink_config_result_t` | `zlink_ctx_set`, `zlink_ctx_auto_hwm_recalculate`, message lifecycle functions (`zlink_msg_init` family + `zlink_msg_adopt`), all socket option/routing/subscription configuration functions, all attach functions, all SpotNode lifecycle/lookup functions, all registry/discovery configuration functions, all snapshot/query functions, all poller mutation functions, `zlink_proxy`, `zlink_proxy_steerable`, `zlink_timer_start`, `zlink_timer_stop`, `zlink_monitor_snapshot` |
+| `zlink_config_result_t` | `zlink_ctx_set`, `zlink_ctx_auto_hwm_recalculate`, message lifecycle functions (`zlink_msg_init` family + `zlink_msg_adopt`), all socket option/routing/subscription configuration functions, all attach functions, all SpotNode lifecycle/lookup/bind/bind functions, all registry/discovery configuration functions, all snapshot/query functions, all poller mutation functions, `zlink_proxy`, `zlink_proxy_steerable`, `zlink_timer_start`, `zlink_timer_stop`, `zlink_monitor_snapshot` |

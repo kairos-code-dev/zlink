@@ -65,7 +65,7 @@ internal static class PerfSpot
             ConfigureSpotNodeTlsIfNeeded(subNode, transport);
 
             string publisherEndpoint = EndpointFor(transport, "spot-publisher");
-            pubNode.Bind(publisherEndpoint);
+            pubNode.SetPubBind(publisherEndpoint);
             publisherEndpoint = pubNode.LastEndpoint;
             subNode.ConnectPeer(publisherEndpoint);
             spotSub.SetSubscription(Topic);

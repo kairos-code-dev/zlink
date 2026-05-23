@@ -39,7 +39,7 @@ public sealed class test_discovery_resolve_spot
 
             node.SetRoutingId(nodeRid);
             spot.SetRoutingId(spotRid);
-            node.Bind(nodeEndpoint);
+            node.SetPubBind(nodeEndpoint);
             node.AttachDiscovery(discovery);
 
             Assert.True(CoreTestSupport.WaitUntil(

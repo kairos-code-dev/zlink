@@ -62,8 +62,8 @@ final class PerfMultiSpotSendSend {
             spot.setRoutingId(SERVER_SPOT_RID);
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
-            node.setRouterBindEndpoint(routerEndpoint);
-            node.bind(config.endpoint());
+            node.setRouterBind(routerEndpoint);
+            node.setPubBind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
             int expectedStops = activeSpotSlotLimit(config.clients(),
@@ -127,8 +127,8 @@ final class PerfMultiSpotSendSend {
             node.setRoutingId(routingId("SPOT-SENDSEND-CLIENT-NODE"));
             PerfUtil.configureServerTls(node, config.transport());
             PerfUtil.configureClientTls(node, config.transport());
-            node.setRouterBindEndpoint(clientRouterEndpoint);
-            node.bind(clientDataEndpoint);
+            node.setRouterBind(clientRouterEndpoint);
+            node.setPubBind(clientDataEndpoint);
             node.connectPeer(endpoint);
 
             List<Spot> spots = new ArrayList<>(config.clients());

@@ -223,7 +223,7 @@ def apply_multi_spot_node_admission(*nodes):
 
 def bind_spot_node_endpoint(node, transport, prefix):
     endpoint = benchmark_endpoint(transport, prefix)
-    node.bind(endpoint)
+    node.set_pub_bind(endpoint)
     try:
         return node.last_endpoint()
     except Exception:

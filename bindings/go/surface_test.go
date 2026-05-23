@@ -161,11 +161,11 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if hasMethod((*zlink.XPubSocket)(nil), "TryReceiveSubscriptionEvent") {
 		t.Fatalf("XPubSocket should not expose TryReceiveSubscriptionEvent")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "Bind") {
-		t.Fatalf("SpotNode should expose Bind")
+	if !hasMethod((*zlink.SpotNode)(nil), "SetPubBind") {
+		t.Fatalf("SpotNode should expose SetPubBind")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "SetRouterBindEndpoint") {
-		t.Fatalf("SpotNode should expose SetRouterBindEndpoint")
+	if !hasMethod((*zlink.SpotNode)(nil), "SetRouterBind") {
+		t.Fatalf("SpotNode should expose SetRouterBind")
 	}
 	if !hasMethod((*zlink.SpotNode)(nil), "ConnectPeer") {
 		t.Fatalf("SpotNode should expose ConnectPeer")

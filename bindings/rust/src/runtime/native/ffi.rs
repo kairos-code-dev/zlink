@@ -1401,8 +1401,8 @@ unsafe extern "C" {
         actor: *const zlink_actor_ref_t,
         timeout_ms: u32,
     ) -> zlink_request_result_t;
-    pub fn zlink_spot_node_bind(node: *mut c_void, endpoint: *const c_char) -> c_int;
-    pub fn zlink_spot_node_set_router_bind_endpoint(
+    pub fn zlink_spot_node_set_pub_bind(node: *mut c_void, endpoint: *const c_char) -> c_int;
+    pub fn zlink_spot_node_set_router_bind(
         node: *mut c_void,
         endpoint: *const c_char,
     ) -> c_int;

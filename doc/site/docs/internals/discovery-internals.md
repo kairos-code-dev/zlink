@@ -278,7 +278,7 @@ sequenceDiagram
     participant Disc as Discovery
     participant REG as Registry
 
-    Node->>Node: zlink_spot_node_bind("tcp://*:9000")
+    Node->>Node: zlink_spot_node_set_pub_bind("tcp://*:9000")
     Node->>Disc: attach_discovery(discovery)
     Disc->>REG: REGISTER(type=spot_node, endpoint)
 

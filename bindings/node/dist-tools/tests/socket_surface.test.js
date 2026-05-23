@@ -111,7 +111,8 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(router.onSpotReceive, undefined);
     const spotNode = new zlink.SpotNode(ctx);
     assert.equal(spotNode.lastEndpoint, undefined);
-    assert.equal(typeof spotNode.setRouterBindEndpoint, 'function');
+    assert.equal(typeof spotNode.setPubBind, 'function');
+    assert.equal(typeof spotNode.setRouterBind, 'function');
     assert.equal(typeof spotNode.setRoutingId, 'function');
     assert.equal(typeof spotNode.connectRouterChannelPeer, 'function');
     assert.equal(typeof spotNode.disconnectRouterChannelPeer, 'function');

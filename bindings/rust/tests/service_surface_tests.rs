@@ -35,7 +35,7 @@ fn spot_node_snapshot_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let endpoint = format!("tcp://127.0.0.1:{}", reserve_tcp_port());
-    node.bind(&endpoint).unwrap();
+    node.set_pub_bind(&endpoint).unwrap();
     let _ = node.status_snapshot().unwrap();
     let _ = node.peers_snapshot().unwrap();
     let _ = node.subjects_snapshot(None).unwrap();

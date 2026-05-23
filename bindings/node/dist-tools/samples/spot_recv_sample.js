@@ -51,8 +51,8 @@ async function main() {
         subscriberNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('a-node-spot-recv-subscriber')));
         publisherNode.attachDiscovery(publisherDiscovery);
         subscriberNode.attachDiscovery(subscriberDiscovery);
-        publisherNode.bind(publisherEndpoint);
-        subscriberNode.bind(subscriberEndpoint);
+        publisherNode.setPubBind(publisherEndpoint);
+        subscriberNode.setPubBind(subscriberEndpoint);
         publisher = publisherNode.createSpot();
         subscriber = subscriberNode.createSpot();
         publisher.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('z-node-spot-recv-publisher-spot')));

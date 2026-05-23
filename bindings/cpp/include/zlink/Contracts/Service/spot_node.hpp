@@ -60,21 +60,20 @@ class spot_node_t
 
     bool valid () const noexcept { return _node != NULL; }
 
-    void set_router_bind_endpoint (const std::string &endpoint_)
+    void set_router_bind (const std::string &endpoint_)
     {
         zlink::detail::validate_bounded_c_string (endpoint_, 255u, "endpoint");
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_set_router_bind_endpoint (_node,
-                                                      endpoint_.c_str ())));
+            zlink_spot_node_set_router_bind (_node, endpoint_.c_str ())));
     }
 
-    void bind (const std::string &endpoint_)
+    void set_pub_bind (const std::string &endpoint_)
     {
         zlink::detail::validate_bounded_c_string (endpoint_, 255u, "endpoint");
-        detail::throw_if_failed<bind_error_t> (
-          static_cast<bind_result_t> (
-            zlink_spot_node_bind (_node, endpoint_.c_str ())));
+        detail::throw_if_failed<config_error_t> (
+          static_cast<config_result_t> (
+            zlink_spot_node_set_pub_bind (_node, endpoint_.c_str ())));
     }
 
     std::string last_endpoint () const

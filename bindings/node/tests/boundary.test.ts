@@ -58,7 +58,7 @@ test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
   assert.throws(() => registry.bind('x'.repeat(256), 'tcp://127.0.0.1:5556'), /255 bytes/);
   assert.throws(() => query.connect('tcp://127.0.0.1:5556\0bad'), /embedded null/);
   assert.throws(() => discovery.connectRegistry('x'.repeat(256)), /255 bytes/);
-  assert.throws(() => node.bind('tcp://127.0.0.1:5557\0bad'), /embedded null/);
+  assert.throws(() => node.setPubBind('tcp://127.0.0.1:5557\0bad'), /embedded null/);
   assert.throws(() => spot.setSubscription('topic\0bad'), /embedded null/);
   assert.doesNotThrow(() => new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, maxChannelName).close());
 

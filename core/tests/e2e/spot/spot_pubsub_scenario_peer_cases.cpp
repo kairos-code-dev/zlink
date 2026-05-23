@@ -40,9 +40,9 @@ void test_spot_multi_publisher ()
     TEST_ASSERT_NOT_NULL (pub_b);
     TEST_ASSERT_NOT_NULL (sub_c);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, "inproc://pub-a"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, "inproc://pub-b"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_c, "inproc://sub-c"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_a, "inproc://pub-a"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_b, "inproc://pub-b"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_c, "inproc://sub-c"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (node_c, "inproc://pub-a"));
 
@@ -96,8 +96,8 @@ void test_spot_aggregate_subscription_refcount ()
     TEST_ASSERT_NOT_NULL (sub_one);
     TEST_ASSERT_NOT_NULL (sub_two);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, "inproc://agg-a"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, "inproc://agg-b"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_a, "inproc://agg-a"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_b, "inproc://agg-b"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_connect_peer (node_b, "inproc://agg-a"));
 

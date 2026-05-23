@@ -38,9 +38,8 @@ struct spot_node_access_t
     static ctx_t *ctx (spot_node_t *node_);
     static mutex_t &sync (spot_node_t *node_);
     static spot_node_t *from_handle (void *node_);
-    static int bind (spot_node_t *node_, const char *endpoint_);
-    static int set_router_bind_endpoint (spot_node_t *node_,
-                                         const char *endpoint_);
+    static int set_pub_bind (spot_node_t *node_, const char *endpoint_);
+    static int set_router_bind (spot_node_t *node_, const char *endpoint_);
     static int connect_peer (spot_node_t *node_, const char *peer_endpoint_);
     static int disconnect_peer (spot_node_t *node_,
                                 const char *peer_endpoint_);
@@ -49,6 +48,11 @@ struct spot_node_access_t
     static int connect_router_channel_peer (spot_node_t *node_,
                                             const char *channel_name_,
                                             const char *endpoint_);
+    static int connect_router_channel_peer_rid (
+      spot_node_t *node_,
+      const char *channel_name_,
+      const zlink_routing_id_t *peer_rid_,
+      const char *endpoint_);
     static int disconnect_router_channel_peer (spot_node_t *node_,
                                                const char *channel_name_,
                                                const char *endpoint_);

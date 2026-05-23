@@ -33,7 +33,7 @@ SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 ```c
 void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_bind(node, "tcp://127.0.0.1:7001");
+zlink_spot_node_set_pub_bind(node, "tcp://127.0.0.1:7001");
 
 void *spot = zlink_spot_new(node);
 
@@ -83,8 +83,8 @@ void *node = zlink_spot_node_new(ctx, &opts);
 void *a = zlink_spot_node_new(ctx, NULL);
 void *b = zlink_spot_node_new(ctx, NULL);
 
-zlink_spot_node_bind(a, "tcp://127.0.0.1:7101");
-zlink_spot_node_bind(b, "tcp://127.0.0.1:7102");
+zlink_spot_node_set_pub_bind(a, "tcp://127.0.0.1:7101");
+zlink_spot_node_set_pub_bind(b, "tcp://127.0.0.1:7102");
 
 zlink_spot_node_connect_peer(a, "tcp://127.0.0.1:7102");
 zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
@@ -98,7 +98,7 @@ zlink_spot_node_connect_peer(b, "tcp://127.0.0.1:7101");
 
 ```c
 void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_bind(node, "tcp://127.0.0.1:0");
+zlink_spot_node_set_pub_bind(node, "tcp://127.0.0.1:0");
 
 void *discovery = zlink_discovery_new(
   ctx,

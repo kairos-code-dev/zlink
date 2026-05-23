@@ -67,7 +67,7 @@ int main ()
     registry.bind (registry_pub, registry_router);
     discovery.connect_registry (registry_router);
     node.attach_discovery (discovery);
-    node.bind (endpoint);
+    node.set_pub_bind (endpoint);
     spot.set_subscription ("topic:alpha");
     assert (wait_for_spot_ready (node, false, 0u, 10000));
 

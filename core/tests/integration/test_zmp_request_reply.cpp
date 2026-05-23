@@ -611,7 +611,7 @@ void bind_spot_node (void *node_, char *endpoint_out_, size_t endpoint_size_)
     snprintf (bind_endpoint_buf, sizeof (bind_endpoint_buf),
               "ipc:///tmp/zlink-zmp-request-reply-%d-%d.ipc", getpid (),
               endpoint_counter++);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_, bind_endpoint_buf));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_, bind_endpoint_buf));
 
     zlink_spot_node_status_t status;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status_snapshot (node_, &status));

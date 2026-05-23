@@ -132,7 +132,7 @@ fn main() {
     else {
         return;
     };
-    control_node.bind(&control_bind).expect("control bind");
+    control_node.set_pub_bind(&control_bind).expect("control bind");
     control_node
         .connect_peer(&control_endpoint)
         .expect("connect server control");

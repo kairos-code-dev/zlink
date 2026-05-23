@@ -126,7 +126,7 @@ def main(argv=None):
         control_node.connect_peer(args.control_endpoint)
         print(f"CLIENT_CONTROL_ENDPOINT,{control_endpoint}", flush=True)
 
-        data_node.set_router_bind_endpoint(
+        data_node.set_router_bind(
             benchmark_endpoint(args.transport, "multi-spot-reqrep-client-router")
         )
         data_endpoint_local = bind_spot_node_endpoint(

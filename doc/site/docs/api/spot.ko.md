@@ -203,7 +203,7 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 ### 토폴로지와 discovery
 
 ```c
-zlink_bind_result_t zlink_spot_node_bind(void *node, const char *endpoint);
+zlink_config_result_t zlink_spot_node_set_pub_bind(void *node, const char *endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
@@ -215,7 +215,7 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
-- `zlink_spot_node_bind()`는 node endpoint를 bind한다.
+- `zlink_spot_node_set_pub_bind()`는 node endpoint를 bind한다.
 - `zlink_spot_node_connect_peer()`와 `zlink_spot_node_disconnect_peer()`는
   endpoint를 알고 있는 수동 mesh 연결에 쓴다.
 - `zlink_spot_node_disconnect_peer_rid()`는 target node routing id를 기준으로

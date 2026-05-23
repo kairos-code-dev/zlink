@@ -62,6 +62,7 @@ flowchart TD
 ## 4. 더 보기
 
 - 표면 멘탈 모델: [03-concepts](./03-concepts.ko.md)
+- gRPC·서버간 웹콜에서 옮겨오기(도입 판단): [12-migration-from-grpc](./12-migration-from-grpc.ko.md)
 - 모든 계약 인터페이스를 코드로(ContractTests 검증): [11-interface-catalog](./11-interface-catalog.ko.md)
 - 전체 인터페이스 카탈로그(언어 중립 정식): [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
 - 동작/검증 기준: [internals/behavior-matrix](../internals/behavior-matrix.ko.md)

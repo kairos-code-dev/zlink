@@ -180,7 +180,7 @@ void test_spot_node_provider_registers_default_weight ()
     void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_bind (node, "tcp://127.0.0.1:*"));
+      zlink_spot_node_set_pub_bind (node, "tcp://127.0.0.1:*"));
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_OK,
       zlink_spot_node_attach_discovery (node, discovery));

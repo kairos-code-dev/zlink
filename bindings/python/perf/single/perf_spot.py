@@ -112,7 +112,7 @@ def main(argv=None):
                             # zlink_spot_node_connect_peer(subscriber_node,
                             # publisher_endpoint) directly (registry=NULL,
                             # discovery=NULL).
-                            publisher_node.bind(publisher_endpoint)
+                            publisher_node.set_pub_bind(publisher_endpoint)
                             subscriber_node.connect_peer(
                                 publisher_node.last_endpoint()
                             )

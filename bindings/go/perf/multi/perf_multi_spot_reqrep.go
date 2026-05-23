@@ -52,8 +52,8 @@ func runMultiSpotReqRepServer(cfg multiConfig) {
 	perfcommon.Must(replierNode.SetRoutingID(multiSpotReqRepNodeRID))
 	dataEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep")
 	dataRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-router")
-	perfcommon.Must(replierNode.SetRouterBindEndpoint(dataRouterEndpoint))
-	perfcommon.Must(replierNode.Bind(dataEndpoint))
+	perfcommon.Must(replierNode.SetRouterBind(dataRouterEndpoint))
+	perfcommon.Must(replierNode.SetPubBind(dataEndpoint))
 
 	replier, err := replierNode.Spot()
 	perfcommon.Must(err)
@@ -93,7 +93,7 @@ func runMultiSpotReqRepServer(cfg multiConfig) {
 	defer controlSub.Close()
 	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
 	controlEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-control-server")
-	perfcommon.Must(controlNode.Bind(controlEndpoint))
+	perfcommon.Must(controlNode.SetPubBind(controlEndpoint))
 	controlEndpoint = spotNodeLastEndpoint(controlNode, controlEndpoint)
 
 	var readyCount int
@@ -192,15 +192,15 @@ func runMultiSpotReqRepClientRole(cfg multiConfig, endpoint string) perfcommon.R
 	defer controlSub.Close()
 	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
 	controlBind := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-control-client")
-	perfcommon.Must(controlNode.Bind(controlBind))
+	perfcommon.Must(controlNode.SetPubBind(controlBind))
 	perfcommon.Must(controlNode.ConnectPeer(controlEndpoint))
 	clientControlEndpoint := spotNodeLastEndpoint(controlNode, controlBind)
 	flushControlLine("CLIENT_CONTROL_ENDPOINT,%s", clientControlEndpoint)
 
 	localEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-client")
 	localRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-client-router")
-	perfcommon.Must(node.SetRouterBindEndpoint(localRouterEndpoint))
-	perfcommon.Must(node.Bind(localEndpoint))
+	perfcommon.Must(node.SetRouterBind(localRouterEndpoint))
+	perfcommon.Must(node.SetPubBind(localEndpoint))
 	perfcommon.Must(node.ConnectPeer(dataEndpoint))
 
 	spots := make([]*zlink.Spot, 0, cfg.clients)

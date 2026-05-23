@@ -150,23 +150,23 @@ func (n *SpotNode) raw() unsafe.Pointer {
 	return n.handle
 }
 
-func (n *SpotNode) Bind(endpoint string) error {
+func (n *SpotNode) SetPubBind(endpoint string) error {
 	return n.withCString(endpoint, func(cstr *C.char) error {
 		handle, err := n.handleOrError()
 		if err != nil {
 			return err
 		}
-		return bindErrorFromResult(C.zlink_spot_node_bind(handle, cstr))
+		return configErrorFromResult(C.zlink_spot_node_set_pub_bind(handle, cstr))
 	})
 }
 
-func (n *SpotNode) SetRouterBindEndpoint(endpoint string) error {
+func (n *SpotNode) SetRouterBind(endpoint string) error {
 	return n.withCString(endpoint, func(cstr *C.char) error {
 		handle, err := n.handleOrError()
 		if err != nil {
 			return err
 		}
-		return configErrorFromResult(C.zlink_spot_node_set_router_bind_endpoint(handle, cstr))
+		return configErrorFromResult(C.zlink_spot_node_set_router_bind(handle, cstr))
 	})
 }
 

@@ -94,7 +94,7 @@ def main(argv=None):
         control_sub.set_routing_id(b"SPOT-SENDSEND-CONTROL-SERVER-SUB")
         control_sub.set_subscription(TOPIC)
 
-        data_node.set_router_bind_endpoint(
+        data_node.set_router_bind(
             benchmark_endpoint(args.transport, "multi-spot-sendsend-router")
         )
         data_endpoint = bind_spot_node_endpoint(

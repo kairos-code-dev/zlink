@@ -100,7 +100,26 @@ bool bind_spot_test_endpoint_local (void *node_, std::string *endpoint_out_)
         std::string endpoint;
         if (!allocate_loopback_tcp_endpoint_local (&endpoint))
             continue;
-        if (zlink_spot_node_bind (node_, endpoint.c_str ()) == 0) {
+        if (zlink_spot_node_set_pub_bind (node_, endpoint.c_str ()) == 0) {
+            if (endpoint_out_)
+                *endpoint_out_ = endpoint;
+            return true;
+        }
+    }
+    errno = EADDRINUSE;
+    return false;
+}
+
+bool bind_spot_router_test_endpoint_local (void *node_, std::string *endpoint_out_)
+{
+    if (!node_)
+        return false;
+
+    for (int i = 0; i < 256; ++i) {
+        std::string endpoint;
+        if (!allocate_loopback_tcp_endpoint_local (&endpoint))
+            continue;
+        if (zlink_spot_node_set_router_bind (node_, endpoint.c_str ()) == 0) {
             if (endpoint_out_)
                 *endpoint_out_ = endpoint;
             return true;
@@ -357,6 +376,73 @@ void test_discovery_resolve_spot_returns_owner_node_rid ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&entry_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_discovery_resolve_spot_returns_router_only_owner_node_rid ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_broadcast_interval (registry, 50));
+
+    std::string registry_pub;
+    std::string registry_router;
+    std::string node_router_endpoint;
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (
+      registry, &registry_pub, &registry_router));
+
+    void *discovery =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH,
+                           "resolve-router-only");
+    TEST_ASSERT_NOT_NULL (discovery);
+    enable_spot_owner_sync_local (discovery);
+    TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
+      discovery, registry_router.c_str (), 3000));
+
+    zlink_spot_node_options_t options;
+    memset (&options, 0, sizeof (options));
+    options.mode = ZLINK_SPOT_NODE_MODE_ROUTED;
+    void *node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (node, "resolve-router-node", 19));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (spot, "resolve-router-spot", 19));
+    TEST_ASSERT_TRUE (
+      bind_spot_router_test_endpoint_local (node, &node_router_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_attach_discovery (node, discovery));
+
+    zlink_routing_id_t spot_rid;
+    zlink_routing_id_t node_rid;
+    zlink_routing_id_t resolved_node_rid;
+    memset (&spot_rid, 0, sizeof (spot_rid));
+    memset (&node_rid, 0, sizeof (node_rid));
+    memset (&resolved_node_rid, 0, sizeof (resolved_node_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (spot, &spot_rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (node, &node_rid));
+
+    TEST_ASSERT_TRUE (wait_for_resolve_spot_local (
+      discovery, &spot_rid, &resolved_node_rid, 5000));
+    TEST_ASSERT_EQUAL_UINT8 (node_rid.size, resolved_node_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (node_rid.data, resolved_node_rid.data,
+                              node_rid.size);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
@@ -674,6 +760,7 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_discovery_resolve_spot_returns_owner_node_rid);
+    RUN_TEST (test_discovery_resolve_spot_returns_router_only_owner_node_rid);
     RUN_TEST (test_discovery_resolve_spot_is_scoped_by_channel_name);
     RUN_TEST (test_discovery_resolve_spot_returns_enoent_after_owner_unregister);
     RUN_TEST (test_discovery_resolve_spot_handover_switches_owner);

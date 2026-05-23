@@ -90,7 +90,7 @@ public sealed class test_validation_contract
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             _ = new Discovery(ctx, AutoConnectType.SpotMesh, overlong));
-        Assert.Throws<ArgumentOutOfRangeException>(() => node.Bind(overlong));
+        Assert.Throws<ArgumentOutOfRangeException>(() => node.SetPubBind(overlong));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             registry.Bind(overlong, "tcp://127.0.0.1:5555"));
         Assert.Throws<ArgumentOutOfRangeException>(() => query.Connect(overlong));

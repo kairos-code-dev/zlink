@@ -155,11 +155,11 @@ internal static partial class NativeMethods
     internal static extern int zlink_spot_node_destroy(ref IntPtr node);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_bind(IntPtr node,
+    internal static extern int zlink_spot_node_set_pub_bind(IntPtr node,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_set_router_bind_endpoint(
+    internal static extern int zlink_spot_node_set_router_bind(
         IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -177,6 +177,12 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_connect_router_channel_peer(
         IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_connect_router_channel_peer_rid(
+        IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
+        ref ZlinkRoutingId peerRid,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

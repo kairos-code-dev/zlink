@@ -190,8 +190,8 @@ static void define_spot_exports(napi_env env, napi_value exports)
     napi_property_descriptor descs[] = {
         ZLINK_METHOD("spotNodeNew", spot_node_new),
         ZLINK_METHOD("spotNodeDestroy", spot_node_destroy),
-        ZLINK_METHOD("spotNodeBind", spot_node_bind),
-        ZLINK_METHOD("spotNodeSetRouterBindEndpoint", spot_node_set_router_bind_endpoint),
+        ZLINK_METHOD("spotNodeSetPubBind", spot_node_set_pub_bind),
+        ZLINK_METHOD("spotNodeSetRouterBind", spot_node_set_router_bind),
         ZLINK_METHOD("spotNodeConnectPeerPub", spot_node_connect_peer),
         ZLINK_METHOD("spotNodeDisconnectPeerPub", spot_node_disconnect_peer),
         ZLINK_METHOD("spotNodeDisconnectPeerRidPub", spot_node_disconnect_peer_rid),

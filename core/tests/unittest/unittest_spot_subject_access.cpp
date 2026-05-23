@@ -459,12 +459,12 @@ void test_spot_node_router_bind_endpoint_is_explicit ()
       "inproc://explicit-router-mesh.zlink-spot-route";
 
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_node_set_router_bind_endpoint (
+                       zlink_spot_node_set_router_bind (
                          node, router_endpoint));
-    TEST_ASSERT_EQUAL (ZLINK_BIND_OK,
-                       zlink_spot_node_bind (node, mesh_endpoint));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_set_pub_bind (node, mesh_endpoint));
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_INVALID_STATE,
-                       zlink_spot_node_set_router_bind_endpoint (
+                       zlink_spot_node_set_router_bind (
                          node, "inproc://late-router-ingress"));
 
     void *conflict = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);

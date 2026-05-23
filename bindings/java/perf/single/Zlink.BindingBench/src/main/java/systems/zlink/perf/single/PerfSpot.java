@@ -58,7 +58,7 @@ final class PerfSpot {
             // local probe barrier below is the connection-ready gate
             // (PERF_SINGLE §6.1 / PERF_POLICY §1.1.2: single SPOT must not
             // measure registry/discovery or extra bootstrap waits).
-            publisherNode.bind(publisherEndpoint);
+            publisherNode.setPubBind(publisherEndpoint);
             subscriberNode.connectPeer(publisherEndpoint);
             subscriber.setSubscription(topic);
 

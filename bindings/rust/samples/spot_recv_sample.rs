@@ -55,10 +55,10 @@ fn main() {
         ))
         .expect("subscriber routing id failed");
     publisher_node
-        .bind(&publisher_endpoint)
+        .set_pub_bind(&publisher_endpoint)
         .expect("publisher bind failed");
     subscriber_node
-        .bind(&subscriber_endpoint)
+        .set_pub_bind(&subscriber_endpoint)
         .expect("subscriber bind failed");
     let publisher = publisher_node.create_spot().expect("publisher spot failed");
     let subscriber = subscriber_node

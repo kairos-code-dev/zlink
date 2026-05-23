@@ -302,7 +302,7 @@ channel별로 `DEALER`를 등록한다.
 
 ```c
 void *node = zlink_spot_node_new(ctx, NULL);
-zlink_spot_node_bind(node, "tcp://*:9000");
+zlink_spot_node_set_pub_bind(node, "tcp://*:9000");
 
 /* SPOT mesh — 이 node 자신의 channel */
 void *spot_disc = zlink_discovery_new(ctx,

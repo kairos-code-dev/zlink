@@ -137,7 +137,7 @@ fn spot_node_endpoint_over_255_rejected() {
     let ctx = Context::new().unwrap();
     let node = SpotNode::new(&ctx).unwrap();
     let endpoint = format!("tcp://{}", "1".repeat(250));
-    let result = node.bind(&endpoint);
+    let result = node.set_pub_bind(&endpoint);
     assert!(result.is_err(), "endpoint over 255 bytes must be rejected");
 }
 

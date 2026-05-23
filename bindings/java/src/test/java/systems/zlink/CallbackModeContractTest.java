@@ -77,7 +77,7 @@ public class CallbackModeContractTest {
             registry.bind(registryPub, registryRouter);
             discovery.connectRegistry(registryRouter);
             publisherNode.attachDiscovery(discovery);
-            publisherNode.bind(TestSupport.tcpEndpoint());
+            publisherNode.setPubBind(TestSupport.tcpEndpoint());
             String endpoint = publisherNode.statusSnapshot().localEndpoint();
             subscriberNode.connectPeer(endpoint);
             subscriber.setSubscription("alpha");
@@ -119,7 +119,7 @@ public class CallbackModeContractTest {
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
-            publisherNode.bind(TestSupport.tcpEndpoint());
+            publisherNode.setPubBind(TestSupport.tcpEndpoint());
             subscriberNode.connectPeer(publisherNode.statusSnapshot()
                 .localEndpoint());
             subscriber.setSubscription("close-race");
@@ -158,7 +158,7 @@ public class CallbackModeContractTest {
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
-            publisherNode.bind(TestSupport.tcpEndpoint());
+            publisherNode.setPubBind(TestSupport.tcpEndpoint());
             subscriberNode.connectPeer(publisherNode.statusSnapshot()
                 .localEndpoint());
             subscriber.setSubscription("drain");
@@ -209,7 +209,7 @@ public class CallbackModeContractTest {
             replier.setRoutingId(serverSpotRid);
             replier.onDispatchEvent(info -> {
             });
-            serverNode.bind(TestSupport.tcpEndpoint());
+            serverNode.setPubBind(TestSupport.tcpEndpoint());
             clientNode.connectPeer(serverNode.statusSnapshot()
                 .localEndpoint());
             awaitCondition(() -> clientNode.statusSnapshot()

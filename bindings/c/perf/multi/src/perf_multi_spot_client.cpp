@@ -466,8 +466,8 @@ std::string bind_client_spot_endpoint(void *node,
     }
 
     if (base_bind_port > 0
-        && zlink_spot_node_bind(node, bind_endpoint.c_str())
-             != ZLINK_BIND_OK)
+        && zlink_spot_node_set_pub_bind(node, bind_endpoint.c_str())
+             != ZLINK_CONFIG_OK)
         return std::string();
 
     zlink_spot_node_status_t status;

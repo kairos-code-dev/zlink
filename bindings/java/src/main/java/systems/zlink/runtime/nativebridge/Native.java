@@ -823,10 +823,10 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_BIND = downcall("zlink_spot_node_bind",
+    private static final MethodHandle MH_SPOT_NODE_SET_PUB_BIND = downcall("zlink_spot_node_set_pub_bind",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_SET_ROUTER_BIND_ENDPOINT = downcall(
-            "zlink_spot_node_set_router_bind_endpoint",
+    private static final MethodHandle MH_SPOT_NODE_SET_ROUTER_BIND = downcall(
+            "zlink_spot_node_set_router_bind",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_CONN_PEER = downcall("zlink_spot_node_connect_peer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -3291,19 +3291,19 @@ public final class Native {
         }
     }
 
-    public static int spotNodeBind(MemorySegment node, MemorySegment ep) {
+    public static int spotNodeSetPubBind(MemorySegment node, MemorySegment ep) {
         try {
-            return (int) MH_SPOT_NODE_BIND.invokeExact(node, ep);
+            return (int) MH_SPOT_NODE_SET_PUB_BIND.invokeExact(node, ep);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_bind failed", t);
+            throw new RuntimeException("zlink_spot_node_set_pub_bind failed", t);
         }
     }
 
-    public static int spotNodeSetRouterBindEndpoint(MemorySegment node, MemorySegment ep) {
+    public static int spotNodeSetRouterBind(MemorySegment node, MemorySegment ep) {
         try {
-            return (int) MH_SPOT_NODE_SET_ROUTER_BIND_ENDPOINT.invokeExact(node, ep);
+            return (int) MH_SPOT_NODE_SET_ROUTER_BIND.invokeExact(node, ep);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_set_router_bind_endpoint failed", t);
+            throw new RuntimeException("zlink_spot_node_set_router_bind failed", t);
         }
     }
 

@@ -484,7 +484,7 @@ bool run_pattern_spot (const std::string &transport,
             sub_node.router_admission_hwm (
               zlink::message_count_t::value (router_hwm));
         }
-        pub_node.bind (publisher_endpoint);
+        pub_node.set_pub_bind (publisher_endpoint);
         sub_node.connect_peer (publisher_endpoint);
     }
     catch (const std::exception &e) {

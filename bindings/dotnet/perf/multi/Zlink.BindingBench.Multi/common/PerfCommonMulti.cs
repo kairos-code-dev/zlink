@@ -160,7 +160,7 @@ internal static partial class PerfRunner
                 options);
             try
             {
-                node.Bind(endpoint);
+                node.SetPubBind(endpoint);
                 return node.LastEndpoint;
             }
             catch (ZlinkException ex) when (options.ServerBindPort <= 0
@@ -173,7 +173,7 @@ internal static partial class PerfRunner
 
         string finalEndpoint = MultiEndpointFor(transport, endpointName,
             options);
-        node.Bind(finalEndpoint);
+        node.SetPubBind(finalEndpoint);
         return node.LastEndpoint;
     }
 

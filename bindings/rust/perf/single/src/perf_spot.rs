@@ -123,7 +123,7 @@ fn main() {
         .set_subscription(TOPIC)
         .expect("set subscription");
     publisher_node
-        .bind(&publisher_endpoint)
+        .set_pub_bind(&publisher_endpoint)
         .expect("publisher bind");
     subscriber_node
         .connect_peer(&publisher_endpoint)

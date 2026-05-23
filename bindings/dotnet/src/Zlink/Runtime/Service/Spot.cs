@@ -150,19 +150,19 @@ public sealed class SpotNode : ISpotNode
         }
     }
 
-    public void Bind(string endpoint)
+    public void SetPubBind(string endpoint)
     {
         BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_bind(_handle, endpoint);
-        ZlinkException.ThrowBindIfError(rc);
+        int rc = NativeMethods.zlink_spot_node_set_pub_bind(_handle, endpoint);
+        ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public void SetRouterBindEndpoint(string endpoint)
+    public void SetRouterBind(string endpoint)
     {
         BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_set_router_bind_endpoint(
+        int rc = NativeMethods.zlink_spot_node_set_router_bind(
             _handle, endpoint);
         ZlinkException.ThrowConfigIfError(rc);
     }
@@ -212,6 +212,20 @@ public sealed class SpotNode : ISpotNode
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_spot_node_connect_router_channel_peer(
             _handle, channelName, endpoint);
+        ZlinkException.ThrowConnectIfError(rc);
+    }
+
+    public void ConnectRouterChannelPeerRid(
+        string channelName,
+        RoutingId peerRid,
+        string endpoint)
+    {
+        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
+        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
+        EnsureNotDisposed();
+        ZlinkRoutingId nativeRid = peerRid.ToNative();
+        int rc = NativeMethods.zlink_spot_node_connect_router_channel_peer_rid(
+            _handle, channelName, ref nativeRid, endpoint);
         ZlinkException.ThrowConnectIfError(rc);
     }
 

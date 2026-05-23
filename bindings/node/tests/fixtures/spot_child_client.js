@@ -24,7 +24,7 @@ async function main() {
   let spot = null;
 
   try {
-    node.bind(options.bindEndpoint);
+    node.setPubBind(options.bindEndpoint);
     node.connectPeer(options.peerEndpoint);
     spot = node.createSpot();
     spot.setSubscription(TOPIC);

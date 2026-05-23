@@ -62,10 +62,10 @@ async function main() {
     applySpotNodeAdmission(node);
     configureTlsServer(node, options.transport);
     node.setRoutingId(SERVER_NODE_ROUTING_ID);
-    node.setRouterBindEndpoint(
+    node.setRouterBind(
       await benchmarkEndpoint(options.transport, `multi-spot-reqrep-router-${process.pid}`)
     );
-    node.bind(options.peerEndpoint);
+    node.setPubBind(options.peerEndpoint);
     spot = node.createSpot();
     spot.setRoutingId(SERVER_SPOT_ROUTING_ID);
 

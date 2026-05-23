@@ -113,7 +113,7 @@ public sealed class test_spot_pubsub_basic
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "spot-pub-ingress-local");
-        node.Bind(endpoint);
+        node.SetPubBind(endpoint);
         subscriber.SetSubscription(topic);
         node.AttachPubIngress(ingress);
 
@@ -284,8 +284,8 @@ public sealed class test_spot_pubsub_basic
         registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
         publisherDiscovery.ConnectRegistry(registryRouter);
         subscriberDiscovery.ConnectRegistry(registryRouter);
-        publisherNode.Bind(publisherEndpoint);
-        subscriberNode.Bind(subscriberEndpoint);
+        publisherNode.SetPubBind(publisherEndpoint);
+        subscriberNode.SetPubBind(subscriberEndpoint);
         publisherNode.AttachDiscovery(publisherDiscovery);
         subscriberNode.AttachDiscovery(subscriberDiscovery);
         subscriber.SetSubscription(topic);
@@ -358,8 +358,8 @@ public sealed class test_spot_pubsub_basic
         registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
         publisherDiscovery.ConnectRegistry(registryRouter);
         subscriberDiscovery.ConnectRegistry(registryRouter);
-        publisherNode.Bind(publisherEndpoint);
-        subscriberNode.Bind(subscriberEndpoint);
+        publisherNode.SetPubBind(publisherEndpoint);
+        subscriberNode.SetPubBind(subscriberEndpoint);
         publisherNode.AttachDiscovery(publisherDiscovery);
         subscriberNode.AttachDiscovery(subscriberDiscovery);
 

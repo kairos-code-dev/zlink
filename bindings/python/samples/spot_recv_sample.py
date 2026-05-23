@@ -47,8 +47,8 @@ def main():
                                     subscriber_discovery.connect_registry(
                                         registry_router_endpoint
                                     )
-                                    publisher_node.bind(publisher_endpoint)
-                                    subscriber_node.bind(subscriber_endpoint)
+                                    publisher_node.set_pub_bind(publisher_endpoint)
+                                    subscriber_node.set_pub_bind(subscriber_endpoint)
                                     publisher_node.attach_discovery(
                                         publisher_discovery
                                     )

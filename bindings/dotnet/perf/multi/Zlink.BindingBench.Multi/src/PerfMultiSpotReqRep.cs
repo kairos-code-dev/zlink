@@ -127,10 +127,10 @@ internal static class PerfMultiSpotReqRep
             replier.SetRoutingId(config.ServerSpotRoutingId);
             controlSub.SetSubscription(Topic);
 
-            dataNode.SetRouterBindEndpoint(dataRouterEndpoint);
-            dataNode.Bind(dataEndpoint);
+            dataNode.SetRouterBind(dataRouterEndpoint);
+            dataNode.SetPubBind(dataEndpoint);
             dataEndpoint = dataNode.LastEndpoint;
-            controlNode.Bind(controlEndpoint);
+            controlNode.SetPubBind(controlEndpoint);
             controlEndpoint = controlNode.LastEndpoint;
             RecalculateAutoHwm(ctx);
             PrintSpotNodeAutoHwmSnapshot(dataNode, "spotnode_data_pub",
@@ -250,7 +250,7 @@ internal static class PerfMultiSpotReqRep
             ConfigureControlNodeOptions(controlNode, readyTimeoutMs);
 
             controlSub.SetSubscription(Topic);
-            dataNode.SetRouterBindEndpoint(EndpointFor(options.Transport,
+            dataNode.SetRouterBind(EndpointFor(options.Transport,
                 config.ClientDataEndpointName + "-router"));
             string dataEndpoint = BindSpotNodeWithRetry(dataNode,
                 options.Transport, config.ClientDataEndpointName, options);

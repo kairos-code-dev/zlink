@@ -86,6 +86,7 @@ public sealed class RegressionTests
         "09-monitoring.ko.md",
         "10-feature-map.ko.md",
         "11-interface-catalog.ko.md",
+        "12-migration-from-grpc.ko.md",
     ];
 
     [Fact]

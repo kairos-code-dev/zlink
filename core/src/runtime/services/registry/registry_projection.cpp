@@ -406,6 +406,11 @@ void registry_t::upsert_topology_entry (
         stored.has_owner = find_provider_owner_locked (
           entry_.channel_name, discovery_protocol::service_role_spot,
           entry_.endpoint, &stored.owner, NULL);
+        if (!stored.has_owner) {
+            stored.has_owner = find_provider_owner_locked (
+              entry_.channel_name, discovery_protocol::service_role_router,
+              entry_.endpoint, &stored.owner, NULL);
+        }
     }
     index_topology_owner_locked (key, stored);
     _coordination_state.summary_last_changed_ms = now_ms_;

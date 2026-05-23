@@ -161,24 +161,23 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_close_bound_session (
   const zlink_actor_ref_t *actor_,
   uint32_t timeout_ms_);
 
-/** @brief Set the routed ingress endpoint for this SPOT node.
+/** @brief Bind the routed ingress endpoint for this SPOT node.
  *
- * This endpoint is used by the node's internal router socket. It is
- * independent from zlink_spot_node_bind(), which binds the mesh data endpoint.
- *
- * Call before zlink_spot_node_bind(). Passing NULL or an empty string is
- * invalid. Returns EBUSY after the mesh endpoint has already been bound.
+ * This endpoint is used by the node's router socket. A ROUTED-only node starts
+ * from this call. A node that also enables PUB/SUB stores the router endpoint
+ * and starts when zlink_spot_node_set_pub_bind() is called.
  */
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_router_bind_endpoint (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_router_bind (
   void *node, const char *endpoint);
 
-/** @brief Bind the SPOT node to an endpoint.
+/** @brief Bind the PUB/SUB mesh endpoint for this SPOT node.
  *
  * Supports port 0 for ephemeral port allocation (e.g. "tcp://127.0.0.1:0").
  * After a successful bind, use zlink_spot_node_status_snapshot() to retrieve
  * the resolved endpoint (local_endpoint field) with the actual assigned port.
  */
-ZLINK_EXPORT zlink_bind_result_t zlink_spot_node_bind (void *node, const char *endpoint);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_pub_bind (
+  void *node, const char *endpoint);
 
 /**
  * @brief Connect to a peer SPOT node endpoint (mesh topology).
@@ -201,6 +200,12 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (
   void *node,
   const char *channel_name,
+  const char *endpoint);
+ZLINK_EXPORT zlink_connect_result_t
+zlink_spot_node_connect_router_channel_peer_rid (
+  void *node,
+  const char *channel_name,
+  const zlink_routing_id_t *peer_rid,
   const char *endpoint);
 ZLINK_EXPORT zlink_connect_result_t
 zlink_spot_node_disconnect_router_channel_peer (

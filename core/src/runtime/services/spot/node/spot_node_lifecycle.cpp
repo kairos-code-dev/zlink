@@ -39,6 +39,32 @@ static std::string router_channel_peer_arg_local (
     return channel_name_ + "\n" + endpoint_;
 }
 
+static char hex_digit_local (unsigned char value_)
+{
+    return static_cast<char> (value_ < 10 ? '0' + value_ : 'a' + value_ - 10);
+}
+
+static std::string routing_id_hex_local (const zlink_routing_id_t &rid_)
+{
+    std::string hex;
+    hex.reserve (static_cast<size_t> (rid_.size) * 2);
+    for (uint8_t i = 0; i < rid_.size; ++i) {
+        const unsigned char value = rid_.data[i];
+        hex.push_back (hex_digit_local (static_cast<unsigned char> (value >> 4)));
+        hex.push_back (hex_digit_local (static_cast<unsigned char> (value & 0x0f)));
+    }
+    return hex;
+}
+
+static std::string router_channel_peer_arg_local (
+  const std::string &channel_name_,
+  const zlink_routing_id_t &peer_rid_,
+  const std::string &endpoint_)
+{
+    return channel_name_ + "\n" + routing_id_hex_local (peer_rid_) + "\n"
+           + endpoint_;
+}
+
 static bool valid_attached_socket_type_local (socket_base_t *socket_,
                                               int expected_type_)
 {
@@ -56,12 +82,8 @@ static void *open_attachment_monitor_local (socket_base_t *socket_)
 
 }
 
-int spot_node_t::bind (const char *endpoint_)
+int spot_node_t::bind_endpoint (const char *endpoint_)
 {
-    service_public_api_scope_t admission (_public_api);
-    if (!admission.acquired ())
-        return -1;
-
     if (!endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
@@ -101,12 +123,29 @@ int spot_node_t::bind (const char *endpoint_)
     return 0;
 }
 
-int spot_node_t::set_router_bind_endpoint (const char *endpoint_)
+int spot_node_t::set_pub_bind (const char *endpoint_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
         return -1;
 
+    if (!pubsub_enabled ()) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return bind_endpoint (endpoint_);
+}
+
+int spot_node_t::set_router_bind (const char *endpoint_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    if (!routed_enabled ()) {
+        errno = ENOTSUP;
+        return -1;
+    }
     if (!endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
         return -1;
@@ -114,13 +153,17 @@ int spot_node_t::set_router_bind_endpoint (const char *endpoint_)
     if (ensure_healthy () != 0)
         return -1;
 
-    scoped_lock_t lock (_sync);
-    if (!_endpoint_state.bound_endpoint.empty ()) {
-        errno = EBUSY;
-        return -1;
+    bool should_start = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (!_endpoint_state.bound_endpoint.empty ()) {
+            errno = EBUSY;
+            return -1;
+        }
+        _endpoint_state.router_bind_endpoint = endpoint_;
+        should_start = !pubsub_enabled ();
     }
-    _endpoint_state.router_bind_endpoint = endpoint_;
-    return 0;
+    return should_start ? bind_endpoint (endpoint_) : 0;
 }
 
 int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
@@ -390,6 +433,76 @@ int spot_node_t::connect_router_channel_peer (const char *channel_name_,
     return 0;
 }
 
+int spot_node_t::connect_router_channel_peer_rid (
+  const char *channel_name_,
+  const zlink_routing_id_t *peer_rid_,
+  const char *endpoint_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    if (!valid_channel_name_local (channel_name_) || !valid_routing_id (peer_rid_)
+        || !endpoint_ || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!routed_enabled ()) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    if (ensure_healthy () != 0)
+        return -1;
+
+    const std::string channel_name (channel_name_);
+    const std::string endpoint (endpoint_);
+    {
+        scoped_lock_t lock (_sync);
+        spot_node_router_channel_peer_state_t &state =
+          _service_attachment_state.router_channel_peers[channel_name];
+        if (state.discovery) {
+            errno = EBUSY;
+            return -1;
+        }
+        if (state.manual_endpoints.count (endpoint) != 0)
+            return 0;
+        state.manual_endpoints.insert (endpoint);
+    }
+
+    const std::string arg =
+      router_channel_peer_arg_local (channel_name, *peer_rid_, endpoint);
+    if (send_data_plane_command (
+          spot_control_protocol::cmd_connect_router_channel_peer_rid,
+          arg.c_str ())
+        != 0) {
+        const int saved_errno = errno;
+        scoped_lock_t lock (_sync);
+        std::map<std::string, spot_node_router_channel_peer_state_t>::iterator
+          it = _service_attachment_state.router_channel_peers.find (channel_name);
+        if (it != _service_attachment_state.router_channel_peers.end ()) {
+            it->second.manual_endpoints.erase (endpoint);
+            if (it->second.manual_endpoints.empty ()
+                && it->second.active_endpoints.empty () && !it->second.discovery)
+                _service_attachment_state.router_channel_peers.erase (it);
+        }
+        errno = saved_errno;
+        return -1;
+    }
+
+    {
+        scoped_lock_t lock (_sync);
+        spot_node_router_channel_peer_state_t &state =
+          _service_attachment_state.router_channel_peers[channel_name];
+        state.active_endpoints.insert (endpoint);
+        state.peer_rids_by_endpoint[endpoint] = *peer_rid_;
+        _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+        _handle_state.entry_spot_rid_locked = true;
+        if (_handle_state.entry_spot)
+            _handle_state.entry_spot->rid_locked = true;
+    }
+    return 0;
+}
+
 int spot_node_t::disconnect_router_channel_peer (const char *channel_name_,
                                                  const char *endpoint_)
 {
@@ -539,6 +652,8 @@ int spot_node_t::ensure_registered ()
     discovery_t *discovery = NULL;
     std::map<std::string, discovery_t *> service_discoveries;
     std::string advertise;
+    std::string router_advertise;
+    bool has_pubsub = false;
     zlink_routing_id_t node_rid;
     memset (&node_rid, 0, sizeof (node_rid));
     {
@@ -546,7 +661,10 @@ int spot_node_t::ensure_registered ()
         discovery = _discovery_state.discovery;
         if (_discovery_state.registered)
             return 0;
-        if (_endpoint_state.bound_endpoint.empty ()) {
+        has_pubsub = pubsub_enabled ();
+        router_advertise = _endpoint_state.router_bind_endpoint;
+        if (_endpoint_state.bound_endpoint.empty ()
+            || (!has_pubsub && router_advertise.empty ())) {
             errno = EFSM;
             return -1;
         }
@@ -557,7 +675,11 @@ int spot_node_t::ensure_registered ()
         errno = EFSM;
         return -1;
     }
-    if (!validate_public_endpoint (advertise)) {
+    if (has_pubsub && !validate_public_endpoint (advertise)) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (!router_advertise.empty () && !validate_public_endpoint (router_advertise)) {
         errno = EINVAL;
         return -1;
     }
@@ -567,17 +689,38 @@ int spot_node_t::ensure_registered ()
     }
 
     std::string resolved;
-    if (discovery_owned_service::register_endpoint (
-          discovery, advertise.c_str (), &resolved, &node_rid,
-          discovery_protocol::service_role_spot, 100)
-        != 0) {
-        return -1;
+    if (has_pubsub) {
+        if (discovery_owned_service::register_endpoint (
+              discovery, advertise.c_str (), &resolved, &node_rid,
+              discovery_protocol::service_role_spot, 100)
+            != 0) {
+            return -1;
+        }
+    }
+
+    std::string resolved_router;
+    if (!router_advertise.empty ()) {
+        if (discovery_owned_service::register_endpoint (
+              discovery, router_advertise.c_str (), &resolved_router, &node_rid,
+              discovery_protocol::service_role_router, 100)
+            != 0) {
+            if (has_pubsub) {
+                (void) discovery_owned_service::unregister_endpoint (
+                  discovery, resolved.empty () ? advertise.c_str () : resolved.c_str ());
+            }
+            return -1;
+        }
     }
 
     {
         scoped_lock_t lock (_sync);
         _discovery_state.registered = true;
-        _discovery_state.advertise_endpoint = resolved.empty () ? advertise : resolved;
+        if (has_pubsub)
+            _discovery_state.advertise_endpoint =
+              resolved.empty () ? advertise : resolved;
+        else
+            _discovery_state.advertise_endpoint =
+              resolved_router.empty () ? router_advertise : resolved_router;
         if (!discovery->latest_registry_uplink (&_discovery_state.registration_uplink_endpoint))
             _discovery_state.registration_uplink_endpoint.clear ();
         _tls_state.registration_tls_locked = true;
@@ -592,12 +735,14 @@ int spot_node_t::unregister_registered ()
         return -1;
 
     std::string advertise;
+    bool has_pubsub = false;
     {
         scoped_lock_t lock (_sync);
         if (!_discovery_state.registered) {
             return 0;
         }
         advertise = _discovery_state.advertise_endpoint;
+        has_pubsub = pubsub_enabled ();
     }
 
     discovery_t *discovery = NULL;
@@ -609,9 +754,21 @@ int spot_node_t::unregister_registered ()
         errno = EFSM;
         return -1;
     }
-    if (discovery_owned_service::unregister_endpoint (
-          discovery, advertise.c_str ())
-        != 0)
+    std::string router_advertise;
+    {
+        scoped_lock_t lock (_sync);
+        router_advertise = _endpoint_state.router_bind_endpoint;
+    }
+    if (!router_advertise.empty ()) {
+        (void) discovery_owned_service::unregister_endpoint (
+          discovery, router_advertise.c_str (),
+          discovery_protocol::service_role_router);
+    }
+    if (has_pubsub
+        && discovery_owned_service::unregister_endpoint (
+             discovery, advertise.c_str (),
+             discovery_protocol::service_role_spot)
+             != 0)
         return -1;
 
     scoped_lock_t lock (_sync);
@@ -1183,7 +1340,8 @@ spot_node_t::create_logical_spot_state_locked (
 bool spot_node_t::spot_owner_summary_publishable_locked () const
 {
     return !_discovery_state.discovery_service.empty ()
-           && !_endpoint_state.bound_endpoint.empty ();
+           && (!_endpoint_state.bound_endpoint.empty ()
+               || !_endpoint_state.router_bind_endpoint.empty ());
 }
 
 void spot_node_t::lock_entry_spot_rid ()

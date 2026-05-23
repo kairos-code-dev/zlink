@@ -839,7 +839,7 @@ void *discovery = zlink_discovery_new(
 
 void *node = zlink_spot_node_new(ctx, NULL);
 zlink_spot_node_attach_discovery(node, discovery);
-zlink_spot_node_bind(node, "tcp://127.0.0.1:7301");
+zlink_spot_node_set_pub_bind(node, "tcp://127.0.0.1:7301");
 ```
 
 SpotNode는 pairwise initiator 규칙에 따라 같은 `spot.cluster` 채널의 일부

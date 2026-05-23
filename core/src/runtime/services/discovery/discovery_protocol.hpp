@@ -113,7 +113,8 @@ inline bool auto_connect_type_allows_role (uint16_t auto_connect_type_,
             return service_role_ == service_role_pub
                    || service_role_ == service_role_sub;
         case ZLINK_AUTO_CONNECT_SPOT_MESH:
-            return service_role_ == service_role_spot;
+            return service_role_ == service_role_spot
+                   || service_role_ == service_role_router;
         default:
             return false;
     }

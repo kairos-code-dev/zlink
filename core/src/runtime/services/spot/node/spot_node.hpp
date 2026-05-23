@@ -64,13 +64,17 @@ class spot_node_t : public discovery_observer_t
                           size_t value_size_);
     int unbind_actor_route (const char *actor_id_);
 
-    int bind (const char *endpoint_);
-    int set_router_bind_endpoint (const char *endpoint_);
+    int set_pub_bind (const char *endpoint_);
+    int set_router_bind (const char *endpoint_);
     int connect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub_rid (const zlink_routing_id_t *target_node_rid_);
     int connect_router_channel_peer (const char *channel_name_,
                                      const char *endpoint_);
+    int connect_router_channel_peer_rid (
+      const char *channel_name_,
+      const zlink_routing_id_t *peer_rid_,
+      const char *endpoint_);
     int disconnect_router_channel_peer (const char *channel_name_,
                                         const char *endpoint_);
     int disconnect_router_channel_peer_rid (
@@ -244,6 +248,7 @@ class spot_node_t : public discovery_observer_t
     void mark_bound_endpoint_and_server_tls_locked (
       const std::string &bound_endpoint_);
     void snapshot_router_bind_endpoint (std::string *out_) const;
+    int bind_endpoint (const char *endpoint_);
     void mark_mesh_client_tls_locked ();
     int close_owned_socket (socket_base_t *&socket_, int timeout_ms_);
     int close_owned_socket_and_wait (socket_base_t *&socket_, int timeout_ms_);

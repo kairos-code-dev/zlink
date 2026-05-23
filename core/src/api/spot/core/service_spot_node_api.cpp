@@ -386,18 +386,18 @@ zlink_close_result_t zlink_spot_node_destroy (void **node_p_)
     return ZLINK_CLOSE_OK;
 }
 
-zlink_bind_result_t zlink_spot_node_bind (void *node_, const char *endpoint_)
+zlink_config_result_t zlink_spot_node_set_pub_bind (void *node_, const char *endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
         errno = EFAULT;
-        return ZLINK_BIND_INVALID_ARGUMENT;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
-    return zlink::bind_result_internal::from_rc (
-      zlink::spot_node_access_t::bind (node, endpoint_));
+    return zlink::config_result_internal::from_rc (
+      zlink::spot_node_access_t::set_pub_bind (node, endpoint_));
 }
 
-zlink_config_result_t zlink_spot_node_set_router_bind_endpoint (
+zlink_config_result_t zlink_spot_node_set_router_bind (
   void *node_, const char *endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
@@ -406,7 +406,7 @@ zlink_config_result_t zlink_spot_node_set_router_bind_endpoint (
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::set_router_bind_endpoint (node, endpoint_));
+      zlink::spot_node_access_t::set_router_bind (node, endpoint_));
 }
 
 zlink_connect_result_t zlink_spot_node_connect_peer (void *node_, const char *peer_endpoint_)
@@ -458,6 +458,22 @@ zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (
     return zlink::connect_result_internal::from_rc (
       zlink::spot_node_access_t::connect_router_channel_peer (
         node, channel_name_, endpoint_));
+}
+
+zlink_connect_result_t zlink_spot_node_connect_router_channel_peer_rid (
+  void *node_,
+  const char *channel_name_,
+  const zlink_routing_id_t *peer_rid_,
+  const char *endpoint_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONNECT_INVALID_HANDLE;
+    }
+    return zlink::connect_result_internal::from_rc (
+      zlink::spot_node_access_t::connect_router_channel_peer_rid (
+        node, channel_name_, peer_rid_, endpoint_));
 }
 
 zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer (

@@ -248,7 +248,7 @@ inline int perf_bind_socket_endpoint(void *socket_, const char *endpoint_)
 
 inline int perf_bind_spot_node_endpoint(void *node_, const char *endpoint_)
 {
-    return zlink_spot_node_bind(node_, endpoint_);
+    return zlink_spot_node_set_pub_bind(node_, endpoint_);
 }
 
 inline int perf_set_spot_node_router_endpoint_raw(void *node_,
@@ -258,7 +258,7 @@ inline int perf_set_spot_node_router_endpoint_raw(void *node_,
         errno = EINVAL;
         return -1;
     }
-    return zlink_spot_node_set_router_bind_endpoint(node_, endpoint_.c_str())
+    return zlink_spot_node_set_router_bind(node_, endpoint_.c_str())
            == ZLINK_CONFIG_OK
              ? 0
              : -1;
@@ -322,7 +322,7 @@ inline std::string perf_bind_routed_spot_node_fixed_endpoint_range(
               node_, transport_, router_base_port_ + attempt)
             != 0)
             continue;
-        if (zlink_spot_node_bind(node_, endpoint.c_str()) != ZLINK_BIND_OK)
+        if (zlink_spot_node_set_pub_bind(node_, endpoint.c_str()) != ZLINK_CONFIG_OK)
             continue;
 
         zlink_spot_node_status_t status;

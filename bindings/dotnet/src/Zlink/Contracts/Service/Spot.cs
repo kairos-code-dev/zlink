@@ -60,12 +60,16 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     string LastEndpoint { get; }
 
     void SetRoutingId(RoutingId routingId);
-    void SetRouterBindEndpoint(string endpoint);
-    void Bind(string endpoint);
+    void SetRouterBind(string endpoint);
+    void SetPubBind(string endpoint);
     void ConnectPeer(string peerEndpoint);
     void DisconnectPeer(string peerEndpoint);
     void DisconnectPeerRid(RoutingId targetNodeRid);
     void ConnectRouterChannelPeer(string channelName, string endpoint);
+    void ConnectRouterChannelPeerRid(
+        string channelName,
+        RoutingId peerRid,
+        string endpoint);
     void DisconnectRouterChannelPeer(string channelName, string endpoint);
     void DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid);
     void AttachDiscovery(IDiscovery discovery);

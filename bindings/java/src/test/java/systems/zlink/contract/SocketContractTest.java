@@ -381,7 +381,9 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(DealerSocket.class, "getChannelName"));
         assertTrue(hasPublicMethod(SpotNode.class, "setRoutingId",
             RoutingId.class));
-        assertTrue(hasPublicMethod(SpotNode.class, "setRouterBindEndpoint",
+        assertTrue(hasPublicMethod(SpotNode.class, "setPubBind",
+            String.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "setRouterBind",
             String.class));
         assertTrue(hasPublicMethod(SpotNode.class, "routingId"));
         assertTrue(hasPublicMethod(SpotNode.class, "entrySpot"));

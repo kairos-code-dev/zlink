@@ -41,8 +41,8 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     let serverSpot;
     let clientSpot;
     try {
-        serverNode.bind(serverEndpoint);
-        clientNode.bind(clientEndpoint);
+        serverNode.setPubBind(serverEndpoint);
+        clientNode.setPubBind(clientEndpoint);
         serverNode.connectPeer(clientEndpoint);
         clientNode.connectPeer(serverEndpoint);
         serverSpot = serverNode.createSpot();
@@ -117,7 +117,7 @@ test('spot node peersQuery filters manual peer connections', async () => {
     const port = await reservePort();
     const endpoint = `tcp://127.0.0.1:${port}`;
     try {
-        serverNode.bind(endpoint);
+        serverNode.setPubBind(endpoint);
         clientNode.connectPeer(endpoint);
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {

@@ -1,7 +1,7 @@
 using Bingo.Server.Play.BingoRoomSpots;
 using Bingo.Shared.Configuration;
 
-namespace Bingo.Server.Play;
+namespace Bingo.Server.Play.Handlers;
 
 internal sealed class BingoRoomDirectory(IZLinkSpotManager spots)
 {

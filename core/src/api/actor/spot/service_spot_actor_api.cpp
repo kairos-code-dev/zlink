@@ -1271,6 +1271,22 @@ bool is_external_remote_actor_ref_locked (zlink::spot_node_t *request_node_,
     return resolve_node_by_rid_locked (ref_->node_rid) == NULL;
 }
 
+bool is_remote_actor_ref_for_node (zlink::spot_node_t *request_node_,
+                                   const zlink_actor_ref_t *ref_)
+{
+    if (!request_node_ || !ref_ || !valid_routing_id (&ref_->node_rid)
+        || ref_->generation == 0)
+        return false;
+
+    zlink_routing_id_t local_rid;
+    memset (&local_rid, 0, sizeof (local_rid));
+    if (request_node_->node_routing_id (&local_rid) != 0
+        || !valid_routing_id (&local_rid))
+        return false;
+
+    return !same_routing_id (local_rid, ref_->node_rid);
+}
+
 zlink_submit_result_t send_actor_gateway_packet (
   zlink::spot_node_t *origin_node_,
   const zlink_routing_id_t &target_node_rid_,
@@ -2187,6 +2203,12 @@ zlink_request_result_t run_bind_operation_locked (
         errno = EFSM;
         return ZLINK_REQUEST_INVALID_STATE;
     }
+    if (is_remote_actor_ref_for_node (stream_owner, &arg_->actor)) {
+        actor_runtime().sessions.bind_actor_ref (
+          arg_->stream, arg_->rid, arg_->actor);
+        return ZLINK_REQUEST_OK;
+    }
+
     const actor_resolution_t resolved =
       resolve_actor_for_request_locked (stream_owner, &arg_->actor);
     if (resolved.result != ZLINK_REQUEST_OK) {
@@ -2450,7 +2472,7 @@ zlink_submit_result_t enqueue_bound_actor_part_locked (
     }
 
     if (!entry_->actor
-        && is_external_remote_actor_ref_locked (stream_owner_, &entry_->ref)) {
+        && is_remote_actor_ref_for_node (stream_owner_, &entry_->ref)) {
         const zlink_submit_result_t send_rc = send_actor_gateway_packet (
           stream_owner_,
           entry_->ref.node_rid,

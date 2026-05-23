@@ -24,6 +24,13 @@ registry_t::registry_t (ctx_t *ctx_) :
     const int mandatory = 1;
     memcpy (&mandatory_opt.value[0], &mandatory, sizeof (mandatory));
     _socket_option_state.router_opts.push_back (mandatory_opt);
+
+    socket_opt_t handover_opt;
+    handover_opt.option = ZLINK_INTERNAL_OPT_ROUTER_HANDOVER;
+    handover_opt.value.resize (sizeof (int));
+    const int handover = 1;
+    memcpy (&handover_opt.value[0], &handover, sizeof (handover));
+    _socket_option_state.router_opts.push_back (handover_opt);
 }
 
 registry_t::~registry_t ()

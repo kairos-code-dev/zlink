@@ -108,7 +108,7 @@ async function main() {
     const dataBindEndpoint = options.peerEndpoint ||
       await benchmarkEndpoint(options.transport, 'multi-spot-data');
     applySpotNodeAdmission(node);
-    node.bind(dataBindEndpoint);
+    node.setPubBind(dataBindEndpoint);
     spot = node.createSpot();
     const spotPoller = new zlink.Poller();
     const spotEvents = new zlink.PollEvents(1);

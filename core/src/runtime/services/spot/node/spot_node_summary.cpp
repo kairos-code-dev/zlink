@@ -438,7 +438,8 @@ void spot_node_t::refresh_existing_summaries ()
                const_iterator it = _handle_state.spots_by_rid.begin ();
              it != _handle_state.spots_by_rid.end (); ++it)
             spots.push_back (it->second);
-        bound = !_endpoint_state.bound_endpoint.empty ();
+        bound = !_endpoint_state.bound_endpoint.empty ()
+                || !_endpoint_state.router_bind_endpoint.empty ();
     }
 
     if (bound) {

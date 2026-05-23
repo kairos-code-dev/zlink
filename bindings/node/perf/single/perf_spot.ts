@@ -107,7 +107,7 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     applySpotNodeAdmission(publisherNode, options);
     applySpotNodeAdmission(subscriberNode, options);
     ctx.recalculateAutoHwm();
-    publisherNode.bind(publisherEndpoint);
+    publisherNode.setPubBind(publisherEndpoint);
     subscriberNode.connectPeer(publisherEndpoint);
     subscriber.setSubscription(TOPIC);
 

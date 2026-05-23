@@ -1723,7 +1723,7 @@ void *zlink_spot_node_new(
     void *ctx,
     const zlink_spot_node_options_t *options); /* SPOT Node 런타임 생성 */
 int zlink_spot_node_destroy(void **node_p);/* SPOT Node 해제 */
-int zlink_spot_node_bind(void *node, const char *endpoint);
+int zlink_spot_node_set_pub_bind(void *node, const char *endpoint);
 int zlink_spot_node_connect_peer(void *node, const char *peer_endpoint);
 int zlink_spot_node_disconnect_peer(void *node, const char *peer_endpoint);
 int zlink_spot_node_attach_discovery(void *node, void *discovery);

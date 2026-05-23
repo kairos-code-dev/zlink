@@ -207,7 +207,7 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 ### Topology and discovery
 
 ```c
-zlink_bind_result_t zlink_spot_node_bind(void *node, const char *endpoint);
+zlink_config_result_t zlink_spot_node_set_pub_bind(void *node, const char *endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
@@ -219,7 +219,7 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
-- `zlink_spot_node_bind()` binds the node endpoint.
+- `zlink_spot_node_set_pub_bind()` binds the node endpoint.
 - `zlink_spot_node_connect_peer()` and `disconnect_peer()` are for manual SPOT
   mesh wiring when the endpoint is known.
 - `zlink_spot_node_disconnect_peer_rid()` disconnects a peer node by target

@@ -1144,12 +1144,12 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_bind",
+            "zlink_spot_node_set_pub_bind",
             [ctypes.c_void_p, ctypes.c_char_p],
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_set_router_bind_endpoint",
+            "zlink_spot_node_set_router_bind",
             [ctypes.c_void_p, ctypes.c_char_p],
             ctypes.c_int,
         )

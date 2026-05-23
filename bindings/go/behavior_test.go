@@ -701,10 +701,10 @@ func TestSpotSubscribePartRoundTrip(t *testing.T) {
 	if err := subscriberNode.SetRoutingID(zlink.NewRoutingID([]byte("a-go-test-spot-subscriber"))); err != nil {
 		t.Fatalf("subscriber SetRoutingID() error = %v", err)
 	}
-	if err := publisherNode.Bind(publisherEndpoint); err != nil {
+	if err := publisherNode.SetPubBind(publisherEndpoint); err != nil {
 		t.Fatalf("publisher Bind() error = %v", err)
 	}
-	if err := subscriberNode.Bind(subscriberEndpoint); err != nil {
+	if err := subscriberNode.SetPubBind(subscriberEndpoint); err != nil {
 		t.Fatalf("subscriber Bind() error = %v", err)
 	}
 	if err := publisherNode.ConnectPeer(subscriberEndpoint); err != nil {
@@ -804,16 +804,16 @@ func TestSpotRecvRoutedPartRoundTrip(t *testing.T) {
 	receiverEndpoint := tcpEndpoint(t)
 	senderRouterEndpoint := tcpEndpoint(t)
 	receiverRouterEndpoint := tcpEndpoint(t)
-	if err := senderNode.SetRouterBindEndpoint(senderRouterEndpoint); err != nil {
-		t.Fatalf("sender SetRouterBindEndpoint() error = %v", err)
+	if err := senderNode.SetRouterBind(senderRouterEndpoint); err != nil {
+		t.Fatalf("sender SetRouterBind() error = %v", err)
 	}
-	if err := receiverNode.SetRouterBindEndpoint(receiverRouterEndpoint); err != nil {
-		t.Fatalf("receiver SetRouterBindEndpoint() error = %v", err)
+	if err := receiverNode.SetRouterBind(receiverRouterEndpoint); err != nil {
+		t.Fatalf("receiver SetRouterBind() error = %v", err)
 	}
-	if err := senderNode.Bind(senderEndpoint); err != nil {
+	if err := senderNode.SetPubBind(senderEndpoint); err != nil {
 		t.Fatalf("sender Bind() error = %v", err)
 	}
-	if err := receiverNode.Bind(receiverEndpoint); err != nil {
+	if err := receiverNode.SetPubBind(receiverEndpoint); err != nil {
 		t.Fatalf("receiver Bind() error = %v", err)
 	}
 	if err := senderNode.ConnectPeer(receiverEndpoint); err != nil {
@@ -912,16 +912,16 @@ func TestSpotForwardRoutedRoundTrip(t *testing.T) {
 	receiverEndpoint := tcpEndpoint(t)
 	senderRouterEndpoint := tcpEndpoint(t)
 	receiverRouterEndpoint := tcpEndpoint(t)
-	if err := senderNode.SetRouterBindEndpoint(senderRouterEndpoint); err != nil {
-		t.Fatalf("sender SetRouterBindEndpoint() error = %v", err)
+	if err := senderNode.SetRouterBind(senderRouterEndpoint); err != nil {
+		t.Fatalf("sender SetRouterBind() error = %v", err)
 	}
-	if err := receiverNode.SetRouterBindEndpoint(receiverRouterEndpoint); err != nil {
-		t.Fatalf("receiver SetRouterBindEndpoint() error = %v", err)
+	if err := receiverNode.SetRouterBind(receiverRouterEndpoint); err != nil {
+		t.Fatalf("receiver SetRouterBind() error = %v", err)
 	}
-	if err := senderNode.Bind(senderEndpoint); err != nil {
+	if err := senderNode.SetPubBind(senderEndpoint); err != nil {
 		t.Fatalf("sender Bind() error = %v", err)
 	}
-	if err := receiverNode.Bind(receiverEndpoint); err != nil {
+	if err := receiverNode.SetPubBind(receiverEndpoint); err != nil {
 		t.Fatalf("receiver Bind() error = %v", err)
 	}
 	if err := senderNode.ConnectPeer(receiverEndpoint); err != nil {

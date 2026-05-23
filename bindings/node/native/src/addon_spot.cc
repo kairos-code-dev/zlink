@@ -3506,7 +3506,7 @@ napi_value spot_node_destroy(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_node_bind(napi_env env, napi_callback_info info)
+napi_value spot_node_set_pub_bind(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
@@ -3514,15 +3514,15 @@ napi_value spot_node_bind(napi_env env, napi_callback_info info)
     void *node = NULL;
     napi_get_value_external(env, argv[0], &node);
     std::string ep = get_string(env, argv[1]);
-    int rc = zlink_spot_node_bind(node, ep.c_str());
+    int rc = zlink_spot_node_set_pub_bind(node, ep.c_str());
     if (rc != 0)
-        return throw_last_error(env, "spot_node_bind failed");
+        return throw_last_error(env, "spot_node_set_pub_bind failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
 }
 
-napi_value spot_node_set_router_bind_endpoint(napi_env env, napi_callback_info info)
+napi_value spot_node_set_router_bind(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
@@ -3530,9 +3530,9 @@ napi_value spot_node_set_router_bind_endpoint(napi_env env, napi_callback_info i
     void *node = NULL;
     napi_get_value_external(env, argv[0], &node);
     std::string ep = get_string(env, argv[1]);
-    int rc = zlink_spot_node_set_router_bind_endpoint(node, ep.c_str());
+    int rc = zlink_spot_node_set_router_bind(node, ep.c_str());
     if (rc != 0)
-        return throw_last_error(env, "spot_node_set_router_bind_endpoint failed");
+        return throw_last_error(env, "spot_node_set_router_bind failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;

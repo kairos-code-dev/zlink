@@ -189,7 +189,7 @@ fn main() {
     ) else {
         return;
     };
-    control_node.bind(&control_bind).expect("control bind");
+    control_node.set_pub_bind(&control_bind).expect("control bind");
     control_node
         .connect_peer(&control_endpoint)
         .expect("connect server control");
@@ -208,9 +208,9 @@ fn main() {
         return;
     };
     data_node
-        .set_router_bind_endpoint(&data_router_bind)
+        .set_router_bind(&data_router_bind)
         .expect("client data router bind endpoint");
-    data_node.bind(&data_bind).expect("client data bind");
+    data_node.set_pub_bind(&data_bind).expect("client data bind");
     let data_endpoint_local = data_node.last_endpoint().unwrap_or(data_bind);
     data_node
         .connect_peer(&data_endpoint)

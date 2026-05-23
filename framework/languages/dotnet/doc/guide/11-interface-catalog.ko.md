@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: 기능 맵](./10-feature-map.ko.md) | [다음: ZLink Framework .NET Interface Catalog (spec)](../spec/handler-interfaces.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: 기능 맵](./10-feature-map.ko.md) | [다음: gRPC·서버간 웹콜에서 옮겨오기](./12-migration-from-grpc.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 인터페이스 카탈로그 — 모든 계약을 코드로

@@ -138,8 +138,8 @@ async function main() {
         configureTlsServer(node, options.transport);
         configureTlsClient(node, options.transport);
         node.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_CLIENT_NODE', 'ascii')));
-        node.setRouterBindEndpoint(dataRouterEndpoint);
-        node.bind(dataEndpoint);
+        node.setRouterBind(dataRouterEndpoint);
+        node.setPubBind(dataEndpoint);
         node.connectPeer(options.peerEndpoint);
         for (let i = 0; i < options.clients; i += 1) {
             const spot = node.createSpot();

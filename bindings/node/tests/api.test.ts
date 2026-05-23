@@ -289,7 +289,7 @@ test('spot close leaves spot node alive and discovery close tears down attached 
   const attachedNode = new zlink.SpotNode(ctx);
   const standaloneEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
-  standaloneNode.bind(standaloneEndpoint);
+  standaloneNode.setPubBind(standaloneEndpoint);
   assert.ok(standaloneNode.statusSnapshot().nodeRoutingId instanceof zlink.RoutingId);
   attachedNode.attachDiscovery(discovery);
   spot.close();
@@ -331,7 +331,7 @@ test('registry, discovery, and query client expose canonical service discovery f
     providerDiscovery.connectRegistry(routerEndpoint);
     watcherDiscovery.connectRegistry(routerEndpoint);
     node.attachDiscovery(providerDiscovery);
-    node.bind(serviceEndpoint);
+    node.setPubBind(serviceEndpoint);
 
     const topologyEntry = await waitFor(5000, () => (
       registry.topologySnapshot().find((entry) => entry.channelName === 'service-found') ?? null

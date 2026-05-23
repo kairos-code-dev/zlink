@@ -285,10 +285,12 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
 ### Topology and discovery
 
 ```c
-zlink_config_result_t zlink_spot_node_set_router_bind_endpoint(
+zlink_config_result_t zlink_spot_node_set_router_bind(
   void *node,
   const char *endpoint);
-zlink_bind_result_t zlink_spot_node_bind(void *node, const char *endpoint);
+zlink_config_result_t zlink_spot_node_set_pub_bind(
+  void *node,
+  const char *endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
@@ -300,19 +302,16 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
                                                        void *discovery);
 ```
 
-- `zlink_spot_node_set_router_bind_endpoint()` configures the internal router
-  socket endpoint used for routed ingress.
-- `zlink_spot_node_set_router_bind_endpoint()` must be called before
-  `zlink_spot_node_bind()`. `node == NULL` fails with
-  `ZLINK_CONFIG_INVALID_HANDLE` and `EFAULT`. `endpoint == NULL` or an empty
-  string fails with `ZLINK_CONFIG_INVALID_ARGUMENT` and `EINVAL`. Calling it
-  after `zlink_spot_node_bind()` has succeeded fails with
-  `ZLINK_CONFIG_INVALID_STATE` and `EBUSY`.
-- `zlink_spot_node_bind()` binds the mesh data endpoint. It does not derive or
-  bind a routed ingress endpoint.
-- A node that must receive routed APIs from remote peers must call
-  `zlink_spot_node_set_router_bind_endpoint()` before
-  `zlink_spot_node_bind()`.
+- `zlink_spot_node_set_router_bind()` configures the router socket endpoint
+  used for routed ingress. A ROUTED-mode node starts from this call.
+- `zlink_spot_node_set_pub_bind()` configures the PUB/SUB mesh endpoint and
+  starts the PUB/SUB plane. In ALL mode, call
+  `zlink_spot_node_set_router_bind()` first when the node also needs routed
+  ingress, then call `zlink_spot_node_set_pub_bind()`.
+- `node == NULL` fails with `ZLINK_CONFIG_INVALID_HANDLE` and `EFAULT`.
+  `endpoint == NULL` or an empty string fails with
+  `ZLINK_CONFIG_INVALID_ARGUMENT` and `EINVAL`. Rebinding an already-bound
+  plane fails with `ZLINK_CONFIG_INVALID_STATE` and `EBUSY`.
 - `zlink_spot_node_connect_peer()` and `disconnect_peer()` are for manual SPOT
   mesh wiring when the endpoint is known.
 - `zlink_spot_node_disconnect_peer_rid()` disconnects a peer node by target

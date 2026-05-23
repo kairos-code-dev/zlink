@@ -36,8 +36,8 @@ public final class SpotRecvSample {
                 "z-java-spot-recv-publisher-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             subscriber.setRoutingId(RoutingId.fromBytes(
                 "a-java-spot-recv-subscriber-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            publisherNode.bind(publisherEndpoint);
-            subscriberNode.bind(subscriberEndpoint);
+            publisherNode.setPubBind(publisherEndpoint);
+            subscriberNode.setPubBind(subscriberEndpoint);
             publisherNode.connectPeer(subscriberEndpoint);
             subscriberNode.connectPeer(publisherEndpoint);
             subscriber.setSubscription(topic);

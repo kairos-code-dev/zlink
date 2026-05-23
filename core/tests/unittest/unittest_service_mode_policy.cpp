@@ -110,7 +110,7 @@ std::string bind_spot_test_endpoint (void *node_)
     for (int i = 0; i < 64; ++i) {
         char endpoint[128];
         if (allocate_loopback_tcp_endpoint (endpoint, sizeof (endpoint))
-            && zlink_spot_node_bind (node_, endpoint) == 0)
+            && zlink_spot_node_set_pub_bind (node_, endpoint) == 0)
             return endpoint;
     }
     return std::string ();
@@ -674,7 +674,7 @@ void test_discovery_protocol_accepts_socket_family_and_roles ()
       ZLINK_AUTO_CONNECT_FANOUT, service_role_sub));
     TEST_ASSERT_TRUE (auto_connect_type_allows_role (
       ZLINK_AUTO_CONNECT_SPOT_MESH, service_role_spot));
-    TEST_ASSERT_FALSE (auto_connect_type_allows_role (
+    TEST_ASSERT_TRUE (auto_connect_type_allows_role (
       ZLINK_AUTO_CONNECT_SPOT_MESH, service_role_router));
 }
 

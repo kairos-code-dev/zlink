@@ -951,6 +951,9 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   server `RecvPart`만 넓힌 후보 `perf_go_multi_linux_20260525_042112.txt`는 7.800Kmsg/s였다.
   최종 후보 `perf_go_multi_linux_20260525_042206.txt`는 C `perf_c_multi_linux_20260525_042131.txt`
   대비 63.4%로 통과했다. tls 262144B는 앞선 후보에서 낮아졌으므로 적용 범위에 넣지 않는다.
+  tls 65536B를 `MoveMessage(...)`로 넓힌 후보도 `go test ./...`는 통과했지만, 같은 조건
+  제한 측정 C `perf_c_multi_linux_20260525_042349.txt` 대비 Go `perf_go_multi_linux_20260525_042400.txt`가
+  23.6%라 기존 42.9%보다 낮아 반영하지 않는다.
 - 2026-05-25 재검토: 같은 `Bytes(...)` 경로를 tcp 1024B 이하에도 넓혔다. `go test ./...`는
   통과했고, 같은 조건 제한 재측정 C `perf_c_multi_linux_20260525_040430.txt` 대비 Go
   `perf_go_multi_linux_20260525_040452.txt`에서 tcp 64/256/1024B가 45.4/64.8/81.1%로

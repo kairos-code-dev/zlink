@@ -320,7 +320,9 @@ fn use_multi_spot_poller_wait(transport: &str, msg_size: usize) -> bool {
 }
 
 fn default_multi_spot_recv_workers(transport: &str, msg_size: usize) -> usize {
-    if (transport == "tcp" && msg_size == 131072) || (transport == "ws" && msg_size >= 131072) {
+    if (transport == "tcp" || transport == "ws") && msg_size == 131072 {
+        8
+    } else if transport == "ws" && msg_size >= 262144 {
         6
     } else {
         4

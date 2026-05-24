@@ -1415,6 +1415,14 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   10.588Kmsg/s(`perf_python_multi_linux_20260525_044157.txt`)보다 낮았다. 262144B 단독
   후보 `perf_python_multi_linux_20260525_044136.txt`는 11.595Kmsg/s로 소폭 높았지만
   묶음 실행에서 재현되지 않아 반영하지 않는다.
+- **MULTI_DEALER_DEALER client POLLOUT 토글 후보 기각**: C/Go/C++처럼 backpressure가
+  걸린 socket만 `POLLOUT`으로 poll하도록 Python client의 `Poller.modify_socket(...)`
+  후보를 시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_dealer_dealer_client.py`는
+  통과했고 공식 제한 측정도 complete였지만, 같은 조건 C
+  `perf_c_multi_linux_20260525_054843.txt` 대비 Python
+  `perf_python_multi_linux_20260525_054907.txt`가 tcp 262144B 21.0%에 그쳤다. 기존
+  대표값 22.5%보다 낮아, Python에서는 poll set 축소보다 메시지별 send/recv FFI 비용이
+  더 지배적이라고 보고 반영하지 않는다.
 - **routed `recv_into` single-part fast path 적용**: Python `RouterSocket.recv_into`는 모든 routed 수신에서 Python 리스트에 `ZlinkMsg`를 모은 뒤 다시 C 배열로 복사했다. single-part가 대부분인 routed echo hot path에 일반 `recv_into`와 같은 fast path를 넣어 첫 part를 바로 `_ReceivedPartsOwner`로 넘기게 했다.
   `bindings/python/tests/run_tests.sh`는 통과했고, 공식 wrapper `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --msg-sizes 64,65536,131072,262144 --duration 1 --runs 3`에서 `MULTI_DEALER_ROUTER` large가 43.2/57.0/63.2%로 올랐다(`perf_python_multi_linux_20260524_235408.txt`). `MULTI_ROUTER_ROUTER` 65536B/262144B는 단독 complete 재측정에서 33.1/57.3%로 확인했다(`perf_python_multi_linux_20260524_235704.txt`, `perf_python_multi_linux_20260524_235511.txt`). small size는 여전히 per-call FFI 벽 때문에 보류다.
   같은 fast path는 non-tcp routed echo에도 효과가 있었다. `ws MULTI_DEALER_ROUTER 65536B`는 32.6%→38.0%(`perf_python_multi_linux_20260525_000108.txt`), `tls MULTI_ROUTER_ROUTER 65536B`는 28.8%→46.2%(`perf_python_multi_linux_20260525_000403.txt`)로 보류에서 통과로 올라갔다. `wss` 65536B는 `MULTI_DEALER_ROUTER` 70.5%, `MULTI_ROUTER_ROUTER` 56.1%로 통과 여유가 커졌다(`perf_python_multi_linux_20260525_000301.txt`). `ws MULTI_ROUTER_ROUTER 65536B`는 28.8%로 개선됐지만 아직 보류다(`perf_python_multi_linux_20260525_000503.txt`).

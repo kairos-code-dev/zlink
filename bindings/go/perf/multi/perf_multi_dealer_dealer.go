@@ -355,7 +355,7 @@ func useMultiDealerDealerBytes(transport string, msgSize int) bool {
 	case "wss":
 		return msgSize == 65536 || msgSize == 262144
 	case "tls":
-		return msgSize == 262144
+		return msgSize == 131072 || msgSize == 262144
 	default:
 		return false
 	}

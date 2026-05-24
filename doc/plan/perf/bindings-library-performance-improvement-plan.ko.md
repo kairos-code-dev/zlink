@@ -1043,6 +1043,14 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   `perf_go_multi_linux_20260525_045203.txt`도 complete였지만 131072B는 12.151K→12.379Kops/s
   소폭 개선에 그쳤고 262144B는 4.732K→4.594Kops/s로 낮아졌다. public API를 넓힐 근거가
   약하므로 반영하지 않는다.
+  2026-05-25 재검토에서 server callback이 받은 single-part `Message`를 그대로
+  `received.Reply().Message(parts[0])`에 넘기는 후보도 시험했다. 이 후보는 별도
+  public API 없이 server의 `NewMessage(parts[0].Data())` 복사를 줄이는 방향이고
+  `go test ./...`는 통과했으며 공식 runner도 complete였다. 그러나 C
+  `perf_c_multi_linux_20260525_080852.txt` 대비 Go 후보
+  `perf_go_multi_linux_20260525_081011.txt`는 tcp 65536/262144B가 13.9/5.4%로
+  기존 좋은 기준보다 크게 낮아졌고, ws 262144B도 32.9%에 그쳤다. small 64B 개선만으로
+  large 회귀를 받아들일 수 없으므로 기존 명시 reply 경로를 유지한다.
 - Multi `DEALER_DEALER`, `PUBSUB`, `SPOT`, `SPOT_SENDSEND` 보류: 단일 poll loop와
   `POLLCOMPLETION` 의미는 맞췄고, Go send builder에는 명시적 ownership 이전 단계
   `MoveMessage(...)`와 caller-owned slice를 submit 때 한 번만 native message로 만드는

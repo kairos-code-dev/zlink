@@ -1114,6 +1114,13 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   131072B는 25.4%에서 22.5%로 조금 낮고 전 large가 기준 아래라 보류는 유지한다.
   그래도 C server가 받은 routed parts를 그대로 source spot으로 되돌리는 의미와 가장
   가깝고 collapse를 줄이므로 ws large에도 forward 경로를 남긴다.
+- 2026-05-25 `ws MULTI_SPOT_SENDSEND 65536B` active slot 16/24 후보 기각: 기존
+  forward 경로의 32-slot 제한을 더 좁혀 echo backlog를 줄이는 방향을 시험했다.
+  두 후보 모두 공식 runner complete였지만 16-slot `perf_go_multi_linux_20260525_081454.txt`는
+  10.011Kops/s, 24-slot `perf_go_multi_linux_20260525_081522.txt`는 10.875Kops/s로
+  기존 32-slot forward 경로 `perf_go_multi_linux_20260525_041509.txt`의 11.411Kops/s보다
+  낮았다. `ws 65536B`는 active slot 축소로 해결되는 병목이 아니므로 기존 32-slot 제한을
+  유지한다.
 - `Bytes(...)` publish는 `wss MULTI_SPOT 64B/256B`를 통과권으로 올렸고, encrypted
   small SPOT 수신 worker를 4개로 좁힌 뒤 `tls MULTI_SPOT 64B`도 통과권으로 올렸다.
   `MULTI_SPOT` 수신 hot path도 throughput count와 latency sampling을 분리해 샘플에서만

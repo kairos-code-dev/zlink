@@ -66,14 +66,19 @@ fn main() {
         .expect("poller add");
     let mut events = vec![PollEvent::default(); 1];
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let mut buf = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
+    let payload_size = args.msg_size.max(common::HEADER_SIZE);
     let mut seq: u64 = 1;
     let mut pending = false;
 
     while Instant::now() < deadline {
         if !pending {
-            common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
-            let msg = Message::copy_from(&buf).expect("msg");
+            let mut msg = Message::with_size(payload_size).expect("msg");
+            common::encode_header(
+                msg.data_mut(),
+                common::PHASE_ACTIVE,
+                args.msg_size as u32,
+                seq,
+            );
             match pub_sock
                 .publish(TOPIC)
                 .message(msg)

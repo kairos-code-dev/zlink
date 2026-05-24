@@ -365,7 +365,7 @@ func useMultiDealerDealerMoveMessage(transport string, msgSize int) bool {
 	}
 	switch transport {
 	case "wss":
-		return msgSize >= 131072
+		return msgSize >= 65536
 	case "tls":
 		return msgSize == 131072
 	default:

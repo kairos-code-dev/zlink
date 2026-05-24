@@ -1294,6 +1294,12 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 - **SPOT send-send dispatch callback 후보 기각**: Rust server처럼 `on_dispatch_event(ROUTED_READABLE)`에서 즉시 `_drain_replier()`를 호출하는 후보를 시험했다.
   `python -m py_compile bindings/python/perf/multi/perf_multi_spot_sendsend_server.py`는 통과했지만, 공식 runner `wss 65536B`에서 `CONTROL_CONNECTED` handshake 누락으로 partial이 됐다(`perf_python_multi_linux_20260524_205012.txt`).
   Python callback dispatcher를 이 server handshake와 섞으면 control/data 초기화 순서를 더 불안정하게 만들 수 있어 반영하지 않는다.
+- **SPOT send-send server view-send 후보 기각**: `MULTI_SPOT_SENDSEND` server에서
+  `received.to_bytes_list()` 대신 `received.first_part().data` view를 바로
+  `received.send().message(...)`에 넘기는 후보를 시험했다.
+  `python -m py_compile bindings/python/perf/multi/perf_multi_spot_sendsend_server.py`는
+  통과했지만, 공식 runner `tcp 64/65536/131072/262144B`에서 262144B client timeout partial이
+  재현됐다(`perf_python_multi_linux_20260524_225700.txt`). large complete를 깨므로 반영하지 않는다.
 - **MULTI_PUBSUB multi-worker drain 후보 기각**: Python에서도 100개 subscriber를 worker 4개로 나눠 worker별 poller와 local latency/count를 합산하는 후보를 시험했다.
   `python -m py_compile bindings/python/perf/multi/perf_multi_common.py bindings/python/perf/multi/perf_multi_pubsub_client.py`는 통과했지만, 공식 runner `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_PUBSUB --msg-sizes 64 --duration 1 --runs 1`에서 client timeout partial(`perf_python_multi_linux_20260524_194603.txt`)이 재현됐다. Python binding 객체와 poller를 여러 Python thread에 나누는 접근은 현재 공개 API 조합에서 안정적인 개선 후보가 아니므로 반영하지 않는다.
 - SPOT reply decode에도 같은 원칙을 적용했다. `MULTI_SPOT_REQREP`는 callback 이전에 reply part가 이미 Python `Message`로 clone되므로 추가 `to_bytes()` 제거 효과가 제한적이고,

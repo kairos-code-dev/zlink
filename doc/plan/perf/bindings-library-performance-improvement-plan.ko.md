@@ -1014,6 +1014,14 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   계약은 회귀 테스트로 확인했다.
   다만 `SPOT`/`SPOT_SENDSEND`와 large size에서는 이 경로가 아직 목표 기준을 해결하지
   못했거나 악화돼 선택 적용만 유지한다.
+- `MULTI_DEALER_ROUTER` tcp large도 최근 `Bytes(...)` 경로 기준으로 다시 확인했다.
+  같은 조건 C `perf_c_multi_linux_20260525_043623.txt` 대비 current Go
+  `perf_go_multi_linux_20260525_043725.txt`는 39.315/20.764/10.865Kops/s였다.
+  client와 server를 모두 `Bytes(...)`로 바꾼 후보 `perf_go_multi_linux_20260525_043808.txt`는
+  36.497/19.954/10.794Kops/s로 낮아졌고, server echo만 `Bytes(...)`로 바꾼 후보
+  `perf_go_multi_linux_20260525_043856.txt`도 37.104/19.116/10.440Kops/s로 낮아졌다.
+  routed echo large의 남은 병목은 Go `Message` 생성 하나만으로 설명되지 않으므로 기존
+  `MoveMessage(...)` 경로를 유지한다.
 - 다음 구현 단위: `ForwardRouted(...)`가 해결하지 못한 encrypted routed echo submit 비용을
   `tls MULTI_SPOT_SENDSEND`와 `wss` small에서 더 좁힌다. public API를 임의로 넓히지 않고,
   C의 native part consume 경로와 Go의 실패 시 원본 보존 계약 사이에서 남은 비용을

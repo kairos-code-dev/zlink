@@ -231,6 +231,11 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 		for i := 0; i < activeLimit; i++ {
 			client := &clients[i]
 			if client.waitingReply {
+				if drainMultiSpotSendSend(client.spot, cfg.msgSize, window.StopAt, stats, true) {
+					client.waitingReply = false
+				}
+			}
+			if client.waitingReply {
 				continue
 			}
 			perfcommon.StampPayload(client.payload)

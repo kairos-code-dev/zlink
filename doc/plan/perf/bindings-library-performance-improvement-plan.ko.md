@@ -939,6 +939,11 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   wss/tls large는 같은 후보가 불안정하거나 낮아 적용하지 않는다. broad `Bytes(...)`
   후보 `perf_go_multi_linux_20260525_001112.txt`는 tcp 262144B와 tls large를 크게 낮췄고,
   ws 262144B 적용 후보도 최종 혼합 측정에서는 기존 경로보다 이득이 작아 제외했다.
+  2026-05-25 재검토에서 `Bytes(...)`를 tls 65536/131072B로 다시 넓힌 후보도 반영하지
+  않는다. 공식 wrapper `perf_go_multi_linux_20260525_030158.txt`는 complete였지만 tls
+  131072B가 기존 24.2Kops/s에서 20.1Kops/s로 낮아졌고, tls 65536B만 남긴 재시도
+  `perf_go_multi_linux_20260525_030247.txt`도 median 27.8Kops/s로 기존 45.9Kops/s보다
+  낮았다. 암호화 DD large의 남은 병목은 단순 client-side `Message` 생성 비용이 아니다.
 - 2026-05-24 추가 수정: `MULTI_SPOT_REQREP`는 current HEAD에서 large만 먼저 다시 측정했다.
   `perf_go_multi_linux_20260524_222958.txt` 기준으로 wss/tls 65536B 이상은 모두 통과권이고,
   tcp/ws large만 보류로 남아 있었다. client active request hot path에서 payload를 `append`로

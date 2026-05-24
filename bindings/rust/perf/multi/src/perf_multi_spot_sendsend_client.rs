@@ -94,6 +94,16 @@ fn send_payload(spot: &Spot, node_rid: &RoutingId, spot_rid: &RoutingId, payload
     }
 }
 
+fn active_spot_slot_limit(total: usize, msg_size: usize) -> usize {
+    if msg_size >= 131_072 {
+        total.min(8)
+    } else if msg_size >= 65_536 {
+        total.min(32)
+    } else {
+        total
+    }
+}
+
 fn drain_slot(
     slot: &mut Slot,
     expected_size: usize,
@@ -129,6 +139,40 @@ fn drain_slot(
         }
     }
     progressed
+}
+
+fn handle_poll_events(
+    events: &[PollEvent],
+    slots: &mut [Slot],
+    expected_size: usize,
+    deadline: Instant,
+    latency: &mut common::LatencyStats,
+    record: bool,
+) -> bool {
+    let mut progressed = false;
+    for event in events {
+        let index = event.slot;
+        if index >= slots.len() || event.revents & POLLIN == 0 {
+            continue;
+        }
+        progressed |= drain_slot(&mut slots[index], expected_size, deadline, latency, record);
+    }
+    progressed
+}
+
+fn any_waiting_reply(slots: &[Slot], active_slots: usize) -> bool {
+    slots
+        .iter()
+        .take(active_slots.min(slots.len()))
+        .any(|slot| slot.waiting_reply)
+}
+
+fn poll_timeout_until(deadline: Instant, max_wait: Duration) -> i64 {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return 0;
+    }
+    remaining.min(max_wait).as_millis().max(1) as i64
 }
 
 fn main() {
@@ -189,7 +233,9 @@ fn main() {
     ) else {
         return;
     };
-    control_node.set_pub_bind(&control_bind).expect("control bind");
+    control_node
+        .set_pub_bind(&control_bind)
+        .expect("control bind");
     control_node
         .connect_peer(&control_endpoint)
         .expect("connect server control");
@@ -202,15 +248,19 @@ fn main() {
     else {
         return;
     };
-    let Some(data_router_bind) =
-        common::benchmark_endpoint(PATTERN, &args.transport, "multi-spot-sendsend-router-client")
-    else {
+    let Some(data_router_bind) = common::benchmark_endpoint(
+        PATTERN,
+        &args.transport,
+        "multi-spot-sendsend-router-client",
+    ) else {
         return;
     };
     data_node
         .set_router_bind(&data_router_bind)
         .expect("client data router bind endpoint");
-    data_node.set_pub_bind(&data_bind).expect("client data bind");
+    data_node
+        .set_pub_bind(&data_bind)
+        .expect("client data bind");
     let data_endpoint_local = data_node.last_endpoint().unwrap_or(data_bind);
     data_node
         .connect_peer(&data_endpoint)
@@ -318,9 +368,17 @@ fn main() {
 
     let mut latency = common::LatencyStats::new();
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    let active_slots = active_spot_slot_limit(slots.len(), args.msg_size);
+    let poller = Poller::new().expect("spot sendsend poller");
+    for (index, slot) in slots.iter().enumerate() {
+        poller
+            .add_socket(&*slot.spot, POLLIN, index)
+            .expect("spot sendsend poller add");
+    }
+    let mut poll_events = vec![PollEvent::default(); slots.len().max(1)];
     while Instant::now() < deadline {
         let mut progressed = false;
-        for slot in &mut slots {
+        for slot in slots.iter_mut().take(active_slots) {
             if slot.waiting_reply {
                 progressed |= drain_slot(slot, args.msg_size, deadline, &mut latency, true);
                 continue;
@@ -345,7 +403,44 @@ fn main() {
             }
         }
         if !progressed {
-            thread::sleep(Duration::from_millis(1));
+            let wait_ms = poll_timeout_until(deadline, Duration::from_millis(50));
+            if wait_ms <= 0 {
+                break;
+            }
+            match poller.wait(&mut poll_events, wait_ms) {
+                Ok(event_count) => {
+                    handle_poll_events(
+                        &poll_events[..event_count],
+                        &mut slots,
+                        args.msg_size,
+                        deadline,
+                        &mut latency,
+                        true,
+                    );
+                }
+                Err(err) => panic!("spot sendsend poller wait failed: {err}"),
+            }
+        }
+    }
+
+    let pending_deadline = Instant::now() + Duration::from_secs(1);
+    while any_waiting_reply(&slots, active_slots) && Instant::now() < pending_deadline {
+        let wait_ms = poll_timeout_until(pending_deadline, Duration::from_millis(50));
+        if wait_ms <= 0 {
+            break;
+        }
+        match poller.wait(&mut poll_events, wait_ms) {
+            Ok(event_count) => {
+                handle_poll_events(
+                    &poll_events[..event_count],
+                    &mut slots,
+                    args.msg_size,
+                    deadline,
+                    &mut latency,
+                    true,
+                );
+            }
+            Err(err) => panic!("spot sendsend pending poller wait failed: {err}"),
         }
     }
 

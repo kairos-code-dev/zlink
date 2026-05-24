@@ -66,9 +66,7 @@ fn main() {
     let mut poll_events = vec![PollEvent::default(); sockets.len().max(1)];
 
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let mut payloads = (0..sockets.len())
-        .map(|_| vec![0u8; args.msg_size.max(common::HEADER_SIZE)])
-        .collect::<Vec<_>>();
+    let payload_size = args.msg_size.max(common::HEADER_SIZE);
     let mut send_pending = vec![false; sockets.len()];
     let mut seq: u64 = 1;
     let burst_until_blocked = args.msg_size <= 1024;
@@ -83,13 +81,13 @@ fn main() {
             }
 
             while Instant::now() < deadline {
+                let mut msg = Message::with_size(payload_size).expect("msg");
                 common::encode_header(
-                    &mut payloads[index],
+                    msg.data_mut(),
                     common::PHASE_ACTIVE,
                     args.msg_size as u32,
                     seq,
                 );
-                let msg = Message::copy_from(&payloads[index]).expect("msg");
                 match socket
                     .send()
                     .message(msg)

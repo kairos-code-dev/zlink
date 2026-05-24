@@ -132,7 +132,9 @@ fn main() {
     else {
         return;
     };
-    control_node.set_pub_bind(&control_bind).expect("control bind");
+    control_node
+        .set_pub_bind(&control_bind)
+        .expect("control bind");
     control_node
         .connect_peer(&control_endpoint)
         .expect("connect server control");
@@ -213,6 +215,7 @@ fn main() {
 
     let active_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let msg_size = args.msg_size;
+    let use_poller_wait = use_multi_spot_poller_wait(&args.transport, args.msg_size);
     // Parallelize the subscriber drain across worker threads, mirroring the Go
     // MULTI_SPOT recv workers. A single thread draining N spots sequentially is
     // bound by per-subscribe cgo cost; splitting the spots across a few threads
@@ -233,6 +236,18 @@ fn main() {
             handles.push(scope.spawn(move || {
                 let mut local = common::LatencyStats::new();
                 let mut received = TopicMessage::empty();
+                let poller = if use_poller_wait {
+                    let poller = Poller::new().expect("spot client poller");
+                    for (index, spot) in chunk.iter().enumerate() {
+                        poller
+                            .add_socket(&**spot, POLLIN, index)
+                            .expect("spot client poller add");
+                    }
+                    Some(poller)
+                } else {
+                    None
+                };
+                let mut poll_events = vec![PollEvent::default(); chunk.len().max(1)];
                 while Instant::now() < active_deadline {
                     let mut progressed = false;
                     for spot in chunk.iter() {
@@ -263,7 +278,19 @@ fn main() {
                         }
                     }
                     if !progressed {
-                        thread::sleep(Duration::from_millis(1));
+                        if let Some(poller) = &poller {
+                            let remaining_ms = active_deadline
+                                .saturating_duration_since(Instant::now())
+                                .as_millis()
+                                .min(50)
+                                .max(1) as i64;
+                            match poller.wait(&mut poll_events, remaining_ms) {
+                                Ok(_) => {}
+                                Err(err) => panic!("spot client poller wait failed: {err}"),
+                            }
+                        } else {
+                            thread::sleep(Duration::from_millis(1));
+                        }
                     }
                 }
                 local
@@ -282,4 +309,12 @@ fn main() {
         settings.duration_seconds,
         &stats,
     );
+}
+
+fn use_multi_spot_poller_wait(transport: &str, msg_size: usize) -> bool {
+    match transport {
+        "tcp" => msg_size == 131072,
+        "ws" => msg_size == 131072 || msg_size == 262144,
+        _ => false,
+    }
 }

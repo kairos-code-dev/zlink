@@ -58,8 +58,10 @@ fn main() {
     }
 
     let poller = Poller::new().expect("poller");
-    for socket in &sockets {
-        poller.add_socket(socket, POLLOUT, 0).expect("poller add");
+    for (index, socket) in sockets.iter().enumerate() {
+        poller
+            .add_socket(socket, POLLOUT, index)
+            .expect("poller add");
     }
     let mut poll_events = vec![PollEvent::default(); sockets.len().max(1)];
 
@@ -67,34 +69,54 @@ fn main() {
     let mut payloads = (0..sockets.len())
         .map(|_| vec![0u8; args.msg_size.max(common::HEADER_SIZE)])
         .collect::<Vec<_>>();
+    let mut send_pending = vec![false; sockets.len()];
     let mut seq: u64 = 1;
+    let burst_until_blocked = args.msg_size <= 1024;
     while Instant::now() < deadline {
         let mut progressed = false;
         for (index, socket) in sockets.iter().enumerate() {
+            if burst_until_blocked && send_pending[index] {
+                continue;
+            }
             if Instant::now() >= deadline {
                 break;
             }
-            common::encode_header(
-                &mut payloads[index],
-                common::PHASE_ACTIVE,
-                args.msg_size as u32,
-                seq,
-            );
-            let msg = Message::copy_from(&payloads[index]).expect("msg");
-            match socket
-                .send()
-                .message(msg)
-                .flags(SendFlags::DONT_WAIT)
-                .submit()
-            {
-                Ok(true) => {
-                    seq += 1;
-                    progressed = true;
+
+            while Instant::now() < deadline {
+                common::encode_header(
+                    &mut payloads[index],
+                    common::PHASE_ACTIVE,
+                    args.msg_size as u32,
+                    seq,
+                );
+                let msg = Message::copy_from(&payloads[index]).expect("msg");
+                match socket
+                    .send()
+                    .message(msg)
+                    .flags(SendFlags::DONT_WAIT)
+                    .submit()
+                {
+                    Ok(true) => {
+                        seq += 1;
+                        progressed = true;
+                    }
+                    Ok(false) => {
+                        send_pending[index] = true;
+                        break;
+                    }
+                    Err(err) if err.code() == SubmitResult::Backpressured => {
+                        send_pending[index] = true;
+                        break;
+                    }
+                    Err(err) if err.code() == SubmitResult::NotConnected => {
+                        send_pending[index] = true;
+                        break;
+                    }
+                    Err(err) => panic!("send failed: {err}"),
                 }
-                Ok(false) => {}
-                Err(err) if err.code() == SubmitResult::Backpressured => {}
-                Err(err) if err.code() == SubmitResult::NotConnected => {}
-                Err(err) => panic!("send failed: {err}"),
+                if !burst_until_blocked {
+                    break;
+                }
             }
         }
         if !progressed {
@@ -103,7 +125,13 @@ fn main() {
                 .as_millis()
                 .max(1) as i64;
             match poller.wait(&mut poll_events, remaining_ms) {
-                Ok(_) => {}
+                Ok(event_count) => {
+                    for event in &poll_events[..event_count] {
+                        if event.revents & POLLOUT != 0 && event.slot < send_pending.len() {
+                            send_pending[event.slot] = false;
+                        }
+                    }
+                }
                 Err(err) => panic!("poller wait failed: {err}"),
             }
         }

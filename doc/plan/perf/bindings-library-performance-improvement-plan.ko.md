@@ -966,6 +966,13 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   tcp 131072B는 45.2%로 개선됐지만 기준선 아래라 보류로 남긴다. tcp 262144B는 broad
   `Bytes(...)` 후보 `perf_go_multi_linux_20260525_002738.txt`에서 2.8%로 무너져 기존
   `Message(...)` 경로를 유지한다.
+  2026-05-25 재검토에서 server를 `OnRoutedReceive` 대신 `OnDispatchEvent` +
+  public `RecvRoutedPart(...)` drain으로 바꾸는 후보도 시험했다. 공식 제한 재측정은
+  complete였지만(`perf_go_multi_linux_20260525_034331.txt`), 같은 기존 report
+  `perf_go_multi_linux_20260525_003036.txt` 대비 tcp 131072B median은 12.712K→12.709Kops/s,
+  262144B는 4.716K→4.731Kops/s로 사실상 같았다. fresh C 제한 재측정
+  `perf_c_multi_linux_20260525_034301.txt` 대비 비율은 51.9/42.4%였으나 C 기준 변동 효과가
+  컸고 절대 처리량 개선은 없으므로 반영하지 않는다.
 - Multi `DEALER_DEALER`, `PUBSUB`, `SPOT`, `SPOT_SENDSEND` 보류: 단일 poll loop와
   `POLLCOMPLETION` 의미는 맞췄고, Go send builder에는 명시적 ownership 이전 단계
   `MoveMessage(...)`와 caller-owned slice를 submit 때 한 번만 native message로 만드는

@@ -21,6 +21,20 @@ framework 의 channel discovery 는 **Registry 서버**를 중심에 둔다. Reg
 그래서 두 등록 호출은 분리되어 있다. Registry 는 framework runtime 의 일부가 아닌
 독립 infrastructure 컴포넌트다.
 
+그림으로 보면 방향이 분명하다 — **서비스가 Registry 로 붙으러 가고**(등록·heartbeat),
+Registry 는 **topology 를 다시 뿌려** 각 서비스의 `Discovery` view 를 갱신한다.
+
+```mermaid
+flowchart LR
+  SVC["service A<br/>AddZLinkFramework + Discovery"] -->|"register + heartbeat"| REG["Registry 서버<br/>AddZLinkRegistry"]
+  SVC2["service B<br/>AddZLinkFramework + Discovery"] -->|"register + heartbeat"| REG
+  REG -->|"topology broadcast"| SVC
+  REG -->|"topology broadcast"| SVC2
+```
+
+> 🔰 **Registry** = 누가 어디 떠 있는지 모으는 디렉터리 서버, **Discovery** = 그
+> Registry 를 보고 연결 대상을 자동으로 찾는 client 기능([03 §0](./03-concepts.ko.md)).
+
 ## 2. 두 가지 배포 모델
 
 | 모델 | 설명 | 적합 |

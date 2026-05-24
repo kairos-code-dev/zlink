@@ -22,6 +22,13 @@
 개발자는 HTTP/gRPC 를 쓰던 감각으로 **handler 와 client 만** 작성하고,
 연결·발견·라우팅·재연결·correlation 은 framework 가 처리한다.
 
+> **ZLink 은 다국어 framework 다.** 호출 계약이 언어 중립 wire protocol(ZMP) +
+> codec + 논리 channel/packet 이라, 서로 다른 언어로 구현된 서비스가 같은 channel
+> 위에서 상호 호출한다(예: room 서버 C++, API 서버 .NET·Java). 이 가이드는 `.NET`
+> binding 기준이며, `.NET` 이 reference 구현, **C++/Java/Node 가 1차 개발 중,
+> Python/Go/Rust 가 뒤따른다.** 자세한 cross-language 모델은
+> [12-grpc-alternative §2.1](./12-grpc-alternative.ko.md)이 다룬다.
+
 ## 2. 어떤 문제를 푸는가
 
 ASP.NET Core 서비스가 서로 통신할 때 흔히 드는 비용은 다음과 같다.
@@ -172,7 +179,16 @@ handler registration 이 정한다. 자세한 규칙은
 8. [09-monitoring](./09-monitoring.ko.md) — runtime 이벤트 관찰
 9. [10-feature-map](./10-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
 10. [11-interface-catalog](./11-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-11. [12-grpc-alternative](./12-grpc-alternative.ko.md) — gRPC 대안으로 ZLink 선택하기(새 서비스 도입 판단)
-12. 케이스 스터디 — [13 전자상거래](./13-case-ecommerce-checkout.ko.md) · [14 mesh+운영](./14-case-microservice-mesh.ko.md) · [15 게임](./15-case-realtime-game.ko.md) · [16 라이드헤일링](./16-case-ride-hailing.ko.md) · [17 채팅](./17-case-chat-messaging.ko.md)
-13. [guide/samples](./samples/channel-messaging-samples.ko.md) — 기능별 실행 예제
+11. [12-grpc-alternative](./12-grpc-alternative.ko.md) — **ZLink 을 어디에 쓰나**(사용처·문제 신호·경계 + 케이스 허브, 도입 판단 문서)
+12. 케이스 스터디 — 도입 판단과 아키텍처 매핑:
+    [13 전자상거래](./case-studies/13-case-ecommerce-checkout.ko.md) ·
+    [14 mesh+운영](./case-studies/14-case-microservice-mesh.ko.md) ·
+    [15 게임](./case-studies/15-case-realtime-game.ko.md) ·
+    [16 라이드헤일링](./case-studies/16-case-ride-hailing.ko.md) ·
+    [17 채팅](./case-studies/17-case-chat-messaging.ko.md) ·
+    [17-1 마켓플레이스 채팅](./case-studies/17-1-case-marketplace-chat.ko.md) ·
+    [17-2 라이브 커머스 채팅](./case-studies/17-2-case-live-commerce-chat.ko.md) ·
+    [17-3 게임 채팅](./case-studies/17-3-case-game-chat.ko.md) ·
+    [18 트레이딩](./case-studies/18-case-trading-system.ko.md)
+13. [guide/samples](./samples/channel-messaging-samples.ko.md) — 등록 코드와 실행 흐름을 확인하는 기능별 샘플
 14. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)

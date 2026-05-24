@@ -39,14 +39,15 @@ public sealed class RegressionTests
     public void DotNetDraftDocuments_AllExposeRegressionTestSection()
     {
         var directory = GetDotNetDocRoot();
-        // Narrative guide docs (guide/*.ko.md, not guide/samples/) are onboarding
-        // prose, not contract docs: they are exempt from the regression-section
-        // requirement. Samples remain contract-bound and stay in the strict set.
+        // Narrative guide docs and case studies are onboarding prose, not contract
+        // docs: they are exempt from the regression-section requirement.
+        // Samples remain contract-bound and stay in the strict set.
         var guideRoot = Path.Combine(directory, "guide");
+        var caseStudyRoot = Path.Combine(guideRoot, "case-studies");
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
-            .Where(path => !string.Equals(
-                Path.GetDirectoryName(path), guideRoot, StringComparison.Ordinal))
+            .Where(path => !IsUnderDirectory(path, guideRoot, includeDirectChildrenOnly: true))
+            .Where(path => !IsUnderDirectory(path, caseStudyRoot, includeDirectChildrenOnly: true))
             .Select(Path.GetFileName)
             .OfType<string>()
             .Order(StringComparer.Ordinal)
@@ -87,11 +88,19 @@ public sealed class RegressionTests
         "10-feature-map.ko.md",
         "11-interface-catalog.ko.md",
         "12-grpc-alternative.ko.md",
+    ];
+
+    private static readonly string[] GuideCaseStudyDocuments =
+    [
         "13-case-ecommerce-checkout.ko.md",
         "14-case-microservice-mesh.ko.md",
         "15-case-realtime-game.ko.md",
         "16-case-ride-hailing.ko.md",
         "17-case-chat-messaging.ko.md",
+        "17-1-case-marketplace-chat.ko.md",
+        "17-2-case-live-commerce-chat.ko.md",
+        "17-3-case-game-chat.ko.md",
+        "18-case-trading-system.ko.md",
     ];
 
     [Fact]
@@ -111,6 +120,23 @@ public sealed class RegressionTests
         foreach (var document in GuideNarrativeDocuments)
         {
             var text = File.ReadAllText(Path.Combine(guideRoot, document));
+            Assert.Contains("<!-- framework-adapter-nav:start -->", text, StringComparison.Ordinal);
+            Assert.Matches(@"(?m)^# .+", text);
+        }
+
+        var caseStudyRoot = Path.Combine(guideRoot, "case-studies");
+        var actualCaseStudies = Directory
+            .EnumerateFiles(caseStudyRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(GuideCaseStudyDocuments.Order(StringComparer.Ordinal), actualCaseStudies);
+
+        foreach (var document in GuideCaseStudyDocuments)
+        {
+            var text = File.ReadAllText(Path.Combine(caseStudyRoot, document));
             Assert.Contains("<!-- framework-adapter-nav:start -->", text, StringComparison.Ordinal);
             Assert.Matches(@"(?m)^# .+", text);
         }
@@ -358,6 +384,28 @@ public sealed class RegressionTests
                 && !prefix.Contains("Skip", StringComparison.Ordinal))
             || (prefix.Contains("[Theory(", StringComparison.Ordinal)
                 && !prefix.Contains("Skip", StringComparison.Ordinal));
+    }
+
+    private static bool IsUnderDirectory(
+        string path,
+        string directory,
+        bool includeDirectChildrenOnly)
+    {
+        var actualDirectory = Path.GetDirectoryName(path);
+        if (actualDirectory is null)
+        {
+            return false;
+        }
+
+        if (includeDirectChildrenOnly)
+        {
+            return string.Equals(actualDirectory, directory, StringComparison.Ordinal);
+        }
+
+        var relative = Path.GetRelativePath(directory, actualDirectory);
+        return relative == "."
+            || (!relative.StartsWith("..", StringComparison.Ordinal)
+                && !Path.IsPathRooted(relative));
     }
 
     private static void AddProjectSources(string projectPath, ISet<string> sourceFiles)

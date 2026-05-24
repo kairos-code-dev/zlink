@@ -9,6 +9,9 @@
 > [04-channel-messaging](./04-channel-messaging.ko.md)과
 > [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)이
 > 소유한다.
+>
+> 🔰 **용어가 낯설면** [03-concepts §0 "용어 빠르게 잡기"](./03-concepts.ko.md)를
+> 먼저 펼쳐 두고 읽으면 channel·handler·client·SPOT 같은 단어가 바로 잡힌다.
 
 ## 1. 사전 조건
 

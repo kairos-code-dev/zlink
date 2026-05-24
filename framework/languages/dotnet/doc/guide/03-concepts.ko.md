@@ -13,6 +13,34 @@
 이 다섯 가지 개념만 잡으면 나머지 챕터가 전부 변주로 읽힌다: **channel · capability ·
 handler · client · DI/lifecycle**.
 
+## 0. 용어 빠르게 잡기 (주니어용)
+
+가이드에 자주 나오는 용어를 **한 줄 풀이**로 먼저 잡는다. 다른 챕터에서 낯선 단어가
+나오면 이 표로 돌아오면 된다(정식 정의는 위 spec 링크가 소유).
+
+| 용어 | 한 줄 풀이 |
+|------|-----------|
+| **channel(채널)** | 호출을 묶는 **논리 이름**. `host:port` 주소 대신 `"orders"` 같은 이름으로 부른다 |
+| **capability(역할/능력)** | 한 channel 이 맡는 역할 — 서버로 **받기**(EnableServer) / 클라이언트로 **보내기**(EnableClient) / **발행**(Publisher) / **구독**(Subscriber) |
+| **handler(핸들러)** | 들어온 메시지를 처리하는 메서드·클래스. `ASP.NET Core` 의 컨트롤러 액션과 같은 위치 |
+| **client(클라이언트)** | 다른 서비스로 호출을 **보내는** 주입 객체(예: `IZLinkClient`) |
+| **request / send / publish** | 각각 **응답 받는 호출** / **응답 없는 단방향 통지** / **여러 구독자에게 발행** |
+| **pub/sub · fan-out** | 한 번 발행한 이벤트가 **여러 구독자에게 동시에 퍼지는** 것 |
+| **packet name(패킷 이름)** | 같은 channel 안에서 **어느 메시지 종류인지** 구분하는 키 |
+| **codec(코덱)** | payload(메시지 본문)를 바이트로 **직렬화/역직렬화**하는 방식(json·protobuf·messagepack) |
+| **SPOT(스팟)** | room/zone 처럼 **동적으로 생겼다 사라지는 상태 노드**. 한 SPOT 의 콜백은 **한 줄로 직렬** 실행돼 lock 이 필요 없다 |
+| **actor(액터)** | **ID 로 식별되는 상태 보유 객체**. 같은 ID 로 온 메시지는 늘 같은 인스턴스가 처리 |
+| **Entry Spot** | actor 가 생성 직후 머무는 **기본 실행 위치** |
+| **STREAM(스트림)** | 외부 client(모바일·게임)와의 **연결 지향 양방향 채널**. 연결 수명·재연결을 framework 가 관리 |
+| **session(세션)** | STREAM 연결 하나에 대응하는 **서버 측 객체** |
+| **Registry(레지스트리)** | 어떤 서비스가 어디 떠 있는지 모으는 **중앙 디렉터리 서버** |
+| **Discovery(디스커버리)** | client 가 Registry 를 보고 **연결 대상을 자동으로 찾는** 것 |
+| **RoutingId** | 노드·스팟의 **논리 주소**(특정 인스턴스를 가리키는 식별자) |
+| **correlation(상관)** | 요청과 그 응답을 **짝지어 주는** 식별 정보. framework 가 자동 처리 |
+| **deadline / timeout** | 응답을 **얼마나 기다릴지**의 상한 시간 |
+| **DI / lifecycle** | `ASP.NET Core` 의존성 주입 + hosted service **시작/종료** 수명 관리 |
+| **mesh / sidecar**(비교용) | 서비스 옆에 붙어 라우팅·분배를 대신하는 **별도 프록시**(Envoy/Istio). ZLink 는 이게 없어도 된다 |
+
 ## 1. channel name 이 호출의 중심이다
 
 호출 단위는 주소가 아니라 논리 `channel name` 이다. 같은 channel 이 여러 노드에

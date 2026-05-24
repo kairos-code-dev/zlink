@@ -27,6 +27,15 @@ status/topology 변화, spot peer/subject 변화, timer handler 실패 같은 **
 공통 규칙: event kind 는 `enum`, payload 는 `record struct`, 응용은
 `IZLinkRuntimeEventHandler<TEvent>` 를 구현해 수신한다.
 
+흐름은 단순하다 — **source 에서 변화가 나면 framework 가 typed handler 로 전달**하고,
+내 handler 는 DI 로 생성돼 호출된다(HTTP 요청 handler 와 같은 결).
+
+```mermaid
+flowchart LR
+  SRC["source: socket / registry / spot"] -->|"변화 발생"| FW["framework runtime"]
+  FW -->|"typed event 로 전달"| H["IZLinkRuntimeEventHandler 구현<br/>(DI 로 생성·호출)"]
+```
+
 ## 2. 등록
 
 `AddZLinkMonitoring(...)` 은 **source 등록만** 한다. 실제 source(socket/registry/

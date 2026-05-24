@@ -6,6 +6,10 @@
 
 [.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Session Actor Dispatch](../../../../../doc/spec/session-actor-dispatch.ko.md)
 
+> 이 문서는 실행 가능한 game sample 설명이다. 실시간 게임 도메인에 ZLink 를 도입할지
+> 판단하려면 [15-case-realtime-game](../case-studies/15-case-realtime-game.ko.md)을 먼저 보고,
+> 이 문서에서는 등록 코드, DTO, 실행 흐름을 확인한다.
+
 ## 1. 목적
 
 TicTacToe 샘플은 두 가지 구성으로 나누어 둔다.

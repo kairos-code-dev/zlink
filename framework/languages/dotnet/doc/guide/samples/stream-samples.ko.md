@@ -8,6 +8,11 @@
 
 # ZLink Framework .NET STREAM Samples
 
+> 이 문서는 실행 가능한 sample 중심 문서다. 장기 연결이나 실시간 상태 서버에 ZLink 를
+> 넣을지 판단하는 설명은 [12-grpc-alternative](../12-grpc-alternative.ko.md)와 각
+> 케이스 스터디가 맡고, 이 문서는 STREAM 등록과 session packet 흐름을 따라 하는 데
+> 집중한다.
+
 ## 1. 이 문서의 목적
 
 이 절은 이 문서가 어떤 STREAM 흐름만 담고, 무엇은 빼는지를 정리한다.

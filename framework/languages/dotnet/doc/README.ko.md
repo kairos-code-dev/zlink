@@ -123,6 +123,13 @@
 계약은 spec 문서가 소유하며, 가이드는 그 의미를 실사용 코드로 풀어 준다. 실행
 가능한 전체 샘플은 `guide/samples/`에 모여 있다.
 
+케이스 스터디와 샘플 문서는 일부 코드 조각을 함께 다루지만 목적이 다르다.
+케이스 스터디는 **도입 판단과 아키텍처 매핑**을 맡는다. 즉 어떤 도메인 난제가
+있고, ZLink 를 넣으면 무엇이 줄어들며, 무엇은 여전히 DB·broker·도메인 로직에
+남는지 설명하며 `guide/case-studies/`에 모여 있다. 샘플 문서는 **실행 가능한 구현
+학습**을 맡는다. 즉 프로젝트 구조, 등록 코드, handler, DTO, 실행 방법을 따라 할 수
+있게 정리한다.
+
 | 문서 | 역할 |
 |------|------|
 | [guide/01-overview.ko.md](./guide/01-overview.ko.md) | 무엇/왜/누구를 위한 것, 기존 방식 대비 체감 난이도, 4축 |
@@ -135,6 +142,17 @@
 | [guide/08-registry.ko.md](./guide/08-registry.ko.md) | Registry 구동, clustering, topology 조회 사용법 |
 | [guide/09-monitoring.ko.md](./guide/09-monitoring.ko.md) | socket / registry / spot runtime 이벤트 관찰 사용법 |
 | [guide/10-feature-map.ko.md](./guide/10-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
+| [guide/11-interface-catalog.ko.md](./guide/11-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
+| [guide/12-grpc-alternative.ko.md](./guide/12-grpc-alternative.ko.md) | **ZLink 을 어디에 쓰나** — 사용처·문제 신호·경계 + 케이스 허브(도입 판단 문서) |
+| [guide/case-studies/13-case-ecommerce-checkout.ko.md](./guide/case-studies/13-case-ecommerce-checkout.ko.md) | 케이스: 전자상거래 체크아웃 — channel messaging 도입 판단 + 양쪽 비교 |
+| [guide/case-studies/14-case-microservice-mesh.ko.md](./guide/case-studies/14-case-microservice-mesh.ko.md) | 케이스: 내부 마이크로서비스 mesh + 운영(discovery/topology) |
+| [guide/case-studies/15-case-realtime-game.ko.md](./guide/case-studies/15-case-realtime-game.ko.md) | 케이스: 실시간 멀티플레이 게임 — STREAM + SPOT + actor |
+| [guide/case-studies/16-case-ride-hailing.ko.md](./guide/case-studies/16-case-ride-hailing.ko.md) | 케이스: 라이드헤일링 디스패치 — zone SPOT + 위치 fan-out |
+| [guide/case-studies/17-case-chat-messaging.ko.md](./guide/case-studies/17-case-chat-messaging.ko.md) | 케이스: 채팅·메시징 — room SPOT + BoundSession |
+| [guide/case-studies/17-1-case-marketplace-chat.ko.md](./guide/case-studies/17-1-case-marketplace-chat.ko.md) | 케이스: 마켓플레이스 채팅 — 구매자·판매자 conversation |
+| [guide/case-studies/17-2-case-live-commerce-chat.ko.md](./guide/case-studies/17-2-case-live-commerce-chat.ko.md) | 케이스: 라이브 커머스·라이브스트림 채팅 — stream SPOT + moderation |
+| [guide/case-studies/17-3-case-game-chat.ko.md](./guide/case-studies/17-3-case-game-chat.ko.md) | 케이스: 게임 채팅 — player actor + party/guild/match room |
+| [guide/case-studies/18-case-trading-system.ko.md](./guide/case-studies/18-case-trading-system.ko.md) | 케이스: 트레이딩 — symbol SPOT 과 HFT 경계 |
 
 ### 2.1 기준 문서 (interface catalog)
 
@@ -184,7 +202,9 @@
 ### 2.4 샘플 문서
 
 샘플 문서는 등록 코드부터 handler, client 호출까지 한 번에 보여 주는 실행 가능한
-코드를 모아 둔다. 인터페이스 정의를 다시 나열하지는 않는다.
+코드를 모아 둔다. 인터페이스 정의를 다시 나열하지는 않는다. 특정 도메인에 ZLink 를
+도입할지 판단하는 설명은 12번 문서와 케이스 스터디가 맡고, 샘플은 그 판단 뒤에
+실제 등록·실행 흐름을 확인하는 문서로 둔다.
 
 | 문서 | 다루는 범위 |
 |------|------------|

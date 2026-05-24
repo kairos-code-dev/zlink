@@ -7,6 +7,9 @@
 > 정식 계약은 [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와
 > [spec/session-actor-dispatch](../spec/session-actor-dispatch.ko.md)가 소유한다.
 > 이 챕터는 SPOT([05-spot](./05-spot.ko.md)) 을 먼저 읽었다고 가정한다.
+>
+> 🔰 actor·session·binding·Entry Spot 용어가 낯설면 [03-concepts §0](./03-concepts.ko.md)
+> 한 줄 풀이를 먼저 본다.
 
 ## 1. actor 란
 
@@ -29,11 +32,11 @@ actor 의 상태는 **서로 독립인 두 축**으로 본다.
 
 ```text
 None
-  └─(factory.CreateAsync)→ Created (Entry Spot, unbound)
-        ├─(bind session)→ Entry Spot + bound
-        │     └─(JoinSpot)→ user Spot + bound
-        │           └─(leave: framework)→ Entry Spot + bound
-        └─(disconnect/unbind: framework)→ destroy → None
+  +-- factory.CreateAsync --> Created (Entry Spot, unbound)
+        +-- bind session --> Entry Spot + bound
+        |     +-- JoinSpot --> user Spot + bound
+        |           +-- leave (framework) --> Entry Spot + bound
+        +-- disconnect/unbind (framework) --> destroy --> None
 ```
 
 framework 가 자동으로 관리하는 것: Entry Spot 생성/소멸, user Spot 에서 Entry Spot

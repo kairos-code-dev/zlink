@@ -7,6 +7,9 @@
 > 정식 계약은 [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md),
 > [spec/spot-node](../spec/spot-node.ko.md), [spec/stage-wrapper-on-spot](../spec/stage-wrapper-on-spot.ko.md)가
 > 소유한다. 이 챕터는 SPOT 을 등록하고 다루는 사용법 중심이다.
+>
+> 🔰 SPOT·actor·Entry Spot 등 용어가 낯설면 [03-concepts §0](./03-concepts.ko.md)의
+> 한 줄 풀이를 먼저 본다.
 
 ## 1. SPOT 이란
 
@@ -72,8 +75,8 @@ node capability 는 서로 독립이다.
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
 
 > top-level `UseDiscovery(...)` 를 등록하면 `AddSpotMesh(...)` 는 그 discovery endpoint 를
-> 기본으로 상속한다. mesh 단위로 다른 endpoint 를 쓰는 경우에만 `mesh.UseDiscovery(...)` 를 둔다.
-> 막힌다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)` 안에서 빈
+> 기본으로 상속한다. mesh 단위로 다른 endpoint 를 쓰려는 경우에만 `mesh.UseDiscovery(...)` 를
+> 따로 둔다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)` 안에서 빈
 > `UseDiscovery(_ => { })` 와 `AddNode(...)` 로 표현한다.
 
 ## 3. Spot 작성 — handler 등록과 lifecycle

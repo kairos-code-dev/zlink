@@ -8,6 +8,10 @@
 
 # ZLink Framework .NET Channel Messaging Samples
 
+> 이 문서는 실행 가능한 sample 중심 문서다. ZLink 를 어디에 쓸지 판단하는 설명은
+> [12-grpc-alternative](../12-grpc-alternative.ko.md)와 각 케이스 스터디가 맡고,
+> 이 문서는 channel 등록, handler, client 호출 흐름을 따라 하는 데 집중한다.
+
 ## 1. 이 문서의 목적
 
 이 절에서는 이 샘플 문서를 어떤 흐름으로 읽으면 되는지 짧게 안내한다.

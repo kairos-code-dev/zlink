@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: 기능 맵](./10-feature-map.ko.md) | [다음: gRPC 대안으로 ZLink 선택하기](./12-grpc-alternative.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: 기능 맵](./10-feature-map.ko.md) | [다음: ZLink 을 어디에 쓰나](./12-grpc-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 인터페이스 카탈로그 — 모든 계약을 코드로

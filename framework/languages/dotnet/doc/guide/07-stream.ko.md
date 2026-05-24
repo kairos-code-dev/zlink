@@ -7,6 +7,9 @@
 > 서버 측 정식 계약은 [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md),
 > client connector 는 [samples/streaming-client](./samples/streaming-client.ko.md)와
 > [Unity 가이드](../../../../doc/guide/unity-stream-connector.ko.md)가 소유한다.
+>
+> 🔰 STREAM·session·connector 용어가 낯설면 [03-concepts §0](./03-concepts.ko.md)
+> 한 줄 풀이를 먼저 본다.
 
 `STREAM` 은 외부 client(게임 클라이언트, 모바일 앱 등)와 서버 사이의 **연결 지향
 양방향 메시지 채널**이다. 일반 channel messaging 과 달리 연결 수명, peer 식별,

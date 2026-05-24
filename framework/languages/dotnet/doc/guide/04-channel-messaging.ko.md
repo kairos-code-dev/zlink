@@ -14,6 +14,25 @@ channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호�
 - **one-way send** — 응답이 없는 단방향 명령 (DEALER → ROUTER)
 - **publish/subscribe** — 여러 구독자에게 이벤트 fan-out (PUB / SUB)
 
+> 🔰 용어(channel·handler·client·codec 등)가 낯설면
+> [03-concepts §0](./03-concepts.ko.md)의 한 줄 풀이를 먼저 본다.
+> 괄호 안 `DEALER → ROUTER`·`PUB / SUB` 는 하부 소켓 종류로, **응용이 직접 다루지
+> 않는다**(framework 가 channel 종류에 따라 자동 매핑).
+
+세 상호작용을 그림으로 먼저 잡으면 이렇다.
+
+```mermaid
+flowchart LR
+  CL["호출하는 쪽<br/>IZLinkClient / IZLinkFanoutPublisher"]
+  CL -->|"Request: 응답이 필요"| H1["server handler → 응답 돌려줌"]
+  CL -->|"Send: 응답 없는 단방향"| H2["server handler (응답 없음)"]
+  CL -->|"Publish(topic): 여러 곳에"| SUB["구독자 1 · 2 · ... · N"]
+```
+
+- **request** 는 보낸 뒤 **응답을 기다린다**(예: 가격 조회).
+- **send** 는 **던지고 끝**이다(예: 캐시 무효화 통지).
+- **publish** 는 한 번 보내면 **구독한 모두**가 받는다(예: 도메인 이벤트 전파).
+
 ## 0. gRPC 를 쓰던 웹 서비스라면
 
 이 축은 게임 서버 전용이 아니다. 일반 웹/마이크로서비스 백엔드에서 **서비스 간
@@ -53,7 +72,7 @@ public sealed class PlaceOrderHandler
 // 클라이언트: gRPC stub 대신 IZLinkClient 주입
 var placed = await client
     .Request("orders", new PlaceOrder("order-1042", "acct-77", 18742))
-    .Timeout(TimeSpan.FromSeconds(2))    // gRPC deadline 에 해당
+    .Timeout(TimeSpan.FromSeconds(2))    // reply 대기 상한
     .SubmitAsync<OrderPlaced>(ct);
 ```
 
@@ -122,7 +141,7 @@ public sealed class CacheRefreshedEventHandler
         ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
-        // context.Topic, context.SourceName 등을 읽을 수 있다.
+        // context.Topic, context.Source 등을 읽을 수 있다.
         return ValueTask.CompletedTask;
     }
 }

@@ -6,12 +6,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use zlink::*;
 
-fn build_packet_frame(header: &[u8], body: &[u8]) -> Vec<u8> {
-    let mut packet = Vec::with_capacity(6 + header.len() + body.len());
-    packet.extend_from_slice(&(header.len() as u16).to_be_bytes());
-    packet.extend_from_slice(&(body.len() as u32).to_be_bytes());
-    packet.extend_from_slice(header);
-    packet.extend_from_slice(body);
+fn build_packet_frame(header: &[u8], body: &[u8]) -> Message {
+    let mut packet = Message::with_size(6 + header.len() + body.len()).expect("packet");
+    let frame = packet.data_mut();
+    frame[0..2].copy_from_slice(&(header.len() as u16).to_be_bytes());
+    frame[2..6].copy_from_slice(&(body.len() as u32).to_be_bytes());
+    frame[6..6 + header.len()].copy_from_slice(header);
+    frame[6 + header.len()..].copy_from_slice(body);
     packet
 }
 
@@ -48,8 +49,7 @@ fn main() {
                 cb_stop.store(true, Ordering::Release);
                 return;
             }
-            let packet = build_packet_frame(header.as_bytes(), body_bytes);
-            let msg = Message::copy_from(&packet).expect("packet");
+            let msg = build_packet_frame(header.as_bytes(), body_bytes);
             match send_handle.send_to(&routing_id).message(msg).submit() {
                 Ok(_) => {}
                 Err(err) if err.code() == SubmitResult::Backpressured => {

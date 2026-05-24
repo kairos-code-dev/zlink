@@ -1357,6 +1357,14 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   바로 reply payload로 넘기는 후보를 시험했다. 공식 runner `tcp,ws 65536/131072/262144B`는
   complete였지만(`perf_python_multi_linux_20260524_231443.txt`), 기존 문서 기준보다 비율이
   낮았다(tcp 27.7/37.8/39.5%, ws 37.8/36.2/46.0%). 따라서 반영하지 않는다.
+- **SPOT reqrep client waiting lock 제거 후보 기각**: `MULTI_SPOT_REQREP` client active loop에서
+  `waiting` slot 보호용 `threading.Lock`을 제거하는 후보를 시험했다. CPython GIL과 callback
+  경계만으로 list flag 접근을 처리하면 per-request lock 비용을 줄일 수 있을 것으로 보았지만,
+  공식 제한 재측정은 complete였어도 C 대비 tcp 64/65536/131072B가 14.4/30.6/41.5%,
+  ws 64/65536/131072B가 15.6/38.7/37.4%에 머물렀다
+  (`perf_c_multi_linux_20260525_032146.txt`, `perf_python_multi_linux_20260525_034004.txt`).
+  callback 이전 native-to-Python reply 전달 비용과 request submit 경계가 더 큰 병목이어서
+  코드에는 반영하지 않는다.
 
 ## 7. 완료 기준
 

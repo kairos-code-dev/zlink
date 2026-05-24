@@ -978,6 +978,11 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   routed echo submit 비용에 더 가깝다.
 - `MULTI_SPOT_SENDSEND` client active send를 `Bytes(...)`로 바꾸는 후보도 wss small을
   낮추고 tls 일부 size만 소폭 올렸으며, 현재 C 재측정 기준 목표에는 못 미쳐 원복했다.
+- `MULTI_SPOT_SENDSEND` 65536B active client 제한을 Rust와 같은 24로 낮춘 후보는
+  `perf_go_multi_linux_20260524_232320.txt`에서 tcp 65536B를 18.7%→20.1%로 조금
+  올렸지만 tls 65536B를 38.1%→37.1%로 낮췄고 wss 65536B는 53.3%→53.6%로 거의
+  같았다. transport별로 다른 active limit public surface를 새로 만들 만큼의 개선이
+  아니므로 전역 32-slot 규칙을 유지한다.
 - `Bytes(...)` publish는 `wss MULTI_SPOT 64B/256B`를 통과권으로 올렸고, encrypted
   small SPOT 수신 worker를 4개로 좁힌 뒤 `tls MULTI_SPOT 64B`도 통과권으로 올렸다.
   `MULTI_SPOT` 수신 hot path도 throughput count와 latency sampling을 분리해 샘플에서만

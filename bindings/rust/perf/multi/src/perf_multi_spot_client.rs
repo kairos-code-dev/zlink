@@ -226,7 +226,7 @@ fn main() {
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|&n| n > 0)
-        .unwrap_or(4)
+        .unwrap_or_else(|| default_multi_spot_recv_workers(&args.transport, args.msg_size))
         .min(spots.len().max(1));
     let chunk_size = spots.len().div_ceil(worker_count.max(1));
     let mut stats = common::LatencyStats::new();
@@ -316,5 +316,13 @@ fn use_multi_spot_poller_wait(transport: &str, msg_size: usize) -> bool {
         "tcp" => msg_size == 131072,
         "ws" => msg_size == 131072 || msg_size == 262144,
         _ => false,
+    }
+}
+
+fn default_multi_spot_recv_workers(transport: &str, msg_size: usize) -> usize {
+    if transport == "ws" && msg_size >= 131072 {
+        6
+    } else {
+        4
     }
 }

@@ -1304,6 +1304,11 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `python -m py_compile bindings/python/perf/multi/perf_multi_common.py bindings/python/perf/multi/perf_multi_pubsub_client.py`는 통과했지만, 공식 runner `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_PUBSUB --msg-sizes 64 --duration 1 --runs 1`에서 client timeout partial(`perf_python_multi_linux_20260524_194603.txt`)이 재현됐다. Python binding 객체와 poller를 여러 Python thread에 나누는 접근은 현재 공개 API 조합에서 안정적인 개선 후보가 아니므로 반영하지 않는다.
 - SPOT reply decode에도 같은 원칙을 적용했다. `MULTI_SPOT_REQREP`는 callback 이전에 reply part가 이미 Python `Message`로 clone되므로 추가 `to_bytes()` 제거 효과가 제한적이고,
   `MULTI_SPOT_SENDSEND`는 routed reply `ReceivedMessage.data`로 262144B가 37.4%→43.6%까지 올랐지만 small/65536/131072B는 여전히 기준보다 낮다.
+- **SPOT reqrep server view-reply 후보 기각**: `MULTI_SPOT_REQREP` server에서
+  `received.reply().messages(*received.to_bytes_list())` 대신 `received.first_part().data` view를
+  바로 reply payload로 넘기는 후보를 시험했다. 공식 runner `tcp,ws 65536/131072/262144B`는
+  complete였지만(`perf_python_multi_linux_20260524_231443.txt`), 기존 문서 기준보다 비율이
+  낮았다(tcp 27.7/37.8/39.5%, ws 37.8/36.2/46.0%). 따라서 반영하지 않는다.
 
 ## 7. 완료 기준
 

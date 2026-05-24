@@ -18,8 +18,8 @@ fn drain_subscriber(
     active_deadline: Instant,
 ) -> bool {
     let mut stop_seen = false;
+    let mut topic_msg = TopicMessage::empty();
     loop {
-        let mut topic_msg = TopicMessage::empty();
         match socket.subscribe(&mut topic_msg, RecvFlags::DONT_WAIT) {
             Ok(true) => {
                 let data = common::message_payload(topic_msg.parts());

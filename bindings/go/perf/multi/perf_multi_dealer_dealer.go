@@ -346,7 +346,7 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 func useMultiDealerDealerBytes(transport string, msgSize int) bool {
 	switch transport {
 	case "tcp":
-		return msgSize == 65536
+		return msgSize <= 1024 || msgSize == 65536
 	case "ws":
 		return msgSize == 65536 || msgSize == 131072
 	default:

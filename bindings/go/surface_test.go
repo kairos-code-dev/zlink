@@ -83,6 +83,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.PairSocket)(nil).Send(), "Bytes") {
 		t.Fatalf("SendOp should expose Bytes")
 	}
+	if _, ok := reflect.TypeOf((*zlink.RequestOp)(nil)).Elem().MethodByName("Bytes"); !ok {
+		t.Fatalf("RequestOp should expose Bytes")
+	}
 	if hasMethod((*zlink.PairSocket)(nil), "TryRecv") {
 		t.Fatalf("PairSocket should not expose TryRecv")
 	}

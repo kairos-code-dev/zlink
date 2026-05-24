@@ -773,6 +773,92 @@ func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSu
 	return err
 }
 
+func requestBuilderMessages(parts []requestBuilderPart) []*Message {
+	messages := make([]*Message, len(parts))
+	for i, part := range parts {
+		messages[i] = part.message
+	}
+	return messages
+}
+
+func requestBuilderMessagesForClone(parts []requestBuilderPart) ([]*Message, func(), error) {
+	messages := make([]*Message, len(parts))
+	temporary := make([]*Message, 0)
+	cleanup := func() {
+		for _, message := range temporary {
+			_ = message.Close()
+		}
+	}
+	for i, part := range parts {
+		if part.bytes {
+			message, err := NewMessage(part.data)
+			if err != nil {
+				cleanup()
+				return nil, nil, err
+			}
+			temporary = append(temporary, message)
+			messages[i] = message
+			continue
+		}
+		messages[i] = part.message
+	}
+	return messages, cleanup, nil
+}
+
+func requestBuilderPartsUseOnlyMessages(parts []requestBuilderPart) bool {
+	for _, part := range parts {
+		if part.bytes {
+			return false
+		}
+	}
+	return true
+}
+
+func submitMultipartFromRequestParts(parts []requestBuilderPart, submit multipartSubmitFunc) error {
+	if len(parts) == 0 {
+		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	if len(parts) == 1 {
+		if parts[0].bytes {
+			return submitSinglePartFromBytes(parts[0].data, submit)
+		}
+		return submitMultipartFromClones([]*Message{parts[0].message}, false, submit)
+	}
+	if requestBuilderPartsUseOnlyMessages(parts) {
+		return submitMultipartFromClones(requestBuilderMessages(parts), false, submit)
+	}
+
+	native := make([]C.zlink_msg_t, len(parts))
+	for i, part := range parts {
+		if part.bytes {
+			if err := initNativeMessageFromBytes(&native[i], part.data); err != nil {
+				closeNativeMultipart(native, i)
+				return err
+			}
+			continue
+		}
+		if part.message == nil {
+			closeNativeMultipart(native, i)
+			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		}
+		if part.message.closed {
+			closeNativeMultipart(native, i)
+			return &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+		}
+		if err := configErrorFromResult(C.zlink_msg_init(&native[i])); err != nil {
+			closeNativeMultipart(native, i)
+			return err
+		}
+		if err := configErrorFromResult(C.zlink_msg_copy(&native[i], &part.message.msg)); err != nil {
+			closeNativeMultipart(native, i+1)
+			return err
+		}
+	}
+
+	prepared := &preparedMultipart{native: native}
+	return submitPreparedMultipart(prepared, submit)
+}
+
 func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) {
 	parts := make([]*Message, 0, 1)
 	recvFlags := C.zlink_recv_flags_t(flags)
@@ -1655,23 +1741,22 @@ func (s *routedSocket) RecvPart(out *Message, flags RecvFlags) (RecvPartResult, 
 }
 
 func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
+	builderParts := make([]requestBuilderPart, len(parts))
+	for i, part := range parts {
+		builderParts[i] = requestBuilderPart{message: part}
+	}
+	return s.startSpotRequestBuilder(destNodeRid, destSpotRid, flags, timeout, builderParts)
+}
+
+func (s *routedSocket) startSpotRequestBuilder(destNodeRid, destSpotRid RoutingID, flags SendFlags, timeout time.Duration, parts []requestBuilderPart) (*replyCallbackState, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
-	}
-	cloned, err := cloneParts(parts)
-	if err != nil {
-		return nil, err
-	}
-	prepared, err := prepareMultipart(cloned)
-	if err != nil {
-		closeMessageSlice(cloned)
-		return nil, err
 	}
 	state := newReplyCallbackState()
 	handle := cgo.NewHandle(state)
 	node := destNodeRid.toC()
 	spot := destSpotRid.toC()
-	if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+	if err := submitMultipartFromRequestParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_router_request_spot_part_go_local(
 			s.raw(),
 			&node,
@@ -1684,10 +1769,8 @@ func (s *routedSocket) startSpotRequest(destNodeRid, destSpotRid RoutingID, flag
 		))
 	}); err != nil {
 		handle.Delete()
-		prepared.commit()
 		return nil, err
 	}
-	prepared.commit()
 	startSocketRequestProgress(s.raw(), state)
 	return state, nil
 }
@@ -1948,11 +2031,16 @@ func (s *DealerSocket) Send() SendOp {
 }
 
 func (s *DealerSocket) Request() RequestOp {
-	return newRequestBuilder(nil, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(nil, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
-		resultCh, err := (&dealerRequestSupport{socket: s}).startRequest(flags, timeout, parts...)
+		messages, cleanup, err := requestBuilderMessagesForClone(parts)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		resultCh, err := (&dealerRequestSupport{socket: s}).startRequest(flags, timeout, messages...)
 		if err != nil {
 			return err
 		}
@@ -2062,11 +2150,16 @@ func (s *RouterSocket) SendTo(target RoutingID) SendOp {
 }
 
 func (s *RouterSocket) Request(peerRid RoutingID) RequestOp {
-	return newRequestBuilder(nil, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(nil, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
-		resultCh, err := (&routerRequestSupport{socket: s}).startRequest(peerRid, flags, timeout, parts...)
+		messages, cleanup, err := requestBuilderMessagesForClone(parts)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		resultCh, err := (&routerRequestSupport{socket: s}).startRequest(peerRid, flags, timeout, messages...)
 		if err != nil {
 			return err
 		}
@@ -2093,11 +2186,11 @@ func (s *RouterSocket) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
 }
 
 func (s *RouterSocket) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
-	return newRequestBuilder(nil, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(nil, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
-		state, err := s.routedSocket.startSpotRequest(destNodeRid, destSpotRid, flags, timeout, parts...)
+		state, err := s.routedSocket.startSpotRequestBuilder(destNodeRid, destSpotRid, flags, timeout, parts)
 		if err != nil {
 			return err
 		}

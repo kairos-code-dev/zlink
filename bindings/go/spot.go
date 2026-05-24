@@ -733,10 +733,12 @@ type SendSubmitOp interface {
 
 type RequestOp interface {
 	Message(message *Message) RequestSubmitOp
+	Bytes(data []byte) RequestSubmitOp
 }
 
 type RequestSubmitOp interface {
 	Message(message *Message) RequestSubmitOp
+	Bytes(data []byte) RequestSubmitOp
 	Timeout(timeout time.Duration) RequestSubmitOp
 	Flags(flags SendFlags) RequestCallbackSubmitOp
 	SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion, error)
@@ -745,6 +747,7 @@ type RequestSubmitOp interface {
 
 type RequestCallbackSubmitOp interface {
 	Message(message *Message) RequestCallbackSubmitOp
+	Bytes(data []byte) RequestCallbackSubmitOp
 	Timeout(timeout time.Duration) RequestCallbackSubmitOp
 	Flags(flags SendFlags) RequestCallbackSubmitOp
 	Submit(ctx context.Context, callback RequestReplyCallback) (bool, error)
@@ -827,11 +830,11 @@ func (b *sendBuilder) Submit(_ context.Context) (bool, error) {
 // --- requestBuilder ---
 
 type requestBuilderState struct {
-	parts     []*Message
+	parts     []requestBuilderPart
 	flags     SendFlags
 	timeout   time.Duration
 	submitted bool
-	submit    func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error
+	submit    func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error
 }
 
 type requestBuilder struct {
@@ -842,12 +845,23 @@ type requestCallbackBuilder struct {
 	state *requestBuilderState
 }
 
-func newRequestBuilder(spot *Spot, submit func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error) RequestOp {
+type requestBuilderPart struct {
+	message *Message
+	data    []byte
+	bytes   bool
+}
+
+func newRequestBuilder(spot *Spot, submit func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error) RequestOp {
 	return &requestBuilder{state: &requestBuilderState{submit: submit}}
 }
 
 func (b *requestBuilder) Message(message *Message) RequestSubmitOp {
-	b.state.parts = append(b.state.parts, message)
+	b.state.parts = append(b.state.parts, requestBuilderPart{message: message})
+	return b
+}
+
+func (b *requestBuilder) Bytes(data []byte) RequestSubmitOp {
+	b.state.parts = append(b.state.parts, requestBuilderPart{data: data, bytes: true})
 	return b
 }
 
@@ -870,7 +884,12 @@ func (b *requestBuilder) Submit(_ context.Context, callback RequestReplyCallback
 }
 
 func (b *requestCallbackBuilder) Message(message *Message) RequestCallbackSubmitOp {
-	b.state.parts = append(b.state.parts, message)
+	b.state.parts = append(b.state.parts, requestBuilderPart{message: message})
+	return b
+}
+
+func (b *requestCallbackBuilder) Bytes(data []byte) RequestCallbackSubmitOp {
+	b.state.parts = append(b.state.parts, requestBuilderPart{data: data, bytes: true})
 	return b
 }
 
@@ -1090,11 +1109,11 @@ func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
 }
 
 func (s *Spot) RequestChannel(channelName string) RequestOp {
-	return newRequestBuilder(s, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(s, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
-		state, err := s.startChannelRequest(channelName, flags, timeout, parts...)
+		state, err := s.startChannelRequestBuilder(channelName, flags, timeout, parts)
 		if err != nil {
 			return err
 		}
@@ -1107,27 +1126,18 @@ func (s *Spot) RequestChannel(channelName string) RequestOp {
 }
 
 func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
-	return newRequestBuilder(s, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(s, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
 		if timeout <= 0 {
 			timeout = defaultRequestTimeout
 		}
-		cloned, err := cloneParts(parts)
-		if err != nil {
-			return err
-		}
-		prepared, err := prepareMultipart(cloned)
-		if err != nil {
-			closeMessageSlice(cloned)
-			return err
-		}
 		state := newReplyCallbackState()
 		handle := cgo.NewHandle(state)
 		node := destNodeRid.toC()
 		spot := destSpotRid.toC()
-		if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		if err := submitMultipartFromRequestParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_spot_request_spot_part_go_local(
 				s.raw(),
 				&node,
@@ -1140,10 +1150,8 @@ func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
 			))
 		}); err != nil {
 			handle.Delete()
-			prepared.commit()
 			return err
 		}
-		prepared.commit()
 		startSpotRequestProgress(s.raw(), state)
 		go func() {
 			result := state.wait()
@@ -1154,26 +1162,17 @@ func (s *Spot) RequestToSpot(destNodeRid, destSpotRid RoutingID) RequestOp {
 }
 
 func (s *Spot) RequestToRouter(peerRid RoutingID) RequestOp {
-	return newRequestBuilder(s, func(parts []*Message, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
+	return newRequestBuilder(s, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
 		}
 		if timeout <= 0 {
 			timeout = defaultRequestTimeout
 		}
-		cloned, err := cloneParts(parts)
-		if err != nil {
-			return err
-		}
-		prepared, err := prepareMultipart(cloned)
-		if err != nil {
-			closeMessageSlice(cloned)
-			return err
-		}
 		state := newReplyCallbackState()
 		handle := cgo.NewHandle(state)
 		peer := peerRid.toC()
-		if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		if err := submitMultipartFromRequestParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_spot_request_router_part_go_local(
 				s.raw(),
 				&peer,
@@ -1185,10 +1184,8 @@ func (s *Spot) RequestToRouter(peerRid RoutingID) RequestOp {
 			))
 		}); err != nil {
 			handle.Delete()
-			prepared.commit()
 			return err
 		}
-		prepared.commit()
 		startSpotRequestProgress(s.raw(), state)
 		go func() {
 			result := state.wait()
@@ -1416,22 +1413,21 @@ func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error {
 }
 
 func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
+	builderParts := make([]requestBuilderPart, len(parts))
+	for i, part := range parts {
+		builderParts[i] = requestBuilderPart{message: part}
+	}
+	return s.startChannelRequestBuilder(channelName, flags, timeout, builderParts)
+}
+
+func (s *Spot) startChannelRequestBuilder(channelName string, flags SendFlags, timeout time.Duration, parts []requestBuilderPart) (*replyCallbackState, error) {
 	if timeout <= 0 {
 		timeout = defaultRequestTimeout
-	}
-	cloned, err := cloneParts(parts)
-	if err != nil {
-		return nil, err
-	}
-	prepared, err := prepareMultipart(cloned)
-	if err != nil {
-		closeMessageSlice(cloned)
-		return nil, err
 	}
 	state := newReplyCallbackState()
 	handle := cgo.NewHandle(state)
 	if err := s.core.withCString(channelName, func(cstr *C.char) error {
-		return submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+		return submitMultipartFromRequestParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 			return submitErrorFromResult(C.zlink_spot_request_channel_part_go_local(
 				s.raw(),
 				cstr,
@@ -1444,10 +1440,8 @@ func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout 
 		})
 	}); err != nil {
 		handle.Delete()
-		prepared.commit()
 		return nil, err
 	}
-	prepared.commit()
 	startSpotRequestProgress(s.raw(), state)
 	return state, nil
 }

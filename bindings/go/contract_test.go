@@ -284,9 +284,13 @@ func TestRequestReplyCanonicalDealerRouterRoundTrip(t *testing.T) {
 		}
 	}()
 
-	replyCh, err := dealerSocket.Request().Message(newMessage(t, "ping")).Timeout(2 * time.Second).SubmitAsync(nil)
+	requestPayload := []byte("ping")
+	replyCh, err := dealerSocket.Request().Bytes(requestPayload).Timeout(2 * time.Second).SubmitAsync(nil)
 	if err != nil {
 		t.Fatalf("Request() error = %v", err)
+	}
+	if !bytes.Equal(requestPayload, []byte("ping")) {
+		t.Fatalf("Request().Bytes() mutated caller payload = %q", string(requestPayload))
 	}
 	completion := <-replyCh
 	if completion.Err != nil {

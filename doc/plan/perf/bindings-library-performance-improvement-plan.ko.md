@@ -959,6 +959,12 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   47.5%로 기준선 아래지만, 같은 조건 no-code 재측정 `perf_go_multi_linux_20260525_042547.txt`
   28.512Kmsg/s보다 높은 31.792Kmsg/s라 적용한다. 보류는 유지하되, wss 65536B는
   42.5% 대표값에서 47.5%로 갱신한다.
+- 같은 server `RecvPart` 확대를 tcp 131072/262144B에도 적용하는 후보를 다시 시험했다.
+  같은 조건 C 기준 `perf_c_multi_linux_20260525_042941.txt`는 91.450/47.439Kmsg/s이고,
+  no-code Go `perf_go_multi_linux_20260525_042958.txt`는 40.339/20.962Kmsg/s였다.
+  후보 `perf_go_multi_linux_20260525_043032.txt`는 40.458/20.816Kmsg/s로 131072B는
+  오차 수준, 262144B는 하락이라 반영하지 않는다. tcp 대형 DD 병목은 server receive
+  copy만으로는 해소되지 않는다.
 - 2026-05-25 재검토: 같은 `Bytes(...)` 경로를 tcp 1024B 이하에도 넓혔다. `go test ./...`는
   통과했고, 같은 조건 제한 재측정 C `perf_c_multi_linux_20260525_040430.txt` 대비 Go
   `perf_go_multi_linux_20260525_040452.txt`에서 tcp 64/256/1024B가 45.4/64.8/81.1%로

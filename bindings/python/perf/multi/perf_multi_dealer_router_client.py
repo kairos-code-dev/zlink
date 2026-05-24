@@ -9,13 +9,13 @@ from perf_multi_common import (
     apply_multi_socket_options,
     benchmark_run_id,
     configure_multi_tls_client,
-    extract_metric_payload,
     is_active_message,
     latency_ns_from_message,
     new_payload,
     parse_client_args,
     perf_client_context,
     print_result_lines,
+    received_metric_payload,
     recv_nonblocking,
     resolve_multi_connect_ready_timeout_ms,
     result_metrics,
@@ -141,22 +141,21 @@ def main(argv=None):
                                 if msg is None:
                                     break
                                 with msg:
-                                    parts = msg.to_bytes_list()
+                                    data = received_metric_payload(msg)
+                                    header = latency_ns_from_message(data) if data else None
+                                    # C: every matched header counts (++local_recv,
+                                    # -> recv_count); latency only added when not
+                                    # clock-skewed (sent_ts_ns>0 && now>=sent_ts),
+                                    # halved for the round trip.
+                                    if data and is_active_message(
+                                        data,
+                                        expected_msg_size=args.msg_size,
+                                        run_id=run_id,
+                                    ):
+                                        received += 1
+                                        if header is not None:
+                                            latencies.append(header / 2.0)
                                 waiting_reply[index] = False
-                                data = extract_metric_payload(parts)
-                                header = latency_ns_from_message(data) if data else None
-                                # C: every matched header counts (++local_recv,
-                                # → recv_count); latency only added when not
-                                # clock-skewed (sent_ts_ns>0 && now>=sent_ts),
-                                # halved for the round trip.
-                                if data and is_active_message(
-                                    data,
-                                    expected_msg_size=args.msg_size,
-                                    run_id=run_id,
-                                ):
-                                    received += 1
-                                    if header is not None:
-                                        latencies.append(header / 2.0)
                                 if time.perf_counter() < active_deadline:
                                     send_pending[index] = True
                 if received == 0:

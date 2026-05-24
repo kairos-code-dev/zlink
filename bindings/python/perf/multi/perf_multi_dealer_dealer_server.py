@@ -10,14 +10,14 @@ from perf_multi_common import (
     benchmark_endpoint,
     benchmark_run_id,
     configure_multi_tls_server,
-    extract_metric_payload,
     is_active_message,
-    is_stop_token_in_parts,
     latency_ns_from_message,
     print_result_lines,
     recv_nonblocking,
     parse_server_args,
     perf_server_context,
+    received_has_stop_token,
+    received_metric_payload,
     result_metrics,
     safe_poll,
 )
@@ -72,20 +72,19 @@ def main(argv=None):
                             if msg is None:
                                 return
                             with msg:
-                                parts = msg.to_bytes_list()
-                            if is_stop_token_in_parts(parts):
-                                continue
-                            data = extract_metric_payload(parts)
-                            if not is_active_message(
-                                data,
-                                expected_msg_size=args.msg_size,
-                                run_id=run_id,
-                            ):
-                                continue
-                            count += 1
-                            latency = latency_ns_from_message(data)
-                            if latency is not None:
-                                latencies.append(latency)
+                                if received_has_stop_token(msg):
+                                    continue
+                                data = received_metric_payload(msg)
+                                if not is_active_message(
+                                    data,
+                                    expected_msg_size=args.msg_size,
+                                    run_id=run_id,
+                                ):
+                                    continue
+                                count += 1
+                                latency = latency_ns_from_message(data)
+                                if latency is not None:
+                                    latencies.append(latency)
 
                     # C run_receive_window: poll(-1) POLLIN, count until the
                     # measure deadline, then break.

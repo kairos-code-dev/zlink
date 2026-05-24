@@ -10,12 +10,13 @@ from perf_multi_common import (
     apply_multi_socket_options,
     benchmark_run_id,
     configure_multi_tls_client,
-    is_stop_token_in_parts,
     latency_ns_from_message,
     is_active_message,
     parse_client_args,
     perf_client_context,
     print_result_lines,
+    received_has_stop_token,
+    received_metric_payload,
     recv_nonblocking,
     resolve_multi_connect_ready_timeout_ms,
     result_metrics,
@@ -97,25 +98,22 @@ def main(argv=None):
                             if received is None:
                                 break
                             with received:
-                                parts = received.to_bytes_list()
-                            if is_stop_token_in_parts(parts):
-                                stopped[index] = True
-                                break
-                            if not parts:
-                                continue
-                            data = parts[0]
-                            if not is_active_message(
-                                data,
-                                expected_msg_size=args.msg_size,
-                                run_id=run_id,
-                            ):
-                                continue
-                            if time.perf_counter() >= active_deadline:
-                                continue
-                            latency = latency_ns_from_message(data)
-                            if latency is not None:
-                                latencies.append(latency)
-                            count += 1
+                                if received_has_stop_token(received):
+                                    stopped[index] = True
+                                    break
+                                data = received_metric_payload(received)
+                                if not is_active_message(
+                                    data,
+                                    expected_msg_size=args.msg_size,
+                                    run_id=run_id,
+                                ):
+                                    continue
+                                if time.perf_counter() >= active_deadline:
+                                    continue
+                                latency = latency_ns_from_message(data)
+                                if latency is not None:
+                                    latencies.append(latency)
+                                count += 1
 
             if count <= 0:
                 raise RuntimeError(

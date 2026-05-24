@@ -16,6 +16,7 @@ from perf_stop_token import (
 )
 
 from perf_metrics import (
+    HEADER_MAGIC,
     HEADER_SIZE,
     benchmark_run_id,
     build_report_path,
@@ -48,6 +49,29 @@ from perf_metrics import (
 
 
 TOPIC = b"bench"
+
+
+def received_has_stop_token(received):
+    for part in received:
+        data = part.data
+        if len(data) == len(STOP_TOKEN) and data == STOP_TOKEN:
+            return True
+    return False
+
+
+def received_metric_payload(received, *, expected_size=None):
+    if not received:
+        return memoryview(b"")
+    return metric_payload_data(received.parts[-1].data, expected_size=expected_size)
+
+
+def metric_payload_data(data, *, expected_size=None):
+    if expected_size is not None and len(data) != expected_size:
+        return memoryview(b"")
+    header = decode_header(data)
+    if header is not None and header["magic"] == HEADER_MAGIC:
+        return data
+    return memoryview(b"")
 
 
 def parse_client_args(argv, *, pattern):

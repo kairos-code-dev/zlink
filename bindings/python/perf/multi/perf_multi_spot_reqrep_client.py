@@ -16,6 +16,7 @@ from perf_multi_common import (
     configure_multi_tls_server,
     is_active_message,
     latency_ns_from_message,
+    metric_payload_data,
     parse_client_args,
     perf_client_context,
     print_result_lines,
@@ -221,7 +222,7 @@ def main(argv=None):
                     try:
                         if result != zlink.RequestResult.OK or not messages:
                             return
-                        data = messages[0].to_bytes()
+                        data = metric_payload_data(messages[0].data)
                         if (
                             time.perf_counter() < active_deadline
                             and is_active_message(

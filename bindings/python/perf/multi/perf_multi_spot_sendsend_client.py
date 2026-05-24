@@ -19,6 +19,7 @@ from perf_multi_common import (
     perf_client_context,
     print_result_lines,
     publish_control_payload,
+    received_metric_payload,
     receive_control_payload,
     resolve_multi_connect_ready_timeout_ms,
     resolve_multi_spot_control_settle_s,
@@ -59,10 +60,7 @@ def _drain_reply(spot, *, expected_msg_size, run_id, active_deadline, latencies,
         with received:
             if received.request_seq not in (None, 0):
                 continue
-            parts = received.to_bytes_list()
-            if not parts:
-                continue
-            data = parts[-1]
+            data = received_metric_payload(received)
             if (
                 record
                 and time.perf_counter() < active_deadline

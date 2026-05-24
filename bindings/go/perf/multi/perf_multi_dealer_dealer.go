@@ -254,7 +254,31 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 	// Mirrors the C++ dealer_dealer client's per-socket try_send_once loop.
 	blast := func(i int) {
 		client := clients[i]
+		useBytes := useMultiDealerDealerBytes(cfg.transport, cfg.msgSize)
+		var payload []byte
+		if useBytes {
+			payload = make([]byte, cfg.msgSize)
+		}
 		for time.Now().Before(window.StopAt) {
+			if useBytes {
+				perfcommon.StampWindowPayload(payload, window.ActiveAt)
+				sent, sendErr := client.socket.Send().Bytes(payload).Flags(zlink.SendFlagsDontWait).Submit(nil)
+				if sendErr == nil && sent {
+					if pending[i] {
+						pending[i] = false
+						perfcommon.Must(poller.ModifySocket(client.socket, 0))
+					}
+					continue
+				}
+				if sendErr != nil && !perfcommon.IsTransient(sendErr) {
+					perfcommon.Must(fmt.Errorf("multi dealer/dealer client send: %w", sendErr))
+				}
+				if !pending[i] {
+					pending[i] = true
+					perfcommon.Must(poller.ModifySocket(client.socket, perfcommon.ZLinkPollOut))
+				}
+				return
+			}
 			sent, sendErr := perfcommon.SubmitWindowPayload(cfg.msgSize, window.ActiveAt, func(message *zlink.Message) (bool, error) {
 				if !useMultiDealerDealerMoveMessage(cfg.transport, cfg.msgSize) {
 					return client.socket.Send().Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
@@ -313,6 +337,17 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 				blast(idx)
 			}
 		}
+	}
+}
+
+func useMultiDealerDealerBytes(transport string, msgSize int) bool {
+	switch transport {
+	case "tcp":
+		return msgSize == 65536
+	case "ws":
+		return msgSize == 65536 || msgSize == 131072
+	default:
+		return false
 	}
 }
 

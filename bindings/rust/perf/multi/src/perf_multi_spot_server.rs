@@ -201,18 +201,25 @@ fn main() {
     }
 
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let mut buf = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
+    let payload_size = args.msg_size.max(common::HEADER_SIZE);
     let mut seq = 1u64;
     while Instant::now() < deadline {
-        common::encode_header(&mut buf, common::PHASE_ACTIVE, args.msg_size as u32, seq);
-        seq += 1;
+        let mut msg = Message::with_size(payload_size).expect("publish msg");
+        common::encode_header(
+            msg.data_mut(),
+            common::PHASE_ACTIVE,
+            args.msg_size as u32,
+            seq,
+        );
         match data_spot
             .publish(TOPIC)
-            .message(Message::copy_from(&buf).expect("publish msg"))
+            .message(msg)
             .flags(SendFlags::DONT_WAIT)
             .submit()
         {
-            Ok(_) => {}
+            Ok(_) => {
+                seq += 1;
+            }
             Err(err) if err.code() == SubmitResult::Backpressured => {
                 thread::sleep(Duration::from_millis(1));
             }

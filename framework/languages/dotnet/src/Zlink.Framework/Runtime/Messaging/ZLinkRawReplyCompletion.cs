@@ -9,7 +9,7 @@ internal static class ZLinkRawReplyCompletion
         IReadOnlyList<Message> reply,
         Action<IReadOnlyList<Message>> complete,
         Action<Exception> fail,
-        string failureMessage)
+        string operationName)
     {
         if (result == RequestResult.Ok)
         {
@@ -18,14 +18,14 @@ internal static class ZLinkRawReplyCompletion
         }
 
         ZLinkMessageParts.DisposeAll(reply);
-        fail(new TimeoutException(failureMessage));
+        fail(ZLinkRequestFailureMapper.CreateCompletionException(result, operationName));
     }
 
     public static void Complete(
         RequestResult result,
         IReadOnlyList<Message> reply,
         TaskCompletionSource<IReadOnlyList<Message>> completion,
-        string failureMessage)
+        string operationName)
     {
         if (result == RequestResult.Ok)
         {
@@ -34,6 +34,6 @@ internal static class ZLinkRawReplyCompletion
         }
 
         ZLinkMessageParts.DisposeAll(reply);
-        completion.TrySetException(new TimeoutException(failureMessage));
+        completion.TrySetException(ZLinkRequestFailureMapper.CreateCompletionException(result, operationName));
     }
 }

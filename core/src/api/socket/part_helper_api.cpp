@@ -45,6 +45,7 @@ bool send_family_requires_routed_scope (
     return family_ == send_family_send_rid
            || family_ == send_family_router_request
            || family_ == send_family_dealer_request
+           || family_ == send_family_dealer_request_frame
            || family_ == send_family_router_reply
            || family_ == send_family_spot_send_channel
            || family_ == send_family_spot_request_channel
@@ -55,7 +56,8 @@ bool send_family_requires_routed_scope (
            || family_ == send_family_spot_reply_router
            || family_ == send_family_router_request_spot
            || family_ == send_family_router_reply_spot
-           || family_ == send_family_router_send_spot;
+           || family_ == send_family_router_send_spot
+           || family_ == send_family_dealer_reply;
 }
 
 std::unique_ptr<zlink::socket_public_send_scope_t> create_send_scope (
@@ -145,6 +147,7 @@ zlink::part_helper_internal::recv_sequence_state_t::recv_sequence_state_t () :
     return_source_rid_as_null (true),
     return_source_spot_rid_as_null (true),
     request_seq (0),
+    message_type (0),
     next_part_index (0)
 {
     memset (&source_node_rid, 0, sizeof (source_node_rid));
@@ -356,6 +359,7 @@ void zlink::part_helper_internal::set_recv_metadata (
     copy_routing_id (source_node_rid_, &recv_->source_node_rid);
     copy_routing_id (source_spot_rid_, &recv_->source_spot_rid);
     recv_->request_seq = request_seq_;
+    recv_->message_type = 0;
 }
 
 int zlink::part_helper_internal::buffer_recv_parts (recv_sequence_state_t *recv_,
@@ -474,6 +478,7 @@ void zlink::part_helper_internal::reset_recv_sequence (recv_sequence_state_t *st
     state_->family = recv_family_none;
     state_->source_socket = NULL;
     state_->owner_thread = std::thread::id ();
+    state_->message_type = 0;
 }
 
 bool zlink::part_helper_internal::aggregate_send_mode_active ()

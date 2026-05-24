@@ -52,6 +52,22 @@ public abstract partial class RegistrationValidationSupport
         }
     }
 
+    protected sealed record TestSendMessage(string Value);
+
+    protected sealed class AlternateTestSendHandler : IZLinkSendHandler<TestSendMessage>
+    {
+        public ValueTask HandleAsync(
+            TestSendMessage message,
+            ZLinkSendContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = message;
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+    }
+
     protected sealed record TestPublishedEvent(string Value);
 
     [ZLinkHandlerGroup("validation-publish")]

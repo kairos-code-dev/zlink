@@ -145,6 +145,18 @@ bool zlink::lb_t::has_positive_weight_pipe () const
     return false;
 }
 
+bool zlink::lb_t::contains (pipe_t *pipe_) const
+{
+    if (!pipe_)
+        return false;
+
+    for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
+        if (_pipes[i] == pipe_)
+            return true;
+    }
+    return false;
+}
+
 void zlink::lb_t::mark_weighted_dirty ()
 {
     _weighted_dirty = true;

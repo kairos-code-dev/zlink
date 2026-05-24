@@ -1,4 +1,7 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Zlink.Framework.Runtime.Core;
+using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Messaging;
 using Zlink.Framework.Runtime.Spots;
 
@@ -8,9 +11,12 @@ internal sealed class ZLinkChannelPacketDispatcher(
     ZLinkHandlerRegistry handlerRegistry,
     ZLinkHandlerDispatcher dispatcher,
     ZLinkFrameworkRegistration registration,
-    ZLinkFrameworkRuntime runtime)
+    ZLinkFrameworkRuntime runtime,
+    ILogger<ZLinkChannelPacketDispatcher>? logger = null)
 {
     private static readonly IReadOnlySet<string> EmptyGroups = new HashSet<string>(StringComparer.Ordinal);
+    private readonly ILogger<ZLinkChannelPacketDispatcher> _logger =
+        logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance;
 
     public async Task DispatchServerMessageAsync(
         string channelName,
@@ -67,6 +73,19 @@ internal sealed class ZLinkChannelPacketDispatcher(
             channelName,
             ResolveMappedGroups(channelName),
             header.MessageName);
+        if (endpoints.Count == 0)
+        {
+            ZLinkMessageFlowLogger.Dropped(
+                _logger,
+                registration.DispatchOptions.Unhandled.PublishLogLevel,
+                "Channel",
+                "Publish",
+                header.MessageName,
+                "no-handler",
+                channelName);
+            return;
+        }
+
         Dictionary<Type, object?>? decodedMessages = null;
 
         foreach (var endpoint in endpoints)
@@ -93,6 +112,54 @@ internal sealed class ZLinkChannelPacketDispatcher(
         }
     }
 
+    public async Task DispatchDealerMeshMessageAsync(
+        string channelName,
+        IZLinkBackendDealerSocket dealer,
+        ZLinkDealerMeshPendingRequests pendingRequests,
+        ZLinkBackendDealerReceived received,
+        CancellationToken cancellationToken)
+    {
+        if (received.Parts.Count == 0)
+        {
+            return;
+        }
+
+        switch (received.MessageType)
+        {
+            case DealerMessageType.Reply:
+            case DealerMessageType.ErrorReply:
+                if (!pendingRequests.TryComplete(received.RequestSeq, received.Parts))
+                {
+                    ZLinkMessageFlowLogger.Dropped(
+                        _logger,
+                        LogLevel.Warning,
+                        "DealerMeshChannel",
+                        received.MessageType == DealerMessageType.Reply
+                            ? "Response"
+                            : "Error",
+                        "unknown",
+                        "unexpected-reply",
+                        channelName);
+                }
+                return;
+            case DealerMessageType.Request:
+                await DispatchDealerMeshRequestAsync(
+                        channelName,
+                        dealer,
+                        received,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            case DealerMessageType.Raw:
+                await DispatchDealerMeshRawAsync(
+                        channelName,
+                        received,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+        }
+    }
+
     private async Task HandleRequestAsync(
         string channelName,
         IZLinkBackendRouterSocket router,
@@ -100,11 +167,63 @@ internal sealed class ZLinkChannelPacketDispatcher(
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
-        var endpoint = handlerRegistry.GetRequest(
-            channelName,
-            ResolveMappedGroups(channelName),
-            header.MessageName);
-        var message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, endpoint.MessageType);
+        if (!handlerRegistry.TryGetRequest(
+                channelName,
+                ResolveMappedGroups(channelName),
+                header.MessageName,
+                out var endpoint)
+            || endpoint is null)
+        {
+            var error = new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.HandlerNotFound,
+                $"No request handler is registered for '{channelName}:{header.MessageName}'.");
+            ZLinkMessageFlowLogger.HandlerMissing(
+                _logger,
+                LogLevel.Warning,
+                "Channel",
+                "Request",
+                header.MessageName,
+                "reply-error",
+                "no-handler",
+                channelName);
+            ZLinkChannelReplyWriter.ReplyRequest(
+                router,
+                received,
+                ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error),
+                null,
+                null);
+            return;
+        }
+
+        object? message;
+        try
+        {
+            message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, endpoint.MessageType);
+        }
+        catch (Exception ex)
+        {
+            var error = new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                $"PayloadDecodeFailed: failed to decode request payload for '{channelName}:{header.MessageName}'.",
+                innerException: ex);
+            ZLinkMessageFlowLogger.PayloadDecodeFailed(
+                _logger,
+                "Channel",
+                "Request",
+                header.MessageName,
+                "reply-error",
+                "payload-decode-failed",
+                ex,
+                channelName);
+            ZLinkChannelReplyWriter.ReplyRequest(
+                router,
+                received,
+                ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error),
+                null,
+                null);
+            return;
+        }
+
         var context = new ZLinkRequestContext(
             channelName,
             header.MessageName,
@@ -134,6 +253,173 @@ internal sealed class ZLinkChannelPacketDispatcher(
                 null,
                 null);
         }
+    }
+
+    private async Task DispatchDealerMeshRequestAsync(
+        string channelName,
+        IZLinkBackendDealerSocket dealer,
+        ZLinkBackendDealerReceived received,
+        CancellationToken cancellationToken)
+    {
+        ZLinkEnvelopeHeader header;
+        try
+        {
+            header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+        }
+        catch (Exception ex)
+        {
+            ZLinkMessageFlowLogger.PayloadDecodeFailed(
+                _logger,
+                "DealerMeshChannel",
+                "Request",
+                "unknown",
+                "drop",
+                "header-decode-failed",
+                ex,
+                channelName);
+            return;
+        }
+
+        if (header.Kind != ZLinkMessageKind.Request)
+        {
+            ZLinkMessageFlowLogger.Dropped(
+                _logger,
+                LogLevel.Warning,
+                "DealerMeshChannel",
+                header.Kind.ToString(),
+                header.MessageName,
+                "invalid-request-kind",
+                channelName);
+            return;
+        }
+
+        if (!handlerRegistry.TryGetRequest(
+                channelName,
+                ResolveMappedGroups(channelName),
+                header.MessageName,
+                out var endpoint)
+            || endpoint is null)
+        {
+            var error = new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.HandlerNotFound,
+                $"No request handler is registered for '{channelName}:{header.MessageName}'.");
+            ZLinkMessageFlowLogger.HandlerMissing(
+                _logger,
+                LogLevel.Warning,
+                "DealerMeshChannel",
+                "Request",
+                header.MessageName,
+                "reply-error",
+                "no-handler",
+                channelName);
+            ZLinkChannelReplyWriter.ReplyDealerRequest(
+                dealer,
+                received.RequestSeq,
+                ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error),
+                null,
+                null);
+            return;
+        }
+
+        object? message;
+        try
+        {
+            message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, endpoint.MessageType);
+        }
+        catch (Exception ex)
+        {
+            var error = new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                $"PayloadDecodeFailed: failed to decode request payload for '{channelName}:{header.MessageName}'.",
+                innerException: ex);
+            ZLinkMessageFlowLogger.PayloadDecodeFailed(
+                _logger,
+                "DealerMeshChannel",
+                "Request",
+                header.MessageName,
+                "reply-error",
+                "payload-decode-failed",
+                ex,
+                channelName);
+            ZLinkChannelReplyWriter.ReplyDealerRequest(
+                dealer,
+                received.RequestSeq,
+                ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error),
+                null,
+                null);
+            return;
+        }
+
+        var context = new ZLinkRequestContext(
+            channelName,
+            header.MessageName,
+            header.ContentType,
+            header.CorrelationId,
+            header.Deadline,
+            EmptyServiceProvider.Instance,
+            cancellationToken);
+
+        try
+        {
+            var reply = await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
+                .ConfigureAwait(false);
+            ZLinkChannelReplyWriter.ReplyDealerRequest(
+                dealer,
+                received.RequestSeq,
+                ZLinkChannelReplyWriter.CreateReplyHeader(ZLinkMessageKind.Response, channelName, header),
+                reply,
+                endpoint.ReplyType);
+        }
+        catch (Exception ex)
+        {
+            ZLinkChannelReplyWriter.ReplyDealerRequest(
+                dealer,
+                received.RequestSeq,
+                ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, ex),
+                null,
+                null);
+        }
+    }
+
+    private async Task DispatchDealerMeshRawAsync(
+        string channelName,
+        ZLinkBackendDealerReceived received,
+        CancellationToken cancellationToken)
+    {
+        ZLinkEnvelopeHeader header;
+        try
+        {
+            header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+        }
+        catch (Exception ex)
+        {
+            ZLinkMessageFlowLogger.PayloadDecodeFailed(
+                _logger,
+                "DealerMeshChannel",
+                "Send",
+                "unknown",
+                "drop",
+                "header-decode-failed",
+                ex,
+                channelName);
+            return;
+        }
+
+        if (header.Kind == ZLinkMessageKind.Command)
+        {
+            await HandleCommandAsync(channelName, received.Parts, header, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        ZLinkMessageFlowLogger.Dropped(
+            _logger,
+            LogLevel.Warning,
+            "DealerMeshChannel",
+            header.Kind.ToString(),
+            header.MessageName,
+            "unsupported-dealer-raw-kind",
+            channelName);
     }
 
     private async Task HandleRoutedSpotSendAsync(
@@ -265,10 +551,24 @@ internal sealed class ZLinkChannelPacketDispatcher(
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
-        var endpoint = handlerRegistry.GetCommand(
-            channelName,
-            ResolveMappedGroups(channelName),
-            header.MessageName);
+        if (!handlerRegistry.TryGetCommand(
+                channelName,
+                ResolveMappedGroups(channelName),
+                header.MessageName,
+                out var endpoint)
+            || endpoint is null)
+        {
+            ZLinkMessageFlowLogger.Dropped(
+                _logger,
+                registration.DispatchOptions.Unhandled.SendLogLevel,
+                "Channel",
+                "Send",
+                header.MessageName,
+                "no-handler",
+                channelName);
+            return;
+        }
+
         var message = ZLinkEnvelopeCodec.DecodeBody(parts, endpoint.MessageType);
         var context = new ZLinkSendContext(
             channelName,

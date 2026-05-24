@@ -43,6 +43,23 @@ class ReceivedMessage:
     def __len__(self):
         return _msg_size(self._native_msg())
 
+    @property
+    def data(self):
+        """Zero-copy ``memoryview`` over this received part's native buffer.
+
+        Mirrors :pyattr:`Message.data` (which wraps the same C
+        ``zlink_msg_data`` contract) so callers can inspect a received
+        payload — e.g. decode a fixed header — without copying it via
+        :meth:`to_bytes`. The view borrows the native buffer and is only
+        valid until the owning message is closed.
+        """
+        native = self._native_msg()
+        ptr = _msg_data_ptr(native)
+        size = _msg_size(native)
+        if not ptr or size <= 0:
+            return memoryview(b"")
+        return memoryview((ctypes.c_ubyte * size).from_address(ptr)).cast("B")
+
     def to_bytes(self):
         return _msg_to_bytes(self._native_msg())
 

@@ -25,6 +25,15 @@ internal sealed class ZLinkRouteHandlerRegistry(IEnumerable<ZLinkRouteHandlerDes
                 $"No routed handler is registered for '{routerChannelId}:{kind}:{packetName}'.");
     }
 
+    public bool TryGet(
+        string routerChannelId,
+        ZLinkMessageKind kind,
+        string packetName,
+        out ZLinkRouteHandlerDescriptor? descriptor)
+    {
+        return _handlers.TryGetValue((routerChannelId, kind, packetName), out descriptor);
+    }
+
     private static Dictionary<(string Channel, ZLinkMessageKind Kind, string Packet), ZLinkRouteHandlerDescriptor> Build(
         IEnumerable<ZLinkRouteHandlerDescriptor> descriptors)
     {

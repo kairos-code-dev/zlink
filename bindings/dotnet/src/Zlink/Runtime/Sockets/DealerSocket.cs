@@ -59,6 +59,109 @@ public sealed class DealerSocket : MessageSocketBase, IDealerSocket
         return new DealerRequestOperation(this);
     }
 
+    public bool RequestFrame(ulong requestSeq, IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        try
+        {
+            RequestReplySupport.CloneAndSubmitParts(parts,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_dealer_request_frame_part(Handle,
+                        requestSeq, ref nativePart, (int)flags, partFlag));
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0)
+        {
+            if (RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+            {
+                return false;
+            }
+
+            throw;
+        }
+    }
+
+    public DealerReceived? RecvDealer(RecvFlags flags = RecvFlags.None)
+    {
+        List<Message> parts = new();
+        DealerMessageType messageType = DealerMessageType.Raw;
+        ulong requestSeq = 0;
+        bool firstPart = true;
+
+        try
+        {
+            while (true)
+            {
+                ZlinkMsg nativePart = default;
+                int initRc = NativeMethods.zlink_msg_init(ref nativePart);
+                if (initRc != 0)
+                    throw ZlinkException.CreateRecvException(
+                        NativeMethods.zlink_errno());
+
+                bool ownsNativePart = true;
+                int recvFlags = firstPart ? (int)flags : 0;
+                try
+                {
+                    int rc = NativeMethods.zlink_dealer_recv_part(Handle,
+                        out byte nativeMessageType, out ulong nativeRequestSeq,
+                        ref nativePart, out NativeMethods.ZlinkPartFlag hasMore,
+                        recvFlags);
+
+                    if (rc != 0)
+                    {
+                        int errno = NativeMethods.zlink_errno();
+                        if (firstPart && (flags & RecvFlags.DontWait) != 0
+                            && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
+                                or ErrorCode.EBusy)
+                        {
+                            return null;
+                        }
+
+                        throw ZlinkException.CreateRecvException(errno);
+                    }
+
+                    messageType = (DealerMessageType)nativeMessageType;
+                    requestSeq = nativeRequestSeq;
+                    parts.Add(Message.AdoptNative(ref nativePart));
+                    ownsNativePart = false;
+                    firstPart = false;
+
+                    if (hasMore == NativeMethods.ZlinkPartFlag.Final)
+                        break;
+                }
+                finally
+                {
+                    if (ownsNativePart)
+                        NativeMethods.zlink_msg_close(ref nativePart);
+                }
+            }
+
+            DealerReplyHandler? replyHandler =
+                messageType == DealerMessageType.Request ? Reply : null;
+            return new DealerReceived(messageType, requestSeq, parts.ToArray(),
+                replyHandler);
+        }
+        catch
+        {
+            RequestReplySupport.DisposeParts(parts);
+            throw;
+        }
+    }
+
+    public void Reply(ulong requestToken, IReadOnlyList<Message> parts)
+    {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        RequestReplySupport.CloneAndSubmitParts(parts,
+            (ref ZlinkMsg nativePart, NativeMethods.ZlinkPartFlag partFlag) =>
+                NativeMethods.zlink_dealer_reply_part(Handle, requestToken,
+                    ref nativePart, partFlag));
+    }
+
     internal async Task<IReadOnlyList<Message>> RequestCore(
         IReadOnlyList<Message> parts, TimeSpan timeout,
         CancellationToken ct = default)

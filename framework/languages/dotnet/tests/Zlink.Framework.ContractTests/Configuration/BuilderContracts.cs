@@ -426,6 +426,20 @@ public sealed class BuilderContracts
     {
         public void EnableClient(Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null) =>
             configure?.Invoke(new CapabilityBuilder());
+
+        public void AddHandlerGroup(string groupName) { }
+
+        public void AddSendHandler<THandler, TMessage>(string? packetName = null)
+            where THandler : class, IZLinkSendHandler<TMessage> { }
+
+        public void AddSendHandler<THandler>(string? packetName = null)
+            where THandler : class { }
+
+        public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+            where THandler : class, IZLinkRequestHandler<TRequest, TReply> { }
+
+        public void AddRequestHandler<THandler>(string? packetName = null)
+            where THandler : class { }
     }
 
     private sealed class RouteMeshChannelBuilder : IZLinkRouteMeshChannelBuilder

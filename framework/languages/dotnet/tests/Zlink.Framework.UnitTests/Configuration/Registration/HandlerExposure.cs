@@ -263,6 +263,73 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_AllowsDealerMeshSendAndRequestHandlers()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.AddDealerMeshChannel("mesh", channel =>
+            {
+                channel.EnableClient();
+                channel.AddSendHandler<AlternateTestSendHandler, TestSendMessage>();
+                channel.AddRequestHandler<TestChannelRequestHandler>();
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var channel = Assert.Single(registration.Channels.Values);
+
+        Assert.Single(channel.SendHandlers);
+        Assert.Single(channel.RequestHandlers);
+        Assert.Equal(typeof(AlternateTestSendHandler), channel.SendHandlers[0].HandlerType);
+        Assert.Equal(typeof(TestChannelRequestHandler), channel.RequestHandlers[0].HandlerType);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_RejectsDealerMeshPublishHandlerGroup()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
+                options.AddDealerMeshChannel("mesh", channel =>
+                {
+                    channel.EnableClient();
+                    channel.AddHandlerGroup("validation-publish");
+                });
+            }));
+
+        Assert.Contains("cannot expose publish handlers", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_RegistersDealerMeshHandlersForDependencyInjection()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.AddDealerMeshChannel("mesh", channel =>
+            {
+                channel.EnableClient();
+                channel.AddRequestHandler<TestChannelRequestHandler>();
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetService<TestChannelRequestHandler>());
+    }
+
+
+    [Fact]
     public void AddZLinkFramework_AllowsSingleGenericRouteAndPublishHandlerRegistration()
     {
         var services = new ServiceCollection();
@@ -415,9 +482,30 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             fanoutMethods,
             static method => method.Name is "AddSendHandler" or "AddRequestHandler" or "EnableSpotRouteEgress");
 
+        Assert.Contains(
+            dealerMeshMethods,
+            static method => method.Name == nameof(IZLinkDealerMeshChannelBuilder.AddHandlerGroup)
+                && method.GetParameters() is [{ ParameterType: var parameterType }]
+                && parameterType == typeof(string));
+        Assert.Contains(
+            dealerMeshMethods,
+            static method => method.Name == nameof(IZLinkDealerMeshChannelBuilder.AddSendHandler)
+                && method.GetGenericArguments().Length == 1);
+        Assert.Contains(
+            dealerMeshMethods,
+            static method => method.Name == nameof(IZLinkDealerMeshChannelBuilder.AddSendHandler)
+                && method.GetGenericArguments().Length == 2);
+        Assert.Contains(
+            dealerMeshMethods,
+            static method => method.Name == nameof(IZLinkDealerMeshChannelBuilder.AddRequestHandler)
+                && method.GetGenericArguments().Length == 1);
+        Assert.Contains(
+            dealerMeshMethods,
+            static method => method.Name == nameof(IZLinkDealerMeshChannelBuilder.AddRequestHandler)
+                && method.GetGenericArguments().Length == 3);
         Assert.DoesNotContain(
             dealerMeshMethods,
-            static method => method.Name is "AddHandlerGroup" or "AddSendHandler" or "AddRequestHandler" or "AddPublishHandler" or "EnableSpotRouteEgress");
+            static method => method.Name is "AddPublishHandler" or "EnableSpotRouteEgress");
 
         static IReadOnlyList<System.Reflection.MethodInfo> PublicInterfaceMethods(Type type)
         {

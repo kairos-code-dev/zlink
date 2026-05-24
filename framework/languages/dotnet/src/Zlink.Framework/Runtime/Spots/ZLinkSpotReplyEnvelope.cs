@@ -21,4 +21,23 @@ internal static class ZLinkSpotReplyEnvelope
             null);
         return ZLinkEnvelopeCodec.EncodeParts(replyHeader, reply, replyType);
     }
+
+    public static IReadOnlyList<Message> EncodeErrorParts(
+        string channelName,
+        string messageName,
+        string? correlationId,
+        Exception exception)
+    {
+        var replyHeader = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Error,
+            channelName,
+            messageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            correlationId,
+            null,
+            null,
+            exception.GetType().Name,
+            exception.Message);
+        return ZLinkEnvelopeCodec.EncodeParts(replyHeader, null, null);
+    }
 }

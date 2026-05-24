@@ -102,6 +102,13 @@ public interface IDealerSocket : IMessageSocket
     string GetChannelName();
 
     RequestOperation Request();
+
+    bool RequestFrame(ulong requestSeq, IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None);
+
+    DealerReceived? RecvDealer(RecvFlags flags = RecvFlags.None);
+
+    void Reply(ulong requestToken, IReadOnlyList<Message> parts);
 }
 
 public interface IRouterSocket : IConnectableRoutedMessageSocket

@@ -25,6 +25,10 @@ class dealer_t : public socket_base_t
               int sid_);
     ~dealer_t () ZLINK_OVERRIDE;
 
+    int sendpipe_to (zlink::pipe_t *pipe_,
+                     zlink::msg_t *msg_,
+                     int flags_);
+
   protected:
     //  Overrides of functions from socket_base_t.
     void xattach_pipe (zlink::pipe_t *pipe_,
@@ -35,6 +39,8 @@ class dealer_t : public socket_base_t
                      size_t optvallen_) ZLINK_OVERRIDE;
     int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    int xrecv_pipe (zlink::msg_t *msg_,
+                    zlink::pipe_t **pipe_out_) ZLINK_OVERRIDE;
     bool xhas_in () ZLINK_OVERRIDE;
     bool xhas_out () ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;

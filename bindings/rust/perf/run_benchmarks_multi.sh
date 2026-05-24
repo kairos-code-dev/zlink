@@ -285,10 +285,16 @@ prepare_core_runtime() {
         echo "Build core/build before running Rust perf." >&2
         exit 1
     fi
+    # Compare against the resolved runtime, not the libzlink.so symlink: the
+    # symlink keeps its original creation mtime when only the versioned .so is
+    # rebuilt, which made this guard false-positive "stale" after every core
+    # rebuild (the Go runner already compares the versioned file directly).
+    local resolved_lib
+    resolved_lib="$(readlink -f "${CORE_LIB}" 2>/dev/null || echo "${CORE_LIB}")"
     local newer_source
     newer_source="$(
         find "${REPO_DIR}/core/src" "${REPO_DIR}/core/include" \
-            -type f -newer "${CORE_LIB}" -print -quit 2>/dev/null || true
+            -type f -newer "${resolved_lib}" -print -quit 2>/dev/null || true
     )"
     if [[ -n "${newer_source}" ]]; then
         echo "Error: stale core runtime detected for bindings/rust/perf." >&2

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -268,6 +269,11 @@ func runMultiSpotRecvWorkers(slots []multiSpotClientSlot, transport string, msgS
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// Pin each recv worker to its OS thread: the worker's drain loop is
+			// a tight cgo round-trip, and unpinned Ms pay Go-scheduler handoff
+			// latency on every backpressure wakeup (see runMultiRole).
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
 			result, err := runMultiSpotRecvWorker(slots, workerID, workerCount, msgSize, stopAt, &stop)
 			results[workerID] = result
 			if err != nil {

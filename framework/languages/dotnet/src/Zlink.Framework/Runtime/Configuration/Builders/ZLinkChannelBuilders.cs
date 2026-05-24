@@ -131,6 +131,61 @@ internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration reg
         registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
         configure?.Invoke(new ZLinkDealerMeshChannelClientCapabilityBuilder(registration.Client));
     }
+
+    public void AddHandlerGroup(string groupName)
+    {
+        ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
+    }
+
+    public void AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkSendHandler<TMessage>
+    {
+        registration.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            typeof(TMessage),
+            null,
+            packetName));
+    }
+
+    public void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+            typeof(THandler),
+            typeof(IZLinkSendHandler<>),
+            "send");
+        var args = handlerInterface.GetGenericArguments();
+        registration.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            null,
+            packetName));
+    }
+
+    public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRequestHandler<TRequest, TReply>
+    {
+        registration.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            typeof(TRequest),
+            typeof(TReply),
+            packetName));
+    }
+
+    public void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+            typeof(THandler),
+            typeof(IZLinkRequestHandler<,>),
+            "request");
+        var args = handlerInterface.GetGenericArguments();
+        registration.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            args[1],
+            packetName));
+    }
 }
 
 internal static class ZLinkHandlerGroupBuilderSupport

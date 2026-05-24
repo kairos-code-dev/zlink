@@ -103,7 +103,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         _stopToken.ThrowIfCancellationRequested();
 
-        if (TrySubmitNow(parts, trySubmit))
+        if (TrySubmitNow(parts, trySubmit, out _))
         {
             ZLinkMessageParts.DisposeAll(parts);
             return ValueTask.CompletedTask;
@@ -131,13 +131,41 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                 exception => completion.TrySetException(exception));
         }
 
-        if (TrySubmitNow(parts, Submit))
+        if (TrySubmitNow(parts, Submit, out var retryableFailure))
         {
             ZLinkMessageParts.DisposeAll(parts);
             return AwaitResultAsync<T>(completion.Task);
         }
 
+        if (retryableFailure is ZlinkSubmitException
+            {
+                Result: ZlinkSubmitException.ErrorCode.NotConnected
+                    or ZlinkSubmitException.ErrorCode.NotFound
+                    or ZlinkSubmitException.ErrorCode.NotAdmitted
+                    or ZlinkSubmitException.ErrorCode.InvalidState
+                    or ZlinkSubmitException.ErrorCode.InvalidArgument
+                    or ZlinkSubmitException.ErrorCode.InvalidHandle
+                    or ZlinkSubmitException.ErrorCode.NotSupported
+                    or ZlinkSubmitException.ErrorCode.ThreadViolation
+                    or ZlinkSubmitException.ErrorCode.OutOfMemory
+                    or ZlinkSubmitException.ErrorCode.SeqExhausted
+                    or ZlinkSubmitException.ErrorCode.Terminated
+                    or ZlinkSubmitException.ErrorCode.InternalError
+            } submitError)
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            completion.TrySetException(ZLinkRequestFailureMapper.CreateSubmitException(
+                submitError,
+                "ZLink request submit"));
+            return AwaitResultAsync<T>(completion.Task);
+        }
+
         var pendingSubmit = _operationFactory.CreateRequest(parts, Submit, completion);
+        if (retryableFailure is not null)
+        {
+            pendingSubmit.RecordSubmitFailure(retryableFailure);
+        }
+
         EnqueuePending(pendingSubmit, cancellationToken);
         return AwaitResultAsync<T>(pendingSubmit.Task);
     }
@@ -202,8 +230,26 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                     continue;
                 }
 
-                if (!TrySubmitNow(item.Parts, item.TrySubmit))
+                if (!TrySubmitNow(item.Parts, item.TrySubmit, out var retryableFailure))
                 {
+                    if (retryableFailure is not null)
+                    {
+                        if (!item.CompleteOnAccepted
+                            && retryableFailure is ZlinkSubmitException
+                            {
+                                Result: not ZlinkSubmitException.ErrorCode.Backpressured
+                            } requestSubmitError)
+                        {
+                            item.TryFail(ZLinkRequestFailureMapper.CreateSubmitException(
+                                requestSubmitError,
+                                "ZLink request submit"));
+                            Dequeue(item);
+                            continue;
+                        }
+
+                        item.RecordSubmitFailure(retryableFailure);
+                    }
+
                     return;
                 }
 
@@ -224,14 +270,19 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         }
     }
 
-    private bool TrySubmitNow(IReadOnlyList<Message> parts, Func<IReadOnlyList<Message>, bool> trySubmit)
+    private bool TrySubmitNow(
+        IReadOnlyList<Message> parts,
+        Func<IReadOnlyList<Message>, bool> trySubmit,
+        out ZlinkException? retryableFailure)
     {
+        retryableFailure = null;
         try
         {
             return trySubmit(parts);
         }
         catch (ZlinkException error) when (IsRetryableSubmitFailure(error))
         {
+            retryableFailure = error;
             return false;
         }
     }

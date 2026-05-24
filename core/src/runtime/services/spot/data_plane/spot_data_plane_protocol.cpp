@@ -48,6 +48,9 @@ static uint64_t default_bootstrap_broadcast_interval_ms (
   const spot_runtime_t *runtime_)
 {
     if (runtime_) {
+        if (runtime_->missing_external_routes_for_ready_peer ())
+            return 100;
+
         const std::string &bound_endpoint = runtime_->bound_endpoint;
         if (bound_endpoint.compare (0, 6, "tcp://") == 0
             || bound_endpoint.compare (0, 6, "tls://") == 0) {

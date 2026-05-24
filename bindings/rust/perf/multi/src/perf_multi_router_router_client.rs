@@ -80,6 +80,18 @@ fn main() {
         common::wait_monitor_ready(mon, ready_timeout, "multi router-router client");
     }
 
+    // Match the dealer-router client: unified poller with signal-driven
+    // perf_socket_poll(...,-1) when no socket made progress. The previous
+    // hot-loop thread::sleep(1ms) throttled small-message throughput to
+    // ~18-21% of C; a poller-driven wait removes that fixed-latency floor.
+    let poller = Poller::new().expect("poller");
+    for (index, sock) in sockets.iter().enumerate() {
+        poller
+            .add_socket(sock, POLLIN | POLLOUT, index)
+            .expect("poller add");
+    }
+    let mut poll_events = vec![PollEvent::default(); sockets.len().max(1)];
+
     let mut latency = common::LatencyStats::new();
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     while Instant::now() < deadline {
@@ -124,7 +136,14 @@ fn main() {
         if progressed {
             continue;
         }
-        std::thread::sleep(Duration::from_millis(1));
+        let remaining_ms = deadline
+            .saturating_duration_since(Instant::now())
+            .as_millis()
+            .max(1) as i64;
+        match poller.wait(&mut poll_events, remaining_ms) {
+            Ok(_) => {}
+            Err(err) => panic!("poller wait failed: {err}"),
+        }
     }
 
     common::print_result(

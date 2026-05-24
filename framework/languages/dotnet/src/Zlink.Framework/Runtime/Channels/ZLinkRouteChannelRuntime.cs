@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Messaging;
 
@@ -41,7 +43,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                 router,
                 handlers,
                 new ZLinkRouteHandlerInvoker(services),
-                internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance));
+                internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance,
+                services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkRoutePacketDispatcher>()));
     }
 
     public string RouterChannelId => _registration.RouterChannelId;

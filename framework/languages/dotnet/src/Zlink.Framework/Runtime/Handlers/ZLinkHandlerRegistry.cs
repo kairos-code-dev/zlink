@@ -52,6 +52,22 @@ internal sealed class ZLinkHandlerRegistry
             "No request handler is registered");
     }
 
+    public bool TryGetRequest(
+        string channelName,
+        IReadOnlySet<string> mappedGroups,
+        string messageName,
+        out ZLinkHandlerEndpointDescriptor? descriptor)
+    {
+        return TryGetSingle(
+            ZLinkMessageKind.Request,
+            _requests,
+            channelName,
+            mappedGroups,
+            messageName,
+            "request",
+            out descriptor);
+    }
+
     public ZLinkHandlerEndpointDescriptor GetCommand(
         string channelName,
         IReadOnlySet<string> mappedGroups,
@@ -65,6 +81,22 @@ internal sealed class ZLinkHandlerRegistry
             messageName,
             "send",
             "No send handler is registered");
+    }
+
+    public bool TryGetCommand(
+        string channelName,
+        IReadOnlySet<string> mappedGroups,
+        string messageName,
+        out ZLinkHandlerEndpointDescriptor? descriptor)
+    {
+        return TryGetSingle(
+            ZLinkMessageKind.Command,
+            _commands,
+            channelName,
+            mappedGroups,
+            messageName,
+            "send",
+            out descriptor);
     }
 
     public IReadOnlyList<ZLinkHandlerEndpointDescriptor> GetPublishes(
@@ -125,6 +157,43 @@ internal sealed class ZLinkHandlerRegistry
             ? SelectEndpoint(channelName, mappedGroups, messageName, endpoints, kindName)
             : throw new InvalidOperationException($"{missingMessage} for '{messageName}'.");
         return _singleSelections.GetOrAdd(key, selected);
+    }
+
+    private bool TryGetSingle(
+        ZLinkMessageKind kind,
+        IReadOnlyDictionary<string, IReadOnlyList<ZLinkHandlerEndpointDescriptor>> registry,
+        string channelName,
+        IReadOnlySet<string> mappedGroups,
+        string messageName,
+        string kindName,
+        out ZLinkHandlerEndpointDescriptor? descriptor)
+    {
+        var key = new ZLinkHandlerSelectionKey(kind, channelName, messageName);
+        if (_singleSelections.TryGetValue(key, out var cached))
+        {
+            descriptor = cached;
+            return true;
+        }
+
+        if (!registry.TryGetValue(messageName, out var endpoints))
+        {
+            descriptor = null;
+            return false;
+        }
+
+        var matches = FilterEndpoints(channelName, mappedGroups, endpoints);
+        switch (matches.Count)
+        {
+            case 0:
+                descriptor = null;
+                return false;
+            case 1:
+                descriptor = _singleSelections.GetOrAdd(key, matches[0]);
+                return true;
+            default:
+                throw new ZLinkConfigurationException(
+                    $"Duplicate {kindName} handler packet '{messageName}' is mapped to channel '{channelName}'.");
+        }
     }
 
     private static ZLinkHandlerEndpointDescriptor SelectEndpoint(

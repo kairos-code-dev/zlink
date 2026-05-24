@@ -126,7 +126,19 @@ internal sealed class ZLinkChannelRuntimeManager(
         {
             if (entry.Value.Client is not null)
             {
-                _ = GetOrCreateClientBundle(state, entry.Key);
+                var bundle = GetOrCreateClientBundle(state, entry.Key);
+                if (entry.Value.AutoConnectType == ZLinkAutoConnectType.DealerMesh)
+                {
+                    var channelName = entry.Key;
+                    state.ListenerTasks.Add(state.TaskRunner.Run(
+                        $"channel-dealer-mesh:{channelName}",
+                        ct => new ValueTask(channelMessagePump.RunDealerMeshLoopAsync(
+                            channelName,
+                            (IZLinkBackendDealerSocket)bundle.Socket,
+                            bundle.DealerMeshPendingRequests,
+                            bundle.ReceiveGate,
+                            ct))));
+                }
             }
         }
     }

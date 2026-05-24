@@ -150,6 +150,14 @@ typedef enum zlink_dealer_option_t
     ZLINK_DEALER_OPT_WEIGHT = 0x3203
 } zlink_dealer_option_t;
 
+typedef enum zlink_dealer_message_type_t
+{
+    ZLINK_DEALER_MESSAGE_RAW = 0,
+    ZLINK_DEALER_MESSAGE_REQUEST = 1,
+    ZLINK_DEALER_MESSAGE_REPLY = 2,
+    ZLINK_DEALER_MESSAGE_ERROR_REPLY = 3
+} zlink_dealer_message_type_t;
+
 typedef enum zlink_pub_option_t
 {
     ZLINK_PUB_OPT_VERBOSE = 0x3301,

@@ -75,6 +75,14 @@ int connect_external_router_peer (spot_node_t *node_,
         || runtime_->external_router->connect (peer_route_endpoint_.c_str ())
              != 0) {
         const int saved_errno = errno != 0 ? errno : EIO;
+        if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
+            std::fprintf (
+              stderr,
+              "[spot-direct] connect external router failed data=%s route=%s "
+              "endpoint=%s errno=%d\n",
+              peer_data_endpoint_.c_str (), route_id.c_str (),
+              peer_route_endpoint_.c_str (), saved_errno);
+        }
         (void) runtime_->external_router->term_endpoint (
           peer_route_endpoint_.c_str ());
         errno = saved_errno;
@@ -83,6 +91,13 @@ int connect_external_router_peer (spot_node_t *node_,
 
     runtime_->set_external_route_id (peer_data_endpoint_, route_id,
                                      peer_route_endpoint_);
+    if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
+        std::fprintf (
+          stderr,
+          "[spot-direct] connect external router data=%s route=%s endpoint=%s\n",
+          peer_data_endpoint_.c_str (), route_id.c_str (),
+          peer_route_endpoint_.c_str ());
+    }
     return 0;
 }
 }
@@ -135,6 +150,8 @@ bool spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (
   uint64_t last_published_peer_version_)
 {
     if (!runtime_ || !bootstrap_ready_)
+        return true;
+    if (runtime_->missing_external_routes_for_ready_peer ())
         return true;
 
     const uint32_t ready_peer_count =

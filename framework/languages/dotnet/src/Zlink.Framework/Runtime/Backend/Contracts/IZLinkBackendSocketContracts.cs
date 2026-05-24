@@ -56,6 +56,36 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket
         RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout);
+
+    Received? Recv(RecvFlags flags = RecvFlags.None);
+
+    bool RequestFrame(
+        ulong requestSeq,
+        IReadOnlyList<Message> parts,
+        SendFlags flags);
+
+    ZLinkBackendDealerReceived? RecvDealer(RecvFlags flags = RecvFlags.None);
+
+    void Reply(
+        ulong requestToken,
+        IReadOnlyList<Message> parts);
+}
+
+internal sealed record ZLinkBackendDealerReceived(
+    DealerMessageType MessageType,
+    ulong RequestSeq,
+    IReadOnlyList<Message> Parts,
+    Action<IReadOnlyList<Message>>? Reply) : IAsyncDisposable
+{
+    public ValueTask DisposeAsync()
+    {
+        foreach (var part in Parts)
+        {
+            part.Dispose();
+        }
+
+        return ValueTask.CompletedTask;
+    }
 }
 
 internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket

@@ -414,7 +414,8 @@ int publish_bootstrap_if_due (spot_node_t *node_,
                               uint64_t *last_bootstrap_peer_version_out_)
 {
     const uint64_t now_ms = clock_t ().now_ms ();
-    if (now_ms < *next_bootstrap_ms_)
+    if (now_ms < *next_bootstrap_ms_
+        && !(runtime_ && runtime_->missing_external_routes_for_ready_peer ()))
         return 0;
 
     const bool bootstrap_ready = !protocol_state_->peer_ready_filters.empty ();

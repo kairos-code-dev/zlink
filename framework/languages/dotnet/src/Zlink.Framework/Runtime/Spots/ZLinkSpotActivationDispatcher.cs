@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Spots;
@@ -16,9 +18,20 @@ internal sealed class ZLinkSpotActivationDispatcher(
     private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher =
         new(runtime, actorHandlers, handlerInvoker);
     private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher =
-        new(runtime, nativeSpot, channelName, actorJoins, actors, handlerInvoker);
+        new(
+            runtime,
+            nativeSpot,
+            channelName,
+            actorJoins,
+            actors,
+            handlerInvoker,
+            runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActorJoinDispatcher>());
     private readonly ZLinkSpotRouteDispatcher _routeDispatcher =
-        new(channelName, packets, handlerInvoker);
+        new(
+            channelName,
+            packets,
+            handlerInvoker,
+            runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotRouteDispatcher>());
 
     public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
     {

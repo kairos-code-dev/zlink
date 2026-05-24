@@ -287,6 +287,79 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     return 0;
 }
 
+int zlink::socket_base_t::recv_pipe (msg_t *msg_,
+                                     pipe_t **pipe_out_,
+                                     int flags_)
+{
+    if (pipe_out_)
+        *pipe_out_ = NULL;
+
+    if (unlikely (_ctx_terminated)) {
+        errno = ETERM;
+        return -1;
+    }
+
+    if (unlikely (!msg_ || !msg_->check ())) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (command_runtime ().should_poll_commands_after_recv (
+          inbound_poll_rate)) {
+        if (unlikely (process_commands (0, false) != 0))
+            return -1;
+        command_runtime ().reset_recv_ticks ();
+    }
+
+    int rc = xrecv_pipe (msg_, pipe_out_);
+    if (unlikely (rc != 0 && errno != EAGAIN))
+        return -1;
+
+    if (rc == 0) {
+        extract_flags (msg_);
+        return 0;
+    }
+
+    if ((flags_ & ZLINK_DONTWAIT) || options.rcvtimeo == 0) {
+        if (unlikely (process_commands (0, false) != 0))
+            return -1;
+        command_runtime ().reset_recv_ticks ();
+
+        rc = xrecv_pipe (msg_, pipe_out_);
+        if (rc < 0)
+            return rc;
+        extract_flags (msg_);
+        return 0;
+    }
+
+    int timeout = options.rcvtimeo;
+    const uint64_t end = timeout < 0 ? 0 : (_clock.now_ms () + timeout);
+
+    bool block = command_runtime ().should_block_on_recv ();
+    while (true) {
+        if (unlikely (process_commands (block ? timeout : 0, false) != 0))
+            return -1;
+        rc = xrecv_pipe (msg_, pipe_out_);
+        if (rc == 0) {
+            command_runtime ().reset_recv_ticks ();
+            break;
+        }
+        if (unlikely (errno != EAGAIN))
+            return -1;
+        block = true;
+        if (timeout > 0) {
+            timeout = static_cast<int> (end - _clock.now_ms ());
+            if (timeout <= 0) {
+                errno = EAGAIN;
+                return -1;
+            }
+        }
+    }
+
+    extract_flags (msg_);
+    return 0;
+}
+
 int zlink::socket_base_t::recv_routed (msg_t *msg_,
                                        zlink_routing_id_t *source_rid_out_,
                                        int flags_)

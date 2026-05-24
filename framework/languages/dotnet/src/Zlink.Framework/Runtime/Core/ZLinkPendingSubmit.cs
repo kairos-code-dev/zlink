@@ -7,6 +7,7 @@ internal sealed class PendingSubmit : IDisposable
     private System.Threading.Timer? _deadlineTimer;
     private CancellationTokenSource? _linkedCancellation;
     private CancellationTokenRegistration _cancellationRegistration;
+    private Exception? _lastSubmitFailure;
     private int _completed;
 
     private PendingSubmit(
@@ -100,6 +101,11 @@ internal sealed class PendingSubmit : IDisposable
         }
     }
 
+    public void RecordSubmitFailure(Exception exception)
+    {
+        Volatile.Write(ref _lastSubmitFailure, exception);
+    }
+
     public void Dispose()
     {
         _deadlineTimer?.Dispose();
@@ -127,8 +133,27 @@ internal sealed class PendingSubmit : IDisposable
         _deadlineTimer = new System.Threading.Timer(static state =>
         {
             var item = (PendingSubmit)state!;
-            item.TryFail(new TimeoutException("ZLink async submit timed out before the socket became writable."));
+            item.TryFail(item.CreateDeadlineException());
         }, this, dueTime, Timeout.InfiniteTimeSpan);
+    }
+
+    private Exception CreateDeadlineException()
+    {
+        var lastSubmitFailure = Volatile.Read(ref _lastSubmitFailure);
+        return CompleteOnAccepted
+            ? CreateCommandDeadlineException(lastSubmitFailure)
+            : ZLinkRequestFailureMapper.CreateSubmitTimeoutException(
+                lastSubmitFailure,
+                "ZLink request submit");
+    }
+
+    private static Exception CreateCommandDeadlineException(Exception? lastSubmitFailure)
+    {
+        return lastSubmitFailure is null
+            ? new TimeoutException("ZLink async submit timed out before the socket became writable.")
+            : new TimeoutException(
+                "ZLink async submit timed out before the socket became writable.",
+                lastSubmitFailure);
     }
 
     private void RegisterCancellation(CancellationToken cancellationToken, CancellationToken stopToken)

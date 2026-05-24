@@ -1,4 +1,7 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -7,8 +10,12 @@ internal sealed class ZLinkRoutePacketDispatcher(
     IZLinkBackendRouterSocket router,
     ZLinkRouteHandlerRegistry handlers,
     ZLinkRouteHandlerInvoker handlerInvoker,
-    IZLinkRouteInternalPacketDispatcher internalPackets)
+    IZLinkRouteInternalPacketDispatcher internalPackets,
+    ILogger<ZLinkRoutePacketDispatcher>? logger = null)
 {
+    private readonly ILogger<ZLinkRoutePacketDispatcher> _logger =
+        logger ?? NullLogger<ZLinkRoutePacketDispatcher>.Instance;
+
     public async ValueTask DispatchAsync(
         Received received,
         CancellationToken cancellationToken)
@@ -41,7 +48,24 @@ internal sealed class ZLinkRoutePacketDispatcher(
             return;
         }
 
-        var descriptor = handlers.Get(routerChannelId, ZLinkMessageKind.Command, header.MessageName);
+        if (!handlers.TryGet(
+                routerChannelId,
+                ZLinkMessageKind.Command,
+                header.MessageName,
+                out var descriptor)
+            || descriptor is null)
+        {
+            ZLinkMessageFlowLogger.Dropped(
+                _logger,
+                LogLevel.Warning,
+                "RouteMeshChannel",
+                "Send",
+                header.MessageName,
+                "no-handler",
+                routerChannelId);
+            return;
+        }
+
         var sourceRid = RequireSourceRoutingId(received, "Route send");
 
         await handlerInvoker.InvokeSendAsync(
@@ -70,8 +94,33 @@ internal sealed class ZLinkRoutePacketDispatcher(
             return;
         }
 
-        var descriptor = handlers.Get(routerChannelId, ZLinkMessageKind.Request, header.MessageName);
         var sourceRid = RequireSourceRoutingId(received, "Route request");
+
+        if (!handlers.TryGet(
+                routerChannelId,
+                ZLinkMessageKind.Request,
+                header.MessageName,
+                out var descriptor)
+            || descriptor is null)
+        {
+            ZLinkMessageFlowLogger.HandlerMissing(
+                _logger,
+                LogLevel.Warning,
+                "RouteMeshChannel",
+                "Request",
+                header.MessageName,
+                "reply-error",
+                "no-handler",
+                routerChannelId);
+            ReplyError(
+                sourceRid,
+                received.RequestSeq,
+                header,
+                new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RouteHandlerNotFound,
+                    $"No routed request handler is registered for '{routerChannelId}:{header.MessageName}'."));
+            return;
+        }
 
         try
         {

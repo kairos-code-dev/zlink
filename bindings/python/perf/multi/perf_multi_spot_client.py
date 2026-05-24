@@ -171,32 +171,37 @@ def main(argv=None):
                             raise
                         if not has_message:
                             break
+                        # Decode the metric header from the part's zero-copy
+                        # memoryview instead of materializing the whole payload
+                        # via to_bytes_list(); the full copy cost a msg_size
+                        # alloc+memcpy per received message and collapsed large
+                        # SPOT throughput. All reads stay inside `with message`
+                        # because the view borrows the native buffer.
                         with message:
-                            parts = message.to_bytes_list()
-                        if not parts:
-                            continue
-                        data = parts[0]
-                        header = decode_header(data)
-                        if header is None:
-                            continue
-                        if (
-                            header["run_id"] != run_id
-                            or header["msg_size"] != args.msg_size
-                            or header["phase"] == 0
-                        ):
-                            continue
-                        if not is_active_message(
-                            data,
-                            expected_msg_size=args.msg_size,
-                            run_id=run_id,
-                        ):
-                            continue
-                        received_count += 1
-                        if received_count % sample_stride != 0:
-                            continue
-                        latency = latency_ns_from_message(data)
-                        if latency is not None:
-                            latencies.append(latency)
+                            if len(message) == 0:
+                                continue
+                            data = message.first_part().data
+                            header = decode_header(data)
+                            if header is None:
+                                continue
+                            if (
+                                header["run_id"] != run_id
+                                or header["msg_size"] != args.msg_size
+                                or header["phase"] == 0
+                            ):
+                                continue
+                            if not is_active_message(
+                                data,
+                                expected_msg_size=args.msg_size,
+                                run_id=run_id,
+                            ):
+                                continue
+                            received_count += 1
+                            if received_count % sample_stride != 0:
+                                continue
+                            latency = latency_ns_from_message(data)
+                            if latency is not None:
+                                latencies.append(latency)
                     if expired:
                         break
                 if expired:

@@ -43,11 +43,18 @@ size_t pending_key_hash_t::operator() (const pending_key_t &key_) const
     return hash_combine (seed, std::hash<std::string> () (key_.peer_rid));
 }
 
+dealer_reply_target_t::dealer_reply_target_t () :
+    pipe (NULL),
+    request_seq (0)
+{
+}
+
 socket_request_reply_state_t::socket_request_reply_state_t (
   zlink::socket_base_t *socket_,
   int socket_type_) :
     socket (socket_),
     socket_type (socket_type_),
+    dealer_next_reply_token (1),
     internal_dispatch_installed (false)
 {
 }

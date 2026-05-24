@@ -3,6 +3,7 @@
 #include "precompiled.hpp"
 
 #include "services/spot/data_plane/spot_data_plane.hpp"
+#include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "services/spot/common/spot_debug.hpp"
 #include "services/spot/dispatch/spot_dispatch_worker_pool.hpp"
 #include "services/spot/common/spot_auto_hwm_internal.hpp"
@@ -223,6 +224,18 @@ std::vector<std::string> spot_runtime_t::clear_external_route_ids ()
     external_route_ids_by_endpoint.clear ();
     external_route_endpoints_by_endpoint.clear ();
     return route_endpoints;
+}
+
+bool spot_runtime_t::missing_external_routes_for_ready_peer () const
+{
+    scoped_lock_t lock (routed_send_sync);
+    if (!external_router || external_router_bind_endpoint.empty ())
+        return false;
+
+    const uint32_t ready_peer_count =
+      connected_ready_peer_count (&execution.mesh_peer_state);
+    return ready_peer_count > 0
+           && external_route_ids_by_endpoint.size () < ready_peer_count;
 }
 
 std::vector<std::string> spot_runtime_t::external_route_ids_for_destination (

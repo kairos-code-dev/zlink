@@ -4,6 +4,7 @@
 #include "utils/macros.hpp"
 #include "sockets/dealer/dealer.hpp"
 #include "sockets/common/socket_dispatch_loop_internal.hpp"
+#include "core/pipe.hpp"
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
@@ -23,6 +24,33 @@ zlink::dealer_t::dealer_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 zlink::dealer_t::~dealer_t ()
 {
     close_socket_msg_parts (&_dispatch_parts);
+}
+
+int zlink::dealer_t::sendpipe_to (pipe_t *pipe_, msg_t *msg_, int flags_)
+{
+    if (!pipe_ || !msg_ || !msg_->check ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (!_lb.contains (pipe_)) {
+        errno = EHOSTUNREACH;
+        return -1;
+    }
+
+    msg_->reset_flags (msg_t::more);
+    if ((flags_ & ZLINK_SNDMORE) != 0)
+        msg_->set_flags (msg_t::more);
+
+    const bool more = (msg_->flags () & msg_t::more) != 0;
+    const bool ok = more ? pipe_->write (msg_) : pipe_->write_and_flush (msg_);
+    if (!ok) {
+        errno = EAGAIN;
+        return -1;
+    }
+
+    const int rc = msg_->init ();
+    errno_assert (rc == 0);
+    return 0;
 }
 
 void zlink::dealer_t::xattach_pipe (pipe_t *pipe_,
@@ -95,6 +123,11 @@ int zlink::dealer_t::xrecv (msg_t *msg_)
 {
     pipe_t *pipe = NULL;
     return recvpipe (msg_, &pipe);
+}
+
+int zlink::dealer_t::xrecv_pipe (msg_t *msg_, pipe_t **pipe_out_)
+{
+    return recvpipe (msg_, pipe_out_);
 }
 
 bool zlink::dealer_t::xhas_in ()

@@ -29,4 +29,13 @@ public enum ZLinkFrameworkErrorKind
     ActorDispatchTimeout,
     ActorDispatchHandlerFailed,
     CodecFailed,
+    HandlerNotFound,
+    RouteHandlerNotFound,
+    ActorDispatchHandlerNotFound,
+    PayloadDecodeFailed,
+    RouteNotConnected,
+    RequestTargetNotFound,
+    RequestRejected,
+    RequestProtocolError,
+    RequestFailed,
 }

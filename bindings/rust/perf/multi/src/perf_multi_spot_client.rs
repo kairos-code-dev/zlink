@@ -212,39 +212,67 @@ fn main() {
     }
 
     let active_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    let msg_size = args.msg_size;
+    // Parallelize the subscriber drain across worker threads, mirroring the Go
+    // MULTI_SPOT recv workers. A single thread draining N spots sequentially is
+    // bound by per-subscribe cgo cost; splitting the spots across a few threads
+    // lets independent CPUs absorb the broadcast fan-out. Spot is Send, so each
+    // scoped thread takes a disjoint &mut [Spot] chunk (no cross-thread sharing
+    // of a single spot).
+    let worker_count = std::env::var("PERF_MULTI_SPOT_RECV_WORKERS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(4)
+        .min(spots.len().max(1));
+    let chunk_size = spots.len().div_ceil(worker_count.max(1));
     let mut stats = common::LatencyStats::new();
-    while Instant::now() < active_deadline {
-        let mut progressed = false;
-        for spot in spots.iter() {
-            loop {
-                if Instant::now() >= active_deadline {
-                    break;
-                }
+    std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for chunk in spots.chunks_mut(chunk_size.max(1)) {
+            handles.push(scope.spawn(move || {
+                let mut local = common::LatencyStats::new();
                 let mut received = TopicMessage::empty();
-                match spot.subscribe(&mut received, RecvFlags::DONT_WAIT) {
-                    Ok(true) => {
-                        progressed = true;
-                        let data = common::message_payload(received.parts()).to_vec();
-                        if Instant::now() <= active_deadline
-                            && common::is_valid_active_message(&data, args.msg_size)
-                        {
-                            let sent_ts_ns = common::decode_sent_ts_ns(&data);
-                            let now_ns = common::now_ns();
-                            if sent_ts_ns > 0 && now_ns >= sent_ts_ns as u64 {
-                                stats.record_ns((now_ns - sent_ts_ns as u64) as f64);
+                while Instant::now() < active_deadline {
+                    let mut progressed = false;
+                    for spot in chunk.iter() {
+                        loop {
+                            if Instant::now() >= active_deadline {
+                                break;
+                            }
+                            match spot.subscribe(&mut received, RecvFlags::DONT_WAIT) {
+                                Ok(true) => {
+                                    progressed = true;
+                                    // Decode the metric header from the borrowed
+                                    // payload directly (no per-message copy).
+                                    let data = common::message_payload(received.parts());
+                                    if Instant::now() <= active_deadline
+                                        && common::is_valid_active_message(data, msg_size)
+                                    {
+                                        let sent_ts_ns = common::decode_sent_ts_ns(data);
+                                        let now_ns = common::now_ns();
+                                        if sent_ts_ns > 0 && now_ns >= sent_ts_ns as u64 {
+                                            local.record_ns((now_ns - sent_ts_ns as u64) as f64);
+                                        }
+                                    }
+                                }
+                                Ok(false) => break,
+                                Err(err) if err.code() == RecvResult::NoData => break,
+                                Err(err) => panic!("spot client subscribe failed: {err}"),
                             }
                         }
                     }
-                    Ok(false) => break,
-                    Err(err) if err.code() == RecvResult::NoData => break,
-                    Err(err) => panic!("spot client subscribe failed: {err}"),
+                    if !progressed {
+                        thread::sleep(Duration::from_millis(1));
+                    }
                 }
-            }
+                local
+            }));
         }
-        if !progressed {
-            thread::sleep(Duration::from_millis(1));
+        for handle in handles {
+            stats.merge(handle.join().expect("spot recv worker"));
         }
-    }
+    });
 
     let stats = stats.finish();
     common::print_result(

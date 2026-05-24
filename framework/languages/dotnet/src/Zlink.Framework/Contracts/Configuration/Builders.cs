@@ -175,6 +175,20 @@ public interface IZLinkFanoutChannelBuilder
 public interface IZLinkDealerMeshChannelBuilder
 {
     void EnableClient(Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null);
+
+    void AddHandlerGroup(string groupName);
+
+    void AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkSendHandler<TMessage>;
+
+    void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
+    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
+
+    void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class;
 }
 
 public interface IZLinkSpotNodeBuilder

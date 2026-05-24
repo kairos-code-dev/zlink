@@ -10,6 +10,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         var routeHandlerEndpoints = ScanRouteHandlerEndpoints(registration);
         var handlerGroups = BuildHandlerGroupCatalog(channelHandlerEndpoints, routeHandlerEndpoints);
 
+        ValidateDispatchOptions(registration.DispatchOptions);
+
         if (registration.ActorFactories.Count > 0 && registration.SpotNodes.Count == 0)
         {
             throw new ZLinkConfigurationException(
@@ -69,6 +71,29 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 registration,
                 globalSpotFactories,
                 globalSpotPublisherChannels);
+        }
+    }
+
+    private static void ValidateDispatchOptions(ZLinkDispatchOptionsModel options)
+    {
+        if (options.Unhandled.Send == ZLinkUnhandledDispatchAction.ReplyError)
+        {
+            throw new ZLinkConfigurationException(
+                "Unhandled send dispatch cannot use ReplyError because send has no reply path.");
+        }
+
+        if (options.Unhandled.Publish == ZLinkUnhandledDispatchAction.ReplyError)
+        {
+            throw new ZLinkConfigurationException(
+                "Unhandled publish dispatch cannot use ReplyError because publish has no reply path.");
+        }
+
+        if (double.IsNaN(options.Diagnostics.SampleRate)
+            || options.Diagnostics.SampleRate < 0.0d
+            || options.Diagnostics.SampleRate > 1.0d)
+        {
+            throw new ZLinkConfigurationException(
+                "Diagnostics SampleRate must be between 0.0 and 1.0.");
         }
     }
 

@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelMessagePump
@@ -8,10 +11,17 @@ internal sealed class ZLinkChannelMessagePump
         ZLinkHandlerRegistry handlerRegistry,
         ZLinkHandlerDispatcher dispatcher,
         ZLinkFrameworkRegistration registration,
-        ZLinkFrameworkRuntime runtime)
+        ZLinkFrameworkRuntime runtime,
+        ILoggerFactory? loggerFactory = null)
     {
+        loggerFactory ??= NullLoggerFactory.Instance;
         _receiveLoop = new ZLinkChannelReceiveLoop(
-            new ZLinkChannelPacketDispatcher(handlerRegistry, dispatcher, registration, runtime));
+            new ZLinkChannelPacketDispatcher(
+                handlerRegistry,
+                dispatcher,
+                registration,
+                runtime,
+                loggerFactory.CreateLogger<ZLinkChannelPacketDispatcher>()));
     }
 
     public Task RunServerLoopAsync(
@@ -29,5 +39,20 @@ internal sealed class ZLinkChannelMessagePump
         CancellationToken cancellationToken)
     {
         return _receiveLoop.RunSubscriberLoopAsync(channelName, subscriber, cancellationToken);
+    }
+
+    public Task RunDealerMeshLoopAsync(
+        string channelName,
+        IZLinkBackendDealerSocket dealer,
+        ZLinkDealerMeshPendingRequests pendingRequests,
+        SemaphoreSlim receiveGate,
+        CancellationToken cancellationToken)
+    {
+        return _receiveLoop.RunDealerMeshLoopAsync(
+            channelName,
+            dealer,
+            pendingRequests,
+            receiveGate,
+            cancellationToken);
     }
 }

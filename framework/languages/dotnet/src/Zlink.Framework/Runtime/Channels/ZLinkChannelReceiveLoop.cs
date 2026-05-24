@@ -80,4 +80,59 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
             }
         }
     }
+
+    public async Task RunDealerMeshLoopAsync(
+        string channelName,
+        IZLinkBackendDealerSocket dealer,
+        ZLinkDealerMeshPendingRequests pendingRequests,
+        SemaphoreSlim receiveGate,
+        CancellationToken cancellationToken)
+    {
+        var backoff = new ZLinkPollingBackoff();
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            ZLinkBackendDealerReceived? received = null;
+            var gateHeld = false;
+            try
+            {
+                await receiveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                gateHeld = true;
+                received = dealer.RecvDealer(RecvFlags.DontWait);
+                if (received is null)
+                {
+                    await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                backoff.Reset();
+                await dispatcher.DispatchDealerMeshMessageAsync(
+                        channelName,
+                        dealer,
+                        pendingRequests,
+                        received,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
+            finally
+            {
+                if (received is not null)
+                {
+                    await received.DisposeAsync().ConfigureAwait(false);
+                }
+
+                if (gateHeld)
+                {
+                    receiveGate.Release();
+                }
+            }
+        }
+    }
 }

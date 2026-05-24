@@ -37,6 +37,80 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void ConfigureDispatch_Exposes_Unhandled_And_Diagnostics_Defaults()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.ConfigureDispatch(dispatch =>
+            {
+                Assert.Equal(ZLinkUnhandledDispatchAction.ReplyError, dispatch.Unhandled.Request);
+                Assert.Equal(ZLinkUnhandledDispatchAction.LogAndDrop, dispatch.Unhandled.Send);
+                Assert.Equal(ZLinkUnhandledDispatchAction.LogAndDrop, dispatch.Unhandled.Publish);
+                Assert.Equal(ZLinkMessageFlowLogMode.ErrorsOnly, dispatch.Diagnostics.MessageFlow);
+                Assert.Equal(1.0d, dispatch.Diagnostics.SampleRate);
+                Assert.True(dispatch.Diagnostics.IncludeMessageSizes);
+                Assert.False(dispatch.Diagnostics.IncludeNativeDiagnostics);
+            });
+        });
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+
+        Assert.Equal(ZLinkUnhandledDispatchAction.ReplyError, registration.DispatchOptions.Unhandled.Request);
+    }
+
+    [Fact]
+    public void ConfigureDispatch_Rejects_ReplyError_For_Send()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.ConfigureDispatch(dispatch =>
+                {
+                    dispatch.Unhandled.Send = ZLinkUnhandledDispatchAction.ReplyError;
+                });
+            }));
+
+        Assert.Contains("send dispatch cannot use ReplyError", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfigureDispatch_Rejects_ReplyError_For_Publish()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.ConfigureDispatch(dispatch =>
+                {
+                    dispatch.Unhandled.Publish = ZLinkUnhandledDispatchAction.ReplyError;
+                });
+            }));
+
+        Assert.Contains("publish dispatch cannot use ReplyError", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfigureDispatch_Rejects_Invalid_Diagnostics_SampleRate()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.ConfigureDispatch(dispatch =>
+                {
+                    dispatch.Diagnostics.SampleRate = 1.1d;
+                });
+            }));
+
+        Assert.Contains("SampleRate must be between", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AcceptSpotRoutesFromChannel_RejectsFanoutChannel()
     {
         var services = new ServiceCollection();

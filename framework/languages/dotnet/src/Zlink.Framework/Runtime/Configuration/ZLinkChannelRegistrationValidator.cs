@@ -79,14 +79,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 ValidateFanoutHandlerExposure(channel, handlerGroups);
                 break;
             case ZLinkAutoConnectType.DealerMesh:
-                if (channel.HandlerGroups.Count > 0
-                    || channel.SendHandlers.Count > 0
-                    || channel.RequestHandlers.Count > 0
-                    || channel.PublishHandlers.Count > 0)
-                {
-                    throw new ZLinkConfigurationException(
-                        $"dealer mesh channel '{channel.ChannelName}' cannot expose application handlers.");
-                }
+                ValidateDealerMeshHandlerExposure(channel, handlerGroups);
                 break;
         }
 
@@ -180,6 +173,27 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             throw new ZLinkConfigurationException(
                 $"fanout channel '{channel.ChannelName}' cannot register send or request handlers.");
         }
+    }
+
+    private static void ValidateDealerMeshHandlerExposure(
+        ZLinkChannelRegistration channel,
+        IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> handlerGroups)
+    {
+        if (channel.PublishHandlers.Count > 0
+            || ChannelGroupsExposeAny(channel, handlerGroups, ZLinkMessageKind.Publish))
+        {
+            throw new ZLinkConfigurationException(
+                $"dealer mesh channel '{channel.ChannelName}' cannot expose publish handlers.");
+        }
+
+        ValidateMappedGroups(
+            channel,
+            handlerGroups,
+            new HashSet<ZLinkMessageKind>
+            {
+                ZLinkMessageKind.Command,
+                ZLinkMessageKind.Request,
+            });
     }
 
     private static void ValidateMappedGroups(

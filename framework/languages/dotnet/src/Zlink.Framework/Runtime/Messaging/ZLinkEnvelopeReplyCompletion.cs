@@ -15,7 +15,7 @@ internal static class ZLinkEnvelopeReplyCompletion
         {
             if (result != RequestResult.Ok)
             {
-                fail(new TimeoutException($"{operationName} failed with result '{result}'."));
+                fail(ZLinkRequestFailureMapper.CreateCompletionException(result, operationName));
                 return;
             }
 

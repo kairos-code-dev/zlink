@@ -36,6 +36,8 @@ enum send_family_t
     send_family_spot_reply_spot,
     send_family_spot_reply_router,
     send_family_router_reply,
+    send_family_dealer_request_frame,
+    send_family_dealer_reply,
     send_family_router_request_spot,
     send_family_router_reply_spot,
     send_family_router_send_spot
@@ -48,6 +50,7 @@ enum recv_family_t
     recv_family_subscribe,
     recv_family_spot_subscribe,
     recv_family_router,
+    recv_family_dealer,
     recv_family_spot
 };
 
@@ -97,6 +100,7 @@ struct recv_sequence_state_t
     zlink_routing_id_t source_node_rid;
     zlink_routing_id_t source_spot_rid;
     uint64_t request_seq;
+    uint8_t message_type;
     std::string channel_name;
     std::string topic_id;
     std::vector<zlink_msg_t> buffered_parts;

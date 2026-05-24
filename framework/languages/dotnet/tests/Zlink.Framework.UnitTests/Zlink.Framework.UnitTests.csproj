@@ -38,6 +38,8 @@
     <Compile Include="Runtime/BackendMonitorWrapperTests.cs" />
     <Compile Include="Runtime/HandlerResultAwaiterTests.cs" />
     <Compile Include="Runtime/SerialExecutorTests.cs" />
+    <Compile Include="Runtime/RequestFailureMappingTests.cs" />
+    <Compile Include="Runtime/UnhandledDispatchPolicyTests.cs" />
     <Compile Include="Runtime/ZLinkAsyncSubmitterTests.cs" />
     <Compile Include="Samples/Regression.cs" />
     <Compile Include="../Common/FrameworkGlobalUsings.cs" Link="GlobalUsings.cs" />

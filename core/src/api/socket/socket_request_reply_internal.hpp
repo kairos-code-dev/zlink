@@ -22,6 +22,8 @@
 
 namespace zlink
 {
+class pipe_t;
+
 namespace socket_reqrep_internal
 {
 struct pending_key_t
@@ -46,6 +48,14 @@ struct pending_request_t
     std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
 };
 
+struct dealer_reply_target_t
+{
+    dealer_reply_target_t ();
+
+    zlink::pipe_t *pipe;
+    uint64_t request_seq;
+};
+
 struct socket_request_reply_state_t :
     public zlink::request_reply_runtime::sequence_state_t
 {
@@ -58,7 +68,9 @@ struct socket_request_reply_state_t :
     std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>
       pending_requests;
     std::unordered_map<uint64_t, pending_key_t> pending_request_keys_by_seq;
+    std::unordered_map<uint64_t, dealer_reply_target_t> dealer_reply_targets;
     std::set<void *> spot_channel_dispatch_observers;
+    uint64_t dealer_next_reply_token;
     bool internal_dispatch_installed;
     zlink::internal_pair_queue::queue_t recv_queue;
     zlink::request_completion::queue_state_t completion;
@@ -81,6 +93,12 @@ int dispatch_router_message (socket_request_reply_state_t *state_,
                              uint64_t request_seq_,
                              zlink_msg_t *parts_,
                              size_t part_count_);
+int dispatch_dealer_message (socket_request_reply_state_t *state_,
+                             uint8_t message_type_,
+                             uint64_t request_seq_,
+                             zlink::pipe_t *source_pipe_,
+                             zlink_msg_t *parts_,
+                             size_t part_count_);
 int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
                                 const zlink_routing_id_t **source_node_rid_out_,
                                 const zlink_routing_id_t **source_spot_rid_out_,
@@ -96,6 +114,21 @@ int recv_router_message_direct (socket_handle_t handle_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,
                                 int flags_);
+int recv_internal_dealer_queue (zlink::internal_pair_queue::queue_t *queue_,
+                                uint8_t *message_type_out_,
+                                uint64_t *request_seq_out_,
+                                zlink_msg_t **parts_out_,
+                                size_t *part_count_out_,
+                                int flags_,
+                                int timeout_ms_);
+int take_dealer_reply_target (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  uint64_t request_token_,
+  dealer_reply_target_t *target_out_);
+void restore_dealer_reply_target (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  uint64_t request_token_,
+  const dealer_reply_target_t &target_);
 int send_request_reply_message (void *socket_handle_,
                                 const zlink_routing_id_t *peer_rid_,
                                 zlink_msg_t *parts_,

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"zlink.systems/zlink/perf/internal/perfcommon"
@@ -63,6 +64,17 @@ func (e *unsupportedMultiPatternError) Error() string {
 }
 
 func runMultiRole(cfg multiConfig, role, endpoint string) {
+	// The multi role hot loops are tight cgo round-trips with the core IO
+	// threads. Pinning the role goroutine to a dedicated OS thread keeps the
+	// Go scheduler from migrating its M across the many blocking poller waits
+	// that backpressure produces at high pipe fan-in; without it, each wakeup
+	// pays Go-runtime M-handoff latency and large many-client throughput
+	// collapses (profiling showed both peers idle in futex/nanosleep, not CPU
+	// bound). This is a measurement-neutral harness detail: it changes which OS
+	// thread runs the loop, not the public API or wire semantics.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	switch role {
 	case "server":
 		runMultiServerRole(cfg)

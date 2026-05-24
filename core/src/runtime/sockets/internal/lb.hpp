@@ -28,6 +28,7 @@ class lb_t
     void set_weight (pipe_t *pipe_, uint32_t weight_);
     uint32_t weight (pipe_t *pipe_) const;
     bool has_positive_weight_pipe () const;
+    bool contains (pipe_t *pipe_) const;
 
     int send (msg_t *msg_);
 

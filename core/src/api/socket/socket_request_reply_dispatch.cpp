@@ -34,16 +34,34 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
 
     zlink::request_reply::parsed_envelope_t envelope;
     if (!zlink::request_reply::parse_envelope (parts_, part_count_, &envelope)) {
-        if (dispatch_router_message (state, source_rid_, NULL, 0, parts_,
-                                     part_count_)
-            != 0)
-            zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+        if (state->socket_type == ZLINK_CORE_SOCKET_DEALER) {
+            if (dispatch_dealer_message (
+                  state, ZLINK_DEALER_MESSAGE_RAW, 0, NULL, parts_, part_count_)
+                != 0)
+                zlink::request_reply::close_request_reply_parts (parts_,
+                                                                 part_count_);
+        } else {
+            if (dispatch_router_message (state, source_rid_, NULL, 0, parts_,
+                                         part_count_)
+                != 0)
+                zlink::request_reply::close_request_reply_parts (parts_,
+                                                                 part_count_);
+        }
         return;
     }
 
     if (envelope.message_type == zlink::request_reply::request_type) {
-        if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
-            && has_valid_routing_id (source_rid_)) {
+        if (state->socket_type == ZLINK_CORE_SOCKET_DEALER) {
+            if (dispatch_dealer_message (
+                  state, ZLINK_DEALER_MESSAGE_REQUEST, envelope.request_seq,
+                  zlink::socket_base_t::current_socket_msg_dispatch_pipe (),
+                  envelope.payload_parts, envelope.payload_part_count)
+                != 0) {
+                zlink::request_reply::close_request_reply_parts (parts_,
+                                                                 part_count_);
+            }
+        } else if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
+                   && has_valid_routing_id (source_rid_)) {
             if (dispatch_router_message (
                   state, source_rid_, NULL, envelope.request_seq,
                   envelope.payload_parts, envelope.payload_part_count)
@@ -90,8 +108,20 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
     zlink::request_timeout::cancel (pending.timeout_task);
 
     if (!found) {
-        if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
-            && has_valid_routing_id (source_rid_)) {
+        if (state->socket_type == ZLINK_CORE_SOCKET_DEALER) {
+            const uint8_t dealer_type =
+              envelope.message_type == zlink::request_reply::error_reply_type
+                ? ZLINK_DEALER_MESSAGE_ERROR_REPLY
+                : ZLINK_DEALER_MESSAGE_REPLY;
+            if (dispatch_dealer_message (
+                  state, dealer_type, envelope.request_seq, NULL,
+                  envelope.payload_parts, envelope.payload_part_count)
+                != 0) {
+                zlink::request_reply::close_request_reply_parts (parts_,
+                                                                 part_count_);
+            }
+        } else if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
+                   && has_valid_routing_id (source_rid_)) {
             if (dispatch_router_message (
                   state, source_rid_, NULL, envelope.request_seq,
                   envelope.payload_parts, envelope.payload_part_count)

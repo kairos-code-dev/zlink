@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Configuration;
@@ -238,5 +239,33 @@ public sealed class ConnectionAndConfigContracts
         public ZLinkDispatchMode SpotDispatchMode { get; set; }
 
         public ZLinkDispatchMode StreamDispatchMode { get; set; }
+
+        public IZLinkUnhandledDispatchOptions Unhandled { get; } = new UnhandledDispatchOptions();
+
+        public IZLinkDiagnosticsOptions Diagnostics { get; } = new DiagnosticsOptions();
+    }
+
+    private sealed class UnhandledDispatchOptions : IZLinkUnhandledDispatchOptions
+    {
+        public ZLinkUnhandledDispatchAction Request { get; set; }
+
+        public ZLinkUnhandledDispatchAction Send { get; set; }
+
+        public ZLinkUnhandledDispatchAction Publish { get; set; }
+
+        public LogLevel SendLogLevel { get; set; }
+
+        public LogLevel PublishLogLevel { get; set; }
+    }
+
+    private sealed class DiagnosticsOptions : IZLinkDiagnosticsOptions
+    {
+        public ZLinkMessageFlowLogMode MessageFlow { get; set; }
+
+        public double SampleRate { get; set; }
+
+        public bool IncludeMessageSizes { get; set; }
+
+        public bool IncludeNativeDiagnostics { get; set; }
     }
 }

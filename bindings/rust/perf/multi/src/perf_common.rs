@@ -290,6 +290,14 @@ impl LatencyStats {
         self.samples.push(ns);
     }
 
+    /// Fold another sampler's totals in (used to combine per-worker drain
+    /// threads into a single result before finish()).
+    pub fn merge(&mut self, mut other: LatencyStats) {
+        self.count += other.count;
+        self.sum += other.sum;
+        self.samples.append(&mut other.samples);
+    }
+
     pub fn finish(&mut self) -> StatsResult {
         if self.count == 0 {
             return StatsResult::default();

@@ -61,9 +61,57 @@ fn main() {
             }
         }
     });
+    // Match the dealer-router server: a signal-driven poller with POLLIN/
+    // POLLOUT toggling instead of a hot-loop thread::sleep(1ms), which
+    // throttled the round-trip echo and held small-message ROUTER_ROUTER at
+    // ~19% of C.
+    let poller = Poller::new().expect("poller");
+    poller.add_socket(&router, POLLIN, 0).expect("poller add");
+    let mut events = vec![PollEvent::default(); 1];
+    let mut want_pollout = false;
     let mut received = zlink::Received::empty();
     while !stop.load(Ordering::Acquire) {
-        let mut progressed = false;
+        let desired = if pending.is_empty() {
+            POLLIN
+        } else {
+            POLLIN | POLLOUT
+        };
+        if desired
+            != (if want_pollout {
+                POLLIN | POLLOUT
+            } else {
+                POLLIN
+            })
+        {
+            poller
+                .modify_socket(&router, desired)
+                .expect("poller modify");
+            want_pollout = !pending.is_empty();
+        }
+        match poller.wait(&mut events, -1) {
+            Ok(_) => {}
+            Err(err) => panic!("poller wait failed: {err}"),
+        }
+        if stop.load(Ordering::Acquire) {
+            break;
+        }
+        // Flush pending backlog first (POLLOUT side).
+        while let Some((rid, reply_bytes)) = pending.pop_front() {
+            match router
+                .send(&rid)
+                .message(Message::copy_from(&reply_bytes).expect("pending reply"))
+                .flags(SendFlags::DONT_WAIT)
+                .submit()
+            {
+                Ok(true) => {}
+                Ok(false) => {
+                    pending.push_front((rid, reply_bytes));
+                    break;
+                }
+                Err(err) => panic!("pending reply failed: {err}"),
+            }
+        }
+        // Drain readable requests and echo (POLLIN side).
         loop {
             match router.recv(&mut received, RecvFlags::DONT_WAIT) {
                 Ok(true) => {
@@ -78,38 +126,17 @@ fn main() {
                             .flags(SendFlags::DONT_WAIT)
                             .submit()
                         {
-                            Ok(true) => {
-                                progressed = true;
-                                continue;
-                            }
+                            Ok(true) => continue,
                             Ok(false) => {}
                             Err(err) => panic!("received send failed: {err}"),
                         }
                     }
                     pending.push_back((rid, reply_bytes));
-                    progressed = true;
                 }
                 Ok(false) => break,
+                Err(err) if err.code() == RecvResult::NoData => break,
                 Err(err) => panic!("router recv failed: {err}"),
             }
-        }
-        while let Some((rid, reply_bytes)) = pending.pop_front() {
-            match router
-                .send(&rid)
-                .message(Message::copy_from(&reply_bytes).expect("pending reply"))
-                .flags(SendFlags::DONT_WAIT)
-                .submit()
-            {
-                Ok(true) => progressed = true,
-                Ok(false) => {
-                    pending.push_front((rid, reply_bytes));
-                    break;
-                }
-                Err(err) => panic!("pending reply failed: {err}"),
-            }
-        }
-        if !progressed {
-            std::thread::sleep(Duration::from_millis(1));
         }
     }
 }

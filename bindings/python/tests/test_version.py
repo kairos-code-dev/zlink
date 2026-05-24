@@ -39,5 +39,28 @@ class VersionTests(unittest.TestCase):
                     with received:
                         self.assertEqual(received.to_bytes_list(), [payload])
 
+    def test_received_part_data_is_zero_copy_view(self):
+        ctx = zlink.Context()
+        with ctx:
+            with zlink.PairSocket(ctx) as s1:
+                with zlink.PairSocket(ctx) as s2:
+                    endpoint = "inproc://py-pair-data"
+                    s1.bind(endpoint)
+                    s2.connect(endpoint)
+                    payload = b"header-and-body-payload"
+                    s1.send().message(payload).submit()
+                    received = zlink.Received()
+                    self.assertTrue(s2.recv_into(received))
+                    with received:
+                        part = received.first_part()
+                        view = part.data
+                        # Zero-copy memoryview over the native buffer, same
+                        # contents as to_bytes(), and slicing the header does
+                        # not require copying the whole payload.
+                        self.assertIsInstance(view, memoryview)
+                        self.assertEqual(len(view), len(payload))
+                        self.assertEqual(bytes(view), payload)
+                        self.assertEqual(bytes(view[:6]), payload[:6])
+
 if __name__ == "__main__":
     unittest.main()

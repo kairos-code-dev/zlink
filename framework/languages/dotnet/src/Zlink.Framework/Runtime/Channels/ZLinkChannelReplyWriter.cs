@@ -47,6 +47,24 @@ internal static class ZLinkChannelReplyWriter
         ReplyParts(router, routingId, requestSeq, replyParts);
     }
 
+    public static void ReplyDealerRequest(
+        IZLinkBackendDealerSocket dealer,
+        ulong requestToken,
+        ZLinkEnvelopeHeader header,
+        object? body,
+        Type? bodyType)
+    {
+        var replyParts = ZLinkEnvelopeCodec.EncodeParts(header, body, bodyType);
+        try
+        {
+            dealer.Reply(requestToken, replyParts);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(replyParts);
+        }
+    }
+
     private static void ReplyParts(
         IZLinkBackendRouterSocket router,
         RoutingId routingId,

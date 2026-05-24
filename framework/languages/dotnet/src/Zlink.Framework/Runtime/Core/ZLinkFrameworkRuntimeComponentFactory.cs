@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Core;
@@ -29,7 +31,12 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             services,
             backendAdapterFactory,
             registration,
-            new ZLinkChannelMessagePump(handlerRegistry, dispatcher, registration, runtime));
+            new ZLinkChannelMessagePump(
+                handlerRegistry,
+                dispatcher,
+                registration,
+                runtime,
+                services.GetService<ILoggerFactory>()));
         var streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
         var spots = new ZLinkSpotRuntimeManager(services, runtime, backendAdapterFactory, registration);
         var stateFactory = new ZLinkFrameworkRuntimeStateFactory(

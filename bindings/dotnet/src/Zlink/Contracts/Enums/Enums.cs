@@ -63,6 +63,14 @@ public enum RequestResult
     NotSupported = 112
 }
 
+public enum DealerMessageType
+{
+    Raw = 0,
+    Request = 1,
+    Reply = 2,
+    ErrorReply = 3
+}
+
 public delegate void RequestCallback(RequestResult result,
     IReadOnlyList<Message> parts);
 

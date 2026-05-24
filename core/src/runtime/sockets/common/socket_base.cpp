@@ -498,6 +498,13 @@ int zlink::socket_base_t::xrecv (msg_t *)
     return -1;
 }
 
+int zlink::socket_base_t::xrecv_pipe (msg_t *msg_, pipe_t **pipe_out_)
+{
+    if (pipe_out_)
+        *pipe_out_ = NULL;
+    return xrecv (msg_);
+}
+
 int zlink::socket_base_t::xrecv_routed (msg_t *msg_,
                                         zlink_routing_id_t *source_rid_out_)
 {

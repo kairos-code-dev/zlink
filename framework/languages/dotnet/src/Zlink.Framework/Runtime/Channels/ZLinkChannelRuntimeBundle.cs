@@ -20,6 +20,8 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public SemaphoreSlim ReceiveGate { get; } = new(1, 1);
 
+    public ZLinkDealerMeshPendingRequests DealerMeshPendingRequests { get; } = new();
+
     public IZLinkBackendDiscovery? Discovery { get; set; }
 
     public bool TryAddManualConnection(string endpoint)

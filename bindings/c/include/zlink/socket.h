@@ -373,6 +373,27 @@ ZLINK_EXPORT zlink_submit_result_t zlink_dealer_request_part (
   zlink_reply_handler_fn handler_,
   void *userdata_);
 
+ZLINK_EXPORT zlink_submit_result_t zlink_dealer_request_frame_part (
+  void *dealer_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_dealer_reply_part (
+  void *dealer_,
+  uint64_t request_token_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+
+ZLINK_EXPORT zlink_recv_result_t zlink_dealer_recv_part (
+  void *dealer_,
+  uint8_t *message_type_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t *part_out_,
+  zlink_part_flag_t *has_more_out_,
+  zlink_recv_flags_t flags_);
+
 /* ========== Helper substrate layer (*_part) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_router_request_part (
   void *router_,

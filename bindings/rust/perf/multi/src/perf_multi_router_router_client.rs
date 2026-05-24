@@ -42,7 +42,7 @@ fn main() {
     common::apply_multi_auto_hwm_msg_unit(&ctx, args.msg_size);
     let server_rid = RoutingId::from_bytes(b"perf-rr-server");
     let mut sockets: Vec<RouterSocket> = Vec::with_capacity(settings.clients);
-    let mut payloads: Vec<Vec<u8>> = Vec::with_capacity(settings.clients);
+    let payload_size = args.msg_size.max(common::HEADER_SIZE);
     let mut waiting_reply = vec![false; settings.clients];
     let mut send_pending = vec![false; settings.clients];
     let mut seqs = vec![1u64; settings.clients];
@@ -70,7 +70,6 @@ fn main() {
         }
         let mon = SocketMonitor::open(&sock).expect("monitor");
         sock.connect(&args.endpoint).expect("connect");
-        payloads.push(vec![0u8; args.msg_size.max(common::HEADER_SIZE)]);
         sockets.push(sock);
         monitors.push(mon);
     }
@@ -107,17 +106,16 @@ fn main() {
             if waiting_reply[index] {
                 continue;
             }
-            if !send_pending[index] {
-                common::encode_header(
-                    &mut payloads[index],
-                    common::PHASE_ACTIVE,
-                    args.msg_size as u32,
-                    seqs[index],
-                );
-            }
+            let mut msg = Message::with_size(payload_size).expect("msg");
+            common::encode_header(
+                msg.data_mut(),
+                common::PHASE_ACTIVE,
+                args.msg_size as u32,
+                seqs[index],
+            );
             match sockets[index]
                 .send(&server_rid)
-                .message(Message::copy_from(&payloads[index]).expect("msg"))
+                .message(msg)
                 .flags(SendFlags::DONT_WAIT)
                 .submit()
             {

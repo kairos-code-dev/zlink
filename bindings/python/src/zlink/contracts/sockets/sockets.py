@@ -324,38 +324,59 @@ class RouterSocket(
             source_node_rid = ctypes.POINTER(ZlinkRoutingId)()
             source_spot_rid = ctypes.POINTER(ZlinkRoutingId)()
             request_seq = ctypes.c_uint64()
-            native_parts = []
+            parts_array = (ZlinkMsg * 1)()
+            has_more = ctypes.c_int()
             recv_flags = int(flags)
+            native_parts = None
+            received_first_part = False
             try:
-                while True:
-                    native_part = ZlinkMsg()
-                    has_more = ctypes.c_int()
-                    rc = lib().zlink_router_recv_part(
-                        self._handle,
-                        ctypes.byref(source_node_rid),
-                        ctypes.byref(source_spot_rid),
-                        ctypes.byref(request_seq),
-                        ctypes.byref(native_part),
-                        ctypes.byref(has_more),
-                        recv_flags,
-                    )
-                    if rc != 0:
-                        _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
-                    native_parts.append(native_part)
-                    if has_more.value == 0:
-                        break
+                rc = lib().zlink_router_recv_part(
+                    self._handle,
+                    ctypes.byref(source_node_rid),
+                    ctypes.byref(source_spot_rid),
+                    ctypes.byref(request_seq),
+                    ctypes.byref(parts_array[0]),
+                    ctypes.byref(has_more),
+                    recv_flags,
+                )
+                if rc != 0:
+                    _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+                received_first_part = True
+                if has_more.value != 0:
+                    native_parts = [parts_array[0]]
                     recv_flags = 1
+                    while True:
+                        native_part = ZlinkMsg()
+                        rc = lib().zlink_router_recv_part(
+                            self._handle,
+                            ctypes.byref(source_node_rid),
+                            ctypes.byref(source_spot_rid),
+                            ctypes.byref(request_seq),
+                            ctypes.byref(native_part),
+                            ctypes.byref(has_more),
+                            recv_flags,
+                        )
+                        if rc != 0:
+                            _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+                        native_parts.append(native_part)
+                        if has_more.value == 0:
+                            break
+                    part_count = len(native_parts)
+                    parts_array = (ZlinkMsg * part_count)()
+                    for index, native_part in enumerate(native_parts):
+                        parts_array[index] = native_part
+                else:
+                    part_count = 1
             except Exception:
-                _close_native_parts(native_parts)
+                if native_parts is not None:
+                    _close_native_parts(native_parts)
+                elif received_first_part:
+                    lib().zlink_msg_close(ctypes.byref(parts_array[0]))
                 raise
         except RecvError as ex:
             if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
                 return False
             raise
-        part_count = len(native_parts)
-        parts_array = (ZlinkMsg * part_count)()
-        for index, native_part in enumerate(native_parts):
-            parts_array[index] = native_part
         source_node = _routing_id_bytes(source_node_rid.contents) if source_node_rid else None
         source_spot = _routing_id_bytes(source_spot_rid.contents) if source_spot_rid else None
         routing_id = RoutingId(source_node) if source_node else None

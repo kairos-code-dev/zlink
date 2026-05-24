@@ -1007,6 +1007,13 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   Go `perf_go_multi_linux_20260525_040852.txt`가 35.8%, C `perf_c_multi_linux_20260525_040919.txt`
   대비 Go `perf_go_multi_linux_20260525_040934.txt`가 34.1%라 기존 대표값 37.4/38.1%보다 낮다.
   따라서 64B `Bytes(...)` 확대는 tcp에만 남긴다.
+- 2026-05-25 재검토: `ws/wss/tls MULTI_DEALER_DEALER 64B`에서 `MoveMessage(...)`
+  선택 경로도 끄고 기본 `Message(...)` submit 경로를 다시 시험했다. `go test ./...`는
+  통과했고 공식 runner `perf_go_multi_linux_20260525_084043.txt`도 complete였지만,
+  C `perf_c_multi_linux_20260525_084003.txt` 대비 ws/wss/tls 64B가 36.0/35.1/35.3%로
+  기존 대표값 38.2/37.0/38.0%보다 낮았다. small 64B 병목은 `Bytes(...)`,
+  `MoveMessage(...)`, 기본 `Message(...)` 선택만으로 해소되지 않으므로 기존
+  `MoveMessage(...)` 경로를 유지한다.
 - 2026-05-24 추가 수정: `MULTI_SPOT_REQREP`는 current HEAD에서 large만 먼저 다시 측정했다.
   `perf_go_multi_linux_20260524_222958.txt` 기준으로 wss/tls 65536B 이상은 모두 통과권이고,
   tcp/ws large만 보류로 남아 있었다. client active request hot path에서 payload를 `append`로

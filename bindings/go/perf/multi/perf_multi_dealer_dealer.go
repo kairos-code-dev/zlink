@@ -54,7 +54,7 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 		if event.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
-		if useMultiDealerDealerRecvPart(cfg.msgSize) {
+		if useMultiDealerDealerRecvPart(cfg.transport, cfg.msgSize) {
 			if drainMultiDealerDealerServerRecvPart(server, cfg, window, stats, &stopRequested) {
 				break
 			}
@@ -91,8 +91,11 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 	printMultiResult(cfg, stats.Snapshot(cfg.duration, cfg.msgSize))
 }
 
-func useMultiDealerDealerRecvPart(msgSize int) bool {
-	return msgSize == 64 || msgSize == 65536
+func useMultiDealerDealerRecvPart(transport string, msgSize int) bool {
+	if msgSize == 64 || msgSize == 65536 {
+		return true
+	}
+	return msgSize == 131072 && (transport == "wss" || transport == "tls")
 }
 
 func drainMultiDealerDealerServerRecvPart(

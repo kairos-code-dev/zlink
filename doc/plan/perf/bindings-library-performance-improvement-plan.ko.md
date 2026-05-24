@@ -949,6 +949,13 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   `perf_go_multi_linux_20260525_040452.txt`에서 tcp 64/256/1024B가 45.4/64.8/81.1%로
   확인됐다. 특히 기존 최신 재측정에서 38.2%였던 tcp 64B가 기준선 위로 올라 보류에서
   제외된다. 131072/262144B는 앞선 후보에서 낮았으므로 기존 `Message(...)` 경로를 유지한다.
+  같은 방향을 ws 64B까지 넓힌 후보도 시험했지만, 공식 제한 재측정은 complete였어도
+  C `perf_c_multi_linux_20260525_040736.txt` 대비 Go `perf_go_multi_linux_20260525_040750.txt`가
+  34.9%로 기존 대표값 38.4%보다 낮아 반영하지 않는다.
+  wss/tls 64B 후보도 각각 complete였지만 C `perf_c_multi_linux_20260525_040836.txt` 대비
+  Go `perf_go_multi_linux_20260525_040852.txt`가 35.8%, C `perf_c_multi_linux_20260525_040919.txt`
+  대비 Go `perf_go_multi_linux_20260525_040934.txt`가 34.1%라 기존 대표값 37.4/38.1%보다 낮다.
+  따라서 64B `Bytes(...)` 확대는 tcp에만 남긴다.
 - 2026-05-24 추가 수정: `MULTI_SPOT_REQREP`는 current HEAD에서 large만 먼저 다시 측정했다.
   `perf_go_multi_linux_20260524_222958.txt` 기준으로 wss/tls 65536B 이상은 모두 통과권이고,
   tcp/ws large만 보류로 남아 있었다. client active request hot path에서 payload를 `append`로

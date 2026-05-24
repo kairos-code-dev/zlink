@@ -2,7 +2,7 @@ using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Streams;
 
-namespace TicTacToe.SessionActorDispatch.Session;
+namespace TicTacToe.SessionGateway.Server.Session.Sessions;
 
 internal sealed class SessionRelaySession(
     IZLinkSessionContext context,

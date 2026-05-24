@@ -9,8 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\GlobalUsings.cs" Link="GlobalUsings.cs" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <ProjectReference Include="..\Infrastructure\TicTacToe.SessionGateway.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Shared\TicTacToe.SessionGateway.Shared.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
+    <ProjectReference Include="../../../../../../../bindings/dotnet/src/Zlink.Codecs.Json/Zlink.Codecs.Json.csproj" />
   </ItemGroup>
 </Project>

@@ -1,6 +1,6 @@
 using Zlink.Framework.Contracts.Actors;
 
-namespace TicTacToe.SessionActorDispatch.Play;
+namespace TicTacToe.SessionGateway.Server.Play.Actors;
 
 internal sealed class PlayerActor(
     string actorId,

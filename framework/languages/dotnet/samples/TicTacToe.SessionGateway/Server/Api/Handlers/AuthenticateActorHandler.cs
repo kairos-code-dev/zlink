@@ -2,7 +2,7 @@ using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
 
-namespace TicTacToe.SessionGateway.Api;
+namespace TicTacToe.SessionGateway.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
 internal sealed class AuthenticateActorHandler

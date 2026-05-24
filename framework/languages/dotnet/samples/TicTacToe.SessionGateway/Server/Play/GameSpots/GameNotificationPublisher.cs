@@ -1,8 +1,8 @@
-using TicTacToe.SessionGateway.Play;
+using TicTacToe.SessionGateway.Server.Play;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
 
-namespace TicTacToe.SessionActorDispatch.Play;
+namespace TicTacToe.SessionGateway.Server.Play.GameSpots;
 
 internal sealed class GameNotificationPublisher
 {

@@ -1,11 +1,12 @@
-using TicTacToe.SessionActorDispatch.Play;
-using TicTacToe.SessionGateway.Play.EntrySpot;
+using TicTacToe.SessionGateway.Server.Play.Actors;
+using TicTacToe.SessionGateway.Server.Play.EntrySpot;
+using TicTacToe.SessionGateway.Server.Play.GameSpots;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
 using Systems.Zlink;
 
-namespace TicTacToe.SessionGateway.Play.EntrySpot.Handlers;
+namespace TicTacToe.SessionGateway.Server.Play.EntrySpot.Handlers;
 
 internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
 {

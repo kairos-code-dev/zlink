@@ -1,6 +1,6 @@
-using TicTacToe.SessionActorDispatch.Play;
+using TicTacToe.SessionGateway.Server.Play.Actors;
 
-namespace TicTacToe.SessionGateway.Play;
+namespace TicTacToe.SessionGateway.Server.Play.GameSpots;
 
 internal sealed class TicTacToeMatchRoom(string matchId)
 {

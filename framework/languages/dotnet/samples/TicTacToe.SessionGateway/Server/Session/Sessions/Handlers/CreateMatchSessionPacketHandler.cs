@@ -6,7 +6,7 @@ using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
 
-namespace TicTacToe.SessionActorDispatch.Session;
+namespace TicTacToe.SessionGateway.Server.Session.Sessions.Handlers;
 
 internal sealed class CreateMatchSessionPacketHandler(IZLinkClient channels)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>

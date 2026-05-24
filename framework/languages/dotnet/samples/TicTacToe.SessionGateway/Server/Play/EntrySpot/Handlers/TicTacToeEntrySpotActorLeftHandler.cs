@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
-using TicTacToe.SessionActorDispatch.Play;
-using TicTacToe.SessionGateway.Play.EntrySpot;
+using TicTacToe.SessionGateway.Server.Play.Actors;
+using TicTacToe.SessionGateway.Server.Play.EntrySpot;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
-namespace TicTacToe.SessionGateway.Play.EntrySpot.Handlers;
+namespace TicTacToe.SessionGateway.Server.Play.EntrySpot.Handlers;
 
 internal sealed class TicTacToeEntrySpotActorLeftHandler(
     ILogger<TicTacToeEntrySpotActorLeftHandler> logger)

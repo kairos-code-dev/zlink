@@ -1,12 +1,12 @@
 using Systems.Zlink;
-using TicTacToe.SessionActorDispatch.Play;
-using TicTacToe.SessionGateway.Play;
-using TicTacToe.SessionGateway.Play.GameSpots.Handlers;
+using TicTacToe.SessionGateway.Server.Play.Actors;
+using TicTacToe.SessionGateway.Server.Play;
+using TicTacToe.SessionGateway.Server.Play.GameSpots.Handlers;
 using TicTacToe.SessionGateway.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Spots;
 
-namespace TicTacToe.SessionGateway.Play.GameSpots;
+namespace TicTacToe.SessionGateway.Server.Play.GameSpots;
 
 internal sealed class TicTacToeGameSpot(
     IZLinkSpotContext context,

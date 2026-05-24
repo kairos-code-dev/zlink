@@ -23,15 +23,13 @@ session actor dispatch APIs:
 
 Code is split by project:
 
-- `Shared/` contains packets, sample names, and timeouts shared by all roles.
+- `Shared/` contains packets, sample names, topology, and timeouts shared by all roles.
 - `Client/` owns typed stream connector requests, notify handlers, reconnect flow,
   and the command-line client executable.
 - `Server/Api/` owns actor authentication and match creation relay.
 - `Server/Play/` owns the Play channel server, routed actor handlers, and SPOT game rooms.
 - `Server/Session/` owns STREAM session binding and actor dispatch into Play.
 - `Server/Registry/` owns the embedded registry host.
-- `Server/Infrastructure/` owns generated endpoints and the sample registry metadata
-  stores shared by Play and Session.
 
 Each server role has its own executable project. The end-to-end sample script
 starts Registry, Api, Play, primary Session, and reconnect Session as separate

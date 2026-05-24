@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionGateway.Infrastructure.Configuration;
+using TicTacToe.SessionGateway.Shared.Configuration;
 using Zlink.Framework.AspNetCore;
 
-namespace TicTacToe.SessionGateway.Registry;
+namespace TicTacToe.SessionGateway.Server.Registry;
 
 public static class RegistryHostFactory
 {

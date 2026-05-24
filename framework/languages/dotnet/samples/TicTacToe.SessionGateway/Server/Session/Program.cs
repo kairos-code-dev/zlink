@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionActorDispatch.Session;
-using TicTacToe.SessionGateway.Infrastructure.Configuration;
+using TicTacToe.SessionGateway.Server.Session;
+using TicTacToe.SessionGateway.Shared.Configuration;
 
 var topology = SampleTopology.Create();
 var session = args.Contains("--reconnect", StringComparer.Ordinal)

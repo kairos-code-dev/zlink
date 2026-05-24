@@ -1,11 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionGateway.Infrastructure.Configuration;
+using TicTacToe.SessionGateway.Server.Session.Sessions;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Streams;
 
-namespace TicTacToe.SessionActorDispatch.Session;
+namespace TicTacToe.SessionGateway.Server.Session;
 
 public static class SessionServerHostFactory
 {

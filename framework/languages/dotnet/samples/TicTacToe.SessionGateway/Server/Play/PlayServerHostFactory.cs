@@ -1,14 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionActorDispatch.Play;
-using TicTacToe.SessionGateway.Infrastructure;
-using TicTacToe.SessionGateway.Infrastructure.Configuration;
-using TicTacToe.SessionGateway.Play.EntrySpot;
-using TicTacToe.SessionGateway.Play.GameSpots;
+using TicTacToe.SessionGateway.Server.Play.Actors;
 using TicTacToe.SessionGateway.Shared.Configuration;
+using TicTacToe.SessionGateway.Server.Play.EntrySpot;
+using TicTacToe.SessionGateway.Server.Play.GameSpots;
 using Zlink.Framework.AspNetCore;
 
-namespace TicTacToe.SessionGateway.Play;
+namespace TicTacToe.SessionGateway.Server.Play;
 
 public static class PlayServerHostFactory
 {

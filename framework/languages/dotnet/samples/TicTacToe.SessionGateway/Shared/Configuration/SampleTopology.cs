@@ -1,6 +1,6 @@
 using Systems.Zlink;
 
-namespace TicTacToe.SessionGateway.Infrastructure.Configuration;
+namespace TicTacToe.SessionGateway.Shared.Configuration;
 
 public sealed record SampleTopology(
     string RegistryPubEndpoint,

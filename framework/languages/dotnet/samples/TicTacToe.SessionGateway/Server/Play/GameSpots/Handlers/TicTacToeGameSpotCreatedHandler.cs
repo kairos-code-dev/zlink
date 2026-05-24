@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Systems.Zlink;
-using TicTacToe.SessionGateway.Play.GameSpots;
+using TicTacToe.SessionGateway.Server.Play.GameSpots;
 
-namespace TicTacToe.SessionGateway.Play.GameSpots.Handlers;
+namespace TicTacToe.SessionGateway.Server.Play.GameSpots.Handlers;
 
 internal sealed class TicTacToeGameSpotCreatedHandler(
     ILogger<TicTacToeGameSpotCreatedHandler> logger)

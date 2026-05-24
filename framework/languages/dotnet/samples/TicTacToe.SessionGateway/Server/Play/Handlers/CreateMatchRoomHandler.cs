@@ -3,7 +3,7 @@ using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
-namespace TicTacToe.SessionActorDispatch.Play;
+namespace TicTacToe.SessionGateway.Server.Play.Handlers;
 
 [ZLinkHandlerGroup("play")]
 internal sealed class CreateMatchRoomHandler(IZLinkSpotManager spots)

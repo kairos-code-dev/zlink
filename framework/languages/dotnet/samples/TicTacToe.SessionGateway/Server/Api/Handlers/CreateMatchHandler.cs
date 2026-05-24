@@ -3,7 +3,7 @@ using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 
-namespace TicTacToe.SessionGateway.Api;
+namespace TicTacToe.SessionGateway.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
 internal sealed class CreateMatchHandler(IZLinkClient client)

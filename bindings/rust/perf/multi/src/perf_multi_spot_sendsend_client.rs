@@ -98,7 +98,7 @@ fn active_spot_slot_limit(total: usize, msg_size: usize) -> usize {
     if msg_size >= 131_072 {
         total.min(8)
     } else if msg_size >= 65_536 {
-        total.min(32)
+        total.min(24)
     } else {
         total
     }

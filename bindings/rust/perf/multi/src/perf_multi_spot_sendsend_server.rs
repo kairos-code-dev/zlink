@@ -79,13 +79,23 @@ fn echo_available(spot: &Spot) {
                 if received.request_seq().unwrap_or(0) != 0 {
                     continue;
                 }
-                let payload = common::message_payload(received.parts());
-                let message = Message::copy_from(payload).expect("echo message");
-                let _ = received
-                    .send()
-                    .message(message)
-                    .flags(SendFlags::DONT_WAIT)
-                    .submit();
+                let send_op = received.send();
+                let payload_len = common::message_payload(received.parts()).len();
+                // For larger frames, the native-copy send path is measurably faster
+                // than moving the received Message through the public builder.
+                let message = if payload_len >= 131_072 {
+                    Message::copy_from(common::message_payload(received.parts()))
+                        .expect("echo message")
+                } else {
+                    match received.single_part() {
+                        Ok(message) => message,
+                        Err(_) => {
+                            eprintln!("[spot-sendsend-server] invalid single-part request");
+                            continue;
+                        }
+                    }
+                };
+                let _ = send_op.message(message).flags(SendFlags::DONT_WAIT).submit();
             }
             Ok(false) => break,
             Err(err) if err.code() == RecvResult::NoData => break,

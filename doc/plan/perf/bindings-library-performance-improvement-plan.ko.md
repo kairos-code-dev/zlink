@@ -924,6 +924,17 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   `perf_go_multi_linux_20260524_215950.txt`, small/131072B 적용 후보
   `perf_go_multi_linux_20260524_220213.txt`, `perf_go_multi_linux_20260524_220355.txt`는
   262144B, `ws`, 또는 131072B 일부를 낮춰 반영 범위를 65536B 이하 non-ws로 좁혔다.
+- 2026-05-25 재검토: `MULTI_SPOT_SENDSEND` client reply hot path에서 throughput count와
+  latency sample 기록을 분리하는 후보를 시험했다. 첫 후보는 모든 reply에서 timestamp를
+  계산하고 latency 기록만 32개당 1개로 줄였고, 두 번째 후보는 count는 metric header만
+  확인한 뒤 세고 timestamp 계산을 latency sample에만 제한했다. `go test ./...`는 둘 다
+  통과했고 공식 runner도 complete였지만, C 기준 `perf_c_multi_linux_20260525_061836.txt`
+  대비 후보 `perf_go_multi_linux_20260525_061913.txt`는 tcp 64/256/1024B가
+  112.184/114.032/110.930Kops/s, 두 번째 후보 `perf_go_multi_linux_20260525_062050.txt`는
+  113.016/113.859/114.044Kops/s였다. 기존 대표값
+  `perf_go_multi_linux_20260525_021722.txt`의 117.678/111.962/116.442Kops/s와 비교하면
+  256B만 소폭 오르고 64B/1024B가 낮아진다. latency sampling 분리만으로는 small 보류를
+  해소하지 못하므로 반영하지 않는다.
 - 2026-05-24 추가 수정: `MULTI_DEALER_DEALER`를 current HEAD에서 fresh C baseline으로
   다시 측정하고 stale 보류를 제거했다. `perf_go_multi_linux_20260524_222134.txt` 기준으로
   tcp 256B/1024B, ws 256B/1024B/262144B, wss 256B/1024B, tls 256B/1024B는 통과권이다.

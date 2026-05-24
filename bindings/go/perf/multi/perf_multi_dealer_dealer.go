@@ -95,7 +95,10 @@ func useMultiDealerDealerRecvPart(transport string, msgSize int) bool {
 	if msgSize == 64 || msgSize == 65536 {
 		return true
 	}
-	return msgSize == 131072 && (transport == "wss" || transport == "tls")
+	if msgSize == 131072 && (transport == "wss" || transport == "tls") {
+		return true
+	}
+	return msgSize == 262144 && transport == "wss"
 }
 
 func drainMultiDealerDealerServerRecvPart(
@@ -349,6 +352,8 @@ func useMultiDealerDealerBytes(transport string, msgSize int) bool {
 		return msgSize <= 1024 || msgSize == 65536
 	case "ws":
 		return msgSize == 65536 || msgSize == 131072
+	case "wss":
+		return msgSize == 262144
 	default:
 		return false
 	}

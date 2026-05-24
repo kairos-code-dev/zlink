@@ -935,6 +935,11 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   `perf_go_multi_linux_20260525_021722.txt`의 117.678/111.962/116.442Kops/s와 비교하면
   256B만 소폭 오르고 64B/1024B가 낮아진다. latency sampling 분리만으로는 small 보류를
   해소하지 못하므로 반영하지 않는다.
+- 2026-05-25 재검토: `MULTI_SPOT_SENDSEND` small active slot 32/16보다 덜 좁힌
+  active slot 64 후보도 tcp 64/256/1024B에 시험했다. `go test ./...`는 통과했고 공식
+  runner `perf_go_multi_linux_20260525_062259.txt`도 complete였지만, median이
+  80.541/83.487/82.150Kops/s로 기존 대표값보다 크게 낮았다. active slot 축소 계열은
+  small 보류 해소 후보에서 제외한다.
 - 2026-05-24 추가 수정: `MULTI_DEALER_DEALER`를 current HEAD에서 fresh C baseline으로
   다시 측정하고 stale 보류를 제거했다. `perf_go_multi_linux_20260524_222134.txt` 기준으로
   tcp 256B/1024B, ws 256B/1024B/262144B, wss 256B/1024B, tls 256B/1024B는 통과권이다.

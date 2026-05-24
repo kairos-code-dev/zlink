@@ -352,6 +352,7 @@ fn main() {
                 .timeout(Duration::from_millis(
                     settings.recv_timeout_ms.max(settings.send_timeout_ms),
                 ))
+                .flags(SendFlags::DONT_WAIT)
                 .submit(move |result| {
                     waiting_flag.store(false, Ordering::Release);
                     let Ok(reply) = result else {

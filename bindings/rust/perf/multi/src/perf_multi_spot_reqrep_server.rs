@@ -151,9 +151,12 @@ fn main() {
                 };
                 match received {
                     Ok(Some(received)) => {
-                        let reply = Message::copy_from(common::message_payload(received.parts()))
-                            .expect("reply");
-                        if let Err(err) = received.reply().message(reply).submit() {
+                        let reply_op = received.reply();
+                        let Ok(reply) = received.single_part() else {
+                            eprintln!("[spot-reqrep-server] invalid single-part request");
+                            break;
+                        };
+                        if let Err(err) = reply_op.message(reply).submit() {
                             if trace_enabled() {
                                 eprintln!("spot reqrep reply failed: {err}");
                             }

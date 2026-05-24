@@ -438,11 +438,12 @@ func useMultiSpotSendSendForwardRouted(transport string, msgSize int) bool {
 		return msgSize >= 65536
 	case "wss":
 		return msgSize >= 65536
+	case "ws":
+		return msgSize >= 65536
 	case "tcp":
 		// Under LockOSThread the consume-forward echo (C zlink_spot_forward_routed
-		// parity) is the stable choice for tcp large: it lifts 65536 from ~0.1%
-		// to ~14% and keeps 131072/262144 from collapsing (the builder echo is
-		// unstable for tcp large, dropping to <100 msg/s on 262144).
+		// parity) is the stable choice for tcp large and prevents builder-echo
+		// collapse on large routed replies.
 		return msgSize >= 65536
 	default:
 		return false

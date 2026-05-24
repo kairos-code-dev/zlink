@@ -7,8 +7,8 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use zlink::*;
 use zlink::poller::POLLCOMPLETION;
+use zlink::*;
 
 const PATTERN: &str = "MULTI_SPOT_REQREP";
 const TOPIC: &str = "bench";
@@ -105,6 +105,9 @@ fn request_spot_reply_with_poller(
 }
 
 fn active_spot_reqrep_slot_limit(total_slots: usize, msg_size: usize) -> usize {
+    if msg_size >= 262144 {
+        return total_slots.min(6);
+    }
     if msg_size >= 131072 {
         return total_slots.min(8);
     }
@@ -202,7 +205,9 @@ fn main() {
     else {
         return;
     };
-    control_node.set_pub_bind(&control_bind).expect("control bind");
+    control_node
+        .set_pub_bind(&control_bind)
+        .expect("control bind");
     control_node
         .connect_peer(&control_endpoint)
         .expect("connect server control");
@@ -223,7 +228,9 @@ fn main() {
     data_node
         .set_router_bind(&data_router_bind)
         .expect("client data router bind endpoint");
-    data_node.set_pub_bind(&data_bind).expect("client data bind");
+    data_node
+        .set_pub_bind(&data_bind)
+        .expect("client data bind");
     let data_endpoint_local = data_node.last_endpoint().unwrap_or(data_bind);
     data_node
         .connect_peer(&data_endpoint)
@@ -359,8 +366,7 @@ fn main() {
                         return;
                     };
                     let data = common::message_payload(&reply);
-                    if Instant::now() <= deadline
-                        && common::is_valid_active_message(data, msg_size)
+                    if Instant::now() <= deadline && common::is_valid_active_message(data, msg_size)
                     {
                         let sent_ts_ns = common::decode_sent_ts_ns(data);
                         let now_ns = common::now_ns();

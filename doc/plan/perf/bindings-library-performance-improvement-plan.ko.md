@@ -937,7 +937,9 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   `perf_go_multi_linux_20260524_223541.txt`에서 tcp 65536/131072/262144B는
   27.7/28.2/32.6%에서 30.8/32.0/37.0%로 올랐고, ws는 42.7/34.4/45.7%에서
   51.1/37.8/51.7%로 올라 65536B와 262144B 보류를 해소했다. tcp large와 ws 131072B는
-  아직 기준선 아래라 계속 보류한다.
+  아직 기준선 아래라 계속 보류한다. 서버 reply에서 public `ReplyOp.MoveMessage(...)`를
+  추가해 받은 single-part를 그대로 넘기는 후보는 `perf_go_multi_linux_20260524_224212.txt`에서
+  tcp 262144B와 ws 65536B를 낮춰 API 확장과 구현을 되돌렸다.
 - Multi `DEALER_DEALER`, `PUBSUB`, `SPOT`, `SPOT_SENDSEND` 보류: 단일 poll loop와
   `POLLCOMPLETION` 의미는 맞췄고, Go send builder에는 명시적 ownership 이전 단계
   `MoveMessage(...)`와 caller-owned slice를 submit 때 한 번만 native message로 만드는

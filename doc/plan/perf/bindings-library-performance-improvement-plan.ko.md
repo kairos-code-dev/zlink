@@ -1128,6 +1128,7 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
     `Spot.ForwardRouted(...)`(C `zlink_spot_forward_routed` parity)를 tcp 65536+에도 적용해 해소했다. 결과(같은 fresh baseline 대비):
     65536 0.1%→16.7%(10926 msg/s), 131072 →16.5%, 262144 →22.6%로 안정화(builder echo는 tcp large에서 262144가 94 msg/s로 붕괴하는 불안정 경로였다).
     small 64/256/1024는 32~35%로 per-FFI routed-echo 비용 영역이라 builder 경로 유지. 전 size 여전히 SPOT 최소 기준 미만이라 보류이나 catastrophic 0% cell은 제거됐다.
+  - **2026-05-25 `MULTI_SPOT_SENDSEND` client POLLOUT 후보 기각**: C client는 poller에 `POLLIN|POLLOUT`을 등록하지만, Go client에 같은 등록을 적용한 후보는 공식 wrapper `perf_go_multi_linux_20260525_005337.txt`에서 `tcp 262144B`가 `exit_nonzero` partial로 끝났다. Go loop는 POLLOUT wake를 그대로 늘리면 completion 안정성이 나빠지므로 기존 `POLLIN` 등록과 1ms bounded retry를 유지한다.
   - **남은 보류(수정 후에도 목표 미달, 후속 개선 대상)**: `MULTI_SPOT_SENDSEND` 전 size(16~35%, per-message routed-echo FFI 비용).
     `MULTI_DEALER_DEALER` 최대 size(wss/tls 131072/262144) 암호화 large copy.
     `MULTI_SPOT`/`MULTI_SPOT_REQREP` 일부 large, 64B per-message FFI cost. 이들은 LockOSThread로 부분 개선됐으나 목표 미만이라 계속 추적한다.

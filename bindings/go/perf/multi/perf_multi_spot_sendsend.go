@@ -204,7 +204,7 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 		perfcommon.Must(fmt.Errorf("spot sendsend client data endpoint publish timeout"))
 	}
 	time.Sleep(perfcommon.MultiSpotControlSettleDuration())
-	waitMultiSpotSendSendReady(clients[0].spot, cfg.msgSize)
+	waitMultiSpotSendSendReady(clients[0].spot, cfg.transport, cfg.msgSize)
 	if !publishSpotControlPayload(controlPub, "CONNECTED", perfcommon.MultiReadyTimeout()) {
 		perfcommon.Must(fmt.Errorf("spot sendsend client connected publish timeout"))
 	}
@@ -239,7 +239,7 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 				continue
 			}
 			perfcommon.StampPayload(client.payload)
-			if submitMultiSpotSendSend(client.spot, client.payload) {
+			if submitMultiSpotSendSend(client.spot, cfg.transport, client.payload) {
 				client.waitingReply = true
 				sendProgress = true
 			}
@@ -363,12 +363,13 @@ func activeMultiSpotSendSendClientLimit(total int, msgSize int) int {
 	return total
 }
 
-func submitMultiSpotSendSend(spot *zlink.Spot, payload []byte) bool {
+func submitMultiSpotSendSend(spot *zlink.Spot, transport string, payload []byte) bool {
 	sent, err := perfcommon.SubmitPayload(payload, func(message *zlink.Message) (bool, error) {
-		return spot.SendToSpot(multiSpotSendSendNodeRID, multiSpotSendSendSpotRID).
-			Message(message).
-			Flags(zlink.SendFlagsDontWait).
-			Submit(nil)
+		send := spot.SendToSpot(multiSpotSendSendNodeRID, multiSpotSendSendSpotRID)
+		if transport != "ws" && len(payload) <= 65536 {
+			return send.MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		}
+		return send.Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
 	})
 	if err != nil {
 		if perfcommon.IsTransient(err) || perfcommon.IsSubmitNotConnected(err) {
@@ -496,13 +497,13 @@ func drainMultiSpotSendSend(
 	}
 }
 
-func waitMultiSpotSendSendReady(spot *zlink.Spot, msgSize int) {
+func waitMultiSpotSendSendReady(spot *zlink.Spot, transport string, msgSize int) {
 	payload := perfcommon.PreparePayload(msgSize)
 	perfcommon.StampProbePayload(payload)
 	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
 	waitingReply := false
 	for time.Now().Before(deadline) {
-		if !waitingReply && submitMultiSpotSendSend(spot, payload) {
+		if !waitingReply && submitMultiSpotSendSend(spot, transport, payload) {
 			waitingReply = true
 		}
 		if drainMultiSpotSendSend(spot, msgSize, deadline, perfcommon.NewStats(), false) {

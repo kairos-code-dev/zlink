@@ -1142,6 +1142,7 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   - **`wss/tls MULTI_PUBSUB 256B` 통과 재확인**: 같은 조건 제한 재측정 C `perf_c_multi_linux_20260525_020714.txt` 대비 Go `perf_go_multi_linux_20260525_020827.txt`에서 wss 61.2%, tls 50.5%로 확인되어 두 셀을 보류에서 통과로 갱신했다. 같은 실행에서 `wss/tls MULTI_DEALER_DEALER 64B`는 36.8%/37.9%라 보류를 유지한다.
   - **`tcp/ws MULTI_SPOT` small 통과 재확인**: 같은 조건 제한 재측정 C `perf_c_multi_linux_20260525_021128.txt` 대비 Go `perf_go_multi_linux_20260525_021338.txt`에서 tcp 64/256/1024B는 66.0/76.7/81.7%, ws 64/256/1024B는 53.1/51.9/55.1%로 확인되어 보류에서 통과로 갱신했다.
   - **`tcp MULTI_DEALER_DEALER`/`MULTI_SPOT_SENDSEND` 보류 재확인**: 같은 조건 제한 재측정 C `perf_c_multi_linux_20260525_021556.txt` 대비 Go `perf_go_multi_linux_20260525_021722.txt`에서 DD 64/131072/262144B는 38.2/44.0/43.7%, SPOT_SENDSEND 64/256/1024/131072/262144B는 43.8/42.9/47.2/18.9/24.7%다. 모두 기준 아래라 보류를 유지한다.
+  - **`tcp MULTI_SPOT_REQREP` 262144B `Bytes(...)` 확대 후보 기각**: client request `Bytes(...)` 조건을 tcp 262144B까지 넓혀 시험했다. `go test ./...`는 통과했고 Go 제한 재측정 `perf_go_multi_linux_20260525_031248.txt`도 complete였지만, 262144B median이 1.002Kops/s로 최신 좋은 기준 `perf_go_multi_linux_20260525_003036.txt`의 4.716Kops/s보다 낮았다. 같은 조건 C 제한 재측정 `perf_c_multi_linux_20260525_031241.txt`는 core `fast_mutex` assert로 partial이라 기준으로 쓰지 않는다. tcp 262144B는 기존 `Message` 경로를 유지한다.
 
 ### 6.7 Rust 상태
 

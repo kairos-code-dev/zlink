@@ -41,6 +41,16 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 	defer replier.Close()
 	perfcommon.ApplyMultiBenchmarkSocketOptions(replier, cfg.transport)
 	perfcommon.Must(replier.SetRoutingID(multiSpotSendSendSpotRID))
+	useServerPoller := cfg.msgSize <= 1024
+	var replierPoller *zlink.Poller
+	var replierPollEvents []zlink.PollEvent
+	if useServerPoller {
+		replierPoller, err = zlink.NewPoller()
+		perfcommon.Must(err)
+		defer replierPoller.Close()
+		perfcommon.Must(replierPoller.AddSocket(replier, perfcommon.ZLinkPollIn, 0))
+		replierPollEvents = make([]zlink.PollEvent, 1)
+	}
 
 	dataEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend")
 	dataRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-router")
@@ -107,7 +117,7 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 		if dataConnected && readyCount >= cfg.clients {
 			break
 		}
-		time.Sleep(time.Millisecond)
+		waitMultiSpotSendSendServerIdle(replierPoller, replierPollEvents, time.Millisecond, useServerPoller)
 	}
 	if !dataConnected || readyCount < cfg.clients {
 		perfcommon.Must(fmt.Errorf("spot sendsend server readiness timeout"))
@@ -129,7 +139,7 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 	idleDeadline := time.Now().Add(cfg.duration + 2*time.Second)
 	for time.Now().Before(idleDeadline) {
 		drainMultiSpotSendSendServer(replier, cfg.transport, cfg.msgSize)
-		time.Sleep(time.Millisecond)
+		waitMultiSpotSendSendServerIdle(replierPoller, replierPollEvents, time.Millisecond, useServerPoller)
 	}
 }
 
@@ -462,6 +472,20 @@ func drainMultiSpotSendSendServerForwardRouted(replier *zlink.Spot) {
 		if !ok {
 			return
 		}
+	}
+}
+
+func waitMultiSpotSendSendServerIdle(poller *zlink.Poller, events []zlink.PollEvent, timeout time.Duration, usePoller bool) {
+	if timeout <= 0 {
+		return
+	}
+	if !usePoller {
+		time.Sleep(timeout)
+		return
+	}
+	_, err := poller.Wait(events, timeout)
+	if err != nil && !perfcommon.IsTransient(err) {
+		perfcommon.Must(fmt.Errorf("multi spot sendsend server poll: %w", err))
 	}
 }
 

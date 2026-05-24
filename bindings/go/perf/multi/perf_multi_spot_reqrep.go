@@ -363,12 +363,11 @@ func submitMultiSpotReqRepRequest(slot *multiSpotReqRepSlot, msgSize int, deadli
 		return false
 	}
 	perfcommon.StampPayload(slot.payload)
-	payload := append([]byte(nil), slot.payload...)
 	slot.waiting = true
 	slot.mu.Unlock()
 
 	ok, err := slot.spot.RequestToSpot(multiSpotReqRepNodeRID, multiSpotReqRepSpotRID).
-		Message(perfcommon.NewMessage(payload)).
+		Message(perfcommon.NewMessage(slot.payload)).
 		Flags(zlink.SendFlagsDontWait).
 		Timeout(200*time.Millisecond).
 		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {

@@ -1717,7 +1717,7 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 | `tls` | `MULTI_SPOT_SENDSEND` | `보류(5.6%)` | `보류(7.8%)` | `보류(0.2%)` | `보류(5.2%)` | `통과(33.2%)` | `통과(41.6%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같고, 1024B는 제한 재측정 `perf_python_multi_linux_20260522_201131_codex_python_multi_tls_spot_sendsend1024_recheck_20260522.txt` 기준이다. active slot 제한과 pending reply drain 보강 뒤 timeout은 없어졌고 131072B/262144B는 기준선을 넘었다. 나머지는 기준보다 낮다. |
 | `tls` | `MULTI_STREAM` | `보류(1.2%)` | `보류(1.3%)` | `보류(1.2%)` | `보류(8.9%)` | `보류(15.1%)` | `보류(25.7%)` | 64~65536B는 C `perf_c_multi_linux_20260522_155155_codex_c_multi_tls_stream_clients100_for_rust_20260522.txt`, 131072B/262144B는 C `perf_c_multi_linux_20260522_201307_codex_c_multi_wss_tls_stream_large_for_python_20260522.txt`, Python은 `perf_python_multi_linux_20260522_200655_codex_python_multi_tls_duration1_20260522.txt` 기준이다. Python stream server에 TLS server 설정을 추가한 상태에서 전 size complete를 확보했다. |
 
-#### 6.8.3 Python 남은 작업 (2026-05-24)
+#### 6.8.3 Python 남은 작업 (2026-05-25)
 
 - **수신 zero-copy `.data` 추가**: Rust SPOT의 per-message 복사 제거와 같은 동기로, Python 수신 부품(`ReceivedMessage`)에
   zero-copy `data` memoryview property를 추가했다(`Message.data`/C `zlink_msg_data`와 동일 계약, 회귀 테스트 `tests/test_version.py::test_received_part_data_is_zero_copy_view` 통과).
@@ -1769,6 +1769,18 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `PUBSUB` 64/256B와 `DEALER_DEALER` 1024B는 여전히 낮거나 회귀했고 latency도 크게 흔들렸다.
   같은 조건 C `perf_c_single_linux_20260525_135131_python_single_latency_sample_c.txt` 대비
   처리량은 3.3~6.2%라 single small 보류를 해소하지 못하므로 반영하지 않는다.
+- **single sender native result fast path 후보 기각**: perf single helper의 `send_nonblocking(...)`와
+  `publish_nonblocking(...)`에서 fluent builder와 `native_parts` 리스트 구성을 건너뛰고
+  단일 payload를 `zlink_send_part`/`zlink_publish_part`에 바로 넘기는 후보를 시험했다.
+  `python3 -m py_compile bindings/python/perf/single/perf_common.py bindings/python/perf/single/perf_pair.py
+  bindings/python/perf/single/perf_dealer_dealer.py bindings/python/perf/single/perf_pubsub.py`는
+  통과했고 공식 wrapper도 complete였다. 같은 조건 C
+  `perf_c_single_linux_20260525_160053_python_single_fast_send_c.txt` 대비 후보
+  `perf_python_single_linux_20260525_160344_single_fast_send_candidate.txt`의 tcp small median은
+  `PAIR` 4.3/4.5/7.8%, `PUBSUB` 3.3/4.0/4.9%,
+  `DEALER_DEALER` 4.7/4.7/7.1%에 그쳤다. Python 내부 send 객체 준비 비용을 더 줄여도
+  메시지마다 Python에서 C로 들어가는 호출 경계와 수신 처리 비용이 남아 single small
+  보류를 해소하지 못하므로 반영하지 않는다.
 - **MULTI_DEALER_DEALER send bytearray 후보 기각**: client hot path에서 `stamp_payload(...)`가
   `bytearray`에 헤더를 찍은 뒤 `bytes(payload)`를 반환하므로, 65536/262144B에서 반환된
   `bytes` 대신 원래 `bytearray`를 `send_nonblocking(...)`에 넘기는 후보를 시험했다.

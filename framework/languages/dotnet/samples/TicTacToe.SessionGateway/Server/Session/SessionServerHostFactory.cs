@@ -34,6 +34,10 @@ public static class SessionServerHostFactory
             {
                 routed.Bind(sessionNode.SpotEndpoint);
                 routed.ConfigureRouting(routing => routing.RoutingId = sessionNode.RoutingId);
+                routed.UseManualConnections(connections =>
+                {
+                    connections.Connect(topology.PlayRouterEndpoint);
+                });
             });
             options.AddSpotMesh(SampleNames.GameSpotDiscovery, mesh =>
             {
@@ -43,7 +47,12 @@ public static class SessionServerHostFactory
                     {
                         router.SetRouterBind(sessionNode.RouterEndpoint);
                         router.SetRoutingId(sessionNode.RoutingId);
+                        router.UseManualConnections(connections =>
+                        {
+                            connections.Connect(topology.PlaySpotRouterEndpoint);
+                        });
                     });
+                    node.AcceptSpotRoutesFromChannel(SampleNames.RouterChannel);
                 });
             });
             options.AddStreamNode(SampleNames.StreamNode, stream =>

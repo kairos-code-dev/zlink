@@ -100,6 +100,8 @@ wait_port reconnect-route "${TICTACTOE_SG_RECONNECT_SESSION_SPOT_ENDPOINT}"
 wait_port reconnect-spot-router "${TICTACTOE_SG_RECONNECT_SESSION_ROUTER_ENDPOINT}"
 wait_port reconnect-stream "${TICTACTOE_SG_RECONNECT_STREAM_ENDPOINT}"
 
+sleep "${TICTACTOE_SG_DISCOVERY_SETTLE_SECONDS:-5}"
+
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/TicTacToe.SessionGateway.Client.csproj" -- \
   --stream-endpoint "${TICTACTOE_SG_STREAM_ENDPOINT}" \
   --reconnect-stream-endpoint "${TICTACTOE_SG_RECONNECT_STREAM_ENDPOINT}"

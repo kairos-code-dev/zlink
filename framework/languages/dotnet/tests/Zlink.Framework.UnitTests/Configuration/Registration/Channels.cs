@@ -320,6 +320,34 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_AllowsAcceptedRouteChannelManualConnections_WhenDiscoveryIsConfigured()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+            options.AddRouteMeshChannel("backend", routed =>
+            {
+                routed.Bind("tcp://127.0.0.1:7203");
+                routed.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7204"));
+            });
+            options.AddSpotMesh("spot.mesh", mesh =>
+            {
+                mesh.UseDiscovery(discovery => discovery.Add("tcp://127.0.0.1:5551"));
+                mesh.AddNode("stage-node", node =>
+                {
+                    node.EnableRouter(router =>
+                    {
+                        router.SetRouterBind("tcp://127.0.0.1:9105");
+                    });
+                    node.AcceptSpotRoutesFromChannel("backend");
+                });
+            });
+        });
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath()
     {
         var services = new ServiceCollection();

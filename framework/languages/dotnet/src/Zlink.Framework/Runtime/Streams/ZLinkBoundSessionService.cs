@@ -55,7 +55,7 @@ internal sealed class ZLinkBoundSessionService(
         }
     }
 
-    internal ValueTask SendBoundSessionAsync<TMessage>(
+    internal async ValueTask SendBoundSessionAsync<TMessage>(
         string actorId,
         string? packetName,
         IReadOnlyDictionary<string, string> metadata,
@@ -67,16 +67,47 @@ internal sealed class ZLinkBoundSessionService(
             packetName,
             metadata,
             message);
-        using var frameMessage = Message.FromBytes(frame);
-        if (!runtime.SendActorBoundSession(
-                actorId,
-                new[] { frameMessage },
-                SendFlags.None))
-        {
-            throw new InvalidOperationException("Actor bound session send failed.");
-        }
+        await SendFrameWithRetryAsync(actorId, frame, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
-        return ValueTask.CompletedTask;
+    private async ValueTask SendFrameWithRetryAsync(
+        string actorId,
+        byte[] frame,
+        CancellationToken cancellationToken)
+    {
+        var timeout = runtime.Registration.DefaultTimeout;
+        var retryDelay = TimeSpan.FromMilliseconds(25);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        Exception? lastError = null;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var frameMessage = Message.FromBytes(frame);
+            try
+            {
+                if (runtime.SendActorBoundSession(
+                        actorId,
+                        new[] { frameMessage },
+                        SendFlags.None))
+                {
+                    return;
+                }
+            }
+            catch (ZlinkSubmitException error) when (error.Result == ZlinkSubmitException.ErrorCode.NotConnected)
+            {
+                lastError = error;
+            }
+
+            if (elapsed.Elapsed >= timeout)
+            {
+                throw new InvalidOperationException("Actor bound session send failed.", lastError);
+            }
+
+            var remaining = timeout - elapsed.Elapsed;
+            await Task.Delay(remaining < retryDelay ? remaining : retryDelay, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private ValueTask<ZLinkActorBoundSession> ResolveSessionRouteAsync(

@@ -43,6 +43,11 @@ public static class PlayServerHostFactory
             {
                 routed.Bind(topology.PlayRouterEndpoint);
                 routed.ConfigureRouting(routing => routing.RoutingId = topology.PlayRid);
+                routed.UseManualConnections(connections =>
+                {
+                    connections.Connect(topology.SessionSpotEndpoint);
+                    connections.Connect(topology.ReconnectSessionSpotEndpoint);
+                });
             });
             options.AddSpotMesh(SampleNames.GameSpotDiscovery, spotMesh =>
             {
@@ -56,6 +61,11 @@ public static class PlayServerHostFactory
                     {
                         router.SetRouterBind(topology.PlaySpotRouterEndpoint);
                         router.SetRoutingId(topology.PlayRid);
+                        router.UseManualConnections(connections =>
+                        {
+                            connections.Connect(topology.SessionRouterEndpoint);
+                            connections.Connect(topology.ReconnectSessionRouterEndpoint);
+                        });
                     });
                     spot.AcceptSpotRoutesFromChannel(SampleNames.RouterChannel);
                     spot.AddEntrySpot<TicTacToeEntrySpot>();

@@ -201,14 +201,8 @@ internal sealed class ZLinkSpotActivationDispatcher(
             var frame = ZLinkStreamFrameCodec.Encode(
                 ZLinkStreamProtocolDefaults.EncodeHeader(responseHeader).Span,
                 reply);
-            using var frameMessage = Message.FromBytes(frame);
-            if (!runtime.SendActorBoundSession(
-                    actorId,
-                    new[] { frameMessage },
-                    SendFlags.None))
-            {
-                throw new InvalidOperationException("Actor request reply relay failed.");
-            }
+            await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
+                .ConfigureAwait(false);
 
             await boundSessionScope.DrainAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -222,6 +216,46 @@ internal sealed class ZLinkSpotActivationDispatcher(
                 body,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static async ValueTask SendFrameWithRetryAsync(
+        ZLinkFrameworkRuntime runtime,
+        string actorId,
+        byte[] frame,
+        CancellationToken cancellationToken)
+    {
+        var timeout = runtime.Registration.DefaultTimeout;
+        var retryDelay = TimeSpan.FromMilliseconds(25);
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        Exception? lastError = null;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var frameMessage = Message.FromBytes(frame);
+            try
+            {
+                if (runtime.SendActorBoundSession(
+                        actorId,
+                        new[] { frameMessage },
+                        SendFlags.None))
+                {
+                    return;
+                }
+            }
+            catch (ZlinkSubmitException error) when (error.Result == ZlinkSubmitException.ErrorCode.NotConnected)
+            {
+                lastError = error;
+            }
+
+            if (elapsed.Elapsed >= timeout)
+            {
+                throw new InvalidOperationException("Actor request reply relay failed.", lastError);
+            }
+
+            var remaining = timeout - elapsed.Elapsed;
+            await Task.Delay(remaining < retryDelay ? remaining : retryDelay, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private static string BuildNativeBoundSessionToken(RoutingId sourceSessionRid)

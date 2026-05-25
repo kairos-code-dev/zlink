@@ -19,8 +19,13 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             routed.SpotRouteEgress is not null
             && routed.ManualConnections.Count > 0
             && discoveryConfigured;
+        var manualAcceptedSpotRouteWithDiscoveryMetadata =
+            acceptedBySpotRouteChannel
+            && routed.ManualConnections.Count > 0
+            && discoveryConfigured;
 
         if (!manualRouteEgressWithDiscoveryMetadata
+            && !manualAcceptedSpotRouteWithDiscoveryMetadata
             && (!acceptedBySpotRouteChannel
                 || discoveryConfigured
                 || routed.ManualConnections.Count > 0))

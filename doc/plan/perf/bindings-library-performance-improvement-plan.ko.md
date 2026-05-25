@@ -1719,6 +1719,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   1.6%/2.5% 개선되고, ws/wss/tls는 대부분 1.4~16.6% 낮아졌다. publish submit 내부에서
   native message copy가 남아 있고 transport별 큰 메시지 회귀가 생겨 안정적인 개선이 아니므로
   반영하지 않는다.
+- **MULTI_PUBSUB server backpressure sleep 제거 후보 기각**: server active loop에서
+  `publish_nonblocking(...)` 실패 시 1ms backoff를 없애고 즉시 다음 publish를 재시도하는
+  후보를 시험했다. `python3 -m py_compile bindings/python/perf/multi/perf_multi_pubsub_server.py bindings/python/perf/multi/perf_multi_pubsub_client.py`는
+  통과했고, 공식 wrapper C `perf_c_multi_linux_20260525_133159_python_pubsub_no_sleep_c.txt`
+  대비 Python 후보 `perf_python_multi_linux_20260525_133413_pubsub_server_no_sleep_candidate.txt`는
+  complete였다. tcp 64/256/1024/65536B 후보는 148.0/150.5/133.3/99.6Kmsg/s로,
+  같은 조건 직전 기준 141.9/141.6/135.7/100.7Kmsg/s 대비 64/256B만 4~6% 개선되고
+  1024/65536B는 1~2% 낮아졌다. C 대비 비율도 5.8/6.2/11.8/46.1%라 small size
+  보류를 해소하지 못한다. 조건 없는 busy retry는 크기별 안정성이 낮고 서버 hot path
+  복잡성만 늘리므로 반영하지 않는다.
 - **MULTI_STREAM frame view-copy 후보 기각**: Python stream server에서 `header.to_bytes()`/`body.to_bytes()` 뒤 frame concatenation을 하는 대신 `Message.data` view에서 최종 frame `bytearray`로 바로 채우는 후보를 시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_stream_server.py`는 통과했지만, 공식 runner `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp,wss --pattern MULTI_STREAM --msg-sizes 64,65536 --duration 1 --runs 3`가 `tcp 64B`에서 즉시 partial로 끝났다(`perf_python_multi_linux_20260524_233240.txt`). current HEAD에서 같은 후보를 다시 좁혀 시험한 공식 wrapper `perf_python_multi_linux_20260525_100136.txt`도 `tcp 64B`에서 `READY,tcp://...` failure reason만 남기고 partial로 끝났다. 기존 `on_packet` public callback은 native packet을 이미 Python-owned `Message`로 복사해 전달하므로, frame 조립의 마지막 복사만 줄이는 접근은 안정적인 개선 후보가 아니다.
 - **MULTI_STREAM on_packet native clone 후보 기각**: `StreamSocket.on_packet`이 native header/body를 `bytes`로 만든 뒤 다시 `Message`로 복사하는 경로를 줄이기 위해 `_clone_native_msg` 기반 `Message` 생성을 시험했다. callback 테스트는 통과했지만, 원본 native part를 callback 안에서 close하는 변형은 공식 wrapper `perf_python_multi_linux_20260525_005843.txt`에서 `tcp 64B` partial이 났고, close하지 않는 변형도 `perf_python_multi_linux_20260525_005927.txt`에서 서버 READY 수집 단계가 깨졌다. stream callback의 native part 수명은 core callback 경계와 맞물려 있어 이 방식은 반영하지 않는다.
 - **MULTI_STREAM callback immediate-send 후보 기각**: C stream server처럼 packet callback에서

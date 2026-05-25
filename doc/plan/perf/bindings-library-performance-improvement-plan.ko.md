@@ -2215,6 +2215,14 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `perf_python_multi_linux_20260525_171743_multi_spot_worker4_candidate.txt`의 tcp
   64/65536B는 14.576/14.229Kmsg/s로 current 단일-thread 후보보다 크게 낮다. Python
   thread와 ctypes/poller 분할 비용이 이득보다 커서 반영하지 않는다.
+- **MULTI_SPOT native receive 뒤 worker drain 재확인 후보 기각**: client native metric
+  receive 적용 뒤에도 worker drain 기각이 유지되는지 다시 확인했다. 같은 native receive
+  hot path 위에서 `PERF_MULTI_SPOT_RECV_WORKERS=4`를 env-gated로 붙인 후보는
+  `python3 -m py_compile bindings/python/perf/multi/perf_multi_spot_client.py`를 통과했고,
+  공식 wrapper `perf_python_multi_linux_20260525_225602_multi_spot_native_receive_worker4_probe.txt`도
+  tcp 64/65536B runs=1 complete였다. 그러나 처리량은 25.029/19.189Kmsg/s로,
+  단일 thread native receive의 308.6/130.9Kmsg/s보다 크게 낮다. native receive 뒤에도
+  Python thread와 worker별 poller 분할 비용이 이득보다 커서 코드는 반영하지 않는다.
 - **MULTI_SPOT server blocking fallback 후보 기각**: C server는 `DONTWAIT` publish가
   `EAGAIN`이면 같은 payload를 blocking submit으로 한 번 더 시도한다. Python server에도
   같은 fallback을 env-gated 후보로 붙여 시험했다. `python3 -m py_compile

@@ -1817,6 +1817,39 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   wss 단독 재시도 `perf_rust_single_linux_20260525_164136_single_spot_subscribe_part_selected_wss_retry.txt`도
   기존 대표값보다 낮았다. public API를 넓혀도 single SPOT 1024B 보류를 안정적으로
   해소하지 못하므로 코드는 반영하지 않는다.
+- **single routed clean 후 sender 직접 stamp 재확인 후보 기각**: multi routed large에서
+  효과가 있었던 `Message::with_size()` + `data_mut()` 직접 stamp를 clean 후 single routed
+  sender에 다시 좁혀 시험했다. `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고, fresh C 기준
+  `perf_c_single_linux_20260525_215139_rust_single_routed_direct_msg_c_recheck.txt`와
+  Rust 후보 `perf_rust_single_linux_20260525_215206_single_routed_direct_message_candidate.txt`는
+  모두 complete였다. 그러나 tcp median은 `DEALER_ROUTER` 65536/131072/262144B가
+  14.391/7.175/3.649Kmsg/s, `ROUTER_ROUTER`가 14.415/7.200/3.657Kmsg/s로
+  기존 fixed 재측정과 같은 대역이다. payload 복사 하나를 제거해도 single routed large
+  보류가 해소되지 않아 코드는 반영하지 않는다.
+- **single routed clean 후 local stats 재확인 후보 기각**: receiver 단일 thread의
+  `Arc<Mutex<LatencyStats>>` 비용을 다시 분리하기 위해 `DEALER_ROUTER`/`ROUTER_ROUTER`
+  receiver가 local `LatencyStats`를 직접 쓰는 후보를 clean 후 재시험했다.
+  `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고,
+  공식 runner `perf_rust_single_linux_20260525_215331_single_routed_local_stats_candidate.txt`도
+  complete였다. tcp median은 `DEALER_ROUTER` 14.431/7.199/3.653Kmsg/s,
+  `ROUTER_ROUTER` 14.383/7.215/3.576Kmsg/s로 기존과 같은 대역이다. latency storage
+  잠금 제거는 large throughput 병목이 아니므로 코드는 반영하지 않는다.
+- **single SPOT 1024B backpressure yield 후보 기각**: active publish backpressure 때
+  C의 1ms poll 대기와 다른 `thread::yield_now()`로 더 자주 재시도하는 후보를 시험했다.
+  `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고,
+  공식 runner `perf_rust_single_linux_20260525_215451_single_spot1024_yield_backpressure_candidate.txt`는
+  complete였다. 그러나 tcp/ws/wss/tls median은 178.571/160.717/154.465/172.119Kmsg/s로
+  fresh C 대비 47.2/48.5/62.8/54.0%였다. tcp/tls는 기존 clean 재측정과 같고 ws는 더
+  낮아졌으므로, C single SPOT의 1ms backpressure 대기 의미를 유지한다.
+- **single SPOT 1024B clean 후 sender 직접 stamp 재확인 후보 기각**: single SPOT active
+  publisher에서도 `Message::copy_from(&payload)` 대신 `Message::with_size()` + `data_mut()`
+  직접 stamp를 다시 시험했다. `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고, 공식 runner
+  `perf_rust_single_linux_20260525_220944_single_spot1024_direct_message_candidate.txt`는
+  complete였다. 그러나 tcp/ws/wss/tls median은 152.214/144.305/145.573/164.769Kmsg/s로
+  clean current 재측정보다 낮았다. sender payload 복사 제거는 single SPOT 1024B의
+  병목을 해소하지 못하므로 코드는 반영하지 않는다.
 - **2026-05-24 tcp full 재측정 요약**: DEALER_ROUTER 46~107%(전 size 통과), ROUTER_ROUTER small 통과/large 보류, SPOT_REQREP 64/256/1024/65536B 통과 및 131072/262144B 보류, STREAM 90~101% 통과, DD small 통과/large 보류, SPOT small 통과권/large 보류(copy 영역), SPOT_SENDSEND 64/256/1024/65536/131072B 통과 및 262144B 보류, PUBSUB 일부만 통과였다. 당시 PUBSUB small은 fresh baseline 대비 ~3~5%였지만, 2026-05-25 server `POLLOUT` wait 제거 뒤 `MULTI_PUBSUB` small 보류는 해소됐다.
 - **남은 보류(Rust)**: single routed large, single SPOT 1024B.
 

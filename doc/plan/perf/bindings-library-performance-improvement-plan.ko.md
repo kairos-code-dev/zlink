@@ -1324,6 +1324,12 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
     ws/wss/tls 64B가 38.3/37.4/37.9%였다. `PERF_GO_GOMAXPROCS=8` 후보 `perf_go_multi_linux_20260525_104749.txt`도
     같은 C 기준 38.6/38.1/38.6%라 기준을 넘지 못했다. scheduler 폭을 넓히는 것은 small 64B의 per-message FFI 비용을
     충분히 줄이지 못하므로 runner 기본값이나 case-local override에 반영하지 않는다.
+  - **2026-05-25 `ws MULTI_DEALER_DEALER 64B` `Bytes(...)` 후보 기각**: wss/tls 64B와
+    같은 이유로 ws 64B도 public `Bytes(...)` client send를 시험했다. `go test ./...`는
+    통과했고 공식 wrapper도 complete였지만, C `perf_c_multi_linux_20260525_113958.txt`
+    3041.694Kmsg/s 대비 후보 `perf_go_multi_linux_20260525_114008.txt`는
+    986.246Kmsg/s, 32.4%였다. current Go 대표 38.3%보다 낮아 `MoveMessage(...)`
+    경로를 유지한다.
   - **`tcp MULTI_SPOT_SENDSEND` server dispatch-drain 후보 기각**: C server처럼 routed-readable dispatch callback에서 즉시 drain하도록 Go server에 `OnDispatchEvent` drain 후보를 시험했다. `go test ./...`는 통과했지만 공식 wrapper `PERF_FAIL_FAST=1 bindings/go/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_SPOT_SENDSEND --msg-sizes 64,65536,131072,262144 --duration 1 --runs 3`가 결과/Completion 없이 비정상 종료했고, report `perf_go_multi_linux_20260525_031625.txt`에는 start metadata만 남았다. 같은 조건 C 기준 `perf_c_multi_linux_20260525_031535.txt`는 complete였으므로 Go dispatch-drain 후보는 안정 실행을 깨는 경로로 보고 반영하지 않는다.
 
 ### 6.7 Rust 상태

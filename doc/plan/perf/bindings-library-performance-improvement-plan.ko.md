@@ -1473,6 +1473,18 @@ single SPOT 1024B 보류가 남아 있다.
   그러나 tcp median은 `DEALER_ROUTER` 65536/131072/262144B가 14.40/7.20/3.65Kmsg/s,
   `ROUTER_ROUTER`가 14.38/7.17/3.64Kmsg/s로 기존 fixed 재측정과 같은 대역이다. blocking
   send만으로는 C 대비 11~15% large 보류를 해소하지 못하므로 코드는 반영하지 않는다.
+- **single routed 단일 part send helper 후보 기각**: Rust routed sender가 매 메시지마다
+  `SendOp` 생성, `RoutingId` clone, `Vec<Message>` 구성, part sequence closure를 거치는
+  비용을 줄이기 위해 `DealerSocket::send_part(...)`와 `RouterSocket::send_part(...)` 후보를
+  임시로 추가하고 perf sender만 그 경로를 쓰게 했다. `cargo test --manifest-path
+  bindings/rust/Cargo.toml --no-run`과 `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고, 공식 wrapper
+  `PERF_FAIL_FAST=1 bindings/rust/perf/run_benchmarks.sh --transports tcp --pattern
+  DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 65536,131072,262144 --duration 1 --runs 3`도
+  complete였다(`perf_rust_single_linux_20260525_205421_single_routed_send_part_candidate.txt`).
+  latency는 조금 낮아졌지만 throughput median은 `DEALER_ROUTER` 14.34/7.18/3.63Kmsg/s,
+  `ROUTER_ROUTER` 14.31/7.16/3.63Kmsg/s로 기존과 같은 대역이다. public surface를
+  넓혀도 routed large 보류를 해소하지 못하므로 코드는 반영하지 않는다.
 - **single routed raw FFI 우회 후보 제외**: `bindings/rust/src/lib.rs`에서 raw `ffi`
   모듈은 crate private이고 public re-export가 아니다. perf crate는 `zlink` crate의 public
   API만 사용할 수 있으므로 `zlink_router_recv_part`를 직접 호출해 `RouterPart`나

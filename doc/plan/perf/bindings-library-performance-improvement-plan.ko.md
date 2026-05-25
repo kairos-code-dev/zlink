@@ -1487,6 +1487,14 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   C 98.585/56.657Kmsg/s 대비 14% 안팎에 머물러 기존 single routed large 보류를 해소하지
   못했다. single routed large는 단순 추가 복사 제거가 아니라 routed send/recv 경계 자체를
   더 봐야 하므로 코드는 원복했다.
+- **Single routed receiver local stats 후보 기각**: single routed 수신은 한 thread에서만
+  통계를 기록하므로 `Arc<Mutex<LatencyStats>>` 대신 receiver-local `LatencyStats`를 직접
+  갱신하는 후보를 시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
+  통과했지만, 공식 제한 측정 `perf_rust_single_linux_20260525_135932_single_routed_local_stats_candidate.txt`는
+  `DEALER_ROUTER tcp 65536B` repeat 2부터 `binary_exit` partial로 끝났다. 첫 repeat도
+  13.98Kmsg/s로 기존 cooldown 재측정 `perf_rust_single_linux_20260525_134835_single_dr_cooldown3s_probe.txt`의
+  14.03Kmsg/s와 같아 병목을 줄이지 못했다. receiver stats lock은 single routed large의
+  지배 비용이 아니므로 반영하지 않는다.
 - **MULTI_PUBSUB ready-slot drain 후보 기각**: client poller slot을 socket index로 두고
   C/Go처럼 ready event socket만 drain하며 `wait(-1)`로 바꾸는 후보를 시험했다.
   `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고,

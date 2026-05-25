@@ -3,7 +3,7 @@ mod common;
 
 use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -399,6 +399,26 @@ fn main() {
     }
     while let Ok(value) = latency_rx.try_recv() {
         latency.record_ns(value);
+    }
+    let pending_drain_deadline = Instant::now()
+        + Duration::from_millis(
+            1000.max(settings.recv_timeout_ms.max(settings.send_timeout_ms) * 4),
+        );
+    while waiting
+        .iter()
+        .take(active_slots)
+        .any(|slot| slot.load(Ordering::Acquire))
+        && Instant::now() < pending_drain_deadline
+    {
+        let remaining = pending_drain_deadline.saturating_duration_since(Instant::now());
+        let wait_ms = remaining.min(Duration::from_millis(50)).as_millis() as i64;
+        if wait_ms <= 0 {
+            break;
+        }
+        let _ = poller.wait(&mut poll_events, wait_ms);
+        while let Ok(value) = latency_rx.try_recv() {
+            latency.record_ns(value);
+        }
     }
 
     common::print_result(

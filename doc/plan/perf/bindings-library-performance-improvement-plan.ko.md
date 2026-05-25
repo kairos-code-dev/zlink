@@ -1990,6 +1990,12 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   이는 `doc/perf/PERF_POLICY.md`의 공식 CLI 옵션/결과 출력 의미 동일 규칙을 어긴다.
   CLI 또는 `PERF_MULTI_CLIENTS` override가 있을 때 report client 수에도 같은 값을
   반영하도록 고쳤다.
+- **2026-05-26 Rust `MULTI_SPOT_REQREP` pending completion drain 정렬**:
+  Rust requester는 active window가 끝난 뒤 latency channel만 즉시 비우고 종료해서,
+  C `drain_pending_replies()`처럼 outstanding request completion을 같은
+  `POLLCOMPLETION` poller로 정리하지 않았다. active deadline 이후 도착한 reply는
+  기존 callback guard 때문에 집계하지 않되, pending completion queue는 C와 같은
+  50ms cap poller wait로 최대 request timeout 기반 drain 동안 정리하도록 맞췄다.
 - **수신 zero-copy `.data` 추가**: Rust SPOT의 per-message 복사 제거와 같은 동기로, Python 수신 부품(`ReceivedMessage`)에
   zero-copy `data` memoryview property를 추가했다(`Message.data`/C `zlink_msg_data`와 동일 계약, 회귀 테스트 `tests/test_version.py::test_received_part_data_is_zero_copy_view` 통과).
   `MULTI_SPOT` client가 `to_bytes_list()` 전체 payload 복사 대신 `first_part().data`에서 헤더를 디코드하도록 바꿨다(복사 제거는 `with message:` 안에서만 view 사용).

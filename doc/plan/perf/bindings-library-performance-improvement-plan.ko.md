@@ -1393,6 +1393,34 @@ multi suite는 아직 신규 측정이 필요하다.
   해소했다. 같은 종류의 종료 문제가 multi runner에 남아 있는지 다음 측정에서 확인한다.
 - tcp routed one-way large size는 여전히 C 대비 10~13% 수준이다. `DEALER_ROUTER`와
   `ROUTER_ROUTER` 모두 active send를 `DONT_WAIT` retry로 정렬했지만 large gap은 남았다.
+- **2026-05-25 single routed current 재검토**: 같은 조건 C 기준
+  `perf_c_single_linux_20260525_134314_rust_single_routed_current_c.txt`는 complete였고,
+  `DEALER_ROUTER` tcp 1024/65536/131072/262144B가 1234.2/96.2/56.5/30.1Kmsg/s,
+  `ROUTER_ROUTER`가 1191.5/95.4/60.1/31.3Kmsg/s였다. current Rust wrapper
+  `perf_rust_single_linux_20260525_134344_single_routed_current_retry.txt`와
+  `perf_rust_single_linux_20260525_134610_single_routed_current_retry2.txt`는
+  `DEALER_ROUTER tcp 1024B`에서 repeat 중 `binary_exit` partial이 재현됐다. 같은
+  binary의 direct 실행은 한 번 1011.7Kmsg/s로 성공했지만, 공식 wrapper 단독 complete
+  `perf_rust_single_linux_20260525_134816_single_dr1024_timeout60_probe.txt`는
+  median 171.1Kmsg/s에 그쳐 run 간 변동이 크다. `PERF_SINGLE_RUN_COOLDOWN_MS=3000`
+  재측정 `perf_rust_single_linux_20260525_134835_single_dr_cooldown3s_probe.txt`에서는
+  1024B가 907.2Kmsg/s(73.5%)까지 올라왔지만 65536B는 14.0Kmsg/s(14.6%)에 머물렀고
+  131072B는 partial이었다. 따라서 1024B 일부는 runner 간격/phase drain 영향을 받지만,
+  large 보류의 주 병목은 그대로 남아 있다.
+- **single routed stop-token blocking-only 후보 기각**: active send는 기존 `DONT_WAIT`
+  retry로 유지하고 phase 종료 stop token만 C처럼 blocking submit으로 보내는 후보를
+  시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
+  통과했지만 공식 wrapper
+  `perf_rust_single_linux_20260525_134733_single_routed_stop_blocking_only_candidate.txt`가
+  `DEALER_ROUTER tcp 1024B`에서 repeat 전부 `binary_exit`로 끝났다. stop token send
+  방식만 바꿔서는 routed single completion 불안정을 해소하지 못하므로 반영하지 않는다.
+- **single routed active blocking-only 후보 기각**: stop token은 기존 `DONT_WAIT` retry로
+  두고 active payload send만 C처럼 blocking submit으로 바꾸는 후보를 시험했다.
+  `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했지만
+  `perf_rust_single_linux_20260525_134931_single_dr_active_blocking_candidate.txt`가
+  `DEALER_ROUTER tcp 1024B`에서 repeat 전부 `binary_exit`로 끝났다. active blocking send는
+  C 의미에 가까워 보여도 현재 Rust routed single에서는 phase completion을 더 불안정하게
+  만들어 반영하지 않는다.
 - tcp/ws SPOT 1024B는 기준보다 낮고, tcp/ws SPOT 일부 size와 one-way 1024B 일부는 C보다
   높은 outlier다. 다음 라운드는 wss/tls 측정 전에 outlier가 측정 변동인지 C/Rust 의미
   차이인지 제한 재측정으로 구분한다.

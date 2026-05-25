@@ -40,9 +40,12 @@ fn main() {
         })
         .expect("dispatch handler failed");
 
-    let actor_ref = actor.actor_ref().expect("actor ref failed");
     let stream = ctx.stream_socket().expect("stream socket failed");
+    stream
+        .attach_actor_gateway(&gateway_node)
+        .expect("stream actor gateway attach failed");
     let session = zlink::RoutingId::from_bytes(b"gateway-session");
+    let actor_ref = actor.actor_ref().expect("actor ref failed");
     let (bind_tx, bind_rx) = mpsc::channel();
     stream
         .bind_actor(&session, &actor_ref)
@@ -84,7 +87,8 @@ fn main() {
         Duration::from_secs(2),
         "remote actor join request",
     );
-    let _join_result = join_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
+    let join_result = join_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
+    assert_eq!(join_result.result, zlink::RequestResult::Ok);
 
     stream
         .send_bound_actor(&session, "play-session-actor")

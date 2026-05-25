@@ -250,12 +250,36 @@ fn actor_surfaces_exist() {
         .flags(SendFlags::DONT_WAIT)
         .timeout(std::time::Duration::from_millis(1));
     let _ = node
+        .join_actor_entry_spot(&remote, &RoutingId::from_bytes(b"actor-node"))
+        .timeout(std::time::Duration::from_millis(1));
+    let _ = node
         .leave_actor(&remote, &RoutingId::from_bytes(b"actor-spot"))
         .timeout(std::time::Duration::from_millis(1));
     fn _dispatch_handler(_info: SpotDispatchInfo<'_>) {}
     let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchInfo<'_>)>;
     let _ = _on_dispatch_event;
     let _ = _dispatch_handler as fn(SpotDispatchInfo<'_>);
+}
+
+#[test]
+fn actor_entry_spot_join_returns_actor_ref() {
+    let ctx = Context::new().unwrap();
+    let node = SpotNode::new(&ctx).unwrap();
+    let node_rid = RoutingId::from_bytes(b"entry-join-node");
+    node.set_routing_id(&node_rid).unwrap();
+    let actor = node.create_actor("entry-join-actor").unwrap();
+    let actor_ref = actor.actor_ref().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    node.join_actor_entry_spot(&actor_ref, &node_rid)
+        .timeout(std::time::Duration::from_secs(1))
+        .submit(move |result| tx.send(result).unwrap())
+        .unwrap();
+
+    let result = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+    assert_eq!(result.result, zlink::RequestResult::Ok);
+    assert_eq!(result.actor.actor_id, "entry-join-actor");
+    assert_eq!(result.target_node_rid, node_rid);
 }
 
 #[test]

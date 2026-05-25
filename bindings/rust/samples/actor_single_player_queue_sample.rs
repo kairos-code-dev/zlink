@@ -39,18 +39,10 @@ fn main() {
         .create_actor("single-player")
         .expect("actor creation failed");
     let stream = ctx.stream_socket().expect("stream socket failed");
-    let session = zlink::RoutingId::from_bytes(b"single-player-session");
-    let actor_ref = actor.actor_ref().unwrap();
-    let (bind_tx, bind_rx) = mpsc::channel();
     stream
-        .bind_actor(&session, &actor_ref)
-        .timeout(Duration::from_secs(1))
-        .submit(move |result| bind_tx.send(result).unwrap())
-        .expect("stream actor bind failed");
-    bind_rx
-        .recv_timeout(Duration::from_secs(2))
-        .unwrap()
-        .unwrap();
+        .attach_actor_gateway(&node)
+        .expect("stream actor gateway attach failed");
+    let session = zlink::RoutingId::from_bytes(b"single-player-session");
 
     let (first_tx, first_rx) = mpsc::channel();
     actor
@@ -61,7 +53,18 @@ fn main() {
         .submit(move |result, parts| first_tx.send((result, parts)).unwrap())
         .expect("first join submit failed");
     accept_join(&first_spot, b"join-first");
-    first_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
+    let first_join = first_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
+    assert_eq!(first_join.result, zlink::RequestResult::Ok);
+    let (bind_tx, bind_rx) = mpsc::channel();
+    stream
+        .bind_actor(&session, &first_join.actor)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result| bind_tx.send(result).unwrap())
+        .expect("stream actor bind failed");
+    bind_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
 
     stream
         .send_bound_actor(&session, "single-player")

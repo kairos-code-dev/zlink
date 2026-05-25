@@ -38,18 +38,10 @@ fn main() {
         .create_actor("room-player-1")
         .expect("actor creation failed");
     let stream = ctx.stream_socket().expect("stream socket failed");
-    let session = zlink::RoutingId::from_bytes(b"room-session");
-    let actor_ref = actor.actor_ref().unwrap();
-    let (bind_tx, bind_rx) = mpsc::channel();
     stream
-        .bind_actor(&session, &actor_ref)
-        .timeout(Duration::from_secs(1))
-        .submit(move |result| bind_tx.send(result).unwrap())
-        .expect("stream actor bind failed");
-    bind_rx
-        .recv_timeout(Duration::from_secs(2))
-        .unwrap()
-        .unwrap();
+        .attach_actor_gateway(&node)
+        .expect("stream actor gateway attach failed");
+    let session = zlink::RoutingId::from_bytes(b"room-session");
 
     let (tx, rx) = mpsc::channel();
     actor
@@ -65,6 +57,16 @@ fn main() {
     let join_result = rx.recv_timeout(Duration::from_secs(2)).unwrap();
     assert_eq!(join_result.0.result, zlink::RequestResult::Ok);
     assert_eq!(join_result.1[0].as_str().unwrap(), "accepted");
+    let (bind_tx, bind_rx) = mpsc::channel();
+    stream
+        .bind_actor(&session, &join_result.0.actor)
+        .timeout(Duration::from_secs(1))
+        .submit(move |result| bind_tx.send(result).unwrap())
+        .expect("stream actor bind failed");
+    bind_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
 
     let payload = Arc::new(Mutex::new(None::<String>));
     let payload_cb = Arc::clone(&payload);

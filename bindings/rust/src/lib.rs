@@ -71,17 +71,17 @@ pub use poller::{
 };
 pub use runtime::{multipart_close, proxy, proxy_steerable, sleep};
 pub use service::{
-    Actor, ActorJoinInfo, ActorJoinRequest, ActorPart, ActorRecvInfo, ActorRef, ActorRoute,
-    AutoConnectType, CallbackReady, Discovery, Empty, MemberPeerEntry, Ready, Registry,
-    RegistryQueryClient, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryState,
-    RegistryStatus, RegistryTopologyEntry, RegistryTopologyFilter, ReplyOp, RequestOp, SendOp,
-    ServiceKind, ServiceRole, SocketType, Spot, SpotDispatchEvent, SpotDispatchInfo,
-    SpotDispatchSubject, SpotDispatchSubjectKind, SpotKind, SpotNode, SpotNodeActorEntry,
-    SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketOwner,
-    SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter, SpotNodeSpotEntry, SpotNodeState,
-    SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter, SpotPeerKind, SpotPeerSource,
-    SpotPeerState, SpotRole, SpotRoute, SpotServiceAttachmentRole, SubjectKind, TopologySource,
-    TopologyState,
+    Actor, ActorJoinEntrySpotResult, ActorJoinInfo, ActorJoinRequest, ActorPart, ActorRecvInfo,
+    ActorRef, ActorRoute, AutoConnectType, CallbackReady, Discovery, Empty, MemberPeerEntry, Ready,
+    Registry, RegistryQueryClient, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter,
+    RegistryState, RegistryStatus, RegistryTopologyEntry, RegistryTopologyFilter, ReplyOp,
+    RequestOp, SendOp, ServiceKind, ServiceRole, SocketType, Spot, SpotDispatchEvent,
+    SpotDispatchInfo, SpotDispatchSubject, SpotDispatchSubjectKind, SpotKind, SpotNode,
+    SpotNodeActorEntry, SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter,
+    SpotNodeSocketOwner, SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter,
+    SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
+    SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SpotRoute, SpotServiceAttachmentRole,
+    SubjectKind, TopologySource, TopologyState,
 };
 pub use socket::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, SendHandle, StreamSocket, SubSocket,

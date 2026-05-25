@@ -1656,6 +1656,30 @@ impl SpotNode {
         }
     }
 
+    /// Async Entry Spot join (operation builder). The target is the Entry Spot
+    /// of `dest_node_rid`; no application join payload is sent.
+    pub fn join_actor_entry_spot(
+        &self,
+        actor: &ActorRef,
+        dest_node_rid: &RoutingId,
+    ) -> ActorJoinEntrySpotOp<Empty> {
+        let raw = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
+            node_rid: ffi::zlink_routing_id_t {
+                size: 0,
+                data: [0; 255],
+            },
+            actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
+            generation: 0,
+        });
+        ActorJoinEntrySpotOp {
+            node_handle: self.handle,
+            actor: raw,
+            dest_node_rid: dest_node_rid.clone(),
+            timeout: Duration::ZERO,
+            _state: std::marker::PhantomData,
+        }
+    }
+
     /// Async leave to the same node's Entry Spot (operation builder).
     pub fn leave_actor(
         &self,
@@ -2957,6 +2981,16 @@ pub struct ActorJoinResult {
     pub flags: u32,
 }
 
+/// Async Actor Entry Spot join completion value.
+#[derive(Debug, Clone)]
+pub struct ActorJoinEntrySpotResult {
+    pub result: crate::error::RequestResult,
+    pub actor: ActorRef,
+    pub target_node_rid: RoutingId,
+    pub join_epoch: u64,
+    pub flags: u32,
+}
+
 /// Async Actor lookup completion value.
 #[derive(Debug, Clone)]
 pub struct ActorLookupResult {
@@ -2994,6 +3028,68 @@ pub struct ActorJoinOp<State> {
 }
 
 unsafe impl<S> Send for ActorJoinOp<S> {}
+
+/// Async Actor Entry Spot join builder.
+pub struct ActorJoinEntrySpotOp<State> {
+    node_handle: *mut c_void,
+    actor: ffi::zlink_actor_ref_t,
+    dest_node_rid: RoutingId,
+    timeout: Duration,
+    _state: std::marker::PhantomData<State>,
+}
+
+unsafe impl<S> Send for ActorJoinEntrySpotOp<S> {}
+
+impl ActorJoinEntrySpotOp<Empty> {
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// Submit and await completion (async).
+    /// # Errors: ZlinkError
+    pub async fn submit_async(self) -> Result<ActorJoinEntrySpotResult, ZlinkError> {
+        let (tx, rx) = mpsc::channel();
+        self.submit(move |result| {
+            let _ = tx.send(result);
+        })
+        .map_err(ZlinkError::from)?;
+        rx.recv().map_err(|_| {
+            ZlinkError::from(RequestError::new(
+                crate::error::RequestResult::ProtocolError,
+                libc::EINVAL,
+            ))
+        })
+    }
+
+    /// Submit with a completion callback.
+    /// # Errors: SubmitError
+    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+    where
+        F: FnOnce(ActorJoinEntrySpotResult) + Send + 'static,
+    {
+        let state_ptr = Box::into_raw(Box::new(ActorJoinEntrySpotCallbackState {
+            callback: Some(Box::new(callback)),
+        }));
+        let timeout_ms = timeout_to_timeout_ms(self.timeout);
+        let rc = unsafe {
+            ffi::zlink_spot_node_actor_join_entry_spot(
+                self.node_handle,
+                &self.actor,
+                self.dest_node_rid.as_raw(),
+                Some(actor_join_entry_spot_user_callback),
+                state_ptr.cast(),
+                timeout_ms,
+            )
+        };
+        if rc != 0 {
+            unsafe {
+                drop(Box::from_raw(state_ptr));
+            }
+        }
+        check_submit_rc(rc)
+    }
+}
 
 impl ActorJoinOp<Empty> {
     pub fn message(self, message: Message) -> ActorJoinOp<Ready> {
@@ -3426,6 +3522,10 @@ struct ActorJoinCallbackState {
     _progress: Option<RequestProgressGuard>,
 }
 
+struct ActorJoinEntrySpotCallbackState {
+    callback: Option<Box<dyn FnOnce(ActorJoinEntrySpotResult) + Send>>,
+}
+
 struct ActorLookupCallbackState {
     callback: Option<Box<dyn FnOnce(ActorLookupResult) + Send>>,
 }
@@ -3469,6 +3569,46 @@ unsafe extern "C" fn actor_join_user_callback(
     };
     let messages = borrowed_parts_to_messages(parts, part_count);
     callback(join_result, messages);
+}
+
+unsafe extern "C" fn actor_join_entry_spot_user_callback(
+    result: *const ffi::zlink_actor_join_entry_spot_result_t,
+    userdata: *mut c_void,
+) {
+    let mut state = unsafe { Box::from_raw(userdata.cast::<ActorJoinEntrySpotCallbackState>()) };
+    let callback = state
+        .callback
+        .take()
+        .expect("actor entry spot join callback");
+    if result.is_null() {
+        let placeholder = ActorJoinEntrySpotResult {
+            result: crate::error::RequestResult::InternalError,
+            actor: ActorRef {
+                node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t {
+                    size: 0,
+                    data: [0; 255],
+                }),
+                actor_id: String::new(),
+                generation: 0,
+            },
+            target_node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t {
+                size: 0,
+                data: [0; 255],
+            }),
+            join_epoch: 0,
+            flags: 0,
+        };
+        callback(placeholder);
+        return;
+    }
+    let raw = unsafe { *result };
+    callback(ActorJoinEntrySpotResult {
+        result: request_result_from_raw(raw.result),
+        actor: ActorRef::from_raw(&raw.actor),
+        target_node_rid: RoutingId::from_raw(raw.target_node_rid),
+        join_epoch: raw.join_epoch,
+        flags: raw.flags,
+    });
 }
 
 unsafe extern "C" fn actor_lookup_user_callback(

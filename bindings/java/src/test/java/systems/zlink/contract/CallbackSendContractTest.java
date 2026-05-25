@@ -189,6 +189,8 @@ public class CallbackSendContractTest {
                 CountDownLatch routerDone = new CountDownLatch(1);
                 try (RouterSocket router = new RouterSocket(ctx);
                      DealerSocket dealer = new DealerSocket(ctx)) {
+                    router.options().linger(Duration.ZERO);
+                    dealer.options().linger(Duration.ZERO);
                     String endpoint = TestSupport.tcpEndpoint();
                     try (var routerMon = router.monitorOpen(
                              MonitorEventType.CONNECTION_READY);

@@ -1687,6 +1687,23 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `DEALER_ROUTER` 65536/131072B는 14.0/12.9%, `ROUTER_ROUTER` 65536/131072B는
   14.2/12.1%에 그쳤다. sender 복사 하나를 줄여도 routed large 보류를 해소하지
   못하므로 코드는 반영하지 않는다.
+- **single routed blocking-send 최신 재확인 후보 기각**: C single routed active sender가
+  blocking send를 쓰는 점을 다시 맞춰 `DEALER_ROUTER`/`ROUTER_ROUTER` active send의
+  `DONT_WAIT`를 제거해 시험했다. `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고 공식 wrapper도 complete였다. 그러나
+  fresh C `perf_c_single_linux_20260525_200316_rust_single_routed_blocking_send_c.txt` 대비
+  Rust 후보 `perf_rust_single_linux_20260525_200343_single_routed_blocking_send_candidate.txt`는
+  tcp 65536/131072/262144B에서 `DEALER_ROUTER` 13.5/12.2/11.2%,
+  `ROUTER_ROUTER` 13.2/11.9/11.1%에 머물렀다. 기존 `DONT_WAIT` 경로보다 나아지지
+  않아 반영하지 않는다.
+- **single routed local stats 후보 기각**: receiver는 단일 thread라 `MetricCollector`의
+  `Arc<Mutex<LatencyStats>>` 대신 local `LatencyStats`를 직접 쓰는 후보를 시험했다.
+  `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고
+  공식 wrapper도 complete였다. 같은 C 기준 대비 Rust 후보
+  `perf_rust_single_linux_20260525_200500_single_routed_local_stats_candidate.txt`는 tcp
+  65536/131072/262144B에서 `DEALER_ROUTER` 13.4/12.2/11.1%, `ROUTER_ROUTER`
+  13.2/11.8/11.0%였다. latency mean은 낮아졌지만 throughput은 보류권 그대로라,
+  stats lock 제거만으로는 single routed large 보류를 해소하지 못해 코드는 반영하지 않는다.
 - **single SPOT `TopicMessage` 재사용 후보 기각**: single SPOT subscriber loop가 매 수신마다
   `TopicMessage`를 새로 만드는 비용을 줄이기 위해 caller-provided storage를 계속 재사용하는
   후보를 시험했다. 공식 C 기준

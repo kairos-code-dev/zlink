@@ -1826,7 +1826,7 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `MULTI_DEALER_DEALER` | `보류(10.2%)` | `보류(15.6%)` | `보류(18.4%)` | `통과(52.2%)` | `통과(41.1%)` | `보류(30.2%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_multi_linux_20260525_184808_python_multi_send_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_185647_multi_nonrouted_send_native_result_default.txt` 기준이다. client send를 non-routed native result fast path로 좁혀 small 처리량을 317.5/311.9/280.8Kmsg/s까지 올렸지만 기준선에는 아직 낮다. 262144B는 current HEAD 같은 조건 fresh C `perf_c_multi_linux_20260525_194520_python_dd262_current_c_recheck.txt` 대비 Python `perf_python_multi_linux_20260525_194548_dd262_current_recheck.txt` 기준이다. 65536/131072B는 기존 `perf_python_multi_linux_20260524_191648.txt` 기준이다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `보류(10.2%)` | `보류(15.6%)` | `보류(18.4%)` | `통과(52.2%)` | `통과(41.1%)` | `보류(26.1%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_multi_linux_20260525_184808_python_multi_send_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_185647_multi_nonrouted_send_native_result_default.txt` 기준이다. client send를 non-routed native result fast path로 좁혀 small 처리량을 317.5/311.9/280.8Kmsg/s까지 올렸지만 기준선에는 아직 낮다. 262144B는 clean 후 current HEAD 같은 조건 C `perf_c_multi_linux_20260525_211009_python_dd262_current_recheck_after_clean_c.txt` 대비 Python `perf_python_multi_linux_20260525_211059_dd262_current_recheck_after_clean.txt` 기준이다. 65536/131072B는 기존 `perf_python_multi_linux_20260524_191648.txt` 기준이다. |
 | `tcp` | `MULTI_DEALER_ROUTER` | `보류(13.4%)` | `보류(13.4%)` | `보류(13.3%)` | `통과(43.2%)` | `통과(57.0%)` | `통과(63.2%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_multi_linux_20260525_184808_python_multi_send_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_185647_multi_nonrouted_send_native_result_default.txt` 기준이다. reply header decode를 `to_bytes_list()` 대신 `ReceivedMessage.data` view로 바꾸고 routed `recv_into` single-part fast path를 추가한 상태이며, DEALER sender는 non-routed native result fast path를 쓴다. large 수치는 모두 기준선 위로 올라갔지만 small size는 여전히 낮다. |
 | `tcp` | `MULTI_ROUTER_ROUTER` | `보류(9.6%)` | `보류(9.7%)` | `보류(10.0%)` | `통과(33.1%)` | `통과(44.1%)` | `통과(57.3%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_multi_linux_20260525_184808_python_multi_send_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_185647_multi_nonrouted_send_native_result_default.txt` 기준이다. routed send native result 후보는 complete 안정성을 깨서 반영하지 않았고, client reply header decode `.data` 경로와 routed `recv_into` single-part fast path만 유지한다. 65536B 이상은 기존 보강 파일 기준선을 넘었지만 small size는 여전히 낮다. |
 | `tcp` | `MULTI_PUBSUB` | `보류(7.6%)` | `보류(7.9%)` | `보류(17.7%)` | `통과(58.7%)` | `통과(90.9%)` | `통과(95.0%)` | 64/256/1024/65536B는 같은 조건 fresh C `perf_c_multi_linux_20260525_190118_python_multi_pubsub_publish_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_192512_multi_pubsub_client_len_fastpath_candidate.txt` median 기준이다. subscriber는 stop token과 payload length로 active count를 유지하고, header decode는 latency sampling 대상에만 수행한다. 131072/262144B는 기존 `perf_python_multi_linux_20260524_191738.txt` 기준이다. small size는 아직 기준보다 낮다. |
@@ -1993,6 +1993,19 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   단순 one-way 기준선에는 아직 닿지 않아 보류를 유지한다. 별도 IO thread probe
   `perf_python_multi_linux_20260525_194608_dd262_io8_probe.txt`는 13.927Kmsg/s로 더 낮아
   적용 근거가 없다.
+- **MULTI_DEALER_DEALER 262144B clean 후 재측정 및 client timestamp sampling 후보 기각**:
+  actor entry spot join 동기화 커밋 뒤 clean 상태에서 같은 조건을 다시 측정했다. C
+  `perf_c_multi_linux_20260525_211009_python_dd262_current_recheck_after_clean_c.txt`는
+  median 51.389Kmsg/s였고, Python
+  `perf_python_multi_linux_20260525_211059_dd262_current_recheck_after_clean.txt`는
+  median 13.400Kmsg/s, C 대비 26.1%였다. Python client가 모든 송신마다
+  `time.time_ns()`를 호출하는 비용을 줄이기 위해 active message timestamp만 stride 32로
+  표본화하는 후보도 시험했다. import 순서 실수로 첫 두 실행은 client ready 전 partial
+  `perf_python_multi_linux_20260525_211241_dd_client_timestamp_sample_candidate.txt`,
+  `perf_python_multi_linux_20260525_211257_dd_client_timestamp_sample_candidate2.txt`가 되었고,
+  수정 뒤 단독 후보 `perf_python_multi_linux_20260525_211352_dd_client_timestamp_sample_262_candidate3.txt`는
+  complete였지만 13.353Kmsg/s로 no-code 13.400Kmsg/s보다 낮았다. timestamp 호출은
+  이 크기의 지배 병목이 아니므로 반영하지 않는다.
 - **single PAIR direct `zlink_recv_part` 후보 기각**: `PairSocket.recv_into(...)`가
   `Received`와 parts list를 구성하는 비용을 피하기 위해, perf helper 안에서만 native
   `zlink_recv_part`를 직접 호출해 단일 part payload를 decode하는 후보를 `PAIR`에 좁혀

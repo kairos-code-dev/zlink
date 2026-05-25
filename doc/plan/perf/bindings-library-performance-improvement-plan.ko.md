@@ -1452,6 +1452,13 @@ single SPOT 1024B 보류가 남아 있다.
   tcp `DEALER_ROUTER` 65536/262144B가 13.7/11.1%, `ROUTER_ROUTER`가 14.7/11.7%로
   기존과 같은 대역이다. single routed large 병목은 payload 생성 복사 1회가 아니라
   routed send/transport backpressure 경계에 남아 있다고 보고 코드는 반영하지 않는다.
+- **single routed raw FFI 우회 후보 제외**: `bindings/rust/src/lib.rs`에서 raw `ffi`
+  모듈은 crate private이고 public re-export가 아니다. perf crate는 `zlink` crate의 public
+  API만 사용할 수 있으므로 `zlink_router_recv_part`를 직접 호출해 `RouterPart`나
+  `RoutingId` 구성을 건너뛰는 측정 후보는 새 public API 없이는 만들 수 없다. 이미 추가한
+  public `RouterSocket::recv_part(...)`가 C의 part 수신 의미를 노출하는 현재 계약 경계다.
+  이보다 더 낮은 수준의 perf-only receive/send helper는 Rust binding public surface를
+  넓히는 설계 작업이므로, 단순 내부 최적화 후보로 처리하지 않는다.
 - **2026-05-25 single routed ws/tls complete 재측정**: `RouterSocket::recv_part(...)`
   적용 뒤 ws/tls large도 같은 조건으로 다시 확인했다. C 기준
   `perf_c_single_linux_20260525_142618_rust_single_routed_wstls_c_recheck.txt`와

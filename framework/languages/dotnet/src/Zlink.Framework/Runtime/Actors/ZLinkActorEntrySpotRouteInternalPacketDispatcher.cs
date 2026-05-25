@@ -53,9 +53,9 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
         await runtime.NotifyEntrySpotActorJoinedAsync(
                 actor,
                 new ZLinkSpotActorLifecycleContext(
-                    PreviousSpotRid: string.IsNullOrWhiteSpace(request.SourceNodeRid)
+                    PreviousSpotRid: string.IsNullOrWhiteSpace(request.SourceSpotRid)
                         ? null
-                        : RoutingId.FromString(request.SourceNodeRid),
+                        : RoutingId.FromString(request.SourceSpotRid),
                     CurrentSpotRid: null,
                     state.CurrentActorGeneration,
                     ZLinkSpotActorLifecycleReason.JoinEntrySpot,
@@ -63,6 +63,7 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
                 {
                     ActorId = actor.ActorId
                 },
+                nativeRef.NodeRid,
                 cancellationToken)
             .ConfigureAwait(false);
 

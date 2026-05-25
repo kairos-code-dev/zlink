@@ -41,6 +41,7 @@
     <Compile Include="Channels/RouteChannel.cs" />
     <Compile Include="Lifecycle/Host.cs" />
     <Compile Include="Spot/ActorLifecycle.cs" />
+    <Compile Include="Spot/ActorJoinEntrySpot.cs" />
     <Compile Include="Spot/ActorRegistryExecution.cs" />
     <Compile Include="Spot/ActorSessionState.cs" />
     <Compile Include="Spot/ClientTransport.cs" />

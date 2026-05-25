@@ -102,6 +102,24 @@ internal sealed partial class ZLinkSpotActivation
             cancellationToken);
     }
 
+    internal ValueTask NotifyActorLeftAfterNativeJoinEntrySpotAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
+            ? NotifyActorLeftAfterNativeJoinEntrySpotCoreAsync(actor, context, cancellationToken)
+            : ExecuteSerializedAsync(
+                static (activation, state, ct) =>
+                    activation.NotifyActorLeftAfterNativeJoinEntrySpotCoreAsync(
+                        state.Actor,
+                        state.Context,
+                        ct),
+                new ActorLifecycleNotificationState(actor, context),
+                cancellationToken);
+    }
+
     private async ValueTask JoinActorCoreAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)
@@ -114,6 +132,27 @@ internal sealed partial class ZLinkSpotActivation
         CancellationToken cancellationToken)
     {
         await _actorLifecycle.LeaveAsync(actor, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask NotifyActorLeftAfterNativeJoinEntrySpotCoreAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorLifecycleContext context,
+        CancellationToken cancellationToken)
+    {
+        _actors.RemoveIfCurrent(actor);
+        var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
+        if (ReferenceEquals(actorState.Activation, this))
+        {
+            actorState.Activation = null;
+        }
+
+        if (_actorHandlers is not null
+            && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)
+            && descriptor is not null)
+        {
+            await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, context, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private async ValueTask<object?> InvokeActorJoinAsync(
@@ -139,4 +178,8 @@ internal sealed partial class ZLinkSpotActivation
 
         public object? Reply { get; set; }
     }
+
+    private sealed record ActorLifecycleNotificationState(
+        IZLinkActor Actor,
+        ZLinkSpotActorLifecycleContext Context);
 }

@@ -9,6 +9,7 @@ internal sealed record ZLinkActorEntrySpotRouteJoinRequest(
     string ActorId,
     string ActorType,
     string SourceNodeRid,
+    string SourceSpotRid,
     ulong SourceGeneration);
 
 internal sealed record ZLinkActorEntrySpotRouteJoinReply(

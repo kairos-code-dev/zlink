@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Spots;
 using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Core;
@@ -58,6 +59,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             ?? throw new InvalidOperationException("Entry SPOT join requires a router-capable SpotNode.");
         var actorRef = actorState.NativeActorRef
             ?? throw new InvalidOperationException($"Actor '{actor.ActorId}' does not have a native Actor ref.");
+        var previousActivation = actorState.LiveActivation;
 
         var tcs = new TaskCompletionSource<ZLinkBackendActorJoinEntrySpotResult>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -85,6 +87,7 @@ internal sealed class ZLinkFrameworkActorFacade(
                     actor,
                     actorState,
                     actorRef,
+                    previousActivation,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -97,6 +100,14 @@ internal sealed class ZLinkFrameworkActorFacade(
         }
 
         actorState.NativeActorRef = result.Actor;
+        await NotifyManagedEntrySpotJoinLifecycleAsync(
+                actor,
+                previousActivation,
+                result.Actor.NodeRid,
+                result.JoinEpoch,
+                result.Flags,
+                cancellationToken)
+            .ConfigureAwait(false);
         if (result.Actor.NodeRid != actorRef.NodeRid)
         {
             actorState.InvalidateContext();
@@ -114,8 +125,33 @@ internal sealed class ZLinkFrameworkActorFacade(
         IZLinkActor actor,
         ZLinkActorRuntimeState actorState,
         ZLinkBackendActorRef sourceActorRef,
+        ZLinkSpotActivation? previousActivation,
         CancellationToken cancellationToken)
     {
+        if (TryFindSpotNode(state, spotNodeRid, out var targetNode))
+        {
+            var localTargetRef = targetNode.Node.ActorLookup(actor.ActorId)
+                ?? targetNode.Node.CreateActor(actor.ActorId);
+            actorState.NativeActorRef = localTargetRef;
+            await NotifyManagedEntrySpotJoinLifecycleAsync(
+                    actor,
+                    previousActivation,
+                    localTargetRef.NodeRid,
+                    localTargetRef.Generation,
+                    nativeFlags: 0,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (localTargetRef.NodeRid != sourceActorRef.NodeRid)
+            {
+                actorState.InvalidateContext();
+            }
+
+            return new ZLinkActorJoinResult(
+                actor.ActorId,
+                actorState.ActorType ?? actor.GetType().Name,
+                ToRemoteAddress(localTargetRef));
+        }
+
         var routeChannel = state.RouteChannels.Values.FirstOrDefault()
             ?? throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -125,6 +161,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
             sourceActorRef.NodeRid.ToHex(),
+            previousActivation?.SpotRid.ToHex() ?? string.Empty,
             sourceActorRef.Generation);
 
         var reply = await routeChannel.RequestAsync<ZLinkActorEntrySpotRouteJoinRequest, ZLinkActorEntrySpotRouteJoinReply>(
@@ -140,6 +177,13 @@ internal sealed class ZLinkFrameworkActorFacade(
             actor.ActorId,
             reply.ActorGeneration);
         actorState.NativeActorRef = targetRef;
+        await NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
+                actor,
+                previousActivation,
+                joinEpoch: targetRef.Generation,
+                nativeFlags: 0,
+                cancellationToken)
+            .ConfigureAwait(false);
         if (targetRef.NodeRid != sourceActorRef.NodeRid)
         {
             actorState.InvalidateContext();
@@ -149,6 +193,98 @@ internal sealed class ZLinkFrameworkActorFacade(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
             ToRemoteAddress(targetRef));
+    }
+
+    private static bool TryFindSpotNode(
+        ZLinkFrameworkRuntimeState state,
+        RoutingId nodeRid,
+        out ZLinkSpotNodeRuntime nodeRuntime)
+    {
+        foreach (var candidate in state.SpotNodes.Values)
+        {
+            if (candidate.Node.RoutingId == nodeRid)
+            {
+                nodeRuntime = candidate;
+                return true;
+            }
+        }
+
+        nodeRuntime = null!;
+        return false;
+    }
+
+    private async ValueTask NotifyManagedEntrySpotJoinLifecycleAsync(
+        IZLinkActor actor,
+        ZLinkSpotActivation? previousActivation,
+        RoutingId targetNodeRid,
+        ulong joinEpoch,
+        uint nativeFlags,
+        CancellationToken cancellationToken)
+    {
+        if (previousActivation is null)
+        {
+            return;
+        }
+
+        await NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
+                actor,
+                previousActivation,
+                joinEpoch,
+                nativeFlags,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        await spots.NotifyEntrySpotActorJoinedAsync(
+                getState(),
+                actor,
+                CreateEntrySpotLifecycleContext(
+                    actor,
+                    previousActivation,
+                    joinEpoch,
+                    nativeFlags),
+                targetNodeRid,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static ZLinkSpotActorLifecycleContext CreateEntrySpotLifecycleContext(
+        IZLinkActor actor,
+        ZLinkSpotActivation previousActivation,
+        ulong joinEpoch,
+        uint nativeFlags)
+    {
+        return new ZLinkSpotActorLifecycleContext(
+            previousActivation.SpotRid,
+            CurrentSpotRid: null,
+            joinEpoch,
+            ZLinkSpotActorLifecycleReason.JoinEntrySpot,
+            nativeFlags)
+        {
+            ActorId = actor.ActorId
+        };
+    }
+
+    private static async ValueTask NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
+        IZLinkActor actor,
+        ZLinkSpotActivation? previousActivation,
+        ulong joinEpoch,
+        uint nativeFlags,
+        CancellationToken cancellationToken)
+    {
+        if (previousActivation is null)
+        {
+            return;
+        }
+
+        await previousActivation.NotifyActorLeftAfterNativeJoinEntrySpotAsync(
+                actor,
+                CreateEntrySpotLifecycleContext(
+                    actor,
+                    previousActivation,
+                    joinEpoch,
+                    nativeFlags),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask JoinActorToSpotAsync(

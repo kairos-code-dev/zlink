@@ -183,9 +183,10 @@ internal sealed class ZLinkSpotRuntimeManager(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
         ZLinkSpotActorLifecycleContext context,
+        RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
-        await _entrySpotActors.NotifyJoinedAsync(state, actor, context, cancellationToken)
+        await _entrySpotActors.NotifyJoinedAsync(state, actor, context, targetNodeRid, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -193,9 +194,10 @@ internal sealed class ZLinkSpotRuntimeManager(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
         ZLinkSpotActorLifecycleContext context,
+        RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
-        await _entrySpotActors.NotifyLeftAsync(state, actor, context, cancellationToken)
+        await _entrySpotActors.NotifyLeftAsync(state, actor, context, targetNodeRid, cancellationToken)
             .ConfigureAwait(false);
     }
 

@@ -79,12 +79,14 @@ internal sealed class ZLinkEntrySpotActorRouter
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
         ZLinkSpotActorLifecycleContext context,
+        RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
         await NotifyLifecycleAsync(
             state,
             actor,
             context,
+            targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.TryResolveEntrySpotActorJoined(actorType, out descriptor),
             cancellationToken).ConfigureAwait(false);
@@ -94,12 +96,14 @@ internal sealed class ZLinkEntrySpotActorRouter
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
         ZLinkSpotActorLifecycleContext context,
+        RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
         await NotifyLifecycleAsync(
             state,
             actor,
             context,
+            targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.TryResolveEntrySpotActorLeft(actorType, out descriptor),
             cancellationToken).ConfigureAwait(false);
@@ -109,11 +113,17 @@ internal sealed class ZLinkEntrySpotActorRouter
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
         ZLinkSpotActorLifecycleContext context,
+        RoutingId? targetNodeRid,
         TryResolveLifecycle resolve,
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
         {
+            if (targetNodeRid is not null && node.Node.RoutingId != targetNodeRid)
+            {
+                continue;
+            }
+
             try
             {
                 if (resolve(node, actor.GetType(), out var descriptor)

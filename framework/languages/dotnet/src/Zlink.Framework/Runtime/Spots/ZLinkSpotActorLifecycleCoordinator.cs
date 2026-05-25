@@ -32,7 +32,7 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
                 previousActivation: null,
                 activation,
                 ZLinkSpotActorLifecycleReason.JoinSpot);
-            await runtime.NotifyEntrySpotActorLeftAsync(actor, entryLeftContext, cancellationToken)
+            await runtime.NotifyEntrySpotActorLeftAsync(actor, entryLeftContext, activation.NodeRid, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -76,7 +76,7 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
             activation,
             currentActivation: null,
             ZLinkSpotActorLifecycleReason.LeaveSpot);
-        await runtime.NotifyEntrySpotActorJoinedAsync(actor, entryJoinedContext, cancellationToken)
+        await runtime.NotifyEntrySpotActorJoinedAsync(actor, entryJoinedContext, activation.NodeRid, cancellationToken)
             .ConfigureAwait(false);
     }
 

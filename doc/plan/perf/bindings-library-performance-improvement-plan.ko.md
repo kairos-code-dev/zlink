@@ -1633,6 +1633,17 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   수치를 냈지만 `DEALER_ROUTER tcp 262144B`가 전 run `binary_exit` partial로 끝났고,
   direct binary도 같은 size에서 30초 timeout을 재현했다. single routed large에서는
   blocking active send가 큰 payload completion을 안정화하지 못해 반영하지 않는다.
+- **single routed blocking-send 전 transport 재확인 후보 기각**: active send와 stop token
+  모두에서 `DONT_WAIT`를 제거하는 후보를 65536/131072B, tcp/ws/wss/tls에 다시 묶어
+  시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
+  통과했고, C 기준 `perf_c_single_linux_20260525_181155_rust_single_routed_blocking_send_c.txt`
+  와 Rust 후보 `perf_rust_single_linux_20260525_181308_single_routed_blocking_send_candidate.txt`는
+  모두 complete였다. 그러나 C 대비 비율은 `DEALER_ROUTER` tcp 13.7/11.6%, ws
+  29.6/24.0%, wss 81.7/82.0%, tls 58.0/55.3%이고, `ROUTER_ROUTER`도 tcp
+  13.7/11.8%, ws 30.9/23.6%, wss 81.1/83.4%, tls 59.5/56.6%였다. wss만
+  통과권이지만 tcp/ws는 기존 보류권보다 나아지지 않고 tls도 Rust routed one-way
+  기준보다 낮다. blocking send는 Rust single routed large의 일반 해법이 아니므로
+  기존 `DONT_WAIT` retry를 유지한다.
 - **single routed receiver count-all 후보 기각**: C routed single runner는 stop token을
   받을 때까지 drain한 active payload를 모두 count하므로, Rust receiver도 wall-clock
   active deadline 뒤 수신분을 버리지 않게 하는 후보를 시험했다. 공식 runner

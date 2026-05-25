@@ -1,4 +1,6 @@
 import argparse
+import ctypes
+import errno
 import os
 import struct
 import sys
@@ -323,9 +325,114 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
     return count
 
 
+def _native_recv_part_methods():
+    global _NATIVE_RECV_PART
+    if _NATIVE_RECV_PART is None:
+        from zlink._native.ffi import ZlinkMsg, ZlinkRoutingId, lib
+        from zlink._runtime.core.core import _msg_data_ptr, _msg_size
+
+        _NATIVE_RECV_PART = (
+            ZlinkMsg,
+            ZlinkRoutingId,
+            lib,
+            _msg_data_ptr,
+            _msg_size,
+        )
+    return _NATIVE_RECV_PART
+
+
+def _native_recv_part_once(sock, flags):
+    ZlinkMsg, ZlinkRoutingId, lib, _msg_data_ptr, _msg_size = (
+        _native_recv_part_methods()
+    )
+    routing_id = ctypes.POINTER(ZlinkRoutingId)()
+    part = ZlinkMsg()
+    if lib().zlink_msg_init(ctypes.byref(part)) != 0:
+        raise RuntimeError("zlink_msg_init failed")
+    has_more = ctypes.c_int()
+    rc = lib().zlink_recv_part(
+        sock._handle,
+        ctypes.byref(routing_id),
+        ctypes.byref(part),
+        ctypes.byref(has_more),
+        int(flags),
+    )
+    if rc != 0:
+        err = lib().zlink_errno()
+        lib().zlink_msg_close(ctypes.byref(part))
+        zlink_mod = _require_zlink()
+        if rc == int(zlink_mod.RecvResult.NO_DATA) or err in (
+            errno.EAGAIN,
+            errno.EINTR,
+        ):
+            return None
+        raise zlink_mod.RecvError(zlink_mod.RecvResult(rc), err)
+    if has_more.value != 0:
+        lib().zlink_msg_close(ctypes.byref(part))
+        raise RuntimeError("single perf native recv_part received multipart message")
+    ptr = _msg_data_ptr(part)
+    size = _msg_size(part)
+    return lib, part, ptr, size
+
+
+def run_one_way_receiver_native_recv_part(
+    sock, *, msg_size, run_id, active_end, received, latencies
+):
+    from perf_metrics import HEADER_FORMAT
+
+    zlink_mod = _require_zlink()
+    dont_wait = int(zlink_mod.RecvFlags.DONT_WAIT)
+    unpack_from = struct.unpack_from
+    perf_counter = time.perf_counter
+    time_ns = time.time_ns
+    count = received
+    stop_wait_end = active_end + (_env_int("PERF_SINGLE_STOP_WAIT_MS", 2000) / 1000.0)
+
+    stop_received = False
+    while not stop_received:
+        if perf_counter() >= stop_wait_end:
+            break
+        received_part = _native_recv_part_once(sock, dont_wait)
+        if received_part is None:
+            if perf_counter() >= active_end:
+                time.sleep(0.001)
+            continue
+        lib, part, ptr, size = received_part
+        try:
+            if size == len(STOP_TOKEN) and ctypes.string_at(ptr, size) == STOP_TOKEN:
+                stop_received = True
+                continue
+            if size != msg_size or size < HEADER_SIZE:
+                continue
+            data = ctypes.string_at(ptr, HEADER_SIZE)
+            magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
+                unpack_from(HEADER_FORMAT, data, 0)
+            )
+            if (
+                magic != HEADER_MAGIC
+                or phase != 1
+                or hdr_msg_size != msg_size
+                or hdr_run_id != run_id
+            ):
+                continue
+            if perf_counter() >= active_end:
+                continue
+            count += 1
+            now_ns = time_ns()
+            if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
+                latencies.append(float(now_ns - sent_ts_ns))
+            else:
+                latencies.append(0.0)
+        finally:
+            lib().zlink_msg_close(ctypes.byref(part))
+
+    return count
+
+
 _DONT_WAIT_FLAG = None
 _LOW_LEVEL_SEND = None
 _NATIVE_RESULT_SEND = None
+_NATIVE_RECV_PART = None
 
 
 def _dont_wait_flag():

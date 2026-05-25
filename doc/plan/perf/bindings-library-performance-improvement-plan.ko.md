@@ -1400,6 +1400,16 @@ single SPOT 1024B 보류가 남아 있다.
   `ctx.recalculate_auto_hwm()`, stop-token bounded retry 확대, receiver burst drain으로
   해소했다. multi runner의 같은 종류 종료 문제는 2026-05-25 재측정과 각 pattern별
   보강에서 complete report를 확보하며 별도 completion 보류로 남기지 않는다.
+- **single SPOT receiver local stats 후보 기각**: single SPOT 수신 thread는 하나뿐이므로
+  `Arc<Mutex<LatencyStats>>` 잠금을 없애고 receiver-local `LatencyStats`를 직접 갱신하는
+  후보를 시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
+  통과했고, 같은 조건 C `perf_c_single_linux_20260525_193732_rust_single_spot1024_local_stats_c.txt`
+  대비 Rust 후보 `perf_rust_single_linux_20260525_193858_single_spot1024_local_stats_candidate.txt`도
+  complete였다. 그러나 `SPOT 1024B` median은 tcp/ws/wss/tls가
+  174.2/188.7/32.2/176.6Kmsg/s로, fresh C 대비 45.7/53.9/29.9/53.2%였다.
+  ws/tls는 SPOT 기준선 위로 올라왔지만 tcp는 기존 보류권과 같고, wss는 기존 56.0%
+  근거보다 크게 낮아졌다. 통계 잠금 제거는 transport별 변동을 안정적으로 줄이지 못하므로
+  반영하지 않는다.
 - tcp routed one-way large size는 `RouterSocket::recv_part(...)` part 단위 수신 적용 뒤
   fixed 재측정에서도 C 대비 11~15% 수준이라 routed one-way 기준보다 낮다. `DEALER_ROUTER`와
   `ROUTER_ROUTER` 모두 active send를 `DONT_WAIT` retry로 정렬했고, active 이후 bounded

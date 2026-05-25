@@ -1,10 +1,14 @@
+import ctypes
+import errno
 import sys
+import struct
 import threading
 import time
 
 import zlink
 
 from perf_common import (
+    HEADER_SIZE,
     HEADER_MAGIC,
     STOP_TOKEN,
     apply_single_auto_hwm_msg_unit,
@@ -12,15 +16,10 @@ from perf_common import (
     apply_single_spot_node_admission,
     configure_single_tls_client,
     configure_single_tls_server,
-    decode_header,
-    is_stop_token,
-    latency_ns_from_message,
-    is_active_message,
     new_payload,
     parse_single_args,
     perf_context,
     print_result_lines,
-    recv_nonblocking,
     resolve_single_connect_ready_timeout_ms,
     resolve_single_endpoint,
     resolve_single_spot_ready_settle_s,
@@ -28,30 +27,119 @@ from perf_common import (
     stamp_payload,
     _env_int,
 )
+from perf_metrics import HEADER_FORMAT
 
 
 CHANNEL_NAME = "spot-svc"
 TOPIC = "bench.topic"
+TOPIC_BYTES = b"bench.topic"
+_NATIVE_SPOT_PART = None
+
+
+def _native_spot_part_methods():
+    global _NATIVE_SPOT_PART
+    if _NATIVE_SPOT_PART is None:
+        from zlink._native.ffi import ZlinkMsg, ZlinkRoutingId, lib
+        from zlink._runtime.core.core import (
+            _init_msg_from_buffer,
+            _msg_data_ptr,
+            _msg_size,
+        )
+
+        _NATIVE_SPOT_PART = (
+            ZlinkMsg,
+            ZlinkRoutingId,
+            lib,
+            _init_msg_from_buffer,
+            _msg_data_ptr,
+            _msg_size,
+        )
+    return _NATIVE_SPOT_PART
+
+
+def _spot_publish_part_once(spot, topic, payload, flags):
+    (
+        ZlinkMsg,
+        _ZlinkRoutingId,
+        lib,
+        _init_msg_from_buffer,
+        _msg_data_ptr,
+        _msg_size,
+    ) = _native_spot_part_methods()
+    part = ZlinkMsg()
+    _init_msg_from_buffer(part, payload, borrow=False)
+    rc = lib().zlink_spot_publish_part(
+        spot._handle,
+        topic,
+        ctypes.byref(part),
+        int(flags),
+        0,
+    )
+    if rc != 0:
+        err = lib().zlink_errno()
+        lib().zlink_msg_close(ctypes.byref(part))
+        retry_errors = (
+            errno.EAGAIN,
+            errno.EINTR,
+            errno.ENOTCONN,
+            errno.EHOSTUNREACH,
+            errno.ENETUNREACH,
+        )
+        if err in retry_errors:
+            return False
+        raise zlink.SubmitError(zlink.SubmitResult(rc), err)
+    return True
+
+
+def _spot_subscribe_part_once(spot, flags):
+    (
+        ZlinkMsg,
+        ZlinkRoutingId,
+        lib,
+        _init_msg_from_buffer,
+        _msg_data_ptr,
+        _msg_size,
+    ) = _native_spot_part_methods()
+    routing_id = ctypes.POINTER(ZlinkRoutingId)()
+    topic_buf = ctypes.create_string_buffer(256)
+    topic_len = ctypes.c_size_t(len(topic_buf))
+    part = ZlinkMsg()
+    has_more = ctypes.c_int()
+    rc = lib().zlink_spot_subscribe_part(
+        spot._handle,
+        ctypes.byref(routing_id),
+        topic_buf,
+        len(topic_buf),
+        ctypes.byref(topic_len),
+        ctypes.byref(part),
+        ctypes.byref(has_more),
+        int(flags),
+    )
+    if rc != 0:
+        err = lib().zlink_errno()
+        if err in (errno.EAGAIN, errno.EINTR):
+            return None
+        raise zlink.RecvError(zlink.RecvResult(rc), err)
+    if has_more.value != 0:
+        lib().zlink_msg_close(ctypes.byref(part))
+        raise RuntimeError("single perf spot native subscribe_part received multipart message")
+    topic = bytes(topic_buf.raw[: topic_len.value])
+    return lib, part, topic, _msg_data_ptr(part), _msg_size(part)
 
 
 def _spot_publish_blocking(spot, topic, payload):
     """DONTWAIT spot publish with bounded transient-failure attempts."""
 
+    topic_bytes = topic if isinstance(topic, bytes) else topic.encode("utf-8")
     for _ in range(100):
-        try:
-            return (
-                spot.publish(topic)
-                .message(payload)
-                .flags(zlink.SendFlags.DONT_WAIT)
-                .submit()
-            )
-        except zlink.SubmitError as exc:
-            if exc.result not in (
-                zlink.SubmitResult.BACKPRESSURED,
-                zlink.SubmitResult.NOT_CONNECTED,
-            ):
-                raise
-            time.sleep(0.001)
+        if _spot_publish_part_once(
+            spot,
+            topic_bytes,
+            payload,
+            zlink.SendFlags.DONT_WAIT,
+        ):
+            return True
+        time.sleep(0.001)
     return False
 
 
@@ -124,10 +212,12 @@ def main(argv=None):
                                     != zlink.SpotDispatchEvent.SUBSCRIBE_READABLE
                                 ):
                                     return
+                                unpack_from = struct.unpack_from
                                 while True:
                                     try:
-                                        msg = recv_nonblocking(
-                                            current_spot, method="subscribe"
+                                        received_part = _spot_subscribe_part_once(
+                                            current_spot,
+                                            zlink.RecvFlags.DONT_WAIT,
                                         )
                                     except zlink.RecvError as exc:
                                         if exc.result in (
@@ -136,50 +226,58 @@ def main(argv=None):
                                         ):
                                             return
                                         raise
-                                    if msg is None:
+                                    if received_part is None:
                                         return
-                                    with msg:
-                                        parts = msg.to_bytes_list()
-                                    if not parts:
-                                        continue
-                                    data = parts[0]
-                                    # PERF_SINGLE_TEST_POLICY § 1.4:
-                                    # exit dispatch / collection on
-                                    # wire-level stop token.
-                                    if is_stop_token(data):
-                                        stop_received.set()
-                                        return
-                                    header = decode_header(data)
-                                    if (
-                                        not probe_ready.is_set()
-                                        and header is not None
-                                        and header["magic"] == HEADER_MAGIC
-                                        and header["phase"] == 0
-                                        and header["msg_size"] == args.msg_size
-                                        and header["run_id"] == run_id
-                                    ):
-                                        probe_ready.set()
-                                        continue
-                                    if not is_active_message(
-                                        data,
-                                        expected_msg_size=args.msg_size,
-                                        run_id=run_id,
-                                    ):
-                                        continue
-                                    if time.perf_counter() > active_deadline[0]:
-                                        continue
-                                    # C perf_spot.cpp run_active_window:
-                                    # every matched header counts
-                                    # (received++); single_latency_ns
-                                    # clamps clock-skew to 0.0.
-                                    latency = latency_ns_from_message(data)
-                                    with recv_lock:
-                                        received[0] += 1
-                                        latencies.append(
-                                            latency
-                                            if latency is not None
-                                            else 0.0
+                                    lib, part, topic, ptr, size = received_part
+                                    try:
+                                        if topic != TOPIC_BYTES:
+                                            continue
+                                        if (
+                                            size == len(STOP_TOKEN)
+                                            and ctypes.string_at(ptr, size)
+                                            == STOP_TOKEN
+                                        ):
+                                            stop_received.set()
+                                            return
+                                        if size < HEADER_SIZE:
+                                            continue
+                                        header_data = ctypes.string_at(
+                                            ptr, HEADER_SIZE
                                         )
+                                        (
+                                            magic,
+                                            hdr_run_id,
+                                            phase,
+                                            hdr_msg_size,
+                                            _seq,
+                                            sent_ts_ns,
+                                        ) = unpack_from(
+                                            HEADER_FORMAT, header_data, 0
+                                        )
+                                        if (
+                                            magic != HEADER_MAGIC
+                                            or hdr_msg_size != args.msg_size
+                                            or hdr_run_id != run_id
+                                        ):
+                                            continue
+                                        if phase == 0:
+                                            if not probe_ready.is_set():
+                                                probe_ready.set()
+                                            continue
+                                        if phase != 1:
+                                            continue
+                                        if time.perf_counter() > active_deadline[0]:
+                                            continue
+                                        now_ns = time.time_ns()
+                                        if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
+                                            latency = float(now_ns - sent_ts_ns)
+                                        else:
+                                            latency = 0.0
+                                        with recv_lock:
+                                            received[0] += 1
+                                            latencies.append(latency)
+                                    finally:
+                                        lib().zlink_msg_close(ctypes.byref(part))
 
                             subscriber.on_dispatch_event(on_dispatch)
 

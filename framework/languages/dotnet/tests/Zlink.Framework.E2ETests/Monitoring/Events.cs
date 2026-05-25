@@ -46,6 +46,7 @@ public sealed class EventsTests
     public async Task SpotMonitoring_Emits_SubjectsChanged_When_SpotIsCreated()
     {
         var spotNodeEndpoint = GetFreeTcpEndpoint();
+        var spotPubEndpoint = GetFreeTcpEndpoint();
         var spotChannel = $"game.stage.monitor.{Guid.NewGuid():N}";
         var builder = Host.CreateApplicationBuilder();
 
@@ -63,6 +64,10 @@ public sealed class EventsTests
                 spot.EnableRouter(router =>
                 {
                     router.SetRouterBind(spotNodeEndpoint);
+                });
+                spot.EnablePubSub(pubsub =>
+                {
+                    pubsub.SetPubBind(spotPubEndpoint);
                 });
                 spot.AddSpotFactory<MonitoringStageSpot>("stage");
             });

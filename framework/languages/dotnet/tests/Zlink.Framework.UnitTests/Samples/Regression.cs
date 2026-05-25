@@ -10,7 +10,7 @@ public sealed class RegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDiscovery(sampleRoot);
-        AssertSessionServerUsesActorGateway(sampleRoot);
+        AssertSessionServerUsesActorGateway(sampleRoot, allowRouteMeshChannel: false);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
         AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(sampleRoot);
         AssertNoSampleSessionRelayJson(sampleRoot);
@@ -26,9 +26,9 @@ public sealed class RegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDefaults(sampleRoot, "tictactoe");
-        AssertSessionServerUsesActorGateway(sampleRoot);
+        AssertSessionServerUsesActorGateway(sampleRoot, allowRouteMeshChannel: true);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
-        AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(sampleRoot);
+        AssertSessionAuthenticateJoinsPlayEntrySpotBeforeBinding(sampleRoot);
         AssertNoSampleSessionRelayJson(sampleRoot);
         AssertSessionPayloadPolicy(sampleRoot);
         AssertUsesFrameworkSessionPacketDispatcher(sampleRoot);
@@ -176,7 +176,9 @@ public sealed class RegressionTests
         Assert.DoesNotContain("IZLinkActorSessionClient", allText, StringComparison.Ordinal);
     }
 
-    private static void AssertSessionServerUsesActorGateway(string sampleRoot)
+    private static void AssertSessionServerUsesActorGateway(
+        string sampleRoot,
+        bool allowRouteMeshChannel)
     {
         var sessionHostFactory = Directory
             .EnumerateFiles(Path.Combine(sampleRoot, "Server", "Session"), "*HostFactory.cs", SearchOption.AllDirectories)
@@ -186,7 +188,10 @@ public sealed class RegressionTests
         Assert.Contains("AddSpotMesh", text, StringComparison.Ordinal);
         Assert.Contains("EnableRouter", text, StringComparison.Ordinal);
         Assert.Contains("AttachActorGateway", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("AddRouteMeshChannel", text, StringComparison.Ordinal);
+        if (!allowRouteMeshChannel)
+        {
+            Assert.DoesNotContain("AddRouteMeshChannel", text, StringComparison.Ordinal);
+        }
         Assert.DoesNotContain("AddScoped<IBingoSessionHandler", text, StringComparison.Ordinal);
         Assert.DoesNotContain("AddScoped<ISessionRelayPacketHandler", text, StringComparison.Ordinal);
     }
@@ -227,6 +232,20 @@ public sealed class RegressionTests
             Assert.Contains("GetRemoteAddressAsync", text, StringComparison.Ordinal);
             Assert.Contains("RemoteAddress", text, StringComparison.Ordinal);
         }
+    }
+
+    private static void AssertSessionAuthenticateJoinsPlayEntrySpotBeforeBinding(string sampleRoot)
+    {
+        var handler = Directory
+            .EnumerateFiles(Path.Combine(sampleRoot, "Server", "Session"), "AuthenticateSessionPacketHandler.cs", SearchOption.AllDirectories)
+            .Single();
+        var text = File.ReadAllText(handler);
+        var joinIndex = text.IndexOf("JoinEntrySpot(topology.PlayRid)", StringComparison.Ordinal);
+        var bindIndex = text.IndexOf("BindActorHandleAsync", StringComparison.Ordinal);
+
+        Assert.True(joinIndex >= 0, "Authenticate handler must join the actor to the Play EntrySpot.");
+        Assert.True(bindIndex > joinIndex, "Authenticate handler must bind the returned ActorRef after JoinEntrySpot.");
+        Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string root)

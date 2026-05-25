@@ -1647,6 +1647,15 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   복사한 뒤 dispatcher thread에서 user handler를 호출하므로, 그 안에서 stream socket send를
   바로 섞으면 현재 runner의 READY/stream client handshake 경계를 불안정하게 만든다.
   따라서 기존 queue 기반 POLLOUT drain을 유지한다.
+- **MULTI_STREAM direct callback dispatch 후보 기각**: dispatcher queue 왕복 비용을 줄이기
+  위해 `StreamSocket.on_packet`이 native callback 안에서 handler를 바로 호출하되,
+  callback 재진입 guard(`EDEADLK`)는 유지하는 후보를 시험했다.
+  `python -m py_compile bindings/python/src/zlink/contracts/sockets/sockets.py bindings/python/perf/multi/perf_multi_stream_server.py`와
+  `PYTHONPATH=bindings/python/src python -m pytest bindings/python/tests/test_callback_send.py -q`는
+  통과했다. 그러나 공식 wrapper는 C 기준 `perf_c_multi_linux_20260525_114553.txt`가
+  complete인 같은 조건에서 Python 후보 `perf_python_multi_linux_20260525_114623.txt`가
+  `tcp 64B` READY 이후 결과 없이 partial로 끝났다. stream packet callback은 core callback
+  경계와 server POLLOUT drain을 분리해야 안정적이므로 dispatcher 기반 호출을 유지한다.
 - SPOT reply decode에도 같은 원칙을 적용했다. `MULTI_SPOT_REQREP`는 callback 이전에 reply part가 이미 Python `Message`로 clone되므로 추가 `to_bytes()` 제거 효과가 제한적이고,
   `MULTI_SPOT_SENDSEND`는 routed reply `ReceivedMessage.data`로 262144B가 37.4%→43.6%까지 올랐다. small/65536B와 일부 131072B는 여전히 기준보다 낮다.
 - **SPOT reqrep server view-reply 후보 기각**: `MULTI_SPOT_REQREP` server에서

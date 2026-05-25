@@ -2187,7 +2187,14 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `python3 -m py_compile ...`와 `bindings/python/tests/run_tests.sh`는 통과했지만 공식 wrapper
   `perf_python_multi_linux_20260525_191214_multi_pubsub_publish_native_candidate.txt`가
   `wss 64B`에서 client timeout partial로 끝났다. tcp/ws small 처리량도 count fast path보다
-  낮아 안정적인 개선 후보가 아니므로 반영하지 않는다.
+  낮아 안정적인 개선 후보가 아니므로 반영하지 않는다. current HEAD에서도 같은 후보를 다시
+  좁혀 시험했다. `python3 -m py_compile bindings/python/perf/multi/perf_multi_common.py
+  bindings/python/perf/multi/perf_multi_pubsub_server.py`는 통과했고 같은 조건 C
+  `perf_c_multi_linux_20260525_210323_python_multi_pubsub_publish_native_c.txt`는 complete였지만,
+  Python 후보 `perf_python_multi_linux_20260525_210400_multi_pubsub_publish_native_candidate.txt`는
+  tcp 64B만 207.2Kmsg/s로 올린 뒤 256B에서 READY control line을 받지 못해 fail-fast
+  partial로 끝났다. publish hot path를 더 빠르게 만드는 것만으로는 subscriber/control
+  전환 안정성이 깨져 반영하지 않는다.
 - **MULTI_PUBSUB server in-place stamp 후보 기각**: server hot path에서 `stamp_payload(...)`의
   `bytes(payload)` 복사를 줄이기 위해 재사용 `bytearray`를 그대로 publish submit에 넘기는
   후보를 시험했다. `python -m py_compile bindings/python/perf/perf_metrics.py bindings/python/perf/multi/perf_multi_common.py bindings/python/perf/multi/perf_multi_pubsub_server.py bindings/python/perf/multi/perf_multi_pubsub_client.py`는 통과했고,

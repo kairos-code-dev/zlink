@@ -589,6 +589,7 @@ def _native_result_send_methods():
             _init_msg_from_buffer,
         )
         from zlink._runtime.sockets.socket_base import (
+            _publish_via_native_no_wait_result,
             _send_rid_via_native_no_wait_result,
             _send_via_native_no_wait_result,
         )
@@ -599,6 +600,7 @@ def _native_result_send_methods():
             _copy_routing_id,
             _send_via_native_no_wait_result,
             _send_rid_via_native_no_wait_result,
+            _publish_via_native_no_wait_result,
         )
     return _NATIVE_RESULT_SEND
 
@@ -633,15 +635,12 @@ def send_nonblocking(sock, payload, *, routing_id=None):
 
 
 def publish_nonblocking(sock, topic, payload):
-    zlink_mod = _require_zlink()
-    _, _, publish = _low_level_send_methods()
-    flag = _dont_wait_flag()
-    try:
-        return bool(publish(sock, topic, payload, flags=flag))
-    except zlink_mod.SubmitError as exc:
-        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
-            return False
-        raise
+    _ZlinkMsg, _init_msg, _copy_routing_id, _send_native, _send_rid, publish_native = (
+        _native_result_send_methods()
+    )
+    parts_array, keepalive = _single_part_native_array(payload)
+    _ = keepalive
+    return _submit_result_ok(publish_native(sock._handle, topic, parts_array, 1))
 
 
 def single_routing_probe(sender, receiver, payload, *, run_id, msg_size,

@@ -129,16 +129,10 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
 
         for (;;) {
             part.init ();
-            const zlink_routing_id_t *source_rid = NULL;
-            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-            const int rc = zlink_recv_part (
-              zlink::detail::native_handle (server),
-              &source_rid,
-              zlink::detail::native_handle (part),
-              &has_more,
-              ZLINK_RECV_FLAGS_DONTWAIT);
+            const int rc = server.recv (part, zlink::recv_flags_t::dontwait);
             if (rc != 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                if (rc == static_cast<int> (zlink::recv_result_t::no_data)
+                    || errno == EAGAIN || errno == EWOULDBLOCK) {
                     part.close ();
                     break;
                 }
@@ -146,11 +140,6 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
                     part.close ();
                     continue;
                 }
-                part.close ();
-                failed = true;
-                break;
-            }
-            if (source_rid || has_more != ZLINK_PART_FINAL) {
                 part.close ();
                 failed = true;
                 break;

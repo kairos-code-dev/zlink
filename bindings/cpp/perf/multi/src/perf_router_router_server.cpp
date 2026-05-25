@@ -121,63 +121,70 @@ bool perf_router_router_server (const std::string &lib_name,
 
     struct pending_reply_t
     {
-        zlink_routing_id_t rid;
+        zlink::routing_id_t rid;
         zlink::message_t payload;
     };
 
     bool failed = false;
     std::deque<pending_reply_t> pending_replies;
-    zlink::message_t part;
+    zlink::poller_t poller;
+    poller.add (server, zlink::poll_event_flag_t::pollin, 0);
+    std::vector<zlink::poll_event_t> events (1);
+
+    auto send_payload = [&] (const zlink::routing_id_t &rid,
+                             zlink::message_t &payload) -> int {
+        try {
+            const bool sent =
+              std::move (server.send (rid))
+                .message (payload)
+                .flags (zlink::send_flags_t::dontwait)
+                .submit ();
+            return sent ? 1 : 0;
+        } catch (const zlink::submit_error_t &err) {
+            const int err_no = err.internal_errno ();
+            if (err_no == EAGAIN || err_no == EWOULDBLOCK
+                || err_no == EINTR || err_no == EHOSTUNREACH
+                || err_no == ENOTCONN) {
+                return 0;
+            }
+            errno = err_no;
+            debug_log ("send failed errno=" + std::to_string (err_no));
+            return -1;
+        }
+    };
 
     auto flush_pending = [&] () -> bool {
         while (!pending_replies.empty ()) {
             pending_reply_t &front = pending_replies.front ();
-            const zlink_submit_result_t rc = zlink_send_part_rid (
-              zlink::detail::native_handle (server),
-              &front.rid,
-              zlink::detail::native_handle (front.payload),
-              ZLINK_DONTWAIT,
-              ZLINK_PART_FINAL);
-            const zlink::submit_result_t result =
-              static_cast<zlink::submit_result_t> (rc);
-            if (result == zlink::submit_result_t::ok) {
-                zlink::detail::mark_sent (front.payload);
+            const int rc = send_payload (front.rid, front.payload);
+            if (rc > 0) {
                 pending_replies.pop_front ();
                 continue;
             }
-            const int err_no = zlink_errno ();
-            if (err_no == EAGAIN || err_no == EWOULDBLOCK
-                || err_no == EINTR || err_no == EHOSTUNREACH
-                || err_no == ENOTCONN) {
+            if (rc == 0)
                 return true;
-            }
             return false;
         }
         return true;
     };
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        zlink_pollitem_t item;
-        item.socket = zlink::detail::native_handle (server);
-        item.fd = 0;
-        item.events = ZLINK_POLLIN;
+        zlink::poll_event_flag_t poll_interest = zlink::poll_event_flag_t::pollin;
         if (!pending_replies.empty ())
-            item.events = static_cast<short> (item.events | ZLINK_POLLOUT);
-        item.revents = 0;
-        const int poll_rc = zlink_poll (&item, 1, -1, NULL);
-        if (poll_rc < 0) {
-            const int err_no = zlink_errno ();
-            if (err_no == EINTR)
-                continue;
-            debug_log ("poll failed errno=" + std::to_string (err_no));
-            failed = true;
-            break;
-        }
+            poll_interest = poll_interest | zlink::poll_event_flag_t::pollout;
+        poller.modify (server, poll_interest);
+
+        const size_t poll_rc =
+          poller.wait (events.data (), events.size (),
+                       std::chrono::milliseconds (-1));
         if (poll_rc == 0)
             continue;
 
-        const bool readable = (item.revents & ZLINK_POLLIN) != 0;
-        const bool writable = (item.revents & ZLINK_POLLOUT) != 0;
+        const short revents = static_cast<short> (events[0].revents);
+        const bool readable =
+          (revents & static_cast<short> (zlink::poll_event_flag_t::pollin)) != 0;
+        const bool writable =
+          (revents & static_cast<short> (zlink::poll_event_flag_t::pollout)) != 0;
 
         if (writable && !pending_replies.empty ()) {
             if (!flush_pending ()) {
@@ -189,78 +196,51 @@ bool perf_router_router_server (const std::string &lib_name,
         if (!readable)
             continue;
 
-        // Drain available single-part routed messages without blocking. This
-        // mirrors the C relay server's zlink_router_recv_part hot path and
-        // avoids materializing received_t parts for the single-part echo
-        // workload.
+        // Drain available single-part routed messages without blocking.
         while (!g_stop_requested.load (std::memory_order_acquire)) {
-            const zlink_routing_id_t *source_node_rid = NULL;
-            const zlink_routing_id_t *source_spot_rid = NULL;
-            uint64_t request_seq = 0;
-            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-            part.init ();
-            const zlink_recv_result_t recv_rc = zlink_router_recv_part (
-              zlink::detail::native_handle (server),
-              &source_node_rid,
-              &source_spot_rid,
-              &request_seq,
-              zlink::detail::native_handle (part),
-              &has_more,
-              ZLINK_RECV_FLAGS_DONTWAIT);
-            if (recv_rc != ZLINK_RECV_OK) {
-                const int err = zlink_errno ();
-                part.close ();
-                if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
+            zlink::received_t received;
+            const int recv_rc = server.recv (received, zlink::recv_flags_t::dontwait);
+            if (recv_rc != 0) {
+                const int err = errno;
+                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data)
+                    || err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
                     break;
                 debug_log ("recv failed errno=" + std::to_string (err));
                 failed = true;
                 break;
             }
-            if (!source_node_rid || source_node_rid->size == 0
-                || (source_spot_rid && source_spot_rid->size != 0)
-                || request_seq != 0 || has_more != ZLINK_PART_FINAL) {
-                part.close ();
+            if (!received.routing_id ().has_value ()
+                || received.routing_id ()->size () == 0
+                || received.spot_rid ().has_value ()
+                || received.request_seq ().has_value ()
+                || !received.is_single_part ()) {
                 debug_log ("recv envelope mismatch");
                 failed = true;
                 break;
             }
+            zlink::message_t &part = received.first_part ();
 
             // No socket stop-token handling: matches the C reference relay
             // server, which terminates only via stdin STOP/QUIT + signals.
             if (part.size () == 0) {
-                part.close ();
                 continue;
             }
 
             if (!pending_replies.empty ()) {
                 pending_replies.push_back (pending_reply_t {
-                  *source_node_rid, std::move (part) });
+                  *received.routing_id (), std::move (part) });
                 continue;
             }
 
-            const zlink_submit_result_t send_rc = zlink_send_part_rid (
-              zlink::detail::native_handle (server),
-              source_node_rid,
-              zlink::detail::native_handle (part),
-              ZLINK_DONTWAIT,
-              ZLINK_PART_FINAL);
-            const zlink::submit_result_t send_result =
-              static_cast<zlink::submit_result_t> (send_rc);
-            if (send_result == zlink::submit_result_t::ok) {
-                zlink::detail::mark_sent (part);
+            const zlink::routing_id_t source_node_rid = *received.routing_id ();
+            const int send_rc = send_payload (source_node_rid, part);
+            if (send_rc > 0)
                 continue;
-            }
-
-            const int err_no = zlink_errno ();
-            if (err_no == EAGAIN || err_no == EWOULDBLOCK
-                || err_no == EINTR || err_no == EHOSTUNREACH
-                || err_no == ENOTCONN) {
+            if (send_rc == 0) {
                 pending_replies.push_back (pending_reply_t {
-                  *source_node_rid, std::move (part) });
+                  source_node_rid, std::move (part) });
                 continue;
             }
-            part.close ();
-            errno = err_no;
             debug_log ("send failed errno=" + std::to_string (errno));
             failed = true;
             break;

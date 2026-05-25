@@ -68,7 +68,6 @@ struct socket_state_t
     std::vector<char> request_buffer;
     size_t payload_size;
     zlink::message_t request;
-    zlink::message_t reply;
     bool borrow_payload;
     bool awaiting_reply;
     bool send_pending;
@@ -79,7 +78,6 @@ struct socket_state_t
           request_buffer (),
           payload_size (0),
           request (),
-          reply (),
           borrow_payload (false),
           awaiting_reply (false),
           send_pending (false),
@@ -108,8 +106,6 @@ class router_router_client_bench_t
           _socket_states (),
           _poller (),
           _poll_events (),
-          _poll_items (),
-          _poll_indexes (),
           _run_id (1U),
           _seq (1),
           _server_id ("SERVER"),
@@ -121,8 +117,6 @@ class router_router_client_bench_t
         _monitors.reserve (_settings.clients);
         _socket_states.reserve (_settings.clients);
         _poll_events.reserve (_settings.clients);
-        _poll_items.resize (_settings.clients);
-        _poll_indexes.resize (_settings.clients);
 
         _phase_cfg.active_seconds = std::max (1, _settings.duration_seconds);
     }
@@ -297,7 +291,7 @@ class router_router_client_bench_t
                 }
 
                 for (;;) {
-                    perf_metric::header_t header;
+                    perf_metric::header_t header {};
                     const int recv_rc =
                       recv_reply (*state, &header);
                     if (recv_rc < 0) {
@@ -432,47 +426,34 @@ class router_router_client_bench_t
             return -1;
         }
 
-        state.reply.init ();
-        const zlink_routing_id_t *source_node_rid = NULL;
-        const zlink_routing_id_t *source_spot_rid = NULL;
-        uint64_t request_seq = 0;
-        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        const int rc = zlink_router_recv_part (
-          zlink::detail::native_handle (*state.sock),
-          &source_node_rid,
-          &source_spot_rid,
-          &request_seq,
-          zlink::detail::native_handle (state.reply),
-          &has_more,
-          ZLINK_RECV_FLAGS_DONTWAIT);
+        zlink::received_t received;
+        const int rc = state.sock->recv (received, zlink::recv_flags_t::dontwait);
         if (rc != 0) {
-            state.reply.close ();
             return -1;
         }
-        if (!source_node_rid || source_node_rid->size == 0
-            || (source_spot_rid && source_spot_rid->size != 0)
-            || request_seq != 0 || has_more != ZLINK_PART_FINAL) {
-            state.reply.close ();
+        if (!received.routing_id ().has_value ()
+            || received.routing_id ()->size () == 0
+            || received.spot_rid ().has_value ()
+            || received.request_seq ().has_value ()
+            || !received.is_single_part ()) {
+            errno = EPROTO;
+            return -1;
+        }
+        zlink::message_t &reply = received.first_part ();
+
+        if (!reply.valid ()) {
             errno = EPROTO;
             return -1;
         }
 
-        if (!state.reply.valid ()) {
-            errno = EPROTO;
-            return -1;
-        }
-
-        if (state.reply.size () != state.payload_size) {
-            state.reply.close ();
+        if (reply.size () != state.payload_size) {
             return 1;
         }
         if (!perf_metric::decode_payload_header (
-              state.reply.data (), state.reply.size (), header_out)) {
-            state.reply.close ();
+              reply.data (), reply.size (), header_out)) {
             return 1;
         }
 
-        state.reply.close ();
         return 0;
     }
 
@@ -520,8 +501,9 @@ class router_router_client_bench_t
                     return false;
             }
 
-            size_t poll_count = 0;
             const size_t poll_start = rr;
+            if (_poll_events.size () < _socket_states.size ())
+                _poll_events.resize (_socket_states.size ());
             for (size_t attempt = 0; attempt < _socket_states.size (); ++attempt) {
                 const size_t idx =
                   (poll_start + attempt) % _socket_states.size ();
@@ -529,27 +511,22 @@ class router_router_client_bench_t
                 if (!state.sock)
                     continue;
 
-                short events = 0;
+                zlink::poll_event_flag_t events = zlink::poll_event_flag_t::none;
                 if (state.awaiting_reply)
-                    events = static_cast<short> (events | ZLINK_POLLIN);
+                    events = zlink::poll_event_flag_t::pollin;
                 else if (state.send_pending)
-                    events = static_cast<short> (events | ZLINK_POLLOUT);
-                if (events == 0)
-                    continue;
-
-                if (poll_count >= _poll_items.size ())
-                    return false;
-                _poll_indexes[poll_count] = idx;
-                _poll_items[poll_count].socket =
-                  zlink::detail::native_handle (*state.sock);
-                _poll_items[poll_count].fd = 0;
-                _poll_items[poll_count].events = events;
-                _poll_items[poll_count].revents = 0;
-                ++poll_count;
+                    events = zlink::poll_event_flag_t::pollout;
+                if (state.poll_events != events) {
+                    _poller.modify (*state.sock, events);
+                    state.poll_events = events;
+                }
             }
             rr = (poll_start + 1) % _socket_states.size ();
 
-            if (poll_count == 0) {
+            const size_t ready_count =
+              _poller.wait (_poll_events.data (), _poll_events.size (),
+                            std::chrono::milliseconds (-1));
+            if (ready_count == 0) {
                 for (size_t i = 0; i < _socket_states.size (); ++i) {
                     if (!_socket_states[i].awaiting_reply)
                         _socket_states[i].send_pending = true;
@@ -557,27 +534,20 @@ class router_router_client_bench_t
                 continue;
             }
 
-            const int poll_rc = zlink_poll (
-              &_poll_items[0], static_cast<int> (poll_count), -1, NULL);
-            if (poll_rc < 0) {
-                const int err = zlink_errno ();
-                if (err == EINTR)
+            for (size_t i = 0; i < ready_count; ++i) {
+                const size_t slot_index = _poll_events[i].slot;
+                if (slot_index >= _socket_states.size ())
                     continue;
-                debug_log ("active poll failed errno=" + std::to_string (err));
-                return false;
-            }
-            if (poll_rc == 0)
-                continue;
+                socket_state_t &state = _socket_states[slot_index];
+                const short revents = static_cast<short> (_poll_events[i].revents);
 
-            for (size_t i = 0; i < poll_count; ++i) {
-                socket_state_t &state = _socket_states[_poll_indexes[i]];
-                const short revents = _poll_items[i].revents;
-
-                if ((revents & ZLINK_POLLIN) == 0)
+                if ((revents
+                     & static_cast<short> (zlink::poll_event_flag_t::pollin))
+                    == 0)
                     continue;
 
                 for (;;) {
-                    perf_metric::header_t header;
+                    perf_metric::header_t header {};
                     const int recv_rc =
                       recv_reply (state, &header);
                     if (recv_rc < 0) {
@@ -655,8 +625,6 @@ class router_router_client_bench_t
     std::vector<socket_state_t> _socket_states;
     zlink::poller_t _poller;
     std::vector<zlink::poll_event_t> _poll_events;
-    std::vector<zlink_pollitem_t> _poll_items;
-    std::vector<size_t> _poll_indexes;
 
     const uint32_t _run_id;
     uint64_t _seq;

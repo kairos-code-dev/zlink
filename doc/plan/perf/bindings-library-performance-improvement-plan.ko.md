@@ -1435,6 +1435,16 @@ single SPOT 1024B 보류가 남아 있다.
   tcp `DEALER_ROUTER` 65536/262144B가 13.9/11.0%, `ROUTER_ROUTER`가 14.6/11.7%였다.
   기존 `RouterSocket::recv_part(...)` fixed 재측정과 같은 대역이라 lock 비용이 large
   routed 병목의 주 원인이 아님을 확인했다. 코드는 반영하지 않는다.
+- **single routed direct `Message::with_size()` 후보 기각**: Rust multi routed large는
+  payload `Vec`에 header를 찍고 `Message::copy_from(...)`으로 다시 복사하던 경로를
+  `Message::with_size()` + `data_mut()` 직접 stamp로 바꿔 통과권에 올랐다. 같은 후보를
+  single routed sender의 active send에 좁혀 시험했다. `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고, C 기준은 위 local latency
+  후보와 같은 `perf_c_single_linux_20260525_154738_rust_routed_local_stats_c.txt`를
+  사용했다. Rust 후보 `perf_rust_single_linux_20260525_155036_routed_direct_message_candidate.txt`는
+  tcp `DEALER_ROUTER` 65536/262144B가 13.7/11.1%, `ROUTER_ROUTER`가 14.7/11.7%로
+  기존과 같은 대역이다. single routed large 병목은 payload 생성 복사 1회가 아니라
+  routed send/transport backpressure 경계에 남아 있다고 보고 코드는 반영하지 않는다.
 - **2026-05-25 single routed ws/tls complete 재측정**: `RouterSocket::recv_part(...)`
   적용 뒤 ws/tls large도 같은 조건으로 다시 확인했다. C 기준
   `perf_c_single_linux_20260525_142618_rust_single_routed_wstls_c_recheck.txt`와

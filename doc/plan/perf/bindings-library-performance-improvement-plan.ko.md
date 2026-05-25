@@ -1079,6 +1079,11 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   `perf_go_multi_linux_20260525_045203.txt`도 complete였지만 131072B는 12.151K→12.379Kops/s
   소폭 개선에 그쳤고 262144B는 4.732K→4.594Kops/s로 낮아졌다. public API를 넓힐 근거가
   약하므로 반영하지 않는다.
+  2026-05-25 재검토에서 tcp 262144B active slot을 8에서 4로 줄이는 후보도 시험했다.
+  `go test ./...`는 통과했고 공식 wrapper `perf_go_multi_linux_20260525_093053.txt`도
+  complete였지만, 같은 조건 C `perf_c_multi_linux_20260525_093033.txt` 대비 Go median은
+  4.358Kops/s, 41.2%로 기존 대표값과 같은 보류권이다. active slot을 더 좁히면
+  in-flight request가 줄어 C 대비 처리량 격차를 줄이지 못하므로 반영하지 않는다.
   2026-05-25 재검토에서 server callback이 받은 single-part `Message`를 그대로
   `received.Reply().Message(parts[0])`에 넘기는 후보도 시험했다. 이 후보는 별도
   public API 없이 server의 `NewMessage(parts[0].Data())` 복사를 줄이는 방향이고

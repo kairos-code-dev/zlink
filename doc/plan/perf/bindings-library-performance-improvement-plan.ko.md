@@ -954,6 +954,15 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   공식 runner `perf_go_multi_linux_20260525_062527.txt`가 `ws 256B exit_nonzero`
   partial로 끝났다. timeout이나 partial을 만드는 후보는 통과 근거로 쓰지 않으므로
   `ws` small send는 기존 `Message(...)` 경로를 유지한다.
+- 2026-05-25 재검토: `MULTI_SPOT_SENDSEND` large에서도 `PERF_GO_GOMAXPROCS=8`을
+  tcp/ws/tls 65536/131072/262144B에 다시 시험했다. 공식 wrapper
+  `perf_go_multi_linux_20260525_091754.txt`는 complete였지만 tcp 65536/131072/262144B는
+  10.467/5.047/3.357Kops/s로 기본값 대표 측정보다 낮거나 같은 수준이고, tls도
+  7.667/4.119/2.385Kops/s로 낮아졌다. `ws 65536B`만 12.795Kops/s로 이전
+  11.411Kops/s보다 높았지만 같은 C 기준으로는 32.7% 수준이라 보류를 해소하지
+  못하고, `ws 131072/262144B`는 5.045/2.809Kops/s로 기존보다 낮다. 따라서
+  `GOMAXPROCS=8`은 Go multi 남은 보류를 푸는 일반 해법이 아니며 기본값 변경 후보에서
+  제외한다.
 - 2026-05-24 추가 수정: `MULTI_DEALER_DEALER`를 current HEAD에서 fresh C baseline으로
   다시 측정하고 stale 보류를 제거했다. `perf_go_multi_linux_20260524_222134.txt` 기준으로
   tcp 256B/1024B, ws 256B/1024B/262144B, wss 256B/1024B, tls 256B/1024B는 통과권이다.
@@ -1004,6 +1013,11 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   5.417Kmsg/s로 낮아 반영하지 않는다. `GOMAXPROCS=8` 진단
   `perf_go_multi_linux_20260525_090832.txt`는 19.193Kmsg/s, 43.1%였지만 Go 전체
   runner 기본값을 바꾸는 판단은 별도 검증이 필요하므로 이번 적용 범위에는 넣지 않는다.
+  이어서 `ws/wss/tls 64B`와 `tcp 262144B`를 함께 묶어 `PERF_GO_GOMAXPROCS=8`로
+  다시 돌린 `perf_go_multi_linux_20260525_091615.txt`는 complete였지만, `tcp 262144B`
+  median이 15.718Kmsg/s로 최신 기본값 측정 17.722Kmsg/s보다 낮았고 `ws/wss/tls 64B`도
+  1191.424/1229.312/1190.639Kmsg/s로 기존 보류권을 벗어나지 못했다. Go runner
+  기본 GOMAXPROCS를 8로 올리는 변경은 반영하지 않는다.
 - 2026-05-25 재검토: 같은 `Bytes(...)` 경로를 tcp 1024B 이하에도 넓혔다. `go test ./...`는
   통과했고, 같은 조건 제한 재측정 C `perf_c_multi_linux_20260525_040430.txt` 대비 Go
   `perf_go_multi_linux_20260525_040452.txt`에서 tcp 64/256/1024B가 45.4/64.8/81.1%로

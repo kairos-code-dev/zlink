@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Core;
 
@@ -47,6 +48,8 @@ internal sealed class ZLinkRouteChannelInitializer(
             discovery,
             handlers,
             new ZLinkCompositeRouteInternalPacketDispatcher(
+                new ZLinkActorEntrySpotRouteInternalPacketDispatcher(
+                    services.GetRequiredService<ZLinkFrameworkRuntime>()),
                 new ZLinkRoutedSpotRouteInternalPacketDispatcher(
                     services.GetRequiredService<ZLinkFrameworkRuntime>(),
                     registration)),

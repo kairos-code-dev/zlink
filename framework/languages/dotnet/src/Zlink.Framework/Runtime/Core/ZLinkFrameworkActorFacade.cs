@@ -77,6 +77,18 @@ internal sealed class ZLinkFrameworkActorFacade(
         }
 
         var result = await tcs.Task.ConfigureAwait(false);
+        if (result.Result == RequestResult.NotConnected)
+        {
+            return await JoinRemoteActorEntrySpotAsync(
+                    getState(),
+                    spotNodeRid,
+                    actor,
+                    actorState,
+                    actorRef,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         if (result.Result != RequestResult.Ok)
         {
             throw new ZLinkFrameworkException(
@@ -94,6 +106,49 @@ internal sealed class ZLinkFrameworkActorFacade(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
             ToRemoteAddress(result.Actor));
+    }
+
+    private async ValueTask<ZLinkActorJoinResult> JoinRemoteActorEntrySpotAsync(
+        ZLinkFrameworkRuntimeState state,
+        RoutingId spotNodeRid,
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState,
+        ZLinkBackendActorRef sourceActorRef,
+        CancellationToken cancellationToken)
+    {
+        var routeChannel = state.RouteChannels.Values.FirstOrDefault()
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor entry SPOT join failed for '{actor.ActorId}' because target node '{spotNodeRid}' is not connected and no route channel is registered.");
+
+        var request = new ZLinkActorEntrySpotRouteJoinRequest(
+            actor.ActorId,
+            actorState.ActorType ?? actor.GetType().Name,
+            sourceActorRef.NodeRid.ToHex(),
+            sourceActorRef.Generation);
+
+        var reply = await routeChannel.RequestAsync<ZLinkActorEntrySpotRouteJoinRequest, ZLinkActorEntrySpotRouteJoinReply>(
+                spotNodeRid,
+                ZLinkActorEntrySpotRoutePackets.JoinEntrySpotPacketName,
+                request,
+                registration.DefaultTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var targetRef = new ZLinkBackendActorRef(
+            RoutingId.FromString(reply.TargetNodeRid),
+            actor.ActorId,
+            reply.ActorGeneration);
+        actorState.NativeActorRef = targetRef;
+        if (targetRef.NodeRid != sourceActorRef.NodeRid)
+        {
+            actorState.InvalidateContext();
+        }
+
+        return new ZLinkActorJoinResult(
+            actor.ActorId,
+            actorState.ActorType ?? actor.GetType().Name,
+            ToRemoteAddress(targetRef));
     }
 
     public async ValueTask JoinActorToSpotAsync(

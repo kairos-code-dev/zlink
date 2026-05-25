@@ -30,6 +30,11 @@ public static class SessionServerHostFactory
             {
                 channel.EnableClient();
             });
+            options.AddRouteMeshChannel(SampleNames.RouterChannel, routed =>
+            {
+                routed.Bind(sessionNode.SpotEndpoint);
+                routed.ConfigureRouting(routing => routing.RoutingId = sessionNode.RoutingId);
+            });
             options.AddSpotMesh(SampleNames.GameSpotDiscovery, mesh =>
             {
                 mesh.AddNode(SampleNames.SessionSpotNode, node =>

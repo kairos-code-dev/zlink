@@ -1684,6 +1684,15 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   complete였다. 그러나 1024B C 대비 비율은 tcp/ws/wss/tls 52.6/58.6/62.5/56.2%로
   SPOT 기준보다 낮다. latency 기록 비용만 줄여서는 single SPOT 1024B 보류를 해소하지
   못하므로 코드는 반영하지 않는다.
+- **single SPOT exact local stats 후보 기각**: sampled stats 후보가 latency semantics를
+  일부 바꾼 점을 분리하기 위해, 수신 thread 안에서 local `LatencyStats`를 직접 쓰되
+  C와 같은 active window와 전체 latency 기록 의미는 유지하는 후보를 다시 시험했다.
+  `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고,
+  공식 C 기준 `perf_c_single_linux_20260525_174613_rust_single_spot_exact_local_c.txt`와
+  Rust 후보 `perf_rust_single_linux_20260525_174613_single_spot_exact_local_candidate.txt`는
+  모두 complete였다. 그러나 1024B C 대비 비율은 tcp/ws/wss/tls 44.9/56.0/57.6/56.0%로
+  SPOT 기준보다 낮고, 이전 sampled stats 또는 `subscribe_part` 후보보다 대체로 낮다.
+  lock 제거만으로는 single SPOT 1024B 보류를 해소하지 못하므로 코드는 반영하지 않는다.
 - **single SPOT public `subscribe_part` 후보 기각**: C single SPOT은
   `zlink_spot_subscribe_part` 단일 part 수신으로 header를 바로 디코드하므로, Rust에도
   public `Spot::subscribe_part`/`SpotPart` 후보를 추가하고 single SPOT subscriber가

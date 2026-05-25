@@ -58,12 +58,13 @@
     drain 으로 request 를 모두 읽은 뒤, 수신한 request 에 대응하는 reply 를
     즉시 반환한다.
   - client(requester): `send(..., DONTWAIT)` nonblocking request send 와 poller
-    기반 reply recv 로 왕복을 측정한다. requester active loop는 C perf와
-    동일하게 같은 public poller에 requester spot을 `POLLCOMPLETION`으로
-    등록하고, `zlink_poller_wait(..., -1)` 또는 해당 binding의 동일한
-    wait API가 completion callback을 drain하도록 해야 한다. completion을
-    별도 worker, timer, pipe wake, 짧은 sleep/park fallback으로 진행하면
-    같은 테스트 의미가 아니므로 금지한다.
+    기반 reply recv 로 왕복을 측정한다. C perf requester는 C public callback
+    request API를 사용하므로 requester spot을 `POLLIN`으로 등록하고,
+    callback completion을 진행하기 위해 active loop에서 bounded poller wait를
+    사용한다. binding public API가 completion-only poller surface를 제공하는
+    경우에는 같은 active poller에 requester spot을 `POLLCOMPLETION` 단독으로
+    등록한다. completion을 별도 worker, timer, pipe wake, 짧은 sleep/park
+    fallback으로 진행하면 같은 테스트 의미가 아니므로 금지한다.
   - 즉 `MULTI_SPOT_REQREP` 에서 callback 은 data-plane direct callback surface
     자체가 아니라 recv drain 을 시작하는 activation signal 이다.
 - `MULTI_STREAM`은 raw callback을 테스트하지 않고
@@ -117,12 +118,14 @@ poller wait 이후 hot path는 poller가 ready로 보고한 source만 처리해�
 multi 패턴의 client/server poller wait 호출은 모두 **`-1` (signal-driven
 무한 wait)** 을 사용한다. core가 reply, send-ready, recv-ready 등 모든
 관련 신호에 대해 즉시 wakeup 을 보장하므로 timer 기반 timeout fallback
-이 불필요하다.
+이 불필요하다. 이 규칙은 readiness event를 직접 기다리는 data-plane
+poller loop에 적용한다.
 
 | 항목 | 규칙 |
 |------|------|
 | client `zlink_poller_wait` / `zlink_poller_wait_all` timeout | **`-1`** (signal-driven wait) |
 | server poller wait timeout | **`-1`** (signal-driven wait) |
+| `MULTI_SPOT_REQREP` C callback-request requester pump | `POLLIN` 등록 + bounded poller wait. C public callback request API가 이 pump에서 completion callback을 진행하므로 일반 readiness wait 규칙과 분리 |
 | 짧은 timer 기반 fallback (1–25 ms) | 금지. 과거 wakeup 누락 우회용으로 사용됐으나 core fix 이후 사용 금지 |
 | 종료 / cooldown 용 별도 deadline 검사 | 별도 application clock 으로 처리하고 poller timeout 으로 대체하지 않음 |
 
@@ -132,14 +135,19 @@ multi 패턴의 client/server poller wait 호출은 모두 **`-1` (signal-driven
 지원하므로 한 번의 wait 으로 send-readiness 와 recv-readiness 둘 다
 포착된다.
 
-request completion 이 있는 SPOT request/reply 워크로드는 같은 active poller에
-completion 대상 spot/socket을 **`ZLINK_POLLCOMPLETION` 단독**으로 등록한다.
-`ZLINK_POLLCOMPLETION`은 `POLLIN`/`POLLOUT` readiness와 섞어 등록하지 않는다.
-completion event는 public event로 보고되지 않을 수 있지만,
-`zlink_poller_wait`가 hidden completion queue를 drain하고 `0`을 반환하면 app
-thread는 즉시 slot state를 다시 확인하고 다음 request를 submit해야 한다.
-binding perf는 이 C 의미를 그대로 따라야 하며, completion progress를 위해
-별도 thread/timer/pipe/sleep fallback을 추가하면 측정이 무효다.
+request completion 이 있는 socket request/reply 워크로드와 completion-only
+request API는 같은 active poller에 completion 대상 spot/socket을
+**`ZLINK_POLLCOMPLETION` 단독**으로 등록한다. `ZLINK_POLLCOMPLETION`은
+`POLLIN`/`POLLOUT` readiness와 섞어 등록하지 않는다. completion event는 public
+event로 보고되지 않을 수 있지만, poller wait가 hidden completion queue를
+drain하면 app thread는 즉시 slot state를 다시 확인하고 다음 request를 submit해야
+한다. `MULTI_SPOT_REQREP` C requester는 예외적으로 C public callback request
+API를 기준으로 하며, requester spot `POLLIN` poller wait가 callback completion을
+진행한다. 이 C 기준 callback pump는 bounded poller wait를 사용한다. Node처럼
+public callback request API가 언어 런타임 event-loop turn에서 callback을 전달하는
+binding은 그 callback dispatch turn만 허용된다. binding perf는 자신이 사용하는
+public request API의 poller completion 의미를 따라야 하며, completion progress를
+위해 별도 thread/timer/pipe/setInterval/sleep fallback을 추가하면 측정이 무효다.
 
 #### Shutdown / phase 종료 신호 — wire-level stop token
 

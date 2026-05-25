@@ -1934,6 +1934,23 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 
 #### 6.8.3 Python 남은 작업 (2026-05-25)
 
+- **2026-05-26 `MULTI_SPOT_REQREP` CPU 급증 원인 확인**:
+  `PERF_FAIL_FAST=1 ./run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT_REQREP --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2`
+  재현 중 runner/server/client 3개 프로세스가 뜨고, server/client가 각각 `nlwp=12`/`nlwp=13`
+  수준으로 동작했다. Python multi context 기본 `io_threads=4`가 server/client 양쪽에 적용되고,
+  SPOT_REQREP는 data/control `SpotNode`, stdin/control thread, request callback completion
+  경로가 함께 붙는다. 기본 실행은 `clients=100`이므로 작은 케이스보다 slot 순회와 callback
+  dispatch가 더 커져 전체 CPU가 급격히 오르는 것처럼 보인다.
+- **2026-05-26 `MULTI_SPOT_REQREP` public completion 의미 차이**:
+  C 기준 requester는 callback request API를 쓰면서 requester spot을 `POLLIN`으로 등록하고
+  bounded poller wait로 callback completion을 진행한다. Python client의
+  `request_to_spot(...).submit(callback)` 경로는 현재 `POLLCOMPLETION` 외부 progress 등록을
+  통해 completion을 진행한다. 실험적으로 `POLLIN`으로 맞추면 같은 2-client smoke가 결과 없이
+  멈춰서 되돌렸다. 즉 Python의 현재 병목은 단순 sleep fallback이 아니라 public request API가
+  completion progress를 `POLLCOMPLETION` pump에 묶는 구조와, 메시지마다 Python callback/FFI
+  경계를 통과하는 비용이다. 이 결과는 C callback-request 의미와 완전히 같다고 보지 않고,
+  Python request API를 C처럼 `POLLIN` pump로 진행할 수 있게 공개 의미를 정리하거나
+  completion-only binding 의미로 별도 검증해야 한다.
 - **수신 zero-copy `.data` 추가**: Rust SPOT의 per-message 복사 제거와 같은 동기로, Python 수신 부품(`ReceivedMessage`)에
   zero-copy `data` memoryview property를 추가했다(`Message.data`/C `zlink_msg_data`와 동일 계약, 회귀 테스트 `tests/test_version.py::test_received_part_data_is_zero_copy_view` 통과).
   `MULTI_SPOT` client가 `to_bytes_list()` 전체 payload 복사 대신 `first_part().data`에서 헤더를 디코드하도록 바꿨다(복사 제거는 `with message:` 안에서만 view 사용).

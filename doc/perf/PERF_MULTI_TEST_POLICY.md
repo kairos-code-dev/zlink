@@ -113,17 +113,19 @@ poller wait 이후 hot path는 poller가 ready로 보고한 source만 처리해�
 
 ### 1.3.1 Poller wait timeout 정책
 
-multi 패턴의 client/server poller wait 호출은 모두 **`-1` (signal-driven
-무한 wait)** 을 사용한다. core가 reply, send-ready, recv-ready 등 모든
-관련 신호에 대해 즉시 wakeup 을 보장하므로 timer 기반 timeout fallback
-이 불필요하다. 이 규칙은 readiness event를 직접 기다리는 data-plane
-poller loop에 적용한다.
+multi 패턴의 poller wait는 core readiness/completion 신호가 깨우는 방식을
+기준으로 한다. wire-level stop token으로 종료되는 순수 recv/readiness loop는
+**`-1` (signal-driven 무한 wait)** 을 사용한다. 반면 active duration이나
+request timeout 같은 application clock을 직접 닫아야 하는 sender/requester
+loop는 C 기준처럼 deadline 재확인을 위한 bounded wait를 둘 수 있다. 이 bounded
+wait는 신호 누락을 덮는 timer fallback이 아니라, poller wakeup 뒤 같은 loop에서
+active deadline을 다시 확인하기 위한 상한이다.
 
 | 항목 | 규칙 |
 |------|------|
-| client `zlink_poller_wait` / `zlink_poller_wait_all` timeout | **`-1`** (signal-driven wait) |
-| server poller wait timeout | **`-1`** (signal-driven wait) |
-| 짧은 timer 기반 fallback (1–25 ms) | 금지. 과거 wakeup 누락 우회용으로 사용됐으나 core fix 이후 사용 금지 |
+| wire stop token으로 종료되는 recv/readiness loop | **`-1`** (signal-driven wait) |
+| active duration/request timeout을 직접 닫는 sender/requester loop | C 기준 bounded wait. 현재 SPOT req/rep와 send/send 계열은 deadline까지 남은 시간과 50ms 상한 중 작은 값 |
+| 짧은 timer tick 기반 fallback (1–25 ms) | 금지. 과거 wakeup 누락 우회용으로 사용됐으나 core fix 이후 사용 금지 |
 | 종료 / cooldown 용 별도 deadline 검사 | 별도 application clock 으로 처리하고 poller timeout 으로 대체하지 않음 |
 
 송수신 양방향 가능한 spot 워크로드(MULTI_SPOT_SENDSEND 등)는
@@ -140,6 +142,10 @@ event로 보고되지 않을 수 있지만, poller wait가 hidden completion que
 drain하면 app thread는 즉시 slot state를 다시 확인하고 다음 request를 submit해야
 한다. binding perf는 이 completion poller 의미를 따라야 하며, completion progress를
 위해 별도 thread/timer/pipe/setInterval/sleep fallback을 추가하면 측정이 무효다.
+Node처럼 callback 전달이 event loop turn에서 완료되는 binding은 poller wait 이후
+callback dispatch turn을 한 번 허용한다. 이 turn은 `POLLCOMPLETION` poller가
+completion을 drain한 뒤 언어 런타임 callback을 실행시키는 단계일 뿐이며, 별도
+timer나 progress pump로 completion을 진행하면 안 된다.
 
 #### Shutdown / phase 종료 신호 — wire-level stop token
 

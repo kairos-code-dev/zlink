@@ -146,6 +146,11 @@ suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
   `POLLCOMPLETION` poller가 소유한다. request completion 처리를 위해
   별도 progress thread, timer, pipe/eventfd wake, `setInterval`, 짧은 sleep,
   busy polling을 hot path에 두면 C perf와 같은 측정 의미가 아니므로 금지한다.
+  Node처럼 native completion callback을 JavaScript turn에서 전달하는 binding은
+  `POLLCOMPLETION` poller wait가 completion queue를 drain한 뒤 callback 전달을
+  위해 event-loop turn을 한 번 양보할 수 있다. 이 양보는 completion progress
+  소유권을 가져가는 timer나 별도 pump가 아니어야 하며, poller wait를 대체하면
+  안 된다.
 - binding public async/request API가 일반 사용자 편의를 위해 내부 progress
   pump를 제공하더라도, perf에서 `POLLCOMPLETION`을 등록한 외부 poller가
   completion을 소유하는 동안에는 그 내부 pump가 같은 completion queue를

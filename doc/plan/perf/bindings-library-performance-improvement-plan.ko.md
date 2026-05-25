@@ -1954,7 +1954,9 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `POLLCOMPLETION` poller surface에 등록하는 기준으로 정렬한다.
   `doc/perf/PERF_POLICY.md`와 `doc/perf/PERF_MULTI_TEST_POLICY.md`에서 C `POLLIN`
   예외 문구를 제거했다. Node는 `POLLCOMPLETION` poller를 쓰되 event-loop callback
-  dispatch turn이 필요하며, `poller.wait(..., 50)`으로 바꾸면 smoke가 멈춰 되돌렸다.
+  dispatch turn이 필요하다. 이후 C/C++ 기준과 같이 deadline까지 남은 시간과 50ms 상한 중
+  작은 값으로 completion poller wait를 하도록 맞췄고, callback 전달용 event-loop turn은
+  completion progress pump가 아니라 native callback 전달 단계로 남겼다.
   C++은 구현은 completion poller surface였지만 주석이 C와 다른 예외를 암시해 수정했다.
   .NET의 active loop는 completion poller wait를 쓰고 있었지만,
   active 구간 뒤 outstanding callback drain에 `Thread.Sleep(1)`이 남아 있었다. 이 drain은
@@ -1963,6 +1965,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release`와
   `PERF_FAIL_FAST=1 ./run_benchmarks.sh --reuse-build --pattern MULTI_SPOT_REQREP --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2`
   smoke가 통과했다.
+- **2026-05-26 Node `MULTI_SPOT_REQREP` poll wait 정정**:
+  `doc/perf/PERF_MULTI_TEST_POLICY.md`의 blanket `-1` timeout 문구는 C 기준과 달랐다.
+  C requester는 completion poller를 쓰면서 active duration/request timeout을 닫기 위해
+  bounded wait를 사용한다. 정책 문서를 `wire stop token으로 종료되는 recv loop는 -1`,
+  `active deadline을 직접 닫는 requester/sender loop는 C 기준 bounded wait`로 정정했다.
+  Node requester의 1ms completion tick은 C/C++보다 더 짧은 timer cadence였으므로,
+  `poller.wait` timeout을 deadline 잔여 시간과 50ms 상한 중 작은 값으로 바꿨다.
+  `npm run build`와
+  `PERF_FAIL_FAST=1 ./perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT_REQREP --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2`
+  smoke가 `complete`로 통과했다.
 - **수신 zero-copy `.data` 추가**: Rust SPOT의 per-message 복사 제거와 같은 동기로, Python 수신 부품(`ReceivedMessage`)에
   zero-copy `data` memoryview property를 추가했다(`Message.data`/C `zlink_msg_data`와 동일 계약, 회귀 테스트 `tests/test_version.py::test_received_part_data_is_zero_copy_view` 통과).
   `MULTI_SPOT` client가 `to_bytes_list()` 전체 payload 복사 대신 `first_part().data`에서 헤더를 디코드하도록 바꿨다(복사 제거는 `with message:` 안에서만 view 사용).

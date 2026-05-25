@@ -69,6 +69,15 @@ function activeRequestTimeoutMs() {
   return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 200;
 }
 
+function pollCompletionUntil(poller, pollBuffer, stopNs) {
+  const remainingNs = stopNs - currentEpochNs();
+  if (remainingNs <= 0n) {
+    return 0;
+  }
+  const remainingMs = Number((remainingNs + 999_999n) / 1_000_000n);
+  return poller.wait(pollBuffer, Math.min(50, Math.max(1, remainingMs)));
+}
+
 function closeParts(parts) {
   for (const part of parts ?? []) {
     if (part && typeof part.close === 'function') {
@@ -308,12 +317,14 @@ async function main() {
           progressed = true;
         }
         if (!progressed) {
-          poller.wait(pollBuffer, 1);
+          pollCompletionUntil(poller, pollBuffer, activeStopNs);
           await sleepImmediate();
         }
       }
-      while (activeSlots.some((slot) => slot.inflight)) {
-        poller.wait(pollBuffer, 1);
+      const drainStopNs =
+        currentEpochNs() + BigInt(Math.max(1000, requestTimeoutMs * 4)) * 1_000_000n;
+      while (activeSlots.some((slot) => slot.inflight) && currentEpochNs() < drainStopNs) {
+        pollCompletionUntil(poller, pollBuffer, drainStopNs);
         await sleepImmediate();
       }
     } finally {

@@ -1727,6 +1727,28 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   65536/131072/262144B에서 `DEALER_ROUTER` 13.4/12.2/11.1%, `ROUTER_ROUTER`
   13.2/11.8/11.0%였다. latency mean은 낮아졌지만 throughput은 보류권 그대로라,
   stats lock 제거만으로는 single routed large 보류를 해소하지 못해 코드는 반영하지 않는다.
+- **single routed stop-token drain count 후보 기각**: C single routed receiver는 stop token을
+  받을 때까지 active header를 집계하므로, Rust 공용 `handle_recv(...)`가 active deadline
+  이후 도착한 active message를 버리는지 확인했다. deadline 조건을 제거한 후보는
+  `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`을 통과했고
+  공식 wrapper `PERF_FAIL_FAST=1 bindings/rust/perf/run_benchmarks.sh --transports tcp
+  --pattern DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 65536,131072,262144 --duration 1 --runs 3`도
+  complete였다(`perf_rust_single_linux_20260525_212512_single_routed_count_until_stop_candidate.txt`).
+  그러나 tcp median은 `DEALER_ROUTER` 14.43/7.24/3.67Kmsg/s,
+  `ROUTER_ROUTER` 14.45/7.24/3.68Kmsg/s로 기존 fixed 재측정과 같은 대역이다. routed large
+  보류는 stop-token drain 중 과소 집계가 주 원인이 아니므로 반영하지 않는다.
+- **single routed blocking send + direct `Message::with_size()` 결합 후보 기각**:
+  이전에 따로 시험한 blocking send와 direct message stamp가 결합되어야 large payload 복사와
+  backpressure 의미가 함께 맞는지 확인했다. active sender가 `Message::with_size()`에 header를
+  직접 쓰고 `DONT_WAIT` 없이 submit하는 후보는 `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`을 통과했고, 공식 wrapper
+  `PERF_FAIL_FAST=1 bindings/rust/perf/run_benchmarks.sh --transports tcp --pattern
+  DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 65536,262144 --duration 1 --runs 3`도 complete였다
+  (`perf_rust_single_linux_20260525_212631_single_routed_blocking_direct_message_candidate.txt`).
+  그러나 tcp median은 `DEALER_ROUTER` 65536/262144B가 14.49/3.66Kmsg/s,
+  `ROUTER_ROUTER`가 14.49/3.66Kmsg/s로 기존 대역과 같고 latency는 오히려 조금 높았다.
+  payload 생성 복사와 blocking flag를 동시에 맞춰도 routed large 보류가 해소되지 않으므로
+  코드는 반영하지 않는다.
 - **single SPOT `TopicMessage` 재사용 후보 기각**: single SPOT subscriber loop가 매 수신마다
   `TopicMessage`를 새로 만드는 비용을 줄이기 위해 caller-provided storage를 계속 재사용하는
   후보를 시험했다. 공식 C 기준

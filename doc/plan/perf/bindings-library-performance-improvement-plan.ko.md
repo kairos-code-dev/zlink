@@ -1495,6 +1495,34 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 - **single routed internal submit fast path 후보 기각**: `SendOp<Ready>::submit`에서 single-part `SocketSend`/`SocketSendTo`만 `prepare_send_parts`와 `submit_part_sequence`를 건너뛰고 direct FFI send로 보내는 내부 fast path를 시험했다. `cargo test --manifest-path bindings/rust/Cargo.toml --no-run`과 `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했지만, 공식 runner `perf_rust_single_linux_20260525_124151.txt`는 `DEALER_ROUTER tcp 262144B`에서 `binary_exit` partial로 끝났고 65536/131072B도 13.751/6.967Kmsg/s로 기존 보류권과 같았다. send builder 내부 dispatch 비용은 single routed large 병목의 주 원인이 아니므로 코드는 원복했다.
 - **single routed blocking-send 재확인 후보 기각**: 2026-05-25에 Rust single `DEALER_ROUTER`/`ROUTER_ROUTER` active send와 stop-token send에서 `DONT_WAIT`를 제거해 C single의 `ZLINK_SEND_FLAGS_NONE` 의미에 다시 맞춰 시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했지만, 공식 runner `perf_rust_single_linux_20260525_124323.txt`가 `DEALER_ROUTER tcp 65536B`에서 바로 `binary_exit` partial로 끝났다. Rust single routed 경로에서는 blocking send가 completion 안정성을 깨므로 기존 `DONT_WAIT` retry를 유지한다.
 - **single routed `Received` 재사용 수신 후보 기각**: public API를 늘리지 않고 `RouterSocket::recv(&mut Received, ...)`가 임시 `Received`와 새 `Vec<Message>`를 만들지 않도록, 성공한 routed recv part를 caller-provided `Received`의 기존 `Vec`에 직접 채우는 후보를 시험했다. `cargo test --manifest-path bindings/rust/Cargo.toml --no-run`과 `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고 runner는 `core/build/lib/libzlink.so`를 사용했지만, 공식 runner `perf_rust_single_linux_20260525_125742.txt`가 `DEALER_ROUTER tcp 131072B`에서 `binary_exit` partial로 끝났다. complete된 65536B도 13.751Kmsg/s로 기존과 같아, routed recv wrapper의 `Vec` 재사용만으로는 single routed large 보류를 해소하지 못한다.
+- **single routed stop token blocking 후보 기각**: active send는 기존 `DONT_WAIT`
+  재시도를 유지하고 stop token만 C처럼 blocking send로 바꾸는 후보를 시험했다.
+  `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
+  통과했지만 공식 runner `perf_rust_single_linux_20260525_132116_stop_blocking_probe.txt`가
+  `DEALER_ROUTER tcp 65536B`부터 전 run `binary_exit` partial로 끝났다. Rust routed
+  single에서는 blocking stop token이 completion 안정성을 더 나쁘게 만들므로 반영하지
+  않는다.
+- **single routed stop-token retry 확대 후보 기각**: 기존 `DONT_WAIT` stop token
+  재시도 5000회를 25000회로 늘려 large backlog 뒤 stop token을 더 오래 밀어 넣는
+  후보를 시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
+  통과했지만 공식 runner
+  `perf_rust_single_linux_20260525_132208_stop_retry25k_probe.txt`가
+  `DEALER_ROUTER tcp 131072B`에서 partial로 끝났고, timeout까지 걸리는 시간이
+  늘었다. 재시도 시간 확대는 실패를 늦출 뿐 보류를 해소하지 못하므로 반영하지 않는다.
+- **single routed active blocking 재확인 후보 기각**: C의 routed active sender가
+  blocking send를 쓰는 점에 맞춰 Rust `DEALER_ROUTER`/`ROUTER_ROUTER` active send의
+  `DONT_WAIT`를 제거하는 후보를 다시 좁혀 시험했다. 공식 runner
+  `perf_rust_single_linux_20260525_132331_active_blocking_probe2.txt`는 65536B/131072B
+  수치를 냈지만 `DEALER_ROUTER tcp 262144B`가 전 run `binary_exit` partial로 끝났고,
+  direct binary도 같은 size에서 30초 timeout을 재현했다. single routed large에서는
+  blocking active send가 큰 payload completion을 안정화하지 못해 반영하지 않는다.
+- **single routed receiver count-all 후보 기각**: C routed single runner는 stop token을
+  받을 때까지 drain한 active payload를 모두 count하므로, Rust receiver도 wall-clock
+  active deadline 뒤 수신분을 버리지 않게 하는 후보를 시험했다. 공식 runner
+  `perf_rust_single_linux_20260525_132510_routed_count_all_probe.txt`는
+  `DEALER_ROUTER tcp 65536B`에서 repeat 중 `binary_exit` partial로 끝났다. 측정 의미
+  차이는 후속 설계 검토 대상으로 남기되, 이 단독 변경은 completion 안정성을 깨므로
+  반영하지 않는다.
 - **MULTI_PUBSUB multi-worker drain 후보 기각**: PUBSUB client에서 100 subscriber를 단일 thread로 순회하는 병목을 의심해 subscriber 집합을 scoped worker 4개로 나누는 후보를 시험했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고, 공식 runner `PERF_FAIL_FAST=1 bindings/rust/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_PUBSUB --msg-sizes 64,256,1024 --duration 1 --runs 1`도 complete였지만 결과가 64/256/1024B = 26.3/14.8/15.5%(`perf_rust_multi_linux_20260524_193953.txt`)에 그쳤다. 같은 후보에서 worker별 chunk 전체를 drain하도록 바꾼 재시도도 24.4/14.8/15.5%(`perf_rust_multi_linux_20260524_194034.txt`)로, 기존 단일 thread 기준 24.4/21.2/15.5%보다 256B가 나빠졌다. 2026-05-25 current HEAD에서도 scoped worker 후보를 env로 재시험했지만 worker 4개 `perf_rust_multi_linux_20260525_095305.txt`는 같은 조건 C `perf_c_multi_linux_20260525_073540.txt` 대비 64/256/1024/65536B 24.5/15.0/13.4/48.4%였고, worker 2개 `perf_rust_multi_linux_20260525_095342.txt`도 26.4/15.0/13.4/48.4%로 기존 대표값을 넘지 못했다. 따라서 이 후보는 반영하지 않는다.
 - **MULTI_PUBSUB poll event-slot 후보 기각**: PUBSUB client poller에 subscriber index를 slot으로 넣고 C처럼 반환된 event socket만 drain하는 후보를 시험했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고, 공식 runner `perf_rust_multi_linux_20260524_232655.txt`에서 tcp 64/256/1024B는 26.3/16.9/15.5%로 기존 직접 stamp 기준과 같았다. `perf_rust_multi_linux_20260524_232744.txt`의 ws/wss/tls 256/1024B도 남은 small 보류를 해결하지 못했다. public 의미는 C에 더 가깝지만 측정상 개선이 없어 반영하지 않는다.
 - **MULTI_PUBSUB latency sampling 적용**: PUBSUB client가 모든 active 메시지에서 `now_ns()`와 latency vector push를 수행하던 비용을 줄이기 위해 throughput count는 전 메시지를 유지하고 latency 계산/샘플 저장만 기본 32개당 1개로 줄였다(`PERF_MULTI_PUBSUB_LATENCY_SAMPLE_STRIDE`). `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했다. 공식 wrapper 기준 tcp C `perf_c_multi_linux_20260525_105401.txt` 대비 Rust `perf_rust_multi_linux_20260525_105401.txt`에서 65536B가 50.2%로 올라 보류를 해소했고, ws/wss/tls 확인 C `perf_c_multi_linux_20260525_105449.txt` 대비 Rust `perf_rust_multi_linux_20260525_105449.txt`도 complete였다. tls 256B는 81.2%로 통과권에 올랐다. tcp 64/256/1024B, ws 1024B, wss 256/1024B, tls 1024B는 여전히 단순 one-way 기준 아래다.

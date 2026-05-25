@@ -382,7 +382,7 @@ C 대비 비율을 함께 남기고, 아직 같은 조건 비교가 없는 칸�
 | 3 | Java | `bindings/java/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 통과` | 상세 표 반영 완료. core 안정 후 최종 회귀 full run에서 현재 통과 상태를 다시 확인 |
 | 4 | Node | `bindings/node/perf` | `tcp/ws single routed large 보류, wss PAIR 64B 보류, tls PAIR 64B 및 DEALER_DEALER 64B 보류 외 통과` | `tcp/ws/wss/tls 재측정 완료, tcp full-run partial 행은 제한 재측정으로 보강` | multi 상세 표 반영 완료. 남은 single routed large, small PAIR/DEALER_DEALER, SPOT 의미 보류를 public API 계약 안에서 재검토 |
 | 5 | Go | `bindings/go/perf` | `tcp/ws/wss/tls single 통과 (6.0.3 재검증, SPOT large 회귀 수정, latency 발산은 측정 아티팩트로 판정)` | `2026-05-25 추가 수정으로 ROUTER_ROUTER/DEALER_ROUTER/PUBSUB 전 transport 통과, DD 전 transport 통과, SPOT/SPOT_REQREP/SPOT_SENDSEND 통과` | multi DD 64B는 public `Bytes(...)` client send와 latency sampling으로 보류 해소 |
-| 6 | Rust | `bindings/rust/perf` | `tcp/ws/wss/tls 측정 완료, routed large와 SPOT/outlier 보류 남음` | `tcp/ws/wss/tls 측정 완료, PUBSUB 및 MULTI_SPOT 전 transport 통과` | Rust 완료 아님. single routed large와 single SPOT outlier를 후속 재검토 |
+| 6 | Rust | `bindings/rust/perf` | `tcp/ws/wss/tls 측정 완료, routed large와 SPOT 1024B 보류 남음` | `tcp/ws/wss/tls 측정 완료, PUBSUB 및 MULTI_SPOT 전 transport 통과` | Rust 완료 아님. single routed large와 single SPOT 1024B를 후속 재검토 |
 | 7 | Python | `bindings/python/perf` | `tcp/ws/wss/tls 측정 완료, large single outlier와 small/native boundary 보류 남음` | `tcp/ws/wss/tls 측정 완료, SPOT/send-send/stream small 보류 남음` | Python 완료 아님. multi SPOT/send-send/stream small path와 single small/outlier 항목 후속 개선 필요 |
 
 Core runtime 변경 중에는 새 perf 실행을 보류한다. core가 안정된 뒤 재개 순서는
@@ -1387,7 +1387,7 @@ Go는 현재 표 기준으로 single/multi 전 대상이 `통과` 상태다. 아
 
 Rust는 아직 완료가 아니다. multi suite는 2026-05-25 재측정과 수정으로
 `MULTI_PUBSUB`/`MULTI_SPOT` 계열까지 통과권에 올랐지만, single routed large와
-single SPOT 일부 small/outlier 보류가 남아 있다.
+single SPOT 1024B 보류가 남아 있다.
 
 - balanced auto-HWM에서 single one-way 종료 신호가 HWM 뒤에 막히던 문제는
   `ctx.recalculate_auto_hwm()`, stop-token bounded retry 확대, receiver burst drain으로
@@ -1448,6 +1448,16 @@ single SPOT 일부 small/outlier 보류가 남아 있다.
   모두 complete였다. `wss 256B`는 84.7%로 SPOT 최소 기준을 넘어 보류에서 통과로 바꾸고,
   `ws 256B`와 `tls 256B`도 111.1/113.8%로 통과를 재확인했다. `ws/wss/tls 1024B`는
   49.6/56.0/59.6%라 fresh 기준에서도 보류를 유지한다.
+- **single SPOT `TopicMessage` 재사용 후보 기각**: `Spot::subscribe` 성공 경로가 매 수신마다
+  새 `Vec<Message>`를 만든 뒤 caller-provided `TopicMessage`로 옮기므로, 기존 `TopicMessage`
+  내부 `Vec`을 성공 수신 때 재사용하는 후보를 시험했다. `cargo test --manifest-path
+  bindings/rust/Cargo.toml --no-run`과 `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고, 같은 조건 C
+  `perf_c_single_linux_20260525_150657_rust_spot_subscribe_reuse_c.txt` 대비 후보
+  `perf_rust_single_linux_20260525_150735_spot_subscribe_reuse_candidate.txt`는
+  `SPOT 1024B` tcp/ws/wss/tls가 48.7/56.4/63.8/59.0%였다. 일부 transport는 올랐지만
+  SPOT 기준선을 넘지 못했고 tls는 기존 59.6%보다 낮아, public subscribe 의미를 흔들 수 있는
+  내부 특수 분기를 반영하지 않는다.
 - **single routed stop-token blocking-only 후보 기각**: active send는 기존 `DONT_WAIT`
   retry로 유지하고 phase 종료 stop token만 C처럼 blocking submit으로 보내는 후보를
   시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
@@ -1572,6 +1582,13 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 - **single routed internal submit fast path 후보 기각**: `SendOp<Ready>::submit`에서 single-part `SocketSend`/`SocketSendTo`만 `prepare_send_parts`와 `submit_part_sequence`를 건너뛰고 direct FFI send로 보내는 내부 fast path를 시험했다. `cargo test --manifest-path bindings/rust/Cargo.toml --no-run`과 `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했지만, 공식 runner `perf_rust_single_linux_20260525_124151.txt`는 `DEALER_ROUTER tcp 262144B`에서 `binary_exit` partial로 끝났고 65536/131072B도 13.751/6.967Kmsg/s로 기존 보류권과 같았다. send builder 내부 dispatch 비용은 single routed large 병목의 주 원인이 아니므로 코드는 원복했다.
 - **single routed blocking-send 재확인 후보 기각**: 2026-05-25에 Rust single `DEALER_ROUTER`/`ROUTER_ROUTER` active send와 stop-token send에서 `DONT_WAIT`를 제거해 C single의 `ZLINK_SEND_FLAGS_NONE` 의미에 다시 맞춰 시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했지만, 공식 runner `perf_rust_single_linux_20260525_124323.txt`가 `DEALER_ROUTER tcp 65536B`에서 바로 `binary_exit` partial로 끝났다. Rust single routed 경로에서는 blocking send가 completion 안정성을 깨므로 기존 `DONT_WAIT` retry를 유지한다.
 - **single routed `Received` 재사용 수신 후보 기각**: public API를 늘리지 않고 `RouterSocket::recv(&mut Received, ...)`가 임시 `Received`와 새 `Vec<Message>`를 만들지 않도록, 성공한 routed recv part를 caller-provided `Received`의 기존 `Vec`에 직접 채우는 후보를 시험했다. `cargo test --manifest-path bindings/rust/Cargo.toml --no-run`과 `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고 runner는 `core/build/lib/libzlink.so`를 사용했지만, 공식 runner `perf_rust_single_linux_20260525_125742.txt`가 `DEALER_ROUTER tcp 131072B`에서 `binary_exit` partial로 끝났다. complete된 65536B도 13.751Kmsg/s로 기존과 같아, routed recv wrapper의 `Vec` 재사용만으로는 single routed large 보류를 해소하지 못한다.
+- **single routed send-part 직접 호출 후보 기각**: routed single send hot path를 더 좁혀 direct
+  single-part send 후보를 시험했다. 후보 `perf_rust_single_linux_20260525_142357_single_routed_send_part_candidate.txt`는
+  complete였지만 `DEALER_ROUTER` tcp 65536/131072/262144B가 13.69/6.85/3.52Kmsg/s,
+  `ROUTER_ROUTER`가 13.85/6.92/3.55Kmsg/s로 기존 보류권과 같았다. 다른 fast path 후보
+  `perf_rust_single_linux_20260525_141858_single_routed_send_single_fastpath_candidate.txt`는
+  `ROUTER_ROUTER tcp 131072B`에서 partial이었다. send wrapper를 더 줄여도 C 대비 11~15%
+  병목은 해소되지 않으므로 반영하지 않는다.
 - **single routed stop token blocking 후보 기각**: active send는 기존 `DONT_WAIT`
   재시도를 유지하고 stop token만 C처럼 blocking send로 바꾸는 후보를 시험했다.
   `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
@@ -1607,7 +1624,7 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 - **MULTI_SPOT tcp 64B poller wait 후보 기각**: tcp 64B client에도 progress 없음 구간에서 public `Poller` `POLLIN` wait를 쓰도록 좁혀 시험했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고 공식 runner도 complete였지만, 같은 조건 C `perf_c_multi_linux_20260525_043251.txt` 대비 no-code Rust `perf_rust_multi_linux_20260525_043320.txt`는 2.990Mmsg/s였고 후보 `perf_rust_multi_linux_20260525_043348.txt`는 2.967Mmsg/s로 낮아졌다. tcp 64B 보류는 idle wait 방식만으로 해소되지 않는다.
 - **routed echo single-copy reply 후보 기각**: `MULTI_DEALER_ROUTER`/`MULTI_ROUTER_ROUTER` server가 받은 payload를 `to_vec()`으로 queue payload로 만든 뒤 `Message::copy_from(&reply_bytes)`로 다시 복사하므로, 성공 경로에서는 `Message::with_size()`에 한 번만 복사하고 backpressure일 때만 queue `Vec`을 만드는 후보를 시험했다. release hook 없는 borrowed wrap은 Rust binding policy상 금지되어 native-owned `Message`만 사용했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했지만, 공식 runner 결과가 `MULTI_DEALER_ROUTER` 65536B 79.4K→67.2Kops/s(`perf_rust_multi_linux_20260524_195257.txt`), `MULTI_ROUTER_ROUTER` 65536B 78.0K→61.4Kops/s(`perf_rust_multi_linux_20260524_195316.txt`)로 떨어졌다. 기존 `Message::copy_from(&Vec)` 경로가 native send 준비와 더 잘 맞으므로 반영하지 않는다.
 - **2026-05-24 tcp full 재측정 요약**: DEALER_ROUTER 46~107%(전 size 통과), ROUTER_ROUTER small 통과/large 보류, SPOT_REQREP 64/256/1024/65536B 통과 및 131072/262144B 보류, STREAM 90~101% 통과, DD small 통과/large 보류, SPOT small 통과권/large 보류(copy 영역), SPOT_SENDSEND 64/256/1024/65536/131072B 통과 및 262144B 보류, PUBSUB 일부만 통과였다. 당시 PUBSUB small은 fresh baseline 대비 ~3~5%였지만, 2026-05-25 server `POLLOUT` wait 제거 뒤 `MULTI_PUBSUB` small 보류는 해소됐다.
-- **남은 보류(Rust)**: single routed large.
+- **남은 보류(Rust)**: single routed large, single SPOT 1024B.
 
 ### 6.8 Python 상태
 

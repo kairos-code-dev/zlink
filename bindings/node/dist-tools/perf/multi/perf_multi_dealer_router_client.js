@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, HEADER_SIZE, currentEpochNs, metricLines, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeader, HEADER_SIZE, currentEpochNs, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, sendStopTokenOnce, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
@@ -51,14 +51,6 @@ async function main() {
             roundTrip: true,
         });
         let seq = 1n;
-        if (options.transport !== 'tcp') {
-            const metrics = requireNative().socketPerfDealerRouterEchoLoop(dealers.map((dealer) => dealer.nativeHandle()), payloads, options.duration, options.msgSize);
-            await sendStopTokenOnce(dealers[0], (bytes) => trySocketSend(dealers[0], bytes));
-            for (const metricLine of metricLines('MULTI_DEALER_ROUTER', options.transport, options.msgSize, metrics, 'current')) {
-                console.log(metricLine);
-            }
-            return;
-        }
         const drainReply = (index) => {
             let progressed = false;
             while (true) {

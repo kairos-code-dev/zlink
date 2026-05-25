@@ -4,7 +4,6 @@
 
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
-const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const { configureTlsServer } = require('../common/perf_tls');
 const { sleepImmediate } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
@@ -27,6 +26,30 @@ const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(
   Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii')
 );
+
+function echoRouted(received) {
+  if (!received.routingId || !received.spotRid || received.parts.length === 0) {
+    received.close();
+    return;
+  }
+  try {
+    let op = received.send();
+    for (const part of received.parts) {
+      op = op.message(part);
+    }
+    op.flags(zlink.SendFlags.DontWait).submit();
+  } catch (error) {
+    if (!(error instanceof zlink.SubmitError
+          && (error.result === zlink.SubmitResult.Backpressured
+              || error.result === zlink.SubmitResult.NotConnected
+              || error.result === zlink.SubmitResult.NotFound
+              || error.result === zlink.SubmitResult.NotAdmitted))) {
+      throw error;
+    }
+  } finally {
+    received.close();
+  }
+}
 
 function closeQuietly(resource) {
   try {
@@ -95,7 +118,7 @@ async function main() {
       }
     })();
 
-    requireNative().spotAttachRouteEcho(spot.nativeHandle());
+    spot.onRoutedReceive(echoRouted);
 
     while (!stop && !(connected && readyCount >= options.clients && startRequested)) {
       let drained = false;

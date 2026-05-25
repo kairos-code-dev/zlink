@@ -3,11 +3,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
-const { requireNative } = require('../../dist/zlink/runtime/native/native');
-const { createPayload, } = require('../common/perf_metrics');
+const { currentEpochNs, createPayload, stampPayload, } = require('../common/perf_metrics');
 const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
-const { applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, waitForConnectionReady } = require('./perf_multi_runtime');
+const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 // MULTI_DEALER_DEALER client == SENDER (one DEALER socket per client).
 //
@@ -29,6 +28,8 @@ async function main() {
     const ctx = new zlink.Context();
     applyContextPolicy(ctx, 'client', 'MULTI_DEALER_DEALER');
     const dealers = [];
+    const poller = new zlink.Poller();
+    const pollBuffer = new zlink.PollEvents(Math.max(1, options.clients));
     let rl = null;
     try {
         for (let i = 0; i < options.clients; i += 1) {
@@ -37,9 +38,11 @@ async function main() {
             configureTlsClient(dealer, options.transport);
             dealers.push(dealer);
         }
-        for (const dealer of dealers) {
+        for (let i = 0; i < dealers.length; i += 1) {
+            const dealer = dealers[i];
             await waitForConnectionReady(dealer, () => dealer.connect(options.endpoint));
             applyAutoHwmMsgUnit(ctx, options.msgSize);
+            poller.add(dealer, pollEvents(POLLOUT), i);
         }
         ctx.recalculateAutoHwm();
         for (const dealer of dealers) {
@@ -56,16 +59,47 @@ async function main() {
             }
         }
         const payloads = dealers.map(() => createPayload(options.msgSize));
-        // C run_send_window (~187-257) and send_stop_token (~114-140):
-        // keep the active loop inside native code so each DEALER socket follows
-        // the same DONTWAIT send, pending POLLOUT wait, and blocking stop-token
-        // sequence as the C perf client. This avoids per-message JS scheduling
-        // jitter without changing the public socket API.
-        requireNative().socketPerfDealerDealerSendLoop(dealers.map((dealer) => dealer.nativeHandle()), payloads, options.duration, options.msgSize, STOP_TOKEN_BYTES);
+        const pending = new Array(dealers.length).fill(false);
+        const activeStopNs = currentEpochNs() + BigInt(Math.floor(options.duration * 1_000_000_000));
+        let seq = 1n;
+        while (currentEpochNs() < activeStopNs) {
+            let progressed = false;
+            for (let i = 0; i < dealers.length; i += 1) {
+                if (pending[i]) {
+                    continue;
+                }
+                stampPayload(payloads[i], { phase: 1, runId: 1, msgSize: options.msgSize, seq });
+                if (!trySocketSend(dealers[i], payloads[i])) {
+                    pending[i] = true;
+                    continue;
+                }
+                seq += 1n;
+                progressed = true;
+            }
+            if (progressed) {
+                continue;
+            }
+            const readyCount = poller.wait(pollBuffer, -1);
+            for (let offset = 0; offset < readyCount; offset += 1) {
+                const index = pollBuffer.slot(offset);
+                if (!Number.isInteger(index) || index < 0 || index >= dealers.length) {
+                    continue;
+                }
+                const event = { revents: pollBuffer.revents(offset) };
+                if (pollEventHas(event, POLLOUT)) {
+                    pending[index] = false;
+                }
+            }
+        }
+        for (const dealer of dealers) {
+            dealer.sendFrom(STOP_TOKEN_BYTES, zlink.SendFlags.None);
+        }
         console.log(`CLIENT_DONE,${options.msgSize}`);
     }
     finally {
         rl?.close();
+        pollBuffer.close();
+        poller.close();
         for (const dealer of dealers) {
             dealer.close();
         }

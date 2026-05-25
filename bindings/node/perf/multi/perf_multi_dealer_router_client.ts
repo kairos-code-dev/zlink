@@ -10,7 +10,6 @@ const {
   decodeMetricHeader,
   HEADER_SIZE,
   currentEpochNs,
-  metricLines,
   summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
@@ -77,26 +76,6 @@ async function main() {
       roundTrip: true,
     });
     let seq = 1n;
-
-    if (options.transport !== 'tcp') {
-      const metrics = requireNative().socketPerfDealerRouterEchoLoop(
-        dealers.map((dealer) => dealer.nativeHandle()),
-        payloads,
-        options.duration,
-        options.msgSize
-      );
-      await sendStopTokenOnce(dealers[0], (bytes) => trySocketSend(dealers[0], bytes));
-      for (const metricLine of metricLines(
-        'MULTI_DEALER_ROUTER',
-        options.transport,
-        options.msgSize,
-        metrics,
-        'current'
-      )) {
-        console.log(metricLine);
-      }
-      return;
-    }
 
     const drainReply = (index) => {
       let progressed = false;

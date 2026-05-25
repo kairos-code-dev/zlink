@@ -1941,23 +1941,22 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   SPOT_REQREP는 data/control `SpotNode`, stdin/control thread, request callback completion
   경로가 함께 붙는다. 기본 실행은 `clients=100`이므로 작은 케이스보다 slot 순회와 callback
   dispatch가 더 커져 전체 CPU가 급격히 오르는 것처럼 보인다.
-- **2026-05-26 `MULTI_SPOT_REQREP` public completion 의미 차이**:
-  C 기준 requester는 callback request API를 쓰면서 requester spot을 `POLLIN`으로 등록하고
-  bounded poller wait로 callback completion을 진행한다. Python client의
-  `request_to_spot(...).submit(callback)` 경로는 현재 `POLLCOMPLETION` 외부 progress 등록을
-  통해 completion을 진행한다. 실험적으로 `POLLIN`으로 맞추면 같은 2-client smoke가 결과 없이
-  멈춰서 되돌렸다. 즉 Python의 현재 병목은 단순 sleep fallback이 아니라 public request API가
-  completion progress를 `POLLCOMPLETION` pump에 묶는 구조와, 메시지마다 Python callback/FFI
-  경계를 통과하는 비용이다. 이 결과는 C callback-request 의미와 완전히 같다고 보지 않고,
-  Python request API를 C처럼 `POLLIN` pump로 진행할 수 있게 공개 의미를 정리하거나
-  completion-only binding 의미로 별도 검증해야 한다.
+- **2026-05-26 `MULTI_SPOT_REQREP` public completion 의미 정정**:
+  multi request/reply perf의 requester completion은 예외 없이 `POLLCOMPLETION`
+  poller가 소유해야 한다. C requester도 같은 기준으로 맞췄다. 이전에
+  C requester를 `POLLIN` callback-request pump 예외로 본 분석은 폐기한다.
+  Python client의 `request_to_spot(...).submit(callback)` 경로도 현재처럼
+  `POLLCOMPLETION` 외부 progress 등록을 통해 completion을 진행하는 것이 맞다.
+  Python의 낮은 throughput과 CPU 증가는 단순 sleep fallback이 아니라 메시지마다
+  Python callback/FFI 경계를 통과하는 비용과 기본 `clients=100` slot 순회 비용으로 본다.
 - **2026-05-26 binding-wide `MULTI_SPOT_REQREP` completion audit**:
-  C는 `POLLIN` callback-request pump가 기준이고, C++/Go/Rust/Java/.NET/Node/Python은
-  각 binding의 public request completion poller surface를 사용한다. 이 차이를
-  `doc/perf/PERF_POLICY.md`와 `doc/perf/PERF_MULTI_TEST_POLICY.md`에 반영했다.
-  Node는 event-loop callback dispatch turn이 필요하며, `poller.wait(..., 50)`으로 바꾸면
-  smoke가 멈춰 되돌렸다. C++은 구현은 completion poller surface였지만 주석이 C와 완전
-  동일하다고 적혀 있어 수정했다. .NET의 active loop는 completion poller wait를 쓰고 있었지만,
+  C/C++/Go/Rust/Java/.NET/Node/Python 모두 requester spot을 public
+  `POLLCOMPLETION` poller surface에 등록하는 기준으로 정렬한다.
+  `doc/perf/PERF_POLICY.md`와 `doc/perf/PERF_MULTI_TEST_POLICY.md`에서 C `POLLIN`
+  예외 문구를 제거했다. Node는 `POLLCOMPLETION` poller를 쓰되 event-loop callback
+  dispatch turn이 필요하며, `poller.wait(..., 50)`으로 바꾸면 smoke가 멈춰 되돌렸다.
+  C++은 구현은 completion poller surface였지만 주석이 C와 다른 예외를 암시해 수정했다.
+  .NET의 active loop는 completion poller wait를 쓰고 있었지만,
   active 구간 뒤 outstanding callback drain에 `Thread.Sleep(1)`이 남아 있었다. 이 drain은
   active measurement 바깥이어도 request completion 진행에 관여하므로, active deadline timer를
   poller에서 제거한 뒤 같은 `PollCompletion` poller wait로 남은 callback을 진행하도록 고쳤다.

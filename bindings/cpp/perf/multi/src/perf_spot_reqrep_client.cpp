@@ -14,8 +14,8 @@
 //                       drains routed requests and replies on the same spot.
 //
 // This keeps the same routed SPOT request/reply data plane as
-// bindings/c/perf/multi/src/perf_multi_spot_reqrep_*. C++ uses the binding
-// completion poller surface; C uses the C callback-request pump.
+// bindings/c/perf/multi/src/perf_multi_spot_reqrep_*. Request completion is
+// always driven through the public POLLCOMPLETION poller surface.
 
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"

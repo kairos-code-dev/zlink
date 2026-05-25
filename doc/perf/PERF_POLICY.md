@@ -139,13 +139,11 @@ suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
   메커니즘(TSFN, GIL, mutex 등)은 언어별 런타임에 의존하므로 일관된 비교
   기준이 불가능하다.
 - request/reply completion 도 recv 모델의 일부로 본다. socket request/reply
-  surface와 completion-only request API는 public poller loop에서
+  surface와 spot request/reply surface는 public poller loop에서
   `POLLCOMPLETION`을 등록해야 한다. `ZLINK_POLLCOMPLETION`은 completion
   drain 요청이므로 `POLLIN`/`POLLOUT`과 섞지 않고 completion 대상에 단독으로
-  등록한다. 단, `bindings/c/perf`의 `MULTI_SPOT_REQREP` requester는 현재 C
-  public callback request API를 기준으로 하며, requester spot을 `POLLIN`으로
-  등록한 poller wait가 callback completion을 진행한다. 이 패턴의 active pump는
-  C 기준처럼 bounded poller wait를 사용한다. request completion 처리를 위해
+  등록한다. `MULTI_SPOT_REQREP` requester reply completion도 예외 없이
+  `POLLCOMPLETION` poller가 소유한다. request completion 처리를 위해
   별도 progress thread, timer, pipe/eventfd wake, `setInterval`, 짧은 sleep,
   busy polling을 hot path에 두면 C perf와 같은 측정 의미가 아니므로 금지한다.
 - binding public async/request API가 일반 사용자 편의를 위해 내부 progress

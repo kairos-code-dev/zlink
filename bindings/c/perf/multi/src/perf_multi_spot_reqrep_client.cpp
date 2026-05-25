@@ -692,8 +692,10 @@ bool create_spot_slots(ctx_guard_t &ctx,
     }
 
     for (size_t i = 0; i < state->slots.size(); ++i) {
-        if (zlink_poller_add(
-              state->poller, state->slots[i].socket, &state->slots[i], ZLINK_POLLIN)
+        if (zlink_poller_add(state->poller,
+                             state->slots[i].socket,
+                             &state->slots[i],
+                             ZLINK_POLLCOMPLETION)
             != 0) {
             if (bench_debug_enabled())
                 std::cerr << "[multi-spot-reqrep-client] poller add failed slot="
@@ -880,17 +882,6 @@ bool reset_reqrep_poller(spot_reqrep_client_state_t *state)
     if (!state || !state->poller) {
         errno = EINVAL;
         return false;
-    }
-
-    for (size_t i = 0; i < state->slots.size(); ++i) {
-        if (zlink_poller_modify(state->poller, state->slots[i].socket, ZLINK_POLLIN)
-            != 0) {
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-spot-reqrep-client] poller reset failed slot="
-                          << i << " err=" << zlink_errno() << std::endl;
-            }
-            return false;
-        }
     }
 
     return true;

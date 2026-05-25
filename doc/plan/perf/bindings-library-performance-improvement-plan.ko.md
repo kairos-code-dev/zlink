@@ -1654,6 +1654,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   1024B C 대비 비율은 tcp/ws/wss/tls 48.7/56.3/63.8/59.0%에 그쳤다. `TopicMessage`
   placeholder 할당만 줄여서는 single SPOT 1024B 보류를 해소하지 못하고, 남은 차이는
   SPOT subscribe 호출 경계와 sender/receiver backlog 처리 쪽에 있다. 코드는 반영하지 않는다.
+- **single SPOT sender 직접 stamp 후보 기각**: multi SPOT server에서 효과가 있었던
+  `Message::with_size()` + `data_mut()` 직접 stamp를 single SPOT active publisher에도
+  좁혀 시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
+  통과했고, 공식 C 기준
+  `perf_c_single_linux_20260525_160829_rust_single_spot_direct_stamp_c.txt`와 Rust 후보
+  `perf_rust_single_linux_20260525_160909_single_spot_direct_stamp_candidate.txt`는 모두 complete였다.
+  그러나 1024B C 대비 비율은 tcp/ws/wss/tls 48.0/50.6/64.7/54.6%로 SPOT 기준보다 낮고,
+  직전 `TopicMessage` 재사용 후보보다 ws/tls가 낮았다. sender payload 복사 하나를 줄여도
+  single SPOT 1024B 보류를 해소하지 못하므로 기존 `Message::copy_from(&payload)` 경로를
+  유지한다.
 - **2026-05-24 tcp full 재측정 요약**: DEALER_ROUTER 46~107%(전 size 통과), ROUTER_ROUTER small 통과/large 보류, SPOT_REQREP 64/256/1024/65536B 통과 및 131072/262144B 보류, STREAM 90~101% 통과, DD small 통과/large 보류, SPOT small 통과권/large 보류(copy 영역), SPOT_SENDSEND 64/256/1024/65536/131072B 통과 및 262144B 보류, PUBSUB 일부만 통과였다. 당시 PUBSUB small은 fresh baseline 대비 ~3~5%였지만, 2026-05-25 server `POLLOUT` wait 제거 뒤 `MULTI_PUBSUB` small 보류는 해소됐다.
 - **남은 보류(Rust)**: single routed large, single SPOT 1024B.
 

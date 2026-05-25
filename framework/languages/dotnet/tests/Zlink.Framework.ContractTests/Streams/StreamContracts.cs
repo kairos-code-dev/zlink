@@ -236,8 +236,31 @@ public sealed class StreamContracts
             ZLinkActorRemoteAddress remoteAddress,
             CancellationToken cancellationToken = default)
         {
-            var actor = new ActorRef(actorId, actorType, true, remoteAddress);
+            var actor = new ActorRef(
+                actorId,
+                actorType,
+                true,
+                remoteAddress,
+                new Systems.Zlink.ActorRef(
+                    remoteAddress.TargetNodeRid,
+                    actorId,
+                    remoteAddress.ActorGeneration));
             _actors[actorId] = actor;
+            return ValueTask.FromResult<IZLinkActorRef>(actor);
+        }
+
+        public ValueTask<IZLinkActorRef> BindActorHandleAsync(
+            Systems.Zlink.ActorRef actorRef,
+            string actorType,
+            CancellationToken cancellationToken = default)
+        {
+            var actor = new ActorRef(
+                actorRef.ActorId,
+                actorType,
+                true,
+                new ZLinkActorRemoteAddress(string.Empty, actorRef.NodeRid, actorRef.Generation),
+                actorRef);
+            _actors[actorRef.ActorId] = actor;
             return ValueTask.FromResult<IZLinkActorRef>(actor);
         }
 
@@ -300,11 +323,19 @@ public sealed class StreamContracts
         string actorId,
         string actorType,
         bool isRemote = false,
-        ZLinkActorRemoteAddress remoteAddress = default) : IZLinkActorRef
+        ZLinkActorRemoteAddress remoteAddress = default,
+        Systems.Zlink.ActorRef actor = default) : IZLinkActorRef
     {
         public string ActorId { get; } = actorId;
 
         public string ActorType { get; } = actorType;
+
+        public Systems.Zlink.ActorRef Actor { get; } = actor.Equals(default)
+            ? new Systems.Zlink.ActorRef(
+                remoteAddress.TargetNodeRid.IsEmpty ? RoutingId.Of("actor-node") : remoteAddress.TargetNodeRid,
+                actorId,
+                remoteAddress.ActorGeneration == 0 ? 1 : remoteAddress.ActorGeneration)
+            : actor;
 
         public bool IsRemote { get; } = isRemote;
 

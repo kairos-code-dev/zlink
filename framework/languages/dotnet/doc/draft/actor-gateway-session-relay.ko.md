@@ -40,14 +40,13 @@ options.AddStreamNode("client-stream", stream =>
 ```
 
 session handler 는 route mesh channel 이름이나 router socket 을 알 필요가 없다. actor 가
-다른 process 의 ActorGateway 에 있으면 Play 서버가 `ZLinkActorRemoteAddress` 를 응답에 싣고,
-Session 서버는 그 locator 로 bind 한다.
+다른 process 의 ActorGateway 에 있으면 Play 서버는 join 결과로 받은 `ActorRef` 를 응답에 싣고,
+Session 서버는 그 actor ref 로 bind 한다.
 
 ```csharp
 var actor = await Context.BindActorHandleAsync(
-    actorId,
+    actorRef,
     actorType,
-    remoteAddress,
     cancellationToken);
 
 await Context.RelayToActorAsync(
@@ -61,15 +60,20 @@ await Context.RelayToActorAsync(
 
 ### 2.1 session side
 
-`IZLinkSessionActorDispatchContext` 는 local bind 와 remote bind 를 모두 제공한다. remote bind 의
-`ZLinkActorRemoteAddress` 는 사용자가 임의로 만드는 route mesh 주소가 아니라 actor host
-runtime 이 `IZLinkActorManager.GetRemoteAddressAsync(...)` 로 발급한 ActorGateway locator 다.
+`IZLinkSessionActorDispatchContext` 는 local bind 와 actor ref bind 를 모두 제공한다. actor ref bind 의
+`ActorRef` 는 actor 생성 또는 join 결과에서 얻은 최종 actor 위치다. 사용자가 별도 remote address
+resolver 를 호출해서 session hot path 에 locator 를 주입하지 않는다.
 
 ```csharp
 public interface IZLinkSessionActorDispatchContext
 {
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
         string actorId,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        ActorRef actor,
         string actorType,
         CancellationToken cancellationToken = default);
 

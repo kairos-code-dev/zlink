@@ -45,7 +45,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         return new ZLinkActorJoinResult<TReply>(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
-            ResolveRemoteAddress(actorState),
+            ToActorRef(actorState),
             reply);
     }
 
@@ -116,7 +116,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         return new ZLinkActorJoinResult(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
-            ToRemoteAddress(result.Actor));
+            ToActorRef(result.Actor));
     }
 
     private async ValueTask<ZLinkActorJoinResult> JoinRemoteActorEntrySpotAsync(
@@ -149,7 +149,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             return new ZLinkActorJoinResult(
                 actor.ActorId,
                 actorState.ActorType ?? actor.GetType().Name,
-                ToRemoteAddress(localTargetRef));
+                ToActorRef(localTargetRef));
         }
 
         var routeChannel = state.RouteChannels.Values.FirstOrDefault()
@@ -192,7 +192,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         return new ZLinkActorJoinResult(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
-            ToRemoteAddress(targetRef));
+            ToActorRef(targetRef));
     }
 
     private static bool TryFindSpotNode(
@@ -462,23 +462,21 @@ internal sealed class ZLinkFrameworkActorFacade(
         return new ZLinkActorJoinResult<TReply>(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
-            ToRemoteAddress(joinResult.Actor),
+            ToActorRef(joinResult.Actor),
             reply);
     }
 
-    private static ZLinkActorRemoteAddress ResolveRemoteAddress(ZLinkActorRuntimeState actorState)
+    private static ActorRef ToActorRef(ZLinkActorRuntimeState actorState)
     {
         var actorRef = actorState.NativeActorRef
             ?? throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor '{actorState.ActorId}' does not have a native Actor ref.");
-        return ToRemoteAddress(actorRef);
+        return ToActorRef(actorRef);
     }
 
-    private static ZLinkActorRemoteAddress ToRemoteAddress(ZLinkBackendActorRef actorRef)
-    {
-        return new ZLinkActorRemoteAddress(string.Empty, actorRef.NodeRid, actorRef.Generation);
-    }
+    private static ActorRef ToActorRef(ZLinkBackendActorRef actorRef)
+        => new(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
 
     private static TReply DecodeNativeJoinReply<TRequest, TReply>(
         RequestResult result,

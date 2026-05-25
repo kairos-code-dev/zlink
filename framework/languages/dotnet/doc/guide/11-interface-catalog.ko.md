@@ -607,14 +607,14 @@ actor 로 relay 할지, 거절할지, 로그만 남길지는 application session
 | `IZLinkSessionContext` | 아래 4개 sub-context 의 합성 |
 | `IZLinkSessionIdentityContext` | session 식별(`SessionId`, `RoutingId?`, `LocalAddr?`, `RemoteAddr?`) |
 | `IZLinkSessionClientStream` | client 로의 push(`Send(msg)`) / 요청 응답(`Reply(msg)`) |
-| `IZLinkSessionActorDispatchContext` | actor binding/lookup/relay(`BoundActors`, `BindActorHandleAsync`, `TryGetBoundActor`, `RelayToActorAsync`) |
+| `IZLinkSessionActorDispatchContext` | actor binding/lookup/relay(`BoundActors`, `BindActorHandleAsync`, `BindActorHandleAsync(ActorRef, ...)`, `TryGetBoundActor`, `RelayToActorAsync`) |
 | `IZLinkSessionLifecycle` | 서버 측 연결 종료(`CloseAsync`) |
 | `IZLinkSessionActorAttachmentContext` | actor 를 session 에 attach(`AttachActorAsync`) |
 | `IZLinkSessionPacketHandler<TSessionContext>` | session 이 직접 처리할 packet handler. payload 는 session callback 과 같은 borrowed lifetime |
 | `IZLinkSessionPacketDispatcher<TSessionContext>` | 등록된 session packet handler 만 호출하고 미등록 packet 은 `false` 반환 |
 | `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Submit`) |
 | `IZLinkSessionReplyCall` | session reply 종결자(`Metadata`/`Compress` → `Submit`) |
-| `IZLinkActorRef` | session relay 용 actor handle(`ActorId`, `ActorType`, `IsRemote`, `RemoteAddress`) |
+| `IZLinkActorRef` | session relay 용 actor handle(`ActorId`, `ActorType`, `Actor`, `IsRemote`, `RemoteAddress`) |
 | `IZLinkStream` | raw stream write(`Write(Message, SendFlags)`) / `CloseAsync`. 보통은 `Send`/`Reply` 를 쓴다 |
 
 검증: `StreamContracts.Session_context_collects_identity_stream_and_actor_operations`.

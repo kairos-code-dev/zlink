@@ -70,15 +70,15 @@ public abstract partial class StreamTestSupport
 
         public GatewaySessionRecorder(
             string actorId = "player-1",
-            ZLinkActorRemoteAddress? remoteAddress = null)
+            ActorRef? actor = null)
         {
             ActorId = actorId;
-            RemoteAddress = remoteAddress;
+            Actor = actor;
         }
 
         public string ActorId { get; }
 
-        public ZLinkActorRemoteAddress? RemoteAddress { get; }
+        public ActorRef? Actor { get; }
 
         public int DisconnectedCount => Volatile.Read(ref _disconnectedCount);
 

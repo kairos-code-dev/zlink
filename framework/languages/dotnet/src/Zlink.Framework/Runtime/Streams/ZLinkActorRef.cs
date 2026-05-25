@@ -3,6 +3,7 @@ namespace Zlink.Framework.Runtime.Streams;
 internal sealed class ZLinkActorRef(
     string actorId,
     string actorType,
+    ActorRef actor,
     ZLinkActorRemoteAddress remoteAddress,
     bool isRemote,
     RoutingId sessionRid,
@@ -12,6 +13,8 @@ internal sealed class ZLinkActorRef(
     public string ActorId { get; } = actorId;
 
     public string ActorType { get; } = actorType;
+
+    public ActorRef Actor { get; } = actor;
 
     public bool IsRemote { get; } = isRemote;
 

@@ -18,12 +18,13 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
 
     public ValueTask<IZLinkActorRef> BindAsync(
         ZLinkSessionContext context,
-        string actorId,
         string actorType,
+        ActorRef actor,
         ZLinkActorRemoteAddress remoteAddress,
         bool isRemote,
         CancellationToken cancellationToken)
     {
+        var actorId = actor.ActorId;
         if (string.IsNullOrWhiteSpace(actorId))
         {
             throw new InvalidOperationException("Actor id must not be empty.");
@@ -40,6 +41,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         var actorRef = new ZLinkActorRef(
             actorId,
             actorType,
+            actor,
             remoteAddress,
             isRemote,
             binding.SessionRid,

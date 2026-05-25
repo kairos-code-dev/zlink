@@ -34,7 +34,7 @@ public sealed class ActorContracts
         Assert.Equal("player-1", actor.ActorId);
         Assert.Equal("room-1", joinReply.Reply.RoomId);
         Assert.Equal("player-1", entryJoin.ActorId);
-        Assert.Equal(RoutingId.Of("play-node"), entryJoin.RemoteAddress.TargetNodeRid);
+        Assert.Equal(RoutingId.Of("play-node"), entryJoin.Actor.NodeRid);
     }
 
     [Fact]
@@ -100,15 +100,6 @@ public sealed class ActorContracts
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(_actors.GetValueOrDefault(actorId));
 
-        public ValueTask<ZLinkActorRemoteAddress> GetRemoteAddressAsync(
-            string actorId,
-            string actorType,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkActorRemoteAddress(
-                string.Empty,
-                RoutingId.Of("actor-node"),
-                1));
-
         public async ValueTask<IZLinkActor> GetOrCreateAsync(
             string actorId,
             string actorType,
@@ -152,7 +143,7 @@ public sealed class ActorContracts
             new JoinEntrySpotCall(new ZLinkActorJoinResult(
                 actorId,
                 "player",
-                new ZLinkActorRemoteAddress(string.Empty, spotNodeRid, 1)));
+                new ActorRef(spotNodeRid, actorId, 1)));
     }
 
     private sealed class JoinSpotCall(object reply) : IZLinkActorJoinSpotCall
@@ -164,7 +155,7 @@ public sealed class ActorContracts
             ValueTask.FromResult(new ZLinkActorJoinResult<TReply>(
                 "player-1",
                 "player",
-                new ZLinkActorRemoteAddress(string.Empty, RoutingId.Of("room-node"), 1),
+                new ActorRef(RoutingId.Of("room-node"), "player-1", 1),
                 (TReply)reply));
     }
 

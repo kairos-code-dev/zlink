@@ -18,15 +18,15 @@ public sealed record EnsurePlayerActorReq(
     string ActorId,
     string DisplayName);
 
-public sealed record ActorRemoteAddressSnapshot(
-    string RouterChannelId,
-    byte[] TargetNodeRid,
-    ulong ActorGeneration);
+public sealed record ActorRefSnapshot(
+    byte[] NodeRid,
+    string ActorId,
+    ulong Generation);
 
 public sealed record EnsurePlayerActorRes(
     string ActorId,
     string ActorType,
-    ActorRemoteAddressSnapshot RemoteAddress);
+    ActorRefSnapshot Actor);
 
 public sealed record MatchBingoReq(string Mode);
 

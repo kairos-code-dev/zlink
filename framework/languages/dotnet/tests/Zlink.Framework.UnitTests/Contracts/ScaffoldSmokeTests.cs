@@ -41,6 +41,7 @@ public sealed class ScaffoldSmokeTests
         typeof(global::Systems.Zlink.Message),
         typeof(global::Systems.Zlink.RoutingId),
         typeof(global::Systems.Zlink.SendFlags),
+        typeof(global::Systems.Zlink.ActorRef),
     ];
 
     [Fact]

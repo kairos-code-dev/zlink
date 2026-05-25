@@ -1079,8 +1079,8 @@ await Context.BoundSession
 기존에 사용하던 `SessionGateway` 라는 이름은 새 public API 에서 제거한다.
 이름이 두 갈래로 정리된다.
 
-- session → actor 방향: `BindActorHandleAsync(...)`, `RelayToActorAsync(...)`,
-  `IZLinkActorRef.NotifyDisconnectedAsync(...)` 를 사용한다.
+- session → actor 방향: `BindActorHandleAsync(...)`, `RelayToActorAsync(...)` 를 사용한다.
+  disconnect 알림과 binding cleanup 은 session lifecycle 경로에서 처리한다.
 - actor → 자기 client 방향: `IZLinkBoundSession` 를 사용한다.
 - 다른 actor 의 client session 에 보내야 하는 application service 는 먼저 대상
   actor 로 메시지를 보내고, 대상 actor handler 가 자기 `BoundSession` 을 사용한다.
@@ -1137,6 +1137,11 @@ public interface IZLinkSessionActorDispatchContext
         CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        ActorRef actor,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
         IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
 
@@ -1154,9 +1159,9 @@ public interface IZLinkSessionActorDispatchContext
 
 이 표면만 남기면 session 코드의 의도가 분명해진다. session 은 "받은 client
 packet 을 어떤 actor 에 relay 할지"만 결정한다. 같은 process 의 actor 는 actor id/type
-overload 로 bind 하고, 다른 process 의 actor 는 actor host runtime 이 발급한
-`ZLinkActorRemoteAddress` 를 넘기는 overload 로 bind 한다. 이 값은 application route mesh
-resolver 결과가 아니라 ActorGateway 가 remote actor ref 를 얻기 위한 locator 다.
+overload 로 bind 할 수 있고, 다른 process 의 actor 는 `JoinSpot(...)` /
+`JoinEntrySpot(...)` 이 반환한 최종 `ActorRef` 를 넘기는 overload 로 bind 한다. 기존
+`ZLinkActorRemoteAddress` overload 는 locator 기반 입력이 이미 있는 경우에만 사용한다.
 한 session 이 여러 actor 를 bind 할 수 있으므로 이미 bind 한 actor handle 이 필요하면
 `BoundActors` 로 현재 binding snapshot 을 보거나 `TryGetBoundActor(actorId, out actor)` 로
 actor id 기준 조회를 한다. session 은 actor handle 목록을 별도 application 상태로
@@ -1377,11 +1382,6 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
 
     public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        foreach (IZLinkActorRef actor in authenticatedActors.Values)
-        {
-            await actor.NotifyDisconnectedAsync(cancellationToken);
-        }
-
         authenticatedActors.Clear();
     }
 

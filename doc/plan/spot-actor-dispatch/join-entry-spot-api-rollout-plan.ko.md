@@ -375,12 +375,12 @@ call 타입은 reply payload 가 없으므로 별도로 둔다.
 public sealed record ZLinkActorJoinResult(
     string ActorId,
     string ActorType,
-    ZLinkActorRemoteAddress RemoteAddress);
+    ActorRef Actor);
 
 public sealed record ZLinkActorJoinResult<TReply>(
     string ActorId,
     string ActorType,
-    ZLinkActorRemoteAddress RemoteAddress,
+    ActorRef Actor,
     TReply Reply);
 
 public interface IZLinkActorJoinSpotCall
@@ -401,9 +401,9 @@ public interface IZLinkActorJoinEntrySpotCall
 ```
 
 `JoinSpot(...)` 은 user Spot 전용으로 유지한다. `JoinSpot(...)` 과 `JoinEntrySpot(...)` 은
-모두 join 계열 API 이므로 최종 Actor ref 를 반환해야 한다. framework 에서는 Actor ref 를
-`ZLinkActorJoinResult` 로 표현하고, session bind 에 필요한 `ZLinkActorRemoteAddress` 도 함께
-담는다. user Spot join 은 application reply 도 함께 필요하므로
+모두 join 계열 API 이므로 최종 Actor ref 를 반환해야 한다. framework 에서는 최종
+`ActorRef` 를 `ZLinkActorJoinResult.Actor` 로 직접 노출한다. user Spot join 은 application
+reply 도 함께 필요하므로
 `ZLinkActorJoinResult<TReply>` 를 반환한다. Entry Spot join 은 application reply payload 가
 없으므로 `ZLinkActorJoinResult` 를 반환한다. TicTacToe SessionGateway 는 이 반환값으로
 `BindActorHandleAsync(...)` 를 호출한다.
@@ -618,7 +618,7 @@ dotnet test framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Zlink
    - TicTacToe SessionGateway 샘플 흐름을 API 기반으로 되돌린다.
    - Session 에서 actor 생성 또는 actor ref 확보 후 Play SpotNode rid 로
      `JoinEntrySpot(...)` 을 호출한다.
-   - 반환된 `ZLinkActorJoinResult.RemoteAddress` 로 session bind 를 수행한다.
+   - 반환된 `ZLinkActorJoinResult.Actor` 로 session bind 를 수행한다.
 4. `ActorContext_RemoteJoin_Invalidates_SourceContext`
    - source runtime 에서 actor 를 생성하고 local Spot 또는 Entry Spot 에 둔다.
    - remote SpotNode 로 join 을 성공시킨다.
@@ -643,7 +643,7 @@ dotnet test framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Zlink
    - Actor 구현 타입은 Shared 에 둔다.
 3. 생성된 actor context 로 `JoinEntrySpot(topology.PlayRid)` 를 호출한다.
 4. `JoinEntrySpot(...)` 이 반환한 `ZLinkActorJoinResult` 로
-   `BindActorHandleAsync(join.ActorId, join.ActorType, join.RemoteAddress, cancellationToken)`
+   `BindActorHandleAsync(join.Actor, join.ActorType, cancellationToken)`
    를 호출한다.
 5. bind 와 authenticate reply 에 필요한 actor id/type/address 는 join completion 결과에서
    지역 변수로 확보한다. 이후 source actor context 는 invalid 상태가 될 수 있으므로 다시
@@ -673,9 +673,8 @@ var join = await actor.Context.JoinEntrySpot(topology.PlayRid)
     .SubmitAsync(cancellationToken);
 
 await context.BindActorHandleAsync(
-    join.ActorId,
+    join.Actor,
     join.ActorType,
-    join.RemoteAddress,
     cancellationToken);
 
 await context.Reply(new AuthenticateRes(join.ActorId))

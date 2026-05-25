@@ -46,9 +46,8 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkClient channels)
             .SubmitAsync<EnsurePlayerActorRes>(cancellationToken) ;
 
         await context.BindActorHandleAsync(
-                ensured.ActorId,
+                ToActorRef(ensured.Actor),
                 ensured.ActorType,
-                ToRemoteAddress(ensured.RemoteAddress),
                 cancellationToken)
             ;
 
@@ -57,11 +56,11 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkClient channels)
             ;
     }
 
-    private static ZLinkActorRemoteAddress ToRemoteAddress(ActorRemoteAddressSnapshot snapshot)
+    private static ActorRef ToActorRef(ActorRefSnapshot snapshot)
     {
-        return new ZLinkActorRemoteAddress(
-            snapshot.RouterChannelId,
-            RoutingId.FromBytes(snapshot.TargetNodeRid),
-            snapshot.ActorGeneration);
+        return new ActorRef(
+            RoutingId.FromBytes(snapshot.NodeRid),
+            snapshot.ActorId,
+            snapshot.Generation);
     }
 }

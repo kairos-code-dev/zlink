@@ -67,7 +67,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
 
         Assert.Equal("join-entry-local-actor", join.ActorId);
         Assert.Equal("registry", join.ActorType);
-        Assert.Equal(nodeRid, join.RemoteAddress.TargetNodeRid);
+        Assert.Equal(nodeRid, join.Actor.NodeRid);
         Assert.Equal(joinedBefore + 1, CountEvents(recorder, "entry-joined:join-entry-local-actor:"));
         Assert.Equal(leftBefore + 1, CountEvents(recorder, "left:join-entry-local-actor:"));
         Assert.Contains($"entry-joined:join-entry-local-actor:{stage.SpotRid.ToHex()}", recorder.Events);
@@ -150,7 +150,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             .Timeout(TimeSpan.FromSeconds(5))
             .SubmitAsync();
 
-        Assert.Equal(nodeRid, second.RemoteAddress.TargetNodeRid);
+        Assert.Equal(nodeRid, second.Actor.NodeRid);
         Assert.Equal(joinedBefore, CountEvents(recorder, "entry-joined:join-entry-idempotent-actor:"));
         Assert.Equal(leftBefore, CountEvents(recorder, "left:join-entry-idempotent-actor:"));
 
@@ -218,7 +218,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         var join = await actor.Context.JoinEntrySpot(targetNodeRid)
             .Timeout(TimeSpan.FromSeconds(5))
             .SubmitAsync();
-        var replyCanStillUseJoinResult = $"{join.ActorId}:{join.ActorType}:{join.RemoteAddress.TargetNodeRid.ToHex()}";
+        var replyCanStillUseJoinResult = $"{join.ActorId}:{join.ActorType}:{join.Actor.NodeRid.ToHex()}";
 
         Assert.Equal(
             $"join-entry-remote-actor:registry:{targetNodeRid.ToHex()}",

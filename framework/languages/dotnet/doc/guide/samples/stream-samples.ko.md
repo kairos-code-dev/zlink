@@ -92,6 +92,11 @@ public interface IZLinkSessionActorDispatchContext
         string actorType,
         CancellationToken cancellationToken = default);
 
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        ActorRef actor,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
     bool TryGetBoundActor(
         string actorId,
         out IZLinkActorRef actor);
@@ -126,8 +131,11 @@ public interface IZLinkActorRef
 
     string ActorType { get; }
 
-    ValueTask NotifyDisconnectedAsync(
-        CancellationToken cancellationToken = default);
+    ActorRef Actor { get; }
+
+    bool IsRemote { get; }
+
+    ZLinkActorRemoteAddress? RemoteAddress { get; }
 }
 
 public interface IZLinkSessionActorAttachmentContext

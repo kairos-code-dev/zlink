@@ -229,8 +229,9 @@ public sealed class RegressionTests
             var text = File.ReadAllText(file);
             Assert.DoesNotContain("IZLinkActorRemoteAddressResolver", text, StringComparison.Ordinal);
             Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
-            Assert.Contains("GetRemoteAddressAsync", text, StringComparison.Ordinal);
-            Assert.Contains("RemoteAddress", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("GetRemoteAddressAsync", text, StringComparison.Ordinal);
+            Assert.Contains("JoinEntrySpot", text, StringComparison.Ordinal);
+            Assert.Contains("ActorRefSnapshot", text, StringComparison.Ordinal);
         }
     }
 

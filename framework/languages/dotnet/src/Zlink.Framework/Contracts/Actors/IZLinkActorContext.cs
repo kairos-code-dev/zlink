@@ -36,12 +36,12 @@ public interface IZLinkActorContext
 public sealed record ZLinkActorJoinResult(
     string ActorId,
     string ActorType,
-    ZLinkActorRemoteAddress RemoteAddress);
+    ActorRef Actor);
 
 public sealed record ZLinkActorJoinResult<TReply>(
     string ActorId,
     string ActorType,
-    ZLinkActorRemoteAddress RemoteAddress,
+    ActorRef Actor,
     TReply Reply);
 
 public interface IZLinkActorJoinSpotCall

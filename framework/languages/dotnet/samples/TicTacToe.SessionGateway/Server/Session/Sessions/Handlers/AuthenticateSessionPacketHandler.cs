@@ -53,9 +53,8 @@ internal sealed class AuthenticateSessionPacketHandler(
             ;
 
         await context.BindActorHandleAsync(
-                joined.ActorId,
+                joined.Actor,
                 joined.ActorType,
-                joined.RemoteAddress,
                 cancellationToken)
             ;
 

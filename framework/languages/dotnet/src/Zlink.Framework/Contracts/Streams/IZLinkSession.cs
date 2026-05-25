@@ -70,6 +70,11 @@ public interface IZLinkSessionActorDispatchContext
         CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        ActorRef actor,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
         IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
 

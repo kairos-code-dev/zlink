@@ -110,24 +110,6 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal ZLinkActorRuntimeState GetOrCreateActorState(string actorId)
         => _actors.GetOrCreateActorState(actorId);
 
-    internal ZLinkActorRemoteAddress ResolveLocalActorRemoteAddress(
-        string actorId,
-        string actorType)
-    {
-        if (!TryGetCreatedActorState(actorId, actorType, out var state)
-            || state.NativeActorRef is not { } actorRef)
-        {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' does not have a native Actor ref.");
-        }
-
-        return new ZLinkActorRemoteAddress(
-            string.Empty,
-            actorRef.NodeRid,
-            actorRef.Generation);
-    }
-
     internal void BindSessionActor(
         string actorId,
         ZLinkSessionContext context,

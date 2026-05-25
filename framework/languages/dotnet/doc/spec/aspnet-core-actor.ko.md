@@ -604,8 +604,8 @@ application 이 actor runtime 을 직접 호출하는 별도 public client 는 �
 필요한 내부 frame 은 framework 가 별도로 만든다.
 
 remote actor 위치 해석은 public resolver 가 아니라 core ActorGateway 경로가 맡는다.
-session 은 local actor 를 actor id/type 으로 bind 하거나, Play 서버가 발급한
-`ZLinkActorRemoteAddress` 로 remote actor handle 을 bind 한다. 이 구조에서는 session packet 마다
+session 은 local actor 를 actor id/type 으로 bind 하거나, Play 서버가 join 결과에서 받은
+`ActorRef` 로 remote actor handle 을 bind 한다. 이 구조에서는 session packet 마다
 application 저장소를 조회하지 않으며, application route mesh channel 을 직접 고르지도 않는다.
 
 ## 7. SPOT에 actor 붙이기
@@ -721,6 +721,11 @@ public interface IZLinkSessionActorDispatchContext
         CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        ActorRef actor,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
         IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
 
@@ -739,7 +744,10 @@ public interface IZLinkSessionActorDispatchContext
   현재 actor-session binding 을 기록한다. 이 local overload 는 actor 를 새로 만들지 않는다.
 - `BindActorHandleAsync(actorId, actorType, remoteAddress, ...)` -- 다른 process 의
   ActorGateway 에 있는 actor 를 bind 한다. `remoteAddress` 는 actor host runtime 이
-  발급한 locator 여야 한다.
+  발급한 locator 여야 한다. 새 코드에서는 join 결과의 `ActorRef` 를 받는 overload 를
+  우선 사용한다.
+- `BindActorHandleAsync(actorRef, actorType, ...)` -- `JoinSpot(...)` /
+  `JoinEntrySpot(...)` 결과가 돌려준 최종 ActorRef 로 session binding 을 만든다.
 - `BindActorHandleAsync(actor, ...)` -- 이미 받은 actor handle 을 현재 session 에
   다시 묶을 때 쓴다.
 - `BoundActors` -- 현재 session 에 bind 된 actor handle snapshot 이다.
@@ -749,10 +757,8 @@ public interface IZLinkSessionActorDispatchContext
   따로 복제하지 않게 한다.
 - `RelayToActorAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
   보통 framework 가 자동으로 처리한다.
-- `IZLinkActorRef.NotifyDisconnectedAsync(...)` -- session 이 연결 종료를
-  application actor 에 알려야 할 때 호출한다. 이 호출은 actor-session binding
-  정리 API 가 아니라 actor callback 전달 API 이며, local actor 와 remote actor
-  handle 에 같은 방식으로 동작한다.
+- session disconnect 알림은 session lifecycle 과 binding cleanup 경로에서 처리한다.
+  application code 가 `IZLinkActorRef` 에 직접 disconnect callback 을 호출하지 않는다.
 
 session callback 에서 unbound standalone actor 를 만드는 표면은 두지 않는다.
 standalone actor 가 필요하다면 actor node 측에서 별도의 등록 표면을 쓴다 (예:
@@ -802,8 +808,8 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
 이 구조의 핵심 표면은 다음과 같다.
 
 - **actor handle** -- Session 서버가 actor id/type 으로 만드는 handle 이다.
-  local actor 는 process 안의 native actor ref 로 bind 하고, remote actor 는 actor host
-  runtime 이 발급한 `ZLinkActorRemoteAddress` 로 ActorGateway remote actor ref 를 얻어 bind 한다.
+  local actor 는 process 안의 native actor ref 로 bind 하고, remote actor 는 actor 생성 또는
+  join 결과의 `ActorRef` 로 ActorGateway remote actor ref 를 얻어 bind 한다.
 - **STREAM ActorGateway attach** -- Session 서버의 STREAM node 가 어느 SpotNode 를
   session owner gateway 로 사용할지 지정하는 등록이다. 이 등록이 있어야 session 에서
   actor 로 가는 relay 와 actor 에서 bound session 으로 돌아오는 push 가 같은 gateway
@@ -917,7 +923,7 @@ application 이 시작한 close 이므로 session 의 `OnDisconnectedAsync(...)`
 ### 9.3 라우팅 상태
 
 session relay 는 application route mesh resolver 를 사용하지 않는다. session 이 actor id/type 으로
-local actor handle 을 만들거나 Play 서버가 돌려준 `ZLinkActorRemoteAddress` 로 remote actor
+local actor handle 을 만들거나 Play 서버가 돌려준 `ActorRef` 로 remote actor
 handle 을 만들면, core ActorGateway 가 해당 actor ref 를 기준으로 relay 한다.
 
 actor-session binding 은 public route resolver 결과가 아니다. 이전 stream
@@ -988,10 +994,11 @@ framework 가 만든 actor handle 과 ActorGateway 경로를 사용한다.
 actor-session binding 은 framework / core runtime 내부에서 관리한다. 각 서버의
 역할을 나누어 보면 다음과 같다.
 
-- Session 서버는 인증 후 Play 서버의 ensure actor 응답에서 actor id/type 과 remote address 를 받고,
-  `BindActorHandleAsync(actorId, actorType, remoteAddress, ...)` 로 actor handle 과 session binding 을 얻는다.
+- Session 서버는 인증 후 Play 서버의 ensure actor 응답이나 `JoinEntrySpot(...)` 결과에서
+  ActorRef 와 actor type 을 받고, `BindActorHandleAsync(actorRef, actorType, ...)` 로
+  actor handle 과 session binding 을 얻는다.
 - Play 서버는 `IZLinkActorManager.GetOrCreateAsync(...)` 로 actor 를 준비한 뒤
-  `IZLinkActorManager.GetRemoteAddressAsync(...)` 로 ActorGateway locator 를 발급해 응답에 싣는다.
+  필요한 Entry Spot/User Spot join 을 수행하고, join 결과의 ActorRef 를 응답에 싣는다.
 - Play actor 는 `IZLinkBoundSession` 로 자기 client binding 을 사용한다. application
   service 가 다른 actor 의 client 로 보내야 하면 대상 actor 로 메시지를 보내서 처리한다.
 

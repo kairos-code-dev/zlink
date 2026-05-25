@@ -53,11 +53,10 @@ public abstract partial class StreamTestSupport
         {
             if (_actor is null)
             {
-                _actor = recorder.RemoteAddress is { } remoteAddress
+                _actor = recorder.Actor is { } actor
                     ? await Context.BindActorHandleAsync(
-                            recorder.ActorId,
+                            actor,
                             "player",
-                            remoteAddress,
                             cancellationToken)
                         .ConfigureAwait(false)
                     : await Context.BindActorHandleAsync(

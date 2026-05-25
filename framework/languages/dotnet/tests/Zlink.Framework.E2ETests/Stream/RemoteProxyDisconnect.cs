@@ -56,10 +56,12 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
             });
         });
         var actorManager = playHost.Services.GetRequiredService<IZLinkActorManager>();
-        await actorManager
+        var actor = await actorManager
             .GetOrCreateAsync(actorId, "player");
-        var remoteAddress = await actorManager.GetRemoteAddressAsync(actorId, "player");
-        sessionRecorder = new GatewaySessionRecorder(actorId, remoteAddress);
+        var joined = await actor.Context.JoinEntrySpot(playRid)
+            .Timeout(TimeSpan.FromSeconds(5))
+            .SubmitAsync();
+        sessionRecorder = new GatewaySessionRecorder(actorId, joined.Actor);
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {

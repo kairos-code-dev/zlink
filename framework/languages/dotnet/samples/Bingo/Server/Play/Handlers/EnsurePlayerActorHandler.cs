@@ -14,7 +14,9 @@ using Bingo.Shared.Contracts;
 namespace Bingo.Server.Play.Handlers;
 
 [ZLinkHandlerGroup("play")]
-internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
+internal sealed class EnsurePlayerActorHandler(
+    IZLinkActorManager actors,
+    SampleTopology topology)
     : IZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>
 {
     public async ValueTask<EnsurePlayerActorRes> HandleAsync(
@@ -33,17 +35,16 @@ internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
             player.SetDisplayName(request.DisplayName);
         }
 
-        var remoteAddress = await actors.GetRemoteAddressAsync(
-                request.ActorId,
-                SampleNames.PlayerActorType,
-                cancellationToken)
+        var joined = await actor.Context.JoinEntrySpot(topology.PlayRid)
+            .Timeout(SampleTimings.RequestTimeout)
+            .SubmitAsync(cancellationToken)
             ;
         return new EnsurePlayerActorRes(
             request.ActorId,
             SampleNames.PlayerActorType,
-            new ActorRemoteAddressSnapshot(
-                remoteAddress.RouterChannelId,
-                remoteAddress.TargetNodeRid.ToBytes().ToArray(),
-                remoteAddress.ActorGeneration));
+            new ActorRefSnapshot(
+                joined.Actor.NodeRid.ToBytes().ToArray(),
+                joined.Actor.ActorId,
+                joined.Actor.Generation));
     }
 }

@@ -6,6 +6,8 @@ public interface IZLinkActorRef
 
     string ActorType { get; }
 
+    ActorRef Actor { get; }
+
     bool IsRemote { get; }
 
     ZLinkActorRemoteAddress RemoteAddress { get; }

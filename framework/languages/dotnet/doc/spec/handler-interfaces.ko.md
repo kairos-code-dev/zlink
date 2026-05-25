@@ -1190,6 +1190,11 @@ public interface IZLinkSessionActorDispatchContext
         CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        ActorRef actor,
+        string actorType,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkActorRef> BindActorHandleAsync(
         IZLinkActorRef actor,
         CancellationToken cancellationToken = default);
 
@@ -1500,9 +1505,9 @@ public interface IZLinkActorRef
 {
     string ActorId { get; }
     string ActorType { get; }
-
-    ValueTask NotifyDisconnectedAsync(
-        CancellationToken cancellationToken = default);
+    ActorRef Actor { get; }
+    bool IsRemote { get; }
+    ZLinkActorRemoteAddress? RemoteAddress { get; }
 }
 
 public interface IZLinkActor
@@ -2284,7 +2289,7 @@ session 에서 actor 로 packet 을 relay 할 때는 `IZLinkSessionContext` 의
 public client 는 두지 않는다.
 
 remote actor 위치는 session 이 직접 계산하지 않는다. session 은 actor id/type 으로
-local actor handle 을 만들거나, actor host runtime 이 발급한 `ZLinkActorRemoteAddress` 로
+local actor handle 을 만들거나, actor 생성 또는 join 결과의 `ActorRef` 로
 remote actor handle 을 만들고, core ActorGateway 가 그 actor ref 를 기준으로 relay 한다.
 
 ### 5.5.1 route transport helper

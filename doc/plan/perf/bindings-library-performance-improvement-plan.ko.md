@@ -1359,11 +1359,11 @@ Go는 현재 표 기준으로 single/multi 전 대상이 `통과` 상태다. 아
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
 | `tcp` | `PAIR` | `통과(100.5%)` | `통과(99.5%)` | `통과(113.8%)` | `통과(98.6%)` | `통과(99.1%)` | `통과(96.2%)` | C `perf_c_single_linux_20260522_073013_codex_c_tcp_single_for_rust_20260522.txt` 대비 Rust `perf_rust_single_linux_20260522_125722_codex_rust_tcp_single_complete_after_stop_token_fix_20260522.txt`. balanced auto-HWM에서 stop token이 HWM 뒤에 막히던 `PAIR 1024B` timeout은 single stop-token retry와 burst drain 정렬 뒤 해소했다. |
-| `tcp` | `PUBSUB` | `보류(79.2%)` | `통과(89.2%)` | `통과(106.5%)` | `통과(99.3%)` | `통과(99.3%)` | `통과(96.4%)` | C/Rust 파일은 위 행과 같다. 64B는 단순 one-way Rust 최소 기준 직전이라 보류하고, 1024B는 C보다 높아 outlier 재검토 대상으로 남긴다. |
+| `tcp` | `PUBSUB` | `통과(82.5%)` | `통과(89.2%)` | `통과(111.4%)` | `통과(99.3%)` | `통과(99.3%)` | `통과(96.4%)` | 64B/1024B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 64B는 Rust 단순 one-way 최소 기준을 넘어 보류에서 통과로 바뀌었다. 1024B는 C보다 높아 outlier 재검토 대상으로 남긴다. 나머지는 C/Rust 파일은 위 행과 같다. |
 | `tcp` | `DEALER_DEALER` | `통과(97.9%)` | `통과(102.0%)` | `통과(118.5%)` | `통과(100.7%)` | `통과(100.1%)` | `통과(96.8%)` | C/Rust 파일은 위 행과 같다. receiver는 C single처럼 blocking recv 뒤 `DONT_WAIT` burst drain을 수행하고, stop token은 transient backpressure를 bounded retry로 처리한다. 1024B는 C보다 높아 outlier 재검토 대상으로 남긴다. |
-| `tcp` | `DEALER_ROUTER` | `통과(85.2%)` | `통과(88.2%)` | `보류(62.9%)` | `보류(14.4%)` | `보류(12.3%)` | `보류(11.6%)` | 64/256/1024B는 C/Rust 파일은 위 행과 같다. 65536B 이상은 C `perf_c_single_linux_20260525_134314_rust_single_routed_current_c.txt` 대비 Rust `perf_rust_single_linux_20260525_141227_single_routed_recv_part_stopwait_fixed.txt` 기준이다. `RouterSocket::recv_part(...)` part 단위 수신과 active 이후 bounded stop wait를 적용해 complete를 확보했지만, fixed 재측정에서도 routed one-way 기준보다 낮아 보류한다. |
-| `tcp` | `ROUTER_ROUTER` | `통과(109.4%)` | `통과(103.5%)` | `보류(69.7%)` | `보류(14.5%)` | `보류(11.6%)` | `보류(11.2%)` | 64/256/1024B는 기존 Rust 파일 기준이다. 65536B 이상은 C `perf_c_single_linux_20260525_134314_rust_single_routed_current_c.txt` 대비 Rust `perf_rust_single_linux_20260525_141227_single_routed_recv_part_stopwait_fixed.txt` 기준이다. `RouterSocket::recv_part(...)` part 단위 수신과 active 이후 bounded stop wait를 적용해 제한 재측정 complete를 확보했다. 64B/256B는 C보다 높아 outlier 재검토 대상으로 남기고, 1024B 이상은 routed one-way 기준보다 낮아 보류한다. |
-| `tcp` | `SPOT` | `통과(141.5%)` | `통과(105.3%)` | `보류(43.8%)` | `통과(127.8%)` | `통과(102.7%)` | `통과(84.6%)` | C/Rust 파일은 위 행과 같다. 1024B는 SPOT 기준보다 낮다. 64B와 65536B는 120%를 넘어 outlier 재검토 대상으로 남긴다. |
+| `tcp` | `DEALER_ROUTER` | `통과(87.1%)` | `통과(88.2%)` | `보류(64.3%)` | `보류(14.4%)` | `보류(12.3%)` | `보류(11.6%)` | 64B/1024B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 256B는 기존 Rust 파일 기준이다. 65536B 이상은 C `perf_c_single_linux_20260525_134314_rust_single_routed_current_c.txt` 대비 Rust `perf_rust_single_linux_20260525_141227_single_routed_recv_part_stopwait_fixed.txt` 기준이다. `RouterSocket::recv_part(...)` part 단위 수신과 active 이후 bounded stop wait를 적용해 complete를 확보했지만, 1024B 이상은 routed one-way 기준보다 낮아 보류한다. |
+| `tcp` | `ROUTER_ROUTER` | `통과(100.6%)` | `통과(103.5%)` | `보류(61.9%)` | `보류(14.5%)` | `보류(11.6%)` | `보류(11.2%)` | 64B/1024B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 256B는 기존 Rust 파일 기준이다. 65536B 이상은 C `perf_c_single_linux_20260525_134314_rust_single_routed_current_c.txt` 대비 Rust `perf_rust_single_linux_20260525_141227_single_routed_recv_part_stopwait_fixed.txt` 기준이다. `RouterSocket::recv_part(...)` part 단위 수신과 active 이후 bounded stop wait를 적용해 제한 재측정 complete를 확보했다. 64B/256B는 C보다 높아 outlier 재검토 대상으로 남기고, 1024B 이상은 routed one-way 기준보다 낮아 보류한다. |
+| `tcp` | `SPOT` | `통과(147.7%)` | `통과(105.3%)` | `보류(46.1%)` | `통과(127.8%)` | `통과(102.7%)` | `통과(84.6%)` | 64B/1024B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 1024B는 SPOT 기준보다 낮다. 64B와 65536B는 120%를 넘어 outlier 재검토 대상으로 남긴다. 나머지는 C/Rust 파일은 위 행과 같다. |
 | `ws` | `PAIR` | `통과(98.9%)` | `통과(102.9%)` | `통과(128.1%)` | `통과(100.6%)` | `통과(97.7%)` | `통과(95.3%)` | C full `perf_c_single_linux_20260522_130546_codex_c_ws_single_for_rust_20260522.txt`, C 1024B 보강 `perf_c_single_linux_20260522_132034_codex_c_ws_single_1024_rust_outlier_recheck_20260522.txt`, Rust full `perf_rust_single_linux_20260522_131244_codex_rust_ws_single_current_20260522.txt` 기준이다. 1024B는 같은 조건 C 보강 뒤에도 120%를 넘어 outlier 재검토 대상으로 남긴다. |
 | `ws` | `PUBSUB` | `통과(84.0%)` | `통과(98.1%)` | `통과(134.8%)` | `통과(97.9%)` | `통과(98.2%)` | `통과(98.0%)` | C/Rust 파일은 위 행과 같다. 1024B는 같은 조건 C 보강 뒤에도 120%를 넘어 outlier 재검토 대상으로 남긴다. |
 | `ws` | `DEALER_DEALER` | `통과(101.1%)` | `통과(100.8%)` | `통과(132.1%)` | `통과(97.0%)` | `통과(100.2%)` | `통과(99.2%)` | C/Rust 파일은 위 행과 같다. 1024B는 같은 조건 C 보강 뒤에도 120%를 넘어 outlier 재검토 대상으로 남긴다. |
@@ -1385,12 +1385,14 @@ Go는 현재 표 기준으로 single/multi 전 대상이 `통과` 상태다. 아
 
 #### 6.7.1.1 Rust 남은 작업
 
-Rust는 아직 완료가 아니다. tcp/ws/wss/tls single은 유효 수치를 확보했지만,
-multi suite는 아직 신규 측정이 필요하다.
+Rust는 아직 완료가 아니다. multi suite는 2026-05-25 재측정과 수정으로
+`MULTI_PUBSUB`/`MULTI_SPOT` 계열까지 통과권에 올랐지만, single routed large와
+single SPOT 일부 small/outlier 보류가 남아 있다.
 
 - balanced auto-HWM에서 single one-way 종료 신호가 HWM 뒤에 막히던 문제는
   `ctx.recalculate_auto_hwm()`, stop-token bounded retry 확대, receiver burst drain으로
-  해소했다. 같은 종류의 종료 문제가 multi runner에 남아 있는지 다음 측정에서 확인한다.
+  해소했다. multi runner의 같은 종류 종료 문제는 2026-05-25 재측정과 각 pattern별
+  보강에서 complete report를 확보하며 별도 completion 보류로 남기지 않는다.
 - tcp routed one-way large size는 `RouterSocket::recv_part(...)` part 단위 수신 적용 뒤
   fixed 재측정에서도 C 대비 11~15% 수준이라 routed one-way 기준보다 낮다. `DEALER_ROUTER`와
   `ROUTER_ROUTER` 모두 active send를 `DONT_WAIT` retry로 정렬했고, active 이후 bounded
@@ -1433,6 +1435,13 @@ multi suite는 아직 신규 측정이 필요하다.
   ws `ROUTER_ROUTER`는 32.6/24.7/22.5%라 65536B도 기준선 바로 아래에 남았다.
   tls `DEALER_ROUTER`는 60.6/55.4/52.8%, tls `ROUTER_ROUTER`는
   58.6/55.1/52.3%로 이전보다 조금 높지만 routed one-way 기준에는 못 미친다.
+- **2026-05-25 tcp small 경계 재측정**: stale 기준 가능성이 있는 `tcp PUBSUB 64B`,
+  routed 1024B, SPOT 1024B를 같은 조건으로 재측정했다. C
+  `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt`와 Rust
+  `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt`는 모두
+  complete였고, runner는 `core/build` runtime을 출력했다. `PUBSUB 64B`는 82.5%로
+  Rust 단순 one-way 기준을 넘어 보류에서 통과로 바꾼다. `DEALER_ROUTER 1024B`는
+  64.3%, `ROUTER_ROUTER 1024B`는 61.9%, `SPOT 1024B`는 46.1%라 여전히 기준보다 낮다.
 - **single routed stop-token blocking-only 후보 기각**: active send는 기존 `DONT_WAIT`
   retry로 유지하고 phase 종료 stop token만 C처럼 blocking submit으로 보내는 후보를
   시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은

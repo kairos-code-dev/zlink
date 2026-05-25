@@ -8,12 +8,16 @@ using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
+using TicTacToe.SessionGateway.Shared.Actors;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
 
 namespace TicTacToe.SessionGateway.Server.Session.Sessions.Handlers;
 
-internal sealed class AuthenticateSessionPacketHandler(IZLinkClient channels)
+internal sealed class AuthenticateSessionPacketHandler(
+    IZLinkClient channels,
+    IZLinkActorManager actors,
+    SampleTopology topology)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     public string PacketName => nameof(AuthenticateReq);
@@ -37,30 +41,26 @@ internal sealed class AuthenticateSessionPacketHandler(IZLinkClient channels)
             throw new InvalidOperationException(authenticated.Reason ?? "Actor authentication failed.");
         }
 
-        var joined = await channels.Request(
-                SampleNames.PlayChannel,
-                new JoinEntrySpotActorReq(authenticated.ActorId))
-            .Timeout(SampleTimings.RequestTimeout)
-            .SubmitAsync<JoinEntrySpotActorRes>(cancellationToken)
-            ;
-
-        await context.BindActorHandleAsync(
-                joined.Actor.ActorId,
-                joined.Actor.ActorType,
-                ToRemoteAddress(joined.Actor),
+        var actor = (PlayerActor)await actors.GetOrCreateAsync(
+                authenticated.ActorId,
+                SampleNames.PlayerActorType,
                 cancellationToken)
             ;
 
-        await context.Reply(new AuthenticateRes(joined.Actor.ActorId))
+        var joined = await actor.Context.JoinEntrySpot(topology.PlayRid)
+            .Timeout(SampleTimings.RequestTimeout)
+            .SubmitAsync(cancellationToken)
+            ;
+
+        await context.BindActorHandleAsync(
+                joined.ActorId,
+                joined.ActorType,
+                joined.RemoteAddress,
+                cancellationToken)
+            ;
+
+        await context.Reply(new AuthenticateRes(joined.ActorId))
             .Submit(cancellationToken)
             ;
-    }
-
-    private static ZLinkActorRemoteAddress ToRemoteAddress(ActorRefSnapshot snapshot)
-    {
-        return new ZLinkActorRemoteAddress(
-            snapshot.RouterChannelId,
-            RoutingId.FromBytes(snapshot.TargetNodeRid),
-            snapshot.ActorGeneration);
     }
 }

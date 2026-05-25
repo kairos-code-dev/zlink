@@ -1,8 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TicTacToe.SessionGateway.Server.Session.Sessions;
+using TicTacToe.SessionGateway.Shared.Actors;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionGateway.Server.Session;
@@ -14,9 +16,11 @@ public static class SessionServerHostFactory
         SampleSessionNode sessionNode)
     {
         var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton(topology);
         builder.Services.AddZLinkFramework(options =>
         {
             options.Codecs.AddJson();
+            options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {

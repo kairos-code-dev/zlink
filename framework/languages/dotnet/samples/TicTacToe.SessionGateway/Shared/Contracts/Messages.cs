@@ -11,17 +11,6 @@ public sealed record AuthenticateActorRes(
     string? ActorId,
     string? Reason);
 
-public sealed record JoinEntrySpotActorReq(string ActorId);
-
-public sealed record ActorRefSnapshot(
-    string ActorId,
-    string ActorType,
-    string RouterChannelId,
-    byte[] TargetNodeRid,
-    ulong ActorGeneration);
-
-public sealed record JoinEntrySpotActorRes(ActorRefSnapshot Actor);
-
 public sealed record CreateMatchReq(string? OwnerActorId = null);
 
 public sealed record CreateMatchRes(

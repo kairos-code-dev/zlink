@@ -6,18 +6,15 @@ from contextlib import ExitStack
 import zlink
 
 from perf_multi_common import (
+    STOP_TOKEN,
     TOPIC,
     apply_multi_auto_hwm_msg_unit,
     apply_multi_socket_options,
-    benchmark_run_id,
     configure_multi_tls_client,
     latency_ns_from_message,
-    is_active_message,
     parse_client_args,
     perf_client_context,
     print_result_lines,
-    received_has_stop_token,
-    received_metric_payload,
     recv_nonblocking,
     resolve_multi_connect_ready_timeout_ms,
     result_metrics,
@@ -45,7 +42,6 @@ def main(argv=None):
     args = parse_client_args(
         argv or sys.argv[1:], pattern="pubsub"
     )
-    run_id = benchmark_run_id()
     latencies = []
     count = 0
     latency_stride = _positive_int_env("PERF_MULTI_PUBSUB_LATENCY_SAMPLE_STRIDE", 32)
@@ -115,15 +111,14 @@ def main(argv=None):
                             if received is None:
                                 break
                             with received:
-                                if received_has_stop_token(received):
+                                parts = received.parts
+                                if not parts:
+                                    continue
+                                data = parts[-1].data
+                                if len(data) == len(STOP_TOKEN) and data == STOP_TOKEN:
                                     stopped[index] = True
                                     break
-                                data = received_metric_payload(received)
-                                if not is_active_message(
-                                    data,
-                                    expected_msg_size=args.msg_size,
-                                    run_id=run_id,
-                                ):
+                                if len(data) != args.msg_size:
                                     continue
                                 if time.perf_counter() >= active_deadline:
                                     continue

@@ -1741,9 +1741,9 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `PAIR` | `보류(6.3%)` | `보류(10.4%)` | `통과(41.6%)` | `통과(201.9%)` | `통과(211.2%)` | `통과(93.7%)` | C `perf_c_single_linux_20260522_155901_codex_c_single_tcp_for_python_20260522.txt`, Python `perf_python_single_linux_20260522_160548_codex_python_single_tcp_stop_wait_fix_20260522.txt` 기준이다. 실행 중 Python case 프로세스는 `nlwp=5` 수준으로 thread 폭증은 아니었다. 64B/256B는 Python native boundary 비용이 커서 기준보다 낮아 보류한다. large size는 C 기준이 낮게 나온 항목이 있어 재측정 대상이다. |
-| `tcp` | `PUBSUB` | `보류(2.6%)` | `보류(3.1%)` | `보류(4.0%)` | `통과(73.5%)` | `통과(78.8%)` | `통과(79.2%)` | C/Python 파일은 위 PAIR 행과 같다. small size는 기준보다 낮고, large size는 기준선을 넘었다. |
-| `tcp` | `DEALER_DEALER` | `보류(3.6%)` | `보류(3.3%)` | `보류(5.1%)` | `통과(78.4%)` | `통과(86.7%)` | `통과(91.1%)` | C/Python 파일은 위 PAIR 행과 같다. small size는 기준보다 낮고, large size는 기준선을 넘었다. |
+| `tcp` | `PAIR` | `보류(4.3%)` | `보류(4.2%)` | `보류(7.1%)` | `통과(201.9%)` | `통과(211.2%)` | `통과(93.7%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_single_linux_20260525_183144_python_single_combined_fast_c.txt` 대비 Python `perf_python_single_linux_20260525_183622_single_native_result_message_default.txt` 기준이다. message-socket send를 native result fast path로 좁혀 44.4/46.5/45.6Kmsg/s에서 57.2/55.7/57.5Kmsg/s로 올렸지만, C 기준도 1.3M/1.3M/807Kmsg/s라 여전히 보류다. large size는 기존 C `perf_c_single_linux_20260522_155901_codex_c_single_tcp_for_python_20260522.txt`, Python `perf_python_single_linux_20260522_160548_codex_python_single_tcp_stop_wait_fix_20260522.txt` 기준이다. |
+| `tcp` | `PUBSUB` | `보류(3.4%)` | `보류(3.6%)` | `보류(4.7%)` | `통과(73.5%)` | `통과(78.8%)` | `통과(79.2%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_single_linux_20260525_183144_python_single_combined_fast_c.txt` 대비 Python `perf_python_single_linux_20260525_183622_single_native_result_message_default.txt` 기준이다. publish fast path 후보는 낮아져 반영하지 않았고, 기본 publish 경로는 run 변동 안에서 44.2/40.4/38.2Kmsg/s를 기록했다. small size는 기준보다 낮고, large size는 기존 파일 기준선을 넘었다. |
+| `tcp` | `DEALER_DEALER` | `보류(4.2%)` | `보류(4.2%)` | `보류(7.0%)` | `통과(78.4%)` | `통과(86.7%)` | `통과(91.1%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_single_linux_20260525_183144_python_single_combined_fast_c.txt` 대비 Python `perf_python_single_linux_20260525_183622_single_native_result_message_default.txt` 기준이다. message-socket send native result fast path로 43.9/45.0/44.2Kmsg/s에서 55.4/55.6/57.0Kmsg/s로 올렸지만, C 기준 대비 한 자릿수 비율이라 보류를 유지한다. large size는 기존 파일 기준선을 넘었다. |
 | `tcp` | `DEALER_ROUTER` | `보류(2.5%)` | `보류(2.6%)` | `보류(2.7%)` | `보류(15.1%)` | `보류(18.4%)` | `보류(15.1%)` | C/Python 파일은 위 PAIR 행과 같다. routed one-way 전 size가 Node/Python 최소 기준보다 낮아 보류한다. |
 | `tcp` | `ROUTER_ROUTER` | `보류(2.3%)` | `보류(3.0%)` | `보류(2.6%)` | `보류(14.6%)` | `보류(14.7%)` | `보류(16.1%)` | C/Python 파일은 위 PAIR 행과 같다. 최초 실행은 65536B에서 stop token 유실 후 native blocking recv에 남아 timeout됐다. Python single receiver를 bounded DONTWAIT drain으로 바꾸고 nonblocking routed send의 `NOT_CONNECTED`를 transient 실패로 처리해 complete를 확보했다. 전 size는 기준보다 낮아 보류한다. |
 | `tcp` | `SPOT` | `보류(11.8%)` | `보류(9.2%)` | `보류(9.4%)` | `통과(39.2%)` | `통과(43.1%)` | `통과(36.7%)` | C/Python 파일은 위 PAIR 행과 같고, 131072B는 C `perf_c_single_linux_20260522_201611_codex_c_single_tcp_spot131072_python_outlier_recheck_20260522.txt`, Python `perf_python_single_linux_20260522_201626_codex_python_single_tcp_spot131072_outlier_recheck_20260522.txt` 기준으로 갱신했다. 기존 131072B의 271880.0%는 C 기준 throughput이 5 msg/s로 낮게 나온 outlier였다. small size는 기준보다 낮다. |
@@ -1855,7 +1855,7 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `PUBSUB` 64/256B와 `DEALER_DEALER` 1024B는 여전히 낮거나 회귀했고 latency도 크게 흔들렸다.
   같은 조건 C `perf_c_single_linux_20260525_135131_python_single_latency_sample_c.txt` 대비
   처리량은 3.3~6.2%라 single small 보류를 해소하지 못하므로 반영하지 않는다.
-- **single sender native result fast path 후보 기각**: perf single helper의 `send_nonblocking(...)`와
+- **single message-socket native result fast path 적용**: perf single helper의 `send_nonblocking(...)`와
   `publish_nonblocking(...)`에서 fluent builder와 `native_parts` 리스트 구성을 건너뛰고
   단일 payload를 `zlink_send_part`/`zlink_publish_part`에 바로 넘기는 후보를 시험했다.
   `python3 -m py_compile bindings/python/perf/single/perf_common.py bindings/python/perf/single/perf_pair.py
@@ -1866,7 +1866,17 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `PAIR` 4.3/4.5/7.8%, `PUBSUB` 3.3/4.0/4.9%,
   `DEALER_DEALER` 4.7/4.7/7.1%에 그쳤다. Python 내부 send 객체 준비 비용을 더 줄여도
   메시지마다 Python에서 C로 들어가는 호출 경계와 수신 처리 비용이 남아 single small
-  보류를 해소하지 못하므로 반영하지 않는다.
+  보류를 해소하지 못한다. 다만 current HEAD에서 broad 후보를 다시 분리하니 `publish_nonblocking`
+  fast path는 PUBSUB를 25~29Kmsg/s로 낮췄지만, message-socket send만 좁힌 후보는
+  PAIR 44.4/46.5/45.6Kmsg/s→56.1/52.3/54.4Kmsg/s,
+  DEALER_DEALER 43.9/45.0/44.2Kmsg/s→51.6/52.7/53.6Kmsg/s로 올렸다
+  (`perf_python_single_linux_20260525_183447_single_native_result_message_only_probe.txt`).
+  최종 기본 적용 뒤 공식 wrapper
+  `perf_python_single_linux_20260525_183622_single_native_result_message_default.txt`도
+  complete였고, 같은 C 기준 `perf_c_single_linux_20260525_183144_python_single_combined_fast_c.txt`
+  대비 PAIR 4.3/4.2/7.1%, DEALER_DEALER 4.2/4.2/7.0%다. 보류는 남지만
+  절대 처리량 개선이 재현됐으므로 non-routed message socket send에만 반영하고,
+  PUBSUB publish와 routed send에는 적용하지 않는다.
 - **single PAIR direct `zlink_recv_part` 후보 기각**: `PairSocket.recv_into(...)`가
   `Received`와 parts list를 구성하는 비용을 피하기 위해, perf helper 안에서만 native
   `zlink_recv_part`를 직접 호출해 단일 part payload를 decode하는 후보를 `PAIR`에 좁혀

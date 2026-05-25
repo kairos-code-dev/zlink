@@ -325,6 +325,7 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
 
 _DONT_WAIT_FLAG = None
 _LOW_LEVEL_SEND = None
+_NATIVE_RESULT_SEND = None
 
 
 def _dont_wait_flag():
@@ -356,8 +357,44 @@ def _low_level_send_methods():
     return _LOW_LEVEL_SEND
 
 
+def _native_result_send_methods():
+    global _NATIVE_RESULT_SEND
+    if _NATIVE_RESULT_SEND is None:
+        from zlink._native.ffi import ZlinkMsg
+        from zlink._runtime.core.core import (
+            _init_msg_from_buffer,
+        )
+        from zlink._runtime.sockets.socket_base import (
+            _send_via_native_no_wait_result,
+        )
+
+        _NATIVE_RESULT_SEND = (
+            ZlinkMsg,
+            _init_msg_from_buffer,
+            _send_via_native_no_wait_result,
+        )
+    return _NATIVE_RESULT_SEND
+
+
+def _single_part_native_array(payload):
+    ZlinkMsg, init_msg, *_ = _native_result_send_methods()
+    parts_array = (ZlinkMsg * 1)()
+    keepalive = init_msg(parts_array[0], payload, borrow=False)
+    return parts_array, keepalive
+
+
+def _submit_result_ok(result):
+    zlink_mod = _require_zlink()
+    return result == zlink_mod.SubmitResult.OK
+
+
 def send_nonblocking(sock, payload, *, routing_id=None):
     zlink_mod = _require_zlink()
+    if routing_id is None:
+        _ZlinkMsg, _init_msg, send_native = _native_result_send_methods()
+        parts_array, keepalive = _single_part_native_array(payload)
+        _ = keepalive
+        return _submit_result_ok(send_native(sock._handle, parts_array, 1))
     msg_send, routed_send, _ = _low_level_send_methods()
     flag = _dont_wait_flag()
     try:

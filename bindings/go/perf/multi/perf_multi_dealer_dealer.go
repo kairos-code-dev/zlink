@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	zlink "zlink.systems/zlink/contracts"
@@ -35,6 +37,7 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 
 	stats := perfcommon.NewStats()
 	window := activeDeadline(cfg.duration)
+	latencyStride := resolveMultiDealerDealerLatencySampleStride(cfg.transport, cfg.msgSize)
 	poller := perfcommon.NewSocketPoller(server, perfcommon.ZLinkPollIn)
 	defer poller.Close()
 	events := make([]zlink.PollEvent, 1)
@@ -55,7 +58,7 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 			continue
 		}
 		if useMultiDealerDealerRecvPart(cfg.transport, cfg.msgSize) {
-			if drainMultiDealerDealerServerRecvPart(server, cfg, window, stats, &stopRequested) {
+			if drainMultiDealerDealerServerRecvPart(server, cfg, window, stats, latencyStride, &stopRequested) {
 				break
 			}
 			continue
@@ -79,9 +82,22 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 					_ = received.Close()
 					break
 				}
-				now := time.Now()
-				if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(part, cfg.msgSize, perfcommon.PhaseActive, now); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
-					stats.AddLatencyNs(latencyNs)
+				if latencyStride <= 1 {
+					now := time.Now()
+					if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(part, cfg.msgSize, perfcommon.PhaseActive, now); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
+						stats.AddLatencyNs(latencyNs)
+					}
+					_ = received.Close()
+					continue
+				}
+				if perfcommon.HasMetricHeaderPhase(part.Data(), cfg.msgSize, perfcommon.PhaseActive) {
+					count := stats.AddCount()
+					if shouldSampleMultiDealerDealerLatency(count, latencyStride) {
+						now := time.Now()
+						if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(part, cfg.msgSize, perfcommon.PhaseActive, now); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
+							stats.AddLatencySampleNs(latencyNs)
+						}
+					}
 				}
 			}
 			_ = received.Close()
@@ -101,11 +117,35 @@ func useMultiDealerDealerRecvPart(transport string, msgSize int) bool {
 	return msgSize == 262144 && transport == "wss"
 }
 
+func resolveMultiDealerDealerLatencySampleStride(transport string, msgSize int) uint64 {
+	if msgSize == 64 && transport != "tcp" {
+		return uint64(positiveMultiDealerDealerIntEnv("PERF_MULTI_DEALER_DEALER_LATENCY_SAMPLE_STRIDE", 32))
+	}
+	return 1
+}
+
+func positiveMultiDealerDealerIntEnv(name string, fallback int) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func shouldSampleMultiDealerDealerLatency(index, stride uint64) bool {
+	return stride <= 1 || index == 1 || index%stride == 0
+}
+
 func drainMultiDealerDealerServerRecvPart(
 	server *zlink.DealerSocket,
 	cfg multiConfig,
 	window perfcommon.BenchmarkWindow,
 	stats *perfcommon.Stats,
+	latencyStride uint64,
 	stopRequested *bool,
 ) bool {
 	message := perfcommon.NewMessageWithSize(0)
@@ -128,9 +168,22 @@ func drainMultiDealerDealerServerRecvPart(
 			*stopRequested = true
 			return true
 		}
-		now := time.Now()
-		if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(message, cfg.msgSize, perfcommon.PhaseActive, now); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
-			stats.AddLatencyNs(latencyNs)
+		if latencyStride <= 1 {
+			now := time.Now()
+			if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(message, cfg.msgSize, perfcommon.PhaseActive, now); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
+				stats.AddLatencyNs(latencyNs)
+			}
+			continue
+		}
+		if !perfcommon.HasMetricHeaderPhase(message.Data(), cfg.msgSize, perfcommon.PhaseActive) {
+			continue
+		}
+		count := stats.AddCount()
+		if shouldSampleMultiDealerDealerLatency(count, latencyStride) {
+			now := time.Now()
+			if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(message, cfg.msgSize, perfcommon.PhaseActive, now); ok && now.After(window.ActiveAt) && now.Before(window.StopAt) {
+				stats.AddLatencySampleNs(latencyNs)
+			}
 		}
 	}
 }
@@ -351,11 +404,11 @@ func useMultiDealerDealerBytes(transport string, msgSize int) bool {
 	case "tcp":
 		return msgSize <= 1024 || msgSize >= 65536
 	case "ws":
-		return msgSize == 65536 || msgSize == 131072
+		return msgSize == 64 || msgSize == 65536 || msgSize == 131072
 	case "wss":
-		return msgSize >= 65536
+		return msgSize == 64 || msgSize >= 65536
 	case "tls":
-		return msgSize >= 65536
+		return msgSize == 64 || msgSize >= 65536
 	default:
 		return false
 	}

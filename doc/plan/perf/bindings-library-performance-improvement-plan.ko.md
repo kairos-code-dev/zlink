@@ -1426,6 +1426,15 @@ single SPOT 1024B 보류가 남아 있다.
   `ROUTER_ROUTER`가 14.5/11.6/11.2%였다. 기준에는 못 미치므로 보류를 유지하고,
   다음 후보는 routed send/recv 경계의 남은 per-message
   비용을 본다.
+- **single routed local latency storage 후보 기각**: routed receiver는 단일 thread에서만
+  latency를 기록하지만 공용 `Arc<Mutex<LatencyStats>>` 경로를 써서 매 메시지마다 lock을
+  잡고 있었다. `DEALER_ROUTER`/`ROUTER_ROUTER` receiver만 로컬 `LatencyStats`에 직접
+  기록하는 후보를 시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
+  통과했고, 같은 조건 C `perf_c_single_linux_20260525_154738_rust_routed_local_stats_c.txt`
+  대비 Rust 후보 `perf_rust_single_linux_20260525_154753_routed_local_stats_candidate.txt`는
+  tcp `DEALER_ROUTER` 65536/262144B가 13.9/11.0%, `ROUTER_ROUTER`가 14.6/11.7%였다.
+  기존 `RouterSocket::recv_part(...)` fixed 재측정과 같은 대역이라 lock 비용이 large
+  routed 병목의 주 원인이 아님을 확인했다. 코드는 반영하지 않는다.
 - **2026-05-25 single routed ws/tls complete 재측정**: `RouterSocket::recv_part(...)`
   적용 뒤 ws/tls large도 같은 조건으로 다시 확인했다. C 기준
   `perf_c_single_linux_20260525_142618_rust_single_routed_wstls_c_recheck.txt`와

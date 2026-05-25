@@ -279,6 +279,14 @@ def _clients_for_pattern(pattern, cli_value):
     return "10000" if pattern == "STREAM" else "100"
 
 
+def _connect_concurrency_for_clients(clients):
+    env_value = os.environ.get("PERF_MULTI_CONNECT_CONCURRENCY") or os.environ.get("PERF_CONNECT_CONCURRENCY")
+    if env_value:
+        return env_value
+    parsed = _uint(clients)
+    return "1024" if parsed is not None and parsed >= 10000 else "128"
+
+
 def _uint(value):
     try:
         parsed = int(str(value))
@@ -951,7 +959,7 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
         or os.environ.get("PERF_CTX_AUTO_HWM_PROFILE", "balanced"),
         "sndtimeo_ms": args.send_timeout_ms or os.environ.get("PERF_MULTI_SNDTIMEO_MS", "200"),
         "rcvtimeo_ms": args.recv_timeout_ms or os.environ.get("PERF_MULTI_RCVTIMEO_MS", "200"),
-        "connect_concurrency": args.connect_concurrency or "128 (default)",
+        "connect_concurrency": args.connect_concurrency or f"{_connect_concurrency_for_clients(clients)} (default)",
         "connect_ready_timeout_ms": args.connect_ready_timeout_ms or os.environ.get("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", "5000"),
         "monitor_hwm": args.monitor_hwm or os.environ.get("PERF_MULTI_MONITOR_HWM", "1000"),
         "server_ready_timeout_ms": args.server_ready_timeout_ms or os.environ.get("PERF_MULTI_SERVER_READY_TIMEOUT_MS", "10000"),
@@ -1114,6 +1122,7 @@ def main(argv=None):
                         transport_all_unsupported = False
                         continue
                     case_env = dict(env)
+                    case_env["PERF_MULTI_CONNECT_CONCURRENCY"] = args.connect_concurrency or _connect_concurrency_for_clients(pattern_clients)
                     case_env["PERF_RUN_ID"] = str(case_ordinal)
                     # C multi default path = context auto-HWM with the raw
                     # socket per-size msg-unit (apply_benchmark_auto_hwm_msg_
@@ -1172,6 +1181,7 @@ def main(argv=None):
                             transport_all_unsupported = False
                             continue
                         case_env = dict(env)
+                        case_env["PERF_MULTI_CONNECT_CONCURRENCY"] = args.connect_concurrency or _connect_concurrency_for_clients(pattern_clients)
                         case_env["PERF_RUN_ID"] = str(case_ordinal)
                         # C multi default path = context auto-HWM with the raw
                         # socket per-size msg-unit. Numeric PERF_MULTI_HWM only

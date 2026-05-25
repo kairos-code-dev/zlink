@@ -1,5 +1,6 @@
 import sys
 import threading
+import errno
 from collections import deque
 
 import zlink
@@ -58,7 +59,16 @@ def main(argv=None):
                     if item is None:
                         return
                     routing_id, frame = item
-                    if not send_nonblocking(server, frame, routing_id=routing_id):
+                    try:
+                        sent = send_nonblocking(server, frame, routing_id=routing_id)
+                    except zlink.SubmitError as exc:
+                        if exc.internal_errno not in {
+                            errno.EHOSTUNREACH,
+                            errno.ENOTCONN,
+                        }:
+                            raise
+                        sent = True
+                    if not sent:
                         return
                     with pending_lock:
                         if pending and pending[0] == item:

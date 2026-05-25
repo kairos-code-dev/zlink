@@ -2270,6 +2270,25 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   ws 64/256B 5.6/5.6%, wss 64/256B 5.5/5.4%, tls 64/256B 5.7/5.1%에 그쳤다.
   조건부 분기는 small 보류를 해소하지 못하고 일부 transport/size는 기존 대표 비율보다
   낮으므로 코드는 반영하지 않는다.
+- **MULTI_STREAM connect concurrency parity 반영**: Python multi runner는 STREAM 기본
+  clients=10000에서도 `connect_concurrency`를 128로 표시하고 실행 env에도 기본값을
+  전달하지 않았다. C runner의 effective option은 같은 조건에서 1024(default)이므로,
+  Python runner도 clients가 10000 이상이면 기본 connect concurrency를 1024로 계산해
+  표시하고 case env에 전달하도록 맞췄다. `python3 -m py_compile
+  bindings/python/perf/multi/run_benchmarks.py`는 통과했고, 공식 wrapper
+  `perf_python_multi_linux_20260525_214408_multi_stream_connect_concurrency_parity.txt`에서
+  `connect_concurrency: 1024 (default)`로 표시되는 것을 확인했다. 다만 tcp 64B는 여전히
+  READY 이후 결과 없이 partial이므로 이 수정은 runner 조건 정렬이고 보류 해소는 아니다.
+- **MULTI_STREAM stale route guard 후보 부분 반영**: 10000-client 재현에서 Python STREAM
+  server가 stale routing id로 reply를 보내다 `SubmitError(... internal_errno=113)` 또는
+  native crash로 끝나는 것을 확인했다. `EHOSTUNREACH`/`ENOTCONN` pending reply를 버리는
+  guard를 추가한 뒤 `python3 -m py_compile
+  bindings/python/perf/multi/perf_multi_stream_server.py`는 통과했고, 제한 smoke
+  `perf_python_multi_linux_20260525_214754_multi_stream_clients1000_guard_smoke.txt`는
+  `--clients 1000`, tcp 64B, runs=3에서 complete였다. 그러나 기본 10000-client 공식
+  wrapper `perf_python_multi_linux_20260525_214636_multi_stream_stale_route_drop_candidate.txt`는
+  여전히 `tcp 64B` partial이므로, 이 guard는 stale-route 예외 방어일 뿐 기본 STREAM
+  보류를 해결한 최적화로 보지 않는다.
 - **MULTI_STREAM frame view-copy 후보 기각**: Python stream server에서 `header.to_bytes()`/`body.to_bytes()` 뒤 frame concatenation을 하는 대신 `Message.data` view에서 최종 frame `bytearray`로 바로 채우는 후보를 시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_stream_server.py`는 통과했지만, 공식 runner `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp,wss --pattern MULTI_STREAM --msg-sizes 64,65536 --duration 1 --runs 3`가 `tcp 64B`에서 즉시 partial로 끝났다(`perf_python_multi_linux_20260524_233240.txt`). current HEAD에서 같은 후보를 다시 좁혀 시험한 공식 wrapper `perf_python_multi_linux_20260525_100136.txt`도 `tcp 64B`에서 `READY,tcp://...` failure reason만 남기고 partial로 끝났다. 기존 `on_packet` public callback은 native packet을 이미 Python-owned `Message`로 복사해 전달하므로, frame 조립의 마지막 복사만 줄이는 접근은 안정적인 개선 후보가 아니다.
 - **MULTI_STREAM on_packet native clone 후보 기각**: `StreamSocket.on_packet`이 native header/body를 `bytes`로 만든 뒤 다시 `Message`로 복사하는 경로를 줄이기 위해 `_clone_native_msg` 기반 `Message` 생성을 시험했다. callback 테스트는 통과했지만, 원본 native part를 callback 안에서 close하는 변형은 공식 wrapper `perf_python_multi_linux_20260525_005843.txt`에서 `tcp 64B` partial이 났고, close하지 않는 변형도 `perf_python_multi_linux_20260525_005927.txt`에서 서버 READY 수집 단계가 깨졌다. stream callback의 native part 수명은 core callback 경계와 맞물려 있어 이 방식은 반영하지 않는다.
 - **MULTI_STREAM bytes callback 후보 기각**: public `on_packet` 의미는 유지하고 perf 전용

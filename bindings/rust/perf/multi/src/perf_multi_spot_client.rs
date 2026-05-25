@@ -325,7 +325,7 @@ fn default_multi_spot_recv_workers(transport: &str, msg_size: usize) -> usize {
     } else if (transport == "tcp" || transport == "ws") && msg_size == 131072 {
         8
     } else if transport == "ws" && msg_size >= 262144 {
-        7
+        8
     } else {
         4
     }

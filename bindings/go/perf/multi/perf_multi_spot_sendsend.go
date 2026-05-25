@@ -41,16 +41,11 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 	defer replier.Close()
 	perfcommon.ApplyMultiBenchmarkSocketOptions(replier, cfg.transport)
 	perfcommon.Must(replier.SetRoutingID(multiSpotSendSendSpotRID))
-	useServerPoller := cfg.msgSize <= 1024
-	var replierPoller *zlink.Poller
-	var replierPollEvents []zlink.PollEvent
-	if useServerPoller {
-		replierPoller, err = zlink.NewPoller()
-		perfcommon.Must(err)
-		defer replierPoller.Close()
-		perfcommon.Must(replierPoller.AddSocket(replier, perfcommon.ZLinkPollIn, 0))
-		replierPollEvents = make([]zlink.PollEvent, 1)
-	}
+	replierPoller, err := zlink.NewPoller()
+	perfcommon.Must(err)
+	defer replierPoller.Close()
+	perfcommon.Must(replierPoller.AddSocket(replier, perfcommon.ZLinkPollIn, 0))
+	replierPollEvents := make([]zlink.PollEvent, 1)
 
 	dataEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend")
 	dataRouterEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-sendsend-router")
@@ -117,7 +112,7 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 		if dataConnected && readyCount >= cfg.clients {
 			break
 		}
-		waitMultiSpotSendSendServerIdle(replierPoller, replierPollEvents, time.Millisecond, useServerPoller)
+		waitMultiSpotSendSendServerIdle(replierPoller, replierPollEvents, time.Millisecond)
 	}
 	if !dataConnected || readyCount < cfg.clients {
 		perfcommon.Must(fmt.Errorf("spot sendsend server readiness timeout"))
@@ -139,7 +134,7 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 	idleDeadline := time.Now().Add(cfg.duration + 2*time.Second)
 	for time.Now().Before(idleDeadline) {
 		drainMultiSpotSendSendServer(replier, cfg.transport, cfg.msgSize)
-		waitMultiSpotSendSendServerIdle(replierPoller, replierPollEvents, time.Millisecond, useServerPoller)
+		waitMultiSpotSendSendServerIdle(replierPoller, replierPollEvents, time.Millisecond)
 	}
 }
 
@@ -475,12 +470,8 @@ func drainMultiSpotSendSendServerForwardRouted(replier *zlink.Spot) {
 	}
 }
 
-func waitMultiSpotSendSendServerIdle(poller *zlink.Poller, events []zlink.PollEvent, timeout time.Duration, usePoller bool) {
+func waitMultiSpotSendSendServerIdle(poller *zlink.Poller, events []zlink.PollEvent, timeout time.Duration) {
 	if timeout <= 0 {
-		return
-	}
-	if !usePoller {
-		time.Sleep(timeout)
 		return
 	}
 	_, err := poller.Wait(events, timeout)

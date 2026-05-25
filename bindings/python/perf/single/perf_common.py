@@ -362,16 +362,20 @@ def _native_result_send_methods():
     if _NATIVE_RESULT_SEND is None:
         from zlink._native.ffi import ZlinkMsg
         from zlink._runtime.core.core import (
+            _copy_routing_id,
             _init_msg_from_buffer,
         )
         from zlink._runtime.sockets.socket_base import (
+            _send_rid_via_native_no_wait_result,
             _send_via_native_no_wait_result,
         )
 
         _NATIVE_RESULT_SEND = (
             ZlinkMsg,
             _init_msg_from_buffer,
+            _copy_routing_id,
             _send_via_native_no_wait_result,
+            _send_rid_via_native_no_wait_result,
         )
     return _NATIVE_RESULT_SEND
 
@@ -389,25 +393,20 @@ def _submit_result_ok(result):
 
 
 def send_nonblocking(sock, payload, *, routing_id=None):
-    zlink_mod = _require_zlink()
     if routing_id is None:
-        _ZlinkMsg, _init_msg, send_native = _native_result_send_methods()
+        _ZlinkMsg, _init_msg, _copy_routing_id, send_native, _send_rid = (
+            _native_result_send_methods()
+        )
         parts_array, keepalive = _single_part_native_array(payload)
         _ = keepalive
         return _submit_result_ok(send_native(sock._handle, parts_array, 1))
-    msg_send, routed_send, _ = _low_level_send_methods()
-    flag = _dont_wait_flag()
-    try:
-        if routing_id is None:
-            return bool(msg_send(sock, payload, flags=flag))
-        return bool(routed_send(sock, routing_id, payload, flags=flag))
-    except zlink_mod.SubmitError as exc:
-        if exc.result in (
-            zlink_mod.SubmitResult.BACKPRESSURED,
-            zlink_mod.SubmitResult.NOT_CONNECTED,
-        ):
-            return False
-        raise
+    _ZlinkMsg, _init_msg, copy_routing_id, _send_native, send_rid = (
+        _native_result_send_methods()
+    )
+    parts_array, keepalive = _single_part_native_array(payload)
+    _ = keepalive
+    native_rid = copy_routing_id(routing_id)
+    return _submit_result_ok(send_rid(sock._handle, native_rid, parts_array, 1))
 
 
 def publish_nonblocking(sock, topic, payload):

@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using TicTacToe.SessionGateway.Server.Play.Actors;
+using TicTacToe.SessionGateway.Shared.Actors;
 using TicTacToe.SessionGateway.Server.Play;
 using TicTacToe.SessionGateway.Server.Play.GameSpots.Handlers;
 using TicTacToe.SessionGateway.Shared.Contracts;

@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using TicTacToe.SessionGateway.Server.Play.Actors;
+using TicTacToe.SessionGateway.Shared.Actors;
 using TicTacToe.SessionGateway.Server.Play.GameSpots;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;

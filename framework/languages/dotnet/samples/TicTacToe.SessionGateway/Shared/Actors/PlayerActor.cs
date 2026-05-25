@@ -1,8 +1,8 @@
 using Zlink.Framework.Contracts.Actors;
 
-namespace TicTacToe.SessionGateway.Server.Play.Actors;
+namespace TicTacToe.SessionGateway.Shared.Actors;
 
-internal sealed class PlayerActor(
+public sealed class PlayerActor(
     string actorId,
     IZLinkActorContext context) : IZLinkActor
 {

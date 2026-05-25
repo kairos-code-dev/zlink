@@ -55,19 +55,6 @@ internal sealed class ZLinkActorContext(
     }
 
     public IZLinkActorJoinSpotCall JoinSpot<TRequest>(
-        string spotName,
-        TRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (string.IsNullOrWhiteSpace(spotName))
-        {
-            throw new InvalidOperationException("SPOT name must not be empty.");
-        }
-
-        return new ZLinkActorJoinSpotCall<TRequest>(runtime, CurrentActor, spotName, null, request);
-    }
-
-    public IZLinkActorJoinSpotCall JoinSpot<TRequest>(
         RoutingId spotRid,
         TRequest request)
     {
@@ -75,25 +62,8 @@ internal sealed class ZLinkActorContext(
         return new ZLinkActorJoinSpotCall<TRequest>(
             runtime,
             CurrentActor,
-            null,
             spotRid,
             request);
-    }
-
-    public ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
-        string spotName,
-        TRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        return JoinSpot(spotName, request).SubmitAsync<TReply>(cancellationToken);
-    }
-
-    public ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
-        RoutingId spotRid,
-        TRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        return JoinSpot(spotRid, request).SubmitAsync<TReply>(cancellationToken);
     }
 
     private IZLinkActor CurrentActor
@@ -104,8 +74,7 @@ internal sealed class ZLinkActorContext(
 internal sealed class ZLinkActorJoinSpotCall<TRequest>(
     ZLinkFrameworkRuntime runtime,
     IZLinkActor actor,
-    string? spotName,
-    RoutingId? spotRid,
+    RoutingId spotRid,
     TRequest request) : IZLinkActorJoinSpotCall
 {
     private TimeSpan? _timeout;
@@ -124,9 +93,8 @@ internal sealed class ZLinkActorJoinSpotCall<TRequest>(
 
         try
         {
-            var resolvedSpotRid = await ResolveSpotRidAsync(timeoutSource.Token).ConfigureAwait(false);
             return await runtime.JoinActorAsync<TRequest, TReply>(
-                resolvedSpotRid,
+                spotRid,
                 actor,
                 request,
                 timeoutSource.Token).ConfigureAwait(false);
@@ -135,24 +103,5 @@ internal sealed class ZLinkActorJoinSpotCall<TRequest>(
         {
             throw new TimeoutException($"SPOT actor join timed out after {timeout}.");
         }
-    }
-
-    private async ValueTask<RoutingId> ResolveSpotRidAsync(CancellationToken cancellationToken)
-    {
-        if (spotRid is { } rid)
-        {
-            return rid;
-        }
-
-        if (runtime.Services.GetService(typeof(IZLinkSpotRemoteAddressResolver)) is not IZLinkSpotRemoteAddressResolver resolver)
-        {
-            throw new ZLinkConfigurationException(
-                "Actor JoinSpot(string, ...) requires AddSpotRemoteAddressResolver<TResolver>().");
-        }
-
-        var route = await resolver.ResolveSpotRemoteAddressAsync(
-            spotName ?? throw new InvalidOperationException("SPOT name is required."),
-            cancellationToken).ConfigureAwait(false);
-        return route.SpotRid;
     }
 }

@@ -22,6 +22,8 @@ public static class SampleNames
 
     public const string GameSpotDiscovery = "tictactoe.game.rooms";
 
+    public const string EntrySpotRoutingId = "3301";
+
     public const string XActorId = "player-x";
 
     public const string OActorId = "player-o";

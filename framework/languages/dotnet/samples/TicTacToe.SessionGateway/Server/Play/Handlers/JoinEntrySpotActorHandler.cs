@@ -1,3 +1,5 @@
+using Systems.Zlink;
+using TicTacToe.SessionGateway.Shared.Actors;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
@@ -6,11 +8,11 @@ using Zlink.Framework.Contracts.Handlers;
 namespace TicTacToe.SessionGateway.Server.Play.Handlers;
 
 [ZLinkHandlerGroup("play")]
-internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
+internal sealed class JoinEntrySpotActorHandler(IZLinkActorManager actors)
 {
     [ZLinkRequest]
-    public async ValueTask<EnsurePlayerActorRes> EnsurePlayerActor(
-        EnsurePlayerActorReq request,
+    public async ValueTask<JoinEntrySpotActorRes> JoinEntrySpotActor(
+        JoinEntrySpotActorReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
@@ -21,7 +23,7 @@ internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
             throw new InvalidOperationException("Actor id must not be empty.");
         }
 
-        await actors.GetOrCreateAsync(
+        _ = (PlayerActor)await actors.GetOrCreateAsync(
                 actorId,
                 SampleNames.PlayerActorType,
                 cancellationToken)
@@ -32,12 +34,12 @@ internal sealed class EnsurePlayerActorHandler(IZLinkActorManager actors)
                 SampleNames.PlayerActorType,
                 cancellationToken)
             ;
-        return new EnsurePlayerActorRes(
+
+        return new JoinEntrySpotActorRes(new ActorRefSnapshot(
             actorId,
             SampleNames.PlayerActorType,
-            new ActorRemoteAddressSnapshot(
-                remoteAddress.RouterChannelId,
-                remoteAddress.TargetNodeRid.ToBytes().ToArray(),
-                remoteAddress.ActorGeneration));
+            remoteAddress.RouterChannelId,
+            remoteAddress.TargetNodeRid.ToBytes().ToArray(),
+            remoteAddress.ActorGeneration));
     }
 }

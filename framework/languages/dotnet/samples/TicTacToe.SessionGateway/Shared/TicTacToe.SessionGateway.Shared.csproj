@@ -9,5 +9,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />
+    <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj" />
   </ItemGroup>
 </Project>

@@ -9,7 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\GlobalUsings.cs" Link="GlobalUsings.cs" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <ProjectReference Include="..\..\Shared\Bingo.Shared.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework/Zlink.Framework.csproj" />

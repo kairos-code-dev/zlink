@@ -11,17 +11,16 @@ public sealed record AuthenticateActorRes(
     string? ActorId,
     string? Reason);
 
-public sealed record EnsurePlayerActorReq(string ActorId);
+public sealed record JoinEntrySpotActorReq(string ActorId);
 
-public sealed record ActorRemoteAddressSnapshot(
+public sealed record ActorRefSnapshot(
+    string ActorId,
+    string ActorType,
     string RouterChannelId,
     byte[] TargetNodeRid,
     ulong ActorGeneration);
 
-public sealed record EnsurePlayerActorRes(
-    string ActorId,
-    string ActorType,
-    ActorRemoteAddressSnapshot RemoteAddress);
+public sealed record JoinEntrySpotActorRes(ActorRefSnapshot Actor);
 
 public sealed record CreateMatchReq(string? OwnerActorId = null);
 

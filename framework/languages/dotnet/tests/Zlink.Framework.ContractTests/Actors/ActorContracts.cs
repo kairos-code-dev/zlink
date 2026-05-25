@@ -19,9 +19,9 @@ public sealed class ActorContracts
         var manager = new ActorManager(factory, context);
 
         var actor = await manager.GetOrCreateAsync("player-1", "player");
-        var joinReply = await actor.Context.JoinSpotAsync<JoinRoom, JoinedRoom>(
-            RoutingId.Of("room-1"),
-            new JoinRoom("room-1"));
+        var joinReply = await actor.Context
+            .JoinSpot(RoutingId.Of("room-1"), new JoinRoom("room-1"))
+            .SubmitAsync<JoinedRoom>();
 
         actor.Configure();
         await actor.OnDisconnectedAsync(CancellationToken.None);
@@ -137,26 +137,9 @@ public sealed class ActorContracts
             (TSpot)spot;
 
         public IZLinkActorJoinSpotCall JoinSpot<TRequest>(
-            string spotName,
-            TRequest request) =>
-            new JoinSpotCall(new JoinedRoom(spotName));
-
-        public IZLinkActorJoinSpotCall JoinSpot<TRequest>(
             RoutingId spotRid,
             TRequest request) =>
             new JoinSpotCall(new JoinedRoom("room-1"));
-
-        public ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
-            string spotName,
-            TRequest request,
-            CancellationToken cancellationToken = default) =>
-            JoinSpot(request: request, spotName: spotName).SubmitAsync<TReply>(cancellationToken);
-
-        public ValueTask<TReply> JoinSpotAsync<TRequest, TReply>(
-            RoutingId spotRid,
-            TRequest request,
-            CancellationToken cancellationToken = default) =>
-            JoinSpot(spotRid, request).SubmitAsync<TReply>(cancellationToken);
     }
 
     private sealed class JoinSpotCall(object reply) : IZLinkActorJoinSpotCall

@@ -1,8 +1,8 @@
 using Zlink.Framework.Contracts.Actors;
 
-namespace TicTacToe.SessionGateway.Server.Play.Actors;
+namespace TicTacToe.SessionGateway.Shared.Actors;
 
-internal sealed class PlayerActorFactory : IZLinkActorFactory
+public sealed class PlayerActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
         string actorId,

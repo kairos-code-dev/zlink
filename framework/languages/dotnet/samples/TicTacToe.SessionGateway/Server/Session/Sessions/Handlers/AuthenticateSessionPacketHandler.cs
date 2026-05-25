@@ -1,11 +1,15 @@
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
-using TicTacToe.SessionGateway.Shared.Configuration;
-using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
+using Zlink.Framework.Contracts.Timers;
+using TicTacToe.SessionGateway.Shared.Configuration;
+using TicTacToe.SessionGateway.Shared.Contracts;
 
 namespace TicTacToe.SessionGateway.Server.Session.Sessions.Handlers;
 
@@ -33,26 +37,26 @@ internal sealed class AuthenticateSessionPacketHandler(IZLinkClient channels)
             throw new InvalidOperationException(authenticated.Reason ?? "Actor authentication failed.");
         }
 
-        var ensured = await channels.Request(
+        var joined = await channels.Request(
                 SampleNames.PlayChannel,
-                new EnsurePlayerActorReq(authenticated.ActorId))
+                new JoinEntrySpotActorReq(authenticated.ActorId))
             .Timeout(SampleTimings.RequestTimeout)
-            .SubmitAsync<EnsurePlayerActorRes>(cancellationToken)
+            .SubmitAsync<JoinEntrySpotActorRes>(cancellationToken)
             ;
 
         await context.BindActorHandleAsync(
-                ensured.ActorId,
-                ensured.ActorType,
-                ToRemoteAddress(ensured.RemoteAddress),
+                joined.Actor.ActorId,
+                joined.Actor.ActorType,
+                ToRemoteAddress(joined.Actor),
                 cancellationToken)
             ;
 
-        await context.Reply(new AuthenticateRes(ensured.ActorId))
+        await context.Reply(new AuthenticateRes(joined.Actor.ActorId))
             .Submit(cancellationToken)
             ;
     }
 
-    private static ZLinkActorRemoteAddress ToRemoteAddress(ActorRemoteAddressSnapshot snapshot)
+    private static ZLinkActorRemoteAddress ToRemoteAddress(ActorRefSnapshot snapshot)
     {
         return new ZLinkActorRemoteAddress(
             snapshot.RouterChannelId,

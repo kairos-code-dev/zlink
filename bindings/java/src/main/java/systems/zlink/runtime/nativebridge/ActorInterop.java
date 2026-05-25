@@ -5,6 +5,7 @@ package systems.zlink.runtime.nativebridge;
 import systems.zlink.contracts.RequestResult;
 import systems.zlink.contracts.RoutingId;
 import systems.zlink.contracts.service.spot.ActorJoinResult;
+import systems.zlink.contracts.service.spot.ActorJoinEntrySpotResult;
 import systems.zlink.contracts.service.spot.ActorLookupResult;
 import systems.zlink.contracts.service.spot.ActorRecvInfo;
 import systems.zlink.contracts.service.spot.ActorRef;
@@ -165,6 +166,25 @@ public final class ActorInterop {
             NativeLayouts.ACTOR_JOIN_RESULT_JOIN_EPOCH_OFFSET),
           view.get(ValueLayout.JAVA_INT,
             NativeLayouts.ACTOR_JOIN_RESULT_FLAGS_OFFSET));
+    }
+
+    public static ActorJoinEntrySpotResult actorJoinEntrySpotResultFromNative(
+      MemorySegment segment) {
+        MemorySegment view = segment.reinterpret(
+          NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_LAYOUT.byteSize());
+        return new ActorJoinEntrySpotResult(
+          RequestResult.fromValue(view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_RESULT_OFFSET)),
+          actorRefFromNative(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_ACTOR_OFFSET,
+            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+          readRoutingId(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_TARGET_NODE_RID_OFFSET,
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+          view.get(ValueLayout.JAVA_LONG_UNALIGNED,
+            NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_JOIN_EPOCH_OFFSET),
+          view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_FLAGS_OFFSET));
     }
 
     public static ActorLookupResult actorLookupResultFromNative(MemorySegment segment) {

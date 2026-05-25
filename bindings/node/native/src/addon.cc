@@ -227,6 +227,7 @@ static void define_spot_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("spotNodeActorDestroy", spot_node_actor_destroy),
         ZLINK_METHOD("spotNodeActorLookup", spot_node_actor_lookup),
         ZLINK_METHOD("spotNodeActorJoinSpot", spot_node_actor_join_spot),
+        ZLINK_METHOD("spotNodeActorJoinEntrySpot", spot_node_actor_join_entry_spot),
         ZLINK_METHOD("spotNodeActorLeaveSpot", spot_node_actor_leave_spot),
         ZLINK_METHOD("spotNodeActorRecvPart", spot_node_actor_recv_part),
         ZLINK_METHOD("spotNodeActorSendBoundSessionMsg", spot_node_actor_send_bound_session_msg),

@@ -423,6 +423,13 @@ export interface ActorJoinResult {
   readonly joinEpoch: bigint;
   readonly flags: number;
 }
+export interface ActorJoinEntrySpotResult {
+  readonly result: RequestResult;
+  readonly actor: ActorRef;
+  readonly targetNodeRid: RoutingId;
+  readonly joinEpoch: bigint;
+  readonly flags: number;
+}
 export interface ActorLookupResult {
   readonly result: RequestResult;
   readonly actor: ActorRef;
@@ -437,6 +444,7 @@ export interface SpotActorLifecycleInfo {
   readonly flags: number;
 }
 export type ActorJoinHandler = (result: ActorJoinResult, parts: Message[]) => void;
+export type ActorJoinEntrySpotHandler = (result: ActorJoinEntrySpotResult) => void;
 export type ActorLookupHandler = (result: ActorLookupResult) => void;
 export type ActorLifecycleHandler = (spot: Spot, info: SpotActorLifecycleInfo) => void;
 export type ReplyHandler = (result: RequestResult, parts: Message[]) => void;
@@ -524,6 +532,12 @@ export interface ActorJoinCallbackSubmitOp {
   timeout(timeoutMs: number): ActorJoinCallbackSubmitOp;
   flags(flags: SendFlags): ActorJoinCallbackSubmitOp;
   submit(callback: ActorJoinHandler): boolean;
+}
+
+export interface ActorJoinEntrySpotOp {
+  timeout(timeoutMs: number): ActorJoinEntrySpotOp;
+  submitAsync(): Promise<ActorJoinEntrySpotResult>;
+  submit(callback: ActorJoinEntrySpotHandler): boolean;
 }
 
 export interface ActorJoinReplyOp {

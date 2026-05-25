@@ -38,6 +38,8 @@ public final class ActorRequestCallbacks {
     private static final FunctionDescriptor FD_ACTOR_JOIN_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+    private static final FunctionDescriptor FD_ACTOR_JOIN_ENTRY_SPOT_CALLBACK =
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_ACTOR_LOOKUP_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_ACTOR_LIFECYCLE_CALLBACK =
@@ -46,6 +48,7 @@ public final class ActorRequestCallbacks {
     private static final Arena CALLBACK_ARENA = Arena.ofShared();
     public static final MemorySegment REPLY_CALLBACK;
     public static final MemorySegment ACTOR_JOIN_CALLBACK;
+    public static final MemorySegment ACTOR_JOIN_ENTRY_SPOT_CALLBACK;
     public static final MemorySegment ACTOR_LOOKUP_CALLBACK;
     public static final MemorySegment ACTOR_LIFECYCLE_JOIN_CALLBACK;
     public static final MemorySegment ACTOR_LIFECYCLE_LEAVE_CALLBACK;
@@ -54,6 +57,8 @@ public final class ActorRequestCallbacks {
       new ConcurrentHashMap<>();
     private static final ConcurrentMap<Long, JoinPending> JOIN_PENDING =
       new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Long, JoinEntrySpotPending>
+      JOIN_ENTRY_SPOT_PENDING = new ConcurrentHashMap<>();
     private static final ConcurrentMap<Long, LookupPending> LOOKUP_PENDING =
       new ConcurrentHashMap<>();
     private static final ConcurrentMap<Long, LifecyclePending> LIFECYCLE_REGS =
@@ -71,6 +76,12 @@ public final class ActorRequestCallbacks {
               MethodType.methodType(void.class, MemorySegment.class,
                 MemorySegment.class, long.class, MemorySegment.class)),
               FD_ACTOR_JOIN_CALLBACK, CALLBACK_ARENA);
+            ACTOR_JOIN_ENTRY_SPOT_CALLBACK = LINKER.upcallStub(
+              MethodHandles.lookup().findStatic(
+                ActorRequestCallbacks.class, "handleActorJoinEntrySpotCallback",
+                MethodType.methodType(void.class, MemorySegment.class,
+                  MemorySegment.class)), FD_ACTOR_JOIN_ENTRY_SPOT_CALLBACK,
+              CALLBACK_ARENA);
             ACTOR_LOOKUP_CALLBACK = LINKER.upcallStub(
               MethodHandles.lookup().findStatic(
                 ActorRequestCallbacks.class, "handleActorLookupCallback",
@@ -111,6 +122,15 @@ public final class ActorRequestCallbacks {
         return new JoinPendingToken(id, future);
     }
 
+    public static JoinEntrySpotPendingToken registerJoinEntrySpot(
+      ActorJoinEntrySpotHandler handler) {
+        long id = NEXT_ID.getAndIncrement();
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        JOIN_ENTRY_SPOT_PENDING.put(id,
+          new JoinEntrySpotPending(handler, future));
+        return new JoinEntrySpotPendingToken(id, future);
+    }
+
     public static LookupPendingToken registerLookup(ActorLookupHandler handler) {
         long id = NEXT_ID.getAndIncrement();
         CompletableFuture<Void> future = new CompletableFuture<>();
@@ -137,6 +157,10 @@ public final class ActorRequestCallbacks {
         JoinPending join = JOIN_PENDING.remove(id);
         if (join != null) {
             join.future().complete(null);
+        }
+        JoinEntrySpotPending entryJoin = JOIN_ENTRY_SPOT_PENDING.remove(id);
+        if (entryJoin != null) {
+            entryJoin.future().complete(null);
         }
         LookupPending lookup = LOOKUP_PENDING.remove(id);
         if (lookup != null) {
@@ -217,6 +241,26 @@ public final class ActorRequestCallbacks {
     }
 
     @SuppressWarnings("unused")
+    private static void handleActorJoinEntrySpotCallback(MemorySegment result,
+                                                        MemorySegment userdata) {
+        long id = userdata.address();
+        JoinEntrySpotPending join = JOIN_ENTRY_SPOT_PENDING.remove(id);
+        if (join == null)
+            return;
+        try {
+            ActorJoinEntrySpotResult joinResult = result == MemorySegment.NULL
+              ? new ActorJoinEntrySpotResult(RequestResult.INTERNAL_ERROR,
+                  null, null, 0L, 0)
+              : ActorInterop.actorJoinEntrySpotResultFromNative(result);
+            join.handler().onJoinEntrySpotResult(joinResult);
+            join.future().complete(null);
+        } catch (RuntimeException ex) {
+            join.future().completeExceptionally(ex);
+            throw ex;
+        }
+    }
+
+    @SuppressWarnings("unused")
     private static void handleActorLookupCallback(MemorySegment result,
                                                   MemorySegment userdata) {
         long id = userdata.address();
@@ -278,6 +322,10 @@ public final class ActorRequestCallbacks {
     public record JoinPendingToken(long id, CompletableFuture<Void> future) {
     }
 
+    public record JoinEntrySpotPendingToken(long id,
+                                           CompletableFuture<Void> future) {
+    }
+
     public record LookupPendingToken(long id, CompletableFuture<Void> future) {
     }
 
@@ -287,6 +335,10 @@ public final class ActorRequestCallbacks {
 
     private record JoinPending(ActorJoinHandler handler,
                                CompletableFuture<Void> future) {
+    }
+
+    private record JoinEntrySpotPending(ActorJoinEntrySpotHandler handler,
+                                        CompletableFuture<Void> future) {
     }
 
     private record LookupPending(ActorLookupHandler handler,

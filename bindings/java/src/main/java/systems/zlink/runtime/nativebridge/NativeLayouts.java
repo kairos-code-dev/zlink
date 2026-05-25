@@ -334,6 +334,31 @@ public final class NativeLayouts {
             ACTOR_JOIN_RESULT_LAYOUT.byteOffset(
                     PathElement.groupElement("flags"));
 
+    public static final MemoryLayout ACTOR_JOIN_ENTRY_SPOT_RESULT_LAYOUT =
+            MemoryLayout.structLayout(
+                    ValueLayout.JAVA_INT.withName("result"),
+                    MemoryLayout.paddingLayout(4),
+                    ACTOR_REF_LAYOUT.withName("actor"),
+                    ROUTING_ID_LAYOUT.withName("target_node_rid"),
+                    ValueLayout.JAVA_LONG_UNALIGNED.withName("join_epoch"),
+                    ValueLayout.JAVA_INT.withName("flags"),
+                    MemoryLayout.paddingLayout(4));
+    public static final long ACTOR_JOIN_ENTRY_SPOT_RESULT_RESULT_OFFSET =
+            ACTOR_JOIN_ENTRY_SPOT_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("result"));
+    public static final long ACTOR_JOIN_ENTRY_SPOT_RESULT_ACTOR_OFFSET =
+            ACTOR_JOIN_ENTRY_SPOT_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("actor"));
+    public static final long ACTOR_JOIN_ENTRY_SPOT_RESULT_TARGET_NODE_RID_OFFSET =
+            ACTOR_JOIN_ENTRY_SPOT_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("target_node_rid"));
+    public static final long ACTOR_JOIN_ENTRY_SPOT_RESULT_JOIN_EPOCH_OFFSET =
+            ACTOR_JOIN_ENTRY_SPOT_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("join_epoch"));
+    public static final long ACTOR_JOIN_ENTRY_SPOT_RESULT_FLAGS_OFFSET =
+            ACTOR_JOIN_ENTRY_SPOT_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("flags"));
+
     public static final MemoryLayout ACTOR_LOOKUP_RESULT_LAYOUT =
             MemoryLayout.structLayout(
                     ValueLayout.JAVA_INT.withName("result"),

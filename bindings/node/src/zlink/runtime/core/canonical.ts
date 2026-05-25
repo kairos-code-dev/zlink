@@ -142,9 +142,11 @@ import {
   type ActorPart,
   type ActorJoinRequest,
   type ActorJoinResult,
+  type ActorJoinEntrySpotResult,
   type ActorLookupResult,
   type SpotActorLifecycleInfo,
   type ActorJoinHandler,
+  type ActorJoinEntrySpotHandler,
   type ActorLookupHandler,
   type ActorLifecycleHandler,
   type ReplyHandler,
@@ -164,6 +166,7 @@ import {
   type ActorJoinOp,
   type ActorJoinSubmitOp,
   type ActorJoinCallbackSubmitOp,
+  type ActorJoinEntrySpotOp,
   type ActorJoinReplyOp,
   type ActorLeaveOp,
   type ActorDestroyOp,
@@ -240,9 +243,11 @@ export type {
   ActorPart,
   ActorJoinRequest,
   ActorJoinResult,
+  ActorJoinEntrySpotResult,
   ActorLookupResult,
   SpotActorLifecycleInfo,
   ActorJoinHandler,
+  ActorJoinEntrySpotHandler,
   ActorLookupHandler,
   ActorLifecycleHandler,
   ReplyHandler,
@@ -262,6 +267,7 @@ export type {
   ActorJoinOp,
   ActorJoinSubmitOp,
   ActorJoinCallbackSubmitOp,
+  ActorJoinEntrySpotOp,
   ActorJoinReplyOp,
   ActorLeaveOp,
   ActorDestroyOp,
@@ -697,6 +703,14 @@ interface ActorJoinResultRaw {
   flags: number;
 }
 
+interface ActorJoinEntrySpotResultRaw {
+  result: number;
+  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+  targetNodeRid?: Buffer | null;
+  joinEpoch?: bigint | number;
+  flags: number;
+}
+
 interface ActorLookupResultRaw {
   result: number;
   actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
@@ -726,6 +740,25 @@ function actorJoinResultFromRaw(raw: ActorJoinResultRaw | null): ActorJoinResult
     result: raw.result as RequestResult,
     actor: actorRefFromRaw(raw.actor),
     joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? RoutingId.fromBytes(Buffer.alloc(1)),
+    joinEpoch: BigInt(raw.joinEpoch ?? 0),
+    flags: raw.flags | 0,
+  };
+}
+
+function actorJoinEntrySpotResultFromRaw(raw: ActorJoinEntrySpotResultRaw | null): ActorJoinEntrySpotResult {
+  if (!raw) {
+    return {
+      result: RequestResult.InternalError,
+      actor: { nodeRid: RoutingId.fromBytes(Buffer.alloc(1)), actorId: '', generation: 0n },
+      targetNodeRid: RoutingId.fromBytes(Buffer.alloc(1)),
+      joinEpoch: 0n,
+      flags: 0,
+    };
+  }
+  return {
+    result: raw.result as RequestResult,
+    actor: actorRefFromRaw(raw.actor),
+    targetNodeRid: (wrapRoutingId(raw.targetNodeRid ?? null) as RoutingId) ?? RoutingId.fromBytes(Buffer.alloc(1)),
     joinEpoch: BigInt(raw.joinEpoch ?? 0),
     flags: raw.flags | 0,
   };
@@ -782,6 +815,29 @@ function invokeActorJoin(
       return false;
     }
     throw submitError;
+  }
+}
+
+function invokeActorJoinEntrySpot(
+  nodeHandle: unknown,
+  actor: ActorRef,
+  destNodeRid: RoutingId,
+  callback: ActorJoinEntrySpotHandler,
+  timeoutMs: number,
+): boolean {
+  try {
+    requireNative().spotNodeActorJoinEntrySpot(
+      nodeHandle,
+      actorRefToRaw(actor),
+      normalizeRoutingId(destNodeRid, 'destNodeRid'),
+      (rawResult: ActorJoinEntrySpotResultRaw | null) => {
+        callback(actorJoinEntrySpotResultFromRaw(rawResult));
+      },
+      timeoutMs | 0,
+    );
+    return true;
+  } catch (error) {
+    throw submitNativeError(error, SendFlags.None, 'actor entry spot join failed');
   }
 }
 
@@ -2868,6 +2924,12 @@ export class SpotNode extends NativeHandle {
       invokeActorJoin(node, actor, destNodeRid, destSpotRid, null, parts, callback, flags, timeoutMs),
     );
   }
+  joinActorEntrySpot(actor: ActorRef, destNodeRid: RoutingId): ActorJoinEntrySpotOp {
+    const node = this._native;
+    return new ActorJoinEntrySpotOperation((callback, timeoutMs) =>
+      invokeActorJoinEntrySpot(node, actor, destNodeRid, callback, timeoutMs),
+    );
+  }
   leaveActor(actor: ActorRef, currentSpotRid: RoutingId): ActorLeaveOp {
     const node = this._native;
     return new ActorLeaveOperation((callback, timeoutMs) =>
@@ -3184,6 +3246,53 @@ class ActorJoinOperation implements ActorJoinOp, ActorJoinSubmitOp, ActorJoinCal
   submit(callback: ActorJoinHandler): boolean {
     const flags = this._callbackMode ? this._flags : SendFlags.None;
     return this._invoke(this._payload.consume(), callback, flags, this._timeoutMs);
+  }
+}
+
+type ActorJoinEntrySpotInvoker = (
+  callback: ActorJoinEntrySpotHandler,
+  timeoutMs: number,
+) => boolean;
+
+class ActorJoinEntrySpotOperation implements ActorJoinEntrySpotOp {
+  private readonly _invoke: ActorJoinEntrySpotInvoker;
+  private _timeoutMs = 0;
+  private _submitted = false;
+
+  constructor(invoke: ActorJoinEntrySpotInvoker) {
+    this._invoke = invoke;
+  }
+
+  timeout(timeoutMs: number): this {
+    this.ensureOpen();
+    this._timeoutMs = timeoutMs | 0;
+    return this;
+  }
+
+  submitAsync(): Promise<ActorJoinEntrySpotResult> {
+    this.ensureOpen();
+    this._submitted = true;
+    return new Promise((resolve, reject) => {
+      this._invoke((result) => {
+        if (result.result !== RequestResult.Ok) {
+          reject(requestErrorFromResult(result.result, 'actor entry spot join failed'));
+          return;
+        }
+        resolve(result);
+      }, this._timeoutMs);
+    });
+  }
+
+  submit(callback: ActorJoinEntrySpotHandler): boolean {
+    this.ensureOpen();
+    this._submitted = true;
+    return this._invoke(callback, this._timeoutMs);
+  }
+
+  private ensureOpen(): void {
+    if (this._submitted) {
+      throw new Error('operation already submitted');
+    }
   }
 }
 

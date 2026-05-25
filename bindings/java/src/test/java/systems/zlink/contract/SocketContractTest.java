@@ -41,6 +41,7 @@ import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ActorJoinCallbackSubmitOp;
+import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOp;
 import systems.zlink.contracts.service.spot.ActorJoinOp;
 import systems.zlink.contracts.service.spot.ActorJoinSubmitOp;
 import systems.zlink.contracts.service.spot.ActorRoute;
@@ -512,6 +513,13 @@ public class SocketContractTest {
                 .getReturnType());
         assertFalse(hasPublicMethod(ActorJoinCallbackSubmitOp.class,
             "submitAsync"));
+
+        assertEquals(ActorJoinEntrySpotOp.class,
+            ActorJoinEntrySpotOp.class.getMethod("timeout", Duration.class)
+                .getReturnType());
+        assertEquals(ActorJoinEntrySpotOp.class,
+            SpotNode.class.getMethod("joinActorEntrySpot", ActorRef.class,
+                RoutingId.class).getReturnType());
     }
 
     @Test

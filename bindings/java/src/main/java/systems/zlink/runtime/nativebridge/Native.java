@@ -874,6 +874,12 @@ public final class Native {
                     ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_NODE_ACTOR_JOIN_ENTRY_SPOT = downcall(
+            "zlink_spot_node_actor_join_entry_spot",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_NODE_ACTOR_LEAVE_SPOT = downcall(
             "zlink_spot_node_actor_leave_spot",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -3459,6 +3465,21 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_node_actor_join_spot failed", t);
+        }
+    }
+
+    public static int spotNodeActorJoinEntrySpot(MemorySegment node,
+                                                 MemorySegment actor,
+                                                 MemorySegment destNodeRid,
+                                                 MemorySegment handler,
+                                                 MemorySegment userdata,
+                                                 int timeoutMs) {
+        try {
+            return (int) MH_SPOT_NODE_ACTOR_JOIN_ENTRY_SPOT.invokeExact(node,
+              actor, destNodeRid, handler, userdata, timeoutMs);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_actor_join_entry_spot failed", t);
         }
     }
 

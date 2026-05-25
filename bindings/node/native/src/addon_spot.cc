@@ -439,18 +439,22 @@ struct request_result_js_payload_t
 {
     request_result_js_payload_t ()
       : errnum (0), has_actor_join (false), has_actor_lookup (false),
+        has_actor_join_entry_spot (false),
         join_epoch (0), flags (0)
     {
         memset(&actor, 0, sizeof(actor));
         memset(&joined_spot_rid, 0, sizeof(joined_spot_rid));
+        memset(&target_node_rid, 0, sizeof(target_node_rid));
     }
     int errnum;
     std::vector<std::vector<unsigned char> > parts;
     // Optional rich-result payload for ActorJoin/ActorLookup callbacks.
     bool has_actor_join;
     bool has_actor_lookup;
+    bool has_actor_join_entry_spot;
     zlink_actor_ref_t actor;
     zlink_routing_id_t joined_spot_rid;
+    zlink_routing_id_t target_node_rid;
     uint64_t join_epoch;
     uint32_t flags;
 };
@@ -2254,7 +2258,26 @@ static void request_tsfn_call_js(napi_env env,
         return;
 
     napi_value argv[2];
-    if (payload->has_actor_join) {
+    if (payload->has_actor_join_entry_spot) {
+        // ActorJoinEntrySpotResult { result, actor, targetNodeRid, joinEpoch, flags }
+        napi_value result_obj;
+        napi_create_object(env, &result_obj);
+        napi_value result_value;
+        napi_create_int32(env, payload->errnum, &result_value);
+        napi_set_named_property(env, result_obj, "result", result_value);
+        napi_set_named_property(env, result_obj, "actor",
+                                create_actor_ref_value(env, payload->actor));
+        napi_set_named_property(env, result_obj, "targetNodeRid",
+                                create_routing_id_value(env, payload->target_node_rid));
+        napi_value join_epoch;
+        napi_create_bigint_uint64(env, payload->join_epoch, &join_epoch);
+        napi_set_named_property(env, result_obj, "joinEpoch", join_epoch);
+        napi_value flags_value;
+        napi_create_uint32(env, payload->flags, &flags_value);
+        napi_set_named_property(env, result_obj, "flags", flags_value);
+        argv[0] = result_obj;
+        napi_get_undefined(env, &argv[1]);
+    } else if (payload->has_actor_join) {
         // ActorJoinResult { result, actor, joinedSpotRid, joinEpoch, flags }
         napi_value result_obj;
         napi_create_object(env, &result_obj);
@@ -2400,6 +2423,34 @@ static void actor_join_callback_trampoline(
     if (payload->errnum == 0)
         copy_recv_parts_to_vectors(parts_, part_count_, &payload->parts);
     close_recv_parts(parts_, part_count_);
+
+    if (napi_call_threadsafe_function(
+          state->tsfn, payload.get(), napi_tsfn_nonblocking)
+        == napi_ok) {
+        payload.release();
+    }
+    (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_release);
+    state->tsfn = NULL;
+}
+
+static void actor_join_entry_spot_callback_trampoline(
+  const zlink_actor_join_entry_spot_result_t *result_,
+  void *userdata_)
+{
+    request_js_state_t *state = static_cast<request_js_state_t *>(userdata_);
+    if (!state || !state->tsfn)
+        return;
+
+    std::unique_ptr<request_result_js_payload_t> payload(
+      new request_result_js_payload_t());
+    payload->has_actor_join_entry_spot = true;
+    payload->errnum = result_ ? result_->result : ZLINK_REQUEST_INTERNAL_ERROR;
+    if (result_) {
+        payload->actor = result_->actor;
+        payload->target_node_rid = result_->target_node_rid;
+        payload->join_epoch = result_->join_epoch;
+        payload->flags = result_->flags;
+    }
 
     if (napi_call_threadsafe_function(
           state->tsfn, payload.get(), napi_tsfn_nonblocking)
@@ -4386,6 +4437,47 @@ napi_value spot_node_actor_join_spot(napi_env env, napi_callback_info info)
         if (state->tsfn)
             (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
         return throw_last_error(env, "spotNodeActorJoinSpot failed");
+    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value spot_node_actor_join_entry_spot(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    zlink_actor_ref_t ref;
+    zlink_routing_id_t node_rid;
+    if (!parse_actor_ref_value(env, argv[1], &ref))
+        return NULL;
+    if (!parse_routing_id_value(env, argv[2], &node_rid))
+        return NULL;
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[3], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error(env, NULL, "actor entry spot join handler must be a function");
+        return NULL;
+    }
+    int32_t timeout_ms = 0;
+    napi_get_value_int32(env, argv[4], &timeout_ms);
+    request_js_state_t *state = create_request_js_state(env, argv[3]);
+    if (!state)
+        return NULL;
+    int rc = zlink_spot_node_actor_join_entry_spot(
+      node,
+      &ref,
+      &node_rid,
+      actor_join_entry_spot_callback_trampoline,
+      state,
+      static_cast<uint32_t>(timeout_ms));
+    if (rc != ZLINK_SUBMIT_OK) {
+        if (state->tsfn)
+            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+        return throw_last_error(env, "spotNodeActorJoinEntrySpot failed");
     }
     napi_value ok;
     napi_get_undefined(env, &ok);

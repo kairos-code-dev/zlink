@@ -479,6 +479,18 @@ public final class SpotNode implements AutoCloseable {
         return new ActorJoinBuilder(actor, destNodeRid, destSpotRid);
     }
 
+    /**
+     * Message-less Entry Spot join builder. Completion delivers the final
+     * ActorRef after the Actor is in {@code destNodeRid}'s Entry Spot.
+     */
+    public ActorJoinEntrySpotOp joinActorEntrySpot(ActorRef actor,
+                                                   RoutingId destNodeRid) {
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(destNodeRid, "destNodeRid");
+        ensureOpen();
+        return new ActorJoinEntrySpotBuilder(actor, destNodeRid);
+    }
+
     /** Async leave to the same node's Entry Spot. */
     public ActorLeaveOp leaveActor(ActorRef actor, RoutingId currentSpotRid) {
         Objects.requireNonNull(actor, "actor");
@@ -1195,6 +1207,71 @@ public final class SpotNode implements AutoCloseable {
         @Override
         public boolean submit(ActorJoinHandler callback) {
             return builder.submit(callback);
+        }
+    }
+
+    private final class ActorJoinEntrySpotBuilder
+      implements ActorJoinEntrySpotOp {
+        private final ActorRef actor;
+        private final RoutingId destNodeRid;
+        private Duration timeout = Duration.ofMillis(5_000L);
+        private boolean submitted;
+
+        ActorJoinEntrySpotBuilder(ActorRef actor, RoutingId destNodeRid) {
+            this.actor = actor;
+            this.destNodeRid = destNodeRid;
+        }
+
+        @Override
+        public ActorJoinEntrySpotOp timeout(Duration value) {
+            ensureNotSubmitted();
+            timeout = Objects.requireNonNull(value, "timeout");
+            return this;
+        }
+
+        @Override
+        public CompletableFuture<ActorJoinEntrySpotCompletion> submitAsync() {
+            CompletableFuture<ActorJoinEntrySpotCompletion> future =
+              new CompletableFuture<>();
+            submit(result -> {
+                if (result.result() == RequestResult.OK) {
+                    future.complete(new ActorJoinEntrySpotCompletion(result));
+                } else {
+                    future.completeExceptionally(
+                      new RequestException(result.result()));
+                }
+            });
+            return future;
+        }
+
+        @Override
+        public boolean submit(ActorJoinEntrySpotHandler callback) {
+            Objects.requireNonNull(callback, "callback");
+            markSubmitted();
+            ActorRequestCallbacks.JoinEntrySpotPendingToken token =
+              ActorRequestCallbacks.registerJoinEntrySpot(callback);
+            try (Arena arena = Arena.ofConfined()) {
+                int rc = Native.spotNodeActorJoinEntrySpot(handle,
+                  ActorInterop.actorRefToNative(arena, actor),
+                  ActorInterop.nativeRoutingId(arena, destNodeRid),
+                  ActorRequestCallbacks.ACTOR_JOIN_ENTRY_SPOT_CALLBACK,
+                  MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
+                if (rc != 0) {
+                    ActorRequestCallbacks.remove(token.id());
+                    throw new SubmitException(SubmitResult.fromValue(rc));
+                }
+            }
+            return true;
+        }
+
+        private void markSubmitted() {
+            ensureNotSubmitted();
+            submitted = true;
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
         }
     }
 

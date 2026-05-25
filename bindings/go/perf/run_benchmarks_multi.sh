@@ -785,6 +785,11 @@ emit_effective_options_multi() {
   echo "- client_io_threads: $(effective_multi_client_io_threads)"
   echo "- go_gomaxprocs: ${GOMAXPROCS:-unset}"
   echo "- go_gomaxprocs_source: ${GO_GOMAXPROCS_SOURCE}"
+  if [[ "${GO_GOMAXPROCS_SOURCE}" == "default" ]]; then
+    echo "- go_gomaxprocs_case_overrides: MULTI_DEALER_DEALER/tcp/262144=8"
+  else
+    echo "- go_gomaxprocs_case_overrides: none"
+  fi
   echo "- hwm: $(effective_or_auto "${HWM}")"
   echo "- sndhwm: $(effective_or_auto "${SEND_HWM:-${HWM}}")"
   echo "- rcvhwm: $(effective_or_auto "${RECV_HWM:-${HWM}}")"
@@ -993,6 +998,21 @@ resolve_client_timeout_seconds() {
   echo "${timeout}"
 }
 
+resolve_case_gomaxprocs() {
+  local pattern="$1"
+  local transport="$2"
+  local size="$3"
+
+  if [[ "${GO_GOMAXPROCS_SOURCE}" == "default" \
+    && "${pattern}" == "MULTI_DEALER_DEALER" \
+    && "${transport}" == "tcp" \
+    && "${size}" == "262144" ]]; then
+    echo "8"
+    return
+  fi
+  echo "${GOMAXPROCS}"
+}
+
 run_multi_process_case() {
   local pattern="$1"
   local transport="$2"
@@ -1003,14 +1023,15 @@ run_multi_process_case() {
 
   local srv_out client_out client_err server_fifo ready_line endpoint control_line control_endpoint
   local server_pid server_control_fd client_pid client_control_fd client_fifo client_ready_line
-  local client_timeout case_status
+  local client_timeout case_status case_gomaxprocs
+  case_gomaxprocs="$(resolve_case_gomaxprocs "${pattern}" "${transport}" "${size}")"
   srv_out="$(mktemp "${TMP_DIR}/server.XXXXXX")"
   client_out="$(mktemp "${TMP_DIR}/client.XXXXXX")"
   client_err="$(mktemp "${TMP_DIR}/client_err.XXXXXX")"
   server_fifo="$(mktemp -u "${TMP_DIR}/server_fifo.XXXXXX")"
   mkfifo "${server_fifo}"
 
-  run_go_perf ./perf/multi \
+  GOMAXPROCS="${case_gomaxprocs}" run_go_perf ./perf/multi \
     --role server \
     --pattern "${pattern}" \
     --transport "${transport}" \
@@ -1057,7 +1078,7 @@ run_multi_process_case() {
   if [[ "${pattern}" == "MULTI_DEALER_DEALER" || "${pattern}" == "MULTI_PUBSUB" ]]; then
     client_fifo="$(mktemp -u "${TMP_DIR}/client_fifo.XXXXXX")"
     mkfifo "${client_fifo}"
-    run_go_perf ./perf/multi \
+    GOMAXPROCS="${case_gomaxprocs}" run_go_perf ./perf/multi \
       --role client \
       --pattern "${pattern}" \
       --transport "${transport}" \
@@ -1090,7 +1111,7 @@ run_multi_process_case() {
   elif [[ "${pattern}" == MULTI_SPOT* ]]; then
     client_fifo="$(mktemp -u "${TMP_DIR}/client_fifo.XXXXXX")"
     mkfifo "${client_fifo}"
-    run_go_perf ./perf/multi \
+    GOMAXPROCS="${case_gomaxprocs}" run_go_perf ./perf/multi \
       --role client \
       --pattern "${pattern}" \
       --transport "${transport}" \

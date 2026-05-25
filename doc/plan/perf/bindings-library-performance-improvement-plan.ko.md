@@ -385,11 +385,10 @@ C 대비 비율을 함께 남기고, 아직 같은 조건 비교가 없는 칸�
 | 6 | Rust | `bindings/rust/perf` | `tcp/ws/wss/tls 측정 완료, routed large와 SPOT 1024B 보류 남음` | `tcp/ws/wss/tls 측정 완료, PUBSUB 및 MULTI_SPOT 전 transport 통과` | Rust 완료 아님. single routed large와 single SPOT 1024B를 후속 재검토 |
 | 7 | Python | `bindings/python/perf` | `tcp/ws/wss/tls 측정 완료, large single outlier와 small/native boundary 보류 남음` | `tcp/ws/wss/tls 측정 완료, SPOT/send-send/stream small 보류 남음` | Python 완료 아님. multi SPOT/send-send/stream small path와 single small/outlier 항목 후속 개선 필요 |
 
-Core runtime 변경 중에는 새 perf 실행을 보류한다. core가 안정된 뒤 재개 순서는
-Go `GOMAXPROCS=4` single `tcp` 검증, Go single latency 보류 재측정, Go multi
-`SPOT_SENDSEND`/`SPOT`/`PUBSUB` 재검토, Rust SPOT/send-send hot path, Python
-SPOT/send-send/stream small path 순서다. 새 실행 전에는 `core/build` runtime stale
-여부와 실제 `libzlink.so` 경로를 확인한다.
+Core runtime 변경 중에는 새 perf 실행을 보류한다. 현재 Go는 표 기준으로 single/multi
+대상이 모두 통과 상태이므로 후속 재개 순서는 Rust single routed/SPOT, Python
+SPOT/send-send/stream small path 순서다. 새 실행 전에는 `core/build` runtime stale 여부와
+실제 `libzlink.so` 경로를 확인한다.
 
 **2026-05-23 core 6.0.3 재검증 로그**: 세션 중 core가 6.0.2→6.0.3로 bump(spot node bind API rename 포함)되어
 이전 baseline/측정이 무효화됐다. 6.0.3 fresh full C baseline을 재생성했다
@@ -405,12 +404,16 @@ multi `perf_c_multi_linux_20260523_111534_goal_c_multi_603_baseline.txt`). 이 b
   Python small throughput은 pattern 무관하게 ~45k msg/s에 고정되는데(C는 1.2M+), 이는 매 송수신마다 Python↔C 경계를 넘는 **per-call FFI 고정 비용의 벽**이다(할당이 아니라 호출 횟수 비용). routed large와 SPOT large도 10~44%로 보류다. 문서 상태와 동일하게 재현됐다.
 
 **구조적 결론 (2026-05-23 6.0.3 전면 재검증 기준)**: re-baseline은 문서의 기존 상태를 그대로 재현한다 — 강한 바인딩(C++/.NET/Java/Rust non-routed,
-Go single)은 통과, 보류 cell은 그대로 보류다. 신규로 해결한 것은 Go single SPOT large 회귀(per-send 할당 → public `.Bytes()` 재사용)와 Go single
-latency 발산(측정 아티팩트 판정)뿐이다. 남은 보류 cell — Python/Node small(per-call FFI 벽), Rust routed-large, Go/Rust/Python multi-large
-(바인딩 래퍼 per-message 비용, C++ 대비 다배수), multi `SPOT_SENDSEND` small(per-FFI routed echo) — 은 이전 전문 세션들이 "추가 내부 후보 소진"으로
-기록했고 이번 독립 재검증·진단도 같은 결론이다. 이들을 통과로 올리려면 **메시지 배치(batch) 또는 zero-copy 우회 같은 perf 지향 public API/아키텍처 변경**이
-필요한데, 이는 섹션 2 고정 원칙이 금지한다. 따라서 섹션 7의 "보류 0" 완료 기준은 현재 고정 원칙 안에서 이들 cell에 대해 도달 불가다. 완료하려면
-(a) 해당 public API 계약을 정식 설계 대상으로 분리하거나, (b) 이들 구조적 cell을 근거와 함께 영구 보류로 인정하는 정책 결정이 필요하다.
+Go single)은 통과, 보류 cell은 그대로 보류다. 당시 신규로 해결한 것은 Go single SPOT large 회귀(per-send 할당 → public `.Bytes()` 재사용)와 Go single
+latency 발산(측정 아티팩트 판정)이었다. 이후 2026-05-25 추가 수정으로 Go single/multi
+보류는 표 기준 모두 해소됐다. 현재 남은 보류 cell — Python/Node small(per-call FFI 벽),
+Rust routed-large와 single SPOT 1024B, Python SPOT/send-send/stream small — 은 이전 전문
+세션들이 "추가 내부 후보 소진"으로 기록했고 이번 독립 재검증·진단도 같은 결론이다.
+이들을 통과로 올리려면 **메시지 배치(batch) 또는 zero-copy 우회 같은 perf 지향 public
+API/아키텍처 변경**이 필요할 수 있는데, 이는 섹션 2 고정 원칙과 별도 설계로 분리해야
+한다. 따라서 섹션 7의 "보류 0" 완료 기준은 현재 고정 원칙 안에서 이들 cell에 대해
+도달하기 어렵다. 완료하려면 (a) 해당 public API 계약을 정식 설계 대상으로 분리하거나,
+(b) 이들 구조적 cell을 근거와 함께 영구 보류로 인정하는 정책 결정이 필요하다.
 
 #### 6.1.1 언어별 평균 성능
 
@@ -2130,8 +2133,10 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   - Rust `DEALER_ROUTER`/`ROUTER_ROUTER` large(11~13%, latency 13~35x): C++가 같은 routed large에서 84~99%이므로 고칠 수 있다.
     표면 후보(blocking send로 C 의미 정렬, per-send 할당)는 빗나갔다(2026-05-23 확인). recv/send hot-path를 프로파일링으로
     pinpoint해야 하는 미해결 항목이다.
-  - Go/Python `MULTI_DEALER_DEALER` large와 Go/Rust/Python `MULTI_SPOT`/`MULTI_SPOT_SENDSEND`/`MULTI_SPOT_REQREP` large: 같은 core에서
-    C/C++ 바인딩은 ≈100%다. **2026-05-23 Go DD 65536 client-scaling 진단으로 원인을 국소화**했다:
+  - Python `MULTI_DEALER_DEALER` large와 Rust/Python `MULTI_SPOT`/`MULTI_SPOT_SENDSEND`/`MULTI_SPOT_REQREP` large: 같은 core에서
+    C/C++ 바인딩은 ≈100%다. Go는 아래 2026-05-23~25 진단과 수정으로 현재 표 기준 보류가
+    해소됐고, 여기서는 Rust/Python 잔여 항목을 추적한다. **2026-05-23 Go DD 65536
+    client-scaling 진단은 당시 원인을 국소화한 이력이다**:
     clients=4 → 5370 msg/s(per-client 1342 ≈ C++ per-client 1731의 78%, 정상권), clients=20 → 3302, clients=50 → 2954,
     **clients=100 → 0.8~5040 msg/s(변동, 사실상 backpressure deadlock 경계)**. 즉 per-message 비용·HWM 크기·할당이 아니라
     (모두 배제됨: `.Bytes()` 재사용·blocking send·auto-HWM 적용 순서·수동 HWM=512 모두 회복 실패) **many-client + large에서 Go의

@@ -213,7 +213,16 @@ fn main() {
         panic!("spot client direct start handshake timeout");
     }
 
-    let active_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
+    let active_duration = Duration::from_secs(settings.duration_seconds);
+    let active_duration_ns = active_duration.as_nanos() as u64;
+    let drain_grace = if args.msg_size >= 262_144 {
+        active_duration * 4
+    } else if args.msg_size >= 131_072 {
+        active_duration * 2
+    } else {
+        active_duration
+    };
+    let collect_deadline = Instant::now() + active_duration + drain_grace;
     let msg_size = args.msg_size;
     let use_poller_wait = use_multi_spot_poller_wait(&args.transport, args.msg_size);
     // Parallelize the subscriber drain across worker threads, mirroring the Go
@@ -248,11 +257,13 @@ fn main() {
                     None
                 };
                 let mut poll_events = vec![PollEvent::default(); chunk.len().max(1)];
-                while Instant::now() < active_deadline {
+                let mut sample_index = 0u64;
+                let mut sender_window_end_ns = 0u64;
+                while Instant::now() < collect_deadline {
                     let mut progressed = false;
                     for spot in chunk.iter() {
                         loop {
-                            if Instant::now() >= active_deadline {
+                            if Instant::now() >= collect_deadline {
                                 break;
                             }
                             match spot.subscribe(&mut received, RecvFlags::DONT_WAIT) {
@@ -261,13 +272,28 @@ fn main() {
                                     // Decode the metric header from the borrowed
                                     // payload directly (no per-message copy).
                                     let data = common::message_payload(received.parts());
-                                    if Instant::now() <= active_deadline
+                                    if Instant::now() <= collect_deadline
                                         && common::is_valid_active_message(data, msg_size)
                                     {
                                         let sent_ts_ns = common::decode_sent_ts_ns(data);
-                                        let now_ns = common::now_ns();
-                                        if sent_ts_ns > 0 && now_ns >= sent_ts_ns as u64 {
-                                            local.record_ns((now_ns - sent_ts_ns as u64) as f64);
+                                        if sent_ts_ns > 0 {
+                                            let sent_ts_ns = sent_ts_ns as u64;
+                                            if sender_window_end_ns == 0 {
+                                                sender_window_end_ns =
+                                                    sent_ts_ns + active_duration_ns;
+                                            } else if sent_ts_ns > sender_window_end_ns {
+                                                continue;
+                                            }
+                                        }
+                                        local.record_received();
+                                        sample_index += 1;
+                                        if sample_index == 1 || sample_index % 32 == 0 {
+                                            let now_ns = common::now_ns();
+                                            if sent_ts_ns > 0 && now_ns >= sent_ts_ns as u64 {
+                                                local.record_latency_sample_ns(
+                                                    (now_ns - sent_ts_ns as u64) as f64,
+                                                );
+                                            }
                                         }
                                     }
                                 }
@@ -279,7 +305,7 @@ fn main() {
                     }
                     if !progressed {
                         if let Some(poller) = &poller {
-                            let remaining_ms = active_deadline
+                            let remaining_ms = collect_deadline
                                 .saturating_duration_since(Instant::now())
                                 .as_millis()
                                 .min(50)

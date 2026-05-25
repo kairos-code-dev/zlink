@@ -290,6 +290,15 @@ impl LatencyStats {
         self.samples.push(ns);
     }
 
+    pub fn record_received(&mut self) {
+        self.count += 1;
+    }
+
+    pub fn record_latency_sample_ns(&mut self, ns: f64) {
+        self.sum += ns;
+        self.samples.push(ns);
+    }
+
     /// Fold another sampler's totals in (used to combine per-worker drain
     /// threads into a single result before finish()).
     pub fn merge(&mut self, mut other: LatencyStats) {
@@ -303,7 +312,12 @@ impl LatencyStats {
             return StatsResult::default();
         }
         self.samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let mean = self.sum / self.count as f64;
+        let sample_count = self.samples.len() as f64;
+        let mean = if sample_count > 0.0 {
+            self.sum / sample_count
+        } else {
+            0.0
+        };
         let p95 = percentile(&self.samples, 0.95);
         let p99 = percentile(&self.samples, 0.99);
         StatsResult {

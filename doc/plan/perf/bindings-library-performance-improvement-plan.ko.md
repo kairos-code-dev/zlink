@@ -1558,6 +1558,15 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `python -m py_compile bindings/python/perf/multi/perf_multi_common.py bindings/python/perf/multi/perf_multi_pubsub_client.py`는 통과했지만, 공식 runner `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_PUBSUB --msg-sizes 64 --duration 1 --runs 1`에서 client timeout partial(`perf_python_multi_linux_20260524_194603.txt`)이 재현됐다. Python binding 객체와 poller를 여러 Python thread에 나누는 접근은 현재 공개 API 조합에서 안정적인 개선 후보가 아니므로 반영하지 않는다.
 - **MULTI_STREAM frame view-copy 후보 기각**: Python stream server에서 `header.to_bytes()`/`body.to_bytes()` 뒤 frame concatenation을 하는 대신 `Message.data` view에서 최종 frame `bytearray`로 바로 채우는 후보를 시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_stream_server.py`는 통과했지만, 공식 runner `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp,wss --pattern MULTI_STREAM --msg-sizes 64,65536 --duration 1 --runs 3`가 `tcp 64B`에서 즉시 partial로 끝났다(`perf_python_multi_linux_20260524_233240.txt`). 기존 `on_packet` public callback은 native packet을 이미 Python-owned `Message`로 복사해 전달하므로, frame 조립의 마지막 복사만 줄이는 접근은 안정적인 개선 후보가 아니다.
 - **MULTI_STREAM on_packet native clone 후보 기각**: `StreamSocket.on_packet`이 native header/body를 `bytes`로 만든 뒤 다시 `Message`로 복사하는 경로를 줄이기 위해 `_clone_native_msg` 기반 `Message` 생성을 시험했다. callback 테스트는 통과했지만, 원본 native part를 callback 안에서 close하는 변형은 공식 wrapper `perf_python_multi_linux_20260525_005843.txt`에서 `tcp 64B` partial이 났고, close하지 않는 변형도 `perf_python_multi_linux_20260525_005927.txt`에서 서버 READY 수집 단계가 깨졌다. stream callback의 native part 수명은 core callback 경계와 맞물려 있어 이 방식은 반영하지 않는다.
+- **MULTI_STREAM callback immediate-send 후보 기각**: C stream server처럼 packet callback에서
+  pending queue가 비었을 때 즉시 `send(...DONT_WAIT)`를 시도하고 backpressure 때만 queue에
+  넣는 후보를 시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_stream_server.py`는
+  통과했고 같은 조건 C 기준 `perf_c_multi_linux_20260525_091324.txt`는 complete였지만,
+  Python 공식 wrapper `perf_python_multi_linux_20260525_091345.txt`는 `tcp 64B`에서 결과 없이
+  partial로 끝났다. Python `on_packet`은 native callback이 header/body를 Python `Message`로
+  복사한 뒤 dispatcher thread에서 user handler를 호출하므로, 그 안에서 stream socket send를
+  바로 섞으면 현재 runner의 READY/stream client handshake 경계를 불안정하게 만든다.
+  따라서 기존 queue 기반 POLLOUT drain을 유지한다.
 - SPOT reply decode에도 같은 원칙을 적용했다. `MULTI_SPOT_REQREP`는 callback 이전에 reply part가 이미 Python `Message`로 clone되므로 추가 `to_bytes()` 제거 효과가 제한적이고,
   `MULTI_SPOT_SENDSEND`는 routed reply `ReceivedMessage.data`로 262144B가 37.4%→43.6%까지 올랐다. small/65536B와 일부 131072B는 여전히 기준보다 낮다.
 - **SPOT reqrep server view-reply 후보 기각**: `MULTI_SPOT_REQREP` server에서

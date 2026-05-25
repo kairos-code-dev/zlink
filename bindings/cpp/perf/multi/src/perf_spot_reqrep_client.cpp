@@ -4,16 +4,18 @@
 //   client(requester):  1 spot_node + N spots, each spot has routing_id
 //                       "SPOT-REQREP-<i>". Requests go via
 //                       request_to_spot(server_node_rid, server_spot_rid)
-//                       and the reply is delivered through the spot's recv
-//                       side; the user thread waits on a single poller that
-//                       has every slot spot registered for POLLCOMPLETION.
+//                       and the reply is delivered through the binding's
+//                       public request completion surface; the user thread
+//                       waits on a single poller that has every slot spot
+//                       registered for POLLCOMPLETION.
 //   server(replier):    1 spot_node + 1 spot with routing_id
 //                       "SPOT-REQREP-SERVER-SPOT" on node
 //                       "SPOT-REQREP-SERVER-NODE", dispatch event handler
 //                       drains routed requests and replies on the same spot.
 //
-// This intentionally mirrors bindings/c/perf/multi/src/perf_multi_spot_reqrep_*
-// so cross-binding results compare on the same data plane.
+// This keeps the same routed SPOT request/reply data plane as
+// bindings/c/perf/multi/src/perf_multi_spot_reqrep_*. C++ uses the binding
+// completion poller surface; C uses the C callback-request pump.
 
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"

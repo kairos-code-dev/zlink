@@ -1951,6 +1951,15 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   경계를 통과하는 비용이다. 이 결과는 C callback-request 의미와 완전히 같다고 보지 않고,
   Python request API를 C처럼 `POLLIN` pump로 진행할 수 있게 공개 의미를 정리하거나
   completion-only binding 의미로 별도 검증해야 한다.
+- **2026-05-26 binding-wide `MULTI_SPOT_REQREP` completion audit**:
+  C는 `POLLIN` callback-request pump가 기준이고, C++/Go/Rust/Java/.NET/Node/Python은
+  각 binding의 public request completion poller surface를 사용한다. 이 차이를
+  `doc/perf/PERF_POLICY.md`와 `doc/perf/PERF_MULTI_TEST_POLICY.md`에 반영했다.
+  Node는 event-loop callback dispatch turn이 필요하며, `poller.wait(..., 50)`으로 바꾸면
+  smoke가 멈춰 되돌렸다. C++은 구현은 completion poller surface였지만 주석이 C와 완전
+  동일하다고 적혀 있어 수정했다. .NET의 active loop는 completion poller wait를 쓰지만,
+  active 구간 뒤 outstanding callback drain에 `Thread.Sleep(1)`이 남아 있어 다음 audit에서
+  active measurement 바깥 종료 보조인지, 정책상 제거 대상인지 다시 확인한다.
 - **수신 zero-copy `.data` 추가**: Rust SPOT의 per-message 복사 제거와 같은 동기로, Python 수신 부품(`ReceivedMessage`)에
   zero-copy `data` memoryview property를 추가했다(`Message.data`/C `zlink_msg_data`와 동일 계약, 회귀 테스트 `tests/test_version.py::test_received_part_data_is_zero_copy_view` 통과).
   `MULTI_SPOT` client가 `to_bytes_list()` 전체 payload 복사 대신 `first_part().data`에서 헤더를 디코드하도록 바꿨다(복사 제거는 `with message:` 안에서만 view 사용).

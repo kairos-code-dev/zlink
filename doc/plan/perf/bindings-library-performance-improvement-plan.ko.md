@@ -1674,6 +1674,24 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   complete였다. 그러나 1024B C 대비 비율은 tcp/ws/wss/tls 52.6/58.6/62.5/56.2%로
   SPOT 기준보다 낮다. latency 기록 비용만 줄여서는 single SPOT 1024B 보류를 해소하지
   못하므로 코드는 반영하지 않는다.
+- **single SPOT public `subscribe_part` 후보 기각**: C single SPOT은
+  `zlink_spot_subscribe_part` 단일 part 수신으로 header를 바로 디코드하므로, Rust에도
+  public `Spot::subscribe_part`/`SpotPart` 후보를 추가하고 single SPOT subscriber가
+  `TopicMessage` 전체 구성을 건너뛰도록 시험했다. `cargo test --manifest-path
+  bindings/rust/Cargo.toml --no-run`과 `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고, 공식 C 기준
+  `perf_c_single_linux_20260525_163636_rust_single_spot_subscribe_part_c.txt`와 Rust 후보
+  `perf_rust_single_linux_20260525_163720_single_spot_subscribe_part_candidate.txt`는
+  complete였다. 그러나 1024B C 대비 비율은 tcp/ws/wss/tls 53.8/63.8/73.6/53.4%로
+  SPOT 기준보다 낮고, tls는 기존 재측정 59.6%보다 낮아졌다. sampled stats 결합 후보
+  `perf_rust_single_linux_20260525_163817_single_spot_subscribe_part_sampled_candidate.txt`
+  와 sender direct stamp 결합 후보
+  `perf_rust_single_linux_20260525_163932_single_spot_subscribe_part_direct_stamp_candidate.txt`도
+  기준선을 넘기지 못했다. transport별 선택 적용 후보는 묶음 실행에서 wss partial
+  `perf_rust_single_linux_20260525_164104_single_spot_subscribe_part_selected.txt`을 만들었고,
+  wss 단독 재시도 `perf_rust_single_linux_20260525_164136_single_spot_subscribe_part_selected_wss_retry.txt`도
+  기존 대표값보다 낮았다. public API를 넓혀도 single SPOT 1024B 보류를 안정적으로
+  해소하지 못하므로 코드는 반영하지 않는다.
 - **2026-05-24 tcp full 재측정 요약**: DEALER_ROUTER 46~107%(전 size 통과), ROUTER_ROUTER small 통과/large 보류, SPOT_REQREP 64/256/1024/65536B 통과 및 131072/262144B 보류, STREAM 90~101% 통과, DD small 통과/large 보류, SPOT small 통과권/large 보류(copy 영역), SPOT_SENDSEND 64/256/1024/65536/131072B 통과 및 262144B 보류, PUBSUB 일부만 통과였다. 당시 PUBSUB small은 fresh baseline 대비 ~3~5%였지만, 2026-05-25 server `POLLOUT` wait 제거 뒤 `MULTI_PUBSUB` small 보류는 해소됐다.
 - **남은 보류(Rust)**: single routed large, single SPOT 1024B.
 

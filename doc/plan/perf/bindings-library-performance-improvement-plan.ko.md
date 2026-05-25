@@ -1780,7 +1780,7 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `MULTI_DEALER_DEALER` | `보류(10.2%)` | `보류(15.6%)` | `보류(18.4%)` | `통과(52.2%)` | `통과(41.1%)` | `보류(22.5%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_multi_linux_20260525_184808_python_multi_send_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_185647_multi_nonrouted_send_native_result_default.txt` 기준이다. client send를 non-routed native result fast path로 좁혀 small 처리량을 317.5/311.9/280.8Kmsg/s까지 올렸지만 기준선에는 아직 낮다. large size는 기존 `perf_python_multi_linux_20260524_191648.txt` 기준이다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `보류(10.2%)` | `보류(15.6%)` | `보류(18.4%)` | `통과(52.2%)` | `통과(41.1%)` | `보류(30.2%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_multi_linux_20260525_184808_python_multi_send_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_185647_multi_nonrouted_send_native_result_default.txt` 기준이다. client send를 non-routed native result fast path로 좁혀 small 처리량을 317.5/311.9/280.8Kmsg/s까지 올렸지만 기준선에는 아직 낮다. 262144B는 current HEAD 같은 조건 fresh C `perf_c_multi_linux_20260525_194520_python_dd262_current_c_recheck.txt` 대비 Python `perf_python_multi_linux_20260525_194548_dd262_current_recheck.txt` 기준이다. 65536/131072B는 기존 `perf_python_multi_linux_20260524_191648.txt` 기준이다. |
 | `tcp` | `MULTI_DEALER_ROUTER` | `보류(13.4%)` | `보류(13.4%)` | `보류(13.3%)` | `통과(43.2%)` | `통과(57.0%)` | `통과(63.2%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_multi_linux_20260525_184808_python_multi_send_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_185647_multi_nonrouted_send_native_result_default.txt` 기준이다. reply header decode를 `to_bytes_list()` 대신 `ReceivedMessage.data` view로 바꾸고 routed `recv_into` single-part fast path를 추가한 상태이며, DEALER sender는 non-routed native result fast path를 쓴다. large 수치는 모두 기준선 위로 올라갔지만 small size는 여전히 낮다. |
 | `tcp` | `MULTI_ROUTER_ROUTER` | `보류(9.6%)` | `보류(9.7%)` | `보류(10.0%)` | `통과(33.1%)` | `통과(44.1%)` | `통과(57.3%)` | 64/256/1024B는 같은 조건 fresh C `perf_c_multi_linux_20260525_184808_python_multi_send_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_185647_multi_nonrouted_send_native_result_default.txt` 기준이다. routed send native result 후보는 complete 안정성을 깨서 반영하지 않았고, client reply header decode `.data` 경로와 routed `recv_into` single-part fast path만 유지한다. 65536B 이상은 기존 보강 파일 기준선을 넘었지만 small size는 여전히 낮다. |
 | `tcp` | `MULTI_PUBSUB` | `보류(7.6%)` | `보류(7.9%)` | `보류(17.7%)` | `통과(58.7%)` | `통과(90.9%)` | `통과(95.0%)` | 64/256/1024/65536B는 같은 조건 fresh C `perf_c_multi_linux_20260525_190118_python_multi_pubsub_publish_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_192512_multi_pubsub_client_len_fastpath_candidate.txt` median 기준이다. subscriber는 stop token과 payload length로 active count를 유지하고, header decode는 latency sampling 대상에만 수행한다. 131072/262144B는 기존 `perf_python_multi_linux_20260524_191738.txt` 기준이다. small size는 아직 기준보다 낮다. |
@@ -1904,6 +1904,15 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `perf_python_multi_linux_20260525_185333_multi_routed_send_native_result_default.txt`는
   `MULTI_ROUTER_ROUTER tcp 1024B`에서 partial이었다. routed echo의 절대 처리량 개선도
   작아 routed send는 기존 builder 경로를 유지한다.
+- **MULTI_DEALER_DEALER 262144B 최신 재측정**: 262144B가 small send fast path 이후
+  같은 조건 fresh C로 다시 비교되지 않았으므로 current HEAD에서 제한 재측정했다.
+  C `perf_c_multi_linux_20260525_194520_python_dd262_current_c_recheck.txt`는 complete였고
+  median 47.973Kmsg/s였다. Python
+  `perf_python_multi_linux_20260525_194548_dd262_current_recheck.txt`도 complete였고
+  median 14.511Kmsg/s, C 대비 30.2%였다. 기존 표의 22.5%보다는 높지만 Python
+  단순 one-way 기준선에는 아직 닿지 않아 보류를 유지한다. 별도 IO thread probe
+  `perf_python_multi_linux_20260525_194608_dd262_io8_probe.txt`는 13.927Kmsg/s로 더 낮아
+  적용 근거가 없다.
 - **single PAIR direct `zlink_recv_part` 후보 기각**: `PairSocket.recv_into(...)`가
   `Received`와 parts list를 구성하는 비용을 피하기 위해, perf helper 안에서만 native
   `zlink_recv_part`를 직접 호출해 단일 part payload를 decode하는 후보를 `PAIR`에 좁혀

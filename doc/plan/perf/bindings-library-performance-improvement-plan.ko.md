@@ -878,10 +878,10 @@ SPOT 계열 14~15개 수준이었다. 두 언어 모두 client 수가 OS thread 
 | `tls` | `MULTI_SPOT_SENDSEND` | `통과(54.2%)` | `통과(56.2%)` | `통과(62.1%)` | `통과(101.1%)` | `통과(92.6%)` | `통과(97.1%)` | 64/256/1024B는 같은 조건 제한 재측정 C `perf_c_multi_linux_20260525_064438.txt` 대비 Go `perf_go_multi_linux_20260525_064632.txt` 기준이다. 65536/131072/262144B는 C `perf_c_multi_linux_20260525_092522.txt` 대비 Go `perf_go_multi_linux_20260525_092253.txt` 기준이다. `SubmitNotConnected`는 C처럼 fatal이 아니라 다음 poll loop에서 재시도하는 의미로 처리하고, 서버 echo는 public `Spot.ForwardRouted(...)`를 65536B 이상에 적용한다. client send는 65536B 이하에서만 public `MoveMessage(...)`를 사용한다. server idle 대기는 전 size에서 고정 `sleep(1ms)` 대신 public `Poller` `POLLIN` wake를 사용한다. 131072B까지 넓힌 후보는 일부 transport를 낮춰 반영하지 않았다. active slot 16 후보 `perf_go_multi_linux_20260524_205629.txt`는 131072B를 낮춰 반영하지 않는다. |
 | `tls` | `MULTI_STREAM` | `통과(93.8%)` | `통과(101.2%)` | `통과(98.5%)` | `통과(97.1%)` | `해당 없음` | `해당 없음` | C/Go full 파일은 위 행과 같다. Go STREAM은 shared C reference client를 사용하므로 측정 surface는 Go STREAM server다. auto-HWM 활성과 size별 `MsgUnit(B)` 일치를 확인했다. |
 
-#### 6.6.3 Go 남은 작업
+#### 6.6.3 Go 보류 해소 기록
 
-Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확보했지만 목표 기준을 만족하지
-못한 보류 항목이며, Rust 측정으로 넘어가기 전에 Go 작업으로 계속 추적한다.
+Go는 현재 표 기준으로 single/multi 전 대상이 `통과` 상태다. 아래 항목은 보류가 남았던
+시점의 원인, 후보, 적용 결과를 남긴 이력이며, 현재 남은 성능 작업 대상은 Rust/Python이다.
 
 - Single `ws`/`wss` latency 보류: throughput은 기준권이어도 C 대비 latency가 커서 통과로
   확정하지 않는다.
@@ -974,7 +974,7 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   7.667/4.119/2.385Kops/s로 낮아졌다. `ws 65536B`만 12.795Kops/s로 이전
   11.411Kops/s보다 높았지만 같은 C 기준으로는 32.7% 수준이라 보류를 해소하지
   못하고, `ws 131072/262144B`는 5.045/2.809Kops/s로 기존보다 낮다. 따라서
-  `GOMAXPROCS=8`은 Go multi 남은 보류를 푸는 일반 해법이 아니며 기본값 변경 후보에서
+  `GOMAXPROCS=8`은 당시 Go multi 보류를 푸는 일반 해법이 아니며 기본값 변경 후보에서
   제외한다.
 - 2026-05-24 추가 수정: `MULTI_DEALER_DEALER`를 current HEAD에서 fresh C baseline으로
   다시 측정하고 stale 보류를 제거했다. `perf_go_multi_linux_20260524_222134.txt` 기준으로
@@ -1315,7 +1315,7 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   - **2026-05-25 `ws/wss/tls MULTI_DEALER_DEALER 64B` `Bytes(...)` + latency sampling 적용**: small 64B도 public `Bytes(...)` client send로 다시 좁혀 시험했다. 이전 단독 후보 `perf_go_multi_linux_20260525_071913.txt`는 tls 34.2%, wss 37.0%에 머물렀지만, server 수신에서 throughput count는 모든 active 메시지를 유지하고 latency 계산/저장만 기본 32개당 1개로 줄이자 통과권에 들어왔다. 같은 조건 C `perf_c_multi_linux_20260525_130455.txt` 대비 Go `perf_go_multi_linux_20260525_131051.txt`는 ws/wss/tls 64B 46.0/43.3/45.0%다. `PERF_GO_GOMAXPROCS=8` 후보 `perf_go_multi_linux_20260525_130938.txt`와 `PERF_GO_GOMAXPROCS=20` 후보 `perf_go_multi_linux_20260525_130731.txt`는 기본값보다 낫지 않아 기본값 변경은 하지 않는다.
   - **2026-05-25 `wss MULTI_DEALER_DEALER 131072B` `Bytes(...)` 재검증 통과**: 첫 mixed 후보 `perf_go_multi_linux_20260525_071330.txt`는 131072B median이 4.095Kmsg/s로 낮았지만, 131072B 단독 재측정 `perf_go_multi_linux_20260525_072036.txt`는 19.703Kmsg/s, mixed 재실행 `perf_go_multi_linux_20260525_072100.txt`는 19.479Kmsg/s로 재현됐다. C `perf_c_multi_linux_20260525_071312.txt` 34.097Kmsg/s 대비 mixed 재실행 기준 57.1%라 131072B 셀을 통과로 갱신한다.
   - **2026-05-25 `MULTI_SPOT_SENDSEND 65536B` active slot 64 후보 기각**: 65536B active client slot을 32에서 64로 넓힌 후보를 시험했다. C `perf_c_multi_linux_20260525_072313.txt`는 tcp/tls/ws 65536B 모두 complete였지만, Go 후보 `perf_go_multi_linux_20260525_072409.txt`는 tcp 65536B가 12.613Kops/s로 기존 대표값보다 낮고 tls 65536B에서 `exit_nonzero` partial로 중단됐다. in-flight를 늘리면 echo backlog와 completion 안정성이 나빠져 기존 32-slot 제한을 유지한다.
-  - **남은 보류(수정 후에도 목표 미달, 후속 개선 대상)**: Go multi DD 보류는 64B `Bytes(...)` + latency sampling 적용 뒤 제거했다.
+  - **보류 정리(수정 후 목표 재확인)**: Go multi DD 보류는 64B `Bytes(...)` + latency sampling 적용 뒤 제거했다.
     `MULTI_SPOT_REQREP` tcp 262144B는 fresh C/current Go 제한 재측정에서 50.1%로 기준을 넘어 남은 보류 목록에서 제거했다.
     `wss MULTI_SPOT 1024B`도 current HEAD fresh 재측정에서 51.0%로 기준을 넘어 보류에서 제거했다.
   - **`wss MULTI_SPOT 1024B` 보류 해소**: 이전 full-run 14.8%와 같은 조건 제한 재측정 45.3%(`perf_c_multi_linux_20260525_020305.txt`, `perf_go_multi_linux_20260525_020305.txt`) 때문에 실제 보류로 뒀지만, current HEAD fresh 재측정 C `perf_c_multi_linux_20260525_105036.txt` 5.659Mmsg/s 대비 Go `perf_go_multi_linux_20260525_105036.txt` 2.889Mmsg/s, 51.0%로 Go SPOT 기준을 넘었다. 코드 변경 없이 같은 runner 조건에서 통과했으므로 표를 갱신하고 보류 목록에서 제거한다.

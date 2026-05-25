@@ -2226,6 +2226,18 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   기존 직접 `_replace` 후보보다 낮고, 일부 run latency가 3~4.5초까지 튀었다. Python
   `Spot.publish` blocking submit은 send path를 오래 붙잡아 client drain backlog를 키우므로
   C fallback 의미를 그대로 옮겨도 보류를 해소하지 못해 반영하지 않는다.
+- **MULTI_SPOT server native publish 후보 기각**: client native metric receive 적용 뒤에도
+  server가 매 active publish마다 `stamp_payload(...)`의 `bytes` 복사와 fluent
+  `Spot.publish(...).message(...).submit()` 구성을 거치므로, server active path만
+  `bytearray` header stamp와 native `zlink_spot_publish_part` 직접 호출로 좁히는 후보를
+  시험했다. 처음 smoke는 잘못된 `HEADER_FORMAT` import 때문에 READY 전 partial
+  `perf_python_multi_linux_20260525_224039_multi_spot_native_publish_receive_candidate_smoke.txt`가
+  났고, import 수정 뒤 공식 wrapper
+  `perf_python_multi_linux_20260525_224744_multi_spot_native_publish_receive_candidate_smoke2.txt`는
+  tcp 64/256/1024/65536B runs=1 complete였다. 처리량은 320.9/318.2/295.4/134.2Kmsg/s로,
+  직전 client native receive median 308.6/324.6/299.9/130.9Kmsg/s 대비 cell별 개선과
+  회귀가 섞였다. 서버 publish 객체 비용은 일부 size에서만 noise 수준으로 보이고,
+  보류의 주 병목은 여전히 client drain/backlog 쪽이므로 코드는 반영하지 않는다.
 - **MULTI_SPOT_REQREP callback latency queue 제거 후보 기각**: reply callback이
   `SimpleQueue`에 latency를 넣고 main loop가 비우는 비용을 줄이기 위해 callback에서
   보호된 리스트에 바로 기록하는 후보를 시험했다. `python -m py_compile`로

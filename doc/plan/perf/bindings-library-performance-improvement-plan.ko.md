@@ -1937,6 +1937,15 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   tcp 64/65536B median은 130.383/80.332Kmsg/s, 2.6/5.2%에 그쳤다. active 검증
   비용을 줄여도 Python `subscribe_into` 수신 경계가 남고, perf-only 가정을 넓히는
   변화라 보류 해소 근거로 반영하지 않는다.
+- **MULTI_SPOT worker drain 후보 기각**: Rust/Go처럼 100개 spot을 여러 worker가 나눠
+  drain하면 Python에서도 per-spot 순회 병목을 줄일 수 있는지 확인했다. worker별
+  `Poller`와 local count/latency를 두고 `PERF_MULTI_SPOT_RECV_WORKERS=4` 후보를
+  시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_spot_client.py`는
+  통과했고 공식 wrapper도 complete였지만, 같은 조건 C 기준
+  `perf_c_multi_linux_20260525_171355_python_multi_spot_worker_c.txt` 대비 후보
+  `perf_python_multi_linux_20260525_171743_multi_spot_worker4_candidate.txt`의 tcp
+  64/65536B는 14.576/14.229Kmsg/s로 current 단일-thread 후보보다 크게 낮다. Python
+  thread와 ctypes/poller 분할 비용이 이득보다 커서 반영하지 않는다.
 - **MULTI_SPOT server blocking fallback 후보 기각**: C server는 `DONTWAIT` publish가
   `EAGAIN`이면 같은 payload를 blocking submit으로 한 번 더 시도한다. Python server에도
   같은 fallback을 env-gated 후보로 붙여 시험했다. `python3 -m py_compile

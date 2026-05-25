@@ -271,7 +271,7 @@ def main(argv=None):
 
         drain_deadline = time.perf_counter() + 1.0
         while any(waiting[:active_slots]) and time.perf_counter() < drain_deadline:
-            poller.wait(poll_events, 20)
+            poller.wait(poll_events, 50)
             while not latency_queue.empty():
                 latencies.append(latency_queue.get())
 

@@ -335,7 +335,7 @@ def _cap_default_clients_for_memory(clients, explicit_clients):
     return str(min(parsed, max_clients))
 
 
-def _preflight_skip(pattern, transport, msg_size, clients):
+def _resource_guard_skip(pattern, transport, msg_size, clients):
     parsed = _uint(clients)
     if parsed is None:
         return None
@@ -1112,9 +1112,9 @@ def main(argv=None):
                     _append_line(sections, f"      {header_line}")
                 for msg_size in pattern_msg_sizes:
                     _append_line(sections, f"    Testing {transport} | {msg_size}B:")
-                    preflight = _preflight_skip(pattern, transport, msg_size, pattern_clients)
-                    if preflight:
-                        output = preflight
+                    resource_skip = _resource_guard_skip(pattern, transport, msg_size, pattern_clients)
+                    if resource_skip:
+                        output = resource_skip
                         emitted_chunks.append(output)
                         status_lines.extend(_parse_status_lines(output))
                         _append_line(sections, _status_row(msg_size, "SKIP"))
@@ -1171,9 +1171,9 @@ def main(argv=None):
                         _append_line(sections, f"        {header_line}")
                     for msg_size in pattern_msg_sizes:
                         _append_line(sections, f"      Testing {transport} | {msg_size}B:")
-                        preflight = _preflight_skip(pattern, transport, msg_size, pattern_clients)
-                        if preflight:
-                            output = preflight
+                        resource_skip = _resource_guard_skip(pattern, transport, msg_size, pattern_clients)
+                        if resource_skip:
+                            output = resource_skip
                             emitted_chunks.append(output)
                             status_lines.extend(_parse_status_lines(output))
                             _append_line(sections, _status_row(msg_size, "SKIP", indent="        "))

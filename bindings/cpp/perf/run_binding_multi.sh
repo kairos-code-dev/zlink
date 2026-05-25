@@ -385,8 +385,8 @@ Options:
                          Set auto-HWM profile: compact, low_latency, balanced, throughput (default: balanced).
 
 Environment:
-  PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
-  PERF_SKIP_MEMORY_CHECK=1   Disable preflight memory guard check
+  PERF_SKIP_NOFILE_CHECK=1   Disable resource guard nofile(limit) check
+  PERF_SKIP_MEMORY_CHECK=1   Disable resource guard memory check
   PERF_MULTI_MEMORY_BUDGET_PCT=70
                             Percent of MemAvailable reserved for multi benchmark sockets
   PERF_MULTI_MEMORY_BASE_MB=512

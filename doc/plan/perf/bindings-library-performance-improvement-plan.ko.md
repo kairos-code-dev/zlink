@@ -1613,6 +1613,18 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   large에서는 `MULTI_DEALER_DEALER` 65536B 45.8%→52.2%, `MULTI_PUBSUB` 131072B 54.8%→90.9%, `MULTI_ROUTER_ROUTER` 65536B 29.6%→35.5%처럼 개선됐지만,
   64~1024B는 여전히 5~12%대라 같은 per-call FFI 벽이 남는다. Python 메시지당 FFI 호출 수 감소(배치 수신)는 별도 public API 설계 대상이다.
 - `MULTI_DEALER_ROUTER` client reply decode에도 같은 `.data` 경로를 적용했다. `perf_python_multi_linux_20260524_194812.txt`에서 64/256/1024B는 12.9/14.3/13.3%로 small 보류가 유지됐지만, 65536B는 40.5%→46.5%로 올라 routed multi 기준선 위 여유가 커졌다.
+- **single receiver `.data` 후보 기각**: single 공통 `run_one_way_receiver(...)`가
+  active 수신 payload를 `to_bytes()`로 복사한 뒤 헤더를 디코드하므로, `ReceivedMessage.data`
+  view를 닫기 전에 바로 디코드하는 후보를 시험했다. `python3 -m py_compile
+  bindings/python/perf/single/perf_common.py bindings/python/perf/single/perf_pair.py
+  bindings/python/perf/single/perf_dealer_dealer.py bindings/python/perf/single/perf_pubsub.py
+  bindings/python/perf/single/perf_dealer_router.py bindings/python/perf/single/perf_router_router.py`는
+  통과했고 공식 runner도 complete였다. 그러나 같은 조건 C
+  `perf_c_single_linux_20260525_132828_python_single_data_view_c.txt` 대비 후보
+  `perf_python_single_linux_20260525_132950_data_view_candidate.txt`의 tcp small median은
+  `PAIR` 3.8/3.7/5.9%, `PUBSUB` 3.4/4.0/5.4%, `DEALER_DEALER` 3.9/3.9/6.1%에
+  그쳤다. memoryview 수명 보장을 위해 매 메시지마다 close 순서를 감싸는 비용이 복사 제거
+  이득을 넘지 못하므로 반영하지 않는다.
 - **MULTI_DEALER_DEALER send bytearray 후보 기각**: client hot path에서 `stamp_payload(...)`가
   `bytearray`에 헤더를 찍은 뒤 `bytes(payload)`를 반환하므로, 65536/262144B에서 반환된
   `bytes` 대신 원래 `bytearray`를 `send_nonblocking(...)`에 넘기는 후보를 시험했다.

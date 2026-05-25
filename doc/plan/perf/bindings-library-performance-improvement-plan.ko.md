@@ -1827,6 +1827,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `DEALER_DEALER` 4.7/4.7/7.1%에 그쳤다. Python 내부 send 객체 준비 비용을 더 줄여도
   메시지마다 Python에서 C로 들어가는 호출 경계와 수신 처리 비용이 남아 single small
   보류를 해소하지 못하므로 반영하지 않는다.
+- **single PAIR direct `zlink_recv_part` 후보 기각**: `PairSocket.recv_into(...)`가
+  `Received`와 parts list를 구성하는 비용을 피하기 위해, perf helper 안에서만 native
+  `zlink_recv_part`를 직접 호출해 단일 part payload를 decode하는 후보를 `PAIR`에 좁혀
+  시험했다. `python -m py_compile bindings/python/perf/single/perf_common.py
+  bindings/python/perf/single/perf_pair.py`는 통과했고 공식 wrapper도 complete였다. 그러나
+  같은 조건 C `perf_c_single_linux_20260525_170652_python_single_pair_recv_part_c.txt` 대비
+  후보 `perf_python_single_linux_20260525_170758_single_pair_recv_part_candidate.txt`의 tcp
+  64/256/1024B median은 69.715/45.855/53.255Kmsg/s, 5.3/3.5/6.6%에 그쳤다. `Received`
+  객체 구성을 건너뛰어도 ctypes 호출과 Python decode loop 비용이 남고 run 변동도 커서
+  보류 해소 근거로 반영하지 않는다.
 - **MULTI_DEALER_DEALER send bytearray 후보 기각**: client hot path에서 `stamp_payload(...)`가
   `bytearray`에 헤더를 찍은 뒤 `bytes(payload)`를 반환하므로, 65536/262144B에서 반환된
   `bytes` 대신 원래 `bytearray`를 `send_nonblocking(...)`에 넘기는 후보를 시험했다.

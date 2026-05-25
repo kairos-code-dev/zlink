@@ -1449,6 +1449,15 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 - **MULTI_SPOT recv worker 3개 후보 기각**: 2026-05-25 재검토에서 `PERF_MULTI_SPOT_RECV_WORKERS=3` 후보를 tcp/ws 64/131072/262144B에 시험했다. 공식 runner `perf_rust_multi_linux_20260525_031739.txt`는 complete였고 tcp 64B 단독 비율은 C `perf_c_multi_linux_20260525_022730.txt` 대비 76.2%까지 올라갔지만, tcp 131072/262144B와 ws 262144B는 기존 대표값보다 내려갔다. 이를 tcp 64B 기본값으로만 좁힌 코드 후보도 `perf_rust_multi_linux_20260525_031917.txt`에서 tcp 64B 69.8%에 그쳐 통과를 안정적으로 증명하지 못했다. current HEAD에서 ws 64/256B만 다시 좁혀 시험한 `perf_rust_multi_linux_20260525_093748.txt`도 complete였지만 C `perf_c_multi_linux_20260525_074050.txt` 대비 62.7/60.6%였고, 기존 2-worker 기본값 `perf_rust_multi_linux_20260525_074242.txt`의 64.7/65.9%보다 낮았다. worker 3개 기본화는 반영하지 않고 기존 크기별 기본값을 유지한다.
 - **MULTI_SPOT recv worker 5개 후보 기각**: worker 3개보다 큰 중간값으로 tcp 64B만 다시 좁혀 시험했다. 같은 commit에서 C 기준 `perf_c_multi_linux_20260525_060417.txt`는 4.583Mmsg/s였고 `PERF_MULTI_SPOT_RECV_WORKERS=5` Rust 후보 `perf_rust_multi_linux_20260525_060531.txt`는 2.746Mmsg/s로 59.9%에 그쳤다. 기존 worker 4개 대표값보다 낮으므로 코드 기본값으로 반영하지 않는다.
 - **MULTI_SPOT throughput count/latency sampling 분리 후보 기각**: C/Go처럼 active payload count와 latency sample을 분리하고 기본 stride 32로 latency를 기록하는 후보를 시험했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고 공식 제한 재측정도 complete였다. 그러나 tcp 64/131072/262144B는 C `perf_c_multi_linux_20260525_035354.txt` 대비 Rust `perf_rust_multi_linux_20260525_035545.txt`가 66.1/41.3/99.9%였고, 기존 대표값 67.9/53.6/104.3% 대비 64B와 131072B가 낮아졌다. ws 131072/262144B도 C `perf_c_multi_linux_20260525_035625.txt` 대비 Rust `perf_rust_multi_linux_20260525_035800.txt`가 44.3/42.2%로 기존 45.1/41.7%와 같은 보류권이다. count/sampling 의미 정렬만으로 남은 SPOT 보류를 해소하지 못하므로 반영하지 않는다.
+- **Single routed `Message::with_size()` 직접 stamp 후보 기각**: multi routed large에서 효과가 있었던
+  `Message::with_size()` + `data_mut()` 직접 stamp를 single 공통 `send_loop`에도 시험했다.
+  `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했지만, 같은 조건
+  C `perf_c_single_linux_20260525_123657.txt` 대비 후보
+  `perf_rust_single_linux_20260525_123806.txt`는 `DEALER_ROUTER tcp 262144B`가
+  `binary_exit` partial로 끝났다. 같은 실행의 65536/131072B도 13.823/7.023Kmsg/s로
+  C 98.585/56.657Kmsg/s 대비 14% 안팎에 머물러 기존 single routed large 보류를 해소하지
+  못했다. single routed large는 단순 추가 복사 제거가 아니라 routed send/recv 경계 자체를
+  더 봐야 하므로 코드는 원복했다.
 - **MULTI_PUBSUB ready-slot drain 후보 기각**: client poller slot을 socket index로 두고
   C/Go처럼 ready event socket만 drain하며 `wait(-1)`로 바꾸는 후보를 시험했다.
   `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고,

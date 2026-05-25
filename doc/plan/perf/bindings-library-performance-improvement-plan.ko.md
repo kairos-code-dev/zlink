@@ -1653,6 +1653,20 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `PAIR` 3.8/3.7/5.9%, `PUBSUB` 3.4/4.0/5.4%, `DEALER_DEALER` 3.9/3.9/6.1%에
   그쳤다. memoryview 수명 보장을 위해 매 메시지마다 close 순서를 감싸는 비용이 복사 제거
   이득을 넘지 못하므로 반영하지 않는다.
+- **single receiver latency sampling 후보 기각**: single 공통 수신 hot path도 multi PUBSUB처럼
+  throughput count는 전 메시지를 유지하고 latency 계산/저장만 기본 32개당 1개로 줄이는
+  후보를 시험했다. `python3 -m py_compile bindings/python/perf/single/perf_common.py
+  bindings/python/perf/single/perf_pair.py bindings/python/perf/single/perf_dealer_dealer.py
+  bindings/python/perf/single/perf_pubsub.py`는 통과했고, 같은 조건 C
+  `perf_c_single_linux_20260525_135131_python_single_latency_sample_c.txt`도 complete였다.
+  stride 32 후보 `perf_python_single_linux_20260525_135251_single_latency_sample_candidate.txt`의
+  tcp small median은 `PAIR` 45.0/47.4/44.0Kmsg/s, `PUBSUB` 43.3/41.6/40.1Kmsg/s,
+  `DEALER_DEALER` 46.9/46.3/45.0Kmsg/s로 C 대비 3.4~5.7%에 그쳤다. 기존 동작에 해당하는
+  `PERF_SINGLE_LATENCY_SAMPLE_STRIDE=1` 재측정
+  `perf_python_single_linux_20260525_135506_single_latency_stride1_reference.txt`도 complete였고,
+  `PAIR` 47.8/44.5/49.2Kmsg/s, `PUBSUB` 43.8/40.8/37.4Kmsg/s,
+  `DEALER_DEALER` 45.0/45.3/49.8Kmsg/s처럼 cell별 개선과 회귀가 섞였다.
+  latency 기록 비용만 줄여서는 single small 보류를 해소하지 못하므로 반영하지 않는다.
 - **MULTI_DEALER_DEALER send bytearray 후보 기각**: client hot path에서 `stamp_payload(...)`가
   `bytearray`에 헤더를 찍은 뒤 `bytes(payload)`를 반환하므로, 65536/262144B에서 반환된
   `bytes` 대신 원래 `bytearray`를 `send_nonblocking(...)`에 넘기는 후보를 시험했다.

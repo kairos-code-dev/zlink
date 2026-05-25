@@ -1837,6 +1837,17 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   않는다.
 - **MULTI_SPOT reusable TopicMessage 후보 기각**: client가 수신 메시지마다 caller-provided `TopicMessage()` placeholder를 새로 만들던 비용을 줄이기 위해 spot별 reusable `TopicMessage`를 두고 `subscribe_into(...)`에 재사용하는 후보를 시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_spot_client.py`는 통과했고 공식 runner도 complete였지만, C `perf_c_multi_linux_20260525_065239.txt` 대비 후보 `perf_python_multi_linux_20260525_070822.txt`의 tcp 64/256/1024B median은 114.033/115.156/113.439Kmsg/s로 기존 약 120Kmsg/s 대역보다 낮거나 같았다. placeholder 재사용만으로는 `subscribe_into` 내부 native receive와 Python 경계 비용을 줄이지 못하므로 반영하지 않는다.
 - **MULTI_SPOT subscribe_into 직접 `_replace` 후보 기각**: `Spot.subscribe_into(...)`가 내부에서 `TopicMessage`를 새로 만든 뒤 `_adopt_from(...)`으로 caller-provided storage에 옮기던 구조를 일반 SUB socket처럼 owner를 직접 `_replace(...)`하는 fast path로 바꾸는 후보를 시험했다. `python -m py_compile bindings/python/src/zlink/contracts/service/spot.py bindings/python/perf/multi/perf_multi_spot_client.py`와 `bindings/python/tests/run_tests.sh`는 통과했고 공식 runner도 complete였지만, C `perf_c_multi_linux_20260525_074518.txt` 대비 후보 `perf_python_multi_linux_20260525_080609.txt`의 tcp 64/256/1024/65536B median은 119.886/118.150/115.048/75.429Kmsg/s, 2.6/3.0/3.2/5.0%에 그쳤다. 기존 약 120Kmsg/s 수신 벽을 넘지 못해 코드에는 반영하지 않는다.
+- **MULTI_SPOT server blocking fallback 후보 기각**: C server는 `DONTWAIT` publish가
+  `EAGAIN`이면 같은 payload를 blocking submit으로 한 번 더 시도한다. Python server에도
+  같은 fallback을 env-gated 후보로 붙여 시험했다. `python3 -m py_compile
+  bindings/python/perf/multi/perf_multi_common.py bindings/python/perf/multi/perf_multi_spot_server.py
+  bindings/python/perf/multi/perf_multi_spot_client.py`는 통과했고, 같은 조건 C
+  `perf_c_multi_linux_20260525_151212_python_multi_spot_blocking_fallback_c.txt` 대비 Python 후보
+  `perf_python_multi_linux_20260525_152755_spot_publish_blocking_fallback_candidate.txt`는
+  complete였다. 하지만 tcp 64/256/1024B median이 114.869/116.314/111.008Kmsg/s로
+  기존 직접 `_replace` 후보보다 낮고, 일부 run latency가 3~4.5초까지 튀었다. Python
+  `Spot.publish` blocking submit은 send path를 오래 붙잡아 client drain backlog를 키우므로
+  C fallback 의미를 그대로 옮겨도 보류를 해소하지 못해 반영하지 않는다.
 - **MULTI_SPOT_REQREP callback latency queue 제거 후보 기각**: reply callback이
   `SimpleQueue`에 latency를 넣고 main loop가 비우는 비용을 줄이기 위해 callback에서
   보호된 리스트에 바로 기록하는 후보를 시험했다. `python -m py_compile`로

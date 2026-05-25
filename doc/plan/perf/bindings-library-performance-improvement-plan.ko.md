@@ -1084,6 +1084,9 @@ Go는 아직 완료가 아니다. 아래 항목은 모두 유효 수치는 확�
   complete였지만, 같은 조건 C `perf_c_multi_linux_20260525_093033.txt` 대비 Go median은
   4.358Kops/s, 41.2%로 기존 대표값과 같은 보류권이다. active slot을 더 좁히면
   in-flight request가 줄어 C 대비 처리량 격차를 줄이지 못하므로 반영하지 않는다.
+  current HEAD에서 active slot 6도 env 후보로 재시험했지만 공식 wrapper
+  `perf_go_multi_linux_20260525_095715.txt`는 4.760Kops/s로 기존 8-slot 대표값과 같은
+  보류권이라 반영하지 않는다.
   2026-05-25 재검토에서 server callback이 받은 single-part `Message`를 그대로
   `received.Reply().Message(parts[0])`에 넘기는 후보도 시험했다. 이 후보는 별도
   public API 없이 server의 `NewMessage(parts[0].Data())` 복사를 줄이는 방향이고

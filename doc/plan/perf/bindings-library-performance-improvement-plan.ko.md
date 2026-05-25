@@ -1646,6 +1646,14 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 - **MULTI_PUBSUB server `POLLOUT` wait 제거 적용**: Rust PUBSUB server는 active publish가 backpressure를 만나면 `POLLOUT` poller wait로 쉬었다. C reference는 `ZLINK_DONTWAIT` publish가 `EAGAIN`이어도 active window 안에서 바로 다음 publish를 재시도하므로, Rust만 publish rate가 100Kmsg/s 단위로 낮게 묶였다. server hot path를 C처럼 continuous `DONT_WAIT` retry로 맞춘 뒤 `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고, 공식 wrapper도 complete였다. Fresh C `perf_c_multi_linux_20260525_115827.txt` 대비 Rust `perf_rust_multi_linux_20260525_115826.txt`에서 tcp 64/256/1024/65536B는 91.8/98.2/116.8/90.9%, ws는 90.1/89.8/90.8/105.5%, wss는 93.6/94.1/94.2/65.8%, tls는 89.4/93.3/96.5/89.8%다. 이 변경으로 Rust `MULTI_PUBSUB` small 보류를 모두 제거한다.
 - **MULTI_SPOT tcp 64B poller wait 후보 기각**: tcp 64B client에도 progress 없음 구간에서 public `Poller` `POLLIN` wait를 쓰도록 좁혀 시험했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고 공식 runner도 complete였지만, 같은 조건 C `perf_c_multi_linux_20260525_043251.txt` 대비 no-code Rust `perf_rust_multi_linux_20260525_043320.txt`는 2.990Mmsg/s였고 후보 `perf_rust_multi_linux_20260525_043348.txt`는 2.967Mmsg/s로 낮아졌다. tcp 64B 보류는 idle wait 방식만으로 해소되지 않는다.
 - **routed echo single-copy reply 후보 기각**: `MULTI_DEALER_ROUTER`/`MULTI_ROUTER_ROUTER` server가 받은 payload를 `to_vec()`으로 queue payload로 만든 뒤 `Message::copy_from(&reply_bytes)`로 다시 복사하므로, 성공 경로에서는 `Message::with_size()`에 한 번만 복사하고 backpressure일 때만 queue `Vec`을 만드는 후보를 시험했다. release hook 없는 borrowed wrap은 Rust binding policy상 금지되어 native-owned `Message`만 사용했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했지만, 공식 runner 결과가 `MULTI_DEALER_ROUTER` 65536B 79.4K→67.2Kops/s(`perf_rust_multi_linux_20260524_195257.txt`), `MULTI_ROUTER_ROUTER` 65536B 78.0K→61.4Kops/s(`perf_rust_multi_linux_20260524_195316.txt`)로 떨어졌다. 기존 `Message::copy_from(&Vec)` 경로가 native send 준비와 더 잘 맞으므로 반영하지 않는다.
+- **single SPOT `TopicMessage` 재사용 후보 기각**: single SPOT subscriber loop가 매 수신마다
+  `TopicMessage`를 새로 만드는 비용을 줄이기 위해 caller-provided storage를 계속 재사용하는
+  후보를 시험했다. 공식 C 기준
+  `perf_c_single_linux_20260525_150657_rust_spot_subscribe_reuse_c.txt`와 Rust 후보
+  `perf_rust_single_linux_20260525_150735_spot_subscribe_reuse_candidate.txt`는 모두 complete였지만,
+  1024B C 대비 비율은 tcp/ws/wss/tls 48.7/56.3/63.8/59.0%에 그쳤다. `TopicMessage`
+  placeholder 할당만 줄여서는 single SPOT 1024B 보류를 해소하지 못하고, 남은 차이는
+  SPOT subscribe 호출 경계와 sender/receiver backlog 처리 쪽에 있다. 코드는 반영하지 않는다.
 - **2026-05-24 tcp full 재측정 요약**: DEALER_ROUTER 46~107%(전 size 통과), ROUTER_ROUTER small 통과/large 보류, SPOT_REQREP 64/256/1024/65536B 통과 및 131072/262144B 보류, STREAM 90~101% 통과, DD small 통과/large 보류, SPOT small 통과권/large 보류(copy 영역), SPOT_SENDSEND 64/256/1024/65536/131072B 통과 및 262144B 보류, PUBSUB 일부만 통과였다. 당시 PUBSUB small은 fresh baseline 대비 ~3~5%였지만, 2026-05-25 server `POLLOUT` wait 제거 뒤 `MULTI_PUBSUB` small 보류는 해소됐다.
 - **남은 보류(Rust)**: single routed large, single SPOT 1024B.
 

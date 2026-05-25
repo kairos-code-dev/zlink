@@ -5,8 +5,6 @@ use std::io::{self, BufRead, Write};
 use std::time::{Duration, Instant};
 use zlink::*;
 
-const TOPIC: &str = "bench";
-
 // Returns (processed_any, stop_seen). C perf_multi_pubsub_client.cpp
 // recv_one_pubsub_message(): the wire stop token (pubsub_recv_stop) ends the
 // recv phase.
@@ -16,6 +14,7 @@ fn drain_subscriber(
     latency_stats: &mut common::LatencyStats,
     active_count: &mut u64,
     active_deadline: Instant,
+    latency_stride: u64,
 ) -> bool {
     let mut stop_seen = false;
     let mut topic_msg = TopicMessage::empty();
@@ -30,14 +29,18 @@ fn drain_subscriber(
                 if !common::is_valid_active_message(data, msg_size) {
                     continue;
                 }
+                let now = Instant::now();
                 // C: messages arriving after the active deadline are not counted.
-                if Instant::now() >= active_deadline {
+                if now >= active_deadline {
                     continue;
                 }
-                let sent_ts_ns = common::decode_sent_ts_ns(data);
-                latency_stats
-                    .record_ns(common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64);
                 *active_count += 1;
+                if should_sample_latency(*active_count, latency_stride) {
+                    let sent_ts_ns = common::decode_sent_ts_ns(data);
+                    latency_stats.record_ns(
+                        common::now_ns().saturating_sub(sent_ts_ns.max(0) as u64) as f64,
+                    );
+                }
             }
             Ok(false) => break,
             Err(err) if err.code == RecvResult::NoData => break,
@@ -45,6 +48,18 @@ fn drain_subscriber(
         }
     }
     stop_seen
+}
+
+fn resolve_latency_sample_stride() -> u64 {
+    std::env::var("PERF_MULTI_PUBSUB_LATENCY_SAMPLE_STRIDE")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(32)
+}
+
+fn should_sample_latency(index: u64, stride: u64) -> bool {
+    stride <= 1 || index == 1 || index % stride == 0
 }
 
 fn main() {
@@ -108,6 +123,7 @@ fn main() {
     let mut latency_stats = common::LatencyStats::new();
     let mut active_count: u64 = 0;
     let mut phase_done = false;
+    let latency_stride = resolve_latency_sample_stride();
 
     while !phase_done {
         match poller.wait(&mut events, 100) {
@@ -121,6 +137,7 @@ fn main() {
                 &mut latency_stats,
                 &mut active_count,
                 active_deadline,
+                latency_stride,
             ) {
                 phase_done = true;
             }

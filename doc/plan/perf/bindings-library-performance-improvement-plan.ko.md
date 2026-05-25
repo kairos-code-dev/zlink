@@ -1666,6 +1666,19 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `perf_python_multi_linux_20260525_133912_dd_latency_stride8_probe.txt`도 tcp
   64/256/1024B가 181.5/177.7/171.5Kmsg/s라 안정적인 개선이 아니었다. small size
   보류도 6.3/9.2/11.9%로 남으므로 반영하지 않는다.
+- **MULTI_DEALER_DEALER server header single-decode 후보 기각**: server hot path의
+  metric payload 확인, active 판별, latency 계산이 같은 header를 여러 번 decode하므로,
+  마지막 part의 `data` view에서 header를 한 번만 decode해 count와 latency를 함께 처리하는
+  후보를 시험했다. `python3 -m py_compile bindings/python/perf/multi/perf_multi_dealer_dealer_server.py bindings/python/perf/multi/perf_multi_dealer_dealer_client.py`는
+  통과했다. 그러나 공식 wrapper
+  `perf_python_multi_linux_20260525_134111_dd_single_decode_candidate.txt`는 repeat 3의
+  `tcp 64B`에서 READY 수집 실패로 partial이 됐고, complete된 앞선 repeat median도
+  tcp 64/256/1024/65536/262144B 181.7/179.1/174.6/89.5/10.6Kmsg/s로 기존 보류권과
+  다르지 않았다. `tcp 64B` 단독 재시도
+  `perf_python_multi_linux_20260525_134126_dd_single_decode_64_retry.txt`는 complete였지만
+  183.9Kmsg/s로 기존 대표값 182.4Kmsg/s 대비 1% 미만이다. decode 중복은 일부 latency
+  수치를 낮췄지만 throughput 보류를 해소하지 못하고 묶음 complete도 확보하지 못해
+  반영하지 않는다.
 - **routed `recv_into` single-part fast path 적용**: Python `RouterSocket.recv_into`는 모든 routed 수신에서 Python 리스트에 `ZlinkMsg`를 모은 뒤 다시 C 배열로 복사했다. single-part가 대부분인 routed echo hot path에 일반 `recv_into`와 같은 fast path를 넣어 첫 part를 바로 `_ReceivedPartsOwner`로 넘기게 했다.
   `bindings/python/tests/run_tests.sh`는 통과했고, 공식 wrapper `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --msg-sizes 64,65536,131072,262144 --duration 1 --runs 3`에서 `MULTI_DEALER_ROUTER` large가 43.2/57.0/63.2%로 올랐다(`perf_python_multi_linux_20260524_235408.txt`). `MULTI_ROUTER_ROUTER` 65536B/262144B는 단독 complete 재측정에서 33.1/57.3%로 확인했다(`perf_python_multi_linux_20260524_235704.txt`, `perf_python_multi_linux_20260524_235511.txt`). small size는 여전히 per-call FFI 벽 때문에 보류다.
   같은 fast path는 non-tcp routed echo에도 효과가 있었다. `ws MULTI_DEALER_ROUTER 65536B`는 32.6%→38.0%(`perf_python_multi_linux_20260525_000108.txt`), `tls MULTI_ROUTER_ROUTER 65536B`는 28.8%→46.2%(`perf_python_multi_linux_20260525_000403.txt`)로 보류에서 통과로 올라갔다. `wss` 65536B는 `MULTI_DEALER_ROUTER` 70.5%, `MULTI_ROUTER_ROUTER` 56.1%로 통과 여유가 커졌다(`perf_python_multi_linux_20260525_000301.txt`). `ws MULTI_ROUTER_ROUTER 65536B`는 28.8%로 개선됐지만 아직 보류다(`perf_python_multi_linux_20260525_000503.txt`).

@@ -2069,6 +2069,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   ws 64/256/1024B가 16.3/16.4/19.1%로 기존 대표값과 같은 보류권이다. callback 뒤
   queue 왕복보다 request/reply callback 경계와 per-message Python 호출 비용이 지배적이므로
   반영하지 않는다.
+- **MULTI_SPOT_REQREP active count fast path 후보 기각**: PUBSUB에서 효과가 있었던
+  active count 분리와 latency sampling을 SPOT reqrep client에도 시험했다. callback은
+  reply payload length로 active reply를 세고, latency는 기본 32개당 1개만 계산하도록
+  바꿨다. `python3 -m py_compile bindings/python/perf/multi/perf_multi_spot_reqrep_client.py`는
+  통과했고 공식 wrapper도 complete였다. 그러나 fresh C
+  `perf_c_multi_linux_20260525_195105_python_spot_reqrep_sampled_count_c.txt` 대비 Python 후보
+  `perf_python_multi_linux_20260525_200020_spot_reqrep_sampled_count_candidate.txt`는 tcp
+  64/256/1024B median이 36.832/37.117/35.841Kops/s, 비율은 14.5/14.8/15.4%에 머물렀다.
+  header decode와 latency queue를 줄여도 small SPOT reqrep는 callback 전달과 request submit
+  경계 비용이 더 커서 기준선을 넘지 못하므로 반영하지 않는다.
 - **MULTI_PUBSUB multi-worker drain 후보 기각**: Python에서도 100개 subscriber를 worker 4개로 나눠 worker별 poller와 local latency/count를 합산하는 후보를 시험했다.
   `python -m py_compile bindings/python/perf/multi/perf_multi_common.py bindings/python/perf/multi/perf_multi_pubsub_client.py`는 통과했지만, 공식 runner `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_PUBSUB --msg-sizes 64 --duration 1 --runs 1`에서 client timeout partial(`perf_python_multi_linux_20260524_194603.txt`)이 재현됐다. Python binding 객체와 poller를 여러 Python thread에 나누는 접근은 현재 공개 API 조합에서 안정적인 개선 후보가 아니므로 반영하지 않는다.
 - **MULTI_PUBSUB latency sampling 적용**: PUBSUB client hot path가 모든 active 메시지에서 latency를 계산하고 Python list에 저장하던 비용을 줄이기 위해

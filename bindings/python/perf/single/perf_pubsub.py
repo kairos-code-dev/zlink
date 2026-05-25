@@ -20,7 +20,7 @@ from perf_common import (
     resolve_single_pubsub_ready_settle_s,
     resolve_single_pubsub_recv_timeout_ms,
     result_metrics,
-    run_one_way_receiver,
+    run_one_way_subscriber_native_subscribe_part,
     publish_nonblocking,
     stamp_payload,
     wait_monitor_event,
@@ -89,9 +89,9 @@ def main(argv=None):
                 )
                 sender.start()
                 # C perf_pubsub.cpp run_active_phase receiver.
-                received = run_one_way_receiver(
+                received = run_one_way_subscriber_native_subscribe_part(
                     subscriber,
-                    method="subscribe",
+                    topic=TOPIC,
                     msg_size=args.msg_size,
                     run_id=run_id,
                     active_end=active_end,

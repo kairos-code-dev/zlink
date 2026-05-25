@@ -1412,8 +1412,8 @@ single SPOT 1024B 보류가 남아 있다.
   반영하지 않는다.
 - tcp routed one-way large size는 `RouterSocket::recv_part(...)` part 단위 수신 적용 뒤
   fixed 재측정에서도 C 대비 11~15% 수준이라 routed one-way 기준보다 낮다. `DEALER_ROUTER`와
-  `ROUTER_ROUTER` 모두 active send를 `DONT_WAIT` retry로 정렬했고, active 이후 bounded
-  stop wait로 complete를 확보했지만 large gap은 남았다.
+  `ROUTER_ROUTER` 모두 active 이후 bounded stop wait로 complete를 확보했지만 large gap은
+  남았다. C single routed active send가 blocking send를 쓰는 점은 아래 후보로 따로 확인했다.
 - **2026-05-25 single routed current 재검토**: 같은 조건 C 기준
   `perf_c_single_linux_20260525_134314_rust_single_routed_current_c.txt`는 complete였고,
   `DEALER_ROUTER` tcp 1024/65536/131072/262144B가 1234.2/96.2/56.5/30.1Kmsg/s,
@@ -1462,6 +1462,17 @@ single SPOT 1024B 보류가 남아 있다.
   tcp `DEALER_ROUTER` 65536/262144B가 13.7/11.1%, `ROUTER_ROUTER`가 14.7/11.7%로
   기존과 같은 대역이다. single routed large 병목은 payload 생성 복사 1회가 아니라
   routed send/transport backpressure 경계에 남아 있다고 보고 코드는 반영하지 않는다.
+- **single routed blocking send 후보 기각**: C `perf_dealer_router.cpp`와
+  `perf_router_router.cpp`의 active send는 `ZLINK_SEND_FLAGS_NONE`을 사용한다. Rust
+  routed sender의 active/stop send에서 `DONT_WAIT` flag를 제거해 C와 같은 blocking send
+  의미로 맞추는 후보를 시험했다. `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고, 공식 wrapper
+  `PERF_FAIL_FAST=1 bindings/rust/perf/run_benchmarks.sh --transports tcp --pattern
+  DEALER_ROUTER,ROUTER_ROUTER --msg-sizes 65536,131072,262144 --duration 1 --runs 3`도
+  complete였다(`perf_rust_single_linux_20260525_205059_single_routed_blocking_send_candidate.txt`).
+  그러나 tcp median은 `DEALER_ROUTER` 65536/131072/262144B가 14.40/7.20/3.65Kmsg/s,
+  `ROUTER_ROUTER`가 14.38/7.17/3.64Kmsg/s로 기존 fixed 재측정과 같은 대역이다. blocking
+  send만으로는 C 대비 11~15% large 보류를 해소하지 못하므로 코드는 반영하지 않는다.
 - **single routed raw FFI 우회 후보 제외**: `bindings/rust/src/lib.rs`에서 raw `ffi`
   모듈은 crate private이고 public re-export가 아니다. perf crate는 `zlink` crate의 public
   API만 사용할 수 있으므로 `zlink_router_recv_part`를 직접 호출해 `RouterPart`나

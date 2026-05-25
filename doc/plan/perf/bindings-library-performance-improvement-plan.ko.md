@@ -1962,6 +1962,22 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `bindings/python/tests/run_tests.sh`는 통과했고, 공식 wrapper `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --msg-sizes 64,65536,131072,262144 --duration 1 --runs 3`에서 `MULTI_DEALER_ROUTER` large가 43.2/57.0/63.2%로 올랐다(`perf_python_multi_linux_20260524_235408.txt`). `MULTI_ROUTER_ROUTER` 65536B/262144B는 단독 complete 재측정에서 33.1/57.3%로 확인했다(`perf_python_multi_linux_20260524_235704.txt`, `perf_python_multi_linux_20260524_235511.txt`). small size는 여전히 per-call FFI 벽 때문에 보류다.
   같은 fast path는 non-tcp routed echo에도 효과가 있었다. `ws MULTI_DEALER_ROUTER 65536B`는 32.6%→38.0%(`perf_python_multi_linux_20260525_000108.txt`), `tls MULTI_ROUTER_ROUTER 65536B`는 28.8%→46.2%(`perf_python_multi_linux_20260525_000403.txt`)로 보류에서 통과로 올라갔다. `wss` 65536B는 `MULTI_DEALER_ROUTER` 70.5%, `MULTI_ROUTER_ROUTER` 56.1%로 통과 여유가 커졌다(`perf_python_multi_linux_20260525_000301.txt`). `ws MULTI_ROUTER_ROUTER 65536B`는 28.8%로 개선됐지만 아직 보류다(`perf_python_multi_linux_20260525_000503.txt`).
   2026-05-25 같은 조건 제한 재측정에서는 `ws MULTI_ROUTER_ROUTER 131072B`가 43.3%로 통과권에 올라왔고, `ws 65536B`는 28.9%로 보류가 유지됐다(`perf_c_multi_linux_20260525_023817.txt`, `perf_python_multi_linux_20260525_024823.txt`). `wss MULTI_ROUTER_ROUTER 65536/131072B`는 54.5/69.6%로 통과를 재확인했다.
+- **multi routed echo latency sampling 후보 기각**: `MULTI_DEALER_ROUTER`/`MULTI_ROUTER_ROUTER`
+  client reply hot path도 `MULTI_PUBSUB`처럼 count는 payload length로 유지하고 latency header
+  decode만 32개당 1개로 줄이는 후보를 시험했다. `python3 -m py_compile
+  bindings/python/perf/multi/perf_multi_common.py
+  bindings/python/perf/multi/perf_multi_dealer_router_client.py
+  bindings/python/perf/multi/perf_multi_router_router_client.py`는 통과했고, 공식 wrapper
+  `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern
+  MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --msg-sizes 64,256,1024,65536 --duration 1 --runs 3`도
+  complete였다(`perf_python_multi_linux_20260525_193443_multi_routed_latency_sample_candidate.txt`).
+  그러나 median은 `MULTI_DEALER_ROUTER` tcp 64/256/1024/65536B가
+  54.8/54.9/54.6/37.9Kops/s로 기존 대표값 56.5/56.1/54.0Kops/s 및 43.2% large 근거보다
+  낮거나 같은 수준이었다. `MULTI_ROUTER_ROUTER`는 64/256/1024B가
+  43.0/42.4/41.7Kops/s로 기존 39.7/39.9/38.9Kops/s보다 소폭 높지만,
+  65536B는 29.0Kops/s로 기존 통과 근거 33.1%보다 낮아졌다. small size도 기준선에는
+  멀어, routed echo의 남은 병목은 latency 기록보다 메시지별 send/recv FFI 경계와 server
+  echo 경로 비용이 지배적이라고 보고 후보를 반영하지 않는다.
 - **SPOT routed receive fast path 후보 기각**: 같은 single-part fast path를 SPOT routed receive에도 적용하는 후보를 시험했지만, 공식 wrapper `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_SPOT_SENDSEND --msg-sizes 64,65536,131072 --duration 1 --runs 3`가 `MULTI_SPOT_SENDSEND tcp 64B`에서 `CLIENT_READY` 누락 partial로 끝났다(`perf_python_multi_linux_20260524_235122.txt`). SPOT 변경을 되돌린 뒤 `MULTI_SPOT_SENDSEND tcp 64B` 단독 확인은 complete였다(`perf_python_multi_linux_20260524_235612.txt`). 따라서 이번 적용 범위는 일반 routed socket으로 제한한다.
 - **echo server view-send 후보 기각**: `MULTI_DEALER_ROUTER`/`MULTI_ROUTER_ROUTER` server에서 즉시 reply 성공 시 `to_bytes_list()` 복사를 피하고 `ReceivedMessage.data` view를 바로 `.message(...)`에 넘기는 후보를 시험했다. 공식 runner는 complete였지만 `MULTI_DEALER_ROUTER` 64B는 52.7K→50.2Kops/s(`perf_python_multi_linux_20260524_194948.txt`)로 내려갔고, `MULTI_ROUTER_ROUTER` 65536B도 26.5K→25.7Kops/s(`perf_python_multi_linux_20260524_195005.txt`)로 내려갔다. backpressure 시에는 결국 queue 보관을 위해 복사가 필요하고, 즉시 send 경로도 binding send buffer 준비 비용이 남아 안정적인 개선이 아니므로 반영하지 않는다.
 - **SPOT send-send consume-forward 후보 기각**: Python binding에 C `zlink_spot_forward_routed`를 임시로 노출해 `MULTI_SPOT_SENDSEND` server가 수신 payload를 Python 객체로 복사하지 않고 바로 source spot으로 되돌리는 후보를 시험했다.

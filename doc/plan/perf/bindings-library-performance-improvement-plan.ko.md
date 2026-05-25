@@ -1988,6 +1988,14 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   complete인 같은 조건에서 Python 후보 `perf_python_multi_linux_20260525_114623.txt`가
   `tcp 64B` READY 이후 결과 없이 partial로 끝났다. stream packet callback은 core callback
   경계와 server POLLOUT drain을 분리해야 안정적이므로 dispatcher 기반 호출을 유지한다.
+- **MULTI_STREAM pending lock 제거 후보 기각**: packet callback과 POLLOUT drain 사이의
+  `pending_lock` 비용을 줄이기 위해 `deque`의 append/popleft를 GIL에 맡기는 후보를
+  시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_stream_server.py`는
+  통과했고 같은 조건 C 기준 `perf_c_multi_linux_20260525_164746_python_multi_stream_lockfree_c.txt`도
+  complete였지만, Python 공식 wrapper `perf_python_multi_linux_20260525_164820_multi_stream_lockfree_candidate.txt`는
+  `tcp 64B` READY 이후 결과 없이 partial로 끝났다. callback dispatcher thread와 main
+  drain loop가 같은 queue를 공유하는 구조에서는 lock 제거가 안정적인 hot path 개선이
+  아니므로 반영하지 않는다.
 - SPOT reply decode에도 같은 원칙을 적용했다. `MULTI_SPOT_REQREP`는 callback 이전에 reply part가 이미 Python `Message`로 clone되므로 추가 `to_bytes()` 제거 효과가 제한적이고,
   `MULTI_SPOT_SENDSEND`는 routed reply `ReceivedMessage.data`로 262144B가 37.4%→43.6%까지 올랐다. small/65536B와 일부 131072B는 여전히 기준보다 낮다.
 - **SPOT reqrep server view-reply 후보 기각**: `MULTI_SPOT_REQREP` server에서

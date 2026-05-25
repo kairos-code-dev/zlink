@@ -60,55 +60,30 @@ fn main() {
         return;
     }
 
-    let poller = Poller::new().expect("poller");
-    poller
-        .add_socket(&pub_sock, POLLOUT, 0)
-        .expect("poller add");
-    let mut events = vec![PollEvent::default(); 1];
     let deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
     let payload_size = args.msg_size.max(common::HEADER_SIZE);
     let mut seq: u64 = 1;
-    let mut pending = false;
 
     while Instant::now() < deadline {
-        if !pending {
-            let mut msg = Message::with_size(payload_size).expect("msg");
-            common::encode_header(
-                msg.data_mut(),
-                common::PHASE_ACTIVE,
-                args.msg_size as u32,
-                seq,
-            );
-            match pub_sock
-                .publish(TOPIC)
-                .message(msg)
-                .flags(SendFlags::DONT_WAIT)
-                .submit()
-            {
-                Ok(true) => {
-                    seq += 1;
-                    continue;
-                }
-                Ok(false) => {
-                    pending = true;
-                }
-                Err(err) if err.code() == SubmitResult::Backpressured => {
-                    pending = true;
-                }
-                Err(err) => panic!("publish failed: {err}"),
+        let mut msg = Message::with_size(payload_size).expect("msg");
+        common::encode_header(
+            msg.data_mut(),
+            common::PHASE_ACTIVE,
+            args.msg_size as u32,
+            seq,
+        );
+        match pub_sock
+            .publish(TOPIC)
+            .message(msg)
+            .flags(SendFlags::DONT_WAIT)
+            .submit()
+        {
+            Ok(true) => {
+                seq += 1;
             }
-        }
-
-        let remaining_ms = deadline
-            .saturating_duration_since(Instant::now())
-            .as_millis()
-            .max(1) as i64;
-        match poller.wait(&mut events, remaining_ms) {
-            Ok(n) if n > 0 && events[0].is_writable() => {
-                pending = false;
-            }
-            Ok(_) => {}
-            Err(err) => panic!("poller wait failed: {err}"),
+            Ok(false) => {}
+            Err(err) if err.code() == SubmitResult::Backpressured => {}
+            Err(err) => panic!("publish failed: {err}"),
         }
     }
 

@@ -9,6 +9,7 @@ public sealed class ActorContracts
         typeof(IZLinkActor),
         typeof(IZLinkActorContext),
         typeof(IZLinkActorJoinSpotCall),
+        typeof(IZLinkActorJoinEntrySpotCall),
         typeof(IZLinkActorFactory),
         typeof(IZLinkActorManager))]
     public async Task Actor_context_creates_actors_and_joins_a_spot_by_routing_id()
@@ -22,12 +23,18 @@ public sealed class ActorContracts
         var joinReply = await actor.Context
             .JoinSpot(RoutingId.Of("room-1"), new JoinRoom("room-1"))
             .SubmitAsync<JoinedRoom>();
+        var entryJoin = await actor.Context
+            .JoinEntrySpot(RoutingId.Of("play-node"))
+            .Timeout(TimeSpan.FromSeconds(1))
+            .SubmitAsync();
 
         actor.Configure();
         await actor.OnDisconnectedAsync(CancellationToken.None);
 
         Assert.Equal("player-1", actor.ActorId);
-        Assert.Equal("room-1", joinReply.RoomId);
+        Assert.Equal("room-1", joinReply.Reply.RoomId);
+        Assert.Equal("player-1", entryJoin.ActorId);
+        Assert.Equal(RoutingId.Of("play-node"), entryJoin.RemoteAddress.TargetNodeRid);
     }
 
     [Fact]
@@ -140,14 +147,34 @@ public sealed class ActorContracts
             RoutingId spotRid,
             TRequest request) =>
             new JoinSpotCall(new JoinedRoom("room-1"));
+
+        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid) =>
+            new JoinEntrySpotCall(new ZLinkActorJoinResult(
+                actorId,
+                "player",
+                new ZLinkActorRemoteAddress(string.Empty, spotNodeRid, 1)));
     }
 
     private sealed class JoinSpotCall(object reply) : IZLinkActorJoinSpotCall
     {
         public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout) => this;
 
-        public ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult((TReply)reply);
+        public ValueTask<ZLinkActorJoinResult<TReply>> SubmitAsync<TReply>(
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new ZLinkActorJoinResult<TReply>(
+                "player-1",
+                "player",
+                new ZLinkActorRemoteAddress(string.Empty, RoutingId.Of("room-node"), 1),
+                (TReply)reply));
+    }
+
+    private sealed class JoinEntrySpotCall(ZLinkActorJoinResult result) : IZLinkActorJoinEntrySpotCall
+    {
+        public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout) => this;
+
+        public ValueTask<ZLinkActorJoinResult> SubmitAsync(
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(result);
     }
 
     private sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZLinkActor

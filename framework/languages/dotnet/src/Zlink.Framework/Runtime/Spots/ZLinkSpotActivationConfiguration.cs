@@ -104,7 +104,7 @@ internal sealed partial class ZLinkSpotActivation
         AddActorPacketCore<THandler, TActor>(packetName);
     }
 
-    public void AddActorJoined<THandler, TActor>()
+    public void AddPostActorJoined<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor
     {

@@ -39,6 +39,7 @@ internal sealed class ZLinkSpotActorLifecycleDescriptor
     public required ZLinkHandlerMethodInvoker Invoker { get; init; }
 
     public required ZLinkSpotActorHandlerSurface Surface { get; init; }
+
 }
 
 internal sealed class ZLinkSpotActorInferredHandlerDescriptor

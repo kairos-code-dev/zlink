@@ -26,7 +26,7 @@ internal sealed class PlayEntrySpotActorLeftHandler(ILogger<PlayEntrySpotActorLe
     public ValueTask HandleAsync(
         PlayEntrySpot entrySpot,
         PlayActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext info,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;

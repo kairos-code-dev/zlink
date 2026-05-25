@@ -38,6 +38,6 @@ internal sealed class MatchBingoActorHandler
             .SubmitAsync<BingoRoomJoinRes>(cancellationToken)
             ;
 
-        return new MatchBingoRes(matched.RoomId, joined.State);
+        return new MatchBingoRes(matched.RoomId, joined.Reply.State);
     }
 }

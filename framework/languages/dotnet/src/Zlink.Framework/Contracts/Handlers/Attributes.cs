@@ -64,7 +64,7 @@ public sealed class ZLinkSpotActorJoinAttribute : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkSpotActorJoinedAttribute : Attribute
+public sealed class ZLinkSpotPostActorJoinedAttribute : Attribute
 {
 }
 

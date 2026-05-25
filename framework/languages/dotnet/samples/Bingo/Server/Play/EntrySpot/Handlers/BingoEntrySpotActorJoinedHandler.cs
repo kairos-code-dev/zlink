@@ -15,12 +15,12 @@ namespace Bingo.Server.Play.EntrySpot.Handlers;
 
 internal sealed class BingoEntrySpotActorJoinedHandler(
     ILogger<BingoEntrySpotActorJoinedHandler> logger)
-    : IZLinkEntrySpotActorJoinedHandler<BingoEntrySpot, PlayerActor>
+    : IZLinkSpotPostActorJoinedHandler<BingoEntrySpot, PlayerActor>
 {
     public ValueTask HandleAsync(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext info,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;

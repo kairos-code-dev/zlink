@@ -78,56 +78,51 @@ internal sealed class ZLinkEntrySpotActorRouter
     public async ValueTask NotifyJoinedAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken)
     {
         await NotifyLifecycleAsync(
             state,
             actor,
-            info,
+            context,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.TryResolveEntrySpotActorJoined(actorType, out descriptor),
-            static (node, info, ct) => node.InvokeEntrySpotActorJoinedCallbackAsync(info, ct),
             cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask NotifyLeftAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken)
     {
         await NotifyLifecycleAsync(
             state,
             actor,
-            info,
+            context,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
                 node.TryResolveEntrySpotActorLeft(actorType, out descriptor),
-            static (node, info, ct) => node.InvokeEntrySpotActorLeftCallbackAsync(info, ct),
             cancellationToken).ConfigureAwait(false);
     }
 
     private static async ValueTask NotifyLifecycleAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         TryResolveLifecycle resolve,
-        Func<ZLinkSpotNodeRuntime, ZLinkSpotActorLifecycleInfo, CancellationToken, ValueTask> callback,
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
         {
             try
             {
-                await callback(node, info, cancellationToken)
-                    .ConfigureAwait(false);
                 if (resolve(node, actor.GetType(), out var descriptor)
                     && descriptor is not null)
                 {
                     await node.InvokeEntrySpotActorLifecycleAsync(
                             descriptor,
                             actor,
-                            info,
+                            context,
                             cancellationToken)
                         .ConfigureAwait(false);
                 }

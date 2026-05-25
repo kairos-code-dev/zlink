@@ -16,6 +16,27 @@ internal readonly record struct ZLinkBackendActorRef(
     string ActorId,
     ulong Generation);
 
+internal readonly record struct ZLinkBackendActorJoinResult(
+    RequestResult Result,
+    ZLinkBackendActorRef Actor,
+    RoutingId JoinedSpotRid,
+    ulong JoinEpoch,
+    uint Flags);
+
+internal readonly record struct ZLinkBackendActorJoinEntrySpotResult(
+    RequestResult Result,
+    ZLinkBackendActorRef Actor,
+    RoutingId TargetNodeRid,
+    ulong JoinEpoch,
+    uint Flags);
+
+internal delegate void ActorJoinCallback(
+    ZLinkBackendActorJoinResult result,
+    IReadOnlyList<Message> parts);
+
+internal delegate void ActorJoinEntrySpotCallback(
+    ZLinkBackendActorJoinEntrySpotResult result);
+
 internal sealed record ZLinkBackendDiscoveryRoute(
     RoutingId OwnerRoutingId,
     Message Value) : IDisposable, IAsyncDisposable

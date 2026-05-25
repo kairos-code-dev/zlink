@@ -67,8 +67,7 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
             this,
             _actors,
             () => _actorHandlers,
-            () => HandlerInvoker,
-            () => Spot);
+            () => HandlerInvoker);
     }
 
     public IZLinkSpot Spot => _spot

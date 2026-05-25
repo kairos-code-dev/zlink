@@ -43,7 +43,7 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
             .Timeout(SampleTimeouts.Request)
             .SubmitAsync<TicTacToeGameJoinRes>(cancellationToken);
 
-        var reply = new JoinGameRes(joined.State);
+        var reply = new JoinGameRes(joined.Reply.State);
         logger.LogInformation(
             "actor -> client: JoinGameRes returned. actor={ActorId}, gameId={GameId}, mark={Mark}",
             actor.ActorId,

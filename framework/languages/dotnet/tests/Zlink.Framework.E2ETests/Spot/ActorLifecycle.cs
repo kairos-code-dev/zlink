@@ -57,7 +57,7 @@ public sealed class ActorLifecycleTests : SpotTestSupport
             first.SpotRid,
             actor,
             new JoinStageRequest("room-1"));
-        Assert.Equal("room-1", firstReply.RoomId);
+        Assert.Equal("room-1", firstReply.Reply.RoomId);
         Assert.Equal(first.SpotRid, actor.Spot?.Context.SpotRid);
         Assert.Equal(first.SpotRid, actor.Context.SpotRid);
 
@@ -65,7 +65,7 @@ public sealed class ActorLifecycleTests : SpotTestSupport
             second.SpotRid,
             actor,
             new JoinStageRequest("room-2"));
-        Assert.Equal("room-2", secondReply.RoomId);
+        Assert.Equal("room-2", secondReply.Reply.RoomId);
         Assert.Equal(second.SpotRid, actor.Spot?.Context.SpotRid);
         Assert.Equal(second.SpotRid, actor.Context.SpotRid);
         await RetryAsync(

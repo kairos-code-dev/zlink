@@ -138,11 +138,11 @@ public abstract partial class StreamTestSupport
 
     public sealed class RegistryOnlyAttributedEntrySpotJoinedHandler
     {
-        [ZLinkSpotActorJoined]
+        [ZLinkSpotPostActorJoined]
         public ValueTask HandleAsync(
             RegistryOnlyEntrySpot entrySpot,
             RegistryOnlyActor actor,
-            ZLinkSpotActorLifecycleInfo info,
+            ZLinkSpotActorLifecycleContext info,
             CancellationToken cancellationToken)
         {
             _ = entrySpot;
@@ -176,7 +176,7 @@ public abstract partial class StreamTestSupport
         public ValueTask HandleAsync(
             RegistryOnlySpot spot,
             RegistryOnlyActor actor,
-            ZLinkSpotActorLifecycleInfo info,
+            ZLinkSpotActorLifecycleContext info,
             CancellationToken cancellationToken)
         {
             _ = spot;

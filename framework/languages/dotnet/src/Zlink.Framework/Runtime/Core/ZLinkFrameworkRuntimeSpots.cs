@@ -106,7 +106,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal async ValueTask NotifyEntrySpotActorJoinedAsync(
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken = default)
     {
         if (_state is null)
@@ -117,14 +117,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         await _spots.NotifyEntrySpotActorJoinedAsync(
                 _state,
                 actor,
-                info,
+                context,
                 cancellationToken)
             .ConfigureAwait(false);
     }
 
     internal async ValueTask NotifyEntrySpotActorLeftAsync(
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken = default)
     {
         if (_state is null)
@@ -135,7 +135,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         await _spots.NotifyEntrySpotActorLeftAsync(
                 _state,
                 actor,
-                info,
+                context,
                 cancellationToken)
             .ConfigureAwait(false);
     }

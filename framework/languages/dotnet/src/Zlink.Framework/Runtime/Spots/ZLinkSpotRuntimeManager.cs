@@ -182,20 +182,20 @@ internal sealed class ZLinkSpotRuntimeManager(
     public async ValueTask NotifyEntrySpotActorJoinedAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken)
     {
-        await _entrySpotActors.NotifyJoinedAsync(state, actor, info, cancellationToken)
+        await _entrySpotActors.NotifyJoinedAsync(state, actor, context, cancellationToken)
             .ConfigureAwait(false);
     }
 
     public async ValueTask NotifyEntrySpotActorLeftAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken)
     {
-        await _entrySpotActors.NotifyLeftAsync(state, actor, info, cancellationToken)
+        await _entrySpotActors.NotifyLeftAsync(state, actor, context, cancellationToken)
             .ConfigureAwait(false);
     }
 

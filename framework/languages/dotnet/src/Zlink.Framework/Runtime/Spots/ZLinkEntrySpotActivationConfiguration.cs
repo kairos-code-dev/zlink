@@ -73,7 +73,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         AddActorPacketCore<THandler, TActor>(packetName);
     }
 
-    public void AddActorJoined<THandler, TActor>()
+    public void AddPostActorJoined<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor
     {

@@ -74,9 +74,9 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
             recorder.Events,
             static entry => entry.StartsWith("entry-spot:registry-actor:", StringComparison.Ordinal));
         Assert.Contains($"entry-left:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
-        Assert.Contains("entry-left-kind:registry-actor:Left", recorder.Events);
+        Assert.Contains("entry-left-kind:registry-actor:JoinSpot", recorder.Events);
         Assert.Contains($"joined:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
-        Assert.Contains("joined-kind:registry-actor:Joined", recorder.Events);
+        Assert.Contains("joined-kind:registry-actor:JoinSpot", recorder.Events);
 
         using (var dispatchBody = Message.FromString("payload"))
         {
@@ -100,7 +100,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
             new RegistryJoinRequest("second-room"));
 
         Assert.Contains($"left:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
-        Assert.Contains("left-kind:registry-actor:Left", recorder.Events);
+        Assert.Contains("left-kind:registry-actor:LeaveSpot", recorder.Events);
         Assert.Contains($"joined:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
 
         var currentSpot = actor.Spot ?? throw new InvalidOperationException("Actor is not joined.");
@@ -108,7 +108,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         actor.DetachSpot(currentSpot);
 
         Assert.Contains($"entry-joined:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
-        Assert.Contains("entry-joined-kind:registry-actor:Joined", recorder.Events);
+        Assert.Contains("entry-joined-kind:registry-actor:LeaveSpot", recorder.Events);
 
         await actorRuntime.DisconnectActorAsync(
             actor,

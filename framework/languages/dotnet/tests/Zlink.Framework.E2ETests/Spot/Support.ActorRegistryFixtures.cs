@@ -22,7 +22,7 @@ public abstract partial class SpotTestSupport
         {
             Context.AddActorJoin<RegistryStageJoinHandler, RegistryTestActor, RegistryJoinRequest, RegistryJoinReply>();
             Context.AddActorPacket<RegistryStageDispatchHandler, RegistryTestActor>("spot-dispatch");
-            Context.AddActorJoined<RegistryStageJoinedHandler, RegistryTestActor>();
+            Context.AddPostActorJoined<RegistryStageJoinedHandler, RegistryTestActor>();
             Context.AddActorLeft<RegistryStageLeftHandler, RegistryTestActor>();
         }
 
@@ -60,7 +60,7 @@ public abstract partial class SpotTestSupport
                 .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<RegistryJoinReply>(cancellationToken);
 
-            actor.CurrentRoomId = reply.RoomId;
+            actor.CurrentRoomId = reply.Reply.RoomId;
             recorder.Events.Enqueue($"entry:{actor.ActorId}:{spotRid}");
         }
     }
@@ -103,7 +103,7 @@ public abstract partial class SpotTestSupport
                 .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<RegistryJoinReply>(cancellationToken);
 
-            actor.CurrentRoomId = reply.RoomId;
+            actor.CurrentRoomId = reply.Reply.RoomId;
             registryRecorder.Events.Enqueue($"entry-block-joined:{actor.ActorId}:{spotRid}");
         }
     }
@@ -183,17 +183,17 @@ public abstract partial class SpotTestSupport
     }
 
     public sealed class RegistryStageJoinedHandler(EntrySpotActorRegistryRecorder recorder)
-        : IZLinkSpotActorJoinedHandler<RegistryStageSpot, RegistryTestActor>
+        : IZLinkSpotPostActorJoinedHandler<RegistryStageSpot, RegistryTestActor>
     {
         public ValueTask HandleAsync(
             RegistryStageSpot spot,
             RegistryTestActor actor,
-            ZLinkSpotActorLifecycleInfo info,
+            ZLinkSpotActorLifecycleContext info,
             CancellationToken cancellationToken)
         {
             _ = cancellationToken;
             recorder.Events.Enqueue($"joined:{actor.ActorId}:{spot.Context.SpotRid.ToHex()}");
-            recorder.Events.Enqueue($"joined-kind:{actor.ActorId}:{info.Kind}");
+            recorder.Events.Enqueue($"joined-kind:{actor.ActorId}:{info.Reason}");
             return ValueTask.CompletedTask;
         }
     }
@@ -204,45 +204,45 @@ public abstract partial class SpotTestSupport
         public ValueTask HandleAsync(
             RegistryStageSpot spot,
             RegistryTestActor actor,
-            ZLinkSpotActorLifecycleInfo info,
+            ZLinkSpotActorLifecycleContext info,
             CancellationToken cancellationToken)
         {
             _ = cancellationToken;
             recorder.Events.Enqueue($"left:{actor.ActorId}:{spot.Context.SpotRid.ToHex()}");
-            recorder.Events.Enqueue($"left-kind:{actor.ActorId}:{info.Kind}");
+            recorder.Events.Enqueue($"left-kind:{actor.ActorId}:{info.Reason}");
             return ValueTask.CompletedTask;
         }
     }
 
     public sealed class RegistryEntryJoinedHandler(EntrySpotActorRegistryRecorder recorder)
-        : IZLinkEntrySpotActorJoinedHandler<RegistryEntrySpot, RegistryTestActor>
+        : IZLinkSpotPostActorJoinedHandler<RegistryEntrySpot, RegistryTestActor>
     {
         public ValueTask HandleAsync(
             RegistryEntrySpot entrySpot,
             RegistryTestActor actor,
-            ZLinkSpotActorLifecycleInfo info,
+            ZLinkSpotActorLifecycleContext info,
             CancellationToken cancellationToken)
         {
             _ = cancellationToken;
             recorder.Events.Enqueue($"entry-joined:{actor.ActorId}:{info.PreviousSpotRid?.ToHex()}");
-            recorder.Events.Enqueue($"entry-joined-kind:{actor.ActorId}:{info.Kind}");
+            recorder.Events.Enqueue($"entry-joined-kind:{actor.ActorId}:{info.Reason}");
             recorder.Events.Enqueue($"entry-spot:{actor.ActorId}:{entrySpot.Context.SpotRid.ToHex()}");
             return ValueTask.CompletedTask;
         }
     }
 
     public sealed class RegistryEntryLeftHandler(EntrySpotActorRegistryRecorder recorder)
-        : IZLinkEntrySpotActorLeftHandler<RegistryEntrySpot, RegistryTestActor>
+        : IZLinkSpotActorLeftHandler<RegistryEntrySpot, RegistryTestActor>
     {
         public ValueTask HandleAsync(
             RegistryEntrySpot entrySpot,
             RegistryTestActor actor,
-            ZLinkSpotActorLifecycleInfo info,
+            ZLinkSpotActorLifecycleContext info,
             CancellationToken cancellationToken)
         {
             _ = cancellationToken;
             recorder.Events.Enqueue($"entry-left:{actor.ActorId}:{info.CurrentSpotRid?.ToHex()}");
-            recorder.Events.Enqueue($"entry-left-kind:{actor.ActorId}:{info.Kind}");
+            recorder.Events.Enqueue($"entry-left-kind:{actor.ActorId}:{info.Reason}");
             recorder.Events.Enqueue($"entry-spot:{actor.ActorId}:{entrySpot.Context.SpotRid.ToHex()}");
             return ValueTask.CompletedTask;
         }

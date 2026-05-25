@@ -23,13 +23,14 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<JoinMatchSpotResult>(cancellationToken)
             ;
-        await notifications.PublishAsync(result.Events, cancellationToken)
+        var joined = result.Reply;
+        await notifications.PublishAsync(joined.Events, cancellationToken)
             ;
         var reply = new JoinMatchRes(
-            result.MatchId,
+            joined.MatchId,
             result.ActorId,
-            result.Mark.ToContract(),
-            result.Snapshot.ToContract());
+            joined.Mark.ToContract(),
+            joined.Snapshot.ToContract());
         return reply;
     }
 }

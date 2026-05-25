@@ -199,33 +199,13 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
     public ValueTask InvokeActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken)
     {
         return InvokeActorLifecycleWithoutGateAsync(
             descriptor,
             actor,
-            info,
-            cancellationToken);
-    }
-
-    public ValueTask InvokeActorJoinedCallbackAsync(
-        ZLinkSpotActorLifecycleInfo info,
-        CancellationToken cancellationToken)
-    {
-        return InvokeActorLifecycleCallbackAsync(
-            info,
-            static (activation, state, ct) => activation.EntrySpot.OnActorJoinedAsync(state.Info, ct),
-            cancellationToken);
-    }
-
-    public ValueTask InvokeActorLeftCallbackAsync(
-        ZLinkSpotActorLifecycleInfo info,
-        CancellationToken cancellationToken)
-    {
-        return InvokeActorLifecycleCallbackAsync(
-            info,
-            static (activation, state, ct) => activation.EntrySpot.OnActorLeftAsync(state.Info, ct),
+            context,
             cancellationToken);
     }
 
@@ -250,26 +230,12 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
     private sealed record ActorLifecycleState(
         ZLinkSpotActorLifecycleDescriptor Descriptor,
         IZLinkActor Actor,
-        ZLinkSpotActorLifecycleInfo Info);
-
-    private sealed record ActorLifecycleCallbackState(
-        ZLinkSpotActorLifecycleInfo Info);
-
-    private ValueTask InvokeActorLifecycleCallbackAsync(
-        ZLinkSpotActorLifecycleInfo info,
-        Func<ZLinkEntrySpotActivation, ActorLifecycleCallbackState, CancellationToken, ValueTask> callback,
-        CancellationToken cancellationToken)
-    {
-        return InvokeActorLifecycleCallbackWithoutGateAsync(
-            callback,
-            new ActorLifecycleCallbackState(info),
-            cancellationToken);
-    }
+        ZLinkSpotActorLifecycleContext Context);
 
     private async ValueTask InvokeActorLifecycleWithoutGateAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken)
     {
         var previous = Current.Value;
@@ -280,7 +246,7 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
             await _invoker.InvokeActorLifecycleAsync(
                     descriptor,
                     actor,
-                    info,
+                    context,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -290,21 +256,4 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         }
     }
 
-    private async ValueTask InvokeActorLifecycleCallbackWithoutGateAsync(
-        Func<ZLinkEntrySpotActivation, ActorLifecycleCallbackState, CancellationToken, ValueTask> callback,
-        ActorLifecycleCallbackState state,
-        CancellationToken cancellationToken)
-    {
-        var previous = Current.Value;
-        Current.Value = this;
-        try
-        {
-            using var _ = ZLinkSpotAmbientContext.Push(this);
-            await callback(this, state, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            Current.Value = previous;
-        }
-    }
 }

@@ -30,6 +30,8 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public bool IsConfigured { get; set; }
 
+    public bool ContextInvalidated { get; private set; }
+
     public ulong CurrentActorGeneration
         => NativeActorRef is { Generation: not 0 } actorRef
             ? actorRef.Generation
@@ -93,8 +95,24 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public IZLinkSpot GetJoinedSpot()
     {
+        EnsureContextValid();
         return LiveActivation?.Spot
             ?? throw new InvalidOperationException("Actor has not joined a SPOT.");
+    }
+
+    public void EnsureContextValid()
+    {
+        if (ContextInvalidated)
+        {
+            throw new InvalidOperationException(
+                $"Actor context for '{ActorId}' is no longer valid because actor ownership moved to another SpotNode.");
+        }
+    }
+
+    public void InvalidateContext()
+    {
+        ContextInvalidated = true;
+        Activation = null;
     }
 
     public ZLinkActorPlacementSelection SelectPlacementLocked(bool pruneWhenSessionless)

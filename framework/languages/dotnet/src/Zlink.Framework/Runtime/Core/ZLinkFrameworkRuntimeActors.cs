@@ -4,7 +4,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 {
     private static readonly ZLinkActorBoundSessionIndex BoundSessionIndex = new();
 
-    internal async ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
+    internal async ValueTask<ZLinkActorJoinResult<TReply>> JoinActorAsync<TRequest, TReply>(
         RoutingId spotRid,
         IZLinkActor actor,
         TRequest request,
@@ -14,6 +14,17 @@ internal sealed partial class ZLinkFrameworkRuntime
             spotRid,
             actor,
             request,
+            cancellationToken);
+    }
+
+    internal async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
+        RoutingId spotNodeRid,
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        return await _actors.JoinActorEntrySpotAsync(
+            spotNodeRid,
+            actor,
             cancellationToken);
     }
 

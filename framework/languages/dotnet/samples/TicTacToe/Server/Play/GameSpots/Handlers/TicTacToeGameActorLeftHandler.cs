@@ -26,7 +26,7 @@ internal sealed class TicTacToeGameActorLeftHandler(ILogger<TicTacToeGameActorLe
     public ValueTask HandleAsync(
         TicTacToeGame spot,
         PlayActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext info,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

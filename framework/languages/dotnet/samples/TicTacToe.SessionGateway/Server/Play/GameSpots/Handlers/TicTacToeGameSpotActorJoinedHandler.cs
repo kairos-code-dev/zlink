@@ -9,11 +9,11 @@ namespace TicTacToe.SessionGateway.Server.Play.GameSpots.Handlers;
 internal sealed class TicTacToeGameSpotActorJoinedHandler(
     ILogger<TicTacToeGameSpotActorJoinedHandler> logger)
 {
-    [ZLinkSpotActorJoined]
+    [ZLinkSpotPostActorJoined]
     public ValueTask HandleAsync(
         TicTacToeGameSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext info,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

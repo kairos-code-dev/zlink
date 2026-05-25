@@ -1,31 +1,33 @@
 namespace Zlink.Framework.Contracts.Spots;
 
-public enum ZLinkSpotActorLifecycleKind
+public enum ZLinkSpotActorLifecycleReason
 {
-    Joined = 1,
-    Left = 2
+    Unknown = 0,
+    JoinSpot = 1,
+    JoinEntrySpot = 2,
+    LeaveSpot = 3,
+    Disconnect = 4,
+    Destroy = 5
 }
 
-public sealed record ZLinkSpotActorLifecycleInfo(
-    ZLinkSpotActorLifecycleKind Kind,
-    string ActorId,
-    RoutingId? PreviousNodeRid,
+public sealed record ZLinkSpotActorLifecycleContext(
     RoutingId? PreviousSpotRid,
-    RoutingId? CurrentNodeRid,
     RoutingId? CurrentSpotRid,
-    string? PreviousSpotName,
-    string? CurrentSpotName,
-    bool PreviousIsEntrySpot,
-    bool CurrentIsEntrySpot,
-    ulong CommitEpoch)
+    ulong JoinEpoch,
+    ZLinkSpotActorLifecycleReason Reason,
+    uint NativeFlags)
 {
+    public string? ActorId { get; init; }
+
     public string? PreviousActorId => PreviousSpotRid is null ? null : ActorId;
 
     public string? CurrentActorId => CurrentSpotRid is null ? null : ActorId;
 
-    public ulong JoinEpoch => CommitEpoch;
+    public ulong CommitEpoch => JoinEpoch;
 
-    public uint Flags { get; init; }
+    public uint Flags => NativeFlags;
+
+    public ZLinkSpotActorLifecycleReason Kind => Reason;
 }
 
 public interface IZLinkSpot
@@ -53,19 +55,6 @@ public interface IZLinkSpot
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnActorJoinedAsync(
-        ZLinkSpotActorLifecycleInfo info,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
-
-    ValueTask OnActorLeftAsync(
-        ZLinkSpotActorLifecycleInfo info,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
 }
 
 public interface IZLinkActorHandlerRegistry
@@ -84,7 +73,7 @@ public interface IZLinkActorHandlerRegistry
         where THandler : class
         where TActor : IZLinkActor;
 
-    void AddActorJoined<THandler, TActor>()
+    void AddPostActorJoined<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor;
 
@@ -166,19 +155,6 @@ public interface IZLinkEntrySpot
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnActorJoinedAsync(
-        ZLinkSpotActorLifecycleInfo info,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
-
-    ValueTask OnActorLeftAsync(
-        ZLinkSpotActorLifecycleInfo info,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
 }
 
 public interface IZLinkEntrySpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutboundContext
@@ -217,14 +193,14 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSpotActorJoinedHandler<TSpot, TActor>
+public interface IZLinkSpotPostActorJoinedHandler<TSpot, TActor>
     where TSpot : class
     where TActor : IZLinkActor
 {
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken);
 }
 
@@ -235,7 +211,7 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken);
 }
 
@@ -258,27 +234,5 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
         TEntrySpot entrySpot,
         TActor actor,
         TRequest request,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkEntrySpotActorJoinedHandler<TEntrySpot, TActor>
-    where TEntrySpot : class, IZLinkEntrySpot
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TEntrySpot entrySpot,
-        TActor actor,
-        ZLinkSpotActorLifecycleInfo info,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkEntrySpotActorLeftHandler<TEntrySpot, TActor>
-    where TEntrySpot : class, IZLinkEntrySpot
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TEntrySpot entrySpot,
-        TActor actor,
-        ZLinkSpotActorLifecycleInfo info,
         CancellationToken cancellationToken);
 }

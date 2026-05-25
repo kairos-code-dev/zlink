@@ -51,7 +51,9 @@ public sealed class ConnectionAndConfigContracts
         typeof(IZLinkSpotPublisherConfig),
         typeof(IZLinkSpotSubscriberConfig),
         typeof(IZLinkEntrySpotOptions),
-        typeof(IZLinkDispatchOptions))]
+        typeof(IZLinkDispatchOptions),
+        typeof(IZLinkUnhandledDispatchOptions),
+        typeof(IZLinkDiagnosticsOptions))]
     public void Configuration_contracts_keep_socket_routing_spot_and_dispatch_options_typed()
     {
         var socket = new SocketConfig

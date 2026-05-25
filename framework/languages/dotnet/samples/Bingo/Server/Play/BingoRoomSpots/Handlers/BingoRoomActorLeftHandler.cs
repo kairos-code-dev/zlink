@@ -19,7 +19,7 @@ internal sealed class BingoRoomActorLeftHandler(
     public ValueTask HandleAsync(
         BingoRoomSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext info,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;

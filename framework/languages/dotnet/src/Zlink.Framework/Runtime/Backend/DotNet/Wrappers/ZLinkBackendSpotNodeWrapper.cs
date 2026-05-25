@@ -159,7 +159,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
         RoutingId destNodeRid,
         RoutingId destSpotRid,
         IReadOnlyList<Message> parts,
-        RequestCallback callback,
+        ActorJoinCallback callback,
         TimeSpan? timeout)
     {
         var operation = nativeSpotNode.JoinActor(actor.ToNative(), destNodeRid, destSpotRid)
@@ -171,7 +171,35 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
             operation = operation.Timeout(value);
         }
 
-        return operation.Submit((result, replyParts) => callback(result.Result, replyParts));
+        return operation.Submit((result, replyParts) => callback(
+            new ZLinkBackendActorJoinResult(
+                result.Result,
+                result.Actor.ToBackend(),
+                result.JoinedSpotRid,
+                result.JoinEpoch,
+                result.Flags),
+            replyParts));
+    }
+
+    public bool JoinActorEntrySpot(
+        ZLinkBackendActorRef actor,
+        RoutingId destNodeRid,
+        ActorJoinEntrySpotCallback callback,
+        TimeSpan? timeout)
+    {
+        var operation = nativeSpotNode.JoinActorEntrySpot(actor.ToNative(), destNodeRid);
+        if (timeout is { } value)
+        {
+            operation = operation.Timeout(value);
+        }
+
+        return operation.Submit(result => callback(
+            new ZLinkBackendActorJoinEntrySpotResult(
+                result.Result,
+                result.Actor.ToBackend(),
+                result.TargetNodeRid,
+                result.JoinEpoch,
+                result.Flags)));
     }
 
     public async ValueTask LeaveActorAsync(

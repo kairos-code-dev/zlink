@@ -13,7 +13,7 @@ internal sealed class TicTacToeGameSpotActorLeftHandler(
     public ValueTask HandleAsync(
         TicTacToeGameSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext info,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

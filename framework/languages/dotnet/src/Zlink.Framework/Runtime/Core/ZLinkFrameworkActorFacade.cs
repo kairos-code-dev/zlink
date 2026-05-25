@@ -10,7 +10,7 @@ internal sealed class ZLinkFrameworkActorFacade(
     Func<ZLinkFrameworkRuntimeState> getState,
     Func<IZLinkBackendSpotNode?> getActorSpotNode)
 {
-    public async ValueTask<TReply> JoinActorAsync<TRequest, TReply>(
+    public async ValueTask<ZLinkActorJoinResult<TReply>> JoinActorAsync<TRequest, TReply>(
         RoutingId spotRid,
         IZLinkActor actor,
         TRequest request,
@@ -35,12 +35,65 @@ internal sealed class ZLinkFrameworkActorFacade(
                 cancellationToken).ConfigureAwait(false);
         }
 
-        return await spots.JoinActorAsync<TRequest, TReply>(
+        var reply = await spots.JoinActorAsync<TRequest, TReply>(
             state,
             spotRid,
             actor,
             request,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        return new ZLinkActorJoinResult<TReply>(
+            actor.ActorId,
+            actorState.ActorType ?? actor.GetType().Name,
+            ResolveRemoteAddress(actorState),
+            reply);
+    }
+
+    public async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
+        RoutingId spotNodeRid,
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
+        var node = getActorSpotNode()
+            ?? throw new InvalidOperationException("Entry SPOT join requires a router-capable SpotNode.");
+        var actorRef = actorState.NativeActorRef
+            ?? throw new InvalidOperationException($"Actor '{actor.ActorId}' does not have a native Actor ref.");
+
+        var tcs = new TaskCompletionSource<ZLinkBackendActorJoinEntrySpotResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var reg = cancellationToken.Register(
+            static s => ((TaskCompletionSource<ZLinkBackendActorJoinEntrySpotResult>)s!).TrySetCanceled(),
+            tcs);
+
+        if (!node.JoinActorEntrySpot(
+                actorRef,
+                spotNodeRid,
+                result => tcs.TrySetResult(result),
+                registration.DefaultTimeout))
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor entry SPOT join submit failed for '{actor.ActorId}'.");
+        }
+
+        var result = await tcs.Task.ConfigureAwait(false);
+        if (result.Result != RequestResult.Ok)
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor entry SPOT join failed for '{actor.ActorId}' with '{result.Result}'.");
+        }
+
+        actorState.NativeActorRef = result.Actor;
+        if (result.Actor.NodeRid != actorRef.NodeRid)
+        {
+            actorState.InvalidateContext();
+        }
+
+        return new ZLinkActorJoinResult(
+            actor.ActorId,
+            actorState.ActorType ?? actor.GetType().Name,
+            ToRemoteAddress(result.Actor));
     }
 
     public async ValueTask JoinActorToSpotAsync(
@@ -153,7 +206,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         return actorSessionManager.GetOrCreateState(actorId);
     }
 
-    private async ValueTask<TReply> NativeJoinActorAsync<TRequest, TReply>(
+    private async ValueTask<ZLinkActorJoinResult<TReply>> NativeJoinActorAsync<TRequest, TReply>(
         ZLinkFrameworkRuntimeState state,
         RoutingId spotRid,
         IZLinkActor actor,
@@ -179,11 +232,11 @@ internal sealed class ZLinkFrameworkActorFacade(
             null, null, null, null, null);
         var joinParts = ZLinkEnvelopeCodec.EncodeParts(joinHeader, request, typeof(TRequest));
 
-        var tcs = new TaskCompletionSource<(RequestResult Result, IReadOnlyList<Message> Reply)>(
+        var tcs = new TaskCompletionSource<(ZLinkBackendActorJoinResult Result, IReadOnlyList<Message> Reply)>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         using var reg = cancellationToken.Register(
-            static s => ((TaskCompletionSource<(RequestResult, IReadOnlyList<Message>)>)s!).TrySetCanceled(),
+            static s => ((TaskCompletionSource<(ZLinkBackendActorJoinResult, IReadOnlyList<Message>)>)s!).TrySetCanceled(),
             tcs);
 
         var submitted = node.JoinActor(
@@ -203,11 +256,37 @@ internal sealed class ZLinkFrameworkActorFacade(
         }
 
         var (joinResult, replyParts) = await tcs.Task.ConfigureAwait(false);
-        return DecodeNativeJoinReply<TRequest, TReply>(
-            joinResult,
+        var reply = DecodeNativeJoinReply<TRequest, TReply>(
+            joinResult.Result,
             replyParts,
             actor.ActorId,
             activation.SpotName);
+        var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
+        actorState.NativeActorRef = joinResult.Actor;
+        if (joinResult.Actor.NodeRid != actorRef.NodeRid)
+        {
+            actorState.InvalidateContext();
+        }
+
+        return new ZLinkActorJoinResult<TReply>(
+            actor.ActorId,
+            actorState.ActorType ?? actor.GetType().Name,
+            ToRemoteAddress(joinResult.Actor),
+            reply);
+    }
+
+    private static ZLinkActorRemoteAddress ResolveRemoteAddress(ZLinkActorRuntimeState actorState)
+    {
+        var actorRef = actorState.NativeActorRef
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorState.ActorId}' does not have a native Actor ref.");
+        return ToRemoteAddress(actorRef);
+    }
+
+    private static ZLinkActorRemoteAddress ToRemoteAddress(ZLinkBackendActorRef actorRef)
+    {
+        return new ZLinkActorRemoteAddress(string.Empty, actorRef.NodeRid, actorRef.Generation);
     }
 
     private static TReply DecodeNativeJoinReply<TRequest, TReply>(

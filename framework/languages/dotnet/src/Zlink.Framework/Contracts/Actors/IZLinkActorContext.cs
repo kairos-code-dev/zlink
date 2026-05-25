@@ -28,11 +28,34 @@ public interface IZLinkActorContext
     IZLinkActorJoinSpotCall JoinSpot<TRequest>(
         RoutingId spotRid,
         TRequest request);
+
+    IZLinkActorJoinEntrySpotCall JoinEntrySpot(
+        RoutingId spotNodeRid);
 }
+
+public sealed record ZLinkActorJoinResult(
+    string ActorId,
+    string ActorType,
+    ZLinkActorRemoteAddress RemoteAddress);
+
+public sealed record ZLinkActorJoinResult<TReply>(
+    string ActorId,
+    string ActorType,
+    ZLinkActorRemoteAddress RemoteAddress,
+    TReply Reply);
 
 public interface IZLinkActorJoinSpotCall
 {
     IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
 
-    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorJoinResult<TReply>> SubmitAsync<TReply>(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorJoinEntrySpotCall
+{
+    IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout);
+
+    ValueTask<ZLinkActorJoinResult> SubmitAsync(
+        CancellationToken cancellationToken = default);
 }

@@ -231,15 +231,9 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         Type expectedActorType,
         bool joined)
     {
-        var entrySpotDefinition = joined
-            ? typeof(IZLinkEntrySpotActorJoinedHandler<,>)
-            : typeof(IZLinkEntrySpotActorLeftHandler<,>);
-        var spotDefinition = joined
-            ? typeof(IZLinkSpotActorJoinedHandler<,>)
-            : typeof(IZLinkSpotActorLeftHandler<,>);
-        var expectedDefinition = surface == ZLinkSpotActorHandlerSurface.EntrySpot
-            ? entrySpotDefinition.ToString()
-            : spotDefinition.ToString();
+        var expectedDefinition = joined
+            ? typeof(IZLinkSpotPostActorJoinedHandler<,>).ToString()
+            : typeof(IZLinkSpotActorLeftHandler<,>).ToString();
 
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
@@ -287,30 +281,12 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         Type[] arguments,
         bool joined)
     {
-        var entrySpotDefinition = joined
-            ? typeof(IZLinkEntrySpotActorJoinedHandler<,>)
-            : typeof(IZLinkEntrySpotActorLeftHandler<,>);
+        var postActorJoinedDefinition = typeof(IZLinkSpotPostActorJoinedHandler<,>);
         var spotDefinition = joined
-            ? typeof(IZLinkSpotActorJoinedHandler<,>)
+            ? postActorJoinedDefinition
             : typeof(IZLinkSpotActorLeftHandler<,>);
 
-        if (surface == ZLinkSpotActorHandlerSurface.EntrySpot
-            && definition == entrySpotDefinition)
-        {
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            ValidateActorType(handlerType, expectedActorType, arguments[1]);
-            return new ZLinkSpotActorLifecycleDescriptor
-            {
-                HandlerType = handlerType,
-                SpotType = arguments[0],
-                ActorType = arguments[1],
-                Invoker = CreateInvoker(handlerType),
-                Surface = surface
-            };
-        }
-
-        if (surface != ZLinkSpotActorHandlerSurface.UserSpot
-            || definition != spotDefinition)
+        if (definition != spotDefinition)
         {
             return null;
         }
@@ -419,7 +395,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         return handlerType
             .GetMethods(BindingFlags.Instance | BindingFlags.Public)
             .Where(static method =>
-                method.GetCustomAttribute<ZLinkSpotActorJoinedAttribute>() is not null
+                method.GetCustomAttribute<ZLinkSpotPostActorJoinedAttribute>() is not null
                 || method.GetCustomAttribute<ZLinkSpotActorLeftAttribute>() is not null);
     }
 
@@ -476,15 +452,15 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         Type? expectedActorType,
         MethodInfo method)
     {
-        var joined = method.GetCustomAttribute<ZLinkSpotActorJoinedAttribute>();
+        var postJoined = method.GetCustomAttribute<ZLinkSpotPostActorJoinedAttribute>();
         var left = method.GetCustomAttribute<ZLinkSpotActorLeftAttribute>();
-        if (joined is not null && left is not null)
+        if (postJoined is not null && left is not null)
         {
             throw new InvalidOperationException(
                 $"SPOT actor handler '{handlerType}' method '{method.Name}' cannot declare both joined and left attributes.");
         }
 
-        if (joined is null && left is null)
+        if (postJoined is null && left is null)
         {
             return null;
         }
@@ -492,10 +468,10 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         var parameters = RequireParameterCount(handlerType, method, 4, "SPOT actor lifecycle handler");
         var spotType = parameters[0].ParameterType;
         var actorType = parameters[1].ParameterType;
-        if (parameters[2].ParameterType != typeof(ZLinkSpotActorLifecycleInfo))
+        if (parameters[2].ParameterType != typeof(ZLinkSpotActorLifecycleContext))
         {
             throw new InvalidOperationException(
-                $"SPOT actor lifecycle handler '{handlerType}' method '{method.Name}' must use ZLinkSpotActorLifecycleInfo as the third parameter.");
+                $"SPOT actor lifecycle handler '{handlerType}' method '{method.Name}' must use ZLinkSpotActorLifecycleContext as the third parameter.");
         }
 
         RequireCancellationToken(handlerType, method, parameters[3], "SPOT actor lifecycle handler");
@@ -510,7 +486,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             Invoker = ZLinkHandlerMethodInvokerFactory.Create(method),
             Surface = surface
         };
-        return joined is not null
+        return postJoined is not null
             ? new ZLinkSpotActorInferredHandlerDescriptor { Joined = descriptor }
             : new ZLinkSpotActorInferredHandlerDescriptor { Left = descriptor };
     }

@@ -14,12 +14,12 @@ namespace Bingo.Server.Play.BingoRoomSpots.Handlers;
 
 internal sealed class BingoRoomActorJoinedHandler(
     ILogger<BingoRoomActorJoinedHandler> logger)
-    : IZLinkSpotActorJoinedHandler<BingoRoomSpot, PlayerActor>
+    : IZLinkSpotPostActorJoinedHandler<BingoRoomSpot, PlayerActor>
 {
     public ValueTask HandleAsync(
         BingoRoomSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext info,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;

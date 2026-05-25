@@ -22,11 +22,11 @@ namespace TicTacToe.Server.Play.EntrySpot.Handlers;
 
 internal sealed class PlayEntrySpotActorJoinedHandler(ILogger<PlayEntrySpotActorJoinedHandler> logger)
 {
-    [ZLinkSpotActorJoined]
+    [ZLinkSpotPostActorJoined]
     public ValueTask HandleAsync(
         PlayEntrySpot entrySpot,
         PlayActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext info,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;

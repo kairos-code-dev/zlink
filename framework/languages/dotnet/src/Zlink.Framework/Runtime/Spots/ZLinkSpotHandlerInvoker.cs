@@ -100,7 +100,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
     public async ValueTask InvokeActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken)
     {
         EnsureActorType(
@@ -109,7 +109,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             actor,
             "SPOT actor lifecycle handler");
 
-        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, info, cancellationToken)
+        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, context, cancellationToken)
             .ConfigureAwait(false);
     }
 

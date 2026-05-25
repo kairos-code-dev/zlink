@@ -62,7 +62,13 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         RoutingId destNodeRid,
         RoutingId destSpotRid,
         IReadOnlyList<Message> parts,
-        RequestCallback callback,
+        ActorJoinCallback callback,
+        TimeSpan? timeout);
+
+    bool JoinActorEntrySpot(
+        ZLinkBackendActorRef actor,
+        RoutingId destNodeRid,
+        ActorJoinEntrySpotCallback callback,
         TimeSpan? timeout);
 
     ValueTask LeaveActorAsync(

@@ -185,38 +185,14 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     public ValueTask InvokeEntrySpotActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext context,
         CancellationToken cancellationToken)
     {
         return RequireEntrySpotActivation().InvokeActorLifecycleAsync(
             descriptor,
             actor,
-            info,
+            context,
             cancellationToken);
-    }
-
-    public ValueTask InvokeEntrySpotActorJoinedCallbackAsync(
-        ZLinkSpotActorLifecycleInfo info,
-        CancellationToken cancellationToken)
-    {
-        if (_entrySpotActivation is null)
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        return _entrySpotActivation.InvokeActorJoinedCallbackAsync(info, cancellationToken);
-    }
-
-    public ValueTask InvokeEntrySpotActorLeftCallbackAsync(
-        ZLinkSpotActorLifecycleInfo info,
-        CancellationToken cancellationToken)
-    {
-        if (_entrySpotActivation is null)
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        return _entrySpotActivation.InvokeActorLeftCallbackAsync(info, cancellationToken);
     }
 
     public void StartDiscoveryPeerReconciliation()

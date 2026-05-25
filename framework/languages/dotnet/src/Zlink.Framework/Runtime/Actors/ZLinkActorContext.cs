@@ -15,19 +15,27 @@ internal sealed class ZLinkActorContext(
     public bool IsJoined => state.IsJoined;
 
     public IZLinkBoundSession BoundSession
-        => ((IZLinkBoundSessionFactory?)runtime.Services.GetService(typeof(IZLinkBoundSessionFactory))
-            ?? throw new InvalidOperationException("Bound session factory is not registered."))
-            .Create(state.ActorId);
+    {
+        get
+        {
+            state.EnsureContextValid();
+            return ((IZLinkBoundSessionFactory?)runtime.Services.GetService(typeof(IZLinkBoundSessionFactory))
+                    ?? throw new InvalidOperationException("Bound session factory is not registered."))
+                .Create(state.ActorId);
+        }
+    }
 
     public void AddPacket<THandler>()
         where THandler : class
     {
+        state.EnsureContextValid();
         state.AddPacket(CurrentActor, typeof(THandler), null);
     }
 
     public void AddPacket<THandler>(string messageName)
         where THandler : class
     {
+        state.EnsureContextValid();
         if (string.IsNullOrWhiteSpace(messageName))
         {
             throw new InvalidOperationException("Actor packet name must not be empty.");
@@ -38,12 +46,14 @@ internal sealed class ZLinkActorContext(
 
     public IZLinkSpot GetSpot()
     {
+        state.EnsureContextValid();
         return state.GetJoinedSpot();
     }
 
     public TSpot GetSpot<TSpot>()
         where TSpot : IZLinkSpot
     {
+        state.EnsureContextValid();
         var spot = GetSpot();
         if (spot is not TSpot typed)
         {
@@ -58,12 +68,22 @@ internal sealed class ZLinkActorContext(
         RoutingId spotRid,
         TRequest request)
     {
+        state.EnsureContextValid();
         ArgumentNullException.ThrowIfNull(request);
         return new ZLinkActorJoinSpotCall<TRequest>(
             runtime,
             CurrentActor,
             spotRid,
             request);
+    }
+
+    public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid)
+    {
+        state.EnsureContextValid();
+        return new ZLinkActorJoinEntrySpotCall(
+            runtime,
+            CurrentActor,
+            spotNodeRid);
     }
 
     private IZLinkActor CurrentActor
@@ -85,7 +105,8 @@ internal sealed class ZLinkActorJoinSpotCall<TRequest>(
         return this;
     }
 
-    public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<ZLinkActorJoinResult<TReply>> SubmitAsync<TReply>(
+        CancellationToken cancellationToken = default)
     {
         var timeout = _timeout ?? runtime.Registration.DefaultTimeout;
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -102,6 +123,39 @@ internal sealed class ZLinkActorJoinSpotCall<TRequest>(
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutSource.IsCancellationRequested)
         {
             throw new TimeoutException($"SPOT actor join timed out after {timeout}.");
+        }
+    }
+}
+
+internal sealed class ZLinkActorJoinEntrySpotCall(
+    ZLinkFrameworkRuntime runtime,
+    IZLinkActor actor,
+    RoutingId spotNodeRid) : IZLinkActorJoinEntrySpotCall
+{
+    private TimeSpan? _timeout;
+
+    public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout)
+    {
+        _timeout = timeout;
+        return this;
+    }
+
+    public async ValueTask<ZLinkActorJoinResult> SubmitAsync(CancellationToken cancellationToken = default)
+    {
+        var timeout = _timeout ?? runtime.Registration.DefaultTimeout;
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+
+        try
+        {
+            return await runtime.JoinActorEntrySpotAsync(
+                spotNodeRid,
+                actor,
+                timeoutSource.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutSource.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Entry SPOT actor join timed out after {timeout}.");
         }
     }
 }

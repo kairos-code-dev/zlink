@@ -1279,6 +1279,35 @@ struct actor_join_result_t
     uint32_t flags;
 };
 
+struct actor_join_entry_spot_result_t
+{
+    actor_join_entry_spot_result_t ()
+        : result (request_result_t::ok),
+          actor (),
+          target_node_rid (detail::unchecked_empty_routing_id ()),
+          join_epoch (0),
+          flags (0)
+    {
+    }
+
+    explicit actor_join_entry_spot_result_t (
+      const zlink_actor_join_entry_spot_result_t &native_)
+        : result (static_cast<request_result_t> (native_.result)),
+          actor (native_.actor),
+          target_node_rid (
+            detail::native_routing_id (native_.target_node_rid)),
+          join_epoch (native_.join_epoch),
+          flags (native_.flags)
+    {
+    }
+
+    request_result_t result;
+    actor_ref_t actor;
+    routing_id_t target_node_rid;
+    uint64_t join_epoch;
+    uint32_t flags;
+};
+
 struct actor_lookup_result_t
 {
     actor_lookup_result_t ()
@@ -1339,6 +1368,9 @@ struct spot_actor_lifecycle_info_t
 
 using actor_join_callback_t =
   std::function<void(const actor_join_result_t &, std::vector<message_t>)>;
+
+using actor_join_entry_spot_callback_t =
+  std::function<void(const actor_join_entry_spot_result_t &)>;
 
 using actor_lookup_callback_t =
   std::function<void(const actor_lookup_result_t &)>;

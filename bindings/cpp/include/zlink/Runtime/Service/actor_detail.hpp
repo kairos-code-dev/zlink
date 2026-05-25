@@ -61,6 +61,12 @@ struct actor_join_result_state_t
     std::vector<message_t> parts;
 };
 
+struct actor_join_entry_spot_result_state_t
+{
+    std::unique_ptr<std::promise<actor_join_entry_spot_result_t>> promise;
+    actor_join_entry_spot_callback_t on_complete;
+};
+
 inline actor_join_result_state_t *make_future_actor_join_state ()
 {
     actor_join_result_state_t *state = new actor_join_result_state_t ();
@@ -72,6 +78,26 @@ inline actor_join_result_state_t *
 make_callback_actor_join_state (actor_join_callback_t callback_)
 {
     actor_join_result_state_t *state = new actor_join_result_state_t ();
+    state->on_complete = std::move (callback_);
+    return state;
+}
+
+inline actor_join_entry_spot_result_state_t *
+make_future_actor_join_entry_spot_state ()
+{
+    actor_join_entry_spot_result_state_t *state =
+      new actor_join_entry_spot_result_state_t ();
+    state->promise.reset (
+      new std::promise<actor_join_entry_spot_result_t> ());
+    return state;
+}
+
+inline actor_join_entry_spot_result_state_t *
+make_callback_actor_join_entry_spot_state (
+  actor_join_entry_spot_callback_t callback_)
+{
+    actor_join_entry_spot_result_state_t *state =
+      new actor_join_entry_spot_result_state_t ();
     state->on_complete = std::move (callback_);
     return state;
 }
@@ -109,6 +135,33 @@ inline void actor_join_result_trampoline (
             holder->parts = std::move (parts);
             holder->promise->set_value (holder->result);
         }
+    }
+}
+
+inline void actor_join_entry_spot_result_trampoline (
+  const zlink_actor_join_entry_spot_result_t *result_,
+  void *userdata_)
+{
+    actor_join_entry_spot_result_state_t *state =
+      static_cast<actor_join_entry_spot_result_state_t *> (userdata_);
+    if (!state)
+        return;
+    std::unique_ptr<actor_join_entry_spot_result_state_t> holder (state);
+    actor_join_entry_spot_result_t result;
+    if (result_)
+        result = actor_join_entry_spot_result_t (*result_);
+    else
+        result.result = request_result_t::internal_error;
+    if (holder->on_complete) {
+        holder->on_complete (result);
+        return;
+    }
+    if (holder->promise) {
+        if (result.result != request_result_t::ok)
+            holder->promise->set_exception (std::make_exception_ptr (
+              request_error_t (result.result)));
+        else
+            holder->promise->set_value (result);
     }
 }
 

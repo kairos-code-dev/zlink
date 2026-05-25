@@ -111,11 +111,10 @@ func runMultiDealerRouterEchoWindow(
 			}
 		}
 
-		remaining := time.Until(window.StopAt)
-		if remaining <= 0 {
+		if !time.Now().Before(window.StopAt) {
 			break
 		}
-		n, waitErr := poller.Wait(events, remaining)
+		n, waitErr := poller.Wait(events, -1*time.Millisecond)
 		if waitErr != nil {
 			if perfcommon.IsTransient(waitErr) {
 				continue

@@ -113,37 +113,39 @@ fn main() {
     // signal-driven; the phase ends on the wire stop token (not a wall clock).
     // No hot-loop sleep(1ms).
     let poller = Poller::new().expect("poller");
-    for socket in &sockets {
-        poller.add_socket(socket, POLLIN, 0).expect("poller add");
+    for (index, socket) in sockets.iter().enumerate() {
+        poller
+            .add_socket(socket, POLLIN, index)
+            .expect("poller add");
     }
     let mut events = vec![PollEvent::default(); sockets.len().max(1)];
 
     let active_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds);
-    let stop_wait_deadline = active_deadline + Duration::from_secs(2);
     let mut latency_stats = common::LatencyStats::new();
     let mut active_count: u64 = 0;
     let mut phase_done = false;
     let latency_stride = resolve_latency_sample_stride();
 
     while !phase_done {
-        match poller.wait(&mut events, 100) {
-            Ok(_) => {}
-            Err(err) => panic!("poller wait failed: {err}"),
-        }
-        for socket in &sockets {
-            if drain_subscriber(
-                socket,
-                args.msg_size,
-                &mut latency_stats,
-                &mut active_count,
-                active_deadline,
-                latency_stride,
-            ) {
-                phase_done = true;
+        match poller.wait(&mut events, -1) {
+            Ok(event_count) => {
+                for event in &events[..event_count] {
+                    if event.revents & POLLIN == 0 || event.slot >= sockets.len() {
+                        continue;
+                    }
+                    if drain_subscriber(
+                        &sockets[event.slot],
+                        args.msg_size,
+                        &mut latency_stats,
+                        &mut active_count,
+                        active_deadline,
+                        latency_stride,
+                    ) {
+                        phase_done = true;
+                    }
+                }
             }
-        }
-        if Instant::now() >= stop_wait_deadline {
-            phase_done = true;
+            Err(err) => panic!("poller wait failed: {err}"),
         }
     }
 

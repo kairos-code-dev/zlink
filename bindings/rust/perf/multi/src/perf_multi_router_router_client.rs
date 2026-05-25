@@ -134,11 +134,7 @@ fn main() {
         if progressed {
             continue;
         }
-        let remaining_ms = deadline
-            .saturating_duration_since(Instant::now())
-            .as_millis()
-            .max(1) as i64;
-        match poller.wait(&mut poll_events, remaining_ms) {
+        match poller.wait(&mut poll_events, -1) {
             Ok(_) => {}
             Err(err) => panic!("poller wait failed: {err}"),
         }

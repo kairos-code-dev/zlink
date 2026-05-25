@@ -1,11 +1,16 @@
 import os
 import sys
+import ctypes
+import errno
+import struct
 import threading
 import time
 
 import zlink
 
 from perf_multi_common import (
+    HEADER_MAGIC,
+    HEADER_SIZE,
     TOPIC,
     apply_multi_auto_hwm_msg_unit,
     apply_multi_spot_node_admission,
@@ -13,9 +18,6 @@ from perf_multi_common import (
     benchmark_run_id,
     configure_multi_tls_client,
     configure_multi_tls_server,
-    decode_header,
-    is_active_message,
-    latency_ns_from_message,
     parse_client_args,
     perf_client_context,
     print_result_lines,
@@ -26,6 +28,7 @@ from perf_multi_common import (
     resolve_multi_spot_ready_settle_s,
     result_metrics,
 )
+from perf_metrics import HEADER_FORMAT
 
 
 def _trace(message):
@@ -38,6 +41,80 @@ def _latency_sample_stride():
         return max(1, int(os.environ.get("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", "32")))
     except ValueError:
         return 32
+
+
+_NATIVE_SPOT_SUBSCRIBE_PART = None
+
+
+def _native_spot_subscribe_part_methods():
+    global _NATIVE_SPOT_SUBSCRIBE_PART
+    if _NATIVE_SPOT_SUBSCRIBE_PART is None:
+        from zlink._native.ffi import ZlinkMsg, ZlinkRoutingId, lib
+        from zlink._runtime.core.core import _msg_data_ptr, _msg_size
+
+        _NATIVE_SPOT_SUBSCRIBE_PART = (
+            ZlinkMsg,
+            ZlinkRoutingId,
+            lib,
+            _msg_data_ptr,
+            _msg_size,
+        )
+    return _NATIVE_SPOT_SUBSCRIBE_PART
+
+
+def _subscribe_active_metric_once(spot, flags, *, msg_size, run_id, sample_latency):
+    ZlinkMsg, ZlinkRoutingId, lib, _msg_data_ptr, _msg_size = (
+        _native_spot_subscribe_part_methods()
+    )
+    routing_id = ctypes.POINTER(ZlinkRoutingId)()
+    topic_buf = ctypes.create_string_buffer(256)
+    topic_len = ctypes.c_size_t(len(topic_buf))
+    part = ZlinkMsg()
+    has_more = ctypes.c_int()
+    rc = lib().zlink_spot_subscribe_part(
+        spot._handle,
+        ctypes.byref(routing_id),
+        topic_buf,
+        len(topic_buf),
+        ctypes.byref(topic_len),
+        ctypes.byref(part),
+        ctypes.byref(has_more),
+        int(flags),
+    )
+    if rc != 0:
+        err = lib().zlink_errno()
+        if rc == int(zlink.RecvResult.NO_DATA) or err in (errno.EAGAIN, errno.EINTR):
+            return None
+        raise zlink.RecvError(zlink.RecvResult(rc), err)
+
+    try:
+        if has_more.value != 0:
+            raise RuntimeError("multi spot native subscribe_part received multipart message")
+        size = _msg_size(part)
+        if size != msg_size or size < HEADER_SIZE:
+            return False, None
+        ptr = _msg_data_ptr(part)
+        if not ptr:
+            return False, None
+        header_data = ctypes.string_at(ptr, HEADER_SIZE)
+        magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = struct.unpack_from(
+            HEADER_FORMAT, header_data, 0
+        )
+        if (
+            magic != HEADER_MAGIC
+            or phase != 1
+            or hdr_msg_size != msg_size
+            or hdr_run_id != run_id
+        ):
+            return False, None
+        if not sample_latency:
+            return True, None
+        now_ns = time.time_ns()
+        if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
+            return True, float(now_ns - sent_ts_ns)
+        return True, 0.0
+    finally:
+        lib().zlink_msg_close(ctypes.byref(part))
 
 
 def main(argv=None):
@@ -160,48 +237,28 @@ def main(argv=None):
                         if time.perf_counter() >= active_deadline:
                             expired = True
                             break
-                        message = zlink.TopicMessage()
                         try:
-                            has_message = current_spot.subscribe_into(
-                                message, flags=zlink.RecvFlags.DONT_WAIT
+                            received_metric = _subscribe_active_metric_once(
+                                current_spot,
+                                zlink.RecvFlags.DONT_WAIT,
+                                msg_size=args.msg_size,
+                                run_id=run_id,
+                                sample_latency=(
+                                    (received_count + 1) % sample_stride == 0
+                                ),
                             )
                         except zlink.RecvError as exc:
                             if exc.result == zlink.RecvResult.NO_DATA:
                                 break
                             raise
-                        if not has_message:
+                        if received_metric is None:
                             break
-                        # Decode the metric header from the part's zero-copy
-                        # memoryview instead of materializing the whole payload
-                        # via to_bytes_list(); the full copy cost a msg_size
-                        # alloc+memcpy per received message and collapsed large
-                        # SPOT throughput. All reads stay inside `with message`
-                        # because the view borrows the native buffer.
-                        with message:
-                            if len(message) == 0:
-                                continue
-                            data = message.first_part().data
-                            header = decode_header(data)
-                            if header is None:
-                                continue
-                            if (
-                                header["run_id"] != run_id
-                                or header["msg_size"] != args.msg_size
-                                or header["phase"] == 0
-                            ):
-                                continue
-                            if not is_active_message(
-                                data,
-                                expected_msg_size=args.msg_size,
-                                run_id=run_id,
-                            ):
-                                continue
-                            received_count += 1
-                            if received_count % sample_stride != 0:
-                                continue
-                            latency = latency_ns_from_message(data)
-                            if latency is not None:
-                                latencies.append(latency)
+                        is_active, latency = received_metric
+                        if not is_active:
+                            continue
+                        received_count += 1
+                        if latency is not None:
+                            latencies.append(latency)
                     if expired:
                         break
                 if expired:

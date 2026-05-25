@@ -1664,6 +1664,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   직전 `TopicMessage` 재사용 후보보다 ws/tls가 낮았다. sender payload 복사 하나를 줄여도
   single SPOT 1024B 보류를 해소하지 못하므로 기존 `Message::copy_from(&payload)` 경로를
   유지한다.
+- **single SPOT local sampled stats 후보 기각**: multi SPOT에서 효과가 있었던 throughput
+  count와 latency sample 저장 분리를 single SPOT subscriber에 좁혀 시험했다. 수신 thread
+  안에서 전체 active payload count는 유지하고 latency vector 저장만 32개당 1개로 줄여
+  `Arc<Mutex<LatencyStats>>` hot path를 피했다. `cargo test --manifest-path
+  bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고, 공식 C 기준
+  `perf_c_single_linux_20260525_162920_rust_single_spot_sampled_stats_c.txt`와 Rust 후보
+  `perf_rust_single_linux_20260525_163000_single_spot_sampled_stats_candidate.txt`는 모두
+  complete였다. 그러나 1024B C 대비 비율은 tcp/ws/wss/tls 52.6/58.6/62.5/56.2%로
+  SPOT 기준보다 낮다. latency 기록 비용만 줄여서는 single SPOT 1024B 보류를 해소하지
+  못하므로 코드는 반영하지 않는다.
 - **2026-05-24 tcp full 재측정 요약**: DEALER_ROUTER 46~107%(전 size 통과), ROUTER_ROUTER small 통과/large 보류, SPOT_REQREP 64/256/1024/65536B 통과 및 131072/262144B 보류, STREAM 90~101% 통과, DD small 통과/large 보류, SPOT small 통과권/large 보류(copy 영역), SPOT_SENDSEND 64/256/1024/65536/131072B 통과 및 262144B 보류, PUBSUB 일부만 통과였다. 당시 PUBSUB small은 fresh baseline 대비 ~3~5%였지만, 2026-05-25 server `POLLOUT` wait 제거 뒤 `MULTI_PUBSUB` small 보류는 해소됐다.
 - **남은 보류(Rust)**: single routed large, single SPOT 1024B.
 

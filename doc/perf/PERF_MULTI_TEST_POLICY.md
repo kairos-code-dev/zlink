@@ -128,11 +128,13 @@ active deadline을 다시 확인하기 위한 상한이다.
 | 짧은 timer tick 기반 fallback (1–25 ms) | 금지. 과거 wakeup 누락 우회용으로 사용됐으나 core fix 이후 사용 금지 |
 | 종료 / cooldown 용 별도 deadline 검사 | 별도 application clock 으로 처리하고 poller timeout 으로 대체하지 않음 |
 
-송수신 양방향 가능한 spot 워크로드(MULTI_SPOT_SENDSEND 등)는
-`zlink_poller_add` 호출 시 **`ZLINK_POLLIN | ZLINK_POLLOUT`** 으로
-등록한다. core 의 `zlink_service_poller_add_internal` 이 양방향 등록을
-지원하므로 한 번의 wait 으로 send-readiness 와 recv-readiness 둘 다
-포착된다.
+송수신 양방향 가능한 spot 워크로드(`MULTI_SPOT_SENDSEND`)의 active loop는
+C 기준처럼 requester spot을 **`ZLINK_POLLIN`** 중심으로 둔다. 각 slot은
+outstanding request 1개만 유지하고, reply drain 뒤 다음 send를 시도한다.
+active loop에서 `POLLOUT`을 별도 send-ready pump로 삼으면 C 기준과 다른
+backpressure/dispatch 의미가 되므로 쓰지 않는다. setup 직후 poller 등록 상태가
+일시적으로 더 넓더라도 active window 진입 전에는 C처럼 `POLLIN` 기준으로
+정렬되어야 한다.
 
 request completion 이 있는 socket request/reply 워크로드와 spot request/reply
 워크로드는 같은 active poller에 completion 대상 spot/socket을

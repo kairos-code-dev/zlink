@@ -906,8 +906,8 @@ Go는 현재 표 기준으로 single/multi 전 대상이 `통과` 상태다. 아
   다시 측정했다(`perf_go_multi_linux_20260524_202842.txt`). wss는 29.6/28.4/35.7/53.1/49.1/51.9%,
   tls는 28.3/29.0/31.5/34.9/37.7/42.6%로, wss 65536B/262144B 외에는 여전히 보류다.
   추가 후보도 반영하지 않는다. small에 `ForwardRouted(...)`를 넓힌 후보는
-  `perf_go_multi_linux_20260524_203027.txt`에서 small 처리량을 낮췄다. client poller를 C처럼
-  `POLLIN|POLLOUT`으로 등록한 후보는 `perf_go_multi_linux_20260524_203128.txt`에서 tls 일부를
+  `perf_go_multi_linux_20260524_203027.txt`에서 small 처리량을 낮췄다. client poller를 C 초기 등록처럼
+  `POLLIN|POLLOUT`으로 넓힌 후보는 `perf_go_multi_linux_20260524_203128.txt`에서 tls 일부를
   소폭 올렸지만 wss 64B/131072B를 낮추고 통과 셀을 만들지 못했다. small active slot을 32로
   줄인 후보는 `perf_go_multi_linux_20260524_203302.txt`에서 small 처리량을 23~25Kops/s로 낮췄다.
   `PERF_GO_GOMAXPROCS=8` 진단(`perf_go_multi_linux_20260524_203351.txt`)도 기본 GOMAXPROCS=4 대비
@@ -1311,8 +1311,8 @@ Go는 현재 표 기준으로 single/multi 전 대상이 `통과` 상태다. 아
     `Spot.ForwardRouted(...)`(C `zlink_spot_forward_routed` parity)를 tcp 65536+에도 적용해 해소했다. 결과(같은 fresh baseline 대비):
     65536 0.1%→16.7%(10926 msg/s), 131072 →16.5%, 262144 →22.6%로 안정화(builder echo는 tcp large에서 262144가 94 msg/s로 붕괴하는 불안정 경로였다).
     small 64/256/1024는 32~35%로 per-FFI routed-echo 비용 영역이라 builder 경로 유지. 전 size 여전히 SPOT 최소 기준 미만이라 보류이나 catastrophic 0% cell은 제거됐다.
-  - **2026-05-25 `MULTI_SPOT_SENDSEND` client POLLOUT 후보 기각**: C client는 poller에 `POLLIN|POLLOUT`을 등록하지만, Go client에 같은 등록을 적용한 후보는 공식 wrapper `perf_go_multi_linux_20260525_005337.txt`에서 `tcp 262144B`가 `exit_nonzero` partial로 끝났다. Go loop는 POLLOUT wake를 그대로 늘리면 completion 안정성이 나빠지므로 기존 `POLLIN` 등록과 1ms bounded retry를 유지한다.
-  - **2026-05-25 `MULTI_SPOT_SENDSEND` client 50ms poll cap 후보 기각**: C client의 `POLLIN` wait cap 50ms와 맞추는 후보를 Go client에 시험했다. Go 공식 wrapper `perf_go_multi_linux_20260525_050636.txt`와 같은 조건 C `perf_c_multi_linux_20260525_050751.txt`는 모두 complete였지만 tcp 64/65536/131072/262144B가 43.9/16.2/20.0/29.7%로 SPOT 기준을 넘지 못했다. 262144B는 조금 좋아졌지만 65536B가 낮아지고 전체 보류를 해소하지 못하므로 기존 1ms bounded retry를 유지한다.
+  - **2026-05-25 `MULTI_SPOT_SENDSEND` client POLLOUT 후보 기각**: C client는 초기 poller 등록에서 `POLLIN|POLLOUT`을 허용하지만 active window 시작 시 `POLLIN`으로 reset한다. Go client에 active poll interest를 넓히는 후보는 공식 wrapper `perf_go_multi_linux_20260525_005337.txt`에서 `tcp 262144B`가 `exit_nonzero` partial로 끝났다. Go loop는 POLLOUT wake를 그대로 늘리면 completion 안정성이 나빠지므로 active poll interest는 기존 `POLLIN`을 유지한다.
+  - **2026-05-25 `MULTI_SPOT_SENDSEND` client 50ms poll cap 후보 보류**: C client의 `POLLIN` wait cap 50ms와 맞추는 후보를 Go client에 시험했다. Go 공식 wrapper `perf_go_multi_linux_20260525_050636.txt`와 같은 조건 C `perf_c_multi_linux_20260525_050751.txt`는 모두 complete였지만 tcp 64/65536/131072/262144B가 43.9/16.2/20.0/29.7%로 SPOT 기준을 넘지 못했다. 당시에는 성능 보류를 해소하지 못해 반영하지 않았지만, 2026-05-26 정책/C 의미 정렬에서는 active wait cap을 C와 같은 50ms로 맞춘다.
   - **2026-05-25 `MULTI_SPOT_SENDSEND` 262144B active slot 4 후보 기각**: 262144B만 active slot을 8→4로 줄이는 후보를 시험했다. `go test ./...`는 통과했고 공식 wrapper도 complete였지만, C `perf_c_multi_linux_20260525_055804.txt` 11.671Kops/s 대비 Go `perf_go_multi_linux_20260525_055825.txt` 2.537Kops/s, 21.7%로 기존 대표값보다 낮았다. in-flight를 더 줄이면 echo backlog는 안정되지만 throughput이 줄어 보류 해소에 도움이 되지 않는다.
   - **2026-05-25 `MULTI_DEALER_DEALER` 암호화 131072B server `RecvPart` 확대**: C server의 `zlink_recv_part` 의미와 맞춰 Go server의 public `RecvPart` caller-owned 수신 경로를 wss/tls 131072B에도 적용했다. 같은 조건 no-code 재측정 대비 wss 131072B는 9.894K→16.457Kops/s, tls 131072B는 17.177K→24.207Kops/s로 올랐다(`perf_go_multi_linux_20260525_015918.txt` → `perf_go_multi_linux_20260525_015819.txt`). 262144B까지 확대한 후보는 tls 262144B를 낮춰 반영하지 않는다(`perf_go_multi_linux_20260525_015620.txt`).
   - **2026-05-25 `tls MULTI_DEALER_DEALER 262144B` `Bytes(...)` 단독 적용**: 이전 broad 262144B 후보는 다른 size/transport까지 함께 흔들어 반영하지 않았지만, tls 262144B만 public `Bytes(...)` client send로 좁혀 다시 시험했다. C `perf_c_multi_linux_20260525_071013.txt` 26.605Kmsg/s 대비 Go `perf_go_multi_linux_20260525_071028.txt` 14.154Kmsg/s, 53.2%로 Go one-way 기준을 넘겨 262144B 셀을 통과로 갱신한다.
@@ -1975,6 +1975,14 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `npm run build`와
   `PERF_FAIL_FAST=1 ./perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT_REQREP --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2`
   smoke가 `complete`로 통과했다.
+- **2026-05-26 `MULTI_SPOT_SENDSEND` poll interest 문서 정정**:
+  `doc/perf/PERF_MULTI_TEST_POLICY.md`는 송수신 양방향 spot workload를
+  `POLLIN|POLLOUT`으로 등록해야 한다고 적고 있었지만, C active window는
+  `reset_sendsend_poller()`에서 requester poll interest를 `POLLIN`으로 맞춘 뒤
+  reply drain과 다음 send submit을 같은 loop에서 진행한다. Go/Rust/Java/Node/Python도
+  active requester poller는 `POLLIN` 기준이다. 정책 문서를 C 기준인 `POLLIN`
+  active loop로 정정했고, C 초기 등록 주석도 active reset 의미를 드러내도록 고쳤다.
+  Go의 active/drain poll wait cap도 기존 1ms에서 C와 같은 50ms 상한으로 맞췄다.
 - **수신 zero-copy `.data` 추가**: Rust SPOT의 per-message 복사 제거와 같은 동기로, Python 수신 부품(`ReceivedMessage`)에
   zero-copy `data` memoryview property를 추가했다(`Message.data`/C `zlink_msg_data`와 동일 계약, 회귀 테스트 `tests/test_version.py::test_received_part_data_is_zero_copy_view` 통과).
   `MULTI_SPOT` client가 `to_bytes_list()` 전체 payload 복사 대신 `first_part().data`에서 헤더를 디코드하도록 바꿨다(복사 제거는 `with message:` 안에서만 view 사용).

@@ -671,8 +671,8 @@ bool create_spot_slots(ctx_guard_t &ctx,
     }
 
     for (size_t i = 0; i < state->slots.size(); ++i) {
-        // Register POLLIN|POLLOUT so the poller wakes both on incoming
-        // routed messages and on send-readiness recovery (backpressure).
+        // Initial registration accepts both directions. Each active window
+        // resets the requester poll interest to POLLIN before measuring.
         if (zlink_poller_add(
               state->poller, state->slots[i].socket, &state->slots[i],
               static_cast<short>(ZLINK_POLLIN | ZLINK_POLLOUT))

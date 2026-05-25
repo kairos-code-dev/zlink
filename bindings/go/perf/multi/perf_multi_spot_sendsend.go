@@ -259,8 +259,8 @@ func runMultiSpotSendSendClientRole(cfg multiConfig, endpoint string) perfcommon
 		if remaining <= 0 {
 			break
 		}
-		if remaining > time.Millisecond {
-			remaining = time.Millisecond
+		if remaining > 50*time.Millisecond {
+			remaining = 50 * time.Millisecond
 		}
 		n, waitErr := poller.Wait(pollEvents, remaining)
 		if waitErr != nil {
@@ -332,8 +332,8 @@ func drainMultiSpotSendSendPending(
 		if remaining <= 0 {
 			return
 		}
-		if remaining > time.Millisecond {
-			remaining = time.Millisecond
+		if remaining > 50*time.Millisecond {
+			remaining = 50 * time.Millisecond
 		}
 		n, waitErr := poller.Wait(events, remaining)
 		if waitErr != nil {

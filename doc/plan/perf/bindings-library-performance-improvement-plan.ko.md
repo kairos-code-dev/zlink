@@ -2414,7 +2414,23 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `perf_python_multi_linux_20260525_182010_stream_pending_cond_candidate_retry.txt`도
   `tcp 64B` READY 이후 결과 없이 partial로 끝났다. wake 지연만 줄여도 Python stream
   callback과 shared C stream client의 진행 경계가 안정화되지 않으므로, 기존
-  lock+bounded wait 구조를 유지한다.
+  lock+bounded wait 구조를 유지한다. 2026-05-26 재검토에서는 같은 후보를
+  `--clients 100`, tcp 64/65536B로 좁혀 다시 시험했다. C 기준
+  `perf_c_multi_linux_20260526_070503_python_stream_clients100_c_recheck.txt`는
+  451.263/116.888 Kops/s였고, current Python
+  `perf_python_multi_linux_20260526_070523_multi_stream_clients100_current_recheck.txt`는
+  5.489/4.389 Kops/s였다. condition 후보
+  `perf_python_multi_linux_20260526_070651_multi_stream_clients100_pending_cond_candidate.txt`는
+  5.499/4.404 Kops/s로 사실상 같아 낮은 client 수에서도 보류 해소 후보가 아니다.
+- **MULTI_STREAM idle wait 1ms 후보 기각**: pending queue가 비었을 때의 bounded wait를
+  100ms에서 1ms로 줄여 queued drain 지연이 주된 병목인지 확인했다. `python3 -m
+  py_compile bindings/python/perf/multi/perf_multi_stream_server.py`는 통과했고, 공식 wrapper
+  `perf_python_multi_linux_20260526_070814_multi_stream_clients100_idle1ms_candidate.txt`는
+  `--clients 100`, tcp 64/65536B에서 complete였다. 그러나 median은 5.616/4.661 Kops/s로
+  current 5.489/4.389 Kops/s보다 조금 높을 뿐이고, 같은 조건 C
+  451.263/116.888 Kops/s 대비 1.2%/4.0%라 보류권을 벗어나지 못한다. idle wait만 줄이면
+  CPU idle loop 비용은 늘지만 Python callback/queue/send builder 경계의 큰 차이는 줄지
+  않으므로 반영하지 않는다.
 - SPOT reply decode에도 같은 원칙을 적용했다. `MULTI_SPOT_REQREP`는 callback 이전에 reply part가 이미 Python `Message`로 clone되므로 추가 `to_bytes()` 제거 효과가 제한적이고,
   `MULTI_SPOT_SENDSEND`는 routed reply `ReceivedMessage.data`로 262144B가 37.4%→43.6%까지 올랐다. small/65536B와 일부 131072B는 여전히 기준보다 낮다.
 - **SPOT reqrep server view-reply 후보 기각**: `MULTI_SPOT_REQREP` server에서

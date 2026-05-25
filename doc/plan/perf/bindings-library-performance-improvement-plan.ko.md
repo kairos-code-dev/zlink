@@ -2078,6 +2078,18 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `tcp 64B` READY 이후 결과 없이 partial로 끝났다. callback dispatcher thread와 main
   drain loop가 같은 queue를 공유하는 구조에서는 lock 제거가 안정적인 hot path 개선이
   아니므로 반영하지 않는다.
+- **MULTI_STREAM pending condition wake 후보 기각**: 기존 server loop는 pending queue가
+  비었을 때 `stop.wait(100ms)`로 쉬므로, packet callback이 pending frame을 추가할 때
+  condition으로 drain loop를 즉시 깨우는 후보를 시험했다. `python3 -m py_compile
+  bindings/python/perf/multi/perf_multi_stream_server.py`는 통과했고 C 기준
+  `perf_c_multi_linux_20260525_181839_python_stream_pending_cond_c.txt`도 complete였다.
+  그러나 Python 후보는 첫 실행
+  `perf_python_multi_linux_20260525_181853_stream_pending_cond_candidate.txt`에서 서버 READY
+  수집 전 partial이었고, 재시도
+  `perf_python_multi_linux_20260525_182010_stream_pending_cond_candidate_retry.txt`도
+  `tcp 64B` READY 이후 결과 없이 partial로 끝났다. wake 지연만 줄여도 Python stream
+  callback과 shared C stream client의 진행 경계가 안정화되지 않으므로, 기존
+  lock+bounded wait 구조를 유지한다.
 - SPOT reply decode에도 같은 원칙을 적용했다. `MULTI_SPOT_REQREP`는 callback 이전에 reply part가 이미 Python `Message`로 clone되므로 추가 `to_bytes()` 제거 효과가 제한적이고,
   `MULTI_SPOT_SENDSEND`는 routed reply `ReceivedMessage.data`로 262144B가 37.4%→43.6%까지 올랐다. small/65536B와 일부 131072B는 여전히 기준보다 낮다.
 - **SPOT reqrep server view-reply 후보 기각**: `MULTI_SPOT_REQREP` server에서

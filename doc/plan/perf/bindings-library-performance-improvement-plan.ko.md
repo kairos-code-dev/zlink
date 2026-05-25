@@ -1612,6 +1612,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   기존 동작에 해당하는 `PERF_MULTI_PUBSUB_LATENCY_SAMPLE_STRIDE=1` 재측정 `perf_python_multi_linux_20260525_111617.txt`의
   134.4/130.7/110.3/88.7Kmsg/s보다 모두 높아 기본값으로 반영한다. wss/tls 65536B도 111.4/100.8%로 통과권을 유지했다.
   small size는 여전히 Python per-message FFI 호출 비용 때문에 기준보다 낮다.
+- **MULTI_PUBSUB server in-place stamp 후보 기각**: server hot path에서 `stamp_payload(...)`의
+  `bytes(payload)` 복사를 줄이기 위해 재사용 `bytearray`를 그대로 publish submit에 넘기는
+  후보를 시험했다. `python -m py_compile bindings/python/perf/perf_metrics.py bindings/python/perf/multi/perf_multi_common.py bindings/python/perf/multi/perf_multi_pubsub_server.py bindings/python/perf/multi/perf_multi_pubsub_client.py`는 통과했고,
+  공식 wrapper `perf_python_multi_linux_20260525_112616.txt`와
+  `perf_python_multi_linux_20260525_113719.txt`는 complete였다. 그러나 같은 C 기준
+  `perf_c_multi_linux_20260525_110110.txt`와 직전 Python 기준
+  `perf_python_multi_linux_20260525_111359.txt`를 비교하면 tcp 64/65536B만
+  1.6%/2.5% 개선되고, ws/wss/tls는 대부분 1.4~16.6% 낮아졌다. publish submit 내부에서
+  native message copy가 남아 있고 transport별 큰 메시지 회귀가 생겨 안정적인 개선이 아니므로
+  반영하지 않는다.
 - **MULTI_STREAM frame view-copy 후보 기각**: Python stream server에서 `header.to_bytes()`/`body.to_bytes()` 뒤 frame concatenation을 하는 대신 `Message.data` view에서 최종 frame `bytearray`로 바로 채우는 후보를 시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_stream_server.py`는 통과했지만, 공식 runner `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp,wss --pattern MULTI_STREAM --msg-sizes 64,65536 --duration 1 --runs 3`가 `tcp 64B`에서 즉시 partial로 끝났다(`perf_python_multi_linux_20260524_233240.txt`). current HEAD에서 같은 후보를 다시 좁혀 시험한 공식 wrapper `perf_python_multi_linux_20260525_100136.txt`도 `tcp 64B`에서 `READY,tcp://...` failure reason만 남기고 partial로 끝났다. 기존 `on_packet` public callback은 native packet을 이미 Python-owned `Message`로 복사해 전달하므로, frame 조립의 마지막 복사만 줄이는 접근은 안정적인 개선 후보가 아니다.
 - **MULTI_STREAM on_packet native clone 후보 기각**: `StreamSocket.on_packet`이 native header/body를 `bytes`로 만든 뒤 다시 `Message`로 복사하는 경로를 줄이기 위해 `_clone_native_msg` 기반 `Message` 생성을 시험했다. callback 테스트는 통과했지만, 원본 native part를 callback 안에서 close하는 변형은 공식 wrapper `perf_python_multi_linux_20260525_005843.txt`에서 `tcp 64B` partial이 났고, close하지 않는 변형도 `perf_python_multi_linux_20260525_005927.txt`에서 서버 READY 수집 단계가 깨졌다. stream callback의 native part 수명은 core callback 경계와 맞물려 있어 이 방식은 반영하지 않는다.
 - **MULTI_STREAM callback immediate-send 후보 기각**: C stream server처럼 packet callback에서

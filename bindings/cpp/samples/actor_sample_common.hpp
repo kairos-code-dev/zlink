@@ -20,6 +20,7 @@ struct actor_sample_capture_t
     bool joined = false;
     bool actor_read = false;
     zlink::request_result_t join_result = zlink::request_result_t::internal_error;
+    zlink::actor_ref_t joined_actor;
     std::string payload;
 };
 
@@ -86,11 +87,24 @@ inline void actor_sample_dispatch (
     if (info_.event == zlink::spot_dispatch_event_t::actor_readable) {
         assert (info_.actor.has_value ());
         for (;;) {
-            auto part = state_.actor->recv_part (ZLINK_DONTWAIT);
-            if (!part.has_value ())
+            zlink_actor_recv_info_t native_info;
+            std::memset (&native_info, 0, sizeof (native_info));
+            zlink_msg_t native_part;
+            std::memset (&native_part, 0, sizeof (native_part));
+            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+            const zlink_recv_result_t rc = zlink_spot_node_actor_recv_part (
+              zlink::detail::native_handle (*state_.node),
+              zlink::detail::actor_ref_native (*info_.actor), &native_info,
+              &native_part, &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
+            if (rc == ZLINK_RECV_NO_DATA)
                 break;
+            assert (rc == ZLINK_RECV_OK);
+            zlink::message_t part;
+            assert (zlink_msg_move (zlink::detail::native_handle (part),
+                                    &native_part)
+                    == 0);
             std::lock_guard<std::mutex> lock (state_.capture->mutex);
-            state_.capture->payload += part->part.to_string ();
+            state_.capture->payload += part.to_string ();
             state_.capture->actor_read = true;
             state_.capture->cv.notify_all ();
         }
@@ -104,6 +118,8 @@ inline void actor_sample_join_reply (
 {
     std::lock_guard<std::mutex> lock (capture_.mutex);
     capture_.join_result = result_.result;
+    if (result_.result == zlink::request_result_t::ok)
+        capture_.joined_actor = result_.actor;
     capture_.joined = true;
     capture_.cv.notify_all ();
 }

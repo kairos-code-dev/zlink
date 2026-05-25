@@ -12,7 +12,7 @@ int main ()
     actor_sample_capture_t capture;
     zlink::routing_id_t play_node_rid = play_node.routing_id ();
     zlink::service::actor_t play_actor =
-      play_node.create_actor ("play-session-actor");
+      gateway_node.create_actor ("play-session-actor");
     assert (play_actor.valid ());
     zlink::actor_ref_t concrete = play_actor.ref ();
 
@@ -44,6 +44,7 @@ int main ()
       }));
     assert (wait_until_flag (capture, &actor_sample_capture_t::joined));
     assert (capture.join_result == zlink::request_result_t::ok);
+    concrete = capture.joined_actor;
 
     zlink::message_t frame = zlink::message_t::from_string ("client-input");
     assert (stream_session.stream.send_bound_actor (

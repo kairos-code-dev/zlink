@@ -1,5 +1,6 @@
 import sys
 import time
+import os
 from contextlib import ExitStack
 
 import zlink
@@ -25,6 +26,21 @@ from perf_multi_common import (
 )
 
 
+def _positive_int_env(name, default):
+    value = os.environ.get(name)
+    if value in (None, ""):
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _should_sample_latency(index, stride):
+    return stride <= 1 or index == 1 or index % stride == 0
+
+
 def main(argv=None):
     args = parse_client_args(
         argv or sys.argv[1:], pattern="pubsub"
@@ -32,6 +48,7 @@ def main(argv=None):
     run_id = benchmark_run_id()
     latencies = []
     count = 0
+    latency_stride = _positive_int_env("PERF_MULTI_PUBSUB_LATENCY_SAMPLE_STRIDE", 32)
 
     with perf_client_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
@@ -110,10 +127,11 @@ def main(argv=None):
                                     continue
                                 if time.perf_counter() >= active_deadline:
                                     continue
-                                latency = latency_ns_from_message(data)
-                                if latency is not None:
-                                    latencies.append(latency)
                                 count += 1
+                                if _should_sample_latency(count, latency_stride):
+                                    latency = latency_ns_from_message(data)
+                                    if latency is not None:
+                                        latencies.append(latency)
 
             if count <= 0:
                 raise RuntimeError(

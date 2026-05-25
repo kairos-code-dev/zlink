@@ -1891,7 +1891,7 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 - 타입: `zlink_actor_ref_t`, `zlink_actor_route_t`, `zlink_actor_recv_info_t`,
   `zlink_actor_join_info_t`, `zlink_actor_join_result_t`,
   `zlink_actor_lookup_result_t`, `zlink_spot_actor_lifecycle_info_t`,
-  `zlink_actor_join_handler_fn`, `zlink_actor_lookup_handler_fn`,
+  `zlink_actor_join_spot_handler_fn`, `zlink_actor_lookup_handler_fn`,
   `zlink_spot_actor_lifecycle_handler_fn`,
   `zlink_spot_node_spot_entry_t`, `zlink_spot_node_actor_entry_t`
 - `SpotNode` 축: `zlink_spot_node_actor_new`,

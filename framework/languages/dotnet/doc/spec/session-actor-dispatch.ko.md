@@ -866,7 +866,7 @@ internal sealed class ZLinkEntrySpotRuntime
     }
 
     public ValueTask ActorJoinedAsync(
-        ZLinkSpotActorLifecycleInfo info,
+        ZLinkSpotActorLifecycleContext info,
         CancellationToken cancellationToken)
     {
         return _lifecycleQueue.RunAsync(
@@ -1170,7 +1170,7 @@ actor id 기준 조회를 한다. session 은 actor handle 목록을 별도 appl
   사용하지 않는다. session 은 framework 가 만든 actor handle 을 저장한다.
 - actor 가 현재 연결된 client session 으로 push 를 보낼 때는,
   framework / core 가 가진 actor-session binding 상태를 사용한다.
-- actor 가 `JoinSpot(spotName, ...)` 로 user Spot 에 들어가는 경로가 node
+- actor 가 `JoinSpot(spotRid, ...)` 로 user Spot 에 들어가는 경로가 node
   경계를 넘을 수 있다면, spot remote address resolver 도 함께 등록한다.
 
 ```csharp

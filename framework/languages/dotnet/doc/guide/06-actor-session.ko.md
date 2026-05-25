@@ -82,7 +82,7 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 | `ActorId`, `SessionId?`, `SpotName?`, `SpotRid?`, `IsJoined` | 현재 상태 조회 |
 | `BoundSession` | 자기 client 로 push (§4) |
 | `JoinSpot<TRequest>(spotName, request)` | user Spot 으로 join. `.SubmitAsync<TReply>(ct)` 로 종결 |
-| `JoinSpotAsync<TRequest, TReply>(spotName, request, ct)` | join 의 단축 형태 |
+| `JoinSpot<TRequest, TReply>(spotName, request, ct)` | join 의 단축 형태 |
 
 `RoutingId` 같은 transport 주소는 handler 표면에 노출되지 않는다. spot 이름 →
 `RoutingId` 변환은 framework 내부 spot remote address resolver 가 푼다.
@@ -328,7 +328,7 @@ Redis/DB 같은 별도 저장소가 필요하면 spot remote address resolver �
 custom 으로 등록한다: `AddSpotRemoteAddressResolver<T>()`. actor-session binding 은 session bind
 시 actor runtime state 에 저장되는 framework 내부 상태다.
 
-`IZLinkSpotRemoteAddressResolver` 는 `JoinSpot(spotName, ...)` 가 노드 경계를 넘을 때만
+`IZLinkSpotRemoteAddressResolver` 는 `JoinSpot(spotRid, ...)` 가 노드 경계를 넘을 때만
 필요하다.
 
 ## 6. 오류 처리 — `ZLinkFrameworkException`

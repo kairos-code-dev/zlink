@@ -757,7 +757,7 @@ typedef struct zlink_spot_actor_lifecycle_info_t {
   uint32_t flags;
 } zlink_spot_actor_lifecycle_info_t;
 
-typedef void (*zlink_actor_join_handler_fn)(
+typedef void (*zlink_actor_join_spot_handler_fn)(
   const zlink_actor_join_result_t *result,
   zlink_msg_t *parts,
   size_t part_count,
@@ -892,7 +892,7 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
   const zlink_routing_id_t *dest_spot_rid,
   zlink_msg_t *parts,
   size_t part_count,
-  zlink_actor_join_handler_fn handler,
+  zlink_actor_join_spot_handler_fn handler,
   void *userdata,
   zlink_send_flags_t flags,
   uint32_t timeout_ms);
@@ -935,7 +935,7 @@ zlink_submit_result_t zlink_spot_actor_join_reply(
   않는다. `timeout_ms > 0`이면 timeout까지 pending 상태로 남고, `timeout_ms == 0`이면
   handler가 등록되어 처리하거나 Spot/SpotNode가 종료될 때까지 pending 상태로 남는다.
 - return이 `ZLINK_SUBMIT_OK`이면 join operation이 접수된 것이지 accept가 된 것은 아니다.
-  accept/reject 결과는 `zlink_actor_join_handler_fn` completion으로 전달한다. completion은
+  accept/reject 결과는 `zlink_actor_join_spot_handler_fn` completion으로 전달한다. completion은
   최종 Actor ref(remote join이면 target node의 ref)와 joined Spot rid를 포함한다.
 - `handler == NULL`이면 invalid argument 계열 submit 실패다. join 성공 뒤 caller가
   최종 Actor ref를 받아야 후속 Actor API나 위치 이동을 정확히 수행할 수 있기 때문이다.

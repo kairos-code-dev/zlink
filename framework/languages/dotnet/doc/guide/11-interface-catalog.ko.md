@@ -401,7 +401,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
         Context.AddSubscribe<RoomEventHandler>("room.events");
         Context.AddActorPacket<PlayerActorPacketHandler, PlayerActor>();
         Context.AddActorJoin<PlayerJoinHandler, PlayerActor, JoinRoom, JoinedRoom>();
-        Context.AddActorJoined<PlayerJoinedHandler, PlayerActor>();
+        Context.AddPostActorJoined<PlayerJoinedHandler, PlayerActor>();
         Context.AddActorLeft<PlayerLeftHandler, PlayerActor>();
     }
 
@@ -417,11 +417,11 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkSpot` | user spot 인스턴스. `Context` + lifecycle(`Configure`/`OnCreateAsync`/`OnInitializeAsync`/`OnActorJoinedAsync`/`OnActorLeftAsync`/`OnClosingAsync`) |
+| `IZLinkSpot` | user spot 인스턴스. `Context` + lifecycle(`Configure`/`OnCreateAsync`/`OnInitializeAsync`/`PostActorJoined handler`/`ActorLeft handler`/`OnClosingAsync`) |
 | `IZLinkEntrySpot` | Entry Spot 인스턴스. `IZLinkEntrySpotContext` + lifecycle |
 | `IZLinkSpotContext` | user spot context. handler registry + outbound + `SpotRid`/`NodeRid`/`SpotName` + actor join/leave + `AddTimer` |
 | `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `AddTimer` |
-| `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`, `AddActorJoined`, `AddActorLeft`) |
+| `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`, `AddPostActorJoined`, `AddActorLeft`) |
 | `IZLinkSpotHandlerRegistry` | `IZLinkActorHandlerRegistry` + spot packet/subscribe/actor-join(`AddPacket`, `AddSubscribe`, `AddActorJoin`) |
 | `IZLinkSpotOutboundContext` | spot 안 outbound(`Publish(topic, msg)`, `SendChannel`, `RequestChannel`) |
 | `IZLinkTimer` | 등록된 timer 핸들. `CancelAsync()` / `DisposeAsync()` (§8 도 참조) |
@@ -492,12 +492,12 @@ public sealed class PlayerJoinHandler
 | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | user spot join 요청 handler. (spot, actor, request) |
 | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user spot actor 단방향 handler |
 | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user spot actor 요청 handler |
-| `IZLinkSpotActorJoinedHandler<TSpot, TActor>` | user spot actor join 완료 lifecycle(`ZLinkSpotActorLifecycleInfo`) |
+| `IZLinkSpotPostActorJoinedHandler<TSpot, TActor>` | user spot actor join 완료 lifecycle(`ZLinkSpotActorLifecycleContext`) |
 | `IZLinkSpotActorLeftHandler<TSpot, TActor>` | user spot actor leave lifecycle |
 | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor 단방향 handler |
 | `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor 요청 handler |
-| `IZLinkEntrySpotActorJoinedHandler<TEntrySpot, TActor>` | Entry Spot actor join lifecycle |
-| `IZLinkEntrySpotActorLeftHandler<TEntrySpot, TActor>` | Entry Spot actor leave lifecycle |
+| `IZLinkSpotPostActorJoinedHandler<TEntrySpot, TActor>` | Entry Spot actor join lifecycle |
+| `IZLinkSpotActorLeftHandler<TEntrySpot, TActor>` | Entry Spot actor leave lifecycle |
 
 검증: `SpotContracts.Spot_handlers_receive_the_spot_instance_and_actor_when_the_contract_requires_it`.
 
@@ -509,7 +509,7 @@ public sealed class PlayerJoinHandler
 
 ```csharp
 var actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActorManager
-var joinReply = await actor.Context.JoinSpotAsync<JoinRoom, JoinedRoom>( // IZLinkActorContext
+var joinReply = await actor.Context.JoinSpot<JoinRoom, JoinedRoom>( // IZLinkActorContext
     RoutingId.Of("room-1"), new JoinRoom("room-1"));
 actor.Configure();
 await actor.OnDisconnectedAsync(CancellationToken.None);
@@ -518,7 +518,7 @@ await actor.OnDisconnectedAsync(CancellationToken.None);
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context`, `OnDisconnectedAsync` |
-| `IZLinkActorContext` | actor 의 상태/동작 표면. `ActorId`/`SessionId?`/`SpotName?`/`SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinSpotAsync`, `GetSpot<T>` |
+| `IZLinkActorContext` | actor 의 상태/동작 표면. `ActorId`/`SessionId?`/`SpotName?`/`SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinSpot`, `GetSpot<T>` |
 | `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `SubmitAsync<TReply>`) |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |

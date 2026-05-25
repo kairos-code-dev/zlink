@@ -131,8 +131,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | `GetOrCreateAsync(...)` spotName mismatch | `integration-single-process` | 같은 `spotId`에 서로 다른 `spotName`을 사용하면 `SpotTypeMismatch`로 실패하고 새 `OnCreateAsync(...)`를 호출하지 않는다 |
 | spot create lifecycle failure | `integration-single-process` | `OnCreateAsync(...)` 또는 `OnInitializeAsync(...)` 실패는 `SpotCreateFailed`로 전파되고 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
-| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddHandler(...)`, `Context.AddActorPacket(...)`, `Context.AddActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등의 등록이 descriptor에 반영된다 |
-| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddPacket(...)`, `AddSubscribe(...)`, `AddHandler(...)`, `AddActorPacket(...)`, `AddActorJoined(...)`, `AddActorLeft(...)`가 Entry Spot registry에 반영된다 |
+| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddHandler(...)`, `Context.AddActorPacket(...)`, `Context.AddPostActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등의 등록이 descriptor에 반영된다 |
+| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddPacket(...)`, `AddSubscribe(...)`, `AddHandler(...)`, `AddActorPacket(...)`, `AddPostActorJoined(...)`, `AddActorLeft(...)`가 Entry Spot registry에 반영된다 |
 | Entry Spot packet callback concurrency | `integration-single-process` | Entry Spot 일반 packet handler는 user Spot과 같은 등록 표면을 쓰지만 Entry Spot 전체 실행 줄에 직렬화되지 않는다 |
 | `OnInitializeAsync(...)` handler resolve | `integration-single-process` | spot마다 분리된 DI scope가 정상 동작한다 |
 | `OnClosingAsync(...)` 정상 remove callback | `integration-single-process` | `RemoveAsync(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |

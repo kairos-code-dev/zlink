@@ -177,7 +177,7 @@ zlink_remote_actor_get_ref(
 Actor를 사용자 Spot으로 보내려면 `zlink_spot_node_actor_join_spot()`으로 참가 요청을
 전송한다. 대상 Spot은 `ACTOR_JOIN_READABLE` 디스패치 이벤트를 받고,
 `zlink_spot_actor_join_recv()`로 요청 payload를 읽은 뒤 `zlink_spot_actor_join_reply()`로
-수락 또는 거부를 전달한다. join completion은 전용 `zlink_actor_join_handler_fn`으로
+수락 또는 거부를 전달한다. join completion은 전용 `zlink_actor_join_spot_handler_fn`으로
 전달되며, 최종 Actor ref와 joined Spot rid를 포함한다.
 
 ```c
@@ -197,7 +197,7 @@ zlink_spot_node_actor_join_spot(
   node, &actor_ref,
   &dest_node_rid, &dest_spot_rid,
   &payload_msg, 1,    /* join state payload parts */
-  on_join,            /* zlink_actor_join_handler_fn completion */
+  on_join,            /* zlink_actor_join_spot_handler_fn completion */
   userdata,
   0, 3000);           /* flags, timeout_ms */
 

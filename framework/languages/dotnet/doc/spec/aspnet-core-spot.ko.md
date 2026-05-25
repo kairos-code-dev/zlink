@@ -317,7 +317,7 @@ handler 로 매핑할 수 있다.
 
 join / leave lifecycle 은 `OnJoinActor` 나 `OnLeaveActor` 같은 Spot 메서드
 override 로 정의하지 않는다. Entry Spot 과 user Spot 모두
-`AddHandler(...)` 또는 명시적 `AddActorJoined(...)` / `AddActorLeft(...)`
+`AddHandler(...)` 또는 명시적 `AddPostActorJoined(...)` / `AddActorLeft(...)`
 registry 등록으로 후속
 처리를 붙인다. 이 callback 은 join / leave commit 이 끝난 뒤 같은 실행 문맥에서
 호출된다. 그래서 admission[^admission] 을 결정하는 hook 이 아니라는 점에

@@ -520,7 +520,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
 
 Entry Spot 과 user Spot 어느 쪽이든 `AddHandler(...)` 로 lifecycle callback
 handler 를 등록할 수 있다. actor 타입을 호출 쪽에서 명시해야 하면
-`AddActorJoined(...)` / `AddActorLeft(...)` 를 사용한다. 이
+`AddPostActorJoined(...)` / `AddActorLeft(...)` 를 사용한다. 이
 callback 은 join / leave 가 commit 된 직후 같은 실행 문맥에서 호출된다.
 
 ### 4.3 등록 순서
@@ -580,7 +580,7 @@ public interface IZLinkActorContext
 | `ActorId` / `SessionId` | identity. session bind된 actor만 `SessionId`가 채워진다 |
 | `SpotName` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름과 join 상태. Entry Spot에 있을 때는 `IsJoined`가 false다. `RoutingId`는 framework 내부 표면으로만 두고 actor handler에는 노출하지 않는다 |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
-| `JoinSpot(spotName, request).Submit(...)` | user Spot에 join 요청 (Entry → user Spot으로 이동). STREAM session binding을 전제로 하지 않는다. `spotName`은 application domain spot 이름(`string`) |
+| `JoinSpot(spotRid, request).Submit(...)` | user Spot에 join 요청 (Entry → user Spot으로 이동). STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
 
 actor request 에 대한 reply 는 actor context 의 별도 `Reply(...)` 호출이 아니라
 request handler 의 반환값으로 처리한다. actor, Entry Spot actor, user Spot actor
@@ -649,8 +649,8 @@ validation 단계에서 이루어진다. 자세한 시그니처는
 ### 7.2 actor가 spot에 합류하기
 
 다른 곳에 사는 actor (예: session-attached actor) 가 어떤 spot 에 합류하려면
-자기 context 의 `JoinSpot(spotName, request)` 를 호출한다. 여기서 `spotName`
-은 application domain spot 이름(`string`) 이다. `RoutingId` 로의 변환은
+자기 context 의 `JoinSpot(spotRid, request)` 를 호출한다. 여기서 `spotRid`
+은 user Spot routing id(`RoutingId`) 이다. `RoutingId` 로의 변환은
 framework 내부 spot remote address resolver 가 처리한다.
 
 ```csharp
@@ -803,7 +803,7 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
   actor 로 가는 relay 와 actor 에서 bound session 으로 돌아오는 push 가 같은 gateway
   상태를 사용한다.
 - **`IZLinkSpotRemoteAddressResolver`** -- "spot name / id → user Spot routing id" 를
-  푼다. actor 가 `JoinSpot(spotName, ...)` 로 node 경계를 넘을 수 있다면 이
+  푼다. actor 가 `JoinSpot(spotRid, ...)` 로 node 경계를 넘을 수 있다면 이
   resolver 를 등록한다.
 - **`IZLinkBoundSession`** -- Play 서버 actor 가 자기 client 에게 push 를 보낼
   때 쓰는 표면이다. 현재 actor id 는 framework 가 알고 있으므로 호출자가 다시

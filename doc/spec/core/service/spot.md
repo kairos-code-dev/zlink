@@ -883,7 +883,7 @@ typedef struct zlink_spot_actor_lifecycle_info_t {
   uint32_t flags;
 } zlink_spot_actor_lifecycle_info_t;
 
-typedef void (*zlink_actor_join_handler_fn)(
+typedef void (*zlink_actor_join_spot_handler_fn)(
   const zlink_actor_join_result_t *result,
   zlink_msg_t *parts,
   size_t part_count,
@@ -1039,7 +1039,7 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
   const zlink_routing_id_t *dest_spot_rid,
   zlink_msg_t *parts,
   size_t part_count,
-  zlink_actor_join_handler_fn handler,
+  zlink_actor_join_spot_handler_fn handler,
   void *userdata,
   zlink_send_flags_t flags,
   uint32_t timeout_ms);
@@ -1087,7 +1087,7 @@ the Actor's current Spot changes to the target.
   installed and decides it, or until the Spot/SpotNode terminates.
 - `ZLINK_SUBMIT_OK` means the join operation was accepted for processing, not
   that it was accepted by the target Spot. The accept or reject outcome is
-  delivered through the `zlink_actor_join_handler_fn` completion. On success
+  delivered through the `zlink_actor_join_spot_handler_fn` completion. On success
   the completion carries the final Actor ref (the target node's ref for a
   remote join) and the joined Spot rid.
 - `handler == NULL` fails as an invalid-argument-class submit because the

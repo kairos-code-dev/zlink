@@ -48,7 +48,7 @@ pub mod socket;
 // -- Public re-exports -------------------------------------------------------
 
 pub use ctx::{AutoHwmProfile, AutoHwmRecalcReason, Context, ContextOptions, has, version};
-pub use domain::{Received, SendResult, SubscriptionEvent, TopicMessage};
+pub use domain::{Received, RouterPart, SendResult, SubscriptionEvent, TopicMessage};
 pub use error::{
     BindError, BindResult, CloseError, CloseResult, ConfigError, ConfigResult, ConnectError,
     ConnectResult, HandlerError, HandlerResult, RecvError, RecvResult, RequestError, RequestResult,

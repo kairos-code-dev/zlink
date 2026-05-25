@@ -17,6 +17,67 @@ impl SendResult {
     }
 }
 
+/// One part received from a ROUTER socket.
+///
+/// This is the low-level counterpart to [`Received`] for callers that need to
+/// drain `zlink_router_recv_part` one frame at a time without constructing a
+/// full multipart result object.
+pub struct RouterPart {
+    routing_id: RoutingId,
+    spot_rid: Option<RoutingId>,
+    request_seq: Option<u64>,
+    message: Message,
+    more: bool,
+}
+
+impl RouterPart {
+    pub(crate) fn new(
+        routing_id: RoutingId,
+        spot_rid: Option<RoutingId>,
+        request_seq: Option<u64>,
+        message: Message,
+        more: bool,
+    ) -> Self {
+        Self {
+            routing_id,
+            spot_rid,
+            request_seq,
+            message,
+            more,
+        }
+    }
+
+    /// Routing id of the peer that sent this part.
+    pub fn routing_id(&self) -> &RoutingId {
+        &self.routing_id
+    }
+
+    /// Source SPOT id when the part came from routed SPOT traffic.
+    pub fn spot_rid(&self) -> Option<&RoutingId> {
+        self.spot_rid.as_ref()
+    }
+
+    /// Request sequence when this part belongs to a routed request/reply flow.
+    pub fn request_seq(&self) -> Option<u64> {
+        self.request_seq
+    }
+
+    /// Message payload for this part.
+    pub fn message(&self) -> &Message {
+        &self.message
+    }
+
+    /// Consume the part and return the owned message.
+    pub fn into_message(self) -> Message {
+        self.message
+    }
+
+    /// Whether more parts follow for the same routed message.
+    pub fn has_more(&self) -> bool {
+        self.more
+    }
+}
+
 #[allow(clippy::large_enum_variant)]
 enum ReplyContext {
     Router {

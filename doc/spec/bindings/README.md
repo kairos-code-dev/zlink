@@ -580,7 +580,7 @@ error 표현을 분리해서 설명해야 한다.
 | Node | `recv(received: Received, flags?: RecvFlag): boolean;` `subscribe(topic: TopicMessage, flags?: RecvFlag): boolean;` `receiveSubscriptionEvent(event: SubscriptionEvent, flags?: RecvFlag): boolean;` |
 | Python | `def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...` `def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...` `def receive_subscription_event_into(self, event: SubscriptionEvent, *, flags: int = 0) -> bool: ...` |
 | Go | `func (s *Socket) Recv(out *Received, flags RecvFlags) (bool, error)` `func (s *Socket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error)` `func (s *Socket) ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error)` |
-| Rust | `pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;` `pub fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError>;` `pub fn receive_subscription_event(&self, out: &mut SubscriptionEvent, flags: RecvFlags) -> Result<bool, RecvError>;` |
+| Rust | `pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;` `pub fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError>;` `pub fn receive_subscription_event(&self, out: &mut SubscriptionEvent, flags: RecvFlags) -> Result<bool, RecvError>;` `RouterSocket::recv_part(flags) -> Result<Option<RouterPart>, RecvError>`는 `zlink_router_recv_part()`와 같은 part 단위 ROUTER 수신 표면이다. |
 
 C ABI binding 은 이 절의 적용 대상이 아니다. C 바인딩은 `zlink.h` 의 typed
 substrate (`zlink_router_recv_part`, `zlink_subscribe_part` 등) 를 그대로

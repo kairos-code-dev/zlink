@@ -129,27 +129,35 @@ fn main() {
         });
     });
 
-    let mut received = zlink::Received::empty();
-    loop {
-        match receiver.recv(&mut received, zlink::RecvFlags::NONE) {
-            Ok(true) => {
-                loop {
-                    let data = common::message_payload(received.parts());
-                    if common::is_stop_token(data) {
-                        break;
-                    }
-                    common::handle_recv(data, config.size, &stats, active_deadline);
-                    match receiver.recv(&mut received, zlink::RecvFlags::DONT_WAIT) {
-                        Ok(true) => continue,
-                        Ok(false) => break,
-                        Err(err) => panic!("router-router receiver recv failed: {err}"),
-                    }
-                }
-                if common::is_stop_token(common::message_payload(received.parts())) {
+    let mut stop_seen = false;
+    let stop_wait_deadline = active_deadline + common::resolve_single_stop_wait();
+    while !stop_seen {
+        if std::time::Instant::now() >= stop_wait_deadline {
+            break;
+        }
+        let flags = if std::time::Instant::now() < active_deadline {
+            zlink::RecvFlags::NONE
+        } else {
+            zlink::RecvFlags::DONT_WAIT
+        };
+        match receiver.recv_part(flags) {
+            Ok(Some(mut part)) => loop {
+                debug_assert!(!part.has_more());
+                let data = part.message().as_bytes();
+                if common::is_stop_token(data) {
+                    stop_seen = true;
                     break;
                 }
-            }
-            Ok(false) => continue,
+                common::handle_recv(data, config.size, &stats, active_deadline);
+                match receiver.recv_part(zlink::RecvFlags::DONT_WAIT) {
+                    Ok(Some(next_part)) => {
+                        part = next_part;
+                    }
+                    Ok(None) => break,
+                    Err(err) => panic!("router-router receiver recv failed: {err}"),
+                }
+            },
+            Ok(None) => std::thread::yield_now(),
             Err(err) => panic!("router-router receiver recv failed: {err}"),
         }
     }

@@ -6,7 +6,7 @@ use super::{
     impl_connect, impl_routing_id_options,
 };
 use crate::ctx::Context;
-use crate::domain::Received;
+use crate::domain::{Received, RouterPart};
 use crate::error::{ConfigError, HandlerError, RecvError, check_recv_rc};
 use crate::ffi;
 use crate::flags::RecvFlags;
@@ -43,6 +43,15 @@ impl RouterSocket {
             }
             None => Ok(false),
         }
+    }
+
+    /// Receive one routed part.
+    ///
+    /// This exposes the same part-wise contract as `zlink_router_recv_part`.
+    /// Use [`RouterSocket::recv`] when the whole routed message should be
+    /// materialized into caller-provided [`Received`] storage.
+    pub fn recv_part(&self, flags: RecvFlags) -> Result<Option<RouterPart>, RecvError> {
+        recv_router_part_once(self.inner.handle, flags.bits())
     }
 
     pub fn request(&self, peer_rid: &RoutingId) -> RequestOp<Empty> {
@@ -213,4 +222,65 @@ fn recv_router_once(handle: *mut c_void, flags: u32) -> Result<Option<Received>,
         }
         recv_flags = ffi::ZLINK_DONTWAIT;
     }
+}
+
+fn recv_router_part_once(handle: *mut c_void, flags: u32) -> Result<Option<RouterPart>, RecvError> {
+    let mut source_node_rid = ptr::null();
+    let mut source_spot_rid = ptr::null();
+    let mut request_seq = 0u64;
+    let mut part = std::mem::MaybeUninit::<ffi::zlink_msg_t>::uninit();
+    unsafe {
+        ffi::zlink_msg_init(part.as_mut_ptr());
+    }
+    let mut has_more = 0;
+    let rc = unsafe {
+        ffi::zlink_router_recv_part(
+            handle,
+            &mut source_node_rid,
+            &mut source_spot_rid,
+            &mut request_seq,
+            part.as_mut_ptr(),
+            &mut has_more,
+            flags,
+        )
+    };
+    if rc == crate::error::RecvResult::NoData as i32 {
+        close_unreceived_part(&mut part);
+        return Ok(None);
+    }
+    if rc != 0 {
+        close_unreceived_part(&mut part);
+        let errno = unsafe { ffi::zlink_errno() };
+        if errno == libc::EAGAIN {
+            return Ok(None);
+        }
+        return Err(check_recv_rc(rc).unwrap_err());
+    }
+
+    let routing_id = if source_node_rid.is_null() {
+        RoutingId::from_raw(ffi::zlink_routing_id_t {
+            size: 0,
+            data: [0; 255],
+        })
+    } else {
+        unsafe { RoutingId::from_raw(*source_node_rid) }
+    };
+    let spot_rid = if source_spot_rid.is_null() {
+        None
+    } else {
+        let rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
+        if rid.is_empty() { None } else { Some(rid) }
+    };
+    let request_seq = if request_seq == 0 {
+        None
+    } else {
+        Some(request_seq)
+    };
+    Ok(Some(RouterPart::new(
+        routing_id,
+        spot_rid,
+        request_seq,
+        unsafe { crate::message::Message::from_raw(part.assume_init()) },
+        has_more != 0,
+    )))
 }

@@ -98,6 +98,45 @@ fn dealer_router_roundtrip() {
 }
 
 #[test]
+fn router_recv_part_preserves_routing_id_and_more_flag() {
+    let ctx = Context::new().unwrap();
+    let router = ctx.router_socket().unwrap();
+    router.bind("inproc://beh-router-part").unwrap();
+
+    let dealer = ctx.dealer_socket().unwrap();
+    let rid = RoutingId::from_bytes(b"dealer-part");
+    dealer.set_routing_id(&rid).unwrap();
+    dealer.connect("inproc://beh-router-part").unwrap();
+    thread::sleep(Duration::from_millis(50));
+
+    dealer
+        .send()
+        .message(Message::copy_from(b"part-1").unwrap())
+        .message(Message::copy_from(b"part-2").unwrap())
+        .submit()
+        .unwrap();
+
+    let part = router
+        .recv_part(RecvFlags::NONE)
+        .unwrap()
+        .expect("router part");
+    assert_eq!(part.routing_id().as_bytes(), rid.as_bytes());
+    assert_eq!(part.message().as_bytes(), b"part-1");
+    assert!(part.has_more());
+    assert!(part.spot_rid().is_none());
+    assert_eq!(part.request_seq(), None);
+
+    let part = router
+        .recv_part(RecvFlags::DONT_WAIT)
+        .unwrap()
+        .expect("second router part");
+    assert_eq!(part.routing_id().as_bytes(), rid.as_bytes());
+    assert_eq!(part.message().as_bytes(), b"part-2");
+    assert!(!part.has_more());
+    assert!(router.recv_part(RecvFlags::DONT_WAIT).unwrap().is_none());
+}
+
+#[test]
 fn pub_sub_roundtrip() {
     let ctx = Context::new().unwrap();
     let pub_sock = ctx.pub_socket().unwrap();

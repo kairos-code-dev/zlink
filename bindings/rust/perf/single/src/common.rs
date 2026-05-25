@@ -746,6 +746,10 @@ pub fn resolve_single_spot_ready_settle() -> Duration {
     Duration::from_millis(env_or_u64("PERF_SINGLE_SPOT_READY_SETTLE_MS", 1000))
 }
 
+pub fn resolve_single_stop_wait() -> Duration {
+    Duration::from_millis(env_or_u64("PERF_SINGLE_STOP_WAIT_MS", 2000))
+}
+
 pub fn resolve_single_ready_timeout() -> Duration {
     Duration::from_millis(env_or_u64("PERF_CONNECT_READY_TIMEOUT_MS", 5000))
 }

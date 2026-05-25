@@ -82,6 +82,7 @@ fn router_socket_send_requires_routing_id() {
     let rid = RoutingId::from_bytes(b"peer-001");
     let msg = Message::copy_from(b"response").unwrap();
     let _ = sock.send(&rid).message(msg).submit();
+    let _ = sock.recv_part(RecvFlags::DONT_WAIT);
 }
 
 #[test]

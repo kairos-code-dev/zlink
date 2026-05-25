@@ -412,7 +412,7 @@ ActorGateway 는 public socket endpoint 가 아니라 SpotNode 내부 runtime �
 | `zlink_spot_node_options_t` | `mode` 만 가진 struct | options flag 로 gateway 를 넣으면 ABI break | struct 변경 없음. ActorGateway 는 lazy init |
 | `zlink_stream_bind_actor(...)` | stream owner 가 없으면 Actor node rid 로 owner 를 추론할 수 있음 | 충돌 | owner 추론 fallback 제거, attached gateway 요구 |
 | `zlink_stream_send_bound_actor_part(...)` | stored Actor ref 기준으로 relay | 대체로 호환 | stored ref 가 join commit 후 current location 을 따라간다는 계약 명시 |
-| `zlink_spot_node_actor_join_spot(...)` | Entry Spot target 을 거부하고 user Spot join 만 허용 | 기존 lifecycle 초안과 일치 | ActorGateway 초안도 EntrySpot 직접 join 을 기본 허용하지 않도록 맞춤 |
+| `zlink_spot_node_actor_join_spot(...)` | user Spot join 만 허용한다. Entry Spot 이동은 별도 `zlink_spot_node_actor_join_entry_spot(...)` 으로 분리한다 | current core contract 와 일치 | user Spot join 은 payload/reply 기반 admission 으로 유지하고, Entry Spot 이동은 payload 없이 SpotNode rid 로 호출한다 |
 | `zlink_spot_node_actor_join_spot(...)` remote commit | bound session 을 target Actor 로 이전하는 코드가 있음 | 새 설계와 호환 | 정식 spec 의 reattach 설명 제거 |
 | `zlink_spot_node_actor_send_bound_session_msg(...)` | Actor owner 의 bound stream/session 을 사용 | 부분 호환 | remote session owner gateway 로 전달하는 내부 경로 명확화 |
 | `zlink_stream_bound_actors(...)` | local binding snapshot 을 반환 | 부분 호환 | snapshot 이 stale address 계약이 아니라 logical binding 조회임을 명시 |

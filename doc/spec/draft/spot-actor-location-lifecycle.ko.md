@@ -30,8 +30,9 @@ session bind 성공 시점에 공개된다고 설명한다.
 1. Actor 생성, Spot 이동, session attach는 서로 다른 상태 전이다.
 2. Actor는 항상 정확히 하나의 Spot에 속한다.
 3. Discovery active route는 Actor가 어느 Spot에서 dispatch되는지를 나타낸다.
-4. remote Actor 생성 API와 remote Entry Spot join API는 두지 않는다. Actor는 사용할
-   SpotNode에서 로컬 생성한다.
+4. remote Actor 생성 API는 두지 않는다. Actor는 사용할 SpotNode에서 로컬
+   생성한다. 이미 존재하는 Actor를 다른 SpotNode의 Entry Spot으로 옮기는 것은
+   `zlink_spot_node_actor_join_entry_spot()`으로 표현한다.
 5. join 성공 결과는 최종 `zlink_actor_ref_t`를 반환해야 한다.
 6. Spot lifecycle callback은 별도 등록 함수로 받으며, Actor 생성과 join/leave 시
    등록한 경우에만 전달한다.

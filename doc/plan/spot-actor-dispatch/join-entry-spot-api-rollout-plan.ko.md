@@ -2,15 +2,15 @@
 
 이 문서는 Actor 를 특정 SpotNode 의 Entry Spot 으로 되돌리는
 `JoinEntrySpot` 계열 API 를 core C API 부터 .NET framework 샘플까지 반영하기 위한
-실행 계획이다. 현재 공개 계약은 아직 이 API 를 포함하지 않으며, 구현 완료 후
-정식 spec 과 guide 에 반영한다.
+실행 계획과 적용 후 검증 기준을 함께 기록한다. 현재 공개 계약은 이 API 를 포함하며,
+이 문서는 구현과 문서가 같은 계약을 유지하는지 확인하는 체크리스트로 사용한다.
 
 ## 1. 배경
 
-현재 core 에는 Actor 를 user Spot 으로 합류시키는
-`zlink_spot_node_actor_join_spot(...)` 만 있다. 이 함수는 target Spot rid 를 직접
-받고, 구현에서 Entry Spot target 을 거부한다. 반면 Actor 가 생성될 때나 user Spot 에서
-leave 될 때는 Entry Spot 위치로 이동하는 의미가 이미 존재한다.
+기존 user Spot join API 인 `zlink_spot_node_actor_join_spot(...)` 은 target user
+Spot rid 를 직접 받고 application join payload/reply 를 처리한다. Entry Spot 이동은
+payload 나 application join reply 가 없는 lifecycle 이동이므로 같은 API 로 표현하지
+않고 `zlink_spot_node_actor_join_entry_spot(...)` 으로 분리한다.
 
 TicTacToe SessionGateway 샘플에서는 Session 쪽에서 Actor 를 만들고, Play SpotNode 의
 Entry Spot 으로 위치를 맞춘 뒤 반환된 Actor ref 로 session bind 를 수행해야 한다.
@@ -684,16 +684,15 @@ await context.Reply(new AuthenticateRes(join.ActorId))
 
 ## 10. 문서 반영 계획
 
-구현 완료 뒤 문서는 `draft 정리 -> core/binding spec -> framework spec -> guide/sample`
-순서로 갱신한다. 먼저 잘못된 결정을 제거하고, 그 다음 공개 계약을 고정한 뒤,
-마지막에 사용법 문서를 맞춘다. 이렇게 해야 guide 가 아직 확정되지 않은 내부 설계를
-앞질러 설명하지 않는다.
+문서는 `draft 정리 -> core/binding spec -> framework spec -> guide/sample` 순서로
+갱신한다. 먼저 잘못된 결정을 제거하고, 그 다음 공개 계약을 고정한 뒤, 마지막에
+사용법 문서를 맞춘다. 이렇게 해야 guide 가 확정되지 않은 내부 설계를 앞질러 설명하지
+않는다.
 
 ### 10.1 draft 정리
 
-`doc/spec/draft/actor-gateway-session-relay.ko.md` 는 현재 “EntrySpot direct join 은
-허용하지 않는다”는 결정을 담고 있다. 구현 후 이 문장을 그대로 두면 core 와 framework
-계약이 충돌한다.
+`doc/spec/draft/actor-gateway-session-relay.ko.md` 에 있던 “EntrySpot direct join 은
+허용하지 않는다” 결정은 새 Entry Spot join 계약과 충돌하므로 제거되어야 한다.
 
 수정 기준:
 

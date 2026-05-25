@@ -2135,6 +2135,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   READY 이후 결과 없이 partial로 끝났다. native stream callback 경계에서 public `Message`
   수명 관리를 우회하면 shared C stream client handshake/echo 진행이 불안정해지므로
   코드는 반영하지 않는다.
+- **MULTI_STREAM routed native send 후보 기각**: stream server의 POLLOUT drain에서
+  `send_nonblocking(server, frame, routing_id=...)` builder 경로를 건너뛰고
+  `_send_rid_via_native_no_wait_result(...)`로 단일 frame을 직접 보내는 후보를 시험했다.
+  `python3 -m py_compile bindings/python/perf/multi/perf_multi_stream_server.py`는 통과했지만,
+  공식 wrapper `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp
+  --pattern MULTI_STREAM --msg-sizes 64 --duration 1 --runs 3`가 첫 `tcp 64B`에서
+  READY 이후 결과 없이 partial로 끝났다
+  (`perf_python_multi_linux_20260525_194338_stream_native_send_candidate_tcp64.txt`).
+  stream socket의 public send builder를 우회하면 shared C stream client와 echo completion
+  경계가 안정적으로 유지되지 않으므로 반영하지 않는다.
 - **MULTI_STREAM callback immediate-send 후보 기각**: C stream server처럼 packet callback에서
   pending queue가 비었을 때 즉시 `send(...DONT_WAIT)`를 시도하고 backpressure 때만 queue에
   넣는 후보를 시험했다. `python -m py_compile bindings/python/perf/multi/perf_multi_stream_server.py`는

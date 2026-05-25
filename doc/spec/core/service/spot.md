@@ -868,6 +868,14 @@ typedef struct zlink_actor_join_result_t {
   uint32_t flags;
 } zlink_actor_join_result_t;
 
+typedef struct zlink_actor_join_entry_spot_result_t {
+  zlink_request_result_t result;
+  zlink_actor_ref_t actor;
+  zlink_routing_id_t target_node_rid;
+  uint64_t join_epoch;
+  uint32_t flags;
+} zlink_actor_join_entry_spot_result_t;
+
 typedef struct zlink_actor_lookup_result_t {
   zlink_request_result_t result;
   zlink_actor_ref_t actor;
@@ -887,6 +895,10 @@ typedef void (*zlink_actor_join_spot_handler_fn)(
   const zlink_actor_join_result_t *result,
   zlink_msg_t *parts,
   size_t part_count,
+  void *userdata);
+
+typedef void (*zlink_actor_join_entry_spot_handler_fn)(
+  const zlink_actor_join_entry_spot_result_t *result,
   void *userdata);
 
 typedef void (*zlink_actor_lookup_handler_fn)(
@@ -914,6 +926,14 @@ SpotNode that owns the Actor slot. `flags` is reserved and is 0. On failure,
 `actor` and `joined_spot_rid` are not used. The `result` pointer is valid only
 for the duration of the callback; copy values inside the callback if needed
 later.
+
+`zlink_actor_join_entry_spot_result_t` is delivered to the Entry Spot join
+completion handler. On success, `actor` is the final Actor ref after the move and
+`target_node_rid` is the target SpotNode rid supplied by the caller. Entry Spot
+join has no application join payload and no reply payload, so the callback does
+not receive message parts. Idempotent success still returns a success result but
+does not fire joined/left lifecycle callbacks again because the location did not
+change.
 
 `zlink_actor_lookup_result_t` is delivered to the remote-Actor lookup
 completion handler. `result` is the final outcome. On success, `actor` is a
@@ -1011,16 +1031,18 @@ zlink_submit_result_t zlink_remote_actor_get_ref(
 
 ### Remote Actor placement model
 
-There is no remote-Actor create API and no remote Entry-Spot join API. To
-place an Actor where it must start its life on a remote node, the application
-creates the Actor on that node directly with
-`zlink_spot_node_actor_new()`. The remote placement flow is:
+There is no remote-Actor create API. To place a new Actor where it must start
+its life on a remote node, the application creates the Actor on that node
+directly with `zlink_spot_node_actor_new()`. To move an existing Actor to
+another SpotNode's Entry Spot, use `zlink_spot_node_actor_join_entry_spot()`.
+The remote placement flow is:
 
 1. Create a local Actor on the SpotNode that should own it.
 2. If needed, move the Actor to a user Spot (possibly on another SpotNode) via
    `zlink_spot_node_actor_join_spot()`.
 3. Leave back to the same node's Entry Spot via
-   `zlink_spot_node_actor_leave_spot()`.
+   `zlink_spot_node_actor_leave_spot()`, or move to another SpotNode's Entry
+   Spot via `zlink_spot_node_actor_join_entry_spot()`.
 4. Use the final Actor ref returned by the join completion for follow-up Actor
    calls. Existing logical session bindings follow a successful join without a
    reattach step.
@@ -1042,6 +1064,14 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
   zlink_actor_join_spot_handler_fn handler,
   void *userdata,
   zlink_send_flags_t flags,
+  uint32_t timeout_ms);
+
+zlink_submit_result_t zlink_spot_node_actor_join_entry_spot(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  const zlink_routing_id_t *dest_node_rid,
+  zlink_actor_join_entry_spot_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 
 zlink_recv_result_t zlink_spot_actor_join_recv(
@@ -1104,6 +1134,36 @@ the Actor's current Spot changes to the target.
   target Spot reads this payload to decide accept or reject.
 - After an accept commit, the active route updates to the target user Spot
   location.
+
+`zlink_spot_node_actor_join_entry_spot()` contracts:
+
+- `node` is the request-owner `SpotNode` that submits the Entry Spot move.
+- `dest_node_rid` is the target SpotNode rid, not an Entry Spot rid. There is one
+  Entry Spot per SpotNode, so this API does not take a target Spot rid.
+- The API moves the Actor to the target SpotNode's Entry Spot. For a local
+  target it uses the target Entry Spot state. For a remote target it follows the
+  existing remote Actor move rules and updates the target actor placeholder,
+  active route, and bound session relay location.
+- It does not enqueue an application join request. There is no message for
+  `zlink_spot_actor_join_recv()` to read, and `zlink_spot_actor_join_reply()` is
+  not used.
+- There are no payload or reply parts. The completion callback is
+  `zlink_actor_join_entry_spot_handler_fn` and receives only the result.
+- On success, `result->actor` is the final Actor ref after the move and
+  `result->target_node_rid` is the target SpotNode rid supplied by the caller.
+- If the Actor is already in the same target SpotNode's Entry Spot, the operation
+  completes as an idempotent success and does not fire joined/left lifecycle
+  callbacks again.
+- When the location actually changes, the previous user Spot receives a left
+  lifecycle callback and the target Entry Spot receives a joined lifecycle
+  callback.
+- If the target node is unreachable, completion fails with a not-connected-class
+  result.
+- Invalid Actor refs, checked-ref generation mismatches, and duplicate pending
+  joins follow the existing Actor API invalid-argument or invalid-state failure
+  policy.
+- `handler == NULL` fails as an invalid-argument-class submit because callers
+  must receive the final Actor ref for follow-up Actor APIs and session binding.
 
 `zlink_spot_actor_join_recv()` contracts:
 

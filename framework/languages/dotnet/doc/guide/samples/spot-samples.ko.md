@@ -1289,7 +1289,7 @@ public sealed class SampleActor : IZLinkActor
         CancellationToken cancellationToken)
     {
         return _context
-            .JoinSpot(room.Context.SpotName, request)
+            .JoinSpot(room.Context.SpotRid, request)
             .SubmitAsync<SampleJoinRoomReply>(cancellationToken);
     }
 

@@ -1890,14 +1890,16 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 
 - 타입: `zlink_actor_ref_t`, `zlink_actor_route_t`, `zlink_actor_recv_info_t`,
   `zlink_actor_join_info_t`, `zlink_actor_join_result_t`,
-  `zlink_actor_lookup_result_t`, `zlink_spot_actor_lifecycle_info_t`,
-  `zlink_actor_join_spot_handler_fn`, `zlink_actor_lookup_handler_fn`,
+  `zlink_actor_join_entry_spot_result_t`, `zlink_actor_lookup_result_t`,
+  `zlink_spot_actor_lifecycle_info_t`, `zlink_actor_join_spot_handler_fn`,
+  `zlink_actor_join_entry_spot_handler_fn`, `zlink_actor_lookup_handler_fn`,
   `zlink_spot_actor_lifecycle_handler_fn`,
   `zlink_spot_node_spot_entry_t`, `zlink_spot_node_actor_entry_t`
 - `SpotNode` 축: `zlink_spot_node_actor_new`,
   `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref` (async lookup),
   `zlink_spot_node_actor_destroy` (async submit),
   `zlink_spot_node_actor_join_spot` (async submit + 전용 completion typedef),
+  `zlink_spot_node_actor_join_entry_spot` (async submit + 전용 completion typedef),
   `zlink_spot_node_actor_leave_spot` (async submit),
   `zlink_spot_node_actor_recv_part`,
   `zlink_spot_node_actor_send_bound_session_msg`,
@@ -1934,6 +1936,7 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 | `ActorPart` | `ActorRecvInfo`, message part, more 여부 |
 | `ActorJoinInfo` + join message | join 요청 판단과 응답에 필요한 `source_actor`, `target_actor`, `source_node_rid`, `source_spot_rid`, `target_node_rid`, `target_spot_rid`, `join_epoch`, `flags`, join message. 언어 관례에 따라 `ActorJoinRequest` wrapper나 tuple/pair로 묶을 수 있다. native reply context는 binding 내부에서만 보관하며 public field로 노출하지 않는다 |
 | `ActorJoinResult` | join completion에 전달. `result`, 최종 `actor` ref(remote join이면 target node ref), `joined_spot_rid`, `join_epoch`, `flags` |
+| `ActorJoinEntrySpotResult` | Entry Spot join completion에 전달. `result`, 최종 `actor` ref, `target_node_rid`, `join_epoch`, `flags`. join message나 reply payload는 없다 |
 | `ActorLookupResult` | remote Actor lookup completion에 전달. `result`, checked `actor` ref, `flags` |
 | `SpotActorLifecycleInfo` | Spot lifecycle handler에 전달. `previous_actor`, `current_actor`, `previous_spot_rid`, `current_spot_rid`, `join_epoch`, `flags` |
 | `SpotNodeSpotEntry` | Spot routing id, Entry/User Spot kind, dispatch handler 여부, joined/pending Actor 수, route sync 상태, 변경 시각 |
@@ -1950,6 +1953,11 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
   Entry Spot으로만 돌아가며, user Spot에서 leave가 성공하면 source `on_leave`와
   Entry Spot `on_join` lifecycle callback이 발생하고 active route가 Entry Spot
   위치로 갱신된다.
+- Entry Spot join은 async submit API다. target 인자는 Entry Spot rid가 아니라
+  SpotNode rid다. 한 SpotNode에는 Entry Spot이 하나뿐이므로 별도 Entry Spot rid를
+  public API에 요구하지 않는다. Entry Spot join은 join message를 보내지 않고
+  application join queue를 거치지 않는다. completion handler는 성공/실패와 최종
+  Actor ref만 돌려준다.
 - 원격 노드에서 시작해야 하는 Actor는 application이 해당 SpotNode에서 직접
   `actor_new`로 생성한다. remote Actor의 checked ref는 async
   `remote_actor_get_ref` lookup으로 얻는다. remote create-or-get과 admission
@@ -2049,7 +2057,9 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | owned Actor close/destroy | `Actor` | `zlink_spot_node_actor_destroy` |
 | Spot Actor lifecycle handler | `Spot` | `zlink_spot_actor_lifecycle_handler` |
 | Actor join by ref | `SpotNode` | `zlink_spot_node_actor_join_spot` |
+| Actor Entry Spot join by ref | `SpotNode` | `zlink_spot_node_actor_join_entry_spot` |
 | owned Actor join | `Actor` | `zlink_spot_node_actor_join_spot` |
+| owned Actor Entry Spot join | `Actor` | `zlink_spot_node_actor_join_entry_spot` |
 | Actor leave by ref | `SpotNode` | `zlink_spot_node_actor_leave_spot` |
 | owned Actor leave | `Actor` | `zlink_spot_node_actor_leave_spot` |
 | Actor part recv | `Actor` | `zlink_spot_node_actor_recv_part` |

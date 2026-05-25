@@ -81,11 +81,12 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 |---------------------------|------|
 | `ActorId`, `SessionId?`, `SpotName?`, `SpotRid?`, `IsJoined` | 현재 상태 조회 |
 | `BoundSession` | 자기 client 로 push (§4) |
-| `JoinSpot<TRequest>(spotName, request)` | user Spot 으로 join. `.SubmitAsync<TReply>(ct)` 로 종결 |
-| `JoinSpot<TRequest, TReply>(spotName, request, ct)` | join 의 단축 형태 |
+| `JoinSpot<TRequest>(spotRid, request)` | user Spot 으로 join. `.SubmitAsync<TReply>(ct)` 로 종결 |
+| `JoinEntrySpot(spotNodeRid)` | target SpotNode 의 Entry Spot 으로 이동. `.SubmitAsync(ct)` 로 종결 |
 
-`RoutingId` 같은 transport 주소는 handler 표면에 노출되지 않는다. spot 이름 →
-`RoutingId` 변환은 framework 내부 spot remote address resolver 가 푼다.
+`spotRid`는 user Spot 의 `RoutingId`이고, `spotNodeRid`는 Entry Spot 을 가진
+SpotNode 의 `RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서
+`RoutingId`를 얻는 규칙은 application registry 가 정한다.
 
 ## 3. Entry Spot 과 user Spot 의 actor handler
 
@@ -132,12 +133,14 @@ public sealed class JoinMatchHandler
         PlayerEntrySpot entrySpot, PlayerActor actor, JoinMatchReq request, CancellationToken ct)
     {
         _ = entrySpot;
-        // request.MatchId 는 도메인이 정한 spot 이름. RoutingId 변환은 framework 가.
+        // request.MatchId 는 도메인이 정한 match id다.
+        // application registry가 user Spot RoutingId로 변환하거나 조회한다.
+        var matchSpotRid = RoutingId.FromString(request.MatchId);
         var joined = await actor.Context
-            .JoinSpot<JoinMatchReq>(request.MatchId, request)
+            .JoinSpot(matchSpotRid, request)
             .Timeout(TimeSpan.FromSeconds(2))
             .SubmitAsync<JoinMatchSpotResult>(ct);
-        return joined.ToReply();
+        return joined.Reply.ToReply();
     }
 }
 

@@ -509,8 +509,9 @@ public sealed class PlayerJoinHandler
 
 ```csharp
 var actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActorManager
-var joinReply = await actor.Context.JoinSpot<JoinRoom, JoinedRoom>( // IZLinkActorContext
-    RoutingId.Of("room-1"), new JoinRoom("room-1"));
+var joinReply = await actor.Context
+    .JoinSpot(RoutingId.Of("room-1"), new JoinRoom("room-1")) // IZLinkActorContext
+    .SubmitAsync<JoinedRoom>();
 actor.Configure();
 await actor.OnDisconnectedAsync(CancellationToken.None);
 ```
@@ -518,7 +519,7 @@ await actor.OnDisconnectedAsync(CancellationToken.None);
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context`, `OnDisconnectedAsync` |
-| `IZLinkActorContext` | actor 의 상태/동작 표면. `ActorId`/`SessionId?`/`SpotName?`/`SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinSpot`, `GetSpot<T>` |
+| `IZLinkActorContext` | actor 의 상태/동작 표면. `ActorId`/`SessionId?`/`SpotName?`/`SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
 | `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `SubmitAsync<TReply>`) |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |

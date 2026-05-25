@@ -204,7 +204,7 @@ typedef struct zlink_actor_join_result_t {
   uint32_t flags;
 } zlink_actor_join_result_t;
 
-typedef void (*zlink_actor_join_handler_fn)(
+typedef void (*zlink_actor_join_spot_handler_fn)(
   const zlink_actor_join_result_t *result,
   zlink_msg_t *parts,
   size_t part_count,
@@ -370,7 +370,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot(
   const zlink_routing_id_t *dest_spot_rid,
   zlink_msg_t *parts,
   size_t part_count,
-  zlink_actor_join_handler_fn handler,
+  zlink_actor_join_spot_handler_fn handler,
   void *userdata,
   zlink_send_flags_t flags,
   uint32_t timeout_ms);
@@ -406,7 +406,7 @@ submit 성공 여부만 즉시 반환하고, 최종 결과는 callback으로 전
 
 | API | 즉시 반환값 | 최종 결과 전달 |
 |-----|-------------|----------------|
-| `zlink_spot_node_actor_join_spot()` | `zlink_submit_result_t` | `zlink_actor_join_handler_fn` |
+| `zlink_spot_node_actor_join_spot()` | `zlink_submit_result_t` | `zlink_actor_join_spot_handler_fn` |
 | `zlink_remote_actor_get_ref()` | `zlink_submit_result_t` | `zlink_actor_lookup_handler_fn` |
 | `zlink_spot_node_actor_leave_spot()` | `zlink_submit_result_t` | `zlink_reply_handler_fn` |
 | `zlink_spot_node_actor_destroy()` | `zlink_submit_result_t` | `zlink_reply_handler_fn` |
@@ -648,7 +648,7 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
   const zlink_routing_id_t *dest_spot_rid,
   zlink_msg_t *parts,
   size_t part_count,
-  zlink_actor_join_handler_fn handler,
+  zlink_actor_join_spot_handler_fn handler,
   void *userdata,
   zlink_send_flags_t flags,
   uint32_t timeout_ms);
@@ -656,7 +656,7 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
 
 변경점:
 
-- `handler` 타입을 `zlink_actor_join_handler_fn`으로 바꾼다.
+- `handler` 타입을 `zlink_actor_join_spot_handler_fn`으로 바꾼다.
 - 성공 completion은 최종 Actor ref와 joined Spot rid를 포함한다.
 - bound session이 없어도 submit할 수 있다.
 - `dest_spot_rid`는 target node의 user Spot이어야 한다. Entry Spot은 이 API의 target이

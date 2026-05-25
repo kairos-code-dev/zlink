@@ -742,6 +742,14 @@ typedef struct zlink_actor_join_result_t {
   uint32_t flags;
 } zlink_actor_join_result_t;
 
+typedef struct zlink_actor_join_entry_spot_result_t {
+  zlink_request_result_t result;
+  zlink_actor_ref_t actor;
+  zlink_routing_id_t target_node_rid;
+  uint64_t join_epoch;
+  uint32_t flags;
+} zlink_actor_join_entry_spot_result_t;
+
 typedef struct zlink_actor_lookup_result_t {
   zlink_request_result_t result;
   zlink_actor_ref_t actor;
@@ -761,6 +769,10 @@ typedef void (*zlink_actor_join_spot_handler_fn)(
   const zlink_actor_join_result_t *result,
   zlink_msg_t *parts,
   size_t part_count,
+  void *userdata);
+
+typedef void (*zlink_actor_join_entry_spot_handler_fn)(
+  const zlink_actor_join_entry_spot_result_t *result,
   void *userdata);
 
 typedef void (*zlink_actor_lookup_handler_fn)(
@@ -786,6 +798,13 @@ join이면 target node의 ref), `joined_spot_rid`는 Actor가 속한 current Spo
 SpotNode 안에서 0이 아닌 값으로 증가한다. `flags`는 현재 예약 필드이며 0이다.
 실패 시 `actor`와 `joined_spot_rid`는 사용하지 않는다. `result` pointer는 callback
 호출 중에만 유효하므로 필요한 값은 callback 안에서 복사한다.
+
+`zlink_actor_join_entry_spot_result_t`는 Entry Spot join completion handler에
+전달된다. 성공하면 `actor`는 이동이 끝난 뒤의 최종 Actor ref이고,
+`target_node_rid`는 호출자가 지정한 target SpotNode rid다. Entry Spot join은
+application join payload와 reply payload가 없으므로 callback은 message part를 받지
+않는다. idempotent success도 성공 result를 반환하지만 위치가 바뀌지 않았으므로
+joined/left lifecycle callback을 다시 발생시키지 않는다.
 
 `zlink_actor_lookup_result_t`는 remote Actor lookup completion handler에 전달된다.
 `result`는 lookup operation의 최종 결과이고, 성공이면 `actor`는 target node에 존재하는
@@ -866,15 +885,18 @@ zlink_submit_result_t zlink_remote_actor_get_ref(
 
 ### Remote Actor 생성 모델
 
-remote Actor 생성과 remote Entry Spot join API는 제공하지 않는다. remote node의
-lobby에서 시작해야 하는 Actor는 application이 해당 SpotNode에서
-`zlink_spot_node_actor_new()`로 직접 생성한다. 원격 배치는 아래 흐름으로 표현한다.
+remote Actor 생성 API는 제공하지 않는다. remote node의 lobby에서 새로 시작해야 하는
+Actor는 application이 해당 SpotNode에서 `zlink_spot_node_actor_new()`로 직접
+생성한다. 이미 존재하는 Actor를 다른 SpotNode의 Entry Spot 위치로 옮길 때는
+`zlink_spot_node_actor_join_entry_spot()`을 사용한다. 원격 배치는 아래 흐름으로
+표현한다.
 
 1. caller가 local Actor를 생성한다.
 2. 필요하면 `zlink_spot_node_actor_join_spot()`으로 원하는 SpotNode의 user Spot에
    이동한다.
-3. user Spot에서 나오면 `zlink_spot_node_actor_leave_spot()`으로 같은 node의 Entry
-   Spot으로 돌아간다.
+3. user Spot에서 나오면 같은 node의 Entry Spot은
+   `zlink_spot_node_actor_leave_spot()`으로, 다른 SpotNode의 Entry Spot은
+   `zlink_spot_node_actor_join_entry_spot()`으로 이동한다.
 4. join completion이 반환한 최종 Actor ref를 후속 Actor API에 사용한다. 기존 logical
    session binding은 join 성공 뒤 별도 reattach 없이 새 위치를 따른다.
 
@@ -895,6 +917,14 @@ zlink_submit_result_t zlink_spot_node_actor_join_spot(
   zlink_actor_join_spot_handler_fn handler,
   void *userdata,
   zlink_send_flags_t flags,
+  uint32_t timeout_ms);
+
+zlink_submit_result_t zlink_spot_node_actor_join_entry_spot(
+  void *node,
+  const zlink_actor_ref_t *actor,
+  const zlink_routing_id_t *dest_node_rid,
+  zlink_actor_join_entry_spot_handler_fn handler,
+  void *userdata,
   uint32_t timeout_ms);
 
 zlink_recv_result_t zlink_spot_actor_join_recv(
@@ -948,6 +978,31 @@ zlink_submit_result_t zlink_spot_actor_join_reply(
 - join request는 `zlink_msg_t` part 배열로 이루어진 multipart payload를 싣는다.
   target Spot은 이 payload를 읽고 accept 또는 reject를 결정한다.
 - accept commit 뒤 active route를 target user Spot 위치로 갱신한다.
+
+`zlink_spot_node_actor_join_entry_spot()` 계약:
+
+- `node`는 Entry Spot 이동 요청을 제출하는 request owner `SpotNode`다.
+- `dest_node_rid`는 Entry Spot rid가 아니라 target SpotNode rid다. Entry Spot은
+  SpotNode마다 하나이므로 별도 target Spot rid를 받지 않는다.
+- 이 API는 Actor를 target SpotNode의 Entry Spot 위치로 이동한다. local target이면
+  target Entry Spot state를 사용하고, remote target이면 기존 remote Actor 이동 규칙에
+  따라 target actor placeholder, route, bound session relay 위치를 갱신한다.
+- application join queue에 요청을 넣지 않는다.
+  `zlink_spot_actor_join_recv()`로 읽을 message가 생기지 않으며
+  `zlink_spot_actor_join_reply()`도 사용하지 않는다.
+- payload와 reply parts가 없다. completion callback은
+  `zlink_actor_join_entry_spot_handler_fn`으로 result만 받는다.
+- 성공 completion의 `actor`는 이동 이후 최종 Actor ref이고,
+  `target_node_rid`는 호출자가 넘긴 target SpotNode rid다.
+- 이미 같은 target SpotNode의 Entry Spot에 있는 Actor는 idempotent success로
+  완료한다. 이 경우 joined/left lifecycle callback을 다시 발생시키지 않는다.
+- 실제 위치가 바뀌면 이전 user Spot에는 leave lifecycle callback이, target Entry
+  Spot에는 joined lifecycle callback이 발생한다.
+- target node에 도달할 수 없으면 not-connected 계열 completion으로 끝난다.
+- invalid actor ref, checked ref generation mismatch, pending join 중복은 기존
+  Actor API 정책과 같은 invalid-argument 또는 invalid-state 계열 실패로 끝난다.
+- `handler == NULL`이면 invalid argument 계열 submit 실패다. caller는 completion에서
+  최종 Actor ref를 받아 후속 Actor API와 session bind에 사용해야 한다.
 
 `zlink_spot_actor_join_recv()` 계약:
 

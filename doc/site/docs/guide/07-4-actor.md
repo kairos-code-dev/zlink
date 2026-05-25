@@ -156,7 +156,7 @@ To move an Actor into a user Spot, send a join request with
 `ACTOR_JOIN_READABLE` dispatch event, reads the request payload with
 `zlink_spot_actor_join_recv()`, and sends an accept or reject reply with
 `zlink_spot_actor_join_reply()`. Join completion is delivered through the
-dedicated `zlink_actor_join_handler_fn` and carries the final Actor ref and
+dedicated `zlink_actor_join_spot_handler_fn` and carries the final Actor ref and
 joined Spot rid.
 
 ```c
@@ -177,7 +177,7 @@ zlink_spot_node_actor_join_spot(
   node, &actor_ref,
   &dest_node_rid, &dest_spot_rid,
   &payload_msg, 1,    /* join state payload parts */
-  on_join,            /* zlink_actor_join_handler_fn completion */
+  on_join,            /* zlink_actor_join_spot_handler_fn completion */
   userdata,
   0, 3000);           /* flags, timeout_ms */
 

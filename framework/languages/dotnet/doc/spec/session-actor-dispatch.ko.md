@@ -1401,12 +1401,13 @@ public sealed class JoinMatchHandler
         CancellationToken cancellationToken)
     {
         _ = entrySpot;
-        // request.MatchId는 application 도메인이 정한 spot 이름이다.
-        // RoutingId 변환은 framework 내부의 spot remote address resolver가 풀어 준다.
+        // request.MatchId는 application 도메인이 정한 match id다.
+        // application registry가 user Spot RoutingId로 변환하거나 조회한다.
+        var matchSpotRid = RoutingId.FromString(request.MatchId);
         var joined = await actor.Context
-            .JoinSpot<JoinMatchSpotResult, JoinMatchReq>(request.MatchId, request)
-            .Submit(cancellationToken);
-        return joined.ToReply();
+            .JoinSpot(matchSpotRid, request)
+            .SubmitAsync<JoinMatchSpotResult>(cancellationToken);
+        return joined.Reply.ToReply();
     }
 }
 

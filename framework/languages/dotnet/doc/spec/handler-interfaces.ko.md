@@ -1523,20 +1523,22 @@ public interface IZLinkActorContext
     string ActorId { get; }
     string? SessionId { get; }
     string? SpotName { get; }
+    RoutingId? SpotRid { get; }
     bool IsJoined { get; }
+
+    IZLinkBoundSession BoundSession { get; }
 
     IZLinkSpot GetSpot();
 
     TSpot GetSpot<TSpot>()
-        where TSpot : class;
-
-    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
-        string spotName,
-        TRequest request);
+        where TSpot : IZLinkSpot;
 
     IZLinkActorJoinSpotCall JoinSpot<TRequest>(
         RoutingId spotRid,
         TRequest request);
+
+    IZLinkActorJoinEntrySpotCall JoinEntrySpot(
+        RoutingId spotNodeRid);
 }
 
 public interface IZLinkActorJoinSpotCall
@@ -1701,12 +1703,12 @@ actor membership 변경은 actor callback 에서 처리하지 않는다. 대신
 `IZLinkSpotActorMembership.JoinActorAsync(...)` 와 `LeaveActorAsync(...)`
 에서 처리한다 (§4.4.1 참고).
 
-`JoinSpot(spotRid, request)` 는 user Spot routing id
-(`string`) 을 받는다. `gameId`, `matchId`, `roomId` 같은 도메인 키를 그대로
-사용할 수 있다.
+`JoinSpot(spotRid, request)` 는 user Spot routing id(`RoutingId`) 를 받는다.
+`gameId`, `matchId`, `roomId` 같은 도메인 키를 그대로 넘기지 않는다. application
+registry 가 먼저 domain key 를 user Spot `RoutingId` 로 변환하거나 조회한다.
 
-`spotName -> RoutingId` 변환은 framework 내부의 spot remote address resolver 가
-담당한다. actor handler 표면에는 `RoutingId` 를 노출하지 않는다.
+`JoinEntrySpot(spotNodeRid)` 는 target SpotNode routing id(`RoutingId`) 를 받는다.
+Entry Spot 은 SpotNode마다 하나뿐이므로 Entry Spot rid 를 별도로 넘기지 않는다.
 
 `Send(...)` 는 현재 actor 에 연결되어 있는 stream client 로 packet 을
 보낸다. request 에 대한 응답은 actor context 에서 직접 쓰지 않고,

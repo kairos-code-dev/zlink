@@ -287,7 +287,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot(
   const zlink_routing_id_t *dest_spot_rid,
   zlink_msg_t *parts,
   size_t part_count,
-  zlink_actor_join_handler_fn handler,
+  zlink_actor_join_spot_handler_fn handler,
   void *userdata,
   zlink_send_flags_t flags,
   uint32_t timeout_ms);
@@ -880,7 +880,7 @@ remote ActorGateway actor ref 를 얻기 위한 framework 발급 locator 로 유
 | `IZLinkActorManager.GetRemoteAddressAsync(...)` | local actor 의 remote locator snapshot 을 반환한다 | 유지한다. actor host runtime 이 session gateway 에 전달할 ActorGateway locator 를 발급하는 진입점이다 |
 | `IZLinkActorContext.SessionProxy` | actor 에 bound 된 session 으로 push 하는 proxy | 제거한다. proxy 라는 별도 개념 대신 `BoundSession` 으로 노출한다 |
 | `IZLinkActorContext.BoundSession` | 현재 없음 | 새 public API. Actor 에 bind 된 session 으로 send/disconnect 하는 사용자용 진입점이다 |
-| `IZLinkActorContext.JoinSpot(...)` / `JoinSpotAsync(...)` | spotName 은 resolver 로 Spot rid 를 찾고 native join 또는 spot facade join 을 호출한다 | join success 가 ActorGateway current location 과 session binding relay location 을 갱신한다. session rebind 를 요구하지 않는다 |
+| `IZLinkActorContext.JoinSpot(...)` / `JoinEntrySpot(...)` | `JoinSpot` 은 user Spot rid 와 payload 로 native join 을 호출한다. `JoinEntrySpot` 은 SpotNode rid 만 받고 payload 없이 Entry Spot 으로 이동한다 | join success 가 ActorGateway current location 과 session binding relay location 을 갱신한다. session rebind 를 요구하지 않는다 |
 | `IZLinkActorContext.GetSpot()` / `GetSpot<TSpot>()` | actor state 의 joined Spot instance 반환 | 유지한다. remote ActorGateway dispatch 에서 current Spot state 가 올바르게 갱신되어야 한다 |
 | `IZLinkSpotClient.SendChannel(...)` / `RequestChannel(...)` | current Spot 에서 attached channel client 로 메시징 | ActorGateway 와 직접 관련 없음. session actor relay 대체 수단으로 설명하면 안 된다 |
 | `IZLinkRoutedSpotClient` / `ViaEgressChannel(...)` | current Spot 밖에서 target Spot 으로 routed Spot 메시징 | 유지한다. ActorGateway session relay 와 별도 기능임을 문서에 분리한다 |
@@ -1003,12 +1003,12 @@ handler 의 reply 결과 또는 현재 dispatch reply context 가 원래 session
 | `IZLinkSpotOutboundContext.SendChannel(...)` / `RequestChannel(...)` | 유지 | Spot handler 안에서 application channel 로 나가는 egress 다. bound session push 대체 수단이 아니다 |
 | `IZLinkSpotOutboundContext.Publish(...)` | 유지 | Spot handler 의 pubsub egress 다. ActorGateway session binding 과 별개다 |
 | `IZLinkSpotActorSendHandler<...>` / `IZLinkSpotActorRequestHandler<...>` | signature 유지 | Actor message handler 는 local/remote dispatch 차이를 알 필요가 없다. gateway 가 전달한 message 를 같은 handler signature 로 처리한다 |
-| `IZLinkSpotActorJoinedHandler<...>` / `IZLinkSpotActorLeftHandler<...>` | signature 유지 | lifecycle callback 은 유지하되, join success 가 session relay location 도 함께 갱신된다는 의미를 guide/spec 에 추가한다 |
+| `IZLinkSpotPostActorJoinedHandler<...>` / `IZLinkSpotActorLeftHandler<...>` | signature 유지 | lifecycle callback 은 유지하되, join success 가 session relay location 도 함께 갱신된다는 의미를 guide/spec 에 추가한다 |
 | `IZLinkEntrySpotActorSendHandler<...>` / `IZLinkEntrySpotActorRequestHandler<...>` | signature 유지 | Entry Spot callback 도 message source 를 transport 기준으로 구분하지 않는다 |
-| `IZLinkEntrySpotActorJoinedHandler<...>` / `IZLinkEntrySpotActorLeftHandler<...>` | signature 유지 | create/leave 로 Entry Spot 에 위치한 Actor lifecycle 을 보여 주는 callback 이다. session close 로 Actor 를 Entry Spot 으로 되돌리지 않는다는 새 의미를 반영한다 |
+| `IZLinkSpotPostActorJoinedHandler<TEntrySpot, ...>` / `IZLinkSpotActorLeftHandler<TEntrySpot, ...>` | signature 유지 | create/leave/JoinEntrySpot 으로 Entry Spot 에 위치한 Actor lifecycle 을 보여 주는 callback 이다. session close 로 Actor 를 Entry Spot 으로 되돌리지 않는다는 새 의미를 반영한다 |
 | `IZLinkSpotHandlerRegistry.AddActorJoin<...>` | 유지 | user Spot admission handler 등록 API 다. local Actor runtime 이 routed-capable SpotNode 위에서 동작하는지 validation 한다 |
 | `IZLinkActorHandlerRegistry.AddActorPacket<...>` | 유지 | Actor packet handler 등록 API 다. local/remote relay 차이를 handler registration 으로 노출하지 않는다 |
-| `ZLinkSpotActorLifecycleInfo` | 유지 | current/previous Spot 정보는 유지한다. gateway relay 상태는 lifecycle info 에 넣지 않고 monitoring/diagnostics 로 분리한다 |
+| `ZLinkSpotActorLifecycleContext` | 유지 | current/previous Spot 정보는 유지한다. gateway relay 상태는 lifecycle context 에 넣지 않고 monitoring/diagnostics 로 분리한다 |
 | `ZLinkSpotNodeStatus` / monitoring contracts | 유지 | ActorGateway 전용 public monitoring record 는 1차 범위에 추가하지 않는다. 필요한 진단은 기존 snapshot 으로 먼저 확인한다 |
 
 #### 13.5.3 framework configuration surface 추가/제거 목록
@@ -1327,8 +1327,10 @@ framework 수정은 route mesh relay 제거와 ActorGateway attach 적용을 한
 2. `zlink_stream_attach_actor_gateway(...)` 는 raw STREAM public API 로 둔다. connector 와
    framework runtime 은 이 public API 를 내부에서 호출한다. connector 전용 public helper 는
    추가하지 않는다.
-3. EntrySpot direct join 은 허용하지 않는다. EntrySpot 은 Actor create 결과와
-   `zlink_spot_node_actor_leave_spot(...)` 결과로만 도달한다.
+3. Entry Spot 이동은 `zlink_spot_node_actor_join_entry_spot(...)` /
+   `JoinEntrySpot(spotNodeRid)` 로 허용한다. target 은 Entry Spot rid 가 아니라
+   SpotNode rid 이며, message payload 는 보내지 않고 Actor join handler 도
+   호출하지 않는다.
 4. ActorGateway internal relay packet 은 application route mesh handler packet 과 다른
    internal command class 로 둔다. 하위 transport frame 을 재사용하더라도 application
    route channel handler 로 dispatch 하지 않는다.

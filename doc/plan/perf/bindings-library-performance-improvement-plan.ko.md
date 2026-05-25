@@ -1957,9 +1957,13 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `doc/perf/PERF_POLICY.md`와 `doc/perf/PERF_MULTI_TEST_POLICY.md`에 반영했다.
   Node는 event-loop callback dispatch turn이 필요하며, `poller.wait(..., 50)`으로 바꾸면
   smoke가 멈춰 되돌렸다. C++은 구현은 completion poller surface였지만 주석이 C와 완전
-  동일하다고 적혀 있어 수정했다. .NET의 active loop는 completion poller wait를 쓰지만,
-  active 구간 뒤 outstanding callback drain에 `Thread.Sleep(1)`이 남아 있어 다음 audit에서
-  active measurement 바깥 종료 보조인지, 정책상 제거 대상인지 다시 확인한다.
+  동일하다고 적혀 있어 수정했다. .NET의 active loop는 completion poller wait를 쓰고 있었지만,
+  active 구간 뒤 outstanding callback drain에 `Thread.Sleep(1)`이 남아 있었다. 이 drain은
+  active measurement 바깥이어도 request completion 진행에 관여하므로, active deadline timer를
+  poller에서 제거한 뒤 같은 `PollCompletion` poller wait로 남은 callback을 진행하도록 고쳤다.
+  `dotnet build bindings/dotnet/perf/multi/Zlink.BindingBench.Multi/Zlink.BindingBench.Multi.csproj -c Release`와
+  `PERF_FAIL_FAST=1 ./run_benchmarks.sh --reuse-build --pattern MULTI_SPOT_REQREP --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2`
+  smoke가 통과했다.
 - **수신 zero-copy `.data` 추가**: Rust SPOT의 per-message 복사 제거와 같은 동기로, Python 수신 부품(`ReceivedMessage`)에
   zero-copy `data` memoryview property를 추가했다(`Message.data`/C `zlink_msg_data`와 동일 계약, 회귀 테스트 `tests/test_version.py::test_received_part_data_is_zero_copy_view` 통과).
   `MULTI_SPOT` client가 `to_bytes_list()` 전체 payload 복사 대신 `first_part().data`에서 헤더를 디코드하도록 바꿨다(복사 제거는 `with message:` 안에서만 view 사용).

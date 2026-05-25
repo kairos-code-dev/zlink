@@ -796,7 +796,11 @@ internal static class PerfMultiSpotReqRep
         DebugLogLimited(ref s_debugClientPhaseLogs,
             $"spot_reqrep_client: active loop end count={TotalMeasureCount(slots)} deadline={activeDeadlineTicks} now={Stopwatch.GetTimestamp()}");
         if (config.Mode == SpotEchoMode.RequestReply)
-            WaitForPendingReplies(slots, activeSlots, 1000);
+        {
+            sendPoller.Remove(activeTimer);
+            WaitForPendingReplies(sendPoller, sendEvents, slots, activeSlots,
+                1000);
+        }
         DebugLogLimited(ref s_debugClientPhaseLogs,
             $"spot_reqrep_client: pending wait end count={TotalMeasureCount(slots)}");
 
@@ -1103,8 +1107,8 @@ internal static class PerfMultiSpotReqRep
         return totalSlots;
     }
 
-    private static void WaitForPendingReplies(List<ClientSlot> slots,
-        int activeSlots, int timeoutMs)
+    private static void WaitForPendingReplies(Poller poller, PollEvent[] events,
+        List<ClientSlot> slots, int activeSlots, int timeoutMs)
     {
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
         while (Stopwatch.GetTimestamp() < deadlineTicks)
@@ -1121,7 +1125,14 @@ internal static class PerfMultiSpotReqRep
 
             if (!pending)
                 return;
-            Thread.Sleep(1);
+            try
+            {
+                poller.Wait(events, TimeSpan.FromMilliseconds(50));
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
+                                            || IsInterrupted(ex.InternalErrno))
+            {
+            }
         }
     }
 

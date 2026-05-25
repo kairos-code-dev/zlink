@@ -1524,6 +1524,17 @@ single SPOT 1024B 보류가 남아 있다.
   `SPOT 1024B` tcp/ws/wss/tls가 48.7/56.4/63.8/59.0%였다. 일부 transport는 올랐지만
   SPOT 기준선을 넘지 못했고 tls는 기존 59.6%보다 낮아, public subscribe 의미를 흔들 수 있는
   내부 특수 분기를 반영하지 않는다.
+- **single SPOT active direct message 후보 기각**: current HEAD clean 상태에서 SPOT
+  1024B를 다시 맞췄다. C
+  `perf_c_single_linux_20260526_071203_rust_single_spot1024_recheck_20260526_c.txt`와 Rust
+  `perf_rust_single_linux_20260526_071203_single_spot1024_recheck_20260526.txt`는 모두
+  complete였고, Rust/C 비율은 tcp/ws/wss/tls 46.0/54.3/59.2/50.2%였다. multi SPOT/PUBSUB에서
+  유효했던 `Message::with_size()` + `data_mut()` 직접 stamp를 single SPOT active publish에만
+  좁혀 시험했지만, 후보
+  `perf_rust_single_linux_20260526_071336_single_spot1024_direct_message_candidate_20260526.txt`는
+  tcp/ws/wss가 153.7/154.9/123.9Kmsg/s로 current 168.7/175.1/139.7Kmsg/s보다 낮고,
+  tls만 151.4→166.6Kmsg/s로 조금 올랐다. active payload 복사 1회 제거는 single SPOT
+  1024B 공통 병목이 아니므로 반영하지 않는다.
 - **single routed stop-token blocking-only 후보 기각**: active send는 기존 `DONT_WAIT`
   retry로 유지하고 phase 종료 stop token만 C처럼 blocking submit으로 보내는 후보를
   시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은

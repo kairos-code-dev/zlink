@@ -602,6 +602,18 @@ inline actor_join_op_t spot_node_t::join_actor (
     return actor_join_op_t (std::move (state));
 }
 
+inline actor_join_entry_spot_op_t spot_node_t::join_actor_entry_spot (
+  const actor_ref_t &actor_,
+  const routing_id_t &dest_node_rid_)
+{
+    detail::actor_payloadless_state_t state;
+    state.node = _node;
+    state.actor = actor_;
+    state.aux_rid = dest_node_rid_;
+    state.has_aux_rid = true;
+    return actor_join_entry_spot_op_t (std::move (state));
+}
+
 inline actor_leave_op_t spot_node_t::leave_actor (
   const actor_ref_t &actor_,
   const routing_id_t &current_spot_rid_)

@@ -1,5 +1,3 @@
-import ctypes
-import errno
 import sys
 import struct
 import threading
@@ -32,115 +30,41 @@ from perf_metrics import HEADER_FORMAT
 
 CHANNEL_NAME = "spot-svc"
 TOPIC = "bench.topic"
-TOPIC_BYTES = b"bench.topic"
-_NATIVE_SPOT_PART = None
-
-
-def _native_spot_part_methods():
-    global _NATIVE_SPOT_PART
-    if _NATIVE_SPOT_PART is None:
-        from zlink._native.ffi import ZlinkMsg, ZlinkRoutingId, lib
-        from zlink._runtime.core.core import (
-            _init_msg_from_buffer,
-            _msg_data_ptr,
-            _msg_size,
-        )
-
-        _NATIVE_SPOT_PART = (
-            ZlinkMsg,
-            ZlinkRoutingId,
-            lib,
-            _init_msg_from_buffer,
-            _msg_data_ptr,
-            _msg_size,
-        )
-    return _NATIVE_SPOT_PART
-
-
-def _spot_publish_part_once(spot, topic, payload, flags):
-    (
-        ZlinkMsg,
-        _ZlinkRoutingId,
-        lib,
-        _init_msg_from_buffer,
-        _msg_data_ptr,
-        _msg_size,
-    ) = _native_spot_part_methods()
-    part = ZlinkMsg()
-    _init_msg_from_buffer(part, payload, borrow=False)
-    rc = lib().zlink_spot_publish_part(
-        spot._handle,
-        topic,
-        ctypes.byref(part),
-        int(flags),
-        0,
-    )
-    if rc != 0:
-        err = lib().zlink_errno()
-        lib().zlink_msg_close(ctypes.byref(part))
-        retry_errors = (
-            errno.EAGAIN,
-            errno.EINTR,
-            errno.ENOTCONN,
-            errno.EHOSTUNREACH,
-            errno.ENETUNREACH,
-        )
-        if err in retry_errors:
-            return False
-        raise zlink.SubmitError(zlink.SubmitResult(rc), err)
-    return True
-
-
-def _spot_subscribe_part_once(spot, flags):
-    (
-        ZlinkMsg,
-        ZlinkRoutingId,
-        lib,
-        _init_msg_from_buffer,
-        _msg_data_ptr,
-        _msg_size,
-    ) = _native_spot_part_methods()
-    routing_id = ctypes.POINTER(ZlinkRoutingId)()
-    topic_buf = ctypes.create_string_buffer(256)
-    topic_len = ctypes.c_size_t(len(topic_buf))
-    part = ZlinkMsg()
-    has_more = ctypes.c_int()
-    rc = lib().zlink_spot_subscribe_part(
-        spot._handle,
-        ctypes.byref(routing_id),
-        topic_buf,
-        len(topic_buf),
-        ctypes.byref(topic_len),
-        ctypes.byref(part),
-        ctypes.byref(has_more),
-        int(flags),
-    )
-    if rc != 0:
-        err = lib().zlink_errno()
-        if err in (errno.EAGAIN, errno.EINTR):
-            return None
-        raise zlink.RecvError(zlink.RecvResult(rc), err)
-    if has_more.value != 0:
-        lib().zlink_msg_close(ctypes.byref(part))
-        raise RuntimeError("single perf spot native subscribe_part received multipart message")
-    topic = bytes(topic_buf.raw[: topic_len.value])
-    return lib, part, topic, _msg_data_ptr(part), _msg_size(part)
 
 
 def _spot_publish_blocking(spot, topic, payload):
     """DONTWAIT spot publish with bounded transient-failure attempts."""
 
-    topic_bytes = topic if isinstance(topic, bytes) else topic.encode("utf-8")
     for _ in range(100):
-        if _spot_publish_part_once(
-            spot,
-            topic_bytes,
-            payload,
-            zlink.SendFlags.DONT_WAIT,
-        ):
-            return True
+        try:
+            if (
+                spot.publish(topic)
+                .message(payload)
+                .flags(zlink.SendFlags.DONT_WAIT)
+                .submit()
+            ):
+                return True
+        except zlink.SubmitError as exc:
+            if exc.result != zlink.SubmitResult.BACKPRESSURED:
+                raise
         time.sleep(0.001)
     return False
+
+
+def _spot_subscribe_once(spot, storage):
+    try:
+        if not spot.subscribe_into(storage, flags=zlink.RecvFlags.DONT_WAIT):
+            return None
+        return storage
+    except zlink.RecvError as exc:
+        if exc.result == zlink.RecvResult.NO_DATA:
+            return None
+        if exc.result in (
+            zlink.RecvResult.TERMINATED,
+            zlink.RecvResult.INVALID_HANDLE,
+        ):
+            return None
+        raise
 
 
 def main(argv=None):
@@ -213,37 +137,27 @@ def main(argv=None):
                                 ):
                                     return
                                 unpack_from = struct.unpack_from
+                                message = zlink.TopicMessage()
                                 while True:
-                                    try:
-                                        received_part = _spot_subscribe_part_once(
-                                            current_spot,
-                                            zlink.RecvFlags.DONT_WAIT,
-                                        )
-                                    except zlink.RecvError as exc:
-                                        if exc.result in (
-                                            zlink.RecvResult.TERMINATED,
-                                            zlink.RecvResult.INVALID_HANDLE,
-                                        ):
-                                            return
-                                        raise
-                                    if received_part is None:
+                                    received_message = _spot_subscribe_once(
+                                        current_spot, message
+                                    )
+                                    if received_message is None:
                                         return
-                                    lib, part, topic, ptr, size = received_part
                                     try:
-                                        if topic != TOPIC_BYTES:
+                                        if received_message.topic != TOPIC:
                                             continue
+                                        parts = received_message.parts
+                                        data = parts[0].to_bytes() if parts else b""
+                                        size = len(data)
                                         if (
                                             size == len(STOP_TOKEN)
-                                            and ctypes.string_at(ptr, size)
-                                            == STOP_TOKEN
+                                            and data == STOP_TOKEN
                                         ):
                                             stop_received.set()
                                             return
                                         if size < HEADER_SIZE:
                                             continue
-                                        header_data = ctypes.string_at(
-                                            ptr, HEADER_SIZE
-                                        )
                                         (
                                             magic,
                                             hdr_run_id,
@@ -252,7 +166,7 @@ def main(argv=None):
                                             _seq,
                                             sent_ts_ns,
                                         ) = unpack_from(
-                                            HEADER_FORMAT, header_data, 0
+                                            HEADER_FORMAT, data, 0
                                         )
                                         if (
                                             magic != HEADER_MAGIC
@@ -277,7 +191,7 @@ def main(argv=None):
                                             received[0] += 1
                                             latencies.append(latency)
                                     finally:
-                                        lib().zlink_msg_close(ctypes.byref(part))
+                                        received_message.close()
 
                             subscriber.on_dispatch_event(on_dispatch)
 

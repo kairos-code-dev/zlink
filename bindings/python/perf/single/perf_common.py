@@ -1,6 +1,4 @@
 import argparse
-import ctypes
-import errno
 import os
 import struct
 import sys
@@ -325,230 +323,35 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
     return count
 
 
-def _native_recv_part_methods():
-    global _NATIVE_RECV_PART
-    if _NATIVE_RECV_PART is None:
-        from zlink._native.ffi import ZlinkMsg, ZlinkRoutingId, lib
-        from zlink._runtime.core.core import _msg_data_ptr, _msg_size
-
-        _NATIVE_RECV_PART = (
-            ZlinkMsg,
-            ZlinkRoutingId,
-            lib,
-            _msg_data_ptr,
-            _msg_size,
-        )
-    return _NATIVE_RECV_PART
-
-
-def _native_recv_part_once(sock, flags):
-    ZlinkMsg, ZlinkRoutingId, lib, _msg_data_ptr, _msg_size = (
-        _native_recv_part_methods()
-    )
-    routing_id = ctypes.POINTER(ZlinkRoutingId)()
-    part = ZlinkMsg()
-    if lib().zlink_msg_init(ctypes.byref(part)) != 0:
-        raise RuntimeError("zlink_msg_init failed")
-    has_more = ctypes.c_int()
-    rc = lib().zlink_recv_part(
-        sock._handle,
-        ctypes.byref(routing_id),
-        ctypes.byref(part),
-        ctypes.byref(has_more),
-        int(flags),
-    )
-    if rc != 0:
-        err = lib().zlink_errno()
-        lib().zlink_msg_close(ctypes.byref(part))
-        zlink_mod = _require_zlink()
-        if rc == int(zlink_mod.RecvResult.NO_DATA) or err in (
-            errno.EAGAIN,
-            errno.EINTR,
-        ):
-            return None
-        raise zlink_mod.RecvError(zlink_mod.RecvResult(rc), err)
-    if has_more.value != 0:
-        lib().zlink_msg_close(ctypes.byref(part))
-        raise RuntimeError("single perf native recv_part received multipart message")
-    ptr = _msg_data_ptr(part)
-    size = _msg_size(part)
-    return lib, part, ptr, size
-
-
-def run_one_way_receiver_native_recv_part(
+def run_one_way_receiver_public_recv(
     sock, *, msg_size, run_id, active_end, received, latencies
 ):
-    from perf_metrics import HEADER_FORMAT
-
-    zlink_mod = _require_zlink()
-    dont_wait = int(zlink_mod.RecvFlags.DONT_WAIT)
-    unpack_from = struct.unpack_from
-    perf_counter = time.perf_counter
-    time_ns = time.time_ns
-    count = received
-    stop_wait_end = active_end + (_env_int("PERF_SINGLE_STOP_WAIT_MS", 2000) / 1000.0)
-
-    stop_received = False
-    while not stop_received:
-        if perf_counter() >= stop_wait_end:
-            break
-        received_part = _native_recv_part_once(sock, dont_wait)
-        if received_part is None:
-            if perf_counter() >= active_end:
-                time.sleep(0.001)
-            continue
-        lib, part, ptr, size = received_part
-        try:
-            if size == len(STOP_TOKEN) and ctypes.string_at(ptr, size) == STOP_TOKEN:
-                stop_received = True
-                continue
-            if size != msg_size or size < HEADER_SIZE:
-                continue
-            data = ctypes.string_at(ptr, HEADER_SIZE)
-            magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
-                unpack_from(HEADER_FORMAT, data, 0)
-            )
-            if (
-                magic != HEADER_MAGIC
-                or phase != 1
-                or hdr_msg_size != msg_size
-                or hdr_run_id != run_id
-            ):
-                continue
-            if perf_counter() >= active_end:
-                continue
-            count += 1
-            now_ns = time_ns()
-            if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
-                latencies.append(float(now_ns - sent_ts_ns))
-            else:
-                latencies.append(0.0)
-        finally:
-            lib().zlink_msg_close(ctypes.byref(part))
-
-    return count
-
-
-def _native_subscribe_part_methods():
-    global _NATIVE_SUBSCRIBE_PART
-    if _NATIVE_SUBSCRIBE_PART is None:
-        from zlink._native.ffi import ZlinkMsg, ZlinkRoutingId, lib
-        from zlink._runtime.core.core import _msg_data_ptr, _msg_size
-
-        _NATIVE_SUBSCRIBE_PART = (
-            ZlinkMsg,
-            ZlinkRoutingId,
-            lib,
-            _msg_data_ptr,
-            _msg_size,
-        )
-    return _NATIVE_SUBSCRIBE_PART
-
-
-def _native_subscribe_part_once(sock, flags, *, topic_capacity=256):
-    ZlinkMsg, ZlinkRoutingId, lib, _msg_data_ptr, _msg_size = (
-        _native_subscribe_part_methods()
+    return run_one_way_receiver(
+        sock,
+        method="recv",
+        msg_size=msg_size,
+        run_id=run_id,
+        active_end=active_end,
+        received=received,
+        latencies=latencies,
     )
-    routing_id = ctypes.POINTER(ZlinkRoutingId)()
-    topic_buf = ctypes.create_string_buffer(topic_capacity)
-    topic_len = ctypes.c_size_t()
-    part = ZlinkMsg()
-    if lib().zlink_msg_init(ctypes.byref(part)) != 0:
-        raise RuntimeError("zlink_msg_init failed")
-    has_more = ctypes.c_int()
-    rc = lib().zlink_subscribe_part(
-        sock._handle,
-        ctypes.byref(routing_id),
-        topic_buf,
-        len(topic_buf),
-        ctypes.byref(topic_len),
-        ctypes.byref(part),
-        ctypes.byref(has_more),
-        int(flags),
-    )
-    if rc != 0:
-        err = lib().zlink_errno()
-        lib().zlink_msg_close(ctypes.byref(part))
-        zlink_mod = _require_zlink()
-        if rc == int(zlink_mod.RecvResult.NO_DATA) or err in (
-            errno.EAGAIN,
-            errno.EINTR,
-        ):
-            return None
-        raise zlink_mod.RecvError(zlink_mod.RecvResult(rc), err)
-    if has_more.value != 0:
-        lib().zlink_msg_close(ctypes.byref(part))
-        raise RuntimeError("single perf native subscribe_part received multipart message")
-    if routing_id:
-        lib().zlink_msg_close(ctypes.byref(part))
-        raise RuntimeError("single perf native subscribe_part received source routing id")
-    topic = bytes(topic_buf.raw[: topic_len.value])
-    ptr = _msg_data_ptr(part)
-    size = _msg_size(part)
-    return lib, part, topic, ptr, size
 
 
-def run_one_way_subscriber_native_subscribe_part(
+def run_one_way_subscriber_public_subscribe(
     sock, *, topic, msg_size, run_id, active_end, received, latencies
 ):
-    from perf_metrics import HEADER_FORMAT
-
-    zlink_mod = _require_zlink()
-    dont_wait = int(zlink_mod.RecvFlags.DONT_WAIT)
-    unpack_from = struct.unpack_from
-    perf_counter = time.perf_counter
-    time_ns = time.time_ns
-    count = received
-    stop_wait_end = active_end + (_env_int("PERF_SINGLE_STOP_WAIT_MS", 2000) / 1000.0)
-
-    stop_received = False
-    while not stop_received:
-        if perf_counter() >= stop_wait_end:
-            break
-        received_part = _native_subscribe_part_once(sock, dont_wait)
-        if received_part is None:
-            if perf_counter() >= active_end:
-                time.sleep(0.001)
-            continue
-        lib, part, received_topic, ptr, size = received_part
-        try:
-            if received_topic != topic:
-                continue
-            if size == len(STOP_TOKEN) and ctypes.string_at(ptr, size) == STOP_TOKEN:
-                stop_received = True
-                continue
-            if size != msg_size or size < HEADER_SIZE:
-                continue
-            data = ctypes.string_at(ptr, HEADER_SIZE)
-            magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
-                unpack_from(HEADER_FORMAT, data, 0)
-            )
-            if (
-                magic != HEADER_MAGIC
-                or phase != 1
-                or hdr_msg_size != msg_size
-                or hdr_run_id != run_id
-            ):
-                continue
-            if perf_counter() >= active_end:
-                continue
-            count += 1
-            now_ns = time_ns()
-            if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
-                latencies.append(float(now_ns - sent_ts_ns))
-            else:
-                latencies.append(0.0)
-        finally:
-            lib().zlink_msg_close(ctypes.byref(part))
-
-    return count
+    return run_one_way_receiver(
+        sock,
+        method="subscribe",
+        msg_size=msg_size,
+        run_id=run_id,
+        active_end=active_end,
+        received=received,
+        latencies=latencies,
+    )
 
 
 _DONT_WAIT_FLAG = None
-_LOW_LEVEL_SEND = None
-_NATIVE_RESULT_SEND = None
-_NATIVE_RECV_PART = None
-_NATIVE_SUBSCRIBE_PART = None
 
 
 def _dont_wait_flag():
@@ -558,89 +361,30 @@ def _dont_wait_flag():
     return _DONT_WAIT_FLAG
 
 
-def _low_level_send_methods():
-    # The fluent socket.send()/publish() entry points return a per-call
-    # SendOp builder, which the profiler flagged as the single largest
-    # per-message cost. The socket classes also inherit lower-level
-    # message-socket methods that take the payload directly and return a
-    # bool; bind to those once and reuse on the hot path.
-    global _LOW_LEVEL_SEND
-    if _LOW_LEVEL_SEND is None:
-        from zlink._runtime.sockets.socket_base import (
-            _MessageSocket,
-            _PublisherSocket,
-            _RoutedMessageSocket,
-        )
-
-        _LOW_LEVEL_SEND = (
-            _MessageSocket.send,
-            _RoutedMessageSocket.send,
-            _PublisherSocket.publish,
-        )
-    return _LOW_LEVEL_SEND
-
-
-def _native_result_send_methods():
-    global _NATIVE_RESULT_SEND
-    if _NATIVE_RESULT_SEND is None:
-        from zlink._native.ffi import ZlinkMsg
-        from zlink._runtime.core.core import (
-            _copy_routing_id,
-            _init_msg_from_buffer,
-        )
-        from zlink._runtime.sockets.socket_base import (
-            _publish_via_native_no_wait_result,
-            _send_rid_via_native_no_wait_result,
-            _send_via_native_no_wait_result,
-        )
-
-        _NATIVE_RESULT_SEND = (
-            ZlinkMsg,
-            _init_msg_from_buffer,
-            _copy_routing_id,
-            _send_via_native_no_wait_result,
-            _send_rid_via_native_no_wait_result,
-            _publish_via_native_no_wait_result,
-        )
-    return _NATIVE_RESULT_SEND
-
-
-def _single_part_native_array(payload):
-    ZlinkMsg, init_msg, *_ = _native_result_send_methods()
-    parts_array = (ZlinkMsg * 1)()
-    keepalive = init_msg(parts_array[0], payload, borrow=False)
-    return parts_array, keepalive
-
-
-def _submit_result_ok(result):
-    zlink_mod = _require_zlink()
-    return result == zlink_mod.SubmitResult.OK
-
-
 def send_nonblocking(sock, payload, *, routing_id=None):
-    if routing_id is None:
-        _ZlinkMsg, _init_msg, _copy_routing_id, send_native, _send_rid = (
-            _native_result_send_methods()
-        )
-        parts_array, keepalive = _single_part_native_array(payload)
-        _ = keepalive
-        return _submit_result_ok(send_native(sock._handle, parts_array, 1))
-    _ZlinkMsg, _init_msg, copy_routing_id, _send_native, send_rid = (
-        _native_result_send_methods()
-    )
-    parts_array, keepalive = _single_part_native_array(payload)
-    _ = keepalive
-    native_rid = copy_routing_id(routing_id)
-    return _submit_result_ok(send_rid(sock._handle, native_rid, parts_array, 1))
+    zlink_mod = _require_zlink()
+    try:
+        op = sock.send() if routing_id is None else sock.send(routing_id)
+        return bool(op.message(payload).flags(zlink_mod.SendFlags.DONT_WAIT).submit())
+    except zlink_mod.SubmitError as exc:
+        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+            return False
+        raise
 
 
 def publish_nonblocking(sock, topic, payload):
-    _ZlinkMsg, _init_msg, _copy_routing_id, _send_native, _send_rid, publish_native = (
-        _native_result_send_methods()
-    )
-    parts_array, keepalive = _single_part_native_array(payload)
-    _ = keepalive
-    return _submit_result_ok(publish_native(sock._handle, topic, parts_array, 1))
+    zlink_mod = _require_zlink()
+    try:
+        return bool(
+            sock.publish(topic)
+            .message(payload)
+            .flags(zlink_mod.SendFlags.DONT_WAIT)
+            .submit()
+        )
+    except zlink_mod.SubmitError as exc:
+        if exc.result == zlink_mod.SubmitResult.BACKPRESSURED:
+            return False
+        raise
 
 
 def single_routing_probe(sender, receiver, payload, *, run_id, msg_size,

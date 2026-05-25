@@ -49,7 +49,6 @@ from perf_metrics import (
 
 
 TOPIC = b"bench"
-_NATIVE_RESULT_SEND = None
 
 
 def received_has_stop_token(received):
@@ -337,45 +336,10 @@ def recv_nonblocking(sock, *, method="recv", storage=None):
         raise
 
 
-def _native_result_send_methods():
-    global _NATIVE_RESULT_SEND
-    if _NATIVE_RESULT_SEND is None:
-        from zlink._native.ffi import ZlinkMsg
-        from zlink._runtime.core.core import (
-            _init_msg_from_buffer,
-        )
-        from zlink._runtime.sockets.socket_base import (
-            _send_via_native_no_wait_result,
-        )
-
-        _NATIVE_RESULT_SEND = (
-            ZlinkMsg,
-            _init_msg_from_buffer,
-            _send_via_native_no_wait_result,
-        )
-    return _NATIVE_RESULT_SEND
-
-
-def _single_part_native_array(payload):
-    ZlinkMsg, init_msg, *_ = _native_result_send_methods()
-    parts_array = (ZlinkMsg * 1)()
-    keepalive = init_msg(parts_array[0], payload, borrow=False)
-    return parts_array, keepalive
-
-
-def _submit_result_ok(result):
-    return result == _require_zlink().SubmitResult.OK
-
-
 def send_nonblocking(sock, payload, *, method="send", routing_id=None):
     zlink_mod = _require_zlink()
     if method != "send":
         raise ValueError(f"unsupported send method: {method}")
-    if routing_id is None and not isinstance(payload, (list, tuple)):
-        _ZlinkMsg, _init_msg, send_native = _native_result_send_methods()
-        parts_array, keepalive = _single_part_native_array(payload)
-        _ = keepalive
-        return _submit_result_ok(send_native(sock._handle, parts_array, 1))
     send_method = sock.send
     try:
         if routing_id is None:

@@ -15,7 +15,7 @@ from perf_common import (
     parse_single_args,
     perf_context,
     print_result_lines,
-    run_one_way_receiver_native_recv_part,
+    run_one_way_receiver_public_recv,
     send_nonblocking,
     result_metrics,
     resolve_single_endpoint,
@@ -84,7 +84,7 @@ def main(argv=None):
                 )
                 sender.start()
                 # C perf_single_one_way.hpp run_active_phase receiver.
-                received = run_one_way_receiver_native_recv_part(
+                received = run_one_way_receiver_public_recv(
                     server,
                     msg_size=args.msg_size,
                     run_id=run_id,

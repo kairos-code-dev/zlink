@@ -1,7 +1,5 @@
 import os
 import sys
-import ctypes
-import errno
 import struct
 import threading
 import time
@@ -36,6 +34,14 @@ def _trace(message):
         print(f"[multi-spot-client] {message}", file=sys.stderr, flush=True)
 
 
+def _close_all(*resources):
+    for resource in resources:
+        try:
+            resource.close()
+        except Exception:
+            pass
+
+
 def _latency_sample_stride():
     try:
         return max(1, int(os.environ.get("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", "32")))
@@ -43,62 +49,23 @@ def _latency_sample_stride():
         return 32
 
 
-_NATIVE_SPOT_SUBSCRIBE_PART = None
-
-
-def _native_spot_subscribe_part_methods():
-    global _NATIVE_SPOT_SUBSCRIBE_PART
-    if _NATIVE_SPOT_SUBSCRIBE_PART is None:
-        from zlink._native.ffi import ZlinkMsg, ZlinkRoutingId, lib
-        from zlink._runtime.core.core import _msg_data_ptr, _msg_size
-
-        _NATIVE_SPOT_SUBSCRIBE_PART = (
-            ZlinkMsg,
-            ZlinkRoutingId,
-            lib,
-            _msg_data_ptr,
-            _msg_size,
-        )
-    return _NATIVE_SPOT_SUBSCRIBE_PART
-
-
-def _subscribe_active_metric_once(spot, flags, *, msg_size, run_id, sample_latency):
-    ZlinkMsg, ZlinkRoutingId, lib, _msg_data_ptr, _msg_size = (
-        _native_spot_subscribe_part_methods()
-    )
-    routing_id = ctypes.POINTER(ZlinkRoutingId)()
-    topic_buf = ctypes.create_string_buffer(256)
-    topic_len = ctypes.c_size_t(len(topic_buf))
-    part = ZlinkMsg()
-    has_more = ctypes.c_int()
-    rc = lib().zlink_spot_subscribe_part(
-        spot._handle,
-        ctypes.byref(routing_id),
-        topic_buf,
-        len(topic_buf),
-        ctypes.byref(topic_len),
-        ctypes.byref(part),
-        ctypes.byref(has_more),
-        int(flags),
-    )
-    if rc != 0:
-        err = lib().zlink_errno()
-        if rc == int(zlink.RecvResult.NO_DATA) or err in (errno.EAGAIN, errno.EINTR):
+def _subscribe_active_metric_once(spot, storage, *, msg_size, run_id, sample_latency):
+    try:
+        if not spot.subscribe_into(storage, flags=zlink.RecvFlags.DONT_WAIT):
             return None
-        raise zlink.RecvError(zlink.RecvResult(rc), err)
+    except zlink.RecvError as exc:
+        if exc.result == zlink.RecvResult.NO_DATA:
+            return None
+        raise
 
     try:
-        if has_more.value != 0:
-            raise RuntimeError("multi spot native subscribe_part received multipart message")
-        size = _msg_size(part)
+        parts = storage.parts
+        data = parts[0].to_bytes() if parts else b""
+        size = len(data)
         if size != msg_size or size < HEADER_SIZE:
             return False, None
-        ptr = _msg_data_ptr(part)
-        if not ptr:
-            return False, None
-        header_data = ctypes.string_at(ptr, HEADER_SIZE)
         magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = struct.unpack_from(
-            HEADER_FORMAT, header_data, 0
+            HEADER_FORMAT, data, 0
         )
         if (
             magic != HEADER_MAGIC
@@ -114,7 +81,7 @@ def _subscribe_active_metric_once(spot, flags, *, msg_size, run_id, sample_laten
             return True, float(now_ns - sent_ts_ns)
         return True, 0.0
     finally:
-        lib().zlink_msg_close(ctypes.byref(part))
+        storage.close()
 
 
 def main(argv=None):
@@ -233,6 +200,7 @@ def main(argv=None):
                     if index < 0 or index >= len(spots):
                         continue
                     current_spot = spots[index]
+                    storage = zlink.TopicMessage()
                     while True:
                         if time.perf_counter() >= active_deadline:
                             expired = True
@@ -240,7 +208,7 @@ def main(argv=None):
                         try:
                             received_metric = _subscribe_active_metric_once(
                                 current_spot,
-                                zlink.RecvFlags.DONT_WAIT,
+                                storage,
                                 msg_size=args.msg_size,
                                 run_id=run_id,
                                 sample_latency=(
@@ -267,6 +235,7 @@ def main(argv=None):
         _trace(f"active-end received={received_count} latencies={len(latencies)}")
         if received_count <= 0:
             raise RuntimeError("multi spot benchmark did not receive any active message")
+        _close_all(*spots, control_sub, control_pub, control_node, data_node)
         metrics = result_metrics(
             count=received_count,
             msg_size=args.msg_size,

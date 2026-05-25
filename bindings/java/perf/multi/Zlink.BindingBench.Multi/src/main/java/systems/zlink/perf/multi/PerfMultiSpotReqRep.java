@@ -27,7 +27,6 @@ import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfUtil;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.runtime.nativebridge.InternalAccess;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -285,9 +284,11 @@ final class PerfMultiSpotReqRep {
                                          Duration requestTimeout,
                                          RequestCallback callback) {
         try {
-            return InternalAccess.spotRequestToSpotPart(requester,
-                SERVER_NODE_RID, SERVER_SPOT_RID, payload, callback,
-                SendFlags.DONT_WAIT, requestTimeout);
+            return requester.requestToSpot(SERVER_NODE_RID, SERVER_SPOT_RID)
+                .message(payload)
+                .flags(SendFlags.DONT_WAIT)
+                .timeout(requestTimeout)
+                .submit(callback);
         } catch (SubmitException ex) {
             if (isTransientSubmit(ex)) {
                 return false;

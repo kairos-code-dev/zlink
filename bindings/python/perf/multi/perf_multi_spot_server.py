@@ -29,6 +29,14 @@ def _trace(message):
         print(f"[multi-spot-server] {message}", file=sys.stderr, flush=True)
 
 
+def _close_all(*resources):
+    for resource in resources:
+        try:
+            resource.close()
+        except Exception:
+            pass
+
+
 def main(argv=None):
     args = parse_server_args(argv or sys.argv[1:])
     run_id = benchmark_run_id()
@@ -126,6 +134,7 @@ def main(argv=None):
             )
             if not sent:
                 time.sleep(0.001)
+        _close_all(control_sub, control_pub, data_spot, control_node, data_node)
         sys.stdout.flush()
 
 

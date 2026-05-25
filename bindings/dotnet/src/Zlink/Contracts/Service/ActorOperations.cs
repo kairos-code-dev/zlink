@@ -10,11 +10,17 @@ namespace Systems.Zlink;
 public sealed record ActorJoinResult(RequestResult Result, ActorRef Actor,
     RoutingId JoinedSpotRid, ulong JoinEpoch, uint Flags);
 
+public sealed record ActorJoinEntrySpotResult(RequestResult Result,
+    ActorRef Actor, RoutingId TargetNodeRid, ulong JoinEpoch, uint Flags);
+
 public sealed record ActorLookupResult(RequestResult Result, ActorRef Actor,
     uint Flags);
 
 public delegate void ActorJoinHandler(ActorJoinResult result,
     IReadOnlyList<Message> replyParts);
+
+public delegate void ActorJoinEntrySpotHandler(
+    ActorJoinEntrySpotResult result);
 
 public delegate void ActorLookupHandler(ActorLookupResult result);
 
@@ -45,6 +51,13 @@ public interface ActorJoinCallbackSubmitOperation
     ActorJoinCallbackSubmitOperation Timeout(TimeSpan timeout);
     ActorJoinCallbackSubmitOperation Flags(SendFlags flags);
     bool Submit(ActorJoinHandler callback);
+}
+
+public interface ActorJoinEntrySpotOperation
+{
+    ActorJoinEntrySpotOperation Timeout(TimeSpan timeout);
+    Task<ActorJoinEntrySpotResult> SubmitAsync(CancellationToken ct = default);
+    bool Submit(ActorJoinEntrySpotHandler callback);
 }
 
 public interface ActorJoinReplyOperation

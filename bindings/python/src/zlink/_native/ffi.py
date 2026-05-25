@@ -66,6 +66,16 @@ class ZlinkActorJoinResult(ctypes.Structure):
     ]
 
 
+class ZlinkActorJoinEntrySpotResult(ctypes.Structure):
+    _fields_ = [
+        ("result", ctypes.c_int),
+        ("actor", ZlinkActorRef),
+        ("target_node_rid", ZlinkRoutingId),
+        ("join_epoch", ctypes.c_uint64),
+        ("flags", ctypes.c_uint32),
+    ]
+
+
 class ZlinkActorLookupResult(ctypes.Structure):
     _fields_ = [
         ("result", ctypes.c_int),
@@ -1054,6 +1064,18 @@ class _Lib:
                 ctypes.c_void_p,
                 ctypes.c_void_p,
                 ctypes.c_uint32,
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_actor_join_entry_spot",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkActorRef),
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
                 ctypes.c_uint32,
             ],
             ctypes.c_int,

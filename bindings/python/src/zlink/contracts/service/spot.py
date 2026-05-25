@@ -37,6 +37,7 @@ from ..._native.ffi import (
     ZLINK_PART_FINAL,
     ZLINK_PART_MORE,
     ZlinkActorJoinInfo,
+    ZlinkActorJoinEntrySpotResult,
     ZlinkActorJoinResult,
     ZlinkActorLookupResult,
     ZlinkActorRecvInfo,
@@ -150,6 +151,11 @@ _ACTOR_JOIN_HANDLER = ctypes.CFUNCTYPE(
     ctypes.POINTER(ZlinkActorJoinResult),
     ctypes.POINTER(ZlinkMsg),
     ctypes.c_size_t,
+    ctypes.c_void_p,
+)
+_ACTOR_JOIN_ENTRY_SPOT_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.POINTER(ZlinkActorJoinEntrySpotResult),
     ctypes.c_void_p,
 )
 _ACTOR_LOOKUP_HANDLER = ctypes.CFUNCTYPE(
@@ -308,6 +314,15 @@ class ActorJoinResult:
     result: RequestResult
     actor: ActorRef
     joined_spot_rid: RoutingId
+    join_epoch: int
+    flags: int
+
+
+@dataclass(frozen=True)
+class ActorJoinEntrySpotResult:
+    result: RequestResult
+    actor: ActorRef
+    target_node_rid: RoutingId
     join_epoch: int
     flags: int
 
@@ -649,6 +664,32 @@ class _PendingActorJoin:
             return
         try:
             self.callback(join_result, messages if result == RequestResult.OK else [])
+        except Exception:
+            _report_unhandled_callback_exception(self.callback)
+
+
+class _PendingActorJoinEntrySpot:
+    """Pending state for ActorJoinEntrySpotOp."""
+
+    def __init__(self, *, loop=None, callback=None):
+        self.loop = loop
+        self.future = loop.create_future() if loop is not None else None
+        self.callback = callback
+
+    def resolve(self, join_result, errnum=0):
+        result = join_result.result
+        if self.future is not None:
+            if result == RequestResult.OK:
+                self.loop.call_soon_threadsafe(self.future.set_result, join_result)
+            else:
+                self.loop.call_soon_threadsafe(
+                    self.future.set_exception, RequestError(result, errnum)
+                )
+            return
+        if self.callback is None:
+            return
+        try:
+            self.callback(join_result)
         except Exception:
             _report_unhandled_callback_exception(self.callback)
 
@@ -1120,9 +1161,11 @@ class SpotNode:
         self._actor_admission_cb = None
         self._actor_request_pending = {}
         self._actor_join_pending = {}
+        self._actor_join_entry_spot_pending = {}
         self._actor_lookup_pending = {}
         self._actor_reply_handler = None
         self._actor_join_handler = None
+        self._actor_join_entry_spot_handler = None
         self._actor_lookup_handler = None
         self._channel_dealers = {}
 
@@ -1428,6 +1471,9 @@ class SpotNode:
     def join_actor(self, actor_ref, dest_node_rid, dest_spot_rid):
         return ActorJoinOp(self, actor_ref, dest_node_rid, dest_spot_rid)
 
+    def join_actor_entry_spot(self, actor_ref, dest_node_rid):
+        return ActorJoinEntrySpotOp(self, actor_ref, dest_node_rid)
+
     def leave_actor(self, actor_ref, current_spot_rid):
         return ActorLeaveOp(self, actor_ref, current_spot_rid)
 
@@ -1468,6 +1514,13 @@ class SpotNode:
             self._actor_join_handler = _ACTOR_JOIN_HANDLER(self._on_actor_join_reply)
         return self._actor_join_handler
 
+    def _ensure_actor_join_entry_spot_handler(self):
+        if self._actor_join_entry_spot_handler is None:
+            self._actor_join_entry_spot_handler = _ACTOR_JOIN_ENTRY_SPOT_HANDLER(
+                self._on_actor_join_entry_spot_reply
+            )
+        return self._actor_join_entry_spot_handler
+
     def _ensure_actor_lookup_handler(self):
         if self._actor_lookup_handler is None:
             self._actor_lookup_handler = _ACTOR_LOOKUP_HANDLER(self._on_actor_lookup_reply)
@@ -1506,6 +1559,32 @@ class SpotNode:
         if result == RequestResult.OK:
             messages = _make_message_list(parts, part_count)
         pending.resolve(join_result, messages, _request_result_internal_errno(result))
+
+    def _on_actor_join_entry_spot_reply(self, result_ptr, userdata):
+        handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        pending = self._actor_join_entry_spot_pending.pop(handle, None)
+        if pending is None:
+            return
+        if not result_ptr:
+            join_result = ActorJoinEntrySpotResult(
+                result=RequestResult.INTERNAL_ERROR,
+                actor=ActorRef(node_rid=RoutingId(b""), actor_id="", generation=0),
+                target_node_rid=RoutingId(b""),
+                join_epoch=0,
+                flags=0,
+            )
+            pending.resolve(join_result, _request_result_internal_errno(RequestResult.INTERNAL_ERROR))
+            return
+        native = result_ptr.contents
+        result = _request_result_from_code(int(native.result))
+        join_result = ActorJoinEntrySpotResult(
+            result=result,
+            actor=_actor_ref_from_native(native.actor),
+            target_node_rid=_routing_id_bytes(native.target_node_rid),
+            join_epoch=int(native.join_epoch),
+            flags=int(native.flags),
+        )
+        pending.resolve(join_result, _request_result_internal_errno(result))
 
     def _on_actor_lookup_reply(self, result_ptr, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
@@ -1563,6 +1642,24 @@ class SpotNode:
         if rc != 0:
             self._actor_join_pending.pop(handle, None)
             _close_native_parts(native_parts)
+            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
+        return True
+
+    def _submit_actor_join_entry_spot(self, actor_ref, dest_node_rid, pending, timeout=0):
+        native_actor = _actor_ref_to_native(actor_ref)
+        native_node = _copy_routing_id(dest_node_rid)
+        handle = id(pending)
+        self._actor_join_entry_spot_pending[handle] = pending
+        rc = lib().zlink_spot_node_actor_join_entry_spot(
+            self._handle,
+            ctypes.byref(native_actor),
+            ctypes.byref(native_node),
+            self._ensure_actor_join_entry_spot_handler(),
+            ctypes.c_void_p(handle),
+            _timeout_to_ms(timeout),
+        )
+        if rc != 0:
+            self._actor_join_entry_spot_pending.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
         return True
 
@@ -1885,6 +1982,7 @@ class SpotNode:
         self._spots.clear()
         self._actor_request_pending.clear()
         self._actor_join_pending.clear()
+        self._actor_join_entry_spot_pending.clear()
         self._actor_lookup_pending.clear()
         self._actor_admission_handler = None
         self._actor_admission_cb = None
@@ -2248,6 +2346,58 @@ class ActorJoinCallbackOp:
             if self._flags & 1 and ex.result == SubmitResult.BACKPRESSURED:
                 return False
             raise
+        return True
+
+
+class ActorJoinEntrySpotOp:
+    """Fluent builder for message-less Entry Spot join operations."""
+    __slots__ = ('_node', '_actor_ref', '_dest_node_rid', '_timeout',
+                 '_submitted')
+
+    def __init__(self, node, actor_ref, dest_node_rid):
+        self._node = node
+        self._actor_ref = actor_ref
+        self._dest_node_rid = dest_node_rid
+        self._timeout = 0
+        self._submitted = False
+
+    def timeout(self, timeout):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._timeout = timeout
+        return self
+
+    def submit_async(self):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._submitted = True
+
+        async def _run():
+            loop = asyncio.get_running_loop()
+            pending = _PendingActorJoinEntrySpot(loop=loop)
+            self._node._submit_actor_join_entry_spot(
+                self._actor_ref,
+                self._dest_node_rid,
+                pending,
+                timeout=self._timeout,
+            )
+            return await pending.future
+
+        return _run()
+
+    def submit(self, callback):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if callback is None:
+            raise ValueError("callback must not be None")
+        self._submitted = True
+        pending = _PendingActorJoinEntrySpot(callback=callback)
+        self._node._submit_actor_join_entry_spot(
+            self._actor_ref,
+            self._dest_node_rid,
+            pending,
+            timeout=self._timeout,
+        )
         return True
 
 

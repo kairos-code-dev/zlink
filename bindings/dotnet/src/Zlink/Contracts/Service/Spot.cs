@@ -88,6 +88,7 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     ActorLookupOperation RemoteActorGetRef(RoutingId targetNodeRid, string actorId);
     ActorDestroyOperation DestroyActor(ActorRef actor);
     ActorJoinOperation JoinActor(ActorRef actor, RoutingId destNodeRid, RoutingId destSpotRid);
+    ActorJoinEntrySpotOperation JoinActorEntrySpot(ActorRef actor, RoutingId destNodeRid);
     ActorLeaveOperation LeaveActor(ActorRef actor, RoutingId currentSpotRid);
     void SetTlsServer(string certPath, string keyPath, bool requireClientCert = false);
     void SetTlsClient(string caCertPath, string hostname, bool trustSystem = false);

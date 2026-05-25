@@ -31,9 +31,24 @@ type ActorJoinResult struct {
 	Flags         uint32
 }
 
+// ActorJoinEntrySpotResult is the completion value of an Entry Spot join
+// operation.
+type ActorJoinEntrySpotResult struct {
+	Result        RequestResult
+	Actor         ActorRef
+	TargetNodeRID RoutingID
+	JoinEpoch     uint64
+	Flags         uint32
+}
+
 type ActorJoinCompletion struct {
 	Result ActorJoinResult
 	Parts  []*Message
+	Err    error
+}
+
+type ActorJoinEntrySpotCompletion struct {
+	Result ActorJoinEntrySpotResult
 	Err    error
 }
 
@@ -88,6 +103,14 @@ type ActorJoinCallbackSubmitOp interface {
 		callback func(result ActorJoinResult, parts []*Message)) (bool, error)
 }
 
+// ActorJoinEntrySpotOp is returned by SpotNode.JoinActorEntrySpot.
+type ActorJoinEntrySpotOp interface {
+	Timeout(timeout time.Duration) ActorJoinEntrySpotOp
+	SubmitAsync(ctx context.Context) (<-chan ActorJoinEntrySpotCompletion, error)
+	Submit(ctx context.Context,
+		callback func(result ActorJoinEntrySpotResult)) (bool, error)
+}
+
 // ActorJoinReplyOp is returned by Spot.ReplyActorJoin. The reply payload is
 // optional; Submit may be called with zero attached parts.
 type ActorJoinReplyOp interface {
@@ -130,6 +153,7 @@ type ActorLookupOp interface {
 // --- common state ---
 
 type actorJoinCallback func(result ActorJoinResult, parts []*Message)
+type actorJoinEntrySpotCallback func(result ActorJoinEntrySpotResult)
 type actorLookupCallback func(result ActorLookupResult)
 type requestPartsCallback func(result RequestResult, parts []*Message)
 
@@ -142,6 +166,12 @@ type actorJoinCallbackState struct {
 type actorJoinTrampolineResult struct {
 	result ActorJoinResult
 	parts  []*Message
+}
+
+type actorJoinEntrySpotCallbackState struct {
+	result chan ActorJoinEntrySpotResult
+	done   chan struct{}
+	once   completionGuard
 }
 
 type actorLookupCallbackState struct {
@@ -186,6 +216,58 @@ type actorJoinCallbackBuilder struct {
 
 func newActorJoinOp(submit func(parts []*Message, flags SendFlags, timeout time.Duration, cb actorJoinCallback) error) ActorJoinOp {
 	return &actorJoinBuilder{state: &actorJoinBuilderState{submit: submit}}
+}
+
+type actorJoinEntrySpotBuilderState struct {
+	timeout   time.Duration
+	submitted bool
+	submit    func(timeout time.Duration, cb actorJoinEntrySpotCallback) error
+}
+
+type actorJoinEntrySpotBuilder struct {
+	state *actorJoinEntrySpotBuilderState
+}
+
+func newActorJoinEntrySpotOp(submit func(timeout time.Duration, cb actorJoinEntrySpotCallback) error) ActorJoinEntrySpotOp {
+	return &actorJoinEntrySpotBuilder{state: &actorJoinEntrySpotBuilderState{submit: submit}}
+}
+
+func (b *actorJoinEntrySpotBuilder) Timeout(timeout time.Duration) ActorJoinEntrySpotOp {
+	b.state.timeout = timeout
+	return b
+}
+
+func (b *actorJoinEntrySpotBuilder) SubmitAsync(_ context.Context) (<-chan ActorJoinEntrySpotCompletion, error) {
+	resultCh := make(chan ActorJoinEntrySpotCompletion, 1)
+	ok, err := b.Submit(context.Background(), func(result ActorJoinEntrySpotResult) {
+		completion := ActorJoinEntrySpotCompletion{Result: result}
+		if result.Result != RequestOK {
+			completion.Err = &RequestError{Result: result.Result}
+		}
+		resultCh <- completion
+		close(resultCh)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, &SubmitError{Result: SubmitBackpressured}
+	}
+	return resultCh, nil
+}
+
+func (b *actorJoinEntrySpotBuilder) Submit(_ context.Context, callback func(ActorJoinEntrySpotResult)) (bool, error) {
+	if b.state.submitted {
+		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
+	}
+	if callback == nil {
+		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+	}
+	b.state.submitted = true
+	if err := b.state.submit(b.state.timeout, callback); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (b *actorJoinBuilder) Message(msg *Message) ActorJoinSubmitOp {
@@ -566,6 +648,23 @@ func submitActorLookupNative(progressSpot unsafe.Pointer, native func(cb cgo.Han
 	}
 	if progressSpot != nil {
 		attachSpotProgressDone(progressSpot, state.done)
+	}
+	go func() {
+		result := <-state.result
+		callback(result)
+	}()
+	return nil
+}
+
+func submitActorJoinEntrySpotNative(native func(cb cgo.Handle) error, callback actorJoinEntrySpotCallback) error {
+	state := &actorJoinEntrySpotCallbackState{
+		result: make(chan ActorJoinEntrySpotResult, 1),
+		done:   make(chan struct{}),
+	}
+	handle := cgo.NewHandle(state)
+	if err := native(handle); err != nil {
+		handle.Delete()
+		return err
 	}
 	go func() {
 		result := <-state.result

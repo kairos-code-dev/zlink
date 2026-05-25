@@ -296,6 +296,15 @@ internal static partial class NativeMethods
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_actor_join_entry_spot(
+        IntPtr node,
+        ref ZlinkActorRef actor,
+        ref ZlinkRoutingId destNodeRid,
+        IntPtr handler,
+        IntPtr userData,
+        uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_actor_join_recv(IntPtr spot,
         out ZlinkActorJoinInfo info,
         out IntPtr parts,

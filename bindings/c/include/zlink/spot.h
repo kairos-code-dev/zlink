@@ -103,9 +103,17 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot (
   const zlink_routing_id_t *dest_spot_rid_,
   zlink_msg_t *parts_,
   size_t part_count_,
-  zlink_actor_join_handler_fn handler_,
+  zlink_actor_join_spot_handler_fn handler_,
   void *userdata_,
   zlink_send_flags_t flags_,
+  uint32_t timeout_ms_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_entry_spot (
+  void *node_,
+  const zlink_actor_ref_t *actor_,
+  const zlink_routing_id_t *dest_node_rid_,
+  zlink_actor_join_entry_spot_handler_fn handler_,
+  void *userdata_,
   uint32_t timeout_ms_);
 
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_actor_join_recv (

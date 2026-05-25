@@ -11,6 +11,7 @@ package zlink
 
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkActorJoinTrampoline(zlink_actor_join_result_t *result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
+extern void goZlinkActorJoinEntrySpotTrampoline(zlink_actor_join_entry_spot_result_t *result_, uintptr_t userdata_);
 extern void goZlinkActorLookupTrampoline(zlink_actor_lookup_result_t *result_, uintptr_t userdata_);
 extern void goZlinkSpotActorLifecycleJoinTrampoline(void *spot_, zlink_spot_actor_lifecycle_info_t *info_, uintptr_t userdata_);
 extern void goZlinkSpotActorLifecycleLeaveTrampoline(void *spot_, zlink_spot_actor_lifecycle_info_t *info_, uintptr_t userdata_);
@@ -24,7 +25,11 @@ static inline int zlink_remote_actor_get_ref_go(void *node, const zlink_routing_
 }
 
 static inline int zlink_spot_node_actor_join_spot_go_ops(void *node, const zlink_actor_ref_t *actor, const zlink_routing_id_t *dest_node_rid, const zlink_routing_id_t *dest_spot_rid, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags, uint32_t timeout_ms, uintptr_t userdata) {
-    return zlink_spot_node_actor_join_spot(node, actor, dest_node_rid, dest_spot_rid, parts, part_count, (zlink_actor_join_handler_fn)goZlinkActorJoinTrampoline, (void *)userdata, flags, timeout_ms);
+    return zlink_spot_node_actor_join_spot(node, actor, dest_node_rid, dest_spot_rid, parts, part_count, (zlink_actor_join_spot_handler_fn)goZlinkActorJoinTrampoline, (void *)userdata, flags, timeout_ms);
+}
+
+static inline int zlink_spot_node_actor_join_entry_spot_go_ops(void *node, const zlink_actor_ref_t *actor, const zlink_routing_id_t *dest_node_rid, uint32_t timeout_ms, uintptr_t userdata) {
+    return zlink_spot_node_actor_join_entry_spot(node, actor, dest_node_rid, (zlink_actor_join_entry_spot_handler_fn)goZlinkActorJoinEntrySpotTrampoline, (void *)userdata, timeout_ms);
 }
 
 static inline int zlink_spot_node_actor_destroy_go_ops(void *node, const zlink_actor_ref_t *actor, uint32_t timeout_ms, uintptr_t userdata) {
@@ -230,6 +235,26 @@ func (n *SpotNode) JoinActor(actor ActorRef, destNodeRID, destSpotRID RoutingID)
 		rawSpot := destSpotRID.toC()
 		return submitActorJoinNative(parts, nil, func(nativeParts *C.zlink_msg_t, partCount C.size_t, stateHandle cgo.Handle) error {
 			return submitErrorFromResult(C.zlink_spot_node_actor_join_spot_go_ops(handle, &rawActor, &rawNode, &rawSpot, nativeParts, partCount, C.zlink_send_flags_t(flags), C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
+		}, cb)
+	})
+}
+
+// JoinActorEntrySpot returns a message-less Entry Spot move builder.
+// Completion delivers the final ActorRef after the actor is in the target
+// SpotNode's Entry Spot.
+func (n *SpotNode) JoinActorEntrySpot(actor ActorRef, destNodeRID RoutingID) ActorJoinEntrySpotOp {
+	return newActorJoinEntrySpotOp(func(timeout time.Duration, cb actorJoinEntrySpotCallback) error {
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		rawActor, err := actor.toC()
+		if err != nil {
+			return err
+		}
+		rawNode := destNodeRID.toC()
+		return submitActorJoinEntrySpotNative(func(stateHandle cgo.Handle) error {
+			return submitErrorFromResult(C.zlink_spot_node_actor_join_entry_spot_go_ops(handle, &rawActor, &rawNode, C.uint32_t(requestTimeoutMillis(timeout)), C.uintptr_t(stateHandle)))
 		}, cb)
 	})
 }
@@ -747,6 +772,32 @@ func goZlinkActorJoinTrampoline(result *C.zlink_actor_join_result_t, parts *C.zl
 		return
 	}
 	state.complete(requestResult{result: resultCode, parts: nil})
+}
+
+//export goZlinkActorJoinEntrySpotTrampoline
+func goZlinkActorJoinEntrySpotTrampoline(result *C.zlink_actor_join_entry_spot_result_t, userdata C.uintptr_t) {
+	handle := cgo.Handle(userdata)
+	state, ok := safeHandleAs[*actorJoinEntrySpotCallbackState](userdata)
+	if !ok || state == nil {
+		return
+	}
+	defer handle.Delete()
+	var out ActorJoinEntrySpotResult
+	if result != nil {
+		out = ActorJoinEntrySpotResult{
+			Result:        RequestResult(result.result),
+			Actor:         actorRefFromC(result.actor),
+			TargetNodeRID: routingIDFromC(result.target_node_rid),
+			JoinEpoch:     uint64(result.join_epoch),
+			Flags:         uint32(result.flags),
+		}
+	} else {
+		out = ActorJoinEntrySpotResult{Result: RequestInternalError}
+	}
+	state.result <- out
+	if !state.once.closed {
+		state.once.close(state.done)
+	}
 }
 
 //export goZlinkSpotActorLifecycleJoinTrampoline

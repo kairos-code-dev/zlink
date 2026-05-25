@@ -170,6 +170,9 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
             nameof(SpotNode.JoinActor), typeof(ActorRef), typeof(RoutingId),
             typeof(RoutingId)));
+        Assert.True(HasPublicInstanceMethod(typeof(SpotNode),
+            nameof(SpotNode.JoinActorEntrySpot), typeof(ActorRef),
+            typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.RecvActorJoin), typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
@@ -353,6 +356,9 @@ public sealed class test_socket_surface
             typeof(ISpotNode).GetMethod(nameof(ISpotNode.SpotLookup))!.ReturnType);
         Assert.Equal(typeof(IActor),
             typeof(ISpotNode).GetMethod(nameof(ISpotNode.CreateActor))!.ReturnType);
+        Assert.Equal(typeof(ActorJoinEntrySpotOperation),
+            typeof(ISpotNode).GetMethod(nameof(ISpotNode.JoinActorEntrySpot))!
+                .ReturnType);
         Assert.Equal(typeof(IDiscovery),
             typeof(ISpotNode).GetMethod(nameof(ISpotNode.AttachDiscovery))!
                 .GetParameters()[0].ParameterType);
@@ -471,9 +477,12 @@ public sealed class test_socket_surface
             typeof(Actor).FullName!,
             typeof(ActorBindOperation).FullName!,
             typeof(ActorDestroyOperation).FullName!,
-            typeof(ActorJoinInfo).FullName!,
             typeof(ActorJoinCallbackSubmitOperation).FullName!,
+            typeof(ActorJoinEntrySpotHandler).FullName!,
+            typeof(ActorJoinEntrySpotOperation).FullName!,
+            typeof(ActorJoinEntrySpotResult).FullName!,
             typeof(ActorJoinHandler).FullName!,
+            typeof(ActorJoinInfo).FullName!,
             typeof(ActorJoinOperation).FullName!,
             typeof(ActorJoinReplyOperation).FullName!,
             typeof(ActorJoinRequest).FullName!,
@@ -497,6 +506,8 @@ public sealed class test_socket_surface
             typeof(ConnectableSocketBase).FullName!,
             typeof(Context).FullName!,
             typeof(ContextOptions).FullName!,
+            typeof(DealerMessageType).FullName!,
+            typeof(DealerReceived).FullName!,
             typeof(DealerSocket).FullName!,
             typeof(DealerSocketOptions).FullName!,
             typeof(Discovery).FullName!,

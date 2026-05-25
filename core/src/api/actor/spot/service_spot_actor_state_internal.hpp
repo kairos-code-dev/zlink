@@ -137,7 +137,7 @@ struct queued_join_request_t
     zlink_routing_id_t target_node_rid;
     zlink_routing_id_t source_spot_rid;
     zlink_actor_ref_t target_actor_ref;
-    zlink_actor_join_handler_fn handler;
+    zlink_actor_join_spot_handler_fn handler;
     void *userdata;
     bool replied;
     uint64_t join_epoch;

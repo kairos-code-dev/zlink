@@ -129,6 +129,57 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
     }
 }
 
+internal sealed class ActorJoinEntrySpotOperationImpl :
+    ActorJoinEntrySpotOperation
+{
+    private readonly SpotNode _node;
+    private readonly ActorRef _actor;
+    private readonly RoutingId _destNodeRid;
+    private TimeSpan _timeout;
+    private bool _submitted;
+
+    internal ActorJoinEntrySpotOperationImpl(SpotNode node, ActorRef actor,
+        RoutingId destNodeRid)
+    {
+        _node = node;
+        _actor = actor;
+        _destNodeRid = destNodeRid;
+    }
+
+    public ActorJoinEntrySpotOperation Timeout(TimeSpan timeout)
+    {
+        EnsureNotSubmitted();
+        _timeout = timeout;
+        return this;
+    }
+
+    public Task<ActorJoinEntrySpotResult> SubmitAsync(
+        CancellationToken ct = default)
+    {
+        EnsureNotSubmitted();
+        _submitted = true;
+        return ActorInterop.JoinActorEntrySpotAsync(_node, _actor,
+            _destNodeRid, _timeout, ct);
+    }
+
+    public bool Submit(ActorJoinEntrySpotHandler callback)
+    {
+        if (callback == null)
+            throw new ArgumentNullException(nameof(callback));
+        EnsureNotSubmitted();
+        _submitted = true;
+        return ActorInterop.JoinActorEntrySpotCallback(_node, _actor,
+            _destNodeRid, _timeout, callback);
+    }
+
+    private void EnsureNotSubmitted()
+    {
+        if (_submitted)
+            throw new ZlinkConfigException(
+                ZlinkConfigException.ErrorCode.InvalidState);
+    }
+}
+
 internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
 {
     private readonly Spot _spot;

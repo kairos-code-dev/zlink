@@ -84,6 +84,7 @@ internal static partial class NativeMethods
         "zlink_spot_node_actor_lookup",
         "zlink_remote_actor_get_ref",
         "zlink_spot_node_actor_join_spot",
+        "zlink_spot_node_actor_join_entry_spot",
         "zlink_spot_actor_join_recv",
         "zlink_spot_actor_join_reply",
         "zlink_spot_node_actor_leave_spot",
@@ -221,6 +222,10 @@ internal static partial class NativeMethods
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void ZlinkActorJoinHandlerDelegate(IntPtr result,
         IntPtr parts, nuint partCount, IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkActorJoinEntrySpotHandlerDelegate(
+        IntPtr result, IntPtr userData);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void ZlinkActorLookupHandlerDelegate(IntPtr result,

@@ -14,8 +14,10 @@ from .discovery import (
 )
 from .spot import (
     Actor,
+    ActorJoinEntrySpotResult,
     ActorJoinInfo,
     ActorJoinRequest,
+    ActorJoinResult,
     ActorPart,
     ActorRecvInfo,
     ActorRef,
@@ -51,6 +53,8 @@ __all__ = [
     "Actor",
     "ActorRef",
     "ActorJoinRequest",
+    "ActorJoinResult",
+    "ActorJoinEntrySpotResult",
     "ActorRoute",
     "ActorRecvInfo",
     "ActorJoinInfo",

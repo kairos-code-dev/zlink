@@ -167,6 +167,16 @@ internal struct ZlinkActorJoinResult
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorJoinEntrySpotResult
+{
+    public int Result;
+    public ZlinkActorRef Actor;
+    public ZlinkRoutingId TargetNodeRid;
+    public ulong JoinEpoch;
+    public uint Flags;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkActorLookupResult
 {
     public int Result;

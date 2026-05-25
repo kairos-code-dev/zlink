@@ -60,10 +60,14 @@ typedef void (*zlink_reply_handler_fn) (
   size_t part_count_,
   void *userdata_);
 
-typedef void (*zlink_actor_join_handler_fn) (
+typedef void (*zlink_actor_join_spot_handler_fn) (
   const zlink_actor_join_result_t *result_,
   zlink_msg_t *parts_,
   size_t part_count_,
+  void *userdata_);
+
+typedef void (*zlink_actor_join_entry_spot_handler_fn) (
+  const zlink_actor_join_entry_spot_result_t *result_,
   void *userdata_);
 
 typedef void (*zlink_actor_lookup_handler_fn) (

@@ -540,6 +540,13 @@ public sealed class SpotNode : ISpotNode
             destSpotRid);
     }
 
+    public ActorJoinEntrySpotOperation JoinActorEntrySpot(ActorRef actor,
+        RoutingId destNodeRid)
+    {
+        EnsureNotDisposed();
+        return new ActorJoinEntrySpotOperationImpl(this, actor, destNodeRid);
+    }
+
     internal Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,
         RoutingId destNodeRid, RoutingId destSpotRid, Message message,
         TimeSpan timeout, SendFlags flags, CancellationToken ct)

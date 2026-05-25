@@ -48,6 +48,7 @@ class reply_ready_op_t;
 class actor_join_op_t;
 class actor_join_ready_op_t;
 class actor_join_callback_ready_op_t;
+class actor_join_entry_spot_op_t;
 class actor_join_reply_op_t;
 class actor_leave_op_t;
 class actor_destroy_op_t;

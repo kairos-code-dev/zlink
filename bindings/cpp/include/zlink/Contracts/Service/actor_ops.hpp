@@ -117,6 +117,68 @@ class actor_join_callback_ready_op_t
     friend class actor_join_ready_op_t;
 };
 
+class actor_join_entry_spot_op_t
+{
+  public:
+    actor_join_entry_spot_op_t (actor_join_entry_spot_op_t &&) noexcept =
+      default;
+    actor_join_entry_spot_op_t &
+    operator= (actor_join_entry_spot_op_t &&) noexcept = default;
+
+    actor_join_entry_spot_op_t &&
+    timeout (std::chrono::milliseconds timeout_) &&
+    {
+        _state.timeout = timeout_;
+        return std::move (*this);
+    }
+
+    async_result_t<actor_join_entry_spot_result_t> submit_async () &&
+    {
+        std::unique_ptr<detail::actor_join_entry_spot_result_state_t> state (
+          detail::make_future_actor_join_entry_spot_state ());
+        std::future<actor_join_entry_spot_result_t> future =
+          state->promise->get_future ();
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_spot_node_actor_join_entry_spot (
+            _state.node, zlink::detail::actor_ref_native (_state.actor),
+            zlink::detail::routing_id_native (_state.aux_rid),
+            &detail::actor_join_entry_spot_result_trampoline, state.get (),
+            static_cast<uint32_t> (_state.timeout.count ())));
+        if (rc != submit_result_t::ok)
+            throw submit_error_t (rc, zlink_errno ());
+        state.release ();
+        return async_result_t<actor_join_entry_spot_result_t> (
+          std::move (future));
+    }
+
+    bool submit (actor_join_entry_spot_callback_t callback_) &&
+    {
+        std::unique_ptr<detail::actor_join_entry_spot_result_state_t> state (
+          detail::make_callback_actor_join_entry_spot_state (
+            std::move (callback_)));
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_spot_node_actor_join_entry_spot (
+            _state.node, zlink::detail::actor_ref_native (_state.actor),
+            zlink::detail::routing_id_native (_state.aux_rid),
+            &detail::actor_join_entry_spot_result_trampoline, state.get (),
+            static_cast<uint32_t> (_state.timeout.count ())));
+        if (rc != submit_result_t::ok)
+            throw submit_error_t (rc, zlink_errno ());
+        state.release ();
+        return true;
+    }
+
+  private:
+    explicit actor_join_entry_spot_op_t (
+      detail::actor_payloadless_state_t state_)
+        : _state (std::move (state_))
+    {
+    }
+
+    detail::actor_payloadless_state_t _state;
+    friend class spot_node_t;
+};
+
 inline actor_join_ready_op_t actor_join_op_t::message (message_t &part_) &&
 {
     _state.parts.push_back (std::move (part_));

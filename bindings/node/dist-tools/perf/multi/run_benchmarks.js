@@ -312,6 +312,7 @@ async function main() {
     if (clientSource === 'env') {
         options.clients = envClients;
     }
+    const clientsOverride = clientSource === 'policy' ? undefined : options.clients;
     const failFast = process.env.PERF_FAIL_FAST === '1';
     const runCooldownMs = Number(process.env.PERF_MULTI_RUN_COOLDOWN_MS ?? 3000);
     const transportCooldownMs = Number.isFinite(options.transportTransitionMs)
@@ -364,7 +365,7 @@ async function main() {
     // (print_effective_options does print("\n## Effective Options")), then
     // the effective options block. The report file's first lines are the
     // META preamble (multi suite only).
-    const metaItems = buildMetaItems('node', options.runs, patternNames, process.cwd());
+    const metaItems = buildMetaItems('node', options.runs, patternNames, process.cwd(), clientsOverride);
     for (const line of metaLines(metaItems)) {
         emit(line);
     }
@@ -373,7 +374,8 @@ async function main() {
         duration: options.duration,
         patterns: patternNames,
         transports: options.transports,
-        msgSizes: options.msgSizes
+        msgSizes: options.msgSizes,
+        clientsOverride
     });
     emit('');
     for (const line of effectiveOptionLines('node', 'multi', 'start', optionItems)) {

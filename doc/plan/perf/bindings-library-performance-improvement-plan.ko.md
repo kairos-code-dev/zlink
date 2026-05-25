@@ -1983,6 +1983,13 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   active requester poller는 `POLLIN` 기준이다. 정책 문서를 C 기준인 `POLLIN`
   active loop로 정정했고, C 초기 등록 주석도 active reset 의미를 드러내도록 고쳤다.
   Go의 active/drain poll wait cap도 기존 1ms에서 C와 같은 50ms 상한으로 맞췄다.
+- **2026-05-26 Node multi `--clients` report parity 수정**:
+  Node multi runner는 실제 orchestrator에는 CLI/env client 수를 넘겼지만,
+  `META`와 `Effective Options` 출력은 `buildMetaItems`/`buildMultiOptionItems`가
+  패턴 기본값만 다시 계산해서 `--clients 2` 실행도 `clients: 100`으로 기록했다.
+  이는 `doc/perf/PERF_POLICY.md`의 공식 CLI 옵션/결과 출력 의미 동일 규칙을 어긴다.
+  CLI 또는 `PERF_MULTI_CLIENTS` override가 있을 때 report client 수에도 같은 값을
+  반영하도록 고쳤다.
 - **수신 zero-copy `.data` 추가**: Rust SPOT의 per-message 복사 제거와 같은 동기로, Python 수신 부품(`ReceivedMessage`)에
   zero-copy `data` memoryview property를 추가했다(`Message.data`/C `zlink_msg_data`와 동일 계약, 회귀 테스트 `tests/test_version.py::test_received_part_data_is_zero_copy_view` 통과).
   `MULTI_SPOT` client가 `to_bytes_list()` 전체 payload 복사 대신 `first_part().data`에서 헤더를 디코드하도록 바꿨다(복사 제거는 `with message:` 안에서만 view 사용).

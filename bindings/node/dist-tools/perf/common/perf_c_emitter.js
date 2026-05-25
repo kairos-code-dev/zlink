@@ -215,7 +215,10 @@ function getCommitShortSha(rootDir) {
 function detectBuildType() {
     return 'Release';
 }
-function resolveClientsMeta(selectedPatterns) {
+function resolveClientsMeta(selectedPatterns, clientsOverride = undefined) {
+    if (Number.isFinite(clientsOverride) && clientsOverride > 0) {
+        return String(Math.trunc(clientsOverride));
+    }
     const envClients = envGet('PERF_CLIENTS');
     if (/^\d+$/.test(envClients)) {
         return envClients;
@@ -230,7 +233,7 @@ function resolveClientsMeta(selectedPatterns) {
     }
     return String(generalDefault);
 }
-function buildMetaItems(lang, numRuns, selectedPatterns, rootDir) {
+function buildMetaItems(lang, numRuns, selectedPatterns, rootDir, clientsOverride = undefined) {
     const items = [];
     items.push(['os', getOsLabel()]);
     items.push(['cpu', getCpuModel()]);
@@ -244,7 +247,7 @@ function buildMetaItems(lang, numRuns, selectedPatterns, rootDir) {
         items.push(['load_avg', loadAvg]);
     }
     items.push(['runs', String(numRuns)]);
-    const clients = resolveClientsMeta(selectedPatterns);
+    const clients = resolveClientsMeta(selectedPatterns, clientsOverride);
     if (clients) {
         items.push(['clients', clients]);
     }
@@ -285,7 +288,7 @@ function buildSingleOptionItems(opts) {
 function buildMultiOptionItems(opts) {
     const transports = [...new Set(opts.transports)].sort();
     const sizes = [...new Set(opts.msgSizes)].sort((a, b) => a - b);
-    const clientsMeta = resolveClientsMeta(opts.patterns) || '100';
+    const clientsMeta = resolveClientsMeta(opts.patterns, opts.clientsOverride) || '100';
     const clientsForConnect = Math.max(1, Number.parseInt(clientsMeta, 10) || 100);
     const connectRaw = envGet('PERF_CONNECT_CONCURRENCY');
     const connectDisplay = connectRaw

@@ -32,9 +32,10 @@ public sealed class ActorContracts
         await actor.OnDisconnectedAsync(CancellationToken.None);
 
         Assert.Equal("player-1", actor.ActorId);
+        Assert.Equal(0, joinReply.ResultCode);
         Assert.Equal("room-1", joinReply.Reply.RoomId);
         Assert.Equal("player-1", entryJoin.ActorId);
-        Assert.Equal(RoutingId.Of("play-node"), entryJoin.Actor.NodeRid);
+        Assert.Equal(RoutingId.Of("play-node"), entryJoin.NodeRid);
     }
 
     [Fact]
@@ -114,8 +115,6 @@ public sealed class ActorContracts
 
         public string? SessionId => "session-1";
 
-        public string? SpotName => "room";
-
         public RoutingId? SpotRid => RoutingId.Of("room-1");
 
         public bool IsJoined => true;
@@ -140,10 +139,7 @@ public sealed class ActorContracts
             new JoinSpotCall(new JoinedRoom("room-1"));
 
         public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid) =>
-            new JoinEntrySpotCall(new ZLinkActorJoinResult(
-                actorId,
-                "player",
-                new ActorRef(spotNodeRid, actorId, 1)));
+            new JoinEntrySpotCall(new ActorRef(spotNodeRid, ActorId, 1));
     }
 
     private sealed class JoinSpotCall(object reply) : IZLinkActorJoinSpotCall
@@ -153,17 +149,16 @@ public sealed class ActorContracts
         public ValueTask<ZLinkActorJoinResult<TReply>> SubmitAsync<TReply>(
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new ZLinkActorJoinResult<TReply>(
-                "player-1",
-                "player",
+                0,
                 new ActorRef(RoutingId.Of("room-node"), "player-1", 1),
                 (TReply)reply));
     }
 
-    private sealed class JoinEntrySpotCall(ZLinkActorJoinResult result) : IZLinkActorJoinEntrySpotCall
+    private sealed class JoinEntrySpotCall(ActorRef result) : IZLinkActorJoinEntrySpotCall
     {
         public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout) => this;
 
-        public ValueTask<ZLinkActorJoinResult> SubmitAsync(
+        public ValueTask<ActorRef> SubmitAsync(
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(result);
     }

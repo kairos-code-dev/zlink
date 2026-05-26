@@ -20,16 +20,15 @@ internal sealed class BingoEntrySpotActorJoinedHandler(
     public ValueTask HandleAsync(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;
         _ = cancellationToken;
         logger.LogInformation(
-            "entry spot: actor joined. actor={ActorId}, currentSpot={CurrentSpotRid}, epoch={CommitEpoch}",
+            "entry spot: actor joined. actor={ActorId}, kind={Kind}",
             actor.ActorId,
-            info.CurrentSpotRid?.ToHex(),
-            info.CommitEpoch);
+            info.Kind);
         return ValueTask.CompletedTask;
     }
 }

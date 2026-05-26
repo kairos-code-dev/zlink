@@ -4,13 +4,13 @@ internal sealed class ZLinkSpotActorMembership
 {
     private readonly Dictionary<string, IZLinkActor> _actorsById = new(StringComparer.Ordinal);
 
-    public void Add(string spotName, IZLinkActor actor)
+    public void Add(IZLinkActor actor)
     {
         if (_actorsById.TryGetValue(actor.ActorId, out var existing)
             && !ReferenceEquals(existing, actor))
         {
             throw new InvalidOperationException(
-                $"SPOT '{spotName}' already has an actor with id '{actor.ActorId}'.");
+                $"SPOT already has an actor with id '{actor.ActorId}'.");
         }
 
         _actorsById[actor.ActorId] = actor;

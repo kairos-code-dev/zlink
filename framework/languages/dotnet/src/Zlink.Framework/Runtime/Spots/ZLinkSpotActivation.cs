@@ -30,7 +30,6 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
         IZLinkBackendSpot nativeSpot,
         RoutingId nodeRid,
         string spotNodeName,
-        string spotName,
         string channelName,
         TimeSpan defaultTimeout,
         TimeSpan? sendTimeout,
@@ -41,7 +40,6 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
         NativeSpot = nativeSpot;
         NodeRid = nodeRid;
         SpotNodeName = spotNodeName;
-        SpotName = spotName;
         ChannelName = channelName;
         _defaultTimeout = defaultTimeout;
         _outbound = new ZLinkSpotOutboundTransport(
@@ -77,8 +75,6 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
         ?? throw new InvalidOperationException("SPOT has not been attached to this context.");
 
     public IZLinkBackendSpot NativeSpot { get; }
-
-    public string SpotName { get; }
 
     public string SpotNodeName { get; }
 

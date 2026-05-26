@@ -40,8 +40,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     public ZLinkSpotActivation? LiveActivation
         => Activation is { IsDisposed: false } activation ? activation : null;
 
-    public string? SpotName => LiveActivation?.SpotName;
-
     public RoutingId? SpotRid => LiveActivation?.SpotRid;
 
     public bool IsJoined => LiveActivation is not null;

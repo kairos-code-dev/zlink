@@ -142,7 +142,7 @@ static void actor_sample_dispatch (void *spot,
                 == ZLINK_RECV_OK);
         zlink_multipart_close (parts, part_count);
         assert (zlink_spot_actor_join_reply (
-                  spot, &join_info, capture->accept_join ? 1u : 0u, NULL, 0)
+                  spot, &join_info, capture->accept_join ? 0 : 1, NULL, 0)
                 == ZLINK_SUBMIT_OK);
         return;
     }
@@ -187,7 +187,7 @@ static void actor_sample_join_only_dispatch (
             == ZLINK_RECV_OK);
     zlink_multipart_close (parts, part_count);
     assert (zlink_spot_actor_join_reply (spot, &join_info,
-                                         capture->accept_join ? 1u : 0u,
+                                         capture->accept_join ? 0 : 1,
                                          NULL, 0)
             == ZLINK_SUBMIT_OK);
 }

@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Contracts.Spots;
 
-public enum ZLinkSpotActorLifecycleReason
+public enum ZLinkSpotActorChangeKind
 {
     Unknown = 0,
     JoinSpot = 1,
@@ -10,25 +10,8 @@ public enum ZLinkSpotActorLifecycleReason
     Destroy = 5
 }
 
-public sealed record ZLinkSpotActorLifecycleContext(
-    RoutingId? PreviousSpotRid,
-    RoutingId? CurrentSpotRid,
-    ulong JoinEpoch,
-    ZLinkSpotActorLifecycleReason Reason,
-    uint NativeFlags)
-{
-    public string? ActorId { get; init; }
-
-    public string? PreviousActorId => PreviousSpotRid is null ? null : ActorId;
-
-    public string? CurrentActorId => CurrentSpotRid is null ? null : ActorId;
-
-    public ulong CommitEpoch => JoinEpoch;
-
-    public uint Flags => NativeFlags;
-
-    public ZLinkSpotActorLifecycleReason Kind => Reason;
-}
+public sealed record ZLinkSpotActorChangeResult(
+    ZLinkSpotActorChangeKind Kind);
 
 public interface IZLinkSpot
 {
@@ -119,12 +102,6 @@ public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutbou
 
     RoutingId NodeRid { get; }
 
-    string SpotName { get; }
-
-    ValueTask JoinActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-
     ValueTask LeaveActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
@@ -200,7 +177,7 @@ public interface IZLinkSpotPostActorJoinedHandler<TSpot, TActor>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult result,
         CancellationToken cancellationToken);
 }
 
@@ -211,7 +188,7 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult result,
         CancellationToken cancellationToken);
 }
 

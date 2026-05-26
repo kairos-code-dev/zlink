@@ -184,16 +184,16 @@ internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
 {
     private readonly Spot _spot;
     private readonly ActorJoinRequest _request;
-    private readonly bool _accepted;
+    private readonly int _joinResultCode;
     private OperationMessageBuffer _parts;
     private bool _submitted;
 
     internal ActorJoinReplyOperationImpl(Spot spot, ActorJoinRequest request,
-        bool accepted)
+        int joinResultCode)
     {
         _spot = spot;
         _request = request;
-        _accepted = accepted;
+        _joinResultCode = joinResultCode;
     }
 
     public ActorJoinReplyOperation Message(Message message)
@@ -211,7 +211,7 @@ internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
         _submitted = true;
-        _spot.ReplyActorJoinInternal(_request, _accepted,
+        _spot.ReplyActorJoinInternal(_request, _joinResultCode,
             _parts.PartsOrEmpty);
     }
 }

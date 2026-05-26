@@ -192,7 +192,7 @@ public sealed class BuilderContracts
         spot.AcceptSpotRoutesFromChannel("play-router", accept =>
             accept.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5300")));
         spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.Of("entry"));
-        spot.AddSpotFactory<RoomSpot>("room");
+        spot.AddSpotFactory<RoomSpot>();
         spot.AddEntrySpot<EntrySpot>();
     }
 
@@ -522,7 +522,7 @@ public sealed class BuilderContracts
         public void ConfigureEntrySpot(Action<IZLinkEntrySpotOptions> configure) =>
             configure(new ConnectionAndConfigContracts.EntrySpotOptions());
 
-        public void AddSpotFactory<TSpot>(string spotName)
+        public void AddSpotFactory<TSpot>()
             where TSpot : IZLinkSpot { }
 
         public void AddEntrySpot<TEntrySpot>()
@@ -560,11 +560,6 @@ public sealed class BuilderContracts
 
     private sealed class SpotRemoteAddressResolver : IZLinkSpotRemoteAddressResolver
     {
-        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
-            string spotName,
-            CancellationToken cancellationToken) =>
-            ResolveSpotRemoteAddressAsync(RoutingId.Of(spotName), cancellationToken);
-
         public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             RoutingId spotRid,
             CancellationToken cancellationToken) =>

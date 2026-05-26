@@ -108,7 +108,6 @@ public enum ZLinkSpotEventKind
 
 public readonly record struct ZLinkSpotTimerDiagnostic(
     RoutingId SpotRid,
-    string SpotName,
     bool IsEntrySpot,
     string TimerName,
     string HandlerType,

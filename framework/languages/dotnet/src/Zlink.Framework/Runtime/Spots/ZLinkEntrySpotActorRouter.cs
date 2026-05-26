@@ -78,7 +78,7 @@ internal sealed class ZLinkEntrySpotActorRouter
     public async ValueTask NotifyJoinedAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
@@ -95,7 +95,7 @@ internal sealed class ZLinkEntrySpotActorRouter
     public async ValueTask NotifyLeftAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
@@ -112,7 +112,7 @@ internal sealed class ZLinkEntrySpotActorRouter
     private static async ValueTask NotifyLifecycleAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         TryResolveLifecycle resolve,
         CancellationToken cancellationToken)

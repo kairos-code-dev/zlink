@@ -7,8 +7,8 @@ using System.Threading.Tasks;
 
 namespace Systems.Zlink;
 
-public sealed record ActorJoinResult(RequestResult Result, ActorRef Actor,
-    RoutingId JoinedSpotRid, ulong JoinEpoch, uint Flags);
+public sealed record ActorJoinResult(RequestResult Result, int JoinResultCode,
+    ActorRef Actor, RoutingId JoinedSpotRid, ulong JoinEpoch, uint Flags);
 
 public sealed record ActorJoinEntrySpotResult(RequestResult Result,
     ActorRef Actor, RoutingId TargetNodeRid, ulong JoinEpoch, uint Flags);

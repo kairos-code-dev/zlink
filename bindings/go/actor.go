@@ -472,19 +472,16 @@ func (s *Spot) RecvActorJoin(flags RecvFlags) (*ActorJoinRequest, error) {
 }
 
 // ReplyActorJoin returns a builder for the reply to a previously received
-// actor-join request. accepted: true=accept, false=reject. The reply payload
-// is optional.
-func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, accepted bool) ActorJoinReplyOp {
+// actor-join request. joinResultCode 0 accepts the join; non-zero rejects it
+// with an application-defined code. The reply payload is optional.
+func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, joinResultCode int32) ActorJoinReplyOp {
 	return newActorJoinReplyOp(func(parts []*Message) error {
 		if s == nil || s.core == nil || s.core.closed || request == nil {
 			return &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
 		}
-		var accept C.uint32_t
-		if accepted {
-			accept = 1
-		}
+		code := C.int32_t(joinResultCode)
 		if len(parts) == 0 {
-			return submitErrorFromResult(C.zlink_spot_actor_join_reply(s.raw(), &request.Info.raw, accept, nil, 0))
+			return submitErrorFromResult(C.zlink_spot_actor_join_reply(s.raw(), &request.Info.raw, code, nil, 0))
 		}
 		cloned, err := cloneParts(parts)
 		if err != nil {
@@ -495,7 +492,7 @@ func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, accepted bool) ActorJoi
 			closeMessageSlice(cloned)
 			return err
 		}
-		submitErr := submitErrorFromResult(C.zlink_spot_actor_join_reply(s.raw(), &request.Info.raw, accept, prepared.ptr(), prepared.count()))
+		submitErr := submitErrorFromResult(C.zlink_spot_actor_join_reply(s.raw(), &request.Info.raw, code, prepared.ptr(), prepared.count()))
 		if submitErr != nil {
 			_ = prepared.restore()
 			return submitErr
@@ -754,11 +751,12 @@ func goZlinkActorJoinTrampoline(result *C.zlink_actor_join_result_t, parts *C.zl
 		resultCode = RequestResult(result.result)
 		if meta, ok := state.metadata.(*actorJoinMetadata); ok && meta != nil {
 			meta.joinResult = ActorJoinResult{
-				Result:        resultCode,
-				Actor:         actorRefFromC(result.actor),
-				JoinedSpotRID: routingIDFromC(result.joined_spot_rid),
-				JoinEpoch:     uint64(result.join_epoch),
-				Flags:         uint32(result.flags),
+				Result:         resultCode,
+				JoinResultCode: int32(result.join_result_code),
+				Actor:          actorRefFromC(result.actor),
+				JoinedSpotRID:  routingIDFromC(result.joined_spot_rid),
+				JoinEpoch:      uint64(result.join_epoch),
+				Flags:          uint32(result.flags),
 			}
 		}
 	}

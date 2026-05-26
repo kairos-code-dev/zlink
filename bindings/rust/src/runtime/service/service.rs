@@ -2975,6 +2975,7 @@ impl ReplyOp<Ready> {
 #[derive(Debug, Clone)]
 pub struct ActorJoinResult {
     pub result: crate::error::RequestResult,
+    pub join_result_code: i32,
     pub actor: ActorRef,
     pub joined_spot_rid: RoutingId,
     pub join_epoch: u64,
@@ -3189,7 +3190,7 @@ impl ActorJoinOp<Ready> {
 pub struct ActorJoinReplyOp<State> {
     spot_handle: *mut c_void,
     info: ffi::zlink_actor_join_info_t,
-    accepted: bool,
+    join_result_code: i32,
     parts: Vec<Message>,
     _state: std::marker::PhantomData<State>,
 }
@@ -3218,7 +3219,7 @@ impl ActorJoinReplyOp<Empty> {
             ffi::zlink_spot_actor_join_reply(
                 self.spot_handle,
                 &self.info,
-                if self.accepted { 1 } else { 0 },
+                self.join_result_code,
                 if native.is_empty() {
                     std::ptr::null_mut()
                 } else {
@@ -3541,6 +3542,7 @@ unsafe extern "C" fn actor_join_user_callback(
     if result.is_null() {
         let placeholder = ActorJoinResult {
             result: crate::error::RequestResult::InternalError,
+            join_result_code: 0,
             actor: ActorRef {
                 node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t {
                     size: 0,
@@ -3562,6 +3564,7 @@ unsafe extern "C" fn actor_join_user_callback(
     let raw = unsafe { *result };
     let join_result = ActorJoinResult {
         result: request_result_from_raw(raw.result),
+        join_result_code: raw.join_result_code,
         actor: ActorRef::from_raw(&raw.actor),
         joined_spot_rid: RoutingId::from_raw(raw.joined_spot_rid),
         join_epoch: raw.join_epoch,
@@ -3889,12 +3892,12 @@ impl Spot {
     pub fn reply_actor_join(
         &self,
         request: &ActorJoinRequest,
-        accepted: bool,
+        join_result_code: i32,
     ) -> ActorJoinReplyOp<Empty> {
         ActorJoinReplyOp {
             spot_handle: self.handle,
             info: request.info.raw,
-            accepted,
+            join_result_code,
             parts: Vec::new(),
             _state: std::marker::PhantomData,
         }

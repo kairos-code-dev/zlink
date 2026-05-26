@@ -74,7 +74,7 @@ fn main() {
             Ok(Some(request)) => {
                 assert_eq!(request.message.as_str().unwrap(), "join-play");
                 play_spot
-                    .reply_actor_join(&request, true)
+                    .reply_actor_join(&request, 0)
                     .message(Message::copy_from(b"accepted").unwrap())
                     .submit()
                     .unwrap();

@@ -13,15 +13,15 @@ internal sealed class TicTacToeGameSpotActorJoinedHandler(
     public ValueTask HandleAsync(
         TicTacToeGameSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "game spot: actor joined. actor={ActorId}, matchId={MatchId}, epoch={CommitEpoch}",
+            "game spot: actor joined. actor={ActorId}, matchId={MatchId}, kind={Kind}",
             actor.ActorId,
             spot.Context.SpotRid.ToHex(),
-            info.CommitEpoch);
+            info.Kind);
         return ValueTask.CompletedTask;
     }
 }

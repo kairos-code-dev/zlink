@@ -254,7 +254,7 @@ class actor_join_reply_op_t
             const submit_result_t rc = static_cast<submit_result_t> (
               zlink_spot_actor_join_reply (
                 _state.spot, &native_info,
-                _state.accepted ? 1u : 0u, NULL, 0u));
+                _state.join_result_code, NULL, 0u));
             if (rc != submit_result_t::ok)
                 throw submit_error_t (rc, zlink_errno ());
             return;
@@ -266,7 +266,7 @@ class actor_join_reply_op_t
         const submit_result_t rc = static_cast<submit_result_t> (
           zlink_spot_actor_join_reply (
             _state.spot, &native_info,
-            _state.accepted ? 1u : 0u, native.data (), native.size ()));
+            _state.join_result_code, native.data (), native.size ()));
         if (rc != submit_result_t::ok) {
             detail::restore_parts_from_native (_state.parts, native);
             throw submit_error_t (rc, zlink_errno ());

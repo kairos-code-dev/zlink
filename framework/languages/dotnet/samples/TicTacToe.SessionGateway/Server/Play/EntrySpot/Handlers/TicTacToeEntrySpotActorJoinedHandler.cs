@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
-using TicTacToe.SessionGateway.Shared.Actors;
 using TicTacToe.SessionGateway.Server.Play.EntrySpot;
+using TicTacToe.SessionGateway.Shared.Actors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
-namespace TicTacToe.SessionGateway.Server.Play.EntrySpot.Handlers;
+namespace TicTacToe.SessionGateway.Play.EntrySpot.Handlers;
 
 internal sealed class TicTacToeEntrySpotActorJoinedHandler(
     ILogger<TicTacToeEntrySpotActorJoinedHandler> logger)
@@ -13,15 +13,15 @@ internal sealed class TicTacToeEntrySpotActorJoinedHandler(
     public ValueTask HandleAsync(
         TicTacToeEntrySpot entrySpot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "entry spot: actor joined. actor={ActorId}, epoch={CommitEpoch}",
+            "entry spot: actor joined. actor={ActorId}, kind={Kind}",
             actor.ActorId,
-            info.CommitEpoch);
+            info.Kind);
         return ValueTask.CompletedTask;
     }
 }

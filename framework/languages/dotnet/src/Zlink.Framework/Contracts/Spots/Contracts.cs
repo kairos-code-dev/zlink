@@ -2,36 +2,34 @@ namespace Zlink.Framework.Contracts.Spots;
 
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
-    string SpotName,
     bool Created);
 
 public readonly record struct ZLinkSpotInfo(
-    RoutingId SpotRid,
-    string SpotName);
+    RoutingId SpotRid);
 
 public interface IZLinkSpotManager
 {
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
-        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
 
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
+    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
         IReadOnlyList<Message> createParts,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
 
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
-        string spotName,
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
         IReadOnlyList<Message> createParts,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
 
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
-        string spotName,
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot
     {
-        return GetOrCreateAsync(spotName, spotRid, [], cancellationToken);
+        return GetOrCreateAsync<TSpot>(spotRid, [], cancellationToken);
     }
 
     ValueTask<ZLinkSpotInfo?> GetAsync(
@@ -49,16 +47,8 @@ public interface IZLinkSpotManager
 public interface IZLinkSpotClient
 {
     IZLinkSendCall SendSpot<TMessage>(
-        string spotName,
-        TMessage message);
-
-    IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,
         TMessage message);
-
-    IZLinkRequestCall RequestSpot<TMessage>(
-        string spotName,
-        TMessage request);
 
     IZLinkRequestCall RequestSpot<TMessage>(
         RoutingId spotRid,
@@ -113,8 +103,6 @@ public interface IZLinkRoutedSpotChannelClient
 public interface IZLinkSpotRef
 {
     RoutingId SpotRid { get; }
-
-    string? SpotName { get; }
 
     ZLinkSpotKind SpotKind { get; }
 

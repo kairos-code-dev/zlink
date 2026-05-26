@@ -2148,14 +2148,14 @@ public sealed partial class Spot : ISpot
     }
 
     public ActorJoinReplyOperation ReplyActorJoin(ActorJoinRequest request,
-        bool accepted)
+        int joinResultCode)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
-        return new ActorJoinReplyOperationImpl(this, request, accepted);
+        return new ActorJoinReplyOperationImpl(this, request, joinResultCode);
     }
 
-    internal void ReplyActorJoinInternal(ActorJoinRequest request, bool accepted,
+    internal void ReplyActorJoinInternal(ActorJoinRequest request, int joinResultCode,
         IReadOnlyList<Message> parts)
     {
         if (request == null)
@@ -2177,9 +2177,9 @@ public sealed partial class Spot : ISpot
 
             int rc = nativeParts.Length == 0
                 ? NativeMethods.zlink_spot_actor_join_reply_empty(_handle,
-                    ref nativeInfo, accepted ? 1u : 0u, IntPtr.Zero, 0)
+                    ref nativeInfo, joinResultCode, IntPtr.Zero, 0)
                 : NativeMethods.zlink_spot_actor_join_reply(_handle,
-                    ref nativeInfo, accepted ? 1u : 0u, ref nativeParts[0],
+                    ref nativeInfo, joinResultCode, ref nativeParts[0],
                     (nuint)nativeParts.Length);
             Array.Fill(submitted, true);
             if (rc != 0)

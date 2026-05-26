@@ -140,7 +140,7 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
         RecvFlags flags = RecvFlags.None);
     bool RecvRouted(Received result, RecvFlags flags = RecvFlags.None);
     ActorJoinRequest? RecvActorJoin(RecvFlags flags = RecvFlags.None);
-    ActorJoinReplyOperation ReplyActorJoin(ActorJoinRequest request, bool accepted);
+    ActorJoinReplyOperation ReplyActorJoin(ActorJoinRequest request, int joinResultCode);
     ActorRef[] ActorsSnapshot();
     void OnRoutedReceive(Action<Received> handler);
     void OnDispatchEvent(Action<SpotDispatchInfo> handler);

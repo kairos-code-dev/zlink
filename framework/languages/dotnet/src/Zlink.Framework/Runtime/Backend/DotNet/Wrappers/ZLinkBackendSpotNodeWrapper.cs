@@ -174,6 +174,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
         return operation.Submit((result, replyParts) => callback(
             new ZLinkBackendActorJoinResult(
                 result.Result,
+                result.JoinResultCode,
                 result.Actor.ToBackend(),
                 result.JoinedSpotRid,
                 result.JoinEpoch,
@@ -200,18 +201,6 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
                 result.TargetNodeRid,
                 result.JoinEpoch,
                 result.Flags)));
-    }
-
-    public async ValueTask LeaveActorAsync(
-        ZLinkBackendActorRef actor,
-        RoutingId currentSpotRid,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        await nativeSpotNode.LeaveActor(actor.ToNative(), currentSpotRid)
-            .Timeout(timeout)
-            .SubmitAsync(cancellationToken)
-            .ConfigureAwait(false);
     }
 
     public async ValueTask DestroyActorAsync(

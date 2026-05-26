@@ -497,7 +497,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-`UseRegistrySpotRemoteAddresses(...)` 는 Spot owner 조회와 Spot name directory 를 함께
+`UseRegistrySpotRemoteAddresses(...)` 는 Spot owner 조회와 Spot RID directory 를 함께
 등록한다. actor-session route 는 session bind 시 actor runtime state 에 저장된다.
 
 이 API 들은 Registry 를 일반 key-value 저장소처럼 노출하지 않는다. framework 는

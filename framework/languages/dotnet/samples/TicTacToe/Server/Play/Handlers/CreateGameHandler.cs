@@ -36,7 +36,7 @@ sealed class CreateGameHandler(
             "api -> play: CreateGameReq received. game={GameName}",
             request.GameName);
 
-        var created = await spots.CreateAsync(SampleTypes.GameSpot, cancellationToken);
+        var created = await spots.CreateAsync<TicTacToeGame>(cancellationToken);
         logger.LogInformation(
             "play: TicTacToeGame spot created. gameId={GameId}, endpoint={Endpoint}",
             created.SpotRid.ToHex(),

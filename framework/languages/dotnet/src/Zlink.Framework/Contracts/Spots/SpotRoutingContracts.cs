@@ -3,10 +3,6 @@ namespace Zlink.Framework.Contracts.Spots;
 public interface IZLinkSpotRemoteAddressResolver
 {
     ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
-        string spotName,
-        CancellationToken cancellationToken);
-
-    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken);
 }

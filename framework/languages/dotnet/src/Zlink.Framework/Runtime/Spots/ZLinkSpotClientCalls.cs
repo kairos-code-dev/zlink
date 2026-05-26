@@ -2,15 +2,6 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLinkSpotClient
 {
-    public IZLinkSendCall SendSpot<TMessage>(string spotName, TMessage message)
-    {
-        return new ZLinkRoutedSpotSendCall<TMessage>(
-            ZLinkSpotAmbientContext.RequireCurrent(),
-            RequireRemoteAddressResolver(),
-            ZLinkSpotRemoteAddressTarget.ByName(spotName),
-            message);
-    }
-
     public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message)
     {
         return new ZLinkRoutedSpotSendCall<TMessage>(
@@ -18,15 +9,6 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
             RequireRemoteAddressResolver(),
             ZLinkSpotRemoteAddressTarget.ByRoutingId(spotRid),
             message);
-    }
-
-    public IZLinkRequestCall RequestSpot<TMessage>(string spotName, TMessage request)
-    {
-        return new ZLinkRoutedSpotRequestCall<TMessage>(
-            ZLinkSpotAmbientContext.RequireCurrent(),
-            RequireRemoteAddressResolver(),
-            ZLinkSpotRemoteAddressTarget.ByName(spotName),
-            request);
     }
 
     public IZLinkRequestCall RequestSpot<TMessage>(RoutingId spotRid, TMessage request)
@@ -158,28 +140,18 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
 }
 
 internal readonly record struct ZLinkSpotRemoteAddressTarget(
-    string? SpotName,
-    RoutingId? SpotRid)
+    RoutingId SpotRid)
 {
-    public static ZLinkSpotRemoteAddressTarget ByName(string spotName)
-    {
-        return new ZLinkSpotRemoteAddressTarget(spotName, null);
-    }
-
     public static ZLinkSpotRemoteAddressTarget ByRoutingId(RoutingId spotRid)
     {
-        return new ZLinkSpotRemoteAddressTarget(null, spotRid);
+        return new ZLinkSpotRemoteAddressTarget(spotRid);
     }
 
     public ValueTask<ZLinkSpotRemoteAddress> ResolveAsync(
         IZLinkSpotRemoteAddressResolver resolver,
         CancellationToken cancellationToken)
     {
-        return SpotRid is { } rid
-            ? resolver.ResolveSpotRemoteAddressAsync(rid, cancellationToken)
-            : resolver.ResolveSpotRemoteAddressAsync(
-                SpotName ?? throw new InvalidOperationException("SPOT name is required."),
-                cancellationToken);
+        return resolver.ResolveSpotRemoteAddressAsync(SpotRid, cancellationToken);
     }
 }
 

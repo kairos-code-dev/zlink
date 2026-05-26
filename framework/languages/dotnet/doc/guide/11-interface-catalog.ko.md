@@ -306,7 +306,7 @@ options.AddSpotMesh("play-mesh", mesh =>
         spot.AcceptSpotRoutesFromChannel("play-router", a =>
             a.UseManualConnections(c => c.Connect("tcp://127.0.0.1:5300")));
         spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.Of("entry"));
-        spot.AddSpotFactory<RoomSpot>("room");
+        spot.AddSpotFactory<RoomSpot>();
         spot.AddEntrySpot<EntrySpot>();
     });
     mesh.AddNode("session-node", spot =>
@@ -419,7 +419,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
 |------------|------|
 | `IZLinkSpot` | user spot 인스턴스. `Context` + lifecycle(`Configure`/`OnCreateAsync`/`OnInitializeAsync`/`PostActorJoined handler`/`ActorLeft handler`/`OnClosingAsync`) |
 | `IZLinkEntrySpot` | Entry Spot 인스턴스. `IZLinkEntrySpotContext` + lifecycle |
-| `IZLinkSpotContext` | user spot context. handler registry + outbound + `SpotRid`/`NodeRid`/`SpotName` + actor join/leave + `AddTimer` |
+| `IZLinkSpotContext` | user spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `LeaveActorAsync` + `AddTimer` |
 | `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `AddTimer` |
 | `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`, `AddPostActorJoined`, `AddActorLeft`) |
 | `IZLinkSpotHandlerRegistry` | `IZLinkActorHandlerRegistry` + spot packet/subscribe/actor-join(`AddPacket`, `AddSubscribe`, `AddActorJoin`) |
@@ -433,7 +433,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
 ```csharp
 // 현재 노드의 spot API
 await localClient.SendSpot(spotRid, new RoomEvent("opened")).Submit();        // IZLinkSpotClient
-var reply = await localClient.RequestSpot("room", new JoinRoom("room-1")).SubmitAsync<JoinedRoom>();
+var reply = await localClient.RequestSpot(spotRid, new JoinRoom("room-1")).SubmitAsync<JoinedRoom>();
 
 // current Spot 밖에서 routed 호출
 var spotRef = await routedClient.BindSpotHandleAsync(remoteAddress);            // IZLinkRoutedSpotClient
@@ -456,11 +456,11 @@ await connections.ConnectAsync("tcp://127.0.0.1:5500");
 | `IZLinkSpotClient` | current Spot callback 안에서의 outbound(`SendSpot`/`RequestSpot`/`SendChannel`/`RequestChannel`/`Publish`) |
 | `IZLinkRoutedSpotClient` | current Spot 없는 코드의 spot 호출. `ViaEgressChannel` 로 egress 선택, `BindSpotHandleAsync` 로 handle 바인딩 |
 | `IZLinkRoutedSpotChannelClient` | egress 선택 후의 routed 호출 표면(`SendSpot`/`RequestSpot`, `RoutingId` 또는 `IZLinkSpotRef`) |
-| `IZLinkSpotRef` | routed 호출용 spot handle(`SpotRid`, `SpotName?`, `SpotKind`, `IsRemote`, `RemoteAddress`) |
+| `IZLinkSpotRef` | routed 호출용 spot handle(`SpotRid`, `SpotKind`, `IsRemote`, `RemoteAddress`) |
 | `IZLinkSpotMeshPublisherClient` | spot mesh publisher client 표면 |
 | `IZLinkSpotPublisherClient` | local spot 없는 노드의 spot channel publish(`Publish(channelName, topic, msg)`) |
 | `IZLinkSpotConnectionManager` | spot node 의 role 별 연결 핸들(`GetRouterAsync`, `GetPubSubAsync`, `GetChannelClientAsync`, `GetSpotPublisherClientAsync` 등) |
-| `IZLinkSpotRemoteAddressResolver` | spot 이름/`RoutingId` → `ZLinkSpotRemoteAddress` 해석(`ResolveSpotRemoteAddressAsync`) |
+| `IZLinkSpotRemoteAddressResolver` | spot `RoutingId` → `ZLinkSpotRemoteAddress` 해석(`ResolveSpotRemoteAddressAsync`) |
 
 검증: `SpotContracts.Spot_clients_separate_local_spot_api_routed_egress_and_publisher_channels`.
 
@@ -492,7 +492,7 @@ public sealed class PlayerJoinHandler
 | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | user spot join 요청 handler. (spot, actor, request) |
 | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user spot actor 단방향 handler |
 | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user spot actor 요청 handler |
-| `IZLinkSpotPostActorJoinedHandler<TSpot, TActor>` | user spot actor join 완료 lifecycle(`ZLinkSpotActorLifecycleContext`) |
+| `IZLinkSpotPostActorJoinedHandler<TSpot, TActor>` | user spot actor join 완료 lifecycle(`ZLinkSpotActorChangeResult`) |
 | `IZLinkSpotActorLeftHandler<TSpot, TActor>` | user spot actor leave lifecycle |
 | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor 단방향 handler |
 | `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor 요청 handler |
@@ -512,6 +512,10 @@ var actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActor
 var joinReply = await actor.Context
     .JoinSpot(RoutingId.Of("room-1"), new JoinRoom("room-1")) // IZLinkActorContext
     .SubmitAsync<JoinedRoom>();
+if (joinReply.ResultCode != 0)
+{
+    return;
+}
 actor.Configure();
 await actor.OnDisconnectedAsync(CancellationToken.None);
 ```
@@ -519,7 +523,7 @@ await actor.OnDisconnectedAsync(CancellationToken.None);
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context`, `OnDisconnectedAsync` |
-| `IZLinkActorContext` | actor 의 상태/동작 표면. `ActorId`/`SessionId?`/`SpotName?`/`SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
+| `IZLinkActorContext` | actor 의 상태/동작 표면. `ActorId`/`SessionId?`/`SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
 | `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `SubmitAsync<TReply>`) |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |

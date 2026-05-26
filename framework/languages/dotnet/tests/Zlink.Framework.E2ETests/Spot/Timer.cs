@@ -274,7 +274,6 @@ public sealed class TimerTests : SpotTestSupport
                         Subjects: null,
                         TimerDiagnostic: new ZLinkSpotTimerDiagnostic(
                             RoutingId.FromString("01"),
-                            "timer-stage",
                             IsEntrySpot: false,
                             tick.Name,
                             "FailingTimerHandler",
@@ -293,7 +292,6 @@ public sealed class TimerTests : SpotTestSupport
         Assert.Equal("timer-node", @event.SourceName);
         Assert.NotNull(@event.TimerDiagnostic);
         Assert.Equal("failing", @event.TimerDiagnostic?.TimerName);
-        Assert.Equal("timer-stage", @event.TimerDiagnostic?.SpotName);
         Assert.False(@event.TimerDiagnostic?.IsEntrySpot);
     }
 

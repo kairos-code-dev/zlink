@@ -59,6 +59,7 @@ class ZlinkActorJoinInfo(ctypes.Structure):
 class ZlinkActorJoinResult(ctypes.Structure):
     _fields_ = [
         ("result", ctypes.c_int),
+        ("join_result_code", ctypes.c_int32),
         ("actor", ZlinkActorRef),
         ("joined_spot_rid", ZlinkRoutingId),
         ("join_epoch", ctypes.c_uint64),
@@ -1096,7 +1097,7 @@ class _Lib:
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkActorJoinInfo),
-                ctypes.c_uint32,
+                ctypes.c_int32,
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.c_size_t,
             ],

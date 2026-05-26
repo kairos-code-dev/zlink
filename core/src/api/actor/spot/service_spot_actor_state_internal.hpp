@@ -114,6 +114,7 @@ struct queued_join_request_t
         handler (NULL),
         userdata (NULL),
         replied (false),
+        join_result_code (0),
         join_epoch (0),
         pending_target (NULL),
         indexed (false)
@@ -140,6 +141,7 @@ struct queued_join_request_t
     zlink_actor_join_spot_handler_fn handler;
     void *userdata;
     bool replied;
+    int32_t join_result_code;
     uint64_t join_epoch;
     actor_handle_t *pending_target;
     zlink::spot_owned_msg_parts_t message_parts;

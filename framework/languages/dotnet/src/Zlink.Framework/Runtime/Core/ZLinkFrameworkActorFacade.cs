@@ -43,13 +43,12 @@ internal sealed class ZLinkFrameworkActorFacade(
             request,
             cancellationToken).ConfigureAwait(false);
         return new ZLinkActorJoinResult<TReply>(
-            actor.ActorId,
-            actorState.ActorType ?? actor.GetType().Name,
+            ResultCode: 0,
             ToActorRef(actorState),
             reply);
     }
 
-    public async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
+    public async ValueTask<ActorRef> JoinActorEntrySpotAsync(
         RoutingId spotNodeRid,
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
@@ -104,8 +103,6 @@ internal sealed class ZLinkFrameworkActorFacade(
                 actor,
                 previousActivation,
                 result.Actor.NodeRid,
-                result.JoinEpoch,
-                result.Flags,
                 cancellationToken)
             .ConfigureAwait(false);
         if (result.Actor.NodeRid != actorRef.NodeRid)
@@ -113,13 +110,10 @@ internal sealed class ZLinkFrameworkActorFacade(
             actorState.InvalidateContext();
         }
 
-        return new ZLinkActorJoinResult(
-            actor.ActorId,
-            actorState.ActorType ?? actor.GetType().Name,
-            ToActorRef(result.Actor));
+        return ToActorRef(result.Actor);
     }
 
-    private async ValueTask<ZLinkActorJoinResult> JoinRemoteActorEntrySpotAsync(
+    private async ValueTask<ActorRef> JoinRemoteActorEntrySpotAsync(
         ZLinkFrameworkRuntimeState state,
         RoutingId spotNodeRid,
         IZLinkActor actor,
@@ -137,8 +131,6 @@ internal sealed class ZLinkFrameworkActorFacade(
                     actor,
                     previousActivation,
                     localTargetRef.NodeRid,
-                    localTargetRef.Generation,
-                    nativeFlags: 0,
                     cancellationToken)
                 .ConfigureAwait(false);
             if (localTargetRef.NodeRid != sourceActorRef.NodeRid)
@@ -146,10 +138,7 @@ internal sealed class ZLinkFrameworkActorFacade(
                 actorState.InvalidateContext();
             }
 
-            return new ZLinkActorJoinResult(
-                actor.ActorId,
-                actorState.ActorType ?? actor.GetType().Name,
-                ToActorRef(localTargetRef));
+            return ToActorRef(localTargetRef);
         }
 
         var routeChannel = state.RouteChannels.Values.FirstOrDefault()
@@ -180,8 +169,6 @@ internal sealed class ZLinkFrameworkActorFacade(
         await NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
                 actor,
                 previousActivation,
-                joinEpoch: targetRef.Generation,
-                nativeFlags: 0,
                 cancellationToken)
             .ConfigureAwait(false);
         if (targetRef.NodeRid != sourceActorRef.NodeRid)
@@ -189,10 +176,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             actorState.InvalidateContext();
         }
 
-        return new ZLinkActorJoinResult(
-            actor.ActorId,
-            actorState.ActorType ?? actor.GetType().Name,
-            ToActorRef(targetRef));
+        return ToActorRef(targetRef);
     }
 
     private static bool TryFindSpotNode(
@@ -217,8 +201,6 @@ internal sealed class ZLinkFrameworkActorFacade(
         IZLinkActor actor,
         ZLinkSpotActivation? previousActivation,
         RoutingId targetNodeRid,
-        ulong joinEpoch,
-        uint nativeFlags,
         CancellationToken cancellationToken)
     {
         if (previousActivation is null)
@@ -229,46 +211,21 @@ internal sealed class ZLinkFrameworkActorFacade(
         await NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
                 actor,
                 previousActivation,
-                joinEpoch,
-                nativeFlags,
                 cancellationToken)
             .ConfigureAwait(false);
 
         await spots.NotifyEntrySpotActorJoinedAsync(
                 getState(),
                 actor,
-                CreateEntrySpotLifecycleContext(
-                    actor,
-                    previousActivation,
-                    joinEpoch,
-                    nativeFlags),
+                new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JoinEntrySpot),
                 targetNodeRid,
                 cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private static ZLinkSpotActorLifecycleContext CreateEntrySpotLifecycleContext(
-        IZLinkActor actor,
-        ZLinkSpotActivation previousActivation,
-        ulong joinEpoch,
-        uint nativeFlags)
-    {
-        return new ZLinkSpotActorLifecycleContext(
-            previousActivation.SpotRid,
-            CurrentSpotRid: null,
-            joinEpoch,
-            ZLinkSpotActorLifecycleReason.JoinEntrySpot,
-            nativeFlags)
-        {
-            ActorId = actor.ActorId
-        };
-    }
-
     private static async ValueTask NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
         IZLinkActor actor,
         ZLinkSpotActivation? previousActivation,
-        ulong joinEpoch,
-        uint nativeFlags,
         CancellationToken cancellationToken)
     {
         if (previousActivation is null)
@@ -278,11 +235,7 @@ internal sealed class ZLinkFrameworkActorFacade(
 
         await previousActivation.NotifyActorLeftAfterNativeJoinEntrySpotAsync(
                 actor,
-                CreateEntrySpotLifecycleContext(
-                    actor,
-                    previousActivation,
-                    joinEpoch,
-                    nativeFlags),
+                new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JoinEntrySpot),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -293,14 +246,6 @@ internal sealed class ZLinkFrameworkActorFacade(
         CancellationToken cancellationToken = default)
     {
         await actorSessionManager.JoinActorToSpotAsync(activation, actor, cancellationToken);
-    }
-
-    public async ValueTask LeaveActorFromSpotAsync(
-        ZLinkSpotActivation activation,
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default)
-    {
-        await actorSessionManager.LeaveActorFromSpotAsync(activation, actor, cancellationToken);
     }
 
     public async ValueTask AttachActorAsync(
@@ -412,7 +357,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         if (!activation.TryResolveActorJoinDescriptor(typeof(TRequest), out var descriptor) || descriptor is null)
         {
             throw new InvalidOperationException(
-                $"SPOT '{activation.SpotName}' does not register an actor join handler for '{typeof(TRequest)}'.");
+                $"SPOT '{activation.SpotRid}' does not register an actor join handler for '{typeof(TRequest)}'.");
         }
 
         var joinHeader = new ZLinkEnvelopeHeader(
@@ -443,7 +388,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor join submit failed for '{actor.ActorId}' to SPOT '{activation.SpotName}'.");
+                $"Actor join submit failed for '{actor.ActorId}' to SPOT '{activation.SpotRid}'.");
         }
 
         var (joinResult, replyParts) = await tcs.Task.ConfigureAwait(false);
@@ -451,7 +396,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             joinResult.Result,
             replyParts,
             actor.ActorId,
-            activation.SpotName);
+            activation.SpotRid);
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
         actorState.NativeActorRef = joinResult.Actor;
         if (joinResult.Actor.NodeRid != actorRef.NodeRid)
@@ -460,8 +405,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         }
 
         return new ZLinkActorJoinResult<TReply>(
-            actor.ActorId,
-            actorState.ActorType ?? actor.GetType().Name,
+            ResultCode: joinResult.JoinResultCode,
             ToActorRef(joinResult.Actor),
             reply);
     }
@@ -482,7 +426,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         RequestResult result,
         IReadOnlyList<Message> replyParts,
         string actorId,
-        string spotName)
+        RoutingId spotRid)
     {
         try
         {
@@ -490,7 +434,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             {
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"Actor join was rejected for '{actorId}' to SPOT '{spotName}'.");
+                    $"Actor join was rejected for '{actorId}' to SPOT '{spotRid}'.");
             }
 
             if (replyParts.Count == 0)

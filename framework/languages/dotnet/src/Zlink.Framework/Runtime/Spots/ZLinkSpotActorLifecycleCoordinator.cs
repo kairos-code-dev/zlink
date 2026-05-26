@@ -13,26 +13,17 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
     {
         var previousActivation =
             runtime.GetOrCreateActorState(actor.ActorId).Activation;
-        actors.Add(activation.SpotName, actor);
+        actors.Add(actor);
         await runtime.JoinActorToSpotAsync(activation, actor, cancellationToken);
         if (ReferenceEquals(previousActivation, activation))
         {
             return;
         }
 
-        var context = ToPublicLifecycleContext(
-            actor,
-            previousActivation,
-            activation,
-            ZLinkSpotActorLifecycleReason.JoinSpot);
+        var result = ToPublicChangeResult(ZLinkSpotActorChangeKind.JoinSpot);
         if (previousActivation is null)
         {
-            var entryLeftContext = ToPublicLifecycleContext(
-                actor,
-                previousActivation: null,
-                activation,
-                ZLinkSpotActorLifecycleReason.JoinSpot);
-            await runtime.NotifyEntrySpotActorLeftAsync(actor, entryLeftContext, activation.NodeRid, cancellationToken)
+            await runtime.NotifyEntrySpotActorLeftAsync(actor, result, activation.NodeRid, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -40,7 +31,7 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
             && handlers.TryResolveJoined(actor.GetType(), out var descriptor)
             && descriptor is not null)
         {
-            await handlerInvoker().InvokeActorLifecycleAsync(descriptor, actor, context, cancellationToken)
+            await handlerInvoker().InvokeActorLifecycleAsync(descriptor, actor, result, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -49,52 +40,14 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        var wasCurrent = ReferenceEquals(
-            runtime.GetOrCreateActorState(actor.ActorId).Activation, activation);
-        actors.RemoveIfCurrent(actor);
-        await runtime.LeaveActorFromSpotAsync(activation, actor, cancellationToken);
-        if (!wasCurrent)
-        {
-            return;
-        }
-
-        var context = ToPublicLifecycleContext(
-            actor,
-            activation,
-            currentActivation: null,
-            ZLinkSpotActorLifecycleReason.LeaveSpot);
-        if (actorHandlers() is { } handlers
-            && handlers.TryResolveLeft(actor.GetType(), out var descriptor)
-            && descriptor is not null)
-        {
-            await handlerInvoker().InvokeActorLifecycleAsync(descriptor, actor, context, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        var entryJoinedContext = ToPublicLifecycleContext(
-            actor,
-            activation,
-            currentActivation: null,
-            ZLinkSpotActorLifecycleReason.LeaveSpot);
-        await runtime.NotifyEntrySpotActorJoinedAsync(actor, entryJoinedContext, activation.NodeRid, cancellationToken)
+        _ = actors;
+        _ = actorHandlers;
+        _ = handlerInvoker;
+        await runtime.JoinActorEntrySpotAsync(activation.NodeRid, actor, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private static ZLinkSpotActorLifecycleContext ToPublicLifecycleContext(
-        IZLinkActor actor,
-        ZLinkSpotActivation? previousActivation,
-        ZLinkSpotActivation? currentActivation,
-        ZLinkSpotActorLifecycleReason reason)
-    {
-        _ = actor;
-        return new ZLinkSpotActorLifecycleContext(
-            previousActivation?.SpotRid,
-            currentActivation?.SpotRid,
-            JoinEpoch: 0,
-            reason,
-            NativeFlags: 0)
-        {
-            ActorId = actor.ActorId
-        };
-    }
+    private static ZLinkSpotActorChangeResult ToPublicChangeResult(
+        ZLinkSpotActorChangeKind kind) =>
+        new(kind);
 }

@@ -19,7 +19,7 @@ static async Task JoinAndAccept(Spot spot, Actor actor)
         return request != null;
     }, 2000, "actor queue join request");
     using Message reply = Message.FromString("accepted:queue");
-    spot.ReplyActorJoin(request!, accepted: true).Message(reply).Submit();
+    spot.ReplyActorJoin(request!, joinResultCode: 0).Message(reply).Submit();
     foreach (Message part in (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
         part.Dispose();
 }

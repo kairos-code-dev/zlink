@@ -129,7 +129,7 @@ options.AddFanoutChannel("loc.events", c =>
 options.AddSpotMesh("zones", mesh => mesh.AddNode("zone-node", n =>
 {
     n.EnableRouter(r => r.SetRouterBind("tcp://0.0.0.0:7610"));
-    n.AddSpotFactory<ZoneSpot>("zone");
+    n.AddSpotFactory<ZoneSpot>();
 }));
 ```
 

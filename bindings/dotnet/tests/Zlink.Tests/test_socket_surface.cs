@@ -176,7 +176,7 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
             nameof(Spot.RecvActorJoin), typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(Spot),
-            nameof(Spot.ReplyActorJoin), typeof(ActorJoinRequest), typeof(bool)));
+            nameof(Spot.ReplyActorJoin), typeof(ActorJoinRequest), typeof(int)));
         Assert.True(HasPublicInstanceMethod(typeof(StreamSocket),
             nameof(StreamSocket.BindActor), typeof(RoutingId),
             typeof(ActorRef)));

@@ -961,7 +961,7 @@ typedef uint32_t zlink_route_kind_t;
 
 - `0`은 invalid 값이다.
 - `ZLINK_ROUTE_KIND_ACTOR`는 actor active route sync 가 사용한다.
-- `ZLINK_ROUTE_KIND_SPOT_NAME`은 framework Spot name directory 가 사용한다.
+- `ZLINK_ROUTE_KIND_SPOT_NAME`은 framework Spot RID directory 가 사용한다.
 - `ZLINK_ROUTE_KIND_ACTOR_SESSION`은 framework actor-session binding 이 사용한다.
 - core는 route value payload 의미를 해석하지 않는다.
 - 같은 `channel_name` 안에서 `kind + key`가 route identity가 된다.

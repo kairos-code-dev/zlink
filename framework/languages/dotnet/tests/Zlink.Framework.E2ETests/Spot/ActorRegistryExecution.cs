@@ -38,7 +38,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
                     router.SetRouterBind(spotNode);
                 });
                 spot.AddEntrySpot<RegistryEntrySpot>();
-                spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
+                spot.AddSpotFactory<RegistryStageSpot>();
             });
             });
         });
@@ -49,8 +49,8 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
-        var first = await manager.CreateAsync("registry-stage");
-        var second = await manager.CreateAsync("registry-stage");
+        var first = await manager.CreateAsync<RegistryStageSpot>();
+        var second = await manager.CreateAsync<RegistryStageSpot>();
         var actor = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("registry-actor", "registry")).Actor;
         await actorRuntime.AttachActorAsync(actor, new TestStream("registry-session"));
 
@@ -73,7 +73,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         Assert.Contains(
             recorder.Events,
             static entry => entry.StartsWith("entry-spot:registry-actor:", StringComparison.Ordinal));
-        Assert.Contains($"entry-left:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
+        Assert.Contains("entry-left:registry-actor:JoinSpot", recorder.Events);
         Assert.Contains("entry-left-kind:registry-actor:JoinSpot", recorder.Events);
         Assert.Contains($"joined:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
         Assert.Contains("joined-kind:registry-actor:JoinSpot", recorder.Events);
@@ -100,15 +100,17 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
             new RegistryJoinRequest("second-room"));
 
         Assert.Contains($"left:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
-        Assert.Contains("left-kind:registry-actor:LeaveSpot", recorder.Events);
+        Assert.Contains("left-kind:registry-actor:JoinSpot", recorder.Events);
         Assert.Contains($"joined:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
 
         var currentSpot = actor.Spot ?? throw new InvalidOperationException("Actor is not joined.");
         await currentSpot.Context.LeaveActorAsync(actor);
-        actor.DetachSpot(currentSpot);
 
-        Assert.Contains($"entry-joined:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
-        Assert.Contains("entry-joined-kind:registry-actor:LeaveSpot", recorder.Events);
+        Assert.Null(actor.Spot);
+        Assert.Contains($"left:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
+        Assert.Contains("left-kind:registry-actor:JoinEntrySpot", recorder.Events);
+        Assert.Contains("entry-joined:registry-actor:JoinEntrySpot", recorder.Events);
+        Assert.Contains("entry-joined-kind:registry-actor:JoinEntrySpot", recorder.Events);
 
         await actorRuntime.DisconnectActorAsync(
             actor,
@@ -148,7 +150,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
                     router.SetRouterBind(spotNode);
                 });
                 spot.AddEntrySpot<RegistryEntrySpot>();
-                spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
+                spot.AddSpotFactory<RegistryStageSpot>();
             });
             });
         });
@@ -160,7 +162,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
-        var stage = await manager.CreateAsync("registry-stage");
+        var stage = await manager.CreateAsync<RegistryStageSpot>();
         var actor = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("registry-location-actor", "registry")).Actor;
         await actorRuntime.AttachActorAsync(actor, new TestStream("registry-location-session"));
 

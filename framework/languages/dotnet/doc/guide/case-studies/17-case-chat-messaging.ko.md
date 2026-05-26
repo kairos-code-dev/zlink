@@ -128,7 +128,7 @@ options.AddSpotMesh("rooms", mesh => mesh.AddNode("room-node", n =>
 {
     n.EnableRouter(r => r.SetRouterBind("tcp://0.0.0.0:7700"));
     n.EnablePubSub(p => p.SetPubBind("tcp://0.0.0.0:7701"));   // presence/fan-out
-    n.AddSpotFactory<ChatRoomSpot>("room");
+    n.AddSpotFactory<ChatRoomSpot>();
 }));
 ```
 

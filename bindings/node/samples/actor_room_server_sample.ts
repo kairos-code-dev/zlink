@@ -61,7 +61,7 @@ async function main() {
 
     const request = waitForJoin(spot);
     assert.equal(request.message.data().toString(), 'join-room');
-    spot.replyActorJoin(request, true).message(Buffer.from('welcome')).submit();
+    spot.replyActorJoin(request, 0).message(Buffer.from('welcome')).submit();
 
     const reply = await replyPromise;
     assert.equal(reply.result.result, zlink.RequestResult.Ok);

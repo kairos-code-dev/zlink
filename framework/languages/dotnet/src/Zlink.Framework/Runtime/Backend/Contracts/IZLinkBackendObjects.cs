@@ -18,6 +18,7 @@ internal readonly record struct ZLinkBackendActorRef(
 
 internal readonly record struct ZLinkBackendActorJoinResult(
     RequestResult Result,
+    int JoinResultCode,
     ZLinkBackendActorRef Actor,
     RoutingId JoinedSpotRid,
     ulong JoinEpoch,

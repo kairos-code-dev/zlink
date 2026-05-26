@@ -180,20 +180,19 @@ internal static class TestHostScenarioConfigurator
                                 spot.AttachSpotMeshPublisherClient(options.AttachSpotPublisherChannel);
                             }
 
-                            if (!string.IsNullOrWhiteSpace(options.SpotFactoryName))
+                            if (options.EnableSpotFactory)
                             {
-                                spot.AddSpotFactory<StartupStageSpot>(options.SpotFactoryName);
+                                spot.AddSpotFactory<StartupStageSpot>();
                             }
                         });
                 });
         });
 
-        if (!string.IsNullOrWhiteSpace(options.CreateSpotName))
+        if (options.CreateSpot)
         {
             services.AddHostedService(provider =>
                 new StartupSpotCreationHostedService(
-                    provider.GetRequiredService<IZLinkSpotManager>(),
-                    options.CreateSpotName!));
+                    provider.GetRequiredService<IZLinkSpotManager>()));
         }
 
         if (!string.IsNullOrWhiteSpace(options.AttachSpotPublisherChannel)

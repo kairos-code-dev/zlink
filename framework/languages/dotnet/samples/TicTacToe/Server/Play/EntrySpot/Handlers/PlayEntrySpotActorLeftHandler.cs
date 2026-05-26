@@ -26,15 +26,15 @@ internal sealed class PlayEntrySpotActorLeftHandler(ILogger<PlayEntrySpotActorLe
     public ValueTask HandleAsync(
         PlayEntrySpot entrySpot,
         PlayActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "entry spot: actor left. actor={ActorId}, epoch={CommitEpoch}",
+            "entry spot: actor left. actor={ActorId}, kind={Kind}",
             actor.ActorId,
-            info.CommitEpoch);
+            info.Kind);
         return ValueTask.CompletedTask;
     }
 }

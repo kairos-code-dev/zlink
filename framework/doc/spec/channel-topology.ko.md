@@ -101,8 +101,8 @@ view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 - 다른 channel 호출은 attach된 `DEALER(client)` 경로로 푼다.
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish할 때는
   attach된 spot publisher client 경로를 따로 둔다.
-- spot 타입 등록은 `AddSpotFactory<TSpot>(spotName)`처럼 이름 기반으로 두고,
-  생성은 `CreateAsync(spotName, ...)`처럼 그 이름으로 고른다.
+- spot 타입 등록은 `AddSpotFactory<TSpot>()`처럼 타입 기반으로 두고,
+  생성은 `CreateAsync<TSpot>(...)`처럼 그 타입으로 고른다.
 
 즉 SPOT 내부 peer topology와 channel 단위 호출은 서로 다른 경로로 설명하는 편이
 더 자연스럽다.

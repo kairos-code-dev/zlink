@@ -23,8 +23,7 @@ public sealed class ClientTransportTests : SpotTestSupport
             var resolver = host.Services.GetRequiredService<FixedSpotRemoteAddressResolver>();
             var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
-            var target = await manager.GetOrCreateAsync(
-                "route-target",
+            var target = await manager.GetOrCreateAsync<SpotRouteTargetSpot>(
                 RoutingId.FromBytes(Encoding.UTF8.GetBytes("spotapi1")));
             await WaitForAcceptedRoutePeerAsync(nodeRuntime, "api");
             resolver.Configure("api", nodeRuntime.Node.RoutingId, target.SpotRid);
@@ -65,8 +64,7 @@ public sealed class ClientTransportTests : SpotTestSupport
             var resolver = host.Services.GetRequiredService<FixedSpotRemoteAddressResolver>();
             var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
-            var target = await manager.GetOrCreateAsync(
-                "route-target",
+            var target = await manager.GetOrCreateAsync<SpotRouteTargetSpot>(
                 RoutingId.FromBytes(Encoding.UTF8.GetBytes("spotapi2")));
             await WaitForAcceptedRoutePeerAsync(nodeRuntime, "api");
             resolver.Configure("api", nodeRuntime.Node.RoutingId, target.SpotRid);

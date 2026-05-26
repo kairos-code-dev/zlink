@@ -135,7 +135,7 @@ options.AddSpotMesh("play", mesh => mesh.AddNode("play-node", n =>
 {
     n.EnableRouter(r => r.SetRouterBind("tcp://0.0.0.0:9200"));
     n.AddEntrySpot<PlayerEntrySpot>();
-    n.AddSpotFactory<MatchSpot>("match");
+    n.AddSpotFactory<MatchSpot>();
 }));
 ```
 

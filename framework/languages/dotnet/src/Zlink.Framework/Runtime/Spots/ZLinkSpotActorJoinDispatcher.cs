@@ -83,7 +83,7 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             descriptor.ReplyType);
         try
         {
-            nativeSpot.ReplyActorJoin(joinRequest, accepted: true, replyParts);
+            nativeSpot.ReplyActorJoin(joinRequest, joinResultCode: 0, replyParts);
         }
         finally
         {
@@ -112,6 +112,6 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             actorType?.Name,
             joinRequest.TargetSpotRid.ToHex());
         using var emptyReply = Message.FromBytes(ReadOnlySpan<byte>.Empty);
-        nativeSpot.ReplyActorJoin(joinRequest, accepted: false, emptyReply);
+        nativeSpot.ReplyActorJoin(joinRequest, joinResultCode: 1, emptyReply);
     }
 }

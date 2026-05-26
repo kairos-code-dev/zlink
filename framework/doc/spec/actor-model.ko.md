@@ -107,13 +107,13 @@ message handler와 `on_join` / `on_leave` lifecycle callback handler는 applicat
 
 - **인증 / 권한 확인** -- 인증 packet 검증 후 reply 또는 fail.
 - **target Spot 선택** -- 클라이언트가 들어갈 game room / stage 결정 후
-  `JoinSpot(targetSpotName, request)` 호출. `targetSpotName`은 application
+  `JoinSpot(targetSpotRid, request)` 호출. `targetSpotRid`은 application
   domain spot 이름(`string`)이고 `RoutingId` 변환은 framework 내부 spot route
   resolver가 푼다.
 - **session 초기 상태 설정** -- session metadata, profile lookup 등.
 
 actor 코드 입장에서 entry 단계인지 user Spot 단계인지 구분이 필요하면 actor
-context의 join 상태 (예: `IsJoined`, `SpotName` 노출) 로 확인한다. `RoutingId`
+context의 join 상태 (예: `IsJoined` 노출) 로 확인한다. `RoutingId`
 같은 transport 위치값은 actor handler 표면에 노출하지 않는다.
 
 ## 4. 라이프사이클 단계
@@ -239,8 +239,8 @@ registry에 두기 위해서다. Entry 단계와 user Spot 단계를 하나의 a
 actor가 어느 노드 어느 spot에 사는지 알 필요가 없다.
 
 actor 안에서 user Spot에 join할 때도 같은 규칙이다. actor context의 `JoinSpot(...)`
-public 시그니처는 **`string spotName`** 을 받는다. `RoutingId` 같은 transport 위치값은
-actor handler 표면에 노출하지 않는다. `spotName -> RoutingId` 변환은 framework 내부
+public 시그니처는 **`RoutingId spotRid`** 를 받는다. actor handler 표면에는
+문자열 spot 이름을 노출하지 않는다. domain key에서 `RoutingId`를 얻는 규칙은 application
 spot route resolver가 푼다. application 코드는 `gameId`, `matchId`, `roomId` 같은
 domain key를 그대로 들고 다니면 된다.
 
@@ -249,7 +249,7 @@ framework는 application이 등록한 actor/spot resolver에 라우팅을 위임
 | resolver | 책임 |
 | --- | --- |
 | actor route resolver | actor id → 그 actor가 사는 routed channel + 노드 routing id |
-| spot route resolver | spot name 또는 spot id → user Spot 위치 |
+| spot route resolver | spot rid → user Spot 위치 |
 
 application 저장소(in-memory cache, Redis, registry 등)는 application이 소유한다.
 framework는 그 저장소를 만들지 않는다.
@@ -264,7 +264,7 @@ gameplay 로직은 **Play 서버**의 actor가 처리한다. 그러면서도 cli
 이 패턴의 핵심 표면:
 
 - **actor route resolver** -- "이 actor id는 어느 actor/play node에 있다"
-- **spot route resolver** -- "이 spot name/id는 어느 user Spot에 있다"
+- **spot route resolver** -- "이 spot rid는 어느 user Spot에 있다"
 - **actor-session binding** -- "이 actor는 현재 어떤 stream session에 묶여 있다".
   이 상태는 framework/core runtime 내부 상태이며 별도 public resolver가 아니다.
 - **session proxy** -- Play 서버 actor가 자기 client에게 push를 보낼 때 쓰는
@@ -283,12 +283,12 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
 | --- | --- | --- |
 | actor factory | actor를 만드는 서버 (Play / SPOT host) | actorType 키로 factory 매핑 |
 | Entry Spot | actor runtime을 가진 서버 | Entry Spot context와 handler registry 설정 |
-| user Spot factory | user Spot을 만드는 서버 | spotName 키로 factory 매핑 |
+| user Spot factory | user Spot을 만드는 서버 | Spot 타입 기준 factory 매핑 |
 | actor packet handler | Entry Spot 또는 user Spot | actor type + message kind + packet name을 handler에 매핑 |
 | actor joined handler | Entry Spot 또는 user Spot | actor type별 join commit 후속 처리 등록 |
 | actor left handler | Entry Spot 또는 user Spot | actor type별 leave commit 후속 처리 등록 |
 | actor route resolver | actor를 외부에서 부르는 모든 서버 | actor id → actor node routing |
-| spot route resolver | spot을 이름/id로 부르는 서버 | spot name/id → spot routing |
+| spot route resolver | spot을 이름/id로 부르는 서버 | spot rid → spot routing |
 
 언어별 실제 API 이름과 시그니처는 binding 디렉토리의 상세 문서에 둔다 (예:
 .NET은 `AddActorFactory<>`, `AddActorPlayRouteResolver<>` 등).

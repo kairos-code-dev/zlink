@@ -3959,12 +3959,12 @@ public final class Native {
 
     public static int spotActorJoinReply(MemorySegment spot,
                                          MemorySegment info,
-                                         int accepted,
+                                         int joinResultCode,
                                          MemorySegment parts,
                                          long partCount) {
         try {
             return (int) MH_SPOT_ACTOR_JOIN_REPLY.invokeExact(spot, info,
-              accepted, parts, partCount);
+              joinResultCode, parts, partCount);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_actor_join_reply failed", t);
         }

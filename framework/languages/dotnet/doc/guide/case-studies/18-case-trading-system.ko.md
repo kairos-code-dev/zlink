@@ -111,7 +111,7 @@ options.AddSpotMesh("books", mesh => mesh.AddNode("book-node", n =>
 {
     n.EnableRouter(r => r.SetRouterBind("tcp://0.0.0.0:7800"));
     n.EnablePubSub(p => p.SetPubBind("tcp://0.0.0.0:7801"));   // md.{symbol} 시세 배포
-    n.AddSpotFactory<SymbolBookSpot>("book");
+    n.AddSpotFactory<SymbolBookSpot>();
 }));
 options.AddClientServerChannel("risk", c => c.EnableClient());
 ```

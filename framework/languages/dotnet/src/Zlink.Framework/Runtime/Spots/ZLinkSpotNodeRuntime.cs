@@ -71,14 +71,13 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             registration,
             node,
             spotChannelName,
-            () => SpotDiscovery,
             GetOrCreateAttachedChannelBundle,
             ConnectDiscoveredPubSubPeers);
     }
 
     public string Name => _registration.SpotNodeName;
 
-    public IReadOnlyDictionary<string, Type> SpotFactories => _registration.SpotFactories;
+    public IReadOnlySet<Type> SpotFactories => _registration.SpotFactories;
 
     public IZLinkBackendSpotNode Node { get; }
 
@@ -185,7 +184,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     public ValueTask InvokeEntrySpotActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         return RequireEntrySpotActivation().InvokeActorLifecycleAsync(
@@ -253,21 +252,21 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
+        Type spotType,
         IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
-        return await _spots.CreateAsync(spotName, createParts, cancellationToken);
+        return await _spots.CreateAsync(spotType, createParts, cancellationToken);
     }
 
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
-        string spotName,
+        Type spotType,
         RoutingId requestedSpotRid,
         IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
         return await _spots.GetOrCreateAsync(
-            spotName,
+            spotType,
             requestedSpotRid,
             createParts,
             cancellationToken);

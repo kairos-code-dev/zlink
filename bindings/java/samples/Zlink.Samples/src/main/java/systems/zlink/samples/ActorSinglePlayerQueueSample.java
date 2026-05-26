@@ -43,7 +43,7 @@ public final class ActorSinglePlayerQueueSample {
                              spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
                         if (request != null) {
                             try (Message reply = Message.copyOfUtf8("ok")) {
-                                spot.replyActorJoin(request, true)
+                                spot.replyActorJoin(request, 0)
                                   .message(reply)
                                   .submit();
                             }

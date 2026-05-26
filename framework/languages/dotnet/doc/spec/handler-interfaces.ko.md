@@ -41,7 +41,6 @@
 | context | `IZLinkHandlerContext` | 모든 handler context의 공통 기반 | 3.1 |
 | context | `IZLinkSpotSelf` | spot 자신의 identity 조회 | 3.2 |
 | context | `IZLinkSpotContext` | SPOT handler context 기반. packet/subscribe/timer 등록과 channel 호출 표면 | 3.2 / 4.3.1 |
-| context | `IZLinkSpotActorMembership` | Spot 안에서 actor를 attach/detach할 때 framework가 주입하는 별도 표면 | 4.4.1 |
 | handler | `IZLinkRequestHandler<TRequest, TResponse>` | request-response handler | 4.1 |
 | handler | `IZLinkSendHandler<TMessage>` | one-way send handler | 4.2 |
 | handler | `IZLinkRouteSendHandler<TMessage>` | routed channel one-way send handler | 4.2.1 |
@@ -73,7 +72,7 @@
 | handler | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | spot에 actor가 join할 때 호출되는 handler | 4.4.1 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
 | client | `IZLinkBoundSession` | 현재 actor -> 현재 client session 호출 | 5.6 |
-| resolver | `IZLinkSpotRemoteAddressResolver` | spot name/id에서 user Spot route 조회 | 5.7 |
+| resolver | `IZLinkSpotRemoteAddressResolver` | spot rid에서 user Spot route 조회 | 5.7 |
 | handler | `IZLinkRuntimeEventHandler<TEvent>` | runtime monitoring event handler | 10.3 |
 | lifecycle | `IZLinkSpot` | spot lifecycle registration base | 4.3.1 |
 | stream | `IZLinkStream` | stream I/O와 peer 식별 | 4.4 |
@@ -171,8 +170,8 @@ handler 종류마다 받아야 하는 부가 정보가 다르다. 그 차이를 
 
 `SPOT` 객체 안에서는 외부 lookup 과 별개로, 현재 spot 자신의 identity 도
 조회할 수 있어야 한다. 이 문서에서는 별도의 `Self` wrapper 를 두지 않는다.
-대신 SPOT 생성자에서 받는 `IZLinkSpotContext` 에 `SpotRid`, `NodeRid`,
-`SpotName` 을 직접 노출한다.
+대신 SPOT 생성자에서 받는 `IZLinkSpotContext` 에 `SpotRid`, `NodeRid` 를 직접
+노출한다.
 
 여기서 두 가지 context 의 역할이 다르다는 점에 유의한다. handler 호출마다
 따라붙는 `ZLinkRequestContext`, `ZLinkSendContext`, `ZLinkPublishContext` 는
@@ -376,7 +375,6 @@ public interface IZLinkSpotContext : IZLinkActorHandlerRegistry
 {
     RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
-    string SpotName { get; }
 
     void AddPacket<THandler>()
         where THandler : class;
@@ -507,7 +505,7 @@ public interface IZLinkSpotPostActorJoinedHandler<TSpot, TActor>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken);
 }
 
@@ -518,7 +516,7 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken);
 }
 
@@ -551,7 +549,7 @@ public interface IZLinkSpotPostActorJoinedHandler<TEntrySpot, TActor>
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken);
 }
 
@@ -562,28 +560,22 @@ public interface IZLinkSpotActorLeftHandler<TEntrySpot, TActor>
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken);
 }
 
-public enum ZLinkSpotActorLifecycleKind
+public enum ZLinkSpotActorChangeKind
 {
-    Joined = 1,
-    Left = 2
+    Unknown = 0,
+    JoinSpot = 1,
+    JoinEntrySpot = 2,
+    LeaveSpot = 3,
+    Disconnect = 4,
+    Destroy = 5
 }
 
-public sealed record ZLinkSpotActorLifecycleContext(
-    ZLinkSpotActorLifecycleKind Kind,
-    string ActorId,
-    RoutingId? PreviousNodeRid,
-    RoutingId? PreviousSpotRid,
-    RoutingId? CurrentNodeRid,
-    RoutingId? CurrentSpotRid,
-    string? PreviousSpotName,
-    string? CurrentSpotName,
-    bool PreviousIsEntrySpot,
-    bool CurrentIsEntrySpot,
-    ulong CommitEpoch);
+public sealed record ZLinkSpotActorChangeResult(
+    ZLinkSpotActorChangeKind Kind);
 ```
 
 `OnCreateAsync(...)` 는 생성 요청이 넘긴 multipart payload를 spot 상태로
@@ -595,7 +587,7 @@ public sealed record ZLinkSpotActorLifecycleContext(
 `OnCreateAsync(createParts, ...)`, `OnInitializeAsync(...)` 순서다.
 `GetOrCreateAsync(...)`가 이미 ready 상태인 spot을 반환하는 경우에는 새
 `OnCreateAsync(...)`나 `OnInitializeAsync(...)`를 호출하지 않는다.
-`CreateAsync(spotName)`처럼 create payload가 없는 편의 overload도 빈 multipart
+`CreateAsync<TSpot>()`처럼 create payload가 없는 편의 overload도 빈 multipart
 payload로 `OnCreateAsync(...)`를 한 번 호출한다.
 
 `Configure()` 는 호출 시점이 정해져 있다. SPOT 이 생성된 직후, descriptor
@@ -815,7 +807,7 @@ public interface IZLinkSpotPostActorJoinedHandler<TEntrySpot, TActor>
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken);
 }
 
@@ -826,7 +818,7 @@ public interface IZLinkSpotActorLeftHandler<TEntrySpot, TActor>
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken);
 }
 ```
@@ -841,7 +833,7 @@ public interface IZLinkSpotPostActorJoinedHandler<TSpot, TActor>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken);
 }
 
@@ -852,7 +844,7 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken);
 }
 ```
@@ -866,7 +858,7 @@ public sealed class PlayerMatchJoinedHandler
     public ValueTask HandleAsync(
         MatchSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken)
     {
         // ...
@@ -1404,7 +1396,9 @@ lifecycle 관리를 이 API 로 위임한다.
 - `SpotNode.CreateActor(string actorId)` — actor node에서 application actor에 대응하는 native actor를 생성한다.
 - `SpotNode.EntrySpot()` → `Spot` — actor join 요청을 받는 입장 spot을 얻는다.
 - `Spot.RecvActorJoin(RecvFlags)` → `ActorJoinRequest?` — join 요청을 수신한다.
-- `Spot.ReplyActorJoin(request, accepted, message)` — join 수락/거부 결과를 응답한다.
+- `Spot.ReplyActorJoin(request, joinResultCode, message)` — join handler 의 application
+  결과 코드를 응답한다. `0` 은 join 허용이고, 0 이 아닌 값은 application 이 정의한
+  거부 코드다.
 - `Spot.OnActorLifecycle(onJoin, onLeave)` — actor가 해당 spot에 들어오거나 나간
   commit 이후 callback을 등록한다. `Entry Spot`과 일반 spot 모두 같은 API를 쓴다.
 - `Actor.Join(spot, request, timeout, ct)` — actor가 특정 spot에 join을 요청한다.
@@ -1430,7 +1424,7 @@ framework 의 `SpotActivation` 은 두 가지 이벤트를 수신한다.
 
 1. framework 는 join 요청에서 `TargetActor` 를 꺼낸다. 이는 해당 spot 에
    이미 등록되어 있는 로컬 actor 다.
-2. 이 `TargetActor` 를 spot actor membership 에서 조회한다.
+2. 이 `TargetActor` 를 framework actor registry 에서 조회한다.
 3. 조회에 성공하면 actor join handler 를 호출한다.
 4. `TargetActor` 를 찾지 못하면 join 요청을 거부한다.
 
@@ -1439,19 +1433,10 @@ framework 는 native `ActorRef` 를 public surface 에 그대로 노출하지
 
 `AddHandler(...)`, `AddPostActorJoined(...)`, `AddActorLeft(...)` 로 등록한
 lifecycle handler 에는
-`ZLinkSpotActorLifecycleContext` 가 전달된다. 이 값은 다음 정보를 담는다.
-
-- join/leave 종류
-- actor id
-- 이동 전/후 node rid
-- 이동 전/후 spot rid
-- 가능하면 commit epoch 까지
-
-commit epoch 의 값은 출처에 따라 다르다.
-
-- native callback 을 통해 온 값이면, commit epoch 를 그대로 전달한다.
-- framework membership 변경만으로 만들어 낸 알림이면, epoch 는 `0` 으로
-  둔다.
+`ZLinkSpotActorChangeResult` 가 전달된다. 이 값은 post-commit actor membership 변화의
+종류만 담는다. actor id 는 함께 전달되는 actor instance 에서 읽고, 현재 callback 이 실행되는
+Spot 은 handler 의 첫 번째 인자인 spot instance 에서 읽는다. framework 는 이동 전/후 Spot rid,
+commit epoch, native flag 같은 내부 commit metadata 를 public handler contract 로 노출하지 않는다.
 
 lifecycle callback 의 실행 문맥은 spot 종류에 따라 다르다.
 
@@ -1527,8 +1512,7 @@ public interface IZLinkActorContext
 {
     string ActorId { get; }
     string? SessionId { get; }
-    string? SpotName { get; }
-    RoutingId? SpotRid { get; }
+        RoutingId? SpotRid { get; }
     bool IsJoined { get; }
 
     IZLinkBoundSession BoundSession { get; }
@@ -1631,18 +1615,19 @@ public interface IZLinkSpotActorJoinHandler<TSpot, TActor, in TRequest, TReply>
         CancellationToken cancellationToken);
 }
 
-// IZLinkSpotContext 자체에는 actor attach/detach 실행 표면을 두지 않는다.
-// (§4.3.1의 단일 정의가 정답이다.) actor를 Spot에 attach/detach할 때 framework가
-// 주입하는 별도 표면은 아래 IZLinkSpotActorMembership으로 분리한다.
-public interface IZLinkSpotActorMembership
+public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutboundContext
 {
-    ValueTask JoinActorAsync(
+    RoutingId SpotRid { get; }
+    RoutingId NodeRid { get; }
+        ValueTask LeaveActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
-
-    ValueTask LeaveActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
+    ValueTask<IZLinkTimer> AddTimer<THandler>(
+        string name,
+        TimeSpan period,
+        ZLinkTimerOptions? options = null,
+        CancellationToken cancellationToken = default)
+        where THandler : class;
 }
 ```
 
@@ -1665,17 +1650,12 @@ public sealed class JoinMatchSpotHandler
 }
 ```
 
-`IZLinkSpotContext` (§4.3.1) 와 `IZLinkSpotActorMembership` 은 서로 분리된
-표면이다. 다만 같은 spot 실행 문맥에서 함께 사용된다. 각각의 역할은 다음과
-같다.
-
-- `IZLinkSpotContext` 는 packet/subscribe/timer 등록과 channel 호출을
-  담당한다.
-- `IZLinkSpotActorMembership` 은 Spot 안에서 actor 를 attach/detach 할 때
-  framework 가 주입해 주는 표면이다.
-
-actor join handler 코드가 actor membership 을 직접 다뤄야 하는 경우에만,
-두 번째 표면을 함께 주입받는다.
+actor join handler 가 정상 응답을 반환하면 framework 는 join commit 을 수행한다.
+application handler 는 별도의 `JoinActorAsync(...)` 를 호출하지 않는다.
+`LeaveActorAsync(...)` 는 현재 user Spot 에서 actor 를 Entry Spot 으로 되돌리는
+편의 API 다. 이 호출이 성공하면 source Spot 의 `ActorLeft` 와 Entry Spot 의
+post-joined lifecycle handler 가 호출된다. 실패하면 actor 위치와 framework state 는
+기존 상태를 유지하고 lifecycle handler 는 호출되지 않는다.
 
 actor context 는 현재 client session 의 `SessionId` 만 조회값으로 노출한다.
 
@@ -1704,9 +1684,10 @@ client stream 으로 push 해야 하면 `ZLinkActorSendContext.BoundSession`,
 `GetSpot(...)` 은 actor 가 `Spot` 에 join 한 뒤에만 유효하다. join 전
 호출은 명확한 실패로 처리된다.
 
-actor membership 변경은 actor callback 에서 처리하지 않는다. 대신
-`IZLinkSpotActorMembership.JoinActorAsync(...)` 와 `LeaveActorAsync(...)`
-에서 처리한다 (§4.4.1 참고).
+actor 위치 변경은 join commit 이 성공한 뒤에만 반영한다. `JoinSpot(...)` 성공은
+target user Spot 으로 이동하고, `JoinEntrySpot(...)` 또는 `LeaveActorAsync(...)`
+성공은 Entry Spot 으로 이동한다. 실패한 join/leave 는 source Spot membership 을
+그대로 둔다.
 
 `JoinSpot(spotRid, request)` 는 user Spot routing id(`RoutingId`) 를 받는다.
 `gameId`, `matchId`, `roomId` 같은 도메인 키를 그대로 넘기지 않는다. application
@@ -2061,9 +2042,9 @@ await client
 
 - 현재 SPOT channel 안에서의 publish/subscribe
 - attach 된 channel client 를 거치는 다른 channel 의 send/request
-- spot name/id 기반의 routed spot send/request
+- spot rid 기반의 routed spot send/request
 
-spot name/id 기반 호출의 흐름은 다음과 같다. `IZLinkSpotRemoteAddressResolver`
+spot rid 기반 호출의 흐름은 다음과 같다. `IZLinkSpotRemoteAddressResolver`
 가 target node 와 spot rid 를 조회한다. 그다음 framework 내부의 route
 transport 가 실제 전송을 담당한다.
 
@@ -2073,16 +2054,8 @@ application 이 `targetRid + spotRid` 를 직접 넘기는 일은 없다.
 public interface IZLinkSpotClient
 {
     IZLinkSendCall SendSpot<TMessage>(
-        string spotName,
-        TMessage message);
-
-    IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,
         TMessage message);
-
-    IZLinkRequestCall RequestSpot<TMessage>(
-        string spotName,
-        TMessage request);
 
     IZLinkRequestCall RequestSpot<TMessage>(
         RoutingId spotRid,
@@ -2125,7 +2098,7 @@ framework 초안에서 말하는 "spot 용 함수" 와 "channelName 으로 호�
 함수" 는 서로 별개의 경로다. 두 경로는 다음과 같이 갈라진다.
 
 - channel 이름 기준 호출은 attach 된 channel client 를 사용한다.
-- spot name/id 기반 호출은 `IZLinkSpotRemoteAddressResolver` 가 해소한 위치값을,
+- spot rid 기반 호출은 `IZLinkSpotRemoteAddressResolver` 가 해소한 위치값을,
   framework 내부 transport 가 사용한다.
 
 `targetRid + spotRid` 를 직접 넘기는 raw route 함수는 application public
@@ -2137,7 +2110,7 @@ framework 초안에서 말하는 "spot 용 함수" 와 "channelName 으로 호�
 #### 5.2.1 IZLinkRoutedSpotClient
 
 `IZLinkRoutedSpotClient` 는 active Spot callback 밖에서 target Spot 으로
-send/request 할 때 사용한다. 이 interface 는 spot name 으로 transport 를
+send/request 할 때 사용한다. 이 interface 는 spot rid 로 transport 를
 찾지 않는다. 호출자는 먼저 `ViaEgressChannel(...)`로 source process 가 이미
 보유한 local egress channel 을 고른다. target 은 `RoutingId` 로만 받는다.
 string 이름이 필요하면 호출자가 `RoutingId.Of(...)` 같은 변환을 먼저 수행한다.
@@ -2399,7 +2372,7 @@ public interface IZLinkBoundSessionSendCall
 public resolver 는 두 축으로 제한한다. actor 와 spot 이다.
 
 - actor resolver: actor id 로부터 actor runtime route 를 조회한다.
-- spot resolver: spot name 이나 spot rid 로부터 user Spot route 를 조회한다.
+- spot resolver: spot rid 로부터 user Spot route 를 조회한다.
 
 `IZLinkBoundSession` 는 actor context 가 현재 actor id 를 알고 있을 때만
 제공한다. 사용자는 actor id 를 다시 넘기지 않고 현재 actor 에 묶인 client
@@ -2417,10 +2390,6 @@ namespace Zlink.Framework.Contracts.Spots;
 
 public interface IZLinkSpotRemoteAddressResolver
 {
-    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
-        string spotName,
-        CancellationToken cancellationToken);
-
     ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken);
@@ -2858,29 +2827,32 @@ discovery 모드인 capability 는 peer 집합의 소유권이 discovery 에 있
 ```csharp
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
-    string SpotName,
     bool Created);
 
 public readonly record struct ZLinkSpotInfo(
-    RoutingId SpotRid,
-    string SpotName);
+    RoutingId SpotRid);
 
 public interface IZLinkSpotManager
 {
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
-        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
 
-    ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        string spotName,
+    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
         IReadOnlyList<Message> createParts,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
 
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
-        string spotName,
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
         IReadOnlyList<Message> createParts,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
+
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
+        RoutingId spotRid,
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotInfo?> GetAsync(
         RoutingId spotRid,
@@ -2897,17 +2869,17 @@ public interface IZLinkSpotManager
 
 `CreateAsync` 와 `GetOrCreateAsync` 는 각각 다음 상황에 대응한다.
 
-- `spotRid`만 받는 생성
-  - 등록된 이름으로 factory를 선택하고, runtime이 새 `spotRid`를 발급한다.
-- `spotName + createParts`
+- `CreateAsync<TSpot>()`
+  - generic 타입으로 factory를 선택하고, runtime이 새 `spotRid`를 발급한다.
+- `CreateAsync<TSpot>(createParts)`
   - runtime이 새 `spotRid`를 발급하고, multipart create payload를
     `IZLinkSpot.OnCreateAsync(...)`에 전달한다.
-- `spotName + RoutingId spotRid + createParts`
-  - 등록된 이름으로 factory를 선택하되, 호출자가 특정 logical spot rid를 직접
+- `GetOrCreateAsync<TSpot>(RoutingId spotRid, createParts)`
+  - generic 타입으로 factory를 선택하되, 호출자가 특정 logical spot rid를 직접
     지정한다. 이미 같은 `spotRid`가 있으면 기존 spot을 반환하고 새
     `createParts`는 전달하지 않는다.
 
-반환값은 세 가지를 묶어서 돌려준다. `spotRid`, `spotRid`, 그리고 새로
+반환값은 두 가지를 묶어서 돌려준다. `spotRid`, 그리고 새로
 생성된 인스턴스인지 여부다.
 
 장기적으로 들고 다닐 instance handle 이 아니라, 생성 결과만 돌려주는
@@ -2915,37 +2887,32 @@ public interface IZLinkSpotManager
 
 `OnCreateAsync(...)` 는 spot 생성 요청의 multipart payload를 받는 lifecycle
 callback이다. framework는 caller가 넘긴 part 수와 순서를 유지해서 전달해야 하고,
-여러 part를 하나의 serialized envelope로 합치면 안 된다. `CreateAsync(spotName)`
+여러 part를 하나의 serialized envelope로 합치면 안 된다. `CreateAsync<TSpot>()`
 처럼 create payload가 없는 overload는 빈 list를 넘긴 것과 같다. `createParts`
 인자 자체는 `null`이면 안 된다. 같은 `spotRid`에 대해 동시에
 `GetOrCreateAsync(...)`가 들어오면 처음 생성에 사용된 payload만
 `OnCreateAsync(...)`로 전달된다. 나중 caller의 payload는 재전달하지 않는다.
 
-`spotRid`은 생성 요청의 framework type discriminator다. framework는 이 이름으로
-등록된 factory를 선택한다. CLR type name이나 assembly-qualified type name은 요청
-계약에 포함하지 않는다. 같은 `spotRid`에 대해 기존 entry의 `spotRid`과 다른
-`spotRid`으로 `GetOrCreateAsync(...)`를 호출하면 `SpotTypeMismatch`로 실패해야
-한다.
+`TSpot`은 생성 요청의 framework type discriminator다. framework는 이 타입으로
+등록된 factory를 선택한다. string 기반 spot rid은 public contract에 포함하지
+않는다. 같은 `spotRid`에 대해 기존 entry의 Spot 타입과 다른 `TSpot`으로
+`GetOrCreateAsync(...)`를 호출하면 `SpotTypeMismatch`로 실패해야 한다.
 
-remote 생성 요청도 같은 구조를 따른다. framework metadata에는 `spotRid`과
-선택적인 `spotRid`가 들어가고, metadata 뒤의 message part들이 create payload가
-된다. `spotRid`는 `GetOrCreateAsync(...)`처럼 명시적 logical spot을 확보하는
-요청에서는 required이고, 수신 node가 새 id를 발급하는 create 요청에서는 optional이다.
-`spotRid`은 payload 안에 넣지 않는다. payload codec을 해석하기 전에도 factory를
-선택할 수 있어야 하기 때문이다.
+remote 생성 요청도 같은 구조를 따른다. public framework 표면은 string spot rid을
+받지 않는다. remote 노드로 생성 요청을 전달해야 하는 구현은 framework 내부 metadata로
+factory를 식별하고, metadata 뒤의 message part들을 create payload로 전달한다.
+`spotRid`는 `GetOrCreateAsync(...)`처럼 명시적 logical spot을 확보하는 요청에서는
+required이고, 수신 node가 새 id를 발급하는 create 요청에서는 optional이다.
 
-`GetAsync(...)` 와 `ListAsync(...)` 는 조회 표면이다. runtime 이 보유한
-`spotRid -> spotName` 매핑을, 운영 코드에서 다시 들여다볼 수 있게 해 준다.
-
-이 조회가 필요한 이유는 다음과 같다. 같은 `SpotNode` 에 여러 spot factory
-를 등록할 수 있다. 그래서 어떤 `spotRid` 가 어떤 이름으로 생성되었는지를,
-외부에서 확인할 수 있어야 하기 때문이다.
+`GetAsync(...)` 와 `ListAsync(...)` 는 조회 표면이다. 조회 결과는 public
+식별자인 `SpotRid`만 돌려준다. Spot 타입이나 factory 선택 정보는 framework 내부
+소유이며 application contract로 노출하지 않는다.
 
 현재 SPOT topology 초안에서는 high-level public surface 에
 `spotRid -> targetRid` 주소를 직접 노출하지 않는다.
 
 주소 해석은 `IZLinkSpotRemoteAddressResolver` 가 담당한다. framework 의 기본
-SPOT 표면은 다음 순서로 설명한다. spot name/id, channel publish, channel
+SPOT 표면은 다음 순서로 설명한다. spot `RoutingId`, channel publish, channel
 send/request 다.
 
 `SPOT` registration 자체는 별도의 builder 로 설명하는 편이 자연스럽다.
@@ -3110,7 +3077,7 @@ public interface IZLinkSpotNodeBuilder
     void ConfigureEntrySpot(
         Action<IZLinkEntrySpotOptions> configure);
 
-    void AddSpotFactory<TSpot>(string spotName)
+    void AddSpotFactory<TSpot>()
         where TSpot : class;
 
     void AddEntrySpot<TEntrySpot>()
@@ -3144,7 +3111,7 @@ public interface IZLinkSpotMeshNodeBuilder
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
-    void AddSpotFactory<TSpot>(string spotName)
+    void AddSpotFactory<TSpot>()
         where TSpot : class;
 
     void ConfigureEntrySpot(
@@ -3171,11 +3138,11 @@ public interface IZLinkEntrySpotOptions
 - `AttachSpotMeshPublisherClient(...)`
   - local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel로 publish할
     outbound publisher client를 붙인다.
-- `AddSpotFactory<TSpot>(spotName)`
-  - 이 node가 생성하고 소유할 spot factory를 이름과 함께 등록한다.
-  - 같은 `SpotNode` 안에서는 `spotRid`이 비어 있으면 안 된다.
-  - 이미 등록된 `spotRid`을 다시 등록하면 기존 값을 덮어쓰지 않고 예외를 던진다.
-  - `CreateAsync(spotName, ...)`와 `GetOrCreateAsync(spotName, ...)`는 이 이름과
+- `AddSpotFactory<TSpot>()`
+  - 이 node가 생성하고 소유할 spot factory를 타입 기준으로 등록한다.
+  - 같은 `SpotNode` 안에서 같은 `TSpot`을 다시 등록하면 기존 값을 덮어쓰지 않고
+    예외를 던진다.
+  - `CreateAsync<TSpot>(...)`와 `GetOrCreateAsync<TSpot>(...)`는 이 타입과
     정확히 일치하는 factory를 고른다.
 - `AddEntrySpot<TEntrySpot>()`
   - 이 node의 자동 Entry Spot에 붙일 application registry를 등록한다.
@@ -3638,7 +3605,7 @@ public enum ZLinkSpotEventKind
 
 public readonly record struct ZLinkSpotTimerDiagnostic(
     RoutingId SpotRid,
-    string SpotName,
+    RoutingId SpotRid,
     bool IsEntrySpot,
     string TimerName,
     string HandlerType,
@@ -3815,7 +3782,7 @@ method 시그니처는 아래 순서를 따른다.
 - send: `(spotOrEntrySpot, actor, message, CancellationToken)` 반환값 없음
 - request: `(spotOrEntrySpot, actor, request, CancellationToken)` reply 반환
 - actor join: `(spot, actor, request, CancellationToken)` reply 반환
-- joined/left: `(spotOrEntrySpot, actor, ZLinkSpotActorLifecycleContext, CancellationToken)` 반환값 없음
+- joined/left: `(spotOrEntrySpot, actor, ZLinkSpotActorChangeResult, CancellationToken)` 반환값 없음
 
 `PacketName` 을 지정하지 않으면 message/request 타입의 packet 이름을 사용한다.
 같은 handler 클래스에 여러 Spot actor handler attribute method 가 있으면

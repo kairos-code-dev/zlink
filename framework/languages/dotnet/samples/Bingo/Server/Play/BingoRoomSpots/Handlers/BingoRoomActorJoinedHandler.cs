@@ -19,16 +19,15 @@ internal sealed class BingoRoomActorJoinedHandler(
     public ValueTask HandleAsync(
         BingoRoomSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
         logger.LogInformation(
-            "bingo room: actor joined. room={RoomId}, actor={ActorId}, previousSpot={PreviousSpotRid}, epoch={CommitEpoch}",
+            "bingo room: actor joined. room={RoomId}, actor={ActorId}, kind={Kind}",
             spot.Context.SpotRid.ToHex(),
             actor.ActorId,
-            info.PreviousSpotRid?.ToHex(),
-            info.CommitEpoch);
+            info.Kind);
         return ValueTask.CompletedTask;
     }
 }

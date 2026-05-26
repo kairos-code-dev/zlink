@@ -34,7 +34,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
                 {
                     spot.EnableRouter(router => router.SetRouterBind(spotNode));
                     spot.AddEntrySpot<RegistryEntrySpot>();
-                    spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
+                    spot.AddSpotFactory<RegistryStageSpot>();
                 });
             });
         });
@@ -47,7 +47,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
         var nodeRid = actorRuntime.GetSpotNodeRuntime("join-entry-local-node").Node.RoutingId;
-        var stage = await manager.CreateAsync("registry-stage");
+        var stage = await manager.CreateAsync<RegistryStageSpot>();
         var actor = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync(
             "join-entry-local-actor",
             "registry")).Actor;
@@ -66,11 +66,10 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             .SubmitAsync();
 
         Assert.Equal("join-entry-local-actor", join.ActorId);
-        Assert.Equal("registry", join.ActorType);
-        Assert.Equal(nodeRid, join.Actor.NodeRid);
+        Assert.Equal(nodeRid, join.NodeRid);
         Assert.Equal(joinedBefore + 1, CountEvents(recorder, "entry-joined:join-entry-local-actor:"));
         Assert.Equal(leftBefore + 1, CountEvents(recorder, "left:join-entry-local-actor:"));
-        Assert.Contains($"entry-joined:join-entry-local-actor:{stage.SpotRid.ToHex()}", recorder.Events);
+        Assert.Contains("entry-joined:join-entry-local-actor:JoinEntrySpot", recorder.Events);
         Assert.Contains("entry-joined-kind:join-entry-local-actor:JoinEntrySpot", recorder.Events);
         Assert.Contains($"left:join-entry-local-actor:{stage.SpotRid.ToHex()}", recorder.Events);
         Assert.Contains("left-kind:join-entry-local-actor:JoinEntrySpot", recorder.Events);
@@ -118,7 +117,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
                 {
                     spot.EnableRouter(router => router.SetRouterBind(spotNode));
                     spot.AddEntrySpot<RegistryEntrySpot>();
-                    spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
+                    spot.AddSpotFactory<RegistryStageSpot>();
                 });
             });
         });
@@ -130,7 +129,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var nodeRid = actorRuntime.GetSpotNodeRuntime("join-entry-idempotent-node").Node.RoutingId;
-        var stage = await manager.CreateAsync("registry-stage");
+        var stage = await manager.CreateAsync<RegistryStageSpot>();
         var actor = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync(
             "join-entry-idempotent-actor",
             "registry")).Actor;
@@ -150,7 +149,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             .Timeout(TimeSpan.FromSeconds(5))
             .SubmitAsync();
 
-        Assert.Equal(nodeRid, second.Actor.NodeRid);
+        Assert.Equal(nodeRid, second.NodeRid);
         Assert.Equal(joinedBefore, CountEvents(recorder, "entry-joined:join-entry-idempotent-actor:"));
         Assert.Equal(leftBefore, CountEvents(recorder, "left:join-entry-idempotent-actor:"));
 
@@ -184,7 +183,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
                         router.SetRouterBind(sourceNode);
                         router.UseManualConnections(peers => peers.Connect(targetNode));
                     });
-                    spot.AddSpotFactory<RegistryStageSpot>("registry-stage");
+                    spot.AddSpotFactory<RegistryStageSpot>();
                 });
                 mesh.AddNode("join-entry-target-node", spot =>
                 {
@@ -205,7 +204,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var targetNodeRid = actorRuntime.GetSpotNodeRuntime("join-entry-target-node").Node.RoutingId;
-        var stage = await manager.CreateAsync("registry-stage");
+        var stage = await manager.CreateAsync<RegistryStageSpot>();
         var actor = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync(
             "join-entry-remote-actor",
             "registry")).Actor;
@@ -218,14 +217,14 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         var join = await actor.Context.JoinEntrySpot(targetNodeRid)
             .Timeout(TimeSpan.FromSeconds(5))
             .SubmitAsync();
-        var replyCanStillUseJoinResult = $"{join.ActorId}:{join.ActorType}:{join.Actor.NodeRid.ToHex()}";
+        var replyCanStillUseJoinResult = $"{join.ActorId}:{join.NodeRid.ToHex()}";
 
         Assert.Equal(
-            $"join-entry-remote-actor:registry:{targetNodeRid.ToHex()}",
+            $"join-entry-remote-actor:{targetNodeRid.ToHex()}",
             replyCanStillUseJoinResult);
         Assert.Contains($"left:join-entry-remote-actor:{stage.SpotRid.ToHex()}", recorder.Events);
         Assert.Contains("left-kind:join-entry-remote-actor:JoinEntrySpot", recorder.Events);
-        Assert.Contains($"entry-joined:join-entry-remote-actor:{stage.SpotRid.ToHex()}", recorder.Events);
+        Assert.Contains("entry-joined:join-entry-remote-actor:JoinEntrySpot", recorder.Events);
         Assert.Contains("entry-joined-kind:join-entry-remote-actor:JoinEntrySpot", recorder.Events);
 
         Assert.Throws<InvalidOperationException>(() => actor.Context.GetSpot());

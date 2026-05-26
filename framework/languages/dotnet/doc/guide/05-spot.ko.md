@@ -21,7 +21,7 @@ playhouse stage, 채팅 room, MMORPG zone 처럼 "있다가 없어지는 단위"
 |------|------|
 | `Spot` | room/stage/zone 같은 논리 인스턴스 하나 |
 | `SpotNode` | 여러 spot 인스턴스를 호스팅하는 컨테이너 노드 |
-| `spotName` | 등록된 **factory 키**(예: `"room"`). 어느 타입으로 만들지 선택. wire 위로 흐른다 |
+| `TSpot` | 생성할 user Spot 타입. framework 안에서 factory 선택에만 쓰며 public 식별자로 들고 다니지 않는다 |
 | `spotRid` (`RoutingId`) | `SpotNode` 가 인스턴스 생성 시 발급하는 **논리 주소**. 특정 room/stage 한 개를 가리킨다 |
 | Entry Spot | 노드의 기본 실행 컨텍스트(actor 가 생성 직후 머무는 곳) |
 
@@ -57,7 +57,7 @@ builder.Services.AddZLinkFramework(options =>
                 pubsub.SetPubBind("tcp://0.0.0.0:9000");
             });                                                // 현재 channel publish/subscribe
             node.AttachClientServerChannelClient("orders");   // 다른 channel 로 send/request
-            node.AddSpotFactory<StageSpot>("stage");          // "stage" 이름으로 만들 타입
+            node.AddSpotFactory<StageSpot>();          // 이 노드가 만들 타입
         });
     });
 });
@@ -71,7 +71,7 @@ node capability 는 서로 독립이다.
 | `EnableRouter(router => router.SetRouterBind(endpoint))` | 다른 SpotNode/채널에서 오는 routed packet 수신 |
 | `EnablePubSub()` | 현재 SPOT channel 의 publish/subscribe (없으면 `Publish` 불가) |
 | `AttachClientServerChannelClient(name)` | 일반 channel 로 send/request 하는 client 부착 |
-| `AddSpotFactory<TSpot>(name)` | 이 노드가 만들 spot 타입 등록. 이름 중복은 시작 예외 |
+| `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
 
 > top-level `UseDiscovery(...)` 를 등록하면 `AddSpotMesh(...)` 는 그 discovery endpoint 를
@@ -126,7 +126,7 @@ public sealed class GetStageStateHandler
         StageSpot spot,
         GetStageStateRequest request,
         CancellationToken cancellationToken)
-        => ValueTask.FromResult(new GetStageStateReply(spot.Context.SpotName));
+        => ValueTask.FromResult(new GetStageStateReply(spot.Context.SpotRid.ToString()));
 }
 
 public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
@@ -166,7 +166,7 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotClient cli
 {
     public async Task<string> OpenAsync(CancellationToken ct)
     {
-        ZLinkSpotCreateResult stage = await spots.CreateAsync("stage", ct);
+        ZLinkSpotCreateResult stage = await spots.CreateAsync<StageSpot>(ct);
 
         await client
             .Publish("stage.state.updated",
@@ -178,12 +178,12 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotClient cli
 }
 ```
 
-- `CreateAsync(spotName)` 는 빈 payload 로 생성하고 `OnInitializeAsync` 가 한 번
+- `CreateAsync<TSpot>()` 는 빈 payload 로 생성하고 `OnInitializeAsync` 가 한 번
   실행된다.
-- `GetOrCreateAsync(spotName, spotRid, ...)` 는 이미 있으면 재사용(`Created =
+- `GetOrCreateAsync<TSpot>(spotRid, ...)` 는 이미 있으면 재사용(`Created =
   false`), 타입이 다르면 `SpotTypeMismatch` 로 실패한다.
 - 반환된 `ZLinkSpotCreateResult` 는 long-lived handle 이 아니다. `SpotRid`/
-  `SpotName`/`Created` 만 들고 다니고, 이후 메시징은 publish 나 attach 된 channel
+  `Created` 만 들고 다니고, 이후 메시징은 publish 나 attach 된 channel
   client 로 한다.
 
 ## 5. SPOT 의 세 가지 outbound 표면
@@ -216,8 +216,8 @@ public sealed class StageNoticeHandler(IZLinkSpotClient client)
             .Timeout(TimeSpan.FromMilliseconds(200))
             .SubmitAsync<GetOrderStateReply>(ct);
 
-        // (c) 다른 Spot 으로 (spotName 또는 RoutingId)
-        await client.SendSpot("stage-17", new StageNoticeEvent(request.Text)).Submit(ct);
+        // (c) 다른 Spot 으로 (RoutingId)
+        await client.SendSpot(spotRid, new StageNoticeEvent(request.Text)).Submit(ct);
 
         return new BroadcastReply(state.Count);
     }
@@ -319,7 +319,7 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 - **routed 호출이 안 나간다** → egress(`EnableSpotRouteEgress`)와 ingress
   (`AcceptSpotRoutesFromChannel`) 이름이 짝이 맞는지, target ROUTER 에 실제로
   연결돼 있는지 확인한다.
-- **`spotName` factory 이름 중복** → 노드끼리도 같은 이름이면 시작 예외.
+- **Spot factory 타입 중복** → 같은 `SpotNode` 안에서 같은 타입을 두 번 등록하면 시작 예외.
 - **spot 상태에 lock 을 걸어야 하나?** → 같은 user Spot 내부 callback 끼리는 직렬
   실행이라 불필요. 외부 `SpotRid` 직접 접근만 별도 동기화.
 

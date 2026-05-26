@@ -339,7 +339,7 @@ timer handler failure 는 snapshot diff 가 아니다. `TimerHandlerFailed` 와
 들어간다.
 
 timer failure event 의 세부 정보는 `ZLinkSpotTimerDiagnostic` 에 담는다. 이 payload
-에는 `SpotRid`, `SpotName`, Entry Spot 여부, timer 이름, handler 타입, callback
+에는 `SpotRid`, Entry Spot 여부, timer 이름, handler 타입, callback
 번호, fixed-rate 시간표의 tick 번호, exception 타입과 메시지가 들어간다. exception
 객체 자체는 public event payload 로 노출하지 않는다.
 

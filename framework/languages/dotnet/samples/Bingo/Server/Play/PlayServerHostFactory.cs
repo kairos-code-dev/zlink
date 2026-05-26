@@ -57,7 +57,7 @@ public static class PlayServerHostFactory
                     });
                     spot.AttachClientServerChannelClient(SampleNames.ApiChannel);
                     spot.AddEntrySpot<BingoEntrySpot>();
-                    spot.AddSpotFactory<BingoRoomSpot>(SampleNames.RoomSpotType);
+                    spot.AddSpotFactory<BingoRoomSpot>();
                 });
             });
         });

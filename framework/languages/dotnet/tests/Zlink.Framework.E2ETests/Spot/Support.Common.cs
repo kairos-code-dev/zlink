@@ -47,7 +47,7 @@ public abstract partial class SpotTestSupport
                 {
                     client.UseManualConnections(connections => connections.Connect(ordersServer));
                 });
-                spot.AddSpotFactory<StageSpot>("stage");
+                spot.AddSpotFactory<StageSpot>();
             });
             });
         });
@@ -72,8 +72,7 @@ public abstract partial class SpotTestSupport
                 {
                     router.SetRouterBind(spotNode);
                 });
-                spot.AddSpotFactory<CreatePayloadStageSpot>("payload-stage");
-                spot.AddSpotFactory<CreatePayloadStageSpot>("other-payload-stage");
+                spot.AddSpotFactory<CreatePayloadStageSpot>();
             });
             });
         });
@@ -121,7 +120,7 @@ public abstract partial class SpotTestSupport
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(channelEndpoint)));
                 spot.AddEntrySpot<SpotRouteCallerEntrySpot>();
-                spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+                spot.AddSpotFactory<SpotRouteTargetSpot>();
             });
             });
         });
@@ -200,8 +199,7 @@ public abstract partial class SpotTestSupport
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
             var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
-            var target = await manager.GetOrCreateAsync(
-                "route-target",
+            var target = await manager.GetOrCreateAsync<SpotRouteTargetSpot>(
                 RoutingId.FromBytes(Encoding.UTF8.GetBytes($"spot{routerChannelId}")));
             await WaitForAcceptedRoutePeerAsync(nodeRuntime, routerChannelId);
 

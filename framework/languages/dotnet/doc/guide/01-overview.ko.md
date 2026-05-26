@@ -122,7 +122,7 @@ flowchart LR
 |----|----------------------|-------------|
 | channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkClient` | [04-channel-messaging](./04-channel-messaging.ko.md) |
 | PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()`, `IZLinkFanoutPublisher` | [04-channel-messaging](./04-channel-messaging.ko.md) |
-| SPOT | named spot factory, `IZLinkSpotClient`, `IZLinkRoutedSpotClient`, timer | [05-spot](./05-spot.ko.md) |
+| SPOT | typed spot factory, `IZLinkSpotClient`, `IZLinkRoutedSpotClient`, timer | [05-spot](./05-spot.ko.md) |
 | actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [06-actor-session](./06-actor-session.ko.md) |
 | STREAM | framework session packet, Stream Connector | [07-stream](./07-stream.ko.md) |
 | 인프라 | Registry topology, runtime monitoring | [08-registry](./08-registry.ko.md), [09-monitoring](./09-monitoring.ko.md) |

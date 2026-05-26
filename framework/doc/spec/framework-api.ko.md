@@ -358,7 +358,8 @@ zlink 라이브러리에 native Actor API가 추가됨에 따라, framework는 a
 1. `SpotNode.EntrySpot()` — framework가 입장 수신용 `Spot`을 얻는다.
 2. `Spot.RecvActorJoin(RecvFlags)` — actor join request를 수신한다.
 3. framework가 join 요청 메시지를 ZMP 포맷으로 해석해 등록된 actor join handler를 호출한다.
-4. `Spot.ReplyActorJoin(request, accepted, replyMessage)` — join 결과를 응답한다.
+4. `Spot.ReplyActorJoin(request, joinResultCode, replyMessage)` — join 결과를 응답한다.
+   `0`은 허용이고, 0이 아닌 값은 application 이 정의한 거부 코드다.
 
 ##### Actor 생성 (SpotNode 측)
 

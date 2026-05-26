@@ -55,7 +55,7 @@ framework가 core discovery route를 노출할 때 Entry Spot과 user Spot을 �
 - Spot remote address resolver의 `ZLinkSpotRemoteAddress.SpotKind`도 core `ResolveSpot()` 결과를
   보존한다.
 
-Spot name route는 framework가 관리하는 이름 색인이다. 이 색인은 Spot rid를 찾는
+Spot RID route는 framework가 관리하는 이름 색인이다. 이 색인은 Spot rid를 찾는
 용도로만 사용한다. owner node rid와 Spot kind는 core `ResolveSpot(spotRid)` 결과를
 source of truth로 사용한다.
 
@@ -64,4 +64,4 @@ source of truth로 사용한다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `EntryRoutingTests.EntrySpotRoutingId_IsApplied_ToNativeEntrySpot` | `ConfigureEntrySpot(...)`에서 지정한 routing id가 native Entry Spot facade에 적용되고 Entry Spot activation의 `SpotRid`로 노출된다. |
-| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Name` | Spot name route는 Spot rid만 찾는 색인으로 쓰고, resolver가 core `ResolveSpot()` 결과의 owner node rid와 `SpotKind.User`를 보존한다. |
+| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Rid_And_Removes_Route` | Spot RID route는 Spot rid만 찾는 색인으로 쓰고, resolver가 core `ResolveSpot()` 결과의 owner node rid와 `SpotKind.User`를 보존한다. |

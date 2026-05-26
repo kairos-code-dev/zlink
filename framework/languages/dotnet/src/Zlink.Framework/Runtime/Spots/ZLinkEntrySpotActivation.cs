@@ -85,8 +85,6 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
 
     public string SpotNodeName { get; }
 
-    public string SpotName => "entry";
-
     public TimeSpan DefaultTimeout => _defaultTimeout;
 
     public RoutingId SpotRid => _nativeSpot.RoutingId;
@@ -199,7 +197,7 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
     public ValueTask InvokeActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         return InvokeActorLifecycleWithoutGateAsync(
@@ -230,12 +228,12 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
     private sealed record ActorLifecycleState(
         ZLinkSpotActorLifecycleDescriptor Descriptor,
         IZLinkActor Actor,
-        ZLinkSpotActorLifecycleContext Context);
+        ZLinkSpotActorChangeResult Context);
 
     private async ValueTask InvokeActorLifecycleWithoutGateAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         var previous = Current.Value;

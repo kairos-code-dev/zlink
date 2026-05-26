@@ -16,8 +16,8 @@ internal sealed record TestHostOptions(
     string? SpotNodeName,
     string? SpotBindEndpoint,
     bool EnablePubSub,
-    string? SpotFactoryName,
-    string? CreateSpotName,
+    bool EnableSpotFactory,
+    bool CreateSpot,
     string? PublishTopic,
     string? PublishValue,
     string? AttachSpotPublisherChannel,
@@ -71,8 +71,8 @@ internal sealed record TestHostOptions(
         public string? SpotNodeName { get; set; }
         public string? SpotBindEndpoint { get; set; }
         public bool EnablePubSub { get; set; }
-        public string? SpotFactoryName { get; set; }
-        public string? CreateSpotName { get; set; }
+        public bool EnableSpotFactory { get; set; }
+        public bool CreateSpot { get; set; }
         public string? PublishTopic { get; set; }
         public string? PublishValue { get; set; }
         public string? AttachSpotPublisherChannel { get; set; }
@@ -125,10 +125,12 @@ internal sealed record TestHostOptions(
                     EnablePubSub = true;
                     break;
                 case "--spot-factory":
-                    SpotFactoryName = readValue();
+                    _ = readValue();
+                    EnableSpotFactory = true;
                     break;
                 case "--create-spot":
-                    CreateSpotName = readValue();
+                    _ = readValue();
+                    CreateSpot = true;
                     break;
                 case "--publish-topic":
                     PublishTopic = readValue();
@@ -163,8 +165,8 @@ internal sealed record TestHostOptions(
                 SpotNodeName,
                 SpotBindEndpoint,
                 EnablePubSub,
-                SpotFactoryName,
-                CreateSpotName,
+                EnableSpotFactory,
+                CreateSpot,
                 PublishTopic,
                 PublishValue,
                 AttachSpotPublisherChannel,

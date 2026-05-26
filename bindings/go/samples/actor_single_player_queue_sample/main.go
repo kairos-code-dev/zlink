@@ -75,7 +75,7 @@ func acceptJoin(spot *zlink.Spot, expected string) {
 		samplecommon.Must(fmt.Errorf("unexpected join payload %q", string(request.Message.Data())))
 	}
 	request.Message.Close()
-	replyErr := spot.ReplyActorJoin(request, true).Message(samplecommon.Message("accepted")).Submit(nil)
+	replyErr := spot.ReplyActorJoin(request, 0).Message(samplecommon.Message("accepted")).Submit(nil)
 	samplecommon.Must(replyErr)
 }
 

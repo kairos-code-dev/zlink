@@ -1422,12 +1422,12 @@ class spot_t
     }
 
     actor_join_reply_op_t reply_actor_join (
-      const actor_join_request_t &request_, bool accepted_)
+      const actor_join_request_t &request_, int32_t join_result_code_)
     {
         detail::actor_join_reply_state_t state;
         state.spot = _spot;
         state.info = request_.info ();
-        state.accepted = accepted_;
+        state.join_result_code = join_result_code_;
         return actor_join_reply_op_t (std::move (state));
     }
 

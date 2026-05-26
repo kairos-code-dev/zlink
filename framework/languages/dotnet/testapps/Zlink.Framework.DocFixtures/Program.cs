@@ -92,7 +92,7 @@ internal static class FixtureSamples
                         });
                     });
                     spot.AttachSpotMeshPublisherClient("game.stage");
-                    spot.AddSpotFactory<FixtureStageSpot>("stage");
+                    spot.AddSpotFactory<FixtureStageSpot>();
                 });
             });
         });
@@ -164,7 +164,7 @@ internal static class FixtureSamples
                     {
                         pubsub.SetPubBind("tcp://127.0.0.1:7604");
                     });
-                    spot.AddSpotFactory<FixtureStageSpot>("stage");
+                    spot.AddSpotFactory<FixtureStageSpot>();
                 });
             });
         });
@@ -204,7 +204,7 @@ internal static class FixtureSamples
                     {
                         router.SetRouterBind("tcp://127.0.0.1:7702");
                     });
-                    spot.AddSpotFactory<FixtureActorSpot>("fixture-actor-stage");
+                    spot.AddSpotFactory<FixtureActorSpot>();
                 });
             });
         });

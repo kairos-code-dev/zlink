@@ -15,7 +15,7 @@ namespace Zlink.Framework.E2ETests;
 public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
 {
     [Fact]
-    public async Task RegistrySpotRemoteAddresses_RequestSend_By_Name()
+    public async Task RegistrySpotRemoteAddresses_RequestSend_By_Rid()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
         var registryRouterEndpoint = GetFreeTcpEndpoint();
@@ -67,7 +67,7 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(routeChannelEndpoint)));
                 spot.AddEntrySpot<SpotRouteCallerEntrySpot>();
-                spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+                spot.AddSpotFactory<SpotRouteTargetSpot>();
             });
             });
         });
@@ -82,10 +82,10 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
         var resolver = frameworkHost.Services.GetRequiredService<IZLinkSpotRemoteAddressResolver>();
         var recorder = frameworkHost.Services.GetRequiredService<SpotRouteTransportRecorder>();
         var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
-        _ = await manager.CreateAsync("route-target");
+        _ = await manager.CreateAsync<SpotRouteTargetSpot>();
         await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play");
         var route = await RetryAsync(
-            () => resolver.ResolveSpotRemoteAddressAsync("route-target", CancellationToken.None).AsTask(),
+            () => resolver.ResolveSpotRemoteAddressAsync(nodeRuntime.Spots.Single().SpotRid, CancellationToken.None).AsTask(),
             static result => result.SpotRid.Size > 0,
             TimeSpan.FromSeconds(5));
         Assert.Equal(nodeRuntime.Node.RoutingId, route.TargetNodeRid);

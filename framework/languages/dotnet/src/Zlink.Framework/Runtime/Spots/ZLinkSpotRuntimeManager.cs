@@ -43,24 +43,24 @@ internal sealed class ZLinkSpotRuntimeManager(
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
         ZLinkFrameworkRuntimeState state,
-        string spotName,
+        Type spotType,
         IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
-        var node = GetNodeForSpotFactory(state, spotName);
-        return await node.CreateAsync(spotName, createParts, cancellationToken);
+        var node = GetNodeForSpotFactory(state, spotType);
+        return await node.CreateAsync(spotType, createParts, cancellationToken);
     }
 
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
         ZLinkFrameworkRuntimeState state,
-        string spotName,
+        Type spotType,
         RoutingId spotRid,
         IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
     {
-        var node = GetNodeForSpotFactory(state, spotName);
+        var node = GetNodeForSpotFactory(state, spotType);
         return await node.GetOrCreateAsync(
-            spotName,
+            spotType,
             spotRid,
             createParts,
             cancellationToken);
@@ -94,7 +94,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         }
 
         return results
-            .OrderBy(static info => info.SpotName, StringComparer.Ordinal)
+            .OrderBy(static info => info.SpotRid.ToHex(), StringComparer.Ordinal)
             .ToArray();
     }
 
@@ -182,7 +182,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     public async ValueTask NotifyEntrySpotActorJoinedAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
@@ -193,7 +193,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     public async ValueTask NotifyEntrySpotActorLeftAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
@@ -283,17 +283,17 @@ internal sealed class ZLinkSpotRuntimeManager(
 
     private static ZLinkSpotNodeRuntime GetNodeForSpotFactory(
         ZLinkFrameworkRuntimeState state,
-        string spotName)
+        Type spotType)
     {
         foreach (var node in state.SpotNodes.Values)
         {
-            if (node.SpotFactories.ContainsKey(spotName))
+            if (node.SpotFactories.Contains(spotType))
             {
                 return node;
             }
         }
 
-        throw new ZLinkConfigurationException($"SPOT factory '{spotName}' is not registered.");
+        throw new ZLinkConfigurationException($"SPOT factory '{spotType}' is not registered.");
     }
 
     public ZLinkSpotActivation? GetActivationBySpotRid(

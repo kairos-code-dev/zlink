@@ -187,7 +187,7 @@ spot.onRoutedReceive((message) => {
 });
 const actorJoin = spot.recvActorJoin(zlink.RecvFlags.DontWait);
 if (actorJoin) {
-  spot.replyActorJoin(actorJoin, true).message('ok').submit();
+  spot.replyActorJoin(actorJoin, 0).message('ok').submit();
 }
 spot.actorsSnapshot();
 spotNode.attachPubIngress(pub);

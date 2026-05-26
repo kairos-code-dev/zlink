@@ -156,6 +156,8 @@ public final class ActorInterop {
         return new ActorJoinResult(
           RequestResult.fromValue(view.get(ValueLayout.JAVA_INT,
             NativeLayouts.ACTOR_JOIN_RESULT_RESULT_OFFSET)),
+          view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.ACTOR_JOIN_RESULT_JOIN_RESULT_CODE_OFFSET),
           actorRefFromNative(view.asSlice(
             NativeLayouts.ACTOR_JOIN_RESULT_ACTOR_OFFSET,
             NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),

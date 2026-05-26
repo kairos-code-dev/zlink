@@ -71,7 +71,7 @@
 | 분리된 SPOT discovery 등록과 node 등록 | 비허용 | public 등록 표면에서 제거되었다. discovery 와 node 집합은 `AddSpotMesh(...)`가 함께 소유한다 |
 | 같은 mesh에 `AddNode(...)` 여러 개 | 허용 | 같은 channel view를 공유하는 여러 SpotNode를 등록한다 |
 | 같은 mesh의 router-capable `AddNode(...)`를 stream ActorGateway 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router capability 로 시작한다 |
-| 같은 `SpotNode`에 같은 `spotName` factory 중복 등록 | 비허용 | startup validation 오류 |
+| 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |
 | 같은 `SpotNode`에 Entry Spot[^entry-spot] registry 중복 등록 | 비허용 | startup validation 오류 |
 | `router` capability만 등록 | 허용 | inbound routed call만 받는다 |
 | attach된 channel client capability 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
@@ -110,7 +110,7 @@
 | Registry Spot route 기본 구현 + custom Spot remote address resolver 함께 등록 | 비허용 | startup validation 오류 |
 | Registry route 기본 구현 + `UseDiscovery(...)` 없음 | 비허용 | startup validation 오류 |
 | Registry route 기본 구현 + route mesh channel이 둘 이상이고 channel id 생략 | 비허용 | startup validation 오류 |
-| spot name/id 기반 routed Spot client 사용 + spot remote address resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
+| spot rid 기반 routed Spot client 사용 + spot remote address resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
 | `IZLinkBoundSession` 사용 + actor-session binding 없음 | 비허용 | 대상 actor에 묶인 session이 없으면 명확한 오류 |
 
 ## 6. Monitoring Registration Matrix
@@ -143,7 +143,7 @@
 
 - duplicate channel 이름
 - duplicate `spotNodeName`
-- duplicate `spotName` factory
+- duplicate `spotRid` factory
 - outbound capability에 discovery/manual 경로가 둘 다 없는 경우
 - 같은 capability 안에서 discovery/manual 혼용
 - monitoring 등록 시 존재하지 않는 source를 지정한 경우

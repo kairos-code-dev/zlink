@@ -15,7 +15,7 @@ fn accept_join(spot: &Spot, expected: &'static [u8]) {
         || match spot.recv_actor_join_with_flags(RecvFlags::DONT_WAIT) {
             Ok(Some(request)) => {
                 assert_eq!(request.message.as_bytes(), expected);
-                spot.reply_actor_join(&request, true)
+                spot.reply_actor_join(&request, 0)
                     .message(Message::copy_from(b"accepted").unwrap())
                     .submit()
                     .unwrap();

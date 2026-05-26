@@ -524,22 +524,22 @@ zlink_recv_result_t test_spot_actor_join_recv_parts (
 zlink_submit_result_t test_spot_actor_join_reply_single (
   void *spot_,
   const zlink_actor_join_info_t *info_,
-  uint32_t accepted_,
+  int32_t join_result_code_,
   zlink_msg_t *message_)
 {
     return (zlink_spot_actor_join_reply) (
-      spot_, info_, accepted_, message_, message_ ? 1 : 0);
+      spot_, info_, join_result_code_, message_, message_ ? 1 : 0);
 }
 
 zlink_submit_result_t test_spot_actor_join_reply_parts (
   void *spot_,
   const zlink_actor_join_info_t *info_,
-  uint32_t accepted_,
+  int32_t join_result_code_,
   zlink_msg_t *parts_,
   size_t part_count_)
 {
     return (zlink_spot_actor_join_reply) (
-      spot_, info_, accepted_, parts_, part_count_);
+      spot_, info_, join_result_code_, parts_, part_count_);
 }
 
 #define TEST_SELECT_JOIN_RECV(_1, _2, _3, _4, _5, NAME, ...) NAME
@@ -1042,7 +1042,7 @@ void on_dispatch (void *,
         zlink_msg_t reply;
         zlink_msg_init (&reply);
         zlink_submit_result_t reply_rc = zlink_spot_actor_join_reply (
-          info_->subject, &join_info, probe->accept_join ? 1u : 0u, &reply, 1);
+          info_->subject, &join_info, probe->accept_join ? 0 : 1, &reply, 1);
         if (reply_rc != ZLINK_SUBMIT_OK) {
             zlink_msg_close (&reply);
             std::lock_guard<std::mutex> lock (probe->mutex);
@@ -1053,7 +1053,7 @@ void on_dispatch (void *,
         zlink_msg_t late_reply;
         zlink_msg_init (&late_reply);
         zlink_submit_result_t late_rc = zlink_spot_actor_join_reply (
-          info_->subject, &join_info, 1, &late_reply, 1);
+          info_->subject, &join_info, 0, &late_reply, 1);
         {
             std::lock_guard<std::mutex> lock (probe->mutex);
             probe->double_reply_checked =
@@ -1162,7 +1162,7 @@ void on_join_only_dispatch (void *,
     zlink_msg_t reply;
     zlink_msg_init (&reply);
     zlink_submit_result_t reply_rc = zlink_spot_actor_join_reply (
-      info_->subject, &join_info, probe->accept_join ? 1u : 0u, &reply, 1);
+      info_->subject, &join_info, probe->accept_join ? 0 : 1, &reply, 1);
     if (reply_rc != ZLINK_SUBMIT_OK) {
         zlink_msg_close (&reply);
         std::lock_guard<std::mutex> lock (probe->mutex);
@@ -2039,14 +2039,14 @@ void test_actor_join_timeout_without_dispatch_handler ()
     zlink_msg_t no_timeout_reply;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_init (&no_timeout_reply));
     TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
-                       zlink_spot_actor_join_reply (spot, &info, 0u,
+                       zlink_spot_actor_join_reply (spot, &info, 1,
                                                     &no_timeout_reply));
     {
         std::unique_lock<std::mutex> lock (no_timeout_probe.mutex);
         TEST_ASSERT_TRUE (no_timeout_probe.cv.wait_for (
           lock, std::chrono::seconds (2),
           [&] { return no_timeout_probe.join_done; }));
-        TEST_ASSERT_EQUAL (ZLINK_REQUEST_REJECTED,
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
                            no_timeout_probe.join_result);
     }
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
@@ -2156,14 +2156,14 @@ void test_spot_snapshot_destroy_joined_and_pending_counts ()
     zlink_msg_init (&pending_reply);
     TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
                        zlink_spot_actor_join_reply (pending_spot,
-                                                    &pending_info, 0u,
+                                                    &pending_info, 1,
                                                     &pending_reply));
     {
         std::unique_lock<std::mutex> lock (pending_probe.mutex);
         TEST_ASSERT_TRUE (pending_probe.cv.wait_for (
           lock, std::chrono::seconds (2),
           [&] { return pending_probe.join_done; }));
-        TEST_ASSERT_EQUAL (ZLINK_REQUEST_REJECTED, pending_probe.join_result);
+        TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, pending_probe.join_result);
     }
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&pending_spot));
     TEST_ASSERT_FALSE (find_spot_snapshot_row (node, pending_spot_rid, &row));

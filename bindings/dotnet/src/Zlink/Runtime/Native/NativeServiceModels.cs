@@ -160,6 +160,7 @@ internal struct ZlinkActorJoinInfo
 internal struct ZlinkActorJoinResult
 {
     public int Result;
+    public int JoinResultCode;
     public ZlinkActorRef Actor;
     public ZlinkRoutingId JoinedSpotRid;
     public ulong JoinEpoch;

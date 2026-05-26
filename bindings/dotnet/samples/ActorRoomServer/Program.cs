@@ -36,7 +36,7 @@ using (request!.Message)
 }
 
 using Message reply = Message.FromString("accepted:lobby");
-spot.ReplyActorJoin(request, accepted: true).Message(reply).Submit();
+spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
 IReadOnlyList<Message> replies =
     (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
 using (replies[0])

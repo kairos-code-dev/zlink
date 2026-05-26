@@ -43,8 +43,8 @@ internal sealed class EnsurePlayerActorHandler(
             request.ActorId,
             SampleNames.PlayerActorType,
             new ActorRefSnapshot(
-                joined.Actor.NodeRid.ToBytes().ToArray(),
-                joined.Actor.ActorId,
-                joined.Actor.Generation));
+                joined.NodeRid.ToBytes().ToArray(),
+                joined.ActorId,
+                joined.Generation));
     }
 }

@@ -117,18 +117,18 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| duplicate `spotName` factory | `unit` | startup validation 예외 |
+| duplicate Spot factory type | `unit` | startup validation 예외 |
 | duplicate `AddEntrySpot<TEntrySpot>()` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
 | `AddSpotMesh(...)`에 `UseDiscovery(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
 | `AddSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
 | `AddSpotMesh(...)` + 빈 `UseDiscovery` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
 | `AddSpotMesh(...)` + router-capable `AddNode(...)` + `AttachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
-| `CreateAsync(spotName)` | `integration-single-process` | `SpotId`, `SpotName`, `Created` 값이 일관되게 유지된다 |
-| `CreateAsync(spotName)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 multipart payload로 `IZLinkSpot.OnCreateAsync(...)`를 한 번 호출한다 |
-| `CreateAsync(spotName, createParts)` multipart | `integration-single-process` | create payload part 수와 순서가 유지되어 `IZLinkSpot.OnCreateAsync(...)`로 한 번 전달된다 |
-| `GetOrCreateAsync(spotName, spotId, createParts)` existing | `integration-single-process` | 같은 `spotId`가 이미 ready 상태면 `Created = false`이고 새 `createParts`는 `OnCreateAsync(...)`로 전달되지 않는다 |
+| `CreateAsync<TSpot>()` | `integration-single-process` | `SpotId`, `Created` 값이 일관되게 유지된다 |
+| `CreateAsync<TSpot>()` empty create payload | `integration-single-process` | payload 없는 생성도 빈 multipart payload로 `IZLinkSpot.OnCreateAsync(...)`를 한 번 호출한다 |
+| `CreateAsync<TSpot>(createParts)` multipart | `integration-single-process` | create payload part 수와 순서가 유지되어 `IZLinkSpot.OnCreateAsync(...)`로 한 번 전달된다 |
+| `GetOrCreateAsync<TSpot>(spotRid, createParts)` existing | `integration-single-process` | 같은 `spotId`가 이미 ready 상태면 `Created = false`이고 새 `createParts`는 `OnCreateAsync(...)`로 전달되지 않는다 |
 | `GetOrCreateAsync(...)` concurrent create payload | `integration-single-process` | 같은 `spotId` 동시 생성에서는 첫 생성 요청의 multipart payload만 `OnCreateAsync(...)`로 전달되고 callback은 한 번만 실행된다 |
-| `GetOrCreateAsync(...)` spotName mismatch | `integration-single-process` | 같은 `spotId`에 서로 다른 `spotName`을 사용하면 `SpotTypeMismatch`로 실패하고 새 `OnCreateAsync(...)`를 호출하지 않는다 |
+| `GetOrCreateAsync<TSpot>(...)` same type | `integration-single-process` | 같은 `spotId`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환하고 새 `OnCreateAsync(...)`를 호출하지 않는다 |
 | spot create lifecycle failure | `integration-single-process` | `OnCreateAsync(...)` 또는 `OnInitializeAsync(...)` 실패는 `SpotCreateFailed`로 전파되고 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
 | `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddHandler(...)`, `Context.AddActorPacket(...)`, `Context.AddPostActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등의 등록이 descriptor에 반영된다 |
@@ -167,11 +167,11 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session actor reconnect 재사용 | `integration-single-process` | 같은 actor id가 새 stream session에서 다시 bind되면 기존 actor 인스턴스와 spot membership을 유지하고, session binding token[^binding-token]만 갱신된다 |
 | session actor binding rollback | `integration-single-process` | actor-session binding 갱신이 실패하면 helper도 실패하고, local binding table의 같은 token entry도 제거된다 |
 | stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale bound session 메시지가 새 binding을 지우거나 사용하지 못한다 |
-| Registry Spot route 기본 resolver 등록 | `unit` | `UseRegistrySpotRemoteAddresses(...)` 가 custom resolver 없이 기본 `IZLinkSpotRemoteAddressResolver` 와 Spot name directory 를 등록한다 |
+| Registry Spot route 기본 resolver 등록 | `unit` | `UseRegistrySpotRemoteAddresses(...)` 가 custom resolver 없이 기본 `IZLinkSpotRemoteAddressResolver` 와 Spot RID directory 를 등록한다 |
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
 | Registry route 기본 구현 중복 등록 방지 | `unit` | Registry 기본 구현과 custom resolver 를 함께 등록하면 startup validation 오류가 난다 |
 | Registry route 기본 구현 discovery validation | `unit` | `UseDiscovery(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
-| Registry Spot name route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다 |
+| Registry Spot RID route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 제거 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
 | sample-only session metadata store 제거 | `unit` | Bingo 와 TicTacToe session gateway 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |
 | stale bound session send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |

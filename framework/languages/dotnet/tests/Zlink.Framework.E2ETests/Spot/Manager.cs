@@ -27,7 +27,7 @@ public sealed class ManagerTests : SpotTestSupport
             var events = host.Services.GetRequiredService<SpotEventsRecorder>();
             var orders = host.Services.GetRequiredService<OrdersRecorder>();
 
-            var first = await manager.CreateAsync("stage");
+            var first = await manager.CreateAsync<StageSpot>();
 
             await RetryAsync(
                 () => events.Initialized.Count >= 1
@@ -37,7 +37,7 @@ public sealed class ManagerTests : SpotTestSupport
             Assert.True(first.Created);
 
             var firstInfo = await manager.GetAsync(first.SpotRid);
-            Assert.Equal("stage", firstInfo?.SpotName);
+            Assert.Equal(first.SpotRid, firstInfo?.SpotRid);
 
             var listed = await manager.ListAsync();
             Assert.Single(listed);
@@ -50,7 +50,7 @@ public sealed class ManagerTests : SpotTestSupport
             Assert.Empty(await manager.ListAsync());
 
             var firstScope = events.ScopeId(first.SpotRid);
-            var second = await manager.CreateAsync("stage");
+            var second = await manager.CreateAsync<StageSpot>();
             await RetryAsync(
                 () => events.Initialized.Count >= 2
                     && orders.ReceivedScopes.Count >= 2,
@@ -74,7 +74,7 @@ public sealed class ManagerTests : SpotTestSupport
             var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
             var recorder = host.Services.GetRequiredService<SpotCreatePayloadRecorder>();
 
-            var created = await manager.CreateAsync("payload-stage");
+            var created = await manager.CreateAsync<CreatePayloadStageSpot>();
 
             Assert.True(created.Created);
             var payload = Assert.Single(recorder.Payloads);
@@ -100,13 +100,11 @@ public sealed class ManagerTests : SpotTestSupport
             using var firstB = Message.FromString("first-b");
             using var second = Message.FromString("second");
 
-            var first = manager.GetOrCreateAsync(
-                "payload-stage",
+            var first = manager.GetOrCreateAsync<CreatePayloadStageSpot>(
                 spotRid,
                 [firstA, firstB]).AsTask();
             await recorder.WaitCreateEnteredAsync();
-            var secondResult = manager.GetOrCreateAsync(
-                "payload-stage",
+            var secondResult = manager.GetOrCreateAsync<CreatePayloadStageSpot>(
                 spotRid,
                 [second]).AsTask();
             recorder.ReleaseCreate();
@@ -126,7 +124,7 @@ public sealed class ManagerTests : SpotTestSupport
     }
 
     [Fact]
-    public async Task SpotManager_GetOrCreateAsync_Rejects_SpotName_Mismatch()
+    public async Task SpotManager_GetOrCreateAsync_Returns_Existing_Spot_For_Same_Type()
     {
         var host = await CreatePayloadHostAsync(GetFreeTcpEndpoint());
         try
@@ -134,11 +132,12 @@ public sealed class ManagerTests : SpotTestSupport
             var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
             var spotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("payload-room-2"));
 
-            _ = await manager.GetOrCreateAsync("payload-stage", spotRid);
-            var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-                () => manager.GetOrCreateAsync("other-payload-stage", spotRid).AsTask());
+            var first = await manager.GetOrCreateAsync<CreatePayloadStageSpot>(spotRid);
+            var second = await manager.GetOrCreateAsync<CreatePayloadStageSpot>(spotRid);
 
-            Assert.Equal(ZLinkFrameworkErrorKind.SpotTypeMismatch, error.Kind);
+            Assert.True(first.Created);
+            Assert.False(second.Created);
+            Assert.Equal(first.SpotRid, second.SpotRid);
         }
         finally
         {
@@ -179,7 +178,7 @@ public sealed class ManagerTests : SpotTestSupport
                 {
                     pubsub.SetPubBind(publisherNodeEndpoint);
                 });
-                spot.AddSpotFactory<PublishingStageSpot>("publisher-stage");
+                spot.AddSpotFactory<PublishingStageSpot>();
             });
             });
         });
@@ -203,7 +202,7 @@ public sealed class ManagerTests : SpotTestSupport
                     pubsub.UseManualConnections(connections =>
                         connections.Connect(publisherNodeEndpoint));
                 });
-                spot.AddSpotFactory<LocalSubscriberStageSpot>("subscriber-stage");
+                spot.AddSpotFactory<LocalSubscriberStageSpot>();
             });
             });
         });
@@ -220,8 +219,8 @@ public sealed class ManagerTests : SpotTestSupport
         var subscriberManager = subscriberHost.Services.GetRequiredService<IZLinkSpotManager>();
         var publisherRecorder = publisherHost.Services.GetRequiredService<SpotLifecycleRecorder>();
 
-        _ = await subscriberManager.CreateAsync("subscriber-stage");
-        var created = await publisherManager.CreateAsync("publisher-stage");
+        _ = await subscriberManager.CreateAsync<LocalSubscriberStageSpot>();
+        var created = await publisherManager.CreateAsync<PublishingStageSpot>();
 
         await RetryAsync(
             () => publisherRecorder.TickCount >= 2,

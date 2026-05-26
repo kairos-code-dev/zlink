@@ -79,7 +79,7 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 
 | `IZLinkActorContext` 멤버 | 용도 |
 |---------------------------|------|
-| `ActorId`, `SessionId?`, `SpotName?`, `SpotRid?`, `IsJoined` | 현재 상태 조회 |
+| `ActorId`, `SessionId?`, `SpotRid?`, `IsJoined` | 현재 상태 조회 |
 | `BoundSession` | 자기 client 로 push (§4) |
 | `JoinSpot<TRequest>(spotRid, request)` | user Spot 으로 join. `.SubmitAsync<TReply>(ct)` 로 종결 |
 | `JoinEntrySpot(spotNodeRid)` | target SpotNode 의 Entry Spot 으로 이동. `.SubmitAsync(ct)` 로 종결 |
@@ -140,6 +140,10 @@ public sealed class JoinMatchHandler
             .JoinSpot(matchSpotRid, request)
             .Timeout(TimeSpan.FromSeconds(2))
             .SubmitAsync<JoinMatchSpotResult>(ct);
+        if (joined.ResultCode != 0)
+        {
+            return joined.Reply.ToReply();
+        }
         return joined.Reply.ToReply();
     }
 }
@@ -406,7 +410,7 @@ builder.Services.AddZLinkFramework(options =>
                 router.SetRouterBind("tcp://0.0.0.0:9201");
             });
             node.AddEntrySpot<PlayerEntrySpot>();
-            node.AddSpotFactory<MatchSpot>("match");
+            node.AddSpotFactory<MatchSpot>();
         });
     });
 

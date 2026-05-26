@@ -6,8 +6,6 @@ public interface IZLinkActorContext
 
     string? SessionId { get; }
 
-    string? SpotName { get; }
-
     RoutingId? SpotRid { get; }
 
     bool IsJoined { get; }
@@ -33,14 +31,8 @@ public interface IZLinkActorContext
         RoutingId spotNodeRid);
 }
 
-public sealed record ZLinkActorJoinResult(
-    string ActorId,
-    string ActorType,
-    ActorRef Actor);
-
 public sealed record ZLinkActorJoinResult<TReply>(
-    string ActorId,
-    string ActorType,
+    int ResultCode,
     ActorRef Actor,
     TReply Reply);
 
@@ -56,6 +48,6 @@ public interface IZLinkActorJoinEntrySpotCall
 {
     IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout);
 
-    ValueTask<ZLinkActorJoinResult> SubmitAsync(
+    ValueTask<ActorRef> SubmitAsync(
         CancellationToken cancellationToken = default);
 }

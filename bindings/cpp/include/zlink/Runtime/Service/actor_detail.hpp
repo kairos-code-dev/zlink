@@ -30,7 +30,7 @@ struct actor_join_reply_state_t
 {
     void *spot = NULL;
     actor_join_info_t info;
-    bool accepted = false;
+    int32_t join_result_code = 0;
     std::vector<message_t> parts;
 };
 

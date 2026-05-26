@@ -51,14 +51,6 @@ public abstract partial class SpotTestSupport
         {
             using var _ = EnterScope("join");
 
-            if (actor.Spot is ActorStageSpot current && !ReferenceEquals(current, this))
-            {
-                await current.Context.LeaveActorAsync(actor, cancellationToken);
-                actor.DetachSpot(current);
-            }
-
-            await Context.JoinActorAsync(actor, cancellationToken);
-            actor.AttachSpot(this);
             actor.CurrentRoomId = request.RoomId;
 
             return new JoinStageReply(request.RoomId);
@@ -90,14 +82,13 @@ public abstract partial class SpotTestSupport
         public ValueTask HandleAsync(
             ActorStageSpot spot,
             TestActor actor,
-            ZLinkSpotActorLifecycleContext context,
+            ZLinkSpotActorChangeResult result,
             CancellationToken cancellationToken)
         {
+            _ = result;
             _ = cancellationToken;
-            if (context.CurrentSpotRid is { } spotRid)
-            {
-                recorder.SpotActorJoins.Enqueue($"{actor.ActorId}@{spotRid.ToHex()}");
-            }
+            recorder.SpotActorJoins.Enqueue($"{actor.ActorId}@{spot.Context.SpotRid.ToHex()}");
+            actor.AttachSpot(spot);
 
             return ValueTask.CompletedTask;
         }
@@ -109,14 +100,15 @@ public abstract partial class SpotTestSupport
         public ValueTask HandleAsync(
             ActorStageSpot spot,
             TestActor actor,
-            ZLinkSpotActorLifecycleContext context,
+            ZLinkSpotActorChangeResult result,
             CancellationToken cancellationToken)
         {
-            _ = spot;
             _ = cancellationToken;
-            if (context.PreviousSpotRid is { } spotRid)
+            recorder.SpotActorLeaves.Enqueue($"{actor.ActorId}@{spot.Context.SpotRid.ToHex()}");
+            actor.DetachSpot(spot);
+            if (result.Kind == ZLinkSpotActorChangeKind.JoinEntrySpot)
             {
-                recorder.SpotActorLeaves.Enqueue($"{actor.ActorId}@{spotRid.ToHex()}");
+                actor.CurrentRoomId = null;
             }
 
             return ValueTask.CompletedTask;

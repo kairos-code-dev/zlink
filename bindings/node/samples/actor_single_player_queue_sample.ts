@@ -36,7 +36,7 @@ function waitForJoin(spot) {
 async function acceptJoin(actor, spot, payload) {
   const replyPromise = actor.join(spot).message(Buffer.from(payload)).timeout(2000).submitAsync();
   const request = waitForJoin(spot);
-  spot.replyActorJoin(request, true).message(Buffer.from('ok')).submit();
+  spot.replyActorJoin(request, 0).message(Buffer.from('ok')).submit();
   const reply = await replyPromise;
   assert.equal(reply.result.result, zlink.RequestResult.Ok);
 }

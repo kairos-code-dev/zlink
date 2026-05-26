@@ -69,7 +69,7 @@ public static class PlayServerHostFactory
                     });
                     spot.AcceptSpotRoutesFromChannel(SampleNames.RouterChannel);
                     spot.AddEntrySpot<TicTacToeEntrySpot>();
-                    spot.AddSpotFactory<TicTacToeGameSpot>(SampleNames.GameSpotType);
+                    spot.AddSpotFactory<TicTacToeGameSpot>();
                 });
             });
         });

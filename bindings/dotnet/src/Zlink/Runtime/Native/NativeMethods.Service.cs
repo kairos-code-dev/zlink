@@ -314,7 +314,7 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_actor_join_reply(IntPtr spot,
         ref ZlinkActorJoinInfo info,
-        uint accepted,
+        int joinResultCode,
         ref ZlinkMsg message,
         nuint partCount);
 
@@ -322,7 +322,7 @@ internal static partial class NativeMethods
         EntryPoint = "zlink_spot_actor_join_reply")]
     internal static extern int zlink_spot_actor_join_reply_empty(IntPtr spot,
         ref ZlinkActorJoinInfo info,
-        uint accepted,
+        int joinResultCode,
         IntPtr parts,
         nuint partCount);
 

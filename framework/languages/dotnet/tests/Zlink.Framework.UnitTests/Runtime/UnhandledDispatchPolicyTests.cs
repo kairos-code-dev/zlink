@@ -59,7 +59,7 @@ public sealed class UnhandledDispatchPolicyTests
             ZLinkMessageParts.DisposeAll(parts);
         }
 
-        Assert.False(nativeSpot.LastJoinAccepted);
+        Assert.Equal(1, nativeSpot.LastJoinResultCode);
         Assert.Contains(logger.Messages, message => message.Contains("no-join-handler", StringComparison.Ordinal));
     }
 
@@ -238,7 +238,7 @@ public sealed class UnhandledDispatchPolicyTests
 
     private sealed class CapturingSpot : IZLinkBackendSpot
     {
-        public bool? LastJoinAccepted { get; private set; }
+        public int? LastJoinResultCode { get; private set; }
 
         public object NativeInstance => this;
 
@@ -337,18 +337,18 @@ public sealed class UnhandledDispatchPolicyTests
 
         public void ReplyActorJoin(
             ZLinkBackendActorJoinRequest request,
-            bool accepted,
+            int joinResultCode,
             Message reply)
         {
-            LastJoinAccepted = accepted;
+            LastJoinResultCode = joinResultCode;
         }
 
         public void ReplyActorJoin(
             ZLinkBackendActorJoinRequest request,
-            bool accepted,
+            int joinResultCode,
             IReadOnlyList<Message> parts)
         {
-            LastJoinAccepted = accepted;
+            LastJoinResultCode = joinResultCode;
         }
     }
 

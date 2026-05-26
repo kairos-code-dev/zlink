@@ -80,7 +80,7 @@ internal sealed class PlayServer(SampleSettings settings)
                         router.SetRouterBind(settings.SpotEndpoint);
                     });
                     spot.AddEntrySpot<PlayEntrySpot>();
-                    spot.AddSpotFactory<TicTacToeGame>(SampleTypes.GameSpot);
+                    spot.AddSpotFactory<TicTacToeGame>();
                 });
             });
         });

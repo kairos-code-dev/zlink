@@ -43,7 +43,7 @@ public sealed class DiscoveryTests
                 {
                     pubsub.SetPubBind(spotPubEndpoint);
                 });
-                spot.AddSpotFactory<SpotTestSupport.LocalSubscriberStageSpot>("registry-stage");
+                spot.AddSpotFactory<SpotTestSupport.LocalSubscriberStageSpot>();
             });
             });
         });
@@ -59,7 +59,7 @@ public sealed class DiscoveryTests
         Assert.True(discovery.SpotOwnerSyncEnabled);
 
         var manager = frameworkHost.Services.GetRequiredService<IZLinkSpotManager>();
-        var created = await manager.CreateAsync("registry-stage");
+        var created = await manager.CreateAsync<SpotTestSupport.LocalSubscriberStageSpot>();
         var spotRoute = discovery.ResolveSpot(created.SpotRid);
 
         Assert.Equal(runtime.GetSpotNodeRuntime("spot-sync-node").Node.RoutingId,

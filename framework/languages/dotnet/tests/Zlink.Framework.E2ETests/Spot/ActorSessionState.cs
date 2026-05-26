@@ -28,7 +28,7 @@ public sealed class ActorSessionStateTests : SpotTestSupport
                 {
                     router.SetRouterBind(spotNode);
                 });
-                spot.AddSpotFactory<ActorStageSpot>("actor-stage");
+                spot.AddSpotFactory<ActorStageSpot>();
             });
             });
         });
@@ -39,7 +39,7 @@ public sealed class ActorSessionStateTests : SpotTestSupport
         var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var recorder = host.Services.GetRequiredService<ActorIntegrationRecorder>();
-        var created = await manager.CreateAsync("actor-stage");
+        var created = await manager.CreateAsync<ActorStageSpot>();
         var actor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-2", "test")).Actor;
 
         _ = await actorRuntime.JoinActorAsync<JoinStageRequest, JoinStageReply>(

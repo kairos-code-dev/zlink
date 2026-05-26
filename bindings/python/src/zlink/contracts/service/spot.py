@@ -312,6 +312,7 @@ class ActorJoinRequest:
 @dataclass(frozen=True)
 class ActorJoinResult:
     result: RequestResult
+    join_result_code: int
     actor: ActorRef
     joined_spot_rid: RoutingId
     join_epoch: int
@@ -1539,6 +1540,7 @@ class SpotNode:
         if not result_ptr:
             join_result = ActorJoinResult(
                 result=RequestResult.INTERNAL_ERROR,
+                join_result_code=0,
                 actor=ActorRef(node_rid=RoutingId(b""), actor_id="", generation=0),
                 joined_spot_rid=RoutingId(b""),
                 join_epoch=0,
@@ -1550,6 +1552,7 @@ class SpotNode:
         result = _request_result_from_code(int(native.result))
         join_result = ActorJoinResult(
             result=result,
+            join_result_code=int(native.join_result_code),
             actor=_actor_ref_from_native(native.actor),
             joined_spot_rid=_routing_id_bytes(native.joined_spot_rid),
             join_epoch=int(native.join_epoch),
@@ -2404,12 +2407,12 @@ class ActorJoinEntrySpotOp:
 class ActorJoinReplyOp:
     """Fluent builder for Spot.reply_actor_join. Multipart reply is optional;
     a zero-message submit() is allowed."""
-    __slots__ = ('_spot', '_request', '_accepted', '_parts', '_submitted')
+    __slots__ = ('_spot', '_request', '_join_result_code', '_parts', '_submitted')
 
-    def __init__(self, spot, request, accepted):
+    def __init__(self, spot, request, join_result_code):
         self._spot = spot
         self._request = request
-        self._accepted = bool(accepted)
+        self._join_result_code = int(join_result_code)
         self._parts = []
         self._submitted = False
 
@@ -2430,7 +2433,7 @@ class ActorJoinReplyOp:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
         self._submitted = True
         self._spot._submit_actor_join_reply(
-            self._request, self._accepted, self._parts
+            self._request, self._join_result_code, self._parts
         )
 
 
@@ -3428,12 +3431,12 @@ class Spot:
             _native=info,
         )
 
-    def reply_actor_join(self, request, accepted):
+    def reply_actor_join(self, request, join_result_code):
         if not isinstance(request, ActorJoinRequest):
             raise TypeError("request must be ActorJoinRequest")
-        return ActorJoinReplyOp(self, request, accepted)
+        return ActorJoinReplyOp(self, request, join_result_code)
 
-    def _submit_actor_join_reply(self, request, accepted, parts):
+    def _submit_actor_join_reply(self, request, join_result_code, parts):
         if parts:
             native_parts = _clone_payload(parts)
             native_array = _prepare_native_parts(native_parts)
@@ -3446,7 +3449,7 @@ class Spot:
         rc = lib().zlink_spot_actor_join_reply(
             self._handle,
             ctypes.byref(request._native),
-            1 if accepted else 0,
+            int(join_result_code),
             parts_arg,
             count,
         )

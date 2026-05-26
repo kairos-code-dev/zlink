@@ -15,7 +15,7 @@ fn accept_next_join(spot: &zlink::Spot) {
         || match spot.recv_actor_join_with_flags(RecvFlags::DONT_WAIT) {
             Ok(Some(request)) => {
                 assert_eq!(request.message.as_str().unwrap(), "enter-room");
-                spot.reply_actor_join(&request, true)
+                spot.reply_actor_join(&request, 0)
                     .message(Message::copy_from(b"accepted").unwrap())
                     .submit()
                     .unwrap();

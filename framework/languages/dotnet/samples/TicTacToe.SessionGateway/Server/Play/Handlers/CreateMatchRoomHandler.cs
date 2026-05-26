@@ -1,5 +1,6 @@
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
+using TicTacToe.SessionGateway.Server.Play.GameSpots;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
@@ -16,7 +17,7 @@ internal sealed class CreateMatchRoomHandler(IZLinkSpotManager spots)
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
-        var room = await spots.CreateAsync(SampleNames.GameSpotType, cancellationToken)
+        var room = await spots.CreateAsync<TicTacToeGameSpot>(cancellationToken)
             ;
         return new CreateMatchRoomRes(room.SpotRid.ToHex());
     }

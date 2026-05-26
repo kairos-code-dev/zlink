@@ -14,7 +14,6 @@ internal sealed class ZLinkSpotActivationFactory(
     Action connectDiscoveredPubSubPeers)
 {
     public async ValueTask<ZLinkSpotActivation> CreateAsync(
-        string spotName,
         Type spotType,
         IZLinkBackendSpot nativeSpot,
         IReadOnlyList<Message> createParts,
@@ -31,7 +30,6 @@ internal sealed class ZLinkSpotActivationFactory(
                 nativeSpot,
                 node.RoutingId,
                 registration.SpotNodeName,
-                spotName,
                 spotChannelName,
                 frameworkRegistration.DefaultTimeout,
                 registration.Router?.SocketConfig.SendTimeout

@@ -68,6 +68,7 @@ pub struct zlink_actor_join_info_t {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct zlink_actor_join_result_t {
     pub result: zlink_request_result_t,
+    pub join_result_code: i32,
     pub actor: zlink_actor_ref_t,
     pub joined_spot_rid: zlink_routing_id_t,
     pub join_epoch: u64,
@@ -1390,7 +1391,7 @@ unsafe extern "C" {
     pub fn zlink_spot_actor_join_reply(
         spot: *mut c_void,
         info: *const zlink_actor_join_info_t,
-        accepted: u32,
+        join_result_code: i32,
         parts: *mut zlink_msg_t,
         part_count: usize,
     ) -> c_int;

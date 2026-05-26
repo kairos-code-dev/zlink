@@ -4,7 +4,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 {
     public static void Validate(ZLinkFrameworkRegistration registration)
     {
-        var globalSpotFactories = new HashSet<string>(StringComparer.Ordinal);
+        var globalSpotFactories = new HashSet<Type>();
         var globalSpotPublisherChannels = new HashSet<string>(StringComparer.Ordinal);
         var channelHandlerEndpoints = ScanChannelHandlerEndpoints(registration);
         var routeHandlerEndpoints = ScanRouteHandlerEndpoints(registration);

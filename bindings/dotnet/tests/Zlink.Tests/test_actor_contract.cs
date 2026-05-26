@@ -39,7 +39,7 @@ public sealed class test_actor_contract
         Assert.Equal(actor.Ref.ActorId, request.Info.TargetActor.ActorId);
 
         using Message reply = Message.FromString("join:accepted");
-        spot.ReplyActorJoin(request, accepted: true).Message(reply).Submit();
+        spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
 
         IReadOnlyList<Message> replies =
             (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
@@ -53,6 +53,47 @@ public sealed class test_actor_contract
             entry => entry.ActorId == actor.Ref.ActorId);
         Zlink.MultipartClose(await actor.Leave(spot)
             .SubmitAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task rejected_actor_join_preserves_application_result_code_and_reply()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = node.CreateSpot();
+        using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
+        using Message joinMessage = Message.FromString("join:reject");
+
+        Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
+            actor.Join(spot).Message(joinMessage)
+                .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
+
+        ActorJoinRequest? request = null;
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+        {
+            request = spot.RecvActorJoin(RecvFlags.DontWait);
+            return request != null;
+        }, 2000));
+
+        request!.Message.Dispose();
+        using Message reply = Message.FromString("join:room-full");
+        spot.ReplyActorJoin(request, joinResultCode: 42).Message(reply).Submit();
+
+        var rejected = await joinTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(RequestResult.Ok, rejected.Result.Result);
+        Assert.Equal(42, rejected.Result.JoinResultCode);
+        Assert.Equal(actor.Ref.ActorId, rejected.Result.Actor.ActorId);
+        Assert.DoesNotContain(spot.ActorsSnapshot(),
+            entry => entry.ActorId == actor.Ref.ActorId);
+
+        Assert.Single(rejected.Parts);
+        using (rejected.Parts[0])
+        {
+            Assert.Equal("join:room-full", rejected.Parts[0].GetString());
+        }
     }
 
     [Fact]
@@ -88,7 +129,7 @@ public sealed class test_actor_contract
 
         request!.Message.Dispose();
         using Message reply = Message.FromString("join:accepted");
-        spot.ReplyActorJoin(request, accepted: true).Message(reply).Submit();
+        spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
         IReadOnlyList<Message> replies =
             (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
         foreach (Message message in replies)
@@ -136,7 +177,7 @@ public sealed class test_actor_contract
 
         request!.Message.Dispose();
         using Message reply = Message.FromString("ok");
-        spot.ReplyActorJoin(request, accepted: true).Message(reply).Submit();
+        spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
         foreach (Message message in
                  (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
             message.Dispose();

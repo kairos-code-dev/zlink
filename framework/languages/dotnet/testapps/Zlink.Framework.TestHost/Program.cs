@@ -29,12 +29,11 @@ using var host = builder.Build();
 await host.RunAsync();
 
 internal sealed class StartupSpotCreationHostedService(
-    IZLinkSpotManager spotManager,
-    string spotName) : IHostedService
+    IZLinkSpotManager spotManager) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await spotManager.CreateAsync(spotName, cancellationToken);
+        await spotManager.CreateAsync<StartupStageSpot>(cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

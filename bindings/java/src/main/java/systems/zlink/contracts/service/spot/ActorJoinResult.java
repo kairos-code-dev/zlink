@@ -6,6 +6,7 @@ import systems.zlink.contracts.RequestResult;
 import systems.zlink.contracts.RoutingId;
 
 public record ActorJoinResult(RequestResult result,
+                              int joinResultCode,
                               ActorRef actor,
                               RoutingId joinedSpotRid,
                               long joinEpoch,

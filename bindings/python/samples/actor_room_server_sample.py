@@ -28,7 +28,7 @@ def main():
                         return
                     joins.append(item.message.to_bytes())
                     item.message.close()
-                    current_spot.reply_actor_join(item, True).message(
+                    current_spot.reply_actor_join(item, 0).message(
                         b"joined"
                     ).submit()
 

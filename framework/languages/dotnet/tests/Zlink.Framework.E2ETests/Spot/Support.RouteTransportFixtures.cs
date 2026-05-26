@@ -96,7 +96,7 @@ public abstract partial class SpotTestSupport
             CancellationToken cancellationToken)
         {
             _ = spot;
-            await spotClient.SendSpot("route-target", new SpotRouteTargetCommand(message.Value))
+            await spotClient.SendSpot(RoutingId.Of("route-target"), new SpotRouteTargetCommand(message.Value))
                 .Submit(cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -114,7 +114,7 @@ public abstract partial class SpotTestSupport
         {
             _ = spot;
             var reply = await spotClient
-                .RequestSpot("route-target", new SpotRouteTargetRequest(message.Value))
+                .RequestSpot(RoutingId.Of("route-target"), new SpotRouteTargetRequest(message.Value))
                 .Timeout(TimeSpan.FromMilliseconds(500))
                 .SubmitAsync<SpotRouteTargetReply>(cancellationToken)
                 .ConfigureAwait(false);
@@ -157,15 +157,6 @@ public abstract partial class SpotTestSupport
                 targetNodeRid,
                 spotRid,
                 ZLinkSpotKind.User);
-        }
-
-        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
-            string spotName,
-            CancellationToken cancellationToken)
-        {
-            _ = spotName;
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(RequireRoute());
         }
 
         public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(

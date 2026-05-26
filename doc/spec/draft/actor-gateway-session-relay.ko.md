@@ -1010,7 +1010,7 @@ handler 의 reply 결과 또는 현재 dispatch reply context 가 원래 session
 | `IZLinkSpotPostActorJoinedHandler<TEntrySpot, ...>` / `IZLinkSpotActorLeftHandler<TEntrySpot, ...>` | signature 유지 | create/leave/JoinEntrySpot 으로 Entry Spot 에 위치한 Actor lifecycle 을 보여 주는 callback 이다. session close 로 Actor 를 Entry Spot 으로 되돌리지 않는다는 새 의미를 반영한다 |
 | `IZLinkSpotHandlerRegistry.AddActorJoin<...>` | 유지 | user Spot admission handler 등록 API 다. local Actor runtime 이 routed-capable SpotNode 위에서 동작하는지 validation 한다 |
 | `IZLinkActorHandlerRegistry.AddActorPacket<...>` | 유지 | Actor packet handler 등록 API 다. local/remote relay 차이를 handler registration 으로 노출하지 않는다 |
-| `ZLinkSpotActorLifecycleContext` | 유지 | current/previous Spot 정보는 유지한다. gateway relay 상태는 lifecycle context 에 넣지 않고 monitoring/diagnostics 로 분리한다 |
+| `ZLinkSpotActorChangeResult` | 유지 | public lifecycle result 는 변화 종류인 `Kind` 만 담는다. gateway relay 상태와 이동 전/후 Spot 정보는 lifecycle result 에 넣지 않고 monitoring/diagnostics 로 분리한다 |
 | `ZLinkSpotNodeStatus` / monitoring contracts | 유지 | ActorGateway 전용 public monitoring record 는 1차 범위에 추가하지 않는다. 필요한 진단은 기존 snapshot 으로 먼저 확인한다 |
 
 #### 13.5.3 framework configuration surface 추가/제거 목록
@@ -1029,7 +1029,7 @@ configuration 은 사용자가 가장 먼저 보는 계약이므로 route mesh �
 | `IZLinkRegistryActorRemoteAddressesOptions` | 제거한다. session bind 의 필수 설정이 아니어야 한다 |
 | `IZLinkFrameworkOptions.UseRegistryActorRemoteAddresses(...)` | session gateway hot path 에서 제거한다. registry actor route 는 gateway current location 의 source of truth 가 아니다 |
 | `IZLinkFrameworkOptions.AddSpotRemoteAddressResolver<TResolver>()` | 유지한다. routed Spot egress 와 `JoinSpot(string, ...)` target lookup 용도다 |
-| `IZLinkFrameworkOptions.UseRegistrySpotRemoteAddresses(...)` | 유지한다. Spot name/rid 를 route address 로 찾는 기능이며 Actor session bind 와 다르다 |
+| `IZLinkFrameworkOptions.UseRegistrySpotRemoteAddresses(...)` | 유지한다. Spot RID/rid 를 route address 로 찾는 기능이며 Actor session bind 와 다르다 |
 | `IZLinkRouteChannelBuilder.EnableSpotRouteEgress(string targetSpotNodeChannelName)` | 유지한다. routed Spot egress 용도이며 ActorGateway relay 설정이 아니다 |
 | `IZLinkClientServerChannelBuilder.EnableSpotRouteEgress(string targetSpotNodeChannelName)` | 유지한다. dealer/client socket 을 Spot egress 로 쓰는 기능이며 session Actor relay 설정이 아니다 |
 | `IZLinkSpotNodeBuilder.AcceptSpotRoutesFromChannel(...)` | 유지한다. 해당 channel 에서 이 SpotNode 로 routed Spot packet 을 받을 수 있게 하는 설정이다. ActorGateway peer 연결 설정이 아니다 |

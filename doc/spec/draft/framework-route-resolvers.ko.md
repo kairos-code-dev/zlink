@@ -37,7 +37,7 @@ builder.Services.AddZLinkFramework(options =>
 |------|-----------|------------------|
 | actor id -> play node route | discovery actor route sync 와 `ResolveActor(actorId)` | `AddActorPlayRouteResolver<T>()`. session 에 이미 attach 된 actor relay 용 fallback 이 아니라, session actor ref 가 없는 backend actor messaging 용 route 조회다 |
 | Spot RID -> owner node route | discovery Spot owner sync 와 `ResolveSpot(spotRid)` | `AddSpotRouteResolver<T>()` |
-| Spot name -> Spot RID | owner-bound `SpotName` route | `AddSpotRouteResolver<T>()` |
+| Spot RID -> Spot RID | owner-bound Spot RID route | `AddSpotRouteResolver<T>()` |
 | actor id -> current session route | owner-bound `ActorSession` route | `AddActorSessionBindingStore<T>()` |
 
 custom 구현을 붙이는 API 는 유지한다. 다만 같은 책임에 Registry 기본 구현과 custom 구현을
@@ -61,7 +61,7 @@ zlink_discovery_resolve_route(discovery, kind, key, key_size, out_value, out_siz
 | route kind | 용도 |
 |------------|------|
 | `Actor` | native actor route sync 가 사용하는 actor owner route |
-| `SpotName` | framework Spot name directory |
+| `SpotRid` | framework Spot RID directory |
 | `ActorSession` | framework actor-session binding |
 
 route key 와 value 형식은 framework 내부 구현 세부 사항이다. application 은 key 를 직접
@@ -69,13 +69,13 @@ route key 와 value 형식은 framework 내부 구현 세부 사항이다. appli
 
 ## 값 형식
 
-Actor route, Spot name route, actor-session binding route 는 versioned payload 를 사용한다.
+Actor route, Spot RID route, actor-session binding route 는 versioned payload 를 사용한다.
 Registry 는 byte value 를 저장할 뿐이고 payload 를 해석하지 않는다.
 
 | route kind | key 의미 | value 의미 |
 |------------|----------|------------|
 | `Actor` | namespace + actor id | version, namespace, actor id, actor node RID, actor generation |
-| `SpotName` | namespace + spot name | version, namespace, spot name, Spot RID |
+| `SpotRid` | namespace + spot rid | version, namespace, spot rid, Spot RID |
 | `ActorSession` | namespace + actor id | version, namespace, actor id, session router RID, binding token |
 
 payload version 이 맞지 않거나 decode 에 실패하면 framework 는 그 row 를 사용하지 않고
@@ -89,7 +89,7 @@ route not found 로 처리한다. 잘못된 Registry payload 를 application 예
 - session gateway 는 actor attach 시점에 받은 concrete actor route snapshot 을 저장한다.
   session relay 는 message 마다 `ResolveActor(actorId)` 나 actor route resolver 를
   호출하지 않는다.
-- Spot name route 는 `IZLinkSpotManager.CreateAsync(...)` 또는
+- Spot RID route 는 `IZLinkSpotManager.CreateAsync(...)` 또는
   `GetOrCreateAsync(...)` 가 Spot 생성을 확정한 뒤 publish 하고, Spot 제거 시 unbind 한다.
 - actor-session binding route 는 stream session bind/unbind 흐름에서 publish 한다.
 - 같은 process 안의 stale unbind 는 binding token 을 다시 확인해서 막는다.

@@ -36,7 +36,7 @@ internal sealed class BingoRoomDirectory(IZLinkSpotManager spots)
             {
                 settings = settings with { RoomName = $"Bingo Room {++_roomSeq:000}" };
                 using var settingsPart = settings.ToJson();
-                var room = await spots.CreateAsync(SampleNames.RoomSpotType, [settingsPart], cancellationToken)
+                var room = await spots.CreateAsync<BingoRoomSpot>([settingsPart], cancellationToken)
                     ;
                 _currentRoomId = room.SpotRid.ToHex();
                 _currentRoomSettings = settings;

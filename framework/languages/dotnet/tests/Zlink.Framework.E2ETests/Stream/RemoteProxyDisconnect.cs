@@ -61,7 +61,7 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
         var joined = await actor.Context.JoinEntrySpot(playRid)
             .Timeout(TimeSpan.FromSeconds(5))
             .SubmitAsync();
-        sessionRecorder = new GatewaySessionRecorder(actorId, joined.Actor);
+        sessionRecorder = new GatewaySessionRecorder(actorId, joined);
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {

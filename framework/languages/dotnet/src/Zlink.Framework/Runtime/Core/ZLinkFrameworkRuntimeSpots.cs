@@ -9,21 +9,21 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _spotFacade.GetPublisherBundle(channelName);
     }
 
-    internal async ValueTask<ZLinkSpotCreateResult> CreateSpotAsync(
-        string spotName,
+    internal async ValueTask<ZLinkSpotCreateResult> CreateSpotAsync<TSpot>(
         IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
+        where TSpot : IZLinkSpot
     {
-        return await _spotFacade.CreateAsync(spotName, createParts, cancellationToken);
+        return await _spotFacade.CreateAsync(typeof(TSpot), createParts, cancellationToken);
     }
 
-    internal async ValueTask<ZLinkSpotCreateResult> GetOrCreateSpotAsync(
-        string spotName,
+    internal async ValueTask<ZLinkSpotCreateResult> GetOrCreateSpotAsync<TSpot>(
         RoutingId spotRid,
         IReadOnlyList<Message> createParts,
         CancellationToken cancellationToken)
+        where TSpot : IZLinkSpot
     {
-        return await _spotFacade.GetOrCreateAsync(spotName, spotRid, createParts, cancellationToken);
+        return await _spotFacade.GetOrCreateAsync(typeof(TSpot), spotRid, createParts, cancellationToken);
     }
 
     internal async ValueTask<ZLinkSpotInfo?> GetSpotAsync(
@@ -106,7 +106,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal async ValueTask NotifyEntrySpotActorJoinedAsync(
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid = null,
         CancellationToken cancellationToken = default)
     {
@@ -126,7 +126,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal async ValueTask NotifyEntrySpotActorLeftAsync(
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         RoutingId? targetNodeRid = null,
         CancellationToken cancellationToken = default)
     {

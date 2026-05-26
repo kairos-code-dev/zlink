@@ -92,7 +92,6 @@ internal sealed class BingoRoomSpot(
         actor.JoinRoom(request.RoomId);
         var player = new RoomPlayer(actor, _players.Count, BingoCard.Create());
         _players.Add(player);
-        await Context.JoinActorAsync(actor, cancellationToken);
 
         var state = Snapshot();
         await notifications.PublishAsync(PlayerJoinedEvents(player, state), cancellationToken)

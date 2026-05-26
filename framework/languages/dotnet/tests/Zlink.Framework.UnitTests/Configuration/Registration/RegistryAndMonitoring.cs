@@ -124,7 +124,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                 {
                     router.SetRouterBind("tcp://127.0.0.1:9000");
                 });
-                spot.AddSpotFactory<TestSpot>("stage");
+                spot.AddSpotFactory<TestSpot>();
                 spot.AttachClientServerChannelClient("profile");
             });
             });

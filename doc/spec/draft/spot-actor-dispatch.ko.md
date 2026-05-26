@@ -1068,15 +1068,15 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_actor_join_recv(
 ```
 
 join message를 읽은 뒤 application은 join reply를 호출한다.
-`accepted_`가 `0`이 아니면 Actor가 `Spot`에 join된다. `accepted_ == 0`이면 Actor를
-join하지 않고 caller의 request handler에 실패 결과를 전달한다. 두 경우 모두 caller로
-multipart reply payload를 전달할 수 있다.
+`join_result_code_ == 0`이면 Actor가 `Spot`에 join된다. `join_result_code_`가 0이
+아니면 Actor를 join하지 않고 caller의 request handler에 application 거부 코드를
+전달한다. 두 경우 모두 caller로 multipart reply payload를 전달할 수 있다.
 
 ```c
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply(
   void *spot_,
   const zlink_actor_join_info_t *info_,
-  uint32_t accepted_,
+  int32_t join_result_code_,
   zlink_msg_t *parts_,
   size_t part_count_);
 ```
@@ -1172,9 +1172,8 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply(
 - `zlink_spot_actor_join_recv()`가 성공하면 `parts_out_` payload 소유권은 호출자에게
   이전된다. 호출자는 payload를 `zlink_multipart_close()`로 닫거나 각 part를 정확히 한 번 소비해야 한다.
 - `ZLINK_DONTWAIT`에서 읽을 join request가 없으면 `ZLINK_RECV_NO_DATA`를 반환한다.
-- `accepted_`가 `0`이 아니면 accept, `0`이면 reject로 처리한다.
-- `accepted_`는 C API 표면에서 다른 boolean 성격 필드와 맞추기 위해 `uint32_t`로
-  둔다. 의미는 `0` 또는 non-zero만 본다.
+- `join_result_code_ == 0`이면 accept, 0이 아니면 reject로 처리한다.
+- 0이 아닌 `join_result_code_`는 application 이 정의한 오류 코드로 caller에게 전달한다.
 - `zlink_spot_actor_join_reply()`에서 `spot_ == NULL`, `info_ == NULL`,
   `info_->request == NULL`, `parts_ == NULL && part_count_ > 0`, 또는 `parts_ != NULL && part_count_ == 0`이면
   `ZLINK_SUBMIT_INVALID_ARGUMENT` 계열 결과로 실패한다.
@@ -2165,8 +2164,8 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 | ACT-JOIN-02 | join request subject | event `subject`가 join target `Spot` handle이다 |
 | ACT-JOIN-03 | join message recv | `zlink_spot_actor_join_recv()`가 multipart join payload를 반환한다 |
 | ACT-JOIN-04 | opaque request handle | `zlink_actor_join_info_t.request`를 `zlink_spot_actor_join_reply()`에 넘길 수 있다 |
-| ACT-JOIN-05 | join accept reply | `accepted_ != 0`이면 Actor가 target `Spot`에 join되고 caller가 reply message를 받는다 |
-| ACT-JOIN-06 | join reject reply | `accepted_ == 0`이면 Actor는 join되지 않고 caller가 reject result와 reply message를 받는다 |
+| ACT-JOIN-05 | join accept reply | `join_result_code_ == 0`이면 Actor가 target `Spot`에 join되고 caller가 reply message를 받는다 |
+| ACT-JOIN-06 | join reject reply | `join_result_code_ != 0`이면 Actor는 join되지 않고 caller가 application 거부 코드와 reply message를 받는다 |
 | ACT-JOIN-07 | 같은 Spot 중복 join | 같은 Actor와 같은 Spot의 join은 handler 호출 없이 idempotent success로 처리된다 |
 | ACT-JOIN-08 | 다른 Spot join 이동 | 이미 다른 Spot에 있는 Actor의 join request는 leave 없이 target Spot 이동 request로 처리된다 |
 | ACT-JOIN-09 | 같은 Spot의 N개 Actor | 하나의 Spot에 여러 Actor가 join되고 event subject로 각 Actor를 구분한다 |

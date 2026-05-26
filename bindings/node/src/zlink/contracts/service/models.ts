@@ -418,6 +418,7 @@ export interface ActorJoinRequest {
 }
 export interface ActorJoinResult {
   readonly result: RequestResult;
+  readonly joinResultCode: number;
   readonly actor: ActorRef;
   readonly joinedSpotRid: RoutingId;
   readonly joinEpoch: bigint;

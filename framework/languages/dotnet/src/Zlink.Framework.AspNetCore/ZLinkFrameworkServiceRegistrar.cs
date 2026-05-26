@@ -193,7 +193,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         }
 
         foreach (var spotType in registration.SpotNodes.Values
-                     .SelectMany(static spotNode => spotNode.SpotFactories.Values))
+                     .SelectMany(static spotNode => spotNode.SpotFactories))
         {
             services.TryAddScoped(spotType);
         }
@@ -251,7 +251,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                 yield return spotNode.EntrySpotType;
             }
 
-            foreach (var spotType in spotNode.SpotFactories.Values)
+            foreach (var spotType in spotNode.SpotFactories)
             {
                 yield return spotType;
             }

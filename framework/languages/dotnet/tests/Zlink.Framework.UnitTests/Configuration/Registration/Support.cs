@@ -264,17 +264,6 @@ public abstract partial class RegistrationValidationSupport
     protected sealed class TestSpotRemoteAddressResolver : IZLinkSpotRemoteAddressResolver
     {
         public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
-            string spotName,
-            CancellationToken cancellationToken)
-        {
-            _ = spotName;
-            cancellationToken.ThrowIfCancellationRequested();
-            return ResolveSpotRemoteAddressAsync(
-                global::Systems.Zlink.RoutingId.FromString("02"),
-                cancellationToken);
-        }
-
-        public ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
             global::Systems.Zlink.RoutingId spotRid,
             CancellationToken cancellationToken)
         {

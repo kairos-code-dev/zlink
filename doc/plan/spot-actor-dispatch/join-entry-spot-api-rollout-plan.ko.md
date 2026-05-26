@@ -32,16 +32,26 @@ application payload 를 join callback 으로 전달해야 하는지 혼란이 �
    처리하고 joined/left lifecycle callback 을 다시 발생시키지 않는다.
 6. remote SpotNode 로 이동하는 경우 기존 Actor 이동, route 갱신, bound session relay
    갱신 규칙을 따른다.
-7. 이번 변경은 source compatibility 를 유지하지 않는다. 기존
+7. actor 위치는 join commit 성공 시점에만 갱신한다. user Spot join 이 실패하면 기존
+   Spot 에 남고, Entry Spot join 또는 `LeaveActorAsync(...)` 가 실패해도 기존 Spot
+   membership 과 framework state 는 바꾸지 않는다.
+8. `IZLinkSpotContext.JoinActorAsync(...)` 는 제거한다. user Spot actor join handler 가
+   정상 응답을 반환하면 framework 가 join commit 을 수행한다.
+9. `IZLinkSpotContext.LeaveActorAsync(...)` 는 현재 user Spot 에서 같은 SpotNode 의
+   Entry Spot 으로 이동하는 편의 API 로 둔다. 성공하면 source Spot 의 `ActorLeft` 와
+   Entry Spot 의 post-joined lifecycle 이 호출된다. 이 정책은 명시적 stream
+   disconnect 에서 `OnDisconnect` 를 echo 하지 않는 정책과 다르다. actor lifecycle 은
+   connection 알림이 아니라 membership commit 후처리이기 때문이다.
+10. 이번 변경은 source compatibility 를 유지하지 않는다. 기존
    `zlink_actor_join_handler_fn` 이름은 제거하고, user Spot join completion 은
    `zlink_actor_join_spot_handler_fn` 으로 교체한다.
-8. 새 Entry Spot API 는 payload 가 없으므로 전용 callback typedef 를 사용한다.
-9. core C API 이름 변경은 모든 binding 에 동시에 반영한다. 특정 언어를 follow-up 으로
+11. 새 Entry Spot API 는 payload 가 없으므로 전용 callback typedef 를 사용한다.
+12. core C API 이름 변경은 모든 binding 에 동시에 반영한다. 특정 언어를 follow-up 으로
    남기지 않는다.
-10. `IZLinkActorContext.GetSpot()` 이름은 유지한다. 다만 이 API 는 local actor context 에서만
+13. `IZLinkActorContext.GetSpot()` 이름은 유지한다. 다만 이 API 는 local actor context 에서만
     유효하다. Actor owner SpotNode 가 바뀐 뒤 source runtime 에 남은 context 는 invalid
     상태가 되며, 이후 context operation 은 실패해야 한다.
-11. 다른 SpotNode 로 join 한 이후에도 join 을 호출한 session/request 흐름으로 결과를 응답할 수
+14. 다른 SpotNode 로 join 한 이후에도 join 을 호출한 session/request 흐름으로 결과를 응답할 수
     있어야 한다. source context invalidation 시점은 session reply 완료가 아니라 join
     callback/completion 직후로 잡는다. 이미 진행 중인 session reply 경로는 actor context 와
     분리해서 계속 완료될 수 있어야 한다.
@@ -52,10 +62,10 @@ application payload 를 join callback 으로 전달해야 하는지 혼란이 �
     아니라 기존 registration 방식으로 처리한다. joined callback 은 post-commit 의미가
     드러나게 `PostActorJoined` 이름을 사용하고, left callback 은 `ActorLeft` 이름을 유지한다.
     callback handler 는 actor instance 를 직접 받아야 한다.
-14. framework lifecycle handler 에서 기존 `ZLinkSpotActorLifecycleInfo` 타입은 제거하지만,
-    lifecycle 이동 맥락 자체는 버리지 않는다. handler 는 actor instance 와 함께
-    `ZLinkSpotActorLifecycleContext` 를 받아 previous/current Spot rid, join epoch, reason,
-    native flags 를 확인할 수 있어야 한다.
+14. framework lifecycle handler 에서 기존 `ZLinkSpotActorLifecycleInfo` 타입은 제거한다.
+    handler 는 actor instance 와 함께 `ZLinkSpotActorChangeResult` 를 받으며, 이 값에는
+    post-commit 변화 종류인 `Kind` 만 담는다. 이동 전/후 Spot rid, join epoch, native flags 는
+    public handler contract 로 노출하지 않는다.
 
 ## 3. C API 설계
 
@@ -324,8 +334,7 @@ public interface ActorJoinEntrySpotOperation
 
 이름은 기존 binding 의 `JoinActor(...)` 문장 순서와 맞춰 `JoinActorEntrySpot` 을 사용한다.
 `JoinEntrySpotActor` 같은 형태는 피한다. framework 의 `IZLinkActorContext.JoinEntrySpot(...)`
-은 이 binding operation 을 내부에서 호출하고, binding result 의 `ActorRef` 를 framework
-`ZLinkActorJoinResult` 로 변환한다.
+은 이 binding operation 을 내부에서 호출하고, binding result 의 `ActorRef` 를 그대로 반환한다.
 
 ### 7.4 .NET native interop
 
@@ -372,14 +381,8 @@ IZLinkActorJoinEntrySpotCall JoinEntrySpot(
 call 타입은 reply payload 가 없으므로 별도로 둔다.
 
 ```csharp
-public sealed record ZLinkActorJoinResult(
-    string ActorId,
-    string ActorType,
-    ActorRef Actor);
-
 public sealed record ZLinkActorJoinResult<TReply>(
-    string ActorId,
-    string ActorType,
+    int ResultCode,
     ActorRef Actor,
     TReply Reply);
 
@@ -395,22 +398,25 @@ public interface IZLinkActorJoinEntrySpotCall
 {
     IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout);
 
-    ValueTask<ZLinkActorJoinResult> SubmitAsync(
+    ValueTask<ActorRef> SubmitAsync(
         CancellationToken cancellationToken = default);
 }
 ```
 
 `JoinSpot(...)` 은 user Spot 전용으로 유지한다. `JoinSpot(...)` 과 `JoinEntrySpot(...)` 은
 모두 join 계열 API 이므로 최종 Actor ref 를 반환해야 한다. framework 에서는 최종
-`ActorRef` 를 `ZLinkActorJoinResult.Actor` 로 직접 노출한다. user Spot join 은 application
-reply 도 함께 필요하므로
-`ZLinkActorJoinResult<TReply>` 를 반환한다. Entry Spot join 은 application reply payload 가
-없으므로 `ZLinkActorJoinResult` 를 반환한다. TicTacToe SessionGateway 는 이 반환값으로
-`BindActorHandleAsync(...)` 를 호출한다.
+`ActorRef` 를 직접 노출한다. user Spot join 은 application reply 도 함께 필요하므로
+`ZLinkActorJoinResult<TReply>` 가 `int ResultCode`, `ActorRef Actor`, `TReply Reply` 를 담는다.
+`ResultCode == 0` 은 user Spot join handler 가 application 규칙으로 actor 입장을 허용했다는 뜻이다.
+0 이 아닌 값은 application 이 정의한 join 거절 코드다. `Reply` 는 성공/거절 양쪽에서
+application 이 설계한 응답 message 를 담는다. Entry Spot join 은
+application reply payload 가 없으므로 `ActorRef` 를 직접 반환한다. actor id 는 `ActorRef.ActorId`
+에서 읽고, actor type 은 join 결과가 아니라 호출 흐름의 application contract 에서 이미 알고 있는
+값을 사용한다. TicTacToe SessionGateway 는 이 반환값으로 `BindActorHandleAsync(...)` 를 호출한다.
 
-`ActorType` 은 core `zlink_actor_ref_t` 에 없는 framework metadata 이다. framework runtime 은
-join 요청을 시작한 managed actor state 에서 actor id/type 을 보존하고, native completion 이
-돌려준 최종 ActorRef 와 합쳐 `ZLinkActorJoinResult` 를 만든다.
+`ActorType` 은 core `zlink_actor_ref_t` 에 없는 framework metadata 이다. join completion 결과에
+넣지 않는다. session bind 에 actor type 이 필요하면 호출 흐름의 application contract 에서 이미
+알고 있는 값을 넘긴다.
 
 Spot actor lifecycle callback 도 함께 정리한다. core C API 에는 이미
 `zlink_spot_actor_lifecycle_handler(spot, on_join, on_leave, userdata)` 가 있다. framework 는
@@ -424,16 +430,16 @@ Spot actor lifecycle callback 도 함께 정리한다. core C API 에는 이미
 | `IZLinkSpot` lifecycle virtual hook | `OnActorJoinedAsync(...)`, `OnActorLeftAsync(...)` | 제거. Spot class 상속 hook 으로 lifecycle 을 받지 않는다. |
 | `IZLinkEntrySpot` lifecycle virtual hook | `OnActorJoinedAsync(...)`, `OnActorLeftAsync(...)` | 제거. EntrySpot class 상속 hook 으로 lifecycle 을 받지 않는다. |
 | user Spot joined handler | `IZLinkSpotActorJoinedHandler<TSpot, TActor>` | `IZLinkSpotPostActorJoinedHandler<TSpot, TActor>` |
-| user Spot left handler | `IZLinkSpotActorLeftHandler<TSpot, TActor>` | 이름 유지. actor instance 와 새 `ZLinkSpotActorLifecycleContext` 를 받는다. |
+| user Spot left handler | `IZLinkSpotActorLeftHandler<TSpot, TActor>` | 이름 유지. actor instance 와 새 `ZLinkSpotActorChangeResult` 를 받는다. |
 | joined attribute | `[ZLinkSpotActorJoined]` | `[ZLinkSpotPostActorJoined]` |
-| left attribute | `[ZLinkSpotActorLeft]` | 이름 유지. method signature 에서 기존 `ZLinkSpotActorLifecycleInfo` 는 제거하고 새 context 를 받는다. |
+| left attribute | `[ZLinkSpotActorLeft]` | 이름 유지. method signature 에서 기존 `ZLinkSpotActorLifecycleInfo` 는 제거하고 새 result 를 받는다. |
 | registry method | `AddActorJoined<THandler, TActor>()` | `AddPostActorJoined<THandler, TActor>()` |
 | registry method | `AddActorLeft<THandler, TActor>()` | 이름 유지 |
 
 변경 후 시그니처는 아래와 같다.
 
 ```csharp
-public enum ZLinkSpotActorLifecycleReason
+public enum ZLinkSpotActorChangeKind
 {
     Unknown = 0,
     JoinSpot = 1,
@@ -443,12 +449,8 @@ public enum ZLinkSpotActorLifecycleReason
     Destroy = 5
 }
 
-public sealed record ZLinkSpotActorLifecycleContext(
-    RoutingId PreviousSpotRid,
-    RoutingId CurrentSpotRid,
-    ulong JoinEpoch,
-    ZLinkSpotActorLifecycleReason Reason,
-    uint NativeFlags);
+public sealed record ZLinkSpotActorChangeResult(
+    ZLinkSpotActorChangeKind Kind);
 
 public interface IZLinkActorHandlerRegistry
 {
@@ -468,7 +470,7 @@ public interface IZLinkSpotPostActorJoinedHandler<TSpot, TActor>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult result,
         CancellationToken cancellationToken);
 }
 
@@ -479,7 +481,7 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult result,
         CancellationToken cancellationToken);
 }
 ```
@@ -487,12 +489,9 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
 `PostActorJoined` 는 actor join admission handler 를 통과하고 commit 된 뒤 호출되는
 post-join callback 이다. join request message, accepted/rejected 여부, reply payload 는 이
 callback 의 책임이 아니다. `ActorLeft` 는 leave 계열 lifecycle 이 하나뿐이므로 이름을
-유지한다. 기존 `ZLinkSpotActorLifecycleInfo` 타입은 public handler signature 에 남기지 않지만,
-이동 맥락은 `ZLinkSpotActorLifecycleContext` 로 유지한다. handler 는 `PreviousSpotRid`,
-`CurrentSpotRid`, `JoinEpoch`, `Reason`, `NativeFlags` 로 user Spot 에서 Entry Spot 으로
-이동했는지, 다른 SpotNode 로 이동했는지, disconnect/leave/destroy 계열인지 구분할 수 있다.
-`Reason` 은 framework 가 해석한 public 의미이고, `NativeFlags` 는 core lifecycle flags 를
-보존하는 값이다. Entry Spot 도 같은 handler interface 를 사용한다. 예를 들어
+유지한다. 기존 `ZLinkSpotActorLifecycleInfo` 타입은 public handler signature 에 남기지 않는다.
+`ZLinkSpotActorChangeResult.Kind` 는 framework 가 해석한 post-commit 변화 종류다. Entry Spot 도
+같은 handler interface 를 사용한다. 예를 들어
 `IZLinkSpotPostActorJoinedHandler<TicTacToeEntrySpot, PlayerActor>` 처럼 `TSpot` 에 entry spot
 타입을 넣어 등록한다.
 
@@ -509,13 +508,11 @@ native 경로 조건:
 - actor state 에 native actor ref 가 있어야 한다.
 - source SpotNode 가 있어야 한다.
 - managed stream dispatch 중이라도 기존 user Spot join 과 같은 reentrancy 정책을 적용한다.
-- native join completion 이 돌려준 target Actor ref 를 framework 의 `ZLinkActorJoinResult`
-  로 변환한다. router channel id 는 framework route mesh 설정에서 결정한다.
-- `ZLinkActorJoinResult.ActorType` 은 native result 에서 읽지 않고 source managed actor state 에서
-  가져온다.
+- native join completion 이 돌려준 target Actor ref 를 framework 의 `ActorRef` 로 노출한다.
+  router channel id 는 framework route mesh 설정에서 결정한다.
 - lifecycle 호출부는 `OnActorJoinedAsync(info, ct)` / `OnActorLeftAsync(info, ct)` 같은
   Spot class virtual hook 을 더 이상 호출하지 않는다. core/binding lifecycle info 로부터 actor
-  instance 와 `ZLinkSpotActorLifecycleContext` 를 만든 뒤 등록된 `PostActorJoined` /
+  instance 와 `ZLinkSpotActorChangeResult` 를 만든 뒤 등록된 `PostActorJoined` /
   `ActorLeft` handler 를 호출한다.
 
 local in-memory fallback:
@@ -540,8 +537,8 @@ local context invalidation:
 - invalidation 은 session reply 전송을 중단시키면 안 된다. session reply 는 actor context
   operation 이 아니라 이미 시작된 request/reply continuation 으로 처리한다.
 - session reply 를 보내지 않는 handler 도 가능하므로 invalidation 시점을 reply 완료로
-  잡지 않는다. bind 와 reply 생성에 필요한 값은 `ZLinkActorJoinResult` 에 담거나
-  completion 직후 지역 변수로 캡처해서 사용한다.
+  잡지 않는다. bind 와 reply 생성에 필요한 actor id/address 는 `ActorRef` 에서 읽고,
+  actor type 같은 application metadata 는 completion 직후 지역 변수로 캡처해서 사용한다.
 - source state 의 local `Activation` 을 그대로 두지 않는다. stale local Spot 이
   `GetSpot()` 으로 반환되면 안 된다.
 - 사용자가 actor/context 객체 참조를 보관하더라도 invalid 상태를 관측해야 한다. C# 객체
@@ -562,15 +559,15 @@ local context invalidation:
 1. `Actors/ActorContracts.cs`
    - `IZLinkActorContext.JoinEntrySpot(RoutingId spotNodeRid)` 예제를 추가한다.
    - `IZLinkActorJoinEntrySpotCall` 을 `ContractExample` 대상에 포함한다.
-   - `JoinEntrySpot(...).Timeout(...).SubmitAsync()` 가
-     `ZLinkActorJoinResult` 를 반환하는 형태를 예제로 둔다.
+   - `JoinEntrySpot(...).Timeout(...).SubmitAsync()` 가 `ActorRef` 를 반환하는 형태를
+     예제로 둔다.
    - `JoinSpotAsync` 와 string 기반 `JoinSpot` 예제가 남지 않도록 한다.
 2. `Coverage/ContractSurfaceCoverage.cs`
    - 새 public contract interface 가 coverage 누락으로 잡히지 않는지 확인한다.
    - coverage 테스트를 우회하지 말고 실제 contract example 로 채운다.
 3. contract test stub
    - `ActorContext` test double 에 `JoinEntrySpot(RoutingId spotNodeRid)` 구현을 추가한다.
-   - 반환 call test double 은 reply generic 없이 `ValueTask<ZLinkActorJoinResult> SubmitAsync(...)`
+   - 반환 call test double 은 reply generic 없이 `ValueTask<ActorRef> SubmitAsync(...)`
      를 제공한다.
    - user Spot join call 과 Entry Spot join call 을 같은 test double 로 합치지 않는다.
 4. `GetSpot()` contract 설명
@@ -588,9 +585,8 @@ local context invalidation:
    - `IZLinkSpotPostActorJoinedHandler<TSpot, TActor>` 예제를 추가한다.
    - `IZLinkSpotActorLeftHandler<TSpot, TActor>` 는 이름을 유지하되
      기존 `ZLinkSpotActorLifecycleInfo` parameter 없이 actor instance 와
-     `ZLinkSpotActorLifecycleContext` 를 받는 예제로 고친다.
-   - `ZLinkSpotActorLifecycleContext` 예제는 previous/current Spot rid, join epoch, reason 을
-     읽는 형태로 둔다.
+     `ZLinkSpotActorChangeResult` 를 받는 예제로 고친다.
+   - `ZLinkSpotActorChangeResult` 예제는 `Kind` 만 읽는 형태로 둔다.
    - Entry Spot 은 별도 handler interface 를 만들지 않고 같은 generic handler interface 에
      entry spot 타입을 넘겨 사용한다.
    - `AddPostActorJoined<THandler, TActor>()` 와 `[ZLinkSpotPostActorJoined]` 예제를 추가한다.
@@ -618,7 +614,7 @@ dotnet test framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Zlink
    - TicTacToe SessionGateway 샘플 흐름을 API 기반으로 되돌린다.
    - Session 에서 actor 생성 또는 actor ref 확보 후 Play SpotNode rid 로
      `JoinEntrySpot(...)` 을 호출한다.
-   - 반환된 `ZLinkActorJoinResult.Actor` 로 session bind 를 수행한다.
+   - 반환된 `ActorRef` 로 session bind 를 수행한다.
 4. `ActorContext_RemoteJoin_Invalidates_SourceContext`
    - source runtime 에서 actor 를 생성하고 local Spot 또는 Entry Spot 에 둔다.
    - remote SpotNode 로 join 을 성공시킨다.
@@ -642,12 +638,12 @@ dotnet test framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Zlink
    - Session server 도 `PlayerActorFactory` 를 등록해야 한다.
    - Actor 구현 타입은 Shared 에 둔다.
 3. 생성된 actor context 로 `JoinEntrySpot(topology.PlayRid)` 를 호출한다.
-4. `JoinEntrySpot(...)` 이 반환한 `ZLinkActorJoinResult` 로
-   `BindActorHandleAsync(join.Actor, join.ActorType, cancellationToken)`
+4. `JoinEntrySpot(...)` 이 반환한 `ActorRef` 로
+   `BindActorHandleAsync(join, SampleNames.PlayerActorType, cancellationToken)`
    를 호출한다.
-5. bind 와 authenticate reply 에 필요한 actor id/type/address 는 join completion 결과에서
-   지역 변수로 확보한다. 이후 source actor context 는 invalid 상태가 될 수 있으므로 다시
-   접근하지 않는다.
+5. bind 와 authenticate reply 에 필요한 actor id/address 는 `ActorRef` 에서 읽고, actor type 은
+   인증 흐름의 application contract 에서 확보한다. 이후 source actor context 는 invalid 상태가 될
+   수 있으므로 다시 접근하지 않는다.
 6. 기존 Play 서버의 `JoinEntrySpotActorReq`/`JoinEntrySpotActorRes` 우회 handler 는 제거한다.
 7. 이후 `JoinMatchReq`, `PlaceMarkReq` 는 Entry Spot actor request 또는 user Spot actor
    request 로 흘러간다.
@@ -673,8 +669,8 @@ var join = await actor.Context.JoinEntrySpot(topology.PlayRid)
     .SubmitAsync(cancellationToken);
 
 await context.BindActorHandleAsync(
-    join.Actor,
-    join.ActorType,
+    join,
+    SampleNames.PlayerActorType,
     cancellationToken);
 
 await context.Reply(new AuthenticateRes(join.ActorId))
@@ -762,9 +758,9 @@ framework spec 은 public framework API 와 handler 의미를 정확히 맞춘�
   - `IZLinkActorContext.JoinEntrySpot(RoutingId spotNodeRid)` 를 추가한다.
   - `JoinSpot(RoutingId spotRid, request)` 는 user Spot join 이라고 제한한다.
   - `JoinSpot(...).SubmitAsync<TReply>()` 는 `ZLinkActorJoinResult<TReply>` 를 반환하고,
-    `Reply` 에 application reply 를 담는다고 설명한다.
+    `ResultCode` 와 `Reply` 에 application join 결정과 응답 message 를 담는다고 설명한다.
   - `JoinEntrySpot` 은 `IZLinkActorJoinEntrySpotCall` 로 끝나며 application reply generic 이
-    없고 `ZLinkActorJoinResult` 를 반환한다고 설명한다.
+    없고 `ActorRef` 를 반환한다고 설명한다.
   - `GetSpot()` 과 `GetSpot<TSpot>()` 은 local actor context 에서만 유효하다고 설명한다.
   - remote SpotNode join 성공 뒤 source context 는 invalid 상태가 되며, stale local Spot 을
     반환하지 않는다고 명시한다.
@@ -784,10 +780,9 @@ framework spec 은 public framework API 와 handler 의미를 정확히 맞춘�
   - Entry Spot 은 별도 entry lifecycle handler interface 를 만들지 않고 같은 generic handler
     interface 의 `TSpot` 에 entry spot 타입을 넣어 사용한다고 명시한다.
   - joined/left lifecycle handler 는 기존 `ZLinkSpotActorLifecycleInfo` 를 받지 않고 actor
-    instance 와 `ZLinkSpotActorLifecycleContext` 를 받는다고 명시한다.
-  - `ZLinkSpotActorLifecycleContext` 는 previous/current Spot rid, join epoch, reason,
-    native flags 를 담아 left handler 가 이동 방향과 leave 성격을 구분할 수 있게 한다고
-    설명한다.
+    instance 와 `ZLinkSpotActorChangeResult` 를 받는다고 명시한다.
+  - `ZLinkSpotActorChangeResult` 는 `Kind` 만 담고, 이동 전/후 Spot rid, join epoch, native
+    flags 는 public handler contract 로 노출하지 않는다고 설명한다.
 - `framework/languages/dotnet/doc/spec/session-actor-dispatch.ko.md`
   - session bound actor 가 user Spot 에서 Entry Spot 으로 이동해도 session binding 은
     logical binding 으로 유지된다는 점을 추가한다.
@@ -829,7 +824,7 @@ guide 는 내부 transport 를 설명하지 않고 사용자가 선택해야 하
 문서 수정 뒤 아래 검색을 반드시 수행한다.
 
 ```bash
-rg -n "JoinSpotAsync|JoinSpot\\(spotName|EntrySpot direct join 은 허용하지 않는다|EntrySpot direct join|zlink_actor_join_handler_fn" \
+rg -n "JoinSpotAsync|JoinSpot\\(spotRid|EntrySpot direct join 은 허용하지 않는다|EntrySpot direct join|zlink_actor_join_handler_fn" \
   doc/spec doc/guide doc/internals framework/languages/dotnet/doc \
   -g '!**/draft/**'
 rg -n "JoinSpot\\s*\\(\\s*\\\"|JoinSpot\\s*\\(\\s*string|JoinSpot<[^>]+>\\s*\\(\\s*string" \
@@ -851,7 +846,7 @@ rg -n "ZLinkSpotActorLifecycleInfo" \
 검색 결과 처리 기준:
 
 - `JoinSpotAsync` 는 새 계약에서 제거되었으므로 설명 문서에 남기지 않는다.
-- `JoinSpot(spotName` 만으로는 string 리터럴 호출을 잡지 못한다. `JoinSpot("room", ...)` 같은
+- `JoinSpot(spotRid` 만으로는 string 리터럴 호출을 잡지 못한다. `JoinSpot("room", ...)` 같은
   호출과 `JoinSpot(... string ...)` 오버로드 시그니처까지 별도 검색으로 제거한다.
 - “EntrySpot direct join 금지” 문장은 새 결정과 충돌하므로 제거하거나 과거 결정으로
   명확히 표시한다.
@@ -865,7 +860,7 @@ rg -n "ZLinkSpotActorLifecycleInfo" \
   surface 에 남기지 않는다.
 - `ZLinkSpotActorLifecycleInfo` 는 runtime 내부 mapping 에 사용할 수는 있지만 public contract,
   contract test, handler spec, guide 예제에 남기지 않는다. public handler 는
-  `ZLinkSpotActorLifecycleContext` 를 사용한다.
+  `ZLinkSpotActorChangeResult` 를 사용하고 `Kind` 만 읽는다.
 
 문서 회귀 테스트가 있는 경우 다음도 실행한다.
 
@@ -970,7 +965,7 @@ timeout 90s framework/languages/dotnet/samples/TicTacToe.SessionGateway/run_samp
 - framework public surface 에 `OnActorJoinedAsync`, `AddActorJoined`,
   `ZLinkSpotActorJoined`, EntrySpot 전용 lifecycle handler interface 가 남아 있지 않다.
 - framework lifecycle handler 는 `AddPostActorJoined(...)` / `AddActorLeft(...)` 로 등록되고
-  public handler signature 는 actor instance 와 `ZLinkSpotActorLifecycleContext` 를 직접 받는다.
+  public handler signature 는 actor instance 와 `ZLinkSpotActorChangeResult` 를 직접 받는다.
 - idempotent Entry Spot join 은 success 를 반환하되 joined/left lifecycle callback count 를
   증가시키지 않는다.
 - TicTacToe SessionGateway 샘플이 `JoinEntrySpot` 기반 흐름으로 동작한다.

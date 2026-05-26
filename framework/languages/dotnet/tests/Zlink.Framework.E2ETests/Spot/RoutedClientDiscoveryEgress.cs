@@ -64,7 +64,7 @@ public sealed class RoutedClientDiscoveryEgressTests : SpotTestSupport
                     "play.route",
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(playRouteEndpoint)));
-                spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+                spot.AddSpotFactory<SpotRouteTargetSpot>();
             });
             });
         });
@@ -101,7 +101,7 @@ public sealed class RoutedClientDiscoveryEgressTests : SpotTestSupport
             var runtime = targetHost.Services.GetRequiredService<ZLinkFrameworkRuntime>();
             var recorder = targetHost.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
-            _ = await manager.GetOrCreateAsync("route-target", targetSpotRid);
+            _ = await manager.GetOrCreateAsync<SpotRouteTargetSpot>(targetSpotRid);
             await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play.route");
 
             await RetryAsync(

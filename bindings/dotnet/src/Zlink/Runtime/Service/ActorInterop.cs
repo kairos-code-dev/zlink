@@ -471,14 +471,14 @@ internal static class ActorInterop
                     RequestResult rr = err is ZlinkRequestException re
                         ? (RequestResult)re.Code
                         : RequestResult.InternalError;
-                    ActorJoinResult fail = new(rr, actor, default, 0, 0);
+                    ActorJoinResult fail = new(rr, 0, actor, default, 0, 0);
                     env = new ActorJoinResultEnvelope(fail,
                         Array.Empty<Message>());
                 }
                 else if (t.IsCanceled)
                 {
-                    ActorJoinResult fail = new(RequestResult.Terminated, actor,
-                        default, 0, 0);
+                    ActorJoinResult fail = new(RequestResult.Terminated, 0,
+                        actor, default, 0, 0);
                     env = new ActorJoinResultEnvelope(fail,
                         Array.Empty<Message>());
                 }
@@ -546,7 +546,7 @@ internal static class ActorInterop
                     GCHandle gh = (GCHandle)h!;
                     if (gh.Target is ActorJoinCallState s)
                     {
-                        ActorJoinResult fail = new(RequestResult.TimedOut,
+                        ActorJoinResult fail = new(RequestResult.TimedOut, 0,
                             default, default, 0, 0);
                         if (s.Completion.TrySetResult(
                             new ActorJoinResultEnvelope(fail,
@@ -737,7 +737,7 @@ internal static class ActorInterop
         {
             if (resultPtr == IntPtr.Zero)
             {
-                ActorJoinResult fail = new(RequestResult.InternalError,
+                ActorJoinResult fail = new(RequestResult.InternalError, 0,
                     default, default, 0, 0);
                 state.Completion.TrySetResult(
                     new ActorJoinResultEnvelope(fail,
@@ -749,7 +749,8 @@ internal static class ActorInterop
             if ((RequestResult)native.Result != RequestResult.Ok)
             {
                 ActorJoinResult fail = new((RequestResult)native.Result,
-                    default, default, native.JoinEpoch, native.Flags);
+                    native.JoinResultCode, default, default, native.JoinEpoch,
+                    native.Flags);
                 state.Completion.TrySetResult(
                     new ActorJoinResultEnvelope(fail,
                         Array.Empty<Message>()));
@@ -760,7 +761,8 @@ internal static class ActorInterop
             RoutingId joinedSpot = RoutingId.FromBytes(
                 NativeHelpers.ReadRoutingId(ref native.JoinedSpotRid));
             ActorJoinResult result = new((RequestResult)native.Result,
-                returnedActor, joinedSpot, native.JoinEpoch, native.Flags);
+                native.JoinResultCode, returnedActor, joinedSpot,
+                native.JoinEpoch, native.Flags);
             Message[] replyParts = parts != IntPtr.Zero
                 ? Message.FromNativeVector(parts, partCount)
                 : Array.Empty<Message>();

@@ -5,7 +5,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateSpotNode(
         ZLinkSpotNodeRegistration spotNode,
         ZLinkFrameworkRegistration registration,
-        ISet<string> globalSpotFactories,
+        ISet<Type> globalSpotFactories,
         ISet<string> globalSpotPublisherChannels)
     {
         if (registration.SpotDiscovery is null)
@@ -115,9 +115,9 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
     private static void ValidateUniqueSpotFactories(
         ZLinkSpotNodeRegistration spotNode,
-        ISet<string> globalSpotFactories)
+        ISet<Type> globalSpotFactories)
     {
-        foreach (var spotFactory in spotNode.SpotFactories.Keys)
+        foreach (var spotFactory in spotNode.SpotFactories)
         {
             if (!globalSpotFactories.Add(spotFactory))
             {

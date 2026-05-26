@@ -483,7 +483,12 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
 
         await notifications.PublishAsync(result.Reply.Events, cancellationToken);
 
-        return new JoinMatchRes(result.Reply.MatchId, result.ActorId, ...);
+        if (result.ResultCode != 0)
+        {
+            return new JoinMatchRes(result.Reply.MatchId, result.Actor.ActorId, ...);
+        }
+
+        return new JoinMatchRes(result.Reply.MatchId, result.Actor.ActorId, ...);
     }
 }
 ```
@@ -557,8 +562,7 @@ public interface IZLinkActorContext
 {
     string ActorId { get; }
     string? SessionId { get; }
-    string? SpotName { get; }
-    RoutingId? SpotRid { get; }
+        RoutingId? SpotRid { get; }
     bool IsJoined { get; }
 
     IZLinkBoundSession BoundSession { get; }
@@ -581,7 +585,7 @@ public interface IZLinkActorContext
 | 표면 | 의미 |
 | --- | --- |
 | `ActorId` / `SessionId` | identity. session bind된 actor만 `SessionId`가 채워진다 |
-| `SpotName` / `SpotRid` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름, routing id, join 상태. Entry Spot에 있을 때는 `IsJoined`가 false이고 `SpotRid`는 없다 |
+| `SpotRid` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름, routing id, join 상태. Entry Spot에 있을 때는 `IsJoined`가 false이고 `SpotRid`는 없다 |
 | `BoundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
 | `JoinSpot(spotRid, request).SubmitAsync<TReply>(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
@@ -666,11 +670,13 @@ var result = await actor.Context
     .SubmitAsync<JoinMatchSpotResult>(cancellationToken);
 ```
 
-이 호출은 spot 쪽 join handler 의 결과를 그대로 돌려준다. 성공 시 actor 쪽
-상태가 다음과 같이 갱신된다.
+이 호출은 spot 쪽 join handler 의 결과를 `Reply` 로 돌려주고, application join 결정은
+`ResultCode` 로 표현한다. `ResultCode == 0` 은 join 허용, 0 이 아닌 값은 room full,
+match closed 같은 application 정의 거절 코드다. transport, timeout, protocol failure 는
+결과값이 아니라 예외로 처리한다. 성공 시 actor 쪽 상태가 다음과 같이 갱신된다.
 
 - `Context.IsJoined` 가 `true` 가 된다.
-- `Context.SpotName` 과 `Context.SpotRid` 가 채워진다.
+- `Context.SpotRid` 가 채워진다.
 
 이후부터 spot 은 actor 객체에 직접 접근할 수 있다 (spot handler 에서 `actor`
 인자로 받게 된다).
@@ -814,7 +820,7 @@ message 를 보낼 때도, 그 stream 을 그대로 타고 push 되어야 한다
   session owner gateway 로 사용할지 지정하는 등록이다. 이 등록이 있어야 session 에서
   actor 로 가는 relay 와 actor 에서 bound session 으로 돌아오는 push 가 같은 gateway
   상태를 사용한다.
-- **`IZLinkSpotRemoteAddressResolver`** -- "spot name / id → user Spot routing id" 를
+- **`IZLinkSpotRemoteAddressResolver`** -- "spot rid → user Spot routing id" 를
   푼다. actor 가 `JoinSpot(spotRid, ...)` 로 node 경계를 넘을 수 있다면 이
   resolver 를 등록한다.
 - **`IZLinkBoundSession`** -- Play 서버 actor 가 자기 client 에게 push 를 보낼
@@ -979,7 +985,7 @@ builder.Services.AddZLinkFramework(options =>
                 router.SetRouterBind("tcp://0.0.0.0:9000");
             });
             node.AddEntrySpot<PlayerEntrySpot>();
-            node.AddSpotFactory<MatchSpot>("match");
+            node.AddSpotFactory<MatchSpot>();
         });
     });
 
@@ -1030,9 +1036,9 @@ public interface IZLinkFrameworkOptions
 | 메서드 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
 | `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory를 매핑 |
-| `AddSpotRemoteAddressResolver<>()` | actor가 spot name/id로 user Spot에 join하거나 spot client를 쓰는 서버 | spot name/id → spot routing |
+| `AddSpotRemoteAddressResolver<>()` | actor가 spot rid로 user Spot에 join하거나 spot client를 쓰는 서버 | spot rid → spot routing |
 | `AddSpotMesh(...).AddNode(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
-| `AddSpotMesh(...).AddNode(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | spotName 키로 user Spot factory 매핑 |
+| `AddSpotMesh(...).AddNode(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
 
 ## 11. 다른 문서와의 관계
 
@@ -1123,7 +1129,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
 [^raw-api]: raw API는 framework 추상화를 거치지 않고 C 바인딩이 노출하는
     저수준 함수를 직접 부르는 호출을 뜻한다.
 
-[^resolver]: resolver는 식별자(예: actor id, spot name)를 받아 그 식별자가
+[^resolver]: resolver는 식별자(예: actor id, spot rid)를 받아 그 식별자가
     가리키는 실제 위치(routing id 등)를 돌려주는 application 컴포넌트다.
     framework는 위치 정보를 직접 소유하지 않고 resolver에게 위임한다.
 

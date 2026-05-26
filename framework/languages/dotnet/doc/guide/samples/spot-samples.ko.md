@@ -38,7 +38,7 @@
   같은 상위 확장 아이디어를 메모해 둔 부분이다. 아직 framework core 의 public
   surface 는 아니다.
 - `targetRid + spotRid` 형태의 direct routed[^direct-routed] 호출은 framework
-  public surface 에 포함하지 않는다. spot name / id 기반 호출은 모두
+  public surface 에 포함하지 않는다. spot rid 기반 호출은 모두
   `IZLinkSpotClient` 가 resolver[^resolver] 를 거쳐 처리한다.
 
 ## 2. 인터페이스 초안
@@ -81,7 +81,6 @@ public interface IZLinkSpotContext
 {
     RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
-    string SpotName { get; }
 
     // IZLinkSpot.Context 는 framework 가 생성자에 넘긴 context 를
     // 그대로 노출하는 공개 계약이다.
@@ -122,14 +121,14 @@ public interface IZLinkSpotContext
     }
 
     IZLinkSendCall SendSpot<TMessage>(
-        string spotName,
+        RoutingId spotRid,
         TMessage message)
     {
         return default!;
     }
 
     IZLinkRequestCall RequestSpot<TRequest>(
-        string spotName,
+        RoutingId spotRid,
         TRequest request)
     {
         return default!;
@@ -214,12 +213,10 @@ public sealed class Timer : IZlinkTimer
 
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
-    string SpotName,
     bool Created);
 
 public readonly record struct ZLinkSpotInfo(
-    RoutingId SpotRid,
-    string SpotName);
+    RoutingId SpotRid);
 
 // IZLinkSpotManager is defined in handler-interfaces.ko.md section 6.3.
 
@@ -237,16 +234,8 @@ public interface IZLinkClient
 public interface IZLinkSpotClient
 {
     IZLinkSendCall SendSpot<TMessage>(
-        string spotName,
-        TMessage message);
-
-    IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,
         TMessage message);
-
-    IZLinkRequestCall RequestSpot<TMessage>(
-        string spotName,
-        TMessage request);
 
     IZLinkRequestCall RequestSpot<TMessage>(
         RoutingId spotRid,
@@ -396,7 +385,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AddSpotFactory<SampleSpot>("sample");
+            node.AddSpotFactory<SampleSpot>();
         });
     });
 });
@@ -433,7 +422,7 @@ app.Run();
     같은 typed facade[^typed-facade]를 capability별로 등록한다.
   - 호출 단위로 적용되는 `Timeout(...)`과 달리, 이쪽은 runtime의 기본 동작을
     정해 두는 설정이다.
-- `AddSpotFactory<SampleSpot>("sample")`
+- `AddSpotFactory<SampleSpot>()`
   - 이 node가 생성하고 소유할 `SampleSpot` factory[^factory]를 `sample`이라는
     이름으로 등록한다.
   - 하나의 `SpotNode` 안에 서로 다른 이름으로 여러 spot factory를 둘 수 있고,
@@ -501,7 +490,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AddSpotFactory<SampleSpot>("sample");
+            node.AddSpotFactory<SampleSpot>();
         });
     });
 });
@@ -513,8 +502,8 @@ builder.Services.AddZLinkFramework(options =>
   client 는 서로 별개의 연결 집합을 다룬다.
 - 같은 capability 안에서는 `Discovery`[^discovery] 와 `Manual` 방식을 섞지
   않는다.
-- 같은 `SpotNode` 안에서 `spotName` 은 비어 있으면 안 된다.
-- 이미 등록된 `spotName` 을 다시 등록하면, 기존 값을 덮어쓰지 않고 예외가
+- 같은 `SpotNode` 안에서 `spotRid` 은 비어 있으면 안 된다.
+- 이미 등록된 `spotRid` 을 다시 등록하면, 기존 값을 덮어쓰지 않고 예외가
   발생한다.
 - `router` 의 수동 연결도 endpoint 집합만 등록한다. 이 문서에서는
   `Connect(...)` 호출 시 remote router id 를 별도 파라미터로 받지 않는다.
@@ -626,7 +615,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AddSpotFactory<SampleSpot>("sample");
+            node.AddSpotFactory<SampleSpot>();
         });
     });
 });
@@ -665,22 +654,20 @@ app.MapPost("/stage/create", async (
     IZLinkSpotManager spotManager,
     CancellationToken cancellationToken) =>
 {
-    var created = await spotManager.CreateAsync("stage", cancellationToken);
+    var created = await spotManager.CreateAsync<StageSpot>(cancellationToken);
     var spotInfo = await spotManager.GetAsync(created.SpotRid, cancellationToken);
 
     return Results.Ok(new
     {
         created.SpotRid,
-        created.SpotName,
         created.Created,
-        LookupName = spotInfo?.SpotName
+        LookupRid = spotInfo?.SpotRid
     });
 });
 ```
 
-여기서 `SpotName` 은 생성 결과와 조회 표면 양쪽 모두에서 다시 보인다. 덕분에
-운영 코드가 `spotRid` 만 들고 있어도, 그 인스턴스가 어떤 등록 이름으로 만들어진
-것인지 다시 확인할 수 있다.
+조회 표면은 public 식별자인 `SpotRid`만 돌려준다. 어떤 factory 타입으로 생성됐는지는
+framework 내부 소유 정보이며 application contract로 다시 노출하지 않는다.
 
 ### 3.1.3 outbound-only SPOT-aware 앱
 
@@ -1020,7 +1007,7 @@ builder.Services.AddZLinkFramework(options =>
 
         mesh.AddNode("room.node", node =>
         {
-            node.AddSpotFactory<SampleSpot>("sample-room");
+            node.AddSpotFactory<SampleSpot>();
         });
     });
 });
@@ -1083,13 +1070,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
         SampleJoinRoomRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (actor.Spot is SampleSpot current && !ReferenceEquals(current, this))
-        {
-            await current.Context.LeaveActorAsync(actor, cancellationToken);
-        }
-
         _actors[actor.ActorId] = actor;
-        await Context.JoinActorAsync(actor, cancellationToken);
 
         PublishSampleState();
 
@@ -1288,9 +1269,10 @@ public sealed class SampleActor : IZLinkActor
         SampleJoinRoomRequest request,
         CancellationToken cancellationToken)
     {
-        return _context
+        var result = await _context
             .JoinSpot(room.Context.SpotRid, request)
             .SubmitAsync<SampleJoinRoomReply>(cancellationToken);
+        return result.Reply;
     }
 
 }
@@ -1542,9 +1524,10 @@ packet 의 hot path[^hot-path] 까지 다시 끌고 들어오지 않는 편이 �
 5. client가 `SampleJoinRoomRequest`를 보낸다.
 6. `SampleSession`은 room 정보를 actor packet으로 넘기고, actor 쪽 handler는
    `IZLinkActorContext.JoinSpot(...)`으로 target room의 join callback을 호출한다.
-7. 등록된 `SampleJoinRoomHandler`가 같은 `SampleSpot` 실행 문맥에서 승인 처리,
-   `Context.JoinActorAsync(actor)`(`IZLinkSpotContext` 의 actor membership 표면)
-   호출, 기존 room에서의 이탈, 결과 생성을 끝까지 마무리한다.
+7. 등록된 `SampleJoinRoomHandler`가 같은 `SampleSpot` 실행 문맥에서 승인 처리와
+   결과 생성을 마치면, framework 가 join commit 을 수행해 actor 위치를 target
+   room으로 갱신한다. 기존 room이 있으면 source room의 `ActorLeft` lifecycle 이
+   호출된다.
 8. 그 뒤에 들어오는 `SampleHeartbeatCommand`, `SampleMoveActorCommand`,
    `SampleSendRoomChatCommand` 같은 패킷은 framework 내부의 `SubmitAsync(...)`를
    거쳐 actor가 속한 `Spot` 문맥으로 제출된다.
@@ -1877,19 +1860,19 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 이 절은 상황별로 어느 표면을 골라야 하는지 간단히 정리해 둔다.
 
 - 새 spot 인스턴스를 만들고 싶다
-  - `IZLinkSpotManager.CreateAsync("stage", ...)`
+  - `IZLinkSpotManager.CreateAsync<StageSpot>(...)`
 - 새 spot 인스턴스를 만들면서 초기 설정을 넘기고 싶다
-  - `IZLinkSpotManager.CreateAsync("stage", createParts, ...)`를 사용하고,
+  - `IZLinkSpotManager.CreateAsync<StageSpot>(createParts, ...)`를 사용하고,
     spot의 `OnCreateAsync(...)`에서 multipart create payload를 해석한다.
 - 명시적 `spotRid`가 있고 없으면 만들고 있으면 가져오고 싶다
-  - `IZLinkSpotManager.GetOrCreateAsync("stage", spotRid, createParts, ...)`
+  - `IZLinkSpotManager.GetOrCreateAsync<StageSpot>(spotRid, createParts, ...)`
 - attach된 다른 channel로 send packet을 보내고 싶다
   - `SendChannel(...).Submit(...)`
 - attach된 다른 channel로 request packet을 보내고 싶다
   - `RequestChannel(...).Timeout(...).Submit(...)`
 - 다른 SPOT 인스턴스로 routed 호출을 보내고 싶다
   - 현재 framework core 기본 표면에는 RID 기반의 direct 표면이 없다. 대신
-    `SendSpot(...)` / `RequestSpot(...)`처럼 spot name 또는 `RoutingId`를 받는
+    `SendSpot(...)` / `RequestSpot(...)`처럼 `RoutingId`를 받는
     표면을 사용한다.
 - 현재 spot 자신의 id를 알고 싶다
   - `SampleSpot.Context.SpotRid`
@@ -1983,7 +1966,7 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 | `ManagerTests.SpotManager_Create_List_Remove_And_Publish_Work_Through_FrameworkRuntime` | spot 생성과 조회, 제거, callback scope 정리가 동작한다. |
 | `ManagerTests.SpotManager_CreateAsync_Passes_Empty_CreatePayload_To_OnCreate` | payload 없는 생성이 빈 multipart payload로 `OnCreateAsync(...)`를 호출한다. |
 | `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 `spotRid` 동시 확보에서 첫 create payload만 `OnCreateAsync(...)`로 전달된다. |
-| `ManagerTests.SpotManager_GetOrCreateAsync_Rejects_SpotName_Mismatch` | 같은 `spotRid`를 다른 `spotName`으로 확보하려 하면 `SpotTypeMismatch`로 실패한다. |
+| `ManagerTests.SpotManager_GetOrCreateAsync_Returns_Existing_Spot_For_Same_Type` | 같은 `spotRid`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환한다. |
 | `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 노드 publish 샘플이 target SPOT channel에 도달한다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 room 역할의 spot에 join한 뒤, 해당 문맥에서 dispatch된다. |
 

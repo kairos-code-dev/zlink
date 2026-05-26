@@ -40,7 +40,7 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected join payload"))
 	}
 	request.Message.Close()
-	replyErr := playSpot.ReplyActorJoin(request, true).Message(samplecommon.Message("accepted")).Submit(nil)
+	replyErr := playSpot.ReplyActorJoin(request, 0).Message(samplecommon.Message("accepted")).Submit(nil)
 	samplecommon.Must(replyErr)
 	if result := <-joinCh; result != zlink.RequestOK {
 		samplecommon.Must(fmt.Errorf("unexpected join result %v", result))

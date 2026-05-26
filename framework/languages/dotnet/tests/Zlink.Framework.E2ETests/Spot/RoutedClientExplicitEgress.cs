@@ -75,7 +75,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                     "play.route",
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(playRouteEndpoint)));
-                spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+                spot.AddSpotFactory<SpotRouteTargetSpot>();
             });
             });
         });
@@ -89,7 +89,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
             var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
-            _ = await manager.GetOrCreateAsync("route-target", targetSpotRid);
+            _ = await manager.GetOrCreateAsync<SpotRouteTargetSpot>(targetSpotRid);
             await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play.route");
 
             var reply = await RetryAsync(
@@ -161,7 +161,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                     "play.route",
                     routes => routes.UseManualConnections(
                         peers => peers.Connect(playRouteEndpoint)));
-                spot.AddSpotFactory<SpotRouteTargetSpot>("route-target");
+                spot.AddSpotFactory<SpotRouteTargetSpot>();
             });
             });
         });
@@ -175,7 +175,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
             var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
-            _ = await manager.GetOrCreateAsync("route-target", targetSpotRid);
+            _ = await manager.GetOrCreateAsync<SpotRouteTargetSpot>(targetSpotRid);
             await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play.route");
 
             await RetryAsync(

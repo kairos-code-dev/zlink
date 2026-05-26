@@ -71,12 +71,6 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         ActorJoinEntrySpotCallback callback,
         TimeSpan? timeout);
 
-    ValueTask LeaveActorAsync(
-        ZLinkBackendActorRef actor,
-        RoutingId currentSpotRid,
-        TimeSpan timeout,
-        CancellationToken cancellationToken);
-
     ValueTask DestroyActorAsync(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,
@@ -179,11 +173,11 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
 
     void ReplyActorJoin(
         ZLinkBackendActorJoinRequest request,
-        bool accepted,
+        int joinResultCode,
         Message reply);
 
     void ReplyActorJoin(
         ZLinkBackendActorJoinRequest request,
-        bool accepted,
+        int joinResultCode,
         IReadOnlyList<Message> parts);
 }

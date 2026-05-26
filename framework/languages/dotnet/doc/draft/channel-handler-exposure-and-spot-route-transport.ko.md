@@ -216,7 +216,7 @@ Spot callback 내부에서는 `IZLinkSpotClient.SendSpot(...)` /
 여기서 중요한 제약은 caller 가 target Spot 정보만으로 사용할 egress transport 를 찾을 수
 없다는 점이다. source process 가 가진 channel 중 어느 channel 이 target SpotNode 쪽과
 연결되어 있는지는 route metadata 만으로 안정적으로 역산할 수 없다. 따라서 routed Spot
-client 는 target Spot name 으로 transport 를 고르는 API 가 아니라, caller 가 사용할 local
+client 는 target Spot RID 으로 transport 를 고르는 API 가 아니라, caller 가 사용할 local
 egress channel 을 먼저 고르고 그 channel 로 target Spot rid 를 보내는 API 여야 한다.
 
 ## 4. 결정
@@ -595,9 +595,9 @@ Spot 으로 가는 사용 사례도 명확해진다.
 
 이 대안을 선택한다.
 
-### 5.6 대안 F: routed Spot client 가 Spot name 만 받고 router 를 내부에서 찾는다
+### 5.6 대안 F: routed Spot client 가 Spot RID 만 받고 router 를 내부에서 찾는다
 
-이 대안은 호출 코드가 짧다. 하지만 target Spot name 또는 `RoutingId`만으로 source process
+이 대안은 호출 코드가 짧다. 하지만 target Spot RID 또는 `RoutingId`만으로 source process
 가 어떤 local egress channel 을 통해 target SpotNode 와 연결되어 있는지 알 수 없다.
 route mesh channel 과 client-server channel 이 함께 있을 때는 선택 기준도 모호하다.
 runtime 이 target 정보를 보고 connection 을 역조회하게 되면, 연결 설정과 전송 API 의
@@ -798,7 +798,7 @@ channel 등록을 fallback 으로 사용할 수 있다.
    같은 process 안에서 manual topology 를 검증하는 테스트는 명시적 routing id 를 가진 target
    route channel 등록을 fallback 으로 사용할 수 있다.
 
-이 흐름에서 Spot name string overload 는 제공하지 않는다. string name 을 쓰는 application
+이 흐름에서 Spot RID string overload 는 제공하지 않는다. string name 을 쓰는 application
 은 호출 전에 `RoutingId.Of(...)`로 target rid 를 만든다. 별도 route resolver 가 필요하면
 그 resolver 는 `RoutingId` 또는 node routing metadata 를 돌려주는 독립 서비스로 둔다.
 `IZLinkRoutedSpotClient`는 resolver 를 통해 channel 을 찾지 않는다.
@@ -967,7 +967,7 @@ builder.Services.AddZLinkFramework(options =>
                 router.SetRouterBind("tcp://0.0.0.0:7202");
             });
             node.AcceptSpotRoutesFromChannel("play.route");
-            node.AddSpotFactory<RoomSpot>("room");
+            node.AddSpotFactory<RoomSpot>();
         });
     });
 });
@@ -1161,7 +1161,7 @@ public sealed class DispatchJobHandler(IZLinkClient channels)
 | channel handler fanout publisher | 일반 channel send/request handler 가 `IZLinkFanoutPublisher.Publish(...)`로 fanout event 를 publish 한다. |
 | channel handler routed Spot client | 일반 channel request handler 가 `IZLinkRoutedSpotClient.ViaEgressChannel(...).RequestSpot(...)`으로 target Spot 에 request 하고 reply 를 받는다. |
 | routed Spot client without ambient Spot | current Spot activation 이 없어도 `IZLinkRoutedSpotClient`는 동작하고, `IZLinkSpotClient`의 ambient-only 규칙은 유지된다. |
-| routed Spot client rejects string target | `IZLinkRoutedSpotClient`는 string Spot name overload 를 제공하지 않고 `RoutingId` target 만 받는다. |
+| routed Spot client rejects string target | `IZLinkRoutedSpotClient`는 string Spot RID overload 를 제공하지 않고 `RoutingId` target 만 받는다. |
 | routed Spot client rejects implicit egress selection | `ViaEgressChannel(...)` 없이 target 정보만으로 local egress channel 을 고르는 API 를 제공하지 않는다. |
 | routed Spot client explicit egress channel | routed Spot send/request 가 caller 가 명시한 local egress channel 을 transport 로 사용한다. |
 | routed Spot egress target channel | routed Spot egress 설정은 target SpotNode ingress channel 이름을 필수로 받고, local egress channel 이름과 같다고 가정하지 않는다. |

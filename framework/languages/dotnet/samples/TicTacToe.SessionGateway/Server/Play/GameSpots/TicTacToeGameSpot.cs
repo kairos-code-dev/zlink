@@ -51,8 +51,6 @@ internal sealed class TicTacToeGameSpot(
         var actorId = actor.ActorId;
         var (slot, isNewActor) = _room.GetOrAddActor(actor);
         _room.StartWhenReady();
-        await Context.JoinActorAsync(actor, cancellationToken)
-            ;
         var snapshot = _room.Snapshot();
         return new JoinMatchSpotResult(
             snapshot.MatchId,

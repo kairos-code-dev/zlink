@@ -240,22 +240,22 @@ internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSp
 
     public void ReplyActorJoin(
         ZLinkBackendActorJoinRequest request,
-        bool accepted,
+        int joinResultCode,
         Message reply)
     {
         var nativeRequest = (ActorJoinRequest)request.NativeRequest!;
-        nativeSpot.ReplyActorJoin(nativeRequest, accepted)
+        nativeSpot.ReplyActorJoin(nativeRequest, joinResultCode)
             .Message(reply)
             .Submit();
     }
 
     public void ReplyActorJoin(
         ZLinkBackendActorJoinRequest request,
-        bool accepted,
+        int joinResultCode,
         IReadOnlyList<Message> parts)
     {
         var nativeRequest = (ActorJoinRequest)request.NativeRequest!;
-        nativeSpot.ReplyActorJoin(nativeRequest, accepted)
+        nativeSpot.ReplyActorJoin(nativeRequest, joinResultCode)
             .Messages(parts)
             .Submit();
     }

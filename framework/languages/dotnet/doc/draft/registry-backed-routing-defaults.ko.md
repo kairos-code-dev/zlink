@@ -7,11 +7,11 @@
 # Draft -- Registry-Backed Routing Defaults
 
 > 이 초안의 actor route 부분은 **ActorGateway session relay 설계로 대체되었다**.
-> 현재 남는 범위는 Spot name/rid lookup 을 위한 Registry-backed Spot remote address 기본값이다.
+> 현재 남는 범위는 Spot RID/rid lookup 을 위한 Registry-backed Spot remote address 기본값이다.
 
 ## 1. 현재 결정
 
-Registry 기본 구현은 Spot owner 조회와 Spot name directory 를 돕는다. session actor relay 는
+Registry 기본 구현은 Spot owner 조회와 Spot RID directory 를 돕는다. session actor relay 는
 Registry actor route lookup 을 hot path 로 사용하지 않는다.
 
 - `UseRegistrySpotRemoteAddresses(...)` 는 유지한다.
@@ -43,7 +43,7 @@ Registry actor route lookup 을 hot path 로 사용하지 않는다.
 | `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Require_SpotDiscovery` | Spot discovery 없이 Registry Spot 기본값을 켜면 validation 오류가 난다. |
 | `RegistryRemoteAddressesTests.RegistryRouteResolvers_Reject_Custom_Duplicate` | 기본 Spot resolver 와 custom Spot resolver 중복 등록을 거부한다. |
 | `RegistryRemoteAddressesTests.RegistryRouteResolvers_Require_Explicit_RouterChannel_When_Ambiguous` | route channel 이 둘 이상이면 Registry Spot resolver 설정에 명시적 channel 이 필요하다. |
-| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Name` | 생성된 Spot 을 이름으로 찾는다. |
+| `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Rid_And_Removes_Route` | 생성된 Spot 을 `RoutingId` 로 찾는다. |
 | `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Rid` | 생성된 Spot 을 RID 로 찾는다. |
 | `RegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo sample 에 sample-only route/metadata store 가 없다. |
 | `RegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | TicTacToe sample 에도 sample-only route/metadata store 가 없다. |

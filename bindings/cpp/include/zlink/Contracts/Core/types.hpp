@@ -1257,6 +1257,7 @@ struct actor_join_result_t
 {
     actor_join_result_t ()
         : result (request_result_t::ok),
+          join_result_code (0),
           actor (),
           joined_spot_rid (detail::unchecked_empty_routing_id ()),
           join_epoch (0),
@@ -1266,6 +1267,7 @@ struct actor_join_result_t
 
     explicit actor_join_result_t (const zlink_actor_join_result_t &native_)
         : result (static_cast<request_result_t> (native_.result)),
+          join_result_code (native_.join_result_code),
           actor (native_.actor),
           joined_spot_rid (detail::native_routing_id (native_.joined_spot_rid)),
           join_epoch (native_.join_epoch),
@@ -1274,6 +1276,7 @@ struct actor_join_result_t
     }
 
     request_result_t result;
+    int32_t join_result_code;
     actor_ref_t actor;
     routing_id_t joined_spot_rid;
     uint64_t join_epoch;

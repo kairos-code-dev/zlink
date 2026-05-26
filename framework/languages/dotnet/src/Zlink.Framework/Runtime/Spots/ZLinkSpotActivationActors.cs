@@ -3,19 +3,6 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation
 {
-    public ValueTask JoinActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
-            ? JoinActorCoreAsync(actor, cancellationToken)
-            : ExecuteSerializedAsync(
-                static (activation, state, ct) => activation.JoinActorCoreAsync(state, ct),
-                actor,
-                cancellationToken);
-    }
-
     public ValueTask LeaveActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
@@ -69,6 +56,8 @@ internal sealed partial class ZLinkSpotActivation
                     state.Actor,
                     state.Request,
                     ct);
+                await activation.CommitActorJoinCoreAsync(state.Actor, ct)
+                    .ConfigureAwait(false);
             },
             state,
             cancellationToken);
@@ -104,7 +93,7 @@ internal sealed partial class ZLinkSpotActivation
 
     internal ValueTask NotifyActorLeftAfterNativeJoinEntrySpotAsync(
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(actor);
@@ -120,7 +109,25 @@ internal sealed partial class ZLinkSpotActivation
                 cancellationToken);
     }
 
-    private async ValueTask JoinActorCoreAsync(
+    internal ValueTask NotifyActorLeftAfterManagedJoinSpotAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorChangeResult context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
+            ? NotifyActorLeftAfterJoinCommitCoreAsync(actor, context, cancellationToken)
+            : ExecuteSerializedAsync(
+                static (activation, state, ct) =>
+                    activation.NotifyActorLeftAfterJoinCommitCoreAsync(
+                        state.Actor,
+                        state.Context,
+                        ct),
+                new ActorLifecycleNotificationState(actor, context),
+                cancellationToken);
+    }
+
+    private async ValueTask CommitActorJoinCoreAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
@@ -131,12 +138,22 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        await _actorLifecycle.LeaveAsync(actor, cancellationToken).ConfigureAwait(false);
+        await _runtime.JoinActorEntrySpotAsync(NodeRid, actor, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask NotifyActorLeftAfterNativeJoinEntrySpotCoreAsync(
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
+        CancellationToken cancellationToken)
+    {
+        await NotifyActorLeftAfterJoinCommitCoreAsync(actor, context, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask NotifyActorLeftAfterJoinCommitCoreAsync(
+        IZLinkActor actor,
+        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         _actors.RemoveIfCurrent(actor);
@@ -181,5 +198,5 @@ internal sealed partial class ZLinkSpotActivation
 
     private sealed record ActorLifecycleNotificationState(
         IZLinkActor Actor,
-        ZLinkSpotActorLifecycleContext Context);
+        ZLinkSpotActorChangeResult Context);
 }

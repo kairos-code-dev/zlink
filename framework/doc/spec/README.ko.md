@@ -246,8 +246,8 @@ runtime으로 설명하는 편이 맞다.
   stale session packet을 구분해서 검증하는가
 - stream session 회귀 테스트는 callback task dispatch, 같은 session callback
   직렬성, enqueue 진입점만 허용되는지 검증하는가
-- `SPOT`을 지원하면 spot factory 등록, `spotName` 기준 생성, lifecycle timer,
-  외부 spot publish, `spotId -> spotName` 조회를 어떻게 설명하는가
+- `SPOT`을 지원하면 Spot 타입 기준 factory 등록, `RoutingId` 기준 생성과 조회,
+  lifecycle timer, 외부 spot publish 표면을 어떻게 설명하는가
 - monitoring을 지원하면 socket/discovery/registry/spot runtime event를 어떤
   typed event와 등록 surface로 설명하는가
 - 샘플 코드가 실제 registration API와 인터페이스 이름과 맞는가

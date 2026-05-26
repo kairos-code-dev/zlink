@@ -47,7 +47,7 @@ public sealed partial class TopologyTests
                 {
                     pubsub.SetPubBind(localNodeEndpoint);
                 });
-                spot.AddSpotFactory<LocalMonitoringStageSpot>("stage");
+                spot.AddSpotFactory<LocalMonitoringStageSpot>();
             });
             });
         });
@@ -73,7 +73,7 @@ public sealed partial class TopologyTests
         var probe = host.Services.GetRequiredService<SpotChangeProbe>();
         await probe.WaitForPeerAsync(TimeSpan.FromSeconds(15));
         var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
-        _ = await manager.CreateAsync("stage", timeout.Token);
+        _ = await manager.CreateAsync<LocalMonitoringStageSpot>(timeout.Token);
         await probe.WaitForSubjectAsync(TimeSpan.FromSeconds(15));
 
         await host.StopAsync(timeout.Token);

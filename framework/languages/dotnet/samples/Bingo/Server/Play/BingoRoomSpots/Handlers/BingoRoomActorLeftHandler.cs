@@ -19,16 +19,15 @@ internal sealed class BingoRoomActorLeftHandler(
     public ValueTask HandleAsync(
         BingoRoomSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
         logger.LogInformation(
-            "bingo room: actor left. room={RoomId}, actor={ActorId}, nextSpot={CurrentSpotRid}, epoch={CommitEpoch}",
+            "bingo room: actor left. room={RoomId}, actor={ActorId}, kind={Kind}",
             spot.Context.SpotRid.ToHex(),
             actor.ActorId,
-            info.CurrentSpotRid?.ToHex(),
-            info.CommitEpoch);
+            info.Kind);
         return ValueTask.CompletedTask;
     }
 }

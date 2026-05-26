@@ -37,7 +37,7 @@ public sealed class ActorLifecycleTests : SpotTestSupport
                 {
                     router.SetRouterBind(spotNode);
                 });
-                spot.AddSpotFactory<ActorStageSpot>("actor-stage");
+                spot.AddSpotFactory<ActorStageSpot>();
             });
             });
         });
@@ -49,8 +49,8 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var recorder = host.Services.GetRequiredService<ActorIntegrationRecorder>();
 
-        var first = await manager.CreateAsync("actor-stage");
-        var second = await manager.CreateAsync("actor-stage");
+        var first = await manager.CreateAsync<ActorStageSpot>();
+        var second = await manager.CreateAsync<ActorStageSpot>();
         var actor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-1", "test")).Actor;
 
         var firstReply = await actorRuntime.JoinActorAsync<JoinStageRequest, JoinStageReply>(

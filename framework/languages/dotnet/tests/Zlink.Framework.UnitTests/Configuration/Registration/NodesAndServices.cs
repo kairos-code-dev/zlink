@@ -42,7 +42,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 {
                     router.SetRouterBind("tcp://127.0.0.1:9000");
                 });
-                spot.AddSpotFactory<TestSpot>("stage");
+                spot.AddSpotFactory<TestSpot>();
             });
             });
         });
@@ -69,7 +69,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                     {
                         router.SetRouterBind("tcp://127.0.0.1:9000");
                     });
-                    spot.AddSpotFactory<TestSpot>("stage");
+                    spot.AddSpotFactory<TestSpot>();
                 });
             });
         });
@@ -80,7 +80,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenSpotFactoryNameIsDuplicatedAcrossNodes()
+    public void AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes()
     {
         var services = new ServiceCollection();
 
@@ -96,7 +96,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                         {
                             router.SetRouterBind("tcp://127.0.0.1:6101");
                         });
-                        spot.AddSpotFactory<TestSpot>("stage");
+                        spot.AddSpotFactory<TestSpot>();
                     });
                     mesh.AddNode("stage-node-b", spot =>
                     {
@@ -104,12 +104,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                         {
                             router.SetRouterBind("tcp://127.0.0.1:6102");
                         });
-                        spot.AddSpotFactory<TestSpot>("stage");
+                        spot.AddSpotFactory<TestSpot>();
                     });
                 });
             }));
 
-        Assert.Contains("Duplicate SPOT factory 'stage'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Duplicate SPOT factory", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -352,7 +352,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                     {
                         router.SetRouterBind("tcp://127.0.0.1:6204");
                     });
-                    spot.AddSpotFactory<TestSpot>("stage");
+                    spot.AddSpotFactory<TestSpot>();
                     spot.AddEntrySpot<TestEntrySpot>();
                 });
             });

@@ -830,14 +830,14 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_actor_join_recv(
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply(
   void *spot_,
   const zlink_actor_join_info_t *info_,
-  uint32_t accepted_,
+  int32_t join_result_code_,
   zlink_msg_t *message_);
 ```
 
 join reply 계약:
 
-- `accepted_`는 `0` 또는 `1`이어야 한다. `1`은 accept, `0`은 reject다. 다른 값은
-  `ZLINK_SUBMIT_INVALID_ARGUMENT`로 실패하고 `errno`는 `EINVAL`이다.
+- `join_result_code_ == 0`이면 accept, 0이 아니면 application-defined reject다.
+  0이 아닌 값은 caller에게 join result code로 전달한다.
 - `spot_ == NULL`이면 `ZLINK_SUBMIT_INVALID_HANDLE`로 실패하고 `errno`는 `EFAULT`다.
 - `info_ == NULL`이면 `ZLINK_SUBMIT_INVALID_ARGUMENT`로 실패하고 `errno`는 `EINVAL`이다.
 - `message_ == NULL`이면 reply payload가 없는 completion이다.

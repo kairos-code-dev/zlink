@@ -468,10 +468,10 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         var parameters = RequireParameterCount(handlerType, method, 4, "SPOT actor lifecycle handler");
         var spotType = parameters[0].ParameterType;
         var actorType = parameters[1].ParameterType;
-        if (parameters[2].ParameterType != typeof(ZLinkSpotActorLifecycleContext))
+        if (parameters[2].ParameterType != typeof(ZLinkSpotActorChangeResult))
         {
             throw new InvalidOperationException(
-                $"SPOT actor lifecycle handler '{handlerType}' method '{method.Name}' must use ZLinkSpotActorLifecycleContext as the third parameter.");
+                $"SPOT actor lifecycle handler '{handlerType}' method '{method.Name}' must use ZLinkSpotActorChangeResult as the third parameter.");
         }
 
         RequireCancellationToken(handlerType, method, parameters[3], "SPOT actor lifecycle handler");

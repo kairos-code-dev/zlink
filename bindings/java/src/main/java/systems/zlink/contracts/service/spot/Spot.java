@@ -1093,13 +1093,15 @@ public final class Spot implements AutoCloseable {
 
     /**
      * Reply to an Actor join admission request. Returns a multipart-reply
-     * builder; a zero-message submit is allowed.
+     * builder; a zero-message submit is allowed. {@code joinResultCode == 0}
+     * accepts the join, and non-zero values reject it with an
+     * application-defined code.
      */
     public ActorJoinReplyOp replyActorJoin(ActorJoinRequest request,
-                                           boolean accepted) {
+                                           int joinResultCode) {
         Objects.requireNonNull(request, "request");
         ensureOpen();
-        return new ActorJoinReplyBuilder(request, accepted);
+        return new ActorJoinReplyBuilder(request, joinResultCode);
     }
 
     /**
@@ -1152,13 +1154,13 @@ public final class Spot implements AutoCloseable {
 
     private final class ActorJoinReplyBuilder implements ActorJoinReplyOp {
         private final ActorJoinRequest request;
-        private final boolean accepted;
+        private final int joinResultCode;
         private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private boolean submitted;
 
-        ActorJoinReplyBuilder(ActorJoinRequest request, boolean accepted) {
+        ActorJoinReplyBuilder(ActorJoinRequest request, int joinResultCode) {
             this.request = request;
-            this.accepted = accepted;
+            this.joinResultCode = joinResultCode;
         }
 
         @Override
@@ -1179,7 +1181,7 @@ public final class Spot implements AutoCloseable {
                 writeActorJoinInfo(nativeInfo, request.info());
                 MemorySegment partsArr = parts.copyToNativeArray(arena);
                 int rc = Native.spotActorJoinReply(handle, nativeInfo,
-                  accepted ? 1 : 0, partsArr, parts.size());
+                  joinResultCode, partsArr, parts.size());
                 if (rc != 0) {
                     MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
                     throw new SubmitException(SubmitResult.fromValue(rc));

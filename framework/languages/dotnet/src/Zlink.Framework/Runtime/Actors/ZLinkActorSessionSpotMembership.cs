@@ -21,7 +21,11 @@ internal sealed partial class ZLinkActorSessionManager
 
         if (previousActivation is not null && !previousActivation.IsDisposed)
         {
-            await previousActivation.LeaveActorAsync(actor, cancellationToken).ConfigureAwait(false);
+            await previousActivation.NotifyActorLeftAfterManagedJoinSpotAsync(
+                    actor,
+                    new ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind.JoinSpot),
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         await state.ExecuteLockedAsync(
@@ -32,41 +36,4 @@ internal sealed partial class ZLinkActorSessionManager
             cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask LeaveActorFromSpotAsync(
-        ZLinkSpotActivation activation,
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default)
-    {
-        var state = _actorSessions.GetOrCreate(actor.ActorId);
-        BindActorContext(actor, state);
-        var currentSpotRid = activation.SpotRid;
-
-        await state.ExecuteLockedAsync(
-            () =>
-            {
-                if (ReferenceEquals(state.Activation, activation))
-                {
-                    state.Activation = null;
-                }
-            },
-            cancellationToken).ConfigureAwait(false);
-
-        var node = getActorSpotNode();
-        if (node is not null && state.NativeActorRef is { } actorRef)
-        {
-            try
-            {
-                await node.LeaveActorAsync(
-                        actorRef,
-                        currentSpotRid,
-                        runtime.Registration.DefaultTimeout,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (ZlinkException)
-            {
-            }
-        }
-
-    }
 }

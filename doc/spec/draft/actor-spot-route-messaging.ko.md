@@ -594,7 +594,7 @@ context가 제공하는 outbound 기능을 사용한다.
 | FW-ACT-ROUTE-MSG-06 | sample gateway flow | Bingo/TicTacToe 계열 session gateway sample에서 backend-to-actor 메시징 흐름이 문서와 맞는다 |
 | FW-SPOT-ROUTE-MSG-01 | Spot rid route uses ResolveSpot | Spot rid로 route를 조회할 때 framework resolver가 core `ResolveSpot()`을 호출한다 |
 | FW-SPOT-ROUTE-MSG-02 | Spot rid route preserves Spot kind | Spot rid route 결과가 core `ResolveSpot()`의 Spot kind를 보존한다 |
-| FW-SPOT-ROUTE-MSG-03 | Spot name route resolves owner through ResolveSpot | Spot name route는 framework name row에서 Spot rid만 얻고 owner node rid와 Spot kind는 core `ResolveSpot()`으로 얻는다 |
+| FW-SPOT-ROUTE-MSG-03 | Spot RID route resolves owner through ResolveSpot | Spot RID route는 framework name row에서 Spot rid만 얻고 owner node rid와 Spot kind는 core `ResolveSpot()`으로 얻는다 |
 
 ## 구현 순서 계획
 
@@ -686,10 +686,10 @@ route value format을 유지하지 않고, core/binding이 제공하는 Actor ro
 - `ZLinkBackendDiscoveryWrapper`는 native binding의 `ResolveSpot()`을 그대로 호출한다.
 - `ZLinkRegistrySpotRouteResolver.ResolveSpotRouteAsync(RoutingId spotRid, ...)`는 이미
   `ResolveSpot(spotRid)`를 호출한다.
-- `ZLinkRegistrySpotRouteResolver.ResolveSpotRouteAsync(string spotName, ...)`는 framework 전용
-  `SpotName` route row를 `ResolveRoute()`로 조회하고, row owner rid를 target node rid로 사용한다.
+- `ZLinkRegistrySpotRouteResolver.ResolveSpotRouteAsync(RoutingId spotRid, ...)`는 framework 전용
+  `SpotRid` route row를 `ResolveRoute()`로 조회하고, row owner rid를 target node rid로 사용한다.
   이 경로는 Spot owner 확인에 core `ResolveSpot()`을 사용하지 않는다.
-- Spot name route row는 core public API가 제공하지 않는 이름 조회 기능을 위한 framework
+- Spot RID route row는 core public API가 제공하지 않는 이름 조회 기능을 위한 framework
   보조 색인이다. 이 row는 Spot rid를 찾는 데만 사용하고, owner node rid의 source of truth로
   사용하지 않는다.
 
@@ -701,7 +701,7 @@ route value format을 유지하지 않고, core/binding이 제공하는 Actor ro
   않는다.
 - Spot rid에서 owner node rid와 Spot kind를 얻을 때는 core `ResolveSpot()`을 source of
   truth로 삼는다.
-- Spot name route는 이름을 Spot rid로 바꾸는 framework 보조 색인으로만 유지한다.
+- Spot RID route는 이름을 Spot rid로 바꾸는 framework 보조 색인으로만 유지한다.
 - session-attached actor route는 기존처럼 concrete Actor route와 generation 검증을 유지한다.
 - logical actor route와 session-attached concrete route를 같은 타입으로 합치지 않는다.
 
@@ -722,8 +722,8 @@ route value format을 유지하지 않고, core/binding이 제공하는 Actor ro
 | `framework/languages/dotnet/src/Zlink.Framework/Runtime/Spots/ZLinkSpotNodeRuntime.cs` | `Node.EntrySpot()` 직후 actor 생성 또는 dispatch pump attach 전에 Entry Spot routing id를 적용한다 |
 | `framework/languages/dotnet/src/Zlink.Framework/Runtime/Registry/ZLinkRegistryRouteResolvers.cs` | Actor route resolve 경로를 `ResolveRoute()` 기반 payload decode에서 `ResolveActor(actorId)` 호출로 교체한다 |
 | `framework/languages/dotnet/src/Zlink.Framework/Runtime/Registry/ZLinkRegistryRouteResolvers.cs` | Spot rid route 경로는 `ResolveSpot(spotRid)` 결과의 owner node rid와 Spot kind를 `ZLinkSpotRoute`에 반영한다 |
-| `framework/languages/dotnet/src/Zlink.Framework/Runtime/Registry/ZLinkRegistryRouteResolvers.cs` | Spot name route 경로는 `ResolveRoute(SpotName)`로 Spot rid를 얻은 뒤 `ResolveSpot(spotRid)`으로 owner node rid와 Spot kind를 다시 조회한다 |
-| `framework/languages/dotnet/src/Zlink.Framework/Runtime/Registry/ZLinkRegistryRoutePayloadCodec.cs` | Actor location route용 encode/decode 책임을 제거한다. Spot name route의 name-to-rid codec은 유지한다 |
+| `framework/languages/dotnet/src/Zlink.Framework/Runtime/Registry/ZLinkRegistryRouteResolvers.cs` | Spot RID route 경로는 `ResolveRoute(SpotRid)`로 Spot rid를 얻은 뒤 `ResolveSpot(spotRid)`으로 owner node rid와 Spot kind를 다시 조회한다 |
+| `framework/languages/dotnet/src/Zlink.Framework/Runtime/Registry/ZLinkRegistryRoutePayloadCodec.cs` | Actor location route용 encode/decode 책임을 제거한다. Spot RID route의 name-to-rid codec은 유지한다 |
 | `framework/languages/dotnet/src/Zlink.Framework/Runtime/Streams/ZLinkSessionActorRelay.cs` | session-attached route가 generation 검증을 계속 요구하는지 확인한다 |
 | `framework/languages/dotnet/src/Zlink.Framework/Runtime/Streams/ZLinkSessionActorCoordinator.cs` | backend-to-actor logical route와 session attach route의 검증 조건을 분리한다 |
 | `framework/languages/dotnet/src/Zlink.Framework/Runtime/Spots/*` | current Spot kind를 route snapshot에 보존한다 |
@@ -781,7 +781,7 @@ framework 회귀 테스트는 아래를 포함한다.
 | entry spot rid appears in actor route | Entry Spot에 있는 Actor route의 current Spot rid가 설정한 Entry Spot rid와 같다 |
 | spot rid resolver uses ResolveSpot | fake backend discovery에서 Spot rid route 조회가 `ResolveSpot()`을 호출하고 `ResolveRoute()`를 호출하지 않는다 |
 | spot rid route maps kind | fake backend discovery에서 Spot rid route 조회 결과가 `ZLinkSpotRoute.SpotKind`에 반영된다 |
-| spot name resolver uses ResolveSpot for owner | fake backend discovery에서 Spot name route 조회가 name row 조회 후 `ResolveSpot()`으로 owner node rid와 Spot kind를 얻는다 |
+| spot rid resolver uses ResolveSpot for owner | fake backend discovery에서 Spot RID route 조회가 name row 조회 후 `ResolveSpot()`으로 owner node rid와 Spot kind를 얻는다 |
 
 ## 문서 반영 계획
 

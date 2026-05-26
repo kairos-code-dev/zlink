@@ -219,7 +219,7 @@ public interface IZLinkSpotNodeBuilder
 
     void ConfigureEntrySpot(Action<IZLinkEntrySpotOptions> configure);
 
-    void AddSpotFactory<TSpot>(string spotName)
+    void AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot;
 
     void AddEntrySpot<TEntrySpot>()

@@ -697,6 +697,7 @@ function actorRouteFromRaw(raw: {
 
 interface ActorJoinResultRaw {
   result: number;
+  joinResultCode?: number;
   actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
   joinedSpotRid?: Buffer | null;
   joinEpoch?: bigint | number;
@@ -730,6 +731,7 @@ function actorJoinResultFromRaw(raw: ActorJoinResultRaw | null): ActorJoinResult
   if (!raw) {
     return {
       result: RequestResult.InternalError,
+      joinResultCode: 0,
       actor: { nodeRid: RoutingId.fromBytes(Buffer.alloc(1)), actorId: '', generation: 0n },
       joinedSpotRid: RoutingId.fromBytes(Buffer.alloc(1)),
       joinEpoch: 0n,
@@ -738,6 +740,7 @@ function actorJoinResultFromRaw(raw: ActorJoinResultRaw | null): ActorJoinResult
   }
   return {
     result: raw.result as RequestResult,
+    joinResultCode: raw.joinResultCode ?? 0,
     actor: actorRefFromRaw(raw.actor),
     joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? RoutingId.fromBytes(Buffer.alloc(1)),
     joinEpoch: BigInt(raw.joinEpoch ?? 0),
@@ -3985,14 +3988,14 @@ export class Spot extends NativeHandle {
       message: Message.fromSnapshot(raw.message)
     };
   }
-  replyActorJoin(request: ActorJoinRequest, accepted: boolean): ActorJoinReplyOp {
+  replyActorJoin(request: ActorJoinRequest, joinResultCode: number): ActorJoinReplyOp {
     const spotHandle = this._native;
     const rawInfo = actorJoinInfoToRaw(request.info);
-    const acceptedFlag = Boolean(accepted);
+    const code = joinResultCode | 0;
     return new ActorJoinReplyOperation((partsInput) => {
       const parts = toMessageParts(partsInput);
       try {
-        requireNative().spotActorJoinReply(spotHandle, rawInfo, acceptedFlag, parts);
+        requireNative().spotActorJoinReply(spotHandle, rawInfo, code, parts);
       } catch (error) {
         throw submitNativeError(error, SendFlags.None, 'actor join reply failed');
       }

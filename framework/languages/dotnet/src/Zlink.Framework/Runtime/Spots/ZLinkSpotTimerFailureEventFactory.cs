@@ -4,7 +4,6 @@ internal static class ZLinkSpotTimerFailureEventFactory
 {
     public static ZLinkSpotEvent Create(
         string sourceName,
-        string spotName,
         RoutingId spotRid,
         bool isEntrySpot,
         ZLinkSpotTimerDescriptor descriptor,
@@ -23,7 +22,6 @@ internal static class ZLinkSpotTimerFailureEventFactory
             Subjects: null,
             new ZLinkSpotTimerDiagnostic(
                 spotRid,
-                spotName,
                 isEntrySpot,
                 descriptor.Name,
                 descriptor.HandlerType.FullName ?? descriptor.HandlerType.Name,

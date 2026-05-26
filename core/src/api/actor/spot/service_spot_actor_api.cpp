@@ -1762,12 +1762,17 @@ void complete_join_request (queued_join_request_t *request_,
     zlink_actor_join_result_t result;
     memset (&result, 0, sizeof (result));
     result.result = result_;
+    result.join_result_code = request_->join_result_code;
     if (result_ == ZLINK_REQUEST_OK) {
-        if (request_->remote)
+        if (request_->join_result_code != 0) {
+            if (request_->actor)
+                fill_ref (request_->actor, &result.actor);
+            result.joined_spot_rid = request_->source_spot_rid;
+        } else if (request_->remote)
             result.actor = request_->target_actor_ref;
         else if (request_->actor)
             fill_ref (request_->actor, &result.actor);
-        if (request_->spot_state)
+        if (request_->join_result_code == 0 && request_->spot_state)
             result.joined_spot_rid = request_->spot_state->routing_id;
         result.join_epoch = request_->join_epoch;
     }
@@ -3571,7 +3576,7 @@ extern "C" zlink_recv_result_t zlink_spot_actor_join_recv (
 extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (
   void *spot_,
   const zlink_actor_join_info_t *info_,
-  uint32_t accepted_,
+  int32_t join_result_code_,
   zlink_msg_t *parts_,
   size_t part_count_)
 {
@@ -3592,17 +3597,12 @@ extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (
         errno = EPROTO;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
-    if (accepted_ != 0u && accepted_ != 1u) {
-        errno = EINVAL;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
     if (!valid_multipart_payload (parts_, part_count_))
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     queued_join_request_t *request =
       static_cast<queued_join_request_t *> (info_->request);
     actor_handle_t *readable_actor = NULL;
-    zlink_request_result_t completion_result =
-      accepted_ ? ZLINK_REQUEST_OK : ZLINK_REQUEST_REJECTED;
+    zlink_request_result_t completion_result = ZLINK_REQUEST_OK;
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
         if (!join_request_live_locked (request) || request->replied
@@ -3623,7 +3623,8 @@ extern "C" zlink_submit_result_t zlink_spot_actor_join_reply (
             return adopt_rc;
         }
         request->replied = true;
-        if (accepted_)
+        request->join_result_code = join_result_code_;
+        if (join_result_code_ == 0)
             completion_result =
               commit_accepted_join_locked (request, &readable_actor);
         retire_join_request_locked (request);

@@ -66,7 +66,6 @@ sealed class TicTacToeGame(
     {
         var (slot, isNewPlayer) = GetOrAddPlayer(actor);
         actor.JoinGame(gameId);
-        await Context.JoinActorAsync(actor, cancellationToken);
         UpdateWaitingStatus();
 
         var state = Snapshot();

@@ -41,7 +41,7 @@ internal sealed class AuthenticateSessionPacketHandler(
             throw new InvalidOperationException(authenticated.Reason ?? "Actor authentication failed.");
         }
 
-        var actor = (PlayerActor)await actors.GetOrCreateAsync(
+        var actor = await actors.GetOrCreateAsync(
                 authenticated.ActorId,
                 SampleNames.PlayerActorType,
                 cancellationToken)
@@ -53,8 +53,8 @@ internal sealed class AuthenticateSessionPacketHandler(
             ;
 
         await context.BindActorHandleAsync(
-                joined.Actor,
-                joined.ActorType,
+                joined,
+                SampleNames.PlayerActorType,
                 cancellationToken)
             ;
 

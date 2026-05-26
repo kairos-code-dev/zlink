@@ -388,7 +388,7 @@ target으로 바꾸는 경계를 제공하지 않기 때문이다.
 
 session server가 client packet을 play server로 보내려면 `actorId` 또는 request payload의
 domain key에서 actor node `RoutingId`를 찾아야 한다. actor가 user Spot에 들어갈 때는
-`spotName` 또는 `spotRid`에서 target Spot 위치를 찾아야 한다.
+`spotRid` 또는 `spotRid`에서 target Spot 위치를 찾아야 한다.
 
 이 해석은 application 정책이지만, resolver 입력은 좁게 유지해야 한다. resolver가
 metadata나 raw message를 받으면 transport 위치 조회가 작은 dispatcher로 변한다.
@@ -401,7 +401,7 @@ framework는 resolver가 어떤 저장소를 쓰는지 알지 않는다. 공개 
 
 - **actor route resolver** -- `actorId` → "이 actor가 사는 actor/play node와 routed channel".
   routing result에는 `RouterChannelId`와 target node 식별값이 들어간다.
-- **spot route resolver** -- `spotName` 또는 `spotRid` → "이 user Spot이 있는 node와
+- **spot route resolver** -- `spotRid` 또는 `spotRid` → "이 user Spot이 있는 node와
   spot rid". actor의 `JoinSpot(...)` 같은 표면에서 transport 위치값을 숨긴다.
 
 actor resolver 입력은 `actorId` 하나로 유지한다. spot resolver 입력은 spot domain key
@@ -452,7 +452,7 @@ resolver가 route를 찾지 못하면 framework는 transport request를 보내�
 | 상황 | 의미 |
 |------|------|
 | actor route 없음 | actor 또는 game을 처리할 actor/play node를 찾지 못했다. |
-| spot route 없음 | spot 이름/id에 대응하는 user Spot을 찾지 못했다. |
+| spot route 없음 | spot id에 대응하는 user Spot을 찾지 못했다. |
 | actor-session binding 없음 | actor가 현재 어떤 stream session에도 binding되어 있지 않다. |
 | resolver timeout | route 결정 자체가 제한 시간 안에 끝나지 않았다. |
 | resolver exception | application route store 조회가 실패했다. |
@@ -468,7 +468,7 @@ actor 위치 정보는 두 층으로 나눈다.
 | 계층 | 소유자 | 내용 |
 |------|--------|------|
 | actor-session binding | framework/core runtime | 현재 actor가 어느 stream/session에 붙어 있는지 관리한다. |
-| actor/spot route resolution | application resolver | `actorId`, `spotName`, `gameId` 같은 domain key가 어느 node/spot으로 가야 하는지 결정한다. |
+| actor/spot route resolution | application resolver | `actorId`, `spotRid`, `gameId` 같은 domain key가 어느 node/spot으로 가야 하는지 결정한다. |
 
 framework는 actor-session binding을 내부 상태로 가진다. 인증이 끝나면 현재 stream에
 actor를 binding하고, 같은 actor가 다시 붙으면 이전 binding을 교체할 수 있어야 한다.
@@ -779,7 +779,7 @@ actor route와 같은 문제가 `Spot` 호출에도 있다. 사용자가 `SpotRi
 보낼 수 없고 `SpotNodeId`나 node `RoutingId`까지 알아야 한다면, transport 위치 정보가
 application 코드에 새어 나온다.
 
-framework public surface는 spot name 또는 spot rid 기반 호출이 node 경계를 넘을 때
+framework public surface는 spot rid 기반 호출이 node 경계를 넘을 때
 spot route resolver를 사용한다. session-gateway sample에서 game room이 같은 Play
 서버 안에만 있으면 resolver 호출이 드러나지 않을 수 있지만, 문서의 cross-node 계약은
 spot resolver를 포함해야 한다. 멀티게임 sample의 game room은 도메인 핵심 실행 문맥이므로
@@ -982,12 +982,12 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | 테스트 | 확인 내용 |
 |--------|-----------|
 | route resolver play path | `IZLinkActorClient`가 actor id로 play route를 찾고 routed message를 보낸다. |
-| route resolver spot path | spot name/id 기반 호출과 `JoinSpot(...)`이 spot route를 찾고 routed message를 보낸다. |
+| route resolver spot path | spot rid 기반 호출과 `JoinSpot(...)`이 spot route를 찾고 routed message를 보낸다. |
 | session proxy binding path | session proxy가 actor-session binding으로 session router id와 session id를 찾아 client에게 보낸다. |
 | dispatch ref path | `DispatchToActorAsync(...)`는 이미 받은 `IZLinkActorRef` target을 사용하고 play route resolver를 다시 호출하지 않는다. |
-| resolver 입력 제한 | actor resolver는 `actorId`만, spot resolver는 spot name/id만 입력으로 받고 metadata, packet name, payload를 받지 않는다. |
+| resolver 입력 제한 | actor resolver는 `actorId`만, spot resolver는 spot rid만 입력으로 받고 metadata, packet name, payload를 받지 않는다. |
 | missing play resolver validation | `IZLinkActorClient` 사용 시 play route resolver가 없으면 startup 또는 첫 호출에서 명확한 framework error가 난다. |
-| missing spot resolver validation | spot name/id 기반 client 또는 `JoinSpot(...)` 사용 시 spot route resolver가 없으면 명확한 framework error가 난다. |
+| missing spot resolver validation | spot rid 기반 client 또는 `JoinSpot(...)` 사용 시 spot route resolver가 없으면 명확한 framework error가 난다. |
 | missing actor-session binding validation | `IZLinkSessionProxy` 사용 시 actor-session binding이 없으면 명확한 framework error가 난다. |
 | direct target send/request 제거 | public send/request sample과 guide에서 `RoutingId` target을 직접 받는 API를 사용하지 않는다. |
 

@@ -178,7 +178,7 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public Dictionary<string, ZLinkSpotRouteChannelAcceptanceRegistration> AcceptedSpotRouteChannels { get; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, Type> SpotFactories { get; } = new(StringComparer.Ordinal);
+    public HashSet<Type> SpotFactories { get; } = [];
 
     public ZLinkEntrySpotOptions EntrySpotOptions { get; } = new();
 

@@ -92,18 +92,13 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         configure(registration.EntrySpotOptions);
     }
 
-    public void AddSpotFactory<TSpot>(string spotName)
+    public void AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot
     {
-        if (string.IsNullOrWhiteSpace(spotName))
-        {
-            throw new ZLinkConfigurationException("Spot factory name must not be empty.");
-        }
-
-        if (!registration.SpotFactories.TryAdd(spotName, typeof(TSpot)))
+        if (!registration.SpotFactories.Add(typeof(TSpot)))
         {
             throw new ZLinkConfigurationException(
-                $"Duplicate SPOT factory '{spotName}' on node '{registration.SpotNodeName}'.");
+                $"Duplicate SPOT factory '{typeof(TSpot)}' on node '{registration.SpotNodeName}'.");
         }
     }
 

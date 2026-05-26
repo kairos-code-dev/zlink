@@ -18,7 +18,6 @@ internal sealed class ZLinkRoutedSpotClientService(ZLinkFrameworkRuntime runtime
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult<IZLinkSpotRef>(new ZLinkSpotRef(
             remoteAddress.SpotRid,
-            null,
             remoteAddress.SpotKind,
             isRemote: true,
             remoteAddress));
@@ -89,14 +88,11 @@ internal sealed class ZLinkRoutedSpotChannelClient(
 
 internal sealed class ZLinkSpotRef(
     RoutingId spotRid,
-    string? spotName,
     ZLinkSpotKind spotKind,
     bool isRemote,
     ZLinkSpotRemoteAddress remoteAddress) : IZLinkSpotRef
 {
     public RoutingId SpotRid { get; } = spotRid;
-
-    public string? SpotName { get; } = spotName;
 
     public ZLinkSpotKind SpotKind { get; } = spotKind;
 

@@ -12,7 +12,7 @@ static void join_only_dispatch (
     auto request = state_.spot->recv_actor_join (ZLINK_DONTWAIT);
     assert (request.has_value ());
     zlink::message_t reply = zlink::message_t::from_string ("accepted");
-    state_.spot->reply_actor_join (*request, true).message (reply).submit ();
+    state_.spot->reply_actor_join (*request, 0).message (reply).submit ();
 }
 
 int main ()

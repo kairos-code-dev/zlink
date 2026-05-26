@@ -126,7 +126,7 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_actor_join_recv (
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply (
   void *spot_,
   const zlink_actor_join_info_t *info_,
-  uint32_t accepted_,
+  int32_t join_result_code_,
   zlink_msg_t *parts_,
   size_t part_count_);
 

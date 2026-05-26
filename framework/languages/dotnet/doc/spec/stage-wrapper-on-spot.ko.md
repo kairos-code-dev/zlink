@@ -175,8 +175,8 @@ loop 를 직접 다루지 않고, 등록 표면만 본다.
 1. client session이 인증을 끝내고 actor를 찾는다.
 2. `JoinRoom` 같은 packet이 오면 framework가 target `Spot` 실행 문맥으로 join
    요청을 넣는다.
-3. join handler는 `IZLinkSpotActorMembership.JoinActorAsync(actor)`를 호출해
-   `actorId -> spot runtime` 연결을 membership으로 기록한다.
+3. join handler가 정상 응답을 반환하면 framework가 `actorId -> spot runtime`
+   연결을 membership으로 기록한다.
 4. 그 뒤 session에서 packet이 오면 framework가 header와 payload를 actor dispatch
    envelope로 정규화한다.
 5. 정규화된 dispatch를 해당 actor가 attach된 `Spot` runtime의 inbox에 넣는다.
@@ -340,12 +340,12 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 
 현재 `IZLinkSpotManager` 의 기본 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 section 6.3 을 따른다.
-즉 현재 framework 기본 계약은 `spotName` 만 받는 생성과, `spotName + spotRid` 까지를
-다루는 수준이다.
+즉 현재 framework 기본 계약은 `TSpot` 타입으로 factory를 고르는 생성과,
+`TSpot + spotRid`로 기존 logical spot을 확보하는 수준이다.
 
 `Stage wrapper` 를 만들려면 최소한 다음 중 하나가 더 필요하다.
 
-- `spotName + spotRid + metadata`
+- `TSpot + spotRid + metadata`
 - create payload 를 handler 초기화 단계에 전달하는 별도의 contract
 
 다만 이 부분은 현재 하부 C API 의 공개 계약에서 바로 읽히는 내용이 아니다. 따라서
@@ -355,11 +355,11 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 ```csharp
 public interface IStageSpotManager
 {
-    ValueTask<ZLinkSpotCreateResult> CreateAsync<TMetadata>(
-        string spotName,
+    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot, TMetadata>(
         RoutingId spotRid,
         TMetadata metadata,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
 }
 ```
 

@@ -8,8 +8,6 @@ internal sealed class ZLinkActorContext(
 
     public string? SessionId => state.SessionId;
 
-    public string? SpotName => state.SpotName;
-
     public RoutingId? SpotRid => state.SpotRid;
 
     public bool IsJoined => state.IsJoined;
@@ -140,7 +138,7 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
         return this;
     }
 
-    public async ValueTask<ZLinkActorJoinResult> SubmitAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<ActorRef> SubmitAsync(CancellationToken cancellationToken = default)
     {
         var timeout = _timeout ?? runtime.Registration.DefaultTimeout;
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

@@ -65,7 +65,7 @@ async function main() {
         await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();
         const joinReply = actor.join(spot).message(Buffer.from('join-gateway')).timeout(2000).submitAsync();
         const joinRequest = waitForJoin(spot);
-        spot.replyActorJoin(joinRequest, true).message(Buffer.from('ok')).submit();
+        spot.replyActorJoin(joinRequest, 0).message(Buffer.from('ok')).submit();
         await joinReply;
         stream.sendBoundActor(session, 'gateway-player-1').message(Buffer.from('relay')).submit();
         for (let i = 0; i < 100 && payloads.length === 0; i += 1) {

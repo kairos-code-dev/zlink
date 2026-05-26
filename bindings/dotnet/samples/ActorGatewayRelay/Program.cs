@@ -63,7 +63,7 @@ SampleSupport.WaitOrThrow(() =>
     return request != null;
 }, 2000, "actor join request");
 using Message joinReply = Message.FromString("accepted:gateway");
-spot.ReplyActorJoin(request!, accepted: true).Message(joinReply).Submit();
+spot.ReplyActorJoin(request!, joinResultCode: 0).Message(joinReply).Submit();
 foreach (Message reply in (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
     reply.Dispose();
 

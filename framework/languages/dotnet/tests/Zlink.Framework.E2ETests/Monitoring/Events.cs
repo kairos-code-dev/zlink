@@ -69,7 +69,7 @@ public sealed class EventsTests
                 {
                     pubsub.SetPubBind(spotPubEndpoint);
                 });
-                spot.AddSpotFactory<MonitoringStageSpot>("stage");
+                spot.AddSpotFactory<MonitoringStageSpot>();
             });
             });
         });
@@ -84,7 +84,7 @@ public sealed class EventsTests
             await host.StartAsync();
 
             var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
-            _ = await manager.CreateAsync("stage");
+            _ = await manager.CreateAsync<MonitoringStageSpot>();
 
             var @event = await host.Services.GetRequiredService<SpotMonitorProbe>()
                 .WaitAsync(TimeSpan.FromSeconds(5));

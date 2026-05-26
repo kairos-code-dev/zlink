@@ -97,8 +97,8 @@
 - send 는 기본적으로 async submit 으로 설명한다. backpressure[^backpressure]는
   public no-wait 옵션을 따로 두지 않고, nonblocking send 와 pending queue,
   ready notification 을 활용해서 framework 내부에서 처리한다.
-- `SPOT` 을 다루는 문서는 named spot factory 등록, `spotName` 기준 생성,
-  `spotId -> spotName` 조회, lifecycle timer, 외부 spot publish 표면을 공통
+- `SPOT` 을 다루는 문서는 Spot 타입 기준 factory 등록, `RoutingId` 기준 생성과 조회,
+  lifecycle timer, 외부 spot publish 표면을 공통
   정책과 맞춰 설명해야 한다.
 - 현재 framework core 문서에는 `targetRid + spotId` 형태의 direct routed public
   호출은 두지 않는다. 반면 actor join, actor factory 등록,

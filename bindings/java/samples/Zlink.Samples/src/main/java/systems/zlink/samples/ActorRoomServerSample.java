@@ -47,7 +47,7 @@ public final class ActorRoomServerSample {
                     }
                     joins.add(request.message().toUtf8String());
                     try (Message reply = Message.copyOfUtf8("joined")) {
-                        spot.replyActorJoin(request, true)
+                        spot.replyActorJoin(request, 0)
                           .message(reply)
                           .submit();
                     }

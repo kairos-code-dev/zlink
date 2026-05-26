@@ -312,7 +312,7 @@ public final class NativeLayouts {
     public static final MemoryLayout ACTOR_JOIN_RESULT_LAYOUT =
             MemoryLayout.structLayout(
                     ValueLayout.JAVA_INT.withName("result"),
-                    MemoryLayout.paddingLayout(4),
+                    ValueLayout.JAVA_INT.withName("join_result_code"),
                     ACTOR_REF_LAYOUT.withName("actor"),
                     ROUTING_ID_LAYOUT.withName("joined_spot_rid"),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("join_epoch"),
@@ -321,6 +321,9 @@ public final class NativeLayouts {
     public static final long ACTOR_JOIN_RESULT_RESULT_OFFSET =
             ACTOR_JOIN_RESULT_LAYOUT.byteOffset(
                     PathElement.groupElement("result"));
+    public static final long ACTOR_JOIN_RESULT_JOIN_RESULT_CODE_OFFSET =
+            ACTOR_JOIN_RESULT_LAYOUT.byteOffset(
+                    PathElement.groupElement("join_result_code"));
     public static final long ACTOR_JOIN_RESULT_ACTOR_OFFSET =
             ACTOR_JOIN_RESULT_LAYOUT.byteOffset(
                     PathElement.groupElement("actor"));

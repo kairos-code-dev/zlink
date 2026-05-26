@@ -440,7 +440,7 @@ struct request_result_js_payload_t
     request_result_js_payload_t ()
       : errnum (0), has_actor_join (false), has_actor_lookup (false),
         has_actor_join_entry_spot (false),
-        join_epoch (0), flags (0)
+        join_result_code (0), join_epoch (0), flags (0)
     {
         memset(&actor, 0, sizeof(actor));
         memset(&joined_spot_rid, 0, sizeof(joined_spot_rid));
@@ -452,6 +452,7 @@ struct request_result_js_payload_t
     bool has_actor_join;
     bool has_actor_lookup;
     bool has_actor_join_entry_spot;
+    int32_t join_result_code;
     zlink_actor_ref_t actor;
     zlink_routing_id_t joined_spot_rid;
     zlink_routing_id_t target_node_rid;
@@ -2278,12 +2279,17 @@ static void request_tsfn_call_js(napi_env env,
         argv[0] = result_obj;
         napi_get_undefined(env, &argv[1]);
     } else if (payload->has_actor_join) {
-        // ActorJoinResult { result, actor, joinedSpotRid, joinEpoch, flags }
+        // ActorJoinResult { result, joinResultCode, actor, joinedSpotRid, joinEpoch, flags }
         napi_value result_obj;
         napi_create_object(env, &result_obj);
         napi_value result_value;
         napi_create_int32(env, payload->errnum, &result_value);
         napi_set_named_property(env, result_obj, "result", result_value);
+        napi_value join_result_code_value;
+        napi_create_int32(env, payload->join_result_code,
+                          &join_result_code_value);
+        napi_set_named_property(env, result_obj, "joinResultCode",
+                                join_result_code_value);
         napi_set_named_property(env, result_obj, "actor",
                                 create_actor_ref_value(env, payload->actor));
         napi_set_named_property(env, result_obj, "joinedSpotRid",
@@ -2415,6 +2421,7 @@ static void actor_join_callback_trampoline(
     payload->has_actor_join = true;
     payload->errnum = result_ ? result_->result : ZLINK_REQUEST_INTERNAL_ERROR;
     if (result_) {
+        payload->join_result_code = result_->join_result_code;
         payload->actor = result_->actor;
         payload->joined_spot_rid = result_->joined_spot_rid;
         payload->join_epoch = result_->join_epoch;
@@ -3328,15 +3335,15 @@ napi_value spot_actor_join_reply(napi_env env, napi_callback_info info)
     zlink_actor_join_info_t join_info;
     if (!parse_actor_join_info_value(env, argv[1], &join_info))
         return NULL;
-    bool accepted = false;
-    napi_get_value_bool(env, argv[2], &accepted);
+    int32_t join_result_code = 0;
+    napi_get_value_int32(env, argv[2], &join_result_code);
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector(env, argv[3], &parts))
         return NULL;
     int rc = zlink_spot_actor_join_reply(
       spot,
       &join_info,
-      accepted ? 1u : 0u,
+      join_result_code,
       parts.empty() ? NULL : parts.data(),
       parts.size());
     if (rc != ZLINK_SUBMIT_OK) {

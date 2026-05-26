@@ -174,7 +174,7 @@ Actor factory registration requires at least one SpotNode.
 ### 4.2 Spot remote address resolver
 
 `AddSpotRemoteAddressResolver<TResolver>()` 자체는 `SpotNode` 를 직접 요구하지 않는다.
-resolver 는 `spotName` 또는 `spotId` 를 route 로 바꾸는 정책 객체일 뿐이다.
+resolver 는 `spotRid` 또는 `spotId` 를 route 로 바꾸는 정책 객체일 뿐이다.
 session gateway 나 API 서버가 route 정보를 저장하거나 전달하기 위해 같은 resolver
 구현을 등록할 수 있다.
 

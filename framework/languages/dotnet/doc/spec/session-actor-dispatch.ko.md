@@ -866,7 +866,7 @@ internal sealed class ZLinkEntrySpotRuntime
     }
 
     public ValueTask ActorJoinedAsync(
-        ZLinkSpotActorLifecycleContext info,
+        ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken)
     {
         return _lifecycleQueue.RunAsync(
@@ -1184,10 +1184,6 @@ namespace Zlink.Framework.Contracts.Spots;
 public interface IZLinkSpotRemoteAddressResolver
 {
     ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
-        string spotName,
-        CancellationToken cancellationToken);
-
-    ValueTask<ZLinkSpotRemoteAddress> ResolveSpotRemoteAddressAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken);
 }
@@ -1291,7 +1287,7 @@ options.AddSpotMesh("game.rooms", mesh =>
             router.SetRouterBind(spotEndpoint);
         });
         spot.AddEntrySpot<TicTacToeEntrySpot>();
-        spot.AddSpotFactory<TicTacToeGame>("game");
+        spot.AddSpotFactory<TicTacToeGame>();
     });
 });
 

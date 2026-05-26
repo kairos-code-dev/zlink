@@ -24,11 +24,12 @@ import (
 
 // ActorJoinResult is the completion value of an Actor join operation.
 type ActorJoinResult struct {
-	Result        RequestResult
-	Actor         ActorRef
-	JoinedSpotRID RoutingID
-	JoinEpoch     uint64
-	Flags         uint32
+	Result         RequestResult
+	JoinResultCode int32
+	Actor          ActorRef
+	JoinedSpotRID  RoutingID
+	JoinEpoch      uint64
+	Flags          uint32
 }
 
 // ActorJoinEntrySpotResult is the completion value of an Entry Spot join

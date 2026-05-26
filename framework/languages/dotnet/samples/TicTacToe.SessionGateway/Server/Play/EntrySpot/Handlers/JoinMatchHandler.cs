@@ -28,7 +28,7 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
             ;
         var reply = new JoinMatchRes(
             joined.MatchId,
-            result.ActorId,
+            result.Actor.ActorId,
             joined.Mark.ToContract(),
             joined.Snapshot.ToContract());
         return reply;

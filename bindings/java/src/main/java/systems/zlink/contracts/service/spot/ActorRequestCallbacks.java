@@ -223,8 +223,8 @@ public final class ActorRequestCallbacks {
         }
         try {
             ActorJoinResult joinResult = result == MemorySegment.NULL
-              ? new ActorJoinResult(RequestResult.INTERNAL_ERROR, null, null,
-                  0L, 0)
+              ? new ActorJoinResult(RequestResult.INTERNAL_ERROR, 0, null,
+                  null, 0L, 0)
               : ActorInterop.actorJoinResultFromNative(result);
             Message[] messages = joinResult.result() == RequestResult.OK
               ? InternalAccess.messageFromOwnedMsgVectorShared(parts, partCount)

@@ -100,7 +100,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
     public async ValueTask InvokeActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
-        ZLinkSpotActorLifecycleContext context,
+        ZLinkSpotActorChangeResult context,
         CancellationToken cancellationToken)
     {
         EnsureActorType(

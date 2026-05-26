@@ -219,7 +219,7 @@ export class Message {
   private _metadata!: Readonly<Map<number, Buffer>>;
 
   /** @throws {ConfigError} */
-  constructor(data: BufferLike) {
+  private constructor(data: BufferLike) {
     this.initialize(Buffer.from(normalizeBufferLike(data, 'data')));
     Object.freeze(this);
   }

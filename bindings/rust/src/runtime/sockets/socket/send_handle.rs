@@ -25,7 +25,7 @@ use crate::service::{Empty, SendOp};
 ///
 /// let mut received = Received::empty();
 /// router.recv(&mut received, RecvFlags::NONE).unwrap();
-/// let reply = Message::copy_from(b"pong").unwrap();
+/// let reply = Message::try_from(b"pong").unwrap();
 /// handle
 ///     .send_to(received.routing_id().expect("missing routing id"))
 ///     .message(reply)

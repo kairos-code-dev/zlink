@@ -53,7 +53,7 @@ internal static class ZLinkEnvelopeCodec
     {
         if (bodyType is null || body is null)
         {
-            return Message.FromBytes(ReadOnlySpan<byte>.Empty);
+            return Message.From(ReadOnlySpan<byte>.Empty);
         }
 
         return EncodeJsonPart(body, bodyType);
@@ -120,12 +120,12 @@ internal static class ZLinkEnvelopeCodec
 
     public static Message EncodeJsonPart<T>(T value)
     {
-        return Message.FromBytes(EncodeJsonBytes(value));
+        return Message.From(EncodeJsonBytes(value));
     }
 
     public static Message EncodeJsonPart(object? value, Type valueType)
     {
-        return Message.FromBytes(EncodeJsonBytes(value, valueType));
+        return Message.From(EncodeJsonBytes(value, valueType));
     }
 
     public static byte[] EncodeJsonBytes<T>(T value)

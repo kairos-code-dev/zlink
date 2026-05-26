@@ -34,6 +34,6 @@ public static class JsonMessageExtensions
         JsonSerializerOptions? options = null)
     {
         byte[] payload = JsonSerializer.SerializeToUtf8Bytes(value, options);
-        return Message.FromBytes(payload);
+        return Message.From(payload);
     }
 }

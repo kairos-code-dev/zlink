@@ -54,7 +54,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         var actor = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("registry-actor", "registry")).Actor;
         await actorRuntime.AttachActorAsync(actor, new TestStream("registry-session"));
 
-        using (var joinBody = global::Systems.Zlink.Message.FromString(first.SpotRid.ToHex()))
+        using (var joinBody = global::Systems.Zlink.Message.From(first.SpotRid.ToHex()))
         {
             await actorRuntime.SubmitActorAsync(
                 actor,
@@ -78,7 +78,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         Assert.Contains($"joined:registry-actor:{first.SpotRid.ToHex()}", recorder.Events);
         Assert.Contains("joined-kind:registry-actor:JoinSpot", recorder.Events);
 
-        using (var dispatchBody = Message.FromString("payload"))
+        using (var dispatchBody = Message.From("payload"))
         {
             await actorRuntime.SubmitActorAsync(
                 actor,

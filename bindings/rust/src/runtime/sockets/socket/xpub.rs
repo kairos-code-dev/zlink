@@ -6,7 +6,7 @@ use crate::flags::RecvFlags;
 use crate::options::{CommonSocketOptions, PubSocketOptions};
 use crate::service::{Empty, SendOp};
 
-use super::{SocketInner, impl_base_socket, impl_connect};
+use super::{impl_base_socket, impl_connect, SocketInner};
 
 /// XPUB socket – extended publish with subscription event access.
 ///

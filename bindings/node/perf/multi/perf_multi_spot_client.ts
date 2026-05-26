@@ -206,19 +206,12 @@ async function main() {
     // timeout elapses). The runner also forwards START on stdin. Wait for
     // EITHER the control-channel START or the stdin START, whichever lands
     // first, while keeping READY_COUNT alive so the server can observe it.
-    let started = false;
+    let runnerStarted = false;
     const startFromRunner = waitForRunnerStart(options.msgSize).then(() => {
-      started = true;
-    });
-    const startFromControl = waitForControlStart(
-      controlSub,
-      controlSubWaiter,
-      options.msgSize
-    ).then(() => {
-      started = true;
+      runnerStarted = true;
     });
     let nextReadyAt = Date.now();
-    while (!started) {
+    while (!runnerStarted) {
       if (Date.now() >= nextReadyAt) {
         await publishControlUntilSent(
           controlPub,
@@ -230,10 +223,10 @@ async function main() {
       }
       await Promise.race([
         startFromRunner,
-        startFromControl,
         sleepMillis(Math.min(50, Math.max(1, nextReadyAt - Date.now())))
       ]);
     }
+    await waitForControlStart(controlSub, controlSubWaiter, options.msgSize);
     trace('start-handshake-done');
 
     const controlStartNs = currentEpochNs();

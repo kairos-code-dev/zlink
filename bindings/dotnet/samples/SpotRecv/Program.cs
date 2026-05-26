@@ -35,7 +35,7 @@ SampleSupport.WaitOrThrow(() =>
 {
     try
     {
-        using Message message = Message.FromString(payload);
+        using Message message = Message.From(payload);
         publisher.Publish(topic).Message(message).Submit();
         return subscriber.Subscribe(subscribed, RecvFlags.DontWait);
     }

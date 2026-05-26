@@ -15,7 +15,7 @@ public sealed class ZLinkAsyncSubmitterTests
             CancellationToken.None);
 
         var task = submitter.SubmitAsync(
-            Message.FromString("payload"),
+            Message.From("payload"),
             _ =>
             {
                 submitted++;
@@ -42,7 +42,7 @@ public sealed class ZLinkAsyncSubmitterTests
         var submitted = 0;
 
         await submitter.SubmitAsync(
-            Message.FromString("payload"),
+            Message.From("payload"),
             _ =>
             {
                 submitted++;
@@ -61,7 +61,7 @@ public sealed class ZLinkAsyncSubmitterTests
             CancellationToken.None);
 
         var task = submitter.SubmitAsync(
-            Message.FromString("payload"),
+            Message.From("payload"),
             _ => false);
 
         await Assert.ThrowsAsync<TimeoutException>(async () => await task.AsTask());
@@ -77,14 +77,14 @@ public sealed class ZLinkAsyncSubmitterTests
             capacity: 1);
 
         var first = submitter.SubmitAsync(
-            Message.FromString("first"),
+            Message.From("first"),
             _ => false);
 
         Assert.False(first.IsCompleted);
 
         Assert.Throws<InvalidOperationException>(() =>
             submitter.SubmitAsync(
-                Message.FromString("second"),
+                Message.From("second"),
                 _ => false));
     }
 
@@ -97,7 +97,7 @@ public sealed class ZLinkAsyncSubmitterTests
             CancellationToken.None);
 
         var pending = submitter.SubmitAsync(
-            Message.FromString("payload"),
+            Message.From("payload"),
             _ => false);
 
         await submitter.DisposeAsync();

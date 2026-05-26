@@ -44,7 +44,7 @@
 
 - `Socket` 은 raw 계층에서 `send` / `recv` 만 canonical API로 가진다
 - payload와 변환 책임은 `Message` 가 담당한다
-- `Message.copyOf*` / `Message.wrap*` 로 copy/borrow 경계를 명시한다
+- `Message.from` / `Message.wrap*` 로 copy/borrow 경계를 명시한다
 - direct `ByteBuffer`, native `MemorySegment`, direct Netty `ByteBuf` fast path 는 유지한다
 - `Received` 는 raw recv 결과와 lifecycle aggregate를 동시에 담당한다
 - 검증 자산은 `samples`, `contract tests` 두 층으로 나눈다
@@ -311,7 +311,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 - `Socket.subscribe()` / topic-aware recv helper 를 canonical subscribe path 로 추가
 - `Socket` 의 callback/subscribe-oriented helper
   (`onReceive` / `onSubscribe` / `onSendReady`) 를 canonical path 로 정렬
-- `Message.copyOf*` / `Message.wrap*` 표면 고정
+- `Message.from` / `Message.wrap*` 표면 고정
 - 기존 direct/native/Netty fast path 보존
 - `Received` aggregate lifecycle 모델 구현
 - `onReceive` / `onSubscribe` / `onSendReady` canonical callback API 정렬
@@ -324,7 +324,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 - `Socket` 에 typed payload direct send/recv helper 가 canonical path로 남지 않는다
 - `PUB` / `SUB` canonical sample 이 `Socket.publish(...)` 와 subscription helper 로 동작한다
 - `PUB` / `SUB` blocking recv sample 이 `Socket.subscribe()` 로 동작한다
-- `Message.copyOf*` / `wrap*` contract test 통과
+- `Message.from` / `wrap*` contract test 통과
 - `Received.close()` / multipart view / routing-id contract test 통과
 - copy path 와 wrap path 모두 sample/contract 경로에서 검증 가능하다
 
@@ -335,7 +335,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
   `Socket.recv()`, `setRoutingId/routingId`,
   `setSubscription/unsetSubscription/subscriptions` canonical surface 를
   1차 반영했다.
-- `Message.copyOf*`, `wrap*`, `toByteArray()`, `toUtf8String()`, `valid()`,
+- `Message.from`, `wrap*`, `toByteArray()`, `toUtf8String()`, `valid()`,
   `empty()`, `property(String)` 를 추가했고, legacy
   `Message.send()/recv()/more()` 는 deprecated compatibility path 로만
   남기기 시작했다.
@@ -368,7 +368,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 - `cd bindings/java && ./gradlew integrationTest --no-daemon` 는 현재
   contract 묶음 기준으로 통과한다.
 - 후속 정리로 `Socket` 의 legacy typed payload direct send/recv helper 와
-  `Message.from*` / `Message.send/recv/more` compatibility surface 를
+  `Message.from` / `Message.send/recv/more` compatibility surface 를
   package-private 로 내려 public canonical API 밖으로 격리했다.
 - 이에 맞춰 old Netty/byte/span 포팅 테스트와 대량 ported integration 묶음을
   제거했고, `cd bindings/java && ./gradlew clean test integrationTest --no-daemon`

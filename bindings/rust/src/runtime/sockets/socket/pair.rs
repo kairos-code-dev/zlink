@@ -6,7 +6,7 @@ use crate::flags::RecvFlags;
 use crate::options::CommonSocketOptions;
 use crate::service::{Empty, SendOp};
 
-use super::{SendHandle, SocketInner, impl_base_socket, impl_connect};
+use super::{impl_base_socket, impl_connect, SendHandle, SocketInner};
 
 /// PAIR socket – bidirectional one-to-one messaging.
 ///

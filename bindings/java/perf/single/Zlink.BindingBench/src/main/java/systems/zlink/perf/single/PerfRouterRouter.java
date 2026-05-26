@@ -205,7 +205,7 @@ final class PerfRouterRouter {
             new systems.zlink.contracts.Received();
         try {
             while (System.nanoTime() < deadline && senderRoute == null) {
-                try (Message ping = Message.copyOf(PING)) {
+                try (Message ping = Message.from(PING)) {
                     if (!trySendActive(sender, ROUTER1, ping)) {
                         Thread.onSpinWait();
                     }
@@ -228,7 +228,7 @@ final class PerfRouterRouter {
                 throw new IllegalStateException("router/router handshake ping timed out");
             }
 
-            try (Message pong = Message.copyOf(PONG)) {
+            try (Message pong = Message.from(PONG)) {
                 senderRouterSend(receiver, senderRoute, pong, SendFlags.NONE);
             }
 
@@ -310,7 +310,7 @@ final class PerfRouterRouter {
 
     private static boolean trySendActive(RouterSocket sender, RoutingId route,
                                          Message active) {
-        try (Message outbound = Message.copyOf(active)) {
+        try (Message outbound = Message.from(active)) {
             return sender.send(route)
                 .message(outbound)
                 .flags(SendFlags.DONT_WAIT)
@@ -332,7 +332,7 @@ final class PerfRouterRouter {
 
     private static boolean trySendBlocking(RouterSocket sender, RoutingId route,
                                            Message active) {
-        try (Message outbound = Message.copyOf(active)) {
+        try (Message outbound = Message.from(active)) {
             return sender.send(route)
                 .message(outbound)
                 .flags(SendFlags.NONE)

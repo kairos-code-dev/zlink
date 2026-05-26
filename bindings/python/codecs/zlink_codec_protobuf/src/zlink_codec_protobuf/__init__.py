@@ -24,4 +24,4 @@ def encode(v: T) -> Message:
 
 
 def _new_message(data: bytes) -> Message:
-    return Message.from_bytes(data)
+    return Message.from_(data)

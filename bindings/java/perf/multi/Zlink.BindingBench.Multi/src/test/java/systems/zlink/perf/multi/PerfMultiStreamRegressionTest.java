@@ -109,7 +109,7 @@ class PerfMultiStreamRegressionTest {
         frame[5] = (byte) (bodySize & 0xFF);
         header.copyTo(frame, 0, 6, headerSize);
         body.copyTo(frame, 0, 6 + headerSize, bodySize);
-        return Message.copyOf(frame);
+        return Message.from(frame);
     }
 
     private static byte[] readExact(InputStream input, int length) throws Exception {

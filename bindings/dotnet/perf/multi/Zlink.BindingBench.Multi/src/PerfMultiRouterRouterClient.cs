@@ -333,7 +333,7 @@ internal static class PerfMultiRouterRouterClient
     private static bool TrySend(RouterRouterClientSlot slot)
     {
         using Message message = slot.BorrowPayload
-            ? Message.FromBytes(slot.Payload)
+            ? Message.From(slot.Payload)
             : new Message(slot.Payload.AsSpan());
         return ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId, message,
             SendFlags.DontWait);

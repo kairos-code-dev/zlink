@@ -126,7 +126,7 @@ final class PerfSpotDirectControl implements AutoCloseable {
     }
 
     private void publish(String payload) {
-        try (Message message = Message.copyOf(payload.getBytes(StandardCharsets.UTF_8))) {
+        try (Message message = Message.from(payload.getBytes(StandardCharsets.UTF_8))) {
             pub.publish(TOPIC)
                 .message(message)
                 .flags(SendFlags.NONE)

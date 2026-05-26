@@ -33,7 +33,8 @@ const {
   emitMultiSocketHwmDetail,
   pollEvents,
   publishControlUntilSent,
-  waitForControlStart,
+  subscribeNoWait,
+  trySocketPublish,
   waitForRunnerControlConnected,
   waitForRunnerStart
 } = require('./perf_multi_runtime');
@@ -128,49 +129,15 @@ function tryRequestSpotReply(spot, payload, timeoutMs, onReply, onDone) {
   }
 }
 
-async function waitForProbeReady(slots, runId, msgSize, poller, pollBuffer, timeoutMs) {
-  const deadline = Date.now() + Math.max(1, timeoutMs);
-  const ready = new Set();
-  let seq = 1n;
-
-  while (Date.now() < deadline && ready.size < slots.length) {
-    for (let i = 0; i < slots.length; i += 1) {
-      if (ready.has(i)) {
-        continue;
-      }
-      stampPayload(slots[i].payload, { phase: 0, runId, msgSize, seq });
-      seq += 1n;
-      let completed = false;
-      const submitted = tryRequestSpotReply(
-        slots[i].spot,
-        slots[i].payload,
-        Math.max(1, Math.min(1000, timeoutMs)),
-        (reply) => {
-          if (reply && reply.phase === 0 && reply.runId === runId && reply.msgSize === msgSize) {
-            ready.add(i);
-          }
-        },
-        () => {
-          completed = true;
-        }
-      );
-      if (!submitted) {
-        continue;
-      }
-      const probeDeadlineNs =
-        currentEpochNs() + BigInt(Math.max(1, Math.min(1000, timeoutMs))) * 1_000_000n;
-      while (!completed && currentEpochNs() < probeDeadlineNs) {
-        pollCompletionUntil(poller, pollBuffer, probeDeadlineNs);
-        await sleepImmediate();
-      }
-    }
-    if (ready.size < slots.length) {
-      await sleepImmediate();
-    }
+function receiveControlStart(controlSub, msgSize) {
+  const received = subscribeNoWait(controlSub);
+  if (!received) {
+    return false;
   }
-
-  if (ready.size < slots.length) {
-    throw new Error(`spot reqrep probe readiness timeout ${ready.size}/${slots.length}`);
+  try {
+    return received.parts[0].data().toString('utf8') === `START,${msgSize}`;
+  } finally {
+    received.close();
   }
 }
 
@@ -219,27 +186,9 @@ async function main() {
     }
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
-    const probePoller = new zlink.Poller();
-    const probePollBuffer = new zlink.PollEvents(Math.max(1, slots.length));
-    for (let i = 0; i < slots.length; i += 1) {
-      probePoller.add(slots[i].spot, pollEvents(POLLCOMPLETION), i);
-    }
-
     await sleepMillis(resolveMultiSpotReadySettleMs());
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
-    try {
-      await waitForProbeReady(
-        slots,
-        createRunId(1),
-        options.msgSize,
-        probePoller,
-        probePollBuffer,
-        Number.isFinite(options.connectReadyTimeoutMs) ? options.connectReadyTimeoutMs : 1000
-      );
-    } finally {
-      probePollBuffer.close();
-      probePoller.close();
-    }
+    await sleepMillis(resolveMultiSpotControlSettleMs());
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
     await sleepMillis(resolveMultiSpotControlSettleMs());
     await publishControlUntilSent(
@@ -259,31 +208,22 @@ async function main() {
     // 250ms while waiting for START (stdin from the runner or control
     // channel, whichever lands first) so the server always observes the
     // ready count and the handshake never wedges.
-    let started = false;
+    let runnerStarted = false;
+    let controlStarted = false;
     const startFromRunner = waitForRunnerStart(options.msgSize).then(() => {
-      started = true;
-    });
-    const startFromControl = waitForControlStart(
-      controlSub,
-      controlSubWaiter,
-      options.msgSize
-    ).then(() => {
-      started = true;
+      runnerStarted = true;
     });
     let nextReadyAt = Date.now();
-    while (!started) {
+    while (!runnerStarted || !controlStarted) {
       if (Date.now() >= nextReadyAt) {
-        await publishControlUntilSent(
-          controlPub,
-          controlPubWaiter,
-          CONTROL_TOPIC,
-          `READY_COUNT,${options.msgSize},${slots.length}`
-        );
+        trySocketPublish(controlPub, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
+        trySocketPublish(controlPub, CONTROL_TOPIC, 'CONNECTED');
+        trySocketPublish(controlPub, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
         nextReadyAt = Date.now() + 250;
       }
+      controlStarted = controlStarted || receiveControlStart(controlSub, options.msgSize);
       await Promise.race([
         startFromRunner,
-        startFromControl,
         sleepMillis(Math.min(50, Math.max(1, nextReadyAt - Date.now())))
       ]);
     }

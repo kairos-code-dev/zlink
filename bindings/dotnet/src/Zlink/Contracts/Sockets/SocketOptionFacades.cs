@@ -475,7 +475,7 @@ public sealed class PubSocketOptions : CommonSocketOptions
 
     public Message WelcomeMessage
     {
-        get => Message.FromString(Socket.GetOption(SocketOptions.XPubWelcomeMsg));
+        get => Message.From(Socket.GetOption(SocketOptions.XPubWelcomeMsg));
         set => Socket.SetOption(SocketOptions.XPubWelcomeMsg,
             value?.GetString() ?? throw new ArgumentNullException(nameof(value)));
     }

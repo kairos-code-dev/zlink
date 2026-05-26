@@ -311,12 +311,12 @@ void attachDiscovery(Discovery discovery);
 Message();
 Message(int size);
 
-static Message copyOf(byte[] data);
-static Message copyOf(byte[] data, int offset, int length);
-static Message copyOfUtf8(String value);
-static Message copyOf(ByteBuffer buffer);
-static Message copyOf(io.netty.buffer.ByteBuf buf);
-static Message copyOf(ByteSpan span);
+static Message from(byte[] data);
+static Message from(byte[] data, int offset, int length);
+static Message from(String value);
+static Message from(ByteBuffer buffer);
+static Message from(io.netty.buffer.ByteBuf buf);
+static Message from(ByteSpan span);
 
 static Message wrapDirect(ByteBuffer buffer);
 static Message wrapNative(MemorySegment segment);
@@ -343,7 +343,7 @@ void close();
 
 - `toString()` override 로 payload decode 는 하지 않는다.
 - 텍스트 decode 는 `toUtf8String()` 같은 명시적 메서드만 사용한다.
-- `copyOf*` 는 항상 복사한다.
+- `from` 는 항상 복사한다.
 - `wrap*` 는 zero-copy/borrow 경로만 담당한다.
 - `wrapDirect(ByteBuffer)`, `wrapNative(MemorySegment)`, `wrapDirect(ByteBuf)` 는 기존 구현의 빠른 경로를 유지하는 canonical API다.
 - `wrap(ByteSpan)` 은 native-backed span 에서만 허용하고, 그 외에는 예외로 거절한다.
@@ -388,8 +388,8 @@ record SubscriptionEntry(byte[] filter, boolean pattern) {}
 성능 관련 계약은 public surface 단계에서 먼저 고정한다.
 
 - `Socket` 은 얕고 단순해야 하지만, 그 대가로 `Message`/FFM 내부 fast path 를 잃으면 안 된다.
-- `Message.copyOf*` 와 `Message.wrap*` 는 의미가 절대 섞이지 않아야 한다.
-- `copyOf(byte[])`, `copyOfUtf8(String)` 는 편의 API이면서 복사 비용을 명시적으로 감수하는 경로다.
+- `Message.from` 와 `Message.wrap*` 는 의미가 절대 섞이지 않아야 한다.
+- `from(byte[])`, `from(String)` 는 편의 API이면서 복사 비용을 명시적으로 감수하는 경로다.
 - direct `ByteBuffer`, native `MemorySegment`, direct Netty `ByteBuf` 는 `wrap*` 를 통해 추가 복사 없이 보낼 수 있어야 한다.
 - `Message` factory 는 caller buffer cursor 를 바꾸지 않아야 하므로, side effect 없는 생성 경로로 구현한다.
 - `recv()` 는 `Received` 와 `Message` frame 을 반환할 뿐, `byte[]`/`String`/`ByteBuffer` 변환을 자동 수행하지 않는다.
@@ -452,7 +452,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
 각 테스트는 하나의 바인딩 계약만 검증한다. transport matrix, stress, protocol corner case 는 넣지 않는다.
 특히 아래 계약은 반드시 독립 test 로 검증한다.
 
-- `copyOf*` 는 항상 복사하고 source cursor 를 바꾸지 않는가
+- `from` 는 항상 복사하고 source cursor 를 바꾸지 않는가
 - `wrap*` 는 zero-copy path 만 허용하고 unsupported backing 을 조용히 copy 하지 않는가
 - `Received.close()` 가 소유한 frame 을 모두 정리하는가
 - multipart `List<Message>` send 와 `Received.parts()` 가 추가 컬렉션 복사를 만들지 않는가
@@ -642,9 +642,9 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   - 신규 샘플/문서/테스트에서는 사용하지 않는다.
 - payload 편의성은 `Message` 에만 둔다.
 - `toUtf8String()` 은 명시적 decode API로만 제공한다.
-- `Message` 생성 API는 `copyOf*` / `wrap*` 이원 구조로 고정한다.
+- `Message` 생성 API는 `from` / `wrap*` 이원 구조로 고정한다.
 - `ByteBuffer` / Netty `ByteBuf` / native `MemorySegment` 빠른 경로는 제거하지 않고 `Message.wrap*` 로 승격한다.
-- `byte[]` / `String` 경로는 편의성은 유지하되 `copyOf*` 로 복사 비용을 명확히 드러낸다.
+- `byte[]` / `String` 경로는 편의성은 유지하되 `from` 로 복사 비용을 명확히 드러낸다.
 
 ### 2.3 `Socket`
 
@@ -664,7 +664,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   - send-ready callback attach
 - STREAM API는 구 전용 심볼이 아니라 최신 callback/send path로 다시 설계한다.
   - 기존 `attachStream*` 는 deprecated convenience 로만 유지 가능
-- deprecated payload helper 는 내부적으로 `Message.copyOf*` 또는 `Message.wrap*` 로만 연결한다.
+- deprecated payload helper 는 내부적으로 `Message.from` 또는 `Message.wrap*` 로만 연결한다.
 
 결정:
 
@@ -683,9 +683,9 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   `Socket.send(Message/List<Message>/RoutingId, ...)`, `Socket.recv()`,
   `setRoutingId/routingId`, `setSubscription/unsetSubscription/subscriptions`
   1차 구현을 반영했다.
-- `Message` 에 `copyOf*`, `wrap*`, `toByteArray()`, `toUtf8String()`,
+- `Message` 에 `from`, `wrap*`, `toByteArray()`, `toUtf8String()`,
   `empty()`, `valid()`, `property(String)` 를 추가했고,
-  `copyOf(ByteBuffer)` / `wrapDirect(ByteBuffer)` 가 source cursor 를
+  `from(ByteBuffer)` / `wrapDirect(ByteBuffer)` 가 source cursor 를
   바꾸지 않는 contract test 를 추가했다.
 - `Received.parts()` 는 immutable view 로 노출하고,
   `Received.close()` 가 소유한 `Message` 를 정리하는 contract test 도
@@ -704,7 +704,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   unsupported compatibility path 로 강등했다. compile 호환은 유지하지만
   더 이상 비공식 native contract 를 타지 않는다.
 - 후속 정리로 raw `Socket` 의 `byte[]` / `ByteBuffer` / `ByteBuf` /
-  `MemorySegment` direct send/recv helper 와 `Message.from*`,
+  `MemorySegment` direct send/recv helper 와 `Message.from`,
   `Message.send/recv/more` compatibility surface 를 package-private 로 내려
   public canonical API 밖으로 격리했다.
 - 이 변경에 맞춰 top-level ported core tests 와 old integration 묶음을
@@ -969,7 +969,7 @@ sample 구현 규칙:
 
 - pair/dealer-router/stream raw sample 은 `Socket.send(...)`, `Socket.recv()` 만 사용한다.
 - pubsub raw sample 은 `Socket.publish(...)`, `Socket.subscribe()` 또는 `onSubscribe(...)` 만 사용한다.
-- payload 생성은 `Message.copyOf*` 또는 `Message.wrap*` 만 사용한다.
+- payload 생성은 `Message.from` 또는 `Message.wrap*` 만 사용한다.
 - sample 에서 `Socket.send(String)` 같은 직접 편의 API는 사용하지 않는다.
 - sample 문서는 copy path 와 wrap path 를 둘 다 보여줘야 한다.
 
@@ -1173,7 +1173,7 @@ sample 구현 규칙:
 
 대응:
 - 기존 direct `ByteBuffer` / native `MemorySegment` / direct Netty `ByteBuf` 경로를 구현 기준선으로 유지
-- `copyOf*` / `wrap*` 각각의 비용 모델을 문서와 contract 수준에서 명시
+- `from` / `wrap*` 각각의 비용 모델을 문서와 contract 수준에서 명시
 - `Received.parts()` 와 multipart send 경로에서 추가 컬렉션 복사를 금지
 - deprecated helper 제거 전후 불필요한 추가 복사가 들어가지 않도록 코드 리뷰 기준에 포함
 
@@ -1198,7 +1198,7 @@ sample 구현 규칙:
 
 - `Native*`, `Context`, `Message`, `Socket`, `MonitorSocket`, `Poller` 정렬 완료
 - contract unit tests green
-- `copyOf*` / `wrap*` 계약과 direct/native fast path 유지 확인
+- `from` / `wrap*` 계약과 direct/native fast path 유지 확인
 
 ### M3. Service Model Green
 
@@ -1225,7 +1225,7 @@ sample 구현 규칙:
 2. `Native.java` / `NativeMsg.java` / `NativeLayouts.java` 재정의
 3. `Context` / `Message` / `Socket` / `MonitorSocket` / `Poller` 정렬
 4. `RoutingId` / receive result types / subscription result types 추가
-5. `Message.copyOf*` / `wrap*` 계약과 `Received` 구현 고정
+5. `Message.from` / `wrap*` 계약과 `Received` 구현 고정
 6. `Registry` / `Discovery` / `SpotNode` / `Spot` 정렬
 7. `service/receiver/*` 삭제
 8. contract test 재구성
@@ -1240,7 +1240,7 @@ sample 구현 규칙:
 - Java 공개 API가 최신 `doc/guide` 서비스/소켓/모니터링 모델과 일치한다.
 - `Receiver`, split `Spot`, `Registry.setEndpoints()/start()` 같은 구 모델 의존이 제거된다.
 - raw socket API가 `send(...)` / `recv(...)` + `Received` 값 객체로 정리된다.
-- `Message.copyOf*` / `wrap*` 로 copy/borrow 경계가 public API에서 명시된다.
+- `Message.from` / `wrap*` 로 copy/borrow 경계가 public API에서 명시된다.
 - direct/native/Netty fast path 가 유지되고 불필요한 추가 복사 경로가 들어가지 않는다.
 - 대량 core 포팅 테스트가 sample/contract 중심 구조로 재편된다.
 - contract tests 가 최신 API 기준으로 통과하고 retry/sleep 기반 정책 위반이 제거된다.
@@ -1260,7 +1260,7 @@ sample 구현 규칙:
 - `Socket`, `Discovery`, `Registry`, `Spot`, `SpotNode` 의 canonical API 이름과 역할이 고정되었는가
 - `Socket` 은 `Message` / `List<Message>` 기반만 다루고, 변환 책임이 `Message` 로 고정되었는가
 - raw recv 결과가 `Received` 값 객체 하나로 고정되었는가
-- `Message.copyOf*` / `wrap*` 로 copy/borrow 경계가 고정되었는가
+- `Message.from` / `wrap*` 로 copy/borrow 경계가 고정되었는가
 - `ByteBuffer`, Netty `ByteBuf`, `MemorySegment`, `ByteSpan` 지원 경로가 `Message` 로 모였는가
 - 기존 테스트 인벤토리가 `contract / sample / delete` 로 분류되었는가
 

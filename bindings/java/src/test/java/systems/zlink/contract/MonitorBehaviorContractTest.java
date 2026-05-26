@@ -38,7 +38,7 @@ public class MonitorBehaviorContractTest {
             String endpoint = TestSupport.tcpEndpoint();
             server.bind(endpoint);
             client.connect(endpoint);
-            try (Message payload = Message.copyOfUtf8("monitor")) {
+            try (Message payload = Message.from("monitor")) {
                 client.send().message(payload).submit();
             }
 

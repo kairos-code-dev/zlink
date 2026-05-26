@@ -38,8 +38,8 @@ public class ReceivedContractTest {
             dealer.connect(endpoint);
 
             dealer.send()
-                .message(Message.copyOfUtf8("part-1"))
-                .message(Message.copyOfUtf8("part-2"))
+                .message(Message.from("part-1"))
+                .message(Message.from("part-2"))
                 .submit();
 
             try (systems.zlink.contracts.Received inbound = new systems.zlink.contracts.Received()) {
@@ -52,13 +52,13 @@ public class ReceivedContractTest {
                 assertEquals(2, inbound.parts().size());
                 assertFalse(inbound.isSinglePart());
                 assertThrows(UnsupportedOperationException.class,
-                    () -> inbound.parts().add(Message.copyOfUtf8("x")));
+                    () -> inbound.parts().add(Message.from("x")));
                 assertArrayEquals("part-1".getBytes(StandardCharsets.UTF_8),
                     inbound.firstPart().toByteArray());
                 assertTrue(inbound.requestSeq().isEmpty());
                 SubmitException ex = assertThrows(SubmitException.class,
                     () -> inbound.reply()
-                        .message(Message.copyOfUtf8("ack"))
+                        .message(Message.from("ack"))
                         .submit());
                 assertEquals(SubmitResult.INVALID_STATE, ex.getResult());
             }

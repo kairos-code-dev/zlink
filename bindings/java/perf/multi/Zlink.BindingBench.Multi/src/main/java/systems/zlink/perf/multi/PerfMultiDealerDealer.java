@@ -279,7 +279,7 @@ final class PerfMultiDealerDealer {
                                          int size) {
         PerfUtil.resetAndWritePayload(payload, size,
             (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-        try (Message outbound = Message.copyOf(payload)) {
+        try (Message outbound = Message.from(payload)) {
             return socket.send().message(outbound)
                 .flags(SendFlags.DONT_WAIT).submit();
         } catch (SubmitException ex) {

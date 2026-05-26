@@ -18,7 +18,7 @@ public sealed class test_actor_contract
         using var node = new SpotNode(ctx);
         using var spot = node.CreateSpot();
         using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using Message joinMessage = Message.FromString("join:hello");
+        using Message joinMessage = Message.From("join:hello");
 
         Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
             actor.Join(spot).Message(joinMessage)
@@ -38,7 +38,7 @@ public sealed class test_actor_contract
         }
         Assert.Equal(actor.Ref.ActorId, request.Info.TargetActor.ActorId);
 
-        using Message reply = Message.FromString("join:accepted");
+        using Message reply = Message.From("join:accepted");
         spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
 
         IReadOnlyList<Message> replies =
@@ -65,7 +65,7 @@ public sealed class test_actor_contract
         using var node = new SpotNode(ctx);
         using var spot = node.CreateSpot();
         using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using Message joinMessage = Message.FromString("join:reject");
+        using Message joinMessage = Message.From("join:reject");
 
         Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
             actor.Join(spot).Message(joinMessage)
@@ -79,7 +79,7 @@ public sealed class test_actor_contract
         }, 2000));
 
         request!.Message.Dispose();
-        using Message reply = Message.FromString("join:room-full");
+        using Message reply = Message.From("join:room-full");
         spot.ReplyActorJoin(request, joinResultCode: 42).Message(reply).Submit();
 
         var rejected = await joinTask.WaitAsync(TimeSpan.FromSeconds(5));
@@ -106,7 +106,7 @@ public sealed class test_actor_contract
         using var node = new SpotNode(ctx);
         using var spot = node.CreateSpot();
         using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using Message joinMessage = Message.FromString("join:lifecycle");
+        using Message joinMessage = Message.From("join:lifecycle");
         var joined = new TaskCompletionSource<SpotActorLifecycleInfo>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var left = new TaskCompletionSource<SpotActorLifecycleInfo>(
@@ -128,7 +128,7 @@ public sealed class test_actor_contract
         }, 2000));
 
         request!.Message.Dispose();
-        using Message reply = Message.FromString("join:accepted");
+        using Message reply = Message.From("join:accepted");
         spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
         IReadOnlyList<Message> replies =
             (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
@@ -162,7 +162,7 @@ public sealed class test_actor_contract
         using var spot = node.CreateSpot();
         using var entry = node.EntrySpot();
         using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using Message joinMessage = Message.FromString("join:user");
+        using Message joinMessage = Message.From("join:user");
 
         Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
             actor.Join(spot).Message(joinMessage)
@@ -176,7 +176,7 @@ public sealed class test_actor_contract
         }, 2000));
 
         request!.Message.Dispose();
-        using Message reply = Message.FromString("ok");
+        using Message reply = Message.From("ok");
         spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
         foreach (Message message in
                  (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)

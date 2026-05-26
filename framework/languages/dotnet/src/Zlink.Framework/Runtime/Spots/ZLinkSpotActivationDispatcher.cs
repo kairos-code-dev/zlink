@@ -223,7 +223,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var frameMessage = Message.FromBytes(frame);
+            using var frameMessage = Message.From(frame);
             try
             {
                 if (runtime.SendActorBoundSession(

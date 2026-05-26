@@ -318,7 +318,7 @@ public final class JvmZlinkStreamRecvServer {
         if (buffer.empty() && isCompleteStreamFrame(part)) {
             metrics.recvMsgs.incrementAndGet();
             metrics.recvPath.incrementAndGet();
-            try (Message reply = Message.copyOf(part)) {
+            try (Message reply = Message.from(part)) {
                 server.send(routingId, reply, SendFlags.DONT_WAIT);
             } catch (RuntimeException ex) {
                 metrics.sendError.incrementAndGet();
@@ -344,7 +344,7 @@ public final class JvmZlinkStreamRecvServer {
 
             metrics.recvMsgs.incrementAndGet();
             metrics.recvPath.incrementAndGet();
-            try (Message reply = Message.copyOf(buffer.bytes, frame.offset, frame.size)) {
+            try (Message reply = Message.from(buffer.bytes, frame.offset, frame.size)) {
                 server.send(routingId, reply, SendFlags.DONT_WAIT);
             } catch (RuntimeException ex) {
                 metrics.sendError.incrementAndGet();

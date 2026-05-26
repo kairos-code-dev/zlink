@@ -42,7 +42,7 @@ public final class ActorGatewayRelaySample {
                     try (ActorJoinRequest request =
                              spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
                         if (request != null) {
-                            try (Message reply = Message.copyOfUtf8("ok")) {
+                            try (Message reply = Message.from("ok")) {
                                 spot.replyActorJoin(request, 0)
                                   .message(reply)
                                   .submit();
@@ -75,7 +75,7 @@ public final class ActorGatewayRelaySample {
                   .submitAsync()
                   .join()
                   .forEach(Message::close);
-                try (Message request = Message.copyOfUtf8("join")) {
+                try (Message request = Message.from("join")) {
                     actor.join(spot)
                       .message(request)
                       .timeout(Duration.ofSeconds(2))
@@ -85,7 +85,7 @@ public final class ActorGatewayRelaySample {
                     });
                 }
                 SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
-                try (Message payload = Message.copyOfUtf8("client-payload")) {
+                try (Message payload = Message.from("client-payload")) {
                     stream.sendBoundActor(sessionRid, "player-1")
                       .message(payload)
                       .submit();

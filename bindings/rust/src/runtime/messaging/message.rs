@@ -2,7 +2,7 @@ use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::slice;
 
-use crate::error::{ConfigError, check_config_rc, config_validation_error};
+use crate::error::{check_config_rc, config_validation_error, ConfigError};
 use crate::ffi;
 
 /// Owned message frame wrapping a native `zlink_msg_t`.
@@ -45,8 +45,7 @@ impl Message {
         Self::with_size(size)
     }
 
-    /// Create a message by copying the given byte slice.
-    pub fn copy_from(data: &[u8]) -> Result<Self, ConfigError> {
+    fn from_slice(data: &[u8]) -> Result<Self, ConfigError> {
         let mut msg = Self::with_size(data.len())?;
         unsafe {
             let dst = ffi::zlink_msg_data(&mut msg.inner) as *mut u8;
@@ -55,12 +54,9 @@ impl Message {
         Ok(msg)
     }
 
-    pub fn copy_from_bytes(data: bytes::Bytes) -> Result<Self, ConfigError> {
-        Self::copy_from(data.as_ref())
-    }
-
-    pub fn copy_from_bytes_mut(data: bytes::BytesMut) -> Result<Self, ConfigError> {
-        Self::copy_from(data.as_ref())
+    /// Create a message by copying the given byte source.
+    pub fn try_from<T: AsRef<[u8]>>(data: T) -> Result<Self, ConfigError> {
+        Self::from_slice(data.as_ref())
     }
 
     /// View the message payload as a byte slice.
@@ -163,14 +159,14 @@ impl Drop for Message {
 impl TryFrom<&[u8]> for Message {
     type Error = ConfigError;
     fn try_from(data: &[u8]) -> Result<Self, ConfigError> {
-        Self::copy_from(data)
+        Self::from_slice(data)
     }
 }
 
 impl TryFrom<Vec<u8>> for Message {
     type Error = ConfigError;
     fn try_from(v: Vec<u8>) -> Result<Self, ConfigError> {
-        Self::copy_from(&v)
+        Self::from_slice(&v)
     }
 }
 
@@ -354,24 +350,24 @@ impl IntoMultipart for Vec<Message> {
 
 impl IntoMultipart for &[u8] {
     fn into_multipart(self) -> Vec<Message> {
-        vec![Message::copy_from(self).expect("message copy failed")]
+        vec![Message::try_from(self).expect("message copy failed")]
     }
 }
 
 impl IntoMultipart for Vec<u8> {
     fn into_multipart(self) -> Vec<Message> {
-        vec![Message::copy_from(&self).expect("message copy failed")]
+        vec![Message::try_from(self).expect("message copy failed")]
     }
 }
 
 impl IntoMultipart for bytes::Bytes {
     fn into_multipart(self) -> Vec<Message> {
-        vec![Message::copy_from_bytes(self).expect("message copy failed")]
+        vec![Message::try_from(self).expect("message copy failed")]
     }
 }
 
 impl IntoMultipart for bytes::BytesMut {
     fn into_multipart(self) -> Vec<Message> {
-        vec![Message::copy_from_bytes_mut(self).expect("message copy failed")]
+        vec![Message::try_from(self).expect("message copy failed")]
     }
 }

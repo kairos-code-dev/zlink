@@ -20,7 +20,7 @@ final class ProtoCodec<T extends com.google.protobuf.Message>
     @Override
     public systems.zlink.contracts.Message toMessage(T value) {
         Objects.requireNonNull(value, "value");
-        return systems.zlink.contracts.Message.copyOf(value.toByteArray());
+        return systems.zlink.contracts.Message.from(value.toByteArray());
     }
 
     @Override

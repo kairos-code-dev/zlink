@@ -229,6 +229,9 @@ subpackages are the source ownership map for public Java APIs.
   native-owned storage. Do not expose `wrapDirect`, `wrapNative`, or any
   `zlink_msg_init_data(..., NULL, NULL)` send fast path for Java-managed
   buffers.
+- Message payload factories use `Message.from(...)` overloads. Source-type
+  suffixes such as `copyOf`, `copyOfUtf8`, or `fromBytes` are not part of the
+  public contract.
 - Do not add operation-start method families such as `sendNoWait`,
   `publishWithFlags`, or `requestAsync`; keep one operation name and let the
   builder absorb the variation. Terminal builder methods may use idiomatic

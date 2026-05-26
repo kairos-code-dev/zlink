@@ -54,7 +54,7 @@ public class SendResultContractTest {
 
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx);
-             Message payload = Message.copyOfUtf8("router-payload")) {
+             Message payload = Message.from("router-payload")) {
             router.options().mandatory(true);
             RoutingId missingRid = RoutingId.fromBytes(
                 "router-missing-peer".getBytes(StandardCharsets.UTF_8));
@@ -69,7 +69,7 @@ public class SendResultContractTest {
 
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx);
-             Message payload = Message.copyOfUtf8("router-payload")) {
+             Message payload = Message.from("router-payload")) {
             router.options().mandatory(true);
             RoutingId missingRid = RoutingId.fromBytes(
                 "router-missing-peer".getBytes(StandardCharsets.UTF_8));
@@ -103,7 +103,7 @@ public class SendResultContractTest {
 
             SendResult result = SendResult.SENT;
             for (int i = 0; i < 1_024; i++) {
-                try (Message payload = Message.copyOfUtf8("bp-" + i)) {
+                try (Message payload = Message.from("bp-" + i)) {
                     result = sender.sendNoWaitResult(payload);
                 }
                 if (result != SendResult.SENT) {
@@ -135,7 +135,7 @@ public class SendResultContractTest {
 
             boolean sent = true;
             for (int i = 0; i < 1_024; i++) {
-                try (Message payload = Message.copyOfUtf8("bp-" + i)) {
+                try (Message payload = Message.from("bp-" + i)) {
                     sent = sender.send().message(payload).flags(SendFlags.DONT_WAIT).submit();
                 }
                 if (!sent) {

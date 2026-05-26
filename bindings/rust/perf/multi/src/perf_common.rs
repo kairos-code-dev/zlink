@@ -9,8 +9,8 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use zlink::Message;
 use zlink::{
-    Context, DealerSocket, POLLIN, POLLOUT, PairSocket, PollEvent, Poller, PubSocket, RouterSocket,
-    SocketMonitor, Spot, StreamSocket, SubSocket, ZlinkError,
+    Context, DealerSocket, PairSocket, PollEvent, Poller, PubSocket, RouterSocket, SocketMonitor,
+    Spot, SpotNode, StreamSocket, SubSocket, ZlinkError, POLLIN, POLLOUT,
 };
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
@@ -686,6 +686,26 @@ pub fn resolve_multi_connect_ready_timeout() -> Duration {
         "PERF_CONNECT_READY_TIMEOUT_MS",
         1_000,
     ) as u64)
+}
+
+pub fn resolve_multi_spot_server_ready_timeout() -> Duration {
+    let ready_timeout = resolve_multi_connect_ready_timeout();
+    std::cmp::max(ready_timeout * 6, Duration::from_secs(1))
+}
+
+pub fn wait_spot_peer_connected(node: &SpotNode, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if node
+            .status_snapshot()
+            .map(|status| status.connected_peer_count > 0)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        poll_idle_until(deadline, Duration::from_millis(1));
+    }
+    false
 }
 
 fn env_or_multi(primary: &str, fallback_name: &str, default: usize) -> usize {

@@ -138,16 +138,16 @@ internal static class ActorInterop
     internal static Message CopyMessageFromPointer(IntPtr message)
     {
         if (message == IntPtr.Zero)
-            return Message.FromBytes(ReadOnlySpan<byte>.Empty);
+            return Message.From(ReadOnlySpan<byte>.Empty);
         nuint size = NativeMethods.zlink_msg_size(message);
         if (size == 0)
-            return Message.FromBytes(ReadOnlySpan<byte>.Empty);
+            return Message.From(ReadOnlySpan<byte>.Empty);
         IntPtr data = NativeMethods.zlink_msg_data(message);
         if (data == IntPtr.Zero)
-            return Message.FromBytes(ReadOnlySpan<byte>.Empty);
+            return Message.From(ReadOnlySpan<byte>.Empty);
         byte[] copy = new byte[(int)size];
         Marshal.Copy(data, copy, 0, copy.Length);
-        return Message.FromBytes(copy);
+        return Message.From(copy);
     }
 
     internal static ActorPart? RecvActorPart(IntPtr node, ActorRef actor,

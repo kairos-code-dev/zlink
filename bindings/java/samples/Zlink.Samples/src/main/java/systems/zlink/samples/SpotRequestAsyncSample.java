@@ -37,7 +37,7 @@ public final class SpotRequestAsyncSample {
                     if (!"spot-ping".equals(SampleSupport.singleUtf8(received))) {
                         throw new IllegalStateException("unexpected spot request");
                     }
-                    try (Message reply = Message.copyOfUtf8("spot-pong")) {
+                    try (Message reply = Message.from("spot-pong")) {
                         received.reply().message(reply).submit();
                     }
                 }
@@ -47,7 +47,7 @@ public final class SpotRequestAsyncSample {
             CountDownLatch replyLatch = new CountDownLatch(1);
             final List<Message>[] replyHolder = new List[] { List.of() };
             final RequestResult[] resultHolder = new RequestResult[] { RequestResult.TIMED_OUT };
-            try (Message request = Message.copyOfUtf8("spot-ping")) {
+            try (Message request = Message.from("spot-ping")) {
                 requester.requestChannel(channelName)
                     .message(request)
                     .timeout(Duration.ofSeconds(5))

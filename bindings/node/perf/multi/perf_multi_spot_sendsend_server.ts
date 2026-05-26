@@ -155,6 +155,7 @@ async function main() {
       if (!(connected && readyCount >= options.clients && startRequested) && !drained) {
         controlPoller.wait(controlEvents, 50);
       }
+      await sleepMillis(0);
     }
     if (stop) {
       return;

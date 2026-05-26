@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
 use zlink::{
@@ -63,7 +63,7 @@ fn main() {
             &play_node.routing_id().unwrap(),
             &play_spot.routing_id().unwrap(),
         )
-        .message(Message::copy_from(b"join-play").unwrap())
+        .message(Message::try_from(b"join-play").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .timeout(Duration::from_secs(1))
         .submit(move |result, parts| join_tx.send((result, parts)).unwrap())
@@ -75,7 +75,7 @@ fn main() {
                 assert_eq!(request.message.as_str().unwrap(), "join-play");
                 play_spot
                     .reply_actor_join(&request, 0)
-                    .message(Message::copy_from(b"accepted").unwrap())
+                    .message(Message::try_from(b"accepted").unwrap())
                     .submit()
                     .unwrap();
                 true
@@ -92,7 +92,7 @@ fn main() {
 
     stream
         .send_bound_actor(&session, "play-session-actor")
-        .message(Message::copy_from(b"client-input").unwrap())
+        .message(Message::try_from(b"client-input").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()
         .expect("gateway relay send failed");

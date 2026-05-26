@@ -87,7 +87,7 @@ public class BoundaryValidationContractTest {
     public void messageCopyOfRejectsOutOfBoundsRange() {
         byte[] payload = new byte[] {1, 2, 3};
         assertThrows(IndexOutOfBoundsException.class,
-            () -> Message.copyOf(payload, 1, 3));
+            () -> Message.from(payload, 1, 3));
     }
 
     @Test
@@ -100,7 +100,7 @@ public class BoundaryValidationContractTest {
         try (Context ctx = new Context();
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
-             Message payload = Message.copyOfUtf8("payload")) {
+             Message payload = Message.from("payload")) {
             assertDoesNotThrow(() -> sub.setSubscription(max));
             assertThrows(IllegalArgumentException.class,
                 () -> sub.setSubscription(overflow));

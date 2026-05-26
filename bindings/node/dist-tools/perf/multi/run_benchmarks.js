@@ -470,11 +470,11 @@ async function main() {
                     }
                     const caseOptions = {
                         ...options,
-                    pattern: patternName,
-                    transport,
-                    msgSize,
-                    clients: resolveTransportClients(patternName, transport, clients)
-                };
+                        pattern: patternName,
+                        transport,
+                        msgSize,
+                        clients: resolveTransportClients(patternName, transport, clients)
+                    };
                     try {
                         const { lines, metrics: activeMetrics } = await spawnMeasuredPair(runner, caseOptions);
                         for (const line of lines) {

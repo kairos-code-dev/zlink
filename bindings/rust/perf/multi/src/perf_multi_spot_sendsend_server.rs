@@ -3,9 +3,8 @@ mod common;
 
 use std::io::{self, BufRead, Write};
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
-    mpsc,
+    mpsc, Arc, Mutex,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -57,7 +56,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
     while Instant::now() < deadline {
         match control_pub
             .publish(TOPIC)
-            .message(Message::copy_from(payload.as_bytes()).expect("control message"))
+            .message(Message::try_from(payload.as_bytes()).expect("control message"))
             .flags(SendFlags::DONT_WAIT)
             .submit()
         {
@@ -84,7 +83,7 @@ fn echo_available(spot: &Spot) {
                 // For larger frames, the native-copy send path is measurably faster
                 // than moving the received Message through the public builder.
                 let message = if payload_len >= 131_072 {
-                    Message::copy_from(common::message_payload(received.parts()))
+                    Message::try_from(common::message_payload(received.parts()))
                         .expect("echo message")
                 } else {
                     match received.single_part() {
@@ -114,7 +113,7 @@ fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
     let stop = Arc::new(AtomicBool::new(false));
-    let ready_timeout = common::resolve_multi_connect_ready_timeout();
+    let ready_timeout = common::resolve_multi_spot_server_ready_timeout();
     let (event_tx, event_rx) = mpsc::channel::<ServerEvent>();
 
     {
@@ -158,21 +157,6 @@ fn main() {
         .expect("spot lock")
         .set_routing_id(&RoutingId::from_bytes(SERVER_SPOT_RID))
         .expect("spot rid");
-    let stop_dispatch = Arc::clone(&stop);
-    let dispatch_spot = Arc::clone(&replier);
-    replier
-        .lock()
-        .expect("spot lock")
-        .on_dispatch_event(move |info| {
-            if stop_dispatch.load(Ordering::Acquire)
-                || info.event != SpotDispatchEvent::RoutedReadable
-            {
-                return;
-            }
-            let spot = dispatch_spot.lock().expect("spot lock");
-            echo_available(&spot);
-        })
-        .expect("dispatch event");
 
     let control_pub = control_node.create_spot().expect("control pub");
     let control_sub = control_node.create_spot().expect("control sub");
@@ -237,6 +221,7 @@ fn main() {
                     control_node
                         .connect_peer(&endpoint)
                         .expect("connect client control");
+                    let _ = common::wait_spot_peer_connected(&control_node, ready_timeout);
                     println!("CONTROL_CONNECTED,{endpoint}");
                     io::stdout().flush().ok();
                 }
@@ -277,6 +262,7 @@ fn main() {
                 control_node
                     .connect_peer(&endpoint)
                     .expect("connect client control");
+                let _ = common::wait_spot_peer_connected(&control_node, ready_timeout);
                 println!("CONTROL_CONNECTED,{endpoint}");
                 io::stdout().flush().ok();
             }

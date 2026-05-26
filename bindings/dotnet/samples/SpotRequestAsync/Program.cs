@@ -25,12 +25,12 @@ Task responderTask = Task.Run(() =>
         ?? throw new InvalidOperationException("missing routing id");
     string requestPayload = received.Parts[0].GetString();
     SampleSupport.EnsureEqual("spot-ping", requestPayload, "request");
-    using var reply = Message.FromString("spot-pong");
+    using var reply = Message.From("spot-pong");
     responderRouter.Reply(routingId, received.RequestSeq ?? 0UL)
         .Message(reply).Submit();
 });
 
-using var request = Message.FromString("spot-ping");
+using var request = Message.From("spot-ping");
 var replyParts = await requester.RequestChannel(channelName)
     .Message(request)
     .Timeout(TimeSpan.FromSeconds(2))

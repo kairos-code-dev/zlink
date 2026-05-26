@@ -3,7 +3,7 @@ mod common;
 
 use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -44,45 +44,7 @@ fn setup_tls_client(node: &SpotNode, transport: &str) {
     }
 }
 
-fn request_spot_reply_with_poller(
-    spot: &Spot,
-    node_rid: RoutingId,
-    spot_rid: RoutingId,
-    msg: Message,
-    timeout: Duration,
-    poller: &Poller,
-    events: &mut [PollEvent],
-) -> Option<Vec<Message>> {
-    let (tx, rx) = mpsc::channel();
-    let submit = spot
-        .request_to_spot(node_rid, spot_rid)
-        .message(msg)
-        .timeout(timeout)
-        .submit(move |result| {
-            let _ = tx.send(result);
-        });
-    if submit.is_err() {
-        return None;
-    }
-    let deadline = Instant::now() + timeout + Duration::from_millis(100);
-    while Instant::now() < deadline {
-        match rx.try_recv() {
-            Ok(Ok(parts)) => return Some(parts),
-            Ok(Err(_)) => return None,
-            Err(mpsc::TryRecvError::Disconnected) => return None,
-            Err(mpsc::TryRecvError::Empty) => {}
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        let wait_ms = remaining.min(Duration::from_millis(50)).as_millis() as i64;
-        let _ = poller.wait(events, wait_ms.max(1));
-    }
-    None
-}
-
 fn active_spot_reqrep_slot_limit(total_slots: usize, msg_size: usize) -> usize {
-    if msg_size >= 262144 {
-        return total_slots.min(6);
-    }
     if msg_size >= 131072 {
         return total_slots.min(8);
     }
@@ -110,7 +72,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
     while Instant::now() < deadline {
         match control_pub
             .publish(TOPIC)
-            .message(Message::copy_from(payload.as_bytes()).expect("control message"))
+            .message(Message::try_from(payload.as_bytes()).expect("control message"))
             .flags(SendFlags::DONT_WAIT)
             .submit()
         {
@@ -252,29 +214,11 @@ fn main() {
         panic!("spot reqrep data endpoint publish timeout");
     }
     thread::sleep(control_settle);
+    if !common::wait_spot_peer_connected(&data_node, ready_timeout) {
+        panic!("spot reqrep data peer connection timeout");
+    }
     let _ = publish_control(&control_pub, "CONNECTED", ready_timeout);
-
-    let mut probe = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
-    common::encode_header(&mut probe, common::PHASE_WARMUP, args.msg_size as u32, 0);
-    let probe_deadline = Instant::now() + ready_timeout;
-    while Instant::now() < probe_deadline {
-        if request_spot_reply_with_poller(
-            &spots[0],
-            server_node_rid.clone(),
-            server_spot_rid.clone(),
-            Message::copy_from(&probe).expect("probe"),
-            Duration::from_millis(settings.recv_timeout_ms.max(settings.send_timeout_ms)),
-            &poller,
-            &mut poll_events,
-        )
-        .is_some()
-        {
-            break;
-        }
-    }
-    if Instant::now() >= probe_deadline {
-        panic!("spot reqrep probe-ready timeout");
-    }
+    thread::sleep(control_settle);
 
     if !publish_control(
         &control_pub,
@@ -329,7 +273,7 @@ fn main() {
                 args.msg_size as u32,
                 seqs[index],
             );
-            let request = Message::copy_from(&payloads[index]).expect("request");
+            let request = Message::try_from(&payloads[index]).expect("request");
             let waiting_flag = Arc::clone(&waiting[index]);
             let tx = latency_tx.clone();
             waiting_flag.store(true, Ordering::Release);

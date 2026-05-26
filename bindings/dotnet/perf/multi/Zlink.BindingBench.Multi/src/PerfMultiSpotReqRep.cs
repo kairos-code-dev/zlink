@@ -94,7 +94,7 @@ internal static class PerfMultiSpotReqRep
     private static int RunServer(PerfOptions options, SpotEchoConfig config)
     {
         int size = Math.Max(1, options.Size);
-        int readyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
+        int readyTimeoutMs = ResolveSpotServerReadyTimeoutMs(options);
         int durationSeconds = ResolveMultiDurationSeconds(options);
         int expectedReadyCount = ResolveMultiClients(options);
         string dataEndpoint = MultiEndpointFor(options.Transport,
@@ -373,6 +373,13 @@ internal static class PerfMultiSpotReqRep
             for (int i = slots.Count - 1; i >= 0; i--)
                 slots[i].Dispose();
         }
+    }
+
+    private static int ResolveSpotServerReadyTimeoutMs(PerfOptions options)
+    {
+        int connectReadyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
+        return Math.Max(connectReadyTimeoutMs,
+            Math.Max(1000, connectReadyTimeoutMs * 6));
     }
 
     private static void ConfigureDataNodeOptions(SpotNode node,

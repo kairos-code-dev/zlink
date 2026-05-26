@@ -5,7 +5,7 @@
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zlink::{
@@ -489,7 +489,7 @@ where
     F: FnMut(Message) -> Result<bool, SubmitError>,
 {
     for _ in 0..5000 {
-        let token = Message::copy_from(STOP_TOKEN).expect("stop token msg");
+        let token = Message::try_from(STOP_TOKEN).expect("stop token msg");
         match send_fn(token) {
             Ok(true) => return,
             Ok(false) => {}
@@ -519,7 +519,7 @@ where
 
     while Instant::now() < active_deadline {
         encode_header(&mut buf, phase, msg_size as u32, seq);
-        let msg = Message::copy_from(&buf).expect("msg");
+        let msg = Message::try_from(&buf).expect("msg");
         if send_fn(msg) {
             seq += 1;
         } else {

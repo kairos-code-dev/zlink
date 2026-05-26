@@ -19,7 +19,7 @@ public class MessageDiagnosticsContractTest {
     public void messageDiagnosticsUseCanonicalNames() {
         TestSupport.assumeNative();
 
-        try (Message msg = Message.copyOfUtf8("diagnostic")) {
+        try (Message msg = Message.from("diagnostic")) {
             assertTrue(hasPublicMethod(Message.class, "getProperty",
                 String.class));
             assertFalse(hasPublicMethod(Message.class, "property",

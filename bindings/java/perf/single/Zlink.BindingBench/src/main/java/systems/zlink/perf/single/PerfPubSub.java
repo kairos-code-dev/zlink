@@ -209,7 +209,7 @@ final class PerfPubSub {
         // retry immediately (send_step_retry -> continue) until the deadline,
         // with no POLLOUT wait or sleep.
         while (System.nanoTime() < deadlineNs) {
-            try (Message outbound = Message.copyOf(message)) {
+            try (Message outbound = Message.from(message)) {
                 if (pub.publish(TOPIC)
                         .message(outbound)
                         .flags(SendFlags.DONT_WAIT)

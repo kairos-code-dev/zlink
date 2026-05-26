@@ -42,7 +42,7 @@ Aligned Node bindings for `libzlink`.
 `Context.options` should be configured immediately after constructing the
 context and before creating sockets.
 
-`Message.fromBuffer()` is the canonical constructor. `Message.data` and
+`Message.from(...)` is the canonical from-source factory. `Message.data` and
 `Message.size` expose the canonical payload view. `Message.close()`,
 `Symbol.dispose`, and `Symbol.asyncDispose` are the cleanup hooks.
 `Message.getProperty(name)` and `Message.refCount()` expose diagnostic

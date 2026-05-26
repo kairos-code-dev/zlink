@@ -16,7 +16,7 @@ fn accept_join(spot: &Spot, expected: &'static [u8]) {
             Ok(Some(request)) => {
                 assert_eq!(request.message.as_bytes(), expected);
                 spot.reply_actor_join(&request, 0)
-                    .message(Message::copy_from(b"accepted").unwrap())
+                    .message(Message::try_from(b"accepted").unwrap())
                     .submit()
                     .unwrap();
                 true
@@ -47,7 +47,7 @@ fn main() {
     let (first_tx, first_rx) = mpsc::channel();
     actor
         .join(&first_spot)
-        .message(Message::copy_from(b"join-first").unwrap())
+        .message(Message::try_from(b"join-first").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .timeout(Duration::from_secs(1))
         .submit(move |result, parts| first_tx.send((result, parts)).unwrap())
@@ -68,7 +68,7 @@ fn main() {
 
     stream
         .send_bound_actor(&session, "single-player")
-        .message(Message::copy_from(b"before").unwrap())
+        .message(Message::try_from(b"before").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()
         .expect("before send failed");
@@ -84,7 +84,7 @@ fn main() {
         .unwrap();
     stream
         .send_bound_actor(&session, "single-player")
-        .message(Message::copy_from(b"between").unwrap())
+        .message(Message::try_from(b"between").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()
         .expect("between send failed");
@@ -115,7 +115,7 @@ fn main() {
     let (second_tx, second_rx) = mpsc::channel();
     actor
         .join(&second_spot)
-        .message(Message::copy_from(b"join-second").unwrap())
+        .message(Message::try_from(b"join-second").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .timeout(Duration::from_secs(1))
         .submit(move |result, parts| second_tx.send((result, parts)).unwrap())

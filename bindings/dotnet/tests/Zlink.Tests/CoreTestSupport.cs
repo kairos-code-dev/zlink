@@ -157,7 +157,7 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            Message message = Message.FromBytes(payload);
+            Message message = Message.From(payload);
             try
             {
                 socket.Send().Message(message).Submit();
@@ -177,7 +177,7 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            Message message = Message.FromBytes(payload);
+            Message message = Message.From(payload);
             try
             {
                 socket.Publish(topic).Message(message).Submit();

@@ -39,7 +39,7 @@ public class SocketPollingContractTest {
             client.connect(endpoint);
             poller.add(server, 7L, PollEventFlag.POLLIN);
 
-            try (Message outbound = Message.copyOfUtf8("poller")) {
+            try (Message outbound = Message.from("poller")) {
                 client.send().message(outbound).submit();
             }
 
@@ -99,8 +99,8 @@ public class SocketPollingContractTest {
             poller.add(receiver1, 101L, PollEventFlag.POLLIN);
             poller.add(receiver2, 102L, PollEventFlag.POLLIN);
 
-            try (Message a = Message.copyOfUtf8("a");
-                 Message b = Message.copyOfUtf8("b")) {
+            try (Message a = Message.from("a");
+                 Message b = Message.from("b")) {
                 sender1.send().message(a).submit();
                 sender2.send().message(b).submit();
             }
@@ -142,7 +142,7 @@ public class SocketPollingContractTest {
             poller.add(receiver, 31L, PollEventFlag.POLLIN);
             poller.modify(receiver);
 
-            try (Message hidden = Message.copyOfUtf8("hidden")) {
+            try (Message hidden = Message.from("hidden")) {
                 sender.send().message(hidden).submit();
             }
 
@@ -156,7 +156,7 @@ public class SocketPollingContractTest {
             assertEquals("hidden", recvUtf8(receiver));
 
             assertTrue(poller.remove(receiver));
-            try (Message removed = Message.copyOfUtf8("removed")) {
+            try (Message removed = Message.from("removed")) {
                 sender.send().message(removed).submit();
             }
             assertEquals(0, poller.wait(events, Duration.ZERO));
@@ -178,7 +178,7 @@ public class SocketPollingContractTest {
             poller.add(receiver, 41L, PollEventFlag.POLLIN);
             poller.add(timer, 42L);
 
-            try (Message socket = Message.copyOfUtf8("socket")) {
+            try (Message socket = Message.from("socket")) {
                 sender.send().message(socket).submit();
             }
             timer.start(Duration.ofMillis(5), 1L);

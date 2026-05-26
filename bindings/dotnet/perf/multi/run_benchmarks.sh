@@ -22,9 +22,14 @@ STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-}}"
 CLIENTS="${PERF_MULTI_CLIENTS:-}"
 EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
+EFFECTIVE_DEFAULT_IO_THREADS="${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-4}}"
 DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
 RUNS="${PERF_RUNS:-1}"
 READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-1000}}"
+SPOT_READY_TIMEOUT_MS="$(( READY_TIMEOUT_MS > READY_TIMEOUT_MS * 6 ? READY_TIMEOUT_MS : READY_TIMEOUT_MS * 6 ))"
+if (( SPOT_READY_TIMEOUT_MS < 1000 )); then
+  SPOT_READY_TIMEOUT_MS=1000
+fi
 SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
 SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
 RESULT_TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-60}"
@@ -1732,11 +1737,11 @@ run_spot_clean_latency_pass() {
     exec {cl_client_fd}>"${cl_client_fifo}"
     rm -f "${cl_client_fifo}"
 
-    if cl_client_ctrl_ep="$(wait_for_client_control_endpoint "${cl_client_log}" "${READY_TIMEOUT_MS}")"; then
+    if cl_client_ctrl_ep="$(wait_for_client_control_endpoint "${cl_client_log}" "${SPOT_READY_TIMEOUT_MS}")"; then
       write_control_line "${cl_server_fd}" 'CONNECT_CONTROL,%s\n' "${cl_client_ctrl_ep}"
-      if cl_connected_ep="$(wait_for_control_connected "${cl_server_log}" "${READY_TIMEOUT_MS}")"; then
+      if cl_connected_ep="$(wait_for_control_connected "${cl_server_log}" "${SPOT_READY_TIMEOUT_MS}")"; then
         write_control_line "${cl_client_fd}" 'CONTROL_CONNECTED,%s\n' "${cl_connected_ep}"
-        if wait_for_client_ready_line "${cl_client_log}" "${READY_TIMEOUT_MS}"; then
+        if wait_for_client_ready_line "${cl_client_log}" "${SPOT_READY_TIMEOUT_MS}"; then
           write_control_line "${cl_server_fd}" 'START,%s\n' "${_size}"
           write_control_line "${cl_client_fd}" 'START,%s\n' "${_size}"
           local cl_extracted=''
@@ -1782,8 +1787,8 @@ fi
 # env PERF_MULTI_CLIENTS/PERF_CLIENTS if numeric; otherwise the configured
 # default clients, with the stream default when every selected pattern is stream.
 META_CLIENTS=""
-if [[ "${PERF_MULTI_CLIENTS:-}" =~ ^[0-9]+$ ]]; then
-  META_CLIENTS="${PERF_MULTI_CLIENTS}"
+if [[ "${CLIENTS:-}" =~ ^[0-9]+$ ]]; then
+  META_CLIENTS="${CLIENTS}"
 elif [[ "${PERF_CLIENTS:-}" =~ ^[0-9]+$ ]]; then
   META_CLIENTS="${PERF_CLIENTS}"
 else
@@ -2050,7 +2055,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           rm -f "${client_control_fifo}"
 
           client_ctrl_ep=''
-          if ! client_ctrl_ep="$(wait_for_client_control_endpoint "${client_log}" "${READY_TIMEOUT_MS}")"; then
+          if ! client_ctrl_ep="$(wait_for_client_control_endpoint "${client_log}" "${SPOT_READY_TIMEOUT_MS}")"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
               print_line "${unsupported_line}"
               unsupported_count=$((unsupported_count + 1))
@@ -2077,7 +2082,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
           write_control_line "${server_control_fd}" 'CONNECT_CONTROL,%s\n' "${client_ctrl_ep}"
 
           connected_ep=''
-          if ! connected_ep="$(wait_for_control_connected "${server_log}" "${READY_TIMEOUT_MS}")"; then
+          if ! connected_ep="$(wait_for_control_connected "${server_log}" "${SPOT_READY_TIMEOUT_MS}")"; then
             cat "${server_log}" >&2 || true
             cat "${client_log}" >&2 || true
             terminate_pid "${client_pid}"
@@ -2092,7 +2097,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
 
           write_control_line "${client_control_fd}" 'CONTROL_CONNECTED,%s\n' "${connected_ep}"
 
-          if ! wait_for_client_ready_line "${client_log}" "${READY_TIMEOUT_MS}"; then
+          if ! wait_for_client_ready_line "${client_log}" "${SPOT_READY_TIMEOUT_MS}"; then
             if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${client_log}" "${server_log}" 2>/dev/null)"; then
              print_line "${unsupported_line}"
               unsupported_count=$((unsupported_count + 1))

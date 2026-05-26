@@ -120,7 +120,7 @@ internal static class PerfMultiSpotServer
             options.Transport,
             Math.Max(1, options.Size),
             Math.Max(1, ResolveMultiDurationSeconds(options)),
-            ResolveMultiConnectReadyTimeoutMs(options),
+            ResolveSpotServerReadyTimeoutMs(options),
             MultiEndpointFor(options.Transport, "multi-spot-data", options),
             // ITEM 3 fix: registry endpoints must be CONCRETE (not "*") so
             // the bound address can be reused for Discovery.ConnectRegistry
@@ -128,6 +128,13 @@ internal static class PerfMultiSpotServer
             MultiRegistryEndpoint(options.Transport, options),
             MultiRegistryEndpoint(options.Transport, options),
             MultiEndpointFor(options.Transport, "multi-spot-control", options));
+    }
+
+    private static int ResolveSpotServerReadyTimeoutMs(PerfOptions options)
+    {
+        int connectReadyTimeoutMs = ResolveMultiConnectReadyTimeoutMs(options);
+        return Math.Max(connectReadyTimeoutMs,
+            Math.Max(1000, connectReadyTimeoutMs * 6));
     }
 
     private static void ConfigureSpotNodePublisher(SpotNode node,

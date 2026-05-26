@@ -15,7 +15,7 @@ Zlink.MultipartClose(await stream.BindActor(sessionRid, actor.Ref)
     .Timeout(TimeSpan.FromSeconds(2))
     .SubmitAsync()
     .WaitAsync(TimeSpan.FromSeconds(5)));
-using Message joinMessage = Message.FromString("join:lobby");
+using Message joinMessage = Message.From("join:lobby");
 
 Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
     actor.Join(spot)
@@ -35,7 +35,7 @@ using (request!.Message)
         "join message");
 }
 
-using Message reply = Message.FromString("accepted:lobby");
+using Message reply = Message.From("accepted:lobby");
 spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
 IReadOnlyList<Message> replies =
     (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;

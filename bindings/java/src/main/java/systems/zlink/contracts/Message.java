@@ -122,12 +122,12 @@ public final class Message implements AutoCloseable {
     }
 
     /** Copies the full byte array into a new message-owned frame. */
-    public static Message copyOf(byte[] data) {
-        return copyOf(data, 0, data.length);
+    public static Message from(byte[] data) {
+        return from(data, 0, data.length);
     }
 
     /** Copies the selected byte array range into a new message-owned frame. */
-    public static Message copyOf(byte[] data, int offset, int length) {
+    public static Message from(byte[] data, int offset, int length) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
         Message msg = new Message(length);
@@ -139,7 +139,7 @@ public final class Message implements AutoCloseable {
     }
 
     /** Copies the full source message into a new message-owned frame. */
-    public static Message copyOf(Message source) {
+    public static Message from(Message source) {
         Objects.requireNonNull(source, "source");
         int size = source.size();
         Message msg = new Message(size);
@@ -171,16 +171,16 @@ public final class Message implements AutoCloseable {
     }
 
     /** Encodes the string as UTF-8 and copies it into a new frame. */
-    public static Message copyOfUtf8(String value) {
+    public static Message from(String value) {
         Objects.requireNonNull(value, "value");
-        return copyOf(value.getBytes(StandardCharsets.UTF_8));
+        return from(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    static Message sharedCopyOf(byte[] data) {
-        return sharedCopyOf(data, 0, data.length);
+    static Message sharedFrom(byte[] data) {
+        return sharedFrom(data, 0, data.length);
     }
 
-    static Message sharedCopyOf(byte[] data, int offset, int length) {
+    static Message sharedFrom(byte[] data, int offset, int length) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
         Message msg = new Message(Arena.ofShared(), true);
@@ -201,7 +201,7 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
-    static Message sharedCopyOf(Message source) {
+    static Message sharedFrom(Message source) {
         Objects.requireNonNull(source, "source");
         Message msg = new Message(Arena.ofShared(), true);
         int rc = NativeMsg.msgInit(msg.msg);
@@ -228,7 +228,7 @@ public final class Message implements AutoCloseable {
     }
 
     /** Copies the remaining bytes from the buffer without mutating its cursor. */
-    public static Message copyOf(ByteBuffer data) {
+    public static Message from(ByteBuffer data) {
         Objects.requireNonNull(data, "data");
         int length = data.remaining();
         Message msg = new Message(length);
@@ -241,19 +241,19 @@ public final class Message implements AutoCloseable {
     }
 
     /** Copies the bytes described by the span into a new frame. */
-    public static Message copyOf(ByteSpan span) {
+    public static Message from(ByteSpan span) {
         Objects.requireNonNull(span, "span");
-        return copyOf(span.segment(), 0, span.length());
+        return from(span.segment(), 0, span.length());
     }
 
     /** Copies the full memory segment into a new message-owned frame. */
-    public static Message copyOf(MemorySegment data) {
+    public static Message from(MemorySegment data) {
         Objects.requireNonNull(data, "data");
-        return copyOf(data, 0, data.byteSize());
+        return from(data, 0, data.byteSize());
     }
 
     /** Copies the selected memory segment range into a new message-owned frame. */
-    public static Message copyOf(MemorySegment data, long offset, long length) {
+    public static Message from(MemorySegment data, long offset, long length) {
         Objects.requireNonNull(data, "data");
         validateRange(data.byteSize(), offset, length, "data");
         if (length > Integer.MAX_VALUE)

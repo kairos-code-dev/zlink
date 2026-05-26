@@ -675,6 +675,7 @@ resolve_client_timeout_seconds() {
     fi
 
     if [[ "${pattern}" == "MULTI_SPOT" || "${pattern}" == "MULTI_SPOT_REQREP" || "${pattern}" == "MULTI_SPOT_SENDSEND" ]] \
+        || { [[ "${pattern}" == "MULTI_PUBSUB" ]] && (( size >= 65536 )); } \
         || { [[ "${transport}" == "tls" || "${transport}" == "wss" ]] && (( size >= 131072 )); }; then
         timeout_seconds=$(( duration * 6 + 30 ))
         if (( timeout_seconds < 90 )); then
@@ -1105,6 +1106,7 @@ python3 "${PERF_REPORT_PY}" render-multi \
   --run-cooldown-ms "${RUN_COOLDOWN_MS}" \
   --transport-transition-ms "${TRANSPORT_TRANSITION_MS}" \
   --pattern-transition-ms "${PATTERN_TRANSITION_MS}" \
+  --connect-concurrency "${CONNECT_CONCURRENCY:-128 (default)}" \
   --elapsed-seconds "${SECONDS}" \
   --lang rust \
   --fail-fast "${PERF_FAIL_FAST:-0}"

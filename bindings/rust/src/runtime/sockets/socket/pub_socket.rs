@@ -4,7 +4,7 @@ use crate::ffi;
 use crate::options::{CommonSocketOptions, PubSocketOptions};
 use crate::service::{Empty, SendOp};
 
-use super::{SocketInner, impl_attach_discovery, impl_base_socket, impl_connect};
+use super::{impl_attach_discovery, impl_base_socket, impl_connect, SocketInner};
 
 /// PUB socket – publish messages to topic subscribers.
 ///

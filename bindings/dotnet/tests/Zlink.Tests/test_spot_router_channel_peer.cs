@@ -46,7 +46,7 @@ public sealed class test_spot_router_channel_peer
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
-                using Message sent = Message.FromString("hello-spot-route");
+                using Message sent = Message.From("hello-spot-route");
                 _ = router.SendToSpot(nodeRid, spotRid).Message(sent).Submit();
                 return spot.RecvRoutedPart(received, out sourceRid,
                     out sourceSpotRid, out requestSeq, out hasMore,
@@ -88,7 +88,7 @@ public sealed class test_spot_router_channel_peer
         spot.OnRoutedReceive(received =>
         {
             using (received)
-            using (Message reply = Message.FromString("reply-from-spot"))
+            using (Message reply = Message.From("reply-from-spot"))
             {
                 received.Reply().Message(reply).Submit();
             }
@@ -97,7 +97,7 @@ public sealed class test_spot_router_channel_peer
         Assert.True(CoreTestSupport.WaitUntil(
             () => HasRouterChannelPeer(node, endpoint),
             timeoutMs: 5000));
-        using Message request = Message.FromString("request-to-spot");
+        using Message request = Message.From("request-to-spot");
 
         IReadOnlyList<Message> reply = await router
             .RequestToSpot(nodeRid, spotRid)
@@ -152,7 +152,7 @@ public sealed class test_spot_router_channel_peer
                 using var received = new Received();
                 if (!spot.RecvRouted(received, RecvFlags.DontWait))
                     return;
-                using Message reply = Message.FromString("dispatch-reply");
+                using Message reply = Message.From("dispatch-reply");
                 received.Reply().Message(reply).Submit();
             }
         });
@@ -160,8 +160,8 @@ public sealed class test_spot_router_channel_peer
         Assert.True(CoreTestSupport.WaitUntil(
             () => HasRouterChannelPeer(node, endpoint),
             timeoutMs: 5000));
-        using Message requestHeader = Message.FromString("dispatch-header");
-        using Message requestBody = Message.FromString("dispatch-request");
+        using Message requestHeader = Message.From("dispatch-header");
+        using Message requestBody = Message.From("dispatch-request");
 
         IReadOnlyList<Message> reply = await router
             .RequestToSpot(nodeRid, spotRid)

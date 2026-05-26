@@ -244,7 +244,7 @@ cd bindings/java && ./gradlew test --no-daemon
 - 2026-03-27: `MonitorSocket`이 직접 monitor handle을 소유하도록 바꿨고 `Socket.adopt()`를 제거했다.
 - 2026-03-27: `SocketPollingContractTest`를 추가해 `Poller`와 `SocketPollSet`이 typed socket을 abstract `Socket` base로 받아 동작함을 검증했다.
 - 2026-03-27: `Socket` deprecated buffer send/recv bridge를 `LegacySocketCompat`로 이동해 `MessagePlane`의 legacy surface를 줄였다.
-- 2026-03-27: main 코드의 `Message.from*` legacy factory 의존을 canonical `copyOf` / `wrap*` 경로로 치환했고 `Message.trySend/tryRecv(Socket, ...)`도 deprecated 정리로 맞췄다.
+- 2026-03-27: main 코드의 legacy payload factory 의존을 canonical `Message.from(...)` 경로로 치환했고 `Message.trySend/tryRecv(Socket, ...)`도 deprecated 정리로 맞췄다.
 - 2026-03-27: `./gradlew test --no-daemon`, `./gradlew integrationTest --no-daemon` 통과.
 
 검증:

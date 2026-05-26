@@ -92,7 +92,7 @@ fn main() {
     // accepted; otherwise subscribers can wait forever after large messages.
     let mut accepted_stop_tokens = 0usize;
     while accepted_stop_tokens < STOP_TOKEN_BURST {
-        let token = Message::copy_from(common::STOP_TOKEN).expect("stop token");
+        let token = Message::try_from(common::STOP_TOKEN).expect("stop token");
         match pub_sock.publish(TOPIC).message(token).submit() {
             Ok(true) => {
                 accepted_stop_tokens += 1;

@@ -14,9 +14,9 @@ opt in to the Netty dependency explicitly.
 
 ## Ownership Rules
 
-- `copyOf(ByteBuf)` copies the readable bytes between `readerIndex` and
+- `from(ByteBuf)` copies the readable bytes between `readerIndex` and
   `writerIndex`.
-- `copyOf(ByteBuf)` must not change `readerIndex` or `writerIndex`.
+- `from(ByteBuf)` must not change `readerIndex` or `writerIndex`.
 - The extension must not call `retain()` or `release()` on caller-owned
   `ByteBuf`.
 - `copyTo(Message, ByteBuf)` copies the full message at the current
@@ -31,7 +31,7 @@ opt in to the Netty dependency explicitly.
 package systems.zlink.netty;
 
 public final class NettyMessages {
-    public static systems.zlink.Message copyOf(
+    public static systems.zlink.Message from(
         io.netty.buffer.ByteBuf source);
 
     public static int copyTo(

@@ -61,4 +61,4 @@ def _new_message(data: bytes) -> Message:
     try:
         return Message(data)  # type: ignore[arg-type]
     except TypeError:
-        return Message.from_bytes(data)
+        return Message.from_(data)

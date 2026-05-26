@@ -15,7 +15,7 @@ fn pair_send_recv_roundtrip() {
     let client = ctx.pair_socket().unwrap();
     client.connect("inproc://beh-pair").unwrap();
 
-    let msg = Message::copy_from(b"pair-payload-42").unwrap();
+    let msg = Message::try_from(b"pair-payload-42").unwrap();
     client.send().message(msg).submit().unwrap();
 
     let mut received = Received::empty();
@@ -34,8 +34,8 @@ fn pair_multipart_send_recv() {
     b.connect("inproc://beh-pair-multi").unwrap();
 
     let parts = vec![
-        Message::copy_from(b"frame-1").unwrap(),
-        Message::copy_from(b"frame-2").unwrap(),
+        Message::try_from(b"frame-1").unwrap(),
+        Message::try_from(b"frame-2").unwrap(),
     ];
     let mut iter = parts.into_iter();
     let first = iter.next().unwrap();
@@ -76,7 +76,7 @@ fn dealer_router_roundtrip() {
     thread::sleep(Duration::from_millis(50));
 
     // Dealer sends to Router
-    let msg = Message::copy_from(b"request-payload").unwrap();
+    let msg = Message::try_from(b"request-payload").unwrap();
     dealer.send().message(msg).submit().unwrap();
 
     // Router receives with the dealer's routing id
@@ -85,7 +85,7 @@ fn dealer_router_roundtrip() {
     assert_eq!(received.parts()[0].as_bytes(), b"request-payload");
 
     // Router sends back to the dealer using the received routing id
-    let reply = Message::copy_from(b"response-payload").unwrap();
+    let reply = Message::try_from(b"response-payload").unwrap();
     router
         .send(received.routing_id().expect("missing routing id"))
         .message(reply)
@@ -111,8 +111,8 @@ fn router_recv_part_preserves_routing_id_and_more_flag() {
 
     dealer
         .send()
-        .message(Message::copy_from(b"part-1").unwrap())
-        .message(Message::copy_from(b"part-2").unwrap())
+        .message(Message::try_from(b"part-1").unwrap())
+        .message(Message::try_from(b"part-2").unwrap())
         .submit()
         .unwrap();
 
@@ -147,7 +147,7 @@ fn pub_sub_roundtrip() {
     sub_sock.set_subscription("market.").unwrap();
     thread::sleep(Duration::from_millis(100));
 
-    let msg = Message::copy_from(b"price=42.5").unwrap();
+    let msg = Message::try_from(b"price=42.5").unwrap();
     pub_sock
         .publish("market.price")
         .message(msg)
@@ -179,7 +179,7 @@ fn try_send_explicit_outcome() {
     sock.bind("inproc://beh-try-send").unwrap();
     // No peer connected, so non-blocking send should fail explicitly.
 
-    let msg = Message::copy_from(b"test").unwrap();
+    let msg = Message::try_from(b"test").unwrap();
     let _ = sock
         .send()
         .message(msg)
@@ -193,7 +193,7 @@ fn try_publish_explicit_outcome() {
     let pub_sock = ctx.pub_socket().unwrap();
     pub_sock.bind("inproc://beh-try-pub").unwrap();
 
-    let msg = Message::copy_from(b"test").unwrap();
+    let msg = Message::try_from(b"test").unwrap();
     let _ = pub_sock
         .publish("topic")
         .message(msg)
@@ -250,14 +250,14 @@ fn dealer_router_send_from_callback() {
     // Dealer sends request.
     dealer
         .send()
-        .message(Message::copy_from(b"request-42").unwrap())
+        .message(Message::try_from(b"request-42").unwrap())
         .submit()
         .unwrap();
 
     let mut received = Received::empty();
     router.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"request-42");
-    let reply = Message::copy_from(b"reply-42").unwrap();
+    let reply = Message::try_from(b"reply-42").unwrap();
     handle
         .send_to(received.routing_id().expect("missing routing id"))
         .message(reply)
@@ -297,13 +297,13 @@ fn pair_send_from_callback() {
     // Client sends and receives.
     client
         .send()
-        .message(Message::copy_from(b"ping-pair").unwrap())
+        .message(Message::try_from(b"ping-pair").unwrap())
         .submit()
         .unwrap();
     let mut received = Received::empty();
     server.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"ping-pair");
-    let reply = Message::copy_from(b"pong-pair").unwrap();
+    let reply = Message::try_from(b"pong-pair").unwrap();
     handle.send().message(reply).submit().unwrap();
     client
         .common_options()

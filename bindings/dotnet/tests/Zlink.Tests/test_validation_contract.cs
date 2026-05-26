@@ -66,8 +66,8 @@ public sealed class test_validation_contract
         using var pair = new PairSocket(ctx);
         using var pub = new PubSocket(ctx);
         using var router = new RouterSocket(ctx);
-        using var routedMessage = Message.FromString("x");
-        using var publishedMessage = Message.FromString("x");
+        using var routedMessage = Message.From("x");
+        using var publishedMessage = Message.From("x");
 
         Assert.Throws<ArgumentNullException>(() =>
             pair.Send().Message((Message)null!));
@@ -109,7 +109,7 @@ public sealed class test_validation_contract
         using var dealer = new DealerSocket(ctx);
         using var node = new SpotNode(ctx);
         using var spot = node.CreateSpot();
-        using var message = Message.FromString("x");
+        using var message = Message.From("x");
 
         Assert.Throws<ArgumentException>(() =>
             pair.Bind("tcp://127.0.0.1:5555\0"));
@@ -142,7 +142,7 @@ public sealed class test_validation_contract
         using var sub = new SubSocket(ctx);
         using var node = new SpotNode(ctx);
         using var spot = node.CreateSpot();
-        using var message = Message.FromString("x");
+        using var message = Message.From("x");
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             pub.Publish(overlong).Message(message).Submit());
@@ -209,7 +209,7 @@ public sealed class test_validation_contract
 
         using var ctx = new Context();
         using var dealer = new DealerSocket(ctx);
-        using var message = Message.FromString("x");
+        using var message = Message.From("x");
         TimeSpan negative = TimeSpan.FromMilliseconds(-1);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>

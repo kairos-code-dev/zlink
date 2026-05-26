@@ -72,7 +72,7 @@ public class CallbackSendContractTest {
                     RoutingId rid = received.routingId().orElseThrow();
                     assertNotNull(rid,
                         "router must receive routing id from dealer");
-                    try (Message reply = Message.copyOfUtf8("pong")) {
+                    try (Message reply = Message.from("pong")) {
                         received.reply().message(reply).submit();
                     }
                 } catch (Throwable t) {
@@ -81,7 +81,7 @@ public class CallbackSendContractTest {
             }, "router-send-inside-recv");
             routerThread.start();
 
-            try (Message request = Message.copyOfUtf8("ping")) {
+            try (Message request = Message.from("ping")) {
                 dealer.request()
                     .message(request)
                     .flags(SendFlags.NONE)
@@ -138,7 +138,7 @@ public class CallbackSendContractTest {
                     byte[] data = received.singlePartOrThrow().toByteArray();
                     assertEquals("ping",
                         new String(data, StandardCharsets.UTF_8));
-                    try (Message reply = Message.copyOfUtf8("pong")) {
+                    try (Message reply = Message.from("pong")) {
                         right.send().message(reply).flags(SendFlags.DONT_WAIT).submit();
                     }
                 } catch (Throwable t) {
@@ -160,7 +160,7 @@ public class CallbackSendContractTest {
             }, "pair-send-inside-recv-left");
             leftThread.start();
 
-            try (Message request = Message.copyOfUtf8("ping")) {
+            try (Message request = Message.from("ping")) {
                 left.send().message(request).submit();
             }
 
@@ -218,7 +218,7 @@ public class CallbackSendContractTest {
                             assertTrue(payload.startsWith("request-"));
                             String requestIndex = payload.substring(
                                 "request-".length());
-                            try (Message reply = Message.copyOfUtf8(
+                            try (Message reply = Message.from(
                                      "reply-" + requestIndex)) {
                                 received.reply().message(reply).submit();
                             }
@@ -231,7 +231,7 @@ public class CallbackSendContractTest {
                     }, "router-multi-round-recv-" + index);
                     routerThread.start();
 
-                    try (Message request = Message.copyOfUtf8("request-" + index)) {
+                    try (Message request = Message.from("request-" + index)) {
                         dealer.request()
                             .message(request)
                             .flags(SendFlags.NONE)
@@ -299,7 +299,7 @@ public class CallbackSendContractTest {
                     int size = payload.size();
                     if (size == 0)
                         return;
-                    try (Message reply = frame(Message.copyOf(new byte[0]),
+                    try (Message reply = frame(Message.from(new byte[0]),
                             payload)) {
                         server.send(routingId)
                             .message(reply)
@@ -361,7 +361,7 @@ public class CallbackSendContractTest {
             System.arraycopy(headerBytes, 0, frame, 6, headerBytes.length);
             System.arraycopy(bodyBytes, 0, frame, 6 + headerBytes.length,
                 bodyBytes.length);
-            return Message.copyOf(frame);
+            return Message.from(frame);
         }
     }
 }

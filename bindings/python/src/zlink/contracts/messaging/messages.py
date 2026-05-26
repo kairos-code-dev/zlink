@@ -371,7 +371,7 @@ class Message:
         return cls(size)
 
     @classmethod
-    def copy_from(cls, data):
+    def from_(cls, data):
         msg = cls.__new__(cls)
         msg._msg = ZlinkMsg()
         msg._valid = False
@@ -387,10 +387,6 @@ class Message:
         msg._keepalive = _init_msg_from_buffer(msg._msg, data, borrow=True)
         msg._valid = True
         return msg
-
-    @staticmethod
-    def from_bytes(data: bytes):
-        return Message.copy_from(data)
 
     def size(self):
         return _msg_size(self._msg) if self._valid else 0

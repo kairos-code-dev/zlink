@@ -152,7 +152,7 @@ public sealed class test_pubsub
         subscriber.SetSubscription(topic);
         Thread.Sleep(100);
 
-        using Message message = Message.FromString("direct-payload");
+        using Message message = Message.From("direct-payload");
         Assert.True(publisher.Publish(topic).Message(message).Submit());
         Assert.Equal("direct-payload", CoreTestSupport.SubscribeUtf8WithTimeout(
             subscriber, out string receivedTopic, 2000));

@@ -108,7 +108,7 @@ fn message_try_from_bytes() {
 
 #[test]
 fn message_try_from_str() {
-    let msg = Message::copy_from(b"world");
+    let msg = Message::try_from(b"world");
     assert!(msg.is_ok());
     assert_eq!(msg.unwrap().as_str().unwrap(), "world");
 }

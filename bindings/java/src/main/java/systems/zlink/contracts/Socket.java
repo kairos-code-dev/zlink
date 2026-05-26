@@ -1029,7 +1029,7 @@ public abstract class Socket implements AutoCloseable {
     int send(byte[] data, int offset, int length, int sendFlags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
-        try (Message msg = Message.copyOf(data, offset, length)) {
+        try (Message msg = Message.from(data, offset, length)) {
             sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
             return length;
         }
@@ -1038,7 +1038,7 @@ public abstract class Socket implements AutoCloseable {
     boolean sendNoWaitResult(byte[] data, int offset, int length, int sendFlags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
-        try (Message msg = Message.copyOf(data, offset, length)) {
+        try (Message msg = Message.from(data, offset, length)) {
             return sendMessageFrameNoWaitResult(msg, SendFlag.fromValue(sendFlags));
         }
     }
@@ -1047,7 +1047,7 @@ public abstract class Socket implements AutoCloseable {
              int sendFlags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
-        try (Message msg = Message.copyOf(segment, offset, length)) {
+        try (Message msg = Message.from(segment, offset, length)) {
             sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
             return (int) length;
         }
@@ -1057,7 +1057,7 @@ public abstract class Socket implements AutoCloseable {
                     int sendFlags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
-        try (Message msg = Message.copyOf(segment, offset, length)) {
+        try (Message msg = Message.from(segment, offset, length)) {
             return sendMessageFrameNoWaitResult(msg, SendFlag.fromValue(sendFlags));
         }
     }
@@ -1066,7 +1066,7 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(buf, "buf");
         int len = buf.readableBytes();
         if (len <= 0) {
-            try (Message msg = Message.copyOf(EMPTY_BYTES)) {
+            try (Message msg = Message.from(EMPTY_BYTES)) {
                 sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
                 return 0;
             }
@@ -1088,7 +1088,7 @@ public abstract class Socket implements AutoCloseable {
         Objects.requireNonNull(buf, "buf");
         int len = buf.readableBytes();
         if (len <= 0) {
-            try (Message msg = Message.copyOf(EMPTY_BYTES)) {
+            try (Message msg = Message.from(EMPTY_BYTES)) {
                 return sendMessageFrameNoWaitResult(msg, SendFlag.fromValue(sendFlags));
             }
         }
@@ -1677,7 +1677,7 @@ public abstract class Socket implements AutoCloseable {
                         } else {
                             state.replace(new Message[] {firstPart});
                         }
-                        Message routingFrame = Message.copyOf(routingId);
+                        Message routingFrame = Message.from(routingId);
                         routingFrame.setMore(true);
                         return routingFrame;
                     }

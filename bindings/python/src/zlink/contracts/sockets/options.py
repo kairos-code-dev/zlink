@@ -298,12 +298,12 @@ class PubSocketOptions:
 
     @property
     def welcome_message(self):
-        return Message.copy_from(self._socket._get_pub_option(self._WELCOME_MSG))
+        return Message.from_(self._socket._get_pub_option(self._WELCOME_MSG))
 
     @welcome_message.setter
     def welcome_message(self, message):
         if not isinstance(message, Message):
-            message = Message.copy_from(message)
+            message = Message.from_(message)
         self._socket._set_pub_option(self._WELCOME_MSG, message.to_bytes())
 
     @property

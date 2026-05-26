@@ -14,21 +14,21 @@ final class NettyMessageAdapter {
     private NettyMessageAdapter() {}
 
     /** Copies the readable bytes from the {@code ByteBuf} without advancing it. */
-    public static Message copyOf(ByteBuf source) {
+    public static Message from(ByteBuf source) {
         Objects.requireNonNull(source, "source");
         int length = source.readableBytes();
         if (length == 0)
-            return Message.copyOf(new byte[0]);
+            return Message.from(new byte[0]);
         int readerIndex = source.readerIndex();
         try {
             ByteBuffer nio = source.nioBufferCount() == 1
                 ? source.internalNioBuffer(readerIndex, length)
                 : source.nioBuffer(readerIndex, length);
-            return Message.copyOf(nio);
+            return Message.from(nio);
         } catch (UnsupportedOperationException ex) {
             byte[] tmp = new byte[length];
             source.getBytes(readerIndex, tmp);
-            return Message.copyOf(tmp);
+            return Message.from(tmp);
         }
     }
 

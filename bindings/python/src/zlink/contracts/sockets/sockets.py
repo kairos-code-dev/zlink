@@ -844,8 +844,8 @@ class StreamSocket(_SendReadySocket, _BindSocket, _StreamOptionSocket, _RoutingI
                 routing_id = None
                 if source_rid_ptr:
                     routing_id = RoutingId(_routing_id_bytes(source_rid_ptr.contents))
-                header = Message.from_bytes(_msg_to_bytes(header_ptr.contents))
-                body = Message.from_bytes(_msg_to_bytes(body_ptr.contents))
+                header = Message.from_(_msg_to_bytes(header_ptr.contents))
+                body = Message.from_(_msg_to_bytes(body_ptr.contents))
             except Exception:
                 _report_unhandled_callback_exception(handler)
                 return

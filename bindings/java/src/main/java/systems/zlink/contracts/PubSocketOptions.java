@@ -64,7 +64,7 @@ public class PubSocketOptions extends CommonSocketOptions {
 
     Message welcomeMsg() {
         byte[] value = socket.getOption(SocketOptions.XPUB_WELCOME_MSG_BYTES);
-        return Message.copyOf(value);
+        return Message.from(value);
     }
 
     public Message welcomeMessage() {

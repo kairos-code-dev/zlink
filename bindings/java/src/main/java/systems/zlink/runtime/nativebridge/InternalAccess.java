@@ -86,7 +86,7 @@ public final class InternalAccess {
         virtualMethod(Message.class, "restoreFromNative", void.class,
           MemorySegment.class, boolean.class);
     private static final MethodHandle MESSAGE_SHARED_COPY_OF =
-        staticMethod(Message.class, "sharedCopyOf", Message.class,
+        staticMethod(Message.class, "sharedFrom", Message.class,
           Message.class);
     private static final MethodHandle MESSAGE_FROM_MSG_VECTOR =
         staticMethod(Message.class, "fromMsgVector", Message[].class,

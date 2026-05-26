@@ -96,9 +96,9 @@ public sealed class ManagerTests : SpotTestSupport
             var recorder = host.Services.GetRequiredService<SpotCreatePayloadRecorder>();
             recorder.BlockCreate();
             var spotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("payload-room"));
-            using var firstA = Message.FromString("first-a");
-            using var firstB = Message.FromString("first-b");
-            using var second = Message.FromString("second");
+            using var firstA = Message.From("first-a");
+            using var firstB = Message.From("first-b");
+            using var second = Message.From("second");
 
             var first = manager.GetOrCreateAsync<CreatePayloadStageSpot>(
                 spotRid,

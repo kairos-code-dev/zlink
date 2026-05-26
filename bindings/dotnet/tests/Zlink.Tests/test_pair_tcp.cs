@@ -54,8 +54,8 @@ public sealed class test_pair_tcp
         client.Connect(endpoint);
         Thread.Sleep(50);
 
-        using Message part1 = Message.FromString("hello");
-        using Message part2 = Message.FromString("world");
+        using Message part1 = Message.From("hello");
+        using Message part2 = Message.From("world");
         client.Send().Message(part1).Message(part2).Submit();
 
         var received = new Received();
@@ -463,7 +463,7 @@ public sealed class test_pair_tcp
         byte[] payloadBytes = new byte[64 * 1024];
         for (int i = 0; i < 16 * 1024; i++)
         {
-            using Message payload = Message.FromBytes(payloadBytes);
+            using Message payload = Message.From(payloadBytes);
             sent = sender.Send().Message(payload).Flags(SendFlags.DontWait)
                 .Submit();
             if (!sent)
@@ -489,8 +489,8 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        using Message first = Message.FromBytes("first"u8.ToArray());
-        using Message second = Message.FromBytes("second"u8.ToArray());
+        using Message first = Message.From("first"u8.ToArray());
+        using Message second = Message.From("second"u8.ToArray());
         Assert.True(sender.Send().Message(first).Message(second).Submit());
 
         using var received = new Message();
@@ -541,7 +541,7 @@ public sealed class test_pair_tcp
             bool sent = false;
             while (!sent)
             {
-                using Message payload = Message.FromBytes(payloadBytes);
+                using Message payload = Message.From(payloadBytes);
                 sent = sender.Send(payload, SendFlags.DontWait);
                 while (receiver.RecvPart(received, out _, RecvFlags.DontWait))
                 {
@@ -572,7 +572,7 @@ public sealed class test_pair_tcp
         byte[] payloadBytes = new byte[64 * 1024];
         for (int i = 0; i < 16 * 1024; i++)
         {
-            using Message payload = Message.FromBytes(payloadBytes);
+            using Message payload = Message.From(payloadBytes);
             sent = sender.Send().Message(payload).Flags(SendFlags.DontWait)
                 .Submit();
             if (!sent)
@@ -592,7 +592,7 @@ public sealed class test_pair_tcp
         using var router = new RouterSocket(ctx);
         router.Options.Mandatory = true;
 
-        using Message message = Message.FromString("no-route");
+        using Message message = Message.From("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
             router.Send(RoutingId.FromBytes("UNKNOWN"u8)).Message(message)
                 .Flags(SendFlags.DontWait).Submit());
@@ -609,7 +609,7 @@ public sealed class test_pair_tcp
         using var router = new RouterSocket(ctx);
         router.Options.Mandatory = true;
 
-        using Message message = Message.FromString("no-route");
+        using Message message = Message.From("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
             router.Send(RoutingId.FromBytes("UNKNOWN"u8)).Message(message)
                 .Flags(SendFlags.DontWait).Submit());

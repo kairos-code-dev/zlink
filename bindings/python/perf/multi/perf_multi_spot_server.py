@@ -18,11 +18,12 @@ from perf_multi_common import (
     perf_server_context,
     publish_control_payload,
     receive_control_payload,
-    resolve_multi_connect_ready_timeout_ms,
+    resolve_multi_spot_server_ready_timeout_s,
     new_spot_poller,
     spot_publish_nonblocking,
     stamp_payload,
     wait_control_readable_until,
+    wait_spot_peer_connected,
     wait_spot_writable_until,
 )
 
@@ -48,7 +49,7 @@ def main(argv=None):
         1.0,
         float(os.environ.get("PERF_MULTI_DURATION_SECONDS", str(args.duration))),
     )
-    handshake_timeout_s = resolve_multi_connect_ready_timeout_ms() / 1000.0
+    handshake_timeout_s = resolve_multi_spot_server_ready_timeout_s()
     stop = threading.Event()
     start_runner = threading.Event()
 
@@ -60,6 +61,7 @@ def main(argv=None):
             if text.startswith("CONNECT_CONTROL,"):
                 endpoint = text.split(",", 1)[1]
                 control_node.connect_peer(endpoint)
+                wait_spot_peer_connected(control_node, handshake_timeout_s)
                 print(f"CONTROL_CONNECTED,{endpoint}", flush=True)
             elif text == f"START,{args.msg_size}":
                 start_runner.set()

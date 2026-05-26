@@ -18,7 +18,7 @@ pub use sub::SubSocket;
 pub use xpub::XPubSocket;
 pub use xsub::XSubSocket;
 
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::{c_void, CStr, CString};
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::time::Duration;
@@ -26,9 +26,9 @@ use std::time::Duration;
 use crate::ctx::duration_to_millis;
 use crate::domain::{Received, SubscriptionEvent, TopicMessage};
 use crate::error::{
-    BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
-    SubmitError, check_bind_rc, check_close_rc, check_config_rc, check_connect_rc,
-    check_handler_rc, check_recv_rc, config_validation_error, last_errno, submit_validation_error,
+    check_bind_rc, check_close_rc, check_config_rc, check_connect_rc, check_handler_rc,
+    check_recv_rc, config_validation_error, last_errno, submit_validation_error, BindError,
+    CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult, SubmitError,
 };
 use crate::ffi;
 use crate::flags::RecvFlags;
@@ -710,7 +710,7 @@ impl SocketInner {
             ffi::zlink_get_pub_option(self.handle, opt, std::ptr::null_mut(), &mut len)
         })?;
         if len == 0 {
-            return crate::message::Message::copy_from(&[]);
+            return crate::message::Message::try_from(&[]);
         }
         let mut buf = vec![0u8; len];
         let mut filled = len;
@@ -722,7 +722,7 @@ impl SocketInner {
                 &mut filled,
             )
         })?;
-        crate::message::Message::copy_from(&buf[..filled])
+        crate::message::Message::try_from(&buf[..filled])
     }
 
     // -- SUB-option helper -------------------------------------------------

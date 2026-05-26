@@ -65,7 +65,8 @@ func runMultiSpotServer(cfg multiConfig) {
 	events := make(chan string, 16)
 	go scanSpotRoleStdin(cfg, events)
 	readyCount := 0
-	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
+	readyTimeout := multiSpotEchoServerReadyTimeout()
+	deadline := time.Now().Add(readyTimeout)
 	for time.Now().Before(deadline) {
 		select {
 		case event := <-events:
@@ -73,6 +74,7 @@ func runMultiSpotServer(cfg multiConfig) {
 			case strings.HasPrefix(event, "CONNECT_CONTROL,"):
 				endpoint := strings.TrimPrefix(event, "CONNECT_CONTROL,")
 				perfcommon.Must(controlNode.ConnectPeer(endpoint))
+				waitMultiSpotReqRepConnectedPeer(controlNode, readyTimeout)
 				flushControlLine("CONTROL_CONNECTED,%s", endpoint)
 			case event == fmt.Sprintf("START,%d", cfg.msgSize):
 			case event == "STOP" || event == "QUIT":

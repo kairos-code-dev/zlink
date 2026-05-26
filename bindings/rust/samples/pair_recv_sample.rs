@@ -58,7 +58,7 @@ fn main() {
     drop(server_mon);
     drop(client_mon);
 
-    let msg = Message::copy_from(b"hello-pair").expect("message creation failed");
+    let msg = Message::try_from(b"hello-pair").expect("message creation failed");
     client.send().message(msg).submit().expect("send failed");
 
     let mut received = zlink::Received::empty();

@@ -29,6 +29,7 @@ from perf_multi_common import (
     send_to_spot_nonblocking,
     stamp_payload,
     wait_control_readable_until,
+    wait_spot_peer_connected,
 )
 
 
@@ -157,28 +158,10 @@ def main(argv=None):
         ):
             raise RuntimeError("spot sendsend data endpoint publish timeout")
         time.sleep(control_settle_s)
+        if not wait_spot_peer_connected(data_node, handshake_timeout_s):
+            raise RuntimeError("spot sendsend data peer connection timeout")
         publish_control_payload(control_pub, "CONNECTED", timeout_s=handshake_timeout_s)
-
-        probe_deadline = time.perf_counter() + handshake_timeout_s
-        probe = stamp_payload(bytearray(args.msg_size), phase=0, run_id=run_id, seq=0)
-        probe_waiting = False
-        while time.perf_counter() < probe_deadline:
-            if not probe_waiting and send_to_spot_nonblocking(
-                spots[0], SERVER_NODE_RID, SERVER_SPOT_RID, probe
-            ):
-                probe_waiting = True
-            if _drain_reply(
-                spots[0],
-                expected_msg_size=args.msg_size,
-                run_id=run_id,
-                active_deadline=probe_deadline,
-                latencies=[],
-                record=False,
-            ):
-                break
-            poller.wait(poll_events, 1)
-        else:
-            raise RuntimeError("spot sendsend probe-ready timeout")
+        time.sleep(control_settle_s)
 
         if not publish_control_payload(
             control_pub,

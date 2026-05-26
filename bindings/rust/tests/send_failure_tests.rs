@@ -19,7 +19,7 @@ fn blocking_send_failure_surfaces_error() {
         .unwrap();
 
     let rid = RoutingId::from_bytes(b"nonexistent-peer");
-    let msg = Message::copy_from(b"will-fail").unwrap();
+    let msg = Message::try_from(b"will-fail").unwrap();
     let result = router.send(&rid).message(msg).submit();
 
     // Must be an error, not silently swallowed
@@ -43,7 +43,7 @@ fn blocking_publish_failure_surfaces_error() {
 
     // Fill the HWM
     for _ in 0..10 {
-        let msg = Message::copy_from(b"fill").unwrap();
+        let msg = Message::try_from(b"fill").unwrap();
         let _ = pub_sock.publish("topic").message(msg).submit();
     }
     // This tests that publish doesn't silently drop
@@ -57,7 +57,7 @@ fn try_send_returns_not_ready_or_backpressured() {
     sock.bind("inproc://sf-try-send-nr").unwrap();
     // No peer connected
 
-    let msg = Message::copy_from(b"data").unwrap();
+    let msg = Message::try_from(b"data").unwrap();
     let _ = sock
         .send()
         .message(msg)
@@ -78,7 +78,7 @@ fn try_send_backpressure() {
 
     // Fill the HWM
     for _ in 0..100 {
-        let msg = Message::copy_from(b"fill-buffer").unwrap();
+        let msg = Message::try_from(b"fill-buffer").unwrap();
         if a.send()
             .message(msg)
             .flags(SendFlags::DONT_WAIT)
@@ -97,7 +97,7 @@ fn try_publish_returns_explicit_outcome() {
     let pub_sock = ctx.pub_socket().unwrap();
     pub_sock.bind("inproc://sf-try-pub-out").unwrap();
 
-    let msg = Message::copy_from(b"data").unwrap();
+    let msg = Message::try_from(b"data").unwrap();
     let _ = pub_sock
         .publish("topic")
         .message(msg)
@@ -113,7 +113,7 @@ fn try_send_not_ready() {
     sock.bind("inproc://sf-try-send-notready").unwrap();
     // No peer connected – socket is not ready to send
 
-    let msg = Message::copy_from(b"no-peer").unwrap();
+    let msg = Message::try_from(b"no-peer").unwrap();
     let _ = sock
         .send()
         .message(msg)
@@ -137,7 +137,7 @@ fn try_publish_backpressure_or_not_ready() {
     // Fill the HWM until backpressure
     let mut saw_non_sent = false;
     for _ in 0..100 {
-        let msg = Message::copy_from(b"fill-pub-hwm").unwrap();
+        let msg = Message::try_from(b"fill-pub-hwm").unwrap();
         if pub_sock
             .publish("t")
             .message(msg)
@@ -164,7 +164,7 @@ fn try_send_non_eagain_error_not_swallowed() {
     // Shutdown context to force ETERM on any subsequent send
     ctx.shutdown().unwrap();
 
-    let msg = Message::copy_from(b"after-shutdown").unwrap();
+    let msg = Message::try_from(b"after-shutdown").unwrap();
     let result = sock
         .send()
         .message(msg)

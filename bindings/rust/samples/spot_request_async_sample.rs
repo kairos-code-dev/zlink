@@ -65,7 +65,7 @@ fn main() {
                 received.routing_id().expect("missing routing id"),
                 received.request_seq().expect("missing request seq"),
             )
-            .message(Message::copy_from(b"spot-pong").expect("reply message failed"))
+            .message(Message::try_from(b"spot-pong").expect("reply message failed"))
             .submit()
             .expect("reply send failed");
         server_done_tx.send(()).expect("server done send failed");
@@ -74,7 +74,7 @@ fn main() {
     let reply = block_on(
         requester
             .request_channel(channel_name)
-            .message(Message::copy_from(b"spot-ping").expect("request message failed"))
+            .message(Message::try_from(b"spot-ping").expect("request message failed"))
             .timeout(Duration::from_secs(5))
             .submit_async(),
     )

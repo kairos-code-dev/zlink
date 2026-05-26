@@ -897,10 +897,7 @@ count_result_lines() {
   local size="$3"
   local case_log="$4"
   awk -F',' -v pattern="${pattern}" -v transport="${transport}" -v size="${size}" '
-    function same_pattern(actual, expected) {
-      return actual == expected || (expected == "MULTI_STREAM" && actual == "STREAM")
-    }
-    $1 == "RESULT" && $2 == "current" && same_pattern($3, pattern) && $4 == transport && $5 == size { count++ }
+    $1 == "RESULT" && $2 == "current" && $3 == pattern && $4 == transport && $5 == size { count++ }
     END { print count + 0 }
   ' "${case_log}"
 }
@@ -1226,7 +1223,11 @@ run_multi_process_case() {
   {
     cat "${srv_out}"
     if [[ -s "${client_out}" ]]; then
-      cat "${client_out}"
+      if [[ "${pattern}" == "MULTI_STREAM" ]]; then
+        sed 's/^RESULT,current,STREAM,/RESULT,current,MULTI_STREAM,/' "${client_out}"
+      else
+        cat "${client_out}"
+      fi
     fi
     if [[ -s "${client_err}" ]]; then
       cat "${client_err}"

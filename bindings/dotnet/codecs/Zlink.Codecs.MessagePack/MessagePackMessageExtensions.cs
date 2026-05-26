@@ -20,6 +20,6 @@ public static class MessagePackMessageExtensions
         MessagePackSerializerOptions? options = null)
     {
         byte[] payload = MessagePackSerializer.Serialize(value, options);
-        return Message.FromBytes(payload);
+        return Message.From(payload);
     }
 }

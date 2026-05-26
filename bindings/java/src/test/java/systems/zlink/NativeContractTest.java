@@ -25,7 +25,7 @@ public class NativeContractTest {
             right.connect(endpoint);
 
             byte[] payload = "native".getBytes(StandardCharsets.UTF_8);
-            try (Message outbound = Message.copyOf(payload)) {
+            try (Message outbound = Message.from(payload)) {
                 assertTrue(right.send()
                     .message(outbound)
                     .flags(SendFlags.NONE)

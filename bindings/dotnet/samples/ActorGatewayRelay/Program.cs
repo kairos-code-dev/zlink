@@ -50,7 +50,7 @@ Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor.Ref)
     .SubmitAsync()
     .WaitAsync(TimeSpan.FromSeconds(5)));
 
-using Message joinMessage = Message.FromString("join:gateway");
+using Message joinMessage = Message.From("join:gateway");
 Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
     actor.Join(spot)
         .Message(joinMessage)
@@ -62,12 +62,12 @@ SampleSupport.WaitOrThrow(() =>
     request = spot.RecvActorJoin(RecvFlags.DontWait);
     return request != null;
 }, 2000, "actor join request");
-using Message joinReply = Message.FromString("accepted:gateway");
+using Message joinReply = Message.From("accepted:gateway");
 spot.ReplyActorJoin(request!, joinResultCode: 0).Message(joinReply).Submit();
 foreach (Message reply in (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
     reply.Dispose();
 
-using Message relayed = Message.FromString("relay:hello-gateway");
+using Message relayed = Message.From("relay:hello-gateway");
 stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
     .Message(relayed)
     .Submit();

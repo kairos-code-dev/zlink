@@ -84,7 +84,7 @@ public final class MsgOperationMicrobench {
             });
 
             bench("message_copy_of_bytes", size, () -> {
-                try (Message msg = Message.copyOf(payload)) {
+                try (Message msg = Message.from(payload)) {
                     blackhole ^= msg.size();
                     blackhole ^= msg.readByte(0);
                 }
@@ -92,7 +92,7 @@ public final class MsgOperationMicrobench {
             });
 
             bench("message_transfer_to_native", size, () -> {
-                try (Message msg = Message.copyOf(payload)) {
+                try (Message msg = Message.from(payload)) {
                     msg.transferTo(slotA);
                     blackhole ^= MsgFfmBenchSupport.msgSize(slotA);
                     MsgFfmBenchSupport.msgClose(slotA);

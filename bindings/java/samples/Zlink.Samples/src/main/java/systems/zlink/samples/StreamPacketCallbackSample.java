@@ -31,8 +31,8 @@ public final class StreamPacketCallbackSample {
                     if (!SampleSupport.STREAM_PAYLOAD.equals(value) || routingId == null) {
                         return;
                     }
-                    try (Message replyHeader = Message.copyOf(new byte[0]);
-                         Message replyBody = Message.copyOfUtf8(
+                    try (Message replyHeader = Message.from(new byte[0]);
+                         Message replyBody = Message.from(
                              SampleSupport.STREAM_PAYLOAD);
                          Message reply = frame(replyHeader, replyBody)) {
                         if (!server.send(routingId)
@@ -91,6 +91,6 @@ public final class StreamPacketCallbackSample {
         System.arraycopy(headerBytes, 0, frame, 6, headerBytes.length);
         System.arraycopy(bodyBytes, 0, frame, 6 + headerBytes.length,
             bodyBytes.length);
-        return Message.copyOf(frame);
+        return Message.from(frame);
     }
 }

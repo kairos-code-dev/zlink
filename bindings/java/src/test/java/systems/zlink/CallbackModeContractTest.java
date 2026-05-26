@@ -37,7 +37,7 @@ public class CallbackModeContractTest {
             left.bind(endpoint);
             right.connect(endpoint);
 
-            try (Message outbound = Message.copyOfUtf8("callback-body")) {
+            try (Message outbound = Message.from("callback-body")) {
                 right.send().message(outbound).submit();
             }
 
@@ -94,7 +94,7 @@ public class CallbackModeContractTest {
                 delivered.countDown();
             });
 
-            try (Message part = Message.copyOfUtf8("payload")) {
+            try (Message part = Message.from("payload")) {
                 publisher.publish("alpha").message(part).submit();
             }
 
@@ -133,7 +133,7 @@ public class CallbackModeContractTest {
             });
 
             for (int i = 0; i < 64; i++) {
-                try (Message part = Message.copyOfUtf8("payload-" + i)) {
+                try (Message part = Message.from("payload-" + i)) {
                     publisher.publish("close-race").message(part).submit();
                 }
             }
@@ -177,7 +177,7 @@ public class CallbackModeContractTest {
                 }
             });
 
-            try (Message part = Message.copyOfUtf8("dispatch-drain")) {
+            try (Message part = Message.from("dispatch-drain")) {
                 publisher.publish("drain").message(part).submit();
             }
 
@@ -215,7 +215,7 @@ public class CallbackModeContractTest {
             awaitCondition(() -> clientNode.statusSnapshot()
                 .connectedPeerCount() > 0, "spot request peer connection");
 
-            try (Message request = Message.copyOfUtf8("timeout-request")) {
+            try (Message request = Message.from("timeout-request")) {
                 requester.requestToSpot(serverNodeRid, serverSpotRid)
                     .message(request)
                     .timeout(Duration.ofMillis(50))

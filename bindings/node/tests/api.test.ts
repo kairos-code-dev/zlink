@@ -225,7 +225,7 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
   assert.throws(() => discovery.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
   assert.throws(() => node.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
   assert.throws(() => node.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
-  assert.equal(typeof new zlink.Message(Buffer.from('message')).close, 'function');
+  assert.equal(typeof zlink.Message.from(Buffer.from('message')).close, 'function');
   assert.equal(typeof zlink.Message.from(Buffer.from('message')).close, 'function');
   const allocatedMessage = zlink.Message.alloc(3);
   allocatedMessage.data()[0] = 0x01;

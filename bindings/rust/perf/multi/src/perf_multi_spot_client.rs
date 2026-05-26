@@ -63,7 +63,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
     while Instant::now() < deadline {
         match control_pub
             .publish(TOPIC)
-            .message(Message::copy_from(payload.as_bytes()).expect("control message"))
+            .message(Message::try_from(payload.as_bytes()).expect("control message"))
             .flags(SendFlags::DONT_WAIT)
             .submit()
         {

@@ -170,6 +170,9 @@ ownership map for public crate items and re-exports.
 - Multipart payload is accumulated by repeated `message(...)` calls.
   `messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in the public crate surface.
+- Message payload factories use the fallible from-source contract:
+  `Message::try_from(...)` and `TryFrom` implementations. Copy-specific names
+  such as `copy_from` are not part of the public contract.
 - Do not add operation-start method families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
   the builder absorb the variation. Terminal builder methods may use idiomatic

@@ -39,7 +39,7 @@ public abstract partial class SpotTestSupport
         string packetName,
         string value)
     {
-        using var body = global::Systems.Zlink.Message.FromString(value);
+        using var body = global::Systems.Zlink.Message.From(value);
         await actorRuntime.SubmitActorAsync(
                 actor,
                 new ZlinkStreamHeader(
@@ -86,7 +86,7 @@ public abstract partial class SpotTestSupport
             new ZLinkBackendActorRef(RoutingId.FromString("01"), actor.ActorId, 0),
             RoutingId.FromString("02"),
             RoutingId.FromString("03"),
-            Message.FromBytes(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
+            Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
             More: true);
     }
 
@@ -98,7 +98,7 @@ public abstract partial class SpotTestSupport
             new ZLinkBackendActorRef(RoutingId.FromString("01"), actor.ActorId, 0),
             RoutingId.FromString("02"),
             RoutingId.FromString("03"),
-            Message.FromString(value),
+            Message.From(value),
             More: false);
     }
 }

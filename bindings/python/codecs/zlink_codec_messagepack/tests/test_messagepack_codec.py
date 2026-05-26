@@ -40,7 +40,7 @@ def message_constructor_compat(monkeypatch: pytest.MonkeyPatch) -> None:
         msg = ZlinkMessage(b"probe")
     except Exception:
         class MessageCompat:
-            from_bytes = staticmethod(ZlinkMessage.from_bytes)
+            from_ = staticmethod(ZlinkMessage.from_)
 
             def __new__(cls, data: bytes) -> ZlinkMessage:
                 raise TypeError("Message(bytes) is not supported in this build")

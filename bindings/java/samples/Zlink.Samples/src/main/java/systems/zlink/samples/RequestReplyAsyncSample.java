@@ -45,7 +45,7 @@ public final class RequestReplyAsyncSample {
                     if (received.requestSeq().isEmpty()) {
                         throw new IllegalStateException("missing request sequence");
                     }
-                    try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
+                    try (Message reply = Message.from(SampleSupport.DEALER_REPLY)) {
                         received.reply().message(reply).submit();
                     }
                     requestHandled.countDown();
@@ -61,7 +61,7 @@ public final class RequestReplyAsyncSample {
             routerThread.start();
 
             CompletableFuture<Void> roundTrip;
-            try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
+            try (Message request = Message.from(SampleSupport.DEALER_REQUEST)) {
                 roundTrip = dealerSocket.request()
                     .message(request)
                     .timeout(Duration.ofSeconds(2))

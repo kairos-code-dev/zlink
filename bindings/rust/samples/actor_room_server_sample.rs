@@ -16,7 +16,7 @@ fn accept_next_join(spot: &zlink::Spot) {
             Ok(Some(request)) => {
                 assert_eq!(request.message.as_str().unwrap(), "enter-room");
                 spot.reply_actor_join(&request, 0)
-                    .message(Message::copy_from(b"accepted").unwrap())
+                    .message(Message::try_from(b"accepted").unwrap())
                     .submit()
                     .unwrap();
                 true
@@ -46,7 +46,7 @@ fn main() {
     let (tx, rx) = mpsc::channel();
     actor
         .join(&spot)
-        .message(Message::copy_from(b"enter-room").unwrap())
+        .message(Message::try_from(b"enter-room").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .timeout(Duration::from_secs(1))
         .submit(move |result, parts| {
@@ -88,7 +88,7 @@ fn main() {
 
     stream
         .send_bound_actor(&session, "room-player-1")
-        .message(Message::copy_from(b"move:north").unwrap())
+        .message(Message::try_from(b"move:north").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()
         .expect("stream actor send failed");

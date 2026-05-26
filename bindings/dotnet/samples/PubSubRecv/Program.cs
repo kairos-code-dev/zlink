@@ -15,7 +15,7 @@ subscriber.Connect(endpoint);
 SampleSupport.WaitConnected(publisherMonitor, subscriberMonitor);
 subscriber.SetSubscription("prices");
 
-using (Message message = Message.FromString("101.25"))
+using (Message message = Message.From("101.25"))
     publisher.Publish("prices").Message(message).Submit();
 string payload = SampleSupport.SubscribeUtf8(subscriber, out string topic, 2000);
 Console.WriteLine(

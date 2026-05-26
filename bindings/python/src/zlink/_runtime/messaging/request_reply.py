@@ -66,7 +66,7 @@ def _clone_payload(payload):
         if isinstance(part, Message):
             parts.append(_clone_native_msg(part._msg))
         else:
-            copied = Message.copy_from(part)
+            copied = Message.from_(part)
             parts.append(_clone_native_msg(copied._msg))
             copied.close()
     return parts

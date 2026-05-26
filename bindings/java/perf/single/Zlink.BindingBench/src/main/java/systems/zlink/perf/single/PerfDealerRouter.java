@@ -179,7 +179,7 @@ final class PerfDealerRouter {
     }
 
     private static boolean trySendActive(DealerSocket sender, Message active) {
-        try (Message outbound = Message.copyOf(active)) {
+        try (Message outbound = Message.from(active)) {
             return sender.send()
                 .message(outbound)
                 .flags(SendFlags.DONT_WAIT)
@@ -200,7 +200,7 @@ final class PerfDealerRouter {
     }
 
     private static boolean trySendBlocking(DealerSocket sender, Message active) {
-        try (Message outbound = Message.copyOf(active)) {
+        try (Message outbound = Message.from(active)) {
             return sender.send()
                 .message(outbound)
                 .flags(SendFlags.NONE)

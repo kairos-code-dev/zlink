@@ -57,7 +57,7 @@ public sealed class test_discovery_router_socket
             try
             {
                 Assert.Equal("ping", request.Parts[0].GetString());
-                using var reply = Message.FromString("pong");
+                using var reply = Message.From("pong");
                 right.Reply(
                     request.RoutingId ?? throw new InvalidOperationException("missing source rid"),
                     request.RequestSeq ?? 0UL)
@@ -70,7 +70,7 @@ public sealed class test_discovery_router_socket
             }
         });
 
-        using var ping = Message.FromString("ping");
+        using var ping = Message.From("ping");
         var replies = await left.Request(rightRid).Message(ping)
             .Timeout(TimeSpan.FromSeconds(3)).SubmitAsync();
         try

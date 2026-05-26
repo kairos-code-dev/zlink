@@ -685,7 +685,7 @@ public record SubscriptionEvent(
 
 구체 정책:
 
-- `Message.copyOf*` / `wrap*` 가 canonical payload factory다.
+- `Message.from` / `wrap*` 가 canonical payload factory다.
 - public send/recv/publish/subscribe는 `Message` / `List<Message>` 만 쓴다.
 - deprecated legacy buffer API는 `LegacySocketCompat`로 이동시키고, 새 facade에는 복제하지 않는다.
 - scratch buffer는 `SocketCore`가 소유한다.

@@ -67,7 +67,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
     while Instant::now() < deadline {
         match control_pub
             .publish(TOPIC)
-            .message(Message::copy_from(payload.as_bytes()).expect("control message"))
+            .message(Message::try_from(payload.as_bytes()).expect("control message"))
             .flags(SendFlags::DONT_WAIT)
             .submit()
         {
@@ -82,7 +82,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
 }
 
 fn send_payload(spot: &Spot, node_rid: &RoutingId, spot_rid: &RoutingId, payload: &[u8]) -> bool {
-    let message = Message::copy_from(payload).expect("payload message");
+    let message = Message::try_from(payload).expect("payload message");
     match spot
         .send_to_spot(node_rid.clone(), spot_rid.clone())
         .message(message)
@@ -98,7 +98,7 @@ fn active_spot_slot_limit(total: usize, msg_size: usize) -> usize {
     if msg_size >= 131_072 {
         total.min(8)
     } else if msg_size >= 65_536 {
-        total.min(24)
+        total.min(32)
     } else {
         total
     }
@@ -282,12 +282,6 @@ fn main() {
             waiting_reply: false,
         });
     }
-    let probe_poller = Poller::new().expect("spot sendsend probe poller");
-    probe_poller
-        .add_socket(&*slots[0].spot, POLLIN, 0)
-        .expect("spot sendsend probe poller add");
-    let mut probe_events = vec![PollEvent::default(); 1];
-
     if !matches!(
         event_rx.recv_timeout(ready_timeout),
         Ok(ClientEvent::RunnerControlConnected)
@@ -304,41 +298,11 @@ fn main() {
         panic!("spot sendsend data endpoint publish timeout");
     }
     thread::sleep(control_settle);
+    if !common::wait_spot_peer_connected(&data_node, ready_timeout) {
+        panic!("spot sendsend data peer connection timeout");
+    }
     let _ = publish_control(&control_pub, "CONNECTED", ready_timeout);
-
-    let mut probe_payload = vec![0u8; args.msg_size.max(common::HEADER_SIZE)];
-    common::encode_header(
-        &mut probe_payload,
-        common::PHASE_WARMUP,
-        args.msg_size as u32,
-        0,
-    );
-    let probe_deadline = Instant::now() + ready_timeout;
-    while Instant::now() < probe_deadline {
-        if !slots[0].waiting_reply
-            && send_payload(
-                &slots[0].spot,
-                &server_node_rid,
-                &server_spot_rid,
-                &probe_payload,
-            )
-        {
-            slots[0].waiting_reply = true;
-        }
-        if drain_slot(
-            &mut slots[0],
-            args.msg_size,
-            probe_deadline,
-            &mut common::LatencyStats::new(),
-            false,
-        ) {
-            break;
-        }
-        common::wait_control_readable_until(&probe_poller, &mut probe_events, probe_deadline);
-    }
-    if Instant::now() >= probe_deadline {
-        panic!("spot sendsend probe-ready timeout");
-    }
+    thread::sleep(control_settle);
 
     if !publish_control(
         &control_pub,

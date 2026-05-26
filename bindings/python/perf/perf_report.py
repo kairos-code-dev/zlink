@@ -506,7 +506,7 @@ def _multi_effective_options(args, section):
         "- ctx_auto_hwm_profile: balanced",
         f"- sndtimeo_ms: {args.sndtimeo_ms}",
         f"- rcvtimeo_ms: {args.rcvtimeo_ms}",
-        "- connect_concurrency: 128 (default)",
+        f"- connect_concurrency: {args.connect_concurrency}",
         "- connect_ready_timeout_ms: 1000",
         "- monitor_hwm: 1000",
         "- server_ready_timeout_ms: 10000",
@@ -856,6 +856,7 @@ def main(argv=None):
     render_multi.add_argument("--run-cooldown-ms", default="")
     render_multi.add_argument("--transport-transition-ms", required=True)
     render_multi.add_argument("--pattern-transition-ms", required=True)
+    render_multi.add_argument("--connect-concurrency", default="128 (default)")
 
     args = parser.parse_args(argv)
     if args.command == "single-auto-hwm":

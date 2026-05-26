@@ -6,6 +6,8 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${ROOT_DIR}/../../.." && pwd)"
 JAVA_BINDINGS_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
 STREAM_CLIENT="${REPO_DIR}/bindings/c/build/perf/perf_stream_client"
+STREAM_CLIENT_DIR="${REPO_DIR}/bindings/c/perf/common/streamclient"
+STREAM_CLIENT_FALLBACK="${STREAM_CLIENT_DIR}/build/perf_stream_client"
 CORE_BUILD_DIR="${REPO_DIR}/bindings/c/build"
 VERSION_FILE="${REPO_DIR}/VERSION"
 CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
@@ -40,6 +42,10 @@ RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${PERF_RCVTIMEO_MS:-200}}"
 CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"
 CTX_AUTO_HWM_PROFILE="${PERF_MULTI_CTX_AUTO_HWM_PROFILE:-${PERF_CTX_AUTO_HWM_PROFILE:-balanced}}"
 CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-1000}}"
+SPOT_READY_TIMEOUT_MS="$(( CONNECT_READY_TIMEOUT_MS * 6 ))"
+if (( SPOT_READY_TIMEOUT_MS < 1000 )); then
+  SPOT_READY_TIMEOUT_MS=1000
+fi
 TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-${PERF_TRANSPORT_TRANSITION_MS:-3000}}"
 PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-${PERF_PATTERN_TRANSITION_MS:-3000}}"
 RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-${PERF_RUN_COOLDOWN_MS:-3000}}"
@@ -435,6 +441,13 @@ ensure_multi_runner() {
 
 ensure_core_stream_client() {
   if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+    if [[ -x "${STREAM_CLIENT}" ]]; then
+      return
+    fi
+    if [[ -x "${STREAM_CLIENT_FALLBACK}" ]]; then
+      STREAM_CLIENT="${STREAM_CLIENT_FALLBACK}"
+      return
+    fi
     if [[ ! -x "${STREAM_CLIENT}" ]]; then
       echo "shared stream client not found for --reuse-build: ${STREAM_CLIENT}" >&2
       exit 1
@@ -442,11 +455,27 @@ ensure_core_stream_client() {
     return
   fi
 
-  cmake -S "${REPO_DIR}/bindings/c" -B "${CORE_BUILD_DIR}" \
+  if [[ -x "${STREAM_CLIENT}" ]]; then
+    return
+  fi
+  if [[ -x "${STREAM_CLIENT_FALLBACK}" ]]; then
+    STREAM_CLIENT="${STREAM_CLIENT_FALLBACK}"
+    return
+  fi
+  if bash "${STREAM_CLIENT_DIR}/build.sh" >/dev/null 2>&1 \
+    && [[ -x "${STREAM_CLIENT_FALLBACK}" ]]; then
+    STREAM_CLIENT="${STREAM_CLIENT_FALLBACK}"
+    return
+  fi
+
+  cmake -S "${REPO_DIR}/bindings/c/perf" -B "${CORE_BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DENABLE_LTO=OFF \
     -DZLINK_CXX_STANDARD=17 >/dev/null
   cmake --build "${CORE_BUILD_DIR}" --target perf_stream_client >/dev/null
+  if [[ ! -x "${STREAM_CLIENT}" && -x "${CORE_BUILD_DIR}/perf_stream_client" ]]; then
+    STREAM_CLIENT="${CORE_BUILD_DIR}/perf_stream_client"
+  fi
 }
 
 is_uint() {
@@ -994,7 +1023,7 @@ run_socket_case() {
   exec {client_fd}>"${client_fifo}"
   if is_spot_control_pattern "${bare_pattern}"; then
     local client_control_line
-    client_control_line="$(wait_for_log_token "${client_log}" "CLIENT_CONTROL_ENDPOINT," "${CONNECT_READY_TIMEOUT_MS}" || true)"
+    client_control_line="$(wait_for_log_token "${client_log}" "CLIENT_CONTROL_ENDPOINT," "${SPOT_READY_TIMEOUT_MS}" || true)"
     if [[ "${client_control_line}" != CLIENT_CONTROL_ENDPOINT,* ]]; then
       record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_control_endpoint_timeout"
       wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client" || true
@@ -1008,7 +1037,7 @@ run_socket_case() {
     local client_control_endpoint="${client_control_line#CLIENT_CONTROL_ENDPOINT,}"
     printf 'CONNECT_CONTROL,%s\n' "${client_control_endpoint}" >&${server_fd}
     local connected_line
-    connected_line="$(wait_for_log_token "${server_log}" "CONTROL_CONNECTED,${client_control_endpoint}" "${CONNECT_READY_TIMEOUT_MS}" || true)"
+    connected_line="$(wait_for_log_token "${server_log}" "CONTROL_CONNECTED,${client_control_endpoint}" "${SPOT_READY_TIMEOUT_MS}" || true)"
     if [[ "${connected_line}" != "CONTROL_CONNECTED,${client_control_endpoint}" ]]; then
       record_failure "${pattern}" "${transport}" "${size}" "${run}" "control_connected_timeout"
       wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client" || true
@@ -1022,7 +1051,11 @@ run_socket_case() {
     printf '%s\n' "${connected_line}" >&${client_fd}
   fi
   if is_start_gated_pattern "${bare_pattern}"; then
-    if ! wait_for_log_token "${client_log}" "CLIENT_READY,${size}" "${CONNECT_READY_TIMEOUT_MS}" >/dev/null; then
+    local client_ready_timeout_ms="${CONNECT_READY_TIMEOUT_MS}"
+    if is_spot_control_pattern "${bare_pattern}"; then
+      client_ready_timeout_ms="${SPOT_READY_TIMEOUT_MS}"
+    fi
+    if ! wait_for_log_token "${client_log}" "CLIENT_READY,${size}" "${client_ready_timeout_ms}" >/dev/null; then
       record_failure "${pattern}" "${transport}" "${size}" "${run}" "client_ready_timeout"
       wait_for_pid_or_kill "${client_pid}" "$(( (DURATION + 20) * 1000 ))" "client" || true
       wait_for_pid_or_kill "${server_pid}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "server" || true

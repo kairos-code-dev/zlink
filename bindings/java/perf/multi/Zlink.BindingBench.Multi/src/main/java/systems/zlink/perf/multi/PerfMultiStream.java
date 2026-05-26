@@ -145,7 +145,7 @@ final class PerfMultiStream {
     // writes the 2-byte BE header length, 4-byte BE body length, header and
     // body into a single message buffer with no intermediate per-packet heap
     // allocation. The frame staging buffer is reused across packets (allocated
-    // once per server, grown only when a larger frame is seen); Message.copyOf
+    // once per server, grown only when a larger frame is seen); Message.from
     // is the single native copy into the owned send frame, matching C's single
     // zlink_msg_init_size + memcpy.
     private static Message buildPacketFrame(Message header, Message body,
@@ -162,7 +162,7 @@ final class PerfMultiStream {
         frame[5] = (byte) (bodySize & 0xFF);
         header.copyTo(frame, 0, 6, headerSize);
         body.copyTo(frame, 0, 6 + headerSize, bodySize);
-        return Message.copyOf(frame, 0, total);
+        return Message.from(frame, 0, total);
     }
 
     private static void waitForStop(AtomicBoolean stopRequested, Object stopSignal) {

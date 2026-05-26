@@ -37,6 +37,7 @@ async function main() {
     let spot = null;
     let readyCount = 0;
     let connected = false;
+    let dataConnected = false;
     let startRequested = false;
     let stop = false;
     let connectedControlEndpoint = '';
@@ -97,7 +98,7 @@ async function main() {
                 received.close();
             }
         });
-        while (!stop && !(connected && readyCount >= options.clients && startRequested)) {
+        while (!stop && !(connected && dataConnected && readyCount >= options.clients && startRequested)) {
             let drained = false;
             while (true) {
                 const received = subscribeNoWait(controlSub);
@@ -105,20 +106,34 @@ async function main() {
                     break;
                 }
                 drained = true;
-                const payloadText = received.parts[0].data().toString('utf8');
-                if (payloadText === 'CONNECTED') {
-                    connected = true;
-                    continue;
+                try {
+                    const payloadText = received.parts[0].data().toString('utf8');
+                    if (payloadText === 'CONNECTED') {
+                        connected = true;
+                        continue;
+                    }
+                    if (payloadText.startsWith('DATA_ENDPOINT,')) {
+                        const endpoint = payloadText.slice('DATA_ENDPOINT,'.length).trim();
+                        if (endpoint && !dataConnected) {
+                            node.connectPeer(endpoint);
+                            dataConnected = true;
+                        }
+                        continue;
+                    }
+                    if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {
+                        readyCount = Number(payloadText.split(',')[2]);
+                    }
                 }
-                if (payloadText.startsWith(`READY_COUNT,${options.msgSize},`)) {
-                    readyCount = Number(payloadText.split(',')[2]);
+                finally {
+                    received.close();
                 }
             }
-            if (!(connected && readyCount >= options.clients && startRequested) && !drained) {
+            if (!(connected && dataConnected && readyCount >= options.clients && startRequested) && !drained) {
                 controlPoller.wait(controlEvents, 50);
             }
+            await sleepMillis(0);
         }
-        trace(`control-ready connected=${connected} ready=${readyCount} start=${startRequested}`);
+        trace(`control-ready connected=${connected} data=${dataConnected} ready=${readyCount} start=${startRequested}`);
         if (stop) {
             return;
         }

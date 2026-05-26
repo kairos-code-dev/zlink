@@ -173,6 +173,10 @@ the review ownership map for the aggregate public package.
   caller's message is preserved on submit failure and consumed on success.
   `MoveMessage(...)` is explicit opt-in: after `Submit(...)` returns, the caller
   must not reuse that message even if submit reports an error.
+- Message payload factories use Go constructor naming while preserving the
+  from-source meaning: `NewMessage(...)` is the primary constructor and
+  `NewMessageFrom(...)` is the stable codec-facing helper. `NewMessageFromBytes`
+  is not part of the public contract.
 - Do not add operation-start method families such as `SendNoWait`,
   `PublishWithFlags`, or `RequestAsync`; keep one operation name and let the
   builder absorb the variation. Terminal builder methods may use idiomatic

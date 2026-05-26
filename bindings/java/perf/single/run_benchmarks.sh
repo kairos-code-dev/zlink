@@ -194,6 +194,22 @@ default_transports() {
   esac
 }
 
+filter_transports_for_pattern() {
+  local pattern="$1"
+  local transports_csv="$2"
+  python3 - "${pattern}" "${transports_csv}" <<'PY'
+import sys
+
+pattern = sys.argv[1].strip().upper()
+items = [item.strip() for item in sys.argv[2].split(",") if item.strip()]
+if pattern == "SPOT":
+    allowed = {"tcp", "tls", "ws", "wss"}
+else:
+    allowed = {"tcp", "tls", "ws", "wss", "inproc", "ipc"}
+print(",".join(item for item in items if item in allowed))
+PY
+}
+
 trim_csv() {
   printf '%s' "$1" | awk -F',' '{for (i=1; i<=NF; ++i) {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $i); printf "%s%s", (i>1?",":""), $i}}'
 }
@@ -351,6 +367,10 @@ for pattern in "${patterns[@]}"; do
     break
   fi
   current_transports="${TRANSPORTS:-$(default_transports "${pattern}")}"
+  current_transports="$(filter_transports_for_pattern "${pattern}" "${current_transports}")"
+  if [[ -z "${current_transports}" ]]; then
+    continue
+  fi
   IFS=',' read -r -a transports <<< "$(trim_csv "${current_transports}")"
   printf '%s\t%s\n' "${pattern}" "${current_transports}" >> "${tmp_plan}"
   for transport_index in "${!transports[@]}"; do

@@ -75,7 +75,7 @@ public sealed class ActorLifecycleTests : SpotTestSupport
 
         var contextActor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-context", "test")).Actor;
         await actorRuntime.AttachActorAsync(contextActor, new TestStream("session-context"));
-        using (var joinBody = global::Systems.Zlink.Message.FromString(first.SpotRid.ToHex()))
+        using (var joinBody = global::Systems.Zlink.Message.From(first.SpotRid.ToHex()))
         {
             await actorRuntime.SubmitActorAsync(
                 contextActor,
@@ -92,7 +92,7 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         Assert.Equal(first.SpotRid, contextActor.Spot?.Context.SpotRid);
         Assert.Equal("room-context", contextActor.CurrentRoomId);
 
-        using (var contextDispatchBody = global::Systems.Zlink.Message.FromString("context-payload"))
+        using (var contextDispatchBody = global::Systems.Zlink.Message.From("context-payload"))
         {
             await actorRuntime.SubmitActorAsync(
                 contextActor,
@@ -113,8 +113,8 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         var stream = new TestStream("session-1");
         await actorRuntime.AttachActorAsync(actor, stream);
 
-        using var header = global::Systems.Zlink.Message.FromString("header");
-        using var body = global::Systems.Zlink.Message.FromString("payload");
+        using var header = global::Systems.Zlink.Message.From("header");
+        using var body = global::Systems.Zlink.Message.From("payload");
         await actorRuntime.SubmitActorAsync(
             actor,
                 new ZlinkStreamHeader(

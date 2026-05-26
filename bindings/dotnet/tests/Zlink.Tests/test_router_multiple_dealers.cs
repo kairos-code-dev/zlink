@@ -52,12 +52,12 @@ public sealed class test_router_multiple_dealers
         string dealer1RoutingId = received.First(kvp => kvp.Value == "from_dealer1").Key;
         string dealer2RoutingId = received.First(kvp => kvp.Value == "from_dealer2").Key;
 
-        using Message reply1 = Message.FromString("reply_to_d1");
+        using Message reply1 = Message.From("reply_to_d1");
         Assert.True(router.Send(
                 RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer1RoutingId)))
             .Message(reply1).Submit());
 
-        using Message reply2 = Message.FromString("reply_to_d2");
+        using Message reply2 = Message.From("reply_to_d2");
         Assert.True(router.Send(
                 RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer2RoutingId)))
             .Message(reply2).Submit());
@@ -92,7 +92,7 @@ public sealed class test_router_multiple_dealers
         Assert.Equal("ping", Encoding.UTF8.GetString(
             received.SinglePartOrThrow().AsReadOnlySpan()));
 
-        using Message reply = Message.FromString("pong");
+        using Message reply = Message.From("pong");
         Assert.True(received.Send().Message(reply).Submit());
 
         Assert.Equal("pong", CoreTestSupport.ReceiveUtf8WithTimeout(dealer,
@@ -117,7 +117,7 @@ public sealed class test_router_multiple_dealers
         dealer.Connect(endpoint);
         Thread.Sleep(100);
 
-        using Message outbound = Message.FromString("ping");
+        using Message outbound = Message.From("ping");
         Assert.True(dealer.Send(outbound));
 
         using var inbound = new Message();
@@ -130,7 +130,7 @@ public sealed class test_router_multiple_dealers
         Assert.Equal("ping", Encoding.UTF8.GetString(
             inbound.AsReadOnlySpan()));
 
-        using Message reply = Message.FromString("pong");
+        using Message reply = Message.From("pong");
         Assert.True(router.Send(actualSourceRid, reply));
 
         using var dealerInbound = new Message();

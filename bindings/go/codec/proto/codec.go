@@ -41,7 +41,7 @@ func Encode[T pbproto.Message](v T) (*zlink.Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	return zlink.NewMessageFromBytes(payload)
+	return zlink.NewMessageFrom(payload)
 }
 
 func newDecodeTarget[T pbproto.Message]() (T, error) {

@@ -164,7 +164,7 @@ final class PerfDealerDealer {
     // re-attempts the same sample (send_step_retry); a non-transient error
     // is fatal and propagates (send_step_fatal).
     private static boolean trySendActive(DealerSocket sender, Message active) {
-        try (Message outbound = Message.copyOf(active)) {
+        try (Message outbound = Message.from(active)) {
             return sender.send()
                 .message(outbound)
                 .flags(SendFlags.DONT_WAIT)

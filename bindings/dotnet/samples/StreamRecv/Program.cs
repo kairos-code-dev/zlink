@@ -27,7 +27,7 @@ if (received.RoutingId == null)
 string payload = received.Parts[0].GetString();
 SampleSupport.EnsureEqual("hello-stream", payload, "payload");
 
-using var reply = Message.FromString("hello-stream");
+using var reply = Message.From("hello-stream");
 received.Send().Message(reply).Submit();
 string echoed = System.Text.Encoding.UTF8.GetString(
     SampleSupport.ReceiveExact(network, "hello-stream".Length));

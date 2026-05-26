@@ -12,7 +12,7 @@ public sealed class test_message
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var source = Message.FromBytes("move-payload"u8);
+        using var source = Message.From("move-payload"u8);
         using Message moved = source.Move();
 
         Assert.True(moved.AsReadOnlySpan().SequenceEqual("move-payload"u8));
@@ -45,7 +45,7 @@ public sealed class test_message
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var source = Message.FromBytes("x"u8);
+        using var source = Message.From("x"u8);
         source.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() =>
@@ -60,7 +60,7 @@ public sealed class test_message
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var source = Message.FromBytes("double-move"u8);
+        using var source = Message.From("double-move"u8);
         using Message moved = source.Move();
 
         Assert.True(moved.AsReadOnlySpan().SequenceEqual("double-move"u8));
@@ -87,14 +87,14 @@ public sealed class test_message
     }
 
     [Fact]
-    public void from_bytes_copy_preserves_managed_snapshot_storage()
+    public void message_from_copy_preserves_managed_snapshot_storage()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         byte[] payload = new byte[512];
         new Random(1234).NextBytes(payload);
-        using var source = Message.FromBytes(payload);
+        using var source = Message.From(payload);
         payload[0] ^= 0xFF;
 
         using Message copy = source.Copy();
@@ -112,7 +112,7 @@ public sealed class test_message
             return;
 
         const string payload = "dotnet-메시지";
-        using Message message = Message.FromString(payload, Encoding.UTF8);
+        using Message message = Message.From(payload, Encoding.UTF8);
 
         Assert.Equal(payload, message.GetString());
         Assert.True(message.AsReadOnlySpan().SequenceEqual(Encoding.UTF8.GetBytes(payload)));
@@ -139,7 +139,7 @@ public sealed class test_message
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var message = Message.FromString("property-check");
+        using var message = Message.From("property-check");
 
         Assert.Null(message.GetProperty("Identity"));
     }

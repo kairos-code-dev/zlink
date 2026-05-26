@@ -2,12 +2,12 @@ use std::ffi::c_void;
 use std::ptr;
 
 use super::{
-    SendHandle, SocketInner, close_unreceived_part, impl_attach_discovery, impl_base_socket,
-    impl_connect, impl_routing_id_options,
+    close_unreceived_part, impl_attach_discovery, impl_base_socket, impl_connect,
+    impl_routing_id_options, SendHandle, SocketInner,
 };
 use crate::ctx::Context;
 use crate::domain::{Received, RouterPart};
-use crate::error::{ConfigError, HandlerError, RecvError, check_recv_rc};
+use crate::error::{check_recv_rc, ConfigError, HandlerError, RecvError};
 use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::message::{Message, RoutingId};
@@ -147,7 +147,11 @@ fn router_received_from_raw(
         None
     } else {
         let rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
-        if rid.is_empty() { None } else { Some(rid) }
+        if rid.is_empty() {
+            None
+        } else {
+            Some(rid)
+        }
     };
     if let Some(spot_rid) = spot_rid {
         if request_seq == 0 {
@@ -269,7 +273,11 @@ fn recv_router_part_once(handle: *mut c_void, flags: u32) -> Result<Option<Route
         None
     } else {
         let rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
-        if rid.is_empty() { None } else { Some(rid) }
+        if rid.is_empty() {
+            None
+        } else {
+            Some(rid)
+        }
     };
     let request_seq = if request_seq == 0 {
         None

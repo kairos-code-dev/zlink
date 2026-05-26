@@ -24,7 +24,7 @@ public final class PairRecvSample {
             client.connect(endpoint);
             SampleSupport.waitConnected(serverMonitor, clientMonitor);
 
-            try (Message outbound = Message.copyOfUtf8(SampleSupport.PAIR_PAYLOAD)) {
+            try (Message outbound = Message.from(SampleSupport.PAIR_PAYLOAD)) {
                 client.send().message(outbound).submit();
             }
 

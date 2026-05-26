@@ -59,6 +59,10 @@ DEFAULT_PATTERNS = (
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "65536", "131072", "262144")
 DEFAULT_STREAM_MSG_SIZES = ("64", "256", "1024", "65536")
+SPOT_CONTROL_PATTERNS = {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND"}
+SPOT_CONTROL_NON_TCP_TRANSPORTS = {"tls", "ws", "wss"}
+SPOT_CONTROL_CONNECT_READY_TIMEOUT_MS = "5000"
+SPOT_CONTROL_SERVER_READY_TIMEOUT_MS = "30000"
 RAW_TRANSPORTS = (
     ("tcp", "tls", "ws", "wss")
     if sys.platform.startswith("win")
@@ -241,6 +245,31 @@ def _grouped_option_text(patterns, value_for_pattern, *, prefix="MULTI_"):
             f"{','.join(f'{prefix}{pattern}' for pattern in grouped_patterns)}={','.join(values)}"
         )
     return "; ".join(rendered)
+
+
+def _needs_spot_control_timeout_defaults(configs):
+    return any(
+        pattern in SPOT_CONTROL_PATTERNS
+        and transport in SPOT_CONTROL_NON_TCP_TRANSPORTS
+        for pattern, transport, _msg_size in configs
+    )
+
+
+def _apply_spot_control_timeout_defaults(args, env, configs):
+    if not _needs_spot_control_timeout_defaults(configs):
+        return
+    if (
+        not args.connect_ready_timeout_ms
+        and "PERF_MULTI_CONNECT_READY_TIMEOUT_MS" not in env
+        and "PERF_CONNECT_READY_TIMEOUT_MS" not in env
+    ):
+        env["PERF_MULTI_CONNECT_READY_TIMEOUT_MS"] = SPOT_CONTROL_CONNECT_READY_TIMEOUT_MS
+    if (
+        not args.server_ready_timeout_ms
+        and "PERF_MULTI_SERVER_READY_TIMEOUT_MS" not in env
+        and "PERF_SERVER_READY_TIMEOUT_MS" not in env
+    ):
+        env["PERF_MULTI_SERVER_READY_TIMEOUT_MS"] = SPOT_CONTROL_SERVER_READY_TIMEOUT_MS
 
 
 def _effective_role_io_threads(args, role):
@@ -982,7 +1011,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
     return "\n".join(chunk for chunk in stdout_chunks if chunk)
 
 
-def _build_options(args, patterns, transports, requested_msg_sizes, clients):
+def _build_options(args, patterns, transports, requested_msg_sizes, clients, env):
     hwm = args.hwm or "auto-hwm"
     sndhwm = args.send_hwm or args.hwm or "auto-hwm"
     rcvhwm = args.recv_hwm or args.hwm or "auto-hwm"
@@ -1029,10 +1058,14 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
         "rcvtimeo_ms": args.recv_timeout_ms or os.environ.get("PERF_MULTI_RCVTIMEO_MS", "200"),
         "connect_concurrency": args.connect_concurrency or f"{_connect_concurrency_for_clients(clients)} (default)",
         "connect_ready_timeout_ms": args.connect_ready_timeout_ms
-        or _env_pair_value("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", "PERF_CONNECT_READY_TIMEOUT_MS", "1000"),
+        or env.get("PERF_MULTI_CONNECT_READY_TIMEOUT_MS")
+        or env.get("PERF_CONNECT_READY_TIMEOUT_MS")
+        or "1000",
         "monitor_hwm": args.monitor_hwm or os.environ.get("PERF_MULTI_MONITOR_HWM", "1000"),
         "server_ready_timeout_ms": args.server_ready_timeout_ms
-        or _env_pair_value("PERF_MULTI_SERVER_READY_TIMEOUT_MS", "PERF_SERVER_READY_TIMEOUT_MS", "10000"),
+        or env.get("PERF_MULTI_SERVER_READY_TIMEOUT_MS")
+        or env.get("PERF_SERVER_READY_TIMEOUT_MS")
+        or "10000",
         "server_shutdown_timeout_ms": args.server_shutdown_timeout_ms
         or _env_pair_value("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", "5000"),
         "server_bind_port": args.server_bind_port or os.environ.get("PERF_MULTI_SERVER_BIND_PORT", "0"),
@@ -1139,6 +1172,7 @@ def main(argv=None):
         env["PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS"] = args.server_shutdown_timeout_ms
     if args.server_bind_port:
         env["PERF_MULTI_SERVER_BIND_PORT"] = args.server_bind_port
+    _apply_spot_control_timeout_defaults(args, env, configs)
     _configure_core_runtime(env)
 
     run_cooldown_ms = _env_int("PERF_MULTI_RUN_COOLDOWN_MS", _env_int("PERF_RUN_COOLDOWN_MS", 3000))
@@ -1149,7 +1183,7 @@ def main(argv=None):
         "PERF_MULTI_PATTERN_TRANSITION_MS", _env_int("PERF_PATTERN_TRANSITION_MS", 3000)
     )
 
-    options = _build_options(args, patterns, transports, requested_msg_sizes, clients)
+    options = _build_options(args, patterns, transports, requested_msg_sizes, clients, env)
     fail_fast = os.environ.get("PERF_FAIL_FAST", "0") == "1"
     options["fail_fast"] = "1" if fail_fast else "0"
     sections = []

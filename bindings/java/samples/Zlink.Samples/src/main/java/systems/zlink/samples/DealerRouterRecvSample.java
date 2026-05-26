@@ -25,7 +25,7 @@ public final class DealerRouterRecvSample {
             dealer.connect(endpoint);
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);
 
-            try (Message request = Message.copyOfUtf8(SampleSupport.DEALER_REQUEST)) {
+            try (Message request = Message.from(SampleSupport.DEALER_REQUEST)) {
                 dealer.send().message(request).submit();
             }
 
@@ -35,7 +35,7 @@ public final class DealerRouterRecvSample {
                 if (!SampleSupport.DEALER_REQUEST.equals(value)) {
                     throw new IllegalStateException("unexpected request: " + value);
                 }
-                try (Message reply = Message.copyOfUtf8(SampleSupport.DEALER_REPLY)) {
+                try (Message reply = Message.from(SampleSupport.DEALER_REPLY)) {
                     received.send().message(reply).submit();
                 }
             }

@@ -165,6 +165,9 @@ from `zlink`.
   Python-style `messages(*parts)` convenience may delegate to the same builder.
   That convenience is public contract when exported and belongs in the public
   package category.
+- Message payload factories use `Message.from_(...)` because `from` is a
+  Python keyword. `copy_from` and `from_bytes` are not part of the public
+  contract.
 - Do not add operation-start method families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
   the builder absorb the variation. Terminal builder methods may use idiomatic

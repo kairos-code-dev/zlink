@@ -50,14 +50,14 @@ public sealed class test_spot_pubsub_basic
 
         string tooLongTopic = new string('a', 256);
 
-        using (Message message = Message.FromString("x"))
+        using (Message message = Message.From("x"))
             Assert.ThrowsAny<ArgumentException>(() =>
                 spot.Publish("").Message(message).Submit());
         Assert.ThrowsAny<ArgumentException>(() =>
             spot.SetSubscription(string.Empty));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             spot.SetSubscription(tooLongTopic));
-        using (Message message = Message.FromString("x"))
+        using (Message message = Message.From("x"))
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 spot.Publish(tooLongTopic).Message(message).Submit());
     }
@@ -92,7 +92,7 @@ public sealed class test_spot_pubsub_basic
 
         node.Dispose();
 
-        using Message message = Message.FromString("payload");
+        using Message message = Message.From("payload");
         Assert.Throws<ObjectDisposedException>(() =>
             spot.Publish("topic").Message(message).Submit());
     }
@@ -133,7 +133,7 @@ public sealed class test_spot_pubsub_basic
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
-                using var message = Message.FromString(payload);
+                using var message = Message.From(payload);
                 ingress.Publish(topic).Message(message).Submit();
 
                 try
@@ -171,7 +171,7 @@ public sealed class test_spot_pubsub_basic
             () =>
             {
                 sent?.Dispose();
-                sent = Message.FromBytes(payload);
+                sent = Message.From(payload);
                 try
                 {
                     return publisher.Publish(topic, sent, SendFlags.DontWait);
@@ -232,7 +232,7 @@ public sealed class test_spot_pubsub_basic
             "spot-direct-send-missing-spot");
         byte[] payload = "hello-direct-spot-send"u8.ToArray();
 
-        using Message sent = Message.FromBytes(payload);
+        using Message sent = Message.From(payload);
         Assert.Throws<ZlinkSubmitException>(() =>
             sender.SendToSpot(missingNodeRid, missingSpotRid, sent,
                 SendFlags.DontWait));
@@ -299,7 +299,7 @@ public sealed class test_spot_pubsub_basic
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
-                using var message = Message.FromString(payload);
+                using var message = Message.From(payload);
                 publisher.Publish(topic).Message(message).Submit();
 
                 try
@@ -372,7 +372,7 @@ public sealed class test_spot_pubsub_basic
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
-                using var message = Message.FromString(payload);
+                using var message = Message.From(payload);
                 publisher.Publish(topic).Message(message).Submit();
 
                 try

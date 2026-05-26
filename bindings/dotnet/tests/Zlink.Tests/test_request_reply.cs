@@ -33,7 +33,7 @@ public sealed class test_request_reply
                 Assert.True(received.RequestSeq.HasValue);
                 Assert.NotEqual(0UL, received.RequestSeq.Value);
                 Assert.Equal("ping", received.Parts[0].GetString());
-                using Message reply = Message.FromString("pong");
+                using Message reply = Message.From("pong");
                 routerSocket.Reply(
                     received.RoutingId ?? throw new InvalidOperationException(
                         "missing routing id"), received.RequestSeq.Value)
@@ -46,7 +46,7 @@ public sealed class test_request_reply
             }
         });
 
-        using Message request = Message.FromString("ping");
+        using Message request = Message.From("ping");
         IReadOnlyList<Message> reply = await dealerSocket.Request()
             .Message(request)
             .Timeout(TimeSpan.FromSeconds(2))
@@ -83,8 +83,8 @@ public sealed class test_request_reply
         clientB.Connect(endpoint);
         Thread.Sleep(50);
 
-        using Message requestA = Message.FromString("from-a");
-        using Message requestB = Message.FromString("from-b");
+        using Message requestA = Message.From("from-a");
+        using Message requestB = Message.From("from-b");
         Assert.True(clientA.RequestFrame(1, new[] { requestA }));
         Assert.True(clientB.RequestFrame(1, new[] { requestB }));
 
@@ -109,8 +109,8 @@ public sealed class test_request_reply
         Assert.NotEqual(0UL, tokenB);
         Assert.NotEqual(tokenA, tokenB);
 
-        using Message replyB = Message.FromString("reply-b");
-        using Message replyA = Message.FromString("reply-a");
+        using Message replyB = Message.From("reply-b");
+        using Message replyA = Message.From("reply-a");
         server.Reply(tokenB, new[] { replyB });
         server.Reply(tokenA, new[] { replyA });
 
@@ -141,7 +141,7 @@ public sealed class test_request_reply
         dealerSocket.Connect(endpoint);
         Thread.Sleep(50);
 
-        using Message payload = Message.FromString("plain-data");
+        using Message payload = Message.From("plain-data");
         dealerSocket.Send().Message(payload).Submit();
 
         var received = new Received();
@@ -187,7 +187,7 @@ public sealed class test_request_reply
             routerSocket.Recv(received);
             try
             {
-                using Message reply = Message.FromString("pong-owned");
+                using Message reply = Message.From("pong-owned");
                 routerSocket.Reply(
                     received.RoutingId ?? throw new InvalidOperationException(
                         "missing routing id"), received.RequestSeq ?? 0UL)
@@ -200,7 +200,7 @@ public sealed class test_request_reply
             }
         });
 
-        using Message request = Message.FromString("ping-owned");
+        using Message request = Message.From("ping-owned");
         dealerSocket.Request().Message(request).Submit((result, reply) =>
         {
             observedResult = result;

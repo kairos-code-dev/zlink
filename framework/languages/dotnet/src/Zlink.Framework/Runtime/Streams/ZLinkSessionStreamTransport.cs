@@ -163,7 +163,7 @@ internal sealed class ZLinkSessionStreamTransport(
         ReadOnlySpan<byte> frame,
         string failureMessage)
     {
-        using var message = Message.FromBytes(frame);
+        using var message = Message.From(frame);
         if (!stream.Write(message))
         {
             throw new InvalidOperationException(failureMessage);

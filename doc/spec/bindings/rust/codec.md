@@ -58,4 +58,4 @@ where
 ```
 
 Each codec crate defines its own `Error` type. The helper reads from
-`Message::as_bytes()` and creates new frames with `Message::from_bytes()`.
+`Message::as_bytes()` and creates new frames with `Message::try_from(...)`.

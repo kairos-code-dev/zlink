@@ -5,7 +5,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeader, sleepMillis, summarizeMetrics, stampPayload, } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, subscribeNoWait, trySocketPublish, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
@@ -42,6 +42,18 @@ function closeQuietly(resource) {
     }
     catch (err) {
         console.error(`[multi-spot-sendsend-client] close failed: ${err}`);
+    }
+}
+function receiveControlStart(controlSub, msgSize) {
+    const received = subscribeNoWait(controlSub);
+    if (!received) {
+        return false;
+    }
+    try {
+        return received.parts[0].data().toString('utf8') === `START,${msgSize}`;
+    }
+    finally {
+        received.close();
     }
 }
 async function main() {
@@ -90,6 +102,7 @@ async function main() {
         emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
         await sleepMillis(resolveMultiSpotReadySettleMs());
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
+        await sleepMillis(resolveMultiSpotControlSettleMs());
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
         await sleepMillis(resolveMultiSpotControlSettleMs());
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
@@ -98,22 +111,22 @@ async function main() {
         // READY_COUNT every 250ms while waiting for START (stdin or control)
         // so the slow-joiner control link can never wedge the handshake now
         // that publishControlUntilSent is bounded (returns on timeout).
-        let started = false;
+        let runnerStarted = false;
+        let controlStarted = false;
         const startFromRunner = waitForRunnerStart(options.msgSize).then(() => {
-            started = true;
-        });
-        const startFromControl = waitForControlStart(controlSub, controlSubWaiter, options.msgSize).then(() => {
-            started = true;
+            runnerStarted = true;
         });
         let nextReadyAt = Date.now();
-        while (!started) {
+        while (!runnerStarted || !controlStarted) {
             if (Date.now() >= nextReadyAt) {
-                await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
+                trySocketPublish(controlPub, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
+                trySocketPublish(controlPub, CONTROL_TOPIC, 'CONNECTED');
+                trySocketPublish(controlPub, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
                 nextReadyAt = Date.now() + 250;
             }
+            controlStarted = controlStarted || receiveControlStart(controlSub, options.msgSize);
             await Promise.race([
                 startFromRunner,
-                startFromControl,
                 sleepMillis(Math.min(50, Math.max(1, nextReadyAt - Date.now())))
             ]);
         }

@@ -63,7 +63,7 @@ public final class RequestReplyTerminationProbe {
                             }
                             log("server recv reply");
                             received.reply()
-                                .message(Message.copyOfUtf8("pong"))
+                                .message(Message.from("pong"))
                                 .submit();
                         }
                     } catch (Exception ex) {
@@ -82,13 +82,13 @@ public final class RequestReplyTerminationProbe {
                         }
                         log("server recv reply");
                         received.reply()
-                            .message(Message.copyOfUtf8("pong"))
+                            .message(Message.from("pong"))
                             .submit();
                     }
                 }, serverExecutor);
             }
 
-            try (Message request = Message.copyOfUtf8("ping")) {
+            try (Message request = Message.from("ping")) {
                 log("dealer request begin");
                 List<Message> reply = dealerSocket.request()
                     .message(request)

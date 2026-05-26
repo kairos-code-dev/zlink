@@ -8,7 +8,7 @@ public sealed class test_json_codec
     [Fact]
     public void json_message_decode_uses_web_defaults()
     {
-        using var message = Message.FromString("""{"accessToken":"player-1"}""");
+        using var message = Message.From("""{"accessToken":"player-1"}""");
 
         var decoded = message.Decode<JsonCodecPayload>();
 

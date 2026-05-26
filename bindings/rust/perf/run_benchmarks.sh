@@ -141,6 +141,29 @@ default_transports_for_pattern() {
     esac
 }
 
+is_supported_transport_for_pattern() {
+    local pattern="$1"
+    local transport="$2"
+    case "${pattern}:${transport}" in
+        SPOT:tcp|SPOT:tls|SPOT:ws|SPOT:wss)
+            return 0
+            ;;
+        SPOT:*)
+            return 1
+            ;;
+        *:tcp|*:tls|*:ws|*:wss|*:inproc)
+            return 0
+            ;;
+        *:ipc)
+            [[ "${PLATFORM}" != "windows" ]]
+            return
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 prepare_core_runtime() {
     if [[ ! -f "${CORE_LIB}" ]]; then
         echo "core runtime not found: ${CORE_LIB}" >&2
@@ -249,6 +272,7 @@ if [[ "${PATTERN}" == "ALL" ]]; then
 else
     IFS=',' read -ra PATTERNS <<< "${PATTERN}"
 fi
+PATTERN_DISPLAY="$(IFS=','; printf '%s' "${PATTERNS[*]}")"
 
 TMP_METRICS="$(mktemp)"
 TMP_CASES="$(mktemp)"
@@ -291,6 +315,12 @@ for pat in "${PATTERNS[@]}"; do
             fi
             case_status="success"
             case_reason=""
+            if ! is_supported_transport_for_pattern "${pat}" "${transport}"; then
+                case_status="unsupported"
+                case_reason="UNSUPPORTED;rust;${pat};${transport};unsupported_transport"
+                printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "${case_status}" "${case_reason}" >> "${TMP_CASES}"
+                continue
+            fi
             for run in $(seq 1 "${RUNS}"); do
                 if ! OUTPUT="$(timeout "${BIN_TIMEOUT_SECONDS}s" "${RUN_PREFIX[@]}" "${BIN}" \
                     --pattern "${pat}" \
@@ -337,7 +367,7 @@ python3 "${PERF_REPORT_PY}" render-single \
   --metrics "${TMP_METRICS}" \
   --cases "${TMP_CASES}" \
   --report "${RESULTS_FILE}" \
-  --patterns "${PATTERN}" \
+  --patterns "${PATTERN_DISPLAY}" \
   --transports "${TRANSPORTS}" \
   --msg-sizes "${MSG_SIZES}" \
   --runs "${RUNS}" \

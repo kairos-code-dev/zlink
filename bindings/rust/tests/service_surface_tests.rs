@@ -56,42 +56,42 @@ fn spot_callback_surfaces_exist() {
     let _ = spot.routing_id().unwrap();
     let _ = spot
         .publish("topic")
-        .message(Message::copy_from(b"payload").unwrap())
+        .message(Message::try_from(b"payload").unwrap())
         .submit();
     let _ = spot
         .publish("topic")
-        .message(Message::copy_from(b"payload").unwrap())
+        .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit();
     let _ = spot
         .send_channel("svc-surface")
-        .message(Message::copy_from(b"payload").unwrap())
+        .message(Message::try_from(b"payload").unwrap())
         .submit();
     let _ = spot
         .send_channel("svc-surface")
-        .message(Message::copy_from(b"payload").unwrap())
+        .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit();
     let rid = RoutingId::from_bytes(b"rid-surface");
     let spot_rid = RoutingId::from_bytes(b"spot-surface");
     let _ = spot
         .send_to_spot(rid.clone(), spot_rid.clone())
-        .message(Message::copy_from(b"payload").unwrap())
+        .message(Message::try_from(b"payload").unwrap())
         .submit();
     let _ = spot
         .send_to_spot(rid, spot_rid)
-        .message(Message::copy_from(b"payload").unwrap())
+        .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit();
     let _ = block_on_ready(
         spot.request_channel("svc-surface")
-            .message(Message::copy_from(b"payload").unwrap())
+            .message(Message::try_from(b"payload").unwrap())
             .timeout(std::time::Duration::from_millis(1))
             .submit_async(),
     );
     let _ = spot
         .request_channel("svc-surface")
-        .message(Message::copy_from(b"payload").unwrap())
+        .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit(|_result| {});
     let mut event = SubscriptionEvent::empty();
@@ -214,12 +214,12 @@ fn actor_surfaces_exist() {
     let _ = actor.recv_part_with_flags(RecvFlags::DONT_WAIT);
     let _ = actor
         .send_bound_session_msg()
-        .message(Message::copy_from(b"payload").unwrap())
+        .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT);
     let _ = actor.close_bound_session(std::time::Duration::from_millis(1));
     let _ = actor
         .join(&spot)
-        .message(Message::copy_from(b"join").unwrap())
+        .message(Message::try_from(b"join").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .timeout(std::time::Duration::from_millis(1));
     let _ = spot.recv_actor_join_with_flags(RecvFlags::DONT_WAIT);
@@ -228,7 +228,7 @@ fn actor_surfaces_exist() {
         .timeout(std::time::Duration::from_millis(1));
     let _ = stream
         .send_bound_actor(&session_rid, "actor-surface")
-        .message(Message::copy_from(b"payload").unwrap())
+        .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT);
     let _ = stream
         .unbind_actor(&session_rid, "actor-surface")
@@ -246,7 +246,7 @@ fn actor_surfaces_exist() {
             &RoutingId::from_bytes(b"actor-node"),
             &RoutingId::from_bytes(b"actor-spot"),
         )
-        .message(Message::copy_from(b"join").unwrap())
+        .message(Message::try_from(b"join").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .timeout(std::time::Duration::from_millis(1));
     let _ = node
@@ -315,7 +315,7 @@ fn typed_poller_wait_on_pair_socket_does_not_crash() {
     poller.add_socket(&server, POLLIN, 7).unwrap();
     client
         .send()
-        .message(Message::copy_from(b"poller").unwrap())
+        .message(Message::try_from(b"poller").unwrap())
         .submit()
         .unwrap();
 
@@ -358,12 +358,12 @@ fn typed_poller_capacity_leaves_remaining_ready_source() {
     poller.add_socket(&receiver2, POLLIN, 102).unwrap();
     sender1
         .send()
-        .message(Message::copy_from(b"a").unwrap())
+        .message(Message::try_from(b"a").unwrap())
         .submit()
         .unwrap();
     sender2
         .send()
-        .message(Message::copy_from(b"b").unwrap())
+        .message(Message::try_from(b"b").unwrap())
         .submit()
         .unwrap();
 
@@ -403,7 +403,7 @@ fn typed_poller_modify_remove_and_timeout_follow_core_semantics() {
     poller.modify_socket(&receiver, 0).unwrap();
     sender
         .send()
-        .message(Message::copy_from(b"hidden").unwrap())
+        .message(Message::try_from(b"hidden").unwrap())
         .submit()
         .unwrap();
 
@@ -418,7 +418,7 @@ fn typed_poller_modify_remove_and_timeout_follow_core_semantics() {
     poller.remove_socket(&receiver).unwrap();
     sender
         .send()
-        .message(Message::copy_from(b"removed").unwrap())
+        .message(Message::try_from(b"removed").unwrap())
         .submit()
         .unwrap();
     assert_eq!(poller.wait(&mut events, 0).unwrap(), 0);
@@ -440,7 +440,7 @@ fn typed_poller_distinguishes_timer_and_socket_in_same_buffer() {
     poller.add_timer(&timer, 42).unwrap();
     sender
         .send()
-        .message(Message::copy_from(b"socket").unwrap())
+        .message(Message::try_from(b"socket").unwrap())
         .submit()
         .unwrap();
     timer.start(5_000_000, 1).unwrap();

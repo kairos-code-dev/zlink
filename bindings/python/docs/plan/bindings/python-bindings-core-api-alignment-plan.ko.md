@@ -39,7 +39,7 @@
 - 2026-03-26: Phase 2 범위의 `_core.py` / `tests/test_core_api_alignment.py`
   1차 정렬 완료.
   - `Received*` aggregate가 native recv 결과를 직접 소유하도록 lifecycle 모델 재구성
-  - `recv_into()` direct fill, `Message.copy_from`, `Message.wrap_buffer`
+  - `recv_into()` direct fill, `Message.from_`, `Message.wrap_buffer`
     contract test 추가
   - `python -m pytest -q`: 통과
 - 2026-03-26: Phase 3 정렬 완료.
@@ -337,7 +337,7 @@ class Context:
 
 class Message:
     @classmethod
-    def copy_from(cls, data: Buffer) -> "Message": ...
+    def from_(cls, data: Buffer) -> "Message": ...
     @classmethod
     def wrap_buffer(cls, data: Buffer) -> "Message": ...
     def to_bytes(self) -> bytes: ...

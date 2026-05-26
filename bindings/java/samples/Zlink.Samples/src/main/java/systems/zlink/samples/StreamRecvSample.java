@@ -36,7 +36,7 @@ public final class StreamRecvSample {
                         throw new IllegalStateException("unexpected stream delivery");
                     }
 
-                    try (Message reply = Message.copyOfUtf8(
+                    try (Message reply = Message.from(
                              SampleSupport.STREAM_PAYLOAD)) {
                         received.send().message(reply).submit();
                     }

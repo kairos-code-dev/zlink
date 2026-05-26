@@ -74,7 +74,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         Assert.Contains($"left:join-entry-local-actor:{stage.SpotRid.ToHex()}", recorder.Events);
         Assert.Contains("left-kind:join-entry-local-actor:JoinEntrySpot", recorder.Events);
 
-        using (var dispatchBody = Message.FromString("after-entry"))
+        using (var dispatchBody = Message.From("after-entry"))
         {
             await actorRuntime.SubmitActorAsync(
                 actor,

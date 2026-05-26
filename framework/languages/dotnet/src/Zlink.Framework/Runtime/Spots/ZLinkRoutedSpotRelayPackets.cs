@@ -110,7 +110,7 @@ internal sealed record ZLinkRoutedSpotRelayReply(
         var messages = new Message[Parts.Length];
         for (var index = 0; index < Parts.Length; index++)
         {
-            messages[index] = Message.FromBytes(Parts[index]);
+            messages[index] = Message.From(Parts[index]);
         }
 
         return messages;

@@ -427,7 +427,7 @@ function resolveClientReadyTimeoutMs(args) {
         const spotReadyTimeout = Number(process.env.PERF_MULTI_SPOT_READY_TIMEOUT_MS);
         const minimumSpotReadyTimeout = Number.isFinite(spotReadyTimeout)
             ? spotReadyTimeout
-            : 1000;
+            : Math.max(1000, configured * 6);
         return Math.max(configured, minimumSpotReadyTimeout);
     }
     return configured;
@@ -503,13 +503,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
         const clientControlLine = await waitForPrefix(client, 'CLIENT_CONTROL_ENDPOINT,', clientScript, resolveClientReadyTimeoutMs(args));
         const clientControlEndpoint = clientControlLine.split(',')[1];
         writeChildLine(server, `CONNECT_CONTROL,${clientControlEndpoint}\n`);
-        let controlConnectedLine;
-        try {
-            controlConnectedLine = await waitForPrefix(server, 'CONTROL_CONNECTED,', serverScript, resolveClientReadyTimeoutMs(args));
-        }
-        catch (error) {
-            controlConnectedLine = `CONTROL_CONNECTED,${clientControlEndpoint}`;
-        }
+        const controlConnectedLine = await waitForPrefix(server, 'CONTROL_CONNECTED,', serverScript, resolveClientReadyTimeoutMs(args));
         writeChildLine(client, `${controlConnectedLine}\n`);
     }
     if (needsClientReady(args.pattern)) {

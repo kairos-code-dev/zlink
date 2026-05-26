@@ -4,8 +4,8 @@ mod common;
 use std::collections::VecDeque;
 use std::io::{self, BufRead};
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 use std::time::Duration;
 use zlink::*;
@@ -99,7 +99,7 @@ fn main() {
         while let Some((rid, reply_bytes)) = pending.pop_front() {
             match router
                 .send(&rid)
-                .message(Message::copy_from(&reply_bytes).expect("pending reply"))
+                .message(Message::try_from(&reply_bytes).expect("pending reply"))
                 .flags(SendFlags::DONT_WAIT)
                 .submit()
             {
@@ -122,7 +122,7 @@ fn main() {
                     if pending.is_empty() {
                         match received
                             .send()
-                            .message(Message::copy_from(&reply_bytes).expect("reply"))
+                            .message(Message::try_from(&reply_bytes).expect("reply"))
                             .flags(SendFlags::DONT_WAIT)
                             .submit()
                         {

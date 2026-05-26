@@ -206,7 +206,7 @@ core 대비 비율:
 
 ### .NET `Message` wrapper 재사용
 
-`.NET`에서는 `Message.FromBytes(...)`, `Message.MoveFromNativeSingle(...)`,
+`.NET`에서는 `Message.From(...)`, `Message.MoveFromNativeSingle(...)`,
 `Message.FromNativeVector(...)`에서 wrapper 객체를 계속 새로 만들고
 있었다.
 

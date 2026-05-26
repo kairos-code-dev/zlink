@@ -250,9 +250,9 @@
 type BufferLike = Buffer | Uint8Array;
 
 class Message {
-  static copyOf(data: BufferLike | string, encoding?: BufferEncoding): Message;
-  static wrap(buffer: BufferLike): Message;
-  static empty(): Message;
+  static from(data: BufferLike): Message;
+  static alloc(size: number): Message;
+  static allocate(size: number): Message;
 
   toBuffer(): Buffer;
   byteLength(): number;
@@ -276,7 +276,7 @@ class Socket {
 
 고정 의도:
 
-- `copyOf` 와 `wrap` 으로 복사/borrow를 이름으로 구분한다.
+- `from` 와 `wrap` 으로 복사/borrow를 이름으로 구분한다.
 - `recv()` 는 메시지 경계를 보존해야 하며, size 추측을 호출자에게 강제하지 않는다.
 - `recvInto()` 는 preallocated `Buffer` 재사용이 필요한 hot path 전용 API로 둔다.
 - `Received.close()` 는 native borrowed resource가 있는 경우에만 의미를 갖고, pure
@@ -321,7 +321,7 @@ class Socket {
 ### Phase 1. `Message` / `Received` / `Socket` canonical화
 
 - `Socket.recv(size)` 의존 제거
-- `Message.copyOf` / `Message.wrap` 도입
+- `Message.from` / `Message.alloc` 도입
 - `Received` aggregate 도입
 - 기존 `send`, `sendFrom`, `recvInto`, multipart path를 새 canonical 경로 위로 연결
 

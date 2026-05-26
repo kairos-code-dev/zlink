@@ -63,7 +63,7 @@ public sealed class RequestFailureMappingTests
             CancellationToken.None);
 
         var task = submitter.SubmitRequestAsync<string>(
-            Message.FromString("payload"),
+            Message.From("payload"),
             (_, _, _) => throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.NotConnected));
 
         var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await task.AsTask());
@@ -80,7 +80,7 @@ public sealed class RequestFailureMappingTests
             CancellationToken.None);
 
         var task = submitter.SubmitRequestAsync<string>(
-            Message.FromString("payload"),
+            Message.From("payload"),
             (_, _, _) => throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.Backpressured));
 
         var error = await Assert.ThrowsAsync<TimeoutException>(async () => await task.AsTask());

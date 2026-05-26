@@ -37,8 +37,8 @@ public final class MessageOutboundMicrobench {
         writeFrame(replyBytes, bodyBytes);
 
         try (Arena arena = Arena.ofShared();
-             Message headerMessage = Message.copyOf(HEADER);
-             Message bodyMessage = Message.copyOf(bodyBytes)) {
+             Message headerMessage = Message.from(HEADER);
+             Message bodyMessage = Message.from(bodyBytes)) {
             MemorySegment scratchMsg = arena.allocate(MsgFfmBenchSupport.MSG_LAYOUT);
             bench("reply_bytes_only", bodySize, () -> {
                 writeFrame(replyBytes, bodyBytes);
@@ -47,7 +47,7 @@ public final class MessageOutboundMicrobench {
             });
 
             bench("response_copy_of_bytes", bodySize, () -> {
-                try (Message response = Message.copyOf(replyBytes, 0, totalSize)) {
+                try (Message response = Message.from(replyBytes, 0, totalSize)) {
                     blackhole ^= response.size();
                 }
                 return totalSize;
@@ -77,7 +77,7 @@ public final class MessageOutboundMicrobench {
             });
 
             bench("response_copy_of_bytes_send_prepare", bodySize, () -> {
-                try (Message response = Message.copyOf(replyBytes, 0, totalSize)) {
+                try (Message response = Message.from(replyBytes, 0, totalSize)) {
                     response.transferTo(scratchMsg);
                     blackhole ^= MsgFfmBenchSupport.msgSize(scratchMsg);
                     MsgFfmBenchSupport.msgClose(scratchMsg);

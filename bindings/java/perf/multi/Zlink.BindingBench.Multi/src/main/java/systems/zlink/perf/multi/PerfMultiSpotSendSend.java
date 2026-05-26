@@ -86,7 +86,7 @@ final class PerfMultiSpotSendSend {
                 }
             });
             awaitDirectControlStart(control, node, config,
-                "spot sendsend server");
+                "spot sendsend server", spotServerReadyTimeoutMs(config));
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSpotNodeAutoHwm(config, node, "server");
             long activeEnd = System.nanoTime()
@@ -372,7 +372,8 @@ final class PerfMultiSpotSendSend {
     private static void awaitDirectControlStart(PerfSpotDirectControl control,
                                                 SpotNode dataNode,
                                                 PerfUtil.Config config,
-                                                String label) {
+                                                String label,
+                                                int timeoutMs) {
         String expectedStart = "START," + config.size();
         try (BufferedReader reader = new BufferedReader(
                  new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
@@ -386,14 +387,14 @@ final class PerfMultiSpotSendSend {
                 }
             }
             PerfSpotDirectControl.ReadyState ready = control.waitReady(
-                config.size(), config.clients(), config.connectReadyTimeoutMs(),
+                config.size(), config.clients(), timeoutMs,
                 endpoint -> dataNode.connectPeer(normalizeClientEndpoint(endpoint,
                     config.transport())));
             if (ready.dataEndpoints().isEmpty()) {
                 throw new IllegalStateException(label + " missing data endpoint");
             }
             waitForConnectedPeers(dataNode, ready.dataEndpoints().size(),
-                config.connectReadyTimeoutMs(), label + " data link");
+                timeoutMs, label + " data link");
             while ((line = reader.readLine()) != null) {
                 if (expectedStart.equals(line)) {
                     control.publishStart(config.size());
@@ -404,6 +405,11 @@ final class PerfMultiSpotSendSend {
             throw new IllegalStateException(label + " control read failed", ex);
         }
         throw new IllegalStateException(label + " missing " + expectedStart);
+    }
+
+    private static int spotServerReadyTimeoutMs(PerfUtil.Config config) {
+        int connectTimeoutMs = Math.max(1, config.connectReadyTimeoutMs());
+        return Math.max(connectTimeoutMs, Math.max(1000, connectTimeoutMs * 6));
     }
 
     private static void waitForConnectedPeers(SpotNode node,

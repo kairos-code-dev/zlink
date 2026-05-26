@@ -185,7 +185,7 @@ public sealed class UnhandledDispatchPolicyTests
             new { Broken = "payload" },
             typeof(object));
         requestParts[1].Dispose();
-        requestParts = [requestParts[0], Message.FromString("{")];
+        requestParts = [requestParts[0], Message.From("{")];
 
         var requestTask = dealerSocket.Request()
             .Message(requestParts[0])

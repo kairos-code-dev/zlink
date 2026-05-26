@@ -42,7 +42,7 @@ public final class ActorSinglePlayerQueueSample {
                     try (ActorJoinRequest request =
                              spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
                         if (request != null) {
-                            try (Message reply = Message.copyOfUtf8("ok")) {
+                            try (Message reply = Message.from("ok")) {
                                 spot.replyActorJoin(request, 0)
                                   .message(reply)
                                   .submit();
@@ -75,7 +75,7 @@ public final class ActorSinglePlayerQueueSample {
                   .submitAsync()
                   .join()
                   .forEach(Message::close);
-                try (Message request = Message.copyOfUtf8("join")) {
+                try (Message request = Message.from("join")) {
                     actor.join(spot)
                       .message(request)
                       .timeout(Duration.ofSeconds(2))
@@ -86,13 +86,13 @@ public final class ActorSinglePlayerQueueSample {
                 }
                 SampleSupport.waitUntil("actor join", () -> !replies.isEmpty());
                 actor.leave(spot).submitAsync().join().forEach(Message::close);
-                try (Message payload = Message.copyOfUtf8("queued")) {
+                try (Message payload = Message.from("queued")) {
                     stream.sendBoundActor(sessionRid, "solo")
                       .message(payload)
                       .submit();
                 }
 
-                try (Message request = Message.copyOfUtf8("rejoin")) {
+                try (Message request = Message.from("rejoin")) {
                     actor.join(spot)
                       .message(request)
                       .timeout(Duration.ofSeconds(2))

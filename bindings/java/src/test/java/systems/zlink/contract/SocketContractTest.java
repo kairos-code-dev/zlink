@@ -92,7 +92,7 @@ public class SocketContractTest {
             server.bind(endpoint);
             client.connect(endpoint);
 
-            try (Message outbound = Message.copyOfUtf8("pair-contract")) {
+            try (Message outbound = Message.from("pair-contract")) {
                 client.send().message(outbound).submit();
             }
 
@@ -128,12 +128,12 @@ public class SocketContractTest {
                     assertTrue(received.requestSeq().isPresent());
                     assertTrue(received.requestSeq().orElseThrow() != 0L);
                     received.reply()
-                        .message(Message.copyOfUtf8("pong"))
+                        .message(Message.from("pong"))
                         .submit();
                 }
             }, serverExecutor);
 
-            try (Message request = Message.copyOfUtf8("ping")) {
+            try (Message request = Message.from("ping")) {
                 List<Message> reply = dealerSocket.request()
                     .message(request)
                     .timeout(Duration.ofSeconds(2))
@@ -162,7 +162,7 @@ public class SocketContractTest {
             dealerSocket.connect(endpoint);
 
             dealerSocket.send()
-                .message(Message.copyOfUtf8("plain-data"))
+                .message(Message.from("plain-data"))
                 .submit();
 
             try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
@@ -193,7 +193,7 @@ public class SocketContractTest {
 
                     routerSocket.recv(received, systems.zlink.contracts.RecvFlags.NONE);
                     received.reply()
-                        .message(Message.copyOfUtf8("pong-callback"))
+                        .message(Message.from("pong-callback"))
                         .submit();
                 }
             }, serverExecutor);
@@ -202,7 +202,7 @@ public class SocketContractTest {
             AtomicReference<List<Message>> replyRef = new AtomicReference<>();
             AtomicReference<RequestResult> resultRef = new AtomicReference<>();
             AtomicReference<Throwable> errorRef = new AtomicReference<>();
-            try (Message request = Message.copyOfUtf8("ping-callback")) {
+            try (Message request = Message.from("ping-callback")) {
                 dealerSocket.request().message(request).submit((result, reply) -> {
                     resultRef.set(result);
                     replyRef.set(reply);
@@ -248,7 +248,7 @@ public class SocketContractTest {
             TestSupport.awaitMonitorEvent(pubMonitor,
                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY);
 
-            try (Message payload = Message.copyOfUtf8("socket-payload")) {
+            try (Message payload = Message.from("socket-payload")) {
                 pub.publish("socket-topic").message(payload).submit();
             }
 
@@ -536,7 +536,7 @@ public class SocketContractTest {
             dealerSocket.connect(endpoint);
 
             CompletableFuture<List<Message>> future;
-            try (Message request = Message.copyOfUtf8("ping")) {
+            try (Message request = Message.from("ping")) {
                 future = dealerSocket.request()
                     .message(request)
                     .timeout(Duration.ofMillis(50))
@@ -550,7 +550,7 @@ public class SocketContractTest {
                 SubmitException submitException = assertThrows(
                     SubmitException.class,
                     () -> received.reply()
-                        .message(Message.copyOfUtf8("pong"))
+                        .message(Message.from("pong"))
                         .flags(SendFlags.DONT_WAIT)
                         .submit());
                 assertEquals(SubmitResult.NOT_SUPPORTED,
@@ -810,7 +810,7 @@ public class SocketContractTest {
             try (systems.zlink.contracts.Received probe = new systems.zlink.contracts.Received()) {
                 assertFalse(server.recv(probe, RecvFlags.DONT_WAIT));
             }
-            try (Message outbound = Message.copyOfUtf8("pair-try")) {
+            try (Message outbound = Message.from("pair-try")) {
                 assertTrue(client.send().message(outbound).flags(SendFlags.DONT_WAIT).submit());
             }
             try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {

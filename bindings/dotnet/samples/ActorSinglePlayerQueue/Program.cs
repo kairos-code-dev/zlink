@@ -6,7 +6,7 @@ if (!SampleSupport.IsNativeAvailable())
 
 static async Task JoinAndAccept(Spot spot, Actor actor)
 {
-    using Message joinMessage = Message.FromString("join:queue");
+    using Message joinMessage = Message.From("join:queue");
     Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
         actor.Join(spot)
             .Message(joinMessage)
@@ -18,7 +18,7 @@ static async Task JoinAndAccept(Spot spot, Actor actor)
         request = spot.RecvActorJoin(RecvFlags.DontWait);
         return request != null;
     }, 2000, "actor queue join request");
-    using Message reply = Message.FromString("accepted:queue");
+    using Message reply = Message.From("accepted:queue");
     spot.ReplyActorJoin(request!, joinResultCode: 0).Message(reply).Submit();
     foreach (Message part in (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
         part.Dispose();
@@ -66,7 +66,7 @@ Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor.Ref)
 
 await JoinAndAccept(spot, actor);
 
-using Message first = Message.FromString("queue:first");
+using Message first = Message.From("queue:first");
 stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
     .Message(first)
     .Submit();
@@ -79,7 +79,7 @@ Zlink.MultipartClose(await actor.Leave(spot)
     .Timeout(TimeSpan.FromSeconds(2))
     .SubmitAsync()
     .WaitAsync(TimeSpan.FromSeconds(5)));
-using Message second = Message.FromString("queue:second");
+using Message second = Message.From("queue:second");
 stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
     .Message(second)
     .Submit();

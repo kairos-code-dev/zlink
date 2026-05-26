@@ -62,7 +62,7 @@ internal static class ZLinkSpotActorFrameReader
     {
         if (!hasBody)
         {
-            return Message.FromBytes(ReadOnlySpan<byte>.Empty);
+            return Message.From(ReadOnlySpan<byte>.Empty);
         }
 
         if (index >= parts.Count)

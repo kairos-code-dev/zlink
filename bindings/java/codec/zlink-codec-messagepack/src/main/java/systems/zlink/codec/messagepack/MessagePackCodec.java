@@ -20,7 +20,7 @@ public final class MessagePackCodec {
         Objects.requireNonNull(value, "value");
         try {
             byte[] payload = DEFAULT_OBJECT_MAPPER.writeValueAsBytes(value);
-            return systems.zlink.contracts.Message.copyOf(payload);
+            return systems.zlink.contracts.Message.from(payload);
         } catch (JsonProcessingException ex) {
             throw new IllegalArgumentException(
                 "failed to encode MessagePack payload", ex);

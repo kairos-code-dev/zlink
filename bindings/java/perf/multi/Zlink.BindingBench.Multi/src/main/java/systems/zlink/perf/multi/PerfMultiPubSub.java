@@ -199,7 +199,7 @@ final class PerfMultiPubSub {
     // retry, no POLLOUT wait.
     private static void publishDropOnBackpressure(PubSocket pub,
                                                   Message message) {
-        try (Message outbound = Message.copyOf(message)) {
+        try (Message outbound = Message.from(message)) {
             pub.publish(TOPIC)
                 .message(outbound)
                 .flags(SendFlags.DONT_WAIT)

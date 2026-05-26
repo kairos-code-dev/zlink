@@ -5,6 +5,8 @@ use std::io::{self, BufRead, Write};
 use std::time::{Duration, Instant};
 use zlink::*;
 
+const STOP_DRAIN_GRACE: Duration = Duration::from_millis(500);
+
 // Returns (processed_any, stop_seen). C perf_multi_pubsub_client.cpp
 // recv_one_pubsub_message(): the wire stop token (pubsub_recv_stop) ends the
 // recv phase.
@@ -127,7 +129,19 @@ fn main() {
     let latency_stride = resolve_latency_sample_stride();
 
     while !phase_done {
-        match poller.wait(&mut events, -1) {
+        let now = Instant::now();
+        let wait_ms = if now < active_deadline {
+            let remaining = active_deadline.saturating_duration_since(now);
+            remaining.as_millis().clamp(1, i64::MAX as u128) as i64
+        } else {
+            let stop_deadline = active_deadline + STOP_DRAIN_GRACE;
+            if now >= stop_deadline {
+                break;
+            }
+            let remaining = stop_deadline.saturating_duration_since(now);
+            remaining.as_millis().clamp(1, i64::MAX as u128) as i64
+        };
+        match poller.wait(&mut events, wait_ms) {
             Ok(event_count) => {
                 for event in &events[..event_count] {
                     if event.revents & POLLIN == 0 || event.slot >= sockets.len() {

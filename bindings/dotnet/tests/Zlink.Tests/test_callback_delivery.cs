@@ -61,7 +61,7 @@ public sealed class test_callback_delivery
                 observedPayload = payload;
                 try
                 {
-                    using Message reply = Message.FromString("pong");
+                    using Message reply = Message.From("pong");
                     stream.Send(routingId).Message(reply).Submit();
                 }
                 finally
@@ -187,7 +187,7 @@ public sealed class test_callback_delivery
                 }
             });
 
-            using Message request = Message.FromString("ping");
+            using Message request = Message.From("ping");
             spot.RequestChannel("svc")
                 .Message(request)
                 .Timeout(TimeSpan.FromSeconds(2))
@@ -220,7 +220,7 @@ public sealed class test_callback_delivery
         {
             Assert.Equal("ping", received.Parts[0].GetString());
             Assert.True(received.RequestSeq.HasValue);
-            using Message reply = Message.FromString("pong");
+            using Message reply = Message.From("pong");
             router.Reply(
                 received.RoutingId ?? throw new InvalidOperationException(
                     "missing routing id"), received.RequestSeq.Value)

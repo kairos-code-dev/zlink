@@ -214,7 +214,7 @@ test('value and handle objects without documented constructors are runtime guard
   assert.throws(() => new zlink.ContextOptions(ctx), TypeError);
 
   assert.ok(zlink.RoutingId.fromBytes(Buffer.from('id')) instanceof zlink.RoutingId);
-  assert.ok(new zlink.Message('payload') instanceof zlink.Message);
+  assert.ok(zlink.Message.from('payload') instanceof zlink.Message);
 
   pub.close();
   ctx.close();

@@ -60,7 +60,7 @@ fn main() {
     drop(router_mon);
     drop(dealer_mon);
 
-    let req = Message::copy_from(b"ping").expect("message failed");
+    let req = Message::try_from(b"ping").expect("message failed");
     dealer.send().message(req).submit().expect("send failed");
 
     let mut received = zlink::Received::empty();
@@ -70,7 +70,7 @@ fn main() {
     assert!(received.routing_id().is_some());
     assert_eq!(received.parts()[0].as_str().unwrap(), "ping");
 
-    let resp = Message::copy_from(b"pong").expect("message failed");
+    let resp = Message::try_from(b"pong").expect("message failed");
     received
         .send()
         .message(resp)

@@ -31,7 +31,7 @@ Task serverTask = Task.Run(() =>
             ?? throw new InvalidOperationException("missing routing id");
         string requestPayload = received.Parts[0].GetString();
         SampleSupport.EnsureEqual("ping", requestPayload, "request");
-        using var reply = Message.FromString("pong");
+        using var reply = Message.From("pong");
         routerSocket.Reply(routingId, received.RequestSeq ?? 0UL)
             .Message(reply).Submit();
     }
@@ -41,7 +41,7 @@ Task serverTask = Task.Run(() =>
     }
 });
 
-using var sent = Message.FromString("ping");
+using var sent = Message.From("ping");
 IReadOnlyList<Message> replyReceived = await dealerSocket.Request()
     .Message(sent)
     .Timeout(TimeSpan.FromSeconds(2))

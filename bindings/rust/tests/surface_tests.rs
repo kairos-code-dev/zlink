@@ -18,7 +18,7 @@ fn pair_socket_has_send_recv() {
     sock.bind("inproc://surface-pair").unwrap();
 
     // PairSocket exposes: send, recv
-    let msg = Message::copy_from(b"test").unwrap();
+    let msg = Message::try_from(b"test").unwrap();
     let _ = sock
         .send()
         .message(msg)
@@ -35,7 +35,7 @@ fn pub_socket_has_publish_no_recv() {
     sock.bind("inproc://surface-pub").unwrap();
 
     // PubSocket exposes: publish
-    let msg = Message::copy_from(b"payload").unwrap();
+    let msg = Message::try_from(b"payload").unwrap();
     let _ = sock
         .publish("market.price")
         .message(msg)
@@ -80,7 +80,7 @@ fn router_socket_send_requires_routing_id() {
 
     // RouterSocket::send takes a RoutingId and returns a builder.
     let rid = RoutingId::from_bytes(b"peer-001");
-    let msg = Message::copy_from(b"response").unwrap();
+    let msg = Message::try_from(b"response").unwrap();
     let _ = sock.send(&rid).message(msg).submit();
     let _ = sock.recv_part(RecvFlags::DONT_WAIT);
 }
@@ -92,7 +92,7 @@ fn stream_socket_send_requires_routing_id() {
     sock.bind("tcp://127.0.0.1:*").unwrap();
 
     let rid = RoutingId::from_bytes(b"client-001");
-    let msg = Message::copy_from(b"data").unwrap();
+    let msg = Message::try_from(b"data").unwrap();
     let _ = sock.send(&rid).message(msg).submit();
 }
 
@@ -226,7 +226,7 @@ fn socket_monitor_has_recv() {
 
 #[test]
 fn message_diagnostic_surface_exists() {
-    let msg = Message::copy_from(b"surface").unwrap();
+    let msg = Message::try_from(b"surface").unwrap();
     let _ = msg.ref_count();
     let _ = msg.get_property("missing");
 }

@@ -77,7 +77,8 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 
 	flushControlLine("READY,%s", dataEndpoint)
 	flushControlLine("CONTROL_READY,%s", controlEndpoint)
-	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
+	readyTimeout := multiSpotEchoServerReadyTimeout()
+	deadline := time.Now().Add(readyTimeout)
 	for time.Now().Before(deadline) {
 		drainMultiSpotSendSendServer(replier, cfg.transport, cfg.msgSize)
 		select {
@@ -86,6 +87,7 @@ func runMultiSpotSendSendServer(cfg multiConfig) {
 			case strings.HasPrefix(text, "CONNECT_CONTROL,"):
 				endpoint := strings.TrimPrefix(text, "CONNECT_CONTROL,")
 				perfcommon.Must(controlNode.ConnectPeer(endpoint))
+				waitMultiSpotReqRepConnectedPeer(controlNode, readyTimeout)
 				flushControlLine("CONTROL_CONNECTED,%s", endpoint)
 			case text == fmt.Sprintf("START,%d", cfg.msgSize):
 				startRunner = true

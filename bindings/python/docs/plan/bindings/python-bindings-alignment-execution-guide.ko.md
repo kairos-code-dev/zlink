@@ -186,7 +186,7 @@ cd bindings/python && python -m pytest -q tests/integration
 
 - `Socket` raw 계층을 `send`, `recv_message`, `recv_multipart`, `recv_into` 중심으로
   재구성
-- `Message.copy_from` / `Message.wrap_buffer` 표면 고정
+- `Message.from_` / `Message.wrap_buffer` 표면 고정
 - context manager 추가
 - `Received*` aggregate lifecycle 모델 구현
 
@@ -200,7 +200,7 @@ cd bindings/python && python -m pytest -q tests/integration
 
 - 2026-03-26: `Socket.send`, `send_multipart`, `recv_message`,
   `recv_multipart`, `recv_into`, `publish`, `recv_topic_message`,
-  `subscription_event`, `Message.copy_from`, `Message.wrap_buffer`,
+  `subscription_event`, `Message.from_`, `Message.wrap_buffer`,
   `ReceivedMessage`, `ReceivedMultipart`, `ReceivedTopicMessage` 1차 반영
 - 2026-03-26: `Received*`가 native recv 결과를 직접 소유하도록 lifecycle 모델
   재구성하고 `recv_into()`를 caller-owned writable buffer direct fill 경로로 정리

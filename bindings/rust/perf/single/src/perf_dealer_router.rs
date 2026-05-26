@@ -58,7 +58,7 @@ fn main() {
     common::wait_monitor_ready(&mut mon, ready_timeout, "dealer-router dealer");
     dealer
         .send()
-        .message(Message::copy_from(b"PING").expect("dealer ping"))
+        .message(Message::try_from(b"PING").expect("dealer ping"))
         .submit()
         .expect("dealer handshake send");
     let mut handshake = zlink::Received::empty();
@@ -72,7 +72,7 @@ fn main() {
     assert_eq!(handshake.parts()[0].as_bytes(), b"PING");
     router
         .send(&reply_rid)
-        .message(Message::copy_from(b"PONG").expect("router pong"))
+        .message(Message::try_from(b"PONG").expect("router pong"))
         .submit()
         .expect("router handshake reply");
     let mut handshake_reply = zlink::Received::empty();

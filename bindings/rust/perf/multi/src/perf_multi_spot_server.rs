@@ -50,7 +50,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
     while Instant::now() < deadline {
         match control_pub
             .publish(TOPIC)
-            .message(Message::copy_from(payload.as_bytes()).expect("control message"))
+            .message(Message::try_from(payload.as_bytes()).expect("control message"))
             .flags(SendFlags::DONT_WAIT)
             .submit()
         {
@@ -67,7 +67,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
 fn main() {
     let args = common::MultiArgs::parse();
     let settings = common::MultiSettings::from_env();
-    let ready_timeout = common::resolve_multi_connect_ready_timeout();
+    let ready_timeout = common::resolve_multi_spot_server_ready_timeout();
     let (event_tx, event_rx) = mpsc::channel::<ServerEvent>();
 
     {
@@ -153,6 +153,7 @@ fn main() {
                     control_node
                         .connect_peer(&endpoint)
                         .expect("connect client control");
+                    let _ = common::wait_spot_peer_connected(&control_node, ready_timeout);
                     println!("CONTROL_CONNECTED,{endpoint}");
                     io::stdout().flush().ok();
                 }
@@ -186,6 +187,7 @@ fn main() {
                 control_node
                     .connect_peer(&endpoint)
                     .expect("connect client control");
+                let _ = common::wait_spot_peer_connected(&control_node, ready_timeout);
                 println!("CONTROL_CONNECTED,{endpoint}");
                 io::stdout().flush().ok();
             }

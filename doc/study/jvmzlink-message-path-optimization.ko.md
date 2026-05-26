@@ -853,7 +853,7 @@ spec 문서에 없는 표면이라 `router-router`, `dealer-router`에서
 
 `.NET`은 `Message`의 byte input 경로를 더 얇게 바꿨다.
 
-- `Message.FromBytes(...)`로 만든 message는 managed copy를 유지하고
+- `Message.From(...)`로 만든 message는 managed copy를 유지하고
   single-part send에서 native `msg_t` move 대신 borrowed send를 탈 수 있게 함
 - `Message.Move()` / `Message.Copy()`도 managed-backed 상태를 유지하도록 조정
 

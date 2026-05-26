@@ -18,12 +18,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 public class NettyAdapterContractTest {
 
     @Test
-    public void copyOfByteBufDoesNotMutateReaderIndex() {
+    public void fromByteBufDoesNotMutateReaderIndex() {
         ByteBuf source = Unpooled.directBuffer();
         source.writeBytes("alpha".getBytes(StandardCharsets.UTF_8));
         source.readerIndex(1);
 
-        try (Message msg = NettyMessages.copyOf(source)) {
+        try (Message msg = NettyMessages.from(source)) {
             assertEquals(1, source.readerIndex());
             assertArrayEquals("lpha".getBytes(StandardCharsets.UTF_8),
                 msg.toByteArray());
@@ -35,7 +35,7 @@ public class NettyAdapterContractTest {
     @Test
     public void copyToByteBufWrites() {
         ByteBuf dest = Unpooled.buffer(16);
-        try (Message msg = Message.copyOf("gamma".getBytes(StandardCharsets.UTF_8))) {
+        try (Message msg = Message.from("gamma".getBytes(StandardCharsets.UTF_8))) {
             int written = NettyMessages.copyTo(msg, dest);
             assertEquals(5, written);
             byte[] actual = new byte[written];

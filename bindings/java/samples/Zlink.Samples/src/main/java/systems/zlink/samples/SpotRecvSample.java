@@ -46,7 +46,7 @@ public final class SpotRecvSample {
 
             Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
             while (Instant.now().isBefore(deadline)) {
-                try (Message payload = Message.copyOfUtf8(SampleSupport.SPOT_PAYLOAD)) {
+                try (Message payload = Message.from(SampleSupport.SPOT_PAYLOAD)) {
                     publisher.publish(topic).message(payload).submit();
                 }
                 try (TopicMessage topicMessage = new TopicMessage()) {

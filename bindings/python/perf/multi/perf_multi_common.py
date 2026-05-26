@@ -176,6 +176,11 @@ def resolve_multi_spot_control_settle_s():
     return _env_int("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25) / 1000.0
 
 
+def resolve_multi_spot_server_ready_timeout_s():
+    ready_timeout_ms = resolve_multi_connect_ready_timeout_ms()
+    return max(ready_timeout_ms, max(1000, ready_timeout_ms * 6)) / 1000.0
+
+
 def resolve_multi_server_ready_timeout_ms():
     return _env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", _env_int("PERF_SERVER_READY_TIMEOUT_MS", 10000))
 
@@ -305,6 +310,18 @@ def wait_control_readable_until(poller, events, deadline):
 
 def wait_spot_writable_until(poller, events, deadline):
     wait_spot_poller_until(poller, events, deadline, 0.010)
+
+
+def wait_spot_peer_connected(node, timeout_s):
+    deadline = time.perf_counter() + timeout_s
+    while time.perf_counter() < deadline:
+        try:
+            if node.status_snapshot().connected_peer_count >= 1:
+                return True
+        except Exception:
+            pass
+        time.sleep(0.001)
+    return False
 
 
 def wait_spot_poller_until(poller, events, deadline, max_wait_s):

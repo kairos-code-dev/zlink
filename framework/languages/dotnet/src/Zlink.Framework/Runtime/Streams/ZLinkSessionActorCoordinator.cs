@@ -210,8 +210,8 @@ internal sealed class ZLinkSessionActorCoordinator(
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var headerPart = Message.FromBytes(headerBytes);
-            using var bodyPart = Message.FromBytes(bodyBytes);
+            using var headerPart = Message.From(headerBytes);
+            using var bodyPart = Message.From(bodyBytes);
             try
             {
                 if (managedStream.SendBoundActor(

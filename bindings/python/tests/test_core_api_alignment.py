@@ -491,6 +491,9 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertEqual(rid.to_bytes(), b"peer-1")
         self.assertEqual(rid.size, 6)
         self.assertEqual(str(rid), rid.to_hex())
+        self.assertTrue(hasattr(zlink.Message, "from_"))
+        self.assertFalse(hasattr(zlink.Message, "copy_from"))
+        self.assertFalse(hasattr(zlink.Message, "from_bytes"))
 
     def test_message_does_not_expose_borrowed_wrap_surface(self):
         self.assertFalse(hasattr(zlink.Message, "wrap_buffer"))
@@ -528,7 +531,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
             _ = options.manual
         self.assertEqual(cm.exception.result, zlink.ConfigResult.NOT_SUPPORTED)
 
-        with zlink.Message.from_bytes(b"payload") as message:
+        with zlink.Message.from_(b"payload") as message:
             self.assertEqual(message.size(), 7)
             self.assertEqual(message.to_bytes(), b"payload")
             self.assertEqual(bytes(message.data), b"payload")

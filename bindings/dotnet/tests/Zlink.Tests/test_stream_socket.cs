@@ -364,7 +364,7 @@ public sealed class test_stream_socket
                 ?? throw new InvalidOperationException("missing routing id");
             Assert.False(routingId.IsEmpty);
             Assert.Equal("hello", CoreTestSupport.Utf8(payloadMessage));
-            using var reply = Message.FromBytes("world"u8);
+            using var reply = Message.From("world"u8);
             stream.Send(routingId).Message(reply).Submit();
             Assert.Throws<ObjectDisposedException>(() =>
             {

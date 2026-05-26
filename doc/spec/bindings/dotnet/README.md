@@ -172,6 +172,9 @@ values with clear ownership and allocation behavior.
 - Multipart payload is accumulated by repeated `Message(...)` calls.
   `Messages(...)` style convenience methods are allowed, but they are public
   builder contract members and belong in `Contracts/`.
+- Message payload factories use `Message.From(...)` overloads. Source-type
+  suffixes such as `FromBytes` and value-style factories such as `Of` are not
+  part of the public contract.
 - Do not add operation-start method families such as `SendNoWait`,
   `PublishWithFlags`, or `RequestAsync`; keep one operation name and let the
   builder absorb the variation. Terminal builder methods may use idiomatic

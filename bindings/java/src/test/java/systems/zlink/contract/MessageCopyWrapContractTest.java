@@ -24,7 +24,7 @@ public class MessageCopyWrapContractTest {
         ByteBuffer source = ByteBuffer.wrap("alpha".getBytes(StandardCharsets.UTF_8));
         source.position(1);
 
-        try (Message msg = Message.copyOf(source)) {
+        try (Message msg = Message.from(source)) {
             assertEquals(1, source.position());
             assertArrayEquals("lpha".getBytes(StandardCharsets.UTF_8),
                 msg.toByteArray());
@@ -54,7 +54,7 @@ public class MessageCopyWrapContractTest {
     public void moveTransfersPayloadToNewMessage() {
         TestSupport.assumeNative();
 
-        try (Message source = Message.copyOfUtf8("alpha")) {
+        try (Message source = Message.from("alpha")) {
             try (Message moved = source.move()) {
                 assertArrayEquals("alpha".getBytes(StandardCharsets.UTF_8),
                     moved.toByteArray());

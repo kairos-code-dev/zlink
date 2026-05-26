@@ -70,7 +70,7 @@ fn main() {
     assert_eq!(received.parts()[0].as_bytes(), b"hello-stream");
     received
         .send()
-        .message(zlink::Message::copy_from(b"hello-stream").expect("reply message failed"))
+        .message(zlink::Message::try_from(b"hello-stream").expect("reply message failed"))
         .submit()
         .expect("stream reply failed");
     let mut response = [0u8; 12];

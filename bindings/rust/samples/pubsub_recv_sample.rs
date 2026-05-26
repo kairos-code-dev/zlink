@@ -62,7 +62,7 @@ fn main() {
     drop(pub_mon);
     drop(sub_mon);
 
-    let msg = Message::copy_from(b"101.25").expect("message failed");
+    let msg = Message::try_from(b"101.25").expect("message failed");
     pub_sock
         .publish("prices")
         .message(msg)
@@ -70,11 +70,9 @@ fn main() {
         .expect("publish failed");
 
     let mut topic_msg = TopicMessage::empty();
-    assert!(
-        sub_sock
-            .subscribe(&mut topic_msg, RecvFlags::NONE)
-            .expect("subscribe recv failed")
-    );
+    assert!(sub_sock
+        .subscribe(&mut topic_msg, RecvFlags::NONE)
+        .expect("subscribe recv failed"));
     assert_eq!(topic_msg.topic(), "prices");
     assert_eq!(topic_msg.parts()[0].as_str().unwrap(), "101.25");
     println!(

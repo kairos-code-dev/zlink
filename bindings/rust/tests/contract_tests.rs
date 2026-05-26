@@ -58,9 +58,9 @@ fn message_create_empty() {
 }
 
 #[test]
-fn message_from_bytes() {
+fn message_try_from_bytes() {
     let data = b"contract-test-payload";
-    let msg = Message::copy_from(data).unwrap();
+    let msg = Message::try_from(data).unwrap();
     assert_eq!(msg.as_bytes(), data);
     assert_eq!(msg.size(), data.len());
 }
@@ -80,20 +80,20 @@ fn message_allocate_writable_payload() {
 
 #[test]
 fn message_as_str() {
-    let msg = Message::copy_from(b"hello").unwrap();
+    let msg = Message::try_from(b"hello").unwrap();
     assert_eq!(msg.as_str().unwrap(), "hello");
 }
 
 #[test]
 fn message_diagnostic_properties() {
-    let msg = Message::copy_from(b"diagnostic").unwrap();
+    let msg = Message::try_from(b"diagnostic").unwrap();
     assert!(msg.ref_count() >= 1);
     assert_eq!(msg.get_property("missing").unwrap(), None);
 }
 
 #[test]
 fn message_get_property_validates_input() {
-    let msg = Message::copy_from(b"diagnostic").unwrap();
+    let msg = Message::try_from(b"diagnostic").unwrap();
 
     let empty = msg.get_property("");
     assert!(empty.is_err());
@@ -112,7 +112,7 @@ fn message_get_property_validates_input() {
 fn message_drop_calls_close() {
     // Create and drop many messages to verify no native leak
     for _ in 0..1000 {
-        let msg = Message::copy_from(b"drop-test").unwrap();
+        let msg = Message::try_from(b"drop-test").unwrap();
         drop(msg);
     }
 }
@@ -194,7 +194,7 @@ fn request_router_exposes_request_sequence() {
 
     dealer_socket
         .send()
-        .message(Message::copy_from(b"plain-data").unwrap())
+        .message(Message::try_from(b"plain-data").unwrap())
         .submit()
         .unwrap();
 
@@ -212,7 +212,7 @@ fn router_reply_with_non_empty_flags_fails_explicitly() {
     let rid = RoutingId::from_bytes(b"peer-42");
     let err = router
         .reply(&rid, 1)
-        .message(Message::copy_from(b"pong").unwrap())
+        .message(Message::try_from(b"pong").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()
         .unwrap_err();
@@ -228,7 +228,7 @@ fn spot_reply_with_non_empty_flags_fails_explicitly() {
 
     let router_err = spot
         .reply_to_router(rid.clone(), 1)
-        .message(Message::copy_from(b"pong").unwrap())
+        .message(Message::try_from(b"pong").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()
         .unwrap_err();
@@ -236,7 +236,7 @@ fn spot_reply_with_non_empty_flags_fails_explicitly() {
 
     let spot_err = spot
         .reply_to_spot(rid.clone(), rid, 1)
-        .message(Message::copy_from(b"pong").unwrap())
+        .message(Message::try_from(b"pong").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()
         .unwrap_err();

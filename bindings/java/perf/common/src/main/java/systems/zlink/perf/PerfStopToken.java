@@ -54,7 +54,7 @@ public final class PerfStopToken {
 
     /** Allocates a new {@link Message} carrying the stop-token bytes. */
     public static Message newMessage() {
-        return Message.copyOf(BYTES);
+        return Message.from(BYTES);
     }
 
     /**

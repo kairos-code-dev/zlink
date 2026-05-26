@@ -151,10 +151,10 @@ func NewMessageWithSize(size int) (*Message, error) {
 	return m, nil
 }
 
-// NewMessageFromBytes creates a message from a byte slice. The current Go
+// NewMessageFrom creates a message from a byte slice. The current Go
 // binding uses the owned-message path; the helper exists so codec extensions
 // can target a stable constructor.
-func NewMessageFromBytes(data []byte) (*Message, error) {
+func NewMessageFrom(data []byte) (*Message, error) {
 	return NewMessage(data)
 }
 

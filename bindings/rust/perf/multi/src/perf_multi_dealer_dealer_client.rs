@@ -140,7 +140,7 @@ fn main() {
         for _ in 0..100 {
             match socket
                 .send()
-                .message(Message::copy_from(common::STOP_TOKEN).expect("stop token"))
+                .message(Message::try_from(common::STOP_TOKEN).expect("stop token"))
                 .submit()
             {
                 Ok(_) => {

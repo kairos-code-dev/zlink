@@ -27,5 +27,5 @@ func Encode[T any](v T) (*zlink.Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	return zlink.NewMessageFromBytes(payload)
+	return zlink.NewMessageFrom(payload)
 }

@@ -55,7 +55,7 @@ class BoundaryValidationContractTests(unittest.TestCase):
 class OwnershipContractTests(unittest.TestCase):
     def test_message_copy_owns_bytes_independently_of_source_buffer(self):
         source = bytearray(b"payload")
-        with zlink.Message.copy_from(source) as message:
+        with zlink.Message.from_(source) as message:
             source[:] = b"changed"
             self.assertEqual(message.to_bytes(), b"payload")
 

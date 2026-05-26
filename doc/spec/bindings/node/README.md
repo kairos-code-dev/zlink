@@ -182,6 +182,9 @@ and published TypeScript declarations when category separation is needed.
   message-owned native storage before the native queue can outlive the call.
   Do not expose or use borrowed Buffer send helpers such as
   `socketSendBorrowedNoWaitResult`.
+- Message payload factories use `Message.from(...)`. The public TypeScript
+  contract should not require callers to use `new Message(...)` for payload
+  construction.
 - Do not add operation-start method families such as `sendNoWait`,
   `publishWithFlags`, or `requestAsync`; keep one operation name and let the
   builder absorb the variation. Terminal builder methods may use idiomatic

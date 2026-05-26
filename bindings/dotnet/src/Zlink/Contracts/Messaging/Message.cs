@@ -218,7 +218,7 @@ public sealed class Message : IDisposable, IAsyncDisposable
     /// The caller may freely mutate or discard <paramref name="data"/> after
     /// this call returns; the message holds its own copy of the payload.
     /// </summary>
-    public static Message FromBytes(byte[] data)
+    public static Message From(byte[] data)
     {
         if (data == null)
             throw new ArgumentNullException(nameof(data));
@@ -227,39 +227,39 @@ public sealed class Message : IDisposable, IAsyncDisposable
         return message;
     }
 
-    public static Message FromBytes(ReadOnlySpan<byte> data)
+    public static Message From(ReadOnlySpan<byte> data)
     {
         var message = new Message(false);
         message.InitializeManagedCopy(data);
         return message;
     }
 
-    public static Message FromBytes(ReadOnlyMemory<byte> data)
+    public static Message From(ReadOnlyMemory<byte> data)
     {
         var message = new Message(false);
         message.InitializeManagedCopy(data.Span);
         return message;
     }
 
-    public static Message FromSequence(ReadOnlySequence<byte> data)
+    public static Message From(ReadOnlySequence<byte> data)
     {
         if (data.IsSingleSegment)
-            return new Message(data.First);
-        return new Message((ReadOnlySpan<byte>)data.ToArray());
+            return From(data.First);
+        return From(data.ToArray());
     }
 
-    public static Message FromString(string value)
+    public static Message From(string value)
     {
-        return FromString(value, Encoding.UTF8);
+        return From(value, Encoding.UTF8);
     }
 
-    public static Message FromString(string value, Encoding encoding)
+    public static Message From(string value, Encoding encoding)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         if (encoding == null)
             throw new ArgumentNullException(nameof(encoding));
-        return new Message((ReadOnlySpan<byte>)encoding.GetBytes(value));
+        return From(encoding.GetBytes(value));
     }
 
     public string GetString()

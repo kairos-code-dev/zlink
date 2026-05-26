@@ -23,7 +23,7 @@ public class ByteBufferMessageContractTest {
         ByteBuffer source = ByteBuffer.wrap("alpha".getBytes(StandardCharsets.UTF_8));
         source.position(1);
 
-        try (Message msg = Message.copyOf(source)) {
+        try (Message msg = Message.from(source)) {
             assertEquals(1, source.position());
             assertArrayEquals("lpha".getBytes(StandardCharsets.UTF_8),
                 msg.toByteArray());

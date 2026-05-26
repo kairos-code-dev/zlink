@@ -44,7 +44,7 @@
 - `Socket` 은 raw 계층에서 `send`, `sendParts`, `recv`, `recvInto` 만 canonical
   API로 가진다
 - payload와 변환 책임은 `Message` 가 담당한다
-- `Message.copyOf` / `Message.wrap` 으로 copy/borrow 경계를 명시한다
+- `Message.from` 으로 payload source에서 owned `Message`를 만든다
 - `Buffer` fast path, preallocated receive buffer 경로는 유지한다
 - `Received` 는 raw recv 결과와 lifecycle aggregate를 동시에 담당한다
 - 공개 상수값과 enum coverage도 최신 헤더 기준으로 맞춘다

@@ -30,46 +30,12 @@ from perf_multi_common import (
     result_metrics,
     stamp_payload,
     wait_control_readable_until,
+    wait_spot_peer_connected,
 )
 
 
 SERVER_NODE_RID = b"SPOT-REQREP-SERVER-NODE"
 SERVER_SPOT_RID = b"SPOT-REQREP-SERVER-SPOT"
-
-
-def _request_spot_reply(spot, payload, timeout_s, poller=None, events=None):
-    done = threading.Event()
-    box = {}
-
-    def on_reply(result, messages):
-        box["result"] = result
-        box["messages"] = messages
-        done.set()
-
-    submitted = (
-        spot.request_to_spot(SERVER_NODE_RID, SERVER_SPOT_RID)
-        .message(bytes(payload))
-        .timeout(timeout_s)
-        .flags(zlink.SendFlags.DONT_WAIT)
-        .submit(on_reply)
-    )
-    if not submitted:
-        return None
-    deadline = time.perf_counter() + timeout_s + 0.1
-    while not done.is_set() and time.perf_counter() < deadline:
-        if poller is None or events is None:
-            done.wait(max(0.0, deadline - time.perf_counter()))
-            break
-        wait_ms = min(50, max(1, int((deadline - time.perf_counter()) * 1000)))
-        poller.wait(events, wait_ms)
-    if not done.is_set():
-        return None
-    if box.get("result") != zlink.RequestResult.OK:
-        return None
-    messages = box.get("messages") or []
-    if not messages:
-        return None
-    return messages[0].to_bytes()
 
 
 def _active_slot_limit(total_slots, msg_size):
@@ -161,20 +127,10 @@ def main(argv=None):
         ):
             raise RuntimeError("spot reqrep data endpoint publish timeout")
         time.sleep(control_settle_s)
+        if not wait_spot_peer_connected(data_node, handshake_timeout_s):
+            raise RuntimeError("spot reqrep data peer connection timeout")
         publish_control_payload(control_pub, "CONNECTED", timeout_s=handshake_timeout_s)
-
-        probe_deadline = time.perf_counter() + handshake_timeout_s
-        probe = stamp_payload(bytearray(args.msg_size), phase=0, run_id=run_id, seq=0)
-        while time.perf_counter() < probe_deadline:
-            if (
-                _request_spot_reply(
-                    spots[0], probe, handshake_timeout_s, poller, poll_events
-                )
-                is not None
-            ):
-                break
-        else:
-            raise RuntimeError("spot reqrep probe-ready timeout")
+        time.sleep(control_settle_s)
 
         if not publish_control_payload(
             control_pub,

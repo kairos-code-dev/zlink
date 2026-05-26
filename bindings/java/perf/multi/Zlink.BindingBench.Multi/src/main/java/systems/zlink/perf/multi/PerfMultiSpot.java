@@ -58,7 +58,8 @@ final class PerfMultiSpot {
             node.setPubBind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
-            awaitDirectControlStart(control, config, "spot server");
+            awaitDirectControlStart(control, config, "spot server",
+                spotServerReadyTimeoutMs(config));
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSpotNodeAutoHwm(config, node, "server");
             long activeEnd = System.nanoTime() + config.durationSeconds() * 1_000_000_000L;
@@ -519,7 +520,8 @@ final class PerfMultiSpot {
 
     private static void awaitDirectControlStart(PerfSpotDirectControl control,
                                                 PerfUtil.Config config,
-                                                String label) {
+                                                String label,
+                                                int timeoutMs) {
         String expectedStart = "START," + config.size();
         try (java.io.BufferedReader reader = new java.io.BufferedReader(
                  new java.io.InputStreamReader(System.in,
@@ -533,8 +535,7 @@ final class PerfMultiSpot {
                     break;
                 }
             }
-            control.waitReadyCount(config.size(), config.clients(),
-                config.connectReadyTimeoutMs());
+            control.waitReadyCount(config.size(), config.clients(), timeoutMs);
             while ((line = reader.readLine()) != null) {
                 if (expectedStart.equals(line)) {
                     control.publishStart(config.size());
@@ -549,6 +550,11 @@ final class PerfMultiSpot {
 
     private static void sleepQuietly(int millis) {
         sleepQuietly((long) millis);
+    }
+
+    private static int spotServerReadyTimeoutMs(PerfUtil.Config config) {
+        int connectTimeoutMs = Math.max(1, config.connectReadyTimeoutMs());
+        return Math.max(connectTimeoutMs, Math.max(1000, connectTimeoutMs * 6));
     }
 
     private static void sleepQuietly(long millis) {

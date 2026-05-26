@@ -46,7 +46,7 @@ public final class ActorRoomServerSample {
                         return;
                     }
                     joins.add(request.message().toUtf8String());
-                    try (Message reply = Message.copyOfUtf8("joined")) {
+                    try (Message reply = Message.from("joined")) {
                         spot.replyActorJoin(request, 0)
                           .message(reply)
                           .submit();
@@ -70,7 +70,7 @@ public final class ActorRoomServerSample {
                   .join()
                   .forEach(Message::close);
 
-                try (Message request = Message.copyOfUtf8("join-room")) {
+                try (Message request = Message.from("join-room")) {
                     actor.join(spot)
                       .message(request)
                       .timeout(Duration.ofSeconds(2))

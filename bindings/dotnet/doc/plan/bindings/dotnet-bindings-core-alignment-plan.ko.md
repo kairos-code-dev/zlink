@@ -369,10 +369,12 @@ public sealed class Message : IDisposable
     public int Size { get; }
     public int RefCount { get; }
 
-    public static Message FromBytes(byte[] data);
-    public static Message FromBytes(ReadOnlySpan<byte> data);
-    public static Message FromString(string value);
-    public static Message FromString(string value, Encoding encoding);
+    public static Message From(byte[] data);
+    public static Message From(ReadOnlySpan<byte> data);
+    public static Message From(ReadOnlyMemory<byte> data);
+    public static Message From(ReadOnlySequence<byte> data);
+    public static Message From(string value);
+    public static Message From(string value, Encoding encoding);
 
     public byte[] ToArray();
     public int CopyTo(Span<byte> destination);
@@ -384,7 +386,7 @@ public sealed class Message : IDisposable
 고정 정책:
 
 1. `Message`는 `Socket`이 아니라 payload convenience를 담당한다.
-2. `FromBytes(ReadOnlySpan<byte>)`는 입력 복사를 한 번만 수행한다.
+2. `From(ReadOnlySpan<byte>)`는 입력 복사를 한 번만 수행한다.
 3. `CopyTo(Span<byte>)`는 새 배열 할당을 피하려는 caller를 위한 경로로 둔다.
 4. payload 문자열화는 `GetString()` / `GetString(Encoding)`으로 제공한다.
    `object.ToString()`은 payload decode API로 사용하지 않는다.
@@ -678,8 +680,8 @@ public sealed class ServiceMonitor : IDisposable
    - public zero-copy API는 이번 범위에서 제외
    - `RefCount` 지원
    - `More`/`msg_get`/`msg_set` 제거
-   - `FromBytes`, `ToArray`, `CopyTo`는 유지하되 내부는 최신 `zlink_msg_*`만 사용
-   - `FromString`, `GetString` 같은 bytes/string 편의는 `Message`에 둔다.
+   - `Of`, `ToArray`, `CopyTo`는 유지하되 내부는 최신 `zlink_msg_*`만 사용
+   - `From(string)`, `GetString` 같은 bytes/string 편의는 `Message`에 둔다.
 2. `Socket` 재설계
    - 단일 바이트 배열 API 위에 message/multipart 중심 API 추가
    - raw socket public API 이름은 `Send` / `Receive` overload로 통일

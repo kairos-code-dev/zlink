@@ -73,7 +73,7 @@ fn main() {
         );
         received
             .reply()
-            .message(Message::copy_from(b"pong").expect("reply message failed"))
+            .message(Message::try_from(b"pong").expect("reply message failed"))
             .submit()
             .expect("reply send failed");
         request_done_tx.send(()).expect("request done send failed");
@@ -82,7 +82,7 @@ fn main() {
     let reply = block_on(
         dealer_socket
             .request()
-            .message(Message::copy_from(b"ping").expect("request message failed"))
+            .message(Message::try_from(b"ping").expect("request message failed"))
             .timeout(Duration::from_secs(2))
             .submit_async(),
     )

@@ -47,7 +47,7 @@ fn wait_for_spot_ready(publisher: &Spot, subscriber: &Spot, config: &common::Per
     while Instant::now() < deadline {
         match publisher
             .publish(TOPIC)
-            .message(Message::copy_from(&probe).expect("probe message"))
+            .message(Message::try_from(&probe).expect("probe message"))
             .submit()
         {
             Ok(_) => {}
@@ -151,7 +151,7 @@ fn main() {
                 common::encode_header(&mut payload, common::PHASE_ACTIVE, config.size as u32, seq);
                 match publisher
                     .publish(TOPIC)
-                    .message(Message::copy_from(&payload).expect("active message"))
+                    .message(Message::try_from(&payload).expect("active message"))
                     .flags(SendFlags::DONT_WAIT)
                     .submit()
                 {

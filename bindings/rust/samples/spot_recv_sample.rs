@@ -102,7 +102,7 @@ fn main() {
         let _ = subscriber_node.status_snapshot();
         match publisher
             .publish(TOPIC)
-            .message(Message::copy_from(b"hello-spot").unwrap())
+            .message(Message::try_from(b"hello-spot").unwrap())
             .submit()
         {
             Ok(_) => {}

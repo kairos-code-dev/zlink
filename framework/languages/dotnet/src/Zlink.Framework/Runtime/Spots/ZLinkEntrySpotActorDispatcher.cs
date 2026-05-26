@@ -170,7 +170,7 @@ internal static class ZLinkEntrySpotActorDispatcher
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var frameMessage = Message.FromBytes(frame);
+            using var frameMessage = Message.From(frame);
             try
             {
                 if (runtime.SendActorBoundSession(

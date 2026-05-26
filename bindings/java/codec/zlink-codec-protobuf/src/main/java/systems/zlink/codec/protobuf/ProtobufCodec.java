@@ -28,6 +28,6 @@ public final class ProtobufCodec {
 
     public static systems.zlink.contracts.Message toMessage(MessageLite value) {
         Objects.requireNonNull(value, "value");
-        return systems.zlink.contracts.Message.copyOf(value.toByteArray());
+        return systems.zlink.contracts.Message.from(value.toByteArray());
     }
 }

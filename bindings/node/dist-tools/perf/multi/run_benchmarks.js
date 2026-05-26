@@ -328,13 +328,13 @@ async function main() {
     }
     const clientsOverride = clientSource === 'policy' ? undefined : options.clients;
     const failFast = process.env.PERF_FAIL_FAST === '1';
-    const runCooldownMs = Number(process.env.PERF_MULTI_RUN_COOLDOWN_MS ?? 3000);
+    const runCooldownMs = Number(process.env.PERF_MULTI_RUN_COOLDOWN_MS ?? process.env.PERF_RUN_COOLDOWN_MS ?? 3000);
     const transportCooldownMs = Number.isFinite(options.transportTransitionMs)
         ? options.transportTransitionMs
-        : Number(process.env.PERF_MULTI_TRANSPORT_TRANSITION_MS ?? 3000);
+        : Number(process.env.PERF_MULTI_TRANSPORT_TRANSITION_MS ?? process.env.PERF_TRANSPORT_TRANSITION_MS ?? 3000);
     const patternCooldownMs = Number.isFinite(options.patternTransitionMs)
         ? options.patternTransitionMs
-        : Number(process.env.PERF_MULTI_PATTERN_TRANSITION_MS ?? 3000);
+        : Number(process.env.PERF_MULTI_PATTERN_TRANSITION_MS ?? process.env.PERF_PATTERN_TRANSITION_MS ?? 3000);
     // C parity: bindings/c/perf/run_comparison.py main() — single TeeStream
     // so the saved report and stdout receive the EXACT same byte stream.
     // Buffer every emitted line and write the file at the end so node's

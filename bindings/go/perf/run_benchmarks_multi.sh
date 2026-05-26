@@ -100,9 +100,9 @@ SERVER_READY_TIMEOUT_MS=""
 MONITOR_HWM=""
 SERVER_SHUTDOWN_TIMEOUT_MS=""
 SERVER_BIND_PORT=""
-RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
-TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
-PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
+RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-${PERF_RUN_COOLDOWN_MS:-3000}}"
+TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-${PERF_TRANSPORT_TRANSITION_MS:-3000}}"
+PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-${PERF_PATTERN_TRANSITION_MS:-3000}}"
 
 cleanup_report_dir() {
   local dir="$1"
@@ -824,17 +824,17 @@ emit_effective_options_multi() {
   echo "- sndtimeo_ms: ${SNDTIMEO_MS:-${PERF_MULTI_SNDTIMEO_MS:-200}}"
   echo "- rcvtimeo_ms: ${RCVTIMEO_MS:-${PERF_MULTI_RCVTIMEO_MS:-200}}"
   echo "- connect_concurrency: ${CONNECT_CONCURRENCY:-128 (default)}"
-  echo "- connect_ready_timeout_ms: ${CONNECT_READY_TIMEOUT_MS:-${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}}"
+  echo "- connect_ready_timeout_ms: ${CONNECT_READY_TIMEOUT_MS:-${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-5000}}}"
   echo "- monitor_hwm: ${MONITOR_HWM:-${PERF_MULTI_MONITOR_HWM:-1000}}"
-  echo "- server_ready_timeout_ms: ${SERVER_READY_TIMEOUT_MS:-${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}}"
-  echo "- server_shutdown_timeout_ms: ${SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}"
+  echo "- server_ready_timeout_ms: ${SERVER_READY_TIMEOUT_MS:-${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-${PERF_SERVER_READY_TIMEOUT_MS:-10000}}}"
+  echo "- server_shutdown_timeout_ms: ${SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}}"
   echo "- server_bind_port: ${SERVER_BIND_PORT:-${PERF_MULTI_SERVER_BIND_PORT:-0}}"
   echo "- transport_transition_ms: ${TRANSPORT_TRANSITION_MS}"
   echo "- pattern_transition_ms: ${PATTERN_TRANSITION_MS}"
   echo "- lat_timeout_ms: ${PERF_MULTI_LAT_TIMEOUT_MS:-5000}"
   echo "- stream_non_tcp_clients_max: ${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
   echo "- disable_resource_metrics: ${PERF_MULTI_DISABLE_RESOURCE_METRICS:-0}"
-  echo "- timeout_seconds: ${PERF_MULTI_TIMEOUT_SECONDS:-auto}"
+  echo "- timeout_seconds: ${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-auto}}"
 }
 
 is_unsupported_output() {
@@ -908,8 +908,8 @@ timeout_seconds_from_ms() {
   echo $(((millis + 999) / 1000))
 }
 
-SERVER_READY_TIMEOUT_SECONDS="$(timeout_seconds_from_ms "${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}")"
-SERVER_SHUTDOWN_TIMEOUT_SECONDS="$(timeout_seconds_from_ms "${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}")"
+SERVER_READY_TIMEOUT_SECONDS="$(timeout_seconds_from_ms "${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-${PERF_SERVER_READY_TIMEOUT_MS:-10000}}")"
+SERVER_SHUTDOWN_TIMEOUT_SECONDS="$(timeout_seconds_from_ms "${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}")"
 ONE_WAY_CLIENT_READY_TIMEOUT=10
 
 wait_for_file_prefix() {
@@ -999,8 +999,8 @@ resolve_client_timeout_seconds() {
   local transport="$2"
   local size="$3"
   local duration="$4"
-  if [[ -n "${PERF_MULTI_TIMEOUT_SECONDS:-}" ]]; then
-    echo "${PERF_MULTI_TIMEOUT_SECONDS}"
+  if [[ -n "${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-}}" ]]; then
+    echo "${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS}}"
     return
   fi
   if [[ "${pattern}" == "MULTI_STREAM" ]]; then

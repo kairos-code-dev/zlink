@@ -446,6 +446,19 @@ def _arg_or_env_int(cli_value, env_name, default):
     return _env_int(env_name, default)
 
 
+def _arg_or_env_pair_int(cli_value, primary_env, fallback_env, default):
+    if cli_value not in (None, ""):
+        try:
+            return int(cli_value)
+        except ValueError:
+            raise SystemExit(f"{primary_env} must be an integer")
+    return _env_int(primary_env, _env_int(fallback_env, default))
+
+
+def _env_pair_value(primary_env, fallback_env, default):
+    return os.environ.get(primary_env) or os.environ.get(fallback_env, default)
+
+
 def _append_line(lines, line=""):
     print(line, flush=True)
     lines.append(line)
@@ -662,16 +675,17 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
     ready_timeout_s = _arg_or_env_int(
         args.server_ready_timeout_ms,
         "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
-        10000,
+        _env_int("PERF_SERVER_READY_TIMEOUT_MS", 10000),
     ) / 1000.0
     shutdown_grace_s = _arg_or_env_int(
         args.server_shutdown_timeout_ms,
         "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-        5000,
+        _env_int("PERF_SERVER_SHUTDOWN_TIMEOUT_MS", 5000),
     ) / 1000.0
-    timeout_override = _arg_or_env_int(
+    timeout_override = _arg_or_env_pair_int(
         "",
         "PERF_MULTI_TIMEOUT_SECONDS",
+        "PERF_TIMEOUT_SECONDS",
         0,
     )
     client_timeout_s = (
@@ -968,8 +982,12 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
     rcvhwm = args.recv_hwm or args.hwm or "auto-hwm"
     sndbuf = args.sndbuf or args.buf or "auto-hwm"
     rcvbuf = args.rcvbuf or args.buf or "auto-hwm"
-    transport_transition_ms = args.transport_transition_ms or os.environ.get("PERF_MULTI_TRANSPORT_TRANSITION_MS", "3000")
-    pattern_transition_ms = args.pattern_transition_ms or os.environ.get("PERF_MULTI_PATTERN_TRANSITION_MS", "3000")
+    transport_transition_ms = args.transport_transition_ms or _env_pair_value(
+        "PERF_MULTI_TRANSPORT_TRANSITION_MS", "PERF_TRANSPORT_TRANSITION_MS", "3000"
+    )
+    pattern_transition_ms = args.pattern_transition_ms or _env_pair_value(
+        "PERF_MULTI_PATTERN_TRANSITION_MS", "PERF_PATTERN_TRANSITION_MS", "3000"
+    )
     return {
         "lang": "python",
         "suite": "multi",
@@ -1004,17 +1022,21 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
         "sndtimeo_ms": args.send_timeout_ms or os.environ.get("PERF_MULTI_SNDTIMEO_MS", "200"),
         "rcvtimeo_ms": args.recv_timeout_ms or os.environ.get("PERF_MULTI_RCVTIMEO_MS", "200"),
         "connect_concurrency": args.connect_concurrency or f"{_connect_concurrency_for_clients(clients)} (default)",
-        "connect_ready_timeout_ms": args.connect_ready_timeout_ms or os.environ.get("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", "5000"),
+        "connect_ready_timeout_ms": args.connect_ready_timeout_ms
+        or _env_pair_value("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", "PERF_CONNECT_READY_TIMEOUT_MS", "5000"),
         "monitor_hwm": args.monitor_hwm or os.environ.get("PERF_MULTI_MONITOR_HWM", "1000"),
-        "server_ready_timeout_ms": args.server_ready_timeout_ms or os.environ.get("PERF_MULTI_SERVER_READY_TIMEOUT_MS", "10000"),
-        "server_shutdown_timeout_ms": args.server_shutdown_timeout_ms or os.environ.get("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", "5000"),
+        "server_ready_timeout_ms": args.server_ready_timeout_ms
+        or _env_pair_value("PERF_MULTI_SERVER_READY_TIMEOUT_MS", "PERF_SERVER_READY_TIMEOUT_MS", "10000"),
+        "server_shutdown_timeout_ms": args.server_shutdown_timeout_ms
+        or _env_pair_value("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", "5000"),
         "server_bind_port": args.server_bind_port or os.environ.get("PERF_MULTI_SERVER_BIND_PORT", "0"),
         "transport_transition_ms": transport_transition_ms,
         "pattern_transition_ms": pattern_transition_ms,
         "lat_timeout_ms": os.environ.get("PERF_MULTI_LAT_TIMEOUT_MS", "5000"),
         "stream_non_tcp_clients_max": os.environ.get("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", "10000"),
         "disable_resource_metrics": os.environ.get("PERF_MULTI_DISABLE_RESOURCE_METRICS", "0"),
-        "timeout_seconds": os.environ.get("PERF_MULTI_TIMEOUT_SECONDS", "auto"),
+        "timeout_seconds": os.environ.get("PERF_MULTI_TIMEOUT_SECONDS")
+        or os.environ.get("PERF_TIMEOUT_SECONDS", "auto"),
     }
 
 
@@ -1112,9 +1134,13 @@ def main(argv=None):
         env["PERF_MULTI_SERVER_BIND_PORT"] = args.server_bind_port
     _configure_core_runtime(env)
 
-    run_cooldown_ms = _env_int("PERF_MULTI_RUN_COOLDOWN_MS", 3000)
-    transport_transition_ms = _env_int("PERF_MULTI_TRANSPORT_TRANSITION_MS", 3000)
-    pattern_transition_ms = _env_int("PERF_MULTI_PATTERN_TRANSITION_MS", 3000)
+    run_cooldown_ms = _env_int("PERF_MULTI_RUN_COOLDOWN_MS", _env_int("PERF_RUN_COOLDOWN_MS", 3000))
+    transport_transition_ms = _env_int(
+        "PERF_MULTI_TRANSPORT_TRANSITION_MS", _env_int("PERF_TRANSPORT_TRANSITION_MS", 3000)
+    )
+    pattern_transition_ms = _env_int(
+        "PERF_MULTI_PATTERN_TRANSITION_MS", _env_int("PERF_PATTERN_TRANSITION_MS", 3000)
+    )
 
     options = _build_options(args, patterns, transports, requested_msg_sizes, clients)
     fail_fast = os.environ.get("PERF_FAIL_FAST", "0") == "1"

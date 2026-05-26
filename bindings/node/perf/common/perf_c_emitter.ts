@@ -32,6 +32,10 @@ function parseEnvInt(name, fallback) {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+function parseEnvPairInt(primary, fallbackName, fallback) {
+  return parseEnvInt(primary, parseEnvInt(fallbackName, fallback));
+}
+
 // --- shared latency triplet (C resolve_latency_triplet) -----------------
 
 function resolveLatencyTriplet(latency, latencyP95, latencyP99) {
@@ -347,7 +351,7 @@ function buildMultiOptionItems(opts) {
     ? connectRaw
     : `${clientsForConnect >= 10000 ? 1024 : 128} (default)`;
   const serviceClients = parseEnvInt('PERF_MULTI_SERVICE_CLIENTS', 0);
-  const timeoutOverride = parseEnvInt('PERF_MULTI_TIMEOUT_SECONDS', 0);
+  const timeoutOverride = parseEnvPairInt('PERF_MULTI_TIMEOUT_SECONDS', 'PERF_TIMEOUT_SECONDS', 0);
   const roleIoDisplay = (role) => {
     const explicit = role === 'server' ? opts.serverIoThreads : opts.clientIoThreads;
     if (Number.isFinite(explicit)) {
@@ -401,13 +405,13 @@ function buildMultiOptionItems(opts) {
     ['sndtimeo_ms', optionValue(opts.sendTimeoutMs, 'PERF_MULTI_SNDTIMEO_MS', 200)],
     ['rcvtimeo_ms', optionValue(opts.recvTimeoutMs, 'PERF_MULTI_RCVTIMEO_MS', 200)],
     ['connect_concurrency', connectDisplay],
-    ['connect_ready_timeout_ms', optionValue(opts.connectReadyTimeoutMs, 'PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)],
+    ['connect_ready_timeout_ms', optionValue(opts.connectReadyTimeoutMs, 'PERF_MULTI_CONNECT_READY_TIMEOUT_MS', parseEnvInt('PERF_CONNECT_READY_TIMEOUT_MS', 5000))],
     ['monitor_hwm', optionValue(opts.monitorHwm, 'PERF_MULTI_MONITOR_HWM', 1000)],
-    ['server_ready_timeout_ms', optionValue(opts.serverReadyTimeoutMs, 'PERF_MULTI_SERVER_READY_TIMEOUT_MS', 10000)],
-    ['server_shutdown_timeout_ms', optionValue(opts.serverShutdownTimeoutMs, 'PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS', 5000)],
+    ['server_ready_timeout_ms', optionValue(opts.serverReadyTimeoutMs, 'PERF_MULTI_SERVER_READY_TIMEOUT_MS', parseEnvInt('PERF_SERVER_READY_TIMEOUT_MS', 10000))],
+    ['server_shutdown_timeout_ms', optionValue(opts.serverShutdownTimeoutMs, 'PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS', parseEnvInt('PERF_SERVER_SHUTDOWN_TIMEOUT_MS', 5000))],
     ['server_bind_port', optionValue(opts.serverBindPort, 'PERF_MULTI_SERVER_BIND_PORT', 0)],
-    ['transport_transition_ms', optionValue(opts.transportTransitionMs, 'PERF_MULTI_TRANSPORT_TRANSITION_MS', 3000)],
-    ['pattern_transition_ms', optionValue(opts.patternTransitionMs, 'PERF_MULTI_PATTERN_TRANSITION_MS', 3000)],
+    ['transport_transition_ms', optionValue(opts.transportTransitionMs, 'PERF_MULTI_TRANSPORT_TRANSITION_MS', parseEnvInt('PERF_TRANSPORT_TRANSITION_MS', 3000))],
+    ['pattern_transition_ms', optionValue(opts.patternTransitionMs, 'PERF_MULTI_PATTERN_TRANSITION_MS', parseEnvInt('PERF_PATTERN_TRANSITION_MS', 3000))],
     ['lat_timeout_ms', String(parseEnvInt('PERF_MULTI_LAT_TIMEOUT_MS', 5000))],
     ['stream_non_tcp_clients_max', String(parseEnvInt('PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX', 10000))],
     ['disable_resource_metrics', String(Math.max(0, parseEnvInt('PERF_DISABLE_RESOURCE_METRICS', 0)))],

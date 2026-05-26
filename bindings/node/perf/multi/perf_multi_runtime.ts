@@ -17,6 +17,10 @@ const POLLOUT = 2;
 const POLLCOMPLETION = 32;
 const emittedMultiAutoHwmDetails = new Set();
 
+function integerEnvPair(primary, fallbackName, fallback) {
+  return integerEnv(primary, integerEnv(fallbackName, fallback));
+}
+
 function pollEvents(mask) {
   const events = [];
   if ((mask & POLLIN) !== 0) {
@@ -544,7 +548,7 @@ function subscribeNoWaitInto(socket, received) {
 async function waitForConnectionReady(
   socket,
   connectFn = null,
-  timeoutMs = integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)
+  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
 ) {
   return waitForConnectionReadyCount(socket, 1, connectFn, timeoutMs);
 }
@@ -553,7 +557,7 @@ async function waitForConnectionReadyCount(
   socket,
   expectedCount,
   connectFn = null,
-  timeoutMs = integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)
+  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
 ) {
   const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
   try {
@@ -672,7 +676,7 @@ async function publishControlUntilSent(socket, _waiter, topic, payload) {
   const body = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
   const deadlineMs = Math.max(
     1,
-    integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)
+    integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
   );
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {

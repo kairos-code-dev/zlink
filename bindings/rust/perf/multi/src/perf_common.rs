@@ -632,7 +632,19 @@ pub fn apply_multi_spot_node_admission(node: &zlink::SpotNode, settings: &MultiS
 }
 
 pub fn resolve_multi_connect_ready_timeout() -> Duration {
-    Duration::from_millis(env_or("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5_000) as u64)
+    Duration::from_millis(env_or_multi(
+        "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
+        "PERF_CONNECT_READY_TIMEOUT_MS",
+        5_000,
+    ) as u64)
+}
+
+fn env_or_multi(primary: &str, fallback_name: &str, default: usize) -> usize {
+    std::env::var(primary)
+        .ok()
+        .or_else(|| std::env::var(fallback_name).ok())
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn env_or(name: &str, default: usize) -> usize {

@@ -393,7 +393,7 @@ function buildClientSpawn(clientPath, clientArgs, args) {
     return buildPinnedSpawn(resolveSharedStreamClientBinary(), streamClientArgs, args);
 }
 function resolveMultiTimeoutSeconds(args) {
-    const override = Number(process.env.PERF_MULTI_TIMEOUT_SECONDS || 0);
+    const override = Number(process.env.PERF_MULTI_TIMEOUT_SECONDS || process.env.PERF_TIMEOUT_SECONDS || 0);
     if (Number.isFinite(override) && override > 0) {
         return Math.trunc(override);
     }

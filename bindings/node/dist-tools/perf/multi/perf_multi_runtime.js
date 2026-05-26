@@ -9,6 +9,9 @@ const POLLIN = 1;
 const POLLOUT = 2;
 const POLLCOMPLETION = 32;
 const emittedMultiAutoHwmDetails = new Set();
+function integerEnvPair(primary, fallbackName, fallback) {
+    return integerEnv(primary, integerEnv(fallbackName, fallback));
+}
 function pollEvents(mask) {
     const events = [];
     if ((mask & POLLIN) !== 0) {
@@ -508,10 +511,10 @@ function subscribeNoWaitInto(socket, received) {
         throw error;
     }
 }
-async function waitForConnectionReady(socket, connectFn = null, timeoutMs = integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)) {
+async function waitForConnectionReady(socket, connectFn = null, timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)) {
     return waitForConnectionReadyCount(socket, 1, connectFn, timeoutMs);
 }
-async function waitForConnectionReadyCount(socket, expectedCount, connectFn = null, timeoutMs = integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)) {
+async function waitForConnectionReadyCount(socket, expectedCount, connectFn = null, timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)) {
     const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
     try {
         if (typeof connectFn === 'function') {
@@ -624,7 +627,7 @@ function sleepMs(ms) {
 // root cause, so this mirrors C exactly: bounded, returns a boolean.
 async function publishControlUntilSent(socket, _waiter, topic, payload) {
     const body = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
-    const deadlineMs = Math.max(1, integerEnv('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000));
+    const deadlineMs = Math.max(1, integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000));
     const deadline = Date.now() + deadlineMs;
     while (Date.now() < deadline) {
         if (trySocketPublish(socket, topic, body)) {

@@ -177,15 +177,15 @@ def resolve_multi_spot_control_settle_s():
 
 
 def resolve_multi_server_ready_timeout_ms():
-    return _env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000)
+    return _env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", _env_int("PERF_SERVER_READY_TIMEOUT_MS", 10000))
 
 
 def resolve_multi_server_shutdown_timeout_ms():
-    return _env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000)
+    return _env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", _env_int("PERF_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
 
 
 def resolve_multi_timeout_seconds(duration_seconds, pattern, transport, msg_size):
-    override = _env_int("PERF_MULTI_TIMEOUT_SECONDS", 0)
+    override = _env_int("PERF_MULTI_TIMEOUT_SECONDS", _env_int("PERF_TIMEOUT_SECONDS", 0))
     if override > 0:
         return override
     size = max(int(msg_size), 64)

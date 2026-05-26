@@ -457,10 +457,6 @@ default_io_threads_for_pattern() {
     esac
 }
 
-default_hwm_for_pattern() {
-    printf '%s' "1000"
-}
-
 ensure_shared_stream_client() {
     if [[ "${REUSE_BUILD}" -eq 1 ]]; then
         if [[ -z "${STREAM_CLIENT}" ]]; then
@@ -767,7 +763,6 @@ for run in $(seq 1 "${RUNS}"); do
                 CLIENT_TIMEOUT_SECONDS="$(resolve_client_timeout_seconds "${pat}" "${transport}" "${size}" "${DURATION}")"
                 export PERF_MULTI_CLIENTS="${PATTERN_CLIENTS}"
                 pattern_default_io_threads="$(default_io_threads_for_pattern "${pat}")"
-                pattern_default_hwm="$(default_hwm_for_pattern "${pat}")"
                 if [[ "${pat}" == "MULTI_STREAM" ]]; then
                     pattern_server_io_threads="${ENV_MULTI_STREAM_SERVER_IO_THREADS:-${ENV_MULTI_SERVER_IO_THREADS:-${pattern_default_io_threads}}}"
                     pattern_client_io_threads="${ENV_MULTI_STREAM_CLIENT_IO_THREADS:-${ENV_MULTI_CLIENT_IO_THREADS:-${pattern_default_io_threads}}}"
@@ -778,9 +773,16 @@ for run in $(seq 1 "${RUNS}"); do
                 export PERF_MULTI_SERVER_IO_THREADS="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-${ENV_PERF_IO_THREADS:-${pattern_server_io_threads}}}}"
                 export PERF_MULTI_CLIENT_IO_THREADS="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-${ENV_PERF_IO_THREADS:-${pattern_client_io_threads}}}}"
                 export PERF_MULTI_MSG_UNIT_BYTES="${size}"
-                export PERF_MULTI_HWM="${HWM:-${ENV_MULTI_HWM:-${pattern_default_hwm}}}"
-                export PERF_MULTI_SNDHWM="${SEND_HWM:-${ENV_MULTI_SNDHWM:-${PERF_MULTI_HWM}}}"
-                export PERF_MULTI_RCVHWM="${RECV_HWM:-${ENV_MULTI_RCVHWM:-${PERF_MULTI_HWM}}}"
+                unset PERF_MULTI_HWM PERF_MULTI_SNDHWM PERF_MULTI_RCVHWM
+                if [[ -n "${HWM}" || -n "${ENV_MULTI_HWM}" ]]; then
+                    export PERF_MULTI_HWM="${HWM:-${ENV_MULTI_HWM}}"
+                fi
+                if [[ -n "${SEND_HWM}" || -n "${ENV_MULTI_SNDHWM}" ]]; then
+                    export PERF_MULTI_SNDHWM="${SEND_HWM:-${ENV_MULTI_SNDHWM}}"
+                fi
+                if [[ -n "${RECV_HWM}" || -n "${ENV_MULTI_RCVHWM}" ]]; then
+                    export PERF_MULTI_RCVHWM="${RECV_HWM:-${ENV_MULTI_RCVHWM}}"
+                fi
                 if [[ "${pat}" == "MULTI_STREAM" ]]; then
                     export PERF_RECV_MODE="recv"
                     export PERF_DURATION_SECONDS="${DURATION}"

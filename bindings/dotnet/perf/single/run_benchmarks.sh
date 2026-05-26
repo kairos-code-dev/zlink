@@ -112,7 +112,7 @@ Options:
   --output PATH         Tee report output to PATH.
   --pin-cpu             Pin benchmark process to CPU 0 on Linux.
   --io-threads N        Context I/O threads.
-  --hwm N               Shared HWM fallback.
+  --hwm N               Debug-only manual HWM override.
   --send-hwm N          Send HWM override.
   --recv-hwm N          Receive HWM override.
   --buf SIZE            Send/receive buffer override.

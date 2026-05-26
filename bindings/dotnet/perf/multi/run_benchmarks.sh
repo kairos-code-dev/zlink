@@ -148,7 +148,7 @@ Options:
   --io-threads N        Set both server/client io threads.
   --server-io-threads N Server io threads override.
   --client-io-threads N Client io threads override.
-  --hwm N               Shared HWM fallback.
+  --hwm N               Debug-only manual HWM override.
   --send-hwm N          Send HWM override.
   --recv-hwm N          Receive HWM override.
   --buf SIZE            Send/receive buffer override.

@@ -466,6 +466,7 @@ def _git_commit():
 
 
 def _multi_effective_options(args, section):
+    default_io_threads = "1 (python default)" if args.lang == "python" else "4 (default)"
     lines = [
         f"## Effective Options ({section})",
         f"- lang: {args.lang}",
@@ -480,8 +481,8 @@ def _multi_effective_options(args, section):
         "- default_clients: 100",
         "- default_stream_clients: 10000",
         "- service_clients: auto",
-        f"- server_io_threads: {args.server_io_threads or args.common_io_threads or '4 (default)'}",
-        f"- client_io_threads: {args.client_io_threads or args.common_io_threads or '4 (default)'}",
+        f"- server_io_threads: {args.server_io_threads or args.common_io_threads or default_io_threads}",
+        f"- client_io_threads: {args.client_io_threads or args.common_io_threads or default_io_threads}",
         f"- hwm: {args.hwm or 'auto-hwm'}",
         f"- sndhwm: {args.send_hwm or args.hwm or 'auto-hwm'}",
         f"- rcvhwm: {args.recv_hwm or args.hwm or 'auto-hwm'}",

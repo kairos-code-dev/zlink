@@ -53,7 +53,12 @@ required by the perf policy and execution guide.
   supported`, are reported as `UNSUPPORTED,current,...`; other execution
   failures remain `fail`
 
-The suite uses the recv path only.
+The suite uses the recv path only. Server and client context I/O threads
+default to `1` for Python multi perf. The role processes still exercise the
+same public binding surface, but this avoids creating extra native callback
+threads that contend on the Python GIL and can drive all CPUs to 100% during
+SPOT request/reply runs. Set `--io-threads 4` or `PERF_IO_THREADS=4` for an
+explicit C-baseline resource comparison.
 
 SPOT follows the same service-aware contract as the single-suite benchmark:
 the sender publishes with the explicit `channel_name`, and the receiver drains

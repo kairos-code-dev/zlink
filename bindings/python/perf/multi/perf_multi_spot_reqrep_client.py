@@ -1,3 +1,4 @@
+import os
 import sys
 import threading
 import time
@@ -294,3 +295,6 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)

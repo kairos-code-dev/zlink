@@ -1419,6 +1419,13 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 | `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 | 100 |
 | `PERF_CAPTURE_MAX_BYTES` | 프로세스 stdout 캡처 최대 바이트 | 4194304 (4MB) |
 
+Python multi perf는 위 I/O thread 기본값의 예외다. Python runner의 기본
+server/client I/O thread 수는 `1`이며, Effective Options에 실제 값을
+기록해야 한다. Python callback은 GIL 때문에 동시에 실행되지 않으므로 기본값
+`4`는 `MULTI_SPOT_REQREP` 같은 callback-heavy 패턴에서 처리량 개선보다 CPU
+포화와 thread 경합을 먼저 만든다. C baseline과 같은 리소스 조건을 확인할
+때는 `--io-threads 4` 또는 `PERF_IO_THREADS=4`를 명시해서 실행한다.
+
 > **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 7](./PERF_POLICY.md) 참조.
 
 ---

@@ -831,7 +831,7 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 - suite별 고유 옵션(`--clients` 등)은 개별 스크립트 호출 시 전달한다.
 - official perf runner의 기본 동작은 **현재 소스 기준 최신 벤치마크 산출물**을 사용하도록 configure/build를 수행하는 것이다. `--reuse-build`는 stale build 사용을 명시적으로 허용하는 유일한 opt-out이며, 이 플래그 없이 이전 산출물/스크립트를 그대로 실행하는 runner는 정책 위반이다.
 - 결과 의미에 직접 영향을 주는 기본값(`clients`, `stream clients`, `server/client io_threads`, `hwm`, `stream hwm`)은 baseline/full-run 계약의 일부다. 기본값을 변경하면 문서와 runner help, 예시, baseline 비교 기준을 같은 변경에서 함께 갱신해야 한다.
-- multi suite의 기본 context I/O thread 수는 모든 언어에서 server/client 모두 `4`다. C, .NET, Java 등 binding perf runner는 별도 override가 없으면 server process와 client process 양쪽에 같은 값 `4`를 적용해야 한다. single suite 기본값 `1`과 섞어 쓰면 C 기준과 비교 의미가 달라진다.
+- multi suite의 기본 context I/O thread 수는 server/client 모두 `4`다. C, .NET, Java 등 binding perf runner는 별도 override가 없으면 server process와 client process 양쪽에 같은 값 `4`를 적용해야 한다. Python multi perf는 예외적으로 기본값 `1`을 사용한다. Python callback은 GIL 때문에 동시에 실행되지 않으므로 native I/O thread를 기본 `4`로 열면 측정 처리량보다 thread 경합과 CPU 포화가 먼저 커진다. Python runner는 Effective Options에 실제 값을 반드시 기록하고, `--io-threads 4` 또는 `PERF_IO_THREADS=4`로 C 기준 리소스 조건을 명시 실행할 수 있어야 한다.
 - multi 패턴은 각 size 케이스를 실행할 때 해당 payload size를 context auto-HWM message unit으로 설정해야 한다. 이 값은 payload 최대 크기 제한이 아니라 HWM 예산을 메시지 슬롯 수로 환산하기 위한 기준 단위다. size별 msg unit 설정이 빠지면 C perf와 HWM/버퍼 조건이 달라져 결과 비교가 무효가 된다.
 
 ---
@@ -1292,7 +1292,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
-| `PERF_IO_THREADS` | context I/O threads. single 기본값은 모든 패턴에서 1이며, SPOT 계열 예외를 두지 않는다. multi 기본값은 server/client 모두 4이며, 모든 언어 runner가 같은 값을 적용해야 한다. | suite별 기본값 |
+| `PERF_IO_THREADS` | context I/O threads. single 기본값은 모든 패턴에서 1이며, SPOT 계열 예외를 두지 않는다. multi 기본값은 server/client 모두 4다. Python multi는 GIL 기반 callback 경합을 피하기 위해 기본값 1을 사용하되, 이 변수를 설정하면 명시값을 따른다. | suite별 기본값 |
 | `PERF_MSG_SIZES` | 테스트 size 목록 (러너가 size별 케이스로 분할 실행). single/multi 기본값은 `64,256,1024,65536,131072,262144` 이고, multi STREAM 기본값은 `64,256,1024,65536` | suite/패턴별 기본값 |
 | `PERF_TRANSPORTS` | 테스트 transport 목록 | suite/패턴별 기본값 |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |

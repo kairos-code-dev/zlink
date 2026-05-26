@@ -15,6 +15,7 @@ from perf_multi_common import (
     build_report_path,
     parse_result_lines,
     pin_current_process_cpu0,
+    PYTHON_MULTI_DEFAULT_IO_THREADS,
     render_effective_options,
     resolve_multi_timeout_seconds,
     rows_by_case,
@@ -238,6 +239,24 @@ def _grouped_option_text(patterns, value_for_pattern, *, prefix="MULTI_"):
             f"{','.join(f'{prefix}{pattern}' for pattern in grouped_patterns)}={','.join(values)}"
         )
     return "; ".join(rendered)
+
+
+def _effective_role_io_threads(args, role):
+    role_arg = args.server_io_threads if role == "server" else args.client_io_threads
+    role_env = (
+        "PERF_MULTI_SERVER_IO_THREADS"
+        if role == "server"
+        else "PERF_MULTI_CLIENT_IO_THREADS"
+    )
+    if role_arg:
+        return role_arg
+    if args.io_threads:
+        return args.io_threads
+    if os.environ.get(role_env):
+        return os.environ[role_env]
+    if os.environ.get("PERF_IO_THREADS"):
+        return f"{os.environ['PERF_IO_THREADS']} (from PERF_IO_THREADS)"
+    return f"{PYTHON_MULTI_DEFAULT_IO_THREADS} (python default)"
 
 
 def _selected_configs(patterns, transports, requested_msg_sizes):
@@ -944,10 +963,12 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
         "duration_seconds": args.duration,
         "clients": clients,
         "default_clients": os.environ.get("PERF_MULTI_DEFAULT_CLIENTS", "100"),
-        "default_stream_clients": os.environ.get("PERF_MULTI_STREAM_CLIENTS", "10000"),
+        "default_stream_clients": os.environ.get(
+            "PERF_MULTI_DEFAULT_STREAM_CLIENTS", "10000"
+        ),
         "service_clients": "auto",
-        "server_io_threads": args.server_io_threads or args.io_threads or "4 (default)",
-        "client_io_threads": args.client_io_threads or args.io_threads or "4 (default)",
+        "server_io_threads": _effective_role_io_threads(args, "server"),
+        "client_io_threads": _effective_role_io_threads(args, "client"),
         "hwm": hwm,
         "sndhwm": sndhwm,
         "rcvhwm": rcvhwm,

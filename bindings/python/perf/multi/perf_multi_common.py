@@ -49,6 +49,7 @@ from perf_metrics import (
 
 
 TOPIC = b"bench"
+PYTHON_MULTI_DEFAULT_IO_THREADS = 1
 
 
 def received_has_stop_token(received):
@@ -118,7 +119,9 @@ def _env_int(name, default):
 def _perf_context(primary_env):
     zlink_mod = _require_zlink()
     ctx = zlink_mod.Context()
-    io_threads = _env_int(primary_env, _env_int("PERF_IO_THREADS", 4))
+    io_threads = _env_int(
+        primary_env, _env_int("PERF_IO_THREADS", PYTHON_MULTI_DEFAULT_IO_THREADS)
+    )
     if io_threads > 0:
         ctx.options.io_threads = io_threads
     return ctx

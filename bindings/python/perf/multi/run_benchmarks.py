@@ -1373,7 +1373,7 @@ def main(argv=None):
         line
         for chunk in emitted_chunks
         for line in chunk.splitlines()
-        if line.startswith(("RESULT,", "UNSUPPORTED,", "SKIP,"))
+        if line.startswith("RESULT,")
     ]
     emitted_result_lines = sort_result_data_lines(emitted_result_lines)
     skipped_cases = 0

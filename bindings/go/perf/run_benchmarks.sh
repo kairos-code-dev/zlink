@@ -659,7 +659,7 @@ fi
   echo
   echo "## Result Data"
   if [[ -s "${RAW_RESULTS_FILE}" ]]; then
-    grep -E '^(RESULT|UNSUPPORTED|SKIP|FAIL),' "${RAW_RESULTS_FILE}" || true
+    grep -E '^RESULT,' "${RAW_RESULTS_FILE}" || true
   fi
   echo
   echo "## Completion"

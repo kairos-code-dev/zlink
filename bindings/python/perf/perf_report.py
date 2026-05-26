@@ -199,7 +199,7 @@ def sort_result_data_lines(lines):
     selected = [
         line.rstrip("\n")
         for line in lines
-        if line.startswith(("RESULT,", "UNSUPPORTED,", "SKIP,", "FAIL,"))
+        if line.startswith("RESULT,")
     ]
     return sorted(selected, key=sort_key)
 

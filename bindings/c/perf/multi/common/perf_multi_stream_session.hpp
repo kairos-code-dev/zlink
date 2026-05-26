@@ -97,6 +97,7 @@ struct session_t
     zlink_socket_type_t auto_hwm_socket_type;
     int auto_hwm_hwm_value;
     std::string transport;
+    std::mutex send_mutex;
     std::mutex pending_mutex;
     std::deque<queued_message_t> pending_queue;
 };
@@ -149,11 +150,15 @@ inline size_t pending_size(session_t *session)
     return session->pending_queue.size();
 }
 
-inline send_result_t try_send(queued_message_t &queued, void *send_socket)
+inline send_result_t try_send(session_t *session, queued_message_t &queued)
 {
+    if (!session)
+        return send_result_failed;
+    void *send_socket = session->send_socket;
     if (!send_socket)
         return send_result_failed;
 
+    std::lock_guard<std::mutex> send_lock(session->send_mutex);
     const int rc = perf_zlink_send_rid_parts (
       send_socket, &queued.routing_id, &queued.msg, 1, ZLINK_DONTWAIT);
     if (rc == 0)
@@ -225,12 +230,14 @@ inline bool build_packet_frame(zlink_msg_t *packet_out,
 }
 
 inline send_result_t try_send_packet_now(void *stream_socket,
+                                         session_t *session,
                                          const zlink_routing_id_t *rid,
                                          zlink_msg_t *packet)
 {
-    if (!stream_socket || !rid || !packet)
+    if (!stream_socket || !session || !rid || !packet)
         return send_result_failed;
 
+    std::lock_guard<std::mutex> send_lock(session->send_mutex);
     const int rc = perf_zlink_send_rid_parts (stream_socket, rid, packet, 1, ZLINK_DONTWAIT);
     if (rc == 0)
         return send_result_sent;
@@ -299,7 +306,7 @@ inline bool handle_packet_message(session_t *session,
     if (!build_packet_frame(&packet, header_part, body_part))
         return false;
 
-    const send_result_t send_rc = try_send_packet_now(stream_socket, rid, &packet);
+    const send_result_t send_rc = try_send_packet_now(stream_socket, session, rid, &packet);
     if (send_rc == send_result_sent) {
         session->send_count.fetch_add (1, std::memory_order_relaxed);
         (void) zlink_msg_close(&packet);
@@ -334,7 +341,7 @@ inline void drain_pending(session_t *session)
             session->pending_queue.pop_front();
         }
 
-        const send_result_t rc = try_send(queued, session->send_socket);
+        const send_result_t rc = try_send(session, queued);
         if (rc == send_result_sent) {
             session->send_count.fetch_add(1, std::memory_order_relaxed);
             const unsigned long long pending_before =

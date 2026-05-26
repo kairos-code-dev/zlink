@@ -1,4 +1,6 @@
 
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActorDispatchSubmitter(
@@ -38,7 +40,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         }
     }
 
-    public async ValueTask<byte[]> SubmitForReplyAsync(
+    public async ValueTask<ZLinkActorReply> SubmitForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
@@ -111,6 +113,6 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
 
         public Message Payload { get; } = payload;
 
-        public byte[]? Reply { get; set; }
+        public ZLinkActorReply? Reply { get; set; }
     }
 }

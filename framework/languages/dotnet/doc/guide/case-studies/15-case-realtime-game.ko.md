@@ -117,7 +117,11 @@ public sealed class PlaceMarkHandler
     : IZLinkSpotActorRequestHandler<MatchSpot, PlayerActor, PlaceMark, PlaceMarkResult>
 {
     public ValueTask<PlaceMarkResult> HandleAsync(
-        MatchSpot spot, PlayerActor actor, PlaceMark req, CancellationToken ct)
+        MatchSpot spot,
+        PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
+        PlaceMark req,
+        CancellationToken ct)
         => ValueTask.FromResult(spot.PlaceMark(actor.ActorId, req.Cell));   // lock 불필요
 }
 ```

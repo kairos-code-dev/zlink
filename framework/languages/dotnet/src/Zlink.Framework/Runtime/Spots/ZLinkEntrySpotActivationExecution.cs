@@ -81,7 +81,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         }
     }
 
-    private async ValueTask<byte[]> InvokeActorPacketForReplyWithoutLifecycleGateAsync(
+    private async ValueTask<ZLinkActorReply> InvokeActorPacketForReplyWithoutLifecycleGateAsync(
         ZLinkSpotActorPacketDescriptor descriptor,
         IZLinkActor actor,
         ZlinkStreamHeader header,

@@ -150,7 +150,11 @@ public sealed class PlaceMarkHandler
 {
     [ZLinkSpotActorRequest]
     public ValueTask<PlaceMarkRes> HandleAsync(
-        MatchSpot spot, PlayerActor actor, PlaceMarkReq request, CancellationToken ct)
+        MatchSpot spot,
+        PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
+        PlaceMarkReq request,
+        CancellationToken ct)
         => ValueTask.FromResult(spot.PlaceMark(actor.ActorId, request.Cell));
 }
 ```
@@ -159,9 +163,10 @@ public sealed class PlaceMarkHandler
 있다. attribute 방식은 한 handler 클래스 안에 여러 method를 둘 수 있지만, method
 parameter 순서나 반환 타입 오류는 컴파일이 아니라 startup validation에서 드러난다.
 
-> **응답은 반환값으로.** actor request handler 는 절대 `context.Reply(...)` 를
-> 쓰지 않는다. 반환한 `TReply` 가 원 요청 sequence 에 응답으로 실린다. request
-> packet 이 send handler 로 fallback dispatch 되지도 않는다.
+> **응답 body는 반환값으로.** actor request handler 는 응답 body 를 직접 보내지
+> 않고 반환한 `TReply` 로 정한다. `context.Reply` 는 metadata/compression 같은
+> 응답 frame 옵션만 기록한다. request packet 이 send handler 로 fallback dispatch
+> 되지도 않는다.
 
 ### 실행 순서(중요)
 
@@ -278,20 +283,30 @@ public sealed class AuthenticateSessionPacketHandler
 
 ### Play 서버: actor 가 자기 client 로 push
 
-actor handler 는 stream 을 직접 들지 않는다. 자기 client 로 보내려면
-`Context.BoundSession` 를 쓴다.
+Spot actor handler 는 stream 을 직접 들지 않는다. 자기 client 로 보내려면
+handler 가 받은 `context.BoundSession` 를 쓴다. stream packet 이름과 전달
+허용된 metadata 도 같은 context 에 들어 있다.
 
 ```csharp
 public sealed class JoinMatchActorHandler
-    : IZLinkActorRequestHandler<JoinMatchReq, JoinMatchRes>
+    : IZLinkSpotActorRequestHandler<GameSpot, PlayerActor, JoinMatchReq, JoinMatchRes>
 {
     public async ValueTask<JoinMatchRes> HandleAsync(
-        JoinMatchReq request, ZLinkActorRequestContext context, CancellationToken ct)
+        GameSpot spot,
+        PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
+        JoinMatchReq request,
+        CancellationToken ct)
     {
         // 같은 actor 에 묶인 client 로 push
         await context.BoundSession
             .Send(new OpponentJoinedNotify(request.MatchId))
             .Submit(ct);
+
+        // 응답 frame의 metadata/compression 옵션. 응답 body는 반환값이다.
+        context.Reply
+            .Metadata("trace-id", "reply-trace")
+            .Compress();
 
         return new JoinMatchRes(request.MatchId);
     }
@@ -303,11 +318,14 @@ public sealed class JoinMatchActorHandler
 actor id 로 직접 조회하는 public client 는 제공하지 않는다.
 
 ```csharp
-public sealed class PlayerNotifyHandler : IZLinkActorSendHandler<GameStateNotify>
+public sealed class PlayerNotifyHandler
+    : IZLinkSpotActorSendHandler<GameSpot, PlayerActor, GameStateNotify>
 {
     public ValueTask HandleAsync(
+        GameSpot spot,
+        PlayerActor actor,
+        ZLinkSpotActorSendContext context,
         GameStateNotify message,
-        ZLinkActorSendContext context,
         CancellationToken ct)
         => context.BoundSession.Send(message).Submit(ct);
 }

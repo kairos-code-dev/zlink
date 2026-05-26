@@ -20,9 +20,11 @@ internal sealed class MatchBingoActorHandler
     public async ValueTask<MatchBingoRes> HandleAsync(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
         MatchBingoReq message,
         CancellationToken cancellationToken)
     {
+        _ = context;
         var matched = await entrySpot.Context.RequestChannel(
                 SampleNames.ApiChannel,
                 new MatchBingoApiReq(actor.ActorId, actor.DisplayName, message.Mode))

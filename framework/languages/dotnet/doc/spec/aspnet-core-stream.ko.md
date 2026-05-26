@@ -166,13 +166,6 @@ public interface IZLinkSessionActor
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkSessionActorAttachmentContext
-{
-    ValueTask AttachActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IZLinkSessionSendCall
 {
     IZLinkSessionSendCall Metadata(string key, string value);
@@ -237,8 +230,6 @@ context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
 - 다른 channel 로 보내는 send/request 는 session context 표면이 아니라 DI 로
   주입받은 `IZLinkClient` 를 사용한다. 이 호출은 stream socket 이 아니라
   해당 channel 의 client socket 을 사용하기 때문이다.
-- 이미 만든 actor 를 session stream 에 붙이는 작업은 별도의
-  `IZLinkSessionActorAttachmentContext` 표면으로 분리한다.
 - session disconnect 를 actor 에 알려야 할 때는 application 이 대상 actor 를 고른
   뒤 `IZLinkSessionActor.NotifyDisconnectedAsync(...)` 를 호출한다.
 - `CloseAsync(...)` 는 현재 stream client 의 연결을 서버 쪽에서 끊는다.

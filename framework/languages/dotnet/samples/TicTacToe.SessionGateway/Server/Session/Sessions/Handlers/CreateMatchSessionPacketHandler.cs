@@ -1,17 +1,12 @@
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
 using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Streams;
 
-namespace TicTacToe.SessionGateway.Server.Session.Sessions.Handlers
+namespace TicTacToe.SessionGateway.Session.Sessions.Handlers
 {
     internal sealed class CreateMatchSessionPacketHandler(IZLinkClient channels)
         : IZLinkSessionPacketHandler<IZLinkSessionContext>
@@ -29,14 +24,12 @@ namespace TicTacToe.SessionGateway.Server.Session.Sessions.Handlers
             var request = payload.Decode<CreateMatchReq>();
             var reply = await channels.Request(
                         SampleNames.ApiChannel,
-                        request with { OwnerActorId = actorId })
+                        new CreateMatchReq(OwnerActorId: actorId))
                     .Timeout(SampleTimings.RequestTimeout)
-                    .SubmitAsync<CreateMatchRes>(cancellationToken)
-                ;
+                    .SubmitAsync<CreateMatchRes>(cancellationToken) ;
 
             await context.Reply(reply)
-                    .Submit(cancellationToken)
-                ;
+                .Submit(cancellationToken);
         }
 
         private static IZLinkSessionActor RequireSingleBoundActor(

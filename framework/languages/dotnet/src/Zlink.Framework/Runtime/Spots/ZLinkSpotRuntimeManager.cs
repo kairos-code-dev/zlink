@@ -1,5 +1,7 @@
 using Zlink.Framework.Runtime.Backend.Contracts;
 
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotRuntimeManager(
@@ -336,4 +338,4 @@ internal sealed class ZLinkSpotRuntimeManager(
 
 internal readonly record struct EntrySpotActorReplyDispatchResult(
     bool Handled,
-    byte[]? Reply);
+    ZLinkActorReply? Reply);

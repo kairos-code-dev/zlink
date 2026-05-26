@@ -196,9 +196,11 @@ public sealed class SendMarketplaceMessageHandler(
     public async ValueTask<SendChatRes> HandleAsync(
         ConversationSpot conversation,
         UserActor sender,
+        ZLinkSpotActorRequestContext context,
         SendChatReq req,
         CancellationToken ct)
     {
+        _ = context;
         conversation.RequireParticipant(sender.ActorId);
 
         var saved = await messages.AppendAsync(

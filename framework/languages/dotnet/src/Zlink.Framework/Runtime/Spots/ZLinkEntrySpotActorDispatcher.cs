@@ -1,4 +1,6 @@
 
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkEntrySpotActorDispatcher
@@ -147,19 +149,10 @@ internal static class ZLinkEntrySpotActorDispatcher
         ZLinkFrameworkRuntime runtime,
         string actorId,
         ZlinkStreamHeader requestHeader,
-        byte[] reply,
+        ZLinkActorReply reply,
         CancellationToken cancellationToken)
     {
-        var responseHeader = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Response,
-            requestHeader.Codec,
-            ZlinkStreamHeaderFlags.HasRequestSeq,
-            requestHeader.RequestSeq,
-            requestHeader.Name,
-            ZlinkStreamMetadata.Empty);
-        var frame = ZLinkStreamFrameCodec.Encode(
-            ZLinkStreamProtocolDefaults.EncodeHeader(responseHeader).Span,
-            reply);
+        var frame = reply.ToFrame(requestHeader);
         await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
             .ConfigureAwait(false);
     }

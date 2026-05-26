@@ -208,9 +208,11 @@ public sealed class SendGuildChatHandler(
     public async ValueTask HandleAsync(
         GuildChatSpot guild,
         PlayerActor player,
+        ZLinkSpotActorSendContext context,
         SendGuildChat req,
         CancellationToken ct)
     {
+        _ = context;
         guild.RequireMember(player.ActorId);
         guild.RequireNotMuted(player.ActorId);
         guild.RateLimit.RequireAllowed(player.ActorId);

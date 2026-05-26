@@ -46,6 +46,8 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             services.AddSingleton(proxyRecorder);
             services.AddScoped<GatewayActorFactory>();
             services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewayEntrySpot>();
+            services.AddScoped<GatewayEntrySpotActorHandler>();
             services.AddScoped<GatewaySessionDisconnectHandler>();
             services.AddScoped<GatewaySessionDisconnectRequestHandler>();
             services.AddZLinkFramework(options =>
@@ -65,6 +67,7 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
                         router.SetRouterBind(playSpotRouterEndpoint);
                         router.SetRoutingId(playRid);
                     });
+                    spot.AddEntrySpot<GatewayEntrySpot>();
                 });
                 });
             });
@@ -130,10 +133,16 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
                 JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("from-client"), JsonOptions)));
 
             var relayReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(101));
-            var relayBody = JsonSerializer.Deserialize<GatewayPong>(relayReply.Payload, JsonOptions);
+            var relayPayload = (relayReply.Header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0
+                ? ZLinkStreamProtocolDefaults.Lz4Decompress(relayReply.Payload).ToArray()
+                : relayReply.Payload;
+            var relayBody = JsonSerializer.Deserialize<GatewayPong>(relayPayload, JsonOptions);
             Assert.True(
                 relayReply.Header.Kind == ZlinkStreamMessageKind.Response,
                 Encoding.UTF8.GetString(relayReply.Payload));
+            Assert.True((relayReply.Header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0);
+            Assert.True(relayReply.Header.Metadata.TryGet("reply-trace-id", out var replyTraceId));
+            Assert.Equal("reply:trace-101", replyTraceId);
             Assert.Equal("play:from-client", relayBody?.Value);
             Assert.Equal(101UL, relayBody?.RequestSeq);
             Assert.Equal("relay.echo", proxyRecorder.LastPacketName);
@@ -166,9 +175,14 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
                         .With("trace-id", "trace-session-relay")),
                 JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("from-session-relay"), JsonOptions)));
             var secondRelayReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(102));
-            var secondRelayBody = JsonSerializer.Deserialize<GatewayPong>(secondRelayReply.Payload, JsonOptions);
+            var secondRelayPayload = (secondRelayReply.Header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0
+                ? ZLinkStreamProtocolDefaults.Lz4Decompress(secondRelayReply.Payload).ToArray()
+                : secondRelayReply.Payload;
+            var secondRelayBody = JsonSerializer.Deserialize<GatewayPong>(secondRelayPayload, JsonOptions);
 
             Assert.Equal("play:from-session-relay", secondRelayBody?.Value);
+            Assert.True(secondRelayReply.Header.Metadata.TryGet("reply-trace-id", out var secondReplyTraceId));
+            Assert.Equal("reply:trace-session-relay", secondReplyTraceId);
             Assert.Equal("relay.echo", proxyRecorder.LastPacketName);
             Assert.Equal("trace-session-relay", proxyRecorder.LastTraceId);
             callbackCapture.ThrowIfAny();

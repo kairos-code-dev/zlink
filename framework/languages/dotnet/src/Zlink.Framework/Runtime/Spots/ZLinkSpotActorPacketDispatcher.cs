@@ -1,4 +1,6 @@
 
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActorPacketDispatcher(
@@ -34,7 +36,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<byte[]?> DispatchForReplyAsync(
+    public async ValueTask<ZLinkActorReply?> DispatchForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,

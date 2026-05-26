@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorDispatchRouter(
@@ -23,7 +25,7 @@ internal sealed class ZLinkActorDispatchRouter(
         await SubmitAsync(actor, header, payload, cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask<byte[]> SubmitForReplyAsync(
+    public async ValueTask<ZLinkActorReply> SubmitForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
         Message payload,
@@ -83,7 +85,7 @@ internal sealed class ZLinkActorDispatchRouter(
             .ConfigureAwait(false);
     }
 
-    private async ValueTask<byte[]> SubmitForReplyAsync(
+    private async ValueTask<ZLinkActorReply> SubmitForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
@@ -131,7 +133,7 @@ internal sealed class ZLinkActorDispatchRouter(
         return placement.Prune;
     }
 
-    private async ValueTask<byte[]> SubmitByCurrentLocationForReplyAsync(
+    private async ValueTask<ZLinkActorReply> SubmitByCurrentLocationForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
@@ -194,7 +196,7 @@ internal sealed class ZLinkActorDispatchRouter(
             .ConfigureAwait(false);
     }
 
-    private async ValueTask<byte[]> DispatchLocalForReplyAsync(
+    private async ValueTask<ZLinkActorReply> DispatchLocalForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,

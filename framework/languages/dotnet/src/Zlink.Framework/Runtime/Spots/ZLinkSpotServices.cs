@@ -29,8 +29,7 @@ internal sealed class ZLinkSpotManagerService(ZLinkFrameworkRuntime runtime) : I
         return runtime.GetOrCreateSpotAsync<TSpot>(spotRid, createParts, cancellationToken);
     }
 
-    public ValueTask<ZLinkSpotInfo?> GetAsync(
-        RoutingId spotRid,
+    public ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
         return runtime.GetSpotAsync(spotRid, cancellationToken);

@@ -82,11 +82,13 @@ public abstract partial class StreamTestSupport
         public ValueTask HandleAsync(
             RegistryOnlyEntrySpot entrySpot,
             RegistryOnlyActor actor,
+            ZLinkSpotActorSendContext context,
             GatewayPing message,
             CancellationToken cancellationToken)
         {
             _ = entrySpot;
             _ = actor;
+            _ = context;
             _ = message;
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.CompletedTask;
@@ -109,11 +111,13 @@ public abstract partial class StreamTestSupport
         public ValueTask HandleAsync(
             RegistryOnlySpot spot,
             RegistryOnlyActor actor,
+            ZLinkSpotActorSendContext context,
             GatewayPing message,
             CancellationToken cancellationToken)
         {
             _ = spot;
             _ = actor;
+            _ = context;
             _ = message;
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.CompletedTask;
@@ -126,11 +130,13 @@ public abstract partial class StreamTestSupport
         public ValueTask<GatewayPong> HandleAsync(
             RegistryOnlyEntrySpot entrySpot,
             RegistryOnlyActor actor,
+            ZLinkSpotActorRequestContext context,
             GatewayPing message,
             CancellationToken cancellationToken)
         {
             _ = entrySpot;
             _ = actor;
+            _ = context;
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(new GatewayPong(message.Value, 1));
         }
@@ -159,11 +165,13 @@ public abstract partial class StreamTestSupport
         public ValueTask HandleAsync(
             RegistryOnlySpot spot,
             RegistryOnlyActor actor,
+            ZLinkSpotActorSendContext context,
             GatewayPing message,
             CancellationToken cancellationToken)
         {
             _ = spot;
             _ = actor;
+            _ = context;
             _ = message;
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.CompletedTask;

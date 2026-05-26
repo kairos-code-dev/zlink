@@ -867,7 +867,6 @@ framework 적용 항목만 남긴다.
 | `IZLinkSessionActorBindingContext.BindActorAsync(ActorRef actor)` | 현재 없음 | 추가한다. actor 생성 또는 join 결과의 final `ActorRef` 를 session bind 의 기본 입력으로 사용한다 |
 | `IZLinkSessionActorBindingContext.BindActorAsync(IZLinkSessionActor actor)` | actor handle 의 저장된 ref 를 다시 bind 입력으로 사용한다 | 유지한다. remote ActorRef 는 보관한 `ActorRef` 로 ActorGateway remote actor ref 를 다시 얻어 bind 한다 |
 | `IZLinkSessionActor.RelayAsync(...)` | local/remote dispatch 를 framework 가 내부에서 나눈다 | 항상 ActorGateway 로 relay 한다. application route mesh 분기는 framework caller 가 하지 않는다 |
-| `IZLinkSessionActorAttachmentContext.AttachActorAsync(...)` | session 에 local actor instance 를 붙인다 | local actor attach 도 gateway logical binding 과 충돌하지 않게 정리한다. session cleanup 이 Actor 위치를 바꾸면 안 된다 |
 | `IZLinkSessionActor.ActorId` / `Ref` | logical actor id 와 current ActorRef | 유지한다. actor type 은 생성/조회 단계의 검증 정보이며 session actor handle 의 별도 property 로 노출하지 않는다 |
 | `IZLinkSessionActor.NotifyDisconnectedAsync(...)` | session application 이 선택한 actor 에 disconnect notification 을 전달한다 | route mesh packet 을 직접 보내지 않는다. ActorGateway 가 알고 있는 actor 위치에서 현재 Spot 의 disconnected handler 를 호출한다. session cleanup 은 이 호출을 자동 수행하지 않는다 |
 | `IZLinkSessionProxy.Send(...)` | actor id 로 session binding 을 찾고 local stream 또는 route mesh `SessionProxy` packet 으로 보낸다 | 제거한다. 새 API 는 `IZLinkActorContext.BoundSession.Send(...)` 로 둔다 |

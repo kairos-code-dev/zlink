@@ -81,6 +81,17 @@ internal sealed class ZLinkSessionStreamTransport(
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask ReplyRawAsync(
+        ZlinkStreamHeader requestHeader,
+        ZLinkActorReply reply,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var frame = reply.ToFrame(requestHeader);
+        WriteRawBytes(frame, "Client stream reply send failed.");
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask ReplyErrorAsync(
         ZlinkStreamHeader requestHeader,
         Exception exception,
@@ -146,5 +157,16 @@ internal sealed class ZLinkSessionStreamTransport(
         string failureMessage)
     {
         ZLinkStreamFrameWriter.Write(stream, header, payload, failureMessage);
+    }
+
+    private void WriteRawBytes(
+        ReadOnlySpan<byte> frame,
+        string failureMessage)
+    {
+        using var message = Message.FromBytes(frame);
+        if (!stream.Write(message))
+        {
+            throw new InvalidOperationException(failureMessage);
+        }
     }
 }

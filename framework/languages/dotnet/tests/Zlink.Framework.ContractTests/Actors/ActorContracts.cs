@@ -39,25 +39,17 @@ public sealed class ActorContracts
 
     [Fact]
     [ContractExample(
-        typeof(IZLinkActorSendHandler<>),
-        typeof(IZLinkActorRequestHandler<,>),
         typeof(IZLinkActorPacketHandler<,>),
         typeof(IZLinkActorRequestHandler<,,>))]
-    public async Task Actor_handlers_can_be_session_scoped_or_actor_instance_scoped()
+    public async Task Actor_handlers_receive_the_actor_instance()
     {
         var actor = new PlayerActor("player-1", new ActorContext("player-1", new RoomSpot()));
-        var sendHandler = new SessionSendHandler();
-        var requestHandler = new SessionRequestHandler();
         var packetHandler = new ActorPacketHandler();
         var actorRequestHandler = new ActorRequestHandler();
 
-        await sendHandler.HandleAsync(new PlayerMessage("hello"), null!, CancellationToken.None);
-        var sessionReply = await requestHandler.HandleAsync(new PlayerRequest("state"), null!, CancellationToken.None);
         await packetHandler.HandleAsync(actor, new PlayerMessage("hello"), CancellationToken.None);
         var actorReply = await actorRequestHandler.HandleAsync(actor, new PlayerRequest("state"), CancellationToken.None);
 
-        Assert.True(sendHandler.WasCalled);
-        Assert.Equal("session:state", sessionReply.Value);
         Assert.True(packetHandler.WasCalled);
         Assert.Equal("actor:player-1:state", actorReply.Value);
     }
@@ -179,29 +171,6 @@ public sealed class ActorContracts
         public IZLinkBoundSessionSendCall Send<TMessage>(TMessage message) => null!;
 
         public ValueTask DisconnectAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    }
-
-    private sealed class SessionSendHandler : IZLinkActorSendHandler<PlayerMessage>
-    {
-        public bool WasCalled { get; private set; }
-
-        public ValueTask HandleAsync(
-            PlayerMessage message,
-            ZLinkActorSendContext context,
-            CancellationToken cancellationToken)
-        {
-            WasCalled = true;
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    private sealed class SessionRequestHandler : IZLinkActorRequestHandler<PlayerRequest, PlayerReply>
-    {
-        public ValueTask<PlayerReply> HandleAsync(
-            PlayerRequest request,
-            ZLinkActorRequestContext context,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new PlayerReply($"session:{request.Value}"));
     }
 
     private sealed class ActorPacketHandler : IZLinkActorPacketHandler<PlayerActor, PlayerMessage>

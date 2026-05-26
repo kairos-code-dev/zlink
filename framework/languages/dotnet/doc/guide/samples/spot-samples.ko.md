@@ -1025,9 +1025,7 @@ runtime 에 넘길 때 사용하는 session 전용 context 다.
 - actor create
 - actor packet dispatch
 
-이미 만든 actor 를 session stream 에 붙이는 작업은
-`IZLinkSessionActorAttachmentContext` 라는 별도의 표면에서 다룬다. session
-disconnect 를 actor 에 알려야 하면 session code 가 대상 actor 를 고른 뒤
+session disconnect 를 actor 에 알려야 하면 session code 가 대상 actor 를 고른 뒤
 `NotifyDisconnectedAsync(...)` 를 호출한다.
 
 ```csharp
@@ -1274,9 +1272,11 @@ public sealed class SampleMoveActorHandler
     public ValueTask<SampleMoveActorReply> HandleAsync(
         SampleSpot room,
         SampleActor actor,
+        ZLinkSpotActorRequestContext context,
         SampleMoveActorCommand message,
         CancellationToken cancellationToken)
     {
+        _ = context;
         actor.MarkSeen(DateTimeOffset.UtcNow);
         room.PublishSampleState();
         return ValueTask.FromResult(new SampleMoveActorReply

@@ -79,13 +79,6 @@ public interface IZLinkSessionLifecycle
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkSessionActorAttachmentContext
-{
-    ValueTask AttachActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
     IZLinkSessionClientStream,

@@ -37,10 +37,10 @@ sealed class TicTacToeGame(
     }
 
     public ValueTask OnCreateAsync(
-        IReadOnlyList<Message> createParts,
+        IReadOnlyList<Message> createReqs,
         CancellationToken cancellationToken)
     {
-        return _createdHandler.HandleAsync(this, createParts, cancellationToken);
+        return _createdHandler.HandleAsync(this, createReqs, cancellationToken);
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)

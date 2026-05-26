@@ -485,13 +485,13 @@ public sealed class PlayerJoinHandler
 | `IZLinkSpotSubscriptionHandler<TSpot, TMessage>` | spot 구독 topic 수신 handler |
 | `IZLinkSpotTimerHandler<TSpot>` | spot timer tick handler(`ZLinkTimerTick`) |
 | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | user spot join 요청 handler. (spot, actor, request) |
-| `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user spot actor 단방향 handler |
-| `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user spot actor 요청 handler |
+| `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user spot actor 단방향 handler. context 뒤에 payload |
+| `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user spot actor 요청 handler. context 뒤에 request |
 | `IZLinkSpotPostActorJoinedHandler<TSpot, TActor>` | user spot actor join 완료 lifecycle(`ZLinkSpotActorChangeResult`) |
 | `IZLinkSpotActorLeftHandler<TSpot, TActor>` | user spot actor leave lifecycle |
 | `IZLinkSpotActorDisconnectedHandler<TSpot, TActor>` | user spot actor disconnect notification. membership 은 변경하지 않음 |
-| `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor 단방향 handler |
-| `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor 요청 handler |
+| `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor 단방향 handler. context 뒤에 payload |
+| `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor 요청 handler. context 뒤에 request |
 | `IZLinkSpotPostActorJoinedHandler<TEntrySpot, TActor>` | Entry Spot actor join lifecycle |
 | `IZLinkSpotActorLeftHandler<TEntrySpot, TActor>` | Entry Spot actor leave lifecycle |
 | `IZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>` | Entry Spot actor disconnect notification. membership 은 변경하지 않음 |
@@ -526,18 +526,10 @@ actor.Configure();
 
 검증: `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`.
 
-### 4.2 actor handler — session-scoped vs actor-instance-scoped
+### 4.2 actor handler 와 Spot actor handler
 
 ```csharp
-// session-scoped: payload + context
-public sealed class SessionRequestHandler : IZLinkActorRequestHandler<PlayerRequest, PlayerReply>
-{
-    public ValueTask<PlayerReply> HandleAsync(
-        PlayerRequest request, ZLinkActorRequestContext context, CancellationToken ct)
-        => ValueTask.FromResult(new PlayerReply($"session:{request.Value}"));
-}
-
-// actor-instance-scoped: actor 인스턴스를 첫 인자로
+// actor fallback handler: actor 인스턴스를 첫 인자로 받는다.
 public sealed class ActorRequestHandler
     : IZLinkActorRequestHandler<PlayerActor, PlayerRequest, PlayerReply>
 {
@@ -545,16 +537,36 @@ public sealed class ActorRequestHandler
         PlayerActor actor, PlayerRequest request, CancellationToken ct)
         => ValueTask.FromResult(new PlayerReply($"actor:{actor.ActorId}:{request.Value}"));
 }
+
+// Spot actor handler: 현재 Spot, actor, context, payload를 함께 받는다.
+public sealed class RoomRequestHandler
+    : IZLinkSpotActorRequestHandler<RoomSpot, PlayerActor, PlayerRequest, PlayerReply>
+{
+    public ValueTask<PlayerReply> HandleAsync(
+        RoomSpot spot,
+        PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
+        PlayerRequest request,
+        CancellationToken ct)
+    {
+        context.Reply.Metadata("trace-id", "reply-trace").Compress();
+        return ValueTask.FromResult(new PlayerReply($"room:{actor.ActorId}:{request.Value}"));
+    }
+}
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkActorSendHandler<TMessage>` | session-scoped actor 단방향 handler. `HandleAsync(msg, ZLinkActorSendContext, ct)` |
-| `IZLinkActorRequestHandler<TRequest, TReply>` | session-scoped actor 요청 handler. `HandleAsync(req, ZLinkActorRequestContext, ct)` |
-| `IZLinkActorPacketHandler<TActor, TMessage>` | actor-instance-scoped 단방향 handler. 첫 인자 = actor |
-| `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor-instance-scoped 요청 handler. 첫 인자 = actor |
+| `IZLinkActorPacketHandler<TActor, TMessage>` | actor fallback 단방향 handler. 첫 인자 = actor |
+| `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor fallback 요청 handler. 첫 인자 = actor |
+| `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user Spot actor 단방향 handler. Spot, actor, context, payload 순서 |
+| `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor 요청 handler. Spot, actor, context, payload 순서 |
+| `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor 단방향 handler. Entry Spot, actor, context, payload 순서 |
+| `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor 요청 handler. Entry Spot, actor, context, payload 순서 |
+| `ZLinkSpotActorReplyOptions` | Spot actor request 응답 frame 옵션. `context.Reply.Metadata(...).Compress()` |
 
-검증: `ActorContracts.Actor_handlers_can_be_session_scoped_or_actor_instance_scoped`.
+검증: `ActorContracts.Actor_handlers_receive_the_actor_instance`,
+`SpotContracts.Spot_actor_handlers_receive_context_before_payload`.
 
 ## 5. STREAM session — session · context · push · bound session
 
@@ -610,7 +622,6 @@ actor 로 relay 할지, 거절할지, 로그만 남길지는 application session
 | `IZLinkSessionActorBindingContext` | actor binding/lookup(`BoundActors`, `BindActorAsync`, `BindActorAsync(ActorRef, ...)`, `FindActor`) |
 | `IZLinkSessionActor` | session-bound actor handle. `RelayAsync`, `NotifyDisconnectedAsync` 로 대상 actor 에게 명시 동작을 보냄 |
 | `IZLinkSessionLifecycle` | 서버 측 연결 종료(`CloseAsync`) |
-| `IZLinkSessionActorAttachmentContext` | actor 를 session 에 attach(`AttachActorAsync`) |
 | `IZLinkSessionPacketHandler<TSessionContext>` | session 이 직접 처리할 packet handler. payload 는 session callback 과 같은 borrowed lifetime |
 | `IZLinkSessionPacketDispatcher<TSessionContext>` | 등록된 session packet handler 만 호출하고 미등록 packet 은 `false` 반환 |
 | `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Submit`) |

@@ -419,9 +419,14 @@ public sealed class PlayerActor(
 ### 4.1 Entry Spot actor handler
 
 Entry Spot 에 있는 actor message 는 Entry Spot registry 에 등록한 handler 가
-처리한다. 이 handler 는 Entry Spot 인스턴스, actor 인스턴스, payload 를 함께
-받는다. Entry Spot 에도 입장 처리 상태나 helper 메서드가 있을 수 있으므로
-handler 에서 현재 Entry Spot 인스턴스에 접근할 수 있어야 한다.
+처리한다. 이 handler 는 Entry Spot 인스턴스, actor 인스턴스, dispatch context,
+payload 를 함께 받는다. Entry Spot 에도 입장 처리 상태나 helper 메서드가 있을
+수 있으므로 handler 에서 현재 Entry Spot 인스턴스에 접근할 수 있어야 한다.
+`ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` 는 session 에서
+넘어온 packet 이름, 전달 허용된 metadata, 현재 actor 에 묶인 client 로 push 할
+수 있는 `BoundSession` 을 제공한다. request context 의 `Reply` 옵션은 handler
+반환값으로 만들어지는 response frame 에 metadata 나 compression 을 적용할 때
+사용한다.
 
 ```csharp
 public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
@@ -431,6 +436,7 @@ public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorSendContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -442,6 +448,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
     ValueTask<TReply> HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -456,6 +463,7 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
     public async ValueTask<JoinMatchRes> HandleAsync(
         PlayerEntrySpot entrySpot,
         PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
         JoinMatchReq request,
         CancellationToken cancellationToken)
     {
@@ -484,9 +492,9 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
 ### 4.2 user Spot actor handler
 
 user Spot 에 join 된 actor 의 message 는 해당 Spot 타입의 registry 에 등록한
-handler 가 처리한다. 이 handler 는 spot 객체와 actor 객체를 함께 받는다. 즉
-room 이나 stage 의 상태는 spot 에서 읽고, player 나 entity 의 상태는 actor
-에서 읽는 구도다.
+handler 가 처리한다. 이 handler 는 spot 객체, actor 객체, dispatch context 를
+함께 받는다. 즉 room 이나 stage 의 상태는 spot 에서 읽고, player 나 entity 의
+상태는 actor 에서 읽는 구도다.
 
 ```csharp
 public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
@@ -496,6 +504,7 @@ public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
+        ZLinkSpotActorSendContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -507,6 +516,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
     ValueTask<TReply> HandleAsync(
         TSpot spot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -690,16 +700,9 @@ application 이 결정한다.
 즉 client 는 stream 으로 들어오고, server 는 그 client 를 actor 로 다룬다.
 모든 routing 을 actor id 기준으로 통일하는 모양이다.
 
-### 8.1 session-actor attach 표면
+### 8.1 session-actor binding 표면
 
 ```csharp
-public interface IZLinkSessionActorAttachmentContext
-{
-    ValueTask AttachActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IZLinkSessionActorBindingContext
 {
     IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
@@ -736,9 +739,6 @@ public interface IZLinkSessionActor
 }
 ```
 
-- `AttachActorAsync(...)` -- 이미 만든 actor 인스턴스를 현재 session 에
-  attach 한다. session cleanup 은 binding 을 정리하지만 actor disconnect
-  callback 을 자동으로 호출하지 않는다.
 - `BindActorAsync(actorId, ...)` -- logical actor handle 을 얻고,
   현재 actor-session binding 을 기록한다. 이 local overload 는 actor 를 새로 만들지 않는다.
 - `BindActorAsync(actorRef, ...)` -- `JoinSpot(...)` /
@@ -855,10 +855,11 @@ actor handler 는 **`IZLinkBoundSession`** 에 "현재 actor 의 client 로 mess
 를 보내라" 고만 부탁한다. 다른 actor 의 client 로 보내야 하는 service 는 먼저
 그 actor 에 메시지를 보내고, 대상 actor handler 가 자기 `IZLinkBoundSession` 를 사용한다.
 
-actor handler 인터페이스와 `ZLinkActorSendContext` /
-`ZLinkActorRequestContext` 는 `Zlink.Framework.Contracts.Actors` 에 둔다.
-`IZLinkBoundSession` 는 client stream 연결을 향한 proxy 이므로
-`Zlink.Framework.Contracts.Streams` 에 남긴다.
+Spot actor handler 인터페이스와 `ZLinkSpotActorSendContext` /
+`ZLinkSpotActorRequestContext` 는 `Zlink.Framework.Contracts.Spots` 에 둔다.
+actor instance handler 는 actor 인스턴스와 payload 만 받는 낮은 수준의 fallback
+표면이며 stream metadata 를 노출하지 않는다. `IZLinkBoundSession` 는 client
+stream 연결을 향한 proxy 이므로 `Zlink.Framework.Contracts.Streams` 에 남긴다.
 
 이 부탁을 받은 framework 는 다음 순서로 일을 처리한다.
 
@@ -896,21 +897,31 @@ actor handler 에서 받아 쓰는 모습은 다음과 같다.
 
 ```csharp
 public sealed class JoinMatchHandler
-    : IZLinkActorRequestHandler<JoinMatchReq, JoinMatchRes>
+    : IZLinkSpotActorRequestHandler<GameSpot, PlayerActor, JoinMatchReq, JoinMatchRes>
 {
     public async ValueTask<JoinMatchRes> HandleAsync(
+        GameSpot spot,
+        PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
         JoinMatchReq request,
-        ZLinkActorRequestContext context,
         CancellationToken cancellationToken)
     {
         await context.BoundSession
             .Send(new OpponentJoinedNotify(...))
             .Submit(cancellationToken);
 
+        context.Reply
+            .Metadata("trace-id", "reply-trace")
+            .Compress();
+
         return new JoinMatchRes(...);
     }
 }
 ```
+
+`context.Reply` 는 응답을 직접 보내지 않는다. actor request handler 의 응답은
+항상 반환값으로 정하고, `Reply` 는 그 응답 frame 의 metadata/compression 옵션만
+기록한다.
 
 같은 user Spot 안에서 다른 actor 의 client session 으로 push 가 필요하면 대상 actor 로
 메시지를 보내고, 대상 actor handler 가 context 의 `IZLinkBoundSession` 를 사용한다.

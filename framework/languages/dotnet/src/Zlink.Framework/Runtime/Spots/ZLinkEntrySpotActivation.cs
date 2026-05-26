@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -181,7 +182,7 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
             cancellationToken);
     }
 
-    public async ValueTask<byte[]> InvokeActorPacketForReplyAsync(
+    public async ValueTask<ZLinkActorReply> InvokeActorPacketForReplyAsync(
         ZLinkSpotActorPacketDescriptor descriptor,
         IZLinkActor actor,
         ZlinkStreamHeader header,

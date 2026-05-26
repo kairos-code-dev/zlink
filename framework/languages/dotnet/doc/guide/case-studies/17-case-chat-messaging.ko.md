@@ -96,8 +96,13 @@ public sealed class SayHandler(IMessageDb db)
     : IZLinkSpotActorSendHandler<ChatRoomSpot, UserActor, Say>
 {
     public async ValueTask HandleAsync(
-        ChatRoomSpot spot, UserActor actor, Say msg, CancellationToken ct)
+        ChatRoomSpot spot,
+        UserActor actor,
+        ZLinkSpotActorSendContext context,
+        Say msg,
+        CancellationToken ct)
     {
+        _ = context;
         var chat = new ChatMessage(spot.RoomId, actor.ActorId, msg.Text);
         await db.AppendAsync(chat, ct);                              // durable 이력 — 그대로
         foreach (var member in spot.Members)

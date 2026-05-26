@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
-using TicTacToe.SessionGateway.Shared.Actors;
 using TicTacToe.SessionGateway.Server.Play.GameSpots;
+using TicTacToe.SessionGateway.Shared.Actors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
-namespace TicTacToe.SessionGateway.Server.Play.GameSpots.Handlers;
+namespace TicTacToe.SessionGateway.Play.GameSpots.Handlers;
 
 internal sealed class TicTacToeGameSpotActorJoinedHandler(
     ILogger<TicTacToeGameSpotActorJoinedHandler> logger)

@@ -545,11 +545,20 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             return null;
         }
 
-        var parameters = RequireParameterCount(handlerType, method, 4, "SPOT actor packet handler");
+        var parameters = RequireParameterCount(handlerType, method, 5, "SPOT actor packet handler");
         var spotType = parameters[0].ParameterType;
         var actorType = parameters[1].ParameterType;
-        var messageType = parameters[2].ParameterType;
-        RequireCancellationToken(handlerType, method, parameters[3], "SPOT actor packet handler");
+        var expectedContextType = request is null
+            ? typeof(ZLinkSpotActorSendContext)
+            : typeof(ZLinkSpotActorRequestContext);
+        if (parameters[2].ParameterType != expectedContextType)
+        {
+            throw new InvalidOperationException(
+                $"SPOT actor packet handler '{handlerType}' method '{method.Name}' must use {expectedContextType.Name} as the third parameter.");
+        }
+
+        var messageType = parameters[3].ParameterType;
+        RequireCancellationToken(handlerType, method, parameters[4], "SPOT actor packet handler");
         ValidateSpotType(handlerType, expectedSpotType, spotType);
         ValidateActorType(handlerType, expectedActorType, actorType);
         var replyType = request is null ? null : GetReplyType(method.ReturnType);
@@ -670,7 +679,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         if (parameter.ParameterType != typeof(CancellationToken))
         {
             throw new InvalidOperationException(
-                $"{description} '{handlerType}' method '{method.Name}' must use CancellationToken as the fourth parameter.");
+                $"{description} '{handlerType}' method '{method.Name}' must use CancellationToken as the last parameter.");
         }
     }
 

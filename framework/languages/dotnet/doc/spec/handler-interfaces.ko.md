@@ -56,14 +56,12 @@
 | context | `IZLinkSessionClientStream` | session에서 client stream으로 send/reply | 4.4 |
 | context | `IZLinkSessionActorBindingContext` | session에서 actor handle bind와 lookup 수행 | 4.4 |
 | context | `IZLinkSessionLifecycle` | session close 제어 | 4.4 |
-| context | `IZLinkSessionActorAttachmentContext` | 이미 만든 actor를 session stream에 attach | 4.4 |
 | value | `IZLinkSessionActor` | session이 actor dispatch target으로 들고 있는 handle | 4.4.1 |
 | handler | `IZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
 | manager | `IZLinkActorManager` | actor id와 actor type으로 actor 생성, 조회, 재사용 | 4.4.1 |
 | context | `IZLinkActorContext` | actor 상태 조회와 spot join 호출 | 4.4.1 |
-| handler | `IZLinkActorSendHandler<TMessage>` / `IZLinkActorRequestHandler<TRequest, TReply>` | actor 안에서 처리하는 session relay message handler | 4.4.1 |
-| handler | `IZLinkActorPacketHandler<TActor, TMessage>` / `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor instance 를 직접 받는 actor message handler | 4.4.1 |
-| context | `ZLinkActorSendContext` / `ZLinkActorRequestContext` | actor handler 실행 context. bound session 과 metadata 를 제공한다 | 4.4.1 |
+| handler | `IZLinkActorPacketHandler<TActor, TMessage>` / `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor instance 를 직접 받는 actor fallback message handler | 4.4.1 |
+| context | `ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` | Spot actor handler 실행 context. bound session 과 metadata 를 제공한다 | 4.4.2 |
 | handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` / `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor message handler | 4.4.2 |
 | handler | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` / `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor message handler | 4.4.2 |
 | value | `ZLinkMessageMetadata` | actor/bound session call에 전달되는 application/codec metadata snapshot | 4.4.2 |
@@ -511,6 +509,7 @@ public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
+        ZLinkSpotActorSendContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -522,6 +521,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
     ValueTask<TReply> HandleAsync(
         TSpot spot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -565,6 +565,7 @@ public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorSendContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -576,6 +577,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
     ValueTask<TReply> HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -729,6 +731,7 @@ public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorSendContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -740,6 +743,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
     ValueTask<TReply> HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -817,6 +821,7 @@ public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
+        ZLinkSpotActorSendContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -828,6 +833,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
     ValueTask<TReply> HandleAsync(
         TSpot spot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -1291,13 +1297,6 @@ public interface IZLinkSessionLifecycle
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkSessionActorAttachmentContext
-{
-    ValueTask AttachActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
     IZLinkSessionClientStream,
@@ -1450,7 +1449,6 @@ actor join, actor factory, stream-attached actor 모델은 현재 draft
 - `IZLinkSpotContext.AddActorJoin<THandler, TActor, TRequest, TReply>()`
 - `IZLinkSpotContext.AddActorJoin<THandler>()`
 - stream session 의 actor dispatch 표면인 `IZLinkSessionContext`
-- 이미 만든 actor 를 session stream 에 attach 하는 `IZLinkSessionActorAttachmentContext`
 
 `stage-wrapper-on-spot.ko.md` 는 이 계약 위에서 room/stage wrapper 를
 어떻게 구성하는지 보여 주는 상위 모델 문서다. 함께 읽으면 도움이 된다.
@@ -1621,22 +1619,6 @@ public interface IZLinkActorFactory
 // Context property 로 그대로 노출해야 한다. framework 는 bind 시점에
 // 같은 context 인스턴스인지 검증한다.
 
-public interface IZLinkActorSendHandler<in TMessage>
-{
-    ValueTask HandleAsync(
-        TMessage message,
-        ZLinkActorSendContext context,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkActorRequestHandler<in TRequest, TReply>
-{
-    ValueTask<TReply> HandleAsync(
-        TRequest request,
-        ZLinkActorRequestContext context,
-        CancellationToken cancellationToken);
-}
-
 public interface IZLinkActorPacketHandler<in TActor, in TMessage>
     where TActor : IZLinkActor
 {
@@ -1655,21 +1637,26 @@ public interface IZLinkActorRequestHandler<in TActor, in TRequest, TReply>
         CancellationToken cancellationToken);
 }
 
-public sealed class ZLinkActorSendContext : ZLinkHandlerContext
+public sealed class ZLinkSpotActorSendContext : ZLinkHandlerContext
 {
     public string ActorId { get; }
-    public string RouterChannelId { get; }
     public ZLinkMessageMetadata Metadata { get; }
     public IZLinkBoundSession BoundSession { get; }
 }
 
-public sealed class ZLinkActorRequestContext : ZLinkHandlerContext
+public sealed class ZLinkSpotActorRequestContext : ZLinkHandlerContext
 {
     public string ActorId { get; }
-    public string RouterChannelId { get; }
     public ZLinkMessageMetadata Metadata { get; }
     public IZLinkBoundSession BoundSession { get; }
+    public ZLinkSpotActorReplyOptions Reply { get; }
     public new DateTimeOffset? Deadline { get; }
+}
+
+public sealed class ZLinkSpotActorReplyOptions
+{
+    public ZLinkSpotActorReplyOptions Metadata(string key, string value);
+    public ZLinkSpotActorReplyOptions Compress(bool enabled = true);
 }
 
 // Spot에 actor를 join할 때 호출되는 handler. spot 등록의 AddActorJoin<...>() 표면이
@@ -1784,9 +1771,17 @@ outbound 는 actor context 의 기능이 아니다. Entry Spot 또는 user Spot 
 다른 Spot 이나 channel 로 메시지를 보내야 하면 handler 가 받은
 `entrySpot.Context` 또는 `spot.Context` 의 `SendSpot(...)`,
 `RequestSpot(...)`, `SendChannel(...)`, `RequestChannel(...)` 을 사용한다.
-client stream 으로 push 해야 하면 `ZLinkActorSendContext.BoundSession`,
-`ZLinkActorRequestContext.BoundSession`, 또는 `IZLinkBoundSession` 를
-사용한다.
+client stream 으로 push 해야 하면 Spot actor handler 가 받은
+`ZLinkSpotActorSendContext.BoundSession`,
+`ZLinkSpotActorRequestContext.BoundSession`, 또는 `IZLinkBoundSession` 를
+사용한다. actor instance fallback handler 는 metadata 와 bound session context
+를 받지 않는다.
+
+Spot actor request handler 의 응답 body 는 handler 반환값으로 정한다. 응답
+stream header 에 metadata 를 추가하거나 payload 압축을 켜야 하면
+`ZLinkSpotActorRequestContext.Reply` 를 사용한다. 이 표면은 응답 전송 자체를
+수행하지 않고, handler 반환값을 framework 가 response frame 으로 만들 때 사용할
+옵션만 기록한다.
 
 `GetSpot(...)` 은 actor 가 `Spot` 에 join 한 뒤에만 유효하다. join 전
 호출은 명확한 실패로 처리된다.
@@ -1808,7 +1803,7 @@ Entry Spot 은 SpotNode마다 하나뿐이므로 Entry Spot rid 를 별도로 �
 request handler 의 반환값으로 보낸다.
 
 actor, Entry Spot actor, user Spot actor request 는 모두 같은 방식으로
-처리한다. `IZLinkActorRequestHandler<..., TReply>`,
+처리한다. `IZLinkActorRequestHandler<TActor, ..., TReply>`,
 `IZLinkEntrySpotActorRequestHandler<..., TReply>`,
 `IZLinkSpotActorRequestHandler<..., TReply>` 가 반환한 값이 reply 가 되고,
 framework 가 원래 request 의 sequence 정보를 사용해 response 를 작성한다.
@@ -2439,9 +2434,9 @@ client 에게 새 request 를 보내는 API 는 제공하지 않는다. client r
 
 `IZLinkBoundSession` 자체는 연결된 client stream 을 향한 proxy 이므로
 `Zlink.Framework.Contracts.Streams` 에 둔다. 다만 이 proxy 를 받는
-`ZLinkActorSendContext` / `ZLinkActorRequestContext` 와 actor handler
-인터페이스는 actor runtime 이 선택하고 실행하므로
-`Zlink.Framework.Contracts.Actors` 에 둔다.
+`ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` 와 Spot actor
+handler 인터페이스는 Spot actor runtime 이 선택하고 실행하므로
+`Zlink.Framework.Contracts.Spots` 에 둔다.
 
 application handler 는 actor id 만 넘긴다. 다음 metadata 들은
 framework/core 의 actor-session binding 안에만 머문다.

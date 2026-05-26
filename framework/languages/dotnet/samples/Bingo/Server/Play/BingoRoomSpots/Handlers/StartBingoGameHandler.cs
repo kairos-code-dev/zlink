@@ -18,9 +18,11 @@ internal sealed class StartBingoGameHandler
     public async ValueTask<StartBingoGameRes> HandleAsync(
         BingoRoomSpot spot,
         PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
         StartBingoGameReq message,
         CancellationToken cancellationToken)
     {
+        _ = context;
         return await spot.StartAsync(actor, message, cancellationToken);
     }
 }

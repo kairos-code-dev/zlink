@@ -49,10 +49,10 @@ internal sealed class BingoRoomSpot(
     }
 
     public async ValueTask OnCreateAsync(
-        IReadOnlyList<Message> createParts,
+        IReadOnlyList<Message> createReqs,
         CancellationToken cancellationToken)
     {
-        await _createdHandler.HandleAsync(this, createParts, cancellationToken);
+        await _createdHandler.HandleAsync(this, createReqs, cancellationToken);
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)

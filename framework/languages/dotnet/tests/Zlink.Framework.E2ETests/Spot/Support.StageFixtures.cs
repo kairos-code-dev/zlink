@@ -57,10 +57,10 @@ public abstract partial class SpotTestSupport
         public IZLinkSpotContext Context { get; } = context;
 
         public async ValueTask OnCreateAsync(
-            IReadOnlyList<Message> createParts,
+            IReadOnlyList<Message> createReqs,
             CancellationToken cancellationToken)
         {
-            await recorder.RecordAsync(createParts, cancellationToken);
+            await recorder.RecordAsync(createReqs, cancellationToken);
         }
     }
 }

@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Core;
 
 internal sealed partial class ZLinkFrameworkRuntime
@@ -87,12 +89,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         out ZLinkActorRuntimeState state)
         => _actors.TryGetCreatedActorState(actorId, actorType, out state);
 
-    internal async ValueTask<byte[]> SubmitActorForReplyAsync(
+    internal async ValueTask<ZLinkActorReply> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken = default)
-        => await _actors.SubmitActorForReplyAsync(actorId, header, payload, cancellationToken);
+        => await _actors.SubmitActorForReplyCoreAsync(actorId, header, payload, cancellationToken);
 
     internal async ValueTask SubmitActorByIdAsync(
         string actorId,

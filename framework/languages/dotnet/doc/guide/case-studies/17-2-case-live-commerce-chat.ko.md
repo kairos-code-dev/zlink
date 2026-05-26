@@ -191,9 +191,11 @@ public sealed class SendLiveMessageHandler(
     public async ValueTask HandleAsync(
         StreamSpot stream,
         ViewerActor viewer,
+        ZLinkSpotActorSendContext context,
         SendLiveChat req,
         CancellationToken ct)
     {
+        _ = context;
         stream.RequireOpen();
         stream.RequireNotMuted(viewer.ActorId);
         stream.RateLimit.RequireAllowed(viewer.ActorId);
@@ -219,9 +221,11 @@ public sealed class PinMessageHandler
     public async ValueTask HandleAsync(
         StreamSpot stream,
         ModeratorActor moderator,
+        ZLinkSpotActorSendContext context,
         PinMessage req,
         CancellationToken ct)
     {
+        _ = context;
         stream.RequireModerator(moderator.ActorId);
         stream.Pin(req.MessageId);
         foreach (var watching in stream.ActiveViewers)

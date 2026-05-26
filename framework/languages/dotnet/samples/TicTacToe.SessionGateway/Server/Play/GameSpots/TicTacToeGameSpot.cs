@@ -4,6 +4,7 @@ using TicTacToe.SessionGateway.Server.Play;
 using TicTacToe.SessionGateway.Server.Play.GameSpots.Handlers;
 using TicTacToe.SessionGateway.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using TicTacToe.SessionGateway.Play.GameSpots.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.SessionGateway.Server.Play.GameSpots;
@@ -26,10 +27,10 @@ internal sealed class TicTacToeGameSpot(
     }
 
     public ValueTask OnCreateAsync(
-        IReadOnlyList<Message> createParts,
+        IReadOnlyList<Message> createReqs,
         CancellationToken cancellationToken)
     {
-        return _createdHandler.HandleAsync(this, createParts, cancellationToken);
+        return _createdHandler.HandleAsync(this, createReqs, cancellationToken);
     }
 
     public ValueTask OnInitializeAsync(CancellationToken cancellationToken)

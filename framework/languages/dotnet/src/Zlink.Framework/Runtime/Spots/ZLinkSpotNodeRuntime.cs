@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Core;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -148,7 +149,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             cancellationToken);
     }
 
-    public ValueTask<byte[]> InvokeEntrySpotActorPacketForReplyAsync(
+    public ValueTask<ZLinkActorReply> InvokeEntrySpotActorPacketForReplyAsync(
         ZLinkSpotActorPacketDescriptor descriptor,
         IZLinkActor actor,
         ZlinkStreamHeader header,

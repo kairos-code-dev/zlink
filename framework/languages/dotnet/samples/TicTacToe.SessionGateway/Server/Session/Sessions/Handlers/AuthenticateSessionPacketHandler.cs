@@ -29,8 +29,7 @@ internal sealed class AuthenticateSessionPacketHandler(
                 SampleNames.ApiChannel,
                 new AuthenticateActorReq(request.ActorId))
             .Timeout(SampleTimings.RequestTimeout)
-            .SubmitAsync<AuthenticateActorRes>(cancellationToken)
-            ;
+            .SubmitAsync<AuthenticateActorRes>(cancellationToken);
         if (!authenticated.Accepted || string.IsNullOrWhiteSpace(authenticated.ActorId))
         {
             throw new InvalidOperationException(authenticated.Reason ?? "Actor authentication failed.");
@@ -39,21 +38,17 @@ internal sealed class AuthenticateSessionPacketHandler(
         var actor = await actors.GetOrCreateAsync(
                 authenticated.ActorId,
                 SampleNames.PlayerActorType,
-                cancellationToken)
-            ;
+                cancellationToken);
 
         var joined = await actor.Context.JoinEntrySpot(topology.PlayRid)
             .Timeout(SampleTimings.RequestTimeout)
-            .SubmitAsync(cancellationToken)
-            ;
+            .SubmitAsync(cancellationToken);
 
         await context.BindActorAsync(
                 joined,
-                cancellationToken)
-            ;
+                cancellationToken);
 
         await context.Reply(new AuthenticateRes(joined.ActorId))
-            .Submit(cancellationToken)
-            ;
+            .Submit(cancellationToken);
     }
 }

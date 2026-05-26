@@ -1,5 +1,4 @@
 using TicTacToe.SessionGateway.Play.EntrySpot.Handlers;
-using TicTacToe.SessionGateway.Server.Play.EntrySpot.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.SessionGateway.Server.Play.EntrySpot;

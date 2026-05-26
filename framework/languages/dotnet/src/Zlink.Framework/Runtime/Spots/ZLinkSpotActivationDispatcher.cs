@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -118,7 +119,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<byte[]?> DispatchActorPacketForReplyAsync(
+    public async ValueTask<ZLinkActorReply?> DispatchActorPacketForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
@@ -191,16 +192,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
                 return;
             }
 
-            var responseHeader = new ZlinkStreamHeader(
-                ZlinkStreamMessageKind.Response,
-                streamHeader.Codec,
-                ZlinkStreamHeaderFlags.HasRequestSeq,
-                streamHeader.RequestSeq,
-                streamHeader.Name,
-                ZlinkStreamMetadata.Empty);
-            var frame = ZLinkStreamFrameCodec.Encode(
-                ZLinkStreamProtocolDefaults.EncodeHeader(responseHeader).Span,
-                reply);
+            var frame = reply.ToFrame(streamHeader);
             await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
                 .ConfigureAwait(false);
 

@@ -14,50 +14,45 @@ namespace Zlink.Framework.E2ETests;
 public abstract partial class StreamTestSupport
 {
     public sealed class GatewayActorHandler(ActorDispatchRecorder recorder)
-        : IZLinkActorRequestHandler<GatewayPing, GatewayPong>
+        : IZLinkActorRequestHandler<GatewayActor, GatewayPing, GatewayPong>
     {
         public ValueTask<GatewayPong> HandleAsync(
+            GatewayActor actor,
             GatewayPing request,
-            ZLinkActorRequestContext context,
             CancellationToken cancellationToken)
         {
+            _ = actor;
             cancellationToken.ThrowIfCancellationRequested();
-            recorder.LastPacketName = context.PacketName;
-            if (context.Metadata.TryGetApplicationValue("trace-id", out var traceId))
-            {
-                recorder.LastTraceId = traceId;
-            }
-
-            recorder.ForwardedTenantId = context.Metadata.TryGetApplicationValue("tenant-id", out _);
+            recorder.LastPacketName = "relay.echo";
             return ValueTask.FromResult(new GatewayPong($"play:{request.Value}", 101));
         }
     }
 
     public sealed class GatewaySessionDisconnectHandler(ActorDispatchRecorder recorder)
-        : IZLinkActorSendHandler<GatewayPing>
+        : IZLinkActorPacketHandler<GatewayActor, GatewayPing>
     {
         public async ValueTask HandleAsync(
+            GatewayActor actor,
             GatewayPing message,
-            ZLinkActorSendContext context,
             CancellationToken cancellationToken)
         {
             _ = message;
             recorder.RecordProxyDisconnect();
-            await context.BoundSession.DisconnectAsync(cancellationToken)
+            await actor.Context.BoundSession.DisconnectAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
     }
 
     public sealed class GatewaySessionDisconnectRequestHandler(ActorDispatchRecorder recorder)
-        : IZLinkActorRequestHandler<GatewayPing, GatewayPong>
+        : IZLinkActorRequestHandler<GatewayActor, GatewayPing, GatewayPong>
     {
         public async ValueTask<GatewayPong> HandleAsync(
+            GatewayActor actor,
             GatewayPing request,
-            ZLinkActorRequestContext context,
             CancellationToken cancellationToken)
         {
             recorder.RecordProxyDisconnect();
-            await context.BoundSession.DisconnectAsync(cancellationToken)
+            await actor.Context.BoundSession.DisconnectAsync(cancellationToken)
                 .ConfigureAwait(false);
             return new GatewayPong($"disconnect:{request.Value}", 202);
         }

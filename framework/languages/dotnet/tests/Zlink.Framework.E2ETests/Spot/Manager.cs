@@ -36,7 +36,7 @@ public sealed class ManagerTests : SpotTestSupport
 
             Assert.True(first.Created);
 
-            var firstInfo = await manager.GetAsync(first.SpotRid);
+            var firstInfo = await manager.FindAsync(first.SpotRid);
             Assert.Equal(first.SpotRid, firstInfo?.SpotRid);
 
             var listed = await manager.ListAsync();
@@ -46,7 +46,7 @@ public sealed class ManagerTests : SpotTestSupport
 
             Assert.True(await manager.RemoveAsync(first.SpotRid));
             Assert.Contains(first.SpotRid, events.Closing);
-            Assert.Null(await manager.GetAsync(first.SpotRid));
+            Assert.Null(await manager.FindAsync(first.SpotRid));
             Assert.Empty(await manager.ListAsync());
 
             var firstScope = events.ScopeId(first.SpotRid);

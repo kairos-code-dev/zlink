@@ -40,23 +40,20 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
         var handler = ActivatorUtilities.GetServiceOrCreateInstance(
             services,
             descriptor.HandlerType);
-        var metadata = CreateMessageMetadata(header);
         await ZLinkHandlerInvocationEngine.InvokeAsync(
                 handler,
                 descriptor.Invoker,
                 3,
                 arguments =>
                 {
-                    arguments[0] = descriptor.ActorType is null ? message : actor;
-                    arguments[1] = descriptor.ActorType is null
-                        ? CreateSendContext(actor.ActorId, header, metadata, cancellationToken)
-                        : message;
+                    arguments[0] = actor;
+                    arguments[1] = message;
                     arguments[2] = cancellationToken;
                 })
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<byte[]> DispatchForReplyAsync(
+    public async ValueTask<ZLinkActorReply> DispatchForReplyAsync(
         ZLinkActorRuntimeState state,
         IZLinkActor actor,
         ZlinkStreamHeader header,
@@ -88,92 +85,29 @@ internal sealed class ZLinkActorPacketDispatcher(IServiceProvider services)
         var handler = ActivatorUtilities.GetServiceOrCreateInstance(
             services,
             descriptor.HandlerType);
-        var metadata = CreateMessageMetadata(header);
         var reply = await ZLinkHandlerInvocationEngine.InvokeAsync(
                 handler,
                 descriptor.Invoker,
                 3,
                 arguments =>
                 {
-                    arguments[0] = descriptor.ActorType is null ? message! : actor;
-                    arguments[1] = descriptor.ActorType is null
-                        ? new ZLinkActorRequestContext(
-                            actor.ActorId,
-                            header.Name,
-                            ZLinkEnvelopeCodec.DefaultContentType,
-                            null,
-                            null,
-                            CreateBoundSession(actor.ActorId),
-                            services,
-                            cancellationToken,
-                            metadata)
-                        : message!;
+                    arguments[0] = actor;
+                    arguments[1] = message!;
                     arguments[2] = cancellationToken;
                 })
             .ConfigureAwait(false);
-        return ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType);
+        return ZLinkActorReply.FromPayload(
+            ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType));
     }
 
     private static void ValidateActorType(
         ZLinkActorPacketDescriptor descriptor,
         IZLinkActor actor)
     {
-        if (descriptor.ActorType is not null && !descriptor.ActorType.IsInstanceOfType(actor))
+        if (!descriptor.ActorType.IsInstanceOfType(actor))
         {
             throw new InvalidOperationException(
                 $"Actor packet handler '{descriptor.HandlerType}' expects actor '{descriptor.ActorType}', but received '{actor.GetType()}'.");
         }
-    }
-
-    private ZLinkActorSendContext CreateSendContext(
-        string actorId,
-        ZlinkStreamHeader header,
-        ZLinkMessageMetadata metadata,
-        CancellationToken cancellationToken)
-    {
-        return new ZLinkActorSendContext(
-            actorId,
-            header.Name,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            null,
-            CreateBoundSession(actorId),
-            services,
-            cancellationToken,
-            metadata);
-    }
-
-    private IZLinkBoundSession CreateBoundSession(string actorId)
-    {
-        return services.GetRequiredService<IZLinkBoundSessionFactory>()
-            .Create(actorId);
-    }
-
-    private ZLinkMessageMetadata CreateMessageMetadata(ZlinkStreamHeader header)
-    {
-        if (header.Metadata.Count == 0)
-        {
-            return ZLinkMessageMetadata.Empty;
-        }
-
-        var policy = services.GetRequiredService<IZLinkMessageMetadataPolicy>();
-        Dictionary<string, string>? application = null;
-
-        foreach (var (key, value) in header.Metadata.Values)
-        {
-            if (policy.CanForwardApplicationKey(key))
-            {
-                application ??= new Dictionary<string, string>(StringComparer.Ordinal);
-                application[key] = value;
-            }
-        }
-
-        if (application is null)
-        {
-            return ZLinkMessageMetadata.Empty;
-        }
-
-        return new ZLinkMessageMetadata(
-            application,
-            new Dictionary<string, string>(StringComparer.Ordinal));
     }
 }

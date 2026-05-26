@@ -5,7 +5,6 @@ internal sealed class ZLinkSessionActorCoordinator(
     IZLinkStream stream)
 {
     private readonly ZLinkSessionActorBindingRegistry _bindings = new(runtime);
-    private IZLinkActor? _attachedActor;
 
     public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _bindings.BoundActors;
 
@@ -69,20 +68,11 @@ internal sealed class ZLinkSessionActorCoordinator(
         return _bindings.FindActor(actorId);
     }
 
-    public async ValueTask AttachAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        await runtime.AttachActorAsync(actor, stream, cancellationToken).ConfigureAwait(false);
-        _attachedActor = actor;
-    }
-
     public async ValueTask RelayToActorAsync(
         IZLinkSessionActor actor,
         ZlinkStreamHeader header,
         Message payload,
-        Func<ZlinkStreamHeader, ZlinkStreamCodec, ReadOnlyMemory<byte>, CancellationToken, ValueTask> replyRawAsync,
+        Func<ZlinkStreamHeader, ZLinkActorReply, CancellationToken, ValueTask> replyRawAsync,
         CancellationToken cancellationToken)
     {
         if (actor is not ZLinkSessionActor actorRef)
@@ -125,7 +115,6 @@ internal sealed class ZLinkSessionActorCoordinator(
         ZLinkSessionContext context,
         CancellationToken cancellationToken)
     {
-        await DisconnectAttachedActorAsync(cancellationToken).ConfigureAwait(false);
         await CleanupBindingsAsync(context, cancellationToken).ConfigureAwait(false);
     }
 
@@ -133,7 +122,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         ZLinkSessionActor actorRef,
         ZlinkStreamHeader header,
         Message payload,
-        Func<ZlinkStreamHeader, ZlinkStreamCodec, ReadOnlyMemory<byte>, CancellationToken, ValueTask> replyRawAsync,
+        Func<ZlinkStreamHeader, ZLinkActorReply, CancellationToken, ValueTask> replyRawAsync,
         CancellationToken cancellationToken)
     {
         using var actorPayload = payload.Copy();
@@ -145,7 +134,7 @@ internal sealed class ZLinkSessionActorCoordinator(
                     actorPayload,
                     cancellationToken)
                 .ConfigureAwait(false);
-            await replyRawAsync(header, header.Codec, reply, cancellationToken)
+            await replyRawAsync(header, reply, cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -201,18 +190,6 @@ internal sealed class ZLinkSessionActorCoordinator(
                 runtime.Registration.DefaultTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private async ValueTask DisconnectAttachedActorAsync(CancellationToken cancellationToken)
-    {
-        var actor = _attachedActor;
-        if (actor is null)
-        {
-            return;
-        }
-
-        await runtime.DisconnectActorAsync(actor, stream, cancellationToken).ConfigureAwait(false);
-        _attachedActor = null;
     }
 
     private async ValueTask SendBoundActorAsync(

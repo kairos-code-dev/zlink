@@ -13,7 +13,6 @@ public sealed class StreamContracts
         typeof(IZLinkSessionClientStream),
         typeof(IZLinkSessionActorBindingContext),
         typeof(IZLinkSessionLifecycle),
-        typeof(IZLinkSessionActorAttachmentContext),
         typeof(IZLinkSessionSendCall),
         typeof(IZLinkSessionReplyCall),
         typeof(IZLinkSessionPacketHandler<>),
@@ -24,10 +23,8 @@ public sealed class StreamContracts
     {
         var context = new ExampleSessionContext();
         var session = new ExampleSession(context);
-        var actor = new ExampleActor("player-1");
 
         await session.OnConnectedAsync(CancellationToken.None);
-        await context.AttachActorAsync(actor);
         var actorRef = await context.BindActorAsync(new Systems.Zlink.ActorRef(RoutingId.Of("actor-node"), "player-1", 1));
         var boundActor = context.FindActor("player-1");
         await actorRef.RelayAsync(
@@ -196,7 +193,6 @@ public sealed class StreamContracts
 
     private sealed class ExampleSessionContext :
         IZLinkSessionContext,
-        IZLinkSessionActorAttachmentContext,
         IZLinkStream
     {
         public string SessionId => "session-1";
@@ -256,11 +252,6 @@ public sealed class StreamContracts
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask AttachActorAsync(
-            IZLinkActor actor,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
-
         bool IZLinkStream.Write(Message payload, SendFlags flags) => true;
 
         async ValueTask IZLinkStream.CloseAsync(CancellationToken cancellationToken)
@@ -297,13 +288,6 @@ public sealed class StreamContracts
 
         public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
-    }
-
-    private sealed class ExampleActor(string actorId) : IZLinkActor
-    {
-        public string ActorId { get; } = actorId;
-
-        public IZLinkActorContext Context => null!;
     }
 
     private sealed class SendCall : IZLinkSendCall

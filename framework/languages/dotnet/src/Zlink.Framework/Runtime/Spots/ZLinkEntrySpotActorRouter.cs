@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkEntrySpotActorRouter

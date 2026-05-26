@@ -1,4 +1,6 @@
 
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation
@@ -96,7 +98,7 @@ internal sealed partial class ZLinkSpotActivation
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<byte[]> SubmitActorForReplyAsync(
+    public async ValueTask<ZLinkActorReply> SubmitActorForReplyAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,

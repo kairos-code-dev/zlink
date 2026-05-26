@@ -22,6 +22,99 @@ public sealed record ZLinkSpotActorChangeResult
     public ZLinkSpotActorChangeKind Kind { get; }
 }
 
+public sealed class ZLinkSpotActorReplyOptions
+{
+    private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
+
+    internal ZLinkSpotActorReplyOptionsSnapshot CreateSnapshot()
+    {
+        return new ZLinkSpotActorReplyOptionsSnapshot(
+            _metadata.Count == 0
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : new Dictionary<string, string>(_metadata, StringComparer.Ordinal),
+            CompressPayload);
+    }
+
+    internal IReadOnlyDictionary<string, string> MetadataValues => _metadata;
+
+    internal bool CompressPayload { get; private set; }
+
+    public ZLinkSpotActorReplyOptions Metadata(string key, string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(value);
+        _metadata[key] = value;
+        return this;
+    }
+
+    public ZLinkSpotActorReplyOptions Compress(bool enabled = true)
+    {
+        CompressPayload = enabled;
+        return this;
+    }
+}
+
+internal sealed record ZLinkSpotActorReplyOptionsSnapshot(
+    IReadOnlyDictionary<string, string> Metadata,
+    bool CompressPayload);
+
+public sealed class ZLinkSpotActorSendContext : ZLinkHandlerContext
+{
+    internal ZLinkSpotActorSendContext(
+        string actorId,
+        string? packetName,
+        string? contentType,
+        string? correlationId,
+        IZLinkBoundSession boundSession,
+        IServiceProvider services,
+        CancellationToken connectionAborted,
+        ZLinkMessageMetadata? metadata = null)
+        : base(null, packetName, contentType, correlationId, null, services, connectionAborted)
+    {
+        ActorId = actorId;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
+        BoundSession = boundSession;
+    }
+
+    public string ActorId { get; }
+
+    public ZLinkMessageMetadata Metadata { get; }
+
+    public IZLinkBoundSession BoundSession { get; }
+}
+
+public sealed class ZLinkSpotActorRequestContext : ZLinkHandlerContext
+{
+    internal ZLinkSpotActorRequestContext(
+        string actorId,
+        string? packetName,
+        string? contentType,
+        string? correlationId,
+        DateTimeOffset? deadline,
+        IZLinkBoundSession boundSession,
+        IServiceProvider services,
+        CancellationToken connectionAborted,
+        ZLinkMessageMetadata? metadata = null)
+        : base(null, packetName, contentType, correlationId, deadline, services, connectionAborted)
+    {
+        ActorId = actorId;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
+        BoundSession = boundSession;
+        Deadline = deadline;
+        Reply = new ZLinkSpotActorReplyOptions();
+    }
+
+    public string ActorId { get; }
+
+    public ZLinkMessageMetadata Metadata { get; }
+
+    public IZLinkBoundSession BoundSession { get; }
+
+    public ZLinkSpotActorReplyOptions Reply { get; }
+
+    public new DateTimeOffset? Deadline { get; }
+}
+
 public interface IZLinkSpot
 {
     IZLinkSpotContext Context { get; }
@@ -31,7 +124,7 @@ public interface IZLinkSpot
     }
 
     ValueTask OnCreateAsync(
-        IReadOnlyList<Message> createParts,
+        IReadOnlyList<Message> createReqs,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
@@ -176,6 +269,7 @@ public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
+        ZLinkSpotActorSendContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -187,6 +281,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
     ValueTask<TReply> HandleAsync(
         TSpot spot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -230,6 +325,7 @@ public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorSendContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -241,6 +337,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
     ValueTask<TReply> HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }

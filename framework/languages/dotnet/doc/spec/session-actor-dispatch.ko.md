@@ -27,10 +27,10 @@
 | 축 | `.NET` 표면 |
 |----|-------------|
 | session → actor relay | `IZLinkSessionContext.BindActorAsync(...)`, `IZLinkSessionActor.RelayAsync(...)` |
-| actor handler | `IZLinkActorSendHandler<TMessage>`, `IZLinkActorRequestHandler<TRequest, TReply>`, `IZLinkActorPacketHandler<TActor, TMessage>`, `IZLinkActorRequestHandler<TActor, TRequest, TReply>` |
+| actor handler | `IZLinkActorPacketHandler<TActor, TMessage>`, `IZLinkActorRequestHandler<TActor, TRequest, TReply>` |
 | spot actor handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
-| actor → own client push | `context.BoundSession.Send(msg).Submit(...)` |
-| 다른 actor → client push | 먼저 대상 actor 에 메시지를 보내고, 대상 actor handler 가 `context.BoundSession` 으로 push |
+| actor → own client push | Spot actor handler 의 `context.BoundSession.Send(msg).Submit(...)` |
+| 다른 actor → client push | 먼저 대상 actor 에 메시지를 보내고, 대상 Spot actor handler 가 `context.BoundSession` 으로 push |
 | route 해석 | session relay 는 logical actor id/type handle 을 사용하고, core ActorGateway 가 현재 actor 위치를 해석한다. actor → client push 방향은 framework/core가 가진 actor-session binding[^actor-session-binding]을 사용한다 |
 
 인터페이스 전체 정의는 [handler-interfaces.ko.md](./handler-interfaces.ko.md)
@@ -941,6 +941,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
     ValueTask<TReply> HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -952,6 +953,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
     ValueTask<TReply> HandleAsync(
         TSpot spot,
         TActor actor,
+        ZLinkSpotActorRequestContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -963,18 +965,57 @@ public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
+        ZLinkSpotActorSendContext context,
+        TMessage message,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
+    where TSpot : class
+    where TActor : IZLinkActor
+{
+    ValueTask HandleAsync(
+        TSpot spot,
+        TActor actor,
+        ZLinkSpotActorSendContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
 ```
 
-handler 는 transport raw header 를 직접 받지 않는다. Session route, stream
-sequence, binding token 같은 값은 framework runtime 의 metadata 쪽에 남는다.
+handler 는 transport raw header 를 직접 받지 않는다. Session route 와 binding
+token 같은 내부 값은 framework runtime 이 들고 있고 public handler 에 노출하지
+않는다. stream packet 이름과 전달 허용된 application metadata 는
+`ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` 로 전달된다.
 
 typed actor context 는 source session 의 `RoutingId` 를 노출하지 않는다.
 handler 가 즉시 자기 client 로 push 를 보내야 하는 경우에도 마찬가지다. 이때도
 `context.BoundSession.Send(message)` 처럼 현재 actor 에 묶인 표면을 사용해야
 한다.
+
+request handler 의 응답 payload 는 handler 의 반환값이다. 다만 응답 stream
+header 에 application metadata 를 추가하거나 payload compression 을 켜야 하는
+경우에는 `ZLinkSpotActorRequestContext.Reply` 를 사용한다.
+
+```csharp
+public async ValueTask<JoinMatchRes> HandleAsync(
+    GameSpot spot,
+    PlayerActor actor,
+    ZLinkSpotActorRequestContext context,
+    JoinMatchReq request,
+    CancellationToken cancellationToken)
+{
+    context.Reply
+        .Metadata("trace-id", "reply-trace")
+        .Compress();
+
+    return new JoinMatchRes(request.MatchId);
+}
+```
+
+`context.Reply` 는 응답을 직접 보내는 API 가 아니다. handler 가 반환한 값을
+framework 가 response frame 으로 만들 때 사용할 header/body encoding 옵션만
+기록한다.
 
 ### 3.2 metadata snapshot
 

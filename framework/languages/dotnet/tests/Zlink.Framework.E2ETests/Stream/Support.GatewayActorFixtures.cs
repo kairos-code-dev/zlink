@@ -101,4 +101,41 @@ public abstract partial class StreamTestSupport
                 new ConfigureFailureActor(actorId, context, recorder));
         }
     }
+
+    public sealed class GatewayEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+    {
+        public IZLinkEntrySpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.AddActorPacket<GatewayEntrySpotActorHandler, GatewayActor>("relay.echo");
+        }
+    }
+
+    public sealed class GatewayEntrySpotActorHandler(ActorDispatchRecorder recorder)
+        : IZLinkEntrySpotActorRequestHandler<GatewayEntrySpot, GatewayActor, GatewayPing, GatewayPong>
+    {
+        public ValueTask<GatewayPong> HandleAsync(
+            GatewayEntrySpot entrySpot,
+            GatewayActor actor,
+            ZLinkSpotActorRequestContext context,
+            GatewayPing request,
+            CancellationToken cancellationToken)
+        {
+            _ = entrySpot;
+            _ = actor;
+            cancellationToken.ThrowIfCancellationRequested();
+
+            recorder.LastPacketName = context.PacketName;
+            recorder.LastTraceId = context.Metadata.TryGetApplicationValue("trace-id", out var traceId)
+                ? traceId
+                : null;
+            recorder.ForwardedTenantId = context.Metadata.Application.ContainsKey("tenant-id");
+            context.Reply
+                .Metadata("reply-trace-id", $"reply:{traceId}")
+                .Compress();
+
+            return ValueTask.FromResult(new GatewayPong($"play:{request.Value}", 101));
+        }
+    }
 }

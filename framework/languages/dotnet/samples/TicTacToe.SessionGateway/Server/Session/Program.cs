@@ -8,7 +8,7 @@ using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
 using Microsoft.Extensions.Hosting;
-using TicTacToe.SessionGateway.Server.Session;
+using TicTacToe.SessionGateway.Session;
 using TicTacToe.SessionGateway.Shared.Configuration;
 
 var topology = SampleTopology.Create();

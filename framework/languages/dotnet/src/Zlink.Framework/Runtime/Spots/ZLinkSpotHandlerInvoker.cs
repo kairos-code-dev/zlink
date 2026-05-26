@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object spot)
@@ -68,11 +71,19 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             "SPOT actor packet handler");
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, message, cancellationToken)
+        var context = CreateSendContext(actor.ActorId, header, cancellationToken);
+        await InvokeAsync(
+                descriptor.HandlerType,
+                descriptor.Invoker,
+                spot,
+                actor,
+                context,
+                message,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<byte[]> InvokeActorPacketForReplyAsync(
+    public async ValueTask<ZLinkActorReply> InvokeActorPacketForReplyAsync(
         ZLinkSpotActorPacketDescriptor descriptor,
         IZLinkActor actor,
         ZlinkStreamHeader header,
@@ -92,9 +103,87 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             "SPOT actor packet handler");
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        var reply = await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, message, cancellationToken)
+        var context = CreateRequestContext(actor.ActorId, header, cancellationToken);
+        var reply = await InvokeAsync(
+                descriptor.HandlerType,
+                descriptor.Invoker,
+                spot,
+                actor,
+                context,
+                message,
+                cancellationToken)
             .ConfigureAwait(false);
-        return ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType);
+        return ZLinkActorReply.FromPayload(
+            ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType),
+            context.Reply.CreateSnapshot());
+    }
+
+    private ZLinkSpotActorSendContext CreateSendContext(
+        string actorId,
+        ZlinkStreamHeader header,
+        CancellationToken cancellationToken)
+    {
+        return new ZLinkSpotActorSendContext(
+            actorId,
+            header.Name,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null,
+            CreateBoundSession(actorId),
+            services,
+            cancellationToken,
+            CreateMessageMetadata(header));
+    }
+
+    private ZLinkSpotActorRequestContext CreateRequestContext(
+        string actorId,
+        ZlinkStreamHeader header,
+        CancellationToken cancellationToken)
+    {
+        return new ZLinkSpotActorRequestContext(
+            actorId,
+            header.Name,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null,
+            null,
+            CreateBoundSession(actorId),
+            services,
+            cancellationToken,
+            CreateMessageMetadata(header));
+    }
+
+    private IZLinkBoundSession CreateBoundSession(string actorId)
+    {
+        return services.GetRequiredService<IZLinkBoundSessionFactory>()
+            .Create(actorId);
+    }
+
+    private ZLinkMessageMetadata CreateMessageMetadata(ZlinkStreamHeader header)
+    {
+        if (header.Metadata.Count == 0)
+        {
+            return ZLinkMessageMetadata.Empty;
+        }
+
+        var policy = services.GetRequiredService<IZLinkMessageMetadataPolicy>();
+        Dictionary<string, string>? application = null;
+
+        foreach (var (key, value) in header.Metadata.Values)
+        {
+            if (policy.CanForwardApplicationKey(key))
+            {
+                application ??= new Dictionary<string, string>(StringComparer.Ordinal);
+                application[key] = value;
+            }
+        }
+
+        if (application is null)
+        {
+            return ZLinkMessageMetadata.Empty;
+        }
+
+        return new ZLinkMessageMetadata(
+            application,
+            new Dictionary<string, string>(StringComparer.Ordinal));
     }
 
     public async ValueTask InvokeActorLifecycleAsync(
@@ -200,6 +289,30 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
                 arguments[1] = arg1;
                 arguments[2] = arg2;
                 arguments[3] = arg3;
+            });
+    }
+
+    private ValueTask<object?> InvokeAsync(
+        Type handlerType,
+        ZLinkHandlerMethodInvoker invoker,
+        object? arg0,
+        object? arg1,
+        object? arg2,
+        object? arg3,
+        object? arg4)
+    {
+        return ZLinkHandlerInvocationEngine.InvokeAsync(
+            services,
+            handlerType,
+            invoker,
+            5,
+            arguments =>
+            {
+                arguments[0] = arg0;
+                arguments[1] = arg1;
+                arguments[2] = arg2;
+                arguments[3] = arg3;
+                arguments[4] = arg4;
             });
     }
 

@@ -43,10 +43,12 @@ public abstract partial class SpotTestSupport
         public async ValueTask HandleAsync(
             RegistryEntrySpot entrySpot,
             RegistryTestActor actor,
+            ZLinkSpotActorSendContext context,
             string spotRid,
             CancellationToken cancellationToken)
         {
             _ = entrySpot;
+            _ = context;
             var reply = await actor.Context.JoinSpot(
                     global::Systems.Zlink.RoutingId.FromString(spotRid),
                     new RegistryJoinRequest("entry-room"))
@@ -64,10 +66,12 @@ public abstract partial class SpotTestSupport
         public async ValueTask HandleAsync(
             RegistryEntrySpot entrySpot,
             RegistryTestActor actor,
+            ZLinkSpotActorSendContext context,
             string message,
             CancellationToken cancellationToken)
         {
             _ = entrySpot;
+            _ = context;
             recorder.Events.Enqueue($"block-start:{actor.ActorId}:{message}");
             recorder.BlockingStarted.TrySetResult();
             await recorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -83,10 +87,12 @@ public abstract partial class SpotTestSupport
         public async ValueTask HandleAsync(
             RegistryEntrySpot entrySpot,
             RegistryTestActor actor,
+            ZLinkSpotActorSendContext context,
             string spotRid,
             CancellationToken cancellationToken)
         {
             _ = entrySpot;
+            _ = context;
             mailboxRecorder.BlockingStarted.TrySetResult();
             await mailboxRecorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -107,10 +113,12 @@ public abstract partial class SpotTestSupport
         public ValueTask HandleAsync(
             RegistryEntrySpot entrySpot,
             RegistryTestActor actor,
+            ZLinkSpotActorSendContext context,
             string message,
             CancellationToken cancellationToken)
         {
             _ = entrySpot;
+            _ = context;
             _ = cancellationToken;
             recorder.Events.Enqueue($"record:{actor.ActorId}:{message}");
             return ValueTask.CompletedTask;
@@ -165,9 +173,11 @@ public abstract partial class SpotTestSupport
         public ValueTask HandleAsync(
             RegistryStageSpot spot,
             RegistryTestActor actor,
+            ZLinkSpotActorSendContext context,
             string message,
             CancellationToken cancellationToken)
         {
+            _ = context;
             _ = cancellationToken;
             recorder.Events.Enqueue(
                 $"dispatch:{actor.ActorId}:{actor.CurrentRoomId}:{message}:{spot.Context.SpotRid.ToHex()}");

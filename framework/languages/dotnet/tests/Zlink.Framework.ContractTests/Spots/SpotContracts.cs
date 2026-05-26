@@ -138,13 +138,13 @@ public sealed class SpotContracts
         await new RoomEventHandler().HandleAsync(room, new RoomEvent("opened"), CancellationToken.None);
         await new RoomTimerHandler().HandleAsync(room, TimerTick(), CancellationToken.None);
         var joinReply = await new PlayerJoinHandler().HandleAsync(room, actor, new JoinRoom("room-1"), CancellationToken.None);
-        await new PlayerActorSendHandler().HandleAsync(room, actor, new RoomEvent("opened"), CancellationToken.None);
-        var actorReply = await new PlayerActorRequestHandler().HandleAsync(room, actor, new JoinRoom("room-1"), CancellationToken.None);
+        await new PlayerActorSendHandler().HandleAsync(room, actor, null!, new RoomEvent("opened"), CancellationToken.None);
+        var actorReply = await new PlayerActorRequestHandler().HandleAsync(room, actor, null!, new JoinRoom("room-1"), CancellationToken.None);
         await new PlayerJoinedHandler().HandleAsync(room, actor, Lifecycle(ZLinkSpotActorChangeKind.JoinSpot), CancellationToken.None);
         await new PlayerLeftHandler().HandleAsync(room, actor, Lifecycle(ZLinkSpotActorChangeKind.LeaveSpot), CancellationToken.None);
         await new PlayerDisconnectedHandler().HandleAsync(room, actor, CancellationToken.None);
-        await new EntryActorSendHandler().HandleAsync(entry, actor, new RoomEvent("opened"), CancellationToken.None);
-        var entryReply = await new EntryActorRequestHandler().HandleAsync(entry, actor, new JoinRoom("room-1"), CancellationToken.None);
+        await new EntryActorSendHandler().HandleAsync(entry, actor, null!, new RoomEvent("opened"), CancellationToken.None);
+        var entryReply = await new EntryActorRequestHandler().HandleAsync(entry, actor, null!, new JoinRoom("room-1"), CancellationToken.None);
         await new EntryActorJoinedHandler().HandleAsync(entry, actor, Lifecycle(ZLinkSpotActorChangeKind.JoinEntrySpot), CancellationToken.None);
         await new EntryActorLeftHandler().HandleAsync(entry, actor, Lifecycle(ZLinkSpotActorChangeKind.LeaveSpot), CancellationToken.None);
         await new EntryActorDisconnectedHandler().HandleAsync(entry, actor, CancellationToken.None);
@@ -172,6 +172,58 @@ public sealed class SpotContracts
         Assert.DoesNotContain(values, static value => value.ToString() == "Destroy");
         Assert.Throws<ArgumentOutOfRangeException>(
             static () => new ZLinkSpotActorChangeResult((ZLinkSpotActorChangeKind)0));
+    }
+
+    [Fact]
+    [ContractExample(
+        typeof(IZLinkSpotActorSendHandler<,,>),
+        typeof(IZLinkSpotActorRequestHandler<,,,>),
+        typeof(IZLinkEntrySpotActorSendHandler<,,>),
+        typeof(IZLinkEntrySpotActorRequestHandler<,,,>))]
+    public void Spot_actor_handlers_receive_context_before_payload()
+    {
+        AssertHandlerParameters(
+            typeof(IZLinkSpotActorSendHandler<RoomSpot, PlayerActor, RoomEvent>),
+            typeof(RoomSpot),
+            typeof(PlayerActor),
+            typeof(ZLinkSpotActorSendContext),
+            typeof(RoomEvent),
+            typeof(CancellationToken));
+        AssertHandlerParameters(
+            typeof(IZLinkSpotActorRequestHandler<RoomSpot, PlayerActor, JoinRoom, JoinedRoom>),
+            typeof(RoomSpot),
+            typeof(PlayerActor),
+            typeof(ZLinkSpotActorRequestContext),
+            typeof(JoinRoom),
+            typeof(CancellationToken));
+        AssertHandlerParameters(
+            typeof(IZLinkEntrySpotActorSendHandler<EntrySpot, PlayerActor, RoomEvent>),
+            typeof(EntrySpot),
+            typeof(PlayerActor),
+            typeof(ZLinkSpotActorSendContext),
+            typeof(RoomEvent),
+            typeof(CancellationToken));
+        AssertHandlerParameters(
+            typeof(IZLinkEntrySpotActorRequestHandler<EntrySpot, PlayerActor, JoinRoom, JoinedRoom>),
+            typeof(EntrySpot),
+            typeof(PlayerActor),
+            typeof(ZLinkSpotActorRequestContext),
+            typeof(JoinRoom),
+            typeof(CancellationToken));
+
+        var reply = new ZLinkSpotActorReplyOptions();
+        Assert.Same(reply, reply.Metadata("reply-key", "reply-value"));
+        Assert.Same(reply, reply.Compress());
+    }
+
+    private static void AssertHandlerParameters(Type handlerType, params Type[] expected)
+    {
+        var actual = handlerType.GetMethod("HandleAsync")!
+            .GetParameters()
+            .Select(static parameter => parameter.ParameterType)
+            .ToArray();
+
+        Assert.Equal(expected, actual);
     }
 
     private static ZLinkSpotActorChangeResult Lifecycle(ZLinkSpotActorChangeKind kind) =>
@@ -392,8 +444,7 @@ public sealed class SpotContracts
             return ValueTask.FromResult(new ZLinkSpotCreateResult(spotRid, created));
         }
 
-        public ValueTask<ZLinkSpotInfo?> GetAsync(
-            RoutingId spotRid,
+        public ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(_spots.TryGetValue(spotRid, out var info) ? info : (ZLinkSpotInfo?)null);
 
@@ -536,13 +587,23 @@ public sealed class SpotContracts
 
     private sealed class PlayerActorPacketHandler : IZLinkSpotActorSendHandler<RoomSpot, PlayerActor, RoomEvent>
     {
-        public ValueTask HandleAsync(RoomSpot spot, PlayerActor actor, RoomEvent message, CancellationToken cancellationToken) =>
+        public ValueTask HandleAsync(
+            RoomSpot spot,
+            PlayerActor actor,
+            ZLinkSpotActorSendContext context,
+            RoomEvent message,
+            CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
     }
 
     private sealed class PlayerActorSendHandler : IZLinkSpotActorSendHandler<RoomSpot, PlayerActor, RoomEvent>
     {
-        public ValueTask HandleAsync(RoomSpot spot, PlayerActor actor, RoomEvent message, CancellationToken cancellationToken) =>
+        public ValueTask HandleAsync(
+            RoomSpot spot,
+            PlayerActor actor,
+            ZLinkSpotActorSendContext context,
+            RoomEvent message,
+            CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
     }
 
@@ -551,6 +612,7 @@ public sealed class SpotContracts
         public ValueTask<JoinedRoom> HandleAsync(
             RoomSpot spot,
             PlayerActor actor,
+            ZLinkSpotActorRequestContext context,
             JoinRoom request,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(new JoinedRoom($"actor:{request.RoomId}"));
@@ -587,7 +649,12 @@ public sealed class SpotContracts
 
     private sealed class EntryActorSendHandler : IZLinkEntrySpotActorSendHandler<EntrySpot, PlayerActor, RoomEvent>
     {
-        public ValueTask HandleAsync(EntrySpot entrySpot, PlayerActor actor, RoomEvent message, CancellationToken cancellationToken) =>
+        public ValueTask HandleAsync(
+            EntrySpot entrySpot,
+            PlayerActor actor,
+            ZLinkSpotActorSendContext context,
+            RoomEvent message,
+            CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
     }
 
@@ -596,6 +663,7 @@ public sealed class SpotContracts
         public ValueTask<JoinedRoom> HandleAsync(
             EntrySpot entrySpot,
             PlayerActor actor,
+            ZLinkSpotActorRequestContext context,
             JoinRoom request,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(new JoinedRoom($"entry:{request.RoomId}"));

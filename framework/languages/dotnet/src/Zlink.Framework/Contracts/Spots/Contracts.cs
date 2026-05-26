@@ -32,8 +32,7 @@ public interface IZLinkSpotManager
         return GetOrCreateAsync<TSpot>(spotRid, [], cancellationToken);
     }
 
-    ValueTask<ZLinkSpotInfo?> GetAsync(
-        RoutingId spotRid,
+    ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,
         CancellationToken cancellationToken = default);
 
     ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(

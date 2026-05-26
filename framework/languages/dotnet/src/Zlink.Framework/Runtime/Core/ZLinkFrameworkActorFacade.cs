@@ -325,7 +325,19 @@ internal sealed class ZLinkFrameworkActorFacade(
         Message payload,
         CancellationToken cancellationToken = default)
     {
-        return await actorSessionManager.SubmitActorForReplyAsync(actorId, header, payload, cancellationToken);
+        var reply = await actorSessionManager.SubmitActorForReplyAsync(actorId, header, payload, cancellationToken)
+            .ConfigureAwait(false);
+        return reply.Payload;
+    }
+
+    internal async ValueTask<ZLinkActorReply> SubmitActorForReplyCoreAsync(
+        string actorId,
+        ZlinkStreamHeader header,
+        Message payload,
+        CancellationToken cancellationToken = default)
+    {
+        return await actorSessionManager.SubmitActorForReplyAsync(actorId, header, payload, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask SubmitActorByIdAsync(

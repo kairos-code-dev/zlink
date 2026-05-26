@@ -69,7 +69,7 @@ internal sealed class ZLinkActorPacketDescriptor
 {
     public required Type HandlerType { get; init; }
 
-    public Type? ActorType { get; init; }
+    public required Type ActorType { get; init; }
 
     public required Type MessageType { get; init; }
 

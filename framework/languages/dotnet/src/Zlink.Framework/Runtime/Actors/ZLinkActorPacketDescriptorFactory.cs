@@ -51,44 +51,6 @@ internal static class ZLinkActorPacketDescriptorFactory
             };
         }
 
-        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
-        {
-            if (definition != typeof(IZLinkActorSendHandler<>))
-            {
-                continue;
-            }
-
-            return new ZLinkActorPacketDescriptor
-            {
-                HandlerType = handlerType,
-                ActorType = null,
-                MessageType = arguments[0],
-                ReplyType = null,
-                Kind = ZLinkMessageKind.Command,
-                Invoker = CreateInvoker(handlerType),
-                MessageName = messageName ?? MessageNameResolver.Resolve(arguments[0])
-            };
-        }
-
-        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
-        {
-            if (definition != typeof(IZLinkActorRequestHandler<,>))
-            {
-                continue;
-            }
-
-            return new ZLinkActorPacketDescriptor
-            {
-                HandlerType = handlerType,
-                ActorType = null,
-                MessageType = arguments[0],
-                ReplyType = arguments[1],
-                Kind = ZLinkMessageKind.Request,
-                Invoker = CreateInvoker(handlerType),
-                MessageName = messageName ?? MessageNameResolver.Resolve(arguments[0])
-            };
-        }
-
         throw new InvalidOperationException(
             $"Actor packet handler '{handlerType}' must implement a supported actor handler interface.");
     }

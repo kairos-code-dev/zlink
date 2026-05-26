@@ -6,7 +6,7 @@ internal sealed class ZLinkSessionContext(
     IZLinkStream stream,
     Func<CancellationToken, ValueTask> closeAsync,
     Func<CancellationToken, ValueTask> closeByProxyAsync)
-    : IZLinkSessionContext, IZLinkSessionActorAttachmentContext
+    : IZLinkSessionContext
 {
     private ZlinkStreamHeader? _currentDispatchHeader;
     private readonly ZLinkSessionRequestTracker _requests = new();
@@ -72,13 +72,6 @@ internal sealed class ZLinkSessionContext(
         return closeByProxyAsync(cancellationToken);
     }
 
-    public async ValueTask AttachActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default)
-    {
-        await _actors.AttachAsync(actor, cancellationToken).ConfigureAwait(false);
-    }
-
     internal async ValueTask RelayActorRefAsync(
         ZLinkSessionActor actor,
         ZlinkStreamHeader header,
@@ -89,7 +82,7 @@ internal sealed class ZLinkSessionContext(
                 actor,
                 header,
                 payload,
-                ReplyRawAsync,
+                ReplyActorRawAsync,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -167,6 +160,14 @@ internal sealed class ZLinkSessionContext(
         CancellationToken cancellationToken)
     {
         return Transport.ReplyRawAsync(requestHeader, codec, payload, cancellationToken);
+    }
+
+    internal ValueTask ReplyActorRawAsync(
+        ZlinkStreamHeader requestHeader,
+        ZLinkActorReply reply,
+        CancellationToken cancellationToken)
+    {
+        return Transport.ReplyRawAsync(requestHeader, reply, cancellationToken);
     }
 
     internal ValueTask ReplyErrorAsync(

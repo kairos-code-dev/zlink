@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Streams;
+
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed partial class ZLinkActorSessionManager(
@@ -136,7 +138,7 @@ internal sealed partial class ZLinkActorSessionManager(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<byte[]> SubmitActorForReplyAsync(
+    public async ValueTask<ZLinkActorReply> SubmitActorForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
         Message payload,

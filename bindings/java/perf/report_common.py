@@ -21,9 +21,8 @@ def emit_completion(lines, status, expected_result_lines, actual_result_lines):
 def emit_failures(lines, failures):
     lines.append("## Failures")
     for pattern, transport, size, run, reason in failures:
-        lines.append(
-            f"- pattern={pattern} transport={transport} size={size} run={run} reason={reason}"
-        )
+        del run
+        lines.append(f"- {pattern} current {transport} {size}B: {reason}")
 
 
 def load_failures(path):

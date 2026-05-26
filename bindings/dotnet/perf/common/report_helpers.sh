@@ -29,7 +29,7 @@ print_failures_section() {
   print_line "## Failures"
   if [[ -n "${failures_file}" && -s "${failures_file}" ]]; then
     while IFS=',' read -r pattern transport size run_index reason; do
-      print_line "- pattern=${pattern} transport=${transport} size=${size} run=${run_index} reason=${reason}"
+      print_line "- ${pattern} current ${transport} ${size}B: ${reason}"
     done < "${failures_file}"
   fi
 }

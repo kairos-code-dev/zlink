@@ -425,6 +425,10 @@ def render_single_report(args):
             lines.append(f"    Testing {transport}: Done")
         lines.append("")
 
+    if failures:
+        lines.extend(["## Failures"])
+        lines.extend(f"- {failure}" for failure in failures)
+        lines.append("")
     lines.extend(single_auto_hwm_detail_lines(patterns, parse_csv(args.msg_sizes)))
     lines.append("")
     lines.extend(_single_effective_options(args, "result"))
@@ -434,9 +438,6 @@ def render_single_report(args):
     lines.append(f"- status: {'complete' if expected == actual else 'partial'}")
     lines.append(f"- expected_result_lines: {expected}")
     lines.append(f"- actual_result_lines: {actual}")
-    if failures:
-        lines.extend(["", "## Failures"])
-        lines.extend(f"- {failure}" for failure in failures)
     status = "complete" if expected == actual else "partial"
     lines.extend(["", f"Saved result file: {args.report} (status={status})"])
     _write_report(lines, args.report, args.output)

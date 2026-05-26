@@ -758,11 +758,12 @@ tmp_metrics="$(mktemp)"
 tmp_progress="$(mktemp)"
 tmp_failures="$(mktemp)"
 tmp_auto_hwm="$(mktemp)"
+tmp_skips="$(mktemp)"
 # pattern -> transports -> sizes iteration plan, so the report emitter can
 # reproduce the canonical C multi structure byte-for-byte. C authority:
 # bindings/c/perf/run_comparison.py
 tmp_plan="$(mktemp)"
-trap 'rm -f "${tmp_metrics}" "${tmp_progress}" "${tmp_failures}" "${tmp_auto_hwm}" "${tmp_plan}"' EXIT
+trap 'rm -f "${tmp_metrics}" "${tmp_progress}" "${tmp_failures}" "${tmp_auto_hwm}" "${tmp_skips}" "${tmp_plan}"' EXIT
 metrics_regex='^(throughput|bandwidth|latency|latency_p95|latency_p99)$'
 
 expected_result_lines=0
@@ -1176,10 +1177,12 @@ for pattern in "${patterns[@]}"; do
   pattern_clients="$(default_clients_for_pattern "${pattern}")"
   if ! ensure_nofile_limit "${pattern_clients}"; then
     skip_entries+=("${pattern}: nofile_guard_${NOFILE_SKIP_REASON}")
+    printf '%s: nofile_guard_%s\n' "${pattern}" "${NOFILE_SKIP_REASON}" >> "${tmp_skips}"
     continue
   fi
   if ! ensure_memory_budget "${pattern_clients}"; then
     skip_entries+=("${pattern}: memory_guard_${MEMORY_SKIP_REASON}")
+    printf '%s: memory_guard_%s\n' "${pattern}" "${MEMORY_SKIP_REASON}" >> "${tmp_skips}"
     continue
   fi
   run_patterns+=("${pattern}")
@@ -1199,18 +1202,6 @@ if [[ "${#run_patterns[@]}" -eq 0 ]]; then
 fi
 
 patterns=("${run_patterns[@]}")
-
-if [[ "${#skip_entries[@]}" -gt 0 ]]; then
-  echo
-  echo "## Skips"
-  printf '\n## Skips\n' >> "${tmp_progress}"
-  for item in "${skip_entries[@]}"; do
-    echo "- ${item}"
-    printf -- '- %s\n' "${item}" >> "${tmp_progress}"
-  done
-  echo
-  printf '\n' >> "${tmp_progress}"
-fi
 
 if printf '%s\n' "${patterns[@]}" | grep -qx 'MULTI_STREAM'; then
   if [[ "${explicit_msg_sizes}" -eq 0 ]]; then
@@ -1344,7 +1335,7 @@ for pattern_index in "${!patterns[@]}"; do
 done
 
 python_status=0
-python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${tmp_plan}" "${report}" \
+python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${tmp_auto_hwm}" "${tmp_plan}" "${tmp_skips}" "${report}" \
   "${RUNS}" "${DURATION}" "${CLIENTS}" "${SERVICE_CLIENTS}" \
   "${display_server_io_threads}" "${display_client_io_threads}" \
   "${display_hwm}" "${display_send_hwm}" "${display_recv_hwm}" "${display_sndbuf}" "${display_rcvbuf}" \
@@ -1368,7 +1359,7 @@ from pathlib import Path
 
 (
     helper_path, metrics_path, failures_path, auto_hwm_path, plan_path,
-    report_path, runs, duration, clients, service_clients,
+    skips_path, report_path, runs, duration, clients, service_clients,
     server_io_threads, client_io_threads, hwm, send_hwm, recv_hwm, sndbuf,
     rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, sndtimeo_ms,
     rcvtimeo_ms, connect_concurrency, connect_ready_timeout_ms, monitor_hwm,
@@ -1822,8 +1813,14 @@ for pattern, transports, sizes in plan:
     if not is_last_pattern:
         emit(f"[pattern cooldown {pattern_transition_ms}ms]")
 
-# Failures (C prints before the result options / completion).
 all_failures = [(fp, ft, fs, fr) for fp, ft, fs, _, fr in failures]
+skip_entries = []
+if Path(skips_path).exists():
+    skip_entries = [
+        line.strip()
+        for line in Path(skips_path).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 emit("")
 emit_options("result")
@@ -1852,11 +1849,16 @@ emit("")
 emit("## Completion")
 emit(f"- success: {success}")
 emit("- unsupported: 0")
-emit("- skip: 0")
+emit(f"- skip: {len(skip_entries)}")
 emit(f"- fail: {fail}")
 emit(f"- status: {status}")
 emit(f"- expected_result_lines: {expected_result_lines}")
 emit(f"- actual_result_lines: {actual_result_lines}")
+if skip_entries:
+    emit("")
+    emit("## Skips")
+    for item in skip_entries:
+        emit(f"- {item}")
 if all_failures:
     emit("")
     emit("## Failures")

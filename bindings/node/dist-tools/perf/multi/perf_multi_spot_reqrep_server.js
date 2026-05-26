@@ -4,13 +4,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { configureTlsServer } = require('../common/perf_tls');
-const { sleepImmediate } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
-const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, publishControlUntilSent, subscribeNoWait, } = require('./perf_multi_runtime');
+const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, subscribeNoWait, } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
 const TRACE = process.env.PERF_MULTI_SPOT_REQREP_TRACE === '1';
+function sleepMillis(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 function trace(message) {
     if (TRACE) {
         console.error(`[multi-spot-reqrep-server] ${message}`);
@@ -38,6 +40,8 @@ async function main() {
     let startRequested = false;
     let stop = false;
     let connectedControlEndpoint = '';
+    let controlPoller = null;
+    let controlEvents = null;
     let rl = null;
     try {
         applySpotNodeAdmission(node);
@@ -56,6 +60,9 @@ async function main() {
         emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
         controlPub.bind(options.controlEndpoint);
         controlSub.setSubscription(CONTROL_TOPIC);
+        controlPoller = new zlink.Poller();
+        controlEvents = new zlink.PollEvents(1);
+        controlPoller.add(controlSub, pollEvents(POLLIN), 0);
         console.log(`READY,${options.endpoint}`);
         console.log(`CONTROL_READY,${options.controlEndpoint}`);
         trace('ready');
@@ -108,7 +115,7 @@ async function main() {
                 }
             }
             if (!(connected && readyCount >= options.clients && startRequested) && !drained) {
-                await sleepImmediate();
+                controlPoller.wait(controlEvents, 50);
             }
         }
         trace(`control-ready connected=${connected} ready=${readyCount} start=${startRequested}`);
@@ -117,12 +124,14 @@ async function main() {
         }
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `START,${options.msgSize}`);
         while (!stop) {
-            await sleepImmediate();
+            await sleepMillis(50);
         }
         trace('stop');
     }
     finally {
         stop = true;
+        controlEvents?.close();
+        controlPoller?.close();
         rl?.close();
         controlPubWaiter.close();
         closeQuietly(spot);

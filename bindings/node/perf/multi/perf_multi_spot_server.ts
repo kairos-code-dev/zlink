@@ -13,6 +13,7 @@ const {
 } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
 const {
+  POLLIN,
   POLLOUT,
   applyAutoHwmMsgUnit,
   applyContextPolicy,
@@ -20,6 +21,7 @@ const {
   applySpotNodeAdmission,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
+  pollEvents,
   publishControlUntilSent,
   subscribeNoWait,
   trySocketPublish
@@ -27,6 +29,10 @@ const {
 
 const TOPIC = 'bench';
 const CONTROL_TOPIC = 'bench';
+
+function sleepMillis(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // C parity: bindings/c/perf/multi/src/perf_multi_spot_server.cpp
 // resolve_spot_latency_only_mode (~197-208). The runner's clean-latency
@@ -101,6 +107,8 @@ async function main() {
   let stopRequested = false;
   let connectedControlEndpoint = '';
   const connectedDataEndpoints = new Set();
+  let controlPoller = null;
+  let controlEvents = null;
   let rl = null;
 
   try {
@@ -118,6 +126,9 @@ async function main() {
     applyAutoHwmMsgUnit(ctx, options.msgSize);
     controlPub.bind(options.controlEndpoint);
     controlSub.setSubscription(CONTROL_TOPIC);
+    controlPoller = new zlink.Poller();
+    controlEvents = new zlink.PollEvents(1);
+    controlPoller.add(controlSub, pollEvents(POLLIN), 0);
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);
     emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
@@ -175,7 +186,7 @@ async function main() {
         }
       }
       if (!(startRequested && readyCount >= options.clients) && !drained) {
-        await sleepImmediate();
+        controlPoller.wait(controlEvents, 50);
       }
     }
 
@@ -237,9 +248,11 @@ async function main() {
       spotPoller.close();
     }
     while (!stopRequested) {
-      await sleepImmediate();
+      await sleepMillis(50);
     }
   } finally {
+    controlEvents?.close();
+    controlPoller?.close();
     rl?.close();
     controlPubWaiter.close();
     closeQuietly(spot);

@@ -4,7 +4,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { configureTlsServer } = require('../common/perf_tls');
-const { sleepImmediate } = require('../common/perf_metrics');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, trySocketSend, waitPollerOne } = require('./perf_multi_runtime');
 function packetFrame(header, body) {
@@ -45,6 +44,9 @@ function drainPending(stream, pending) {
         pending.shift();
     }
 }
+function sleepMillis(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -82,7 +84,7 @@ async function main() {
         })();
         while (!stop) {
             if (pending.length === 0) {
-                await sleepImmediate();
+                await sleepMillis(50);
                 continue;
             }
             const ready = waitPollerOne(poller, pollBuffer, -1);

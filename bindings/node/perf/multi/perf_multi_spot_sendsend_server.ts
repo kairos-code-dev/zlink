@@ -5,9 +5,9 @@
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { configureTlsServer } = require('../common/perf_tls');
-const { sleepImmediate } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
 const {
+  POLLIN,
   POLLOUT,
   applyAutoHwmMsgUnit,
   applyContextPolicy,
@@ -15,6 +15,7 @@ const {
   applySpotNodeAdmission,
   createSocketEventWaiter,
   emitMultiSocketHwmDetail,
+  pollEvents,
   publishControlUntilSent,
   subscribeNoWait,
 } = require('./perf_multi_runtime');
@@ -26,6 +27,10 @@ const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(
   Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii')
 );
+
+function sleepMillis(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function echoRouted(received) {
   if (!received.routingId || !received.spotRid || received.parts.length === 0) {
@@ -74,6 +79,8 @@ async function main() {
   let startRequested = false;
   let stop = false;
   let connectedControlEndpoint = '';
+  let controlPoller = null;
+  let controlEvents = null;
   let rl = null;
 
   try {
@@ -96,6 +103,9 @@ async function main() {
     emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
     controlPub.bind(options.controlEndpoint);
     controlSub.setSubscription(CONTROL_TOPIC);
+    controlPoller = new zlink.Poller();
+    controlEvents = new zlink.PollEvents(1);
+    controlPoller.add(controlSub, pollEvents(POLLIN), 0);
 
     console.log(`READY,${options.endpoint}`);
     console.log(`CONTROL_READY,${options.controlEndpoint}`);
@@ -143,7 +153,7 @@ async function main() {
         received.close();
       }
       if (!(connected && readyCount >= options.clients && startRequested) && !drained) {
-        await sleepImmediate();
+        controlPoller.wait(controlEvents, 50);
       }
     }
     if (stop) {
@@ -153,10 +163,12 @@ async function main() {
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `START,${options.msgSize}`);
 
     while (!stop) {
-      await new Promise((resolve) => setImmediate(resolve));
+      await sleepMillis(50);
     }
   } finally {
     stop = true;
+    controlEvents?.close();
+    controlPoller?.close();
     rl?.close();
     controlPubWaiter.close();
     closeQuietly(controlSub);

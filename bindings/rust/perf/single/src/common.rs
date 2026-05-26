@@ -498,7 +498,7 @@ where
                     || is_single_send_retry_error(&err) => {}
             Err(err) => panic!("stop token send failed: {err}"),
         }
-        std::thread::sleep(Duration::from_millis(1));
+        poll_idle(Duration::from_millis(1));
     }
     panic!("stop token send retry exhausted");
 }

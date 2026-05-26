@@ -2,6 +2,7 @@ import argparse
 import os
 import struct
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from perf_stop_token import (
     is_stop_token,
     is_stop_token_in_parts,
 )
+
+_idle_wait_local = threading.local()
 
 from perf_metrics import (
     HEADER_MAGIC,
@@ -80,6 +83,26 @@ def perf_context():
     if io_threads > 0:
         ctx.options.io_threads = io_threads
     return ctx
+
+
+def poll_idle_ms(timeout_ms=1):
+    timeout_ms = max(1, int(timeout_ms))
+    state = getattr(_idle_wait_local, "state", None)
+    if state is None:
+        zlink_mod = _require_zlink()
+        timer = zlink_mod.Timer()
+        poller = zlink_mod.Poller()
+        events = zlink_mod.PollEvents(1)
+        poller.add_timer(timer, 0)
+        state = (timer, poller, events)
+        _idle_wait_local.state = state
+    timer, poller, events = state
+    while timer.recv() is not None:
+        pass
+    timer.start(timeout_ms * 1_000_000, 1)
+    safe_poll(poller, events, timeout_ms + 1)
+    while timer.recv() is not None:
+        pass
 
 
 def _env_flag(name):

@@ -14,6 +14,7 @@ from perf_common import (
     new_payload,
     parse_single_args,
     perf_context,
+    poll_idle_ms,
     print_result_lines,
     run_one_way_receiver_public_recv,
     send_nonblocking,
@@ -41,7 +42,7 @@ def _send_stop_token(sock):
         except zlink.SubmitError as exc:
             if exc.result != zlink.SubmitResult.BACKPRESSURED:
                 raise
-            time.sleep(0.001)
+            poll_idle_ms(1)
 
 
 def main(argv=None):

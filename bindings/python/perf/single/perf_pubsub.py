@@ -14,6 +14,7 @@ from perf_common import (
     new_payload,
     parse_single_args,
     perf_context,
+    poll_idle_ms,
     print_result_lines,
     resolve_single_endpoint,
     resolve_single_connect_ready_timeout_ms,
@@ -40,7 +41,7 @@ def _publish_stop_token(publisher):
         except zlink.SubmitError as exc:
             if exc.result != zlink.SubmitResult.BACKPRESSURED:
                 raise
-            time.sleep(0.001)
+            poll_idle_ms(1)
 
 
 def main(argv=None):

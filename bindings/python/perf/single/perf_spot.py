@@ -17,6 +17,7 @@ from perf_common import (
     new_payload,
     parse_single_args,
     perf_context,
+    poll_idle_ms,
     print_result_lines,
     resolve_single_connect_ready_timeout_ms,
     resolve_single_endpoint,
@@ -47,7 +48,7 @@ def _spot_publish_blocking(spot, topic, payload):
         except zlink.SubmitError as exc:
             if exc.result != zlink.SubmitResult.BACKPRESSURED:
                 raise
-        time.sleep(0.001)
+        poll_idle_ms(1)
     return False
 
 

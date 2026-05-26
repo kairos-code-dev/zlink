@@ -753,16 +753,24 @@ for run in $(seq 1 "${RUNS}"); do
                 if [[ "${stop_early}" -eq 1 ]]; then
                     break
                 fi
-                if ! ensure_nofile_limit "${PATTERN_CLIENTS}"; then
+                CASE_CLIENTS="${PATTERN_CLIENTS}"
+                if [[ "${pat}" == "MULTI_STREAM" && "${transport}" != "tcp" ]]; then
+                    STREAM_NON_TCP_CLIENTS_MAX="${PERF_STREAM_NON_TCP_CLIENTS_MAX:-${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}}"
+                    if [[ "${CASE_CLIENTS}" =~ ^[0-9]+$ && "${STREAM_NON_TCP_CLIENTS_MAX}" =~ ^[0-9]+$ \
+                          && "${CASE_CLIENTS}" -gt "${STREAM_NON_TCP_CLIENTS_MAX}" ]]; then
+                        CASE_CLIENTS="${STREAM_NON_TCP_CLIENTS_MAX}"
+                    fi
+                fi
+                if ! ensure_nofile_limit "${CASE_CLIENTS}"; then
                     printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "skip" "nofile_guard:${NOFILE_SKIP_REASON}" >> "${TMP_CASES}"
                     continue
                 fi
-                if ! ensure_memory_budget "${PATTERN_CLIENTS}"; then
+                if ! ensure_memory_budget "${CASE_CLIENTS}"; then
                     printf '%s,%s,%s,%s,%s\n' "${pat}" "${transport}" "${size}" "skip" "memory_guard:${MEMORY_SKIP_REASON}" >> "${TMP_CASES}"
                     continue
                 fi
                 CLIENT_TIMEOUT_SECONDS="$(resolve_client_timeout_seconds "${pat}" "${transport}" "${size}" "${DURATION}")"
-                export PERF_MULTI_CLIENTS="${PATTERN_CLIENTS}"
+                export PERF_MULTI_CLIENTS="${CASE_CLIENTS}"
                 pattern_default_io_threads="$(default_io_threads_for_pattern "${pat}")"
                 if [[ "${pat}" == "MULTI_STREAM" ]]; then
                     pattern_server_io_threads="${ENV_MULTI_STREAM_SERVER_IO_THREADS:-${ENV_MULTI_SERVER_IO_THREADS:-${pattern_default_io_threads}}}"
@@ -969,7 +977,7 @@ for run in $(seq 1 "${RUNS}"); do
                         --sizes "${size}" \
                         --runs 1 \
                         --duration "${DURATION}" \
-                        --ccu "${PATTERN_CLIENTS}" \
+                        --ccu "${CASE_CLIENTS}" \
                         --io-threads "${PERF_MULTI_CLIENT_IO_THREADS}" \
                         --print-perf-result 1 \
                         --send-stop-token 0 \

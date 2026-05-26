@@ -1299,6 +1299,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 | 0 |
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
 | `PERF_DISABLE_RESOURCE_METRICS` | 리소스 메트릭(CPU/메모리) 수집 비활성화 (`1`로 활성화) | 0 |
+| `PERF_STREAM_NON_TCP_CLIENTS_MAX` | STREAM 계열 non-tcp transport의 최대 client cap | 10000 |
 | `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 (multi 전용) | 100 |
 
 - 위 환경 변수는 C 기준과 모든 바인딩에서 동일하게 적용된다 (단, `PERF_RESULTS_MAX_FILES`는 multi 엔진만 참조하며, single 엔진은 100 하드코딩).

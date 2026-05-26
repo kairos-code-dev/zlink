@@ -1666,7 +1666,7 @@ run_external_stream_client() {
   local endpoint="$1"
   ensure_stream_client
   local stream_clients="${pattern_clients}"
-  local non_tcp_max="${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
+  local non_tcp_max="${PERF_STREAM_NON_TCP_CLIENTS_MAX:-${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}}"
   if [[ "${transport}" != "tcp" && "${stream_clients}" =~ ^[0-9]+$ \
         && "${non_tcp_max}" =~ ^[0-9]+$ \
         && "${stream_clients}" -gt "${non_tcp_max}" ]]; then
@@ -1853,7 +1853,7 @@ print_effective_options() {
   print_line "- transport_transition_ms: ${TRANSPORT_TRANSITION_MS}"
   print_line "- pattern_transition_ms: ${PATTERN_TRANSITION_MS}"
   print_line "- lat_timeout_ms: ${PERF_MULTI_LAT_TIMEOUT_MS:-5000}"
-  print_line "- stream_non_tcp_clients_max: ${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
+  print_line "- stream_non_tcp_clients_max: ${PERF_STREAM_NON_TCP_CLIENTS_MAX:-${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}}"
   print_line "- disable_resource_metrics: ${PERF_DISABLE_RESOURCE_METRICS:-0}"
   print_line "- timeout_seconds: ${TIMEOUT_SECONDS_DISPLAY}"
 }

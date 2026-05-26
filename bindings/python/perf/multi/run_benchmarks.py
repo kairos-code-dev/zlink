@@ -804,6 +804,12 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
             # Python runner parser; --send-stop-token 1 terminates the
             # Python STREAM server's receive surface).
             stream_client_bin = _ensure_stream_client()
+            stream_clients = clients
+            non_tcp_max = os.environ.get("PERF_STREAM_NON_TCP_CLIENTS_MAX") or os.environ.get(
+                "PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", "10000"
+            )
+            if transport != "tcp" and _uint(stream_clients) is not None and _uint(non_tcp_max) is not None:
+                stream_clients = str(min(_uint(stream_clients), _uint(non_tcp_max)))
             client_cmd = [
                 str(stream_client_bin),
                 "--transport",
@@ -817,7 +823,7 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 "--duration",
                 args.duration,
                 "--ccu",
-                clients,
+                stream_clients,
                 "--io-threads",
                 _effective_role_io_threads(args, "client").split()[0],
                 "--send-stop-token",
@@ -1033,8 +1039,9 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
         "transport_transition_ms": transport_transition_ms,
         "pattern_transition_ms": pattern_transition_ms,
         "lat_timeout_ms": os.environ.get("PERF_MULTI_LAT_TIMEOUT_MS", "5000"),
-        "stream_non_tcp_clients_max": os.environ.get("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", "10000"),
-        "disable_resource_metrics": os.environ.get("PERF_MULTI_DISABLE_RESOURCE_METRICS", "0"),
+        "stream_non_tcp_clients_max": os.environ.get("PERF_STREAM_NON_TCP_CLIENTS_MAX")
+        or os.environ.get("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", "10000"),
+        "disable_resource_metrics": os.environ.get("PERF_DISABLE_RESOURCE_METRICS", "0"),
         "timeout_seconds": os.environ.get("PERF_MULTI_TIMEOUT_SECONDS")
         or os.environ.get("PERF_TIMEOUT_SECONDS", "auto"),
     }
@@ -1175,6 +1182,12 @@ def main(argv=None):
         for transport_index, transport in enumerate(pattern_transports):
             if stop_early:
                 break
+            transport_clients = pattern_clients
+            non_tcp_max = os.environ.get("PERF_STREAM_NON_TCP_CLIENTS_MAX") or os.environ.get(
+                "PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", "10000"
+            )
+            if pattern == "STREAM" and transport != "tcp" and _uint(transport_clients) is not None and _uint(non_tcp_max) is not None:
+                transport_clients = str(min(_uint(transport_clients), _uint(non_tcp_max)))
             _append_line(sections, f"    Testing {transport}:")
             transport_failures = 0
             transport_all_unsupported = True
@@ -1184,7 +1197,7 @@ def main(argv=None):
                     _append_line(sections, f"      {header_line}")
                 for msg_size in pattern_msg_sizes:
                     _append_line(sections, f"    Testing {transport} | {msg_size}B:")
-                    resource_skip = _resource_guard_skip(pattern, transport, msg_size, pattern_clients)
+                    resource_skip = _resource_guard_skip(pattern, transport, msg_size, transport_clients)
                     if resource_skip:
                         output = resource_skip
                         emitted_chunks.append(output)
@@ -1194,7 +1207,7 @@ def main(argv=None):
                         transport_all_unsupported = False
                         continue
                     case_env = dict(env)
-                    case_env["PERF_MULTI_CONNECT_CONCURRENCY"] = args.connect_concurrency or _connect_concurrency_for_clients(pattern_clients)
+                    case_env["PERF_MULTI_CONNECT_CONCURRENCY"] = args.connect_concurrency or _connect_concurrency_for_clients(transport_clients)
                     case_env["PERF_RUN_ID"] = str(case_ordinal)
                     # C multi default path = context auto-HWM with the raw
                     # socket per-size msg-unit (apply_benchmark_auto_hwm_msg_
@@ -1205,7 +1218,7 @@ def main(argv=None):
                     case_ordinal += 1
                     try:
                         output = _run_pattern(
-                            args, case_env, pattern, transport, msg_size, pattern_clients
+                            args, case_env, pattern, transport, msg_size, transport_clients
                         )
                     except SystemExit as exc:
                         output = str(exc).strip()
@@ -1243,7 +1256,7 @@ def main(argv=None):
                         _append_line(sections, f"        {header_line}")
                     for msg_size in pattern_msg_sizes:
                         _append_line(sections, f"      Testing {transport} | {msg_size}B:")
-                        resource_skip = _resource_guard_skip(pattern, transport, msg_size, pattern_clients)
+                        resource_skip = _resource_guard_skip(pattern, transport, msg_size, transport_clients)
                         if resource_skip:
                             output = resource_skip
                             emitted_chunks.append(output)
@@ -1253,7 +1266,7 @@ def main(argv=None):
                             transport_all_unsupported = False
                             continue
                         case_env = dict(env)
-                        case_env["PERF_MULTI_CONNECT_CONCURRENCY"] = args.connect_concurrency or _connect_concurrency_for_clients(pattern_clients)
+                        case_env["PERF_MULTI_CONNECT_CONCURRENCY"] = args.connect_concurrency or _connect_concurrency_for_clients(transport_clients)
                         case_env["PERF_RUN_ID"] = str(case_ordinal)
                         # C multi default path = context auto-HWM with the raw
                         # socket per-size msg-unit. Numeric PERF_MULTI_HWM only
@@ -1268,7 +1281,7 @@ def main(argv=None):
                                 pattern,
                                 transport,
                                 msg_size,
-                                pattern_clients,
+                                transport_clients,
                             )
                         except SystemExit as exc:
                             output = str(exc).strip()

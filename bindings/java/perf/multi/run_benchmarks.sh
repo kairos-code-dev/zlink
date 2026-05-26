@@ -61,7 +61,7 @@ DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-auto}}"
 SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-${PERF_SERVICE_CLIENTS:-auto}}"
 LAT_TIMEOUT_MS="${PERF_MULTI_LAT_TIMEOUT_MS:-5000}"
-STREAM_NON_TCP_CLIENTS_MAX="${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
+STREAM_NON_TCP_CLIENTS_MAX="${PERF_STREAM_NON_TCP_CLIENTS_MAX:-${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}}"
 
 usage() {
   cat <<'USAGE'
@@ -526,9 +526,9 @@ resolve_memory_max_clients() {
     echo ""
     return
   fi
-  local budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
-  local base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
-  local per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
+  local budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
+  local base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
+  local per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
   if ! is_uint "${budget_pct}" || (( budget_pct < 1 || budget_pct > 95 )); then
     echo ""
     return
@@ -569,9 +569,9 @@ ensure_memory_budget() {
   fi
   local available_kb budget_pct base_mb per_client_kb
   available_kb="$(memory_available_kb)"
-  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
-  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
-  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
+  budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-${PERF_MEMORY_BUDGET_PCT:-70}}"
+  base_mb="${PERF_MULTI_MEMORY_BASE_MB:-${PERF_MEMORY_BASE_MB:-512}}"
+  per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-${PERF_MEMORY_PER_CLIENT_KB:-1024}}"
   MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
   return 1
 }
@@ -892,9 +892,15 @@ run_stream_case() {
   fi
 
   local stream_client_rc=0
+  local stream_clients="${pattern_clients}"
+  if [[ "${transport}" != "tcp" && "${stream_clients}" =~ ^[0-9]+$ \
+        && "${STREAM_NON_TCP_CLIENTS_MAX}" =~ ^[0-9]+$ \
+        && "${stream_clients}" -gt "${STREAM_NON_TCP_CLIENTS_MAX}" ]]; then
+    stream_clients="${STREAM_NON_TCP_CLIENTS_MAX}"
+  fi
   "${stream_client_prefix[@]}" "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
     --sizes "${size}" --runs 1 --duration "${DURATION}" \
-    --ccu "${pattern_clients}" --io-threads "${pattern_client_io_threads}" \
+    --ccu "${stream_clients}" --io-threads "${pattern_client_io_threads}" \
     --send-stop-token 1 --endpoint "${endpoint}" \
     >"${client_log}" 2>&1 || stream_client_rc=$?
   printf 'STOP\n' >&3
@@ -1240,6 +1246,12 @@ for pattern_index in "${!patterns[@]}"; do
       break
     fi
     transport="${transports[transport_index]}"
+    pattern_clients="$(default_clients_for_pattern "${pattern}")"
+    if [[ "${pattern}" == "MULTI_STREAM" && "${transport}" != "tcp" \
+          && "${pattern_clients}" =~ ^[0-9]+$ && "${STREAM_NON_TCP_CLIENTS_MAX}" =~ ^[0-9]+$ \
+          && "${pattern_clients}" -gt "${STREAM_NON_TCP_CLIENTS_MAX}" ]]; then
+      pattern_clients="${STREAM_NON_TCP_CLIENTS_MAX}"
+    fi
     echo "    Testing ${transport} | ${pattern_msg_sizes}:"
     printf '    Testing %s | %s:\n' "${transport}" "${pattern_msg_sizes}" >> "${tmp_progress}"
     print_table_header "      "

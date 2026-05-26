@@ -341,6 +341,14 @@ function resolvePatternClients(patternName, options, clientSource) {
   };
 }
 
+function resolveTransportClients(patternName, transport, clients) {
+  if (patternName !== 'MULTI_STREAM' || transport === 'tcp') {
+    return clients;
+  }
+  const nonTcpMax = positiveIntegerEnv('PERF_STREAM_NON_TCP_CLIENTS_MAX', 'PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX') ?? 10000;
+  return Math.min(clients, nonTcpMax);
+}
+
 async function sleepMs(milliseconds) {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -533,7 +541,7 @@ async function main() {
             pattern: patternName,
             transport,
             msgSize,
-            clients
+            clients: resolveTransportClients(patternName, transport, clients)
           };
           try {
             const { lines, metrics: activeMetrics } =

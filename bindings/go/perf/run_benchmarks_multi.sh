@@ -49,6 +49,12 @@ run_external_stream_client() {
   local client_err="$7"
   ensure_stream_client || return 1
   local stream_client_io_threads="${CLIENT_IO_THREADS:-${PERF_MULTI_CLIENT_IO_THREADS:-${IO_THREADS:-${PERF_IO_THREADS:-${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-4}}}}}}"
+  local stream_clients="${clients}"
+  local non_tcp_max="${PERF_STREAM_NON_TCP_CLIENTS_MAX:-${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}}"
+  if [[ "${transport}" != "tcp" && "${stream_clients}" =~ ^[0-9]+$ \
+        && "${non_tcp_max}" =~ ^[0-9]+$ && "${stream_clients}" -gt "${non_tcp_max}" ]]; then
+    stream_clients="${non_tcp_max}"
+  fi
   env \
     "PERF_PATTERN=STREAM" \
     "PERF_MULTI_PATTERN=STREAM" \
@@ -56,7 +62,7 @@ run_external_stream_client() {
     "PERF_MULTI_COMPONENT=client" \
     "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
     --sizes "${size}" --runs 1 --duration "${duration}" \
-    --ccu "${clients}" --io-threads "${stream_client_io_threads}" \
+    --ccu "${stream_clients}" --io-threads "${stream_client_io_threads}" \
     --send-stop-token 1 --endpoint "${endpoint}" \
     > "${client_out}" 2> "${client_err}"
 }
@@ -832,8 +838,8 @@ emit_effective_options_multi() {
   echo "- transport_transition_ms: ${TRANSPORT_TRANSITION_MS}"
   echo "- pattern_transition_ms: ${PATTERN_TRANSITION_MS}"
   echo "- lat_timeout_ms: ${PERF_MULTI_LAT_TIMEOUT_MS:-5000}"
-  echo "- stream_non_tcp_clients_max: ${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}"
-  echo "- disable_resource_metrics: ${PERF_MULTI_DISABLE_RESOURCE_METRICS:-0}"
+  echo "- stream_non_tcp_clients_max: ${PERF_STREAM_NON_TCP_CLIENTS_MAX:-${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}}"
+  echo "- disable_resource_metrics: ${PERF_DISABLE_RESOURCE_METRICS:-0}"
   echo "- timeout_seconds: ${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-auto}}"
 }
 
@@ -1292,6 +1298,14 @@ for pattern_index in "${!PATTERNS[@]}"; do
     fi
     transport_seen=$((transport_seen + 1))
     echo "    Testing ${transport} | ${size_list}:"
+    case_clients="${resolved_clients}"
+    if [[ "${pattern}" == "MULTI_STREAM" && "${transport}" != "tcp" ]]; then
+      non_tcp_max="${PERF_STREAM_NON_TCP_CLIENTS_MAX:-${PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX:-10000}}"
+      if [[ "${case_clients}" =~ ^[0-9]+$ && "${non_tcp_max}" =~ ^[0-9]+$ \
+            && "${case_clients}" -gt "${non_tcp_max}" ]]; then
+        case_clients="${non_tcp_max}"
+      fi
+    fi
     transport_failures=0
     transport_unsupported=0
 
@@ -1307,7 +1321,7 @@ for pattern_index in "${!PATTERNS[@]}"; do
       for size in "${SIZES[@]}"; do
         expected_cases=$((expected_cases + 1))
         case_log="${TMP_DIR}/${pattern}_${transport}_${size}_run${run}.log"
-        if ! ensure_nofile_limit "${resolved_clients}"; then
+        if ! ensure_nofile_limit "${case_clients}"; then
           printf 'SKIP,current,%s,%s,nofile_guard:%s\n' "${pattern}" "${transport}" "${NOFILE_SKIP_REASON}" > "${case_log}"
           append_case_output "${case_log}"
           expected_cases=$((expected_cases - 1))
@@ -1316,7 +1330,7 @@ for pattern_index in "${!PATTERNS[@]}"; do
           progress_case_row "${pattern}" "${size}" "${case_log}"
           continue
         fi
-        if ! ensure_memory_budget "${resolved_clients}"; then
+        if ! ensure_memory_budget "${case_clients}"; then
           printf 'SKIP,current,%s,%s,memory_guard:%s\n' "${pattern}" "${transport}" "${MEMORY_SKIP_REASON}" > "${case_log}"
           append_case_output "${case_log}"
           expected_cases=$((expected_cases - 1))
@@ -1332,7 +1346,7 @@ for pattern_index in "${!PATTERNS[@]}"; do
           "${transport}" \
           "${size}" \
           "${DURATION}" \
-          "${resolved_clients}" \
+          "${case_clients}" \
           "${case_log}"; then
           case_ok=1
         fi

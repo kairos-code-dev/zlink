@@ -157,7 +157,7 @@ fn main() {
                     Err(err) => panic!("router-router receiver recv failed: {err}"),
                 }
             },
-            Ok(None) => std::thread::yield_now(),
+            Ok(None) => common::poll_idle(Duration::from_millis(1)),
             Err(err) => panic!("router-router receiver recv failed: {err}"),
         }
     }

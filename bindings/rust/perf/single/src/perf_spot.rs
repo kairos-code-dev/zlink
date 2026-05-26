@@ -192,7 +192,7 @@ fn main() {
                 }
                 common::handle_recv(data, config.size, &stats, active_deadline);
             }
-            Ok(false) => std::thread::yield_now(),
+            Ok(false) => common::poll_idle(Duration::from_millis(1)),
             Err(err) => panic!("spot subscriber recv failed: {err}"),
         }
     }

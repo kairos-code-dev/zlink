@@ -523,7 +523,7 @@ where
         if send_fn(msg) {
             seq += 1;
         } else {
-            std::thread::yield_now();
+            continue;
         }
     }
 }

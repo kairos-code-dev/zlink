@@ -73,7 +73,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
         {
             Ok(_) => return true,
             Err(err) if err.code() == SubmitResult::Backpressured => {
-                thread::sleep(Duration::from_millis(1));
+                common::poll_idle_until(deadline, Duration::from_millis(10));
             }
             Err(err) => panic!("control publish failed: {err}"),
         }
@@ -282,6 +282,11 @@ fn main() {
             waiting_reply: false,
         });
     }
+    let probe_poller = Poller::new().expect("spot sendsend probe poller");
+    probe_poller
+        .add_socket(&*slots[0].spot, POLLIN, 0)
+        .expect("spot sendsend probe poller add");
+    let mut probe_events = vec![PollEvent::default(); 1];
 
     if !matches!(
         event_rx.recv_timeout(ready_timeout),
@@ -329,7 +334,7 @@ fn main() {
         ) {
             break;
         }
-        thread::sleep(Duration::from_millis(1));
+        common::wait_control_readable_until(&probe_poller, &mut probe_events, probe_deadline);
     }
     if Instant::now() >= probe_deadline {
         panic!("spot sendsend probe-ready timeout");
@@ -351,6 +356,8 @@ fn main() {
     ) {
         panic!("spot sendsend runner start handshake timeout");
     }
+    let control_read_poller = common::control_read_poller(&control_sub);
+    let mut control_events = vec![PollEvent::default(); 1];
     let direct_deadline = Instant::now() + ready_timeout;
     let mut direct_started = false;
     while Instant::now() < direct_deadline {
@@ -360,7 +367,11 @@ fn main() {
                 break;
             }
         }
-        thread::sleep(Duration::from_millis(1));
+        common::wait_control_readable_until(
+            &control_read_poller,
+            &mut control_events,
+            direct_deadline,
+        );
     }
     if !direct_started {
         panic!("spot sendsend direct start handshake timeout");

@@ -6,11 +6,11 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::sync::mpsc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use zlink::Message;
 use zlink::{
-    Context, DealerSocket, PairSocket, PubSocket, RouterSocket, SocketMonitor, StreamSocket,
-    SubSocket, ZlinkError,
+    Context, DealerSocket, POLLIN, POLLOUT, PairSocket, PollEvent, Poller, PubSocket, RouterSocket,
+    SocketMonitor, Spot, StreamSocket, SubSocket, ZlinkError,
 };
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";
@@ -451,6 +451,55 @@ pub fn wait_monitor_ready(mon: &mut SocketMonitor, timeout: Duration, name: &str
         Err(mpsc::RecvTimeoutError::Disconnected) => {
             panic!("{name} monitor channel disconnected before connection-ready");
         }
+    }
+}
+
+pub fn poll_idle_until(deadline: Instant, max_wait: Duration) {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return;
+    }
+    let wait_ms = remaining.min(max_wait).as_millis().max(1) as i64;
+    let _ = zlink::poll(&mut [], wait_ms);
+}
+
+pub fn wait_control_readable_until(poller: &Poller, events: &mut [PollEvent], deadline: Instant) {
+    wait_poller_until(poller, events, deadline, Duration::from_millis(50));
+}
+
+pub fn wait_spot_writable_until(poller: &Poller, events: &mut [PollEvent], deadline: Instant) {
+    wait_poller_until(poller, events, deadline, Duration::from_millis(10));
+}
+
+pub fn control_read_poller(spot: &Spot) -> Poller {
+    let poller = Poller::new().expect("control poller");
+    poller
+        .add_socket(spot, POLLIN, 0)
+        .expect("control poller add");
+    poller
+}
+
+pub fn spot_write_poller(spot: &Spot) -> Poller {
+    let poller = Poller::new().expect("spot write poller");
+    poller
+        .add_socket(spot, POLLOUT, 0)
+        .expect("spot write poller add");
+    poller
+}
+
+fn wait_poller_until(
+    poller: &Poller,
+    events: &mut [PollEvent],
+    deadline: Instant,
+    max_wait: Duration,
+) {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return;
+    }
+    let wait_ms = remaining.min(max_wait).as_millis().max(1) as i64;
+    if let Err(err) = poller.wait(events, wait_ms) {
+        panic!("perf poller wait failed: {err}");
     }
 }
 

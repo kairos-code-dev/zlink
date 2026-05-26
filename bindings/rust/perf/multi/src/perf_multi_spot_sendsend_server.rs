@@ -63,7 +63,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
         {
             Ok(_) => return true,
             Err(err) if err.code() == SubmitResult::Backpressured => {
-                thread::sleep(Duration::from_millis(1));
+                common::poll_idle_until(deadline, Duration::from_millis(10));
             }
             Err(err) => panic!("control publish failed: {err}"),
         }
@@ -95,7 +95,10 @@ fn echo_available(spot: &Spot) {
                         }
                     }
                 };
-                let _ = send_op.message(message).flags(SendFlags::DONT_WAIT).submit();
+                let _ = send_op
+                    .message(message)
+                    .flags(SendFlags::DONT_WAIT)
+                    .submit();
             }
             Ok(false) => break,
             Err(err) if err.code() == RecvResult::NoData => break,
@@ -174,13 +177,26 @@ fn main() {
     let control_pub = control_node.create_spot().expect("control pub");
     let control_sub = control_node.create_spot().expect("control sub");
     control_sub.set_subscription(TOPIC).expect("control sub");
+    let service_poller = Poller::new().expect("spot sendsend service poller");
+    service_poller
+        .add_socket(&control_sub, POLLIN, 0)
+        .expect("spot sendsend service poller add control");
+    {
+        let spot = replier.lock().expect("spot lock");
+        service_poller
+            .add_socket(&*spot, POLLIN, 1)
+            .expect("spot sendsend service poller add data");
+    }
+    let mut service_events = vec![PollEvent::default(); 2];
 
     let Some(data_bind) = common::resolve_server_bind_endpoint(PATTERN, &args.transport) else {
         return;
     };
-    let Some(data_router_bind) =
-        common::benchmark_endpoint(PATTERN, &args.transport, "multi-spot-sendsend-router-server")
-    else {
+    let Some(data_router_bind) = common::benchmark_endpoint(
+        PATTERN,
+        &args.transport,
+        "multi-spot-sendsend-router-server",
+    ) else {
         return;
     };
     data_node
@@ -199,7 +215,9 @@ fn main() {
     ) else {
         return;
     };
-    control_node.set_pub_bind(&control_bind).expect("control bind");
+    control_node
+        .set_pub_bind(&control_bind)
+        .expect("control bind");
     let data_endpoint = data_node.last_endpoint().unwrap_or(data_bind);
     let control_endpoint = control_node.last_endpoint().unwrap_or(control_bind);
     common::print_ready(&data_endpoint);
@@ -242,7 +260,7 @@ fn main() {
         if data_connected && ready_units >= settings.clients {
             break;
         }
-        thread::sleep(Duration::from_millis(1));
+        common::wait_control_readable_until(&service_poller, &mut service_events, deadline);
     }
     if !data_connected || ready_units < settings.clients {
         panic!("spot sendsend server readiness timeout");
@@ -280,6 +298,6 @@ fn main() {
     let idle_deadline = Instant::now() + Duration::from_secs(settings.duration_seconds + 2);
     while Instant::now() < idle_deadline && !stop.load(Ordering::Acquire) {
         echo_available(&replier.lock().expect("spot lock"));
-        thread::sleep(Duration::from_millis(1));
+        common::wait_control_readable_until(&service_poller, &mut service_events, idle_deadline);
     }
 }

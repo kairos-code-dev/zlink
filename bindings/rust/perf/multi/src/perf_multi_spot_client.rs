@@ -69,7 +69,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
         {
             Ok(_) => return true,
             Err(err) if err.code() == SubmitResult::Backpressured => {
-                thread::sleep(Duration::from_millis(1));
+                common::poll_idle_until(deadline, Duration::from_millis(10));
             }
             Err(err) => panic!("control publish failed: {err}"),
         }
@@ -198,6 +198,8 @@ fn main() {
         panic!("spot client runner start handshake timeout");
     }
 
+    let control_read_poller = common::control_read_poller(&control_sub);
+    let mut control_events = vec![PollEvent::default(); 1];
     let direct_deadline = Instant::now() + ready_timeout;
     let mut direct_started = false;
     while Instant::now() < direct_deadline {
@@ -207,7 +209,11 @@ fn main() {
                 break;
             }
         }
-        thread::sleep(Duration::from_millis(1));
+        common::wait_control_readable_until(
+            &control_read_poller,
+            &mut control_events,
+            direct_deadline,
+        );
     }
     if !direct_started {
         panic!("spot client direct start handshake timeout");
@@ -315,7 +321,7 @@ fn main() {
                                 Err(err) => panic!("spot client poller wait failed: {err}"),
                             }
                         } else {
-                            thread::sleep(Duration::from_millis(1));
+                            common::poll_idle_until(collect_deadline, Duration::from_millis(1));
                         }
                     }
                 }

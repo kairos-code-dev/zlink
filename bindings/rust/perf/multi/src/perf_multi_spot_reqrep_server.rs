@@ -70,7 +70,7 @@ fn publish_control(control_pub: &Spot, payload: &str, timeout: Duration) -> bool
         {
             Ok(_) => return true,
             Err(err) if err.code() == SubmitResult::Backpressured => {
-                thread::sleep(Duration::from_millis(1));
+                common::poll_idle_until(deadline, Duration::from_millis(10));
             }
             Err(err) => panic!("control publish failed: {err}"),
         }
@@ -199,13 +199,17 @@ fn main() {
     else {
         return;
     };
-    control_node.set_pub_bind(&control_bind).expect("control bind");
+    control_node
+        .set_pub_bind(&control_bind)
+        .expect("control bind");
     let data_endpoint = data_node.last_endpoint().unwrap_or(data_bind);
     let control_endpoint = control_node.last_endpoint().unwrap_or(control_bind);
     common::print_ready(&data_endpoint);
     println!("CONTROL_READY,{control_endpoint}");
     io::stdout().flush().ok();
 
+    let control_read_poller = common::control_read_poller(&control_sub);
+    let mut control_events = vec![PollEvent::default(); 1];
     let mut data_connected = false;
     let mut ready_units = 0usize;
     let deadline = Instant::now() + ready_timeout;
@@ -241,7 +245,7 @@ fn main() {
         if data_connected && ready_units >= settings.clients {
             break;
         }
-        thread::sleep(Duration::from_millis(1));
+        common::wait_control_readable_until(&control_read_poller, &mut control_events, deadline);
     }
     if !data_connected || ready_units < settings.clients {
         panic!("spot reqrep server readiness timeout");

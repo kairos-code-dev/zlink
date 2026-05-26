@@ -1013,9 +1013,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 ### 5.3 완료와 실패 요약
 
-`## Result Data`에는 성공한 조합의 `RESULT,current,...` 라인만 기록한다.
-`UNSUPPORTED`, `SKIP`, `FAIL` 토큰은 사람이 읽는 진행 테이블, Completion 카운트,
-`## Skips`, `## Failures`로 표현하고 Result Data에는 넣지 않는다.
+`## Result Data`는 성공한 조합이 있을 때만 출력한다. 이 섹션에는 성공한
+조합의 `RESULT,current,...` 라인만 기록한다. `UNSUPPORTED`, `SKIP`, `FAIL`
+토큰은 사람이 읽는 진행 테이블, Completion 카운트, `## Skips`, `## Failures`로
+표현하고 Result Data에는 넣지 않는다.
 
 Completion 뒤에는 필요한 경우 `## Skips`, `## Failures` 순서로 요약을 출력한다.
 마지막에는 저장된 결과 파일 경로와 status를 출력한다. single suite는 C single

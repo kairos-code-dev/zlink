@@ -656,9 +656,9 @@ fi
   expected_result_lines=$((expected_cases * 5))
   echo
   emit_effective_options_single "result"
-  echo
-  echo "## Result Data"
-  if [[ -s "${RAW_RESULTS_FILE}" ]]; then
+  if [[ "${result_lines}" -gt 0 && -s "${RAW_RESULTS_FILE}" ]]; then
+    echo
+    echo "## Result Data"
     grep -E '^RESULT,' "${RAW_RESULTS_FILE}" || true
   fi
   echo

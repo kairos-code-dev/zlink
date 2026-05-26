@@ -532,10 +532,11 @@ def main(argv=None):
         _append_line(sections, line)
     _append_line(sections)
     _append_line(sections, render_effective_options(options, section="result"))
-    _append_line(sections)
-    _append_line(sections, "## Result Data")
-    for line in emitted_result_lines:
-        _append_line(sections, line)
+    if emitted_result_lines:
+        _append_line(sections)
+        _append_line(sections, "## Result Data")
+        for line in emitted_result_lines:
+            _append_line(sections, line)
     _append_line(sections)
     _append_line(sections, "## Completion")
     _append_line(sections, f"- status: {status}")

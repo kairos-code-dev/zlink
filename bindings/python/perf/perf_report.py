@@ -432,8 +432,9 @@ def render_single_report(args):
     lines.extend(single_auto_hwm_detail_lines(patterns, parse_csv(args.msg_sizes)))
     lines.append("")
     lines.extend(_single_effective_options(args, "result"))
-    lines.append("## Result Data")
-    lines.extend(result_lines)
+    if result_lines:
+        lines.append("## Result Data")
+        lines.extend(result_lines)
     lines.extend(["", "## Completion"])
     lines.append(f"- status: {'complete' if expected == actual else 'partial'}")
     lines.append(f"- expected_result_lines: {expected}")
@@ -628,8 +629,9 @@ def render_multi_report(args):
         lines.append("")
 
     lines.extend(_multi_effective_options(args, "result"))
-    lines.append("## Result Data")
-    lines.extend(result_lines)
+    if result_lines:
+        lines.append("## Result Data")
+        lines.extend(result_lines)
     lines.extend(["", "## Completion"])
     lines.append(f"- success: {actual // len(REQUIRED_METRICS)}")
     lines.append(f"- unsupported: {sum(1 for status, _reason in cases.values() if status == 'unsupported')}")

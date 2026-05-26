@@ -286,8 +286,9 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
    실제 socket HWM snapshot table. auto-HWM 정보가 없는 socket 은 생략할 수
    있다.
 4. `## Effective Options (result)` — 불릿 목록 형식
-5. `## Result Data` — 성공한 조합의 `RESULT,current,...` 라인만 기록한다.
-   `UNSUPPORTED`, `SKIP`, `FAIL` 토큰은 이 섹션에 넣지 않는다.
+5. `## Result Data` — 성공한 조합이 있을 때만 기록한다. 성공한 조합의
+   `RESULT,current,...` 라인만 넣고, `UNSUPPORTED`, `SKIP`, `FAIL` 토큰은
+   이 섹션에 넣지 않는다.
 6. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
 7. `Saved result file: ... (status=...)`
 

@@ -1465,9 +1465,9 @@ fi
   echo
   echo "## Effective Options (result)"
   emit_effective_options_multi "result" | sed '1d'
-  echo
-  echo "## Result Data"
-  if [[ -s "${RAW_RESULTS_FILE}" ]]; then
+  if [[ "${result_lines}" -gt 0 && -s "${RAW_RESULTS_FILE}" ]]; then
+    echo
+    echo "## Result Data"
     python3 "${PERF_REPORT_PY}" sort-result-data "${RAW_RESULTS_FILE}"
   fi
   echo

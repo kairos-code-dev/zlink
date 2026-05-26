@@ -441,7 +441,7 @@ default_msg_sizes_for_pattern() {
     fi
     case "${pattern}" in
         MULTI_STREAM)
-            printf '%s' "${PERF_MULTI_STREAM_MSG_SIZES:-64,256,1024,65536}"
+            printf '%s' "${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-64,256,1024,65536}}"
             ;;
         *)
             printf '%s' "${MSG_SIZES}"

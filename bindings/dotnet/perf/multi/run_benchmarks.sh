@@ -18,6 +18,7 @@ RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 MSG_SIZES="${PERF_MSG_SIZES:-}"
+STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-}}"
 CLIENTS="${PERF_MULTI_CLIENTS:-}"
 EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
@@ -396,14 +397,15 @@ effective_msg_sizes_display() {
     return
   fi
 
-  python3 - "${patterns_csv}" <<'PY'
+  python3 - "${patterns_csv}" "${STREAM_MSG_SIZES:-64,256,1024,65536}" <<'PY'
 import sys
 
 patterns = [item.strip() for item in sys.argv[1].split(",") if item.strip()]
+stream_sizes = [int(item.strip()) for item in sys.argv[2].split(",") if item.strip()]
 sizes = set()
 for pattern in patterns:
     if pattern == "MULTI_STREAM":
-        sizes.update([64, 256, 1024, 65536])
+        sizes.update(stream_sizes)
     else:
         sizes.update([64, 256, 1024, 65536, 131072, 262144])
 print(",".join(str(v) for v in sorted(sizes)))
@@ -436,7 +438,7 @@ PY
 default_msg_sizes_for_pattern() {
   local pattern="${1:-}"
   if [[ "${pattern}" == "MULTI_STREAM" ]]; then
-    printf '%s' "64,256,1024,65536"
+    printf '%s' "${STREAM_MSG_SIZES:-64,256,1024,65536}"
   else
     printf '%s' "64,256,1024,65536,131072,262144"
   fi
@@ -454,17 +456,17 @@ msg_sizes_for_pattern() {
     return
   fi
 
-  python3 - "${configured_sizes}" <<'PY'
+  python3 - "${configured_sizes}" "${STREAM_MSG_SIZES:-64,256,1024,65536}" <<'PY'
 import sys
 
-allowed = {"64", "256", "1024", "65536"}
+allowed = {item.strip() for item in sys.argv[2].split(",") if item.strip()}
 items = []
 for raw in sys.argv[1].split(","):
     value = raw.strip()
     if value in allowed and value not in items:
         items.append(value)
 if not items:
-    items = ["64", "256", "1024", "65536"]
+    items = [item.strip() for item in sys.argv[2].split(",") if item.strip()]
 print(",".join(items))
 PY
 }

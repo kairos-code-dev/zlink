@@ -605,6 +605,8 @@ pattern_msg_sizes() {
   if [[ "${pattern}" == "MULTI_STREAM" ]]; then
     if [[ -n "${PERF_MULTI_STREAM_MSG_SIZES:-}" ]]; then
       echo "${PERF_MULTI_STREAM_MSG_SIZES}"
+    elif [[ -n "${PERF_STREAM_MSG_SIZES:-}" ]]; then
+      echo "${PERF_STREAM_MSG_SIZES}"
     elif [[ -n "${PERF_MSG_SIZES:-}" ]]; then
       echo "${PERF_MSG_SIZES}"
     else

@@ -234,7 +234,7 @@ function defaultMultiMsgSizes(patternNames, explicitMsgSizes) {
     return null;
   }
   const envSizes = process.env.PERF_MSG_SIZES;
-  const envStreamSizes = process.env.PERF_MULTI_STREAM_MSG_SIZES;
+  const envStreamSizes = process.env.PERF_MULTI_STREAM_MSG_SIZES || process.env.PERF_STREAM_MSG_SIZES;
   const onlyStream = patternNames.length > 0
     && patternNames.every((name) => name === 'MULTI_STREAM');
   if (onlyStream && envStreamSizes) {

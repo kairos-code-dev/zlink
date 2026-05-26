@@ -157,11 +157,13 @@ def _msg_sizes_for_pattern(pattern, requested_msg_sizes):
     if requested_msg_sizes is not None:
         return requested_msg_sizes
     if pattern == "STREAM":
-        stream_env = os.environ.get("PERF_MULTI_STREAM_MSG_SIZES", "")
+        stream_env = os.environ.get("PERF_MULTI_STREAM_MSG_SIZES", "") or os.environ.get(
+            "PERF_STREAM_MSG_SIZES", ""
+        )
         if stream_env:
             sizes = _parse_csv(stream_env)
             if not sizes:
-                raise SystemExit("PERF_MULTI_STREAM_MSG_SIZES must not be empty")
+                raise SystemExit("PERF_MULTI_STREAM_MSG_SIZES/PERF_STREAM_MSG_SIZES must not be empty")
             return sizes
     common_env = os.environ.get("PERF_MSG_SIZES", "")
     if common_env:

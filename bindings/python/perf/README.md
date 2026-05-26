@@ -65,9 +65,10 @@ Policy transport matrix:
 - `ROUTER_ROUTER`: `tcp`, `tls`, `ws`, `wss`, `inproc`, `ipc`
 - `SPOT`: `tcp`, `tls`, `ws`, `wss`
 
-When a selected policy transport is not runnable in the current build or
-environment, the runner emits `UNSUPPORTED,current,...` for that case instead
-of failing the whole benchmark pass.
+When a selected combination is outside the policy transport matrix, or the
+runtime reports `protocol not supported`, the runner emits
+`UNSUPPORTED,current,...` for that case. Other execution failures remain `fail`
+so regressions are not hidden as unsupported cases.
 
 SPOT measurements use the service-aware public surface:
 `publish(topic, ...)` on the sender and `subscribe()` on the
@@ -77,10 +78,10 @@ perf path follows the current public contract.
 
 ## Multi Suite
 
-The multi suite is process-isolated and uses TCP transport.
-The policy transport matrix for the multi suite is `tcp`, `tls`, `ws`, `wss`.
-Cases that are not runnable in the current build or environment are reported as
-`UNSUPPORTED,current,...`.
+The multi suite is process-isolated. The policy transport matrix for the multi
+suite is `tcp`, `tls`, `ws`, `wss`. Combinations outside that matrix, or
+runtimes that report `protocol not supported`, are reported as
+`UNSUPPORTED,current,...`; other failures remain `fail`.
 
 The multi runner exposes the same common CLI surface plus `--clients`.
 

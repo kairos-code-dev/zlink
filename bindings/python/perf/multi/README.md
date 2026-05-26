@@ -49,7 +49,9 @@ required by the perf policy and execution guide.
 ## Transport And Receive Modes
 
 - policy transport matrix: `tcp`, `tls`, `ws`, `wss`
-- current runner reports non-runnable cases as `UNSUPPORTED,current,...`
+- combinations outside that matrix, or runtimes that report `protocol not
+  supported`, are reported as `UNSUPPORTED,current,...`; other execution
+  failures remain `fail`
 
 The suite uses the recv path only.
 

@@ -196,6 +196,12 @@ int resolve_spot_control_settle_ms ()
     return env ? std::max (0, std::atoi (env)) : 25;
 }
 
+int resolve_spot_start_settle_ms ()
+{
+    const char *env = std::getenv ("PERF_MULTI_SPOT_START_SETTLE_MS");
+    return env ? std::max (0, std::atoi (env)) : 1000;
+}
+
 void wait_for_settle_ms (int settle_ms)
 {
     if (settle_ms > 0)
@@ -698,6 +704,7 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
         stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
+    wait_for_settle_ms (resolve_spot_start_settle_ms ());
     const bool ok = bench->run ();
     stop_and_release_stdin_thread (stdin_thread);
     return ok;

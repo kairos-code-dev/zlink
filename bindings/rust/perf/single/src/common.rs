@@ -488,7 +488,8 @@ pub fn send_stop_token<F>(mut send_fn: F)
 where
     F: FnMut(Message) -> Result<bool, SubmitError>,
 {
-    for _ in 0..5000 {
+    let retry_budget_ms = env_or_u64("PERF_SINGLE_STOP_SEND_RETRY_MS", 20_000);
+    for _ in 0..retry_budget_ms {
         let token = Message::try_from(STOP_TOKEN).expect("stop token msg");
         match send_fn(token) {
             Ok(true) => return,
@@ -752,7 +753,7 @@ pub fn resolve_single_spot_ready_settle() -> Duration {
 }
 
 pub fn resolve_single_stop_wait() -> Duration {
-    Duration::from_millis(env_or_u64("PERF_SINGLE_STOP_WAIT_MS", 2000))
+    Duration::from_millis(env_or_u64("PERF_SINGLE_STOP_WAIT_MS", 20_000))
 }
 
 pub fn resolve_single_ready_timeout() -> Duration {

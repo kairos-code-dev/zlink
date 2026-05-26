@@ -359,6 +359,7 @@ for pat in "${PATTERNS[@]}"; do
                 stop_early=1
                 break
             fi
+            sleep_millis "${PERF_SINGLE_CASE_COOLDOWN_MS:-0}"
         done
     done
 done

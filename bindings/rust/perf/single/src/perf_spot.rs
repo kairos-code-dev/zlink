@@ -182,8 +182,12 @@ fn main() {
         }
     });
 
+    let stop_wait_deadline = active_deadline + common::resolve_single_stop_wait();
     let mut received = TopicMessage::empty();
     loop {
+        if Instant::now() >= stop_wait_deadline {
+            break;
+        }
         match subscriber.subscribe(&mut received, RecvFlags::DONT_WAIT) {
             Ok(true) => {
                 let data = common::message_payload(received.parts());

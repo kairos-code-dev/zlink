@@ -275,7 +275,7 @@ inline int bench_process_id ()
 
 inline int bench_port_base (int base_)
 {
-    return base_ + (bench_process_id () % 1000) * 8;
+    return base_ + (bench_process_id () % 80) * 64;
 }
 
 inline std::string normalize_spot_endpoint_host (const std::string &endpoint_)

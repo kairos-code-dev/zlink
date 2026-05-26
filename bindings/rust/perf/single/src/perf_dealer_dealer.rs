@@ -79,13 +79,24 @@ fn main() {
         });
     });
 
+    let mut stop_seen = false;
+    let stop_wait_deadline = active_deadline + common::resolve_single_stop_wait();
     let mut received = zlink::Received::empty();
-    loop {
-        match receiver.recv(&mut received, zlink::RecvFlags::NONE) {
+    while !stop_seen {
+        if std::time::Instant::now() >= stop_wait_deadline {
+            break;
+        }
+        let flags = if std::time::Instant::now() < active_deadline {
+            zlink::RecvFlags::NONE
+        } else {
+            zlink::RecvFlags::DONT_WAIT
+        };
+        match receiver.recv(&mut received, flags) {
             Ok(true) => {
                 loop {
                     let data = common::message_payload(received.parts());
                     if common::is_stop_token(data) {
+                        stop_seen = true;
                         break;
                     }
                     common::handle_recv(data, config.size, &stats, active_deadline);
@@ -95,11 +106,8 @@ fn main() {
                         Err(err) => panic!("dealer-dealer receiver recv failed: {err}"),
                     }
                 }
-                if common::is_stop_token(common::message_payload(received.parts())) {
-                    break;
-                }
             }
-            Ok(false) => continue,
+            Ok(false) => common::poll_idle(std::time::Duration::from_millis(1)),
             Err(err) => panic!("dealer-dealer receiver recv failed: {err}"),
         }
     }

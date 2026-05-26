@@ -75,9 +75,18 @@ fn main() {
             });
         });
 
+    let stop_wait_deadline = active_deadline + common::resolve_single_stop_wait();
     loop {
+        if std::time::Instant::now() >= stop_wait_deadline {
+            break;
+        }
         let mut received = TopicMessage::empty();
-        match sub_sock.subscribe(&mut received, RecvFlags::NONE) {
+        let flags = if std::time::Instant::now() < active_deadline {
+            RecvFlags::NONE
+        } else {
+            RecvFlags::DONT_WAIT
+        };
+        match sub_sock.subscribe(&mut received, flags) {
             Ok(true) => {
                 let data = common::message_payload(received.parts());
                 if common::is_stop_token(data) {
@@ -85,7 +94,7 @@ fn main() {
                 }
                 common::handle_recv(data, config.size, &stats, active_deadline);
             }
-            Ok(false) => continue,
+            Ok(false) => common::poll_idle(Duration::from_millis(1)),
             Err(err) => panic!("pubsub subscriber recv failed: {err}"),
         }
     }

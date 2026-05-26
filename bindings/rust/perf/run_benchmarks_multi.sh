@@ -33,7 +33,7 @@ DURATION="${PERF_MULTI_DURATION_SECONDS:-5}"
 MSG_SIZES="${PERF_MSG_SIZES:-64,256,1024,65536,131072,262144}"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 RUNS="1"
-CLIENTS="${PERF_MULTI_CLIENTS:-100}"
+CLIENTS="${PERF_MULTI_CLIENTS:-${PERF_CLIENTS:-${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}}}"
 RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-3000}"
 RESULTS_ROOT="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results}"
 RESULTS_TAG="${PERF_RESULTS_TAG:-}"
@@ -72,7 +72,7 @@ ENV_MULTI_SNDBUF="${PERF_MULTI_SNDBUF:-}"
 ENV_MULTI_RCVBUF="${PERF_MULTI_RCVBUF:-}"
 EXPLICIT_CLIENTS=0
 [[ -n "${PERF_MSG_SIZES+x}" ]] && EXPLICIT_MSG_SIZES=1
-[[ -n "${PERF_MULTI_CLIENTS+x}" ]] && EXPLICIT_CLIENTS=1
+[[ -n "${PERF_MULTI_CLIENTS+x}" || -n "${PERF_CLIENTS+x}" ]] && EXPLICIT_CLIENTS=1
 
 is_uint() {
     local value="${1:-}"
@@ -451,10 +451,7 @@ default_msg_sizes_for_pattern() {
 
 default_io_threads_for_pattern() {
     local pattern="$1"
-    case "${pattern}" in
-        MULTI_STREAM) printf '%s' "4" ;;
-        *) printf '%s' "4" ;;
-    esac
+    printf '%s' "${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-4}}"
 }
 
 ensure_shared_stream_client() {
@@ -707,8 +704,12 @@ for run in $(seq 1 "${RUNS}"); do
         pat="${PATTERNS[pat_index]}"
         IFS=',' read -ra SIZE_LIST <<< "$(default_msg_sizes_for_pattern "${pat}")"
         PATTERN_CLIENTS="${CLIENTS}"
-        if [[ "${pat}" == "MULTI_STREAM" && "${EXPLICIT_CLIENTS}" != "1" && "${CLIENTS}" == "100" ]]; then
-            PATTERN_CLIENTS="10000"
+        if [[ "${EXPLICIT_CLIENTS}" != "1" ]]; then
+            if [[ "${pat}" == "MULTI_STREAM" ]]; then
+                PATTERN_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
+            else
+                PATTERN_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
+            fi
         fi
         PATTERN_CLIENTS="$(cap_default_clients_for_memory "${PATTERN_CLIENTS}")"
         SERVER_BIN=""
@@ -1053,6 +1054,25 @@ if [[ "${TOTAL_CASES}" -gt 0 && "${NON_SKIP_CASES}" -eq 0 ]]; then
     python3 "${PERF_REPORT_PY}" render-skips --cases "${TMP_CASES}" --output "${OUTPUT_FILE}"
     exit 0
 fi
+REPORT_CLIENTS="${CLIENTS}"
+if [[ "${EXPLICIT_CLIENTS}" != "1" ]]; then
+    has_stream=0
+    all_stream=1
+    for pat in "${PATTERNS[@]}"; do
+        if [[ "${pat}" == "MULTI_STREAM" ]]; then
+            has_stream=1
+        else
+            all_stream=0
+        fi
+    done
+    if [[ "${all_stream}" == "1" && "${has_stream}" == "1" ]]; then
+        REPORT_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
+    elif [[ "${has_stream}" == "1" ]]; then
+        REPORT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}} (stream=${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}})"
+    else
+        REPORT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
+    fi
+fi
 python3 "${PERF_REPORT_PY}" render-multi \
   --metrics "${TMP_METRICS}" \
   --cases "${TMP_CASES}" \
@@ -1060,7 +1080,7 @@ python3 "${PERF_REPORT_PY}" render-multi \
   --patterns "${PATTERN}" \
   --transports "${TRANSPORTS}" \
   --msg-sizes "${MSG_SIZES}" \
-  --clients "${CLIENTS}" \
+  --clients "${REPORT_CLIENTS}" \
   --runs "${RUNS}" \
   --duration "${DURATION}" \
   --results-tag "${RESULTS_TAG}" \

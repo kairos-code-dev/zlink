@@ -256,6 +256,11 @@ def _effective_role_io_threads(args, role):
         return os.environ[role_env]
     if os.environ.get("PERF_IO_THREADS"):
         return f"{os.environ['PERF_IO_THREADS']} (from PERF_IO_THREADS)"
+    default_io_threads = os.environ.get("PERF_MULTI_DEFAULT_IO_THREADS") or os.environ.get(
+        "PERF_DEFAULT_IO_THREADS"
+    )
+    if default_io_threads:
+        return f"{default_io_threads} (python default)"
     return f"{PYTHON_MULTI_DEFAULT_IO_THREADS} (python default)"
 
 
@@ -272,30 +277,44 @@ def _selected_configs(patterns, transports, requested_msg_sizes):
 
 def _default_clients(patterns):
     if patterns and all(pattern == "STREAM" for pattern in patterns):
-        return "10000"
+        return os.environ.get("PERF_MULTI_DEFAULT_STREAM_CLIENTS") or os.environ.get(
+            "PERF_STREAM_DEFAULT_CLIENTS", "10000"
+        )
     return "policy-default"
 
 
 def _options_clients_display(patterns, cli_value):
     if cli_value is not None:
         return cli_value
-    env_value = os.environ.get("PERF_MULTI_CLIENTS")
+    env_value = os.environ.get("PERF_MULTI_CLIENTS") or os.environ.get("PERF_CLIENTS")
     if env_value:
         return env_value
+    default_clients = os.environ.get("PERF_MULTI_DEFAULT_CLIENTS") or os.environ.get(
+        "PERF_DEFAULT_CLIENTS", "100"
+    )
+    default_stream_clients = os.environ.get("PERF_MULTI_DEFAULT_STREAM_CLIENTS") or os.environ.get(
+        "PERF_STREAM_DEFAULT_CLIENTS", "10000"
+    )
     if patterns and all(pattern == "STREAM" for pattern in patterns):
-        return "10000"
+        return default_stream_clients
     if any(pattern == "STREAM" for pattern in patterns):
-        return "100 (stream=10000)"
-    return "100"
+        return f"{default_clients} (stream={default_stream_clients})"
+    return default_clients
 
 
 def _clients_for_pattern(pattern, cli_value):
     if cli_value is not None:
         return cli_value
-    env_value = os.environ.get("PERF_MULTI_CLIENTS")
+    env_value = os.environ.get("PERF_MULTI_CLIENTS") or os.environ.get("PERF_CLIENTS")
     if env_value:
         return env_value
-    return "10000" if pattern == "STREAM" else "100"
+    if pattern == "STREAM":
+        return os.environ.get("PERF_MULTI_DEFAULT_STREAM_CLIENTS") or os.environ.get(
+            "PERF_STREAM_DEFAULT_CLIENTS", "10000"
+        )
+    return os.environ.get("PERF_MULTI_DEFAULT_CLIENTS") or os.environ.get(
+        "PERF_DEFAULT_CLIENTS", "100"
+    )
 
 
 def _connect_concurrency_for_clients(clients):
@@ -962,10 +981,10 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
         ),
         "duration_seconds": args.duration,
         "clients": clients,
-        "default_clients": os.environ.get("PERF_MULTI_DEFAULT_CLIENTS", "100"),
-        "default_stream_clients": os.environ.get(
-            "PERF_MULTI_DEFAULT_STREAM_CLIENTS", "10000"
-        ),
+        "default_clients": os.environ.get("PERF_MULTI_DEFAULT_CLIENTS")
+        or os.environ.get("PERF_DEFAULT_CLIENTS", "100"),
+        "default_stream_clients": os.environ.get("PERF_MULTI_DEFAULT_STREAM_CLIENTS")
+        or os.environ.get("PERF_STREAM_DEFAULT_CLIENTS", "10000"),
         "service_clients": "auto",
         "server_io_threads": _effective_role_io_threads(args, "server"),
         "client_io_threads": _effective_role_io_threads(args, "client"),
@@ -1107,7 +1126,9 @@ def main(argv=None):
         _append_line(sections, line)
     _append_line(sections)
     _append_line(sections, render_effective_options(options))
-    explicit_clients = args.clients is not None or bool(os.environ.get("PERF_MULTI_CLIENTS"))
+    explicit_clients = args.clients is not None or bool(
+        os.environ.get("PERF_MULTI_CLIENTS") or os.environ.get("PERF_CLIENTS")
+    )
     for pattern_index, pattern in enumerate(patterns):
         if stop_early:
             break

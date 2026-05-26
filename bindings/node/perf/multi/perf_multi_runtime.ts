@@ -490,7 +490,7 @@ function resolveMultiIoThreads(role, pattern) {
     return shared;
   }
 
-  const fallback = integerEnv('PERF_MULTI_DEFAULT_IO_THREADS', NaN);
+  const fallback = integerEnv('PERF_MULTI_DEFAULT_IO_THREADS', integerEnv('PERF_DEFAULT_IO_THREADS', NaN));
   if (Number.isFinite(fallback) && fallback >= 0) {
     return fallback;
   }

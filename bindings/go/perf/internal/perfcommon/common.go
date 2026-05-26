@@ -623,15 +623,15 @@ func NewSingleContext() (*zlink.Context, error) {
 }
 
 func NewMultiContext() (*zlink.Context, error) {
-	return newContextWithIOThreads(4, "PERF_IO_THREADS")
+	return newContextWithIOThreads(4, "PERF_IO_THREADS", "PERF_MULTI_DEFAULT_IO_THREADS", "PERF_DEFAULT_IO_THREADS")
 }
 
 func NewMultiServerContext() (*zlink.Context, error) {
-	return newContextWithIOThreads(4, "PERF_MULTI_SERVER_IO_THREADS", "PERF_IO_THREADS")
+	return newContextWithIOThreads(4, "PERF_MULTI_SERVER_IO_THREADS", "PERF_IO_THREADS", "PERF_MULTI_DEFAULT_IO_THREADS", "PERF_DEFAULT_IO_THREADS")
 }
 
 func NewMultiClientContext() (*zlink.Context, error) {
-	return newContextWithIOThreads(4, "PERF_MULTI_CLIENT_IO_THREADS", "PERF_IO_THREADS")
+	return newContextWithIOThreads(4, "PERF_MULTI_CLIENT_IO_THREADS", "PERF_IO_THREADS", "PERF_MULTI_DEFAULT_IO_THREADS", "PERF_DEFAULT_IO_THREADS")
 }
 
 func newContextWithIOThreads(defaultThreads int, envNames ...string) (*zlink.Context, error) {

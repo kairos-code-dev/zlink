@@ -460,6 +460,8 @@ fn perf_context_with_env(primary_env: &str) -> Context {
     let io_threads = std::env::var(primary_env)
         .ok()
         .or_else(|| std::env::var("PERF_IO_THREADS").ok())
+        .or_else(|| std::env::var("PERF_MULTI_DEFAULT_IO_THREADS").ok())
+        .or_else(|| std::env::var("PERF_DEFAULT_IO_THREADS").ok())
         .and_then(|value| value.parse::<i32>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(4);

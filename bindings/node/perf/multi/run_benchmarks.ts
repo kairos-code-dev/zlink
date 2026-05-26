@@ -208,15 +208,30 @@ function hasSkipToken(lines) {
 }
 
 function explicitClientCount() {
-  const configured = Number(process.env.PERF_MULTI_CLIENTS || NaN);
-  if (Number.isFinite(configured) && configured > 0) {
-    return Math.trunc(configured);
+  for (const name of ['PERF_MULTI_CLIENTS', 'PERF_CLIENTS']) {
+    const configured = Number(process.env[name] || NaN);
+    if (Number.isFinite(configured) && configured > 0) {
+      return Math.trunc(configured);
+    }
+  }
+  return null;
+}
+
+function positiveIntegerEnv(...names) {
+  for (const name of names) {
+    const value = Number(process.env[name] || NaN);
+    if (Number.isFinite(value) && value > 0) {
+      return Math.trunc(value);
+    }
   }
   return null;
 }
 
 function defaultClientsForPattern(patternName) {
-  return patternName === 'MULTI_STREAM' ? 10000 : 100;
+  if (patternName === 'MULTI_STREAM') {
+    return positiveIntegerEnv('PERF_MULTI_DEFAULT_STREAM_CLIENTS', 'PERF_STREAM_DEFAULT_CLIENTS') ?? 10000;
+  }
+  return positiveIntegerEnv('PERF_MULTI_DEFAULT_CLIENTS', 'PERF_DEFAULT_CLIENTS') ?? 100;
 }
 
 function currentSoftNofileLimit() {

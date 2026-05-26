@@ -418,14 +418,18 @@ effective_clients_display() {
     return
   fi
 
-  python3 - "${patterns_csv}" <<'PY'
+  python3 - "${patterns_csv}" "${EFFECTIVE_DEFAULT_CLIENTS}" "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}" <<'PY'
 import sys
 
 patterns = [item.strip() for item in sys.argv[1].split(",") if item.strip()]
+default_clients = sys.argv[2]
+default_stream_clients = sys.argv[3]
 if patterns and all(item == "MULTI_STREAM" for item in patterns):
-    print("10000")
+    print(default_stream_clients)
+elif any(item == "MULTI_STREAM" for item in patterns):
+    print(f"{default_clients} (stream={default_stream_clients})")
 else:
-    print("100")
+    print(default_clients)
 PY
 }
 
@@ -1477,6 +1481,8 @@ if [[ -n "${SERVER_IO_THREADS}" ]]; then
   display_server_io_threads="${SERVER_IO_THREADS}"
 elif [[ -n "${COMMON_IO_THREADS}" ]]; then
   display_server_io_threads="${COMMON_IO_THREADS} (from PERF_IO_THREADS)"
+elif [[ -n "${EFFECTIVE_DEFAULT_IO_THREADS}" ]]; then
+  display_server_io_threads="${EFFECTIVE_DEFAULT_IO_THREADS} (default)"
 else
   display_server_io_threads="4 (default)"
 fi
@@ -1484,6 +1490,8 @@ if [[ -n "${CLIENT_IO_THREADS}" ]]; then
   display_client_io_threads="${CLIENT_IO_THREADS}"
 elif [[ -n "${COMMON_IO_THREADS}" ]]; then
   display_client_io_threads="${COMMON_IO_THREADS} (from PERF_IO_THREADS)"
+elif [[ -n "${EFFECTIVE_DEFAULT_IO_THREADS}" ]]; then
+  display_client_io_threads="${EFFECTIVE_DEFAULT_IO_THREADS} (default)"
 else
   display_client_io_threads="4 (default)"
 fi
@@ -1559,7 +1567,7 @@ run_multi_process() {
   shift 5
   local extra_args=("$@")
   local shell_cmd="${PERF_BINARY@Q} --multi-${role} ${pattern@Q} ${transport@Q} ${size@Q}"
-  local role_io_threads="${COMMON_IO_THREADS:-4}"
+  local role_io_threads="${COMMON_IO_THREADS:-${EFFECTIVE_DEFAULT_IO_THREADS:-4}}"
   if [[ "${role}" == "server" && -n "${SERVER_IO_THREADS}" ]]; then
     role_io_threads="${SERVER_IO_THREADS}"
   elif [[ "${role}" == "client" && -n "${CLIENT_IO_THREADS}" ]]; then
@@ -1770,10 +1778,12 @@ if ! PERF_BINARY="$(resolve_perf_binary "${PROJECT_DIR}" "Zlink.BindingBench.Mul
 fi
 
 # ITEM 1: META clients value mirrors C resolve_clients_meta:
-# env PERF_CLIENTS if numeric; else 10000 when every selected pattern is a
-# stream variant; else 100.
+# env PERF_MULTI_CLIENTS/PERF_CLIENTS if numeric; otherwise the configured
+# default clients, with the stream default when every selected pattern is stream.
 META_CLIENTS=""
-if [[ "${PERF_CLIENTS:-}" =~ ^[0-9]+$ ]]; then
+if [[ "${PERF_MULTI_CLIENTS:-}" =~ ^[0-9]+$ ]]; then
+  META_CLIENTS="${PERF_MULTI_CLIENTS}"
+elif [[ "${PERF_CLIENTS:-}" =~ ^[0-9]+$ ]]; then
   META_CLIENTS="${PERF_CLIENTS}"
 else
   _all_stream=1
@@ -1784,9 +1794,9 @@ else
     esac
   done
   if [[ "${_all_stream}" -eq 1 ]]; then
-    META_CLIENTS="10000"
+    META_CLIENTS="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
   else
-    META_CLIENTS="100"
+    META_CLIENTS="${EFFECTIVE_DEFAULT_CLIENTS}"
   fi
 fi
 print_meta_block "${META_CLIENTS}"
@@ -1817,8 +1827,8 @@ print_effective_options() {
   print_line "- duration_seconds: ${DURATION}"
   print_line "- fail_fast: ${PERF_FAIL_FAST:-0}"
   print_line "- clients: ${EFFECTIVE_CLIENTS_DISPLAY}"
-  print_line "- default_clients: 100"
-  print_line "- default_stream_clients: 10000"
+  print_line "- default_clients: ${EFFECTIVE_DEFAULT_CLIENTS}"
+  print_line "- default_stream_clients: ${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
   print_line "- service_clients: auto"
   print_line "- server_io_threads: ${display_server_io_threads}"
   print_line "- client_io_threads: ${display_client_io_threads}"

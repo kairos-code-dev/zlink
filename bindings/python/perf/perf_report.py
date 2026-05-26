@@ -466,7 +466,19 @@ def _git_commit():
 
 
 def _multi_effective_options(args, section):
-    default_io_threads = "1 (python default)" if args.lang == "python" else "4 (default)"
+    default_clients = os.environ.get("PERF_MULTI_DEFAULT_CLIENTS") or os.environ.get(
+        "PERF_DEFAULT_CLIENTS", "100"
+    )
+    default_stream_clients = os.environ.get("PERF_MULTI_DEFAULT_STREAM_CLIENTS") or os.environ.get(
+        "PERF_STREAM_DEFAULT_CLIENTS", "10000"
+    )
+    default_io_threads_value = os.environ.get("PERF_MULTI_DEFAULT_IO_THREADS") or os.environ.get(
+        "PERF_DEFAULT_IO_THREADS"
+    )
+    if default_io_threads_value:
+        default_io_threads = f"{default_io_threads_value} (default)"
+    else:
+        default_io_threads = "1 (python default)" if args.lang == "python" else "4 (default)"
     lines = [
         f"## Effective Options ({section})",
         f"- lang: {args.lang}",
@@ -478,8 +490,8 @@ def _multi_effective_options(args, section):
         f"- duration_seconds: {args.duration}",
         f"- fail_fast: {args.fail_fast}",
         f"- clients: {args.clients}",
-        "- default_clients: 100",
-        "- default_stream_clients: 10000",
+        f"- default_clients: {default_clients}",
+        f"- default_stream_clients: {default_stream_clients}",
         "- service_clients: auto",
         f"- server_io_threads: {args.server_io_threads or args.common_io_threads or default_io_threads}",
         f"- client_io_threads: {args.client_io_threads or args.common_io_threads or default_io_threads}",

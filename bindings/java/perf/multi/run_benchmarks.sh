@@ -48,10 +48,12 @@ SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERV
 SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-${PERF_SERVER_BIND_PORT:-0}}"
 MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-${PERF_MONITOR_HWM:-1000}}"
 CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-${PERF_CONNECT_CONCURRENCY:-}}"
-STREAM_DEFAULT_CLIENTS=10000
+DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
+STREAM_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
 STREAM_DEFAULT_MSG_SIZES="64,256,1024,65536"
 explicit_clients=0
 explicit_msg_sizes=0
+[[ -n "${PERF_MULTI_CLIENTS+x}" || -n "${PERF_CLIENTS+x}" ]] && explicit_clients=1
 SKIP_NOFILE_CHECK="${PERF_SKIP_NOFILE_CHECK:-0}"
 SKIP_MEMORY_CHECK="${PERF_SKIP_MEMORY_CHECK:-0}"
 SPOT_CLEAN_LATENCY="${PERF_MULTI_SPOT_CLEAN_LATENCY:-1}"
@@ -242,8 +244,10 @@ PY
 
 default_clients_for_pattern() {
   local pattern="$1"
-  if [[ "${pattern}" == "MULTI_STREAM" && "${CLIENTS}" == "100" ]]; then
+  if [[ "${pattern}" == "MULTI_STREAM" && "${explicit_clients}" -eq 0 ]]; then
     echo "${STREAM_DEFAULT_CLIENTS}"
+  elif [[ "${explicit_clients}" -eq 0 ]]; then
+    echo "${DEFAULT_CLIENTS}"
   else
     echo "${CLIENTS}"
   fi
@@ -1142,8 +1146,8 @@ done
 requested_patterns="$(IFS=,; echo "${patterns[*]}")"
 display_msg_sizes="${MSG_SIZES}"
 display_clients="${CLIENTS}"
-display_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
-display_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
+display_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-4}}}}"
+display_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-4}}}}"
 if [[ "${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" \
   || "${PERF_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" ]]; then
   display_hwm="${HWM:-manual-unset}"
@@ -1205,9 +1209,11 @@ if printf '%s\n' "${patterns[@]}" | grep -qx 'MULTI_STREAM'; then
   if [[ "${explicit_msg_sizes}" -eq 0 ]]; then
     display_msg_sizes="${MSG_SIZES} (STREAM: ${STREAM_DEFAULT_MSG_SIZES})"
   fi
-  if [[ "${explicit_clients}" -eq 0 && "${CLIENTS}" == "100" ]]; then
-    display_clients="${CLIENTS} (STREAM: ${STREAM_DEFAULT_CLIENTS})"
+  if [[ "${explicit_clients}" -eq 0 ]]; then
+    display_clients="${DEFAULT_CLIENTS} (STREAM: ${STREAM_DEFAULT_CLIENTS})"
   fi
+elif [[ "${explicit_clients}" -eq 0 ]]; then
+  display_clients="${DEFAULT_CLIENTS}"
 fi
 
 echo "  > Benchmarking current for $(IFS=,; echo "${patterns[*]}")..."
@@ -1333,7 +1339,7 @@ python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${t
   "${SERVER_READY_TIMEOUT_MS}" "${SERVER_SHUTDOWN_TIMEOUT_MS}" "${SERVER_BIND_PORT}" \
   "${TRANSPORT_TRANSITION_MS}" "${PATTERN_TRANSITION_MS}" "${LAT_TIMEOUT_MS}" \
   "${STREAM_NON_TCP_CLIENTS_MAX}" "${DISABLE_RESOURCE_METRICS}" "${TIMEOUT_SECONDS}" \
-  "${STREAM_DEFAULT_CLIENTS}" "${RESULTS_TAG}" \
+  "${DEFAULT_CLIENTS}" "${STREAM_DEFAULT_CLIENTS}" "${RESULTS_TAG}" \
   "${expected_result_lines}" "${actual_result_lines}" \
   "${PERF_FAIL_FAST:-0}" "${stop_early}" <<'PY' || python_status=$?
 import csv
@@ -1355,7 +1361,7 @@ from pathlib import Path
     server_ready_timeout_ms, server_shutdown_timeout_ms, server_bind_port,
     transport_transition_ms, pattern_transition_ms, lat_timeout_ms,
     stream_non_tcp_clients_max, disable_resource_metrics, timeout_seconds,
-    default_stream_clients, results_tag,
+    default_clients, default_stream_clients, results_tag,
     expected_result_lines, actual_result_lines, fail_fast, fail_fast_stopped,
 ) = sys.argv[1:]
 sys.path.insert(0, str(Path(helper_path).resolve().parent))
@@ -1742,7 +1748,7 @@ def emit_options(label):
     emit(f"- duration_seconds: {duration}")
     emit(f"- fail_fast: {fail_fast}")
     emit(f"- clients: {clients}")
-    emit("- default_clients: 100")
+    emit(f"- default_clients: {default_clients}")
     emit(f"- default_stream_clients: {default_stream_clients}")
     emit(f"- service_clients: {service_clients}")
     emit(f"- server_io_threads: {server_io_display}")

@@ -89,9 +89,15 @@ final class PerfArgs {
         int duration = intEnv("PERF_MULTI_DURATION_SECONDS",
             intEnv("PERF_DURATION_SECONDS", 5));
         String endpoint = "";
+        int defaultClients = streamPattern
+            ? intEnv("PERF_MULTI_DEFAULT_STREAM_CLIENTS",
+                intEnv("PERF_STREAM_DEFAULT_CLIENTS", 10_000))
+            : intEnv("PERF_MULTI_DEFAULT_CLIENTS",
+                intEnv("PERF_DEFAULT_CLIENTS", 100));
         int clients = intEnv("PERF_MULTI_CLIENTS",
-            intEnv("PERF_CLIENTS", streamPattern ? 10_000 : 100));
-        int defaultIoThreads = intEnv("PERF_MULTI_DEFAULT_IO_THREADS", 4);
+            intEnv("PERF_CLIENTS", defaultClients));
+        int defaultIoThreads = intEnv("PERF_MULTI_DEFAULT_IO_THREADS",
+            intEnv("PERF_DEFAULT_IO_THREADS", 4));
         int ioThreads = defaultIoThreads;
         if ("--multi-server".equals(args[0])) {
             ioThreads = intEnv(

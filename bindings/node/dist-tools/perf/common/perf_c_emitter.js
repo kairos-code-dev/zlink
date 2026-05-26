@@ -219,19 +219,22 @@ function resolveClientsMeta(selectedPatterns, clientsOverride = undefined) {
     if (Number.isFinite(clientsOverride) && clientsOverride > 0) {
         return String(Math.trunc(clientsOverride));
     }
-    const envClients = envGet('PERF_CLIENTS');
+    const envClients = envGet('PERF_MULTI_CLIENTS') || envGet('PERF_CLIENTS');
     if (/^\d+$/.test(envClients)) {
         return envClients;
     }
     if (!selectedPatterns || selectedPatterns.length === 0) {
         return '';
     }
-    const streamDefault = 10000;
-    const generalDefault = 100;
+    const streamDefault = envGet('PERF_MULTI_DEFAULT_STREAM_CLIENTS') || envGet('PERF_STREAM_DEFAULT_CLIENTS') || '10000';
+    const generalDefault = envGet('PERF_MULTI_DEFAULT_CLIENTS') || envGet('PERF_DEFAULT_CLIENTS') || '100';
     if (selectedPatterns.every((p) => STREAM_VARIANT_PATTERNS.has(p))) {
-        return String(streamDefault);
+        return streamDefault;
     }
-    return String(generalDefault);
+    if (selectedPatterns.some((p) => STREAM_VARIANT_PATTERNS.has(p))) {
+        return `${generalDefault} (stream=${streamDefault})`;
+    }
+    return generalDefault;
 }
 function buildMetaItems(lang, numRuns, selectedPatterns, rootDir, clientsOverride = undefined) {
     const items = [];
@@ -315,6 +318,7 @@ function buildMultiOptionItems(opts) {
                 || envGet(`PERF_MULTI_${roleKey}_IO_THREADS`)
                 || envGet('PERF_IO_THREADS')
                 || envGet('PERF_MULTI_DEFAULT_IO_THREADS')
+                || envGet('PERF_DEFAULT_IO_THREADS')
                 || '4';
         }));
         return values.size === 1
@@ -335,8 +339,8 @@ function buildMultiOptionItems(opts) {
         ['duration_seconds', String(opts.duration)],
         ['fail_fast', envGet('PERF_FAIL_FAST') === '1' ? '1' : '0'],
         ['clients', clientsMeta],
-        ['default_clients', '100'],
-        ['default_stream_clients', '10000'],
+        ['default_clients', envGet('PERF_MULTI_DEFAULT_CLIENTS') || envGet('PERF_DEFAULT_CLIENTS') || '100'],
+        ['default_stream_clients', envGet('PERF_MULTI_DEFAULT_STREAM_CLIENTS') || envGet('PERF_STREAM_DEFAULT_CLIENTS') || '10000'],
         ['service_clients', serviceClients > 0 ? String(serviceClients) : 'auto'],
         ['server_io_threads', roleIoDisplay('server')],
         ['client_io_threads', roleIoDisplay('client')],

@@ -225,7 +225,7 @@ resolve_memory_max_clients() {
 
 cap_default_clients_for_memory() {
   local clients="${1:-}"
-  if [[ -n "${CLIENTS}" || -n "${PERF_MULTI_CLIENTS:-}" ]]; then
+  if [[ -n "${CLIENTS}" || -n "${PERF_MULTI_CLIENTS:-}" || -n "${PERF_CLIENTS:-}" ]]; then
     printf '%s\n' "${clients}"
     return
   fi
@@ -471,6 +471,12 @@ else
   elif is_positive_uint "${PERF_IO_THREADS:-}"; then
     export GOMAXPROCS="$(go_gomaxprocs_floor4 "${PERF_IO_THREADS}")"
     GO_GOMAXPROCS_SOURCE="PERF_IO_THREADS"
+  elif is_positive_uint "${PERF_MULTI_DEFAULT_IO_THREADS:-}"; then
+    export GOMAXPROCS="$(go_gomaxprocs_floor4 "${PERF_MULTI_DEFAULT_IO_THREADS}")"
+    GO_GOMAXPROCS_SOURCE="PERF_MULTI_DEFAULT_IO_THREADS"
+  elif is_positive_uint "${PERF_DEFAULT_IO_THREADS:-}"; then
+    export GOMAXPROCS="$(go_gomaxprocs_floor4 "${PERF_DEFAULT_IO_THREADS}")"
+    GO_GOMAXPROCS_SOURCE="PERF_DEFAULT_IO_THREADS"
   else
     export GOMAXPROCS="4"
     GO_GOMAXPROCS_SOURCE="default"
@@ -712,8 +718,10 @@ if [[ -n "${CLIENTS}" ]]; then
   CLIENTS_DISPLAY="${CLIENTS}"
 elif [[ -n "${PERF_MULTI_CLIENTS:-}" ]]; then
   CLIENTS_DISPLAY="${PERF_MULTI_CLIENTS}"
+elif [[ -n "${PERF_CLIENTS:-}" ]]; then
+  CLIENTS_DISPLAY="${PERF_CLIENTS}"
 else
-  CLIENTS_DISPLAY="auto (default=100, stream=10000)"
+  CLIENTS_DISPLAY="auto (default=${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}, stream=${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}})"
 fi
 
 effective_or_auto() {
@@ -733,8 +741,14 @@ effective_multi_server_io_threads() {
     printf '%s\n' "${PERF_MULTI_SERVER_IO_THREADS}"
   elif [[ -n "${IO_THREADS}" ]]; then
     printf '%s\n' "${IO_THREADS}"
+  elif [[ -n "${PERF_IO_THREADS:-}" ]]; then
+    printf '%s\n' "${PERF_IO_THREADS}"
+  elif [[ -n "${PERF_MULTI_DEFAULT_IO_THREADS:-}" ]]; then
+    printf '%s\n' "${PERF_MULTI_DEFAULT_IO_THREADS} (default)"
+  elif [[ -n "${PERF_DEFAULT_IO_THREADS:-}" ]]; then
+    printf '%s\n' "${PERF_DEFAULT_IO_THREADS} (default)"
   else
-    printf '%s\n' "${PERF_IO_THREADS:-4 (default)}"
+    printf '%s\n' "4 (default)"
   fi
 }
 
@@ -745,8 +759,14 @@ effective_multi_client_io_threads() {
     printf '%s\n' "${PERF_MULTI_CLIENT_IO_THREADS}"
   elif [[ -n "${IO_THREADS}" ]]; then
     printf '%s\n' "${IO_THREADS}"
+  elif [[ -n "${PERF_IO_THREADS:-}" ]]; then
+    printf '%s\n' "${PERF_IO_THREADS}"
+  elif [[ -n "${PERF_MULTI_DEFAULT_IO_THREADS:-}" ]]; then
+    printf '%s\n' "${PERF_MULTI_DEFAULT_IO_THREADS} (default)"
+  elif [[ -n "${PERF_DEFAULT_IO_THREADS:-}" ]]; then
+    printf '%s\n' "${PERF_DEFAULT_IO_THREADS} (default)"
   else
-    printf '%s\n' "${PERF_IO_THREADS:-4 (default)}"
+    printf '%s\n' "4 (default)"
   fi
 }
 
@@ -778,8 +798,8 @@ emit_effective_options_multi() {
   echo "- duration_seconds: ${DURATION}"
   echo "- fail_fast: ${PERF_FAIL_FAST:-0}"
   echo "- clients: ${CLIENTS_DISPLAY}"
-  echo "- default_clients: ${PERF_MULTI_DEFAULT_CLIENTS:-100}"
-  echo "- default_stream_clients: ${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
+  echo "- default_clients: ${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
+  echo "- default_stream_clients: ${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
   echo "- service_clients: auto"
   echo "- server_io_threads: $(effective_multi_server_io_threads)"
   echo "- client_io_threads: $(effective_multi_client_io_threads)"
@@ -1240,10 +1260,13 @@ for pattern_index in "${!PATTERNS[@]}"; do
     resolved_clients="${PERF_MULTI_CLIENTS:-}"
   fi
   if [[ -z "${resolved_clients}" ]]; then
+    resolved_clients="${PERF_CLIENTS:-}"
+  fi
+  if [[ -z "${resolved_clients}" ]]; then
     if [[ "${pattern}" == "MULTI_STREAM" ]]; then
-      resolved_clients="10000"
+      resolved_clients="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
     else
-      resolved_clients="100"
+      resolved_clients="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
     fi
   fi
   resolved_clients="$(cap_default_clients_for_memory "${resolved_clients}")"

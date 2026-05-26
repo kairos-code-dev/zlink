@@ -1455,26 +1455,6 @@ if [[ -n "${table_output}" ]]; then
   printf '%s\n' "${table_output}" >> "${RESULTS_FILE}"
 fi
 
-if [[ "${#SKIPS[@]}" -gt 0 ]]; then
-  {
-    echo
-    echo "## Skips"
-    for skip in "${SKIPS[@]}"; do
-      echo "- ${skip}"
-    done
-  } >> "${RESULTS_FILE}"
-fi
-
-if [[ "${#FAILURES[@]}" -gt 0 ]]; then
-  {
-    echo
-    echo "## Failures"
-    for failure in "${FAILURES[@]}"; do
-      echo "- ${failure}"
-    done
-  } >> "${RESULTS_FILE}"
-fi
-
 expected_result_lines=$((expected_cases * 5))
 status="partial"
 if [[ "${fail}" -eq 0 && "${result_lines}" -eq "${expected_result_lines}" ]]; then
@@ -1499,6 +1479,20 @@ fi
   echo "- status: ${status}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
+  if [[ "${#SKIPS[@]}" -gt 0 ]]; then
+    echo
+    echo "## Skips"
+    for skip in "${SKIPS[@]}"; do
+      echo "- ${skip}"
+    done
+  fi
+  if [[ "${#FAILURES[@]}" -gt 0 ]]; then
+    echo
+    echo "## Failures"
+    for failure in "${FAILURES[@]}"; do
+      echo "- ${failure}"
+    done
+  fi
   echo
   echo "Saved result file: ${RESULTS_FILE} (status=${status})"
 } >> "${RESULTS_FILE}"

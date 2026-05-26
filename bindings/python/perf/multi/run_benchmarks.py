@@ -1378,9 +1378,14 @@ def main(argv=None):
     emitted_result_lines = sort_result_data_lines(emitted_result_lines)
     skipped_cases = 0
     unsupported_cases = 0
+    skip_entries = []
     for line in status_lines:
         if line.startswith("SKIP,"):
             skipped_cases += 1
+            parts = line.split(",", 4)
+            label = " ".join(part for part in parts[2:4] if part)
+            reason = parts[4] if len(parts) > 4 else "skip"
+            skip_entries.append((label, reason))
         elif line.startswith("UNSUPPORTED,"):
             unsupported_cases += 1
     total_cases = len(configs) * runs
@@ -1388,12 +1393,6 @@ def main(argv=None):
     expected_result_lines = expected_cases * 5
     status = "complete" if len(rows) == expected_result_lines else "partial"
     success_cases = len(rows) // 5
-    if failures:
-        _append_line(sections)
-        _append_line(sections, "## Failures")
-        for line in failures:
-            _append_line(sections, line)
-        _append_line(sections)
     _append_line(sections, render_effective_options(options, section="result"))
     _append_line(sections)
     _append_line(sections, "## Result Data")
@@ -1408,6 +1407,16 @@ def main(argv=None):
     _append_line(sections, f"- status: {status}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
     _append_line(sections, f"- actual_result_lines: {len(rows)}")
+    if skip_entries:
+        _append_line(sections)
+        _append_line(sections, "## Skips")
+        for label, reason in skip_entries:
+            _append_line(sections, f"- {label}: {reason}")
+    if failures:
+        _append_line(sections)
+        _append_line(sections, "## Failures")
+        for line in failures:
+            _append_line(sections, line)
     report_path = build_report_path(
         lang="python",
         suite="multi",

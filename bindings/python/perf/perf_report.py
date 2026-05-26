@@ -532,6 +532,7 @@ def render_multi_report(args):
     lines = []
     result_lines = []
     failures = []
+    skips = []
 
     try:
         load_avg = " ".join(f"{value:.2f}" for value in os.getloadavg())
@@ -600,6 +601,7 @@ def render_multi_report(args):
                     continue
                 if status == "skip":
                     lines.append(f"      | {size}B | FAIL | FAIL | FAIL | FAIL | FAIL |")
+                    skips.append(f"{pattern} {transport} {size}B: {reason or 'skip'}")
                     continue
                 expected += len(REQUIRED_METRICS)
                 metric_values = {
@@ -635,6 +637,9 @@ def render_multi_report(args):
     lines.append(f"- status: {'complete' if expected == actual else 'partial'}")
     lines.append(f"- expected_result_lines: {expected}")
     lines.append(f"- actual_result_lines: {actual}")
+    if skips:
+        lines.extend(["", "## Skips"])
+        lines.extend(f"- {skip}" for skip in skips)
     if failures:
         lines.extend(["", "## Failures"])
         lines.extend(f"- {failure}" for failure in failures)

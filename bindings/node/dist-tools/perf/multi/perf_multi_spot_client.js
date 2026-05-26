@@ -138,7 +138,7 @@ async function main() {
         trace('control-connected');
         trace(`creating-recv-workers clients=${options.clients}`);
         workers = spawnRecvWorkers(options);
-        await Promise.all(workers.map((worker) => onceWorkerMessage(worker, 'ready', Number(process.env.PERF_CONNECT_READY_TIMEOUT_MS || 5000))));
+        await Promise.all(workers.map((worker) => onceWorkerMessage(worker, 'ready', Number(process.env.PERF_CONNECT_READY_TIMEOUT_MS || 1000))));
         trace(`recv-workers-ready count=${workers.length}`);
         const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
         while (Date.now() < stabilizationDeadline) {

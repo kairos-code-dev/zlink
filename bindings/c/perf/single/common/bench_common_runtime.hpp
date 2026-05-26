@@ -613,7 +613,7 @@ inline bool setup_connected_pair(void *bind_socket_,
     apply_single_benchmark_socket_options(connect_socket_, transport_);
 
     const int timeout_ms = parse_positive_env("PERF_CONNECT_READY_TIMEOUT_MS",
-                                              3000);
+                                              1000);
     const bool bind_ready =
       wait_for_socket_monitor_event(bind_monitor, ZLINK_EVENT_CONNECTION_READY,
                                     timeout_ms);

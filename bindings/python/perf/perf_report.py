@@ -507,7 +507,7 @@ def _multi_effective_options(args, section):
         f"- sndtimeo_ms: {args.sndtimeo_ms}",
         f"- rcvtimeo_ms: {args.rcvtimeo_ms}",
         "- connect_concurrency: 128 (default)",
-        "- connect_ready_timeout_ms: 5000",
+        "- connect_ready_timeout_ms: 1000",
         "- monitor_hwm: 1000",
         "- server_ready_timeout_ms: 10000",
         "- server_shutdown_timeout_ms: 5000",

@@ -50,11 +50,9 @@ std::string bind_node (void *node_, const std::string &transport_, int base_port
 
 int resolve_spot_subscription_ready_timeout_ms (const std::string &transport_)
 {
-    const int transport_default_ms =
-      (transport_ == "tls" || transport_ == "wss") ? 10000 : 5000;
     const int connect_timeout_ms =
       parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS",
-                          transport_default_ms);
+                          1000);
     return parse_positive_env ("PERF_SINGLE_SPOT_SUBJECT_READY_TIMEOUT_MS",
                                connect_timeout_ms);
 }

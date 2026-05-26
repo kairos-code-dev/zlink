@@ -41,7 +41,7 @@ final class PerfArgs {
         int recvTimeoutMs = intEnv("PERF_SINGLE_RCVTIMEO_MS",
             intEnv("PERF_RCVTIMEO_MS", 200));
         int monitorHwm = 1000;
-        int connectReadyTimeoutMs = intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 20_000);
+        int connectReadyTimeoutMs = intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
         for (int i = 3; i < args.length; i += 2) {
             requireOptionValue(args, i);
             switch (args[i]) {
@@ -125,7 +125,7 @@ final class PerfArgs {
         int monitorHwm = intEnv("PERF_MULTI_MONITOR_HWM",
             intEnv("PERF_MONITOR_HWM", 1000));
         int connectReadyTimeoutMs = intEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
-            intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 5000));
+            intEnv("PERF_CONNECT_READY_TIMEOUT_MS", 1000));
         int connectConcurrency = intEnv("PERF_MULTI_CONNECT_CONCURRENCY",
             intEnv("PERF_CONNECT_CONCURRENCY", 0));
         boolean connectConcurrencySet = connectConcurrency > 0;

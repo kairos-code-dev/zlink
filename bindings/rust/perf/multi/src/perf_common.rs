@@ -635,7 +635,7 @@ pub fn resolve_multi_connect_ready_timeout() -> Duration {
     Duration::from_millis(env_or_multi(
         "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
         "PERF_CONNECT_READY_TIMEOUT_MS",
-        5_000,
+        1_000,
     ) as u64)
 }
 

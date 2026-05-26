@@ -52,7 +52,7 @@ bool setup_connected_pubsub_pair (void *pub_socket_,
     apply_single_benchmark_socket_options (pub_socket_, transport_);
     apply_single_benchmark_socket_options (sub_socket_, transport_);
     const int timeout_ms =
-      parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 3000);
+      parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
     const bool sub_ready = wait_for_socket_monitor_event (
       sub_monitor, ZLINK_EVENT_CONNECTION_READY, timeout_ms);
     const bool pub_ready = wait_for_socket_monitor_event (

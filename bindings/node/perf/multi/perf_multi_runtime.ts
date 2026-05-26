@@ -548,7 +548,7 @@ function subscribeNoWaitInto(socket, received) {
 async function waitForConnectionReady(
   socket,
   connectFn = null,
-  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
+  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 1000)
 ) {
   return waitForConnectionReadyCount(socket, 1, connectFn, timeoutMs);
 }
@@ -557,7 +557,7 @@ async function waitForConnectionReadyCount(
   socket,
   expectedCount,
   connectFn = null,
-  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
+  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 1000)
 ) {
   const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
   try {
@@ -666,7 +666,7 @@ function sleepMs(ms) {
 // emits NO POLLOUT drain wakeup when it has no live subscriber pipe.
 // C therefore does NOT wait on a signal-driven `-1` POLLOUT poller for
 // control sends — it uses a BOUNDED deadline
-// (PERF_MULTI_CONNECT_READY_TIMEOUT_MS, default 5000ms), a blocking
+// (PERF_MULTI_CONNECT_READY_TIMEOUT_MS, default 1000ms), a blocking
 // publish attempt, and a short (<=10ms) timed idle wait on backpressure,
 // then RETURNS (false) on timeout so the caller's higher-level handshake
 // loop (e.g. wait_msg_size_start_with_ready_republish) can re-publish.
@@ -676,7 +676,7 @@ async function publishControlUntilSent(socket, _waiter, topic, payload) {
   const body = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
   const deadlineMs = Math.max(
     1,
-    integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
+    integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 1000)
   );
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {

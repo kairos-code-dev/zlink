@@ -830,7 +830,7 @@ emit_effective_options_multi() {
   echo "- sndtimeo_ms: ${SNDTIMEO_MS:-${PERF_MULTI_SNDTIMEO_MS:-200}}"
   echo "- rcvtimeo_ms: ${RCVTIMEO_MS:-${PERF_MULTI_RCVTIMEO_MS:-200}}"
   echo "- connect_concurrency: ${CONNECT_CONCURRENCY:-128 (default)}"
-  echo "- connect_ready_timeout_ms: ${CONNECT_READY_TIMEOUT_MS:-${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-5000}}}"
+  echo "- connect_ready_timeout_ms: ${CONNECT_READY_TIMEOUT_MS:-${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-1000}}}"
   echo "- monitor_hwm: ${MONITOR_HWM:-${PERF_MULTI_MONITOR_HWM:-1000}}"
   echo "- server_ready_timeout_ms: ${SERVER_READY_TIMEOUT_MS:-${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-${PERF_SERVER_READY_TIMEOUT_MS:-10000}}}"
   echo "- server_shutdown_timeout_ms: ${SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}}"

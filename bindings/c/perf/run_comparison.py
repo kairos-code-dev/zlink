@@ -4156,7 +4156,7 @@ def build_effective_option_items(args, selected_patterns):
                 ("connect_concurrency", connect_display),
                 (
                     "connect_ready_timeout_ms",
-                    str(parse_env_int("PERF_CONNECT_READY_TIMEOUT_MS", 5000)),
+                    str(parse_env_int("PERF_CONNECT_READY_TIMEOUT_MS", 1000)),
                 ),
                 ("monitor_hwm", str(parse_env_int("PERF_MONITOR_HWM", 1000))),
                 ("server_ready_timeout_ms", str(args["server_ready_timeout_ms"])),

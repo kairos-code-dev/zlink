@@ -91,11 +91,11 @@ func SinglePubSubRecvTimeout() time.Duration {
 }
 
 func SingleReadyTimeout() time.Duration {
-	return durationFromEnv("PERF_CONNECT_READY_TIMEOUT_MS", 5*time.Second)
+	return durationFromEnv("PERF_CONNECT_READY_TIMEOUT_MS", time.Second)
 }
 
 func MultiReadyTimeout() time.Duration {
-	return durationFromEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", durationFromEnv("PERF_CONNECT_READY_TIMEOUT_MS", 5*time.Second))
+	return durationFromEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", durationFromEnv("PERF_CONNECT_READY_TIMEOUT_MS", time.Second))
 }
 
 func MultiSpotReadySettleDuration() time.Duration {

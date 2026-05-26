@@ -751,7 +751,7 @@ pub fn resolve_single_stop_wait() -> Duration {
 }
 
 pub fn resolve_single_ready_timeout() -> Duration {
-    Duration::from_millis(env_or_u64("PERF_CONNECT_READY_TIMEOUT_MS", 5000))
+    Duration::from_millis(env_or_u64("PERF_CONNECT_READY_TIMEOUT_MS", 1000))
 }
 
 pub fn resolve_endpoint_or_emit_unsupported(

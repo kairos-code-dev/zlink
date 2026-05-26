@@ -176,7 +176,7 @@ async function main() {
     await Promise.all(workers.map((worker) => onceWorkerMessage(
       worker,
       'ready',
-      Number(process.env.PERF_CONNECT_READY_TIMEOUT_MS || 5000)
+      Number(process.env.PERF_CONNECT_READY_TIMEOUT_MS || 1000)
     )));
     trace(`recv-workers-ready count=${workers.length}`);
 

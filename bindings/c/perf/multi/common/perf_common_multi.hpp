@@ -144,7 +144,7 @@ inline bench_settings_t resolve_bench_settings ()
       resolve_multi_int_env_with_fallback (
         "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
         "PERF_CONNECT_READY_TIMEOUT_MS",
-        5000,
+        1000,
         0);
     return settings;
 }

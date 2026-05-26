@@ -1029,7 +1029,7 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients):
         "rcvtimeo_ms": args.recv_timeout_ms or os.environ.get("PERF_MULTI_RCVTIMEO_MS", "200"),
         "connect_concurrency": args.connect_concurrency or f"{_connect_concurrency_for_clients(clients)} (default)",
         "connect_ready_timeout_ms": args.connect_ready_timeout_ms
-        or _env_pair_value("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", "PERF_CONNECT_READY_TIMEOUT_MS", "5000"),
+        or _env_pair_value("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", "PERF_CONNECT_READY_TIMEOUT_MS", "1000"),
         "monitor_hwm": args.monitor_hwm or os.environ.get("PERF_MULTI_MONITOR_HWM", "1000"),
         "server_ready_timeout_ms": args.server_ready_timeout_ms
         or _env_pair_value("PERF_MULTI_SERVER_READY_TIMEOUT_MS", "PERF_SERVER_READY_TIMEOUT_MS", "10000"),

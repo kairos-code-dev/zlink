@@ -1098,7 +1098,7 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 | `--transport-transition-ms N` | transport 전환 cooldown(ms) | 3000 |
 | `--pattern-transition-ms N` | pattern 전환 cooldown(ms) | 3000 |
 | `--server-ready-timeout-ms N` | server READY 대기 타임아웃(ms) | 10000 |
-| `--connect-ready-timeout-ms N` | 연결 준비 대기 타임아웃(ms) | 5000 |
+| `--connect-ready-timeout-ms N` | 연결 준비 대기 타임아웃(ms) | 1000 |
 | `--monitor-hwm N` | 모니터 소켓 HWM | 1000 |
 | `--server-shutdown-timeout-ms N` | server 종료 대기 타임아웃(ms) | 5000 |
 | `--server-bind-port N` | server 바인드 포트 (0=자동 할당) | 0 |
@@ -1359,7 +1359,7 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 | `PERF_MULTI_SNDHWM` | debug 전용 송신 HWM override | 비활성 |
 | `PERF_MULTI_RCVHWM` | debug 전용 수신 HWM override | 비활성 |
 | `PERF_MULTI_CONNECT_CONCURRENCY` | 동시 연결 수 | auto (clients≥10000: 1024, 기타: 128) |
-| `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 연결 준비 타임아웃(ms) | 5000 |
+| `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 연결 준비 타임아웃(ms) | 1000 |
 | `PERF_MULTI_SERVICE_CLIENTS` | 서비스 클라이언트 수 상한 (0=제한 없음) | 0 |
 | `PERF_MULTI_SPOT_CLEAN_LATENCY` | runner의 `MULTI_SPOT` latency-only 재실행 병합 사용 여부. `0`이면 비활성 | 1 |
 | `PERF_MULTI_SPOT_READY_SETTLE_MS` | SPOT 계열 client가 control/data 준비 뒤 `READY_COUNT`를 보내기 전 안정화 대기(ms) | 1000 |
@@ -1470,7 +1470,7 @@ pattern별 공식 start contract 를 사용한다.
 | runner-barrier raw start API | `CONNECTION_READY` 확인 뒤 `CLIENT_READY` / `START` runner orchestration 사용 |
 | SPOT / SPOT_REQREP / SPOT_SENDSEND 연결 확인 API | 별도 서비스 이벤트 스트림 사용 금지. spot control topic 위의 `CONNECTED` progress payload, SPOT_REQREP/SPOT_SENDSEND의 `DATA_ENDPOINT`, `READY_COUNT`/`START` handshake 사용 |
 | 대기 방식 | app thread에서 타임아웃 기반 bounded wait — busy-wait/sleep 금지 |
-| 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 5000ms) 초과 시 run 실패 처리 |
+| 타임아웃 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` (기본 1000ms) 초과 시 run 실패 처리 |
 | Monitor HWM | raw monitor 사용 시 `PERF_MULTI_MONITOR_HWM` (기본 1,000) |
 
 - raw socket client monitor handle은 pattern 파일 안에서 직접 열고 닫되, ready gate는

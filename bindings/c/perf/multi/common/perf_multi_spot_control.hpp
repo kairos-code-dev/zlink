@@ -541,7 +541,7 @@ inline bool publish_control_payload(void *control_pub,
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(std::max(
           1,
-          resolve_multi_int_env("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000, 0)));
+          resolve_multi_int_env("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 1000, 0)));
 
     while (std::chrono::steady_clock::now() < deadline) {
         zlink_msg_t part;

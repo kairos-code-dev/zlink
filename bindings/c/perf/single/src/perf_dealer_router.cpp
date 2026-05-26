@@ -68,7 +68,7 @@ bool setup_dealer_router_session (void *router_,
     apply_single_benchmark_socket_options (dealer_, transport_);
 
     const int ready_timeout_ms =
-      parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 3000);
+      parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
     const bool router_ready = wait_for_socket_monitor_event_with_activity (
       router_monitor, router_, ZLINK_EVENT_CONNECTION_READY, ready_timeout_ms);
     const bool dealer_ready = wait_for_socket_monitor_event (
@@ -279,7 +279,7 @@ bool wait_for_dealer_router_ready (void *sender_,
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (
-        parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 3000));
+        parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 1000));
     while (std::chrono::steady_clock::now () < deadline) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-dealer-router] ready probe send" << std::endl;

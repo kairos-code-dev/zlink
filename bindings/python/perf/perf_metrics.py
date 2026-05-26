@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-DEFAULT_READY_TIMEOUT_MS = 5000
+DEFAULT_READY_TIMEOUT_MS = 1000
 HEADER_MAGIC = 0x5A4C4E4B
 HEADER_FORMAT = "<IIBIQq"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)

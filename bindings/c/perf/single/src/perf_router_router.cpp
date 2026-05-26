@@ -268,7 +268,7 @@ bool setup_router_router_session (void *receiver_,
     apply_single_benchmark_socket_options (sender_, transport_);
 
     const int ready_timeout_ms =
-      parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 3000);
+      parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
     const bool receiver_ready = wait_for_socket_monitor_event_with_activity (
       receiver_monitor, receiver_, ZLINK_EVENT_CONNECTION_READY,
       ready_timeout_ms);
@@ -514,7 +514,7 @@ bool wait_for_router_router_ready (void *sender_,
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (
-        parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 3000));
+        parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 1000));
     while (std::chrono::steady_clock::now () < deadline) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-router-router] ready probe send" << std::endl;

@@ -86,7 +86,7 @@ internal static partial class PerfRunner
 
     internal static int ResolveSingleConnectReadyTimeoutMs()
     {
-        return PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 5000);
+        return PerfEnv.ReadPositive("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
     }
 
     internal static int ResolveSingleDurationSeconds()

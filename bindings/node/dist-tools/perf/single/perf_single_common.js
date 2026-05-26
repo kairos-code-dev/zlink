@@ -228,7 +228,7 @@ function subscribeNoWait(socket, received = new zlink.TopicMessage(), flags = Re
         throw error;
     }
 }
-async function waitForConnectionReady(socket, connectFn = null, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000)) {
+async function waitForConnectionReady(socket, connectFn = null, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 1000)) {
     const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
     try {
         if (typeof connectFn === 'function') {
@@ -255,7 +255,7 @@ async function waitForConnectionReady(socket, connectFn = null, timeoutMs = inte
         monitor.close();
     }
 }
-async function waitForMonitorConnectionReady(monitor, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000)) {
+async function waitForMonitorConnectionReady(monitor, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 1000)) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         try {
@@ -626,7 +626,7 @@ function spawnSenderWorker(workerData) {
     });
     return worker;
 }
-function waitForWorkerMessage(worker, expectedType, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000)) {
+function waitForWorkerMessage(worker, expectedType, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 1000)) {
     return new Promise((resolve, reject) => {
         const seen = worker.__seenMessages.find((message) => message && message.type === expectedType);
         if (seen) {
@@ -679,7 +679,7 @@ function waitForWorkerError(worker) {
     });
 }
 function waitForWorkerDone(worker, durationSeconds) {
-    const readyTimeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 5000);
+    const readyTimeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 1000);
     const activeMs = Math.ceil(Math.max(0, Number(durationSeconds) || 0) * 1000);
     return waitForWorkerMessage(worker, 'done', activeMs + readyTimeoutMs);
 }

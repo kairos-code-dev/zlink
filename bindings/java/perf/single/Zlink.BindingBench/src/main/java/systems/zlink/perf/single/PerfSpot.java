@@ -21,7 +21,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfSpot {
@@ -69,14 +68,13 @@ final class PerfSpot {
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
             CountDownLatch stopped = new CountDownLatch(1);
-            AtomicLong activeReceived = new AtomicLong();
             AtomicReference<Throwable> failure = new AtomicReference<>();
             Thread receiverThread = new Thread(() -> drainUntilStopToken(
-                subscriber, config, metrics, activeEnd, activeReceived, stopped,
-                failure), "single-spot-receiver");
+                subscriber, config, metrics, activeEnd, stopped, failure),
+                "single-spot-receiver");
             Thread senderThread = new Thread(() -> publishActiveAndStop(
                 publisher, stopPublisher, config, topic, activeEnd,
-                activeReceived, stopped, failure),
+                stopped, failure),
                 "single-spot-sender");
             receiverThread.start();
             senderThread.start();
@@ -166,7 +164,6 @@ final class PerfSpot {
                                             PerfUtil.Config config,
                                             PerfUtil.Metrics metrics,
                                             long activeEnd,
-                                            AtomicLong activeReceived,
                                             CountDownLatch stopped,
                                             AtomicReference<Throwable> failure) {
         try (Poller poller = new Poller()) {
@@ -189,7 +186,6 @@ final class PerfSpot {
                             continue;
                         }
                         if (header.phase() == PerfUtil.PHASE_ACTIVE) {
-                            activeReceived.incrementAndGet();
                             if (System.nanoTime() <= activeEnd) {
                                 metrics.recordNanos(header.latencyNanos());
                             }
@@ -208,28 +204,15 @@ final class PerfSpot {
                                              PerfUtil.Config config,
                                              String topic,
                                              long activeEnd,
-                                             AtomicLong activeReceived,
                                              CountDownLatch stopped,
                                              AtomicReference<Throwable> failure) {
-        int defaultMaxInflight = config.size() >= 65536 ? 16 : 256;
-        int maxInflight = PerfUtil.intEnv("PERF_SINGLE_SPOT_MAX_INFLIGHT",
-            defaultMaxInflight);
-        if (maxInflight <= 0) {
-            maxInflight = defaultMaxInflight;
-        }
-        long sent = 0L;
         try (Message active = PerfUtil.payloadTemplate(config.size())) {
             while (System.nanoTime() < activeEnd) {
-                while (sent - activeReceived.get() >= maxInflight
-                    && System.nanoTime() < activeEnd) {
-                    Thread.onSpinWait();
-                }
                 PerfUtil.resetAndWritePayload(active, config.size(),
                     (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                 if (!publishWhenWritableUntil(publisher, topic, active, activeEnd)) {
                     break;
                 }
-                sent++;
             }
             try (Message stop = PerfStopToken.newMessage()) {
                 stopPublisher.publish(topic)

@@ -158,37 +158,10 @@ internal static class PerfPair
         recvThread.IsBackground = true;
         recvThread.Start();
 
-        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: bound the sender's
-        // in-flight (sent-but-not-yet-received) credit. C's native receiver
-        // consumes one-for-one the instant a message lands, so its socket /
-        // HWM pipeline never deep-fills and backpressure holds the standing
-        // queue at ~150 messages (one-way latency = depth / throughput ≈
-        // 0.1 ms). The managed receiver's per-message cost is high enough
-        // that, left uncapped, the sender fills the entire sndbuf+rcvbuf+HWM
-        // pipeline (~9000 msgs at 64B) before backpressure engages; that
-        // depth never drains because the two threads are rate-matched at
-        // steady state, inflating one-way latency to ~9 ms with no
-        // throughput benefit. An explicit in-flight credit reproduces C's
-        // implicit shallow-queue discipline (no sleeps / no pacing of the
-        // measured timestamp; latency stays recv_now_ns - sent_ts_ns).
-        // Sweep: cap 256 -> 0.17 ms @ 96% of C throughput (C 0.13 ms);
-        // uncapped -> ~9 ms @ same throughput.
-        long inflightCap = PerfEnv.ReadNonNegative(
-            "PERF_SINGLE_INFLIGHT_CAP", 256);
-
         bool sendFailed = false;
         ulong seq = 1;
-        long sent = 0;
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            if (inflightCap > 0)
-            {
-                while (sent - Interlocked.Read(ref received) >= inflightCap
-                       && Stopwatch.GetTimestamp() < deadlineTicks)
-                {
-                    Thread.SpinWait(1);
-                }
-            }
             StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize, seq,
                 EpochNs());
             seq++;
@@ -196,7 +169,6 @@ internal static class PerfPair
             {
                 if (!TrySendActiveMessage(sender, payload, "[single-pair]"))
                     continue;
-                sent++;
             }
             catch (ZlinkException ex)
                 when (PerfShared.IsTransientBackpressure(ex.InternalErrno))

@@ -192,31 +192,10 @@ internal static class PerfDealerDealer
         recvThread.IsBackground = true;
         recvThread.Start();
 
-        // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: bound the sender's
-        // in-flight (sent-but-not-received) credit so the standing queue
-        // depth matches C's (~150-256). C's native receiver consumes
-        // one-for-one so its pipeline never deep-fills; uncapped, the
-        // managed sender fills the entire sndbuf+rcvbuf+HWM pipeline before
-        // backpressure engages and that depth never drains at steady-state
-        // rate-match, inflating one-way latency ~60x with no throughput
-        // gain. The credit reproduces C's implicit shallow-queue discipline
-        // without sleeps/pacing; latency stays recv_now_ns - sent_ts_ns.
-        long inflightCap = PerfEnv.ReadNonNegative(
-            "PERF_SINGLE_INFLIGHT_CAP", 256);
-
         bool sendFailed = false;
         ulong seq = 1;
-        long sent = 0;
         while (Stopwatch.GetTimestamp() < deadlineTicks)
         {
-            if (inflightCap > 0)
-            {
-                while (sent - Interlocked.Read(ref received) >= inflightCap
-                       && Stopwatch.GetTimestamp() < deadlineTicks)
-                {
-                    Thread.SpinWait(1);
-                }
-            }
             StampMetricHeader(payload.AsSpan(), RunId, ActivePhase, msgSize, seq,
                 EpochNs());
             seq++;
@@ -225,7 +204,6 @@ internal static class PerfDealerDealer
                 if (!TrySendActiveMessage(sender, payload,
                         "[single-dealer-dealer]"))
                     continue;
-                sent++;
             }
             catch (ZlinkException ex)
                 when (PerfShared.IsTransientBackpressure(ex.InternalErrno))

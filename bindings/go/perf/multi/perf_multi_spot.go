@@ -49,6 +49,9 @@ func runMultiSpotServer(cfg multiConfig) {
 	perfcommon.Must(err)
 	defer controlSub.Close()
 	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
+	controlPoller := perfcommon.NewSocketPoller(controlSub, perfcommon.ZLinkPollIn)
+	defer controlPoller.Close()
+	controlEvents := make([]zlink.PollEvent, 1)
 
 	dataEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-data")
 	controlEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-control-server")
@@ -89,7 +92,7 @@ func runMultiSpotServer(cfg multiConfig) {
 		if readyCount >= cfg.clients {
 			break
 		}
-		time.Sleep(time.Millisecond)
+		waitSpotControlReadable(controlPoller, controlEvents, deadline)
 	}
 	if readyCount < cfg.clients {
 		perfcommon.Must(fmt.Errorf("spot server readiness timeout"))
@@ -178,6 +181,9 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	perfcommon.Must(err)
 	defer controlSub.Close()
 	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
+	controlPoller := perfcommon.NewSocketPoller(controlSub, perfcommon.ZLinkPollIn)
+	defer controlPoller.Close()
+	controlEvents := make([]zlink.PollEvent, 1)
 	controlBind := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-control-client")
 	perfcommon.Must(controlNode.SetPubBind(controlBind))
 	perfcommon.Must(controlNode.ConnectPeer(controlEndpoint))
@@ -214,7 +220,7 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 		if receiveSpotControlPayload(controlSub) == fmt.Sprintf("START,%d", cfg.msgSize) {
 			break
 		}
-		time.Sleep(time.Millisecond)
+		waitSpotControlReadable(controlPoller, controlEvents, deadline)
 	}
 	stopAt := time.Now().Add(cfg.duration)
 	slots := make([]multiSpotClientSlot, len(spots))
@@ -478,17 +484,23 @@ func waitForSpotRoleEvent(events <-chan string, prefix string) {
 func waitForSpotControlStart(controlSub *zlink.Spot, msgSize int) {
 	expected := fmt.Sprintf("START,%d", msgSize)
 	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
+	poller := perfcommon.NewSocketPoller(controlSub, perfcommon.ZLinkPollIn)
+	defer poller.Close()
+	events := make([]zlink.PollEvent, 1)
 	for time.Now().Before(deadline) {
 		if receiveSpotControlPayload(controlSub) == expected {
 			return
 		}
-		time.Sleep(time.Millisecond)
+		waitSpotControlReadable(poller, events, deadline)
 	}
 	perfcommon.Must(fmt.Errorf("spot control start timeout: %s", expected))
 }
 
 func publishSpotControlPayload(spot *zlink.Spot, payload string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
+	poller := perfcommon.NewSocketPoller(spot, perfcommon.ZLinkPollOut)
+	defer poller.Close()
+	events := make([]zlink.PollEvent, 1)
 	for time.Now().Before(deadline) {
 		sent, err := perfcommon.SubmitPayload([]byte(payload), func(message *zlink.Message) (bool, error) {
 			return spot.Publish(multiSpotTopic).MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
@@ -499,9 +511,29 @@ func publishSpotControlPayload(spot *zlink.Spot, payload string, timeout time.Du
 		if err != nil && !perfcommon.IsTransient(err) {
 			perfcommon.Must(err)
 		}
-		time.Sleep(time.Millisecond)
+		waitSpotWritable(poller, events, deadline)
 	}
 	return false
+}
+
+func waitSpotControlReadable(poller *zlink.Poller, events []zlink.PollEvent, deadline time.Time) {
+	waitSpotPoller(poller, events, deadline, 50*time.Millisecond)
+}
+
+func waitSpotWritable(poller *zlink.Poller, events []zlink.PollEvent, deadline time.Time) {
+	waitSpotPoller(poller, events, deadline, 10*time.Millisecond)
+}
+
+func waitSpotPoller(poller *zlink.Poller, events []zlink.PollEvent, deadline time.Time, maxWait time.Duration) {
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return
+	}
+	if remaining > maxWait {
+		remaining = maxWait
+	}
+	_, err := poller.Wait(events, remaining)
+	perfcommon.Must(err)
 }
 
 func receiveSpotControlPayload(spot *zlink.Spot) string {

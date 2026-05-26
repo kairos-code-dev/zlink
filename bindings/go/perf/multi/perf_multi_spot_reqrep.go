@@ -92,6 +92,9 @@ func runMultiSpotReqRepServer(cfg multiConfig) {
 	perfcommon.Must(err)
 	defer controlSub.Close()
 	perfcommon.Must(controlSub.SetSubscription(multiSpotTopic))
+	controlPoller := perfcommon.NewSocketPoller(controlSub, perfcommon.ZLinkPollIn)
+	defer controlPoller.Close()
+	controlEvents := make([]zlink.PollEvent, 1)
 	controlEndpoint := perfcommon.UniqueEndpoint(cfg.transport, "perf-multi-spot-reqrep-control-server")
 	perfcommon.Must(controlNode.SetPubBind(controlEndpoint))
 	controlEndpoint = spotNodeLastEndpoint(controlNode, controlEndpoint)
@@ -138,7 +141,7 @@ func runMultiSpotReqRepServer(cfg multiConfig) {
 		if dataConnected && readyCount >= cfg.clients {
 			break
 		}
-		time.Sleep(time.Millisecond)
+		waitSpotControlReadable(controlPoller, controlEvents, deadline)
 	}
 	if !dataConnected || readyCount < cfg.clients {
 		perfcommon.Must(fmt.Errorf("spot reqrep server readiness timeout"))

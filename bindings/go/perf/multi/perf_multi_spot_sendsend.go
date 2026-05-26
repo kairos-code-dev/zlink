@@ -517,6 +517,9 @@ func waitMultiSpotSendSendReady(spot *zlink.Spot, transport string, msgSize int)
 	payload := perfcommon.PreparePayload(msgSize)
 	perfcommon.StampProbePayload(payload)
 	deadline := time.Now().Add(perfcommon.MultiReadyTimeout())
+	poller := perfcommon.NewSocketPoller(spot, perfcommon.ZLinkPollIn)
+	defer poller.Close()
+	events := make([]zlink.PollEvent, 1)
 	waitingReply := false
 	for time.Now().Before(deadline) {
 		if !waitingReply && submitMultiSpotSendSend(spot, transport, payload) {
@@ -525,7 +528,7 @@ func waitMultiSpotSendSendReady(spot *zlink.Spot, transport string, msgSize int)
 		if drainMultiSpotSendSend(spot, msgSize, deadline, perfcommon.NewStats(), false) {
 			return
 		}
-		time.Sleep(time.Millisecond)
+		waitSpotControlReadable(poller, events, deadline)
 	}
 	perfcommon.Must(fmt.Errorf("multi spot sendsend ready probe timed out"))
 }

@@ -221,6 +221,10 @@ active 시작 조건, 종료 신호를 사용해야 한다.
 - 다음 size는 별도 프로세스로 다시 시작한다.
 - monitor-ready 이후 필요한 protocol self-check는 단발성 검증 1회만
   허용하며, `PUBSUB`/`SPOT` 예외를 제외한 sleep 기반 보정은 금지한다.
+- C 기준 코드가 같은 위치에서 `perf_socket_poll(NULL, 0, N)`을 쓰는 idle wait는
+  sleep 기반 보정이 아니다. binding perf는 public empty-poll API나 public
+  timer/poller 기반 idle helper로 그 의미를 표현할 수 있으며, C 기준에 없는
+  progress fallback으로 확장하면 안 된다.
 
 ### 2.1 Header 기반 집계 (필수)
 

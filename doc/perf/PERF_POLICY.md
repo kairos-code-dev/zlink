@@ -237,6 +237,12 @@ total: 29 bytes (고정)
   - 문자열 생성
   - 로그 출력
   - 불필요 복사
+- 예외: `bindings/c/perf` 기준 코드가 같은 위치에서
+  `perf_socket_poll(NULL, 0, N)`을 사용하는 경우에는, binding perf도 같은 의미의
+  bounded idle wait를 둘 수 있다. 우선 public empty-poll API를 사용하고, 해당
+  binding에 empty-poll public API가 없으면 public timer/poller 기반 idle helper를
+  사용한다. 이 예외는 신호 누락을 덮는 progress fallback이나 completion pump가
+  아니어야 하며, C 기준에 없는 위치로 확장하면 안 된다.
 - send/recv 버퍼는 루프 밖에서 1회 할당하고 재사용한다.
 - 핵심 send/recv loop는 각 패턴 파일 안에서 명시적으로 보여야 한다.
 - registry summary/topology query는 global/coarse 상태 확인용으로만 사용한다.

@@ -125,7 +125,7 @@ active deadline을 다시 확인하기 위한 상한이다.
 |------|------|
 | wire stop token으로 종료되는 recv/readiness loop | **`-1`** (signal-driven wait) |
 | active duration/request timeout을 직접 닫는 sender/requester loop | C 기준 bounded wait. 현재 SPOT req/rep와 send/send 계열은 deadline까지 남은 시간과 50ms 상한 중 작은 값 |
-| 짧은 timer tick 기반 fallback (1–25 ms) | 금지. 과거 wakeup 누락 우회용으로 사용됐으나 core fix 이후 사용 금지 |
+| 짧은 timer tick 기반 fallback (1–25 ms) | 금지. 과거 wakeup 누락 우회용으로 사용됐으나 core fix 이후 사용 금지. 단, C 기준 코드가 같은 위치에서 `perf_socket_poll(NULL, 0, N)`을 쓰는 idle wait는 `PERF_POLICY.md`의 empty-poll 예외를 따른다 |
 | 종료 / cooldown 용 별도 deadline 검사 | 별도 application clock 으로 처리하고 poller timeout 으로 대체하지 않음 |
 
 송수신 양방향 가능한 spot 워크로드(`MULTI_SPOT_SENDSEND`)의 active loop는

@@ -400,7 +400,8 @@ internal static partial class PerfRunner
         int sndTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
         int rcvTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
         bool allowManualOverrides =
-            PerfEnv.ReadNonNegative("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) != 0;
+            PerfEnv.ReadNonNegative("PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) != 0 ||
+            PerfEnv.ReadNonNegative("PERF_ALLOW_MANUAL_SOCKET_OVERRIDES", 0) != 0;
 
         socket.Options.Linger = TimeSpan.Zero;
         socket.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeo);

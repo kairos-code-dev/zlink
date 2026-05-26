@@ -47,7 +47,6 @@ RCVBUF=""
 SNDTIMEO_MS=""
 RCVTIMEO_MS=""
 AUTO_HWM_PROFILE=""
-RUN_COOLDOWN_MS="${PERF_SINGLE_RUN_COOLDOWN_MS:-500}"
 
 cleanup_report_dir() {
   local dir="$1"
@@ -618,7 +617,6 @@ for run in $(seq 1 "${RUNS}"); do
           stop_early=1
           break
         fi
-        sleep_millis "${RUN_COOLDOWN_MS}"
       done
       echo "    Testing ${transport}: Done"
     done

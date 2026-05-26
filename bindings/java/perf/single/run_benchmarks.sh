@@ -29,7 +29,6 @@ RCVBUF="${PERF_SINGLE_RCVBUF:-${PERF_RCVBUF:-}}"
 SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-${PERF_SNDTIMEO_MS:-200}}"
 RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-${PERF_RCVTIMEO_MS:-200}}"
 TRANSPORT_TRANSITION_MS="${PERF_TRANSPORT_TRANSITION_MS:-3000}"
-RUN_COOLDOWN_MS="${PERF_SINGLE_RUN_COOLDOWN_MS:-${PERF_RUN_COOLDOWN_MS:-3000}}"
 if [[ -n "${PERF_CTX_AUTO_HWM_ENABLE:-}" ]]; then
   CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE}"
   CTX_AUTO_HWM_ENABLE_EXPLICIT=1
@@ -52,7 +51,6 @@ Options:
   --msg-sizes LIST       Payload sizes.
   --runs N               Iterations per pattern/transport/size.
   --duration N           Active duration seconds.
-  --run-cooldown-ms N    Cooldown between repeated runs.
   --build-dir PATH       Build directory override.
   --reuse-build          Reuse existing installDist output.
   --clean-build          Delete build dir before installDist.
@@ -82,7 +80,6 @@ while [[ $# -gt 0 ]]; do
     --msg-sizes) MSG_SIZES="${2:-}"; shift ;;
     --runs) RUNS="${2:-}"; shift ;;
     --duration) DURATION="${2:-}"; shift ;;
-    --run-cooldown-ms) RUN_COOLDOWN_MS="${2:-}"; shift ;;
     --build-dir) BUILD_DIR="${2:-}"; shift ;;
     --reuse-build) REUSE_BUILD=1 ;;
     --clean-build) CLEAN_BUILD=1 ;;
@@ -163,7 +160,7 @@ if [[ "${PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES:-${PERF_ALLOW_MANUAL_SOCKET_O
   export PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1
 fi
 
-for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS TRANSPORT_TRANSITION_MS RUN_COOLDOWN_MS; do
+for numeric_opt in SNDTIMEO_MS RCVTIMEO_MS TRANSPORT_TRANSITION_MS; do
   value="${!numeric_opt}"
   if [[ -n "${value}" ]] && { ! [[ "${value}" =~ ^[0-9]+$ ]] || [[ "${value}" -lt 0 ]]; }; then
     echo "${numeric_opt,,} must be >= 0" >&2
@@ -447,9 +444,6 @@ for pattern in "${patterns[@]}"; do
           record_failure "${pattern}" "${transport}" "${size}" "${run}" "missing_required_result_lines"
           [[ "${PERF_FAIL_FAST:-0}" == "1" ]] && stop_early=1
           break
-        fi
-        if (( run < RUNS )); then
-          sleep_ms "${RUN_COOLDOWN_MS}"
         fi
       done
     done

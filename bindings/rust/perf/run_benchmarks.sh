@@ -45,7 +45,6 @@ RCVBUF=""
 SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
 RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 AUTO_HWM_PROFILE="${PERF_CTX_AUTO_HWM_PROFILE:-}"
-RUN_COOLDOWN_MS="${PERF_SINGLE_RUN_COOLDOWN_MS:-500}"
 
 print_help() {
     cat <<'EOF'
@@ -330,7 +329,6 @@ for pat in "${PATTERNS[@]}"; do
                 stop_early=1
                 break
             fi
-            sleep_millis "${RUN_COOLDOWN_MS}"
         done
     done
 done

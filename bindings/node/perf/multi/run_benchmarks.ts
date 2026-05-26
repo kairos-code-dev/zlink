@@ -111,7 +111,7 @@ Options:
   --msg-sizes LIST      Comma-separated sizes.
   --transports LIST     Comma-separated transports (default: policy transport set).
   --clients N           Override number of client sockets per pattern (default: 100, stream=10000).
-  --hwm N               Override PERF_MULTI_HWM (default baseline: 100, stream=10).
+  --hwm N               Override PERF_MULTI_HWM (default baseline: auto-HWM).
   --send-hwm N          Override PERF_MULTI_SNDHWM.
   --recv-hwm N          Override PERF_MULTI_RCVHWM.
   --buf SIZE            Override both PERF_MULTI_SNDBUF and PERF_MULTI_RCVBUF.
@@ -431,7 +431,20 @@ async function main() {
     patterns: patternNames,
     transports: options.transports,
     msgSizes: options.msgSizes,
-    clientsOverride
+    clientsOverride,
+    ioThreads: options.ioThreads,
+    serverIoThreads: options.serverIoThreads,
+    clientIoThreads: options.clientIoThreads,
+    sendTimeoutMs: options.sendTimeoutMs,
+    recvTimeoutMs: options.recvTimeoutMs,
+    connectConcurrency: options.connectConcurrency,
+    connectReadyTimeoutMs: options.connectReadyTimeoutMs,
+    monitorHwm: options.monitorHwm,
+    serverReadyTimeoutMs: options.serverReadyTimeoutMs,
+    serverShutdownTimeoutMs: options.serverShutdownTimeoutMs,
+    serverBindPort: options.serverBindPort,
+    transportTransitionMs: options.transportTransitionMs,
+    patternTransitionMs: options.patternTransitionMs
   });
   emit('');
   for (const line of effectiveOptionLines('node', 'multi', 'start', optionItems)) {

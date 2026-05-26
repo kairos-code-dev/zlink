@@ -779,7 +779,7 @@ emit_effective_options_multi() {
   echo "- fail_fast: ${PERF_FAIL_FAST:-0}"
   echo "- clients: ${CLIENTS_DISPLAY}"
   echo "- default_clients: ${PERF_MULTI_DEFAULT_CLIENTS:-100}"
-  echo "- default_stream_clients: ${PERF_MULTI_STREAM_CLIENTS:-10000}"
+  echo "- default_stream_clients: ${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
   echo "- service_clients: auto"
   echo "- server_io_threads: $(effective_multi_server_io_threads)"
   echo "- client_io_threads: $(effective_multi_client_io_threads)"

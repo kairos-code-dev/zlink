@@ -337,50 +337,75 @@ function buildMultiOptionItems(opts) {
   const sizes = [...new Set(opts.msgSizes)].sort((a, b) => a - b);
   const clientsMeta = resolveClientsMeta(opts.patterns, opts.clientsOverride) || '100';
   const clientsForConnect = Math.max(1, Number.parseInt(clientsMeta, 10) || 100);
-  const connectRaw = envGet('PERF_CONNECT_CONCURRENCY');
+  const connectRaw = Number.isFinite(opts.connectConcurrency)
+    ? String(opts.connectConcurrency)
+    : envGet('PERF_MULTI_CONNECT_CONCURRENCY');
   const connectDisplay = connectRaw
     ? connectRaw
     : `${clientsForConnect >= 10000 ? 1024 : 128} (default)`;
-  const serviceClients = parseEnvInt('PERF_SERVICE_CLIENTS', 0);
-  const timeoutOverride = parseEnvInt('PERF_TIMEOUT_SECONDS', 0);
-  const serverIoThreads = pattern => STREAM_VARIANT_PATTERNS.has(pattern)
-    ? 4 : Math.max(1, parseEnvInt('PERF_DEFAULT_IO_THREADS', 4));
-  const ioDefaults = new Set(opts.patterns.map(serverIoThreads));
-  const ioDisplay = ioDefaults.size === 1
-    ? `${[...ioDefaults][0]} (default)`
-    : `mixed-default(${[...ioDefaults].sort((a, b) => a - b).join(',')})`;
+  const serviceClients = parseEnvInt('PERF_MULTI_SERVICE_CLIENTS', 0);
+  const timeoutOverride = parseEnvInt('PERF_MULTI_TIMEOUT_SECONDS', 0);
+  const roleIoDisplay = (role) => {
+    const explicit = role === 'server' ? opts.serverIoThreads : opts.clientIoThreads;
+    if (Number.isFinite(explicit)) {
+      return String(explicit);
+    }
+    if (Number.isFinite(opts.ioThreads)) {
+      return String(opts.ioThreads);
+    }
+    const roleKey = role === 'server' ? 'SERVER' : 'CLIENT';
+    const values = new Set(opts.patterns.map((pattern) => {
+      const streamSpecific = STREAM_VARIANT_PATTERNS.has(pattern)
+        ? envGet(`PERF_MULTI_STREAM_${roleKey}_IO_THREADS`)
+        : '';
+      return streamSpecific
+        || envGet(`PERF_MULTI_${roleKey}_IO_THREADS`)
+        || envGet('PERF_IO_THREADS')
+        || envGet('PERF_MULTI_DEFAULT_IO_THREADS')
+        || '4';
+    }));
+    return values.size === 1
+      ? `${[...values][0]} (default)`
+      : `mixed-default(${[...values].sort().join(',')})`;
+  };
+  const optionValue = (explicit, envName, fallback) => {
+    if (Number.isFinite(explicit)) {
+      return String(explicit);
+    }
+    return String(parseEnvInt(envName, fallback));
+  };
   return [
     ['runs', String(opts.runs)],
     ['patterns', opts.patterns.join(',')],
     ['transports', transports.length > 0 ? transports.join(',') : 'none'],
     ['msg_sizes', sizes.length > 0 ? sizes.join(',') : 'none'],
-    ['duration_seconds', String(parseEnvInt('PERF_DURATION_SECONDS', opts.duration))],
+    ['duration_seconds', String(opts.duration)],
     ['fail_fast', envGet('PERF_FAIL_FAST') === '1' ? '1' : '0'],
     ['clients', clientsMeta],
     ['default_clients', '100'],
     ['default_stream_clients', '10000'],
     ['service_clients', serviceClients > 0 ? String(serviceClients) : 'auto'],
-    ['server_io_threads', ioDisplay],
-    ['client_io_threads', ioDisplay],
+    ['server_io_threads', roleIoDisplay('server')],
+    ['client_io_threads', roleIoDisplay('client')],
     ['hwm', 'auto-hwm'],
     ['sndhwm', 'auto-hwm'],
     ['rcvhwm', 'auto-hwm'],
     ['sndbuf', 'auto-hwm'],
     ['rcvbuf', 'auto-hwm'],
     ['ctx_auto_hwm_enable', envGet('PERF_CTX_AUTO_HWM_ENABLE') || '1'],
-    ['ctx_auto_hwm_profile', envGet('PERF_CTX_AUTO_HWM_PROFILE') || 'balanced'],
-    ['sndtimeo_ms', String(parseEnvInt('PERF_SNDTIMEO_MS', 200))],
-    ['rcvtimeo_ms', String(parseEnvInt('PERF_RCVTIMEO_MS', 200))],
+    ['ctx_auto_hwm_profile', envGet('PERF_MULTI_CTX_AUTO_HWM_PROFILE') || envGet('PERF_CTX_AUTO_HWM_PROFILE') || 'balanced'],
+    ['sndtimeo_ms', optionValue(opts.sendTimeoutMs, 'PERF_MULTI_SNDTIMEO_MS', 200)],
+    ['rcvtimeo_ms', optionValue(opts.recvTimeoutMs, 'PERF_MULTI_RCVTIMEO_MS', 200)],
     ['connect_concurrency', connectDisplay],
-    ['connect_ready_timeout_ms', String(parseEnvInt('PERF_CONNECT_READY_TIMEOUT_MS', 5000))],
-    ['monitor_hwm', String(parseEnvInt('PERF_MONITOR_HWM', 1000))],
-    ['server_ready_timeout_ms', String(Math.max(0, parseEnvInt('PERF_SERVER_READY_TIMEOUT_MS', 10000)))],
-    ['server_shutdown_timeout_ms', String(Math.max(0, parseEnvInt('PERF_SERVER_SHUTDOWN_TIMEOUT_MS', 5000)))],
-    ['server_bind_port', String(Math.max(0, parseEnvInt('PERF_SERVER_BIND_PORT', 0)))],
-    ['transport_transition_ms', String(Math.max(0, parseEnvInt('PERF_TRANSPORT_TRANSITION_MS', 3000)))],
-    ['pattern_transition_ms', String(Math.max(0, parseEnvInt('PERF_PATTERN_TRANSITION_MS', 3000)))],
-    ['lat_timeout_ms', String(parseEnvInt('PERF_LAT_TIMEOUT_MS', 5000))],
-    ['stream_non_tcp_clients_max', String(parseEnvInt('PERF_STREAM_NON_TCP_CLIENTS_MAX', 10000))],
+    ['connect_ready_timeout_ms', optionValue(opts.connectReadyTimeoutMs, 'PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 5000)],
+    ['monitor_hwm', optionValue(opts.monitorHwm, 'PERF_MULTI_MONITOR_HWM', 1000)],
+    ['server_ready_timeout_ms', optionValue(opts.serverReadyTimeoutMs, 'PERF_MULTI_SERVER_READY_TIMEOUT_MS', 10000)],
+    ['server_shutdown_timeout_ms', optionValue(opts.serverShutdownTimeoutMs, 'PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS', 5000)],
+    ['server_bind_port', optionValue(opts.serverBindPort, 'PERF_MULTI_SERVER_BIND_PORT', 0)],
+    ['transport_transition_ms', optionValue(opts.transportTransitionMs, 'PERF_MULTI_TRANSPORT_TRANSITION_MS', 3000)],
+    ['pattern_transition_ms', optionValue(opts.patternTransitionMs, 'PERF_MULTI_PATTERN_TRANSITION_MS', 3000)],
+    ['lat_timeout_ms', String(parseEnvInt('PERF_MULTI_LAT_TIMEOUT_MS', 5000))],
+    ['stream_non_tcp_clients_max', String(parseEnvInt('PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX', 10000))],
     ['disable_resource_metrics', String(Math.max(0, parseEnvInt('PERF_DISABLE_RESOURCE_METRICS', 0)))],
     ['timeout_seconds', timeoutOverride > 0 ? String(timeoutOverride) : 'auto']
   ];

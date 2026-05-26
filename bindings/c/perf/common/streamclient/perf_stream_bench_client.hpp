@@ -547,7 +547,6 @@ class bench_client_t : public bench_client_iface_t
         std::this_thread::sleep_for (std::chrono::seconds (duration_s));
 
         mode.store (phase_ready, std::memory_order_release);
-        collect_metrics.store (false, std::memory_order_release);
 
         const int completion_wait_ms = effective_phase_completion_ms (
           phase_size.load (std::memory_order_acquire));
@@ -573,6 +572,7 @@ class bench_client_t : public bench_client_iface_t
             }
         }
 
+        collect_metrics.store (false, std::memory_order_release);
         return true;
     }
 

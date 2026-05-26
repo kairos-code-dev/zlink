@@ -49,9 +49,7 @@
 | client | `ZLinkSpotClient` | `SPOT` outbound client |
 | client | `ZLinkEventPublisher` | event publisher |
 | client | `ZLinkSpotPublisherClient` | 외부 노드용 `SPOT` publish client |
-| management | `ZLinkChannelConnectionManager` | channel capability별 수동 연결 제어 |
 | management | `ZLinkSpotManager` | `spotName` 기준 생성/조회/삭제 |
-| management | `ZLinkSpotConnectionManager` | `SPOT` capability별 수동 연결 제어 |
 | timer | `ZLinkTimer` | `SPOT` lifecycle timer handle |
 | filter | `ZLinkHandlerFilter` | handler 전후 공통 처리 |
 | marker | `ZLinkRequest<TReply>` | request/reply 타입 연결 marker |
@@ -382,22 +380,6 @@ public interface SpotPublisherClientConnections {
     void connect(String endpoint);
     void disconnect(String endpoint);
     List<String> listConnections();
-}
-
-public interface ZLinkChannelConnectionManager {
-    ChannelClientConnections getClient(String channelName);
-    ChannelSubscriberConnections getSubscriber(String channelName);
-}
-
-public interface ZLinkSpotConnectionManager {
-    SpotRouterConnections getRouter(String spotNodeName);
-    SpotPubSubConnections getPubSub(String spotNodeName);
-    SpotChannelClientConnections getChannelClient(
-        String spotNodeName,
-        String channelName);
-    SpotPublisherClientConnections getSpotPublisherClient(
-        String spotNodeName,
-        String channelName);
 }
 
 public interface ZLinkTimer extends AutoCloseable {

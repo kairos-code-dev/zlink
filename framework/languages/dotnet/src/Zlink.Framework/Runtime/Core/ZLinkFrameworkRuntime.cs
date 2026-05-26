@@ -45,7 +45,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             handlerRegistry,
             dispatcher,
             GetOrStartState,
-            GetStartedStateAsync,
             GetActorSpotNode);
         _channels = components.Channels;
         _streams = components.Streams;

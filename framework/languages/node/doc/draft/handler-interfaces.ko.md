@@ -156,11 +156,6 @@ export interface ChannelSubscriberConnections {
   listConnections(): readonly string[];
 }
 
-export interface ZLinkChannelConnectionManager {
-  getClient(channelName: string): ChannelClientConnections;
-  getSubscriber(channelName: string): ChannelSubscriberConnections;
-}
-
 export interface ZLinkMonitoringOptions {
   addSocketEvents(sourceName: string, events?: SocketEvent): void;
   addDiscoveryEvents(
@@ -365,19 +360,6 @@ export interface SpotPublisherClientConnections {
   connect(endpoint: string): void;
   disconnect(endpoint: string): void;
   listConnections(): readonly string[];
-}
-
-export interface ZLinkSpotConnectionManager {
-  getRouter(spotNodeName: string): SpotRouterConnections;
-  getPubSub(spotNodeName: string): SpotPubSubConnections;
-  getChannelClient(
-    spotNodeName: string,
-    channelName: string
-  ): SpotChannelClientConnections;
-  getSpotPublisherClient(
-    spotNodeName: string,
-    channelName: string
-  ): SpotPublisherClientConnections;
 }
 
 export interface ZLinkTimer {

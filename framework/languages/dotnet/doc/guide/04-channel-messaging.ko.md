@@ -335,7 +335,7 @@ filter 도 `new` 가 아니라 .NET DI 에서 resolve 된다.
 ## 6. 연결 제어
 
 기본은 `UseDiscovery(...)` 자동 연결이다([03-concepts](./03-concepts.ko.md) §5).
-수동 연결과 런타임 제어는 다음과 같다.
+수동 연결은 startup builder 에서 capability 단위로 설정한다.
 
 ```csharp
 // 등록 시점 수동 연결 (capability 단위)
@@ -352,22 +352,13 @@ options.AddClientServerChannel("profile", channel =>
 });
 ```
 
-```csharp
-// 런타임 연결 추가/제거
-public sealed class WarmupService(IZLinkChannelConnectionManager connections)
-    : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        var profile = await connections
-            .GetClientServerClientAsync("profile", stoppingToken);
-        await profile.ConnectAsync("tcp://10.0.10.17:7101", stoppingToken);
-    }
-}
-```
+`UseManualConnections(...)` 에서 받은 연결 집합은 설정 객체다. `Connect`,
+`Disconnect`, `ListConnections` 는 등록 중 endpoint 목록을 편집하기 위한 함수이며,
+host 시작 뒤 실행 중인 socket 을 직접 제어하는 handle 이 아니다.
 
-런타임 `Connect/Disconnect` 는 **수동(manual) 모드 capability 에서만** 유효하다.
-Discovery 모드는 peer 소유권이 Discovery 에 있어 수동 제어를 막는다.
+Discovery 모드는 peer 소유권이 Discovery 에 있다. 실행 중 endpoint 변경이 필요한
+운영 환경에서는 discovery 쪽 등록 정보를 갱신하거나, 애플리케이션을 재시작해
+수동 연결 설정을 다시 적용하는 방식으로 처리한다.
 
 ## 7. 직렬화 codec
 

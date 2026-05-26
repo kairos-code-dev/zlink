@@ -176,40 +176,34 @@ builder.Services.AddZLinkFramework(options =>
 다시 받지 않는다. 그래서 framework 도 같은 channel runtime 안에서 두 방식을 함께 섞지
 않는다.
 
-### 2.3.1 런타임 수동 연결 제어 샘플
+### 2.3.1 startup 수동 연결 설정 샘플
 
-startup 등록만으로는 부족한 경우가 있다. 이 절에서는 런타임에서 연결을 동적으로
-바꿔야 하는 예시를 다룬다.
-
-이를 위해 manual capability 는, 런타임의 `Connect` / `Disconnect` 도 함께 지원해야 한다.
+수동 연결은 startup 등록에서 capability 단위로 설정한다. 아래 예시는
+`profile.client` 연결 집합을 설정하는 형태다.
 
 ```csharp
-public sealed class WarmupService : BackgroundService
+builder.Services.AddZLinkFramework(options =>
 {
-    private readonly IZLinkChannelConnectionManager _connections;
-
-    public WarmupService(IZLinkChannelConnectionManager connections)
+    options.AddClientServerChannel("profile", channel =>
     {
-        _connections = connections;
-    }
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        IZLinkEndpointConnections profileConnections = await _connections
-            .GetClientServerClientAsync("profile", stoppingToken);
-
-        await profileConnections.ConnectAsync(
-            "tcp://10.0.10.17:7101",
-            stoppingToken);
-    }
-}
+        channel.EnableClient(client =>
+        {
+            client.UseManualConnections(connections =>
+            {
+                connections.Connect("tcp://10.0.10.17:7101");
+            });
+        });
+    });
+});
 ```
 
-이 샘플도 `profile` channel 전체가 아니라, `profile.client` 연결 집합을 제어하는
-예시로 읽어야 한다.
+이 샘플은 `profile` channel 전체가 아니라, `profile.client` 연결 집합을 설정하는
+예시로 읽어야 한다. framework public 계약은 host 시작 뒤 endpoint 를 바꾸는 별도
+연결 관리 API 를 제공하지 않는다.
 
-subscriber capability 를 수동으로 운영한다면 어떻게 되는가. 그쪽은 그쪽대로, 별도
-manager 를 통해 제어해야 한다.
+subscriber capability 를 수동으로 운영한다면 어떻게 되는가. 그쪽은 그쪽대로,
+`EnableSubscriber(...).UseManualConnections(...)` 에서 별도 endpoint 목록을
+설정한다.
 
 ### 2.3.2 소켓 옵션 설정 샘플
 

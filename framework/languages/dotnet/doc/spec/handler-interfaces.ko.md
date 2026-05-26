@@ -105,7 +105,6 @@
 | builder | `IZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
 | builder | `IZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
 | builder | `IZLinkSpotMeshNodeBuilder` | SPOT mesh node 등록 builder | 6.3 |
-| management | `IZLinkChannelConnectionManager` | channel capability별 수동 연결 제어 | 6.2 |
 | management | `IZLinkSpotManager` | spot 인스턴스 생성/삭제 | 6.3 |
 | timer | `IZLinkTimer` | timer handle | 7 |
 | filter | `IZLinkHandlerFilter` | handler 전후 공통 처리 | 8 |
@@ -2850,53 +2849,19 @@ public interface IZLinkFrameworkOptions
 - publisher 는 outbound fan-out submit capability 로 간주한다. 이 초안
   에서는 publisher 에 대해 별도의 manual peer 관리 표면을 두지 않는다.
 
-### 6.2 channel 연결 관리
+### 6.2 channel 수동 연결 설정
 
-위 규칙에 따라 manual capability 를 런타임에서 제어하려면, 별도의 관리
-표면이 필요하다.
+수동 연결은 startup builder 의 `UseManualConnections(...)` 에서 capability 단위로
+등록한다. public 계약은 host 시작 뒤 endpoint 를 바꾸는 별도 runtime 연결 관리
+표면을 제공하지 않는다.
 
-startup builder 에서 사용하는 `UseManualConnections(...)` 는 단순 등록
-용도이므로, 동기 `Connect(...)` 를 유지한다.
+`UseManualConnections(...)` 에 전달되는 연결 집합은 동기 `Connect(...)`,
+`Disconnect(...)`, `ListConnections()` 표면을 가진다. 이 표면은 설정 객체를
+편집하는 용도이며, 실행 중인 socket 에 직접 연결 명령을 보내는 runtime handle 이
+아니다.
 
-반면 host 가 올라온 뒤 실제 runtime 상태를 변경하는 관리 표면은 다르다.
-lazy startup 과 I/O 경계를 가리지 않기 위해 비동기로 설계한다.
-
-```csharp
-public interface IZLinkEndpointConnections
-{
-    ValueTask<bool> ConnectAsync(
-        string endpoint,
-        CancellationToken cancellationToken = default);
-
-    ValueTask DisconnectAsync(
-        string endpoint,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IReadOnlyList<string>> ListConnectionsAsync(
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkChannelConnectionManager
-{
-    ValueTask<IZLinkEndpointConnections> GetClientServerClientAsync(
-        string channelName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkEndpointConnections> GetFanoutSubscriberAsync(
-        string channelName,
-        CancellationToken cancellationToken = default);
-}
-```
-
-연결 관리 표면 역시 capability 이름을 그대로 드러낸다.
-`GetClientAsync(...)` 처럼 여러 capability 를 동시에 암시할 수 있는
-일반화된 이름은, public draft 계약에 두지 않는다.
-
-이 interface 는 모든 channel 에 항상 열려 있는 것이 아니다. 해당
-capability 가 manual 모드일 때에 한해 유효한 표면으로 본다.
-
-discovery 모드인 capability 는 peer 집합의 소유권이 discovery 에 있다.
-그래서 수동 `Connect` / `Disconnect` 를 허용하지 않는다.
+discovery 모드인 capability 는 peer 집합의 소유권이 discovery 에 있다. 따라서
+수동 연결이 필요하면 해당 capability 를 manual 모드로 등록해야 한다.
 
 ### 6.3 Spot 관리와 등록 인터페이스
 
@@ -3030,6 +2995,21 @@ public interface ISpotPublisherConnections
     IReadOnlyList<string> ListConnections();
 }
 
+public interface ISpotRouterChannelConnections
+{
+    void Connect(string endpoint);
+
+    void Disconnect(string endpoint);
+
+    IReadOnlyList<string> ListConnections();
+}
+
+public interface IZLinkSpotRouteChannelAcceptanceBuilder
+{
+    void UseManualConnections(
+        Action<ISpotRouterChannelConnections> configure);
+}
+
 public interface IZLinkCommonSocketOptions
 {
     long MaxMessageSize { get; set; }
@@ -3158,6 +3138,10 @@ public interface IZLinkSpotNodeBuilder
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
+    void AcceptSpotRoutesFromChannel(
+        string channelName,
+        Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null);
+
     void ConfigureEntrySpot(
         Action<IZLinkEntrySpotOptions> configure);
 
@@ -3194,6 +3178,10 @@ public interface IZLinkSpotMeshNodeBuilder
     void AttachSpotPublisherClient(
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
+
+    void AcceptSpotRoutesFromChannel(
+        string channelName,
+        Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null);
 
     void AddSpotFactory<TSpot>()
         where TSpot : class;
@@ -4009,7 +3997,6 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 | `IZLinkClient`, `IZLinkClientServerClient` | 항상 등록한다. channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkRouteClient` | 항상 등록한다. route channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkEventPublisher`, `IZLinkFanoutPublisher` | 항상 등록한다. publisher capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
-| `IZLinkChannelConnectionManager` | 항상 등록한다. 대상 channel capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkSpotManager`, `IZLinkSpotClient` | `SpotNode` 가 하나 이상 있을 때 등록한다 |
 | `IZLinkRoutedSpotClient` | client-server channel 또는 route mesh channel 중 `EnableSpotRouteEgress(...)`가 켜진 local egress channel 이 하나 이상 있을 때 등록한다 |
 | `IZLinkSpotPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |

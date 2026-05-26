@@ -49,20 +49,8 @@ ZLinkModule.forRoot({
 });
 ```
 
-```ts
-@Injectable()
-export class WarmupService {
-  constructor(
-    private readonly connections: ZLinkChannelConnectionManager,
-  ) {}
-
-  warmup() {
-    this.connections
-      .getClient('profile')
-      .connect('tcp://10.0.10.17:7101');
-  }
-}
-```
+수동 연결은 startup builder 에서 capability 단위로 설정한다. public 계약은 host 시작 뒤
+endpoint 를 바꾸는 별도 연결 관리 API 를 제공하지 않는다.
 
 ## 2. Controller 안에서 호출
 

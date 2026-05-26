@@ -134,11 +134,6 @@ class ChannelSubscriberConnections(Protocol):
     def list_connections(self) -> Sequence[str]: ...
 
 
-class ZLinkChannelConnectionManager(Protocol):
-    def get_client(self, channel_name: str) -> ChannelClientConnections: ...
-    def get_subscriber(self, channel_name: str) -> ChannelSubscriberConnections: ...
-
-
 @dataclass(slots=True)
 class ZLinkStream:
     session_id: str
@@ -443,21 +438,6 @@ class SpotPublisherClientConnections(Protocol):
     def connect(self, endpoint: str) -> None: ...
     def disconnect(self, endpoint: str) -> None: ...
     def list_connections(self) -> Sequence[str]: ...
-
-
-class ZLinkSpotConnectionManager(Protocol):
-    def get_router(self, spot_node_name: str) -> SpotRouterConnections: ...
-    def get_pub_sub(self, spot_node_name: str) -> SpotPubSubConnections: ...
-    def get_channel_client(
-        self,
-        spot_node_name: str,
-        channel_name: str,
-    ) -> SpotChannelClientConnections: ...
-    def get_spot_publisher_client(
-        self,
-        spot_node_name: str,
-        channel_name: str,
-    ) -> SpotPublisherClientConnections: ...
 
 
 class ZLinkTimer(Protocol):

@@ -234,14 +234,16 @@ SPOT으로 보낼 수 있으므로, 이 기능은 `RouteMeshChannel` 전용으�
 같은 형태는 사용하지 않고, 대신 역할별 빌더 안에 둔다. 즉
 `EnableClient(client => ...)`, `EnableSubscriber(subscriber => ...)` 안쪽이다.
 
-또한 수동 연결을 쓰는 capability 에 대해서는, 런타임에서 다음 동작을 호출할 수 있는
-manager 표면을 따로 둔다.
+수동 연결을 쓰는 capability 에 대해서는, startup builder 에서 다음 동작을 호출할 수
+있는 연결 집합 표면을 둔다.
 
 - `Connect`
 - `Disconnect`
 - `ListConnections`
 
-자세한 표면은 [handler-interfaces.ko.md](./handler-interfaces.ko.md) §6.2 를 참고한다.
+이 표면은 설정 객체를 편집하는 용도이며, host 시작 뒤 실행 중인 socket 을 직접
+제어하는 runtime manager 는 public 계약에 두지 않는다. 자세한 표면은
+[handler-interfaces.ko.md](./handler-interfaces.ko.md) §6.2 를 참고한다.
 
 ### 3.1.1 outbound-only 앱 예시
 

@@ -62,8 +62,7 @@ public sealed class ChannelContracts
     [ContractExample(
         typeof(IZLinkFanoutPublisher),
         typeof(IZLinkEventPublisher),
-        typeof(IZLinkPublishCall),
-        typeof(IZLinkChannelConnectionManager))]
+        typeof(IZLinkPublishCall))]
     public async Task Fanout_publisher_publishes_events_to_a_topic()
     {
         var publisher = new ExampleFanoutPublisher();
@@ -73,12 +72,7 @@ public sealed class ChannelContracts
             .PacketName("room.event")
             .Submit();
 
-        var manager = new ExampleChannelConnectionManager();
-        var connections = await manager.GetFanoutSubscriberAsync("events");
-        await connections.ConnectAsync("tcp://127.0.0.1:5001");
-
         Assert.Equal(("events", "room.opened", "room.event"), publisher.LastPublish);
-        Assert.Equal(["tcp://127.0.0.1:5001"], await connections.ListConnectionsAsync());
     }
 
     [Fact]
@@ -206,31 +200,6 @@ public sealed class ChannelContracts
         }
     }
 
-    private sealed class ExampleChannelConnectionManager : IZLinkChannelConnectionManager
-    {
-        private readonly ExampleEndpointConnections _connections = new();
-
-        public ValueTask<IZLinkEndpointConnections> GetClientServerClientAsync(
-            string channelName,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkEndpointConnections>(_connections);
-
-        public ValueTask<IZLinkEndpointConnections> GetFanoutSubscriberAsync(
-            string channelName,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkEndpointConnections>(_connections);
-
-        public ValueTask<IZLinkEndpointConnections> GetClientAsync(
-            string channelName,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkEndpointConnections>(_connections);
-
-        public ValueTask<IZLinkEndpointConnections> GetSubscriberAsync(
-            string channelName,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkEndpointConnections>(_connections);
-    }
-
     private sealed class ExampleSendCall(Action<string> setPacketName) : IZLinkSendCall
     {
         public IZLinkSendCall PacketName(string messageName)
@@ -282,31 +251,6 @@ public sealed class ChannelContracts
 
         public ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default) =>
             ValueTask.FromResult((TReply)reply);
-    }
-
-    private sealed class ExampleEndpointConnections : IZLinkEndpointConnections
-    {
-        private readonly List<string> _endpoints = [];
-
-        public ValueTask<bool> ConnectAsync(
-            string endpoint,
-            CancellationToken cancellationToken = default)
-        {
-            _endpoints.Add(endpoint);
-            return ValueTask.FromResult(true);
-        }
-
-        public ValueTask DisconnectAsync(
-            string endpoint,
-            CancellationToken cancellationToken = default)
-        {
-            _endpoints.Remove(endpoint);
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask<IReadOnlyList<string>> ListConnectionsAsync(
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IReadOnlyList<string>>(_endpoints.ToArray());
     }
 
     private sealed class RoomEventRouteSendHandler : IZLinkRouteSendHandler<RoomEvent>

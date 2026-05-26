@@ -24,7 +24,6 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
         ZLinkHandlerRegistry handlerRegistry,
         ZLinkHandlerDispatcher dispatcher,
         Func<ZLinkFrameworkRuntimeState> getOrStartState,
-        Func<CancellationToken, ValueTask<ZLinkFrameworkRuntimeState>> getStartedStateAsync,
         Func<IZLinkBackendSpotNode?> getActorSpotNode)
     {
         var channels = new ZLinkChannelRuntimeManager(
@@ -54,12 +53,10 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             getActorSpotNode);
         var channelFacade = new ZLinkFrameworkChannelFacade(
             channels,
-            getOrStartState,
-            getStartedStateAsync);
+            getOrStartState);
         var spotFacade = new ZLinkFrameworkSpotFacade(
             spots,
-            getOrStartState,
-            getStartedStateAsync);
+            getOrStartState);
 
         return new ZLinkFrameworkRuntimeComponents(
             channels,

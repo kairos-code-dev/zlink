@@ -234,6 +234,10 @@ public interface IZLinkSpotRouteChannelAcceptanceBuilder
 public interface ISpotRouterChannelConnections
 {
     void Connect(string endpoint);
+
+    void Disconnect(string endpoint);
+
+    IReadOnlyList<string> ListConnections();
 }
 
 public interface IZLinkSpotMeshBuilder

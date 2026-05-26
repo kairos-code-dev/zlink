@@ -150,41 +150,6 @@ internal sealed class ZLinkChannelRuntimeManager(
         _routeChannels.Initialize(state, adapter);
     }
 
-    public IZLinkEndpointConnections GetClientConnections(
-        ZLinkFrameworkRuntimeState state,
-        string channelName)
-    {
-        if (!registration.Channels.TryGetValue(channelName, out var channel)
-            || channel.Client is null)
-        {
-            throw new ZLinkConfigurationException($"Channel client '{channelName}' is not registered.");
-        }
-
-        return ZLinkRuntimeConnections.CreateManual(
-            () => GetOrCreateClientBundle(state, channelName),
-            bundle => (IZLinkBackendDealerSocket)bundle.Socket,
-            static (bundle, endpoint) => bundle.TryAddManualConnection(endpoint),
-            static (bundle, endpoint) => bundle.RemoveManualConnection(endpoint),
-            static bundle => bundle.ListManualConnections());
-    }
-
-    public IZLinkEndpointConnections GetSubscriberConnections(
-        ZLinkFrameworkRuntimeState state,
-        string channelName)
-    {
-        if (!state.SubscriberBundles.TryGetValue(channelName, out var bundle))
-        {
-            throw new ZLinkConfigurationException($"Channel subscriber '{channelName}' is not registered.");
-        }
-
-        return ZLinkRuntimeConnections.CreateManual(
-            () => bundle,
-            current => (IZLinkBackendSubscriberSocket)current.Socket,
-            static (current, endpoint) => current.TryAddManualConnection(endpoint),
-            static (current, endpoint) => current.RemoveManualConnection(endpoint),
-            static current => current.ListManualConnections());
-    }
-
     public IZLinkBackendSocket GetMonitoringSocket(
         ZLinkFrameworkRuntimeState state,
         string sourceName)

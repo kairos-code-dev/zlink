@@ -513,20 +513,6 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
     }
 
-    internal async ValueTask<IZLinkEndpointConnections> GetClientConnectionsAsync(
-        string channelName,
-        CancellationToken cancellationToken)
-    {
-        return await _channelFacade.GetClientConnectionsAsync(channelName, cancellationToken);
-    }
-
-    internal async ValueTask<IZLinkEndpointConnections> GetSubscriberConnectionsAsync(
-        string channelName,
-        CancellationToken cancellationToken)
-    {
-        return await _channelFacade.GetSubscriberConnectionsAsync(channelName, cancellationToken);
-    }
-
     internal IZLinkBackendSocket GetMonitoringSocket(string sourceName)
     {
         return _channelFacade.GetMonitoringSocket(sourceName);

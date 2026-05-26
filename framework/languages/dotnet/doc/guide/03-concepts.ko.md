@@ -131,8 +131,9 @@ startup 에서 즉시 예외로 막힌다.
 
 같은 앱에서 channel 마다 다른 방식을 골라도 된다(예: `profile`=Discovery,
 `account`=수동). 단 **같은 channel 의 같은 client 안에서 두 방식을 섞을 수는
-없다**(zlink core 제약). 런타임에 연결을 추가/제거하려면
-`IZLinkChannelConnectionManager` 를 쓴다([04-channel-messaging](./04-channel-messaging.ko.md) §6).
+없다**(zlink core 제약). 수동 endpoint 는 startup builder 에서 등록하며,
+framework public 계약은 host 시작 뒤 endpoint 를 바꾸는 별도 연결 관리 API 를
+제공하지 않는다.
 
 ## 6. DI 와 lifecycle
 

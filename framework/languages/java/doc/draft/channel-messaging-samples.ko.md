@@ -55,23 +55,10 @@ options.addChannel("profile", channel -> {
 
 이 설정은 `profile` channel 전체가 아니라 `profile.client` 연결 집합에만 적용된다.
 
-## 2.1 런타임 수동 연결 제어 샘플
+## 2.1 수동 연결 설정 기준
 
-```java
-@Component
-public final class WarmupTask {
-    private final ZLinkChannelConnectionManager connections;
-
-    public WarmupTask(ZLinkChannelConnectionManager connections) {
-        this.connections = connections;
-    }
-
-    public void warmup() {
-        connections.getClient("profile")
-            .connect("tcp://10.0.10.17:7101");
-    }
-}
-```
+수동 연결은 startup builder 에서 capability 단위로 설정한다. public 계약은 host 시작 뒤
+endpoint 를 바꾸는 별도 연결 관리 API 를 제공하지 않는다.
 
 ## 3. HTTP controller 안에서 호출
 

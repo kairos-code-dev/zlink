@@ -130,6 +130,16 @@ internal sealed class ZLinkSpotRouteChannelConnections(ICollection<string> endpo
 
         endpoints.Add(endpoint);
     }
+
+    public void Disconnect(string endpoint)
+    {
+        endpoints.Remove(endpoint);
+    }
+
+    public IReadOnlyList<string> ListConnections()
+    {
+        return endpoints.ToArray();
+    }
 }
 
 internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapabilityRegistration registration)

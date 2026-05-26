@@ -111,8 +111,13 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
             cancellationToken);
     }
 
-    public ValueTask OnClosingAsync(CancellationToken cancellationToken)
-        => ValueTask.CompletedTask;
+    public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    {
+        if (_heartbeat is not null)
+        {
+            await _heartbeat.CancelAsync(cancellationToken);
+        }
+    }
 }
 ```
 
@@ -143,19 +148,183 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 > 있다. 단 이 보장은 그 Spot 내부 callback 한정이다. 외부에서 `SpotRid` 로 직접
 > 접근하는 코드는 별도 동기화가 필요하다.
 
+### timer 사용법
+
+timer 는 spot 안에서 주기적으로 상태를 갱신하거나, 오래된 참가자를 정리하거나,
+주기적인 snapshot 을 publish 할 때 사용한다. 일반적인 사용 흐름은 다음과 같다.
+
+1. `Configure()` 에서는 packet, subscribe, actor handler 처럼 동기 등록만 한다.
+2. `OnInitializeAsync(...)` 에서 `Context.AddTimer<THandler>(...)` 를 호출한다.
+3. 반환된 `IZLinkTimer` 를 spot 필드에 보관한다.
+4. `OnClosingAsync(...)` 에서 `CancelAsync(...)` 로 멈춘다.
+5. 실제 주기 작업은 `IZLinkSpotTimerHandler<TSpot>` 구현체에 둔다.
+
+`AddTimer<THandler>(name, period, options, cancellationToken)` 의 인자는 다음 의미다.
+
+| 인자 | 의미 |
+|------|------|
+| `THandler` | tick 이 발생할 때 실행할 handler 타입. DI 로 생성된다 |
+| `name` | timer 이름. monitoring 과 tick metadata 에 들어간다 |
+| `period` | tick 간격. `TimeSpan.Zero` 나 음수는 설정 오류다 |
+| `options` | tick 이 밀릴 때의 정책과 예외 처리 정책 |
+| `cancellationToken` | 등록 작업 취소 토큰 |
+
+timer handler 는 매 tick 마다 spot 인스턴스와 `ZLinkTimerTick` 을 받는다.
+
+```csharp
+public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
+{
+    public async ValueTask HandleAsync(
+        StageSpot spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        if (tick.SkippedTicks > 0)
+        {
+            // 이전 tick 이 밀렸다는 뜻이다. 무거운 보정 작업은 여기서 줄일 수 있다.
+        }
+
+        await spot.Context
+            .Publish("stage.heartbeat", new StageHeartbeat(spot.Context.SpotRid, tick.StartedAt))
+            .Submit(cancellationToken);
+    }
+}
+```
+
+`ZLinkTimerTick` 은 "이번 callback 이 시간표에서 어떤 위치였고, 실제로 얼마나
+늦게 실행됐는지"를 설명하는 값이다. handler 안에서 보정, 로깅, 부하 완화,
+publish payload 작성에 사용할 수 있다.
+
+| 값 | 의미 |
+|----|------|
+| `Name` | 등록한 timer 이름. handler 하나가 여러 timer 에 재사용될 때 분기하거나 monitoring payload 에 넣는다 |
+| `DeliveryIndex` | 실제 handler callback 번호. "이 handler 가 몇 번째 실행됐는지"가 필요할 때 쓴다 |
+| `ScheduledIndex` | fixed-rate 시간표 기준 tick 번호. 건너뛴 tick 까지 포함한 논리 tick 번호다 |
+| `Period` | 등록한 tick 간격. handler 에서 다음 상태 계산의 기본 간격으로 쓴다 |
+| `ScheduledAt` | 원래 실행될 예정이던 시각. 외부 이벤트 timestamp 나 timeout 판정 기준으로 쓴다 |
+| `StartedAt` | handler 실행이 시작된 실제 시각. publish payload 나 last-seen 갱신에 쓴다 |
+| `ScheduledElapsed` | timer 시작 이후 `ScheduledAt` 까지의 논리 경과 시간 |
+| `StartedElapsed` | timer 시작 이후 `StartedAt` 까지의 실제 경과 시간 |
+| `Delay` | 예정 시각보다 얼마나 늦게 시작했는지. timer 부하 감지와 degrade 판단에 쓴다 |
+| `SkippedTicks` | overrun 정책 때문에 건너뛴 tick 수. 무거운 보정 작업을 줄이거나 상태를 빠르게 catch-up 할 때 쓴다 |
+
+`DeliveryIndex` 와 `ScheduledIndex` 는 항상 같은 값이 아니다. tick 이 밀려 일부
+tick 을 건너뛰면 `ScheduledIndex` 는 시간표를 따라 앞으로 가고,
+`DeliveryIndex` 는 실제 callback 횟수만 증가한다. 그래서 "실제로 몇 번
+callback 이 왔는가"는 `DeliveryIndex`, "논리 시간표에서 몇 번째 tick 인가"는
+`ScheduledIndex` 를 기준으로 삼는다.
+
+활용 패턴 몇 가지는 다음과 같다.
+
+```csharp
+public sealed class StageTickHandler : IZLinkSpotTimerHandler<StageSpot>
+{
+    public ValueTask HandleAsync(
+        StageSpot spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        // 1. fixed-rate 논리 시간 기준으로 simulation 을 진행한다.
+        spot.AdvanceSimulation(tick.ScheduledIndex, tick.Period);
+
+        // 2. timer 가 많이 늦었으면 비용이 큰 부가 작업은 건너뛴다.
+        if (tick.Delay < TimeSpan.FromMilliseconds(250))
+        {
+            spot.RebuildDerivedView();
+        }
+
+        // 3. skip 이 있었다면 최신 상태 기준으로 빠르게 보정한다.
+        if (tick.SkippedTicks > 0)
+        {
+            spot.MarkTimerLagged(tick.SkippedTicks);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+`ScheduledAt` 과 `StartedAt` 은 목적이 다르다. `ScheduledAt` 은 timer 가 원래
+실행됐어야 하는 논리 시각이고, `StartedAt` 은 실제 callback 이 시작된 시각이다.
+turn timeout, room TTL, simulation step 처럼 논리 시간이 중요하면 `ScheduledAt`
+또는 `ScheduledElapsed` 를 기준으로 삼는다. heartbeat publish, last-seen 갱신,
+운영 로그처럼 실제 관측 시각이 중요하면 `StartedAt` 또는 `StartedElapsed` 를
+사용한다.
+
 ### timer 정책
 
 `ZLinkTimerOptions.OverrunPolicy` 로 tick 이 밀릴 때 동작을 정한다.
 
 | 정책 | 동작 |
 |------|------|
-| `SkipLateTicks` | 늦은 tick 은 버리고 다음 정시 tick 으로 |
-| `CatchUpBounded` | `MaxCatchUpTicks` 까지 밀린 tick 보충 |
-| `DelayNextTick` | handler 완료 후 period 만큼 대기(fixed-delay) |
+| `SkipLateTicks` | 늦은 tick 은 버리고 다음 정시 tick 으로 이동한다 |
+| `CatchUpBounded` | `MaxCatchUpTicks` 까지만 밀린 tick 을 연속 보충한다 |
+| `DelayNextTick` | handler 완료 후 period 만큼 다시 기다린다 |
 
-`ZLinkTimerTick` 에는 callback 번호, 예정 시각, 지연, `SkippedTicks` 등이 담긴다.
-timer 는 `IZLinkTimer.CancelAsync()` 로 멈춘다. handler 에서 예외가 나면
+정책 선택 기준은 보통 다음과 같다.
+
+| 상황 | 권장 정책 | 이유 |
+|------|----------|------|
+| heartbeat, presence refresh, stale actor cleanup | `SkipLateTicks` | 최신 상태 한 번이면 충분하다 |
+| physics step, turn timeout 보정처럼 빠진 tick 을 일부 반영해야 함 | `CatchUpBounded` | 무한 catch-up 을 막으면서 제한적으로 보충한다 |
+| polling, 외부 API 호출, DB cleanup 처럼 handler 완료 뒤 쉬어야 함 | `DelayNextTick` | handler 시간이 길어도 겹쳐 실행하지 않고 부하를 제한한다 |
+
+`CatchUpBounded` 를 쓰면 `MaxCatchUpTicks` 도 함께 정한다.
+
+```csharp
+_timer = await Context.AddTimer<StageTickHandler>(
+    "stage.tick",
+    TimeSpan.FromMilliseconds(100),
+    new ZLinkTimerOptions
+    {
+        OverrunPolicy = ZLinkTimerOverrunPolicy.CatchUpBounded,
+        MaxCatchUpTicks = 3
+    },
+    cancellationToken);
+```
+
+기본값은 `SkipLateTicks` 다. `MaxCatchUpTicks` 는 `CatchUpBounded` 에서만 의미가
+있고, `CatchUpBounded` 로 설정했는데 `MaxCatchUpTicks <= 0` 이면 설정 오류다.
+
+### 예외와 종료
+
+timer handler 에서 처리하지 않은 예외가 나면 runtime monitoring 에
 `TimerHandlerFailed` 이벤트가 발생한다([09-monitoring](./09-monitoring.ko.md)).
+기본값에서는 다음 tick 을 계속 시도한다. 같은 예외가 반복될 수 있는 작업이라면
+handler 안에서 application 상태를 점검하고 직접 복구하거나, timer 를 중단하도록
+설정한다.
+
+```csharp
+_timer = await Context.AddTimer<StageHeartbeatHandler>(
+    "heartbeat",
+    TimeSpan.FromSeconds(1),
+    new ZLinkTimerOptions
+    {
+        StopOnUnhandledException = true
+    },
+    cancellationToken);
+```
+
+`StopOnUnhandledException` 이 `true` 이면 첫 unhandled exception 뒤 timer 를
+중단하고 `TimerStoppedAfterUnhandledException` 이벤트를 기록한다.
+
+timer 를 더 이상 쓰지 않으면 `CancelAsync(...)` 를 호출한다. 예를 들어 room 이
+닫히거나 spot 이 closing 될 때 멈춘다.
+
+```csharp
+public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
+{
+    if (_heartbeat is not null)
+    {
+        await _heartbeat.CancelAsync(cancellationToken);
+    }
+}
+```
+
+user Spot timer 는 같은 spot 실행 큐에서 처리된다. 그래서 같은 spot 의 packet
+handler 와 timer handler 는 동시에 같은 spot 상태를 변경하지 않는다. 반대로
+Entry Spot timer 는 Entry Spot 전체 callback 을 전역으로 막지 않는다. 그래도 같은
+timer instance 의 callback 은 겹쳐 실행되지 않는다.
 
 ## 4. spot 인스턴스 생성과 조회
 

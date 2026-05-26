@@ -12,8 +12,8 @@ public sealed class ConnectionAndConfigContracts
         typeof(ISpotRouterConnections),
         typeof(ISpotPubSubConnections),
         typeof(ISpotPublisherConnections),
-        typeof(IZLinkEndpointConnections))]
-    public async Task Connection_contracts_record_the_endpoints_owned_by_each_runtime_role()
+        typeof(ISpotRouterChannelConnections))]
+    public void Connection_contracts_record_the_startup_endpoints_owned_by_each_runtime_role()
     {
         var manual = new ManualConnections();
         IChannelClientConnections channelClient = manual;
@@ -21,26 +21,26 @@ public sealed class ConnectionAndConfigContracts
         ISpotRouterConnections spotRouter = manual;
         ISpotPubSubConnections spotPubSub = manual;
         ISpotPublisherConnections spotPublisher = manual;
-        IZLinkEndpointConnections live = manual;
+        ISpotRouterChannelConnections spotRouteIngress = manual;
 
         channelClient.Connect("tcp://127.0.0.1:5001");
         subscriber.Connect("tcp://127.0.0.1:5002");
         spotRouter.Connect("tcp://127.0.0.1:5003");
         spotPubSub.Connect("tcp://127.0.0.1:5004");
         spotPublisher.Connect("tcp://127.0.0.1:5005");
-        await live.ConnectAsync("tcp://127.0.0.1:5006");
+        spotRouteIngress.Connect("tcp://127.0.0.1:5006");
 
         channelClient.Disconnect("tcp://127.0.0.1:5001");
+        spotRouteIngress.Disconnect("tcp://127.0.0.1:5006");
 
         Assert.Equal(
             [
                 "tcp://127.0.0.1:5002",
                 "tcp://127.0.0.1:5003",
                 "tcp://127.0.0.1:5004",
-                "tcp://127.0.0.1:5005",
-                "tcp://127.0.0.1:5006"
+                "tcp://127.0.0.1:5005"
             ],
-            await live.ListConnectionsAsync());
+            spotRouteIngress.ListConnections());
     }
 
     [Fact]
@@ -130,8 +130,7 @@ public sealed class ConnectionAndConfigContracts
         ISpotPubSubConnections,
         ISpotPublisherConnections,
         IRouteChannelConnections,
-        ISpotRouterChannelConnections,
-        IZLinkEndpointConnections
+        ISpotRouterChannelConnections
     {
         private readonly List<string> _endpoints = [];
 
@@ -141,25 +140,6 @@ public sealed class ConnectionAndConfigContracts
 
         public IReadOnlyList<string> ListConnections() => _endpoints.ToArray();
 
-        public ValueTask<bool> ConnectAsync(
-            string endpoint,
-            CancellationToken cancellationToken = default)
-        {
-            Connect(endpoint);
-            return ValueTask.FromResult(true);
-        }
-
-        public ValueTask DisconnectAsync(
-            string endpoint,
-            CancellationToken cancellationToken = default)
-        {
-            Disconnect(endpoint);
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask<IReadOnlyList<string>> ListConnectionsAsync(
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IReadOnlyList<string>>(ListConnections());
     }
 
     internal sealed class SocketConfig : IZLinkSocketConfig

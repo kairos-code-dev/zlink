@@ -61,16 +61,8 @@ add_zlink_framework(
 )
 ```
 
-```python
-class WarmupService:
-    def __init__(self, connections: ZLinkChannelConnectionManager) -> None:
-        self._connections = connections
-
-    def warmup(self) -> None:
-        self._connections.get_client("profile").connect(
-            "tcp://10.0.10.17:7101",
-        )
-```
+수동 연결은 startup builder 에서 capability 단위로 설정한다. public 계약은 host 시작 뒤
+endpoint 를 바꾸는 별도 연결 관리 API 를 제공하지 않는다.
 
 ## 4. 일반 event publish
 

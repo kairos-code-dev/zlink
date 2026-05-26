@@ -87,17 +87,13 @@ var room = await client
 
 검증: `ChannelContracts.Route_client_addresses_a_target_node_through_a_router_channel`.
 
-### 1.3 fanout publisher 와 연결 관리
+### 1.3 fanout publisher
 
 ```csharp
 await publisher
     .Publish("events", "room.opened", new RoomEvent("opened")) // IZLinkPublishCall
     .PacketName("room.event")
     .Submit();
-
-// 런타임 연결 추가/조회 (수동 모드 capability 한정)
-var connections = await manager.GetFanoutSubscriberAsync("events"); // IZLinkEndpointConnections
-await connections.ConnectAsync("tcp://127.0.0.1:5001");
 ```
 
 | 인터페이스 | 역할 |
@@ -105,8 +101,6 @@ await connections.ConnectAsync("tcp://127.0.0.1:5001");
 | `IZLinkFanoutPublisher` | pub/sub publish 표면. `Publish(channelName, topic, message)` (인자 3개) |
 | `IZLinkEventPublisher` | `IZLinkFanoutPublisher` 의 호환 별칭. 새 코드는 capability 이름과 맞는 `IZLinkFanoutPublisher` 사용 |
 | `IZLinkPublishCall` | publish 종결자(`PacketName` → `Submit`) |
-| `IZLinkChannelConnectionManager` | channel/capability 별 런타임 연결 핸들 획득(`GetClientServerClientAsync`, `GetClientAsync`, `GetSubscriberAsync`, `GetFanoutSubscriberAsync`) |
-| `IZLinkEndpointConnections` | 런타임 연결 핸들. `ConnectAsync` / `DisconnectAsync` / `ListConnectionsAsync` |
 
 검증: `ChannelContracts.Fanout_publisher_publishes_events_to_a_topic`.
 
@@ -346,7 +340,7 @@ subscriber.Connect("tcp://127.0.0.1:5002");       // IChannelSubscriberConnectio
 spotRouter.Connect("tcp://127.0.0.1:5003");       // ISpotRouterConnections
 spotPubSub.Connect("tcp://127.0.0.1:5004");        // ISpotPubSubConnections
 spotPublisher.Connect("tcp://127.0.0.1:5005");     // ISpotPublisherConnections
-await live.ConnectAsync("tcp://127.0.0.1:5006");   // IZLinkEndpointConnections (런타임)
+spotRouteIngress.Connect("tcp://127.0.0.1:5006");  // ISpotRouterChannelConnections
 ```
 
 | 인터페이스 | 역할 |
@@ -356,9 +350,9 @@ await live.ConnectAsync("tcp://127.0.0.1:5006");   // IZLinkEndpointConnections 
 | `ISpotRouterConnections` | spot router 수동 연결 |
 | `ISpotPubSubConnections` | spot pub/sub 수동 연결 |
 | `ISpotPublisherConnections` | spot publisher client 수동 연결 |
-| `IZLinkEndpointConnections` | 런타임 연결 핸들(async, §1.3 과 동일 표면) |
+| `ISpotRouterChannelConnections` | spot route ingress 수동 연결 |
 
-검증: `ConnectionAndConfigContracts.Connection_contracts_record_the_endpoints_owned_by_each_runtime_role`.
+검증: `ConnectionAndConfigContracts.Connection_contracts_record_the_startup_endpoints_owned_by_each_runtime_role`.
 
 ### 2.5 socket · routing · spot · dispatch 설정
 

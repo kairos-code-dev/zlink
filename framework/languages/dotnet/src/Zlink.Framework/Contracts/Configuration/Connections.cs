@@ -44,17 +44,3 @@ public interface ISpotPublisherConnections
 
     IReadOnlyList<string> ListConnections();
 }
-
-public interface IZLinkEndpointConnections
-{
-    ValueTask<bool> ConnectAsync(
-        string endpoint,
-        CancellationToken cancellationToken = default);
-
-    ValueTask DisconnectAsync(
-        string endpoint,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IReadOnlyList<string>> ListConnectionsAsync(
-        CancellationToken cancellationToken = default);
-}

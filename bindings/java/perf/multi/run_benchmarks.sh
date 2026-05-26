@@ -27,7 +27,7 @@ OUTPUT_PATH=""
 PIN_CPU=0
 REUSE_BUILD=0
 CLEAN_BUILD=0
-COMMON_IO_THREADS="${PERF_IO_THREADS:-4}"
+COMMON_IO_THREADS="${PERF_IO_THREADS:-}"
 SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-}"
 CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-}"
 HWM="${PERF_MULTI_HWM:-${PERF_HWM:-}}"
@@ -894,7 +894,8 @@ run_stream_case() {
   local stream_client_rc=0
   "${stream_client_prefix[@]}" "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
     --sizes "${size}" --runs 1 --duration "${DURATION}" \
-    --ccu "${pattern_clients}" --send-stop-token 1 --endpoint "${endpoint}" \
+    --ccu "${pattern_clients}" --io-threads "${pattern_client_io_threads}" \
+    --send-stop-token 1 --endpoint "${endpoint}" \
     >"${client_log}" 2>&1 || stream_client_rc=$?
   printf 'STOP\n' >&3
   exec 3>&-
@@ -1227,8 +1228,9 @@ for pattern_index in "${!patterns[@]}"; do
   bare_pattern="${pattern#MULTI_}"
   pattern_clients="$(default_clients_for_pattern "${pattern}")"
   pattern_msg_sizes="$(default_msg_sizes_for_pattern "${pattern}")"
-  pattern_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
-  pattern_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-4}}"
+  pattern_default_io_threads="${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-4}}"
+  pattern_server_io_threads="${SERVER_IO_THREADS:-${COMMON_IO_THREADS:-${pattern_default_io_threads}}}"
+  pattern_client_io_threads="${CLIENT_IO_THREADS:-${COMMON_IO_THREADS:-${pattern_default_io_threads}}}"
   IFS=',' read -r -a msg_sizes <<< "$(trim_csv "${pattern_msg_sizes}")"
   printf '%s\t%s\t%s\n' "${pattern}" \
     "$(IFS=,; echo "${transports[*]}")" "${pattern_msg_sizes}" >> "${tmp_plan}"

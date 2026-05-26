@@ -48,6 +48,7 @@ run_external_stream_client() {
   local client_out="$6"
   local client_err="$7"
   ensure_stream_client || return 1
+  local stream_client_io_threads="${CLIENT_IO_THREADS:-${PERF_MULTI_CLIENT_IO_THREADS:-${IO_THREADS:-${PERF_IO_THREADS:-${PERF_MULTI_DEFAULT_IO_THREADS:-${PERF_DEFAULT_IO_THREADS:-4}}}}}}"
   env \
     "PERF_PATTERN=STREAM" \
     "PERF_MULTI_PATTERN=STREAM" \
@@ -55,7 +56,8 @@ run_external_stream_client() {
     "PERF_MULTI_COMPONENT=client" \
     "${STREAM_CLIENT}" --transport "${transport}" --pattern STREAM \
     --sizes "${size}" --runs 1 --duration "${duration}" \
-    --ccu "${clients}" --send-stop-token 1 --endpoint "${endpoint}" \
+    --ccu "${clients}" --io-threads "${stream_client_io_threads}" \
+    --send-stop-token 1 --endpoint "${endpoint}" \
     > "${client_out}" 2> "${client_err}"
 }
 

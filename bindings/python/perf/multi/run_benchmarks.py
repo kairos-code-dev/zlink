@@ -802,6 +802,8 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
                 args.duration,
                 "--ccu",
                 clients,
+                "--io-threads",
+                _effective_role_io_threads(args, "client").split()[0],
                 "--send-stop-token",
                 "1",
                 "--endpoint",

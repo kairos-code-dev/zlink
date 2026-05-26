@@ -970,7 +970,7 @@ for run in $(seq 1 "${RUNS}"); do
                         --runs 1 \
                         --duration "${DURATION}" \
                         --ccu "${PATTERN_CLIENTS}" \
-                        --io-threads 4 \
+                        --io-threads "${PERF_MULTI_CLIENT_IO_THREADS}" \
                         --print-perf-result 1 \
                         --send-stop-token 0 \
                         --endpoint "${ENDPOINT}" 2>&1)"; then

@@ -116,7 +116,7 @@ fn main() {
                 if Instant::now() >= idle_deadline {
                     break;
                 }
-                std::thread::sleep(Duration::from_millis(1));
+                common::poll_idle_until(idle_deadline, Duration::from_millis(1));
             }
         }
     }

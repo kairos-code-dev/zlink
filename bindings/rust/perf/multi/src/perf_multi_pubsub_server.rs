@@ -98,7 +98,7 @@ fn main() {
                 accepted_stop_tokens += 1;
             }
             Ok(false) => {
-                std::thread::sleep(Duration::from_millis(1));
+                continue;
             }
             Err(err)
                 if matches!(
@@ -106,7 +106,7 @@ fn main() {
                     SubmitResult::Backpressured | SubmitResult::NotConnected
                 ) =>
             {
-                std::thread::sleep(Duration::from_millis(1));
+                continue;
             }
             Err(err) => panic!("stop token publish failed: {err}"),
         }

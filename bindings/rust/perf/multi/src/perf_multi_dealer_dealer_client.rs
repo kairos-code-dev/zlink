@@ -153,7 +153,7 @@ fn main() {
                         SubmitResult::Backpressured | SubmitResult::NotConnected
                     ) =>
                 {
-                    std::thread::sleep(Duration::from_millis(1));
+                    continue;
                 }
                 Err(err) => panic!("stop token send failed: {err}"),
             }

@@ -29,7 +29,6 @@ SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
 SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
 RESULT_TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-60}"
 TIMEOUT_SECONDS_DISPLAY="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-auto}}"
-CASE_COOLDOWN_MS="${PERF_MULTI_CASE_COOLDOWN_MS:-0}"
 TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
 PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
 RESULTS_TAG=""
@@ -1408,7 +1407,6 @@ validate_uint "PERF_MULTI_CONNECT_READY_TIMEOUT_MS" "${READY_TIMEOUT_MS}"
 validate_nonnegative_uint "PERF_MULTI_SERVER_READY_TIMEOUT_MS" "${SERVER_READY_TIMEOUT_MS}"
 validate_nonnegative_uint "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS" "${SERVER_SHUTDOWN_TIMEOUT_MS}"
 validate_uint "PERF_MULTI_TIMEOUT_SECONDS" "${RESULT_TIMEOUT_SECONDS}"
-validate_nonnegative_uint "PERF_MULTI_CASE_COOLDOWN_MS" "${CASE_COOLDOWN_MS}"
 validate_nonnegative_uint "PERF_MULTI_TRANSPORT_TRANSITION_MS" "${TRANSPORT_TRANSITION_MS}"
 validate_nonnegative_uint "PERF_MULTI_PATTERN_TRANSITION_MS" "${PATTERN_TRANSITION_MS}"
 validate_nonnegative_uint "PERF_MULTI_MONITOR_HWM" "${MONITOR_HWM}"
@@ -1933,9 +1931,6 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         fi
         size="${size//[[:space:]]/}"
         [[ -n "${size}" ]] || continue
-        if [[ "${CASE_COOLDOWN_MS}" -gt 0 ]]; then
-          sleep "$(( (CASE_COOLDOWN_MS + 999) / 1000 ))"
-        fi
         expected_result_lines=$((expected_result_lines + 5))
 
         metrics_file="${RESULTS_ROOT}/multi/tmp/${pattern,,}_${transport}_${size}_run${run_index}.metrics"

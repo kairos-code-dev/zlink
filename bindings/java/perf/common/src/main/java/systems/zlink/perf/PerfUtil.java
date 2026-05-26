@@ -54,8 +54,7 @@ public final class PerfUtil {
         int recvTimeoutMs,
         int monitorHwm,
         int connectReadyTimeoutMs,
-        int connectConcurrency,
-        int clientPollTimeoutMs
+        int connectConcurrency
     ) {
     }
 

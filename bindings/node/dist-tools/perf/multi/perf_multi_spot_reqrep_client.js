@@ -51,15 +51,6 @@ function closeQuietly(resource) {
         console.error(`[multi-spot-reqrep-client] close failed: ${err}`);
     }
 }
-async function requestSpotReply(spot, payload, timeoutMs) {
-    const parts = await spot.requestToSpotFrom(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID, payload, timeoutMs);
-    try {
-        return decodeMetricHeaderFromParts(parts);
-    }
-    finally {
-        closeParts(parts);
-    }
-}
 function tryRequestSpotReply(spot, payload, timeoutMs, onReply, onDone) {
     try {
         return spot.requestToSpotFrom(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID, payload, (result, parts) => {
@@ -87,8 +78,7 @@ function tryRequestSpotReply(spot, payload, timeoutMs, onReply, onDone) {
         throw error;
     }
 }
-async function waitForProbeReady(slots, runId, msgSize) {
-    const timeoutMs = Number(process.env.PERF_MULTI_SPOT_REQREP_PROBE_TIMEOUT_MS ?? 20000);
+async function waitForProbeReady(slots, runId, msgSize, poller, pollBuffer, timeoutMs) {
     const deadline = Date.now() + Math.max(1, timeoutMs);
     const ready = new Set();
     let seq = 1n;
@@ -99,14 +89,21 @@ async function waitForProbeReady(slots, runId, msgSize) {
             }
             stampPayload(slots[i].payload, { phase: 0, runId, msgSize, seq });
             seq += 1n;
-            try {
-                const reply = await requestSpotReply(slots[i].spot, slots[i].payload, 1000);
+            let completed = false;
+            const submitted = tryRequestSpotReply(slots[i].spot, slots[i].payload, Math.max(1, Math.min(1000, timeoutMs)), (reply) => {
                 if (reply && reply.phase === 0 && reply.runId === runId && reply.msgSize === msgSize) {
                     ready.add(i);
                 }
+            }, () => {
+                completed = true;
+            });
+            if (!submitted) {
+                continue;
             }
-            catch (err) {
-                trace(`probe failed: ${err}`);
+            const probeDeadlineNs = currentEpochNs() + BigInt(Math.max(1, Math.min(1000, timeoutMs))) * 1000000n;
+            while (!completed && currentEpochNs() < probeDeadlineNs) {
+                pollCompletionUntil(poller, pollBuffer, probeDeadlineNs);
+                await sleepImmediate();
             }
         }
         if (ready.size < slots.length) {
@@ -160,12 +157,23 @@ async function main() {
         }
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
+        const probePoller = new zlink.Poller();
+        const probePollBuffer = new zlink.PollEvents(Math.max(1, slots.length));
+        for (let i = 0; i < slots.length; i += 1) {
+            probePoller.add(slots[i].spot, pollEvents(POLLCOMPLETION), i);
+        }
         const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
         while (Date.now() < stabilizationDeadline) {
             await sleepImmediate();
         }
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
-        await waitForProbeReady(slots, createRunId(1), options.msgSize);
+        try {
+            await waitForProbeReady(slots, createRunId(1), options.msgSize, probePoller, probePollBuffer, Number.isFinite(options.connectReadyTimeoutMs) ? options.connectReadyTimeoutMs : 1000);
+        }
+        finally {
+            probePollBuffer.close();
+            probePoller.close();
+        }
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
         const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
         while (Date.now() < controlSettleDeadline) {

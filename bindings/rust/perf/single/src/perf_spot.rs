@@ -166,7 +166,7 @@ fn main() {
                                 | SubmitResult::Backpressured
                         ) =>
                     {
-                        thread::sleep(Duration::from_millis(1));
+                        common::poll_idle(Duration::from_millis(1));
                     }
                     Err(err) => panic!("active publish: {err}"),
                 }

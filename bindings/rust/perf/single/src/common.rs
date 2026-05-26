@@ -293,6 +293,11 @@ pub fn wait_monitor_ready(mon: &mut SocketMonitor, timeout: Duration, name: &str
     }
 }
 
+pub fn poll_idle(timeout: Duration) {
+    let wait_ms = timeout.as_millis().max(1) as i64;
+    let _ = zlink::poll(&mut [], wait_ms);
+}
+
 pub fn perf_context() -> Context {
     let ctx = Context::new().expect("context");
     ctx.options().set_blocky(false).expect("set blocky");

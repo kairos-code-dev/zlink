@@ -214,7 +214,7 @@ func sendSpotStopToken(publisher *zlink.Spot) {
 		if !perfcommon.IsTransient(err) {
 			return
 		}
-		time.Sleep(perfcommon.StopTokenSendBackoff)
+		perfcommon.PollIdle(perfcommon.StopTokenSendBackoff)
 	}
 }
 

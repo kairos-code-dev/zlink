@@ -265,6 +265,6 @@ func sendMultiPubSubStopToken(publisher *zlink.PubSocket) {
 		if err != nil && !perfcommon.IsTransient(err) {
 			return
 		}
-		time.Sleep(perfcommon.StopTokenSendBackoff)
+		perfcommon.PollIdle(perfcommon.StopTokenSendBackoff)
 	}
 }

@@ -189,7 +189,7 @@ func drainSingleOneWayProbe(receiver recvSocket) bool {
 
 // sendStopTokenSingle attempts to push the wire-level stop token onto the
 // connection. The send is bounded: each transient backpressure /
-// EAGAIN response yields for `StopTokenSendBackoff`, capped by
+// EAGAIN response waits through `StopTokenSendBackoff`, capped by
 // `StopTokenSendAttempts`. A non-transient error is fatal.
 func sendStopTokenSingle(send func(*zlink.Message) error, isTransient func(error) bool) bool {
 	if isTransient == nil {
@@ -208,7 +208,7 @@ func sendStopTokenSingle(send func(*zlink.Message) error, isTransient func(error
 			}
 			return false
 		}
-		time.Sleep(perfcommon.StopTokenSendBackoff)
+		perfcommon.PollIdle(perfcommon.StopTokenSendBackoff)
 	}
 	if os.Getenv("PERF_DEBUG") != "" {
 		fmt.Fprintln(os.Stderr, "single stop token send: attempts exhausted")

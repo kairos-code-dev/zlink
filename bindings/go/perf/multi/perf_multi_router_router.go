@@ -408,7 +408,7 @@ func sendMultiRouterStopToken(socket *zlink.RouterSocket, serverID zlink.Routing
 		if err != nil && !perfcommon.IsTransient(err) {
 			return
 		}
-		time.Sleep(perfcommon.StopTokenSendBackoff)
+		perfcommon.PollIdle(perfcommon.StopTokenSendBackoff)
 	}
 }
 

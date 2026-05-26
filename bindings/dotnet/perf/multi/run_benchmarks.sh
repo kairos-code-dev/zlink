@@ -699,12 +699,6 @@ write_control_line() {
   printf "$@" >&${fd} 2>/dev/null || true
 }
 
-is_eaddrinuse_log() {
-  local log="${1:-}"
-  [[ -f "${log}" ]] || return 1
-  grep -qi "errno 98\|address already in use" "${log}" 2>/dev/null
-}
-
 extract_results_from_logs() {
   local primary_log="${1:-}"
   local secondary_log="${2:-}"
@@ -1945,30 +1939,21 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
         server_endpoint=''
         server_pid=0
         server_started=0
-        for _srv_attempt in 1 2 3; do
-          [[ "${_srv_attempt}" -gt 1 ]] && sleep 2
-          rm -f "${server_log}"
-          if [[ -n "${server_control_fd}" ]]; then
-            exec {server_control_fd}>&-
-            server_control_fd=''
-          fi
-          if pattern_uses_control_pipe "${pattern}"; then
-            mkfifo "${server_control_fifo}"
-            run_multi_process "server" "${server_log}" "" "${server_control_fifo}" 1
-            server_pid=$!
-            exec {server_control_fd}>"${server_control_fifo}"
-            rm -f "${server_control_fifo}"
-          else
-            run_multi_process "server" "${server_log}" "" "" 1
-            server_pid=$!
-          fi
-          if server_endpoint="$(wait_for_ready_endpoint "${server_log}" "${SERVER_READY_TIMEOUT_MS}")"; then
-            server_started=1
-            break
-          fi
+        if pattern_uses_control_pipe "${pattern}"; then
+          mkfifo "${server_control_fifo}"
+          run_multi_process "server" "${server_log}" "" "${server_control_fifo}" 1
+          server_pid=$!
+          exec {server_control_fd}>"${server_control_fifo}"
+          rm -f "${server_control_fifo}"
+        else
+          run_multi_process "server" "${server_log}" "" "" 1
+          server_pid=$!
+        fi
+        if server_endpoint="$(wait_for_ready_endpoint "${server_log}" "${SERVER_READY_TIMEOUT_MS}")"; then
+          server_started=1
+        else
           terminate_pid "${server_pid}"
-          is_eaddrinuse_log "${server_log}" || break
-        done
+        fi
 
         if [[ "${server_started}" -ne 1 ]]; then
           if unsupported_line="$(extract_unsupported_line "${pattern}" "${transport}" "${server_log}" 2>/dev/null)"; then

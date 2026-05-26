@@ -30,11 +30,10 @@ struct phase_config_t
 
 struct bench_result_t
 {
-    unsigned long long warmup_count;
     unsigned long long active_count;
     perf::multi::bench_latency_stats_t latency;
 
-    bench_result_t () : warmup_count (0), active_count (0), latency () {}
+    bench_result_t () : active_count (0), latency () {}
 };
 
 struct socket_state_t

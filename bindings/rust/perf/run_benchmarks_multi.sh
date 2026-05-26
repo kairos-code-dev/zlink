@@ -784,7 +784,6 @@ for run in $(seq 1 "${RUNS}"); do
                 if [[ "${pat}" == "MULTI_STREAM" ]]; then
                     export PERF_RECV_MODE="recv"
                     export PERF_DURATION_SECONDS="${DURATION}"
-                    export PERF_WARMUP_SECONDS="1"
                 fi
                 case_status="success"
                 case_reason=""
@@ -967,7 +966,6 @@ for run in $(seq 1 "${RUNS}"); do
                         --sizes "${size}" \
                         --runs 1 \
                         --duration "${DURATION}" \
-                        --warmup 1 \
                         --ccu "${PATTERN_CLIENTS}" \
                         --io-threads 4 \
                         --print-perf-result 1 \

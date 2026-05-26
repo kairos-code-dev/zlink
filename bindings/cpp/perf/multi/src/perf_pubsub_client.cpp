@@ -29,12 +29,11 @@ struct phase_config_t
 
 struct bench_result_t
 {
-    unsigned long long warmup_count;
     unsigned long long active_count;
     perf::multi::bench_latency_stats_t latency;
 
     bench_result_t ()
-        : warmup_count (0), active_count (0), latency ()
+        : active_count (0), latency ()
     {
     }
 };
@@ -100,11 +99,6 @@ class pubsub_client_bench_t
     const char *failure_stage () const
     {
         return _failure_stage;
-    }
-
-    unsigned long long warmup_count () const
-    {
-        return _result.warmup_count;
     }
 
     unsigned long long active_count () const
@@ -345,7 +339,6 @@ bool perf_pubsub_client (const std::string &lib_name,
     if (!bench.run ()) {
         std::cerr << "PUBSUB_CLIENT_FAIL,stage=" << bench.failure_stage ()
                   << ",transport=" << transport << ",size=" << msg_size
-                  << ",warmup=" << bench.warmup_count ()
                   << ",active=" << bench.active_count () << std::endl;
         return false;
     }

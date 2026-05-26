@@ -50,11 +50,10 @@ struct phase_config_t
 
 struct bench_result_t
 {
-    unsigned long long warmup_count;
     unsigned long long active_count;
     perf::multi::bench_latency_stats_t latency;
 
-    bench_result_t () : warmup_count (0), active_count (0), latency () {}
+    bench_result_t () : active_count (0), latency () {}
 };
 
 struct socket_state_t
@@ -231,104 +230,6 @@ class router_router_client_bench_t
         catch (const zlink::zlink_error_t &) {
             debug_log ("connect failed endpoint=" + _endpoint
                        + " errno=" + std::to_string (errno));
-            return false;
-        }
-    }
-
-    bool validate_routes_once ()
-    {
-        if (_socket_states.empty ())
-            return false;
-
-        try {
-        std::vector<bool> validated (_socket_states.size (), false);
-        size_t remaining = validated.size ();
-        const auto deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (
-            std::max (1, _settings.connect_ready_timeout_ms));
-
-        for (size_t i = 0; i < _socket_states.size (); ++i) {
-            socket_state_t &state = _socket_states[i];
-            state.awaiting_reply = false;
-            state.send_pending = false;
-            if (!update_poll_interest (state)
-                || !try_send_request (state, perf_metric::phase_warmup)) {
-                return false;
-            }
-        }
-
-        while (remaining > 0 && std::chrono::steady_clock::now () < deadline) {
-            // wait(events, ...) reuses _poll_events' backing storage so the
-            // hot poll loop avoids allocating a fresh vector per wake.
-            if (_poll_events.size () < _socket_states.size ())
-                _poll_events.resize (_socket_states.size ());
-            const size_t ready_count =
-              _poller.wait (_poll_events.data (), _poll_events.size (),
-                            std::chrono::milliseconds (-1));
-            if (ready_count == 0)
-                continue;
-
-            for (size_t i = 0; i < ready_count; ++i) {
-                const size_t slot_index = _poll_events[i].slot;
-                if (slot_index >= _socket_states.size ())
-                    continue;
-                socket_state_t *state = &_socket_states[slot_index];
-                if (!state->sock)
-                    continue;
-
-                if (slot_index >= validated.size ())
-                    return false;
-
-                if ((static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollout))
-                    && state->send_pending) {
-                    if (!try_send_request (*state, perf_metric::phase_warmup))
-                        return false;
-                }
-
-                if (!(static_cast<short> (_poll_events[i].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))) {
-                    continue;
-                }
-
-                for (;;) {
-                    perf_metric::header_t header {};
-                    const int recv_rc =
-                      recv_reply (*state, &header);
-                    if (recv_rc < 0) {
-                        const int err = errno;
-                        if (err == EAGAIN)
-                            break;
-                        if (err == EINTR)
-                            continue;
-                        debug_log ("validate recv failed errno=" + std::to_string (err));
-                        return false;
-                    }
-
-                    state->awaiting_reply = false;
-                    if (recv_rc != 0) {
-                        debug_log ("validate recv ignored rc=" + std::to_string (recv_rc));
-                        continue;
-                    }
-                    if (!perf_metric::is_expected (
-                          header, _run_id, perf_metric::phase_warmup, _msg_size)) {
-                        debug_log ("validate header mismatch");
-                        continue;
-                    }
-                    if (validated[slot_index])
-                        break;
-
-                    validated[slot_index] = true;
-                    --remaining;
-                    if (!update_poll_interest (*state))
-                        return false;
-                    break;
-                }
-            }
-        }
-
-        return remaining == 0;
-        }
-        catch (const zlink::zlink_error_t &) {
             return false;
         }
     }

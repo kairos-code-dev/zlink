@@ -366,8 +366,8 @@ Options:
                          Set auto-HWM profile: compact, low_latency, balanced, throughput (default: balanced).
 
 Environment:
-  PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
-  PERF_SKIP_MEMORY_CHECK=1   Disable preflight memory guard check
+  PERF_SKIP_NOFILE_CHECK=1   Disable resource guard nofile(limit) check
+  PERF_SKIP_MEMORY_CHECK=1   Disable resource guard memory check
   PERF_MULTI_MEMORY_BUDGET_PCT=70
                             Percent of MemAvailable reserved for multi benchmark sockets
   PERF_MULTI_MEMORY_BASE_MB=512
@@ -1108,12 +1108,12 @@ for raw_pattern in "${PATTERNS[@]}"; do
   fi
 
   if ! ensure_nofile_limit "${pattern_clients}"; then
-    record_skip "${pattern}" "preflight_nofile_${NOFILE_SKIP_REASON}"
+    record_skip "${pattern}" "guard_nofile_${NOFILE_SKIP_REASON}"
     continue
   fi
 
   if ! ensure_memory_budget "${pattern_clients}"; then
-    record_skip "${pattern}" "preflight_memory_${MEMORY_SKIP_REASON}"
+    record_skip "${pattern}" "guard_memory_${MEMORY_SKIP_REASON}"
     continue
   fi
 

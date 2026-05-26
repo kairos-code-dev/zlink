@@ -1355,7 +1355,7 @@ python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${t
   "${STREAM_NON_TCP_CLIENTS_MAX}" "${DISABLE_RESOURCE_METRICS}" "${TIMEOUT_SECONDS}" \
   "${DEFAULT_CLIENTS}" "${STREAM_DEFAULT_CLIENTS}" "${RESULTS_TAG}" \
   "${expected_result_lines}" "${actual_result_lines}" \
-  "${PERF_FAIL_FAST:-0}" "${stop_early}" <<'PY' || python_status=$?
+  "${PERF_FAIL_FAST:-0}" <<'PY' || python_status=$?
 import csv
 import datetime
 import math
@@ -1376,7 +1376,7 @@ from pathlib import Path
     transport_transition_ms, pattern_transition_ms, lat_timeout_ms,
     stream_non_tcp_clients_max, disable_resource_metrics, timeout_seconds,
     default_clients, default_stream_clients, results_tag,
-    expected_result_lines, actual_result_lines, fail_fast, fail_fast_stopped,
+    expected_result_lines, actual_result_lines, fail_fast,
 ) = sys.argv[1:]
 sys.path.insert(0, str(Path(helper_path).resolve().parent))
 from report_common import load_failures
@@ -1854,7 +1854,6 @@ emit(f"- success: {success}")
 emit("- unsupported: 0")
 emit("- skip: 0")
 emit(f"- fail: {fail}")
-emit(f"- fail_fast_stopped: {fail_fast_stopped}")
 emit(f"- status: {status}")
 emit(f"- expected_result_lines: {expected_result_lines}")
 emit(f"- actual_result_lines: {actual_result_lines}")

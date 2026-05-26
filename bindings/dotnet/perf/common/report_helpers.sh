@@ -8,7 +8,6 @@ print_completion_section() {
   local unsupported_count="${5:-}"
   local skip_count="${6:-}"
   local fail_count="${7:-}"
-  local fail_fast_stopped="${8:-}"
 
   print_line ""
   print_line "## Completion"
@@ -19,9 +18,6 @@ print_completion_section() {
     print_line "- fail: ${fail_count:-0}"
   fi
   print_line "- status: ${status}"
-  if [[ -n "${fail_fast_stopped}" ]]; then
-    print_line "- fail_fast_stopped: ${fail_fast_stopped}"
-  fi
   print_line "- expected_result_lines: ${expected_result_lines}"
   print_line "- actual_result_lines: ${actual_result_lines}"
 }

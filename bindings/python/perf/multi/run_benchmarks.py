@@ -1406,7 +1406,6 @@ def main(argv=None):
     _append_line(sections, f"- skip: {skipped_cases}")
     _append_line(sections, f"- fail: {fail_count}")
     _append_line(sections, f"- status: {status}")
-    _append_line(sections, f"- fail_fast_stopped: {1 if stop_early else 0}")
     _append_line(sections, f"- expected_result_lines: {expected_result_lines}")
     _append_line(sections, f"- actual_result_lines: {len(rows)}")
     report_path = build_report_path(

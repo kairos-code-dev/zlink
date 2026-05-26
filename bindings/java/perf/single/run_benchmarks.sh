@@ -485,7 +485,7 @@ python3 - "${ROOT_DIR}/report_common.py" "${tmp_metrics}" "${tmp_failures}" "${t
   "${IO_THREADS}" "${HWM}" "${SEND_HWM}" "${RECV_HWM}" "${SNDTIMEO_MS}" \
   "${RCVTIMEO_MS}" "${SNDBUF}" "${RCVBUF}" \
   "${CTX_AUTO_HWM_ENABLE_DISPLAY}" "${CTX_AUTO_HWM_PROFILE}" "${OUTPUT_PATH}" \
-  "${PERF_FAIL_FAST:-0}" "${stop_early}" <<'PY' || python_status=$?
+  "${PERF_FAIL_FAST:-0}" <<'PY' || python_status=$?
 import csv
 import math
 import sys
@@ -497,8 +497,7 @@ from pathlib import Path
     report_path, pattern_csv, msg_sizes_csv, runs, duration, timeout_seconds,
     results_tag, pin_cpu, expected_result_lines, actual_result_lines,
     io_threads, hwm, send_hwm, recv_hwm, sndtimeo_ms, rcvtimeo_ms, sndbuf,
-    rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, output_path,
-    fail_fast, fail_fast_stopped,
+    rcvbuf, ctx_auto_hwm_enable, ctx_auto_hwm_profile, output_path, fail_fast,
 ) = sys.argv[1:]
 sys.path.insert(0, str(Path(helper_path).resolve().parent))
 from report_common import load_failures
@@ -783,7 +782,6 @@ status = "complete" if expected_result_lines == actual_result_lines and not fail
 emit("")
 emit("## Completion")
 emit(f"- status: {status}")
-emit(f"- fail_fast_stopped: {fail_fast_stopped}")
 emit(f"- expected_result_lines: {expected_result_lines}")
 emit(f"- actual_result_lines: {actual_result_lines}")
 emit("")

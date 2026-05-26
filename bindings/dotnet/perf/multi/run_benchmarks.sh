@@ -2429,7 +2429,7 @@ else
   status=1
 fi
 print_completion_section "${completion_status}" "${expected_result_lines}" "${result_lines}" \
-  "${success_count}" "${unsupported_count}" "${skip_count}" "${failure_count}" "${stop_early}"
+  "${success_count}" "${unsupported_count}" "${skip_count}" "${failure_count}"
 # ITEM 1: C multi "## Failures" lines are
 #   - <PATTERN> current <transport> <size>B: <reason>
 # sorted by (pattern, transport, size, reason), unique. Match that exactly

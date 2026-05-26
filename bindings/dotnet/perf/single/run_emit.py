@@ -1190,7 +1190,6 @@ def main() -> int:
         emit_result_lines(combo_results)
     print("\n## Completion")
     print(f"- status: {completion_status}")
-    print(f"- fail_fast_stopped: {1 if FAIL_FAST and all_failures else 0}")
     print(f"- expected_result_lines: {expected_result_lines}")
     print(f"- actual_result_lines: {actual_result_lines}")
 

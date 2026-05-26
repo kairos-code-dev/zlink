@@ -1497,7 +1497,6 @@ fi
   echo "- skip: ${#SKIPS[@]}"
   echo "- fail: ${fail}"
   echo "- status: ${status}"
-  echo "- fail_fast_stopped: ${stop_early}"
   echo "- expected_result_lines: ${expected_result_lines}"
   echo "- actual_result_lines: ${result_lines}"
   echo

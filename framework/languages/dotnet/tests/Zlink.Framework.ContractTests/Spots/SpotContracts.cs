@@ -216,6 +216,32 @@ public sealed class SpotContracts
         Assert.Same(reply, reply.Compress());
     }
 
+    [Fact]
+    public void Spot_actor_contexts_expose_only_dispatch_metadata()
+    {
+        AssertContextProperties<ZLinkSpotActorSendContext>(
+            nameof(IZLinkHandlerContext.ChannelName),
+            nameof(IZLinkHandlerContext.ConnectionAborted),
+            nameof(IZLinkHandlerContext.ContentType),
+            nameof(ZLinkSpotActorSendContext.Metadata),
+            nameof(IZLinkHandlerContext.PacketName));
+
+        AssertContextProperties<ZLinkSpotActorRequestContext>(
+            nameof(IZLinkHandlerContext.ChannelName),
+            nameof(IZLinkHandlerContext.ConnectionAborted),
+            nameof(IZLinkHandlerContext.ContentType),
+            nameof(ZLinkSpotActorRequestContext.Metadata),
+            nameof(IZLinkHandlerContext.PacketName),
+            nameof(ZLinkSpotActorRequestContext.Reply));
+
+        Assert.Null(typeof(ZLinkSpotActorSendContext).GetProperty("ActorId"));
+        Assert.Null(typeof(ZLinkSpotActorSendContext).GetProperty("BoundSession"));
+        Assert.Null(typeof(ZLinkSpotActorRequestContext).GetProperty("ActorId"));
+        Assert.Null(typeof(ZLinkSpotActorRequestContext).GetProperty("BoundSession"));
+        Assert.Null(typeof(ZLinkSpotActorRequestContext).GetProperty("Deadline"));
+        Assert.Null(typeof(ZLinkSpotActorRequestContext).GetProperty("CorrelationId"));
+    }
+
     private static void AssertHandlerParameters(Type handlerType, params Type[] expected)
     {
         var actual = handlerType.GetMethod("HandleAsync")!
@@ -224,6 +250,17 @@ public sealed class SpotContracts
             .ToArray();
 
         Assert.Equal(expected, actual);
+    }
+
+    private static void AssertContextProperties<TContext>(params string[] expected)
+    {
+        var actual = typeof(TContext)
+            .GetProperties()
+            .Select(static property => property.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(expected.Order(StringComparer.Ordinal).ToArray(), actual);
     }
 
     private static ZLinkSpotActorChangeResult Lifecycle(ZLinkSpotActorChangeKind kind) =>

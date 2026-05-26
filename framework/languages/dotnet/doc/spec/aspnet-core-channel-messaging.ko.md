@@ -553,8 +553,7 @@ public sealed class UserHandlers
 이 모델에서 기대하는 동작은 다음과 같다.
 
 - payload 는 typed 객체로 역직렬화된다.
-- `ZLinkRequestContext` 에서 header, correlation id[^correlationid], deadline, 호출자
-  메타데이터를 읽는다.
+- `ZLinkRequestContext` 에서 packet 이름, content type, 연결 취소 토큰을 읽는다.
 - `CancellationToken` 으로 timeout / cancel 을 그대로 이어 준다.
 - handler 클래스는 `UserHandlers`, `ItemHandlers` 처럼 주제별로 묶어도 된다.
 - 반대로 packet 하나당 클래스 하나로 쪼개도 된다.

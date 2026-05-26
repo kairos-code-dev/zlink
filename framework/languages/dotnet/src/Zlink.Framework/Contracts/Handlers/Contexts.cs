@@ -8,10 +8,6 @@ public interface IZLinkHandlerContext
 
     string? ContentType { get; }
 
-    string? CorrelationId { get; }
-
-    DateTimeOffset? Deadline { get; }
-
     CancellationToken ConnectionAborted { get; }
 }
 
@@ -19,9 +15,6 @@ public abstract class ZLinkHandlerContext(
     string? channelName,
     string? packetName,
     string? contentType,
-    string? correlationId,
-    DateTimeOffset? deadline,
-    IServiceProvider services,
     CancellationToken connectionAborted)
     : IZLinkHandlerContext
 {
@@ -30,12 +23,6 @@ public abstract class ZLinkHandlerContext(
     public string? PacketName { get; } = packetName;
 
     public string? ContentType { get; } = contentType;
-
-    public string? CorrelationId { get; } = correlationId;
-
-    public DateTimeOffset? Deadline { get; } = deadline;
-
-    internal IServiceProvider Services { get; } = services;
 
     public CancellationToken ConnectionAborted { get; } = connectionAborted;
 }
@@ -46,11 +33,8 @@ public sealed class ZLinkRequestContext : ZLinkHandlerContext
         string? channelName,
         string? packetName,
         string? contentType,
-        string? correlationId,
-        DateTimeOffset? deadline,
-        IServiceProvider services,
         CancellationToken connectionAborted)
-        : base(channelName, packetName, contentType, correlationId, deadline, services, connectionAborted)
+        : base(channelName, packetName, contentType, connectionAborted)
     {
     }
 }
@@ -61,11 +45,8 @@ public sealed class ZLinkSendContext : ZLinkHandlerContext
         string? channelName,
         string? packetName,
         string? contentType,
-        string? correlationId,
-        DateTimeOffset? deadline,
-        IServiceProvider services,
         CancellationToken connectionAborted)
-        : base(channelName, packetName, contentType, correlationId, deadline, services, connectionAborted)
+        : base(channelName, packetName, contentType, connectionAborted)
     {
     }
 }
@@ -76,13 +57,10 @@ public sealed class ZLinkPublishContext : ZLinkHandlerContext
         string? channelName,
         string? packetName,
         string? contentType,
-        string? correlationId,
-        DateTimeOffset? deadline,
         string topic,
         string? source,
-        IServiceProvider services,
         CancellationToken connectionAborted)
-        : base(channelName, packetName, contentType, correlationId, deadline, services, connectionAborted)
+        : base(channelName, packetName, contentType, connectionAborted)
     {
         Topic = topic;
         Source = source;

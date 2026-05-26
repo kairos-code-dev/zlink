@@ -150,8 +150,8 @@ public sealed class CacheRefreshedEventHandler
 - handler 의존성은 **생성자 주입**으로 받는다(`IProfileStore` 처럼). context 에서
   service 를 꺼내는 service locator 패턴은 쓰지 않는다.
 - handler context(`ZLinkRequestContext`, `ZLinkSendContext`, `ZLinkPublishContext`)
-  는 공통적으로 channel 이름·packet 이름·content type·correlation id·deadline·
-  연결 취소 토큰을 제공한다. publish context 는 추가로 topic/source 를 제공한다.
+  는 공통적으로 channel 이름·packet 이름·content type·연결 취소 토큰을 제공한다.
+  publish context 는 추가로 topic/source 를 제공한다.
 - handler class 는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class 에
   주제별로 묶어도, packet 마다 class 를 따로 둬도 동작은 같다.
 - interface 기반 handler 는 컴파일 타임 타입 체크가 가장 강하다. `HandleAsync(...)`

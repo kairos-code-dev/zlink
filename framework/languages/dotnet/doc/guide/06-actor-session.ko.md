@@ -284,8 +284,8 @@ public sealed class AuthenticateSessionPacketHandler
 ### Play 서버: actor 가 자기 client 로 push
 
 Spot actor handler 는 stream 을 직접 들지 않는다. 자기 client 로 보내려면
-handler 가 받은 `context.BoundSession` 를 쓴다. stream packet 이름과 전달
-허용된 metadata 도 같은 context 에 들어 있다.
+handler 가 받은 actor 의 `Context.BoundSession` 를 쓴다. stream packet 이름과
+전달 허용된 metadata 는 handler context 에 들어 있다.
 
 ```csharp
 public sealed class JoinMatchActorHandler
@@ -299,7 +299,7 @@ public sealed class JoinMatchActorHandler
         CancellationToken ct)
     {
         // 같은 actor 에 묶인 client 로 push
-        await context.BoundSession
+        await actor.Context.BoundSession
             .Send(new OpponentJoinedNotify(request.MatchId))
             .Submit(ct);
 
@@ -327,7 +327,7 @@ public sealed class PlayerNotifyHandler
         ZLinkSpotActorSendContext context,
         GameStateNotify message,
         CancellationToken ct)
-        => context.BoundSession.Send(message).Submit(ct);
+        => actor.Context.BoundSession.Send(message).Submit(ct);
 }
 ```
 

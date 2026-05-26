@@ -13,13 +13,12 @@ internal sealed class ZLinkHandlerDispatcher(
         CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
-        var scopedContext = RebindContext(context, scope.ServiceProvider);
+        var scopedContext = RebindContext(context);
         var invocation = new ZLinkHandlerInvocation(
             message,
             scopedContext,
             scopedContext.ChannelName,
-            scopedContext.PacketName,
-            scope.ServiceProvider);
+            scopedContext.PacketName);
         var pipeline = BuildPipeline(endpoint, message, scopedContext, invocation, scope.ServiceProvider);
         return await pipeline(cancellationToken).ConfigureAwait(false);
     }
@@ -87,7 +86,7 @@ internal sealed class ZLinkHandlerDispatcher(
         }
     }
 
-    private static ZLinkHandlerContext RebindContext(ZLinkHandlerContext context, IServiceProvider services)
+    private static ZLinkHandlerContext RebindContext(ZLinkHandlerContext context)
     {
         return context switch
         {
@@ -95,27 +94,18 @@ internal sealed class ZLinkHandlerDispatcher(
                 request.ChannelName,
                 request.PacketName,
                 request.ContentType,
-                request.CorrelationId,
-                request.Deadline,
-                services,
                 request.ConnectionAborted),
             ZLinkSendContext send => new ZLinkSendContext(
                 send.ChannelName,
                 send.PacketName,
                 send.ContentType,
-                send.CorrelationId,
-                send.Deadline,
-                services,
                 send.ConnectionAborted),
             ZLinkPublishContext publish => new ZLinkPublishContext(
                 publish.ChannelName,
                 publish.PacketName,
                 publish.ContentType,
-                publish.CorrelationId,
-                publish.Deadline,
                 publish.Topic,
                 publish.Source,
-                services,
                 publish.ConnectionAborted),
             _ => throw new InvalidOperationException("Unknown handler context type."),
         };

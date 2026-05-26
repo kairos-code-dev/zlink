@@ -61,58 +61,34 @@ internal sealed record ZLinkSpotActorReplyOptionsSnapshot(
 public sealed class ZLinkSpotActorSendContext : ZLinkHandlerContext
 {
     internal ZLinkSpotActorSendContext(
-        string actorId,
         string? packetName,
         string? contentType,
-        string? correlationId,
-        IZLinkBoundSession boundSession,
-        IServiceProvider services,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(null, packetName, contentType, correlationId, null, services, connectionAborted)
+        : base(null, packetName, contentType, connectionAborted)
     {
-        ActorId = actorId;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
-        BoundSession = boundSession;
     }
 
-    public string ActorId { get; }
-
     public ZLinkMessageMetadata Metadata { get; }
-
-    public IZLinkBoundSession BoundSession { get; }
 }
 
 public sealed class ZLinkSpotActorRequestContext : ZLinkHandlerContext
 {
     internal ZLinkSpotActorRequestContext(
-        string actorId,
         string? packetName,
         string? contentType,
-        string? correlationId,
-        DateTimeOffset? deadline,
-        IZLinkBoundSession boundSession,
-        IServiceProvider services,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(null, packetName, contentType, correlationId, deadline, services, connectionAborted)
+        : base(null, packetName, contentType, connectionAborted)
     {
-        ActorId = actorId;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
-        BoundSession = boundSession;
-        Deadline = deadline;
         Reply = new ZLinkSpotActorReplyOptions();
     }
 
-    public string ActorId { get; }
-
     public ZLinkMessageMetadata Metadata { get; }
 
-    public IZLinkBoundSession BoundSession { get; }
-
     public ZLinkSpotActorReplyOptions Reply { get; }
-
-    public new DateTimeOffset? Deadline { get; }
 }
 
 public interface IZLinkSpot

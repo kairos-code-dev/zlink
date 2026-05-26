@@ -61,7 +61,7 @@
 | manager | `IZLinkActorManager` | actor id와 actor type으로 actor 생성, 조회, 재사용 | 4.4.1 |
 | context | `IZLinkActorContext` | actor 상태 조회와 spot join 호출 | 4.4.1 |
 | handler | `IZLinkActorPacketHandler<TActor, TMessage>` / `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor instance 를 직접 받는 actor fallback message handler | 4.4.1 |
-| context | `ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` | Spot actor handler 실행 context. bound session 과 metadata 를 제공한다 | 4.4.2 |
+| context | `ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` | Spot actor handler 실행 context. packet metadata 와 request reply 옵션을 제공한다 | 4.4.2 |
 | handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` / `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor message handler | 4.4.2 |
 | handler | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` / `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor message handler | 4.4.2 |
 | value | `ZLinkMessageMetadata` | actor/bound session call에 전달되는 application/codec metadata snapshot | 4.4.2 |
@@ -130,18 +130,13 @@ public interface IZLinkHandlerContext
     string? ChannelName { get; }
     string? PacketName { get; }
     string? ContentType { get; }
-    string? CorrelationId { get; }
-    DateTimeOffset? Deadline { get; }
     CancellationToken ConnectionAborted { get; }
 }
 ```
 
-`IServiceProvider Services` 는 현재 단계에서 framework 내부 전용(internal)
-이다. 즉 public 표면으로는 노출하지 않는다.
-
-handler 안에서 서비스가 필요하면 context 에서 service locator 방식으로 꺼내
-쓰지 않는다. 대신 handler class 의 생성자 주입(constructor injection)으로
-받는다.
+`IServiceProvider` 는 handler context 에 넣지 않는다. handler 안에서 서비스가
+필요하면 context 에서 service locator 방식으로 꺼내 쓰지 않고, handler class 의
+생성자 주입(constructor injection)으로 받는다.
 
 ### 3.2 파생 context
 
@@ -153,11 +148,11 @@ handler 종류마다 받아야 하는 부가 정보가 다르다. 그 차이를 
 
 | context 타입 | 사용처 | 추가 정보 |
 |-------------|--------|----------|
-| `ZLinkRequestContext` | request-response handler | caller metadata, timeout |
-| `ZLinkSendContext` | one-way send handler | caller metadata |
+| `ZLinkRequestContext` | request-response handler | 공통 context 필드만 사용한다 |
+| `ZLinkSendContext` | one-way send handler | 공통 context 필드만 사용한다 |
 | `ZLinkPublishContext` | publish handler | topic, source |
-| `ZLinkRouteSendContext` | routed channel send handler | source routing id, router channel id, metadata |
-| `ZLinkRouteRequestContext` | routed channel request handler | source routing id, router channel id, metadata, deadline |
+| `ZLinkRouteSendContext` | routed channel send handler | source routing id, router channel id |
+| `ZLinkRouteRequestContext` | routed channel request handler | source routing id, router channel id |
 | `ZLinkSpotRequestContext` | SPOT request handler | self spot info, source rid, source spot rid |
 | `ZLinkSpotSubscriptionContext` | SPOT subscription handler | self spot info, topic, source rid, dispatch metadata |
 
@@ -233,16 +228,16 @@ routed channel(`AddRouteMeshChannel(...)`) 이 수신하는
 public interface IZLinkRouteSendHandler<in TMessage>
 {
     ValueTask HandleAsync(
-        ZLinkRouteSendContext context,
         TMessage message,
+        ZLinkRouteSendContext context,
         CancellationToken cancellationToken);
 }
 
 public interface IZLinkRouteRequestHandler<in TRequest, TReply>
 {
     ValueTask<TReply> HandleAsync(
-        ZLinkRouteRequestContext context,
         TRequest request,
+        ZLinkRouteRequestContext context,
         CancellationToken cancellationToken);
 }
 
@@ -250,15 +245,12 @@ public sealed class ZLinkRouteSendContext : ZLinkHandlerContext
 {
     public string RouterChannelId { get; }
     public RoutingId SourceNodeRid { get; }
-    public ZLinkMessageMetadata Metadata { get; }
 }
 
 public sealed class ZLinkRouteRequestContext : ZLinkHandlerContext
 {
     public string RouterChannelId { get; }
     public RoutingId SourceNodeRid { get; }
-    public ZLinkMessageMetadata Metadata { get; }
-    public DateTimeOffset? Deadline { get; }
 }
 ```
 
@@ -1639,18 +1631,13 @@ public interface IZLinkActorRequestHandler<in TActor, in TRequest, TReply>
 
 public sealed class ZLinkSpotActorSendContext : ZLinkHandlerContext
 {
-    public string ActorId { get; }
     public ZLinkMessageMetadata Metadata { get; }
-    public IZLinkBoundSession BoundSession { get; }
 }
 
 public sealed class ZLinkSpotActorRequestContext : ZLinkHandlerContext
 {
-    public string ActorId { get; }
     public ZLinkMessageMetadata Metadata { get; }
-    public IZLinkBoundSession BoundSession { get; }
     public ZLinkSpotActorReplyOptions Reply { get; }
-    public new DateTimeOffset? Deadline { get; }
 }
 
 public sealed class ZLinkSpotActorReplyOptions
@@ -1771,11 +1758,9 @@ outbound 는 actor context 의 기능이 아니다. Entry Spot 또는 user Spot 
 다른 Spot 이나 channel 로 메시지를 보내야 하면 handler 가 받은
 `entrySpot.Context` 또는 `spot.Context` 의 `SendSpot(...)`,
 `RequestSpot(...)`, `SendChannel(...)`, `RequestChannel(...)` 을 사용한다.
-client stream 으로 push 해야 하면 Spot actor handler 가 받은
-`ZLinkSpotActorSendContext.BoundSession`,
-`ZLinkSpotActorRequestContext.BoundSession`, 또는 `IZLinkBoundSession` 를
-사용한다. actor instance fallback handler 는 metadata 와 bound session context
-를 받지 않는다.
+client stream 으로 push 해야 하면 Spot actor handler 가 받은 actor 의
+`Context.BoundSession` 을 사용한다. actor instance fallback handler 는 stream
+packet metadata context 를 받지 않는다.
 
 Spot actor request handler 의 응답 body 는 handler 반환값으로 정한다. 응답
 stream header 에 metadata 를 추가하거나 payload 압축을 켜야 하면
@@ -2433,10 +2418,9 @@ client 에게 새 request 를 보내는 API 는 제공하지 않는다. client r
 응답은 actor request handler 의 반환값으로 처리한다.
 
 `IZLinkBoundSession` 자체는 연결된 client stream 을 향한 proxy 이므로
-`Zlink.Framework.Contracts.Streams` 에 둔다. 다만 이 proxy 를 받는
-`ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` 와 Spot actor
-handler 인터페이스는 Spot actor runtime 이 선택하고 실행하므로
-`Zlink.Framework.Contracts.Spots` 에 둔다.
+`Zlink.Framework.Contracts.Streams` 에 둔다. Spot actor handler 는 actor 의
+`Context.BoundSession` 으로 이 proxy 에 접근하고, stream packet metadata 는
+`ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` 로 받는다.
 
 application handler 는 actor id 만 넘긴다. 다음 metadata 들은
 framework/core 의 actor-session binding 안에만 머문다.
@@ -3416,9 +3400,10 @@ public delegate ValueTask<object?> ZLinkHandlerDelegate(
 // 역직렬화된 message와 handler context를 함께 들고 다닌다.
 public sealed class ZLinkHandlerInvocation
 {
-    public string? PacketName { get; init; }
-    public object? Message { get; init; }
-    public IZLinkHandlerContext Context { get; init; } = null!;
+    public object? Message { get; }
+    public IZLinkHandlerContext Context { get; }
+    public string? ChannelName { get; }
+    public string? PacketName { get; }
 }
 
 public interface IZLinkHandlerFilter

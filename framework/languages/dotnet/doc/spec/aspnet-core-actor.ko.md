@@ -423,10 +423,10 @@ Entry Spot 에 있는 actor message 는 Entry Spot registry 에 등록한 handle
 payload 를 함께 받는다. Entry Spot 에도 입장 처리 상태나 helper 메서드가 있을
 수 있으므로 handler 에서 현재 Entry Spot 인스턴스에 접근할 수 있어야 한다.
 `ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` 는 session 에서
-넘어온 packet 이름, 전달 허용된 metadata, 현재 actor 에 묶인 client 로 push 할
-수 있는 `BoundSession` 을 제공한다. request context 의 `Reply` 옵션은 handler
-반환값으로 만들어지는 response frame 에 metadata 나 compression 을 적용할 때
-사용한다.
+넘어온 packet 이름과 전달 허용된 metadata 를 제공한다. 현재 actor 에 묶인
+client 로 push 해야 하면 handler 가 받은 actor 의 `Context.BoundSession` 을
+사용한다. request context 의 `Reply` 옵션은 handler 반환값으로 만들어지는
+response frame 에 metadata 나 compression 을 적용할 때 사용한다.
 
 ```csharp
 public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
@@ -906,7 +906,7 @@ public sealed class JoinMatchHandler
         JoinMatchReq request,
         CancellationToken cancellationToken)
     {
-        await context.BoundSession
+        await actor.Context.BoundSession
             .Send(new OpponentJoinedNotify(...))
             .Submit(cancellationToken);
 
@@ -924,7 +924,7 @@ public sealed class JoinMatchHandler
 기록한다.
 
 같은 user Spot 안에서 다른 actor 의 client session 으로 push 가 필요하면 대상 actor 로
-메시지를 보내고, 대상 actor handler 가 context 의 `IZLinkBoundSession` 를 사용한다.
+메시지를 보내고, 대상 actor handler 가 actor context 의 `IZLinkBoundSession` 를 사용한다.
 actor message handler 는 transport raw header 나 session rid 를 직접 받지 않는다.
 
 actor 가 client 연결을 끊어야 한다고 판단한 경우에는

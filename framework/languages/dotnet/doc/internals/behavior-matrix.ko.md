@@ -104,7 +104,7 @@
 | route 없는 `BindActorAsync(actorId, ...)` 로 remote actor bind | 비허용 | 이 overload 는 local actor compatibility 경로로만 동작하고, local actor 가 없으면 `ActorRouteNotFound` 로 실패한다 |
 | 같은 actor id가 새 stream session에서 다시 bind | 허용 | 기존 actor 인스턴스를 재사용하고 session binding token[^binding-token]만 갱신한다 |
 | actor factory가 요청 actor id와 다른 id를 반환 | 비허용 | actor route와 binding id가 갈라지므로 actor 생성 오류 |
-| `context.BoundSession.Send(...)` 가 오래된 binding이나 이미 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고, route loop와 host shutdown은 계속 진행한다 |
+| `actor.Context.BoundSession.Send(...)` 가 오래된 binding이나 이미 닫힌 stream에 도착 | 허용된 실패 | 해당 push만 실패하고, route loop와 host shutdown은 계속 진행한다 |
 | converter 없는 abstract/interface payload를 reply DTO에 포함 | 비허용 | startup validation 또는 첫 submit 직전에 configuration 오류 |
 | spot remote address resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
 | Registry Spot route 기본 구현 + custom Spot remote address resolver 함께 등록 | 비허용 | startup validation 오류 |

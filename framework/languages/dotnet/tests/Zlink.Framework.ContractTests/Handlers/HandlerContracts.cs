@@ -33,6 +33,35 @@ public sealed class HandlerContracts
         Assert.Equal("next", result);
     }
 
+    [Fact]
+    [ContractExample(typeof(IZLinkHandlerContext))]
+    public void Handler_context_exposes_only_dispatch_metadata()
+    {
+        var publicProperties = typeof(IZLinkHandlerContext)
+            .GetProperties()
+            .Select(static property => property.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            new[]
+            {
+                nameof(IZLinkHandlerContext.ChannelName),
+                nameof(IZLinkHandlerContext.ConnectionAborted),
+                nameof(IZLinkHandlerContext.ContentType),
+                nameof(IZLinkHandlerContext.PacketName)
+            },
+            publicProperties);
+
+        Assert.Null(typeof(ZLinkHandlerContext).GetProperty("Services"));
+        Assert.Null(typeof(ZLinkHandlerContext).GetProperty("Deadline"));
+        Assert.Null(typeof(ZLinkHandlerContext).GetProperty("CorrelationId"));
+        Assert.Null(
+            typeof(ZLinkHandlerInvocation).GetProperty(
+                "Services",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic));
+    }
+
     private sealed record Authenticate(string PlayerId);
 
     private sealed record Authenticated(string PlayerId);

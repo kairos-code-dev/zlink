@@ -52,10 +52,8 @@ public sealed class ZLinkRouteSendContext : ZLinkHandlerContext
         RoutingId sourceNodeRid,
         string? packetName,
         string? contentType,
-        string? correlationId,
-        IServiceProvider services,
         CancellationToken connectionAborted)
-        : base(routerChannelId, packetName, contentType, correlationId, null, services, connectionAborted)
+        : base(routerChannelId, packetName, contentType, connectionAborted)
     {
         RouterChannelId = routerChannelId;
         SourceNodeRid = sourceNodeRid;
@@ -73,11 +71,8 @@ public sealed class ZLinkRouteRequestContext : ZLinkHandlerContext
         RoutingId sourceNodeRid,
         string? packetName,
         string? contentType,
-        string? correlationId,
-        DateTimeOffset? deadline,
-        IServiceProvider services,
         CancellationToken connectionAborted)
-        : base(routerChannelId, packetName, contentType, correlationId, deadline, services, connectionAborted)
+        : base(routerChannelId, packetName, contentType, connectionAborted)
     {
         RouterChannelId = routerChannelId;
         SourceNodeRid = sourceNodeRid;

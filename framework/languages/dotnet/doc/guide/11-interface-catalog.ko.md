@@ -141,7 +141,7 @@ application 이 직접 만든 `Message` 를 넘길 때만 caller 가 그 `Messag
 | `IZLinkSendHandler<TMessage>` | 단방향 send handler. `ValueTask` 반환 |
 | `IZLinkPublishHandler<TEvent>` | publish 수신(구독자) handler |
 | `IZLinkHandlerFilter` | request/send/publish 공통 처리(logging/auth/metrics). `next(ct)` 로 다음 단계 호출 |
-| `IZLinkHandlerContext` | 모든 handler context 의 공통 베이스(channel/packet/content-type/correlation/deadline) |
+| `IZLinkHandlerContext` | 모든 handler context 의 공통 베이스(channel/packet/content-type/cancellation) |
 
 검증: `HandlerContracts.Channel_handlers_and_filters_keep_user_code_behind_typed_contracts`.
 

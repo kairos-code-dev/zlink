@@ -20,8 +20,6 @@ internal sealed class ZLinkRouteHandlerInvoker(IServiceProvider services)
             sourceRid,
             header.MessageName,
             header.ContentType,
-            header.CorrelationId,
-            scope.ServiceProvider,
             cancellationToken);
         var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
         await ZLinkHandlerInvocationEngine.InvokeAsync(
@@ -53,9 +51,6 @@ internal sealed class ZLinkRouteHandlerInvoker(IServiceProvider services)
             sourceRid,
             header.MessageName,
             header.ContentType,
-            header.CorrelationId,
-            header.Deadline,
-            scope.ServiceProvider,
             cancellationToken);
         var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
         var reply = await ZLinkHandlerInvocationEngine.InvokeAsync(

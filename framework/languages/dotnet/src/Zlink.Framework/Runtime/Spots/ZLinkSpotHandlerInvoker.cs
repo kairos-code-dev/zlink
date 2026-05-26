@@ -71,7 +71,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             "SPOT actor packet handler");
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        var context = CreateSendContext(actor.ActorId, header, cancellationToken);
+        var context = CreateSendContext(header, cancellationToken);
         await InvokeAsync(
                 descriptor.HandlerType,
                 descriptor.Invoker,
@@ -103,7 +103,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             "SPOT actor packet handler");
 
         var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
-        var context = CreateRequestContext(actor.ActorId, header, cancellationToken);
+        var context = CreateRequestContext(header, cancellationToken);
         var reply = await InvokeAsync(
                 descriptor.HandlerType,
                 descriptor.Invoker,
@@ -119,42 +119,25 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
     }
 
     private ZLinkSpotActorSendContext CreateSendContext(
-        string actorId,
         ZlinkStreamHeader header,
         CancellationToken cancellationToken)
     {
         return new ZLinkSpotActorSendContext(
-            actorId,
             header.Name,
             ZLinkEnvelopeCodec.DefaultContentType,
-            null,
-            CreateBoundSession(actorId),
-            services,
             cancellationToken,
             CreateMessageMetadata(header));
     }
 
     private ZLinkSpotActorRequestContext CreateRequestContext(
-        string actorId,
         ZlinkStreamHeader header,
         CancellationToken cancellationToken)
     {
         return new ZLinkSpotActorRequestContext(
-            actorId,
             header.Name,
             ZLinkEnvelopeCodec.DefaultContentType,
-            null,
-            null,
-            CreateBoundSession(actorId),
-            services,
             cancellationToken,
             CreateMessageMetadata(header));
-    }
-
-    private IZLinkBoundSession CreateBoundSession(string actorId)
-    {
-        return services.GetRequiredService<IZLinkBoundSessionFactory>()
-            .Create(actorId);
     }
 
     private ZLinkMessageMetadata CreateMessageMetadata(ZlinkStreamHeader header)

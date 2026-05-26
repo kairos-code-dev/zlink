@@ -101,11 +101,8 @@ internal sealed class ZLinkChannelPacketDispatcher(
                 channelName,
                 header.MessageName,
                 header.ContentType,
-                header.CorrelationId,
-                header.Deadline,
                 topicMessage.Topic,
                 header.Source,
-                EmptyServiceProvider.Instance,
                 cancellationToken);
             await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
                 .ConfigureAwait(false);
@@ -228,9 +225,6 @@ internal sealed class ZLinkChannelPacketDispatcher(
             channelName,
             header.MessageName,
             header.ContentType,
-            header.CorrelationId,
-            header.Deadline,
-            EmptyServiceProvider.Instance,
             cancellationToken);
 
         try
@@ -354,9 +348,6 @@ internal sealed class ZLinkChannelPacketDispatcher(
             channelName,
             header.MessageName,
             header.ContentType,
-            header.CorrelationId,
-            header.Deadline,
-            EmptyServiceProvider.Instance,
             cancellationToken);
 
         try
@@ -574,9 +565,6 @@ internal sealed class ZLinkChannelPacketDispatcher(
             channelName,
             header.MessageName,
             header.ContentType,
-            header.CorrelationId,
-            header.Deadline,
-            EmptyServiceProvider.Instance,
             cancellationToken);
         await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
             .ConfigureAwait(false);

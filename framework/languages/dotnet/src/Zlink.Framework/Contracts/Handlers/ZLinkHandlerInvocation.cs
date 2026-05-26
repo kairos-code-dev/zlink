@@ -6,14 +6,12 @@ public sealed class ZLinkHandlerInvocation
         object? message,
         IZLinkHandlerContext context,
         string? channelName,
-        string? packetName,
-        IServiceProvider services)
+        string? packetName)
     {
         Message = message;
         Context = context;
         ChannelName = channelName;
         PacketName = packetName;
-        Services = services;
     }
 
     public object? Message { get; }
@@ -23,6 +21,4 @@ public sealed class ZLinkHandlerInvocation
     public string? ChannelName { get; }
 
     public string? PacketName { get; }
-
-    internal IServiceProvider Services { get; }
 }

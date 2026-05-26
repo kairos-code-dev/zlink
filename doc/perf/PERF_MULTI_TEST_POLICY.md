@@ -1344,7 +1344,7 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 | `PERF_MULTI_SETTLE_MS` | 삭제됨. C multi perf는 이 값을 읽지 않으며 benchmark phase를 만들지 않는다 | — |
 | `PERF_MULTI_TRANSPORT_TRANSITION_MS` | transport 전환 cooldown(ms) | 3000 |
 | `PERF_MULTI_PATTERN_TRANSITION_MS` | pattern 전환 cooldown(ms) | 3000 |
-| `PERF_MULTI_SIZE_TRANSITION_MS` | **삭제 대상**. 구현에 존재하면 제거해야 한다 | — |
+| `PERF_MULTI_SIZE_TRANSITION_MS`, `PERF_STREAM_SIZE_TRANSITION_MS` | **삭제 대상**. 구현에 존재하면 제거해야 한다 | — |
 
 ### 12.2 클라이언트 제어
 

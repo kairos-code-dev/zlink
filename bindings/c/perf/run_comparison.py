@@ -1718,9 +1718,6 @@ def run_sizes_test_stream_shared(
     result_line_callback=None,
 ):
     if len(sizes) > 1:
-        size_transition_ms = max(
-            0, parse_env_int("PERF_STREAM_SIZE_TRANSITION_MS", 3000)
-        )
         merged = {
             "status": "success",
             "parsed": {},
@@ -1752,9 +1749,6 @@ def run_sizes_test_stream_shared(
                 merged["status"] = "fail"
                 reason = (outcome.get("reason", "") or "").strip() or f"size_{size}_failed"
                 failure_reasons.append(f"{size}:{reason}")
-
-            if size_transition_ms > 0 and size != sizes[-1]:
-                time.sleep(size_transition_ms / 1000.0)
 
         if failure_reasons:
             merged["reason"] = ";".join(failure_reasons)

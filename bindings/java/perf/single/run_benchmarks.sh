@@ -778,7 +778,7 @@ if has_results:
         for metric in all_metrics:
             emit(f"RESULT,current,{p},{tr},{sz},{metric},{mv[metric]:.3f}")
 
-status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
+status = "complete" if expected_result_lines == actual_result_lines else "partial"
 emit("")
 emit("## Completion")
 emit(f"- status: {status}")

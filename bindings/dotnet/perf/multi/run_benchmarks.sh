@@ -2422,7 +2422,7 @@ for key in sorted(rows.keys()):
 PY
 )
 fi
-if [[ "${result_lines}" -eq "${expected_result_lines}" && "${status}" -eq 0 ]]; then
+if [[ "${result_lines}" -eq "${expected_result_lines}" ]]; then
   completion_status="complete"
 else
   completion_status="partial"

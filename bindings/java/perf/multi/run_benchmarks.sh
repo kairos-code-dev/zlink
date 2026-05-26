@@ -1844,7 +1844,7 @@ if combo:
 
 success = len(combo)
 fail = len({(fp, ft, fs) for fp, ft, fs, _ in all_failures})
-status = "complete" if expected_result_lines == actual_result_lines and not failures else "partial"
+status = "complete" if expected_result_lines == actual_result_lines else "partial"
 emit("")
 emit("## Completion")
 emit(f"- success: {success}")

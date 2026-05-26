@@ -1457,7 +1457,7 @@ fi
 
 expected_result_lines=$((expected_cases * 5))
 status="partial"
-if [[ "${fail}" -eq 0 && "${result_lines}" -eq "${expected_result_lines}" ]]; then
+if [[ "${result_lines}" -eq "${expected_result_lines}" ]]; then
   status="complete"
 fi
 

@@ -546,7 +546,7 @@ async function waitForConnectionReadyCount(socket, expectedCount, connectFn = nu
                 }
             }
             if (!drained) {
-                await sleepImmediate();
+                await sleepMs(1);
             }
         }
         throw new Error(`connection ready timeout after ${timeoutMs}ms (${readyCount}/${targetCount})`);

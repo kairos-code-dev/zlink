@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const { parentPort, workerData } = require('node:worker_threads');
 const zlink = require('@zlink-systems/zlink');
 const { configureTlsClient } = require('../common/perf_tls');
-const { createRunId, decodeMetricHeader, currentEpochNs, HEADER_SIZE, sleepImmediate } = require('../common/perf_metrics');
+const { createRunId, decodeMetricHeader, currentEpochNs, HEADER_SIZE, sleepMillis } = require('../common/perf_metrics');
 const { applyAutoHwmMsgUnit, applyContextPolicy, applySpotNodeAdmission, emitMultiSocketHwmDetail } = require('./perf_multi_runtime');
 const TOPIC = 'bench';
 function trySpotSubscribePayloadInto(spot, buffer) {
@@ -134,7 +134,7 @@ async function main() {
                 }
             }
             if (!progressed) {
-                await sleepImmediate();
+                await sleepMillis(1);
             }
         }
         parentPort.postMessage({

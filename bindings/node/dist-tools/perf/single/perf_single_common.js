@@ -5,7 +5,7 @@ const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 const zlink = require('@zlink-systems/zlink');
 const { MonitorEventType, RecvFlags, RecvResult } = zlink;
-const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeader, decodeMetricHeaderFromParts, HEADER_SIZE, MIN_MSG_SIZE, applyAutoHwmMsgUnit, applyAutoHwmProfile, integerEnv, manualSocketOverridesEnabled, sleepImmediate, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, currentEpochNs, decodeMetricHeader, decodeMetricHeaderFromParts, HEADER_SIZE, MIN_MSG_SIZE, applyAutoHwmMsgUnit, applyAutoHwmProfile, integerEnv, manualSocketOverridesEnabled, sleepImmediate, sleepMillis, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer, } = require('../common/perf_tls');
 const { isStopTokenParts } = require('../perf_stop_token');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
@@ -247,7 +247,7 @@ async function waitForConnectionReady(socket, connectFn = null, timeoutMs = inte
                     throw error;
                 }
             }
-            await sleepImmediate();
+            await sleepMillis(1);
         }
         throw new Error(`connection ready timeout after ${timeoutMs}ms`);
     }
@@ -269,15 +269,12 @@ async function waitForMonitorConnectionReady(monitor, timeoutMs = integerEnv('PE
                 throw error;
             }
         }
-        await sleepImmediate();
+        await sleepMillis(1);
     }
     throw new Error(`connection ready timeout after ${timeoutMs}ms`);
 }
 async function waitForPostReadySettle(timeoutMs) {
-    const deadline = Date.now() + Math.max(0, timeoutMs | 0);
-    while (Date.now() < deadline) {
-        await sleepImmediate();
-    }
+    await sleepMillis(Math.max(0, timeoutMs | 0));
 }
 // C parity: bindings/c/perf/single/common/perf_single_one_way.hpp
 // run_active_phase (~269-326) — the receiver thread issues a BLOCKING recv

@@ -156,7 +156,7 @@ async function runSpotBenchmark(msgSize, options) {
                 seq += 1n;
             }
             collectReadable(false);
-            await (0, perf_metrics_1.sleepImmediate)();
+            await (0, perf_metrics_1.sleepMillis)(1);
         }
         if (!probeReady) {
             throw new Error('spot ready probe timed out');
@@ -206,7 +206,7 @@ async function runSpotBenchmark(msgSize, options) {
         await publishStopToken(stopPublisher);
         while (!stopReceived) {
             if (!collectReadable(false)) {
-                await (0, perf_metrics_1.sleepImmediate)();
+                await (0, perf_metrics_1.sleepMillis)(1);
             }
         }
         if (accepted <= 0) {

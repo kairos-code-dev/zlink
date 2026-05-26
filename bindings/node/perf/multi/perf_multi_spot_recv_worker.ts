@@ -10,7 +10,7 @@ const {
   decodeMetricHeader,
   currentEpochNs,
   HEADER_SIZE,
-  sleepImmediate
+  sleepMillis
 } = require('../common/perf_metrics');
 const {
   applyAutoHwmMsgUnit,
@@ -156,7 +156,7 @@ async function main() {
         }
       }
       if (!progressed) {
-        await sleepImmediate();
+        await sleepMillis(1);
       }
     }
 

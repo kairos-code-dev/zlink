@@ -8,7 +8,7 @@ import {
   currentEpochNs,
   decodeMetricHeader,
   HEADER_SIZE,
-  sleepImmediate,
+  sleepMillis,
   summarizeMetrics,
   stampPayload
 } from '../common/perf_metrics';
@@ -185,7 +185,7 @@ async function runSpotBenchmark(msgSize: number, options: any) {
         seq += 1n;
       }
       collectReadable(false);
-      await sleepImmediate();
+      await sleepMillis(1);
     }
     if (!probeReady) {
       throw new Error('spot ready probe timed out');
@@ -237,7 +237,7 @@ async function runSpotBenchmark(msgSize: number, options: any) {
     await publishStopToken(stopPublisher);
     while (!stopReceived) {
       if (!collectReadable(false)) {
-        await sleepImmediate();
+        await sleepMillis(1);
       }
     }
 

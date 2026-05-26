@@ -589,7 +589,7 @@ async function waitForConnectionReadyCount(
         }
       }
       if (!drained) {
-        await sleepImmediate();
+        await sleepMs(1);
       }
     }
     throw new Error(

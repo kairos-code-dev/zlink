@@ -24,6 +24,7 @@ const {
   integerEnv,
   manualSocketOverridesEnabled,
   sleepImmediate,
+  sleepMillis,
   stampPayload
 } = require('../common/perf_metrics');
 const {
@@ -283,7 +284,7 @@ async function waitForConnectionReady(
           throw error;
         }
       }
-      await sleepImmediate();
+      await sleepMillis(1);
     }
     throw new Error(`connection ready timeout after ${timeoutMs}ms`);
   } finally {
@@ -307,16 +308,13 @@ async function waitForMonitorConnectionReady(
         throw error;
       }
     }
-    await sleepImmediate();
+    await sleepMillis(1);
   }
   throw new Error(`connection ready timeout after ${timeoutMs}ms`);
 }
 
 async function waitForPostReadySettle(timeoutMs) {
-  const deadline = Date.now() + Math.max(0, timeoutMs | 0);
-  while (Date.now() < deadline) {
-    await sleepImmediate();
-  }
+  await sleepMillis(Math.max(0, timeoutMs | 0));
 }
 
 // C parity: bindings/c/perf/single/common/perf_single_one_way.hpp

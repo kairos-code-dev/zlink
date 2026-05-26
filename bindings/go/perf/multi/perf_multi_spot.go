@@ -348,7 +348,7 @@ func runMultiSpotRecvWorker(slots []multiSpotClientSlot, workerID, workerCount, 
 			break
 		}
 		if !progressed {
-			time.Sleep(time.Millisecond)
+			perfcommon.PollIdle(time.Millisecond)
 		}
 	}
 	return result, nil

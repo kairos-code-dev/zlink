@@ -71,6 +71,15 @@ func PostReadySettle(pattern string) {
 	time.Sleep(duration)
 }
 
+func PollIdle(timeout time.Duration) {
+	if timeout <= 0 {
+		return
+	}
+	if _, err := zlink.Poll(nil, timeout); err != nil {
+		Must(err)
+	}
+}
+
 func readySettleDuration(pattern string) time.Duration {
 	switch pattern {
 	case "PUBSUB":

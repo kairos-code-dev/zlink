@@ -148,6 +148,15 @@ func TestPollerRejectsEmptyEventSlice(t *testing.T) {
 	}
 }
 
+func TestPollEmptyItemsUsesTimeout(t *testing.T) {
+	if n, err := zlink.Poll(nil, time.Millisecond); err != nil || n != 0 {
+		t.Fatalf("Poll(nil) = (%d, %v), want (0, nil)", n, err)
+	}
+	if n, err := zlink.Poll([]zlink.PollItem{}, time.Millisecond); err != nil || n != 0 {
+		t.Fatalf("Poll(empty) = (%d, %v), want (0, nil)", n, err)
+	}
+}
+
 func TestPollerTimerEventUsesSlot(t *testing.T) {
 	timer, err := zlink.NewTimer()
 	if err != nil {

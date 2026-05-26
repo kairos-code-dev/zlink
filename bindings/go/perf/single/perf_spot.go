@@ -91,13 +91,13 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 		sent, err := publishSingleSpotActive(publisher, cfg, window.ActiveAt, payload)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
-				time.Sleep(time.Millisecond)
+				perfcommon.PollIdle(time.Millisecond)
 				continue
 			}
 			perfcommon.Must(err)
 		}
 		if !sent {
-			time.Sleep(time.Millisecond)
+			perfcommon.PollIdle(time.Millisecond)
 			continue
 		}
 		runtime.Gosched()

@@ -462,23 +462,25 @@ func (e *pollerEntry) userDataPtr() unsafe.Pointer {
 }
 
 func Poll(items []PollItem, timeout time.Duration) (int, error) {
-	if len(items) == 0 {
-		return 0, nil
-	}
-	converted := make([]C.zlink_pollitem_t, len(items))
-	for i, item := range items {
-		if item.Socket != nil {
-			converted[i].socket = item.Socket.raw()
-		}
-		converted[i].fd = C.zlink_fd_t(item.Fd)
-		converted[i].events = C.short(item.Events)
-	}
 	var errCode C.zlink_config_result_t
 	ms, err := durationToMillis(timeout)
 	if err != nil {
 		return 0, err
 	}
-	count := C.zlink_poll(&converted[0], C.int(len(converted)), C.long(ms), &errCode)
+	var rawItems *C.zlink_pollitem_t
+	var converted []C.zlink_pollitem_t
+	if len(items) > 0 {
+		converted = make([]C.zlink_pollitem_t, len(items))
+		for i, item := range items {
+			if item.Socket != nil {
+				converted[i].socket = item.Socket.raw()
+			}
+			converted[i].fd = C.zlink_fd_t(item.Fd)
+			converted[i].events = C.short(item.Events)
+		}
+		rawItems = &converted[0]
+	}
+	count := C.zlink_poll(rawItems, C.int(len(converted)), C.long(ms), &errCode)
 	if count < 0 {
 		if errCode != 0 {
 			return 0, configErrorFromResult(errCode)

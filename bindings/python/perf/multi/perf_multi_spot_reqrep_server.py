@@ -18,6 +18,8 @@ from perf_multi_common import (
     publish_control_payload,
     receive_control_payload,
     resolve_multi_connect_ready_timeout_ms,
+    new_spot_poller,
+    wait_control_readable_until,
 )
 
 
@@ -65,6 +67,9 @@ def main(argv=None):
         control_pub.set_routing_id(b"SPOT-REQREP-CONTROL-SERVER-PUB")
         control_sub.set_routing_id(b"SPOT-REQREP-CONTROL-SERVER-SUB")
         control_sub.set_subscription(TOPIC)
+        control_poller, control_events = new_spot_poller(
+            control_sub, zlink.PollEventFlag.POLLIN
+        )
 
         def on_dispatch(current_spot, info):
             if info.event != zlink.SpotDispatchEvent.ROUTED_READABLE:
@@ -105,7 +110,7 @@ def main(argv=None):
         while time.perf_counter() < deadline and not stop.is_set():
             payload_text = receive_control_payload(control_sub)
             if payload_text is None:
-                time.sleep(0.001)
+                wait_control_readable_until(control_poller, control_events, deadline)
                 continue
             if payload_text.startswith("DATA_ENDPOINT,"):
                 endpoint = payload_text.split(",", 1)[1]
@@ -142,6 +147,7 @@ def main(argv=None):
             float(os.environ.get("PERF_MULTI_DURATION_SECONDS", str(args.duration))),
         ) + float(os.environ.get("PERF_MULTI_SPOT_SERVER_IDLE_S", "2.0"))
         stop.wait(idle_seconds)
+        control_poller.close()
 
 
 if __name__ == "__main__":

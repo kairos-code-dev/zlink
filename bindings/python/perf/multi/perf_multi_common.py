@@ -270,21 +270,49 @@ def publish_control_payload(control_pub, payload, *, timeout_s=None):
         if timeout_s is not None
         else resolve_multi_connect_ready_timeout_ms() / 1000.0
     )
-    while time.perf_counter() < deadline:
-        try:
-            sent = (
-                control_pub.publish(TOPIC)
-                .message(payload)
-                .flags(zlink_mod.SendFlags.DONT_WAIT)
-                .submit()
-            )
-            if sent:
-                return True
-        except zlink_mod.SubmitError as exc:
-            if exc.result != zlink_mod.SubmitResult.BACKPRESSURED:
-                raise
-        time.sleep(0.001)
+    poller, poll_events = new_spot_poller(control_pub, zlink_mod.PollEventFlag.POLLOUT)
+    try:
+        while time.perf_counter() < deadline:
+            try:
+                sent = (
+                    control_pub.publish(TOPIC)
+                    .message(payload)
+                    .flags(zlink_mod.SendFlags.DONT_WAIT)
+                    .submit()
+                )
+                if sent:
+                    return True
+            except zlink_mod.SubmitError as exc:
+                if exc.result != zlink_mod.SubmitResult.BACKPRESSURED:
+                    raise
+            wait_spot_writable_until(poller, poll_events, deadline)
+    finally:
+        poller.close()
     return False
+
+
+def new_spot_poller(spot, events):
+    zlink_mod = _require_zlink()
+    poller = zlink_mod.Poller()
+    poll_events = zlink_mod.PollEvents(1)
+    poller.add_socket(spot, events, 0)
+    return poller, poll_events
+
+
+def wait_control_readable_until(poller, events, deadline):
+    wait_spot_poller_until(poller, events, deadline, 0.050)
+
+
+def wait_spot_writable_until(poller, events, deadline):
+    wait_spot_poller_until(poller, events, deadline, 0.010)
+
+
+def wait_spot_poller_until(poller, events, deadline, max_wait_s):
+    remaining_s = deadline - time.perf_counter()
+    if remaining_s <= 0:
+        return
+    wait_ms = max(1, int(min(remaining_s, max_wait_s) * 1000))
+    safe_poll(poller, events, wait_ms)
 
 
 def receive_control_payload(control_sub):
@@ -308,18 +336,23 @@ def receive_control_payload(control_sub):
 
 
 def wait_control_payload(control_sub, predicate, *, timeout_s=None):
+    zlink_mod = _require_zlink()
     deadline = time.perf_counter() + (
         timeout_s
         if timeout_s is not None
         else resolve_multi_connect_ready_timeout_ms() / 1000.0
     )
-    while time.perf_counter() < deadline:
-        payload = receive_control_payload(control_sub)
-        if payload is not None:
-            value = predicate(payload)
-            if value is not None:
-                return value
-        time.sleep(0.001)
+    poller, poll_events = new_spot_poller(control_sub, zlink_mod.PollEventFlag.POLLIN)
+    try:
+        while time.perf_counter() < deadline:
+            payload = receive_control_payload(control_sub)
+            if payload is not None:
+                value = predicate(payload)
+                if value is not None:
+                    return value
+            wait_control_readable_until(poller, poll_events, deadline)
+    finally:
+        poller.close()
     return None
 
 

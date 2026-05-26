@@ -21,10 +21,12 @@ from perf_multi_common import (
     print_result_lines,
     publish_control_payload,
     receive_control_payload,
+    new_spot_poller,
     resolve_multi_connect_ready_timeout_ms,
     resolve_multi_spot_control_settle_s,
     resolve_multi_spot_ready_settle_s,
     result_metrics,
+    wait_control_readable_until,
 )
 from perf_metrics import HEADER_FORMAT
 
@@ -126,6 +128,9 @@ def main(argv=None):
         control_pub.set_routing_id(b"a-python-multi-spot-control-client-pub")
         control_sub.set_routing_id(b"a-python-multi-spot-control-client-sub")
         control_sub.set_subscription(TOPIC)
+        control_poller, control_events = new_spot_poller(
+            control_sub, zlink.PollEventFlag.POLLIN
+        )
         control_endpoint = bind_spot_node_endpoint(
             control_node, args.transport, "multi-spot-control-client"
         )
@@ -163,7 +168,9 @@ def main(argv=None):
         while time.perf_counter() < direct_start_deadline:
             payload_text = receive_control_payload(control_sub)
             if payload_text is None:
-                time.sleep(0.001)
+                wait_control_readable_until(
+                    control_poller, control_events, direct_start_deadline
+                )
                 continue
             if payload_text == f"START,{args.msg_size}":
                 direct_started = True
@@ -235,6 +242,7 @@ def main(argv=None):
         _trace(f"active-end received={received_count} latencies={len(latencies)}")
         if received_count <= 0:
             raise RuntimeError("multi spot benchmark did not receive any active message")
+        control_poller.close()
         _close_all(*spots, control_sub, control_pub, control_node, data_node)
         metrics = result_metrics(
             count=received_count,

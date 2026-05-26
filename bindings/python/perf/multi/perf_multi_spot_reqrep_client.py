@@ -23,11 +23,13 @@ from perf_multi_common import (
     print_result_lines,
     publish_control_payload,
     receive_control_payload,
+    new_spot_poller,
     resolve_multi_connect_ready_timeout_ms,
     resolve_multi_spot_control_settle_s,
     resolve_multi_spot_ready_settle_s,
     result_metrics,
     stamp_payload,
+    wait_control_readable_until,
 )
 
 
@@ -186,17 +188,23 @@ def main(argv=None):
             raise RuntimeError("spot reqrep runner start handshake timeout")
 
         direct_start_deadline = time.perf_counter() + handshake_timeout_s
+        control_poller, control_events = new_spot_poller(
+            control_sub, zlink.PollEventFlag.POLLIN
+        )
         direct_started = False
         while time.perf_counter() < direct_start_deadline:
             payload_text = receive_control_payload(control_sub)
             if payload_text is None:
-                time.sleep(0.001)
+                wait_control_readable_until(
+                    control_poller, control_events, direct_start_deadline
+                )
                 continue
             if payload_text == f"START,{args.msg_size}":
                 direct_started = True
                 break
         if not direct_started:
             raise RuntimeError("spot reqrep direct start handshake timeout")
+        control_poller.close()
 
         active_deadline = time.perf_counter() + args.duration
         waiting = [False] * len(spots)

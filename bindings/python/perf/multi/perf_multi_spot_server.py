@@ -19,8 +19,11 @@ from perf_multi_common import (
     publish_control_payload,
     receive_control_payload,
     resolve_multi_connect_ready_timeout_ms,
+    new_spot_poller,
     spot_publish_nonblocking,
     stamp_payload,
+    wait_control_readable_until,
+    wait_spot_writable_until,
 )
 
 
@@ -82,6 +85,9 @@ def main(argv=None):
         control_pub.set_routing_id(b"z-python-multi-spot-control-server-pub")
         control_sub.set_routing_id(b"z-python-multi-spot-control-server-sub")
         control_sub.set_subscription(TOPIC)
+        control_poller, control_events = new_spot_poller(
+            control_sub, zlink.PollEventFlag.POLLIN
+        )
 
         data_endpoint = bind_spot_node_endpoint(data_node, args.transport, "multi-spot-data")
         control_endpoint = bind_spot_node_endpoint(
@@ -97,7 +103,9 @@ def main(argv=None):
         while time.perf_counter() < ready_deadline and not stop.is_set():
             payload_text = receive_control_payload(control_sub)
             if payload_text is None:
-                time.sleep(0.001)
+                wait_control_readable_until(
+                    control_poller, control_events, ready_deadline
+                )
                 continue
             if payload_text.startswith("READY_COUNT,"):
                 try:
@@ -125,6 +133,9 @@ def main(argv=None):
             raise RuntimeError("spot control start publish timeout")
 
         active_deadline = time.perf_counter() + active_duration_s
+        data_write_poller, data_write_events = new_spot_poller(
+            data_spot, zlink.PollEventFlag.POLLOUT
+        )
         while not stop.is_set() and time.perf_counter() < active_deadline:
             sent = spot_publish_nonblocking(
                 data_spot,
@@ -133,7 +144,11 @@ def main(argv=None):
                 [stamp_payload(payload, phase=1, run_id=run_id)],
             )
             if not sent:
-                time.sleep(0.001)
+                wait_spot_writable_until(
+                    data_write_poller, data_write_events, active_deadline
+                )
+        control_poller.close()
+        data_write_poller.close()
         _close_all(control_sub, control_pub, data_spot, control_node, data_node)
         sys.stdout.flush()
 

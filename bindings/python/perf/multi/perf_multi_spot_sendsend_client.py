@@ -21,12 +21,14 @@ from perf_multi_common import (
     publish_control_payload,
     received_metric_payload,
     receive_control_payload,
+    new_spot_poller,
     resolve_multi_connect_ready_timeout_ms,
     resolve_multi_spot_control_settle_s,
     resolve_multi_spot_ready_settle_s,
     result_metrics,
     send_to_spot_nonblocking,
     stamp_payload,
+    wait_control_readable_until,
 )
 
 
@@ -190,17 +192,23 @@ def main(argv=None):
             raise RuntimeError("spot sendsend runner start handshake timeout")
 
         direct_start_deadline = time.perf_counter() + handshake_timeout_s
+        control_poller, control_events = new_spot_poller(
+            control_sub, zlink.PollEventFlag.POLLIN
+        )
         direct_started = False
         while time.perf_counter() < direct_start_deadline:
             payload_text = receive_control_payload(control_sub)
             if payload_text is None:
-                time.sleep(0.001)
+                wait_control_readable_until(
+                    control_poller, control_events, direct_start_deadline
+                )
                 continue
             if payload_text == f"START,{args.msg_size}":
                 direct_started = True
                 break
         if not direct_started:
             raise RuntimeError("spot sendsend direct start handshake timeout")
+        control_poller.close()
 
         active_slots = _active_slot_limit(len(spots), args.msg_size)
         active_deadline = time.perf_counter() + args.duration

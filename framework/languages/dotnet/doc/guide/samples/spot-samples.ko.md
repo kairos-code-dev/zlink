@@ -915,7 +915,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 이 모델을 public 계약으로 노출하려면, actor join 은 `IZLinkSpot` 의 override
 가 아니라 다음 표면들의 조합으로 나타나야 한다.
 
-- session 의 `BindActorHandleAsync(...)`
+- session 의 `BindActorAsync(...)`
 - `IZLinkActorContext.JoinSpot(...)`
 - `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` 또는
   `[ZLinkSpotActorJoin]` method
@@ -964,7 +964,7 @@ public interface IZLinkActor
 - stream attach / disconnect 와 room join / leave 는 서로 다른 수명을 가진다.
 - framework 는 stale[^stale] disconnect 를 내부에서 걸러내고 session binding 만
   정리한다. actor 에게 disconnect 를 알려야 하면 session application 이 대상
-  actor 를 골라 `NotifyActorDisconnectedAsync(...)` 를 호출한다.
+  actor 를 골라 `NotifyDisconnectedAsync(...)` 를 호출한다.
 
 bootstrap 은 다음과 같이 읽는다. room 은 외부에서 이미 만들어져 있다고
 가정하므로, 두 노드는 각자 역할만 맡는다.
@@ -1028,7 +1028,7 @@ runtime 에 넘길 때 사용하는 session 전용 context 다.
 이미 만든 actor 를 session stream 에 붙이는 작업은
 `IZLinkSessionActorAttachmentContext` 라는 별도의 표면에서 다룬다. session
 disconnect 를 actor 에 알려야 하면 session code 가 대상 actor 를 고른 뒤
-`NotifyActorDisconnectedAsync(...)` 를 호출한다.
+`NotifyDisconnectedAsync(...)` 를 호출한다.
 
 ```csharp
 public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
@@ -1370,9 +1370,8 @@ public sealed class SampleSession
                     cancellationToken);
 
             Actor = actor;
-            var actorRef = await Context.BindActorHandleAsync(
+            var actorRef = await Context.BindActorAsync(
                 auth.AccountId,
-                auth.ActorType,
                 cancellationToken);
             ActorId = actorRef.ActorId;
 
@@ -1416,13 +1415,11 @@ public sealed class SampleSession
                 "JoinRoom is required before gameplay packets.");
         }
 
-        await Context.RelayToActorAsync(
-            ActorId is not null && Context.TryGetBoundActor(ActorId, out var actorRef)
-                ? actorRef
-                : throw new InvalidOperationException("Actor is not bound."),
-            header,
-            payload,
-            cancellationToken);
+        var actorRef = ActorId is not null
+            ? Context.FindActor(ActorId)
+            : throw new InvalidOperationException("Actor is not bound.");
+        actorRef ??= throw new InvalidOperationException("Actor is not bound.");
+        await actorRef.RelayAsync(header, payload, cancellationToken);
     }
 }
 
@@ -1483,7 +1480,7 @@ public sealed record SampleAuthenticationResult(
 
 `OnDispatchAsync(...)` 로 받은 `payload` 는 framework runtime 이 callback 동안
 빌려준 값이다. session 은 payload 를 직접 해제하거나 `Move()` 로 소비하지 않고,
-읽거나 `RelayToActorAsync(...)` 같은 framework API 에 그대로 넘긴다.
+읽거나 `IZLinkSessionActor.RelayAsync(...)` 같은 framework API 에 그대로 넘긴다.
 
 여기서 `ISampleActorFactoryRegistry` 는 `actorType -> factory` 매핑을 잡아
 두는 샘플용 registry 로 보면 된다. 인증 결과에 따라 `SampleWarriorActor`,

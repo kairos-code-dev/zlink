@@ -291,6 +291,13 @@ internal sealed class ZLinkFrameworkActorFacade(
 
     internal bool TryGetCreatedActorState(
         string actorId,
+        out ZLinkActorRuntimeState state)
+    {
+        return actorSessionManager.TryGetCreatedActorState(actorId, out state);
+    }
+
+    internal bool TryGetCreatedActorState(
+        string actorId,
         string actorType,
         out ZLinkActorRuntimeState state)
     {

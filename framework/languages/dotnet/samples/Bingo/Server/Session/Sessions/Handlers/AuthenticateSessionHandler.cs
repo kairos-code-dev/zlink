@@ -45,9 +45,8 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkClient channels)
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<EnsurePlayerActorRes>(cancellationToken) ;
 
-        await context.BindActorHandleAsync(
+        await context.BindActorAsync(
                 ToActorRef(ensured.Actor),
-                ensured.ActorType,
                 cancellationToken)
             ;
 

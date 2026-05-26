@@ -11,14 +11,14 @@ public sealed class StreamContracts
         typeof(IZLinkSessionContext),
         typeof(IZLinkSessionIdentityContext),
         typeof(IZLinkSessionClientStream),
-        typeof(IZLinkSessionActorDispatchContext),
+        typeof(IZLinkSessionActorBindingContext),
         typeof(IZLinkSessionLifecycle),
         typeof(IZLinkSessionActorAttachmentContext),
         typeof(IZLinkSessionSendCall),
         typeof(IZLinkSessionReplyCall),
         typeof(IZLinkSessionPacketHandler<>),
         typeof(IZLinkSessionPacketDispatcher<>),
-        typeof(IZLinkActorRef),
+        typeof(IZLinkSessionActor),
         typeof(IZLinkStream))]
     public async Task Session_context_collects_identity_stream_and_actor_operations()
     {
@@ -28,10 +28,9 @@ public sealed class StreamContracts
 
         await session.OnConnectedAsync(CancellationToken.None);
         await context.AttachActorAsync(actor);
-        var actorRef = await context.BindActorHandleAsync("player-1", "player");
-        var foundActor = context.TryGetBoundActor("player-1", out var boundActor);
-        await context.RelayToActorAsync(
-            actorRef,
+        var actorRef = await context.BindActorAsync(new Systems.Zlink.ActorRef(RoutingId.Of("actor-node"), "player-1", 1));
+        var boundActor = context.FindActor("player-1");
+        await actorRef.RelayAsync(
             new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Send,
                 ZlinkStreamCodec.Json,
@@ -40,7 +39,7 @@ public sealed class StreamContracts
                 "player.joined",
                 ZlinkStreamMetadata.Empty),
             new Message());
-        await context.NotifyActorDisconnectedAsync(actorRef);
+        await actorRef.NotifyDisconnectedAsync();
 
         await context
             .Send(new PlayerJoined("player-1"))
@@ -63,7 +62,6 @@ public sealed class StreamContracts
 
         Assert.Equal("session-1", session.Context.SessionId);
         Assert.Equal("player-1", actorRef.ActorId);
-        Assert.True(foundActor);
         Assert.Same(actorRef, boundActor);
         Assert.True(context.IsClosed);
         Assert.True(context.StreamClosed);
@@ -209,9 +207,9 @@ public sealed class StreamContracts
 
         public string? RemoteAddr => "tcp://127.0.0.1:5001";
 
-        private readonly Dictionary<string, IZLinkActorRef> _actors = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, IZLinkSessionActor> _actors = new(StringComparer.Ordinal);
 
-        public IReadOnlyCollection<IZLinkActorRef> BoundActors => _actors.Values.ToArray();
+        public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _actors.Values.ToArray();
 
         public bool IsClosed { get; private set; }
 
@@ -221,76 +219,36 @@ public sealed class StreamContracts
 
         public IZLinkSessionReplyCall Reply<TMessage>(TMessage message) => new SessionReplyCall();
 
-        public ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        public ValueTask<IZLinkSessionActor> BindActorAsync(
             string actorId,
-            string actorType,
             CancellationToken cancellationToken = default)
         {
-            var actor = new ActorRef(actorId, actorType);
-            _actors[actorId] = actor;
-            return ValueTask.FromResult<IZLinkActorRef>(actor);
+            return BindActorAsync(
+                new Systems.Zlink.ActorRef(Systems.Zlink.RoutingId.Of("actor-node"), actorId, 1),
+                cancellationToken);
         }
 
-        public ValueTask<IZLinkActorRef> BindActorHandleAsync(
-            string actorId,
-            string actorType,
-            ZLinkActorRemoteAddress remoteAddress,
-            CancellationToken cancellationToken = default)
-        {
-            var actor = new ActorRef(
-                actorId,
-                actorType,
-                true,
-                remoteAddress,
-                new Systems.Zlink.ActorRef(
-                    remoteAddress.TargetNodeRid,
-                    actorId,
-                    remoteAddress.ActorGeneration));
-            _actors[actorId] = actor;
-            return ValueTask.FromResult<IZLinkActorRef>(actor);
-        }
-
-        public ValueTask<IZLinkActorRef> BindActorHandleAsync(
+        public ValueTask<IZLinkSessionActor> BindActorAsync(
             Systems.Zlink.ActorRef actorRef,
-            string actorType,
             CancellationToken cancellationToken = default)
         {
-            var actor = new ActorRef(
-                actorRef.ActorId,
-                actorType,
-                true,
-                new ZLinkActorRemoteAddress(string.Empty, actorRef.NodeRid, actorRef.Generation),
-                actorRef);
+            var actor = new ActorRef(actorRef);
             _actors[actorRef.ActorId] = actor;
-            return ValueTask.FromResult<IZLinkActorRef>(actor);
+            return ValueTask.FromResult<IZLinkSessionActor>(actor);
         }
 
-        public ValueTask<IZLinkActorRef> BindActorHandleAsync(
-            IZLinkActorRef actor,
+        public ValueTask<IZLinkSessionActor> BindActorAsync(
+            IZLinkSessionActor actor,
             CancellationToken cancellationToken = default)
         {
             _actors[actor.ActorId] = actor;
             return ValueTask.FromResult(actor);
         }
 
-        public bool TryGetBoundActor(
-            string actorId,
-            out IZLinkActorRef actor)
+        public IZLinkSessionActor? FindActor(string actorId)
         {
-            return _actors.TryGetValue(actorId, out actor!);
+            return _actors.GetValueOrDefault(actorId);
         }
-
-        public ValueTask RelayToActorAsync(
-            IZLinkActorRef actor,
-            ZlinkStreamHeader header,
-            Message payload,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
-
-        public ValueTask NotifyActorDisconnectedAsync(
-            IZLinkActorRef actor,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
 
         public ValueTask CloseAsync(CancellationToken cancellationToken = default)
         {
@@ -325,27 +283,20 @@ public sealed class StreamContracts
         }
     }
 
-    private sealed class ActorRef(
-        string actorId,
-        string actorType,
-        bool isRemote = false,
-        ZLinkActorRemoteAddress remoteAddress = default,
-        Systems.Zlink.ActorRef actor = default) : IZLinkActorRef
+    private sealed class ActorRef(Systems.Zlink.ActorRef actor) : IZLinkSessionActor
     {
-        public string ActorId { get; } = actorId;
+        public string ActorId => Ref.ActorId;
 
-        public string ActorType { get; } = actorType;
+        public Systems.Zlink.ActorRef Ref { get; } = actor;
 
-        public Systems.Zlink.ActorRef Actor { get; } = actor.Equals(default)
-            ? new Systems.Zlink.ActorRef(
-                remoteAddress.TargetNodeRid.IsEmpty ? RoutingId.Of("actor-node") : remoteAddress.TargetNodeRid,
-                actorId,
-                remoteAddress.ActorGeneration == 0 ? 1 : remoteAddress.ActorGeneration)
-            : actor;
+        public ValueTask RelayAsync(
+            ZlinkStreamHeader header,
+            Message payload,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
 
-        public bool IsRemote { get; } = isRemote;
-
-        public ZLinkActorRemoteAddress RemoteAddress { get; } = remoteAddress;
+        public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
     }
 
     private sealed class ExampleActor(string actorId) : IZLinkActor

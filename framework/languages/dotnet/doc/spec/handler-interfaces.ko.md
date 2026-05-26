@@ -54,10 +54,10 @@
 | context | `IZLinkSessionContext` | stream session의 send/reply, actor dispatch 표면 | 4.4 |
 | context | `IZLinkSessionIdentityContext` | stream session identity 조회 | 4.4 |
 | context | `IZLinkSessionClientStream` | session에서 client stream으로 send/reply | 4.4 |
-| context | `IZLinkSessionActorDispatchContext` | session에서 actor handle binding과 dispatch 수행 | 4.4 |
+| context | `IZLinkSessionActorBindingContext` | session에서 actor handle bind와 lookup 수행 | 4.4 |
 | context | `IZLinkSessionLifecycle` | session close 제어 | 4.4 |
 | context | `IZLinkSessionActorAttachmentContext` | 이미 만든 actor를 session stream에 attach | 4.4 |
-| value | `IZLinkActorRef` | session이 actor dispatch target으로 들고 있는 handle | 4.4.1 |
+| value | `IZLinkSessionActor` | session이 actor dispatch target으로 들고 있는 handle | 4.4.1 |
 | handler | `IZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
 | manager | `IZLinkActorManager` | actor id와 actor type으로 actor 생성, 조회, 재사용 | 4.4.1 |
 | context | `IZLinkActorContext` | actor 상태 조회와 spot join 호출 | 4.4.1 |
@@ -925,7 +925,7 @@ public interface IZLinkSpotActorDisconnectedHandler<TSpot, TActor>
 
 actor disconnected handler 는 join/leave lifecycle 과 별개다. session 이
 끊겼다는 사실을 actor 에 알려야 할 때 application 이
-`NotifyActorDisconnectedAsync(...)` 로 대상 actor 를 명시하면 호출된다. 이
+`NotifyDisconnectedAsync(...)` 로 대상 actor 를 명시하면 호출된다. 이
 callback 은 actor membership 을 바꾸지 않는다.
 
 lifecycle 도 attribute 방식으로 선언할 수 있다.
@@ -1249,43 +1249,23 @@ public interface IZLinkSessionClientStream
     IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
 }
 
-public interface IZLinkSessionActorDispatchContext
+public interface IZLinkSessionActorBindingContext
 {
-    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         string actorId,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        string actorId,
-        string actorType,
-        ZLinkActorRemoteAddress remoteAddress,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         ActorRef actor,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        IZLinkActorRef actor,
+    ValueTask<IZLinkSessionActor> BindActorAsync(
+        IZLinkSessionActor actor,
         CancellationToken cancellationToken = default);
 
-    bool TryGetBoundActor(
-        string actorId,
-        out IZLinkActorRef actor);
-
-    ValueTask RelayToActorAsync(
-        IZLinkActorRef actor,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask NotifyActorDisconnectedAsync(
-        IZLinkActorRef actor,
-        CancellationToken cancellationToken = default);
+    IZLinkSessionActor? FindActor(string actorId);
 }
 
 public interface IZLinkActorManager
@@ -1321,7 +1301,7 @@ public interface IZLinkSessionActorAttachmentContext
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
     IZLinkSessionClientStream,
-    IZLinkSessionActorDispatchContext,
+    IZLinkSessionActorBindingContext,
     IZLinkSessionLifecycle;
 
 public interface IZLinkSessionSendCall
@@ -1414,7 +1394,7 @@ optional detail 로 본다.
 - header session
   - `OnDispatchAsync(...)`로 framework가 decode 한 `ZlinkStreamHeader`와
     `Message` payload를 받는다.
-  - callback 안에서 payload 를 바로 읽거나 `RelayToActorAsync(...)` 로 넘길
+  - callback 안에서 payload 를 바로 읽거나 `IZLinkSessionActor.RelayAsync(...)` 로 넘길
     수 있다. framework runtime 이 수신 payload 를 해제하므로 session handler 는
     `Dispose()` 나 `Move()` 를 기본 사용법으로 쓰지 않는다. callback 뒤에도
     보관할 때만 `Copy()` 또는 `Move()` 를 사용한다.
@@ -1562,24 +1542,30 @@ actor packet 실행 계약은 다음과 같이 둔다.
   문맥에서 직렬화된다.
 
 actor 실행 객체와 session dispatch handle 은 분리해서 다룬다. session 은
-`IZLinkActorRef` 를 저장하고 dispatch 에 사용한다.
+`IZLinkSessionActor` 를 저장하고 dispatch 에 사용한다.
 
 `IZLinkActor` 는 actor node 에서 생성되는 application 객체다. framework
 가 `Context` 를 설정한 다음, `Configure()` 를 한 번 호출한다. 그 이후의
 callback signature 는 context 인자를 매번 다시 받지 않는다.
 
 actor handler 계약은 actor 런타임이 소유하므로 `Zlink.Framework.Contracts.Actors`
-namespace 에 둔다. session 은 `IZLinkSessionActorDispatchContext` 로 packet 을
-actor 에 전달할 뿐이고, handler 선택과 실행은 actor runtime 이 처리한다.
+namespace 에 둔다. session 은 `IZLinkSessionActorBindingContext` 로 actor handle 을
+bind 하거나 찾고, packet 전달은 `IZLinkSessionActor.RelayAsync(...)` 로 요청한다.
+handler 선택과 실행은 actor runtime 이 처리한다.
 
 ```csharp
-public interface IZLinkActorRef
+public interface IZLinkSessionActor
 {
-    string ActorId { get; }
-    string ActorType { get; }
-    ActorRef Actor { get; }
-    bool IsRemote { get; }
-    ZLinkActorRemoteAddress? RemoteAddress { get; }
+    string ActorId => Ref.ActorId;
+    ActorRef Ref { get; }
+
+    ValueTask RelayAsync(
+        ZlinkStreamHeader header,
+        Message payload,
+        CancellationToken cancellationToken = default);
+
+    ValueTask NotifyDisconnectedAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActor
@@ -2377,7 +2363,7 @@ publish 도 send 와 동일한 성능 규칙을 따른다. 즉 다음과 같이 
 ### 5.5 Actor Route Resolver
 
 session 에서 actor 로 packet 을 relay 할 때는 `IZLinkSessionContext` 의
-`RelayToActorAsync(...)` 를 사용한다. actor runtime 을 직접 호출하는 별도
+`IZLinkSessionActor.RelayAsync(...)` 를 사용한다. actor runtime 을 직접 호출하는 별도
 public client 는 두지 않는다.
 
 remote actor 위치는 session 이 직접 계산하지 않는다. session 은 actor id/type 으로

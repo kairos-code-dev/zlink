@@ -2,7 +2,7 @@ using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Streams;
 
-namespace TicTacToe.SessionGateway.Server.Session.Sessions;
+namespace TicTacToe.SessionGateway.Session.Sessions;
 
 internal sealed class SessionRelaySession(
     IZLinkSessionContext context,
@@ -47,15 +47,14 @@ internal sealed class SessionRelaySession(
 
         cancellationToken.ThrowIfCancellationRequested();
         var actor = RequireSingleBoundActor($"relaying packet '{header.Name}'");
-        await Context.RelayToActorAsync(
-                actor,
+        await actor.RelayAsync(
                 header,
                 payload,
                 cancellationToken)
             ;
     }
 
-    private IZLinkActorRef RequireSingleBoundActor(string action)
+    private IZLinkSessionActor RequireSingleBoundActor(string action)
     {
         var actors = Context.BoundActors;
         return actors.Count switch

@@ -264,7 +264,7 @@ public sealed record BingoGameEndedNotify(BingoRoomState State);
    확인한다.
 4. `SessionServer` 는 `PlayServer` 로 player actor 준비를 요청하고, 응답으로
    actor id/type 과 remote address 를 받는다.
-5. `SessionServer` 는 remote address 를 받는 `BindActorHandleAsync(...)` 호출로
+5. `SessionServer` 는 remote address 를 받는 `BindActorAsync(...)` 호출로
    현재 stream session 과 actor 를 bind 한다. remote address 는 Play 서버 runtime 이 발급한
    ActorGateway locator 이며 application route mesh channel 설정이 아니다.
 6. client 는 `AuthenticateRes` 로 `ActorId` 와 `DisplayName` 을 받는다.

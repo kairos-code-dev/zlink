@@ -8,7 +8,7 @@ internal sealed class ZLinkFrameworkSessionBindings
         string actorId,
         ZLinkSessionContext context,
         string bindingToken,
-        ZLinkActorRef actorRef)
+        ZLinkSessionActor actorRef)
     {
         _sessionActorBindings.Bind(actorId, context, bindingToken, actorRef);
     }

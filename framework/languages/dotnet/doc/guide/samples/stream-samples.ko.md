@@ -83,33 +83,19 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSessionActorDispatchContext
+public interface IZLinkSessionActorBindingContext
 {
-    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         string actorId,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         ActorRef actor,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    bool TryGetBoundActor(
-        string actorId,
-        out IZLinkActorRef actor);
-
-    ValueTask RelayToActorAsync(
-        IZLinkActorRef actor,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask NotifyActorDisconnectedAsync(
-        IZLinkActorRef actor,
-        CancellationToken cancellationToken = default);
+    IZLinkSessionActor? FindActor(string actorId);
 }
 
 public interface IZLinkActorManager
@@ -129,17 +115,19 @@ public interface IZLinkActorManager
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorRef
+public interface IZLinkSessionActor
 {
-    string ActorId { get; }
+    string ActorId => Ref.ActorId;
 
-    string ActorType { get; }
+    ActorRef Ref { get; }
 
-    ActorRef Actor { get; }
+    ValueTask RelayAsync(
+        ZlinkStreamHeader header,
+        Message payload,
+        CancellationToken cancellationToken = default);
 
-    bool IsRemote { get; }
-
-    ZLinkActorRemoteAddress? RemoteAddress { get; }
+    ValueTask NotifyDisconnectedAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionActorAttachmentContext
@@ -152,7 +140,7 @@ public interface IZLinkSessionActorAttachmentContext
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
     IZLinkSessionClientStream,
-    IZLinkSessionActorDispatchContext,
+    IZLinkSessionActorBindingContext,
     IZLinkSessionLifecycle;
 ```
 

@@ -159,7 +159,7 @@ public interface IZLinkActor
 actor 자체에는 disconnect callback 을 두지 않는다. actor 는 Entry Spot 또는
 user Spot 문맥 안에서 동작하므로, session 끊김을 actor 에 알려야 하는 경우에도
 application 이 session callback 에서 대상 actor 를 고른 뒤
-`IZLinkSessionActorDispatchContext.NotifyActorDisconnectedAsync(...)` 를 호출한다.
+`IZLinkSessionActor.NotifyDisconnectedAsync(...)` 를 호출한다.
 framework 는 그 actor 의 현재 Spot 실행 문맥에서 별도 actor disconnected handler 를
 호출하며, actor 를 room 에서 자동으로 leave 시키지 않는다.
 
@@ -588,11 +588,11 @@ dispatch 되지 않는다.
 ## 6. Actor Route Resolution
 
 session 이 actor 로 packet 을 relay 할 때는 `IZLinkSession.OnDispatchAsync(...)`
-에서 actor handle 을 만들거나 찾은 뒤 `RelayToActorAsync(...)` 를 호출한다.
+에서 actor handle 을 만들거나 찾은 뒤 `IZLinkSessionActor.RelayAsync(...)` 를 호출한다.
 application 이 actor runtime 을 직접 호출하는 별도 public client 는 두지 않는다.
 이때 session callback 으로 받은 payload 는 framework runtime 이 callback 동안
 빌려준 값이다. session 은 이를 직접 해제하거나 `Move()` 로 소비하지 않고,
-`RelayToActorAsync(...)` 에 그대로 넘긴다. remote ActorGateway 로 보내기 위해
+`IZLinkSessionActor.RelayAsync(...)` 에 그대로 넘긴다. remote ActorGateway 로 보내기 위해
 필요한 내부 frame 은 framework 가 별도로 만든다.
 
 remote actor 위치 해석은 public resolver 가 아니라 core ActorGateway 경로가 맡는다.
@@ -700,65 +700,63 @@ public interface IZLinkSessionActorAttachmentContext
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkSessionActorDispatchContext
+public interface IZLinkSessionActorBindingContext
 {
-    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         string actorId,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        string actorId,
-        string actorType,
-        ZLinkActorRemoteAddress remoteAddress,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         ActorRef actor,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        IZLinkActorRef actor,
+    ValueTask<IZLinkSessionActor> BindActorAsync(
+        IZLinkSessionActor actor,
         CancellationToken cancellationToken = default);
 
-    bool TryGetBoundActor(
-        string actorId,
-        out IZLinkActorRef actor);
+    IZLinkSessionActor? FindActor(string actorId);
 
-    ValueTask RelayToActorAsync(...);
+}
+```
 
-    ValueTask NotifyActorDisconnectedAsync(...);
+`IZLinkSessionActor` 는 session 에 bind 된 actor handle 이며, handle 자체가
+stream packet relay 와 disconnect notification 을 수행한다.
+
+```csharp
+public interface IZLinkSessionActor
+{
+    string ActorId => Ref.ActorId;
+    ActorRef Ref { get; }
+
+    ValueTask RelayAsync(...);
+
+    ValueTask NotifyDisconnectedAsync(...);
 }
 ```
 
 - `AttachActorAsync(...)` -- 이미 만든 actor 인스턴스를 현재 session 에
   attach 한다. session cleanup 은 binding 을 정리하지만 actor disconnect
   callback 을 자동으로 호출하지 않는다.
-- `BindActorHandleAsync(actorId, actorType, ...)` -- logical actor handle 을 얻고,
+- `BindActorAsync(actorId, ...)` -- logical actor handle 을 얻고,
   현재 actor-session binding 을 기록한다. 이 local overload 는 actor 를 새로 만들지 않는다.
-- `BindActorHandleAsync(actorId, actorType, remoteAddress, ...)` -- 다른 process 의
-  ActorGateway 에 있는 actor 를 bind 한다. `remoteAddress` 는 actor host runtime 이
-  발급한 locator 여야 한다. 새 코드에서는 join 결과의 `ActorRef` 를 받는 overload 를
-  우선 사용한다.
-- `BindActorHandleAsync(actorRef, actorType, ...)` -- `JoinSpot(...)` /
+- `BindActorAsync(actorRef, ...)` -- `JoinSpot(...)` /
   `JoinEntrySpot(...)` 결과가 돌려준 최종 ActorRef 로 session binding 을 만든다.
-- `BindActorHandleAsync(actor, ...)` -- 이미 받은 actor handle 을 현재 session 에
+- `BindActorAsync(actor, ...)` -- 이미 받은 actor handle 을 현재 session 에
   다시 묶을 때 쓴다.
 - `BoundActors` -- 현재 session 에 bind 된 actor handle snapshot 이다.
-- `NotifyActorDisconnectedAsync(actor, ...)` -- session application 이 선택한
+- `actor.NotifyDisconnectedAsync(...)` -- session application 이 선택한
   actor 하나에 disconnect notification 을 전달한다. 이 호출은 actor membership
   을 변경하지 않는다.
-- `TryGetBoundActor(actorId, out actor)` -- 현재 session 에 이미 bind 된 actor
+- `FindActor(actorId)` -- 현재 session 에 이미 bind 된 actor
   handle 을 actor id 로 찾는다. 한 session 이 여러 actor 를 bind 할 수 있으므로
   framework 의 session binding 을 조회하고, application 이 actor handle 목록을
   따로 복제하지 않게 한다.
-- `RelayToActorAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
+- `actor.RelayAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
   보통 framework 가 자동으로 처리한다.
 - session disconnect 는 actor 에게 자동 전파되지 않는다. 알림이 필요하면 session
-  code 가 대상 actor 를 고른 뒤 `NotifyActorDisconnectedAsync(...)` 를 호출한다.
+  code 가 대상 actor 를 고른 뒤 `actor.NotifyDisconnectedAsync(...)` 를 호출한다.
 
 session callback 에서 unbound standalone actor 를 만드는 표면은 두지 않는다.
 standalone actor 가 필요하다면 actor node 측에서 별도의 등록 표면을 쓴다 (예:
@@ -778,13 +776,13 @@ sequenceDiagram
 
     C->>S: STREAM connect + authenticate
     S->>S: 인증 (AuthenticateReq → actorId)
-    S->>Act: BindActorHandleAsync(actorId, "player")
+    S->>Act: BindActorAsync(actorId)
     Note over Act: bind는 actor를 새로 만들지 않음
     S->>G: Bind sessionRid to logical actor
 
     Note over C,Act: 이후 client packet
     C->>S: PlaceMarkReq
-    S->>G: RelayToActorAsync(...)
+    S->>G: actor.RelayAsync(...)
     G->>Act: Dispatch by current actor route
     Act->>Act: handler 실행
 
@@ -792,7 +790,7 @@ sequenceDiagram
     C-->>S: 끊김
     S->>G: Conditional unbind by session token
     opt application decides to notify this actor
-        S->>G: NotifyActorDisconnectedAsync(actor)
+        S->>G: actor.NotifyDisconnectedAsync()
         G->>Act: Spot actor disconnected handler
     end
 ```
@@ -998,7 +996,7 @@ actor-session binding 은 framework / core runtime 내부에서 관리한다. �
 역할을 나누어 보면 다음과 같다.
 
 - Session 서버는 인증 후 Play 서버의 ensure actor 응답이나 `JoinEntrySpot(...)` 결과에서
-  ActorRef 와 actor type 을 받고, `BindActorHandleAsync(actorRef, actorType, ...)` 로
+  ActorRef 를 받고, `BindActorAsync(actorRef, ...)` 로
   actor handle 과 session binding 을 얻는다.
 - Play 서버는 `IZLinkActorManager.GetOrCreateAsync(...)` 로 actor 를 준비한 뒤
   필요한 Entry Spot/User Spot join 을 수행하고, join 결과의 ActorRef 를 응답에 싣는다.

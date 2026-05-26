@@ -26,7 +26,7 @@
 
 | 축 | `.NET` 표면 |
 |----|-------------|
-| session → actor relay | `IZLinkSessionContext.BindActorHandleAsync(...)`, `RelayToActorAsync(...)` |
+| session → actor relay | `IZLinkSessionContext.BindActorAsync(...)`, `IZLinkSessionActor.RelayAsync(...)` |
 | actor handler | `IZLinkActorSendHandler<TMessage>`, `IZLinkActorRequestHandler<TRequest, TReply>`, `IZLinkActorPacketHandler<TActor, TMessage>`, `IZLinkActorRequestHandler<TActor, TRequest, TReply>` |
 | spot actor handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
 | actor → own client push | `context.BoundSession.Send(msg).Submit(...)` |
@@ -580,60 +580,36 @@ public request / reply 경로가 아니다. 그저 work item 을 queue 에 안�
 넘기는지를 다룬다.
 
 session callback 안에서 actor 에게 packet 을 넘기는 public 표면은
-`RelayToActorAsync(...)` 같은 helper 다. 이 helper 는 session queue 를 actor
-실행 queue 로 이어 주는 bridge 역할을 한다.
+bind 결과로 받은 `IZLinkSessionActor.RelayAsync(...)` 다. 이 handle method 는
+session queue 를 actor 실행 queue 로 이어 주는 bridge 역할을 한다.
 
 session callback 으로 들어온 `Message payload` 는 framework runtime 이 소유한
-수신 payload 를 callback 동안 빌려준 값이다. 따라서 `RelayToActorAsync(...)`
+수신 payload 를 callback 동안 빌려준 값이다. 따라서 `RelayAsync(...)`
 는 caller payload 를 해제하거나 `Move()` 로 소비하지 않는다. actor 실행 queue 로
 수명이 넘어가야 하는 경우에는 framework 내부에서 별도 copy 또는 move 대상
 message 를 만들어 소유권을 분리한다.
 
 ```csharp
-internal sealed class ZLinkSessionContext : IZLinkSessionContext
+internal sealed class ZLinkSessionActor : IZLinkSessionActor
 {
-    private readonly ZLinkActorDispatchRuntime _actorDispatch;
-    private readonly ZLinkActorBindingTable _bindings;
+    private readonly ZLinkSessionContext _context;
 
-    public async ValueTask RelayToActorAsync(
-        IZLinkActorRef actorRef,
+    public async ValueTask RelayAsync(
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken)
     {
-        var binding = _bindings.GetCurrentBinding(actorRef.ActorId);
-
-        await _actorDispatch.PostFromSessionAsync(
-            actorRef,
-            binding,
-            header,
-            payload,
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    public async ValueTask<TReply> RequestActorAsync<TReply>(
-        IZLinkActorRef actorRef,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken)
-    {
-        var binding = _bindings.GetCurrentBinding(actorRef.ActorId);
-
-        return await _actorDispatch.InvokeFromSessionAsync<TReply>(
-            actorRef,
-            binding,
-            header,
-            payload,
-            cancellationToken).ConfigureAwait(false);
+        await _context.RelayActorRefAsync(this, header, payload, cancellationToken)
+            .ConfigureAwait(false);
     }
 }
 ```
 
 두 helper 는 끝나는 시점이 다르다.
 
-- send 성격의 `RelayToActorAsync(...)` 는 actor 의 실행 줄에 packet 을 넣는
+- send 성격의 `RelayAsync(...)` 는 actor 의 실행 줄에 packet 을 넣는
   데 성공한 시점에 끝난다.
-- 반면 request 성격의 `RequestActorAsync<TReply>(...)` 는 actor handler 가 만든
+- 반면 request 성격의 actor relay 는 actor handler 가 만든
   reply 를 받을 때까지 기다린다.
 
 두 경우 모두 같은 actor 로 들어간 packet 의 enqueue 순서는 그대로 보존해야
@@ -674,7 +650,7 @@ internal sealed class ZLinkActorDispatchRuntime
     }
 
     public async ValueTask PostFromSessionAsync(
-        IZLinkActorRef actorRef,
+        IZLinkSessionActor actorRef,
         ZLinkActorBoundSession binding,
         ZlinkStreamHeader header,
         Message payload,
@@ -694,7 +670,7 @@ internal sealed class ZLinkActorDispatchRuntime
     }
 
     public async ValueTask<TReply> InvokeFromSessionAsync<TReply>(
-        IZLinkActorRef actorRef,
+        IZLinkSessionActor actorRef,
         ZLinkActorBoundSession binding,
         ZlinkStreamHeader header,
         Message payload,
@@ -717,7 +693,7 @@ internal sealed class ZLinkActorDispatchRuntime
     }
 
     private ValueTask<ZLinkSerialWorkItem> EnqueueByCurrentLocationAsync(
-        IZLinkActorRef actorRef,
+        IZLinkSessionActor actorRef,
         ZLinkActorDispatchWorkItem item,
         CancellationToken cancellationToken)
     {
@@ -1079,7 +1055,7 @@ await Context.BoundSession
 기존에 사용하던 `SessionGateway` 라는 이름은 새 public API 에서 제거한다.
 이름이 두 갈래로 정리된다.
 
-- session → actor 방향: `BindActorHandleAsync(...)`, `RelayToActorAsync(...)` 를 사용한다.
+- session → actor 방향: `BindActorAsync(...)`, `IZLinkSessionActor.RelayAsync(...)` 를 사용한다.
   disconnect 알림과 binding cleanup 은 session lifecycle 경로에서 처리한다.
 - actor → 자기 client 방향: `IZLinkBoundSession` 를 사용한다.
 - 다른 actor 의 client session 에 보내야 하는 application service 는 먼저 대상
@@ -1104,7 +1080,7 @@ client 처리 완료 ack 가 계약상 필요하면, actor message 나 session m
 표면을 제공하지 않는다.
 
 재접속은 actor id 기준으로 idempotent 해야 한다. 같은 actor id 가 새 stream
-session 에서 `BindActorHandleAsync(...)` 로 다시 들어오면, framework 는 다음과
+session 에서 `BindActorAsync(...)` 로 다시 들어오면, framework 는 다음과
 같이 동작한다.
 
 - 기존 actor instance 와 spot membership 은 그대로 유지한다.
@@ -1118,63 +1094,46 @@ session 에서 `BindActorHandleAsync(...)` 로 다시 들어오면, framework �
 session actor dispatch 에서 session 은 actor runtime 을 직접 호출하는 범용
 public client 를 사용하지 않는다. client stream 에서 받은 packet 은
 `IZLinkSession.OnDispatchAsync(...)` 로 올라오고, session 구현은 actor handle 을
-만든 뒤 `RelayToActorAsync(...)` 로 전달한다.
+만든 뒤 `IZLinkSessionActor.RelayAsync(...)` 로 전달한다.
 
 ```csharp
-public interface IZLinkSessionActorDispatchContext
+public interface IZLinkSessionActorBindingContext
 {
-    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         string actorId,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        string actorId,
-        string actorType,
-        ZLinkActorRemoteAddress remoteAddress,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         ActorRef actor,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        IZLinkActorRef actor,
+    ValueTask<IZLinkSessionActor> BindActorAsync(
+        IZLinkSessionActor actor,
         CancellationToken cancellationToken = default);
 
-    bool TryGetBoundActor(
-        string actorId,
-        out IZLinkActorRef actor);
-
-    ValueTask RelayToActorAsync(
-        IZLinkActorRef actor,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask NotifyActorDisconnectedAsync(
-        IZLinkActorRef actor,
-        CancellationToken cancellationToken = default);
+    IZLinkSessionActor? FindActor(string actorId);
 }
 ```
 
 이 표면만 남기면 session 코드의 의도가 분명해진다. session 은 "받은 client
-packet 을 어떤 actor 에 relay 할지"만 결정한다. 같은 process 의 actor 는 actor id/type
+packet 을 어떤 actor 에 relay 할지"만 결정한다. 같은 process 의 actor 는 actor id
 overload 로 bind 할 수 있고, 다른 process 의 actor 는 `JoinSpot(...)` /
-`JoinEntrySpot(...)` 이 반환한 최종 `ActorRef` 를 넘기는 overload 로 bind 한다. 기존
-`ZLinkActorRemoteAddress` overload 는 locator 기반 입력이 이미 있는 경우에만 사용한다.
+`JoinEntrySpot(...)` 이 반환한 최종 `ActorRef` 를 넘기는 overload 로 bind 한다.
 한 session 이 여러 actor 를 bind 할 수 있으므로 이미 bind 한 actor handle 이 필요하면
-`BoundActors` 로 현재 binding snapshot 을 보거나 `TryGetBoundActor(actorId, out actor)` 로
+`BoundActors` 로 현재 binding snapshot 을 보거나 `FindActor(actorId)` 로
 actor id 기준 조회를 한다. session 은 actor handle 목록을 별도 application 상태로
 복제하지 않는다.
 
+packet relay 와 disconnect notification 은 bind 결과로 받은 `IZLinkSessionActor` 가
+수행한다. 즉 session code 는 대상 handle 을 고른 뒤 `actor.RelayAsync(...)` 또는
+`actor.NotifyDisconnectedAsync(...)` 를 호출한다.
+
 session disconnect 는 bound actor 전체에 자동 전파되지 않는다. 연결이 끊겼을 때
 어떤 actor 에게 알려야 하는지는 application 이 판단한다. 알림이 필요한 경우
-`OnDisconnectedAsync(...)` 안에서 `TryGetBoundActor(...)` 또는 `BoundActors` 로
-대상을 고른 뒤 `NotifyActorDisconnectedAsync(actor, ...)` 를 호출한다. 이 호출은
+`OnDisconnectedAsync(...)` 안에서 `FindActor(...)` 또는 `BoundActors` 로
+대상을 고른 뒤 `actor.NotifyDisconnectedAsync(...)` 를 호출한다. 이 호출은
 actor 의 현재 Spot 실행 문맥에서 disconnected handler 를 실행할 뿐이며, actor 를
 room 에서 leave 시키지 않는다.
 
@@ -1354,7 +1313,7 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
         {
             AuthReq request = payload.Decode<AuthReq>();
 
-            IZLinkActorRef actor = await context.BindActorHandleAsync(
+            IZLinkSessionActor actor = await context.BindActorAsync(
                 request.ActorId,
                 request.ActorType,
                 cancellationToken);
@@ -1366,13 +1325,9 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
             return;
         }
 
-        if (authenticatedActors.TryGet(header, out IZLinkActorRef actor))
+        if (authenticatedActors.TryGet(header, out IZLinkSessionActor actor))
         {
-            await context.RelayToActorAsync(
-                actor,
-                header,
-                payload,
-                cancellationToken);
+            await actor.RelayAsync(header, payload, cancellationToken);
             return;
         }
 
@@ -1470,7 +1425,7 @@ public enum ZLinkFrameworkErrorKind
 `IZLinkActorManager` 로 local actor 를 준비할 때 사용한다.
 `SpotCreateFailed`, `SpotTypeMismatch` 는 `IZLinkSpotManager` 로 local 또는
 framework-routed spot 을 만들거나 확보할 때 사용한다.
-`BindActorHandleAsync(...)` 와 routed actor dispatch 수신 경로는 actor 를
+`BindActorAsync(...)` 와 routed actor dispatch 수신 경로는 actor 를
 생성하지 않는다. bind 는 logical actor handle 을 core ActorGateway binding 으로 넘기며,
 actor remote address resolver 를 fallback 으로 호출하지 않는다. actor 를 찾을 수 없거나
 gateway 경로로 relay 할 수 없으면 `ActorRouteNotFound` 로 분류한다. 현재 actor 에
@@ -1539,7 +1494,7 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 |---------------|-----------|
 | `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session callback에서 actor request를 relay하고, request sequence를 통해 reply를 되돌린다. |
 | `ActorDisconnectNotifyTests.ClientClose_Cleans_Session_Without_Actor_Disconnect_Callback` | client stream close 는 session binding cleanup 만 수행하고 Actor disconnect callback 을 호출하지 않는다. |
-| `ActorBindingTests.BindActorHandleAsync_DoesNot_Create_LocalActor` | logical actor binding 은 session attach 중 local actor 를 새로 만들지 않는다. |
+| `ActorBindingTests.BindActorAsync_DoesNot_Create_LocalActor` | logical actor binding 은 session attach 중 local actor 를 새로 만들지 않는다. |
 | `ActorBindingTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | route 없는 bind overload 는 local actor 에만 붙고 remote fallback 을 수행하지 않는다. |
 | `RemoteProxyDisconnectTests.BoundSessionDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 `BoundSession.DisconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
 | `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 actor별 순서를 지키되, 서로 다른 actor를 전역으로 막지 않는다. |

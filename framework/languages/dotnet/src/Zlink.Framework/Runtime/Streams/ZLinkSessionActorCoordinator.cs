@@ -7,65 +7,36 @@ internal sealed class ZLinkSessionActorCoordinator(
     private readonly ZLinkSessionActorBindingRegistry _bindings = new(runtime);
     private IZLinkActor? _attachedActor;
 
-    public IReadOnlyCollection<IZLinkActorRef> BoundActors => _bindings.BoundActors;
+    public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _bindings.BoundActors;
 
-    public async ValueTask<IZLinkActorRef> BindHandleAsync(
+    public async ValueTask<IZLinkSessionActor> BindActorAsync(
         ZLinkSessionContext context,
         string actorId,
-        string actorType,
         CancellationToken cancellationToken)
     {
-        var actorRef = ResolveActorRefForBinding(actorId, actorType);
+        var actorRef = ResolveActorRefForBinding(actorId);
         await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
         return await _bindings.BindAsync(
             context,
-            actorType,
             ToPublicActorRef(actorRef),
-            ToRemoteAddress(actorRef),
-            isRemote: false,
             cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask<IZLinkActorRef> BindHandleAsync(
-        ZLinkSessionContext context,
-        string actorId,
-        string actorType,
-        ZLinkActorRemoteAddress remoteAddress,
-        CancellationToken cancellationToken)
-    {
-        EnsureConcreteRemoteAddress(remoteAddress);
-        return await BindHandleAsync(
-                context,
-                new ActorRef(
-                    remoteAddress.TargetNodeRid,
-                    actorId,
-                    remoteAddress.ActorGeneration),
-                actorType,
-                isRemote: true,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<IZLinkActorRef> BindHandleAsync(
+    public async ValueTask<IZLinkSessionActor> BindActorAsync(
         ZLinkSessionContext context,
         ActorRef actor,
-        string actorType,
         CancellationToken cancellationToken)
     {
-        return await BindHandleAsync(
+        return await BindActorCoreAsync(
                 context,
                 actor,
-                actorType,
-                isRemote: true,
                 cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private async ValueTask<IZLinkActorRef> BindHandleAsync(
+    private async ValueTask<IZLinkSessionActor> BindActorCoreAsync(
         ZLinkSessionContext context,
         ActorRef actor,
-        string actorType,
-        bool isRemote,
         CancellationToken cancellationToken)
     {
         EnsureConcreteActorRef(actor);
@@ -73,47 +44,29 @@ internal sealed class ZLinkSessionActorCoordinator(
             actor.NodeRid,
             actor.ActorId,
             actor.Generation);
-        var remoteAddress = ToRemoteAddress(actorRef);
         await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
         return await _bindings.BindAsync(
             context,
-            actorType,
             actor,
-            remoteAddress,
-            isRemote,
             cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask<IZLinkActorRef> BindHandleAsync(
+    public async ValueTask<IZLinkSessionActor> BindActorAsync(
         ZLinkSessionContext context,
-        IZLinkActorRef actor,
+        IZLinkSessionActor actor,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(actor);
-        if (actor.IsRemote)
-        {
-            return await BindHandleAsync(
-                    context,
-                    actor.Actor,
-                    actor.ActorType,
-                    isRemote: true,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        return await BindHandleAsync(
+        return await BindActorCoreAsync(
                 context,
-                actor.ActorId,
-                actor.ActorType,
+                actor.Ref,
                 cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public bool TryGetBoundActor(
-        string actorId,
-        out IZLinkActorRef actor)
+    public IZLinkSessionActor? FindActor(string actorId)
     {
-        return _bindings.TryGetBoundActor(actorId, out actor);
+        return _bindings.FindActor(actorId);
     }
 
     public async ValueTask AttachAsync(
@@ -126,13 +79,13 @@ internal sealed class ZLinkSessionActorCoordinator(
     }
 
     public async ValueTask RelayToActorAsync(
-        IZLinkActorRef actor,
+        IZLinkSessionActor actor,
         ZlinkStreamHeader header,
         Message payload,
         Func<ZlinkStreamHeader, ZlinkStreamCodec, ReadOnlyMemory<byte>, CancellationToken, ValueTask> replyRawAsync,
         CancellationToken cancellationToken)
     {
-        if (actor is not ZLinkActorRef actorRef)
+        if (actor is not ZLinkSessionActor actorRef)
         {
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
         }
@@ -149,10 +102,10 @@ internal sealed class ZLinkSessionActorCoordinator(
     }
 
     public async ValueTask NotifyActorDisconnectedAsync(
-        IZLinkActorRef actor,
+        IZLinkSessionActor actor,
         CancellationToken cancellationToken)
     {
-        if (actor is not ZLinkActorRef actorRef)
+        if (actor is not ZLinkSessionActor actorRef)
         {
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
         }
@@ -177,7 +130,7 @@ internal sealed class ZLinkSessionActorCoordinator(
     }
 
     private async ValueTask DispatchLocalAsync(
-        ZLinkActorRef actorRef,
+        ZLinkSessionActor actorRef,
         ZlinkStreamHeader header,
         Message payload,
         Func<ZlinkStreamHeader, ZlinkStreamCodec, ReadOnlyMemory<byte>, CancellationToken, ValueTask> replyRawAsync,
@@ -205,9 +158,9 @@ internal sealed class ZLinkSessionActorCoordinator(
             .ConfigureAwait(false);
     }
 
-    private ZLinkBackendActorRef ResolveActorRefForBinding(string actorId, string actorType)
+    private ZLinkBackendActorRef ResolveActorRefForBinding(string actorId)
     {
-        if (runtime.TryGetCreatedActorState(actorId, actorType, out var state))
+        if (runtime.TryGetCreatedActorState(actorId, out var state))
         {
             return state.NativeActorRef
                 ?? throw new ZLinkFrameworkException(
@@ -220,27 +173,8 @@ internal sealed class ZLinkSessionActorCoordinator(
             $"Actor '{actorId}' is not created on the local actor runtime.");
     }
 
-    private static ZLinkActorRemoteAddress ToRemoteAddress(ZLinkBackendActorRef actorRef)
-    {
-        return new ZLinkActorRemoteAddress(
-            string.Empty,
-            actorRef.NodeRid,
-            actorRef.Generation);
-    }
-
     private static ActorRef ToPublicActorRef(ZLinkBackendActorRef actorRef)
         => new(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
-
-    private static void EnsureConcreteRemoteAddress(ZLinkActorRemoteAddress remoteAddress)
-    {
-        if (remoteAddress.TargetNodeRid.IsEmpty || remoteAddress.ActorGeneration == 0)
-        {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                "Actor remote address requires a target SpotNode routing id and concrete actor generation.",
-                isRetriable: false);
-        }
-    }
 
     private static void EnsureConcreteActorRef(ActorRef actor)
     {
@@ -283,7 +217,7 @@ internal sealed class ZLinkSessionActorCoordinator(
 
     private async ValueTask SendBoundActorAsync(
         ZLinkManagedStream managedStream,
-        ZLinkActorRef actorRef,
+        ZLinkSessionActor actorRef,
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken)

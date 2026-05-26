@@ -24,7 +24,7 @@ internal sealed class ZLinkSessionContext(
 
     public string? RemoteAddr => stream.RemoteAddr;
 
-    public IReadOnlyCollection<IZLinkActorRef> BoundActors => _actors.BoundActors;
+    public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _actors.BoundActors;
 
     public IZLinkSessionSendCall Send<TMessage>(TMessage message)
     {
@@ -36,43 +36,30 @@ internal sealed class ZLinkSessionContext(
         return new ZLinkSessionReplyCall<TMessage>(this, message);
     }
 
-    public ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    public ValueTask<IZLinkSessionActor> BindActorAsync(
         string actorId,
-        string actorType,
         CancellationToken cancellationToken = default)
     {
-        return _actors.BindHandleAsync(this, actorId, actorType, cancellationToken);
+        return _actors.BindActorAsync(this, actorId, cancellationToken);
     }
 
-    public ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        string actorId,
-        string actorType,
-        ZLinkActorRemoteAddress remoteAddress,
-        CancellationToken cancellationToken = default)
-    {
-        return _actors.BindHandleAsync(this, actorId, actorType, remoteAddress, cancellationToken);
-    }
-
-    public ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    public ValueTask<IZLinkSessionActor> BindActorAsync(
         ActorRef actor,
-        string actorType,
         CancellationToken cancellationToken = default)
     {
-        return _actors.BindHandleAsync(this, actor, actorType, cancellationToken);
+        return _actors.BindActorAsync(this, actor, cancellationToken);
     }
 
-    public ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        IZLinkActorRef actor,
+    public ValueTask<IZLinkSessionActor> BindActorAsync(
+        IZLinkSessionActor actor,
         CancellationToken cancellationToken = default)
     {
-        return _actors.BindHandleAsync(this, actor, cancellationToken);
+        return _actors.BindActorAsync(this, actor, cancellationToken);
     }
 
-    public bool TryGetBoundActor(
-        string actorId,
-        out IZLinkActorRef actor)
+    public IZLinkSessionActor? FindActor(string actorId)
     {
-        return _actors.TryGetBoundActor(actorId, out actor);
+        return _actors.FindActor(actorId);
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
@@ -92,11 +79,11 @@ internal sealed class ZLinkSessionContext(
         await _actors.AttachAsync(actor, cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask RelayToActorAsync(
-        IZLinkActorRef actor,
+    internal async ValueTask RelayActorRefAsync(
+        ZLinkSessionActor actor,
         ZlinkStreamHeader header,
         Message payload,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
         await _actors.RelayToActorAsync(
                 actor,
@@ -107,9 +94,9 @@ internal sealed class ZLinkSessionContext(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask NotifyActorDisconnectedAsync(
-        IZLinkActorRef actor,
-        CancellationToken cancellationToken = default)
+    internal async ValueTask NotifyActorRefDisconnectedAsync(
+        ZLinkSessionActor actor,
+        CancellationToken cancellationToken)
     {
         await _actors.NotifyActorDisconnectedAsync(actor, cancellationToken)
             .ConfigureAwait(false);

@@ -42,7 +42,7 @@ None
 framework 가 자동으로 관리하는 것: Entry Spot 생성/소멸, user Spot 에서 Entry Spot
 으로 leave. session disconnect 는 actor membership 을 바꾸지 않는다. actor 에게
 끊김을 알려야 하면 응용이 대상 actor 를 선택해서
-`NotifyActorDisconnectedAsync(...)` 를 호출한다.
+`NotifyDisconnectedAsync(...)` 를 호출한다.
 
 ## 2. actor 등록과 작성
 
@@ -193,9 +193,9 @@ sequenceDiagram
   participant S as Session 서버
   participant P as Play 서버(actor)
   C->>S: STREAM 연결 + auth
-  S->>S: BindActorHandleAsync(actorId, actorType)
+  S->>S: BindActorAsync(actorId)
   C->>S: PlaceMarkReq
-  S->>P: RelayToActorAsync(actor, header, payload)
+  S->>P: actor.RelayAsync(header, payload)
   P->>P: actor handler 실행 (room 상태 변경)
   P-->>S: BoundSession.Send(TurnChangedNotify)
   S-->>C: STREAM push
@@ -203,11 +203,11 @@ sequenceDiagram
 
 ### Session 서버: 인증과 relay
 
-session 콜백에서 인증 후 `BindActorHandleAsync(...)` 로 actor handle 을 잡고,
-이후 packet 은 `RelayToActorAsync(...)` 로 actor 에 넘긴다.
+session 콜백에서 인증 후 `BindActorAsync(...)` 로 actor handle 을 잡고,
+이후 packet 은 `IZLinkSessionActor.RelayAsync(...)` 로 actor 에 넘긴다.
 이때 `payload` 는 framework runtime 이 callback 동안 빌려준 값이다.
 session 은 이 값을 해제하거나 `Move()` 로 소비하지 않는다.
-`RelayToActorAsync(...)` 는 caller payload 를 소비하지 않으므로 그대로 넘긴다.
+`IZLinkSessionActor.RelayAsync(...)` 는 caller payload 를 소비하지 않으므로 그대로 넘긴다.
 callback 뒤에도 payload 를 보관해야 할 때만 별도 `Copy()` 또는 `Move()` 를 쓴다.
 인증처럼 session 에서 직접 처리할 packet 이 여러 개라면
 `IZLinkSessionPacketDispatcher<TSessionContext>` 를 주입받아 등록된 packet 만
@@ -231,7 +231,7 @@ public sealed class TicTacToeSession(
 
         if (context.BoundActors.Count == 1)
         {
-            await context.RelayToActorAsync(context.BoundActors.Single(), header, payload, ct);
+            await context.BoundActors.Single().RelayAsync(header, payload, ct);
             return;
         }
 
@@ -247,7 +247,7 @@ public sealed class TicTacToeSession(
     public ValueTask OnDisconnectedAsync(CancellationToken ct)
     {
         // session disconnect 는 bound actor 전체에 자동 전파되지 않는다.
-        // 필요한 actor 에게만 Context.NotifyActorDisconnectedAsync(actor, ct) 를 호출한다.
+        // 필요한 actor 에게만 actor.NotifyDisconnectedAsync(ct) 를 호출한다.
         return ValueTask.CompletedTask;
     }
 }
@@ -265,8 +265,8 @@ public sealed class AuthenticateSessionPacketHandler
     {
         _ = header;
         var request = payload.Decode<AuthReq>();
-        await context.BindActorHandleAsync(
-            request.ActorId, request.ActorType, ct);
+        await context.BindActorAsync(
+            request.ActorId, ct);
         await context.Reply(new AuthRep(ok: true)).Submit(ct);
     }
 }
@@ -356,7 +356,7 @@ framework 가 던지는 actor/spot/session 관련 오류는 `ZLinkFrameworkExcep
 ## 7. 등록 골격
 
 session relay 는 application route mesh channel 로 흐르지 않는다. STREAM session 이
-쓸 local SpotNode 를 `AttachActorGateway(...)` 로 지정하면, `BindActorHandleAsync(...)`
+쓸 local SpotNode 를 `AttachActorGateway(...)` 로 지정하면, `BindActorAsync(...)`
 가 local actor ref 또는 Play 서버가 발급한 remote actor locator 를 core ActorGateway 경로에
 bind 한다. 그래서 session handler 는 route mesh channel 이름이나 router socket 을 알 필요가 없다.
 

@@ -1,18 +1,13 @@
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using TicTacToe.SessionGateway.Shared.Actors;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
+using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Streams;
 
-namespace TicTacToe.SessionGateway.Server.Session.Sessions.Handlers;
+namespace TicTacToe.SessionGateway.Session.Sessions.Handlers;
 
 internal sealed class AuthenticateSessionPacketHandler(
     IZLinkClient channels,
@@ -52,9 +47,8 @@ internal sealed class AuthenticateSessionPacketHandler(
             .SubmitAsync(cancellationToken)
             ;
 
-        await context.BindActorHandleAsync(
+        await context.BindActorAsync(
                 joined,
-                SampleNames.PlayerActorType,
                 cancellationToken)
             ;
 

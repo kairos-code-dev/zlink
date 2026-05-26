@@ -144,7 +144,7 @@ bind 한다. actor-session binding 은 framework / core runtime 내부 상태로
 
 - `AuthenticateReq.ActorId` 가 인증 요청의 actor identity 역할을 한다.
 - 인증이 성공하면, Session 서버는 Play 서버에 actor 준비를 요청하고 actor id/type 과
-  remote address 를 받는다. 그 뒤 `BindActorHandleAsync(...)` 로 현재 stream session binding 을
+  remote address 를 받는다. 그 뒤 `BindActorAsync(...)` 로 현재 stream session binding 을
   framework / core 내부 상태에 기록한다. session handler 는 actor remote address resolver 를
   직접 호출하지 않고, Play 서버 runtime 이 발급한 ActorGateway locator 만 사용한다.
 - `CreateMatchReq` 는 Session 서버에서 API 서버로 channel request 로 relay

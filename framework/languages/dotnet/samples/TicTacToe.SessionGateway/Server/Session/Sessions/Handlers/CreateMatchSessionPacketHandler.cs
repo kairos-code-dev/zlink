@@ -39,7 +39,7 @@ namespace TicTacToe.SessionGateway.Server.Session.Sessions.Handlers
                 ;
         }
 
-        private static IZLinkActorRef RequireSingleBoundActor(
+        private static IZLinkSessionActor RequireSingleBoundActor(
             IZLinkSessionContext context,
             string action)
         {

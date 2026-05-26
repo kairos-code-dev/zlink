@@ -115,43 +115,23 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSessionActorDispatchContext
+public interface IZLinkSessionActorBindingContext
 {
-    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         string actorId,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         ActorRef actor,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        string actorId,
-        string actorType,
-        ZLinkActorRemoteAddress remoteAddress,
+    ValueTask<IZLinkSessionActor> BindActorAsync(
+        IZLinkSessionActor actor,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        IZLinkActorRef actor,
-        CancellationToken cancellationToken = default);
-
-    bool TryGetBoundActor(
-        string actorId,
-        out IZLinkActorRef actor);
-
-    ValueTask RelayToActorAsync(
-        IZLinkActorRef actor,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask NotifyActorDisconnectedAsync(
-        IZLinkActorRef actor,
-        CancellationToken cancellationToken = default);
+    IZLinkSessionActor? FindActor(string actorId);
 }
 
 public interface IZLinkActorManager
@@ -171,17 +151,19 @@ public interface IZLinkActorManager
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorRef
+public interface IZLinkSessionActor
 {
-    string ActorId { get; }
+    string ActorId => Ref.ActorId;
 
-    string ActorType { get; }
+    ActorRef Ref { get; }
 
-    ActorRef Actor { get; }
+    ValueTask RelayAsync(
+        ZlinkStreamHeader header,
+        Message payload,
+        CancellationToken cancellationToken = default);
 
-    bool IsRemote { get; }
-
-    ZLinkActorRemoteAddress? RemoteAddress { get; }
+    ValueTask NotifyDisconnectedAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionActorAttachmentContext
@@ -209,7 +191,7 @@ public interface IZLinkSessionReplyCall
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
     IZLinkSessionClientStream,
-    IZLinkSessionActorDispatchContext,
+    IZLinkSessionActorBindingContext,
     IZLinkSessionLifecycle;
 ```
 
@@ -224,7 +206,7 @@ application 에 직접 노출하지 않는다. framework runtime 이 binding 의
 
 `OnDispatchAsync(...)` 로 전달된 `payload` 는 callback 실행 동안 session 이
 그대로 사용할 수 있는 borrowed payload 다. session 은 `Dispose()`, `await using`,
-`Move()` 를 기본 사용법으로 쓰지 않는다. `RelayToActorAsync(...)` 같은 framework
+`Move()` 를 기본 사용법으로 쓰지 않는다. `IZLinkSessionActor.RelayAsync(...)` 같은 framework
 API 에 바로 전달할 때도 `Move()` 를 호출하지 않는다. callback 이 끝난 뒤에도
 payload 를 보관해야 하는 경우에만 `Copy()` 또는 `Move()` 로 소유권을 명확히
 가져간다.
@@ -258,7 +240,7 @@ context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
 - 이미 만든 actor 를 session stream 에 붙이는 작업은 별도의
   `IZLinkSessionActorAttachmentContext` 표면으로 분리한다.
 - session disconnect 를 actor 에 알려야 할 때는 application 이 대상 actor 를 고른
-  뒤 `IZLinkSessionActorDispatchContext.NotifyActorDisconnectedAsync(...)` 를 호출한다.
+  뒤 `IZLinkSessionActor.NotifyDisconnectedAsync(...)` 를 호출한다.
 - `CloseAsync(...)` 는 현재 stream client 의 연결을 서버 쪽에서 끊는다.
 - header session 은 C API 가 잘라 준 stream frame 을 framework 가 header 와
   payload 로 나누어 받은 뒤 처리한다.

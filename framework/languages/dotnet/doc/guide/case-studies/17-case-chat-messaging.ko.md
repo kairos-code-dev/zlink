@@ -69,7 +69,7 @@ group/fan-out service, 메시지 DB.
 public sealed class ChatSession(IZLinkSessionContext context) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
-    private IZLinkActorRef? _user;
+    private IZLinkSessionActor? _user;
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header, Message payload, CancellationToken ct)
@@ -77,11 +77,11 @@ public sealed class ChatSession(IZLinkSessionContext context) : IZLinkSession
         if (header.Name == "auth")
         {
             var req = payload.Decode<AuthReq>();
-            _user = await context.BindActorHandleAsync(req.UserId, "user", ct);
+            _user = await context.BindActorAsync(req.UserId, ct);
             await context.Reply(new AuthOk()).Submit(ct);
             return;
         }
-        await context.RelayToActorAsync(_user!, header, payload, ct);
+        await _user!.RelayAsync(header, payload, ct);
     }
 
     public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;

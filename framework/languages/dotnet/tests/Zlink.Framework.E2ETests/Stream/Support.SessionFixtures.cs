@@ -17,7 +17,7 @@ public abstract partial class StreamTestSupport
         GatewaySessionRecorder recorder,
         IZLinkSessionContext context) : IZLinkSession
     {
-        private IZLinkActorRef? _actor;
+        private IZLinkSessionActor? _actor;
 
         public IZLinkSessionContext Context { get; } = context;
 
@@ -54,20 +54,17 @@ public abstract partial class StreamTestSupport
             if (_actor is null)
             {
                 _actor = recorder.Actor is { } actor
-                    ? await Context.BindActorHandleAsync(
+                    ? await Context.BindActorAsync(
                             actor,
-                            "player",
                             cancellationToken)
                         .ConfigureAwait(false)
-                    : await Context.BindActorHandleAsync(
+                    : await Context.BindActorAsync(
                             recorder.ActorId,
-                            "player",
                             cancellationToken)
                         .ConfigureAwait(false);
             }
 
-            await Context.RelayToActorAsync(
-                    _actor ?? throw new InvalidOperationException("Actor was not created."),
+            await (_actor ?? throw new InvalidOperationException("Actor was not created.")).RelayAsync(
                     header,
                     payload,
                     cancellationToken)
@@ -80,7 +77,7 @@ public abstract partial class StreamTestSupport
         GatewaySessionRecorder recorder,
         IZLinkSessionContext context) : IZLinkSession
     {
-        private IZLinkActorRef? _actor;
+        private IZLinkSessionActor? _actor;
 
         public IZLinkSessionContext Context { get; } = context;
 
@@ -111,13 +108,11 @@ public abstract partial class StreamTestSupport
             Message payload,
             CancellationToken cancellationToken)
         {
-            _actor ??= await Context.BindActorHandleAsync(
+            _actor ??= await Context.BindActorAsync(
                 recorder.ActorId,
-                "player",
                 cancellationToken);
 
-            await Context.RelayToActorAsync(
-                    _actor,
+            await _actor.RelayAsync(
                     header,
                     payload,
                     cancellationToken)
@@ -130,7 +125,7 @@ public abstract partial class StreamTestSupport
         IZLinkActorManager actors,
         IZLinkSessionContext context) : IZLinkSession
     {
-        private IZLinkActorRef? _actor;
+        private IZLinkSessionActor? _actor;
 
         public IZLinkSessionContext Context { get; } = context;
 
@@ -173,17 +168,15 @@ public abstract partial class StreamTestSupport
                         cancellationToken)
                     .ConfigureAwait(false);
 
-                _actor = await Context.BindActorHandleAsync(
+                _actor = await Context.BindActorAsync(
                         "local-player-1",
-                        "player",
                         cancellationToken)
                     .ConfigureAwait(false);
             }
 
             if (!string.Equals(header.Name, "open", StringComparison.Ordinal))
             {
-                await Context.RelayToActorAsync(
-                        _actor,
+                await _actor.RelayAsync(
                         header,
                         payload,
                         cancellationToken)

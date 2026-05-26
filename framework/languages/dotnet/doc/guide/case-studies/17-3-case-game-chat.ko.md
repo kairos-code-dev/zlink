@@ -169,7 +169,7 @@ public sealed class GameChatSession(IZLinkSessionContext context)
     : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
-    private IZLinkActorRef? _player;
+    private IZLinkSessionActor? _player;
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
@@ -179,12 +179,12 @@ public sealed class GameChatSession(IZLinkSessionContext context)
         if (header.Name == "auth")
         {
             var req = payload.Decode<AuthPlayerReq>();
-            _player = await context.BindActorHandleAsync(req.PlayerId, "player", ct);
+            _player = await context.BindActorAsync(req.PlayerId, ct);
             await context.Reply(new AuthPlayerOk()).Submit(ct);
             return;
         }
 
-        await context.RelayToActorAsync(_player!, header, payload, ct);
+        await _player!.RelayAsync(header, payload, ct);
     }
 }
 ```

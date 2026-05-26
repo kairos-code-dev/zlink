@@ -3,7 +3,7 @@ namespace Zlink.Framework.Runtime.Core;
 internal sealed record ZLinkSessionBindingEntry(
     ZLinkSessionContext Context,
     string BindingToken,
-    ZLinkActorRef ActorRef);
+    ZLinkSessionActor ActorRef);
 
 internal readonly record struct ZLinkSessionBindingKey(
     string ActorId,
@@ -17,7 +17,7 @@ internal sealed class ZLinkSessionActorBindingTable
         string actorId,
         ZLinkSessionContext context,
         string bindingToken,
-        ZLinkActorRef actorRef)
+        ZLinkSessionActor actorRef)
     {
         lock (_entries)
         {

@@ -54,15 +54,14 @@ internal sealed class BingoSession(
 
         cancellationToken.ThrowIfCancellationRequested();
         var actor = RequireSingleBoundActor($"relaying packet '{header.Name}'");
-        await Context.RelayToActorAsync(
-                actor,
+        await actor.RelayAsync(
                 header,
                 payload,
                 cancellationToken)
             ;
     }
 
-    private IZLinkActorRef RequireSingleBoundActor(string action)
+    private IZLinkSessionActor RequireSingleBoundActor(string action)
     {
         var actors = Context.BoundActors;
         return actors.Count switch

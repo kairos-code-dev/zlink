@@ -73,6 +73,21 @@ internal sealed partial class ZLinkActorSessionManager(
 
     public bool TryGetCreatedActorState(
         string actorId,
+        out ZLinkActorRuntimeState state)
+    {
+        state = null!;
+        if (!_actorSessions.TryGet(actorId, out var existingState)
+            || existingState.Actor is null)
+        {
+            return false;
+        }
+
+        state = existingState;
+        return true;
+    }
+
+    public bool TryGetCreatedActorState(
+        string actorId,
         string actorType,
         out ZLinkActorRuntimeState state)
     {

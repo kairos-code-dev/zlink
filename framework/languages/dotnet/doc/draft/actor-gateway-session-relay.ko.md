@@ -15,7 +15,7 @@
 
 현재 framework 는 session actor relay 를 application route mesh channel 로 보내지 않는다.
 STREAM session 이 사용할 local SpotNode 를 `AttachActorGateway(...)` 로 지정하고,
-`BindActorHandleAsync(...)` 는 local actor handle 또는 framework 가 발급한 remote actor
+`BindActorAsync(...)` 는 local actor handle 또는 framework 가 발급한 remote actor
 locator 를 core ActorGateway 경로에 bind 한다.
 
 ```csharp
@@ -44,13 +44,11 @@ session handler 는 route mesh channel 이름이나 router socket 을 알 필요
 Session 서버는 그 actor ref 로 bind 한다.
 
 ```csharp
-var actor = await Context.BindActorHandleAsync(
+var actor = await Context.BindActorAsync(
     actorRef,
-    actorType,
     cancellationToken);
 
-await Context.RelayToActorAsync(
-    actor,
+await actor.RelayAsync(
     header,
     payload,
     cancellationToken);
@@ -60,47 +58,33 @@ await Context.RelayToActorAsync(
 
 ### 2.1 session side
 
-`IZLinkSessionActorDispatchContext` 는 local bind 와 actor ref bind 를 모두 제공한다. actor ref bind 의
+`IZLinkSessionActorBindingContext` 는 local bind 와 actor ref bind 를 모두 제공한다. actor ref bind 의
 `ActorRef` 는 actor 생성 또는 join 결과에서 얻은 최종 actor 위치다. 사용자가 별도 remote address
 resolver 를 호출해서 session hot path 에 locator 를 주입하지 않는다.
 
 ```csharp
-public interface IZLinkSessionActorDispatchContext
+public interface IZLinkSessionActorBindingContext
 {
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         string actorId,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         ActorRef actor,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        string actorId,
-        string actorType,
-        ZLinkActorRemoteAddress remoteAddress,
+    ValueTask<IZLinkSessionActor> BindActorAsync(
+        IZLinkSessionActor actor,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        IZLinkActorRef actor,
-        CancellationToken cancellationToken = default);
-
-    ValueTask RelayToActorAsync(
-        IZLinkActorRef actor,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default);
 }
 ```
 
-`IZLinkActorRef` 는 actor identity handle 이며 local/remote 상태를 함께 드러낸다.
-`IsRemote` 와 `RemoteAddress` 는 session rebind 와 sample contract 전달에 쓰는 locator 정보다.
-일반 dispatch 는 `RelayToActorAsync(...)` 에 맡기며 caller 가 application route mesh 로 직접
+`IZLinkSessionActor` 는 session 에서 사용하는 actor handle 이며 `ActorRef` 를 그대로 보관한다.
+일반 dispatch 는 `IZLinkSessionActor.RelayAsync(...)` 에 맡기며 caller 가 application route mesh 로 직접
 분기하지 않는다.
 `payload` 는 session callback 동안 framework runtime 이 빌려준 값이므로 caller 는
-`Dispose()` 나 `Move()` 를 호출하지 않는다. `RelayToActorAsync(...)` 는 caller payload 를
+`Dispose()` 나 `Move()` 를 호출하지 않는다. `IZLinkSessionActor.RelayAsync(...)` 는 caller payload 를
 소비하지 않고, remote ActorGateway 로 넘겨야 하는 내부 frame 은 framework 가 별도로 만든다.
 
 ### 2.2 actor side
@@ -131,7 +115,7 @@ actor request handler 의 반환값과 원래 request correlation 으로 처리�
 |------|----------------|
 | stream initialization | `ZLinkStreamRuntimeManager` 가 stream bind 전에 configured SpotNode 에 `AttachActorGateway(...)` 를 호출한다 |
 | session bind | `ZLinkSessionActorCoordinator` 가 local actor ref 또는 remote locator 에서 얻은 actor ref 를 backend stream `BindActorAsync(...)` 로 넘긴다 |
-| session relay | `RelayToActorAsync(...)` 는 framework route mesh packet 을 만들지 않고 backend stream `SendBoundActor(...)` 를 사용한다 |
+| session relay | `IZLinkSessionActor.RelayAsync(...)` 는 framework route mesh packet 을 만들지 않고 backend stream `SendBoundActor(...)` 를 사용한다 |
 | actor push | `ZLinkBoundSessionService` 가 backend ActorGateway send wrapper 로 내려간다 |
 | actor disconnect | `BoundSession.DisconnectAsync(...)` 는 backend ActorGateway close wrapper 로 내려간다 |
 | route channel isolation | `ZLinkRouteChannelInitializer` 는 application route dispatcher 만 등록하고 session actor dispatch packet dispatcher 를 붙이지 않는다 |

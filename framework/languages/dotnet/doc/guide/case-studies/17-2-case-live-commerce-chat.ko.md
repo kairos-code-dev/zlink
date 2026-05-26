@@ -162,7 +162,7 @@ public sealed class LiveChatSession(IZLinkSessionContext context)
     : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
-    private IZLinkActorRef? _viewer;
+    private IZLinkSessionActor? _viewer;
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
@@ -172,12 +172,12 @@ public sealed class LiveChatSession(IZLinkSessionContext context)
         if (header.Name == "auth")
         {
             var req = payload.Decode<AuthViewerReq>();
-            _viewer = await context.BindActorHandleAsync(req.ViewerId, "viewer", ct);
+            _viewer = await context.BindActorAsync(req.ViewerId, ct);
             await context.Reply(new AuthViewerOk()).Submit(ct);
             return;
         }
 
-        await context.RelayToActorAsync(_viewer!, header, payload, ct);
+        await _viewer!.RelayAsync(header, payload, ct);
     }
 }
 ```

@@ -105,7 +105,7 @@ public sealed class ClientHeaderSession(
 | 표면 | 용도 |
 |------|------|
 | `Send(msg).Submit(ct)` / `Reply(msg).Submit(ct)` | client 로 push / 요청에 응답 |
-| `BoundActors` / `BindActorHandleAsync(...)` / `TryGetBoundActor(...)` / `RelayToActorAsync(...)` | actor 로 relay([06-actor-session](./06-actor-session.ko.md)) |
+| `BoundActors` / `BindActorAsync(...)` / `FindActor(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor 로 relay([06-actor-session](./06-actor-session.ko.md)) |
 | `CloseAsync(...)` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
 다른 서비스로 channel send/request 를 보내야 할 때는 session 생성자에서

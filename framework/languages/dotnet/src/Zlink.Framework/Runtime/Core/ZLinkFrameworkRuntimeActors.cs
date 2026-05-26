@@ -78,6 +78,11 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal bool TryGetCreatedActorState(
         string actorId,
+        out ZLinkActorRuntimeState state)
+        => _actors.TryGetCreatedActorState(actorId, out state);
+
+    internal bool TryGetCreatedActorState(
+        string actorId,
         string actorType,
         out ZLinkActorRuntimeState state)
         => _actors.TryGetCreatedActorState(actorId, actorType, out state);
@@ -108,7 +113,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorId,
         ZLinkSessionContext context,
         string bindingToken,
-        ZLinkActorRef actorRef)
+        ZLinkSessionActor actorRef)
     {
         _sessionBindings.Bind(actorId, context, bindingToken, actorRef);
     }

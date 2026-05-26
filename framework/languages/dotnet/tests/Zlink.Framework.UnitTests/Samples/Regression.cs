@@ -119,7 +119,7 @@ public sealed class RegressionTests
             Assert.DoesNotContain("using (payload)", text, StringComparison.Ordinal);
             Assert.DoesNotContain("await using (payload)", text, StringComparison.Ordinal);
             Assert.DoesNotContain(".Dispose()", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("IZLinkActorRef? Actor", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("IZLinkSessionActor? Actor", text, StringComparison.Ordinal);
             Assert.DoesNotContain("Actor { get; set; }", text, StringComparison.Ordinal);
         }
     }
@@ -242,7 +242,7 @@ public sealed class RegressionTests
             .Single();
         var text = File.ReadAllText(handler);
         var joinIndex = text.IndexOf("JoinEntrySpot(topology.PlayRid)", StringComparison.Ordinal);
-        var bindIndex = text.IndexOf("BindActorHandleAsync", StringComparison.Ordinal);
+        var bindIndex = text.IndexOf("BindActorAsync", StringComparison.Ordinal);
 
         Assert.True(joinIndex >= 0, "Authenticate handler must join the actor to the Play EntrySpot.");
         Assert.True(bindIndex > joinIndex, "Authenticate handler must bind the returned ActorRef after JoinEntrySpot.");

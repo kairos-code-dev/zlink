@@ -157,7 +157,7 @@ public sealed class MarketplaceChatSession(IZLinkSessionContext context)
     : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
-    private IZLinkActorRef? _user;
+    private IZLinkSessionActor? _user;
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
@@ -167,12 +167,12 @@ public sealed class MarketplaceChatSession(IZLinkSessionContext context)
         if (header.Name == "auth")
         {
             var req = payload.Decode<AuthReq>();
-            _user = await context.BindActorHandleAsync(req.UserId, "user", ct);
+            _user = await context.BindActorAsync(req.UserId, ct);
             await context.Reply(new AuthOk()).Submit(ct);
             return;
         }
 
-        await context.RelayToActorAsync(_user!, header, payload, ct);
+        await _user!.RelayAsync(header, payload, ct);
     }
 }
 ```

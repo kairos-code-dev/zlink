@@ -3,9 +3,9 @@ namespace Zlink.Framework.Runtime.Streams;
 internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime runtime)
 {
     private readonly Dictionary<string, ZLinkSessionActorBinding> _bindings = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, ZLinkActorRef> _actorsById = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ZLinkSessionActor> _actorsById = new(StringComparer.Ordinal);
 
-    public IReadOnlyCollection<IZLinkActorRef> BoundActors
+    public IReadOnlyCollection<IZLinkSessionActor> BoundActors
     {
         get
         {
@@ -16,12 +16,9 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         }
     }
 
-    public ValueTask<IZLinkActorRef> BindAsync(
+    public ValueTask<IZLinkSessionActor> BindAsync(
         ZLinkSessionContext context,
-        string actorType,
         ActorRef actor,
-        ZLinkActorRemoteAddress remoteAddress,
-        bool isRemote,
         CancellationToken cancellationToken)
     {
         var actorId = actor.ActorId;
@@ -38,12 +35,9 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             actorId,
             sessionRid,
             Guid.NewGuid().ToString("N"));
-        var actorRef = new ZLinkActorRef(
-            actorId,
-            actorType,
+        var actorRef = new ZLinkSessionActor(
+            context,
             actor,
-            remoteAddress,
-            isRemote,
             binding.SessionRid,
             binding.BindingToken);
 
@@ -56,30 +50,25 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             _actorsById[actorId] = actorRef;
         }
 
-        return ValueTask.FromResult<IZLinkActorRef>(actorRef);
+        return ValueTask.FromResult<IZLinkSessionActor>(actorRef);
     }
 
-    public bool TryGetBoundActor(
-        string actorId,
-        out IZLinkActorRef actor)
+    public IZLinkSessionActor? FindActor(string actorId)
     {
         if (string.IsNullOrWhiteSpace(actorId))
         {
-            actor = null!;
-            return false;
+            return null;
         }
 
         lock (_bindings)
         {
             if (_actorsById.TryGetValue(actorId, out var actorRef))
             {
-                actor = actorRef;
-                return true;
+                return actorRef;
             }
         }
 
-        actor = null!;
-        return false;
+        return null;
     }
 
     public ValueTask CleanupAsync(

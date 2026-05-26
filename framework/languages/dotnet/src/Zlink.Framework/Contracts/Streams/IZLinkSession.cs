@@ -20,7 +20,7 @@ public interface IZLinkSession
     /// <remarks>
     /// The payload is borrowed for the duration of this callback. Session code
     /// may read it or pass it to framework APIs such as
-    /// <see cref="IZLinkSessionActorDispatchContext.RelayToActorAsync"/>, but
+    /// <see cref="IZLinkSessionActor.RelayAsync"/>, but
     /// must not dispose it or move ownership unless it intentionally keeps a
     /// separate copy past the callback lifetime.
     /// </remarks>
@@ -54,55 +54,23 @@ public interface IZLinkSessionClientStream
     IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
 }
 
-public interface IZLinkSessionActorDispatchContext
+public interface IZLinkSessionActorBindingContext
 {
-    IReadOnlyCollection<IZLinkActorRef> BoundActors { get; }
+    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         string actorId,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        string actorId,
-        string actorType,
-        ZLinkActorRemoteAddress remoteAddress,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
+    ValueTask<IZLinkSessionActor> BindActorAsync(
         ActorRef actor,
-        string actorType,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkActorRef> BindActorHandleAsync(
-        IZLinkActorRef actor,
+    ValueTask<IZLinkSessionActor> BindActorAsync(
+        IZLinkSessionActor actor,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Finds an actor handle already bound to this session by actor id.
-    /// </summary>
-    bool TryGetBoundActor(
-        string actorId,
-        out IZLinkActorRef actor);
-
-    /// <summary>
-    /// Relays a stream packet to an actor without consuming the caller payload.
-    /// </summary>
-    /// <remarks>
-    /// The framework creates any internal copy needed to cross queues or reach
-    /// a remote ActorGateway. The caller remains responsible only for the
-    /// lifetime it already owns. For inbound session callbacks that lifetime is
-    /// managed by the framework runtime.
-    /// </remarks>
-    ValueTask RelayToActorAsync(
-        IZLinkActorRef actor,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask NotifyActorDisconnectedAsync(
-        IZLinkActorRef actor,
-        CancellationToken cancellationToken = default);
+    IZLinkSessionActor? FindActor(string actorId);
 }
 
 public interface IZLinkSessionLifecycle
@@ -121,7 +89,7 @@ public interface IZLinkSessionActorAttachmentContext
 public interface IZLinkSessionContext :
     IZLinkSessionIdentityContext,
     IZLinkSessionClientStream,
-    IZLinkSessionActorDispatchContext,
+    IZLinkSessionActorBindingContext,
     IZLinkSessionLifecycle;
 
 public interface IZLinkSessionSendCall

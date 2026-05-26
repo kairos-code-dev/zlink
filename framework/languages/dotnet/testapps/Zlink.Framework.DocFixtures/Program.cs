@@ -408,7 +408,7 @@ internal sealed class FixtureActorPacketSession(
     IZLinkSessionContext context,
     IZLinkActorManager actors) : IZLinkSession
 {
-    private IZLinkActorRef? _actor;
+    private IZLinkSessionActor? _actor;
 
     public IZLinkSessionContext Context { get; } = context;
 
@@ -420,9 +420,8 @@ internal sealed class FixtureActorPacketSession(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        _actor = await Context.BindActorHandleAsync(
+        _actor = await Context.BindActorAsync(
             "fixture",
-            "hero",
             cancellationToken);
     }
 
@@ -448,6 +447,6 @@ internal sealed class FixtureActorPacketSession(
         CancellationToken cancellationToken)
     {
         var actor = _actor ?? throw new InvalidOperationException("Actor is not bound.");
-        return Context.RelayToActorAsync(actor, header, payload, cancellationToken);
+        return actor.RelayAsync(header, payload, cancellationToken);
     }
 }

@@ -32,7 +32,7 @@ sealed class PlaySession(
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private string? _actorId;
-    private IZLinkActorRef? _actor;
+    private IZLinkSessionActor? _actor;
 
     public IZLinkSessionContext Context { get; } = context;
 
@@ -102,7 +102,7 @@ sealed class PlaySession(
             "play stream -> actor: dispatching packet. name={MessageName}, actor={ActorId}",
             header.Name,
             actorId);
-        await Context.RelayToActorAsync(actor, header, payload, cancellationToken);
+        await actor.RelayAsync(header, payload, cancellationToken);
     }
 
     private async ValueTask<AuthenticatedPlaySession> AuthenticateAsync(
@@ -122,16 +122,13 @@ sealed class PlaySession(
             .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
 
         await actors.GetOrCreateAsync(
-                reply.ActorId,
-                SampleTypes.PlayerActor,
-                cancellationToken)
-            ;
+            reply.ActorId,
+            SampleTypes.PlayerActor,
+            cancellationToken);
 
-        var actor = await Context.BindActorHandleAsync(
-                reply.ActorId,
-                SampleTypes.PlayerActor,
-                cancellationToken)
-            ;
+        var actor = await Context.BindActorAsync(
+            reply.ActorId,
+            cancellationToken);
         await Context.Reply(new AuthenticateRes(reply.ActorId))
             .Submit(cancellationToken);
 
@@ -146,5 +143,5 @@ sealed class PlaySession(
 
     private readonly record struct AuthenticatedPlaySession(
         string ActorId,
-        IZLinkActorRef Actor);
+        IZLinkSessionActor Actor);
 }

@@ -1011,14 +1011,30 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
     Testing tcp: Done
 ```
 
-### 5.3 실패 요약
+### 5.3 완료와 실패 요약
 
-실패가 있는 경우 마지막에 요약이 출력된다.
+`## Result Data`에는 성공한 조합의 `RESULT,current,...` 라인만 기록한다.
+`UNSUPPORTED`, `SKIP`, `FAIL` 토큰은 사람이 읽는 진행 테이블, Completion 카운트,
+`## Skips`, `## Failures`로 표현하고 Result Data에는 넣지 않는다.
+
+Completion 뒤에는 필요한 경우 `## Skips`, `## Failures` 순서로 요약을 출력한다.
+마지막에는 저장된 결과 파일 경로와 status를 출력한다. single suite는 C single
+출력 순서에 맞춰 `## Failures`를 auto-HWM detail 앞에 둘 수 있다.
 
 ```text
+## Completion
+- status: partial
+- expected_result_lines: 10
+- actual_result_lines: 5
+
+## Skips
+- MULTI_STREAM: memory_guard_clients=10000
+
 ## Failures
 - PAIR current ipc 64B: timeout
 - MULTI_STREAM current wss 65536B: no_data
+
+Saved result file: ... (status=partial)
 ```
 
 ---

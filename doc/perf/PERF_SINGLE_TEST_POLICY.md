@@ -286,7 +286,18 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
    실제 socket HWM snapshot table. auto-HWM 정보가 없는 socket 은 생략할 수
    있다.
 4. `## Effective Options (result)` — 불릿 목록 형식
-5. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
+5. `## Result Data` — 성공한 조합의 `RESULT,current,...` 라인만 기록한다.
+   `UNSUPPORTED`, `SKIP`, `FAIL` 토큰은 이 섹션에 넣지 않는다.
+6. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
+7. `Saved result file: ... (status=...)`
+
+실패가 있으면 C single 기준과 같이 `## Failures` 섹션을 `## Auto-HWM Detail`
+앞에 기록한다. 실패 섹션은 아래 형식을 사용한다.
+
+```text
+## Failures
+- PAIR current tcp 64B: timeout
+```
 
 - `Effective Options`에는 `lang`과 `suite` 항목이 반드시 포함되어야 한다.
 - single 엔진은 최대 파일 수를 100으로 하드코딩한다 (`PERF_RESULTS_MAX_FILES` 미참조).

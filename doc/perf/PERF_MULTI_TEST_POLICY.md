@@ -1319,7 +1319,12 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 1. `## Effective Options (start)` — 불릿 목록 형식 (lang, suite, runs, patterns, transports, msg_sizes, clients, pin_cpu, duration_seconds)
 2. 패턴/트랜스포트별 실행 로그 및 테이블
 3. `## Effective Options (result)` — 불릿 목록 형식
-4. Completion (`status`, `expected_result_lines`, `actual_result_lines`)
+4. `## Result Data` — 성공한 조합의 `RESULT,current,...` 라인만 기록한다.
+   `UNSUPPORTED`, `SKIP`, `FAIL` 토큰은 이 섹션에 넣지 않는다.
+5. Completion (`success`, `unsupported`, `skip`, `fail`, `status`, `expected_result_lines`, `actual_result_lines`)
+6. `## Skips` — skip이 있을 때만 기록한다.
+7. `## Failures` — fail이 있을 때만 기록한다.
+8. `Saved result file: ... (status=...)`
 
 ---
 

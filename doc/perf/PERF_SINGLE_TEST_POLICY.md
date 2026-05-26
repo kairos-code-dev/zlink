@@ -247,15 +247,15 @@ active 구간 집계는 payload에 기록된 metric header를 기준으로만 �
 ### 3.1 완료 판정
 
 ```text
-expected = 요청된 전체 조합 수 - unsupported 수 - skip 수
-actual   = 성공적으로 출력된 RESULT 라인 수
-status   = (expected == actual) ? "complete" : "partial"
+expected_result_lines = (요청된 전체 조합 수 - unsupported 수 - skip 수) * 5
+actual_result_lines   = 성공적으로 출력된 RESULT 라인 수
+status                = (expected_result_lines == actual_result_lines) ? "complete" : "partial"
 ```
 
 | status | 조건 |
 |--------|------|
-| complete | `expected == actual` |
-| partial | `expected != actual` |
+| complete | `expected_result_lines == actual_result_lines` |
+| partial | `expected_result_lines != actual_result_lines` |
 
 - C single perf에서 전체 기본 full matrix가 `complete`로 끝난 경우에는 같은
   결과 파일을 `bindings/c/perf/baseline/`에도 저장하여 다음 회귀 비교 기준으로

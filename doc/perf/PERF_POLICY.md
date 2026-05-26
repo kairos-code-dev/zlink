@@ -893,7 +893,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 결과는 항상 `<suite>/report/`에 저장된다 (complete/partial 무관).
 
 - 파일명 형식: `perf_<lang>_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`
-- 완료 판정 기준: `expected == actual` (throughput + bandwidth + latency + latency_p95 + latency_p99 RESULT line 기준, 조합당 5줄).
+- 완료 판정 기준: `expected_result_lines == actual_result_lines`이다.
+  `expected_result_lines`는 unsupported와 skip을 제외한 요청 조합 수에 필수
+  RESULT metric 5개를 곱한 값이고, `actual_result_lines`는 성공적으로 출력된
+  필수 RESULT 라인 수이다.
 - C perf에서 전체 기본 full matrix가 `complete`로 끝난 경우에는 같은 결과
   파일을 `bindings/c/perf/baseline/`에도 저장하여 다음 회귀 비교 기준으로
   사용한다. partial, smoke, 특정 패턴/transport/size만 실행한 결과는 baseline

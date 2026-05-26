@@ -436,10 +436,9 @@ await localClient.SendSpot(spotRid, new RoomEvent("opened")).Submit();        //
 var reply = await localClient.RequestSpot(spotRid, new JoinRoom("room-1")).SubmitAsync<JoinedRoom>();
 
 // current Spot 밖에서 routed 호출
-var spotRef = await routedClient.BindSpotHandleAsync(remoteAddress);            // IZLinkRoutedSpotClient
 await routedClient
-    .ViaEgressChannel("play-router")                                          // IZLinkRoutedSpotChannelClient
-    .RequestSpot(spotRef, new JoinRoom("room-1"))
+    .ViaEgressChannel("play-router")                                          // IZLinkRoutedSpotEgressClient
+    .RequestSpot(remoteAddress.SpotRid, new JoinRoom("room-1"))
     .SubmitAsync<JoinedRoom>();
 
 // local spot 없는 노드에서 publish
@@ -454,9 +453,8 @@ await connections.ConnectAsync("tcp://127.0.0.1:5500");
 |------------|------|
 | `IZLinkSpotManager` | spot 인스턴스 생성/조회(`CreateAsync`, `GetOrCreateAsync`, `GetAsync`, `ListAsync`, `RemoveAsync`) |
 | `IZLinkSpotClient` | current Spot callback 안에서의 outbound(`SendSpot`/`RequestSpot`/`SendChannel`/`RequestChannel`/`Publish`) |
-| `IZLinkRoutedSpotClient` | current Spot 없는 코드의 spot 호출. `ViaEgressChannel` 로 egress 선택, `BindSpotHandleAsync` 로 handle 바인딩 |
-| `IZLinkRoutedSpotChannelClient` | egress 선택 후의 routed 호출 표면(`SendSpot`/`RequestSpot`, `RoutingId` 또는 `IZLinkSpotRef`) |
-| `IZLinkSpotRef` | routed 호출용 spot handle(`SpotRid`, `SpotKind`, `IsRemote`, `RemoteAddress`) |
+| `IZLinkRoutedSpotClient` | current Spot 없는 코드의 spot 호출. `ViaEgressChannel` 로 local egress 선택 |
+| `IZLinkRoutedSpotEgressClient` | egress 선택 후의 routed 호출 표면(`SendSpot`/`RequestSpot`, `RoutingId`) |
 | `IZLinkSpotMeshPublisherClient` | spot mesh publisher client 표면 |
 | `IZLinkSpotPublisherClient` | local spot 없는 노드의 spot channel publish(`Publish(channelName, topic, msg)`) |
 | `IZLinkSpotConnectionManager` | spot node 의 role 별 연결 핸들(`GetRouterAsync`, `GetPubSubAsync`, `GetChannelClientAsync`, `GetSpotPublisherClientAsync` 등) |

@@ -498,11 +498,11 @@ Spot client 를 분리한다.
 ```csharp
 public interface IZLinkRoutedSpotClient
 {
-    IZLinkRoutedSpotChannelClient ViaEgressChannel(
+    IZLinkRoutedSpotEgressClient ViaEgressChannel(
         string localEgressChannelName);
 }
 
-public interface IZLinkRoutedSpotChannelClient
+public interface IZLinkRoutedSpotEgressClient
 {
     IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,

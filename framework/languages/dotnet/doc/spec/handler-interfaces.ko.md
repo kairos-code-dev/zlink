@@ -2118,11 +2118,11 @@ string 이름이 필요하면 호출자가 `RoutingId.Of(...)` 같은 변환을 
 ```csharp
 public interface IZLinkRoutedSpotClient
 {
-    IZLinkRoutedSpotChannelClient ViaEgressChannel(
+    IZLinkRoutedSpotEgressClient ViaEgressChannel(
         string localEgressChannelName);
 }
 
-public interface IZLinkRoutedSpotChannelClient
+public interface IZLinkRoutedSpotEgressClient
 {
     IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,

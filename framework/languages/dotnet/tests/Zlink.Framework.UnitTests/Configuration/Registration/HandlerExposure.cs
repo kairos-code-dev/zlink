@@ -391,15 +391,15 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         Assert.Null(typeof(IZLinkRoutedSpotClient).GetMethod("RequestSpot"));
 
         Assert.Contains(
-            typeof(IZLinkRoutedSpotChannelClient).GetMethods(),
-            method => method.Name == nameof(IZLinkRoutedSpotChannelClient.SendSpot)
+            typeof(IZLinkRoutedSpotEgressClient).GetMethods(),
+            method => method.Name == nameof(IZLinkRoutedSpotEgressClient.SendSpot)
                 && method.GetParameters().FirstOrDefault()?.ParameterType == typeof(RoutingId));
         Assert.Contains(
-            typeof(IZLinkRoutedSpotChannelClient).GetMethods(),
-            method => method.Name == nameof(IZLinkRoutedSpotChannelClient.RequestSpot)
+            typeof(IZLinkRoutedSpotEgressClient).GetMethods(),
+            method => method.Name == nameof(IZLinkRoutedSpotEgressClient.RequestSpot)
                 && method.GetParameters().FirstOrDefault()?.ParameterType == typeof(RoutingId));
         Assert.DoesNotContain(
-            typeof(IZLinkRoutedSpotChannelClient).GetMethods(),
+            typeof(IZLinkRoutedSpotEgressClient).GetMethods(),
             method => method.GetParameters().FirstOrDefault()?.ParameterType == typeof(string));
     }
 

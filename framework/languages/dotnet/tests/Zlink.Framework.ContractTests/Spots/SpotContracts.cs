@@ -56,8 +56,7 @@ public sealed class SpotContracts
         typeof(IZLinkSpotManager),
         typeof(IZLinkSpotClient),
         typeof(IZLinkRoutedSpotClient),
-        typeof(IZLinkRoutedSpotChannelClient),
-        typeof(IZLinkSpotRef),
+        typeof(IZLinkRoutedSpotEgressClient),
         typeof(IZLinkSpotMeshPublisherClient),
         typeof(IZLinkSpotPublisherClient),
         typeof(IZLinkSpotConnectionManager),
@@ -79,10 +78,9 @@ public sealed class SpotContracts
         await localClient.Publish("room.events", new RoomEvent("opened")).Submit();
 
         var routedClient = new RoutedSpotClient();
-        var spotRef = await routedClient.BindSpotHandleAsync(route);
         await routedClient
             .ViaEgressChannel("play-router")
-            .RequestSpot(spotRef, new JoinRoom("room-1"))
+            .RequestSpot(route.SpotRid, new JoinRoom("room-1"))
             .SubmitAsync<JoinedRoom>();
 
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
@@ -382,43 +380,16 @@ public sealed class SpotContracts
 
     private sealed class RoutedSpotClient : IZLinkRoutedSpotClient
     {
-        public IZLinkRoutedSpotChannelClient ViaEgressChannel(string localEgressChannelName) =>
-            new RoutedSpotChannelClient(localEgressChannelName);
-
-        public ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
-            ZLinkSpotRemoteAddress remoteAddress,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IZLinkSpotRef>(new SpotRef(remoteAddress));
-
-        public ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
-            IZLinkSpotRef spot,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(spot);
+        public IZLinkRoutedSpotEgressClient ViaEgressChannel(string localEgressChannelName) =>
+            new RoutedSpotEgressClient(localEgressChannelName);
     }
 
-    private sealed class RoutedSpotChannelClient(string egressChannel) : IZLinkRoutedSpotChannelClient
+    private sealed class RoutedSpotEgressClient(string egressChannel) : IZLinkRoutedSpotEgressClient
     {
         public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message) => new SendCall();
 
-        public IZLinkSendCall SendSpot<TMessage>(IZLinkSpotRef spot, TMessage message) =>
-            SendSpot(spot.SpotRid, message);
-
         public IZLinkRequestCall RequestSpot<TRequest>(RoutingId spotRid, TRequest request) =>
             new RequestCall(new JoinedRoom(egressChannel == "play-router" ? "room-1" : "unknown"));
-
-        public IZLinkRequestCall RequestSpot<TRequest>(IZLinkSpotRef spot, TRequest request) =>
-            RequestSpot(spot.SpotRid, request);
-    }
-
-    private sealed class SpotRef(ZLinkSpotRemoteAddress remoteAddress) : IZLinkSpotRef
-    {
-        public RoutingId SpotRid => remoteAddress.SpotRid;
-
-        public ZLinkSpotKind SpotKind => remoteAddress.SpotKind;
-
-        public bool IsRemote => true;
-
-        public ZLinkSpotRemoteAddress RemoteAddress => remoteAddress;
     }
 
     private sealed class SpotPublisherClient : IZLinkSpotPublisherClient

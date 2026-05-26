@@ -5,37 +5,16 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkRoutedSpotClientService(ZLinkFrameworkRuntime runtime)
     : IZLinkRoutedSpotClient
 {
-    public IZLinkRoutedSpotChannelClient ViaEgressChannel(string localEgressChannelName)
+    public IZLinkRoutedSpotEgressClient ViaEgressChannel(string localEgressChannelName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(localEgressChannelName);
-        return new ZLinkRoutedSpotChannelClient(runtime, localEgressChannelName);
-    }
-
-    public ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
-        ZLinkSpotRemoteAddress remoteAddress,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkSpotRef>(new ZLinkSpotRef(
-            remoteAddress.SpotRid,
-            remoteAddress.SpotKind,
-            isRemote: true,
-            remoteAddress));
-    }
-
-    public ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
-        IZLinkSpotRef spot,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(spot);
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(spot);
+        return new ZLinkRoutedSpotEgressClient(runtime, localEgressChannelName);
     }
 }
 
-internal sealed class ZLinkRoutedSpotChannelClient(
+internal sealed class ZLinkRoutedSpotEgressClient(
     ZLinkFrameworkRuntime runtime,
-    string localEgressChannelName) : IZLinkRoutedSpotChannelClient
+    string localEgressChannelName) : IZLinkRoutedSpotEgressClient
 {
     public IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,
@@ -46,19 +25,6 @@ internal sealed class ZLinkRoutedSpotChannelClient(
             localEgressChannelName,
             spotRid,
             message);
-    }
-
-    public IZLinkSendCall SendSpot<TMessage>(
-        IZLinkSpotRef spot,
-        TMessage message)
-    {
-        ArgumentNullException.ThrowIfNull(spot);
-        if (!spot.IsRemote)
-        {
-            throw new InvalidOperationException("Routed SPOT send requires a remote SPOT ref.");
-        }
-
-        return SendSpot(spot.RemoteAddress.SpotRid, message);
     }
 
     public IZLinkRequestCall RequestSpot<TRequest>(
@@ -72,33 +38,6 @@ internal sealed class ZLinkRoutedSpotChannelClient(
             request);
     }
 
-    public IZLinkRequestCall RequestSpot<TRequest>(
-        IZLinkSpotRef spot,
-        TRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(spot);
-        if (!spot.IsRemote)
-        {
-            throw new InvalidOperationException("Routed SPOT request requires a remote SPOT ref.");
-        }
-
-        return RequestSpot(spot.RemoteAddress.SpotRid, request);
-    }
-}
-
-internal sealed class ZLinkSpotRef(
-    RoutingId spotRid,
-    ZLinkSpotKind spotKind,
-    bool isRemote,
-    ZLinkSpotRemoteAddress remoteAddress) : IZLinkSpotRef
-{
-    public RoutingId SpotRid { get; } = spotRid;
-
-    public ZLinkSpotKind SpotKind { get; } = spotKind;
-
-    public bool IsRemote { get; } = isRemote;
-
-    public ZLinkSpotRemoteAddress RemoteAddress { get; } = remoteAddress;
 }
 
 internal sealed class ZLinkExplicitRoutedSpotSendCall<TMessage>(

@@ -69,46 +69,19 @@ public interface IZLinkSpotClient
 
 public interface IZLinkRoutedSpotClient
 {
-    IZLinkRoutedSpotChannelClient ViaEgressChannel(
+    IZLinkRoutedSpotEgressClient ViaEgressChannel(
         string localEgressChannelName);
-
-    ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
-        ZLinkSpotRemoteAddress remoteAddress,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkSpotRef> BindSpotHandleAsync(
-        IZLinkSpotRef spot,
-        CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkRoutedSpotChannelClient
+public interface IZLinkRoutedSpotEgressClient
 {
     IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,
         TMessage message);
 
-    IZLinkSendCall SendSpot<TMessage>(
-        IZLinkSpotRef spot,
-        TMessage message);
-
     IZLinkRequestCall RequestSpot<TRequest>(
         RoutingId spotRid,
         TRequest request);
-
-    IZLinkRequestCall RequestSpot<TRequest>(
-        IZLinkSpotRef spot,
-        TRequest request);
-}
-
-public interface IZLinkSpotRef
-{
-    RoutingId SpotRid { get; }
-
-    ZLinkSpotKind SpotKind { get; }
-
-    bool IsRemote { get; }
-
-    ZLinkSpotRemoteAddress RemoteAddress { get; }
 }
 
 public interface IZLinkSpotMeshPublisherClient

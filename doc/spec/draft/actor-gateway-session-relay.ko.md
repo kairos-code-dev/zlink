@@ -886,7 +886,7 @@ framework 적용 항목만 남긴다.
 | `IZLinkActorContext.GetSpot()` / `GetSpot<TSpot>()` | actor state 의 joined Spot instance 반환 | 유지한다. remote ActorGateway dispatch 에서 current Spot state 가 올바르게 갱신되어야 한다 |
 | `IZLinkSpotClient.SendChannel(...)` / `RequestChannel(...)` | current Spot 에서 attached channel client 로 메시징 | ActorGateway 와 직접 관련 없음. session actor relay 대체 수단으로 설명하면 안 된다 |
 | `IZLinkRoutedSpotClient` / `ViaEgressChannel(...)` | current Spot 밖에서 target Spot 으로 routed Spot 메시징 | 유지한다. ActorGateway session relay 와 별도 기능임을 문서에 분리한다 |
-| `IZLinkSpotRef.RemoteAddress` | Spot routed egress 용 remote address | 유지한다. ActorGateway remote locator 와 다른 spot-only 의미를 명시한다 |
+| `ZLinkSpotRemoteAddress` | Spot routed egress resolver 결과 | 유지한다. ActorGateway remote locator 와 다른 spot-only 의미를 명시하되, 별도 public Spot ref handle 은 두지 않는다 |
 | `IZLinkSpotNodeBuilder.EnableRouter(...)` | public routed Spot/Spot mesh router capability | ActorGateway lazy init 조건과 다르다. ActorGateway 가 내부적으로 router 를 쓰더라도 이 API 를 session relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder.AcceptSpotRoutesFromChannel(...)` | external route channel 에서 이 SpotNode 로 routed Spot packet 을 받도록 연결 | ActorGateway relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder.AttachChannelClient(...)` / `AttachClientServerChannelClient(...)` | Spot handler 가 channel client 로 나갈 수 있게 dealer 를 붙인다 | ActorGateway relay 설정으로 쓰지 않는다 |

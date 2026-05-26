@@ -8,7 +8,7 @@ const { configureTlsServer } = require('../common/perf_tls');
 const {
   createPayload,
   createRunId,
-  sleepImmediate,
+  sleepMillis,
   stampPayload
 } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
@@ -29,10 +29,6 @@ const {
 
 const TOPIC = 'bench';
 const CONTROL_TOPIC = 'bench';
-
-function sleepMillis(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 // C parity: bindings/c/perf/multi/src/perf_multi_spot_server.cpp
 // resolve_spot_latency_only_mode (~197-208). The runner's clean-latency
@@ -228,7 +224,8 @@ async function main() {
         if (latencyOnly) {
           const nowNs = process.hrtime.bigint();
           if (nowNs < nextPublishAtNs) {
-            await sleepImmediate();
+            const remainingMs = Number((nextPublishAtNs - nowNs) / 1_000_000n);
+            await sleepMillis(Math.max(1, Math.min(50, remainingMs)));
             continue;
           }
         }

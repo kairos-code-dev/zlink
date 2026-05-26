@@ -2,7 +2,7 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
+const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, sleepMillis, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
 const { POLLIN, POLLCOMPLETION, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, waitForControlStart, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
@@ -162,10 +162,7 @@ async function main() {
         for (let i = 0; i < slots.length; i += 1) {
             probePoller.add(slots[i].spot, pollEvents(POLLCOMPLETION), i);
         }
-        const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
-        while (Date.now() < stabilizationDeadline) {
-            await sleepImmediate();
-        }
+        await sleepMillis(resolveMultiSpotReadySettleMs());
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
         try {
             await waitForProbeReady(slots, createRunId(1), options.msgSize, probePoller, probePollBuffer, Number.isFinite(options.connectReadyTimeoutMs) ? options.connectReadyTimeoutMs : 1000);
@@ -175,10 +172,7 @@ async function main() {
             probePoller.close();
         }
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
-        const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
-        while (Date.now() < controlSettleDeadline) {
-            await sleepImmediate();
-        }
+        await sleepMillis(resolveMultiSpotControlSettleMs());
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
         console.log(`CLIENT_READY,${options.msgSize}`);
         trace('client-ready');
@@ -203,7 +197,11 @@ async function main() {
                 await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
                 nextReadyAt = Date.now() + 250;
             }
-            await Promise.race([startFromRunner, startFromControl, sleepImmediate()]);
+            await Promise.race([
+                startFromRunner,
+                startFromControl,
+                sleepMillis(Math.min(50, Math.max(1, nextReadyAt - Date.now())))
+            ]);
         }
         trace('start-ready');
         const runId = createRunId(1);

@@ -4,14 +4,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
 const { configureTlsServer } = require('../common/perf_tls');
-const { createPayload, createRunId, sleepImmediate, stampPayload } = require('../common/perf_metrics');
+const { createPayload, createRunId, sleepMillis, stampPayload } = require('../common/perf_metrics');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, subscribeNoWait, trySocketPublish } = require('./perf_multi_runtime');
 const TOPIC = 'bench';
 const CONTROL_TOPIC = 'bench';
-function sleepMillis(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
 // C parity: bindings/c/perf/multi/src/perf_multi_spot_server.cpp
 // resolve_spot_latency_only_mode (~197-208). The runner's clean-latency
 // second pass sets PERF_MULTI_SPOT_LATENCY_ONLY=1 so the publisher paces
@@ -196,7 +193,8 @@ async function main() {
                 if (latencyOnly) {
                     const nowNs = process.hrtime.bigint();
                     if (nowNs < nextPublishAtNs) {
-                        await sleepImmediate();
+                        const remainingMs = Number((nextPublishAtNs - nowNs) / 1000000n);
+                        await sleepMillis(Math.max(1, Math.min(50, remainingMs)));
                         continue;
                     }
                 }

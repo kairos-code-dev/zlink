@@ -7,7 +7,7 @@ const { Worker } = require('node:worker_threads');
 const zlink = require('@zlink-systems/zlink');
 const {
   currentEpochNs,
-  sleepImmediate,
+  sleepMillis,
   summarizeMetrics
 } = require('../common/perf_metrics');
 const {
@@ -183,13 +183,10 @@ async function main() {
     const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
     while (Date.now() < stabilizationDeadline) {
       tryControlPublish(controlPub, 'CONNECTED');
-      await sleepImmediate();
+      await sleepMillis(Math.min(50, Math.max(1, stabilizationDeadline - Date.now())));
     }
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
-    const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
-    while (Date.now() < controlSettleDeadline) {
-      await sleepImmediate();
-    }
+    await sleepMillis(resolveMultiSpotControlSettleMs());
     await publishControlUntilSent(
       controlPub,
       controlPubWaiter,
@@ -234,7 +231,7 @@ async function main() {
       await Promise.race([
         startFromRunner,
         startFromControl,
-        sleepImmediate()
+        sleepMillis(Math.min(50, Math.max(1, nextReadyAt - Date.now())))
       ]);
     }
     trace('start-handshake-done');

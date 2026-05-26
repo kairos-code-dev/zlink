@@ -10,6 +10,7 @@ const {
   decodeMetricHeaderFromParts,
   currentEpochNs,
   sleepImmediate,
+  sleepMillis,
   summarizeMetrics,
   stampPayload
 } = require('../common/perf_metrics');
@@ -224,10 +225,7 @@ async function main() {
       probePoller.add(slots[i].spot, pollEvents(POLLCOMPLETION), i);
     }
 
-    const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
-    while (Date.now() < stabilizationDeadline) {
-      await sleepImmediate();
-    }
+    await sleepMillis(resolveMultiSpotReadySettleMs());
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
     try {
       await waitForProbeReady(
@@ -243,10 +241,7 @@ async function main() {
       probePoller.close();
     }
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
-    const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
-    while (Date.now() < controlSettleDeadline) {
-      await sleepImmediate();
-    }
+    await sleepMillis(resolveMultiSpotControlSettleMs());
     await publishControlUntilSent(
       controlPub,
       controlPubWaiter,
@@ -286,7 +281,11 @@ async function main() {
         );
         nextReadyAt = Date.now() + 250;
       }
-      await Promise.race([startFromRunner, startFromControl, sleepImmediate()]);
+      await Promise.race([
+        startFromRunner,
+        startFromControl,
+        sleepMillis(Math.min(50, Math.max(1, nextReadyAt - Date.now())))
+      ]);
     }
     trace('start-ready');
 

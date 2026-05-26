@@ -9,7 +9,7 @@ const {
   createRunId,
   currentEpochNs,
   decodeMetricHeader,
-  sleepImmediate,
+  sleepMillis,
   summarizeMetrics,
   stampPayload,
 } = require('../common/perf_metrics');
@@ -133,16 +133,10 @@ async function main() {
     emitMultiSocketHwmDetail(controlSub, 'spotnode_control_sub', options.transport, options.msgSize);
     emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
 
-    const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
-    while (Date.now() < stabilizationDeadline) {
-      await sleepImmediate();
-    }
+    await sleepMillis(resolveMultiSpotReadySettleMs());
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
-    const controlSettleDeadline = Date.now() + resolveMultiSpotControlSettleMs();
-    while (Date.now() < controlSettleDeadline) {
-      await sleepImmediate();
-    }
+    await sleepMillis(resolveMultiSpotControlSettleMs());
     await publishControlUntilSent(
       controlPub,
       controlPubWaiter,
@@ -177,7 +171,11 @@ async function main() {
         );
         nextReadyAt = Date.now() + 250;
       }
-      await Promise.race([startFromRunner, startFromControl, sleepImmediate()]);
+      await Promise.race([
+        startFromRunner,
+        startFromControl,
+        sleepMillis(Math.min(50, Math.max(1, nextReadyAt - Date.now())))
+      ]);
     }
 
     const runId = createRunId(1);
@@ -269,7 +267,7 @@ async function main() {
         }
       }
       if (!hasWaitingReply && readyCount === 0) {
-        await sleepImmediate();
+        await sleepMillis(1);
       }
     }
     const drainDeadline = Date.now() + 1000;

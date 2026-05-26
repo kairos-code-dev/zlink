@@ -244,6 +244,10 @@ function sleepImmediate() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+function sleepMillis(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
 function createRunId(caseOrdinal = 1) {
   if (!Number.isInteger(caseOrdinal) || caseOrdinal <= 0) {
     throw new Error(`invalid run id ordinal: ${caseOrdinal}`);
@@ -349,6 +353,7 @@ module.exports = {
   hasPrimaryMetricsFromResultLines,
   primaryMetricsFromResultLines,
   sleepImmediate,
+  sleepMillis,
   stampPayload,
   summarizeMetrics
 };

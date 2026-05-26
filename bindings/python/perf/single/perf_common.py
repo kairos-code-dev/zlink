@@ -266,60 +266,61 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
     recv_error = zlink_mod.RecvError
     no_data = zlink_mod.RecvResult.NO_DATA
     storage = _recv_storage(method)
+    poller, poll_events = new_socket_poller(sock, zlink_mod.PollEventFlag.POLLIN)
     unpack_from = struct.unpack_from
     perf_counter = time.perf_counter
     time_ns = time.time_ns
     count = received
     stop_wait_end = active_end + (_env_int("PERF_SINGLE_STOP_WAIT_MS", 2000) / 1000.0)
 
-    stop_received = False
-    while not stop_received:
-        if perf_counter() >= stop_wait_end:
-            break
-        flags = dont_wait
-        while True:
-            try:
-                if not recv_method(storage, flags=flags):
-                    if flags == dont_wait and perf_counter() >= active_end:
-                        time.sleep(0.001)
-                    break
-            except recv_error as exc:
-                if exc.result == no_data:
-                    if flags == dont_wait and perf_counter() >= active_end:
-                        time.sleep(0.001)
-                    break
-                raise
+    try:
+        stop_received = False
+        while not stop_received:
             if perf_counter() >= stop_wait_end:
-                stop_received = True
                 break
             flags = dont_wait
-            parts = storage.parts
-            data = parts[-1].to_bytes() if parts else b""
-            storage.close()
-            if data == STOP_TOKEN:
-                stop_received = True
-                break
-            if len(data) != msg_size or len(data) < HEADER_SIZE:
-                continue
-            magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
-                unpack_from(HEADER_FORMAT, data, 0)
-            )
-            if (
-                magic != HEADER_MAGIC
-                or phase != 1
-                or hdr_msg_size != msg_size
-                or hdr_run_id != run_id
-            ):
-                continue
-            if perf_counter() >= active_end:
-                continue
-            count += 1
-            now_ns = time_ns()
-            if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
-                latencies.append(float(now_ns - sent_ts_ns))
-            else:
-                latencies.append(0.0)
-
+            while True:
+                try:
+                    if not recv_method(storage, flags=flags):
+                        wait_socket_readable_until(poller, poll_events, stop_wait_end)
+                        break
+                except recv_error as exc:
+                    if exc.result == no_data:
+                        wait_socket_readable_until(poller, poll_events, stop_wait_end)
+                        break
+                    raise
+                if perf_counter() >= stop_wait_end:
+                    stop_received = True
+                    break
+                flags = dont_wait
+                parts = storage.parts
+                data = parts[-1].to_bytes() if parts else b""
+                storage.close()
+                if data == STOP_TOKEN:
+                    stop_received = True
+                    break
+                if len(data) != msg_size or len(data) < HEADER_SIZE:
+                    continue
+                magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
+                    unpack_from(HEADER_FORMAT, data, 0)
+                )
+                if (
+                    magic != HEADER_MAGIC
+                    or phase != 1
+                    or hdr_msg_size != msg_size
+                    or hdr_run_id != run_id
+                ):
+                    continue
+                if perf_counter() >= active_end:
+                    continue
+                count += 1
+                now_ns = time_ns()
+                if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
+                    latencies.append(float(now_ns - sent_ts_ns))
+                else:
+                    latencies.append(0.0)
+    finally:
+        poller.close()
     return count
 
 
@@ -387,6 +388,22 @@ def publish_nonblocking(sock, topic, payload):
         raise
 
 
+def new_socket_poller(sock, events):
+    zlink_mod = _require_zlink()
+    poller = zlink_mod.Poller()
+    poll_events = zlink_mod.PollEvents(1)
+    poller.add_socket(sock, events, 0)
+    return poller, poll_events
+
+
+def wait_socket_readable_until(poller, events, deadline):
+    remaining_s = deadline - time.perf_counter()
+    if remaining_s <= 0:
+        return
+    wait_ms = max(1, int(min(remaining_s, 0.050) * 1000))
+    safe_poll(poller, events, wait_ms)
+
+
 def single_routing_probe(sender, receiver, payload, *, run_id, msg_size,
                          routing_id=None):
     """C perf_dealer_router.cpp wait_for_dealer_router_ready /
@@ -397,28 +414,32 @@ def single_routing_probe(sender, receiver, payload, *, run_id, msg_size,
 
     from perf_metrics import decode_header as _decode_header
 
-    deadline = time.monotonic() + (
+    deadline = time.perf_counter() + (
         resolve_single_connect_ready_timeout_ms() / 1000.0
     )
+    poller, poll_events = new_socket_poller(receiver, _require_zlink().PollEventFlag.POLLIN)
     probe = stamp_payload(payload, phase=1, run_id=run_id, seq=0)
-    while time.monotonic() < deadline:
-        send_nonblocking(sender, probe, routing_id=routing_id)
-        probe_deadline = min(deadline, time.monotonic() + 0.05)
-        while time.monotonic() < probe_deadline:
-            received = recv_nonblocking(receiver)
-            if received is None:
-                time.sleep(0.001)
-                continue
-            with received:
-                parts = received.to_bytes_list()
-            data = extract_metric_payload(parts)
-            header = _decode_header(data)
-            if (
-                header is not None
-                and header["magic"] == HEADER_MAGIC
-                and header["run_id"] == run_id
-                and header["phase"] == 1
-                and header["msg_size"] == msg_size
-            ):
-                return True
+    try:
+        while time.perf_counter() < deadline:
+            send_nonblocking(sender, probe, routing_id=routing_id)
+            probe_deadline = min(deadline, time.perf_counter() + 0.05)
+            while time.perf_counter() < probe_deadline:
+                received = recv_nonblocking(receiver)
+                if received is None:
+                    wait_socket_readable_until(poller, poll_events, probe_deadline)
+                    continue
+                with received:
+                    parts = received.to_bytes_list()
+                data = extract_metric_payload(parts)
+                header = _decode_header(data)
+                if (
+                    header is not None
+                    and header["magic"] == HEADER_MAGIC
+                    and header["run_id"] == run_id
+                    and header["phase"] == 1
+                    and header["msg_size"] == msg_size
+                ):
+                    return True
+    finally:
+        poller.close()
     return False

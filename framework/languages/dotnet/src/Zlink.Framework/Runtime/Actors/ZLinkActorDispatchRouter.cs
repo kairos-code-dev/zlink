@@ -187,7 +187,11 @@ internal sealed class ZLinkActorDispatchRouter(
             return;
         }
 
-        await actor.OnDisconnectedAsync(cancellationToken).ConfigureAwait(false);
+        await runtime.TryNotifyEntrySpotActorDisconnectedAsync(
+                actor,
+                targetNodeRid: null,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<byte[]> DispatchLocalForReplyAsync(

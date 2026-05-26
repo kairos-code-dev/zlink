@@ -56,7 +56,7 @@
 | context | `IZLinkSessionClientStream` | session에서 client stream으로 send/reply | 4.4 |
 | context | `IZLinkSessionActorDispatchContext` | session에서 actor handle binding과 dispatch 수행 | 4.4 |
 | context | `IZLinkSessionLifecycle` | session close 제어 | 4.4 |
-| context | `IZLinkSessionActorAttachmentContext` | actor와 session stream 연결/해제 | 4.4 |
+| context | `IZLinkSessionActorAttachmentContext` | 이미 만든 actor를 session stream에 attach | 4.4 |
 | value | `IZLinkActorRef` | session이 actor dispatch target으로 들고 있는 handle | 4.4.1 |
 | handler | `IZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
 | manager | `IZLinkActorManager` | actor id와 actor type으로 actor 생성, 조회, 재사용 | 4.4.1 |
@@ -90,7 +90,6 @@
 | client | `IZLinkClient` | 일반 channel request/send outbound client(client-server, dealer mesh) | 5.1 |
 | client | `IZLinkSpotClient` | SPOT outbound client | 5.2 |
 | client | `IZLinkRoutedSpotClient` | current Spot 없이 명시한 egress channel 로 target Spot 호출 | 5.2.1 |
-| client | `IZLinkSpotMeshPublisherClient` | spot mesh publisher client base | 5.3 |
 | client | `IZLinkSpotPublisherClient` | spot channel publish client | 5.3 |
 | client | `IZLinkFanoutPublisher` | fanout publisher base | 5.4 |
 | client | `IZLinkEventPublisher` | pub/sub event publisher | 5.4 |
@@ -110,7 +109,6 @@
 | builder | `IZLinkSpotMeshNodeBuilder` | SPOT mesh node 등록 builder | 6.3 |
 | management | `IZLinkChannelConnectionManager` | channel capability별 수동 연결 제어 | 6.2 |
 | management | `IZLinkSpotManager` | spot 인스턴스 생성/삭제 | 6.3 |
-| management | `IZLinkSpotConnectionManager` | spot capability별 수동 연결 제어 | 6.4 |
 | timer | `IZLinkTimer` | timer handle | 7 |
 | filter | `IZLinkHandlerFilter` | handler 전후 공통 처리 | 8 |
 | filter | `ZLinkHandlerInvocation` | filter pipeline 호출 context | 8 |
@@ -364,6 +362,10 @@ public interface IZLinkActorHandlerRegistry
     void AddActorLeft<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor;
+
+    void AddActorDisconnected<THandler, TActor>()
+        where THandler : class
+        where TActor : IZLinkActor;
 }
 
 public readonly record struct RoutingId(string Value)
@@ -371,11 +373,8 @@ public readonly record struct RoutingId(string Value)
     public override string ToString() => Value;
 }
 
-public interface IZLinkSpotContext : IZLinkActorHandlerRegistry
+public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 {
-    RoutingId SpotRid { get; }
-    RoutingId NodeRid { get; }
-
     void AddPacket<THandler>()
         where THandler : class;
 
@@ -389,6 +388,17 @@ public interface IZLinkSpotContext : IZLinkActorHandlerRegistry
 
     void AddActorJoin<THandler>()
         where THandler : class;
+}
+
+public interface IZLinkSpotOutboundContext
+{
+    IZLinkSendCall SendSpot<TMessage>(
+        RoutingId spotRid,
+        TMessage message);
+
+    IZLinkRequestCall RequestSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request);
 
     IZLinkPublishCall Publish<TEvent>(
         string topic,
@@ -401,6 +411,16 @@ public interface IZLinkSpotContext : IZLinkActorHandlerRegistry
     IZLinkRequestCall RequestChannel<TRequest>(
         string channelName,
         TRequest request);
+}
+
+public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutboundContext
+{
+    RoutingId SpotRid { get; }
+    RoutingId NodeRid { get; }
+
+    ValueTask LeaveActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
@@ -431,9 +451,17 @@ public interface IZLinkEntrySpot
     }
 }
 
-public interface IZLinkEntrySpotContext : IZLinkActorHandlerRegistry
+public interface IZLinkEntrySpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutboundContext
 {
+    RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
+
+    ValueTask<IZLinkTimer> AddTimer<THandler>(
+        string name,
+        TimeSpan period,
+        ZLinkTimerOptions? options = null,
+        CancellationToken cancellationToken = default)
+        where THandler : class;
 }
 
 // Context property는 안내용 convention 이 아니라 공개 계약이다. framework 는
@@ -520,6 +548,16 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
         CancellationToken cancellationToken);
 }
 
+public interface IZLinkSpotActorDisconnectedHandler<TSpot, TActor>
+    where TSpot : class
+    where TActor : IZLinkActor
+{
+    ValueTask HandleAsync(
+        TSpot spot,
+        TActor actor,
+        CancellationToken cancellationToken);
+}
+
 public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
     where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
@@ -564,19 +602,33 @@ public interface IZLinkSpotActorLeftHandler<TEntrySpot, TActor>
         CancellationToken cancellationToken);
 }
 
-public enum ZLinkSpotActorChangeKind
+public interface IZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>
+    where TEntrySpot : class, IZLinkEntrySpot
+    where TActor : IZLinkActor
 {
-    Unknown = 0,
-    JoinSpot = 1,
-    JoinEntrySpot = 2,
-    LeaveSpot = 3,
-    Disconnect = 4,
-    Destroy = 5
+    ValueTask HandleAsync(
+        TEntrySpot entrySpot,
+        TActor actor,
+        CancellationToken cancellationToken);
 }
 
-public sealed record ZLinkSpotActorChangeResult(
-    ZLinkSpotActorChangeKind Kind);
+public enum ZLinkSpotActorChangeKind
+{
+    JoinSpot = 1,
+    JoinEntrySpot = 2,
+    LeaveSpot = 3
+}
+
+public sealed record ZLinkSpotActorChangeResult
+{
+    public ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind kind);
+
+    public ZLinkSpotActorChangeKind Kind { get; }
+}
 ```
+
+`ZLinkSpotActorChangeResult` 는 정의되지 않은 kind 를 허용하지 않는다. 따라서
+0 값이나 public enum 에 없는 값은 application callback 으로 올라오지 않는다.
 
 `OnCreateAsync(...)` 는 생성 요청이 넘긴 multipart payload를 spot 상태로
 해석하는 단계다. framework가 새 spot 인스턴스를 만든 경우에만 호출된다.
@@ -600,6 +652,7 @@ payload로 `OnCreateAsync(...)`를 한 번 호출한다.
 - `Context.AddActorPacket(...)`
 - `Context.AddPostActorJoined(...)`
 - `Context.AddActorLeft(...)`
+- `Context.AddActorDisconnected(...)`
 - `Context.AddSubscribe(...)`
 - `Context.AddActorJoin(...)`
 
@@ -611,7 +664,8 @@ dispatch table 의 의미가 어긋나게 된다. 그래서 framework 는 이 �
 actor 타입, send/request/lifecycle 종류, packet 이름 기본값을 추론한다.
 handler 가 여러 actor handler interface 를 구현해서 모호하면 명시적인
 `AddActorPacket<THandler, TActor>(...)`, `AddPostActorJoined<THandler, TActor>()`,
-`AddActorLeft<THandler, TActor>()` 를 사용한다.
+`AddActorLeft<THandler, TActor>()`, `AddActorDisconnected<THandler, TActor>()`
+를 사용한다.
 
 `AddActorPacket<THandler, TActor>(...)` 는 actor 타입을 호출 쪽에서 명시하고,
 `THandler` 가 구현한 handler interface 를 보고 send 와 request 를 구분한다.
@@ -687,6 +741,16 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
         TEntrySpot entrySpot,
         TActor actor,
         TRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>
+    where TEntrySpot : class, IZLinkEntrySpot
+    where TActor : IZLinkActor
+{
+    ValueTask HandleAsync(
+        TEntrySpot entrySpot,
+        TActor actor,
         CancellationToken cancellationToken);
 }
 ```
@@ -847,7 +911,22 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
         ZLinkSpotActorChangeResult info,
         CancellationToken cancellationToken);
 }
+
+public interface IZLinkSpotActorDisconnectedHandler<TSpot, TActor>
+    where TSpot : class
+    where TActor : IZLinkActor
+{
+    ValueTask HandleAsync(
+        TSpot spot,
+        TActor actor,
+        CancellationToken cancellationToken);
+}
 ```
+
+actor disconnected handler 는 join/leave lifecycle 과 별개다. session 이
+끊겼다는 사실을 actor 에 알려야 할 때 application 이
+`NotifyActorDisconnectedAsync(...)` 로 대상 actor 를 명시하면 호출된다. 이
+callback 은 actor membership 을 바꾸지 않는다.
 
 lifecycle 도 attribute 방식으로 선언할 수 있다.
 
@@ -884,6 +963,10 @@ registry 안에서 동일 actor 타입에 대해 하나씩만 허용한다.
 
 `IZLinkSpotContext` 가 노출하는 호출 표면들은 다음 역할을 한다.
 
+- `Context.SendSpot(...)` 과 `Context.RequestSpot(...)` 은 현재 SPOT 의
+  실행 문맥에서 다른 SPOT 으로 routed send/request 를 보낸다. target 은
+  `RoutingId` 로 지정하고, 실제 target node 와 route channel 은
+  `IZLinkSpotRemoteAddressResolver` 가 해소한다.
 - `Context.Publish(topic, ...)` 는 편의 함수다. 현재 SPOT 이 속한 active
   SPOT channel 에 publish 하기 위한 것이다.
 - `Context.SendChannel(...)` 과 `Context.RequestChannel(...)` 은 현재 SPOT
@@ -1199,6 +1282,10 @@ public interface IZLinkSessionActorDispatchContext
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken = default);
+
+    ValueTask NotifyActorDisconnectedAsync(
+        IZLinkActorRef actor,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorManager
@@ -1383,7 +1470,7 @@ actor join, actor factory, stream-attached actor 모델은 현재 draft
 - `IZLinkSpotContext.AddActorJoin<THandler, TActor, TRequest, TReply>()`
 - `IZLinkSpotContext.AddActorJoin<THandler>()`
 - stream session 의 actor dispatch 표면인 `IZLinkSessionContext`
-- actor stream 연결/해제를 담당하는 `IZLinkSessionActorAttachmentContext`
+- 이미 만든 actor 를 session stream 에 attach 하는 `IZLinkSessionActorAttachmentContext`
 
 `stage-wrapper-on-spot.ko.md` 는 이 계약 위에서 room/stage wrapper 를
 어떻게 구성하는지 보여 주는 상위 모델 문서다. 함께 읽으면 도움이 된다.
@@ -1504,8 +1591,6 @@ public interface IZLinkActor
     void Configure()
     {
     }
-
-    ValueTask OnDisconnectedAsync(CancellationToken cancellationToken);
 }
 
 public interface IZLinkActorContext
@@ -1615,13 +1700,48 @@ public interface IZLinkSpotActorJoinHandler<TSpot, TActor, in TRequest, TReply>
         CancellationToken cancellationToken);
 }
 
+public interface IZLinkSpotOutboundContext
+{
+    IZLinkSendCall SendSpot<TMessage>(
+        RoutingId spotRid,
+        TMessage message);
+
+    IZLinkRequestCall RequestSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request);
+
+    IZLinkPublishCall Publish<TEvent>(
+        string topic,
+        TEvent message);
+
+    IZLinkSendCall SendChannel<TMessage>(
+        string channelName,
+        TMessage message);
+
+    IZLinkRequestCall RequestChannel<TRequest>(
+        string channelName,
+        TRequest request);
+}
+
 public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutboundContext
 {
     RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
-        ValueTask LeaveActorAsync(
+    ValueTask LeaveActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
+    ValueTask<IZLinkTimer> AddTimer<THandler>(
+        string name,
+        TimeSpan period,
+        ZLinkTimerOptions? options = null,
+        CancellationToken cancellationToken = default)
+        where THandler : class;
+}
+
+public interface IZLinkEntrySpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutboundContext
+{
+    RoutingId SpotRid { get; }
+    RoutingId NodeRid { get; }
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
@@ -1674,9 +1794,10 @@ Spot 의 `Configure()` 단계에서 이루어진다.
 이렇게 두면 한 가지 이점이 있다. Entry 단계와 user Spot 단계를 하나의
 actor class 안에서 상태 분기로 섞을 필요가 없다.
 
-channel outbound 는 actor context 의 기능이 아니다. Entry Spot 또는 user Spot
-안에서 channel 로 메시지를 보내야 하면 handler 가 받은 `entrySpot.Context` 또는
-`spot.Context` 의 `SendChannel(...)` / `RequestChannel(...)` 을 사용한다.
+outbound 는 actor context 의 기능이 아니다. Entry Spot 또는 user Spot 안에서
+다른 Spot 이나 channel 로 메시지를 보내야 하면 handler 가 받은
+`entrySpot.Context` 또는 `spot.Context` 의 `SendSpot(...)`,
+`RequestSpot(...)`, `SendChannel(...)`, `RequestChannel(...)` 을 사용한다.
 client stream 으로 push 해야 하면 `ZLinkActorSendContext.BoundSession`,
 `ZLinkActorRequestContext.BoundSession`, 또는 `IZLinkBoundSession` 를
 사용한다.
@@ -2075,6 +2196,12 @@ public interface IZLinkSpotClient
 }
 ```
 
+`IZLinkSpotContext` 와 `IZLinkEntrySpotContext` 는 같은 outbound 표면을
+직접 노출한다. 따라서 SPOT lifecycle callback 이나 handler 안에서는 별도
+client 를 주입하지 않고 `Context.SendSpot(...)`, `Context.RequestSpot(...)`,
+`Context.SendChannel(...)`, `Context.RequestChannel(...)`, `Context.Publish(...)`
+를 사용할 수 있다.
+
 `IZLinkClient` 와 비교했을 때의 차이는 다음과 같다.
 
 - `Publish(topic, ...)` 가 포함된다. SPOT 쪽은 현재 channel 안에서 topic
@@ -2147,7 +2274,7 @@ egress 를 둘 다 갖고 있을 수 있으므로, caller 가 사용할 local eg
 
 ### 5.3 IZLinkSpotPublisherClient
 
-`IZLinkSpotClient.Publish(...)` 와 `IZLinkSpotPublisherClient` 는 사용
+`IZLinkSpotClient.Publish(...)` 는 사용
 상황이 다르다.
 
 - `IZLinkSpotClient.Publish(...)` 는 이미 실행 중인 local spot 문맥에서
@@ -2156,22 +2283,14 @@ egress 를 둘 다 갖고 있을 수 있으므로, caller 가 사용할 local eg
   특정 spot channel 로 publish 할 때 사용하는 별도의 client 다.
 
 ```csharp
-public interface IZLinkSpotMeshPublisherClient
+public interface IZLinkSpotPublisherClient
 {
     IZLinkPublishCall Publish<TEvent>(
         string channelName,
         string topic,
         TEvent message);
 }
-
-public interface IZLinkSpotPublisherClient : IZLinkSpotMeshPublisherClient
-{
-}
 ```
-
-`IZLinkSpotPublisherClient` 는 `IZLinkSpotMeshPublisherClient` 를 그대로
-상속한다. 단일 SPOT publisher 와 mesh publisher 양쪽이, 동일한 publish
-호출 표면을 공유한다.
 
 여기서 `channelName` 은 target SPOT channel 의 이름이다. 즉 이 interface
 는 다음 상황을 위한 것이다. `game.stage`, `game.chat` 처럼 여러 SPOT
@@ -2735,7 +2854,7 @@ public interface IZLinkFrameworkOptions
     mesh builder는 자체 `UseDiscovery(...)`와 `AddNode(spotNodeName, ...)`를
     노출한다.
     mesh node builder는 `EnableRouter`, `EnablePubSub`,
-    `AttachClientServerChannelClient`, `AttachSpotMeshPublisherClient`,
+    `AttachClientServerChannelClient`, `AttachSpotPublisherClient`,
     `AddSpotFactory<TSpot>(...)`, `AddEntrySpot<TEntrySpot>()`를 노출한다.
     ActorGateway 는 별도 node builder 를 갖지 않고, stream 이 router capability
     를 켠 SpotNode 를 `AttachActorGateway(...)` 로 참조한다.
@@ -3070,7 +3189,7 @@ public interface IZLinkSpotNodeBuilder
         string channelName,
         Action<ISpotChannelClientCapabilityBuilder>? configure = null);
 
-    void AttachSpotMeshPublisherClient(
+    void AttachSpotPublisherClient(
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
@@ -3107,7 +3226,7 @@ public interface IZLinkSpotMeshNodeBuilder
         string channelName,
         Action<ISpotChannelClientCapabilityBuilder>? configure = null);
 
-    void AttachSpotMeshPublisherClient(
+    void AttachSpotPublisherClient(
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
@@ -3135,7 +3254,7 @@ public interface IZLinkEntrySpotOptions
   - 현재 SPOT channel 안의 publish/subscribe capability를 켠다.
 - `AttachClientServerChannelClient(...)`
   - 다른 channel로 send/request 할 outbound `DEALER(client)` 경로를 붙인다.
-- `AttachSpotMeshPublisherClient(...)`
+- `AttachSpotPublisherClient(...)`
   - local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel로 publish할
     outbound publisher client를 붙인다.
 - `AddSpotFactory<TSpot>()`
@@ -3199,41 +3318,6 @@ ActorGateway 도 같은 원칙을 따른다. 별도 `AddActorGatewayNode(...)` �
 - local SPOT pub/sub capability 활성화
 - 외부 channel 호출용 client attach
 - 외부 SPOT publish client attach
-
-### 6.4 Spot 연결 관리
-
-SPOT 역시 수동 연결을 사용할 때는, capability 별 런타임 제어 표면이
-필요하다.
-
-```csharp
-public interface IZLinkSpotConnectionManager
-{
-    ValueTask<IZLinkEndpointConnections> GetRouterAsync(
-        string spotNodeName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkEndpointConnections> GetPubSubAsync(
-        string spotNodeName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkEndpointConnections> GetClientServerChannelClientAsync(
-        string spotNodeName,
-        string channelName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkEndpointConnections> GetSpotMeshPublisherClientAsync(
-        string spotNodeName,
-        string channelName,
-        CancellationToken cancellationToken = default);
-}
-```
-
-Spot 연결 관리 표면 역시 capability 이름을 그대로 드러낸다. 같은
-capability 를 가리키는 일반화된 이름 alias 는, public draft 계약에 두지
-않는다.
-
-이 관리 interface 또한 모든 node 에 항상 열려 있는 것이 아니다. 해당
-capability 가 manual 모드일 때에 한해 유효한 표면으로 본다.
 
 ## 7. Timer 인터페이스
 
@@ -3775,6 +3859,11 @@ public sealed class ZLinkSpotPostActorJoinedAttribute : Attribute
 public sealed class ZLinkSpotActorLeftAttribute : Attribute
 {
 }
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class ZLinkSpotActorDisconnectedAttribute : Attribute
+{
+}
 ```
 
 method 시그니처는 아래 순서를 따른다.
@@ -3783,6 +3872,7 @@ method 시그니처는 아래 순서를 따른다.
 - request: `(spotOrEntrySpot, actor, request, CancellationToken)` reply 반환
 - actor join: `(spot, actor, request, CancellationToken)` reply 반환
 - joined/left: `(spotOrEntrySpot, actor, ZLinkSpotActorChangeResult, CancellationToken)` 반환값 없음
+- disconnected: `(spotOrEntrySpot, actor, CancellationToken)` 반환값 없음
 
 `PacketName` 을 지정하지 않으면 message/request 타입의 packet 이름을 사용한다.
 같은 handler 클래스에 여러 Spot actor handler attribute method 가 있으면
@@ -3954,9 +4044,9 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 | `IZLinkRouteClient` | 항상 등록한다. route channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkEventPublisher`, `IZLinkFanoutPublisher` | 항상 등록한다. publisher capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkChannelConnectionManager` | 항상 등록한다. 대상 channel capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
-| `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotConnectionManager` | `SpotNode` 가 하나 이상 있을 때 등록한다 |
+| `IZLinkSpotManager`, `IZLinkSpotClient` | `SpotNode` 가 하나 이상 있을 때 등록한다 |
 | `IZLinkRoutedSpotClient` | client-server channel 또는 route mesh channel 중 `EnableSpotRouteEgress(...)`가 켜진 local egress channel 이 하나 이상 있을 때 등록한다 |
-| `IZLinkSpotPublisherClient`, `IZLinkSpotMeshPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
+| `IZLinkSpotPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
 | `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
 | `IZLinkBoundSessionFactory`, `IZLinkBoundSession` | actor bound session runtime 등록한다 |
 | `IZLinkSpotRemoteAddressResolver` | 해당 resolver registration 이 있을 때 등록한다 |

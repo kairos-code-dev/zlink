@@ -31,6 +31,7 @@ public abstract partial class SpotTestSupport
             Context.AddActorJoin<ActorJoinHandler, TestActor, JoinStageRequest, JoinStageReply>();
             Context.AddPostActorJoined<ActorStageJoinedHandler, TestActor>();
             Context.AddActorLeft<ActorStageLeftHandler, TestActor>();
+            Context.AddActorDisconnected<ActorStageDisconnectedHandler, TestActor>();
         }
 
         internal IDisposable EnterScope(string source)
@@ -115,6 +116,22 @@ public abstract partial class SpotTestSupport
         }
     }
 
+    public sealed class ActorStageDisconnectedHandler(ActorIntegrationRecorder recorder)
+        : IZLinkSpotActorDisconnectedHandler<ActorStageSpot, TestActor>
+    {
+        public ValueTask HandleAsync(
+            ActorStageSpot spot,
+            TestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = actor;
+            _ = cancellationToken;
+            Interlocked.Increment(ref recorder.DisconnectCount);
+            return ValueTask.CompletedTask;
+        }
+    }
+
     public sealed record JoinStageRequest(string RoomId);
 
     public sealed record JoinStageReply(string RoomId);
@@ -167,12 +184,6 @@ public abstract partial class SpotTestSupport
             }
         }
 
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            Interlocked.Increment(ref Recorder.DisconnectCount);
-            return ValueTask.CompletedTask;
-        }
     }
 
     public sealed class ActorJoinViaContextHandler

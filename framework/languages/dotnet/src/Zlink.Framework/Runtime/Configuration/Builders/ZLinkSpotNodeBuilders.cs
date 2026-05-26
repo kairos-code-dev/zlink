@@ -44,16 +44,9 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null)
     {
-        AttachSpotMeshPublisherClient(channelName, configure);
-    }
-
-    public void AttachSpotMeshPublisherClient(
-        string channelName,
-        Action<ISpotPublisherClientCapabilityBuilder>? configure = null)
-    {
         if (string.IsNullOrWhiteSpace(channelName))
         {
-            throw new ZLinkConfigurationException("Attached SPOT mesh publisher channel name must not be empty.");
+            throw new ZLinkConfigurationException("Attached SPOT publisher channel name must not be empty.");
         }
 
         if (!registration.AttachedSpotPublisherClients.TryGetValue(channelName, out var attached))

@@ -209,10 +209,6 @@ public interface IZLinkSpotNodeBuilder
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
 
-    void AttachSpotMeshPublisherClient(
-        string channelName,
-        Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
-
     void AcceptSpotRoutesFromChannel(
         string channelName,
         Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null);

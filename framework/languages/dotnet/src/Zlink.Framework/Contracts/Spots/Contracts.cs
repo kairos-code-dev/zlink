@@ -84,47 +84,12 @@ public interface IZLinkRoutedSpotEgressClient
         TRequest request);
 }
 
-public interface IZLinkSpotMeshPublisherClient
+public interface IZLinkSpotPublisherClient
 {
     IZLinkPublishCall Publish<TEvent>(
         string channelName,
         string topic,
         TEvent message);
-}
-
-public interface IZLinkSpotPublisherClient : IZLinkSpotMeshPublisherClient
-{
-}
-
-public interface IZLinkSpotConnectionManager
-{
-    ValueTask<IZLinkEndpointConnections> GetRouterAsync(
-        string spotNodeName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkEndpointConnections> GetPubSubAsync(
-        string spotNodeName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkEndpointConnections> GetClientServerChannelClientAsync(
-        string spotNodeName,
-        string channelName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkEndpointConnections> GetSpotMeshPublisherClientAsync(
-        string spotNodeName,
-        string channelName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkEndpointConnections> GetChannelClientAsync(
-        string spotNodeName,
-        string channelName,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkEndpointConnections> GetSpotPublisherClientAsync(
-        string spotNodeName,
-        string channelName,
-        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSpotPacketHandler<TSpot, in TMessage>

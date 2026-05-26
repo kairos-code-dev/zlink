@@ -1154,6 +1154,10 @@ public interface IZLinkSessionActorDispatchContext
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken = default);
+
+    ValueTask NotifyActorDisconnectedAsync(
+        IZLinkActorRef actor,
+        CancellationToken cancellationToken = default);
 }
 ```
 
@@ -1166,6 +1170,13 @@ overload 로 bind 할 수 있고, 다른 process 의 actor 는 `JoinSpot(...)` /
 `BoundActors` 로 현재 binding snapshot 을 보거나 `TryGetBoundActor(actorId, out actor)` 로
 actor id 기준 조회를 한다. session 은 actor handle 목록을 별도 application 상태로
 복제하지 않는다.
+
+session disconnect 는 bound actor 전체에 자동 전파되지 않는다. 연결이 끊겼을 때
+어떤 actor 에게 알려야 하는지는 application 이 판단한다. 알림이 필요한 경우
+`OnDisconnectedAsync(...)` 안에서 `TryGetBoundActor(...)` 또는 `BoundActors` 로
+대상을 고른 뒤 `NotifyActorDisconnectedAsync(actor, ...)` 를 호출한다. 이 호출은
+actor 의 현재 Spot 실행 문맥에서 disconnected handler 를 실행할 뿐이며, actor 를
+room 에서 leave 시키지 않는다.
 
 ## 6. Spot remote address resolver 등록
 
@@ -1268,9 +1279,6 @@ public sealed class TicTacToeActor(
 {
     public string ActorId { get; } = actorId;
     public IZLinkActorContext Context { get; } = context;
-
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-        => ValueTask.CompletedTask;
 }
 ```
 

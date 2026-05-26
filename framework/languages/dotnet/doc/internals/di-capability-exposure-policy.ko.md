@@ -111,8 +111,6 @@ capability 누락을 표현하지 않는다.
 | `IZLinkSpotManager` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 |
 | `IZLinkSpotClient` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 |
 | `IZLinkSpotPublisherClient` | 최소 1개 이상의 Spot publisher client capability | DI resolve 실패 |
-| `IZLinkSpotMeshPublisherClient` | 최소 1개 이상의 Spot publisher client capability | DI resolve 실패 |
-| `IZLinkSpotConnectionManager` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 |
 | `IZLinkActorManager` | 최소 1개 이상의 `SpotNode` 와 최소 1개 이상의 actor factory | DI resolve 실패 |
 
 이 정책은 사용자가 잘못된 기능을 생성자에서 바로 요구했을 때, 해당 service 가
@@ -190,7 +188,7 @@ resolver 구현을 DI 로 제공할 수 있지만, local spot 문맥이 없으�
 
 ### 4.3 Spot publisher client
 
-`IZLinkSpotPublisherClient` 와 `IZLinkSpotMeshPublisherClient` 는 attached Spot
+`IZLinkSpotPublisherClient` 는 attached Spot
 publisher client capability 가 있을 때만 등록한다.
 
 Spot publisher client capability 없이 외부 publish service 를 주입받고 싶다면,

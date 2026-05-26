@@ -36,13 +36,13 @@ None
         +-- bind session --> Entry Spot + bound
         |     +-- JoinSpot --> user Spot + bound
         |           +-- leave (framework) --> Entry Spot + bound
-        +-- disconnect/unbind (framework) --> destroy --> None
+        +-- disconnect/unbind (framework) --> Entry/user Spot 유지
 ```
 
 framework 가 자동으로 관리하는 것: Entry Spot 생성/소멸, user Spot 에서 Entry Spot
-으로 leave, actor destroy. **disconnect 시 framework 가 user Spot 에서 먼저 leave
-시킨 뒤 destroy** 한다(destroy 는 Entry Spot 에서만 허용). 응용은 leave/destroy 를
-직접 호출하지 않는다.
+으로 leave. session disconnect 는 actor membership 을 바꾸지 않는다. actor 에게
+끊김을 알려야 하면 응용이 대상 actor 를 선택해서
+`NotifyActorDisconnectedAsync(...)` 를 호출한다.
 
 ## 2. actor 등록과 작성
 
@@ -67,9 +67,6 @@ public sealed class PlayerActor(string actorId, IZLinkActorContext context)
 {
     public string ActorId { get; } = actorId;
     public IZLinkActorContext Context { get; } = context;
-
-    public ValueTask OnDisconnectedAsync(CancellationToken ct)
-        => ValueTask.CompletedTask;   // 이후 leave/destroy 는 framework 가 처리
 }
 ```
 
@@ -249,7 +246,8 @@ public sealed class TicTacToeSession(
 
     public ValueTask OnDisconnectedAsync(CancellationToken ct)
     {
-        // bound actor 의 unbind 와 leave/destroy 는 framework 가 자동 처리한다.
+        // session disconnect 는 bound actor 전체에 자동 전파되지 않는다.
+        // 필요한 actor 에게만 Context.NotifyActorDisconnectedAsync(actor, ct) 를 호출한다.
         return ValueTask.CompletedTask;
     }
 }

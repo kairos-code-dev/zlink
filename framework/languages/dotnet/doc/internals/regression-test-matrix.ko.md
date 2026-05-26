@@ -103,10 +103,10 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | actor manager without SpotNode | `unit` | SpotNode 없는 구성에서는 `IZLinkActorManager` 가 DI 에 없다 |
 | actor manager with SpotNode only | `unit` | SpotNode 만 있고 actor factory 가 없으면 `IZLinkActorManager` 가 DI 에 없다 |
 | actor manager with SpotNode and actor factory | `unit` | SpotNode 와 actor factory 가 모두 있으면 `IZLinkActorManager` 가 DI 에 등록된다 |
-| Spot service without SpotNode | `unit` | SpotNode 없는 구성에서는 `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotConnectionManager` 가 DI 에 없다 |
+| Spot service without SpotNode | `unit` | SpotNode 없는 구성에서는 `IZLinkSpotManager`, `IZLinkSpotClient` 가 DI 에 없다 |
 | Spot service with SpotNode | `unit` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
 | Spot publisher without publisher capability | `unit` | SpotNode 가 있어도 publisher capability 가 없으면 Spot publisher service 는 DI 에 없다 |
-| Spot publisher with publisher capability | `unit` | Spot publisher capability 가 있으면 `IZLinkSpotPublisherClient` 와 `IZLinkSpotMeshPublisherClient` 가 DI 에 등록된다 |
+| Spot publisher with publisher capability | `unit` | Spot publisher capability 가 있으면 `IZLinkSpotPublisherClient` 가 DI 에 등록된다 |
 | bound session factory registration | `unit` | `IZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록된다 |
 | Spot remote address resolver without SpotNode | `unit` | remote address 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
 | Spot client with resolver only | `unit` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotClient` 는 DI 에 없다 |
@@ -131,8 +131,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | `GetOrCreateAsync<TSpot>(...)` same type | `integration-single-process` | 같은 `spotId`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환하고 새 `OnCreateAsync(...)`를 호출하지 않는다 |
 | spot create lifecycle failure | `integration-single-process` | `OnCreateAsync(...)` 또는 `OnInitializeAsync(...)` 실패는 `SpotCreateFailed`로 전파되고 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
-| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddHandler(...)`, `Context.AddActorPacket(...)`, `Context.AddPostActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등의 등록이 descriptor에 반영된다 |
-| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddPacket(...)`, `AddSubscribe(...)`, `AddHandler(...)`, `AddActorPacket(...)`, `AddPostActorJoined(...)`, `AddActorLeft(...)`가 Entry Spot registry에 반영된다 |
+| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddHandler(...)`, `Context.AddActorPacket(...)`, `Context.AddPostActorJoined(...)`, `Context.AddActorLeft(...)`, `Context.AddActorDisconnected(...)`, `Context.AddSubscribe(...)`, `Context.AddActorJoin(...)` 등의 등록이 descriptor에 반영된다 |
+| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddPacket(...)`, `AddSubscribe(...)`, `AddHandler(...)`, `AddActorPacket(...)`, `AddPostActorJoined(...)`, `AddActorLeft(...)`, `AddActorDisconnected(...)`가 Entry Spot registry에 반영된다 |
 | Entry Spot packet callback concurrency | `integration-single-process` | Entry Spot 일반 packet handler는 user Spot과 같은 등록 표면을 쓰지만 Entry Spot 전체 실행 줄에 직렬화되지 않는다 |
 | `OnInitializeAsync(...)` handler resolve | `integration-single-process` | spot마다 분리된 DI scope가 정상 동작한다 |
 | `OnClosingAsync(...)` 정상 remove callback | `integration-single-process` | `RemoveAsync(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |
@@ -161,6 +161,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session actor bind resolver 제거 | `integration-single-process` | `BindActorHandleAsync(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
 | remote actor dispatch 생성 금지 | `integration-single-process` | routed actor dispatch 수신 경로는 local actor 가 없을 때 factory 를 호출하지 않고 dispatch 를 실패시킨다 |
 | session actor relay bridge | `integration-single-process` | `BindActorHandleAsync(...)` 와 `RelayToActorAsync(IZLinkActorRef, ...)` 가 public session 표면에서 동작한다 |
+| session actor explicit disconnect notification | `contract`, `integration-single-process` | session disconnect 는 bound actor 전체에 자동 전파되지 않고, `NotifyActorDisconnectedAsync(...)` 또는 runtime 명시 호출 시 현재 Spot actor disconnected handler 가 호출된다 |
 | session actor dispatch ordering | `integration-single-process` | stream session에서 actor로 relay된 packet이 actor별 순서를 보장하고, 현재 actor 위치에 맞는 handler 실행 경로로 넘어간다 |
 | actor dispatch location after mailbox wait | `integration-single-process` | 같은 actor의 앞선 packet이 join을 끝낸 뒤, 대기 중이던 다음 packet이 이전 위치가 아니라 새 user Spot 위치로 dispatch된다 |
 | session actor dispatch wire multipart | `integration-single-process` | Session 서버와 Play 서버 사이의 actor dispatch가 route header, actor metadata, stream header, payload를 별도 part로 유지하고, payload를 JSON envelope 안의 `byte[]`로 재직렬화하지 않는다 |
@@ -182,6 +183,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
 | spot context channel request 경로 | `integration-single-process` | `Spot.Context.RequestChannel(...)`이 현재 Spot 에 attach 된 channel client 경로를 사용한다 |
+| spot context routed send/request 표면 | `contract`, `integration-single-process` | `IZLinkSpotOutboundContext`가 `SendSpot`, `RequestSpot`, `Publish`, `SendChannel`, `RequestChannel`을 모두 노출하고, `Spot.Context.SendSpot(...)` / `RequestSpot(...)`이 route transport를 사용한다 |
 | actor context stream send API | `integration-single-process` | actor는 `Context.Send(...)`로 client stream에 push하고, `IZLinkStream`을 직접 노출받지 않는다 |
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | Spot actor request handler reply | `unit` | Entry Spot/user Spot actor request packet은 request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |

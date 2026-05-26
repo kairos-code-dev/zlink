@@ -106,7 +106,7 @@ public sealed class GameSession(IZLinkSessionContext context) : IZLinkSession
     }
 
     public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;
-    public ValueTask OnDisconnectedAsync(CancellationToken ct) => ValueTask.CompletedTask; // leave/destroy 는 framework
+    public ValueTask OnDisconnectedAsync(CancellationToken ct) => ValueTask.CompletedTask; // actor notification 은 application 이 선택
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken ct) => ValueTask.CompletedTask;
 }
 ```

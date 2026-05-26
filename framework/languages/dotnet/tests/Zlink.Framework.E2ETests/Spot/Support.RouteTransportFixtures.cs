@@ -87,7 +87,7 @@ public abstract partial class SpotTestSupport
         }
     }
 
-    public sealed class SpotRouteSendCallerHandler(IZLinkSpotClient spotClient)
+    public sealed class SpotRouteSendCallerHandler
         : IZLinkSpotPacketHandler<SpotRouteCallerEntrySpot, SpotRouteSendCallerCommand>
     {
         public async ValueTask HandleAsync(
@@ -95,15 +95,13 @@ public abstract partial class SpotTestSupport
             SpotRouteSendCallerCommand message,
             CancellationToken cancellationToken)
         {
-            _ = spot;
-            await spotClient.SendSpot(RoutingId.Of("route-target"), new SpotRouteTargetCommand(message.Value))
+            await spot.Context.SendSpot(RoutingId.Of("route-target"), new SpotRouteTargetCommand(message.Value))
                 .Submit(cancellationToken)
                 .ConfigureAwait(false);
         }
     }
 
     public sealed class SpotRouteRequestCallerHandler(
-        IZLinkSpotClient spotClient,
         SpotRouteTransportRecorder recorder)
         : IZLinkSpotPacketHandler<SpotRouteCallerEntrySpot, SpotRouteRequestCallerCommand>
     {
@@ -112,8 +110,7 @@ public abstract partial class SpotTestSupport
             SpotRouteRequestCallerCommand message,
             CancellationToken cancellationToken)
         {
-            _ = spot;
-            var reply = await spotClient
+            var reply = await spot.Context
                 .RequestSpot(RoutingId.Of("route-target"), new SpotRouteTargetRequest(message.Value))
                 .Timeout(TimeSpan.FromMilliseconds(500))
                 .SubmitAsync<SpotRouteTargetReply>(cancellationToken)

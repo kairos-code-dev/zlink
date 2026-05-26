@@ -49,6 +49,8 @@ internal sealed class ZLinkSpotActorInferredHandlerDescriptor
     public ZLinkSpotActorLifecycleDescriptor? Joined { get; init; }
 
     public ZLinkSpotActorLifecycleDescriptor? Left { get; init; }
+
+    public ZLinkSpotActorLifecycleDescriptor? Disconnected { get; init; }
 }
 
 internal sealed class ZLinkSpotActorHandlerRegistry
@@ -58,6 +60,7 @@ internal sealed class ZLinkSpotActorHandlerRegistry
     private readonly Dictionary<(ZLinkMessageKind Kind, Type ActorType, string Name), ZLinkSpotActorPacketDescriptor> _packets = [];
     private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _joined = [];
     private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _left = [];
+    private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _disconnected = [];
     private bool _bound;
 
     public ZLinkSpotActorHandlerRegistry(
@@ -110,6 +113,12 @@ internal sealed class ZLinkSpotActorHandlerRegistry
         if (descriptor.Left is { } left)
         {
             AddLifecycleDescriptor(_left, left);
+            return;
+        }
+
+        if (descriptor.Disconnected is { } disconnected)
+        {
+            AddLifecycleDescriptor(_disconnected, disconnected);
         }
     }
 
@@ -140,6 +149,17 @@ internal sealed class ZLinkSpotActorHandlerRegistry
     public void AddLeft(Type handlerType, Type actorType)
     {
         AddLifecycle(_left, handlerType, actorType, joined: false);
+    }
+
+    public void AddDisconnected(Type handlerType, Type actorType)
+    {
+        EnsureNotBound();
+        var descriptor = ZLinkSpotActorHandlerDescriptorFactory.CreateDisconnected(
+            _surface,
+            _expectedSpotType,
+            handlerType,
+            actorType);
+        AddLifecycleDescriptor(_disconnected, descriptor);
     }
 
     public void Bind()
@@ -186,6 +206,11 @@ internal sealed class ZLinkSpotActorHandlerRegistry
     public bool TryResolveLeft(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
     {
         return TryResolveLifecycle(_left, actorType, out descriptor);
+    }
+
+    public bool TryResolveDisconnected(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
+    {
+        return TryResolveLifecycle(_disconnected, actorType, out descriptor);
     }
 
     private void AddLifecycle(

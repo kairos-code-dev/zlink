@@ -136,7 +136,7 @@ builder.Services.AddZLinkFramework(options =>
                 pubsub.SetPubBind("tcp://0.0.0.0:9000");
             });
             node.AttachClientServerChannelClient("orders");
-            node.AttachSpotMeshPublisherClient("game.stage");
+            node.AttachSpotPublisherClient("game.stage");
             node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>();
         });
@@ -188,7 +188,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 - `AttachClientServerChannelClient("orders")`
   - `orders` channel로 outbound[^outbound] send/request를 보낼
     `DEALER(client)`[^dealer-router] 경로를 붙인다.
-- `AttachSpotMeshPublisherClient("game.stage")`
+- `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스를 갖지 않는 외부 노드가 `game.stage` SPOT channel로
     publish할 수 있도록 별도의 publisher client를 붙인다.
 - `AddEntrySpot<StageEntrySpot>()`
@@ -417,7 +417,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachSpotMeshPublisherClient("game.stage", publisher =>
+            node.AttachSpotPublisherClient("game.stage", publisher =>
             {
                 publisher.UseManualConnections(peers =>
                 {
@@ -576,7 +576,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachSpotMeshPublisherClient("game.stage", publisher =>
+            node.AttachSpotPublisherClient("game.stage", publisher =>
             {
                 publisher.ConfigureSocket(socket =>
                 {
@@ -768,6 +768,9 @@ factory resolve, activation, `OnCreateAsync(...)`, `OnInitializeAsync(...)` 실�
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 section 5.2 를
 참고한다. 현재 방향에서는 `SendSpot(...)`, `RequestSpot(...)`,
 `SendChannel(...)`, `RequestChannel(...)`, `Publish(...)` 를 함께 제공한다.
+SPOT 구현 안에서는 같은 호출 표면이 `IZLinkSpotContext` 와
+`IZLinkEntrySpotContext` 에도 직접 노출된다. 즉 handler 나 lifecycle callback
+안에서는 별도 client 를 찾지 않고 `Context.RequestSpot(...)` 처럼 호출한다.
 timer 는 `IZLinkSpotContext.AddTimer<THandler>(...)` 처럼 spot lifecycle
 registration 표면으로 두는 쪽이 더 자연스럽다.
 

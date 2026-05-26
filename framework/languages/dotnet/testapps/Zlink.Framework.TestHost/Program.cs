@@ -68,7 +68,7 @@ internal sealed class ChannelStartupPublishHostedService(
 }
 
 internal sealed class SpotStartupPublishHostedService(
-    IZLinkSpotMeshPublisherClient publisher,
+    IZLinkSpotPublisherClient publisher,
     string channelName,
     string topic,
     string value) : BackgroundService

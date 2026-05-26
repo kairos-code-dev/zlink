@@ -21,8 +21,7 @@ namespace TicTacToe.Server.Play.Actors;
 
 internal sealed class PlayActor(
     string actorId,
-    IZLinkActorContext context,
-    ILogger<PlayActor> logger)
+    IZLinkActorContext context)
     : IZLinkActor
 {
     public string ActorId { get; } = actorId;
@@ -51,13 +50,4 @@ internal sealed class PlayActor(
         return GameId;
     }
 
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-    {
-        _ = cancellationToken;
-        logger.LogInformation(
-            "play actor: stream disconnected. actor={ActorId}, gameId={GameId}",
-            ActorId,
-            GameId);
-        return ValueTask.CompletedTask;
-    }
 }

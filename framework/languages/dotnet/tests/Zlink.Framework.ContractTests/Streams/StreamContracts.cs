@@ -40,6 +40,7 @@ public sealed class StreamContracts
                 "player.joined",
                 ZlinkStreamMetadata.Empty),
             new Message());
+        await context.NotifyActorDisconnectedAsync(actorRef);
 
         await context
             .Send(new PlayerJoined("player-1"))
@@ -286,6 +287,11 @@ public sealed class StreamContracts
             CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
 
+        public ValueTask NotifyActorDisconnectedAsync(
+            IZLinkActorRef actor,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
         public ValueTask CloseAsync(CancellationToken cancellationToken = default)
         {
             IsClosed = true;
@@ -347,8 +353,6 @@ public sealed class StreamContracts
         public string ActorId { get; } = actorId;
 
         public IZLinkActorContext Context => null!;
-
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
     private sealed class SendCall : IZLinkSendCall

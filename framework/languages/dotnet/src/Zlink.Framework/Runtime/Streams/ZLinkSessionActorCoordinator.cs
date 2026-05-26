@@ -148,6 +148,19 @@ internal sealed class ZLinkSessionActorCoordinator(
             .ConfigureAwait(false);
     }
 
+    public async ValueTask NotifyActorDisconnectedAsync(
+        IZLinkActorRef actor,
+        CancellationToken cancellationToken)
+    {
+        if (actor is not ZLinkActorRef actorRef)
+        {
+            throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
+        }
+
+        await runtime.NotifyActorDisconnectedByIdAsync(actorRef.ActorId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask CleanupBindingsAsync(
         ZLinkSessionContext context,
         CancellationToken cancellationToken)

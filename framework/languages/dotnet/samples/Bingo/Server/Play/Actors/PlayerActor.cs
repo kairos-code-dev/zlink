@@ -32,9 +32,4 @@ internal sealed class PlayerActor(
         RoomId = roomId;
     }
 
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.CompletedTask;
-    }
 }

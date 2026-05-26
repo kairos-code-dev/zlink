@@ -31,8 +31,7 @@
 - 클라이언트/퍼블리셔 표면인 `IZLinkClient`, `IZLinkEventPublisher`
 - `AddSpotMesh(...)`, `mesh.AddNode(...)` 같은
   `SPOT`[^spot] 등록 표면
-- `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotPublisherClient`,
-  `IZLinkSpotConnectionManager`
+- `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotPublisherClient`
 - handler group mapping 모델. 즉 `[ZLinkHandlerGroup("...")]` 클래스
   attribute[^attribute] 와 channel 등록 쪽의 `channel.AddHandlerGroup("...")`
   호출을 짝으로 두는 모델이다.

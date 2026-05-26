@@ -55,7 +55,10 @@ public sealed class ActorSessionStateTests : SpotTestSupport
         await actorRuntime.DisconnectActorAsync(actor, staleStream);
         Assert.Equal(0, recorder.DisconnectCount);
         await actorRuntime.DisconnectActorAsync(actor, currentStream);
+        Assert.Equal(0, recorder.DisconnectCount);
+        await actorRuntime.NotifyActorDisconnectedByIdAsync(actor.ActorId);
         Assert.Equal(1, recorder.DisconnectCount);
+        Assert.Equal(created.SpotRid, actor.Spot?.Context.SpotRid);
 
         await host.StopAsync();
     }

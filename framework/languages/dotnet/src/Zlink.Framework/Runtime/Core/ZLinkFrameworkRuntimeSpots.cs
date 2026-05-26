@@ -144,34 +144,22 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask<IZLinkEndpointConnections> GetSpotRouterConnectionsAsync(
-        string spotNodeName,
-        CancellationToken cancellationToken)
+    internal async ValueTask<bool> TryNotifyEntrySpotActorDisconnectedAsync(
+        IZLinkActor actor,
+        RoutingId? targetNodeRid = null,
+        CancellationToken cancellationToken = default)
     {
-        return await _spotFacade.GetRouterConnectionsAsync(spotNodeName, cancellationToken);
-    }
+        if (_state is null)
+        {
+            return false;
+        }
 
-    internal async ValueTask<IZLinkEndpointConnections> GetSpotPubSubConnectionsAsync(
-        string spotNodeName,
-        CancellationToken cancellationToken)
-    {
-        return await _spotFacade.GetPubSubConnectionsAsync(spotNodeName, cancellationToken);
-    }
-
-    internal async ValueTask<IZLinkEndpointConnections> GetSpotChannelClientConnectionsAsync(
-        string spotNodeName,
-        string channelName,
-        CancellationToken cancellationToken)
-    {
-        return await _spotFacade.GetChannelClientConnectionsAsync(spotNodeName, channelName, cancellationToken);
-    }
-
-    internal async ValueTask<IZLinkEndpointConnections> GetSpotPublisherConnectionsAsync(
-        string spotNodeName,
-        string channelName,
-        CancellationToken cancellationToken)
-    {
-        return await _spotFacade.GetPublisherConnectionsAsync(spotNodeName, channelName, cancellationToken);
+        return await _spots.TryNotifyEntrySpotActorDisconnectedAsync(
+                _state,
+                actor,
+                targetNodeRid,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal ZLinkSpotMonitoringSnapshot GetSpotMonitoringSnapshot(string spotNodeName)

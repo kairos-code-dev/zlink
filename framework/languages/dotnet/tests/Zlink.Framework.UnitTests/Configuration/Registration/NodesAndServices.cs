@@ -188,9 +188,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         using var provider = services.BuildServiceProvider();
         Assert.Null(provider.GetService<IZLinkSpotManager>());
         Assert.Null(provider.GetService<IZLinkSpotClient>());
-        Assert.Null(provider.GetService<IZLinkSpotConnectionManager>());
         Assert.Null(provider.GetService<IZLinkSpotPublisherClient>());
-        Assert.Null(provider.GetService<IZLinkSpotMeshPublisherClient>());
     }
 
     [Fact]
@@ -216,7 +214,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         using var provider = services.BuildServiceProvider();
         Assert.NotNull(provider.GetService<IZLinkSpotManager>());
         Assert.NotNull(provider.GetService<IZLinkSpotClient>());
-        Assert.NotNull(provider.GetService<IZLinkSpotConnectionManager>());
     }
 
     [Fact]
@@ -445,7 +442,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         using var provider = services.BuildServiceProvider();
         Assert.Null(provider.GetService<IZLinkSpotPublisherClient>());
-        Assert.Null(provider.GetService<IZLinkSpotMeshPublisherClient>());
     }
 
     [Fact]
@@ -464,14 +460,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                     {
                         pubsub.SetPubBind("tcp://127.0.0.1:6205");
                     });
-                    spot.AttachSpotMeshPublisherClient("game.stage");
+                    spot.AttachSpotPublisherClient("game.stage");
                 });
             });
         });
 
         using var provider = services.BuildServiceProvider();
         Assert.NotNull(provider.GetService<IZLinkSpotPublisherClient>());
-        Assert.NotNull(provider.GetService<IZLinkSpotMeshPublisherClient>());
     }
 
     [Fact]

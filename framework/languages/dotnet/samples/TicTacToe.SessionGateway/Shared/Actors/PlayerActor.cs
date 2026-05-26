@@ -9,10 +9,4 @@ public sealed class PlayerActor(
     public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
-
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-    {
-        _ = cancellationToken;
-        return ValueTask.CompletedTask;
-    }
 }

@@ -107,6 +107,14 @@ internal sealed class ZLinkSessionContext(
             .ConfigureAwait(false);
     }
 
+    public async ValueTask NotifyActorDisconnectedAsync(
+        IZLinkActorRef actor,
+        CancellationToken cancellationToken = default)
+    {
+        await _actors.NotifyActorDisconnectedAsync(actor, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal ZlinkStreamHeader? CurrentDispatchHeader => _currentDispatchHeader;
 
     internal async ValueTask CleanupActorBindingsAsync(CancellationToken cancellationToken)

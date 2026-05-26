@@ -285,11 +285,6 @@ public abstract partial class SpotTestSupport
             }
         }
 
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            return ValueTask.CompletedTask;
-        }
     }
 
     public sealed class RegistryTestActorFactory(

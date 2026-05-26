@@ -177,7 +177,7 @@ internal static class TestHostScenarioConfigurator
 
                             if (!string.IsNullOrWhiteSpace(options.AttachSpotPublisherChannel))
                             {
-                                spot.AttachSpotMeshPublisherClient(options.AttachSpotPublisherChannel);
+                                spot.AttachSpotPublisherClient(options.AttachSpotPublisherChannel);
                             }
 
                             if (options.EnableSpotFactory)
@@ -200,7 +200,7 @@ internal static class TestHostScenarioConfigurator
         {
             services.AddHostedService(provider =>
                 new SpotStartupPublishHostedService(
-                    provider.GetRequiredService<IZLinkSpotMeshPublisherClient>(),
+                    provider.GetRequiredService<IZLinkSpotPublisherClient>(),
                     options.AttachSpotPublisherChannel!,
                     options.PublishTopic!,
                     options.PublishValue ?? "startup"));

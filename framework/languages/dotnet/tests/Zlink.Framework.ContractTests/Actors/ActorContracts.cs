@@ -29,7 +29,6 @@ public sealed class ActorContracts
             .SubmitAsync();
 
         actor.Configure();
-        await actor.OnDisconnectedAsync(CancellationToken.None);
 
         Assert.Equal("player-1", actor.ActorId);
         Assert.Equal(0, joinReply.ResultCode);
@@ -168,8 +167,6 @@ public sealed class ActorContracts
         public string ActorId { get; } = actorId;
 
         public IZLinkActorContext Context { get; } = context;
-
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
     private sealed class RoomSpot : IZLinkSpot

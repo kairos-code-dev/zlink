@@ -188,7 +188,7 @@ public sealed class BuilderContracts
         spot.AttachClientServerChannelClient("api");
         spot.AttachSpotPublisherClient("events", client => client.UseManualConnections(
             connections => connections.Connect("tcp://127.0.0.1:5100")));
-        spot.AttachSpotMeshPublisherClient("mesh-events");
+        spot.AttachSpotPublisherClient("mesh-events");
         spot.AcceptSpotRoutesFromChannel("play-router", accept =>
             accept.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5300")));
         spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.Of("entry"));
@@ -509,11 +509,6 @@ public sealed class BuilderContracts
             Action<ISpotPublisherClientCapabilityBuilder>? configure = null) =>
             configure?.Invoke(new CapabilityBuilder());
 
-        public void AttachSpotMeshPublisherClient(
-            string channelName,
-            Action<ISpotPublisherClientCapabilityBuilder>? configure = null) =>
-            configure?.Invoke(new CapabilityBuilder());
-
         public void AcceptSpotRoutesFromChannel(
             string channelName,
             Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null) =>
@@ -584,8 +579,6 @@ public sealed class BuilderContracts
         public string ActorId { get; } = actorId;
 
         public IZLinkActorContext Context { get; } = context;
-
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
     private sealed class GatewaySession : IZLinkSession

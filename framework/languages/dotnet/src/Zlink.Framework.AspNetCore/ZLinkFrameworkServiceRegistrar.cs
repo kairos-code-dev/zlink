@@ -134,7 +134,6 @@ internal static class ZLinkFrameworkServiceRegistrar
         {
             services.AddSingleton<IZLinkSpotManager, ZLinkSpotManagerService>();
             services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
-            services.AddSingleton<IZLinkSpotConnectionManager, ZLinkSpotConnectionManagerService>();
         }
 
         if (HasRoutedSpotEgress(registration))
@@ -145,7 +144,6 @@ internal static class ZLinkFrameworkServiceRegistrar
         if (HasSpotPublisherClient(registration))
         {
             services.AddSingleton<ZLinkSpotPublisherClientService>();
-            services.AddSingleton<IZLinkSpotMeshPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
             services.AddSingleton<IZLinkSpotPublisherClient>(static provider => provider.GetRequiredService<ZLinkSpotPublisherClientService>());
         }
 

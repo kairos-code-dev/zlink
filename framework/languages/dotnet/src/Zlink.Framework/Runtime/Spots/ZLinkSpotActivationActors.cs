@@ -67,26 +67,13 @@ internal sealed partial class ZLinkSpotActivation
                 $"SPOT actor join reply for '{typeof(TRequest)}' was null.");
     }
 
-    public ValueTask DisconnectActorAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken)
-    {
-        return ExecuteSerializedAsync(
-            async static (activation, state, ct) =>
-            {
-                await activation.LeaveActorCoreAsync(state, ct);
-                await state.OnDisconnectedAsync(ct);
-            },
-            actor,
-            cancellationToken);
-    }
-
     public ValueTask NotifyActorDisconnectedAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
         return ExecuteSerializedAsync(
-            async static (_, state, ct) => await state.OnDisconnectedAsync(ct),
+            static (activation, state, ct) =>
+                activation.NotifyActorDisconnectedCoreAsync(state, ct),
             actor,
             cancellationToken);
     }
@@ -168,6 +155,19 @@ internal sealed partial class ZLinkSpotActivation
             && descriptor is not null)
         {
             await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, context, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask NotifyActorDisconnectedCoreAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (_actorHandlers is not null
+            && _actorHandlers.TryResolveDisconnected(actor.GetType(), out var descriptor)
+            && descriptor is not null)
+        {
+            await HandlerInvoker.InvokeActorDisconnectedAsync(descriptor, actor, cancellationToken)
                 .ConfigureAwait(false);
         }
     }

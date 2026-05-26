@@ -91,7 +91,7 @@ internal static class FixtureSamples
                             connections.Connect("tcp://127.0.0.1:7201");
                         });
                     });
-                    spot.AttachSpotMeshPublisherClient("game.stage");
+                    spot.AttachSpotPublisherClient("game.stage");
                     spot.AddSpotFactory<FixtureStageSpot>();
                 });
             });
@@ -387,12 +387,6 @@ internal sealed class FixtureActor(
     }
 
     public ValueTask OnDetachedAsync(CancellationToken cancellationToken)
-    {
-        _ = cancellationToken;
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
         _ = cancellationToken;
         return ValueTask.CompletedTask;

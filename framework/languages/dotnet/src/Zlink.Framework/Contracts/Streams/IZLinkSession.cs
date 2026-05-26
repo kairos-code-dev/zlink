@@ -99,6 +99,10 @@ public interface IZLinkSessionActorDispatchContext
         ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken = default);
+
+    ValueTask NotifyActorDisconnectedAsync(
+        IZLinkActorRef actor,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionLifecycle

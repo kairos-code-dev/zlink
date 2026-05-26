@@ -300,7 +300,7 @@ app.MapPost("/stage/publish", async (
 });
 ```
 
-이 client 를 쓰려면 노드에 `AttachSpotMeshPublisherClient("game.stage")` 가
+이 client 를 쓰려면 노드에 `AttachSpotPublisherClient("game.stage")` 가
 부착돼 있어야 한다.
 
 ## 6. Stage wrapper (playhouse Stage 류)

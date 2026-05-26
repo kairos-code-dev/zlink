@@ -31,12 +31,6 @@ public abstract partial class StreamTestSupport
             Context.AddPacket<GatewaySessionDisconnectRequestHandler>("session.disconnect");
         }
 
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            Recorder.RecordDisconnected();
-            return ValueTask.CompletedTask;
-        }
     }
 
     public sealed class GatewayActorFactory(ActorDispatchRecorder recorder) : IZLinkActorFactory
@@ -92,11 +86,6 @@ public abstract partial class StreamTestSupport
             }
         }
 
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            return ValueTask.CompletedTask;
-        }
     }
 
     public sealed class ConfigureFailureActorFactory(ConfigureFailureRecorder recorder) : IZLinkActorFactory

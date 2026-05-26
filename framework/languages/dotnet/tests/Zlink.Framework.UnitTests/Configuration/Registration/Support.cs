@@ -283,11 +283,5 @@ public abstract partial class RegistrationValidationSupport
         public string ActorId { get; } = actorId;
 
         public IZLinkActorContext Context { get; } = context;
-
-        public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            return ValueTask.CompletedTask;
-        }
     }
 }

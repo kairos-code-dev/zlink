@@ -201,6 +201,20 @@ internal sealed class ZLinkSpotRuntimeManager(
             .ConfigureAwait(false);
     }
 
+    public async ValueTask<bool> TryNotifyEntrySpotActorDisconnectedAsync(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkActor actor,
+        RoutingId? targetNodeRid,
+        CancellationToken cancellationToken)
+    {
+        return await _entrySpotActors.TryNotifyDisconnectedAsync(
+                state,
+                actor,
+                targetNodeRid,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public IZLinkEndpointConnections GetRouterConnections(
         ZLinkFrameworkRuntimeState state,
         string spotNodeName)

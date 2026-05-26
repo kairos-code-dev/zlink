@@ -159,6 +159,13 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
         return _actorHandlers.TryResolveLeft(actorType, out descriptor);
     }
 
+    public bool TryResolveActorDisconnected(
+        Type actorType,
+        out ZLinkSpotActorLifecycleDescriptor? descriptor)
+    {
+        return _actorHandlers.TryResolveDisconnected(actorType, out descriptor);
+    }
+
     public ValueTask InvokeActorPacketAsync(
         ZLinkSpotActorPacketDescriptor descriptor,
         IZLinkActor actor,
@@ -207,6 +214,17 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
             cancellationToken);
     }
 
+    public ValueTask InvokeActorDisconnectedAsync(
+        ZLinkSpotActorLifecycleDescriptor descriptor,
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        return InvokeActorDisconnectedWithoutGateAsync(
+            descriptor,
+            actor,
+            cancellationToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -245,6 +263,28 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
                     descriptor,
                     actor,
                     context,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Current.Value = previous;
+        }
+    }
+
+    private async ValueTask InvokeActorDisconnectedWithoutGateAsync(
+        ZLinkSpotActorLifecycleDescriptor descriptor,
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        var previous = Current.Value;
+        Current.Value = this;
+        try
+        {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
+            await _invoker.InvokeActorDisconnectedAsync(
+                    descriptor,
+                    actor,
                     cancellationToken)
                 .ConfigureAwait(false);
         }

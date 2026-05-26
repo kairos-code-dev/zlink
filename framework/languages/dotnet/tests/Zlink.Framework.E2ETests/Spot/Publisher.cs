@@ -66,7 +66,7 @@ public sealed class PublisherTests : SpotTestSupport
                 {
                     pubsub.SetPubBind(publisherNodeEndpoint);
                 });
-                spot.AttachSpotMeshPublisherClient("game.stage");
+                spot.AttachSpotPublisherClient("game.stage");
             });
             });
         });
@@ -80,7 +80,7 @@ public sealed class PublisherTests : SpotTestSupport
         await publisherHost.StartAsync();
 
         var manager = subscriberHost.Services.GetRequiredService<IZLinkSpotManager>();
-        _ = await manager.CreateAsync<LocalSubscriberStageSpot>();
+        _ = await manager.CreateAsync<ExternalSubscriberStageSpot>();
 
         var publisher = publisherHost.Services.GetRequiredService<IZLinkSpotPublisherClient>();
         var recorder = subscriberHost.Services.GetRequiredService<SpotLifecycleRecorder>();
@@ -211,7 +211,7 @@ public sealed class PublisherTests : SpotTestSupport
                 {
                     pubsub.SetPubBind(publisherNodeEndpoint);
                 });
-                spot.AttachSpotMeshPublisherClient("game.stage");
+                spot.AttachSpotPublisherClient("game.stage");
             });
             });
         });

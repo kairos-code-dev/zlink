@@ -2,6 +2,24 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation
 {
+    public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message)
+    {
+        return new ZLinkRoutedSpotSendCall<TMessage>(
+            this,
+            RequireRemoteAddressResolver(),
+            ZLinkSpotRemoteAddressTarget.ByRoutingId(spotRid),
+            message);
+    }
+
+    public IZLinkRequestCall RequestSpot<TRequest>(RoutingId spotRid, TRequest request)
+    {
+        return new ZLinkRoutedSpotRequestCall<TRequest>(
+            this,
+            RequireRemoteAddressResolver(),
+            ZLinkSpotRemoteAddressTarget.ByRoutingId(spotRid),
+            request);
+    }
+
     public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
     {
         return new ZLinkCurrentSpotPublishCall<TEvent>(this, topic, message);
@@ -134,5 +152,13 @@ internal sealed partial class ZLinkSpotActivation
             targetSpotRid,
             parts,
             cancellationToken);
+    }
+
+    private IZLinkSpotRemoteAddressResolver RequireRemoteAddressResolver()
+    {
+        return _scope.ServiceProvider.GetService(typeof(IZLinkSpotRemoteAddressResolver)) is IZLinkSpotRemoteAddressResolver resolver
+            ? resolver
+            : throw new ZLinkConfigurationException(
+                "IZLinkSpotContext spot routing requires AddSpotRemoteAddressResolver<TResolver>().");
     }
 }

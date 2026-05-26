@@ -77,7 +77,45 @@ public readonly record struct RoutingId(string Value)
     public override string ToString() => Value;
 }
 
-public interface IZLinkSpotContext
+public interface IZLinkSpotOutboundContext
+{
+    IZLinkSendCall SendSpot<TMessage>(
+        RoutingId spotRid,
+        TMessage message)
+    {
+        return default!;
+    }
+
+    IZLinkRequestCall RequestSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request)
+    {
+        return default!;
+    }
+
+    IZLinkPublishCall Publish<TEvent>(
+        string topic,
+        TEvent message)
+    {
+        return default!;
+    }
+
+    IZLinkSendCall SendChannel<TMessage>(
+        string channelName,
+        TMessage message)
+    {
+        return default!;
+    }
+
+    IZLinkRequestCall RequestChannel<TRequest>(
+        string channelName,
+        TRequest request)
+    {
+        return default!;
+    }
+}
+
+public interface IZLinkSpotContext : IZLinkSpotOutboundContext
 {
     RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
@@ -111,41 +149,6 @@ public interface IZLinkSpotContext
         where THandler : class
         where TActor : IZLinkActor
     {
-    }
-
-    IZLinkPublishCall Publish<TEvent>(
-        string topic,
-        TEvent message)
-    {
-        return default!;
-    }
-
-    IZLinkSendCall SendSpot<TMessage>(
-        RoutingId spotRid,
-        TMessage message)
-    {
-        return default!;
-    }
-
-    IZLinkRequestCall RequestSpot<TRequest>(
-        RoutingId spotRid,
-        TRequest request)
-    {
-        return default!;
-    }
-
-    IZLinkSendCall SendChannel<TMessage>(
-        string channelName,
-        TMessage message)
-    {
-        return default!;
-    }
-
-    IZLinkRequestCall RequestChannel<TRequest>(
-        string channelName,
-        TRequest request)
-    {
-        return default!;
     }
 
     ValueTask<IZLinkTimer> AddTimer<THandler>(
@@ -254,16 +257,12 @@ public interface IZLinkSpotClient
         TEvent message);
 }
 
-public interface IZLinkSpotMeshPublisherClient
+public interface IZLinkSpotPublisherClient
 {
     IZLinkPublishCall Publish<TEvent>(
         string channelName,
         string topic,
         TEvent message);
-}
-
-public interface IZLinkSpotPublisherClient : IZLinkSpotMeshPublisherClient
-{
 }
 
 public enum ZLinkDispatchMode
@@ -375,7 +374,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachSpotMeshPublisherClient("game.stage", publisher =>
+            node.AttachSpotPublisherClient("game.stage", publisher =>
             {
                 publisher.ConfigureSocket(socket =>
                 {
@@ -412,7 +411,7 @@ app.Run();
     `IZLinkRoutedSpotClient.ViaEgressChannel(...)`로 그 local egress channel 을 고른다.
 - `EnablePubSub()`
   - local spot 문맥에서 `IZLinkSpotClient.Publish(...)`를 호출할 수 있게 한다.
-- `AttachSpotMeshPublisherClient("game.stage")`
+- `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     수 있도록 별도의 publisher client를 붙인다.
 - `ConfigureSocket(...)`, `ConfigureRouting(...)`,
@@ -481,7 +480,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachSpotMeshPublisherClient("game.stage", publisher =>
+            node.AttachSpotPublisherClient("game.stage", publisher =>
             {
                 publisher.UseManualConnections(peers =>
                 {
@@ -605,7 +604,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachSpotMeshPublisherClient("game.stage", publisher =>
+            node.AttachSpotPublisherClient("game.stage", publisher =>
             {
                 publisher.ConfigureSocket(socket =>
                 {
@@ -682,7 +681,7 @@ local `SpotNode` 가 없으면 attach 된 channel client 경로도 존재할 수
 따라서 `IZLinkSpotClient.RequestChannel(...)` 같은 표면을 바로 사용하는
 모델로 설명하면 안 된다.
 
-current Spot callback 안에서는 `IZLinkSpotClient.SendSpot(...)` /
+current Spot callback 안에서는 `spot.Context.SendSpot(...)` /
 `RequestSpot(...)` 을 사용한다. 일반 HTTP handler나 channel handler처럼 current Spot 이
 없는 코드에서 target Spot 으로 가야 하면 `IZLinkRoutedSpotClient`를 사용한다.
 
@@ -758,7 +757,7 @@ local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel 로 publi
 
 이 샘플에서 publisher 노드는 spot mesh 등록에 attach 만 걸어 두면 충분하다.
 실제로 어느 SPOT channel 에 publish 할지는, mesh discovery scope 와
-`AttachSpotMeshPublisherClient("game.stage")` 가 함께 결정한다.
+`AttachSpotPublisherClient("game.stage")` 가 함께 결정한다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -780,7 +779,7 @@ builder.Services.AddZLinkFramework(options =>
 
         mesh.AddNode("publisher-node", node =>
         {
-            node.AttachSpotMeshPublisherClient("game.stage");
+            node.AttachSpotPublisherClient("game.stage");
         });
     });
 });
@@ -944,8 +943,6 @@ public interface IZLinkActor
     void Configure()
     {
     }
-
-    ValueTask OnDisconnectedAsync(CancellationToken cancellationToken);
 }
 ```
 
@@ -965,8 +962,9 @@ public interface IZLinkActor
   - 현재 들어가 있는 room 인스턴스를 가져온다. 아직 room 에 join 하지 않았다면
     실패한다.
 - stream attach / disconnect 와 room join / leave 는 서로 다른 수명을 가진다.
-- framework 는 stale[^stale] disconnect 를 내부에서 걸러낸 뒤에만
-  `OnDisconnectedAsync(...)` 를 호출한다.
+- framework 는 stale[^stale] disconnect 를 내부에서 걸러내고 session binding 만
+  정리한다. actor 에게 disconnect 를 알려야 하면 session application 이 대상
+  actor 를 골라 `NotifyActorDisconnectedAsync(...)` 를 호출한다.
 
 bootstrap 은 다음과 같이 읽는다. room 은 외부에서 이미 만들어져 있다고
 가정하므로, 두 노드는 각자 역할만 맡는다.
@@ -1027,8 +1025,10 @@ runtime 에 넘길 때 사용하는 session 전용 context 다.
 - actor create
 - actor packet dispatch
 
-actor stream 의 연결과 해제는 `IZLinkSessionActorAttachmentContext` 라는
-별도의 표면에서 다룬다.
+이미 만든 actor 를 session stream 에 붙이는 작업은
+`IZLinkSessionActorAttachmentContext` 라는 별도의 표면에서 다룬다. session
+disconnect 를 actor 에 알려야 하면 session code 가 대상 actor 를 고른 뒤
+`NotifyActorDisconnectedAsync(...)` 를 호출한다.
 
 ```csharp
 public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
@@ -1099,13 +1099,8 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
         SampleActor actor,
         CancellationToken cancellationToken)
     {
-        if (!_actors.ContainsKey(actor.ActorId))
-        {
-            await actor.OnDisconnectedAsync(cancellationToken);
-            return;
-        }
-
-        await actor.OnDisconnectedAsync(cancellationToken);
+        _ = actor;
+        _ = cancellationToken;
         PublishSampleState();
     }
 
@@ -1155,8 +1150,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
             if (actor.Stream is not null &&
                 actor.IsIdleTimedOut(now, idleTimeout))
             {
-                await actor.OnDisconnectedAsync(
-                    cancellationToken);
+                actor.ClearStream();
                 continue;
             }
 
@@ -1228,13 +1222,10 @@ public sealed class SampleActor : IZLinkActor
             .PacketName("SampleRoomChatPushed")
             .Submit(cancellationToken);
 
-    public ValueTask OnDisconnectedAsync(
-        CancellationToken cancellationToken)
+    public void ClearStream()
     {
         _stream = null;
         DisconnectedAt = DateTimeOffset.UtcNow;
-
-        return ValueTask.CompletedTask;
     }
 
     public void MarkSeen(
@@ -1871,9 +1862,11 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 - attach된 다른 channel로 request packet을 보내고 싶다
   - `RequestChannel(...).Timeout(...).Submit(...)`
 - 다른 SPOT 인스턴스로 routed 호출을 보내고 싶다
-  - 현재 framework core 기본 표면에는 RID 기반의 direct 표면이 없다. 대신
-    `SendSpot(...)` / `RequestSpot(...)`처럼 `RoutingId`를 받는
-    표면을 사용한다.
+  - SPOT callback 안에서는 `Context.SendSpot(...)` /
+    `Context.RequestSpot(...)`처럼 `RoutingId`를 받는 표면을 사용한다.
+  - SPOT callback 밖에서는 `IZLinkRoutedSpotClient.ViaEgressChannel(...)`
+    로 egress channel 을 고른 뒤 `SendSpot(...)` / `RequestSpot(...)` 을
+    호출한다.
 - 현재 spot 자신의 id를 알고 싶다
   - `SampleSpot.Context.SpotRid`
 - 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 확인하고 싶다

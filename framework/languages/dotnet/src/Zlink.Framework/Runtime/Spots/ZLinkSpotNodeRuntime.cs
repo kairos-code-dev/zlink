@@ -181,6 +181,15 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             && _entrySpotActivation.TryResolveActorLeft(actorType, out descriptor);
     }
 
+    public bool TryResolveEntrySpotActorDisconnected(
+        Type actorType,
+        out ZLinkSpotActorLifecycleDescriptor? descriptor)
+    {
+        descriptor = null;
+        return _entrySpotActivation is not null
+            && _entrySpotActivation.TryResolveActorDisconnected(actorType, out descriptor);
+    }
+
     public ValueTask InvokeEntrySpotActorLifecycleAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
@@ -191,6 +200,17 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             descriptor,
             actor,
             context,
+            cancellationToken);
+    }
+
+    public ValueTask InvokeEntrySpotActorDisconnectedAsync(
+        ZLinkSpotActorLifecycleDescriptor descriptor,
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        return RequireEntrySpotActivation().InvokeActorDisconnectedAsync(
+            descriptor,
+            actor,
             cancellationToken);
     }
 

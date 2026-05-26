@@ -872,7 +872,7 @@ framework 적용 항목만 남긴다.
 | `IZLinkActorRef.ActorId` / `ActorType` | logical actor identity | 유지한다 |
 | `IZLinkActorRef.IsRemote` | 현재 ref 가 remote address 를 갖는지 나타낸다 | 유지한다. rebind 와 diagnostics 에 필요한 상태 표시다 |
 | `IZLinkActorRef.RemoteAddress` | target node rid, generation snapshot | 유지한다. `RouterChannelId` 는 호환/진단 필드이며 ActorGateway bind 는 target node rid 와 generation 을 사용한다 |
-| `IZLinkActorRef.NotifyDisconnectedAsync(...)` | local notify 또는 route mesh `ActorDisconnected` packet 전송 | ActorGateway detach/close 경로로 바꾼다. route mesh packet 을 직접 보내지 않는다 |
+| `IZLinkSessionActorDispatchContext.NotifyActorDisconnectedAsync(IZLinkActorRef actor, ...)` | session application 이 선택한 actor 에 disconnect notification 을 전달한다 | route mesh packet 을 직접 보내지 않는다. ActorGateway 가 알고 있는 actor 위치에서 현재 Spot 의 disconnected handler 를 호출한다. session cleanup 은 이 호출을 자동 수행하지 않는다 |
 | `IZLinkSessionProxy.Send(...)` | actor id 로 session binding 을 찾고 local stream 또는 route mesh `SessionProxy` packet 으로 보낸다 | 제거한다. 새 API 는 `IZLinkActorContext.BoundSession.Send(...)` 로 둔다 |
 | `IZLinkSessionProxy.Request(...)` | route mesh request/reply 로 remote session 전송을 수행한다 | 제거한다. server-to-client request API 로 대체하지 않는다 |
 | `IZLinkSessionProxy.DisconnectAsync(...)` | local close 또는 route mesh `SessionDisconnect` packet 전송 | 제거한다. 새 API 는 `IZLinkActorContext.BoundSession.DisconnectAsync(...)` 로 둔다 |
@@ -1001,7 +1001,6 @@ handler 의 reply 결과 또는 현재 dispatch reply context 가 원래 session
 | `IZLinkRouteClient` | 유지 | application route mesh messaging 이다. 내부 ActorGateway packet 을 보내는 public escape hatch 로 만들지 않는다 |
 | `IZLinkEventPublisher` / fanout publisher | 유지 | publish-subscribe channel 기능이다. ActorGateway 와 직접 관련 없다 |
 | `IZLinkSpotManager.CreateAsync(...)` / `GetOrCreateAsync(...)` | 유지 | Spot lifecycle 관리 API 다. ActorGateway 는 Actor session relay 기능이므로 Spot create payload 계약을 바꾸지 않는다 |
-| `IZLinkSpotConnectionManager` | 유지 | 운영 중 channel/Spot mesh connection 관리 API 다. ActorGateway internal relay connection 은 여기에 섞어 노출하지 않는다 |
 | `IZLinkSpotOutboundContext.SendChannel(...)` / `RequestChannel(...)` | 유지 | Spot handler 안에서 application channel 로 나가는 egress 다. bound session push 대체 수단이 아니다 |
 | `IZLinkSpotOutboundContext.Publish(...)` | 유지 | Spot handler 의 pubsub egress 다. ActorGateway session binding 과 별개다 |
 | `IZLinkSpotActorSendHandler<...>` / `IZLinkSpotActorRequestHandler<...>` | signature 유지 | Actor message handler 는 local/remote dispatch 차이를 알 필요가 없다. gateway 가 전달한 message 를 같은 handler signature 로 처리한다 |
@@ -1042,7 +1041,7 @@ configuration 은 사용자가 가장 먼저 보는 계약이므로 route mesh �
 |--------------|-----------|-----------|
 | `ZLinkSessionActorCoordinator.BindHandleAsync(...)` | local actor address 를 만들거나 remote address overload 를 사용해 binding table 에 저장한다 | C binding 의 `AttachActorGateway`/`BindActor` 경로를 사용한다. remote address overload 는 ActorGateway remote lookup 뒤 bind 한다 |
 | `ZLinkSessionActorCoordinator.RelayToActorAsync(...)` | `actorRef.IsRemote`면 `ZLinkSessionActorRelay.DispatchRemoteAsync(...)`로 route mesh packet 전송 | 항상 gateway-backed `SendBoundActor` 경로를 사용한다 |
-| `ZLinkSessionActorCoordinator.CleanupAsync(...)` | attached actor disconnect 와 binding cleanup 을 수행한다 | cleanup 은 session binding 만 제거한다. Actor current Spot 을 변경하지 않는다 |
+| `ZLinkSessionActorCoordinator.CleanupAsync(...)` | attached actor disconnect 와 binding cleanup 을 수행한다 | cleanup 은 session binding 만 제거한다. Actor current Spot 을 변경하지 않고 disconnected handler 도 자동 호출하지 않는다 |
 | `ZLinkSessionActorRelay` | `IZLinkMultipartRouteClient`로 `ActorDispatch`/`ActorDisconnected` internal route packet 을 보낸다 | 제거한다. session-to-Actor relay 는 gateway-backed stream send 경로로 대체한다 |
 | `ZLinkSessionProxyService` | actor bound session route 를 찾고 route mesh `SessionProxy`/`SessionDisconnect` packet 을 보낸다 | 제거하고 `ZLinkActorBoundSessionService` 로 바꾼다. 구현은 ActorGateway actor-to-session C API 를 사용한다 |
 | `ZLinkSessionActorBindingTable` | actor id + binding token -> session context 와 `ZLinkActorRef` 저장, remote address update 가능 | remote address update 책임 제거. binding token 은 session validation 용으로만 유지한다 |

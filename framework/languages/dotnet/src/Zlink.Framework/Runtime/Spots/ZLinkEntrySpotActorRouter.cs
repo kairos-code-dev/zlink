@@ -109,6 +109,38 @@ internal sealed class ZLinkEntrySpotActorRouter
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async ValueTask<bool> TryNotifyDisconnectedAsync(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkActor actor,
+        RoutingId? targetNodeRid,
+        CancellationToken cancellationToken)
+    {
+        var handled = false;
+        foreach (var node in state.SpotNodes.Values)
+        {
+            if (targetNodeRid is not null && node.Node.RoutingId != targetNodeRid)
+            {
+                continue;
+            }
+
+            if (!node.TryResolveEntrySpotActorDisconnected(actor.GetType(), out var descriptor)
+                || descriptor is null)
+            {
+                continue;
+            }
+
+            await node.InvokeEntrySpotActorDisconnectedAsync(
+                    descriptor,
+                    actor,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            handled = true;
+        }
+
+        return handled;
+    }
+
+
     private static async ValueTask NotifyLifecycleAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,

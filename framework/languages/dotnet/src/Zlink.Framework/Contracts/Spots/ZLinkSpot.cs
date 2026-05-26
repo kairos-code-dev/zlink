@@ -2,16 +2,25 @@ namespace Zlink.Framework.Contracts.Spots;
 
 public enum ZLinkSpotActorChangeKind
 {
-    Unknown = 0,
     JoinSpot = 1,
     JoinEntrySpot = 2,
-    LeaveSpot = 3,
-    Disconnect = 4,
-    Destroy = 5
+    LeaveSpot = 3
 }
 
-public sealed record ZLinkSpotActorChangeResult(
-    ZLinkSpotActorChangeKind Kind);
+public sealed record ZLinkSpotActorChangeResult
+{
+    public ZLinkSpotActorChangeResult(ZLinkSpotActorChangeKind kind)
+    {
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind), kind, "SPOT actor change kind is not defined.");
+        }
+
+        Kind = kind;
+    }
+
+    public ZLinkSpotActorChangeKind Kind { get; }
+}
 
 public interface IZLinkSpot
 {
@@ -63,6 +72,10 @@ public interface IZLinkActorHandlerRegistry
     void AddActorLeft<THandler, TActor>()
         where THandler : class
         where TActor : IZLinkActor;
+
+    void AddActorDisconnected<THandler, TActor>()
+        where THandler : class
+        where TActor : IZLinkActor;
 }
 
 public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
@@ -83,6 +96,14 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 
 public interface IZLinkSpotOutboundContext
 {
+    IZLinkSendCall SendSpot<TMessage>(
+        RoutingId spotRid,
+        TMessage message);
+
+    IZLinkRequestCall RequestSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request);
+
     IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message);
@@ -192,6 +213,16 @@ public interface IZLinkSpotActorLeftHandler<TSpot, TActor>
         CancellationToken cancellationToken);
 }
 
+public interface IZLinkSpotActorDisconnectedHandler<TSpot, TActor>
+    where TSpot : class
+    where TActor : IZLinkActor
+{
+    ValueTask HandleAsync(
+        TSpot spot,
+        TActor actor,
+        CancellationToken cancellationToken);
+}
+
 public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
     where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
@@ -211,5 +242,15 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
         TEntrySpot entrySpot,
         TActor actor,
         TRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>
+    where TEntrySpot : class, IZLinkEntrySpot
+    where TActor : IZLinkActor
+{
+    ValueTask HandleAsync(
+        TEntrySpot entrySpot,
+        TActor actor,
         CancellationToken cancellationToken);
 }

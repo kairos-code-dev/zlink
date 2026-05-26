@@ -19,7 +19,7 @@ using Zlink.Framework.Runtime.Core;
 
 namespace TicTacToe.Server.Play.Actors;
 
-internal sealed class PlayActorFactory(ILogger<PlayActor> logger) : IZLinkActorFactory
+internal sealed class PlayActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
         string actorId,
@@ -27,6 +27,6 @@ internal sealed class PlayActorFactory(ILogger<PlayActor> logger) : IZLinkActorF
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new PlayActor(actorId, context, logger));
+        return ValueTask.FromResult<IZLinkActor>(new PlayActor(actorId, context));
     }
 }

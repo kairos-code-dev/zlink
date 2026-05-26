@@ -35,7 +35,7 @@ zlink core 모델에서 actor 는 다음 성질을 가진다. 더 자세한 정�
 framework 는 위 모델 위에 `.NET` 다운 모양을 한 겹 더 얹어서 사용자에게
 노출한다. 그 한 겹은 두 종류의 요소로 이루어진다.
 
-- lifecycle 요소 -- constructor injection, `OnDisconnectedAsync`, DI
+- lifecycle 요소 -- constructor injection, DI
   scope[^di-scope]
 - fluent 호출 표면 -- `IZLinkActorContext`, `IZLinkBoundSession`
 
@@ -59,7 +59,7 @@ application 이 등록한 resolver[^resolver] 에 위임한다.
 
 이 문서가 다루는 범위는 다음과 같다.
 
-- actor lifecycle (Entry Spot 머무름 → session bind → user Spot join → disconnect)
+- actor lifecycle (Entry Spot 머무름 → session bind → user Spot join → 명시적 disconnect notification)
 - handler 모델 (typed actor handler / 일반 actor handler)
 - Entry Spot에서의 application 로직 (인증, target Spot 선택)
 - STREAM session binding
@@ -97,7 +97,7 @@ ID 로 식별되는 stateful object 이며, SpotNode 에 소속되고, 선택적
 | 메시지마다 새 scope에서 resolve | 같은 actor id로 들어오는 메시지는 항상 **같은 인스턴스**가 받는다 |
 | packet 등록은 채널 매핑이 담당 | actor packet 등록은 Entry Spot 또는 user Spot registry가 담당한다 |
 | identity 없음 | `ActorId`가 1급 identity (core의 `zlink_actor_ref_t`에 대응) |
-| 메시지 한 건짜리 lifecycle | `Configure` → 여러 메시지 처리 → `OnDisconnectedAsync` 로 이어지는 lifecycle |
+| 메시지 한 건짜리 lifecycle | `Configure` → 여러 메시지 처리. disconnect notification 은 Spot actor handler 로 처리 |
 
 ### 두 가지 직교 축
 
@@ -142,7 +142,6 @@ public interface IZLinkActor
     {
     }
 
-    ValueTask OnDisconnectedAsync(CancellationToken cancellationToken);
 }
 ```
 
@@ -156,12 +155,13 @@ public interface IZLinkActor
   actor 는 get-only property 로 노출한다.
 - **`Configure()`** -- actor 가 처리할 packet handler 를 등록하는 자리다.
   attach 직후 한 번 호출된다 (자세한 흐름은 §4 에서 다룬다).
-- **`OnDisconnectedAsync(...)`** -- actor 가 더 이상 dispatch 를 받지 않게
-  되는 시점에 framework 가 호출하는 cleanup 훅이다. 호출 트리거는 세 가지 중
-  하나다. bound STREAM session 종료, 명시적 unbind, actor destroy 직전. 이
-  호출 이후 framework 는 필요한 경우 user Spot 에서 Entry Spot 으로 leave 한
-  뒤 destroy 까지 자동으로 처리한다. 따라서 application 은 leave / destroy
-  표면을 직접 호출하지 않는다.
+
+actor 자체에는 disconnect callback 을 두지 않는다. actor 는 Entry Spot 또는
+user Spot 문맥 안에서 동작하므로, session 끊김을 actor 에 알려야 하는 경우에도
+application 이 session callback 에서 대상 actor 를 고른 뒤
+`IZLinkSessionActorDispatchContext.NotifyActorDisconnectedAsync(...)` 를 호출한다.
+framework 는 그 actor 의 현재 Spot 실행 문맥에서 별도 actor disconnected handler 를
+호출하며, actor 를 room 에서 자동으로 leave 시키지 않는다.
 
 ### 3.2 `IZLinkActorFactory`
 
@@ -284,20 +284,17 @@ sequenceDiagram
     FW->>Act: HandleAsync(actor, message, ct)
     Act-->>FW: result
 
-    Note over FW: 4. disconnect / 정리
-    FW->>Act: OnDisconnectedAsync(ct)
+    Note over FW: 4. session cleanup
     FW->>Loc: UnbindSessionAsync(actorId, token) (bound인 경우)
-    Note over FW: user Spot에 있으면 자동 leave
-    FW->>FW: actor destroy
+    Note over FW: actor 위치와 membership은 유지
 ```
 
 core 모델에서 비롯된 핵심 제약은 다음과 같다.
 
 - **user Spot join 은 bound session 을 요구하지 않는다.** actor 의 위치 이동과
   STREAM session binding 은 서로 독립된 상태 전이로 본다.
-- **destroy 는 actor 가 Entry Spot 에 있을 때만 가능하다.** 따라서 framework
-  는 disconnect 시점에 user Spot 에서 자동으로 leave 한 뒤 destroy 까지 묶어
-  처리한다.
+- **destroy 는 actor 가 Entry Spot 에 있을 때만 가능하다.** session disconnect 는
+  destroy 나 user Spot leave 를 자동으로 만들지 않는다.
 - **discovery[^discovery] actor remote address publish 는 user Spot join 성공 뒤에
   갱신된다.** actor 를 생성하기만 해서는 active route 가 공개되지 않는다.
   session bind / unbind 도 active route 를 새로 만들거나 지우지 않는다.
@@ -349,9 +346,6 @@ public sealed class PlayerActor(
 {
     public string ActorId { get; } = actorId;
     public IZLinkActorContext Context { get; } = context;
-
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-        => ValueTask.CompletedTask;
 }
 
 public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
@@ -412,12 +406,6 @@ public sealed class PlayerActor(
     public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
-
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
-    {
-        _ = cancellationToken;
-        return ValueTask.CompletedTask;
-    }
 }
 ```
 
@@ -692,10 +680,11 @@ session-bound actor 에서 client stream 으로 push 해야 하는 경우에는
 이 절은 STREAM session 위에서 actor 를 어떻게 만들고 attach 하는지, 그리고
 그 흐름이 client 연결과 어떻게 함께 움직이는지를 정리한다.
 
-session-attached actor 는 client stream 연결과 lifecycle 을 함께한다. client
-가 인증을 마치고 session 이 열리면 그 session 안에서 actor 가 생성된다.
-session 이 닫히면 framework 가 attach 된 actor 의 `OnDisconnectedAsync` 를
-호출해 정리한다.
+session-attached actor 는 client stream 연결과 함께 사용할 수 있지만,
+session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다. client 가
+인증을 마치고 session 이 열리면 그 session 안에서 actor handle 을 bind 할 수
+있다. session 이 닫혔을 때 어떤 actor 에게 disconnect 를 알릴지는
+application 이 결정한다.
 
 이 패턴은 보통 **gateway / playhouse[^playhouse]** 같은 서버에서 사용한다.
 즉 client 는 stream 으로 들어오고, server 는 그 client 를 actor 로 다룬다.
@@ -740,12 +729,14 @@ public interface IZLinkSessionActorDispatchContext
         out IZLinkActorRef actor);
 
     ValueTask RelayToActorAsync(...);
+
+    ValueTask NotifyActorDisconnectedAsync(...);
 }
 ```
 
 - `AttachActorAsync(...)` -- 이미 만든 actor 인스턴스를 현재 session 에
-  attach 한다. session 이 끊어지면 framework 가 자동으로
-  `OnDisconnectedAsync` 를 호출한다.
+  attach 한다. session cleanup 은 binding 을 정리하지만 actor disconnect
+  callback 을 자동으로 호출하지 않는다.
 - `BindActorHandleAsync(actorId, actorType, ...)` -- logical actor handle 을 얻고,
   현재 actor-session binding 을 기록한다. 이 local overload 는 actor 를 새로 만들지 않는다.
 - `BindActorHandleAsync(actorId, actorType, remoteAddress, ...)` -- 다른 process 의
@@ -757,14 +748,17 @@ public interface IZLinkSessionActorDispatchContext
 - `BindActorHandleAsync(actor, ...)` -- 이미 받은 actor handle 을 현재 session 에
   다시 묶을 때 쓴다.
 - `BoundActors` -- 현재 session 에 bind 된 actor handle snapshot 이다.
+- `NotifyActorDisconnectedAsync(actor, ...)` -- session application 이 선택한
+  actor 하나에 disconnect notification 을 전달한다. 이 호출은 actor membership
+  을 변경하지 않는다.
 - `TryGetBoundActor(actorId, out actor)` -- 현재 session 에 이미 bind 된 actor
   handle 을 actor id 로 찾는다. 한 session 이 여러 actor 를 bind 할 수 있으므로
   framework 의 session binding 을 조회하고, application 이 actor handle 목록을
   따로 복제하지 않게 한다.
 - `RelayToActorAsync(...)` -- 들어온 packet 을 actor 에게 dispatch 한다.
   보통 framework 가 자동으로 처리한다.
-- session disconnect 알림은 session lifecycle 과 binding cleanup 경로에서 처리한다.
-  application code 가 `IZLinkActorRef` 에 직접 disconnect callback 을 호출하지 않는다.
+- session disconnect 는 actor 에게 자동 전파되지 않는다. 알림이 필요하면 session
+  code 가 대상 actor 를 고른 뒤 `NotifyActorDisconnectedAsync(...)` 를 호출한다.
 
 session callback 에서 unbound standalone actor 를 만드는 표면은 두지 않는다.
 standalone actor 가 필요하다면 actor node 측에서 별도의 등록 표면을 쓴다 (예:
@@ -797,7 +791,10 @@ sequenceDiagram
     Note over C,Act: 연결 종료
     C-->>S: 끊김
     S->>G: Conditional unbind by session token
-    S->>Act: OnDisconnectedAsync(ct)
+    opt application decides to notify this actor
+        S->>G: NotifyActorDisconnectedAsync(actor)
+        G->>Act: Spot actor disconnected handler
+    end
 ```
 
 ## 9. Session actor dispatch (gateway 패턴)

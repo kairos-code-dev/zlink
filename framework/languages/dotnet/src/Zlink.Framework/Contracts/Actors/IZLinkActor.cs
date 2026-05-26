@@ -9,7 +9,4 @@ public interface IZLinkActor
     void Configure()
     {
     }
-
-    ValueTask OnDisconnectedAsync(
-        CancellationToken cancellationToken);
 }

@@ -2,10 +2,6 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed partial class ZLinkActorSessionManager
 {
-    private readonly record struct ActorDisconnectPlan(
-        bool ShouldDisconnect,
-        ZLinkSpotActivation? Activation);
-
     public async ValueTask AttachActorAsync(
         IZLinkActor actor,
         IZLinkStream stream,
@@ -23,31 +19,19 @@ internal sealed partial class ZLinkActorSessionManager
         IZLinkStream stream,
         CancellationToken cancellationToken = default)
     {
-        var actorId = actor.ActorId;
         var state = _actorSessions.GetOrCreate(actor.ActorId);
         BindActorContext(actor, state);
 
-        var disconnect = await ClearStreamBindingAsync(state, stream, cancellationToken)
+        var shouldUnbind = await ClearStreamBindingAsync(state, stream, cancellationToken)
             .ConfigureAwait(false);
 
-        if (!disconnect.ShouldDisconnect)
+        if (!shouldUnbind)
         {
             return;
         }
 
         await TryUnbindNativeActorAsync(state, actor.ActorId, stream, cancellationToken)
             .ConfigureAwait(false);
-
-        if (disconnect.Activation is not null)
-        {
-            await disconnect.Activation.DisconnectActorAsync(actor, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            await actor.OnDisconnectedAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        _actorSessions.TryRemove(actorId, state);
     }
 
     private async ValueTask BindStreamAsync(
@@ -64,7 +48,7 @@ internal sealed partial class ZLinkActorSessionManager
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<ActorDisconnectPlan> ClearStreamBindingAsync(
+    private async ValueTask<bool> ClearStreamBindingAsync(
         ZLinkActorRuntimeState state,
         IZLinkStream stream,
         CancellationToken cancellationToken)
@@ -74,20 +58,12 @@ internal sealed partial class ZLinkActorSessionManager
             {
                 if (!string.Equals(state.SessionId, stream.SessionId, StringComparison.Ordinal))
                 {
-                    return new ActorDisconnectPlan(false, null);
+                    return false;
                 }
 
                 state.SessionId = null;
                 state.Stream = null;
-                var currentActivation = state.Activation;
-                state.Activation = null;
-
-                if (currentActivation is not null && currentActivation.IsDisposed)
-                {
-                    return new ActorDisconnectPlan(true, null);
-                }
-
-                return new ActorDisconnectPlan(true, currentActivation);
+                return true;
             },
             cancellationToken).ConfigureAwait(false);
     }

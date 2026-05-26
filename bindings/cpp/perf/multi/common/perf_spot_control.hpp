@@ -548,6 +548,7 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
                                                 int timeout_ms_)
 {
     size_t ready_count = 0;
+    bool data_endpoint_seen = false;
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (
                             std::max (1, timeout_ms_));
@@ -573,6 +574,7 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
                 if (data_node_ && !endpoint.empty ()) {
                     try {
                         data_node_->connect_peer (endpoint);
+                        data_endpoint_seen = true;
                     }
                     catch (const std::exception &) {
                         return false;
@@ -587,9 +589,12 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
                   payload, "READY_COUNT,", &ready_size, &increment)
                 && ready_size == msg_size_) {
                 ready_count += increment;
-                if (ready_count >= expected_ready_count_)
+                if (data_endpoint_seen
+                    && ready_count >= expected_ready_count_)
                     return true;
             }
+            if (data_endpoint_seen && ready_count >= expected_ready_count_)
+                return true;
         }
         catch (const zlink::recv_error_t &err) {
             const int err_no = err.internal_errno ();

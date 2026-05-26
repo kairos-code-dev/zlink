@@ -3,7 +3,7 @@ mod common;
 
 use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -41,31 +41,6 @@ fn setup_tls_client(node: &SpotNode, transport: &str) {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");
         node.set_tls_client(&tls.ca, "localhost", false)
             .expect("spot tls client");
-    }
-}
-
-fn request_spot_reply(
-    spot: &Spot,
-    node_rid: RoutingId,
-    spot_rid: RoutingId,
-    msg: Message,
-    timeout: Duration,
-) -> Option<Vec<Message>> {
-    let (tx, rx) = mpsc::channel();
-    let submit = spot
-        .request_to_spot(node_rid, spot_rid)
-        .message(msg)
-        .timeout(timeout)
-        .submit(move |result| {
-            let _ = tx.send(result);
-        });
-    match submit.and_then(|_| {
-        rx.recv()
-            .map_err(|_| SubmitError::new(SubmitResult::InternalError, libc::EINVAL))?
-            .map_err(|err| SubmitError::new(SubmitResult::InternalError, err.internal_errno()))
-    }) {
-        Ok(parts) => Some(parts),
-        Err(_) => None,
     }
 }
 
@@ -296,7 +271,6 @@ fn main() {
         {
             break;
         }
-        thread::sleep(Duration::from_millis(10));
     }
     if Instant::now() >= probe_deadline {
         panic!("spot reqrep probe-ready timeout");

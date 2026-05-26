@@ -293,14 +293,6 @@ func runMultiSpotReqRepClientRole(cfg multiConfig, endpoint string) perfcommon.R
 	}
 }
 
-func waitMultiSpotReqRepSpotReady(spot *zlink.Spot, msgSize int) {
-	payload := perfcommon.PreparePayload(msgSize)
-	perfcommon.StampProbePayload(payload)
-	if requestSpotReply(spot, payload, perfcommon.MultiReadyTimeout()) == nil {
-		perfcommon.Must(fmt.Errorf("multi spot reqrep ready probe failed"))
-	}
-}
-
 func waitMultiSpotReqRepSpotReadyWithPoller(spot *zlink.Spot, msgSize int, poller *zlink.Poller, events []zlink.PollEvent) {
 	payload := perfcommon.PreparePayload(msgSize)
 	perfcommon.StampProbePayload(payload)
@@ -417,80 +409,4 @@ func useMultiSpotReqRepBytes(transport string, msgSize int) bool {
 	default:
 		return false
 	}
-}
-
-func requestSpotReply(spot *zlink.Spot, payload []byte, timeout time.Duration) []byte {
-	done := make(chan []*zlink.Message, 1)
-	ok, err := spot.RequestToSpot(multiSpotReqRepNodeRID, multiSpotReqRepSpotRID).
-		Message(perfcommon.NewMessage(payload)).
-		Flags(zlink.SendFlagsDontWait).
-		Timeout(timeout).
-		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
-			if result != zlink.RequestOK || len(parts) == 0 {
-				done <- nil
-				return
-			}
-			done <- parts
-		})
-	if err != nil {
-		if perfcommon.IsReadyProbeTransient(err) || perfcommon.IsSubmitNotConnected(err) {
-			return nil
-		}
-		perfcommon.Must(err)
-	}
-	if !ok {
-		return nil
-	}
-	select {
-	case parts := <-done:
-		defer func() {
-			for _, part := range parts {
-				_ = part.Close()
-			}
-		}()
-		if len(parts) == 0 || parts[0] == nil {
-			return nil
-		}
-		return append([]byte(nil), parts[0].Data()...)
-	case <-time.After(timeout + 100*time.Millisecond):
-		return nil
-	}
-}
-
-func waitMultiSpotReqRepReady(
-	requester *zlink.RouterSocket,
-	nodeRID zlink.RoutingID,
-	spotRID zlink.RoutingID,
-	msgSize int,
-) {
-	payload := perfcommon.PreparePayload(msgSize)
-	perfcommon.StampProbePayload(payload)
-	ready := make(chan error, 1)
-	ok, err := requester.RequestToSpot(nodeRID, spotRID).
-		Message(perfcommon.NewMessage(payload)).
-		Flags(zlink.SendFlagsDontWait).
-		Timeout(perfcommon.MultiRecvTimeout()).
-		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
-			defer func() {
-				for _, part := range parts {
-					_ = part.Close()
-				}
-			}()
-			if result != zlink.RequestOK || len(parts) == 0 {
-				ready <- fmt.Errorf("multi spot reqrep ready probe failed: %v", result)
-				return
-			}
-			if _, ok := perfcommon.SentAtFromMessagePhase(parts[0], msgSize, perfcommon.PhaseWarmup); !ok {
-				ready <- fmt.Errorf("multi spot reqrep ready probe returned invalid payload")
-				return
-			}
-			ready <- nil
-		})
-	if err != nil {
-		perfcommon.Must(err)
-	}
-	if !ok {
-		perfcommon.Must(fmt.Errorf("multi spot reqrep ready probe backpressured"))
-	}
-	perfcommon.Must(<-ready)
 }

@@ -64,21 +64,16 @@ def main(argv=None):
                     stamp_payload(payload, phase=1, run_id=run_id),
                 )
                 if not sent:
-                    # Brief backoff while subscribers drain. This is producer
-                    # backpressure, not shutdown synchronization, so the policy
-                    # ban on short polling for shutdown does not apply.
-                    time.sleep(0.001)
+                    continue
             # PERF_MULTI_TEST_POLICY § 1.3.1: signal phase end on the wire.
-            # PubSub drops messages at subscriber RCVHWM, so we keep publishing
-            # the stop token periodically until the runner sends STOP. This
-            # gives every subscriber a chance to receive the token after its
-            # queue drains.
             cooldown_deadline = time.perf_counter() + 5.0
             while not stop_event.is_set() and time.perf_counter() < cooldown_deadline:
-                if not publish_nonblocking(publisher, TOPIC, STOP_TOKEN):
-                    time.sleep(0.001)
-                else:
-                    time.sleep(0.001)
+                try:
+                    if publisher.publish(TOPIC).message(STOP_TOKEN).submit():
+                        break
+                except zlink.SubmitError as exc:
+                    if exc.result != zlink.SubmitResult.BACKPRESSURED:
+                        raise
             # Stay alive until runner sends STOP so the published stop token
             # has time to flush to all subscribers (linger_ms == 0).
             stop_event.wait()

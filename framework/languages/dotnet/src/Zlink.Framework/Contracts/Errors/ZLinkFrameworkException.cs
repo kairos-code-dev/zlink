@@ -14,7 +14,6 @@ public sealed class ZLinkFrameworkException(
 
 public enum ZLinkFrameworkErrorKind
 {
-    ActorNotAuthenticated,
     ActorRouteNotFound,
     ActorCreateFailed,
     ActorAlreadyExists,
@@ -23,12 +22,6 @@ public enum ZLinkFrameworkErrorKind
     SpotRouteNotFound,
     SpotTypeMismatch,
     ActorSessionNotBound,
-    SessionRouteNotFound,
-    SessionLocationUpdateFailed,
-    BoundSessionTimeout,
-    ActorDispatchTimeout,
-    ActorDispatchHandlerFailed,
-    CodecFailed,
     HandlerNotFound,
     RouteHandlerNotFound,
     ActorDispatchHandlerNotFound,

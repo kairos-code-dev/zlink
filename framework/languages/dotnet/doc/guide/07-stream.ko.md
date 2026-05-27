@@ -68,7 +68,7 @@ handler 로 보낼 수 있다. dispatcher 는 미등록 packet 을 자동 처리
 ```csharp
 public sealed class ClientHeaderSession(
     IZLinkSessionContext context,
-    IZLinkClient channels) : IZLinkSession
+    IZLinkChannelClient channels) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
@@ -88,7 +88,7 @@ public sealed class ClientHeaderSession(
         {
             case "ClientInput":
                 var input = payload.Decode<ClientInput>();
-                await channels.Send("play", new ForwardInputCommand(input)).Submit(ct);
+                await channels.SendChannel("play", new ForwardInputCommand(input)).Submit(ct);
                 break;
 
             case "Ping":
@@ -109,8 +109,8 @@ public sealed class ClientHeaderSession(
 | `CloseAsync(...)` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
 다른 서비스로 channel send/request 를 보내야 할 때는 session 생성자에서
-`IZLinkClient` 를 함께 주입받아 `Send(channelName, ...)` 또는
-`Request(channelName, ...)` 를 호출한다. 이 호출은 현재 stream 연결을 사용하지 않고,
+`IZLinkChannelClient` 를 함께 주입받아 `SendChannel(channelName, ...)` 또는
+`RequestChannel(channelName, ...)` 를 호출한다. 이 호출은 현재 stream 연결을 사용하지 않고,
 등록된 channel 의 client socket 을 사용한다.
 
 ### lifecycle 과 실행 보장

@@ -28,7 +28,7 @@
 
 즉 사용자가 `DealerSocket`[^dealer], `RouterSocket`[^router], `Discovery` 를 직접 조립할
 필요는 없다. 한 단계 위에 있는 표면만 다루도록 만들겠다는 뜻이다. 구체적으로는
-`AddZLinkFramework(...)`, `IZLinkClient`, handler 등록 정도가 그 표면이다.
+`AddZLinkFramework(...)`, `IZLinkChannelClient`, handler 등록 정도가 그 표면이다.
 
 등록부터 handler, HTTP endpoint, outbound 호출까지 흐름을 한 번에 보고 싶다면,
 [channel-messaging-samples.ko.md](../guide/samples/channel-messaging-samples.ko.md) 를 참고한다.
@@ -247,7 +247,7 @@ SPOT으로 보낼 수 있으므로, 이 기능은 `RouteMeshChannel` 전용으�
 
 ### 3.1.1 outbound-only 앱 예시
 
-local handler 없이 `IZLinkClient` 만 쓰는 앱도 똑같이 가능하다. 이 경우 framework 의
+local handler 없이 `IZLinkChannelClient` 만 쓰는 앱도 똑같이 가능하다. 이 경우 framework 의
 동작은 다음과 같다.
 
 - server 역할은 열지 않는다.
@@ -285,7 +285,7 @@ builder.Services.AddZLinkFramework(options =>
 
 핵심은 네 가지로 정리된다.
 
-- `IZLinkClient` 는 DI 로 주입받는다.
+- `IZLinkChannelClient` 는 DI 로 주입받는다.
 - 호출 대상은 gateway 주소가 아니라 **channel 이름**이다.
 - runtime 은 등록된 channel capability 를 보고, 필요한 만큼만 runtime 을 만든다.
 - client capability 가 있는 channel 은, 그 channel 전용 Discovery 뷰와 outbound DEALER
@@ -524,9 +524,9 @@ handler 인터페이스 정의는 [handler-interfaces.ko.md](./handler-interface
 [ZLinkHandlerGroup("user")]
 public sealed class UserHandlers
 {
-    private readonly IZLinkClient _client;
+    private readonly IZLinkChannelClient _client;
 
-    public UserHandlers(IZLinkClient client)
+    public UserHandlers(IZLinkChannelClient client)
     {
         _client = client;
     }
@@ -692,13 +692,13 @@ sequenceDiagram
 
 - `IZLinkRequestHandler<TRequest, TResponse>` -- request-response handler
 - `IZLinkSendHandler<TMessage>` -- 단방향 send handler
-- `IZLinkClient` -- outbound client (호출 단위는 `channelName`)
+- `IZLinkChannelClient` -- outbound client (호출 단위는 `channelName`)
 - `IZLinkHandlerFilter` -- handler 전후 공통 처리
 
 `.NET` 표면의 기본 방향은 다음과 같이 정리된다.
 
 > "인터페이스와 attribute 모두 가능하지만, 일반 사용자는 attribute 매핑과
-> `IZLinkClient` 를 함께 쓴다."
+> `IZLinkChannelClient` 를 함께 쓴다."
 
 ## 5. 클라이언트 쪽 프로그래밍 모델 초안
 
@@ -712,10 +712,10 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 
 | 인터페이스 | 대응 channel 타입 | 호출 키 | 용도 |
 | --- | --- | --- | --- |
-| `IZLinkClient` | `AddClientServerChannel`, `AddDealerMeshChannel` | `channelName` | 1:1 request / send (DEALER 측) |
-| `IZLinkEventPublisher` | `AddFanoutChannel` | `channelName + topic` | event publish (PUB 측) |
+| `IZLinkChannelClient` | `AddClientServerChannel`, `AddDealerMeshChannel` | `channelName` | 1:1 request / send (DEALER 측) |
+| `IZLinkFanoutClient` | `AddFanoutChannel` | `channelName + topic` | event publish (PUB 측) |
 
-두 client 모두 `IZLinkClient` 와 같은 fluent builder 결을 따른다. 사용 패턴은 다음과
+두 client 모두 `IZLinkChannelClient` 와 같은 fluent builder 결을 따른다. 사용 패턴은 다음과
 같다.
 
 - 호출 chain 의 끝에서, `.Submit(...)` 또는 `.SubmitAsync<TReply>(...)` 로 마무리한다.
@@ -724,7 +724,7 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 두 인터페이스의 전체 정의는, [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의
 §5 에 모여 있다.
 
-### 5.2 IZLinkClient
+### 5.2 IZLinkChannelClient
 
 `AddClientServerChannel(...)` 로 선언한 client-server channel 에 1:1 호출을 보낼 때
 쓴다. dealer mesh channel 도 같은 request/send 표면을 쓴다. 호출자는 **channel 이름**
@@ -735,7 +735,7 @@ DEALER 또는 dealer mesh DEALER 를 선택한다.
 - 특정 channel 의 ROUTER (server) 를 `rid` 로 직접 지정해서 호출하는 표면은 두지
   않는다. `rid` 로 곧장 보내는 경로는, framework backend 나 별도 adapter package 의
   internal route transport helper 에서만 다룬다.
-- `IZLinkClient` 를 쓴다고 해서, local ROUTER (server) 가 반드시 있어야 하는 것은
+- `IZLinkChannelClient` 를 쓴다고 해서, local ROUTER (server) 가 반드시 있어야 하는 것은
   아니다. local handler 를 등록하지 않은 앱은, dealer-only outbound runtime 만으로도
   충분히 동작한다.
 - 다만 그 경우에도 한 가지는 필요하다. **어떤** remote channel 에 접근할지를, startup
@@ -743,7 +743,7 @@ DEALER 또는 dealer mesh DEALER 를 선택한다.
 - channel 이 없거나 client capability 가 없으면 runtime 은 socket 을 새로 만들지 않고
   `ZLinkConfigurationException` 으로 실패한다.
 
-### 5.3 IZLinkEventPublisher
+### 5.3 IZLinkFanoutClient
 
 `AddFanoutChannel(...)` 로 선언한 fanout channel 에 event 를 publish 할 때 쓴다. 호출
 키는 **`channelName + topic`** 두 축으로 구성된다.
@@ -761,7 +761,7 @@ DEALER 또는 dealer mesh DEALER 를 선택한다.
 ```csharp
 app.MapPost("/profiles/refresh", async (
     RefreshProfileHttpRequest request,
-    IZLinkEventPublisher publisher,
+    IZLinkFanoutClient publisher,
     CancellationToken cancellationToken) =>
 {
     await publisher
@@ -804,13 +804,13 @@ handler 쪽에서 source `RoutingId` 가 필요한 backend adapter 는, 다음 �
 §5.2 – 5.3 의 두 client 는, ZLink handler 안에서만 쓰는 것이 아니다. 기존 `ASP.NET Core`
 HTTP handler 에서도 그대로 DI 로 주입받아 쓸 수 있어야 한다.
 
-아래 예시는 `IZLinkClient` 를 기준으로 한다. `IZLinkEventPublisher` 도 같은 방식으로
+아래 예시는 `IZLinkChannelClient` 를 기준으로 한다. `IZLinkFanoutClient` 도 같은 방식으로
 주입한다.
 
 ```csharp
 app.MapPost("/profiles/get", async (
     GetProfileHttpRequest request,
-    IZLinkClient client,
+    IZLinkChannelClient client,
     CancellationToken cancellationToken) =>
 {
     var reply = await client
@@ -834,12 +834,12 @@ app.MapPost("/profiles/get", async (
 
 ```csharp
 var reply = await client
-    .Request("profile", new GetProfileRequest { AccountId = accountId })
+    .RequestChannel("profile", new GetProfileRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
     .SubmitAsync<GetProfileReply>(cancellationToken);
 
 await client
-    .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
+    .SendChannel("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .PacketName("profile.refresh-cache")
     .Submit(cancellationToken);
 ```
@@ -914,7 +914,7 @@ ZLink handler filter[^filter] 로 둔다.
 ### 7.1 기본 방향
 
 - 호출자는 **channel 이름** 만 지정한다.
-- `IZLinkClient` 는, 등록된 channel 이름마다 별도의 channel runtime 을 가진다.
+- `IZLinkChannelClient` 는, 등록된 channel 이름마다 별도의 channel runtime 을 가진다.
 - 각 channel 은 그 channel view 에 묶인 Discovery 와 outbound DEALER 소켓을 가진다.
 - Discovery 가, 그 channel view 의 provider 목록을 유지한다.
 - framework 는, 그 channel 의 rid 집합과 연결 상태를 보고 요청을 보낸다.
@@ -930,7 +930,7 @@ ZLink handler filter[^filter] 로 둔다.
 
 그래서 다음 방향을 기본으로 둔다.
 
-- `IZLinkClient` 는 gateway 주소가 아니라, channel 이름으로 요청한다.
+- `IZLinkChannelClient` 는 gateway 주소가 아니라, channel 이름으로 요청한다.
 - `ZLink Framework` 는, 그 channel 전용 outbound 경로로 직접 요청을 보낸다.
 - 같은 channel 안의 여러 provider 는, 그 channel 안에서만 관리한다.
 
@@ -994,7 +994,7 @@ builder.Services.AddZLinkFramework(options =>
 부합해야 한다.
 
 - framework core 는, channel 별 typed wrapper 를 기본 표면으로 제공하지 않는다. 공용
-  outbound 표면은 `IZLinkClient` 하나로 유지한다.
+  outbound 표면은 `IZLinkChannelClient` 하나로 유지한다.
 - channel runtime 은 host startup 단계에서 등록된 capability 를 보고 만든다. host
   shutdown 단계에서 정리한다. lazy first-call 생성으로 숨기지 않는다. 즉 설정 오류는,
   startup 단계에서 미리 드러나도록 한다.
@@ -1027,7 +1027,7 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 | `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client capability에 Discovery나 수동 연결이 없으면 시작 전에 실패한다. |
 | `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
 | `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
-| `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkClient` | HTTP handler가 같은 DI container에서 `IZLinkClient`를 받아 호출한다. |
+| `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkChannelClient` | HTTP handler가 같은 DI container에서 `IZLinkChannelClient`를 받아 호출한다. |
 | `ZLinkAsyncSubmitterTests.SubmitAsync_DrainsPendingItemFromReadyCallback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
 
 ---

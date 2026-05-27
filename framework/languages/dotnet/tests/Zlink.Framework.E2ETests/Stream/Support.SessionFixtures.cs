@@ -162,14 +162,19 @@ public abstract partial class StreamTestSupport
             _ = header;
             if (_actor is null)
             {
-                await actors.GetOrCreateAsync(
+                var actor = await actors.GetOrCreateAsync(
                         "local-player-1",
                         "player",
                         cancellationToken)
                     .ConfigureAwait(false);
+                var actorRef = await actor.Context.JoinEntrySpot(RoutingId.Of("local-notify-actor-node"))
+                    .Timeout(TimeSpan.FromSeconds(5))
+                    .SubmitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                recorder.SetActor(actorRef);
 
                 _actor = await Context.BindActorAsync(
-                        "local-player-1",
+                        actorRef,
                         cancellationToken)
                     .ConfigureAwait(false);
             }

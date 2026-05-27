@@ -8,7 +8,7 @@ using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Bingo.Server.Session.Sessions.Handlers;
 
-internal sealed class AuthenticateBingoSessionHandler(IZLinkClient channels)
+internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channels)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     public string PacketName => nameof(AuthenticateReq);
@@ -21,12 +21,12 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkClient channels)
     {
         _ = header;
         var request = payload.Decode<AuthenticateReq>();
-        var authenticated = await channels.Request(
+        var authenticated = await channels.RequestChannel(
                 SampleNames.ApiChannel,
                 new AuthenticatePlayerReq(request.AccessToken))
             .Timeout(SampleTimings.RequestTimeout)
-            .SubmitAsync<AuthenticatePlayerRes>(cancellationToken)
-            ;
+            .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
+
         if (!authenticated.Accepted
             || string.IsNullOrWhiteSpace(authenticated.ActorId)
             || string.IsNullOrWhiteSpace(authenticated.DisplayName))
@@ -34,7 +34,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkClient channels)
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
         }
 
-        var ensured = await channels.Request(
+        var ensured = await channels.RequestChannel(
                 SampleNames.PlayChannel,
                 new EnsurePlayerActorReq(authenticated.ActorId, authenticated.DisplayName))
             .Timeout(SampleTimings.RequestTimeout)
@@ -42,12 +42,10 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkClient channels)
 
         await context.BindActorAsync(
                 ToActorRef(ensured.Actor),
-                cancellationToken)
-            ;
+                cancellationToken);
 
         await context.Reply(new AuthenticateRes(ensured.ActorId, authenticated.DisplayName))
-            .Submit(cancellationToken)
-            ;
+            .Submit(cancellationToken);
     }
 
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)

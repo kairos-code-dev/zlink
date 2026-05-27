@@ -77,7 +77,7 @@ service, 다운스트림 consumer(서비스마다), service discovery/mesh.
 // 운전자 STREAM session: 위치를 라이브 fan-out + geo-index 갱신(그대로)
 public sealed class DriverSession(
     IZLinkSessionContext context,
-    IZLinkFanoutPublisher feed,
+    IZLinkFanoutClient feed,
     IGeoIndex geo) : IZLinkSession           // IGeoIndex = Redis GEO 래퍼(앱)
 {
     public IZLinkSessionContext Context { get; } = context;

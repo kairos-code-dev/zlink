@@ -75,9 +75,9 @@ builder.Services.AddZLinkFramework(options =>
     });
 });
 
-// 클라이언트: IZLinkClient 를 주입받아 builder + 종결자로 호출
+// 클라이언트: IZLinkChannelClient 를 주입받아 builder + 종결자로 호출
 var reply = await client
-    .Request("price", new PriceRequest("AAPL"))
+    .RequestChannel("price", new PriceRequest("AAPL"))
     .SubmitAsync<PriceReply>(ct);
 ```
 
@@ -120,8 +120,8 @@ flowchart LR
 
 | 축 | 사용자에게 보이는 것 | 가이드 챕터 |
 |----|----------------------|-------------|
-| channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkClient` | [04-channel-messaging](./04-channel-messaging.ko.md) |
-| PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()`, `IZLinkFanoutPublisher` | [04-channel-messaging](./04-channel-messaging.ko.md) |
+| channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkChannelClient` | [04-channel-messaging](./04-channel-messaging.ko.md) |
+| PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()`, `IZLinkFanoutClient` | [04-channel-messaging](./04-channel-messaging.ko.md) |
 | SPOT | typed spot factory, `IZLinkSpotClient`, `IZLinkRoutedSpotClient`, timer | [05-spot](./05-spot.ko.md) |
 | actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [06-actor-session](./06-actor-session.ko.md) |
 | STREAM | framework session packet, Stream Connector | [07-stream](./07-stream.ko.md) |
@@ -147,7 +147,7 @@ handler registration 이 정한다. 자세한 규칙은
 
 - **framework adapter 가 노출하는 모든 public 타입**(interface, record, enum,
   attribute, exception, DI 확장 메서드)은 `ZLink` prefix(대문자 `L`)를 쓴다. 예:
-  `IZLinkClient`, `ZLinkRequestContext`, `[ZLinkRequest]`, `AddZLinkFramework`,
+  `IZLinkChannelClient`, `ZLinkRequestContext`, `[ZLinkRequest]`, `AddZLinkFramework`,
   `IZLinkSpotClient`, `ZLinkFrameworkException`.
 - **단, client 측 Stream Connector 패키지**(`Systems.Zlink.Stream.Connector`)의
   타입은 `Zlink` prefix(소문자 `l`)를 쓴다. 예: `IZlinkStreamConnector`,

@@ -184,7 +184,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
     같은 channel에 속한 다른 `SpotNode`와 routed packet을 주고받는 축이다.
 - `EnablePubSub()`
   - 현재 SPOT channel 안의 publish/subscribe 축을 켠다. local spot 안에서
-    `IZLinkSpotClient.Publish(...)`를 사용하려면 이 capability가 필요하다.
+    `IZLinkSpotClient.PublishSpot(...)`를 사용하려면 이 capability가 필요하다.
 - `AttachClientServerChannelClient("orders")`
   - `orders` channel로 outbound[^outbound] send/request를 보낼
     `DEALER(client)`[^dealer-router] 경로를 붙인다.
@@ -724,7 +724,7 @@ startup 시점에 예외를 던진다. 설정 실수를 바로 드러내는 쪽�
 var stage = await spotManager.CreateAsync<StageSpot>(cancellationToken);
 
 await spotClient
-    .Publish(
+    .PublishSpot(
         "stage.state.updated",
         new StageStateUpdatedEvent
         {
@@ -809,16 +809,16 @@ await client
 모델로 정리한다. 그래야 stage state 를 별도 lock 없이 다루는 상위 모델을
 설명하기 쉬워진다.
 
-다만 이 관계를 `IZLinkClient` 위에 `IZLinkSpotClient` 를 얹는 형태로 설명하면
+다만 이 관계를 `IZLinkChannelClient` 위에 `IZLinkSpotClient` 를 얹는 형태로 설명하면
 안 된다. 두 인터페이스는 하부에서 서로 다른 C API 를 감싸기 때문이다. 현재
 방향에서는 책임을 다음과 같이 나눈다.
 
-- `IZLinkClient` 는 일반 channel messaging 을 맡는다.
+- `IZLinkChannelClient` 는 일반 channel messaging 을 맡는다.
 - `IZLinkSpotClient` 는 current SPOT channel publish, 다른 channel
   send / request, spot-routed send / request 를 맡는다.
 
 `IZLinkSpot` 기반 클래스의 `protected Publish(topic, message)` 편의 메서드는
-`IZLinkSpotClient.Publish(...)` 를 내부적으로 위임한다. 즉 spot 코드에서 직접
+`IZLinkSpotClient.PublishSpot(...)` 를 내부적으로 위임한다. 즉 spot 코드에서 직접
 `Publish(...)` 를 호출하는 것과, `IZLinkSpotClient` 를 constructor
 injection[^constructor-injection] 해서 호출하는 것은 같은 경로를 사용한다.
 다만 `IZLinkSpot` 외부에서 현재 SPOT channel 로 publish 하는 경우에는
@@ -868,7 +868,7 @@ await spotClient
     .Submit(cancellationToken);
 
 await spotClient
-    .Publish(
+    .PublishSpot(
         "stage.state.updated",
         new StageStateUpdatedEvent())
     .Submit(cancellationToken);
@@ -881,13 +881,13 @@ await spotClient
 ### 6.2 외부 노드에서의 SPOT channel publish
 
 local spot 인스턴스를 가지지 않는 외부 노드가 특정 SPOT channel 로 publish
-해야 하는 경우도 있다. 이때는 `IZLinkSpotClient.Publish(...)` 가 아니라
-`IZLinkSpotPublisherClient.Publish(channelName, topic, ...)` 를 사용한다
+해야 하는 경우도 있다. 이때는 `IZLinkSpotClient.PublishSpot(...)` 가 아니라
+`IZLinkSpotPublisherClient.PublishSpot(channelName, topic, ...)` 를 사용한다
 ([handler-interfaces.ko.md](./handler-interfaces.ko.md) section 5.3 참고).
 
 ```csharp
 await spotPublisherClient
-    .Publish(
+    .PublishSpot(
         "game.stage",
         "stage.state.updated",
         new StageStateUpdatedEvent())
@@ -960,7 +960,7 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 - `Context.AddTimer<THandler>(...)`는 현재 spot lifecycle 안에 timer를 등록한다.
   세 번째 인자인 `ZLinkTimerOptions` 로 overrun 정책과 handler 예외 정책을 정한다.
 - handler는 별도의 class로 두고, `StageSpot` 안에는 코어 로직만 남길 수 있다.
-- handler가 다른 서버나 다른 spot으로 outbound 호출을 해야 한다면 `IZLinkClient`
+- handler가 다른 서버나 다른 spot으로 outbound 호출을 해야 한다면 `IZLinkChannelClient`
   또는 `IZLinkSpotClient`를 constructor injection으로 받는 쪽이 더 자연스럽다.
 - framework는 per-spot scope[^per-spot-scope]를 만들고, 등록된 handler 타입을 그
   scope에서 자동으로 resolve하는 방식을 기본으로 본다.
@@ -1002,8 +1002,9 @@ timer 를 중단하고 `TimerStoppedAfterUnhandledException` event 를 기록한
 - per-packet allocation, 과도한 DI 재구성, 불필요한 boxing[^boxing] 은 피해야
   한다.
 
-즉 `Context.AddPacket<THandler>(...)` 같은 등록 표면은 startup, spot
-`Configure()`, actor `Configure()` 단계에서만 비용이 들도록 둔다. 실제 packet
+즉 `Context.AddPacket<THandler>(...)` 같은 등록 표면은 startup 과 spot
+`Configure()` 단계에서만 비용이 들도록 둔다. actor `Configure()` 는 message
+handler 를 등록하지 않는다. 실제 packet
 hot path 에서는 반복적인 reflection 이나 과도한 객체 생성이 남지 않게 해야
 한다.
 

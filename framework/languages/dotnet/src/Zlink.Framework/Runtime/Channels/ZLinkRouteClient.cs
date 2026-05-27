@@ -20,7 +20,7 @@ internal interface IZLinkMultipartRouteClient : IZLinkRouteClient
 
 internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMultipartRouteClient
 {
-    public IZLinkRouteSendCall SendTo<TMessage>(
+    public IZLinkRouteSendCall Send<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TMessage message)
@@ -28,7 +28,7 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
         return new ZLinkRouteSendCall<TMessage>(runtime, routerChannelId, targetNodeRid, message);
     }
 
-    public IZLinkRouteRequestCall RequestTo<TRequest>(
+    public IZLinkRouteRequestCall Request<TRequest>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request)

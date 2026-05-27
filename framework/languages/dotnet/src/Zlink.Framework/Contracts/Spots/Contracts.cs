@@ -61,7 +61,7 @@ public interface IZLinkSpotClient
         string channelName,
         TMessage request);
 
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string topic,
         TEvent message);
 }
@@ -85,7 +85,7 @@ public interface IZLinkRoutedSpotEgressClient
 
 public interface IZLinkSpotPublisherClient
 {
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string channelName,
         string topic,
         TEvent message);

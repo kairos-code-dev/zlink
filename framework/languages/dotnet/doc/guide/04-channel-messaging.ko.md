@@ -23,7 +23,7 @@ channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호�
 
 ```mermaid
 flowchart LR
-  CL["호출하는 쪽<br/>IZLinkClient / IZLinkFanoutPublisher"]
+  CL["호출하는 쪽<br/>IZLinkChannelClient / IZLinkFanoutClient"]
   CL -->|"Request: 응답이 필요"| H1["server handler → 응답 돌려줌"]
   CL -->|"Send: 응답 없는 단방향"| H2["server handler (응답 없음)"]
   CL -->|"Publish(topic): 여러 곳에"| SUB["구독자 1 · 2 · ... · N"]
@@ -69,9 +69,9 @@ public sealed class PlaceOrderHandler
     }
 }
 
-// 클라이언트: gRPC stub 대신 IZLinkClient 주입
+// 클라이언트: gRPC stub 대신 IZLinkChannelClient 주입
 var placed = await client
-    .Request("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+    .RequestChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
     .Timeout(TimeSpan.FromSeconds(2))    // reply 대기 상한
     .SubmitAsync<OrderPlaced>(ct);
 ```
@@ -166,8 +166,8 @@ class 에 여러 handler 메서드를 둘 때 편하다.
 [ZLinkHandlerGroup("api")]
 public sealed class UserHandlers
 {
-    private readonly IZLinkFanoutPublisher _publisher;
-    public UserHandlers(IZLinkFanoutPublisher publisher) => _publisher = publisher;
+    private readonly IZLinkFanoutClient _publisher;
+    public UserHandlers(IZLinkFanoutClient publisher) => _publisher = publisher;
 
     [ZLinkRequest]
     public ValueTask<GetUserReply> GetUserAsync(
@@ -251,15 +251,15 @@ group 매핑으로 등록한다.
 
 ## 4. outbound 호출
 
-### request / send — `IZLinkClient`
+### request / send — `IZLinkChannelClient`
 
 ```csharp
-public sealed class PriceService(IZLinkClient client)
+public sealed class PriceService(IZLinkChannelClient client)
 {
     public async Task<decimal> GetAsync(string symbol, CancellationToken ct)
     {
         var reply = await client
-            .Request("price", new PriceRequest(symbol))
+            .RequestChannel("price", new PriceRequest(symbol))
             .Timeout(TimeSpan.FromMilliseconds(200))   // reply 대기 시간
             .SubmitAsync<PriceReply>(ct);
         return reply.Price;
@@ -267,7 +267,7 @@ public sealed class PriceService(IZLinkClient client)
 
     public ValueTask RefreshAsync(string accountId, CancellationToken ct)
         => client
-            .Send("profile", new RefreshCacheCommand(accountId))
+            .SendChannel("profile", new RefreshCacheCommand(accountId))
             .PacketName("profile.refresh-cache")        // 선택: packet 이름 override
             .Submit(ct);
 }
@@ -276,13 +276,13 @@ public sealed class PriceService(IZLinkClient client)
 - reply 타입은 메시지가 아니라 **`.SubmitAsync<TReply>(...)`** 에서 지정한다.
 - `Request` 에만 `Timeout(...)` 이 있다. `Send` 는 응답을 기다리지 않으므로 없다.
 - channel 이나 client capability 가 없으면 socket 을 만들지 않고
-  `ZLinkConfigurationException` 으로 실패한다(`IZLinkClient` 자체는 항상 DI 에
+  `ZLinkConfigurationException` 으로 실패한다(`IZLinkChannelClient` 자체는 항상 DI 에
   등록되어 있다).
 
-### publish — `IZLinkFanoutPublisher`
+### publish — `IZLinkFanoutClient`
 
 ```csharp
-public sealed class ProfileService(IZLinkFanoutPublisher publisher)
+public sealed class ProfileService(IZLinkFanoutClient publisher)
 {
     public ValueTask AnnounceAsync(string accountId, CancellationToken ct)
         => publisher
@@ -296,8 +296,7 @@ public sealed class ProfileService(IZLinkFanoutPublisher publisher)
   channel 안에서 어느 구독자 집합이 받을지를 정하는 fan-out 라우팅 값이다.
 - publish 는 한 번만 직렬화하고 구독자 수만큼 task 를 만들지 않는다(framework 내부
   최적화).
-- `IZLinkEventPublisher` 는 기존 이름을 위한 별칭이다. 새 코드에서는 capability
-  이름과 맞는 `IZLinkFanoutPublisher` 를 우선 사용한다.
+- `IZLinkFanoutClient` 는 fanout channel 에 publish 하는 DI client 이다.
 
 > `Submit(...)`/`SubmitAsync<T>(...)` 의 완료는 transport 위임까지만 보장한다.
 > remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](./03-concepts.ko.md) §7).
@@ -412,10 +411,10 @@ builder.Services.AddZLinkFramework(options =>
 var app = builder.Build();
 
 app.MapPost("/users/{id}", async (
-    string id, IZLinkClient client, CancellationToken ct) =>
+    string id, IZLinkChannelClient client, CancellationToken ct) =>
 {
     var account = await client
-        .Request("account", new GetAccountRequest(id))
+        .RequestChannel("account", new GetAccountRequest(id))
         .SubmitAsync<GetAccountReply>(ct);
     return Results.Ok(account);
 });
@@ -423,7 +422,7 @@ app.MapPost("/users/{id}", async (
 app.Run();
 
 [ZLinkHandlerGroup("api")]
-public sealed class UserHandlers(IZLinkFanoutPublisher publisher)
+public sealed class UserHandlers(IZLinkFanoutClient publisher)
 {
     [ZLinkRequest]
     public ValueTask<GetUserReply> GetUserAsync(

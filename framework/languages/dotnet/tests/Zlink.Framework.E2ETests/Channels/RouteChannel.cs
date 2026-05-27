@@ -60,7 +60,7 @@ public sealed class RouteChannelTests
 
             var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
             var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-                async () => await client.RequestTo("backend.discovery", rightRid, new SharedPacketRequest("discovery", 1))
+                async () => await client.Request("backend.discovery", rightRid, new SharedPacketRequest("discovery", 1))
                     .PacketName("SharedPacket")
                     .Timeout(TimeSpan.FromSeconds(1))
                     .SubmitAsync<SharedPacketReply>(),
@@ -118,7 +118,7 @@ public sealed class RouteChannelTests
 
             var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
             _ = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-                async () => await client.RequestTo("backend", rightRid, new SharedPacketRequest("warmup", 1))
+                async () => await client.Request("backend", rightRid, new SharedPacketRequest("warmup", 1))
                     .PacketName("SharedPacket")
                     .Timeout(TimeSpan.FromSeconds(3))
                     .SubmitAsync<SharedPacketReply>(),
@@ -126,11 +126,11 @@ public sealed class RouteChannelTests
                 attempts: 30,
                 delayMs: 100);
 
-            var slow = client.RequestTo("backend", rightRid, new SharedPacketRequest("slow", 40))
+            var slow = client.Request("backend", rightRid, new SharedPacketRequest("slow", 40))
                 .PacketName("SharedPacket")
                 .Timeout(TimeSpan.FromSeconds(3))
                 .SubmitAsync<SharedPacketReply>();
-            var fast = client.RequestTo("backend", rightRid, new SharedPacketRequest("fast", 1))
+            var fast = client.Request("backend", rightRid, new SharedPacketRequest("fast", 1))
                 .PacketName("SharedPacket")
                 .Timeout(TimeSpan.FromSeconds(3))
                 .SubmitAsync<SharedPacketReply>();
@@ -184,7 +184,7 @@ public sealed class RouteChannelTests
 
             var client = leftHost.Services.GetRequiredService<IZLinkRouteClient>();
             var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-                async () => await client.RequestTo("backend.group", rightRid, new SharedPacketRequest("group", 1))
+                async () => await client.Request("backend.group", rightRid, new SharedPacketRequest("group", 1))
                     .Timeout(TimeSpan.FromSeconds(3))
                     .SubmitAsync<SharedPacketReply>(),
                 static result => result.Value == "group",

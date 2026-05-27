@@ -185,7 +185,7 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
         }
 
         await spot.Context
-            .Publish("stage.heartbeat", new StageHeartbeat(spot.Context.SpotRid, tick.StartedAt))
+            .PublishSpot("stage.heartbeat", new StageHeartbeat(spot.Context.SpotRid, tick.StartedAt))
             .Submit(cancellationToken);
     }
 }
@@ -338,7 +338,7 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotClient cli
         ZLinkSpotCreateResult stage = await spots.CreateAsync<StageSpot>(ct);
 
         await client
-            .Publish("stage.state.updated",
+            .PublishSpot("stage.state.updated",
                 new StageStateUpdatedEvent(stage.SpotRid.ToString()))
             .Submit(ct);
 
@@ -361,7 +361,7 @@ SPOT 에서 밖으로 나가는 호출은 세 축으로 나뉜다.
 
 ```mermaid
 flowchart TD
-  Spot[현재 Spot callback] -->|"(a) Publish(topic, ...)"| Sub[현재 channel 구독자]
+  Spot[현재 Spot callback] -->|"(a) PublishSpot(topic, ...)"| Sub[현재 channel 구독자]
   Spot -->|"(b) SendChannel / RequestChannel"| Ch[attach 된 일반 channel]
   Spot -->|"(c) SendSpot / RequestSpot"| OtherSpot[다른 Spot]
 ```
@@ -376,7 +376,7 @@ public sealed class StageNoticeHandler(IZLinkSpotClient client)
         StageSpot spot, BroadcastRequest request, CancellationToken ct)
     {
         // (a) 현재 channel 의 topic 으로 publish
-        await client.Publish("stage.notice", new StageNoticeEvent(request.Text)).Submit(ct);
+        await client.PublishSpot("stage.notice", new StageNoticeEvent(request.Text)).Submit(ct);
 
         // (b) attach 된 일반 channel 로 send/request
         await client.SendChannel("orders", new RoomNoticeMessage(request.Text)).Submit(ct);
@@ -462,7 +462,7 @@ app.MapPost("/stage/publish", async (
     CancellationToken ct) =>
 {
     await spotPublisher
-        .Publish("game.stage", "stage.state.updated",
+        .PublishSpot("game.stage", "stage.state.updated",
             new StageStateUpdatedEvent(request.StageRid))
         .Submit(ct);
     return Results.Accepted();

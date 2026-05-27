@@ -6,21 +6,20 @@ public sealed class ChannelContracts
 {
     [Fact]
     [ContractExample(
-        typeof(IZLinkClientServerClient),
-        typeof(IZLinkClient),
+        typeof(IZLinkChannelClient),
         typeof(IZLinkSendCall),
         typeof(IZLinkRequestCall))]
-    public async Task Client_server_client_sends_and_requests_by_channel_name()
+    public async Task Channel_client_sends_and_requests_by_channel_name()
     {
         var client = new ExampleClient();
 
         await client
-            .Send("api", new AuthenticateRequest("player-1"))
+            .SendChannel("api", new AuthenticateRequest("player-1"))
             .PacketName("authenticate")
             .Submit();
 
         var reply = await client
-            .Request("api", new AuthenticateRequest("player-1"))
+            .RequestChannel("api", new AuthenticateRequest("player-1"))
             .PacketName("authenticate")
             .Timeout(TimeSpan.FromSeconds(3))
             .SubmitAsync<AuthenticateReply>();
@@ -43,12 +42,12 @@ public sealed class ChannelContracts
         var target = RoutingId.Of("play-node-1");
 
         await client
-            .SendTo("play-router", target, new RoomEvent("opened"))
+            .Send("play-router", target, new RoomEvent("opened"))
             .PacketName("room.event")
             .Submit();
 
         var room = await client
-            .RequestTo("play-router", target, new AllocateRoom("alice"))
+            .Request("play-router", target, new AllocateRoom("alice"))
             .PacketName("room.allocate")
             .Timeout(TimeSpan.FromSeconds(2))
             .SubmitAsync<RoomAllocated>();
@@ -60,10 +59,9 @@ public sealed class ChannelContracts
 
     [Fact]
     [ContractExample(
-        typeof(IZLinkFanoutPublisher),
-        typeof(IZLinkEventPublisher),
+        typeof(IZLinkFanoutClient),
         typeof(IZLinkPublishCall))]
-    public async Task Fanout_publisher_publishes_events_to_a_topic()
+    public async Task Fanout_client_publishes_events_to_a_topic()
     {
         var publisher = new ExampleFanoutPublisher();
 
@@ -77,10 +75,10 @@ public sealed class ChannelContracts
 
     [Fact]
     [ContractExample(
-        typeof(IZLinkClient),
+        typeof(IZLinkChannelClient),
         typeof(IZLinkSendCall),
         typeof(IZLinkRequestCall),
-        typeof(IZLinkFanoutPublisher),
+        typeof(IZLinkFanoutClient),
         typeof(IZLinkPublishCall))]
     public async Task Channel_messaging_replaces_grpc_unary_command_and_streaming_for_web_services()
     {
@@ -91,14 +89,14 @@ public sealed class ChannelContracts
 
         // gRPC unary RPC -> request/response on a logical channel name.
         var placed = await orders
-            .Request("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+            .RequestChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
             .PacketName("orders.place")
             .Timeout(TimeSpan.FromSeconds(2))
             .SubmitAsync<OrderPlaced>();
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
         await orders
-            .Send("inventory", new ReserveStock("order-1042", "sku-9", 3))
+            .SendChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
             .PacketName("inventory.reserve")
             .Submit();
 
@@ -133,19 +131,19 @@ public sealed class ChannelContracts
 
     private sealed record OrderStatusChanged(string OrderId, string Status);
 
-    private sealed class ExampleClient : IZLinkClient
+    private sealed class ExampleClient : IZLinkChannelClient
     {
         public string? LastChannelName { get; private set; }
 
         public string? LastPacketName { get; private set; }
 
-        public IZLinkSendCall Send<TMessage>(string channelName, TMessage message)
+        public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
         {
             LastChannelName = channelName;
             return new ExampleSendCall(packetName => LastPacketName = packetName);
         }
 
-        public IZLinkRequestCall Request<TMessage>(string channelName, TMessage request)
+        public IZLinkRequestCall RequestChannel<TMessage>(string channelName, TMessage request)
         {
             LastChannelName = channelName;
             object? reply = request switch
@@ -164,7 +162,7 @@ public sealed class ChannelContracts
 
         public RoutingId TargetNodeRid { get; private set; }
 
-        public IZLinkRouteSendCall SendTo<TMessage>(
+        public IZLinkRouteSendCall Send<TMessage>(
             string routerChannelId,
             RoutingId targetNodeRid,
             TMessage message)
@@ -174,7 +172,7 @@ public sealed class ChannelContracts
             return new ExampleRouteSendCall();
         }
 
-        public IZLinkRouteRequestCall RequestTo<TRequest>(
+        public IZLinkRouteRequestCall Request<TRequest>(
             string routerChannelId,
             RoutingId targetNodeRid,
             TRequest request)
@@ -185,7 +183,7 @@ public sealed class ChannelContracts
         }
     }
 
-    private sealed class ExampleFanoutPublisher : IZLinkEventPublisher
+    private sealed class ExampleFanoutPublisher : IZLinkFanoutClient
     {
         public (string ChannelName, string Topic, string? PacketName) LastPublish { get; private set; }
 

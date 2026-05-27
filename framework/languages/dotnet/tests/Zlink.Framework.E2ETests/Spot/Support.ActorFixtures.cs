@@ -29,6 +29,8 @@ public abstract partial class SpotTestSupport
         public void Configure()
         {
             Context.AddActorJoin<ActorJoinHandler, TestActor, JoinStageRequest, JoinStageReply>();
+            Context.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch");
+            Context.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch-after-context-join");
             Context.AddPostActorJoined<ActorStageJoinedHandler, TestActor>();
             Context.AddActorLeft<ActorStageLeftHandler, TestActor>();
             Context.AddActorDisconnected<ActorStageDisconnectedHandler, TestActor>();
@@ -166,9 +168,6 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddPacket<ActorJoinViaContextHandler>("join-via-context");
-            Context.AddPacket<ActorDispatchHandler>("dispatch");
-            Context.AddPacket<ActorDispatchHandler>("dispatch-after-context-join");
         }
 
         public void AttachSpot(ActorStageSpot spot)
@@ -186,32 +185,18 @@ public abstract partial class SpotTestSupport
 
     }
 
-    public sealed class ActorJoinViaContextHandler
-        : IZLinkActorPacketHandler<TestActor, string>
-    {
-        public async ValueTask HandleAsync(
-            TestActor actor,
-            string message,
-            CancellationToken cancellationToken)
-        {
-            var reply = await actor.Context.JoinSpot(
-                    global::Systems.Zlink.RoutingId.FromString(message),
-                    new JoinStageRequest("room-context"))
-                .Timeout(TimeSpan.FromSeconds(5))
-                .SubmitAsync<JoinStageReply>(cancellationToken);
-
-            actor.CurrentRoomId = reply.Reply.RoomId;
-        }
-    }
-
     public sealed class ActorDispatchHandler
-        : IZLinkActorPacketHandler<TestActor, string>
+        : IZLinkSpotActorSendHandler<ActorStageSpot, TestActor, string>
     {
         public ValueTask HandleAsync(
+            ActorStageSpot spot,
             TestActor actor,
+            ZLinkSpotActorSendContext context,
             string message,
             CancellationToken cancellationToken)
         {
+            _ = spot;
+            _ = context;
             _ = cancellationToken;
             var stageSpot = actor.Context.GetSpot<ActorStageSpot>();
 

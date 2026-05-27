@@ -61,21 +61,6 @@ public abstract partial class StreamTestSupport
         }
     }
 
-    public sealed class RegistryOnlyActorSendHandler
-        : IZLinkActorPacketHandler<RegistryOnlyActor, GatewayPing>
-    {
-        public ValueTask HandleAsync(
-            RegistryOnlyActor actor,
-            GatewayPing message,
-            CancellationToken cancellationToken)
-        {
-            _ = actor;
-            _ = message;
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.CompletedTask;
-        }
-    }
-
     public sealed class RegistryOnlyEntrySpotActorSendHandler
         : IZLinkEntrySpotActorSendHandler<RegistryOnlyEntrySpot, RegistryOnlyActor, GatewayPing>
     {

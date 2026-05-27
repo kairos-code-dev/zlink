@@ -22,6 +22,7 @@ public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
         builder.Services.AddSingleton<EntrySpotMailboxRecorder>();
+        builder.Services.AddScoped<RegistryEntrySpot>();
         builder.Services.AddScoped<LocalActorBlockingHandler>();
         builder.Services.AddScoped<LocalActorRecordingHandler>();
         builder.Services.AddZLinkFramework(options =>
@@ -36,6 +37,7 @@ public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
                 {
                     router.SetRouterBind(spotNode);
                 });
+                spot.AddEntrySpot<RegistryEntrySpot>();
             });
             });
         });

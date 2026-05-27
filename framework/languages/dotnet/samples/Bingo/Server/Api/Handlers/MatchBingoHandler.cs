@@ -13,7 +13,7 @@ using Bingo.Shared.Contracts;
 namespace Bingo.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
-internal sealed class MatchBingoHandler(IZLinkClient client)
+internal sealed class MatchBingoHandler(IZLinkChannelClient client)
     : IZLinkRequestHandler<MatchBingoApiReq, MatchBingoApiRes>
 {
     public async ValueTask<MatchBingoApiRes> HandleAsync(
@@ -22,7 +22,7 @@ internal sealed class MatchBingoHandler(IZLinkClient client)
         CancellationToken cancellationToken)
     {
         _ = context;
-        var allocated = await client.Request(
+        var allocated = await client.RequestChannel(
                 SampleNames.PlayChannel,
                 new AllocateBingoRoomReq(request.Mode))
             .Timeout(SampleTimings.RequestTimeout)

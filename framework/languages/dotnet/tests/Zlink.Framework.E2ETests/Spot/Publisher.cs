@@ -97,7 +97,7 @@ public sealed class PublisherTests : SpotTestSupport
             await RetryAsync(
                 async () =>
 	                {
-	                    await publisher.Publish(
+	                    await publisher.PublishSpot(
 	                            "game.stage",
 	                            "stage.external",
 	                            new ExternalStageEvent("external"))
@@ -236,7 +236,7 @@ public sealed class PublisherTests : SpotTestSupport
         await RetryAsync(
             async () =>
             {
-                await publisher.Publish(
+                await publisher.PublishSpot(
                         "game.stage",
                         "stage.external",
                         new ExternalStageEvent("raw"))

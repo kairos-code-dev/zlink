@@ -173,7 +173,7 @@ public interface IZLinkSpotOutboundContext
         RoutingId spotRid,
         TRequest request);
 
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string topic,
         TEvent message);
 

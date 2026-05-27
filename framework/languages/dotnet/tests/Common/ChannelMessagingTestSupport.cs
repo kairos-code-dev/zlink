@@ -376,7 +376,7 @@ public sealed class ProfileHandlers(ProfileCommandRecorder recorder)
 }
 
 [ZLinkHandlerGroup("profile-forward")]
-public sealed class ProfileForwardHandlers(IZLinkClient client)
+public sealed class ProfileForwardHandlers(IZLinkChannelClient client)
 {
     [ZLinkRequest]
     public async ValueTask<ProfileReply> ForwardAsync(
@@ -386,14 +386,14 @@ public sealed class ProfileForwardHandlers(IZLinkClient client)
     {
         _ = context;
         return await client
-            .Request("backend", new GetProfileRequest { UserId = request.UserId })
+            .RequestChannel("backend", new GetProfileRequest { UserId = request.UserId })
             .SubmitAsync<ProfileReply>(cancellationToken)
             .ConfigureAwait(false);
     }
 }
 
 [ZLinkHandlerGroup("profile-publisher")]
-public sealed class ProfilePublisherHandlers(IZLinkFanoutPublisher publisher)
+public sealed class ProfilePublisherHandlers(IZLinkFanoutClient publisher)
 {
     [ZLinkRequest]
     public async ValueTask<PublishProfileReply> PublishAsync(

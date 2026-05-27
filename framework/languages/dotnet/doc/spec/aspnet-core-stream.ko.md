@@ -228,7 +228,7 @@ context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
 - session callback 은 stream 객체를 직접 인자로 받지 않는다.
 - session 정보, stream send, actor dispatch 는 `Context` 를 통해 호출한다.
 - 다른 channel 로 보내는 send/request 는 session context 표면이 아니라 DI 로
-  주입받은 `IZLinkClient` 를 사용한다. 이 호출은 stream socket 이 아니라
+  주입받은 `IZLinkChannelClient` 를 사용한다. 이 호출은 stream socket 이 아니라
   해당 channel 의 client socket 을 사용하기 때문이다.
 - session disconnect 를 actor 에 알려야 할 때는 application 이 대상 actor 를 고른
   뒤 `IZLinkSessionActor.NotifyDisconnectedAsync(...)` 를 호출한다.

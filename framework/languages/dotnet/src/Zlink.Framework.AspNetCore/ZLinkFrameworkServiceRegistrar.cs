@@ -116,18 +116,16 @@ internal static class ZLinkFrameworkServiceRegistrar
         this IServiceCollection services,
         ZLinkFrameworkRegistration registration)
     {
-        services.AddSingleton<ZLinkClient>();
-        services.AddSingleton<IZLinkClientServerClient>(static provider => provider.GetRequiredService<ZLinkClient>());
-        services.AddSingleton<IZLinkClient>(static provider => provider.GetRequiredService<ZLinkClient>());
+        services.AddSingleton<ZLinkChannelClient>();
+        services.AddSingleton<IZLinkChannelClient>(static provider => provider.GetRequiredService<ZLinkChannelClient>());
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<IZLinkMultipartRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<ZLinkBoundSessionService>();
         services.AddSingleton<IZLinkBoundSessionFactory>(
             provider => provider.GetRequiredService<ZLinkBoundSessionService>());
-        services.AddSingleton<ZLinkEventPublisher>();
-        services.AddSingleton<IZLinkFanoutPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
-        services.AddSingleton<IZLinkEventPublisher>(static provider => provider.GetRequiredService<ZLinkEventPublisher>());
+        services.AddSingleton<ZLinkFanoutClient>();
+        services.AddSingleton<IZLinkFanoutClient>(static provider => provider.GetRequiredService<ZLinkFanoutClient>());
 
         if (HasSpotNode(registration))
         {

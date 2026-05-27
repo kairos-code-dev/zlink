@@ -4,7 +4,6 @@ using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 using TicTacToe.Server.Play.Actors;
 using TicTacToe.Server.Play.GameSpots.Handlers;
-using Microsoft.Extensions.Logging;
 
 namespace TicTacToe.Server.Play.GameSpots;
 

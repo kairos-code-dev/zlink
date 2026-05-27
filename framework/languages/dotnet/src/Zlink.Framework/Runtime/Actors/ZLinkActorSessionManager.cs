@@ -16,7 +16,7 @@ internal sealed partial class ZLinkActorSessionManager(
             EnsureActorContext,
             BindActorContext);
     private ZLinkActorDispatchRouter DispatchRouter => _dispatchRouterInitialized
-        ??= new ZLinkActorDispatchRouter(runtime, services, _actorSessions, BindActorContext);
+        ??= new ZLinkActorDispatchRouter(runtime, _actorSessions, BindActorContext);
 
     private ZLinkActorCreationCoordinator? _actorCreationInitialized;
     private ZLinkActorDispatchRouter? _dispatchRouterInitialized;
@@ -189,7 +189,6 @@ internal sealed partial class ZLinkActorSessionManager(
         {
             state.Actor = actor;
             state.IsConfigured = false;
-            state.ClearPacketRegistrations();
             assignedActor = true;
         }
 
@@ -213,7 +212,6 @@ internal sealed partial class ZLinkActorSessionManager(
                 if (assignedActor)
                 {
                     state.Actor = null;
-                    state.ClearPacketRegistrations();
                 }
 
                 throw;

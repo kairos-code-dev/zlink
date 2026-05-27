@@ -4,10 +4,6 @@ internal sealed class ZLinkActorContext(
     ZLinkFrameworkRuntime runtime,
     ZLinkActorRuntimeState state) : IZLinkActorContext
 {
-    public string ActorId => state.ActorId;
-
-    public string? SessionId => state.SessionId;
-
     public RoutingId? SpotRid => state.SpotRid;
 
     public bool IsJoined => state.IsJoined;
@@ -21,25 +17,6 @@ internal sealed class ZLinkActorContext(
                     ?? throw new InvalidOperationException("Bound session factory is not registered."))
                 .Create(state.ActorId);
         }
-    }
-
-    public void AddPacket<THandler>()
-        where THandler : class
-    {
-        state.EnsureContextValid();
-        state.AddPacket(CurrentActor, typeof(THandler), null);
-    }
-
-    public void AddPacket<THandler>(string messageName)
-        where THandler : class
-    {
-        state.EnsureContextValid();
-        if (string.IsNullOrWhiteSpace(messageName))
-        {
-            throw new InvalidOperationException("Actor packet name must not be empty.");
-        }
-
-        state.AddPacket(CurrentActor, typeof(THandler), messageName);
     }
 
     public IZLinkSpot GetSpot()

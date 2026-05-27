@@ -38,14 +38,14 @@
 ### 1.1 outbound client 와 종결 호출
 
 ```csharp
-// IZLinkClient 를 주입받아 channel 이름으로 send/request 한다.
+// IZLinkChannelClient 를 주입받아 channel 이름으로 send/request 한다.
 await client
-    .Send("api", new AuthenticateRequest("player-1"))   // IZLinkSendCall
+    .SendChannel("api", new AuthenticateRequest("player-1"))   // IZLinkSendCall
     .PacketName("authenticate")
     .Submit();
 
 var reply = await client
-    .Request("api", new AuthenticateRequest("player-1")) // IZLinkRequestCall
+    .RequestChannel("api", new AuthenticateRequest("player-1")) // IZLinkRequestCall
     .PacketName("authenticate")
     .Timeout(TimeSpan.FromSeconds(3))
     .SubmitAsync<AuthenticateReply>();
@@ -53,12 +53,11 @@ var reply = await client
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkClientServerClient` | `Send(channelName, msg)` / `Request(channelName, req)` 의 기본 표면. client-server channel 호출의 뿌리 |
-| `IZLinkClient` | DI 로 주입받는 일반 outbound client. `IZLinkClientServerClient` 를 상속해 추가 표면 없이 그대로 노출 |
+| `IZLinkChannelClient` | `SendChannel(channelName, msg)` / `RequestChannel(channelName, req)` 의 기본 표면. client-server channel 호출의 뿌리 |
 | `IZLinkSendCall` | send 종결자. `PacketName(...)` 후 `Submit(ct)`. 응답을 기다리지 않으므로 `Timeout` 없음 |
 | `IZLinkRequestCall` | request 종결자. `PacketName(...)` · `Timeout(...)` 후 `SubmitAsync<TReply>(ct)`. reply 타입은 종결자에서 지정 |
 
-검증: `ChannelContracts.Client_server_client_sends_and_requests_by_channel_name`.
+검증: `ChannelContracts.Channel_client_sends_and_requests_by_channel_name`.
 
 ### 1.2 route client — router channel 너머 target node 호출
 
@@ -66,12 +65,12 @@ var reply = await client
 var target = RoutingId.Of("play-node-1");
 
 await client
-    .SendTo("play-router", target, new RoomEvent("opened")) // IZLinkRouteSendCall
+    .Send("play-router", target, new RoomEvent("opened")) // IZLinkRouteSendCall
     .PacketName("room.event")
     .Submit();
 
 var room = await client
-    .RequestTo("play-router", target, new AllocateRoom("alice")) // IZLinkRouteRequestCall
+    .Request("play-router", target, new AllocateRoom("alice")) // IZLinkRouteRequestCall
     .PacketName("room.allocate")
     .Timeout(TimeSpan.FromSeconds(2))
     .SubmitAsync<RoomAllocated>();
@@ -79,7 +78,7 @@ var room = await client
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkRouteClient` | router channel 이름 + target `RoutingId` 로 특정 노드를 직접 지정하는 client. `SendTo(...)` / `RequestTo(...)` |
+| `IZLinkRouteClient` | router channel 이름 + target `RoutingId` 로 특정 노드를 직접 지정하는 client. `Send(...)` / `Request(...)` |
 | `IZLinkRouteSendCall` | route send 종결자(`PacketName` → `Submit`) |
 | `IZLinkRouteRequestCall` | route request 종결자(`PacketName` · `Timeout` → `SubmitAsync<TReply>`) |
 | `IZLinkRouteSendHandler<TMessage>` | route mesh channel 의 단방향 수신 handler. `HandleAsync(msg, ZLinkRouteSendContext, ct)` |
@@ -98,11 +97,10 @@ await publisher
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkFanoutPublisher` | pub/sub publish 표면. `Publish(channelName, topic, message)` (인자 3개) |
-| `IZLinkEventPublisher` | `IZLinkFanoutPublisher` 의 호환 별칭. 새 코드는 capability 이름과 맞는 `IZLinkFanoutPublisher` 사용 |
+| `IZLinkFanoutClient` | pub/sub publish 표면. `Publish(channelName, topic, message)` (인자 3개) |
 | `IZLinkPublishCall` | publish 종결자(`PacketName` → `Submit`) |
 
-검증: `ChannelContracts.Fanout_publisher_publishes_events_to_a_topic`.
+검증: `ChannelContracts.Fanout_client_publishes_events_to_a_topic`.
 
 ### 1.4 handler 와 filter
 
@@ -162,14 +160,14 @@ codecs.AddProtobuf();
 ```csharp
 // gRPC unary RPC -> request/response
 var placed = await orders
-    .Request("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+    .RequestChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
     .PacketName("orders.place")
     .Timeout(TimeSpan.FromSeconds(2))
     .SubmitAsync<OrderPlaced>();
 
 // gRPC unary returning Empty -> one-way send (응답 안 기다림)
 await orders
-    .Send("inventory", new ReserveStock("order-1042", "sku-9", 3))
+    .SendChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
     .PacketName("inventory.reserve")
     .Submit();
 
@@ -182,9 +180,9 @@ await events
 
 | gRPC 패턴 | ZLink 대체 | 표면 / 챕터 |
 |-----------|------------|-------------|
-| Unary RPC | request/response | `IZLinkClient.Request(...).SubmitAsync<TReply>` ([04](./04-channel-messaging.ko.md)) |
-| Unary `Empty` / fire-and-forget | one-way send | `IZLinkClient.Send(...).Submit` ([04](./04-channel-messaging.ko.md)) |
-| Server streaming / 이벤트 피드 | pub/sub fan-out | `IZLinkFanoutPublisher.Publish` + `IZLinkPublishHandler<T>` ([04](./04-channel-messaging.ko.md)) |
+| Unary RPC | request/response | `IZLinkChannelClient.RequestChannel(...).SubmitAsync<TReply>` ([04](./04-channel-messaging.ko.md)) |
+| Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendChannel(...).Submit` ([04](./04-channel-messaging.ko.md)) |
+| Server streaming / 이벤트 피드 | pub/sub fan-out | `IZLinkFanoutClient.Publish` + `IZLinkPublishHandler<T>` ([04](./04-channel-messaging.ko.md)) |
 | Client/Bidi streaming | STREAM session | `IZLinkSession`/`IZLinkSessionContext` ([07](./07-stream.ko.md), §5) |
 | Service discovery(DNS/xDS) | Registry + Discovery | `UseDiscovery` + `IZLinkRegistryQuery` ([08](./08-registry.ko.md), §6) |
 | Interceptor | handler filter | `IZLinkHandlerFilter` ([04](./04-channel-messaging.ko.md) §5, §1.4) |
@@ -405,7 +403,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
         await Context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
         await Context.SendSpot(RoutingId.Of("room-2"), new RoomEvent("opened")).Submit(ct);
         await Context.RequestSpot(RoutingId.Of("room-2"), new JoinRoom("room-2")).SubmitAsync<JoinedRoom>(ct);
-        await Context.Publish("room.events", new RoomEvent("opened")).Submit(ct);
+        await Context.PublishSpot("room.events", new RoomEvent("opened")).Submit(ct);
         await Context.SendChannel("api", new RoomEvent("opened")).Submit(ct);
         await Context.RequestChannel("api", new JoinRoom("room-1")).SubmitAsync<JoinedRoom>(ct);
     }
@@ -420,7 +418,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
 | `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `AddTimer` |
 | `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`, `AddPostActorJoined`, `AddActorLeft`, `AddActorDisconnected`) |
 | `IZLinkSpotHandlerRegistry` | `IZLinkActorHandlerRegistry` + spot packet/subscribe/actor-join(`AddPacket`, `AddSubscribe`, `AddActorJoin`) |
-| `IZLinkSpotOutboundContext` | spot 안 outbound(`SendSpot`, `RequestSpot`, `Publish(topic, msg)`, `SendChannel`, `RequestChannel`) |
+| `IZLinkSpotOutboundContext` | spot 안 outbound(`SendSpot`, `RequestSpot`, `PublishSpot(topic, msg)`, `SendChannel`, `RequestChannel`) |
 | `IZLinkTimer` | 등록된 timer 핸들. `CancelAsync()` / `DisposeAsync()` (§8 도 참조) |
 
 검증: `SpotContracts.Spot_context_registers_handlers_timers_actor_lifecycle_and_outbound_messages`.
@@ -439,7 +437,7 @@ await routedClient
     .SubmitAsync<JoinedRoom>();
 
 // local spot 없는 노드에서 publish
-await publisher.Publish("play-events", "room.events", new RoomEvent("opened")).Submit(); // IZLinkSpotPublisherClient
+await publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Submit(); // IZLinkSpotPublisherClient
 ```
 
 | 인터페이스 | 역할 |
@@ -448,7 +446,7 @@ await publisher.Publish("play-events", "room.events", new RoomEvent("opened")).S
 | `IZLinkSpotClient` | current Spot callback 안에서의 outbound(`SendSpot`/`RequestSpot`/`SendChannel`/`RequestChannel`/`Publish`) |
 | `IZLinkRoutedSpotClient` | current Spot 없는 코드의 spot 호출. `ViaEgressChannel` 로 local egress 선택 |
 | `IZLinkRoutedSpotEgressClient` | egress 선택 후의 routed 호출 표면(`SendSpot`/`RequestSpot`, `RoutingId`) |
-| `IZLinkSpotPublisherClient` | local spot 없는 노드의 spot channel publish(`Publish(channelName, topic, msg)`) |
+| `IZLinkSpotPublisherClient` | local spot 없는 노드의 spot channel publish(`PublishSpot(channelName, topic, msg)`) |
 | `IZLinkSpotRemoteAddressResolver` | spot `RoutingId` → `ZLinkSpotRemoteAddress` 해석(`ResolveSpotRemoteAddressAsync`) |
 
 검증: `SpotContracts.Spot_clients_separate_local_spot_api_routed_egress_and_publisher_channels`.
@@ -513,25 +511,16 @@ actor.Configure();
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context` |
-| `IZLinkActorContext` | actor 의 상태/동작 표면. `ActorId`/`SessionId?`/`SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
+| `IZLinkActorContext` | actor 의 상태/동작 표면. `SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
 | `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `SubmitAsync<TReply>`) |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
 
 검증: `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`.
 
-### 4.2 actor handler 와 Spot actor handler
+### 4.2 Spot actor handler
 
 ```csharp
-// actor fallback handler: actor 인스턴스를 첫 인자로 받는다.
-public sealed class ActorRequestHandler
-    : IZLinkActorRequestHandler<PlayerActor, PlayerRequest, PlayerReply>
-{
-    public ValueTask<PlayerReply> HandleAsync(
-        PlayerActor actor, PlayerRequest request, CancellationToken ct)
-        => ValueTask.FromResult(new PlayerReply($"actor:{actor.ActorId}:{request.Value}"));
-}
-
 // Spot actor handler: 현재 Spot, actor, context, payload를 함께 받는다.
 public sealed class RoomRequestHandler
     : IZLinkSpotActorRequestHandler<RoomSpot, PlayerActor, PlayerRequest, PlayerReply>
@@ -551,8 +540,6 @@ public sealed class RoomRequestHandler
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkActorPacketHandler<TActor, TMessage>` | actor fallback 단방향 handler. 첫 인자 = actor |
-| `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor fallback 요청 handler. 첫 인자 = actor |
 | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user Spot actor 단방향 handler. Spot, actor, context, payload 순서 |
 | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor 요청 handler. Spot, actor, context, payload 순서 |
 | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor 단방향 handler. Entry Spot, actor, context, payload 순서 |

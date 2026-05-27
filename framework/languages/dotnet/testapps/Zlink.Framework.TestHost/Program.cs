@@ -43,7 +43,7 @@ internal sealed class StartupSpotCreationHostedService(
 }
 
 internal sealed class ChannelStartupPublishHostedService(
-    IZLinkFanoutPublisher publisher,
+    IZLinkFanoutClient publisher,
     string channelName,
     string topic,
     string value) : BackgroundService
@@ -77,7 +77,7 @@ internal sealed class SpotStartupPublishHostedService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await publisher.Publish(channelName, topic, new StartupStageEvent(value))
+            await publisher.PublishSpot(channelName, topic, new StartupStageEvent(value))
                 .Submit(stoppingToken);
 
             try

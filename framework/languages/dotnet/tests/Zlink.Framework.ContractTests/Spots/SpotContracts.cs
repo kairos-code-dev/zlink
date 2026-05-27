@@ -39,7 +39,7 @@ public sealed class SpotContracts
         await context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
         await context.SendSpot(RoutingId.Of("room-2"), new RoomEvent("opened")).Submit();
         await context.RequestSpot(RoutingId.Of("room-2"), new JoinRoom("room-2")).SubmitAsync<JoinedRoom>();
-        await context.Publish("room.events", new RoomEvent("opened")).Submit();
+        await context.PublishSpot("room.events", new RoomEvent("opened")).Submit();
         await context.SendChannel("api", new RoomEvent("opened")).Submit();
         await context.RequestChannel("api", new JoinRoom("room-1")).SubmitAsync<JoinedRoom>();
 
@@ -63,13 +63,13 @@ public sealed class SpotContracts
 
         await spotOutbound.SendSpot(RoutingId.Of("room-2"), new RoomEvent("spot-send")).Submit();
         await spotOutbound.RequestSpot(RoutingId.Of("room-2"), new JoinRoom("room-2")).SubmitAsync<JoinedRoom>();
-        await spotOutbound.Publish("room.events", new RoomEvent("spot-publish")).Submit();
+        await spotOutbound.PublishSpot("room.events", new RoomEvent("spot-publish")).Submit();
         await spotOutbound.SendChannel("api", new RoomEvent("spot-channel-send")).Submit();
         await spotOutbound.RequestChannel("api", new JoinRoom("room-1")).SubmitAsync<JoinedRoom>();
 
         await entryOutbound.SendSpot(RoutingId.Of("room-2"), new RoomEvent("entry-send")).Submit();
         await entryOutbound.RequestSpot(RoutingId.Of("room-2"), new JoinRoom("room-2")).SubmitAsync<JoinedRoom>();
-        await entryOutbound.Publish("room.events", new RoomEvent("entry-publish")).Submit();
+        await entryOutbound.PublishSpot("room.events", new RoomEvent("entry-publish")).Submit();
         await entryOutbound.SendChannel("api", new RoomEvent("entry-channel-send")).Submit();
         await entryOutbound.RequestChannel("api", new JoinRoom("entry")).SubmitAsync<JoinedRoom>();
     }
@@ -96,7 +96,7 @@ public sealed class SpotContracts
         var reply = await localClient.RequestSpot(created.SpotRid, new JoinRoom("room-1")).SubmitAsync<JoinedRoom>();
         await localClient.SendChannel("api", new RoomEvent("opened")).Submit();
         await localClient.RequestChannel("api", new JoinRoom("room-1")).SubmitAsync<JoinedRoom>();
-        await localClient.Publish("room.events", new RoomEvent("opened")).Submit();
+        await localClient.PublishSpot("room.events", new RoomEvent("opened")).Submit();
 
         var routedClient = new RoutedSpotClient();
         await routedClient
@@ -105,7 +105,7 @@ public sealed class SpotContracts
             .SubmitAsync<JoinedRoom>();
 
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
-        await publisher.Publish("play-events", "room.events", new RoomEvent("opened")).Submit();
+        await publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Submit();
 
         Assert.True(created.Created);
         Assert.Equal("play-router", route.RouterChannelId);
@@ -358,7 +358,7 @@ public sealed class SpotContracts
         public IZLinkRequestCall RequestSpot<TRequest>(RoutingId spotRid, TRequest request) =>
             new RequestCall(new JoinedRoom("room-1"));
 
-        public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message) => new PublishCall();
+        public IZLinkPublishCall PublishSpot<TEvent>(string topic, TEvent message) => new PublishCall();
 
         public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message) => new SendCall();
 
@@ -435,7 +435,7 @@ public sealed class SpotContracts
         public IZLinkRequestCall RequestSpot<TRequest>(RoutingId spotRid, TRequest request) =>
             new RequestCall(new JoinedRoom("room-1"));
 
-        public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message) => new PublishCall();
+        public IZLinkPublishCall PublishSpot<TEvent>(string topic, TEvent message) => new PublishCall();
 
         public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message) => new SendCall();
 
@@ -519,7 +519,7 @@ public sealed class SpotContracts
         public IZLinkRequestCall RequestChannel<TMessage>(string channelName, TMessage request) =>
             new RequestCall(new JoinedRoom("room-1"));
 
-        public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message) => new PublishCall();
+        public IZLinkPublishCall PublishSpot<TEvent>(string topic, TEvent message) => new PublishCall();
     }
 
     private sealed class RoutedSpotClient : IZLinkRoutedSpotClient
@@ -538,7 +538,7 @@ public sealed class SpotContracts
 
     private sealed class SpotPublisherClient : IZLinkSpotPublisherClient
     {
-        public IZLinkPublishCall Publish<TEvent>(
+        public IZLinkPublishCall PublishSpot<TEvent>(
             string channelName,
             string topic,
             TEvent message) =>

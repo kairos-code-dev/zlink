@@ -17,7 +17,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
     Func<ZLinkSpotHandlerInvoker> handlerInvoker)
 {
     private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher =
-        new(runtime, actorHandlers, handlerInvoker);
+        new(actorHandlers, handlerInvoker);
     private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher =
         new(
             runtime,

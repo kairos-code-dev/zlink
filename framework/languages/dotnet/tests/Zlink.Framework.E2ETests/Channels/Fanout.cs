@@ -38,7 +38,7 @@ public sealed class FanoutTests
         await subscriberHost.StartAsync();
         await publisherHost.StartAsync();
 
-        var publisher = publisherHost.Services.GetRequiredService<IZLinkEventPublisher>();
+        var publisher = publisherHost.Services.GetRequiredService<IZLinkFanoutClient>();
         var recorder = subscriberHost.Services.GetRequiredService<ProfileEventRecorder>();
 
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(

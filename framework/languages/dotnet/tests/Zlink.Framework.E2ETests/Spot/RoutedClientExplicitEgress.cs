@@ -85,7 +85,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
         try
         {
             var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
-            var client = host.Services.GetRequiredService<IZLinkClient>();
+            var client = host.Services.GetRequiredService<IZLinkChannelClient>();
             var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
             var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
@@ -94,7 +94,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
 
             var reply = await RetryAsync(
                 async () => await client
-                    .Request("api", new RoutedSpotApiRequest(targetSpotRid.ToBytes().ToArray(), "egress-request"))
+                    .RequestChannel("api", new RoutedSpotApiRequest(targetSpotRid.ToBytes().ToArray(), "egress-request"))
                     .Timeout(TimeSpan.FromMilliseconds(500))
                     .SubmitAsync<RoutedSpotApiReply>(CancellationToken.None)
                     .ConfigureAwait(false),

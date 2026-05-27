@@ -2,12 +2,12 @@ namespace Zlink.Framework.Contracts.Channels;
 
 public interface IZLinkRouteClient
 {
-    IZLinkRouteSendCall SendTo<TMessage>(
+    IZLinkRouteSendCall Send<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TMessage message);
 
-    IZLinkRouteRequestCall RequestTo<TRequest>(
+    IZLinkRouteRequestCall Request<TRequest>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request);

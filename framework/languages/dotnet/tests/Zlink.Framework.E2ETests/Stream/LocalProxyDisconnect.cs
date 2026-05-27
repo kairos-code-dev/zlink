@@ -30,7 +30,10 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
             services.AddSingleton(sessionRecorder);
             services.AddScoped<GatewayActorFactory>();
             services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewayEntrySpot>();
+            services.AddScoped<GatewayEntrySpotActorHandler>();
             services.AddScoped<GatewaySessionDisconnectHandler>();
+            services.AddScoped<GatewaySessionDisconnectRequestHandler>();
             services.AddScoped<LocalNotifyDisconnectSession>();
             services.AddZLinkFramework(options =>
             {
@@ -43,7 +46,9 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
                     spot.EnableRouter(router =>
                     {
                         router.SetRouterBind(spotEndpoint);
+                        router.SetRoutingId(RoutingId.Of("local-notify-actor-node"));
                     });
+                    spot.AddEntrySpot<GatewayEntrySpot>();
                 });
                 });
                 options.AddRouteMeshChannel("gateway", routed =>

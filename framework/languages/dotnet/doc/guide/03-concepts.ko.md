@@ -23,7 +23,7 @@ handler · client · DI/lifecycle**.
 | **channel(채널)** | 호출을 묶는 **논리 이름**. `host:port` 주소 대신 `"orders"` 같은 이름으로 부른다 |
 | **capability(역할/능력)** | 한 channel 이 맡는 역할 — 서버로 **받기**(EnableServer) / 클라이언트로 **보내기**(EnableClient) / **발행**(Publisher) / **구독**(Subscriber) |
 | **handler(핸들러)** | 들어온 메시지를 처리하는 메서드·클래스. `ASP.NET Core` 의 컨트롤러 액션과 같은 위치 |
-| **client(클라이언트)** | 다른 서비스로 호출을 **보내는** 주입 객체(예: `IZLinkClient`) |
+| **client(클라이언트)** | 다른 서비스로 호출을 **보내는** 주입 객체(예: `IZLinkChannelClient`) |
 | **request / send / publish** | 각각 **응답 받는 호출** / **응답 없는 단방향 통지** / **여러 구독자에게 발행** |
 | **pub/sub · fan-out** | 한 번 발행한 이벤트가 **여러 구독자에게 동시에 퍼지는** 것 |
 | **packet name(패킷 이름)** | 같은 channel 안에서 **어느 메시지 종류인지** 구분하는 키 |
@@ -58,8 +58,8 @@ handler · client · DI/lifecycle**.
 
 | 공통 모델 | handler 인터페이스 | attribute | outbound 호출 |
 |-----------|--------------------|-----------|----------------|
-| request-response | `IZLinkRequestHandler<TReq,TRes>` | `[ZLinkRequest]` | `client.Request(...).SubmitAsync<TRes>(ct)` |
-| command(단방향 send) | `IZLinkSendHandler<TMsg>` | `[ZLinkSend]` | `client.Send(...).Submit(ct)` |
+| request-response | `IZLinkRequestHandler<TReq,TRes>` | `[ZLinkRequest]` | `client.RequestChannel(...).SubmitAsync<TRes>(ct)` |
+| command(단방향 send) | `IZLinkSendHandler<TMsg>` | `[ZLinkSend]` | `client.SendChannel(...).Submit(ct)` |
 | publish-subscribe | `IZLinkPublishHandler<TEvt>` | `[ZLinkPublish]` | `publisher.Publish(...).Submit(ct)` |
 | SPOT 내부/외부 | `IZLinkSpot*Handler<...>` | (Spot 등록) | `IZLinkSpotClient`, `IZLinkRoutedSpotClient` |
 | STREAM session | `IZLinkSession` | (stream 등록) | `IZLinkSessionContext` / `IZLinkBoundSession` |
@@ -147,8 +147,8 @@ framework public 계약은 host 시작 뒤 endpoint 를 바꾸는 별도 연결 
 
 | client | 언제 |
 |--------|------|
-| `IZLinkClient` | 일반 channel request/send |
-| `IZLinkFanoutPublisher` | pub/sub publish |
+| `IZLinkChannelClient` | 일반 channel request/send |
+| `IZLinkFanoutClient` | pub/sub publish |
 | `IZLinkSpotClient` | current Spot callback 안에서의 outbound |
 | `IZLinkRoutedSpotClient` | current Spot 없이 target Spot 으로 호출(HTTP/세션 gateway 등) |
 
@@ -156,7 +156,7 @@ channel 이름은 위치마다 뜻이 다르다는 점에 주의한다.
 
 | 위치 | channel 이름의 뜻 |
 |------|------------------|
-| `client.Request("profile", ...)` | request/send 를 보낼 **target** channel |
+| `client.RequestChannel("profile", ...)` | request/send 를 보낼 **target** channel |
 | `routedSpots.ViaEgressChannel("gateway.client")` | 호출 프로세스가 쓸 **local egress** channel |
 | `EnableSpotRouteEgress("play.route")` | target SpotNode 가 `AcceptSpotRoutesFromChannel(...)`로 연 **ingress** channel |
 

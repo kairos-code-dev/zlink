@@ -8,7 +8,7 @@ using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionGateway.Session.Sessions.Handlers
 {
-    internal sealed class CreateMatchSessionPacketHandler(IZLinkClient channels)
+    internal sealed class CreateMatchSessionPacketHandler(IZLinkChannelClient channels)
         : IZLinkSessionPacketHandler<IZLinkSessionContext>
     {
         public string PacketName => nameof(CreateMatchReq);
@@ -22,7 +22,7 @@ namespace TicTacToe.SessionGateway.Session.Sessions.Handlers
             _ = header;
             var actorId = RequireSingleBoundActor(context, "creating a match").ActorId;
             var request = payload.Decode<CreateMatchReq>();
-            var reply = await channels.Request(
+            var reply = await channels.RequestChannel(
                         SampleNames.ApiChannel,
                         new CreateMatchReq(OwnerActorId: actorId))
                     .Timeout(SampleTimings.RequestTimeout)

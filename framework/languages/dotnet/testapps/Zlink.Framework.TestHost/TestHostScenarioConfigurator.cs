@@ -128,7 +128,7 @@ internal static class TestHostScenarioConfigurator
         {
             services.AddHostedService(provider =>
                 new ChannelStartupPublishHostedService(
-                    provider.GetRequiredService<IZLinkFanoutPublisher>(),
+                    provider.GetRequiredService<IZLinkFanoutClient>(),
                     options.ChannelName!,
                     options.PublishTopic!,
                     options.PublishValue ?? "startup"));

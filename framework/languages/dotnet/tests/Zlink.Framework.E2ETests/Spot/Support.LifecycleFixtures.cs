@@ -181,7 +181,7 @@ public abstract partial class SpotTestSupport
         {
             _ = tick;
             recorder.RecordTick();
-            await spotClient.Publish("stage.local", new LocalStageEvent(spot.Context.SpotRid.ToString()))
+            await spotClient.PublishSpot("stage.local", new LocalStageEvent(spot.Context.SpotRid.ToString()))
                 .Submit(cancellationToken);
         }
     }

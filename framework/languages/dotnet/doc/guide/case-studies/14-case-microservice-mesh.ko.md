@@ -119,14 +119,14 @@ interceptor.
 ## 3. ZLink 스택 — channel 이름 + Registry
 
 ```csharp
-// BFF: stub 없이 IZLinkClient 하나로 channel 이름만 바꿔 fan-out
-public sealed class DashboardBff(IZLinkClient client)
+// BFF: stub 없이 IZLinkChannelClient 하나로 channel 이름만 바꿔 fan-out
+public sealed class DashboardBff(IZLinkChannelClient client)
 {
     public async Task<Dashboard> LoadAsync(string userId, CancellationToken ct)
     {
-        var p = client.Request("profile", new GetProfile(userId))
+        var p = client.RequestChannel("profile", new GetProfile(userId))
             .Timeout(TimeSpan.FromMilliseconds(200)).SubmitAsync<ProfileDto>(ct);
-        var q = client.Request("pricing", new Quote(userId))
+        var q = client.RequestChannel("pricing", new Quote(userId))
             .Timeout(TimeSpan.FromMilliseconds(200)).SubmitAsync<QuoteDto>(ct);
         await Task.WhenAll(p.AsTask(), q.AsTask());
         return new Dashboard(p.Result, q.Result);
@@ -186,7 +186,7 @@ public sealed class CorrelationFilter(ILogger<CorrelationFilter> log) : IZLinkHa
 
 | 축 | 기존(gRPC + mesh) | ZLink |
 |----|-------------------|-------|
-| 계약/호출 | 서비스별 생성 stub `profile.GetAsync(...)` | `client.Request("profile", ...)` channel 이름 |
+| 계약/호출 | 서비스별 생성 stub `profile.GetAsync(...)` | `client.RequestChannel("profile", ...)` channel 이름 |
 | 위치/분배 | Consul/xDS + Envoy `DestinationRule` | `UseDiscovery` + Registry |
 | deadline | `deadline:` 인자 | `.Timeout(...)` |
 | retry/circuit | Polly(앱) | Polly/filter(앱) — 동일 |

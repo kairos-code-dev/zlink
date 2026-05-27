@@ -14,14 +14,18 @@ namespace Zlink.Framework.E2ETests;
 public abstract partial class StreamTestSupport
 {
     public sealed class GatewayActorHandler(ActorDispatchRecorder recorder)
-        : IZLinkActorRequestHandler<GatewayActor, GatewayPing, GatewayPong>
+        : IZLinkEntrySpotActorRequestHandler<GatewayEntrySpot, GatewayActor, GatewayPing, GatewayPong>
     {
         public ValueTask<GatewayPong> HandleAsync(
+            GatewayEntrySpot entrySpot,
             GatewayActor actor,
+            ZLinkSpotActorRequestContext context,
             GatewayPing request,
             CancellationToken cancellationToken)
         {
+            _ = entrySpot;
             _ = actor;
+            _ = context;
             cancellationToken.ThrowIfCancellationRequested();
             recorder.LastPacketName = "relay.echo";
             return ValueTask.FromResult(new GatewayPong($"play:{request.Value}", 101));
@@ -29,13 +33,17 @@ public abstract partial class StreamTestSupport
     }
 
     public sealed class GatewaySessionDisconnectHandler(ActorDispatchRecorder recorder)
-        : IZLinkActorPacketHandler<GatewayActor, GatewayPing>
+        : IZLinkEntrySpotActorSendHandler<GatewayEntrySpot, GatewayActor, GatewayPing>
     {
         public async ValueTask HandleAsync(
+            GatewayEntrySpot entrySpot,
             GatewayActor actor,
+            ZLinkSpotActorSendContext context,
             GatewayPing message,
             CancellationToken cancellationToken)
         {
+            _ = entrySpot;
+            _ = context;
             _ = message;
             recorder.RecordProxyDisconnect();
             await actor.Context.BoundSession.DisconnectAsync(cancellationToken)
@@ -44,13 +52,17 @@ public abstract partial class StreamTestSupport
     }
 
     public sealed class GatewaySessionDisconnectRequestHandler(ActorDispatchRecorder recorder)
-        : IZLinkActorRequestHandler<GatewayActor, GatewayPing, GatewayPong>
+        : IZLinkEntrySpotActorRequestHandler<GatewayEntrySpot, GatewayActor, GatewayPing, GatewayPong>
     {
         public async ValueTask<GatewayPong> HandleAsync(
+            GatewayEntrySpot entrySpot,
             GatewayActor actor,
+            ZLinkSpotActorRequestContext context,
             GatewayPing request,
             CancellationToken cancellationToken)
         {
+            _ = entrySpot;
+            _ = context;
             recorder.RecordProxyDisconnect();
             await actor.Context.BoundSession.DisconnectAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -73,11 +85,16 @@ public abstract partial class StreamTestSupport
 
         public string ActorId { get; }
 
-        public ActorRef? Actor { get; }
+        public ActorRef? Actor { get; private set; }
 
         public int DisconnectedCount => Volatile.Read(ref _disconnectedCount);
 
         public int PostRelayPayloadLength => Volatile.Read(ref _postRelayPayloadLength);
+
+        public void SetActor(ActorRef actor)
+        {
+            Actor = actor;
+        }
 
         public void RecordDisconnected()
         {

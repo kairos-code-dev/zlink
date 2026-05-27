@@ -34,10 +34,10 @@ public sealed class DealerMeshTests
         using var clientHost = clientBuilder.Build();
         await clientHost.StartAsync();
 
-        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
+        var client = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () => await client
-                .Request("mesh", new MeshProfileRequest { UserId = "mesh-request" })
+                .RequestChannel("mesh", new MeshProfileRequest { UserId = "mesh-request" })
                 .Timeout(TimeSpan.FromMilliseconds(500))
                 .SubmitAsync<MeshProfileReply>(),
             static result => result.Name == "mesh:mesh-request");
@@ -48,7 +48,7 @@ public sealed class DealerMeshTests
             async () =>
             {
                 await client
-                    .Send("mesh", new MeshProfileRequest { UserId = "mesh-send" })
+                    .SendChannel("mesh", new MeshProfileRequest { UserId = "mesh-send" })
                     .Submit();
                 await Task.Yield();
                 return recorder.Commands.Count;

@@ -37,32 +37,9 @@ public sealed class ActorContracts
         Assert.Equal(RoutingId.Of("play-node"), entryJoin.NodeRid);
     }
 
-    [Fact]
-    [ContractExample(
-        typeof(IZLinkActorPacketHandler<,>),
-        typeof(IZLinkActorRequestHandler<,,>))]
-    public async Task Actor_handlers_receive_the_actor_instance()
-    {
-        var actor = new PlayerActor("player-1", new ActorContext("player-1", new RoomSpot()));
-        var packetHandler = new ActorPacketHandler();
-        var actorRequestHandler = new ActorRequestHandler();
-
-        await packetHandler.HandleAsync(actor, new PlayerMessage("hello"), CancellationToken.None);
-        var actorReply = await actorRequestHandler.HandleAsync(actor, new PlayerRequest("state"), CancellationToken.None);
-
-        Assert.True(packetHandler.WasCalled);
-        Assert.Equal("actor:player-1:state", actorReply.Value);
-    }
-
     private sealed record JoinRoom(string RoomId);
 
     private sealed record JoinedRoom(string RoomId);
-
-    private sealed record PlayerMessage(string Value);
-
-    private sealed record PlayerRequest(string Value);
-
-    private sealed record PlayerReply(string Value);
 
     private sealed class ActorFactory : IZLinkActorFactory
     {
@@ -102,21 +79,11 @@ public sealed class ActorContracts
 
     private sealed class ActorContext(string actorId, IZLinkSpot spot) : IZLinkActorContext
     {
-        public string ActorId { get; } = actorId;
-
-        public string? SessionId => "session-1";
-
         public RoutingId? SpotRid => RoutingId.Of("room-1");
 
         public bool IsJoined => true;
 
         public IZLinkBoundSession BoundSession { get; } = new BoundSession();
-
-        public void AddPacket<THandler>()
-            where THandler : class { }
-
-        public void AddPacket<THandler>(string messageName)
-            where THandler : class { }
 
         public IZLinkSpot GetSpot() => spot;
 
@@ -130,7 +97,7 @@ public sealed class ActorContracts
             new JoinSpotCall(new JoinedRoom("room-1"));
 
         public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid) =>
-            new JoinEntrySpotCall(new ActorRef(spotNodeRid, ActorId, 1));
+            new JoinEntrySpotCall(new ActorRef(spotNodeRid, actorId, 1));
     }
 
     private sealed class JoinSpotCall(object reply) : IZLinkActorJoinSpotCall
@@ -173,26 +140,4 @@ public sealed class ActorContracts
         public ValueTask DisconnectAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
-    private sealed class ActorPacketHandler : IZLinkActorPacketHandler<PlayerActor, PlayerMessage>
-    {
-        public bool WasCalled { get; private set; }
-
-        public ValueTask HandleAsync(
-            PlayerActor actor,
-            PlayerMessage message,
-            CancellationToken cancellationToken)
-        {
-            WasCalled = true;
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    private sealed class ActorRequestHandler : IZLinkActorRequestHandler<PlayerActor, PlayerRequest, PlayerReply>
-    {
-        public ValueTask<PlayerReply> HandleAsync(
-            PlayerActor actor,
-            PlayerRequest request,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new PlayerReply($"actor:{actor.ActorId}:{request.Value}"));
-    }
 }

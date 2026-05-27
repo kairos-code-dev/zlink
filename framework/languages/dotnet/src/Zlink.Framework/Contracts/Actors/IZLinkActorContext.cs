@@ -2,21 +2,11 @@ namespace Zlink.Framework.Contracts.Actors;
 
 public interface IZLinkActorContext
 {
-    string ActorId { get; }
-
-    string? SessionId { get; }
-
     RoutingId? SpotRid { get; }
 
     bool IsJoined { get; }
 
     IZLinkBoundSession BoundSession { get; }
-
-    void AddPacket<THandler>()
-        where THandler : class;
-
-    void AddPacket<THandler>(string messageName)
-        where THandler : class;
 
     IZLinkSpot GetSpot();
 

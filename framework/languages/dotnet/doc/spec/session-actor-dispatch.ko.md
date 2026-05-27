@@ -27,7 +27,6 @@
 | 축 | `.NET` 표면 |
 |----|-------------|
 | session → actor relay | `IZLinkSessionContext.BindActorAsync(...)`, `IZLinkSessionActor.RelayAsync(...)` |
-| actor handler | `IZLinkActorPacketHandler<TActor, TMessage>`, `IZLinkActorRequestHandler<TActor, TRequest, TReply>` |
 | spot actor handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
 | actor → own client push | Spot actor handler 가 받은 actor 의 `Context.BoundSession.Send(msg).Submit(...)` |
 | 다른 actor → client push | 먼저 대상 actor 에 메시지를 보내고, 대상 Spot actor handler 가 actor `Context.BoundSession` 으로 push |
@@ -1373,8 +1372,8 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
         }
 
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorNotAuthenticated,
-            "Actor is not bound to this session.");
+            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            "No actor route is bound to this session packet.");
     }
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
@@ -1443,18 +1442,23 @@ public sealed class ZLinkFrameworkException : Exception
 
 public enum ZLinkFrameworkErrorKind
 {
-    ActorNotAuthenticated,
     ActorRouteNotFound,
     ActorCreateFailed,
     ActorAlreadyExists,
     ActorTypeMismatch,
     SpotCreateFailed,
+    SpotRouteNotFound,
     SpotTypeMismatch,
     ActorSessionNotBound,
-    BoundSessionTimeout,
-    ActorDispatchTimeout,
-    ActorDispatchHandlerFailed,
-    CodecFailed,
+    HandlerNotFound,
+    RouteHandlerNotFound,
+    ActorDispatchHandlerNotFound,
+    PayloadDecodeFailed,
+    RouteNotConnected,
+    RequestTargetNotFound,
+    RequestRejected,
+    RequestProtocolError,
+    RequestFailed,
 }
 ```
 
@@ -1464,14 +1468,19 @@ public enum ZLinkFrameworkErrorKind
 
 `ActorCreateFailed`, `ActorAlreadyExists`, `ActorTypeMismatch` 는
 `IZLinkActorManager` 로 local actor 를 준비할 때 사용한다.
-`SpotCreateFailed`, `SpotTypeMismatch` 는 `IZLinkSpotManager` 로 local 또는
-framework-routed spot 을 만들거나 확보할 때 사용한다.
+`SpotCreateFailed`, `SpotRouteNotFound`, `SpotTypeMismatch` 는 `IZLinkSpotManager` 와
+registry 기반 spot route 조회에서 사용한다.
 `BindActorAsync(...)` 와 routed actor dispatch 수신 경로는 actor 를
 생성하지 않는다. bind 는 logical actor handle 을 core ActorGateway binding 으로 넘기며,
 actor remote address resolver 를 fallback 으로 호출하지 않는다. actor 를 찾을 수 없거나
 gateway 경로로 relay 할 수 없으면 `ActorRouteNotFound` 로 분류한다. 현재 actor 에
 bound 된 session 이 없어서 client push 를 보낼 수 없으면 `ActorSessionNotBound` 로
 분류한다.
+handler 를 찾지 못했거나 payload decode 에 실패한 inbound request 는
+`HandlerNotFound`, `RouteHandlerNotFound`, `ActorDispatchHandlerNotFound`,
+`PayloadDecodeFailed` 로 분류한다. route/request 하부에서 반환되는 실패는
+`RouteNotConnected`, `RequestTargetNotFound`, `RequestRejected`,
+`RequestProtocolError`, `RequestFailed` 로 매핑한다.
 
 `IsRetriable` 은 framework 가 자동으로 retry 해 준다는 의미가 아니다. caller
 가 retry policy 를 만들 때 참고할 수 있는 분류일 뿐이다. sample 코드에서도 이

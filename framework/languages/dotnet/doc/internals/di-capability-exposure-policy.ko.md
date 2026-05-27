@@ -52,7 +52,7 @@ constructor injection 으로 해당 interface 를 받을 수 있다.
 쓸 수 있다고 이해한다. 따라서 DI 등록은 단순 convenience 가 아니라 capability
 계약의 일부로 본다.
 
-예외는 multi-target client 이다. 예를 들어 `IZLinkClient` 는 channel 이름을
+예외는 multi-target client 이다. 예를 들어 `IZLinkChannelClient` 는 channel 이름을
 인자로 받기 때문에 모든 channel 을 미리 알 수 없다. 이 경우 interface 자체는
 등록할 수 있지만, 잘못된 channel 이름이나 capability 누락은 호출 시 명확한
 configuration error 로 실패해야 한다.
@@ -85,11 +85,9 @@ capability 누락을 표현하지 않는다.
 
 | Interface | 이유 | capability 누락 시 동작 |
 |-----------|------|------------------------|
-| `IZLinkClient` | channel 이름을 호출 시점에 받는 outbound client | channel 이 없거나 client capability 가 없으면 호출 시 `ZLinkConfigurationException` |
-| `IZLinkClientServerClient` | `IZLinkClient` 의 좁은 표면 | 위와 동일 |
+| `IZLinkChannelClient` | channel 이름을 호출 시점에 받는 outbound client | channel 이 없거나 client capability 가 없으면 호출 시 `ZLinkConfigurationException` |
 | `IZLinkRouteClient` | route channel id 를 호출 시점에 받는 outbound route client | route channel 이 없으면 호출 시 `ZLinkConfigurationException` |
-| `IZLinkEventPublisher` | fanout channel 이름을 호출 시점에 받는 publisher | publisher capability 가 없으면 호출 시 `ZLinkConfigurationException` |
-| `IZLinkFanoutPublisher` | `IZLinkEventPublisher` 의 좁은 표면 | 위와 동일 |
+| `IZLinkFanoutClient` | fanout channel 이름을 호출 시점에 받는 publisher | publisher capability 가 없으면 호출 시 `ZLinkConfigurationException` |
 | `IZLinkMessageMetadataPolicy` | 메시지 metadata 복사 정책 | 항상 유효 |
 
 `IZLinkRoutedSpotClient`는 예외적으로 routed Spot egress capability 가 하나 이상 있을 때만
@@ -191,7 +189,7 @@ resolver 구현을 DI 로 제공할 수 있지만, local spot 문맥이 없으�
 publisher client capability 가 있을 때만 등록한다.
 
 Spot publisher client capability 없이 외부 publish service 를 주입받고 싶다면,
-그 애플리케이션은 일반 fanout publisher 인 `IZLinkEventPublisher` 를 써야 한다.
+그 애플리케이션은 일반 fanout publisher 인 `IZLinkFanoutClient` 를 써야 한다.
 두 표면은 같은 publish 동작처럼 보일 수 있지만, 전자는 Spot mesh 의 attached
 publisher client 를 전제로 하고 후자는 일반 channel publisher 를 전제로 한다.
 
@@ -214,10 +212,10 @@ configuration error 로 표현한다.
 
 | 호출 | 오류 조건 | 예외 |
 |------|-----------|------|
-| `IZLinkClient.Request(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
-| `IZLinkClient.Send(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
-| `IZLinkEventPublisher.Publish(channelName, ...)` | channel 이 없거나 publisher capability 가 없음 | `ZLinkConfigurationException` |
-| `IZLinkRouteClient.SendTo(routerChannelId, ...)` | route mesh channel 이 없음 | `ZLinkConfigurationException` |
+| `IZLinkChannelClient.RequestChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
+| `IZLinkChannelClient.SendChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
+| `IZLinkFanoutClient.Publish(channelName, ...)` | channel 이 없거나 publisher capability 가 없음 | `ZLinkConfigurationException` |
+| `IZLinkRouteClient.Send(routerChannelId, ...)` | route mesh channel 이 없음 | `ZLinkConfigurationException` |
 | `IZLinkRoutedSpotClient.ViaEgressChannel(channelName).RequestSpot(...)` | local egress channel 이 없거나 routed Spot egress 설정이 없음 | `ZLinkConfigurationException` |
 
 capability 누락은 `InvalidOperationException` 이 아니라 위 예외로 처리한다.

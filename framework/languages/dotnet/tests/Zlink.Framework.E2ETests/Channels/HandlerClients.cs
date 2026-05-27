@@ -64,10 +64,10 @@ public sealed class HandlerClientsTests
         await apiHost.StartAsync();
         await clientHost.StartAsync();
 
-        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
+        var client = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () => await client
-                .Request("api", new ForwardProfileRequest { UserId = "forwarded" })
+                .RequestChannel("api", new ForwardProfileRequest { UserId = "forwarded" })
                 .SubmitAsync<ProfileReply>(),
             static result => result.Name == "user:forwarded");
 
@@ -77,7 +77,7 @@ public sealed class HandlerClientsTests
     }
 
     [Fact]
-    public async Task ChannelHandler_Uses_IZLinkFanoutPublisher_To_Publish_Event()
+    public async Task ChannelHandler_Uses_IZLinkFanoutClient_To_Publish_Event()
     {
         var pubEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
         var apiEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
@@ -132,13 +132,13 @@ public sealed class HandlerClientsTests
         await apiHost.StartAsync();
         await clientHost.StartAsync();
 
-        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
+        var client = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
         var recorder = subscriberHost.Services.GetRequiredService<ProfileEventRecorder>();
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
                 var reply = await client
-                    .Request("api", new PublishProfileRequest { UserId = "published" })
+                    .RequestChannel("api", new PublishProfileRequest { UserId = "published" })
                     .SubmitAsync<PublishProfileReply>();
                 Assert.True(reply.Accepted);
                 await Task.Yield();

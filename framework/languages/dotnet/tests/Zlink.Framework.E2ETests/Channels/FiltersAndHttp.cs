@@ -43,11 +43,11 @@ public sealed class FiltersAndHttpTests
         await serverHost.StartAsync();
         await clientHost.StartAsync();
 
-        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
+        var client = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
         var recorder = serverHost.Services.GetRequiredService<FilterOrderRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetFilterOrderRequest()).SubmitAsync<FilterOrderReply>(),
+            async () => await client.RequestChannel("api", new GetFilterOrderRequest()).SubmitAsync<FilterOrderReply>(),
             static result => result.Sequence.Count == 5);
 
         Assert.Equal(
@@ -59,7 +59,7 @@ public sealed class FiltersAndHttpTests
     }
 
     [Fact]
-    public async Task HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkClient()
+    public async Task HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkChannelClient()
     {
         var apiEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
 
@@ -93,10 +93,10 @@ public sealed class FiltersAndHttpTests
         await httpHost.StartAsync();
 
         var handler = RequestDelegateFactory.Create(
-            async (HttpContext context, [FromServices] IZLinkClient client, CancellationToken cancellationToken) =>
+            async (HttpContext context, [FromServices] IZLinkChannelClient client, CancellationToken cancellationToken) =>
             {
                 var userId = context.Request.Query["userId"].ToString();
-                var reply = await client.Request("api", new GetProfileRequest { UserId = userId })
+                var reply = await client.RequestChannel("api", new GetProfileRequest { UserId = userId })
                     .SubmitAsync<ProfileReply>(cancellationToken);
                 return Results.Text(reply.Name);
             }).RequestDelegate;

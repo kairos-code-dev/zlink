@@ -10,7 +10,7 @@ using Zlink.Framework.Contracts.Streams;
 namespace TicTacToe.SessionGateway.Session.Sessions.Handlers;
 
 internal sealed class AuthenticateSessionPacketHandler(
-    IZLinkClient channels,
+    IZLinkChannelClient channels,
     IZLinkActorManager actors,
     SampleTopology topology)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
@@ -25,7 +25,7 @@ internal sealed class AuthenticateSessionPacketHandler(
     {
         _ = header;
         var request = payload.Decode<AuthenticateReq>();
-        var authenticated = await channels.Request(
+        var authenticated = await channels.RequestChannel(
                 SampleNames.ApiChannel,
                 new AuthenticateActorReq(request.ActorId))
             .Timeout(SampleTimings.RequestTimeout)

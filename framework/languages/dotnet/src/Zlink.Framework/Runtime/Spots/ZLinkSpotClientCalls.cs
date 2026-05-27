@@ -38,9 +38,9 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
             request);
     }
 
-    public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
+    public IZLinkPublishCall PublishSpot<TEvent>(string topic, TEvent message)
     {
-        return ZLinkSpotAmbientContext.RequireCurrent().Publish(topic, message);
+        return ZLinkSpotAmbientContext.RequireCurrent().PublishSpot(topic, message);
     }
 
     private IZLinkSpotRemoteAddressResolver RequireRemoteAddressResolver()

@@ -2,7 +2,6 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorRuntimeState(string actorId)
 {
-    private readonly ZLinkActorPacketRegistry _packets = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _sessionGate = new();
     private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
@@ -258,16 +257,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         return new DispatchScope(this, previous);
     }
 
-    public void AddPacket(IZLinkActor actor, Type handlerType, string? messageName)
-    {
-        _packets.Add(actor, handlerType, messageName);
-    }
-
-    public void ClearPacketRegistrations()
-    {
-        _packets.Clear();
-    }
-
     public void EnsureActorGeneration(ulong nativeGeneration)
     {
         if (nativeGeneration != 0)
@@ -280,20 +269,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         {
             _actorGeneration = 1;
         }
-    }
-
-    public bool TryResolvePacket(
-        ZlinkStreamHeader header,
-        out ZLinkActorPacketDescriptor? descriptor)
-    {
-        return _packets.TryResolve(header, out descriptor);
-    }
-
-    public bool TryResolveRequest(
-        string messageName,
-        out ZLinkActorPacketDescriptor? descriptor)
-    {
-        return _packets.TryResolveRequest(messageName, out descriptor);
     }
 
     private async Task ClearActorCreationTaskWhenCompletedAsync(Task<IZLinkActor> creationTask)
@@ -332,7 +307,6 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
         if (!IsConfigured)
         {
             Actor = null;
-            ClearPacketRegistrations();
         }
 
         if (Actor is null)

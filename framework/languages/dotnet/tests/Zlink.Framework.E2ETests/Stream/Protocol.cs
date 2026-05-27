@@ -28,28 +28,6 @@ public sealed class ProtocolTests : StreamTestSupport
     }
 
     [Fact]
-    public void ActorPacketRegistry_DoesNot_Resolve_Request_To_Send_Handler()
-    {
-        var registry = new ZLinkActorPacketRegistry();
-        var actor = new RegistryOnlyActor("registry-only");
-        var requestHeader = CreateStreamHeader(ZlinkStreamMessageKind.Request, "packet");
-        var sendHeader = CreateStreamHeader(ZlinkStreamMessageKind.Send, "packet");
-        var responseHeader = CreateStreamHeader(ZlinkStreamMessageKind.Response, "packet");
-        var errorHeader = CreateStreamHeader(ZlinkStreamMessageKind.Error, "packet");
-        var controlHeader = CreateStreamHeader(ZlinkStreamMessageKind.Control, "packet");
-
-        registry.Add(actor, typeof(RegistryOnlyActorSendHandler), "packet");
-
-        Assert.True(registry.TryResolve(sendHeader, out var sendDescriptor));
-        Assert.NotNull(sendDescriptor);
-        Assert.False(registry.TryResolve(requestHeader, out _));
-        Assert.False(registry.TryResolve(responseHeader, out _));
-        Assert.False(registry.TryResolve(errorHeader, out _));
-        Assert.False(registry.TryResolve(controlHeader, out _));
-        Assert.False(registry.TryResolveRequest("packet", out _));
-    }
-
-    [Fact]
     public void SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler()
     {
         var entryRegistry = new ZLinkSpotActorHandlerRegistry(

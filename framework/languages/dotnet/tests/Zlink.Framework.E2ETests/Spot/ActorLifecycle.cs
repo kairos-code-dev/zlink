@@ -22,7 +22,6 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton<ActorIntegrationRecorder>();
         builder.Services.AddScoped<ActorJoinHandler>();
-        builder.Services.AddScoped<ActorJoinViaContextHandler>();
         builder.Services.AddScoped<ActorDispatchHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
@@ -75,19 +74,12 @@ public sealed class ActorLifecycleTests : SpotTestSupport
 
         var contextActor = (TestActor)(await actorRuntime.CreateLocalActorAsync("actor-context", "test")).Actor;
         await actorRuntime.AttachActorAsync(contextActor, new TestStream("session-context"));
-        using (var joinBody = global::Systems.Zlink.Message.From(first.SpotRid.ToHex()))
-        {
-            await actorRuntime.SubmitActorAsync(
-                contextActor,
-                new ZlinkStreamHeader(
-                    ZlinkStreamMessageKind.Send,
-                    ZlinkStreamCodec.Raw,
-                    ZlinkStreamHeaderFlags.None,
-                    null,
-                    "join-via-context",
-                    ZlinkStreamMetadata.Empty),
-                joinBody);
-        }
+        var contextJoin = await contextActor.Context.JoinSpot(
+                first.SpotRid,
+                new JoinStageRequest("room-context"))
+            .Timeout(TimeSpan.FromSeconds(5))
+            .SubmitAsync<JoinStageReply>();
+        contextActor.CurrentRoomId = contextJoin.Reply.RoomId;
 
         Assert.Equal(first.SpotRid, contextActor.Spot?.Context.SpotRid);
         Assert.Equal("room-context", contextActor.CurrentRoomId);

@@ -19,6 +19,7 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
         var streamEndpoint = GetFreeTcpEndpoint();
         var spotEndpoint = GetFreeTcpEndpoint();
         var spotRouterEndpoint = GetFreeTcpEndpoint();
+        var actorNodeRid = RoutingId.Of($"local-relay-node-{Guid.NewGuid():N}");
         var actorId = "local-relay-player-1";
         var recorder = new ActorDispatchRecorder();
         var sessionRecorder = new GatewaySessionRecorder(actorId);
@@ -30,6 +31,8 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             services.AddSingleton(sessionRecorder);
             services.AddScoped<GatewayActorFactory>();
             services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewayEntrySpot>();
+            services.AddScoped<GatewayEntrySpotActorHandler>();
             services.AddScoped<GatewaySessionDisconnectHandler>();
             services.AddScoped<GatewaySessionDisconnectRequestHandler>();
             services.AddScoped<GatewayRelaySession>();
@@ -44,7 +47,9 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
                     spot.EnableRouter(router =>
                     {
                         router.SetRouterBind(spotRouterEndpoint);
+                        router.SetRoutingId(actorNodeRid);
                     });
+                    spot.AddEntrySpot<GatewayEntrySpot>();
                 });
                 });
                 options.AddStreamNode("client.stream", stream =>
@@ -56,8 +61,12 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             });
         });
 
-        await host.Services.GetRequiredService<IZLinkActorManager>()
+        var actor = await host.Services.GetRequiredService<IZLinkActorManager>()
             .GetOrCreateAsync(actorId, "player");
+        var actorRef = await actor.Context.JoinEntrySpot(actorNodeRid)
+            .Timeout(TimeSpan.FromSeconds(5))
+            .SubmitAsync();
+        sessionRecorder.SetActor(actorRef);
 
         try
         {
@@ -75,11 +84,14 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
                 JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("local"), JsonOptions)));
 
             var reply = ReceiveFrame(network, new ZlinkStreamRequestSeq(401));
-            var body = JsonSerializer.Deserialize<GatewayPong>(reply.Payload, JsonOptions);
 
             Assert.True(
                 reply.Header.Kind == ZlinkStreamMessageKind.Response,
                 Encoding.UTF8.GetString(reply.Payload));
+            var payload = (reply.Header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0
+                ? ZLinkStreamProtocolDefaults.Lz4Decompress(reply.Payload).ToArray()
+                : reply.Payload;
+            var body = JsonSerializer.Deserialize<GatewayPong>(payload, JsonOptions);
             Assert.Equal("play:local", body?.Value);
             Assert.Equal(101UL, body?.RequestSeq);
             Assert.Equal("relay.echo", recorder.LastPacketName);
@@ -113,6 +125,8 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             services.AddSingleton(actorRecorder);
             services.AddScoped<GatewayActorFactory>();
             services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewayEntrySpot>();
+            services.AddScoped<GatewayEntrySpotActorHandler>();
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
@@ -127,10 +141,16 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
                         router.SetRoutingId(playRid);
                         router.UseManualConnections(connections => connections.Connect(sessionSpotRouterEndpoint));
                     });
+                    spot.AddEntrySpot<GatewayEntrySpot>();
                 });
                 });
             });
         });
+        var missingActor = await playHost.Services.GetRequiredService<IZLinkActorManager>()
+            .GetOrCreateAsync(actorId, "player");
+        await missingActor.Context.JoinEntrySpot(playRid)
+            .Timeout(TimeSpan.FromSeconds(5))
+            .SubmitAsync();
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {

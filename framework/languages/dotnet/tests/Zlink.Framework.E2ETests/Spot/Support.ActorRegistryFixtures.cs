@@ -126,13 +126,17 @@ public abstract partial class SpotTestSupport
     }
 
     public sealed class LocalActorBlockingHandler(EntrySpotMailboxRecorder recorder)
-        : IZLinkActorPacketHandler<RegistryTestActor, string>
+        : IZLinkEntrySpotActorSendHandler<RegistryEntrySpot, RegistryTestActor, string>
     {
         public async ValueTask HandleAsync(
+            RegistryEntrySpot entrySpot,
             RegistryTestActor actor,
+            ZLinkSpotActorSendContext context,
             string message,
             CancellationToken cancellationToken)
         {
+            _ = entrySpot;
+            _ = context;
             recorder.Events.Enqueue($"local-block-start:{actor.ActorId}:{message}");
             recorder.BlockingStarted.TrySetResult();
             await recorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -141,13 +145,17 @@ public abstract partial class SpotTestSupport
     }
 
     public sealed class LocalActorRecordingHandler(EntrySpotMailboxRecorder recorder)
-        : IZLinkActorPacketHandler<RegistryTestActor, string>
+        : IZLinkEntrySpotActorSendHandler<RegistryEntrySpot, RegistryTestActor, string>
     {
         public ValueTask HandleAsync(
+            RegistryEntrySpot entrySpot,
             RegistryTestActor actor,
+            ZLinkSpotActorSendContext context,
             string message,
             CancellationToken cancellationToken)
         {
+            _ = entrySpot;
+            _ = context;
             _ = cancellationToken;
             recorder.Events.Enqueue($"local-record:{actor.ActorId}:{message}");
             return ValueTask.CompletedTask;
@@ -278,8 +286,6 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddPacket<LocalActorBlockingHandler>("local-block");
-            Context.AddPacket<LocalActorRecordingHandler>("local-record");
         }
 
         public void AttachSpot(RegistryStageSpot spot)

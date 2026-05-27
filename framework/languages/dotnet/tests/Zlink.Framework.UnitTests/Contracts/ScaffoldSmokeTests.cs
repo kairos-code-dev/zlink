@@ -63,8 +63,8 @@ public sealed class ScaffoldSmokeTests
     [Fact]
     public void PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts()
     {
-        AssertMissingMethod(typeof(IZLinkClient), "SendTo");
-        AssertMissingMethod(typeof(IZLinkClient), "RequestTo");
+        AssertMissingMethod(typeof(IZLinkChannelClient), "SendTo");
+        AssertMissingMethod(typeof(IZLinkChannelClient), "RequestTo");
         AssertMissingMethod(typeof(IZLinkSpotClient), "SendTo");
         AssertMissingMethod(typeof(IZLinkSpotClient), "RequestTo");
         Assert.NotNull(typeof(IZLinkFrameworkOptions).GetMethod("AddActorFactory"));

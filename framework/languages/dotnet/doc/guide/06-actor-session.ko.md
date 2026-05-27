@@ -76,7 +76,7 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 
 | `IZLinkActorContext` 멤버 | 용도 |
 |---------------------------|------|
-| `ActorId`, `SessionId?`, `SpotRid?`, `IsJoined` | 현재 상태 조회 |
+| `SpotRid?`, `IsJoined` | 현재 Spot join 상태 조회 |
 | `BoundSession` | 자기 client 로 push (§4) |
 | `JoinSpot<TRequest>(spotRid, request)` | user Spot 으로 join. `.SubmitAsync<TReply>(ct)` 로 종결 |
 | `JoinEntrySpot(spotNodeRid)` | target SpotNode 의 Entry Spot 으로 이동. `.SubmitAsync(ct)` 로 종결 |
@@ -241,8 +241,8 @@ public sealed class TicTacToeSession(
         }
 
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorNotAuthenticated,
-            "Actor is not bound to this session.");
+            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            "No actor route is bound to this session packet.");
     }
 
     public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;
@@ -361,12 +361,12 @@ framework 가 던지는 actor/spot/session 관련 오류는 `ZLinkFrameworkExcep
 
 | Kind (일부) | 의미 |
 |-------------|------|
-| `ActorNotAuthenticated` | 세션에 bound 된 actor 가 아님 |
 | `ActorRouteNotFound` | actor 를 찾을 수 없거나 ActorGateway relay 경로를 열 수 없음 |
 | `ActorAlreadyExists` / `ActorTypeMismatch` | actor 생성 충돌 |
-| `SpotCreateFailed` / `SpotTypeMismatch` | spot 생성 충돌 |
+| `SpotCreateFailed` / `SpotRouteNotFound` / `SpotTypeMismatch` | spot 생성, route 조회, 타입 충돌 |
 | `ActorSessionNotBound` | push 할 bound session 이 없음 |
-| `BoundSessionTimeout` / `ActorDispatchTimeout` | 대기 초과 |
+| `HandlerNotFound` / `ActorDispatchHandlerNotFound` / `PayloadDecodeFailed` | handler dispatch 또는 payload decode 실패 |
+| `RouteNotConnected` / `RequestTargetNotFound` / `RequestRejected` / `RequestProtocolError` / `RequestFailed` | request/route 하부 실패 매핑 |
 
 `IsRetriable` 는 분류 힌트일 뿐 framework 가 자동 retry 하지 않는다. retry 루프를
 이 값으로 만들지 않는다.

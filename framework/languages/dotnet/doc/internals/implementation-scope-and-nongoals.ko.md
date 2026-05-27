@@ -27,7 +27,7 @@
   `AddFanoutChannel(...)`, `AddDealerMeshChannel(...)`, `AddRouteMeshChannel(...)`
 - 전역 `UseDiscovery(...)` 설정
 - channel 의 startup manual connection 설정(`UseManualConnections(...)`)
-- 클라이언트/퍼블리셔 표면인 `IZLinkClient`, `IZLinkEventPublisher`
+- 클라이언트/퍼블리셔 표면인 `IZLinkChannelClient`, `IZLinkFanoutClient`
 - `AddSpotMesh(...)`, `mesh.AddNode(...)` 같은
   `SPOT`[^spot] 등록 표면
 - `IZLinkSpotManager`, `IZLinkSpotClient`, `IZLinkSpotPublisherClient`

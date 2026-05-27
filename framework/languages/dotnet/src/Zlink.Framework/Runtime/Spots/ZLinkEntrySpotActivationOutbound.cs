@@ -20,7 +20,7 @@ internal sealed partial class ZLinkEntrySpotActivation
             request);
     }
 
-    public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
+    public IZLinkPublishCall PublishSpot<TEvent>(string topic, TEvent message)
     {
         return new ZLinkCurrentSpotPublishCall<TEvent>(this, topic, message);
     }

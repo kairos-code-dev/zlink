@@ -153,8 +153,9 @@ public interface IZLinkActor
   actor 가 메시지 dispatch 나 outbound 호출을 하려면 이 context 를 거친다.
   application 코드는 factory 에서 받은 context 를 actor 생성자에 넘기고,
   actor 는 get-only property 로 노출한다.
-- **`Configure()`** -- actor 가 처리할 packet handler 를 등록하는 자리다.
-  attach 직후 한 번 호출된다 (자세한 흐름은 §4 에서 다룬다).
+- **`Configure()`** -- actor 생성 뒤 한 번 호출되는 초기화 지점이다.
+  actor packet handler 는 여기서 등록하지 않는다. Entry Spot 또는 user Spot 의
+  `Configure()` 에서 `AddActorPacket(...)` 으로 등록한다.
 
 actor 자체에는 disconnect callback 을 두지 않는다. actor 는 Entry Spot 또는
 user Spot 문맥 안에서 동작하므로, session 끊김을 actor 에 알려야 하는 경우에도
@@ -411,8 +412,7 @@ public sealed class PlayerActor(
 
 이 모델의 의도는 다음과 같다.
 
-- actor 가 자기가 받을 packet 묶음을 자기 코드에서 정한다. 즉 외부 attribute
-  scan 에 위임하지 않는다.
+- actor packet 묶음은 현재 실행 문맥인 Entry Spot 또는 user Spot 이 정한다.
 - actor type 과 실행 문맥이 달라지면 packet 매핑도 다르게 가져갈 수 있다.
 - 같은 handler 클래스를 여러 actor type 이 공유해도 된다.
 
@@ -558,9 +558,7 @@ actor 가 다른 user Spot 으로 이동하려면 framework 가 attach 한
 ```csharp
 public interface IZLinkActorContext
 {
-    string ActorId { get; }
-    string? SessionId { get; }
-        RoutingId? SpotRid { get; }
+    RoutingId? SpotRid { get; }
     bool IsJoined { get; }
 
     IZLinkBoundSession BoundSession { get; }
@@ -582,7 +580,6 @@ public interface IZLinkActorContext
 
 | 표면 | 의미 |
 | --- | --- |
-| `ActorId` / `SessionId` | identity. session bind된 actor만 `SessionId`가 채워진다 |
 | `SpotRid` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름, routing id, join 상태. Entry Spot에 있을 때는 `IsJoined`가 false이고 `SpotRid`는 없다 |
 | `BoundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
@@ -1102,7 +1099,6 @@ context 만 다룬다는 원칙을 함께 검증한다.
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 spot을 옮긴 뒤 stale spot 문맥으로 dispatch되지 않는다. |
 | `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | stream session에서 bound actor로 request가 전달되고, sequence별 reply 순서가 맞는다. |
 | `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |
-| `ProtocolTests.ActorPacketRegistry_DoesNot_Resolve_Request_To_Send_Handler` | actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
 | `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_ActorReply_And_StreamClientContracts` | actor context Reply 와 actor stream client 계약이 public surface 에 다시 노출되지 않는다. |
 

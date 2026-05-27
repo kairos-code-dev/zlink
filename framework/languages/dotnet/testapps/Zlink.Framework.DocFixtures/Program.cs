@@ -239,7 +239,7 @@ internal sealed class FixtureSpotTimerHandler(IZLinkSpotClient spotClient)
         CancellationToken cancellationToken)
     {
         _ = tick;
-        await spotClient.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
+        await spotClient.PublishSpot("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
             .Submit(cancellationToken);
     }
 }

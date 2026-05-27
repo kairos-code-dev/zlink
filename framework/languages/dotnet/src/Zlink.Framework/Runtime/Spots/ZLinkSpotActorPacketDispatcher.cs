@@ -4,12 +4,9 @@ using Zlink.Framework.Runtime.Streams;
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotActorPacketDispatcher(
-    ZLinkFrameworkRuntime runtime,
     Func<ZLinkSpotActorHandlerRegistry?> actorHandlers,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker)
 {
-    private readonly ZLinkActorPacketDispatcher _actorPacketDispatcher = new(runtime.Services);
-
     public async ValueTask DispatchAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
@@ -26,14 +23,6 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                 .ConfigureAwait(false);
             return;
         }
-
-        await _actorPacketDispatcher.DispatchAsync(
-                runtimeState,
-                actor,
-                header,
-                body,
-                cancellationToken)
-            .ConfigureAwait(false);
     }
 
     public async ValueTask<ZLinkActorReply?> DispatchForReplyAsync(
@@ -52,13 +41,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                 .ConfigureAwait(false);
         }
 
-        return await _actorPacketDispatcher.DispatchForReplyAsync(
-                runtimeState,
-                actor,
-                header,
-                body,
-                cancellationToken)
-            .ConfigureAwait(false);
+        return null;
     }
 
     private bool TryResolveActorPacketDescriptor(

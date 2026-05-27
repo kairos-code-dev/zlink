@@ -6,7 +6,7 @@ using Zlink.Framework.Contracts.Handlers;
 namespace TicTacToe.SessionGateway.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
-internal sealed class CreateMatchHandler(IZLinkClient client)
+internal sealed class CreateMatchHandler(IZLinkChannelClient client)
 {
     [ZLinkRequest]
     public async ValueTask<CreateMatchRes> CreateMatch(
@@ -21,7 +21,7 @@ internal sealed class CreateMatchHandler(IZLinkClient client)
             throw new InvalidOperationException("Match owner actor id must not be empty.");
         }
 
-        var room = await client.Request(
+        var room = await client.RequestChannel(
                 SampleNames.PlayChannel,
                 new CreateMatchRoomReq())
             .Timeout(SampleTimings.RequestTimeout)

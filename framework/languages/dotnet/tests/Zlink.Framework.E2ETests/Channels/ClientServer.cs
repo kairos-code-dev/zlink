@@ -50,11 +50,11 @@ public sealed class ClientServerTests
         await serverHost.StartAsync();
         await clientHost.StartAsync();
 
-        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
+        var client = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
         var recorder = serverHost.Services.GetRequiredService<ProfileCommandRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "discovery" }).SubmitAsync<ProfileReply>(),
+            async () => await client.RequestChannel("api", new GetProfileRequest { UserId = "discovery" }).SubmitAsync<ProfileReply>(),
             static result => result.Name == "user:discovery");
 
         Assert.Equal("user:discovery", reply.Name);
@@ -62,7 +62,7 @@ public sealed class ClientServerTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                await client.Send("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Submit();
+                await client.SendChannel("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Submit();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },
@@ -106,11 +106,11 @@ public sealed class ClientServerTests
         await serverHost.StartAsync();
         await clientHost.StartAsync();
 
-        var client = clientHost.Services.GetRequiredService<IZLinkClient>();
+        var client = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
         var recorder = serverHost.Services.GetRequiredService<ProfileCommandRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.Request("api", new GetProfileRequest { UserId = "alice" }).SubmitAsync<ProfileReply>(),
+            async () => await client.RequestChannel("api", new GetProfileRequest { UserId = "alice" }).SubmitAsync<ProfileReply>(),
             static result => result.Name == "user:alice");
 
         Assert.Equal("user:alice", reply.Name);
@@ -118,7 +118,7 @@ public sealed class ClientServerTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                await client.Send("api", new RefreshProfileCacheCommand { UserId = "alice" }).Submit();
+                await client.SendChannel("api", new RefreshProfileCacheCommand { UserId = "alice" }).Submit();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },

@@ -93,7 +93,7 @@ public interface IZLinkSpotOutboundContext
         return default!;
     }
 
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string topic,
         TEvent message)
     {
@@ -223,7 +223,7 @@ public readonly record struct ZLinkSpotInfo(
 
 // IZLinkSpotManager is defined in handler-interfaces.ko.md section 6.3.
 
-public interface IZLinkClient
+public interface IZLinkChannelClient
 {
     IZLinkSendCall Send<TMessage>(
         string channelName,
@@ -252,14 +252,14 @@ public interface IZLinkSpotClient
         string channelName,
         TMessage request);
 
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string topic,
         TEvent message);
 }
 
 public interface IZLinkSpotPublisherClient
 {
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string channelName,
         string topic,
         TEvent message);
@@ -410,7 +410,7 @@ app.Run();
     `EnableSpotRouteEgress("play")`를 두고, 호출 시
     `IZLinkRoutedSpotClient.ViaEgressChannel(...)`로 그 local egress channel 을 고른다.
 - `EnablePubSub()`
-  - local spot 문맥에서 `IZLinkSpotClient.Publish(...)`를 호출할 수 있게 한다.
+  - local spot 문맥에서 `IZLinkSpotClient.PublishSpot(...)`를 호출할 수 있게 한다.
 - `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     수 있도록 별도의 publisher client를 붙인다.
@@ -675,7 +675,7 @@ framework 내부 소유 정보이며 application contract로 다시 노출하지
 
 local `SpotNode` 나 local spot runtime 을 띄우지 않고, 다른 channel 이나 다른
 spot 으로 outbound 호출만 하는 앱도 있을 수 있다. 이런 경우 기본 outbound
-표면은 `IZLinkClient` 다.
+표면은 `IZLinkChannelClient` 다.
 
 local `SpotNode` 가 없으면 attach 된 channel client 경로도 존재할 수 없다.
 따라서 `IZLinkSpotClient.RequestChannel(...)` 같은 표면을 바로 사용하는
@@ -792,7 +792,7 @@ app.MapPost("/stage/publish", async (
     CancellationToken cancellationToken) =>
 {
     await spotPublisherClient
-        .Publish(
+        .PublishSpot(
             "game.stage",
             "sample.state.updated",
             new SampleStateUpdatedEvent
@@ -1124,7 +1124,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
     public ValueTask PublishSampleStateAsync(
         CancellationToken cancellationToken = default)
     {
-        return Publish(
+        return Context.PublishSpot(
             "sample.state.updated",
             new SampleStateUpdatedEvent
             {
@@ -1869,9 +1869,9 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 - 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 확인하고 싶다
   - `IZLinkSpotManager.GetAsync(spotRid)` 또는 `ListAsync()`
 - stage 안에서 fan-out 하고 싶다
-  - `Publish(topic, ...).Submit(...)`
+  - `PublishSpot(topic, ...).Submit(...)`
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish하고 싶다
-  - `IZLinkSpotPublisherClient.Publish(channelName, topic, ...).Submit(...)`
+  - `IZLinkSpotPublisherClient.PublishSpot(channelName, topic, ...).Submit(...)`
 - stage 안에서 heartbeat timeout sweep 같은 주기 작업을 돌리고 싶다
   - `SampleSpot.OnInitializeAsync()`에서 `Context.AddTimer<THandler>(...)`로 등록
 

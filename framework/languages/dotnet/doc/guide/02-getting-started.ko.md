@@ -122,11 +122,11 @@ var app = builder.Build();
 
 app.MapGet("/price/{symbol}", async (
     string symbol,
-    IZLinkClient client,
+    IZLinkChannelClient client,
     CancellationToken cancellationToken) =>
 {
     var reply = await client
-        .Request("price", new PriceRequest(symbol))
+        .RequestChannel("price", new PriceRequest(symbol))
         .SubmitAsync<PriceReply>(cancellationToken);
 
     return Results.Ok(reply);

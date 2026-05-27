@@ -23,6 +23,8 @@ public abstract partial class SpotTestSupport
             Context.AddActorPacket<EntrySpotJoinBlockingHandler, RegistryTestActor>("entry-join-block");
             Context.AddActorPacket<EntrySpotBlockingHandler, RegistryTestActor>("entry-block");
             Context.AddActorPacket<EntrySpotRecordingHandler, RegistryTestActor>("entry-record");
+            Context.AddActorPacket<LocalActorBlockingHandler, RegistryTestActor>("local-block");
+            Context.AddActorPacket<LocalActorRecordingHandler, RegistryTestActor>("local-record");
             Context.AddPostActorJoined<RegistryEntryJoinedHandler, RegistryTestActor>();
             Context.AddActorLeft<RegistryEntryLeftHandler, RegistryTestActor>();
         }

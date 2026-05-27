@@ -76,8 +76,8 @@ direct 샘플은 첫 범위에서 제외한다. session 과 spot 을 한 인스�
     이벤트를 push 한다.
 
 현재 샘플의 `ApiServer` 는 room 생성/배정 요청을 `PlayServer` 의 server channel 로
-보낸다. 즉 allocation 단계는 `IZLinkClient.Request(...)`를 쓰는 일반
-channel-to-channel request 이다. `IZLinkClient`는 등록된 channel 이름을 보고
+보낸다. 즉 allocation 단계는 `IZLinkChannelClient.RequestChannel(...)`를 쓰는 일반
+channel-to-channel request 이다. `IZLinkChannelClient`는 등록된 channel 이름을 보고
 client-server 또는 dealer mesh outbound socket 을 선택한다. `PlayServer` 쪽 handler 가 요청을 받은 뒤
 `BingoRoomSpot` 을 만들거나 기존 room 을 찾아 Entry Spot 에 join 을 요청한다.
 
@@ -346,7 +346,6 @@ matching 흐름은 다음과 같다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session gateway 경로에서 request/reply sequence 가 actor dispatch 와 맞물려 동작한다. |
-| `ProtocolTests.ActorPacketRegistry_DoesNot_Resolve_Request_To_Send_Handler` | actor request packet 이 send handler 로 fallback dispatch 되지 않는다. |
 | `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot 과 user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않는다. |
 | `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot actor handler 와 user Spot actor handler 가 각각 등록되어 dispatch 된다. |
 | `ManagerTests.Spot_Publish_Timer_And_Remove_Stop_Callbacks_Work` | room timer 기반 진행과 spot lifecycle 정리가 framework timer 계약과 맞는다. |

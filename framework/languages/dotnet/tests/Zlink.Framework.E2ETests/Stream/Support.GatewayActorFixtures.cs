@@ -26,9 +26,6 @@ public abstract partial class StreamTestSupport
 
         public void Configure()
         {
-            Context.AddPacket<GatewayActorHandler>("relay.echo");
-            Context.AddPacket<GatewaySessionDisconnectHandler>("session.disconnect");
-            Context.AddPacket<GatewaySessionDisconnectRequestHandler>("session.disconnect");
         }
 
     }
@@ -109,6 +106,8 @@ public abstract partial class StreamTestSupport
         public void Configure()
         {
             Context.AddActorPacket<GatewayEntrySpotActorHandler, GatewayActor>("relay.echo");
+            Context.AddActorPacket<GatewaySessionDisconnectHandler, GatewayActor>("session.disconnect");
+            Context.AddActorPacket<GatewaySessionDisconnectRequestHandler, GatewayActor>("session.disconnect");
         }
     }
 

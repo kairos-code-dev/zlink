@@ -268,7 +268,7 @@ sequenceDiagram
 
 | gRPC 베스트프랙티스/필요 인프라 | ZLink 에서 | 비고 |
 |----------------------------------|------------|------|
-| "stub/channel 을 재사용하라" | `IZLinkClient` 가 DI singleton, socket 수명은 framework | 호출마다 만들 일 없음 |
+| "stub/channel 을 재사용하라" | `IZLinkChannelClient` 가 DI singleton, socket 수명은 framework | 호출마다 만들 일 없음 |
 | RPC deadline | `Request(...).Timeout(...)` | reply 대기 시간 |
 | L7 로드밸런싱(Envoy/Istio) | channel name + `Discovery` 가 peer 분배 | sidecar 불필요 |
 | service discovery(Eureka/xDS) | `UseDiscovery(...)` + Registry | [08-registry](./08-registry.ko.md) |

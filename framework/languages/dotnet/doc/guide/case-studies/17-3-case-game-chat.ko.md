@@ -232,15 +232,19 @@ public sealed class SendGuildChatHandler(
 ```
 
 ```csharp
-// party 는 actor 로 모델링 → 2-arity actor packet handler(보낸 사람은 message 에)
+// party 는 actor 로 모델링하고, party room Spot 의 actor packet handler 에서 처리한다.
 public sealed class SendPartyChatHandler
-    : IZLinkActorPacketHandler<PartyActor, SendPartyChat>
+    : IZLinkSpotActorSendHandler<PartyRoomSpot, PartyActor, SendPartyChat>
 {
     public async ValueTask HandleAsync(
+        PartyRoomSpot spot,
         PartyActor party,
+        ZLinkSpotActorSendContext context,
         SendPartyChat req,
         CancellationToken ct)
     {
+        _ = spot;
+        _ = context;
         party.RequireMember(req.SenderId);
         foreach (var member in party.Members)
             await member.PushChatAsync(new PartyChatMessage(req.SenderId, req.Text), ct);

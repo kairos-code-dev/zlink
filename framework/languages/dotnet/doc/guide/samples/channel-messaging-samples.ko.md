@@ -291,7 +291,7 @@ builder.Services.AddZLinkFramework(options =>
   routed 연결 정책을 따로 둔다는 뜻이다. public 설정 이름은 `RequireKnownPeer`,
   `AllowPeerHandover`, `ProbeRouterOnConnect` 처럼 framework 의미가 드러나는 이름을
   쓴다. 하부 backend option 이름은 노출하지 않는다.
-- `client.Request(...).Timeout(...)` 은 특정 호출 하나에만 적용되는 값이다. 실제
+- `client.RequestChannel(...).Timeout(...)` 은 특정 호출 하나에만 적용되는 값이다. 실제
   low-level 바인딩에서도, `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)` 처럼
   호출 인자로 전달된다. 반면 위 `ConfigureSocket(...)` 설정은, capability 전체의
   기본값이다.
@@ -355,7 +355,7 @@ var app = builder.Build();
 
 app.MapPost("/profiles/get", async (
     GetUserHttpRequest request,
-    IZLinkClient client,
+    IZLinkChannelClient client,
     CancellationToken cancellationToken) =>
 {
     var reply = await client
@@ -370,7 +370,7 @@ app.MapPost("/profiles/get", async (
 app.Run();
 ```
 
-이 outbound-only 예시에는 일반 handler dispatch[^dispatch] 가 없다. `IZLinkClient` 가
+이 outbound-only 예시에는 일반 handler dispatch[^dispatch] 가 없다. `IZLinkChannelClient` 가
 사용하는 outbound `DEALER(client)` 는, request 를 보내고 reply 를 받는 경로로만
 동작한다.
 
@@ -383,7 +383,7 @@ app.Run();
 
 - `api` 서버군에 속한 앱이, ZLink handler 를 받는다.
 - 필요하면 다른 내부 channel 로, outbound 요청을 보낸다.
-- 기존 HTTP endpoint 안에서도, 같은 `IZLinkClient` 를 쓴다.
+- 기존 HTTP endpoint 안에서도, 같은 `IZLinkChannelClient` 를 쓴다.
 - event 도 publish / subscribe 한다.
 
 ```csharp
@@ -441,7 +441,7 @@ var app = builder.Build();
 
 app.MapPost("/profiles/get", async (
     GetUserHttpRequest request,
-    IZLinkClient client,
+    IZLinkChannelClient client,
     CancellationToken cancellationToken) =>
 {
     var reply = await client
@@ -455,7 +455,7 @@ app.MapPost("/profiles/get", async (
 
 app.MapPost("/profiles/refresh-cache", async (
     RefreshUserCacheHttpRequest request,
-    IZLinkClient client,
+    IZLinkChannelClient client,
     CancellationToken cancellationToken) =>
 {
     await client
@@ -472,12 +472,12 @@ app.Run();
 [ZLinkHandlerGroup("api")]
 public sealed class UserHandlers
 {
-    private readonly IZLinkClient _client;
-    private readonly IZLinkEventPublisher _publisher;
+    private readonly IZLinkChannelClient _client;
+    private readonly IZLinkFanoutClient _publisher;
 
     public UserHandlers(
-        IZLinkClient client,
-        IZLinkEventPublisher publisher)
+        IZLinkChannelClient client,
+        IZLinkFanoutClient publisher)
     {
         _client = client;
         _publisher = publisher;
@@ -615,18 +615,18 @@ public sealed class UserCacheRefreshedEvent
 
 이 샘플에서 짚어 둘 부분은 다음과 같다.
 
-- `IZLinkClient` 는 하나만 주입받는다.
+- `IZLinkChannelClient` 는 하나만 주입받는다.
 - 요청 대상은 endpoint 가 아니라, `channel name` 이다.
 - local handler 를 등록한 경우에만, 이 앱은 `api` channel 에서 server 역할을 한다.
 - runtime 은 channel 마다 선언한 capability 에 맞는 runtime 만 만든다.
 - `account`, `profile` 처럼 client capability 를 둔 channel 은, 그 channel 전용의
   `Discovery` 와 outbound `DEALER(client)` socket 을 가진다.
-- dealer mesh channel 도 request/send 호출 표면은 `IZLinkClient`를 그대로 쓴다. 차이는
+- dealer mesh channel 도 request/send 호출 표면은 `IZLinkChannelClient`를 그대로 쓴다. 차이는
   channel 등록이 `AddDealerMeshChannel(...)`이고, runtime 이 그 channel 의 mesh DEALER 를
   선택한다는 점이다.
 - 기본 packet key 는 payload 타입 이름이다. timeout 과 packet override 는 builder 에
   이어 붙인다.
-- 같은 `IZLinkClient` 를, ZLink handler 와 HTTP handler 가 함께 쓴다.
+- 같은 `IZLinkChannelClient` 를, ZLink handler 와 HTTP handler 가 함께 쓴다.
 - handler class 는 `UserHandlers`, `ItemHandlers` 처럼 주제별로 묶어 둬도 된다.
 
 `AddHandlersFromAssemblyOf<Program>()` 는 두 가지 일을 한꺼번에 한다.
@@ -661,8 +661,8 @@ public sealed class UserCacheRefreshedEvent
 
 위 예시가 전제하는 인터페이스는 다음 두 가지다.
 
-- `IZLinkClient`
-- `IZLinkEventPublisher`
+- `IZLinkChannelClient`
+- `IZLinkFanoutClient`
 
 전체 정의는 [handler-interfaces.ko.md](../../spec/handler-interfaces.ko.md) 의 section 5 를
 참고한다. request 의 reply 타입은 메시지 타입에 붙이지 않는다. 대신 `Async<TReply>(...)`
@@ -831,7 +831,7 @@ public sealed class ItemGetHandler
 
 ## 8. HTTP handler에서 outbound만 따로 보면
 
-이 절에서는 HTTP endpoint 안에서도, 같은 `IZLinkClient` 를 그대로 쓸 수 있다는 점을
+이 절에서는 HTTP endpoint 안에서도, 같은 `IZLinkChannelClient` 를 그대로 쓸 수 있다는 점을
 한 번 더 짚어 둔다.
 
 기존 HTTP endpoint 에서도, 같은 client 를 그대로 쓸 수 있어야 한다.
@@ -839,7 +839,7 @@ public sealed class ItemGetHandler
 ```csharp
 app.MapPost("/profiles/get", async (
     GetUserHttpRequest request,
-    IZLinkClient client,
+    IZLinkChannelClient client,
     CancellationToken cancellationToken) =>
 {
     var reply = await client
@@ -859,7 +859,7 @@ app.MapPost("/profiles/get", async (
 
 이 절에서는 이 샘플 문서가 일관되게 깔고 있는 규칙을, 한 번에 모아 본다.
 
-- channel outbound 표면은, `IZLinkClient` 하나로 고정한다.
+- channel outbound 표면은, `IZLinkChannelClient` 하나로 고정한다.
 - 호출 대상은 endpoint 나 gateway 가 아니라, `channel name` 이다.
 - capability 는 `EnableServer`, `EnableClient`, `EnablePublisher`, `EnableSubscriber`
   로 명시 등록한다.
@@ -884,7 +884,7 @@ app.MapPost("/profiles/get", async (
 | `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 샘플의 request / send 흐름이 동작한다. |
 | `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | 자동 연결 샘플의 request / send 흐름이 동작한다. |
 | `FanoutTests.Publisher_And_Subscriber_Work_Across_Hosts` | publish / subscribe 샘플 흐름이 동작한다. |
-| `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkClient` | HTTP handler에서 outbound client를 사용하는 샘플 흐름이 동작한다. |
+| `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkChannelClient` | HTTP handler에서 outbound client를 사용하는 샘플 흐름이 동작한다. |
 
 ---
 

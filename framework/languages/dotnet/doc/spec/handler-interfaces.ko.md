@@ -60,7 +60,6 @@
 | handler | `IZLinkActor` | actor runtime 안에서 생성되는 application actor | 4.4.1 |
 | manager | `IZLinkActorManager` | actor id와 actor type으로 actor 생성, 조회, 재사용 | 4.4.1 |
 | context | `IZLinkActorContext` | actor 상태 조회와 spot join 호출 | 4.4.1 |
-| handler | `IZLinkActorPacketHandler<TActor, TMessage>` / `IZLinkActorRequestHandler<TActor, TRequest, TReply>` | actor instance 를 직접 받는 actor fallback message handler | 4.4.1 |
 | context | `ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` | Spot actor handler 실행 context. packet metadata 와 request reply 옵션을 제공한다 | 4.4.2 |
 | handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` / `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor message handler | 4.4.2 |
 | handler | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` / `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor message handler | 4.4.2 |
@@ -84,13 +83,11 @@
 | options | `IZLinkDispatchOptions` | dispatch mode configuration | 4.4.3 |
 | options | `IZLinkCodecRegistryBuilder` | codec registry builder | 6.1 |
 | serializer | `IZLinkMessageSerializer` | `Message` payload 직렬화/역직렬화 | 4.5 |
-| client | `IZLinkClientServerClient` | client-server request/send 와 같은 좁은 method set | 5.1 |
-| client | `IZLinkClient` | 일반 channel request/send outbound client(client-server, dealer mesh) | 5.1 |
+| client | `IZLinkChannelClient` | 일반 channel request/send outbound client(client-server, dealer mesh) | 5.1 |
 | client | `IZLinkSpotClient` | SPOT outbound client | 5.2 |
 | client | `IZLinkRoutedSpotClient` | current Spot 없이 명시한 egress channel 로 target Spot 호출 | 5.2.1 |
 | client | `IZLinkSpotPublisherClient` | spot channel publish client | 5.3 |
-| client | `IZLinkFanoutPublisher` | fanout publisher base | 5.4 |
-| client | `IZLinkEventPublisher` | pub/sub event publisher | 5.4 |
+| client | `IZLinkFanoutClient` | pub/sub fanout publish client | 5.4 |
 | builder | `IZLinkFrameworkOptions` | framework 등록 루트 builder | 6.1 |
 | builder | `IZLinkClientServerChannelBuilder` | client-server channel 등록 builder | 6.1 |
 | builder | `IZLinkFanoutChannelBuilder` | fanout (pub/sub) channel 등록 builder | 6.1 |
@@ -264,7 +261,7 @@ routed channel handler 등록은 transport builder 가 책임진다. 구체적�
 pub/sub 로 publish 된 메시지를 처리하는 handler 다.
 
 이름 규칙에는 의도가 있다. producer 쪽 동사
-(`IZLinkEventPublisher.Publish(...)`) 에 맞추어, `Request` / `Send` /
+(`IZLinkFanoutClient.Publish(...)`) 에 맞추어, `Request` / `Send` /
 `Publish` 세 가지 표면이 같은 패턴으로 읽히도록 정렬한 것이다.
 
 payload 자체는 굳이 이 패턴에 맞출 필요가 없다. `*Event` 처럼 의미가
@@ -389,7 +386,7 @@ public interface IZLinkSpotOutboundContext
         RoutingId spotRid,
         TRequest request);
 
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string topic,
         TEvent message);
 
@@ -964,7 +961,7 @@ registry 안에서 동일 actor 타입에 대해 하나씩만 허용한다.
   실행 문맥에서 다른 SPOT 으로 routed send/request 를 보낸다. target 은
   `RoutingId` 로 지정하고, 실제 target node 와 route channel 은
   `IZLinkSpotRemoteAddressResolver` 가 해소한다.
-- `Context.Publish(topic, ...)` 는 편의 함수다. 현재 SPOT 이 속한 active
+- `Context.PublishSpot(topic, ...)` 는 편의 함수다. 현재 SPOT 이 속한 active
   SPOT channel 에 publish 하기 위한 것이다.
 - `Context.SendChannel(...)` 과 `Context.RequestChannel(...)` 은 현재 SPOT
   의 실행 문맥에서 channel client 를 호출한다.
@@ -1331,11 +1328,11 @@ runtime 이 검증하는 계약이다.
 아니라, framework/core runtime 의 내부 상태다.
 
 `Write(...)` 는 framework Header 기반 packet session 에서 stream 으로 packet 을
-보내는 low-level submit 이다. 일반 application 코드는 가능한 한 `Context.Send(...)`,
-`Context.Reply(...)`, `IZLinkBoundSession` 같은 framework helper 를 사용한다.
+보내는 low-level submit 이다. 일반 application 코드는 가능한 한 `Context.Reply(...)`,
+`IZLinkBoundSession` 같은 framework helper 를 사용한다.
 
 session handler 에서 다른 channel 로 send/request 를 보내야 한다면
-`IZLinkSessionContext` 가 아니라 DI 로 주입받은 `IZLinkClient` 를 사용한다.
+`IZLinkSessionContext` 가 아니라 DI 로 주입받은 `IZLinkChannelClient` 를 사용한다.
 channel 호출은 현재 stream peer 로 나가지 않고, channel 이름에 맞는 framework
 client socket 으로 나가기 때문이다.
 
@@ -1570,9 +1567,7 @@ public interface IZLinkActor
 
 public interface IZLinkActorContext
 {
-    string ActorId { get; }
-    string? SessionId { get; }
-        RoutingId? SpotRid { get; }
+    RoutingId? SpotRid { get; }
     bool IsJoined { get; }
 
     IZLinkBoundSession BoundSession { get; }
@@ -1609,24 +1604,10 @@ public interface IZLinkActorFactory
 // actor 구현체는 factory 가 받은 context 를 생성자에 넘겨 보관하고,
 // Context property 로 그대로 노출해야 한다. framework 는 bind 시점에
 // 같은 context 인스턴스인지 검증한다.
-
-public interface IZLinkActorPacketHandler<in TActor, in TMessage>
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TActor actor,
-        TMessage message,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkActorRequestHandler<in TActor, in TRequest, TReply>
-    where TActor : IZLinkActor
-{
-    ValueTask<TReply> HandleAsync(
-        TActor actor,
-        TRequest request,
-        CancellationToken cancellationToken);
-}
+//
+// actor packet 은 actor 자체에 handler 를 등록하지 않는다. Entry Spot 또는
+// user Spot 의 Configure() 단계에서 AddActorPacket(...) 으로 등록한 handler 가
+// 처리한다.
 
 public sealed class ZLinkSpotActorSendContext : ZLinkHandlerContext
 {
@@ -1669,7 +1650,7 @@ public interface IZLinkSpotOutboundContext
         RoutingId spotRid,
         TRequest request);
 
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string topic,
         TEvent message);
 
@@ -1758,8 +1739,8 @@ outbound 는 actor context 의 기능이 아니다. Entry Spot 또는 user Spot 
 `entrySpot.Context` 또는 `spot.Context` 의 `SendSpot(...)`,
 `RequestSpot(...)`, `SendChannel(...)`, `RequestChannel(...)` 을 사용한다.
 client stream 으로 push 해야 하면 Spot actor handler 가 받은 actor 의
-`Context.BoundSession` 을 사용한다. actor instance fallback handler 는 stream
-packet metadata context 를 받지 않는다.
+`Context.BoundSession` 을 사용한다. actor handler 는 `ZLinkSpotActorSendContext`
+또는 `ZLinkSpotActorRequestContext` 로 stream packet metadata 를 받는다.
 
 Spot actor request handler 의 응답 body 는 handler 반환값으로 정한다. 응답
 stream header 에 metadata 를 추가하거나 payload 압축을 켜야 하면
@@ -1782,19 +1763,18 @@ registry 가 먼저 domain key 를 user Spot `RoutingId` 로 변환하거나 조
 `JoinEntrySpot(spotNodeRid)` 는 target SpotNode routing id(`RoutingId`) 를 받는다.
 Entry Spot 은 SpotNode마다 하나뿐이므로 Entry Spot rid 를 별도로 넘기지 않는다.
 
-`Send(...)` 는 현재 actor 에 연결되어 있는 stream client 로 packet 을
+`BoundSession.Send(...)` 는 현재 actor 에 연결되어 있는 stream client 로 packet 을
 보낸다. request 에 대한 응답은 actor context 에서 직접 쓰지 않고,
 request handler 의 반환값으로 보낸다.
 
-actor, Entry Spot actor, user Spot actor request 는 모두 같은 방식으로
-처리한다. `IZLinkActorRequestHandler<TActor, ..., TReply>`,
+Entry Spot actor, user Spot actor request 는 같은 방식으로 처리한다.
 `IZLinkEntrySpotActorRequestHandler<..., TReply>`,
 `IZLinkSpotActorRequestHandler<..., TReply>` 가 반환한 값이 reply 가 되고,
 framework 가 원래 request 의 sequence 정보를 사용해 response 를 작성한다.
 따라서 request packet 은 send handler 로 fallback dispatch 되지 않는다.
 
 context 가 `IZLinkStream` 객체를 직접 노출하지는 않는다. stream 이 연결되지
-않은 actor 에서 `Send(...)` 를 호출하면, 명확한 실패로 처리된다.
+않은 actor 에서 `BoundSession.Send(...)` 를 호출하면, 명확한 실패로 처리된다.
 
 actor 또는 `Spot` callback 안에서 task 기반 request 를 `await` 할 때
 주의할 점이 있다. thread 를 점유하지는 않지만, 현재 callback task 는 응답
@@ -1953,7 +1933,7 @@ public static class MessageExtensions
 
 이 절은 서버에서 다른 서버로 메시지를 보내는 client interface 들을 정의한다.
 
-### 5.1 IZLinkClient
+### 5.1 IZLinkChannelClient
 
 서버 간 outbound 호출을 위한 공용 client 다. DI 로 주입되며, ZLink handler
 와 기존 ASP.NET Core HTTP handler 양쪽에서 동일하게 사용할 수 있다.
@@ -1971,7 +1951,7 @@ payload 타입의 `Type.Name` 을 사용해 해석하는 쪽을 기준으로 본
 `GetProfileRequest` 는 기본적으로 `GetProfileRequest` packet 으로 매핑된다.
 
 이 기본 규칙만으로 충분하지 않은 경우를 위해, public 표면은 builder
-패턴을 따른다. 즉 `Request(...)` 와 `Send(...)` 가 builder 를 돌려준다.
+패턴을 따른다. 즉 `RequestChannel(...)` 와 `SendChannel(...)` 가 builder 를 돌려준다.
 `PacketName`, `Timeout` 같은 변형은 builder 에 체이닝으로 이어 붙인다.
 
 이렇게 두는 이유는 단순하다. `packetName` 과 `timeout` 조합마다 overload
@@ -1996,32 +1976,27 @@ public interface IZLinkRequestCall
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkClientServerClient
+public interface IZLinkChannelClient
 {
-    IZLinkSendCall Send<TMessage>(
+    IZLinkSendCall SendChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall Request<TMessage>(
+    IZLinkRequestCall RequestChannel<TMessage>(
         string channelName,
         TMessage request);
 }
 
-public interface IZLinkClient : IZLinkClientServerClient
-{
-}
 ```
 
-`IZLinkClient` 는 일반 channel request/send outbound 표면이다. 호출자는
+`IZLinkChannelClient` 는 일반 channel request/send outbound 표면이다. 호출자는
 `channelName`만 넘기고, runtime 은 등록된 channel bundle 을 보고 client-server
 channel 이면 local client DEALER socket 을, dealer mesh channel 이면 mesh DEALER
 socket 을 선택한다.
 
-`IZLinkClientServerClient` 는 같은 method set 을 가진 좁은 base interface 로
-남긴다. 특정 코드가 client-server channel 만 다룬다는 의도를 드러내고 싶을 때
-주입받을 수 있다. 다만 일반 channel-to-channel 예제와 새 샘플 코드는
-client-server 와 dealer mesh 를 같은 호출 표면으로 설명하기 위해 `IZLinkClient`를
-기본으로 사용한다.
+client-server channel 과 dealer mesh channel 은 같은 request/send 표면을 쓴다.
+따라서 별도 client-server 전용 별칭을 두지 않고 `IZLinkChannelClient` 하나만
+public DI 표면으로 등록한다.
 
 runtime 의 채널 구성 방식은 다음과 같다.
 
@@ -2050,10 +2025,10 @@ packet key 해석 규칙은 다음 순서를 기본으로 본다.
 
 timeout 은 request 와 send 간에 다르게 다룬다.
 
-- `Request(...)` 는 reply 를 기다리므로 `Timeout(...)` 을 둘 수 있다.
-- `Send(...)` 는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
+- `RequestChannel(...)` 는 reply 를 기다리므로 `Timeout(...)` 을 둘 수 있다.
+- `SendChannel(...)` 는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
 - `Publish(...)` 도 같은 이유로 timeout 설정을 두지 않는다.
-- `Send(...).Submit(...)` 는 handler 완료를 기다리는 호출이 아니다.
+- `SendChannel(...).Submit(...)` 는 handler 완료를 기다리는 호출이 아니다.
   framework 가 메시지를 transport 에 위임할 수 있을 때까지 기다리는,
   비동기 submit 이다.
 - `Publish(...).Submit(...)` 도 동일한 의미다. subscriber 의 handler
@@ -2067,10 +2042,10 @@ timeout 은 request 와 send 간에 다르게 다룬다.
   option 에 설정한 resolved `SendTimeout` 값을 읽는다. 사용자가
   `SendTimeout = null` 로 명시한 경우에 한해, core `-1` 과 같은 무한 대기
   로 본다.
-- `Request(...).SubmitAsync<TReply>(...)` 도 마찬가지다. request packet 을
-  내보내는 단계에서는, `Send(...).Submit(...)` 와 동일한 nonblocking
+- `RequestChannel(...).SubmitAsync<TReply>(...)` 도 마찬가지다. request packet 을
+  내보내는 단계에서는, `SendChannel(...).Submit(...)` 와 동일한 nonblocking
   submit 경로를 사용한다.
-- `Request(...).Timeout(...)` 은 reply 대기 시간만을 결정한다.
+- `RequestChannel(...).Timeout(...)` 은 reply 대기 시간만을 결정한다.
 - 이 문서는 별도의 public no-wait 옵션을 제공하지 않는다. temporary
   backpressure 는 public `false` 반환값이 아니라, framework 내부의 queue
   와 ready notification 으로 처리한다.
@@ -2108,12 +2083,12 @@ pending submit 을 이어서 진행해야 한다.
 
 ```csharp
 var reply = await client
-    .Request("profile", new GetProfileRequest { AccountId = accountId })
+    .RequestChannel("profile", new GetProfileRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
     .SubmitAsync<GetProfileReply>(cancellationToken);
 
 await client
-    .Send("profile", new RefreshProfileCacheCommand { AccountId = accountId })
+    .SendChannel("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .PacketName("profile.refresh-cache")
     .Submit(cancellationToken);
 ```
@@ -2121,7 +2096,7 @@ await client
 ### 5.2 IZLinkSpotClient
 
 현재 spot runtime 안에서의 outbound 호출을 담당하는 client 다.
-`IZLinkClient` 와는 독립된 interface 이며, 하부에서 서로 다른 C API 를
+`IZLinkChannelClient` 와는 독립된 interface 이며, 하부에서 서로 다른 C API 를
 감싼다.
 
 현재 다루는 축은 세 가지다.
@@ -2155,7 +2130,7 @@ public interface IZLinkSpotClient
         string channelName,
         TMessage request);
 
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string topic,
         TEvent message);
 }
@@ -2164,21 +2139,21 @@ public interface IZLinkSpotClient
 `IZLinkSpotContext` 와 `IZLinkEntrySpotContext` 는 같은 outbound 표면을
 직접 노출한다. 따라서 SPOT lifecycle callback 이나 handler 안에서는 별도
 client 를 주입하지 않고 `Context.SendSpot(...)`, `Context.RequestSpot(...)`,
-`Context.SendChannel(...)`, `Context.RequestChannel(...)`, `Context.Publish(...)`
+`Context.SendChannel(...)`, `Context.RequestChannel(...)`, `Context.PublishSpot(...)`
 를 사용할 수 있다.
 
-`IZLinkClient` 와 비교했을 때의 차이는 다음과 같다.
+`IZLinkChannelClient` 와 비교했을 때의 차이는 다음과 같다.
 
-- `Publish(topic, ...)` 가 포함된다. SPOT 쪽은 현재 channel 안에서 topic
+- `PublishSpot(topic, ...)` 가 포함된다. SPOT 쪽은 현재 channel 안에서 topic
   publish 를 함께 사용하는 경우가 많기 때문에, 같은 interface 에 둔다.
 - `SendSpot(...)` / `RequestSpot(...)` 은 spot remote address resolver 를 사용한다.
 - `SendChannel(...)` / `RequestChannel(...)` 은 attach 된 channel client
   를 통해 해소한다.
 - 따라서 local `SpotNode` 나 local spot runtime 이 없는 앱이라면, 기본
-  outbound 표면은 `IZLinkClient` 다. 그런 앱에서 외부 SPOT channel
+  outbound 표면은 `IZLinkChannelClient` 다. 그런 앱에서 외부 SPOT channel
   publish 만 필요한 경우에는, `IZLinkSpotPublisherClient` 를 별도로
   사용한다.
-- channel send/request 는 일반 `IZLinkClient` 와 동일한 builder 감각을
+- channel send/request 는 일반 `IZLinkChannelClient` 와 동일한 builder 감각을
   따르는 편이 자연스럽다.
 - timer 는 별도 callback scheduler 로 두지 않는다. 대신 spot lifecycle
   안에서 `Context.AddTimer<THandler>(name, period, ...)` 로 등록하는 한
@@ -2196,7 +2171,7 @@ framework 초안에서 말하는 "spot 용 함수" 와 "channelName 으로 호�
 `targetRid + spotRid` 를 직접 넘기는 raw route 함수는 application public
 표면에 두지 않는다.
 
-`IZLinkClient` 와 `IZLinkSpotClient` 는 상하 관계가 아니다. 두 interface
+`IZLinkChannelClient` 와 `IZLinkSpotClient` 는 상하 관계가 아니다. 두 interface
 는 서로 다른 하부 C API 를 감싸며, 각자 독립적인 구현을 가진다.
 
 #### 5.2.1 IZLinkRoutedSpotClient
@@ -2239,10 +2214,10 @@ egress 를 둘 다 갖고 있을 수 있으므로, caller 가 사용할 local eg
 
 ### 5.3 IZLinkSpotPublisherClient
 
-`IZLinkSpotClient.Publish(...)` 는 사용
+`IZLinkSpotClient.PublishSpot(...)` 는 사용
 상황이 다르다.
 
-- `IZLinkSpotClient.Publish(...)` 는 이미 실행 중인 local spot 문맥에서
+- `IZLinkSpotClient.PublishSpot(...)` 는 이미 실행 중인 local spot 문맥에서
   현재 SPOT channel 로 publish 할 때 사용한다.
 - `IZLinkSpotPublisherClient` 는 local spot 인스턴스가 없는 외부 노드가,
   특정 spot channel 로 publish 할 때 사용하는 별도의 client 다.
@@ -2250,7 +2225,7 @@ egress 를 둘 다 갖고 있을 수 있으므로, caller 가 사용할 local eg
 ```csharp
 public interface IZLinkSpotPublisherClient
 {
-    IZLinkPublishCall Publish<TEvent>(
+    IZLinkPublishCall PublishSpot<TEvent>(
         string channelName,
         string topic,
         TEvent message);
@@ -2262,15 +2237,15 @@ public interface IZLinkSpotPublisherClient
 channel 이 존재할 때, 외부 노드가 어느 channel mesh 로 publish 할지
 선택하는 용도다.
 
-`IZLinkSpotClient.Publish(...)` 와의 차이는 다음과 같이 정리할 수 있다.
+`IZLinkSpotClient.PublishSpot(...)` 와의 차이는 다음과 같이 정리할 수 있다.
 
-- `IZLinkSpotClient.Publish(...)`
+- `IZLinkSpotClient.PublishSpot(...)`
   - local spot 문맥 안에서 현재 SPOT channel 로 publish 한다.
-- `IZLinkSpotPublisherClient.Publish(...)`
+- `IZLinkSpotPublisherClient.PublishSpot(...)`
   - local spot 인스턴스 없이, 외부 노드에서 target SPOT channel 로
     publish 한다.
 
-### 5.4 IZLinkEventPublisher
+### 5.4 IZLinkFanoutClient
 
 일반 `PUB/SUB` event 를 publish 하기 위한 interface 다.
 
@@ -2285,7 +2260,7 @@ public interface IZLinkPublishCall
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkFanoutPublisher
+public interface IZLinkFanoutClient
 {
     IZLinkPublishCall Publish<TEvent>(
         string channelName,
@@ -2293,16 +2268,10 @@ public interface IZLinkFanoutPublisher
         TEvent message);
 }
 
-public interface IZLinkEventPublisher : IZLinkFanoutPublisher
-{
-}
 ```
 
-`IZLinkEventPublisher` 는 `IZLinkFanoutPublisher` 를 그대로 상속한다. 즉
-두 가지 모두 주입 표면으로 쓸 수 있다.
-
-- capability 별 신규 명명을 따르는 `IZLinkFanoutPublisher`
-- 기존 별칭인 `IZLinkEventPublisher`
+`IZLinkFanoutClient` 는 일반 fanout channel 에 publish 하는 public DI 표면이다.
+별도 event publisher 별칭은 두지 않는다.
 
 여기서 두 문자열의 역할은 각각 다음과 같다.
 
@@ -2316,7 +2285,7 @@ public interface IZLinkEventPublisher : IZLinkFanoutPublisher
 다음과 같다. `profile` channel 안의 `profile.cache-refreshed` topic 으로
 fan-out 한다는 뜻이다.
 
-일반 `PUB/SUB` publish 도 `Send(...)` 와 마찬가지로 timeout 을 두지
+일반 `PUB/SUB` publish 도 `SendChannel(...)` 와 마찬가지로 timeout 을 두지
 않는다. 다만 필요할 때 packet 이름 override 정도는 지정할 수 있다.
 
 여기서 `Async(...)` 의 의미에 주의한다. remote peer 의 처리 완료를
@@ -3440,7 +3409,7 @@ request 메시지 타입에는 framework 전용 marker interface 를 붙이지 �
 
 ```csharp
 var reply = await client
-    .Request("profile", new GetProfileRequest { AccountId = accountId })
+    .RequestChannel("profile", new GetProfileRequest { AccountId = accountId })
     .SubmitAsync<GetProfileReply>(cancellationToken);
 ```
 
@@ -3847,7 +3816,7 @@ public sealed class ZLinkPublishAttribute : Attribute
 한다.
 
 이름을 `Event` 가 아니라 `Publish` 로 둔 까닭은 producer 쪽 동사
-(`IZLinkEventPublisher.Publish(...)`) 와 맞추기 위해서다. 그래야
+(`IZLinkFanoutClient.Publish(...)`) 와 맞추기 위해서다. 그래야
 `[ZLinkRequest]` / `[ZLinkSend]` / `[ZLinkPublish]` 세 표면이 동일한
 패턴으로 읽힌다.
 
@@ -3994,9 +3963,9 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 
 | Interface | DI 등록 조건 |
 |-----------|--------------|
-| `IZLinkClient`, `IZLinkClientServerClient` | 항상 등록한다. channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
+| `IZLinkChannelClient` | 항상 등록한다. channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkRouteClient` | 항상 등록한다. route channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
-| `IZLinkEventPublisher`, `IZLinkFanoutPublisher` | 항상 등록한다. publisher capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
+| `IZLinkFanoutClient` | 항상 등록한다. publisher capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkSpotManager`, `IZLinkSpotClient` | `SpotNode` 가 하나 이상 있을 때 등록한다 |
 | `IZLinkRoutedSpotClient` | client-server channel 또는 route mesh channel 중 `EnableSpotRouteEgress(...)`가 켜진 local egress channel 이 하나 이상 있을 때 등록한다 |
 | `IZLinkSpotPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
@@ -4028,9 +3997,9 @@ channel 이름의 위치도 정해 둔다. handler class 나 method attribute �
   - bind/accept/close 같은 node 단위 오류
   - handshake 이전 단계의 monitor 이벤트
   - 이들은 runtime monitoring 표면에만 남긴다.
-- `Zlink.Framework` runtime 은 `IZLinkClient` 위에 channel 별 typed
+- `Zlink.Framework` runtime 은 `IZLinkChannelClient` 위에 channel 별 typed
   wrapper 를 공식 기본 표면으로 제공하지 않는다. typed wrapper 가 필요하
-  다면, 응용 측이나 별도 확장 패키지가 `IZLinkClient` 위에 얹는 방식을
+  다면, 응용 측이나 별도 확장 패키지가 `IZLinkChannelClient` 위에 얹는 방식을
   기본으로 본다.
 - `spotRid` 타입은 `RoutingId` 를 사용한다. transport `RoutingId` 와
   logical spot rid 를 같은 타입으로 노출하지 않는다.
@@ -4056,7 +4025,6 @@ interface 설명을 변경하면, 아래 테스트도 함께 조정한다.
 | `RegistryAndMonitoringTests.AddZLinkFramework_RegistersValidatedConfigurationAndFilterTypes` | options, codec, filter, channel, stream, spot 등록 표면이 DI 등록 결과에 반영된다. |
 | `FiltersAndHttpTests.Filters_Run_In_Registration_Order_Around_Handler_Dispatch` | handler filter 인터페이스가 등록 순서대로 dispatch 앞뒤를 감싼다. |
 | `HandlerResultAwaiterTests.AwaitAsync_Returns_ValueTaskOfT_Result` | `ValueTask<T>` handler 결과를 값 타입 boxing 여부와 무관하게 기다리고 실제 reply 값을 반환한다. |
-| `ProtocolTests.ActorPacketRegistry_DoesNot_Resolve_Request_To_Send_Handler` | actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
 | `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
 | `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_ActorReply_And_StreamClientContracts` | actor context Reply 와 actor stream client 계약이 public surface 에 다시 노출되지 않는다. |

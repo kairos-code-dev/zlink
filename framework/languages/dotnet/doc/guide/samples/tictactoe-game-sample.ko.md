@@ -84,11 +84,9 @@ public sealed record TicTacToeGameJoinRes(GameState State);
 `IZLinkChannelClient.RequestChannel(...)` 기반 channel-to-channel 호출이다. `IZLinkChannelClient`는 등록된
 channel 이름을 보고 client-server 또는 dealer mesh outbound socket 을 선택한다.
 
-이미 target Spot 의 `RoutingId`를 알고 있고 Session/API handler 가 그 Spot 으로 곧장
-request 해야 하는 흐름은 별도 routed Spot 패턴으로 둔다. 이때는
-`IZLinkRoutedSpotClient.ViaEgressChannel(localEgressChannelName).RequestSpot(...)`을
-쓰고, egress channel 등록에는 `EnableSpotRouteEgress(targetSpotNodeChannelName)`으로
-Play 서버 SpotNode가 accept 한 ingress channel 이름을 명시한다.
+Session/API handler 가 actor 를 만든 뒤 Play 서버의 Entry Spot 으로 join 하면
+join 결과의 `ActorRef` 로 session actor handle 을 bind 한다. current Spot 이 없는
+handler 에서 target Spot 으로 직접 request 하는 별도 public client 는 사용하지 않는다.
 
 server push 와 state DTO 는 다음과 같다.
 
@@ -144,7 +142,7 @@ bind 한다. actor-session binding 은 framework / core runtime 내부 상태로
 
 - `AuthenticateReq.ActorId` 가 인증 요청의 actor identity 역할을 한다.
 - 인증이 성공하면, Session 서버는 Play 서버에 actor 준비를 요청하고 actor id/type 과
-  remote address 를 받는다. 그 뒤 `BindActorAsync(...)` 로 현재 stream session binding 을
+  remote address 를 받는다. 그 뒤 `BindAsync(...)` 로 현재 stream session binding 을
   framework / core 내부 상태에 기록한다. session handler 는 actor remote address resolver 를
   직접 호출하지 않고, Play 서버 runtime 이 발급한 ActorGateway locator 만 사용한다.
 - `CreateMatchReq` 는 Session 서버에서 API 서버로 channel request 로 relay

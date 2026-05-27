@@ -13,7 +13,7 @@ internal static class ZLinkSpotAmbientContext
     {
         return Current.Value
             ?? throw new InvalidOperationException(
-                "IZLinkSpotClient can only be used inside an active SPOT callback.");
+                "IZLinkSpotOutbound can only be used inside an active SPOT callback.");
     }
 
     public static IDisposable Push(IZLinkCurrentSpotActivation activation)

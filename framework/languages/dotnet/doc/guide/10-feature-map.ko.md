@@ -55,7 +55,7 @@ flowchart TD
   [02-getting-started](./02-getting-started.ko.md)로 충분.
 - **이벤트를 흩뿌린다** → pub/sub.
 - **방/판/존 같은 동적 단위** → SPOT. 그 안에 참가자별 상태/세션이 있으면 actor.
-- **일반 handler 에서 Spot 으로** → `IZLinkRoutedSpotClient` + `ViaEgressChannel(...)`.
+- **일반 handler 에서 Spot 흐름으로** → actor 생성 또는 Entry Spot join 으로 `ActorRef` 확보.
 - **외부 게임/모바일 client** → STREAM(서버) + Stream Connector(client).
 - **연결 서버와 로직 서버 분리(재접속 이전성)** → session actor dispatch.
 

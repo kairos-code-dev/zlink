@@ -194,7 +194,8 @@ public sealed class ActorBindingTests : StreamTestSupport
                 static _ => ValueTask.CompletedTask);
 
             var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-                () => context.BindActorAsync("missing-player").AsTask());
+                () => context.Actors.BindAsync(
+                    new MissingBindActor("missing-player")).AsTask());
 
             Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, ex.Kind);
             Assert.Equal(0, recorder.CreatedCount);
@@ -241,8 +242,8 @@ public sealed class ActorBindingTests : StreamTestSupport
         try
         {
             var actors = host.Services.GetRequiredService<IZLinkActorManager>();
-            await actors.CreateAsync("bound-player-1", "player");
-            await actors.CreateAsync("bound-player-2", "player");
+            var actor1 = await actors.CreateAsync("bound-player-1", "player");
+            var actor2 = await actors.CreateAsync("bound-player-2", "player");
 
             var context = new ZLinkSessionContext(
                 host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
@@ -250,17 +251,17 @@ public sealed class ActorBindingTests : StreamTestSupport
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
 
-            var first = await context.BindActorAsync("bound-player-1");
-            var second = await context.BindActorAsync("bound-player-2");
+            var first = await context.Actors.BindAsync(actor1);
+            var second = await context.Actors.BindAsync(actor2);
 
-            var foundFirst = context.FindActor("bound-player-1");
-            var foundSecond = context.FindActor("bound-player-2");
-            Assert.Null(context.FindActor("missing-player"));
+            var foundFirst = context.Actors.Find("bound-player-1");
+            var foundSecond = context.Actors.Find("bound-player-2");
+            Assert.Null(context.Actors.Find("missing-player"));
             Assert.Same(first, foundFirst);
             Assert.Same(second, foundSecond);
 
             await context.CleanupActorBindingsAsync(CancellationToken.None);
-            Assert.Null(context.FindActor("bound-player-1"));
+            Assert.Null(context.Actors.Find("bound-player-1"));
         }
         finally
         {
@@ -311,7 +312,8 @@ public sealed class ActorBindingTests : StreamTestSupport
                 static _ => ValueTask.CompletedTask);
 
             var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
-                () => context.BindActorAsync("missing-player").AsTask());
+                () => context.Actors.BindAsync(
+                    new MissingBindActor("missing-player")).AsTask());
 
             Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, ex.Kind);
             Assert.Equal(0, recorder.CreatedCount);
@@ -348,4 +350,11 @@ public sealed class ActorBindingTests : StreamTestSupport
         }
     }
 
+    private sealed class MissingBindActor(string actorId) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context
+            => throw new InvalidOperationException("Missing bind actor does not expose a runtime context.");
+    }
 }

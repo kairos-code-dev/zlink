@@ -122,7 +122,7 @@ flowchart LR
 |----|----------------------|-------------|
 | channel messaging | `[ZLinkRequest]`/`[ZLinkSend]` handler, `IZLinkChannelClient` | [04-channel-messaging](./04-channel-messaging.ko.md) |
 | PUB/SUB | `[ZLinkPublish]`, `EnableSubscriber()`, `IZLinkFanoutClient` | [04-channel-messaging](./04-channel-messaging.ko.md) |
-| SPOT | typed spot factory, `IZLinkSpotClient`, `IZLinkRoutedSpotClient`, timer | [05-spot](./05-spot.ko.md) |
+| SPOT | typed spot factory, Spot context outbound, timer | [05-spot](./05-spot.ko.md) |
 | actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [06-actor-session](./06-actor-session.ko.md) |
 | STREAM | framework session packet, Stream Connector | [07-stream](./07-stream.ko.md) |
 | 인프라 | Registry topology, runtime monitoring | [08-registry](./08-registry.ko.md), [09-monitoring](./09-monitoring.ko.md) |
@@ -148,7 +148,7 @@ handler registration 이 정한다. 자세한 규칙은
 - **framework adapter 가 노출하는 모든 public 타입**(interface, record, enum,
   attribute, exception, DI 확장 메서드)은 `ZLink` prefix(대문자 `L`)를 쓴다. 예:
   `IZLinkChannelClient`, `ZLinkRequestContext`, `[ZLinkRequest]`, `AddZLinkFramework`,
-  `IZLinkSpotClient`, `ZLinkFrameworkException`.
+  `ZLinkFrameworkException`.
 - **단, client 측 Stream Connector 패키지**(`Systems.Zlink.Stream.Connector`)의
   타입은 `Zlink` prefix(소문자 `l`)를 쓴다. 예: `IZlinkStreamConnector`,
   `ZlinkStreamConnectorOptions`, `ZlinkStreamMessage`. 이는 connector 가 서버

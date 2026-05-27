@@ -9,8 +9,8 @@ internal sealed class PlayEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntr
 
     public void Configure()
     {
-        Context.AddHandler<PlayActorJoinGameHandler>();
-        Context.AddHandler<PlayEntrySpotActorJoinedHandler>();
-        Context.AddHandler<PlayEntrySpotActorLeftHandler>();
+        Context.Handlers.AddHandler<PlayActorJoinGameHandler>();
+        Context.Handlers.AddHandler<PlayEntrySpotActorJoinedHandler>();
+        Context.Handlers.AddHandler<PlayEntrySpotActorLeftHandler>();
     }
 }

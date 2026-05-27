@@ -198,7 +198,7 @@ sequenceDiagram
   participant S as Session 서버
   participant P as Play 서버(actor)
   C->>S: STREAM 연결 + auth
-  S->>S: BindActorAsync(actorId)
+  S->>S: BindAsync(actor)
   C->>S: PlaceMarkReq
   S->>P: actor.RelayAsync(header, payload)
   P->>P: actor handler 실행 (room 상태 변경)
@@ -208,7 +208,7 @@ sequenceDiagram
 
 ### Session 서버: 인증과 relay
 
-session 콜백에서 인증 후 `BindActorAsync(...)` 로 actor handle 을 잡고,
+session 콜백에서 인증 후 `BindAsync(...)` 로 actor handle 을 잡고,
 이후 packet 은 `IZLinkSessionActor.RelayAsync(...)` 로 actor 에 넘긴다.
 이때 `payload` 는 framework runtime 이 callback 동안 빌려준 값이다.
 session 은 이 값을 해제하거나 `Move()` 로 소비하지 않는다.
@@ -234,9 +234,9 @@ public sealed class TicTacToeSession(
             return;
         }
 
-        if (context.BoundActors.Count == 1)
+        if (context.Actors.Bound.Count == 1)
         {
-            await context.BoundActors.Single().RelayAsync(header, payload, ct);
+            await context.Actors.Bound.Single().RelayAsync(header, payload, ct);
             return;
         }
 
@@ -257,7 +257,7 @@ public sealed class TicTacToeSession(
     }
 }
 
-public sealed class AuthenticateSessionPacketHandler
+public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     public string PacketName => "auth";
@@ -270,14 +270,18 @@ public sealed class AuthenticateSessionPacketHandler
     {
         _ = header;
         var request = payload.Decode<AuthReq>();
-        await context.BindActorAsync(
-            request.ActorId, ct);
-        await context.Reply(new AuthRep(ok: true)).Submit(ct);
+        IZLinkActor actor = await actors.GetOrCreateAsync(
+            request.ActorId,
+            "player",
+            ct);
+        await context.Actors.BindAsync(
+            actor, ct);
+        await context.Client.Reply(new AuthRep(ok: true)).Submit(ct);
     }
 }
 ```
 
-> `OnDispatchAsync` 안의 `context.Reply(...)` 는 **session** 표면이다. actor request
+> `OnDispatchAsync` 안의 `context.Client.Reply(...)` 는 **session** 표면이다. actor request
 > handler 의 응답 방식(반환값)과 다르다는 점에 주의한다. STREAM 세션 작성법은
 > [07-stream](./07-stream.ko.md)이 다룬다.
 
@@ -374,7 +378,7 @@ framework 가 던지는 actor/spot/session 관련 오류는 `ZLinkFrameworkExcep
 ## 7. 등록 골격
 
 session relay 는 application route mesh channel 로 흐르지 않는다. STREAM session 이
-쓸 local SpotNode 를 `AttachActorGateway(...)` 로 지정하면, `BindActorAsync(...)`
+쓸 local SpotNode 를 `AttachActorGateway(...)` 로 지정하면, `BindAsync(...)`
 가 local actor ref 또는 Play 서버가 발급한 remote actor locator 를 core ActorGateway 경로에
 bind 한다. 그래서 session handler 는 route mesh channel 이름이나 router socket 을 알 필요가 없다.
 

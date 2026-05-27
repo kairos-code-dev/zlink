@@ -87,19 +87,19 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSessionActorBindingContext
+public interface IZLinkSessionActors
 {
-    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
+    IReadOnlyCollection<IZLinkSessionActor> Bound { get; }
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
+    ValueTask<IZLinkSessionActor> BindAsync(
         string actorId,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
+    ValueTask<IZLinkSessionActor> BindAsync(
         ActorRef actor,
         CancellationToken cancellationToken = default);
 
-    IZLinkSessionActor? FindActor(string actorId);
+    IZLinkSessionActor? Find(string actorId);
 }
 
 public interface IZLinkActorManager
@@ -135,10 +135,10 @@ public interface IZLinkSessionActor
 }
 
 public interface IZLinkSessionContext :
-    IZLinkSessionIdentityContext,
-    IZLinkSessionClientStream,
-    IZLinkSessionActorBindingContext,
-    IZLinkSessionLifecycle;
+    IZLinkSessionContext,
+    IZLinkSessionClient,
+    IZLinkSessionActors,
+    IZLinkSessionContext;
 ```
 
 session context 는 callback 인자가 아니라 session 인스턴스 생성 시점에

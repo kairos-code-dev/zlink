@@ -90,10 +90,10 @@ capability 누락을 표현하지 않는다.
 | `IZLinkFanoutClient` | fanout channel 이름을 호출 시점에 받는 publisher | publisher capability 가 없으면 호출 시 `ZLinkConfigurationException` |
 | `IZLinkMessageMetadataPolicy` | 메시지 metadata 복사 정책 | 항상 유효 |
 
-`IZLinkRoutedSpotClient`는 예외적으로 routed Spot egress capability 가 하나 이상 있을 때만
-등록한다. 이 client 의 호출 키는 target Spot channel 이 아니라
-`ViaEgressChannel(localEgressChannelName)`이고, 해당 local channel 에
-`EnableSpotRouteEgress(targetSpotNodeChannelName)` 설정이 있어야 한다.
+Spot routed egress 는 별도 public DI client 로 노출하지 않는다. current Spot
+callback 안에서는 `IZLinkSpotOutbound` 가 Spot outbound 를 담당하고, callback 밖의
+application 코드는 actor 생성 또는 Entry Spot join 같은 도메인 흐름으로
+`ActorRef` 를 얻어 session actor handle 에 bind 한다.
 
 위 service 는 항상 주입 가능하더라도, 내부에서 없는 channel 을 자동으로 만들면
 안 된다. 없는 channel 또는 capability 는 즉시 설정 오류로 처리한다.
@@ -106,7 +106,7 @@ capability 누락을 표현하지 않는다.
 | Interface | 등록 조건 | 등록하지 않을 때 |
 |-----------|-----------|------------------|
 | `IZLinkSpotManager` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 |
-| `IZLinkSpotClient` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 |
+| `IZLinkSpotOutbound` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 |
 | `IZLinkSpotPublisherClient` | 최소 1개 이상의 Spot publisher client capability | DI resolve 실패 |
 | `IZLinkActorManager` | 최소 1개 이상의 `SpotNode` 와 최소 1개 이상의 actor factory | DI resolve 실패 |
 
@@ -173,15 +173,15 @@ resolver 는 `spotRid` 또는 `spotId` 를 route 로 바꾸는 정책 객체일 
 session gateway 나 API 서버가 route 정보를 저장하거나 전달하기 위해 같은 resolver
 구현을 등록할 수 있다.
 
-다만 `IZLinkSpotClient` 는 local spot 실행 문맥을 전제로 하므로 `SpotNode` 가
+다만 `IZLinkSpotOutbound` 는 local spot 실행 문맥을 전제로 하므로 `SpotNode` 가
 있을 때만 DI 에 등록한다. 따라서 `SpotNode` 없이 resolver 만 등록한 구성에서는
-resolver 는 주입 가능하지만, `IZLinkSpotClient` 는 주입되지 않는다.
+resolver 는 주입 가능하지만 는 주입되지 않는다.
 
 이 구분이 필요한 이유는 서버 역할이 서로 다를 수 있기 때문이다. Play 서버처럼
-local `SpotNode` 를 띄우는 서버는 `IZLinkSpotClient` 와 resolver 를 함께 사용할 수
+local `SpotNode` 를 띄우는 서버는 `IZLinkSpotOutbound` 와 resolver 를 함께 사용할 수
 있다. 반면 session gateway 서버처럼 route 정보를 저장하거나 전달만 하는 서버는
 resolver 구현을 DI 로 제공할 수 있지만, local spot 문맥이 없으므로
-`IZLinkSpotClient` 를 주입받으면 안 된다.
+`IZLinkSpotOutbound` 를 주입받으면 안 된다.
 
 ### 4.3 Spot publisher client
 
@@ -216,7 +216,6 @@ configuration error 로 표현한다.
 | `IZLinkChannelClient.SendChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
 | `IZLinkFanoutClient.Publish(channelName, ...)` | channel 이 없거나 publisher capability 가 없음 | `ZLinkConfigurationException` |
 | `IZLinkRouteClient.Send(routerChannelId, ...)` | route mesh channel 이 없음 | `ZLinkConfigurationException` |
-| `IZLinkRoutedSpotClient.ViaEgressChannel(channelName).RequestSpot(...)` | local egress channel 이 없거나 routed Spot egress 설정이 없음 | `ZLinkConfigurationException` |
 
 capability 누락은 `InvalidOperationException` 이 아니라 위 예외로 처리한다.
 
@@ -249,7 +248,7 @@ capability 누락은 `InvalidOperationException` 이 아니라 위 예외로 처
 | `NodesAndServicesTests.AddZLinkFramework_Registers_SpotPublisher_When_PublisherCapability_Exists` | Spot publisher capability 가 있으면 Spot publisher service 가 DI 에 등록된다 |
 | `NodesAndServicesTests.AddZLinkFramework_Registers_BoundSession_Factory` | bound session factory 는 framework runtime 과 함께 등록된다 |
 | `NodesAndServicesTests.AddZLinkFramework_Allows_SpotRemoteAddressResolver_Without_SpotNode` | remote address 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
-| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotClient_With_Resolver_Only` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotClient` 는 DI 에 없다 |
+| `NodesAndServicesTests.AddZLinkFramework_DoesNot_Register_SpotOutbound_With_Resolver_Only` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotOutbound` 는 DI 에 없다 |
 | `HandlerExposureTests.RouteClient_Throws_ConfigurationException_When_RouteChannel_Missing` | route channel 누락 오류가 configuration error 로 나온다 |
 | `HandlerExposureTests.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | channel client capability 누락 오류가 configuration error 로 나온다 |
 

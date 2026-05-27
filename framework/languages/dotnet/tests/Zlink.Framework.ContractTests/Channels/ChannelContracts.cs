@@ -32,8 +32,8 @@ public sealed class ChannelContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkRouteClient),
-        typeof(IZLinkRouteSendCall),
-        typeof(IZLinkRouteRequestCall),
+        typeof(IZLinkSendCall),
+        typeof(IZLinkRequestCall),
         typeof(IZLinkRouteSendHandler<>),
         typeof(IZLinkRouteRequestHandler<,>))]
     public async Task Route_client_addresses_a_target_node_through_a_router_channel()
@@ -162,7 +162,7 @@ public sealed class ChannelContracts
 
         public RoutingId TargetNodeRid { get; private set; }
 
-        public IZLinkRouteSendCall Send<TMessage>(
+        public IZLinkSendCall Send<TMessage>(
             string routerChannelId,
             RoutingId targetNodeRid,
             TMessage message)
@@ -172,7 +172,7 @@ public sealed class ChannelContracts
             return new ExampleRouteSendCall();
         }
 
-        public IZLinkRouteRequestCall Request<TRequest>(
+        public IZLinkRequestCall Request<TRequest>(
             string routerChannelId,
             RoutingId targetNodeRid,
             TRequest request)
@@ -198,7 +198,7 @@ public sealed class ChannelContracts
         }
     }
 
-    private sealed class ExampleSendCall(Action<string> setPacketName) : IZLinkSendCall
+    private class ExampleSendCall(Action<string> setPacketName) : IZLinkSendCall
     {
         public IZLinkSendCall PacketName(string messageName)
         {
@@ -209,7 +209,7 @@ public sealed class ChannelContracts
         public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
-    private sealed class ExampleRequestCall(Action<string> setPacketName, object? reply) : IZLinkRequestCall
+    private class ExampleRequestCall(Action<string> setPacketName, object? reply) : IZLinkRequestCall
     {
         public IZLinkRequestCall PacketName(string messageName)
         {
@@ -234,22 +234,14 @@ public sealed class ChannelContracts
         public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
-    private sealed class ExampleRouteSendCall : IZLinkRouteSendCall
+    private sealed class ExampleRouteSendCall : ExampleSendCall
     {
-        public IZLinkRouteSendCall PacketName(string packetName) => this;
-
-        public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ExampleRouteSendCall() : base(_ => { })
+        {
+        }
     }
 
-    private sealed class ExampleRouteRequestCall(object reply) : IZLinkRouteRequestCall
-    {
-        public IZLinkRouteRequestCall PacketName(string packetName) => this;
-
-        public IZLinkRouteRequestCall Timeout(TimeSpan timeout) => this;
-
-        public ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult((TReply)reply);
-    }
+    private sealed class ExampleRouteRequestCall(object reply) : ExampleRequestCall(_ => { }, reply);
 
     private sealed class RoomEventRouteSendHandler : IZLinkRouteSendHandler<RoomEvent>
     {

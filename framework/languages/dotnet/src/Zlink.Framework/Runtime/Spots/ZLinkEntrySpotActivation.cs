@@ -3,7 +3,12 @@ using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext, IZLinkCurrentSpotActivation, IAsyncDisposable
+internal sealed partial class ZLinkEntrySpotActivation :
+    IZLinkEntrySpotContext,
+    IZLinkCurrentSpotActivation,
+    IZLinkSpotHandlerRegistrySink,
+    IZLinkSpotOutboundSink,
+    IAsyncDisposable
 {
     private static readonly AsyncLocal<ZLinkEntrySpotActivation?> Current = new();
     private readonly ZLinkFrameworkRuntime _runtime;
@@ -20,10 +25,13 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
     private readonly SemaphoreSlim _actorJoinDrainGate = new(1, 1);
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkSpotOutboundTransport _outbound;
+    private readonly ZLinkSpotOutboundEndpoint _outboundEndpoint;
     private readonly ZLinkSpotHandlerInvoker _invoker;
     private readonly ZLinkSpotActivationDispatcher _dispatcher;
     private readonly ZLinkEntrySpotHandlerExecutor _handlerExecutor;
     private readonly ZLinkSpotSubscriptionPump _subscriptionPump = new();
+    private readonly IZLinkSpotHandlerRegistry _handlersSurface;
+    private readonly IZLinkSpotOutbound _outboundSurface;
     private readonly TimeSpan _defaultTimeout;
     private bool _configurationOpen = true;
     private int _disposed;
@@ -68,6 +76,14 @@ internal sealed partial class ZLinkEntrySpotActivation : IZLinkEntrySpotContext,
             sendTimeout,
             _stopSource.Token,
             channelSubmitter);
+        _outboundEndpoint = new ZLinkSpotOutboundEndpoint(
+            this,
+            _scope.ServiceProvider,
+            _outbound,
+            _runtime,
+            "IZLinkEntrySpotContext spot routing requires AddSpotRemoteAddressResolver<TResolver>().");
+        _handlersSurface = new ZLinkSpotHandlerRegistrySurface(this);
+        _outboundSurface = new ZLinkSpotOutboundSurface(this);
         _dispatcher = new ZLinkSpotActivationDispatcher(
             runtime,
             nativeSpot,

@@ -552,7 +552,7 @@ builder.Services.AddZLinkFramework(options =>
 actor 가 다른 user Spot 으로 이동하려면 framework 가 attach 한
 `IZLinkActorContext` 를 거쳐야 한다. channel outbound 는 actor context 의
 기능이 아니다. Entry Spot 또는 user Spot 안에서 channel 로 메시지를 보내려면
-해당 spot 의 `Context.SendChannel(...)` / `Context.RequestChannel(...)` 을
+해당 spot 의 `Context.Outbound.SendChannel(...)` / `Context.Outbound.RequestChannel(...)` 을
 사용한다.
 
 ```csharp
@@ -700,23 +700,19 @@ application 이 결정한다.
 ### 8.1 session-actor binding 표면
 
 ```csharp
-public interface IZLinkSessionActorBindingContext
+public interface IZLinkSessionActors
 {
-    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
+    IReadOnlyCollection<IZLinkSessionActor> Bound { get; }
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        string actorId,
+    ValueTask<IZLinkSessionActor> BindAsync(
+        IZLinkActor actor,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
+    ValueTask<IZLinkSessionActor> BindAsync(
         ActorRef actor,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        IZLinkSessionActor actor,
-        CancellationToken cancellationToken = default);
-
-    IZLinkSessionActor? FindActor(string actorId);
+    IZLinkSessionActor? Find(string actorId);
 
 }
 ```
@@ -736,17 +732,14 @@ public interface IZLinkSessionActor
 }
 ```
 
-- `BindActorAsync(actorId, ...)` -- logical actor handle 을 얻고,
-  현재 actor-session binding 을 기록한다. 이 local overload 는 actor 를 새로 만들지 않는다.
-- `BindActorAsync(actorRef, ...)` -- `JoinSpot(...)` /
+- `BindAsync(actor, ...)` -- local `IZLinkActor` instance 를 session 에 bind 한다. actor 를 새로 만들지 않고, runtime 에 이미 생성된 actor instance 여야 한다.
+- `BindAsync(actorRef, ...)` -- `JoinSpot(...)` /
   `JoinEntrySpot(...)` 결과가 돌려준 최종 ActorRef 로 session binding 을 만든다.
-- `BindActorAsync(actor, ...)` -- 이미 받은 actor handle 을 현재 session 에
-  다시 묶을 때 쓴다.
-- `BoundActors` -- 현재 session 에 bind 된 actor handle snapshot 이다.
+- `Bound` -- 현재 session 에 bind 된 actor handle snapshot 이다.
 - `actor.NotifyDisconnectedAsync(...)` -- session application 이 선택한
   actor 하나에 disconnect notification 을 전달한다. 이 호출은 actor membership
   을 변경하지 않는다.
-- `FindActor(actorId)` -- 현재 session 에 이미 bind 된 actor
+- `Find(actorId)` -- 현재 session 에 이미 bind 된 actor
   handle 을 actor id 로 찾는다. 한 session 이 여러 actor 를 bind 할 수 있으므로
   framework 의 session binding 을 조회하고, application 이 actor handle 목록을
   따로 복제하지 않게 한다.
@@ -773,8 +766,8 @@ sequenceDiagram
 
     C->>S: STREAM connect + authenticate
     S->>S: 인증 (AuthenticateReq → actorId)
-    S->>Act: BindActorAsync(actorId)
-    Note over Act: bind는 actor를 새로 만들지 않음
+    S->>Act: BindAsync(actor)
+    Note over Act: bind는 actor instance를 새로 만들지 않음
     S->>G: Bind sessionRid to logical actor
 
     Note over C,Act: 이후 client packet
@@ -1004,7 +997,7 @@ actor-session binding 은 framework / core runtime 내부에서 관리한다. �
 역할을 나누어 보면 다음과 같다.
 
 - Session 서버는 인증 후 Play 서버의 ensure actor 응답이나 `JoinEntrySpot(...)` 결과에서
-  ActorRef 를 받고, `BindActorAsync(actorRef, ...)` 로
+  ActorRef 를 받고, `BindAsync(actorRef, ...)` 로
   actor handle 과 session binding 을 얻는다.
 - Play 서버는 `IZLinkActorManager.GetOrCreateAsync(...)` 로 actor 를 준비한 뒤
   필요한 Entry Spot/User Spot join 을 수행하고, join 결과의 ActorRef 를 응답에 싣는다.
@@ -1039,7 +1032,7 @@ public interface IZLinkFrameworkOptions
 | 메서드 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
 | `AddActorFactory<>(type)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | actorType 키로 factory를 매핑 |
-| `AddSpotRemoteAddressResolver<>()` | actor가 spot rid로 user Spot에 join하거나 spot client를 쓰는 서버 | spot rid → spot routing |
+| `AddSpotRemoteAddressResolver<>()` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → spot routing |
 | `AddSpotMesh(...).AddNode(...).AddEntrySpot<>()` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
 | `AddSpotMesh(...).AddNode(...).AddSpotFactory<>()` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
 

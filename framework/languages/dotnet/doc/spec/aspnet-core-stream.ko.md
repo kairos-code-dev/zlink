@@ -119,23 +119,26 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSessionActorBindingContext
+public interface IZLinkSessionClient
 {
-    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
+    IZLinkSessionSendCall Send<TMessage>(TMessage message);
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        string actorId,
+    IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
+}
+
+public interface IZLinkSessionActors
+{
+    IReadOnlyCollection<IZLinkSessionActor> Bound { get; }
+
+    ValueTask<IZLinkSessionActor> BindAsync(
+        IZLinkActor actor,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
+    ValueTask<IZLinkSessionActor> BindAsync(
         ActorRef actor,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        IZLinkSessionActor actor,
-        CancellationToken cancellationToken = default);
-
-    IZLinkSessionActor? FindActor(string actorId);
+    IZLinkSessionActor? Find(string actorId);
 }
 
 public interface IZLinkActorManager
@@ -185,11 +188,23 @@ public interface IZLinkSessionReplyCall
     ValueTask Submit(CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkSessionContext :
-    IZLinkSessionIdentityContext,
-    IZLinkSessionClientStream,
-    IZLinkSessionActorBindingContext,
-    IZLinkSessionLifecycle;
+public interface IZLinkSessionContext
+{
+    string SessionId { get; }
+
+    RoutingId? RoutingId { get; }
+
+    string? LocalAddr { get; }
+
+    string? RemoteAddr { get; }
+
+    IZLinkSessionClient Client { get; }
+
+    IZLinkSessionActors Actors { get; }
+
+    ValueTask CloseAsync(
+        CancellationToken cancellationToken = default);
+}
 ```
 
 `Context` 는 framework 가 session 을 생성할 때 생성자 인자로 제공한다.

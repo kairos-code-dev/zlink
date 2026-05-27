@@ -44,11 +44,11 @@ internal sealed class AuthenticateSessionPacketHandler(
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync(cancellationToken);
 
-        await context.BindActorAsync(
+        await context.Actors.BindAsync(
                 joined,
                 cancellationToken);
 
-        await context.Reply(new AuthenticateRes(joined.ActorId))
+        await context.Client.Reply(new AuthenticateRes(joined.ActorId))
             .Submit(cancellationToken);
     }
 }

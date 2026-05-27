@@ -109,15 +109,15 @@ sealed class PlaySession(
             .Timeout(SampleTimeouts.Request)
             .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
 
-        await actors.GetOrCreateAsync(
+        var playerActor = await actors.GetOrCreateAsync(
             reply.ActorId,
             SampleTypes.PlayerActor,
             cancellationToken);
 
-        var actor = await Context.BindActorAsync(
-            reply.ActorId,
+        var actor = await Context.Actors.BindAsync(
+            playerActor,
             cancellationToken);
-        await Context.Reply(new AuthenticateRes(reply.ActorId))
+        await Context.Client.Reply(new AuthenticateRes(reply.ActorId))
             .Submit(cancellationToken);
 
         logger.LogInformation(

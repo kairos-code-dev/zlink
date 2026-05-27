@@ -4,7 +4,7 @@ namespace Zlink.Framework.Runtime.Core;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
-    private static readonly ZLinkActorBoundSessionIndex BoundSessionIndex = new();
+    private static readonly ZLinkActorBoundSessionIndex ActorBoundSessions = new();
 
     internal async ValueTask<ZLinkActorJoinResult<TReply>> JoinActorAsync<TRequest, TReply>(
         RoutingId spotRid,
@@ -142,7 +142,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string bindingToken)
     {
         GetOrCreateActorState(actorId).BindSession(sessionRid, bindingToken);
-        BoundSessionIndex.Register(this, actorId, sessionRid, bindingToken);
+        ActorBoundSessions.Register(this, actorId, sessionRid, bindingToken);
     }
 
     internal void UnbindActorSession(
@@ -150,12 +150,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         string bindingToken)
     {
         GetOrCreateActorState(actorId).UnbindSession(bindingToken);
-        BoundSessionIndex.Unregister(this, actorId, bindingToken);
+        ActorBoundSessions.Unregister(this, actorId, bindingToken);
     }
 
     internal void CleanupActorSessionsForSession(RoutingId sessionRid)
     {
-        BoundSessionIndex.Cleanup(sessionRid);
+        ActorBoundSessions.Cleanup(sessionRid);
     }
 
     internal bool TryGetActorBoundSession(

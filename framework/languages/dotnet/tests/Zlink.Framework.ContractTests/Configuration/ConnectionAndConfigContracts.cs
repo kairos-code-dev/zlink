@@ -6,13 +6,7 @@ namespace Zlink.Framework.ContractTests.Configuration;
 public sealed class ConnectionAndConfigContracts
 {
     [Fact]
-    [ContractExample(
-        typeof(IZLinkEndpointConnections),
-        typeof(IZLinkEndpointConnections),
-        typeof(IZLinkEndpointConnections),
-        typeof(IZLinkEndpointConnections),
-        typeof(IZLinkEndpointConnections),
-        typeof(IZLinkEndpointConnections))]
+    [ContractExample(typeof(IZLinkEndpointConnections))]
     public void Connection_contracts_record_the_startup_endpoints_owned_by_each_runtime_role()
     {
         var manual = new ManualConnections();
@@ -123,14 +117,7 @@ public sealed class ConnectionAndConfigContracts
         Assert.Equal(ZLinkDispatchMode.Compiled, dispatch.SpotDispatchMode);
     }
 
-    internal sealed class ManualConnections :
-        IZLinkEndpointConnections,
-        IZLinkEndpointConnections,
-        IZLinkEndpointConnections,
-        IZLinkEndpointConnections,
-        IZLinkEndpointConnections,
-        IZLinkEndpointConnections,
-        IZLinkEndpointConnections
+    internal sealed class ManualConnections : IZLinkEndpointConnections
     {
         private readonly List<string> _endpoints = [];
 

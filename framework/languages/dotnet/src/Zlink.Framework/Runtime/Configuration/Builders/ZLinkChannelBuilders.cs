@@ -23,51 +23,33 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
     public void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>
     {
-        registration.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
-            typeof(THandler),
-            typeof(TMessage),
-            null,
-            packetName));
+        ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler, TMessage>(
+            registration,
+            packetName);
     }
 
     public void AddSendHandler<THandler>(string? packetName = null)
         where THandler : class
     {
-        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
-            typeof(THandler),
-            typeof(IZLinkSendHandler<>),
-            "send");
-        var args = handlerInterface.GetGenericArguments();
-        registration.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
-            typeof(THandler),
-            args[0],
-            null,
-            packetName));
+        ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler>(
+            registration,
+            packetName);
     }
 
     public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>
     {
-        registration.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
-            typeof(THandler),
-            typeof(TRequest),
-            typeof(TReply),
-            packetName));
+        ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler, TRequest, TReply>(
+            registration,
+            packetName);
     }
 
     public void AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class
     {
-        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
-            typeof(THandler),
-            typeof(IZLinkRequestHandler<,>),
-            "request");
-        var args = handlerInterface.GetGenericArguments();
-        registration.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
-            typeof(THandler),
-            args[0],
-            args[1],
-            packetName));
+        ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler>(
+            registration,
+            packetName);
     }
 
     public void EnableSpotRouteEgress(string targetSpotNodeChannelName)
@@ -100,26 +82,17 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
     public void AddPublishHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkPublishHandler<TMessage>
     {
-        registration.PublishHandlers.Add(new ZLinkChannelHandlerRegistration(
-            typeof(THandler),
-            typeof(TMessage),
-            null,
-            packetName));
+        ZLinkChannelHandlerRegistrationBuilder.AddPublishHandler<THandler, TMessage>(
+            registration,
+            packetName);
     }
 
     public void AddPublishHandler<THandler>(string? packetName = null)
         where THandler : class
     {
-        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
-            typeof(THandler),
-            typeof(IZLinkPublishHandler<>),
-            "publish");
-        var args = handlerInterface.GetGenericArguments();
-        registration.PublishHandlers.Add(new ZLinkChannelHandlerRegistration(
-            typeof(THandler),
-            args[0],
-            null,
-            packetName));
+        ZLinkChannelHandlerRegistrationBuilder.AddPublishHandler<THandler>(
+            registration,
+            packetName);
     }
 }
 
@@ -140,6 +113,43 @@ internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration reg
     public void AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>
     {
+        ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler, TMessage>(
+            registration,
+            packetName);
+    }
+
+    public void AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler>(
+            registration,
+            packetName);
+    }
+
+    public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRequestHandler<TRequest, TReply>
+    {
+        ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler, TRequest, TReply>(
+            registration,
+            packetName);
+    }
+
+    public void AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler>(
+            registration,
+            packetName);
+    }
+}
+
+internal static class ZLinkChannelHandlerRegistrationBuilder
+{
+    public static void AddSendHandler<THandler, TMessage>(
+        ZLinkChannelRegistration registration,
+        string? packetName)
+        where THandler : class, IZLinkSendHandler<TMessage>
+    {
         registration.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
             typeof(THandler),
             typeof(TMessage),
@@ -147,14 +157,16 @@ internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration reg
             packetName));
     }
 
-    public void AddSendHandler<THandler>(string? packetName = null)
+    public static void AddSendHandler<THandler>(
+        ZLinkChannelRegistration registration,
+        string? packetName)
         where THandler : class
     {
-        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
-            typeof(THandler),
-            typeof(IZLinkSendHandler<>),
-            "send");
-        var args = handlerInterface.GetGenericArguments();
+        var args = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+                typeof(THandler),
+                typeof(IZLinkSendHandler<>),
+                "send")
+            .GetGenericArguments();
         registration.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
             typeof(THandler),
             args[0],
@@ -162,7 +174,9 @@ internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration reg
             packetName));
     }
 
-    public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+    public static void AddRequestHandler<THandler, TRequest, TReply>(
+        ZLinkChannelRegistration registration,
+        string? packetName)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>
     {
         registration.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
@@ -172,18 +186,49 @@ internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration reg
             packetName));
     }
 
-    public void AddRequestHandler<THandler>(string? packetName = null)
+    public static void AddRequestHandler<THandler>(
+        ZLinkChannelRegistration registration,
+        string? packetName)
         where THandler : class
     {
-        var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
-            typeof(THandler),
-            typeof(IZLinkRequestHandler<,>),
-            "request");
-        var args = handlerInterface.GetGenericArguments();
+        var args = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+                typeof(THandler),
+                typeof(IZLinkRequestHandler<,>),
+                "request")
+            .GetGenericArguments();
         registration.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
             typeof(THandler),
             args[0],
             args[1],
+            packetName));
+    }
+
+    public static void AddPublishHandler<THandler, TMessage>(
+        ZLinkChannelRegistration registration,
+        string? packetName)
+        where THandler : class, IZLinkPublishHandler<TMessage>
+    {
+        registration.PublishHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            typeof(TMessage),
+            null,
+            packetName));
+    }
+
+    public static void AddPublishHandler<THandler>(
+        ZLinkChannelRegistration registration,
+        string? packetName)
+        where THandler : class
+    {
+        var args = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+                typeof(THandler),
+                typeof(IZLinkPublishHandler<>),
+                "publish")
+            .GetGenericArguments();
+        registration.PublishHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            null,
             packetName));
     }
 }
@@ -264,7 +309,7 @@ internal sealed class ZLinkChannelClientCapabilityBuilder(ZLinkChannelClientCapa
         configure(registration.RoutingConfig);
     }
 
-    public void UseManualConnections(Action<IChannelClientConnections> configure)
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }
@@ -293,7 +338,7 @@ internal sealed class ZLinkDealerMeshChannelClientCapabilityBuilder(ZLinkChannel
         configure(registration.RoutingConfig);
     }
 
-    public void UseManualConnections(Action<IChannelClientConnections> configure)
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }
@@ -326,7 +371,7 @@ internal sealed class ZLinkChannelSubscriberCapabilityBuilder(ZLinkChannelSubscr
         configure(registration.SocketConfig);
     }
 
-    public void UseManualConnections(Action<IChannelSubscriberConnections> configure)
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }

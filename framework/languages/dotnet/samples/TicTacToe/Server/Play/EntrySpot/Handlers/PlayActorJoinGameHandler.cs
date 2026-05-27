@@ -36,7 +36,7 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
             actor.ActorId,
             message.GameId);
 
-        var spotRid = RoutingId.From(message.GameId);
+        var spotRid = RoutingId.FromHex(message.GameId);
         var joined = await actor.Context.JoinSpot(
                 spotRid,
                 new TicTacToeGameJoinReq(message.GameId, actor.ActorId))

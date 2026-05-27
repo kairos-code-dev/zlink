@@ -251,7 +251,7 @@
   2. attach 된 channel 의 send / request
   3. local egress channel, target SpotNode ingress channel, Spot routing id 기반 routed
      send / request
-- `IZLinkChannelClient` 와 `IZLinkSpotClient` 는 서로 다른 C API 를 감싸는 별개의
+- `IZLinkChannelClient` 와 `IZLinkSpotOutbound` 는 서로 다른 C API 를 감싸는 별개의
   인터페이스다. 다만 하부 기능이 일부 겹치므로, 두 인터페이스가 비슷한 모양의
   send / request 계열 함수를 함께 가질 수 있다.
 

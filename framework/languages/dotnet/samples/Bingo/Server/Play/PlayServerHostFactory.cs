@@ -55,7 +55,7 @@ public static class PlayServerHostFactory
                     {
                         pubsub.SetPubBind(topology.PlaySpotEndpoint);
                     });
-                    spot.AttachClientServerChannelClient(SampleNames.ApiChannel);
+                    spot.AttachChannelClient(SampleNames.ApiChannel);
                     spot.AddEntrySpot<BingoEntrySpot>();
                     spot.AddSpotFactory<BingoRoomSpot>();
                 });

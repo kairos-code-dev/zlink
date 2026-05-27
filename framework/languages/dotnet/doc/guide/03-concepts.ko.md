@@ -60,8 +60,8 @@ handler · client · DI/lifecycle**.
 |-----------|--------------------|-----------|----------------|
 | request-response | `IZLinkRequestHandler<TReq,TRes>` | `[ZLinkRequest]` | `client.RequestChannel(...).SubmitAsync<TRes>(ct)` |
 | command(단방향 send) | `IZLinkSendHandler<TMsg>` | `[ZLinkSend]` | `client.SendChannel(...).Submit(ct)` |
-| publish-subscribe | `IZLinkPublishHandler<TEvt>` | `[ZLinkPublish]` | `publisher.Publish(...).Submit(ct)` |
-| SPOT 내부/외부 | `IZLinkSpot*Handler<...>` | (Spot 등록) | `IZLinkSpotClient`, `IZLinkRoutedSpotClient` |
+| publish-subscribe | `IZLinkPublishHandler<TEvt>` | `[ZLinkPublish]` | `publisher.PublishSpot(...).Submit(ct)` |
+| SPOT 내부/외부 | `IZLinkSpot*Handler<...>` | (Spot 등록) | `IZLinkSpotOutbound` |
 | STREAM session | `IZLinkSession` | (stream 등록) | `IZLinkSessionContext` / `IZLinkBoundSession` |
 
 handler 는 결과를 **반환값**으로 돌려준다. request handler 는 `ValueTask<TReply>`,
@@ -149,16 +149,15 @@ framework public 계약은 host 시작 뒤 endpoint 를 바꾸는 별도 연결 
 |--------|------|
 | `IZLinkChannelClient` | 일반 channel request/send |
 | `IZLinkFanoutClient` | pub/sub publish |
-| `IZLinkSpotClient` | current Spot callback 안에서의 outbound |
-| `IZLinkRoutedSpotClient` | current Spot 없이 target Spot 으로 호출(HTTP/세션 gateway 등) |
+| `IZLinkSpotOutbound` | current Spot callback 안에서 다른 Spot, channel, publish 로 outbound |
 
 channel 이름은 위치마다 뜻이 다르다는 점에 주의한다.
 
 | 위치 | channel 이름의 뜻 |
 |------|------------------|
 | `client.RequestChannel("profile", ...)` | request/send 를 보낼 **target** channel |
-| `routedSpots.ViaEgressChannel("gateway.client")` | 호출 프로세스가 쓸 **local egress** channel |
-| `EnableSpotRouteEgress("play.route")` | target SpotNode 가 `AcceptSpotRoutesFromChannel(...)`로 연 **ingress** channel |
+| `spot.Context.Outbound.SendChannel("orders", ...)` | current Spot 이 attach 해서 사용할 **target** channel |
+| `IZLinkSpotPublisherClient.PublishSpot("game.stage", topic, ...)` | local spot 없는 노드가 publish 할 **target SPOT channel** |
 
 ## 7. send 는 async submit
 

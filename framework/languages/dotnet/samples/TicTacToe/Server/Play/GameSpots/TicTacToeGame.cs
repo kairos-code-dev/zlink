@@ -29,10 +29,10 @@ sealed class TicTacToeGame(
 
     public void Configure()
     {
-        Context.AddActorJoin<TicTacToeGameJoinHandler>();
-        Context.AddHandler<PlayActorPlaceMarkHandler>();
-        Context.AddHandler<TicTacToeGameActorJoinedHandler>();
-        Context.AddHandler<TicTacToeGameActorLeftHandler>();
+        Context.Handlers.AddActorJoin<TicTacToeGameJoinHandler>();
+        Context.Handlers.AddHandler<PlayActorPlaceMarkHandler>();
+        Context.Handlers.AddHandler<TicTacToeGameActorJoinedHandler>();
+        Context.Handlers.AddHandler<TicTacToeGameActorLeftHandler>();
     }
 
     public ValueTask OnCreateAsync(

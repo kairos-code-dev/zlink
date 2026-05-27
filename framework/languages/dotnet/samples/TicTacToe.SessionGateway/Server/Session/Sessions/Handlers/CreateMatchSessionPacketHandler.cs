@@ -28,7 +28,7 @@ namespace TicTacToe.SessionGateway.Session.Sessions.Handlers
                     .Timeout(SampleTimings.RequestTimeout)
                     .SubmitAsync<CreateMatchRes>(cancellationToken) ;
 
-            await context.Reply(reply)
+            await context.Client.Reply(reply)
                 .Submit(cancellationToken);
         }
 
@@ -36,7 +36,7 @@ namespace TicTacToe.SessionGateway.Session.Sessions.Handlers
             IZLinkSessionContext context,
             string action)
         {
-            var actors = context.BoundActors;
+            var actors = context.Actors.Bound;
             return actors.Count switch
             {
                 1 => actors.Single(),

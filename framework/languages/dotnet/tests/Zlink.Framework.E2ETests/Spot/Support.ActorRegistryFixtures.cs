@@ -20,10 +20,10 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddActorJoin<RegistryStageJoinHandler, RegistryTestActor, RegistryJoinRequest, RegistryJoinReply>();
-            Context.AddActorPacket<RegistryStageDispatchHandler, RegistryTestActor>("spot-dispatch");
-            Context.AddPostActorJoined<RegistryStageJoinedHandler, RegistryTestActor>();
-            Context.AddActorLeft<RegistryStageLeftHandler, RegistryTestActor>();
+            Context.Handlers.AddActorJoin<RegistryStageJoinHandler, RegistryTestActor, RegistryJoinRequest, RegistryJoinReply>();
+            Context.Handlers.AddActorPacket<RegistryStageDispatchHandler, RegistryTestActor>("spot-dispatch");
+            Context.Handlers.AddPostActorJoined<RegistryStageJoinedHandler, RegistryTestActor>();
+            Context.Handlers.AddActorLeft<RegistryStageLeftHandler, RegistryTestActor>();
         }
 
         public ValueTask<RegistryJoinReply> JoinAsync(
@@ -50,7 +50,7 @@ public abstract partial class SpotTestSupport
             _ = entrySpot;
             _ = context;
             var reply = await actor.Context.JoinSpot(
-                    global::Systems.Zlink.RoutingId.From(spotRid),
+                    global::Systems.Zlink.RoutingId.FromHex(spotRid),
                     new RegistryJoinRequest("entry-room"))
                 .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<RegistryJoinReply>(cancellationToken);
@@ -97,7 +97,7 @@ public abstract partial class SpotTestSupport
             await mailboxRecorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             var reply = await actor.Context.JoinSpot(
-                    global::Systems.Zlink.RoutingId.From(spotRid),
+                    global::Systems.Zlink.RoutingId.FromHex(spotRid),
                     new RegistryJoinRequest("entry-room"))
                 .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<RegistryJoinReply>(cancellationToken);

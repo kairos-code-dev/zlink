@@ -382,25 +382,15 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void RoutedSpotClient_PublicSurface_RequiresExplicitEgressAndRoutingIdTarget()
+    public void RemovedSpotEgressClient_PublicSurface_IsRemoved()
     {
-        Assert.NotNull(typeof(IZLinkRoutedSpotClient).GetMethod(
-            nameof(IZLinkRoutedSpotClient.ViaEgressChannel),
-            [typeof(string)]));
-        Assert.Null(typeof(IZLinkRoutedSpotClient).GetMethod("SendSpot"));
-        Assert.Null(typeof(IZLinkRoutedSpotClient).GetMethod("RequestSpot"));
+        var removedTypes = typeof(IZLinkSpotOutbound).Assembly.GetTypes()
+            .Where(static type => type.Namespace == "Zlink.Framework.Contracts.Spots"
+                && type.Name.Contains("Routed", StringComparison.Ordinal)
+                && type.Name.Contains("Spot", StringComparison.Ordinal)
+                && type.Name.Contains("Client", StringComparison.Ordinal));
 
-        Assert.Contains(
-            typeof(IZLinkRoutedSpotEgressClient).GetMethods(),
-            method => method.Name == nameof(IZLinkRoutedSpotEgressClient.SendSpot)
-                && method.GetParameters().FirstOrDefault()?.ParameterType == typeof(RoutingId));
-        Assert.Contains(
-            typeof(IZLinkRoutedSpotEgressClient).GetMethods(),
-            method => method.Name == nameof(IZLinkRoutedSpotEgressClient.RequestSpot)
-                && method.GetParameters().FirstOrDefault()?.ParameterType == typeof(RoutingId));
-        Assert.DoesNotContain(
-            typeof(IZLinkRoutedSpotEgressClient).GetMethods(),
-            method => method.GetParameters().FirstOrDefault()?.ParameterType == typeof(string));
+        Assert.Empty(removedTypes);
     }
 
     [Fact]

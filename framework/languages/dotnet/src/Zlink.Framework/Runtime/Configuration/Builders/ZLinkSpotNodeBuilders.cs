@@ -19,13 +19,6 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         string channelName,
         Action<ISpotChannelClientCapabilityBuilder>? configure = null)
     {
-        AttachClientServerChannelClient(channelName, configure);
-    }
-
-    public void AttachClientServerChannelClient(
-        string channelName,
-        Action<ISpotChannelClientCapabilityBuilder>? configure = null)
-    {
         if (string.IsNullOrWhiteSpace(channelName))
         {
             throw new ZLinkConfigurationException("Attached client/server channel client name must not be empty.");
@@ -112,14 +105,14 @@ internal sealed class ZLinkSpotRouteChannelAcceptanceBuilder(
     ZLinkSpotRouteChannelAcceptanceRegistration registration)
     : IZLinkSpotRouteChannelAcceptanceBuilder
 {
-    public void UseManualConnections(Action<ISpotRouterChannelConnections> configure)
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkSpotRouteChannelConnections(registration.ManualConnections));
     }
 }
 
 internal sealed class ZLinkSpotRouteChannelConnections(ICollection<string> endpoints)
-    : ISpotRouterChannelConnections
+    : IZLinkEndpointConnections
 {
     public void Connect(string endpoint)
     {
@@ -170,7 +163,7 @@ internal sealed class ZLinkSpotRouterCapabilityBuilder(ZLinkSpotRouterCapability
         configure(registration.RoutingConfig);
     }
 
-    public void UseManualConnections(Action<ISpotRouterConnections> configure)
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }
@@ -204,7 +197,7 @@ internal sealed class ZLinkSpotPubSubCapabilityBuilder(ZLinkSpotPubSubCapability
         configure(registration.SubscriberConfig);
     }
 
-    public void UseManualConnections(Action<ISpotPubSubConnections> configure)
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }
@@ -218,7 +211,7 @@ internal sealed class ZLinkSpotPublisherClientCapabilityBuilder(ZLinkSpotPublish
         configure(registration.SocketConfig);
     }
 
-    public void UseManualConnections(Action<ISpotPublisherConnections> configure)
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }
@@ -237,7 +230,7 @@ internal sealed class ZLinkSpotChannelClientCapabilityBuilder(ZLinkSpotChannelCl
         configure(registration.RoutingConfig);
     }
 
-    public void UseManualConnections(Action<IChannelClientConnections> configure)
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }

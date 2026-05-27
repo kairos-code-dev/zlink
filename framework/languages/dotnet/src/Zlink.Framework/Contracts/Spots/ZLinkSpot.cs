@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Spots;
+
 namespace Zlink.Framework.Contracts.Spots;
 
 public enum ZLinkSpotActorChangeKind
@@ -53,10 +55,6 @@ public sealed class ZLinkSpotActorReplyOptions
         return this;
     }
 }
-
-internal sealed record ZLinkSpotActorReplyOptionsSnapshot(
-    IReadOnlyDictionary<string, string> Metadata,
-    bool CompressPayload);
 
 public sealed class ZLinkSpotActorSendContext : ZLinkHandlerContext
 {
@@ -163,7 +161,7 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
         where THandler : class;
 }
 
-public interface IZLinkSpotOutboundContext
+public interface IZLinkSpotOutbound
 {
     IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,
@@ -173,7 +171,7 @@ public interface IZLinkSpotOutboundContext
         RoutingId spotRid,
         TRequest request);
 
-    IZLinkPublishCall PublishSpot<TEvent>(
+    IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message);
 
@@ -186,11 +184,15 @@ public interface IZLinkSpotOutboundContext
         TRequest request);
 }
 
-public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutboundContext
+public interface IZLinkSpotContext
 {
     RoutingId SpotRid { get; }
 
     RoutingId NodeRid { get; }
+
+    IZLinkSpotHandlerRegistry Handlers { get; }
+
+    IZLinkSpotOutbound Outbound { get; }
 
     ValueTask LeaveActorAsync(
         IZLinkActor actor,
@@ -224,11 +226,15 @@ public interface IZLinkEntrySpot
 
 }
 
-public interface IZLinkEntrySpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutboundContext
+public interface IZLinkEntrySpotContext
 {
     RoutingId SpotRid { get; }
 
     RoutingId NodeRid { get; }
+
+    IZLinkSpotHandlerRegistry Handlers { get; }
+
+    IZLinkSpotOutbound Outbound { get; }
 
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,

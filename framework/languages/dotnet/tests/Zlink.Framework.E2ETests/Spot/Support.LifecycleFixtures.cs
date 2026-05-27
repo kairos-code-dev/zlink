@@ -151,7 +151,7 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddSubscribe<LocalStageEventHandler>("stage.local");
+            Context.Handlers.AddSubscribe<LocalStageEventHandler>("stage.local");
         }
     }
 
@@ -161,7 +161,7 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddSubscribe<ExternalStageEventHandler>("stage.external");
+            Context.Handlers.AddSubscribe<ExternalStageEventHandler>("stage.external");
         }
     }
 
@@ -169,9 +169,7 @@ public abstract partial class SpotTestSupport
 
     public sealed record ExternalStageEvent(string Value);
 
-    public sealed class SpotHeartbeatTimerHandler(
-        SpotLifecycleRecorder recorder,
-        IZLinkSpotClient spotClient)
+    public sealed class SpotHeartbeatTimerHandler(SpotLifecycleRecorder recorder)
         : IZLinkSpotTimerHandler<PublishingStageSpot>
     {
         public async ValueTask HandleAsync(
@@ -181,7 +179,7 @@ public abstract partial class SpotTestSupport
         {
             _ = tick;
             recorder.RecordTick();
-            await spotClient.PublishSpot("stage.local", new LocalStageEvent(spot.Context.SpotRid.ToString()))
+            await spot.Context.Outbound.Publish("stage.local", new LocalStageEvent(spot.Context.SpotRid.ToString()))
                 .Submit(cancellationToken);
         }
     }

@@ -54,8 +54,6 @@
     <Compile Include="Spot/RegistryRemoteAddresses.cs" />
     <Compile Include="Spot/RegistrySpotRemoteAddresses.cs" />
     <Compile Include="Spot/RouteAcceptance.cs" />
-    <Compile Include="Spot/RoutedClientDiscoveryEgress.cs" />
-    <Compile Include="Spot/RoutedClientExplicitEgress.cs" />
     <Compile Include="Spot/Support.ActorFixtures.cs" />
     <Compile Include="Spot/Support.ActorRegistryFixtures.cs" />
     <Compile Include="Spot/Support.ChannelFixtures.cs" />

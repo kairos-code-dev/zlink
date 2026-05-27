@@ -19,14 +19,14 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddActorPacket<RegistryEntryJoinHandler, RegistryTestActor>("entry-join");
-            Context.AddActorPacket<EntrySpotJoinBlockingHandler, RegistryTestActor>("entry-join-block");
-            Context.AddActorPacket<EntrySpotBlockingHandler, RegistryTestActor>("entry-block");
-            Context.AddActorPacket<EntrySpotRecordingHandler, RegistryTestActor>("entry-record");
-            Context.AddActorPacket<LocalActorBlockingHandler, RegistryTestActor>("local-block");
-            Context.AddActorPacket<LocalActorRecordingHandler, RegistryTestActor>("local-record");
-            Context.AddPostActorJoined<RegistryEntryJoinedHandler, RegistryTestActor>();
-            Context.AddActorLeft<RegistryEntryLeftHandler, RegistryTestActor>();
+            Context.Handlers.AddActorPacket<RegistryEntryJoinHandler, RegistryTestActor>("entry-join");
+            Context.Handlers.AddActorPacket<EntrySpotJoinBlockingHandler, RegistryTestActor>("entry-join-block");
+            Context.Handlers.AddActorPacket<EntrySpotBlockingHandler, RegistryTestActor>("entry-block");
+            Context.Handlers.AddActorPacket<EntrySpotRecordingHandler, RegistryTestActor>("entry-record");
+            Context.Handlers.AddActorPacket<LocalActorBlockingHandler, RegistryTestActor>("local-block");
+            Context.Handlers.AddActorPacket<LocalActorRecordingHandler, RegistryTestActor>("local-record");
+            Context.Handlers.AddPostActorJoined<RegistryEntryJoinedHandler, RegistryTestActor>();
+            Context.Handlers.AddActorLeft<RegistryEntryLeftHandler, RegistryTestActor>();
         }
     }
 
@@ -36,9 +36,9 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddPacket<EntrySpotGeneralBlockingHandler>();
-            Context.AddPacket<EntrySpotGeneralRecordingHandler>();
-            Context.AddPacket<EntrySpotChannelRequestHandler>();
+            Context.Handlers.AddPacket<EntrySpotGeneralBlockingHandler>();
+            Context.Handlers.AddPacket<EntrySpotGeneralRecordingHandler>();
+            Context.Handlers.AddPacket<EntrySpotChannelRequestHandler>();
         }
     }
 
@@ -48,7 +48,7 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddPacket<EntryTimerRecordingHandler>();
+            Context.Handlers.AddPacket<EntryTimerRecordingHandler>();
         }
 
         public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)
@@ -157,7 +157,7 @@ public abstract partial class SpotTestSupport
             EntrySpotChannelRequestCommand message,
             CancellationToken cancellationToken)
         {
-            var reply = await spot.Context.RequestChannel(
+            var reply = await spot.Context.Outbound.RequestChannel(
                     "orders",
                     new EntrySpotOrderRequest(message.Value))
                 .Timeout(TimeSpan.FromSeconds(5))

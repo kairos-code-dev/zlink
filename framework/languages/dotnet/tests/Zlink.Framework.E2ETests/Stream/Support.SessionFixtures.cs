@@ -15,7 +15,8 @@ public abstract partial class StreamTestSupport
 {
     public sealed class GatewayRelaySession(
         GatewaySessionRecorder recorder,
-        IZLinkSessionContext context) : IZLinkSession
+        IZLinkSessionContext context,
+        IServiceProvider services) : IZLinkSession
     {
         private IZLinkSessionActor? _actor;
 
@@ -53,15 +54,12 @@ public abstract partial class StreamTestSupport
         {
             if (_actor is null)
             {
-                _actor = recorder.Actor is { } actor
-                    ? await Context.BindActorAsync(
-                            actor,
+                _actor = recorder.Actor is { } actorRef
+                    ? await Context.Actors.BindAsync(
+                            actorRef,
                             cancellationToken)
                         .ConfigureAwait(false)
-                    : await Context.BindActorAsync(
-                            recorder.ActorId,
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                    : await BindLocalActorAsync(cancellationToken).ConfigureAwait(false);
             }
 
             await (_actor ?? throw new InvalidOperationException("Actor was not created.")).RelayAsync(
@@ -70,6 +68,17 @@ public abstract partial class StreamTestSupport
                     cancellationToken)
                 .ConfigureAwait(false);
             recorder.RecordPostRelayPayloadLength(payload.AsReadOnlySpan().Length);
+        }
+
+        private async ValueTask<IZLinkSessionActor> BindLocalActorAsync(CancellationToken cancellationToken)
+        {
+            var actors = services.GetRequiredService<IZLinkActorManager>();
+            var actor = await actors.FindAsync(recorder.ActorId, cancellationToken)
+                .ConfigureAwait(false);
+            return await Context.Actors.BindAsync(
+                    actor ?? new SessionBindActor(recorder.ActorId),
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -108,8 +117,8 @@ public abstract partial class StreamTestSupport
             Message payload,
             CancellationToken cancellationToken)
         {
-            _actor ??= await Context.BindActorAsync(
-                recorder.ActorId,
+            _actor ??= await Context.Actors.BindAsync(
+                new SessionBindActor(recorder.ActorId),
                 cancellationToken);
 
             await _actor.RelayAsync(
@@ -118,6 +127,14 @@ public abstract partial class StreamTestSupport
                     cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    private sealed class SessionBindActor(string actorId) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context
+            => throw new InvalidOperationException("Session bind test actor does not expose a runtime context.");
     }
 
     public sealed class LocalNotifyDisconnectSession(
@@ -173,7 +190,7 @@ public abstract partial class StreamTestSupport
                     .ConfigureAwait(false);
                 recorder.SetActor(actorRef);
 
-                _actor = await Context.BindActorAsync(
+                _actor = await Context.Actors.BindAsync(
                         actorRef,
                         cancellationToken)
                     .ConfigureAwait(false);

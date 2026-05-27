@@ -40,11 +40,11 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<EnsurePlayerActorRes>(cancellationToken) ;
 
-        await context.BindActorAsync(
+        await context.Actors.BindAsync(
                 ToActorRef(ensured.Actor),
                 cancellationToken);
 
-        await context.Reply(new AuthenticateRes(ensured.ActorId, authenticated.DisplayName))
+        await context.Client.Reply(new AuthenticateRes(ensured.ActorId, authenticated.DisplayName))
             .Submit(cancellationToken);
     }
 

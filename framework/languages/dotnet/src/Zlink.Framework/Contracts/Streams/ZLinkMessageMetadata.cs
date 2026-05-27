@@ -14,5 +14,5 @@ public sealed class ZLinkMessageMetadata(
 
 public interface IZLinkMessageMetadataPolicy
 {
-    bool CanForwardApplicationKey(string key);
+    bool CanForward(string key);
 }

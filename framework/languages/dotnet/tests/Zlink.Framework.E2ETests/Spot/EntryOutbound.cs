@@ -43,7 +43,7 @@ public sealed class EntryOutboundTests : SpotTestSupport
                 {
                     router.SetRouterBind(spotNode);
                 });
-                spot.AttachClientServerChannelClient("orders");
+                spot.AttachChannelClient("orders");
                 spot.AddEntrySpot<GeneralEntrySpot>();
             });
             });

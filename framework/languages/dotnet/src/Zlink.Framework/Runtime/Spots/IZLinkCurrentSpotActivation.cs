@@ -6,7 +6,7 @@ internal interface IZLinkCurrentSpotActivation
 
     TimeSpan DefaultTimeout { get; }
 
-    IZLinkPublishCall PublishSpot<TEvent>(
+    IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message);
 

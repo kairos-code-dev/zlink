@@ -26,7 +26,7 @@
 
 | 축 | `.NET` 표면 |
 |----|-------------|
-| session → actor relay | `IZLinkSessionContext.BindActorAsync(...)`, `IZLinkSessionActor.RelayAsync(...)` |
+| session → actor relay | `IZLinkSessionContext.Actors.BindAsync(...)`, `IZLinkSessionActor.RelayAsync(...)` |
 | spot actor handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
 | actor → own client push | Spot actor handler 가 받은 actor 의 `Context.BoundSession.Send(msg).Submit(...)` |
 | 다른 actor → client push | 먼저 대상 actor 에 메시지를 보내고, 대상 Spot actor handler 가 actor `Context.BoundSession` 으로 push |
@@ -1033,7 +1033,7 @@ public sealed class ZLinkMessageMetadata
 
 public interface IZLinkMessageMetadataPolicy
 {
-    bool CanForwardApplicationKey(string key);
+    bool CanForward(string key);
 }
 ```
 
@@ -1046,8 +1046,8 @@ public interface IZLinkMessageMetadataPolicy
 ```csharp
 options.ConfigureMetadata(metadata =>
 {
-    metadata.ForwardApplicationKey("trace-id");
-    metadata.ForwardApplicationKey("tenant-id");
+    metadata.Forward("trace-id");
+    metadata.Forward("tenant-id");
 });
 ```
 
@@ -1090,7 +1090,7 @@ await Context.BoundSession
 기존에 사용하던 `SessionGateway` 라는 이름은 새 public API 에서 제거한다.
 이름이 두 갈래로 정리된다.
 
-- session → actor 방향: `BindActorAsync(...)`, `IZLinkSessionActor.RelayAsync(...)` 를 사용한다.
+- session → actor 방향: `BindAsync(...)`, `IZLinkSessionActor.RelayAsync(...)` 를 사용한다.
   disconnect 알림과 binding cleanup 은 session lifecycle 경로에서 처리한다.
 - actor → 자기 client 방향: `IZLinkBoundSession` 를 사용한다.
 - 다른 actor 의 client session 에 보내야 하는 application service 는 먼저 대상
@@ -1115,7 +1115,7 @@ client 처리 완료 ack 가 계약상 필요하면, actor message 나 session m
 표면을 제공하지 않는다.
 
 재접속은 actor id 기준으로 idempotent 해야 한다. 같은 actor id 가 새 stream
-session 에서 `BindActorAsync(...)` 로 다시 들어오면, framework 는 다음과
+session 에서 `BindAsync(...)` 로 다시 들어오면, framework 는 다음과
 같이 동작한다.
 
 - 기존 actor instance 와 spot membership 은 그대로 유지한다.
@@ -1132,23 +1132,19 @@ public client 를 사용하지 않는다. client stream 에서 받은 packet 은
 만든 뒤 `IZLinkSessionActor.RelayAsync(...)` 로 전달한다.
 
 ```csharp
-public interface IZLinkSessionActorBindingContext
+public interface IZLinkSessionActors
 {
-    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
+    IReadOnlyCollection<IZLinkSessionActor> Bound { get; }
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        string actorId,
+    ValueTask<IZLinkSessionActor> BindAsync(
+        IZLinkActor actor,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
+    ValueTask<IZLinkSessionActor> BindAsync(
         ActorRef actor,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        IZLinkSessionActor actor,
-        CancellationToken cancellationToken = default);
-
-    IZLinkSessionActor? FindActor(string actorId);
+    IZLinkSessionActor? Find(string actorId);
 }
 ```
 
@@ -1157,7 +1153,7 @@ packet 을 어떤 actor 에 relay 할지"만 결정한다. 같은 process 의 ac
 overload 로 bind 할 수 있고, 다른 process 의 actor 는 `JoinSpot(...)` /
 `JoinEntrySpot(...)` 이 반환한 최종 `ActorRef` 를 넘기는 overload 로 bind 한다.
 한 session 이 여러 actor 를 bind 할 수 있으므로 이미 bind 한 actor handle 이 필요하면
-`BoundActors` 로 현재 binding snapshot 을 보거나 `FindActor(actorId)` 로
+`Bound` 로 현재 binding snapshot 을 보거나 `Find(actorId)` 로
 actor id 기준 조회를 한다. session 은 actor handle 목록을 별도 application 상태로
 복제하지 않는다.
 
@@ -1167,7 +1163,7 @@ packet relay 와 disconnect notification 은 bind 결과로 받은 `IZLinkSessio
 
 session disconnect 는 bound actor 전체에 자동 전파되지 않는다. 연결이 끊겼을 때
 어떤 actor 에게 알려야 하는지는 application 이 판단한다. 알림이 필요한 경우
-`OnDisconnectedAsync(...)` 안에서 `FindActor(...)` 또는 `BoundActors` 로
+`OnDisconnectedAsync(...)` 안에서 `Find(...)` 또는 `Bound` 로
 대상을 고른 뒤 `actor.NotifyDisconnectedAsync(...)` 를 호출한다. 이 호출은
 actor 의 현재 Spot 실행 문맥에서 disconnected handler 를 실행할 뿐이며, actor 를
 room 에서 leave 시키지 않는다.
@@ -1348,14 +1344,13 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
         {
             AuthReq request = payload.Decode<AuthReq>();
 
-            IZLinkSessionActor actor = await context.BindActorAsync(
+            IZLinkSessionActor actor = await context.Actors.BindAsync(
                 request.ActorId,
-                request.ActorType,
                 cancellationToken);
 
             authenticatedActors.Remember(request.ActorId, actor);
 
-            await context.Reply(new AuthRep(ok: true))
+            await context.Client.Reply(new AuthRep(ok: true))
                 .Submit(cancellationToken);
             return;
         }
@@ -1465,7 +1460,7 @@ public enum ZLinkFrameworkErrorKind
 `IZLinkActorManager` 로 local actor 를 준비할 때 사용한다.
 `SpotCreateFailed`, `SpotRouteNotFound`, `SpotTypeMismatch` 는 `IZLinkSpotManager` 와
 registry 기반 spot route 조회에서 사용한다.
-`BindActorAsync(...)` 와 routed actor dispatch 수신 경로는 actor 를
+`BindAsync(...)` 와 routed actor dispatch 수신 경로는 actor 를
 생성하지 않는다. bind 는 logical actor handle 을 core ActorGateway binding 으로 넘기며,
 actor remote address resolver 를 fallback 으로 호출하지 않는다. actor 를 찾을 수 없거나
 gateway 경로로 relay 할 수 없으면 `ActorRouteNotFound` 로 분류한다. 현재 actor 에

@@ -5,15 +5,17 @@ internal sealed class ZLinkSessionActorCoordinator(
     IZLinkStream stream)
 {
     private readonly ZLinkSessionActorBindingRegistry _bindings = new(runtime);
+    private readonly ZLinkBoundActorRelaySender _relaySender = new(runtime.Registration.DefaultTimeout);
 
     public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _bindings.BoundActors;
 
     public async ValueTask<IZLinkSessionActor> BindActorAsync(
         ZLinkSessionContext context,
-        string actorId,
+        IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        var actorRef = ResolveActorRefForBinding(actorId);
+        ArgumentNullException.ThrowIfNull(actor);
+        var actorRef = ResolveActorRefForBinding(actor);
         await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
         return await _bindings.BindAsync(
             context,
@@ -50,19 +52,6 @@ internal sealed class ZLinkSessionActorCoordinator(
             cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask<IZLinkSessionActor> BindActorAsync(
-        ZLinkSessionContext context,
-        IZLinkSessionActor actor,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        return await BindActorCoreAsync(
-                context,
-                actor.Ref,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     public IZLinkSessionActor? FindActor(string actorId)
     {
         return _bindings.FindActor(actorId);
@@ -82,7 +71,7 @@ internal sealed class ZLinkSessionActorCoordinator(
 
         if (stream is ZLinkManagedStream managedStream)
         {
-            await SendBoundActorAsync(managedStream, actorRef, header, payload, cancellationToken)
+            await _relaySender.SendAsync(managedStream, actorRef, header, payload, cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -147,10 +136,18 @@ internal sealed class ZLinkSessionActorCoordinator(
             .ConfigureAwait(false);
     }
 
-    private ZLinkBackendActorRef ResolveActorRefForBinding(string actorId)
+    private ZLinkBackendActorRef ResolveActorRefForBinding(IZLinkActor actor)
     {
+        var actorId = actor.ActorId;
         if (runtime.TryGetCreatedActorState(actorId, out var state))
         {
+            if (state.Actor is not null && !ReferenceEquals(state.Actor, actor))
+            {
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    $"Actor '{actorId}' is already created with a different actor instance.");
+            }
+
             return state.NativeActorRef
                 ?? throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -192,56 +189,4 @@ internal sealed class ZLinkSessionActorCoordinator(
             .ConfigureAwait(false);
     }
 
-    private async ValueTask SendBoundActorAsync(
-        ZLinkManagedStream managedStream,
-        ZLinkSessionActor actorRef,
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var headerBytes = ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray();
-        var bodyBytes = payload.ToArray();
-
-        var timeout = runtime.Registration.DefaultTimeout;
-        var retryDelay = TimeSpan.FromMilliseconds(25);
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        ZlinkException? lastError = null;
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            using var headerPart = Message.From(headerBytes);
-            using var bodyPart = Message.From(bodyBytes);
-            try
-            {
-                if (managedStream.SendBoundActor(
-                        actorRef.ActorId,
-                        new[] { headerPart, bodyPart },
-                        SendFlags.None))
-                {
-                    return;
-                }
-            }
-            catch (ZlinkSubmitException error) when (IsActorGatewayRoutePending(error))
-            {
-                lastError = error;
-            }
-
-            if (elapsed.Elapsed >= timeout)
-            {
-                throw new InvalidOperationException(
-                    "Actor session relay failed because the ActorGateway route was not ready before timeout.",
-                    lastError);
-            }
-
-            var remaining = timeout - elapsed.Elapsed;
-            var delay = remaining < retryDelay ? remaining : retryDelay;
-            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private static bool IsActorGatewayRoutePending(ZlinkSubmitException error)
-    {
-        return error.Result == ZlinkSubmitException.ErrorCode.NotConnected;
-    }
 }

@@ -43,46 +43,6 @@ public interface IZLinkSpotManager
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkSpotClient
-{
-    IZLinkSendCall SendSpot<TMessage>(
-        RoutingId spotRid,
-        TMessage message);
-
-    IZLinkRequestCall RequestSpot<TMessage>(
-        RoutingId spotRid,
-        TMessage request);
-
-    IZLinkSendCall SendChannel<TMessage>(
-        string channelName,
-        TMessage message);
-
-    IZLinkRequestCall RequestChannel<TMessage>(
-        string channelName,
-        TMessage request);
-
-    IZLinkPublishCall PublishSpot<TEvent>(
-        string topic,
-        TEvent message);
-}
-
-public interface IZLinkRoutedSpotClient
-{
-    IZLinkRoutedSpotEgressClient ViaEgressChannel(
-        string localEgressChannelName);
-}
-
-public interface IZLinkRoutedSpotEgressClient
-{
-    IZLinkSendCall SendSpot<TMessage>(
-        RoutingId spotRid,
-        TMessage message);
-
-    IZLinkRequestCall RequestSpot<TRequest>(
-        RoutingId spotRid,
-        TRequest request);
-}
-
 public interface IZLinkSpotPublisherClient
 {
     IZLinkPublishCall PublishSpot<TEvent>(

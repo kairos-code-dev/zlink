@@ -15,7 +15,7 @@
 
 현재 framework 는 session actor relay 를 application route mesh channel 로 보내지 않는다.
 STREAM session 이 사용할 local SpotNode 를 `AttachActorGateway(...)` 로 지정하고,
-`BindActorAsync(...)` 는 local actor handle 또는 framework 가 발급한 remote actor
+`BindAsync(...)` 는 local actor handle 또는 framework 가 발급한 remote actor
 locator 를 core ActorGateway 경로에 bind 한다.
 
 ```csharp
@@ -44,7 +44,7 @@ session handler 는 route mesh channel 이름이나 router socket 을 알 필요
 Session 서버는 그 actor ref 로 bind 한다.
 
 ```csharp
-var actor = await Context.BindActorAsync(
+var actor = await Context.Actors.BindAsync(
     actorRef,
     cancellationToken);
 
@@ -58,23 +58,19 @@ await actor.RelayAsync(
 
 ### 2.1 session side
 
-`IZLinkSessionActorBindingContext` 는 local bind 와 actor ref bind 를 모두 제공한다. actor ref bind 의
+`IZLinkSessionActors` 는 local bind 와 actor ref bind 를 모두 제공한다. actor ref bind 의
 `ActorRef` 는 actor 생성 또는 join 결과에서 얻은 최종 actor 위치다. 사용자가 별도 remote address
 resolver 를 호출해서 session hot path 에 locator 를 주입하지 않는다.
 
 ```csharp
-public interface IZLinkSessionActorBindingContext
+public interface IZLinkSessionActors
 {
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        string actorId,
+    ValueTask<IZLinkSessionActor> BindAsync(
+        IZLinkActor actor,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IZLinkSessionActor> BindActorAsync(
+    ValueTask<IZLinkSessionActor> BindAsync(
         ActorRef actor,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        IZLinkSessionActor actor,
         CancellationToken cancellationToken = default);
 
 }
@@ -114,7 +110,7 @@ actor request handler 의 반환값과 원래 request correlation 으로 처리�
 | 영역 | 현재 적용 기준 |
 |------|----------------|
 | stream initialization | `ZLinkStreamRuntimeManager` 가 stream bind 전에 configured SpotNode 에 `AttachActorGateway(...)` 를 호출한다 |
-| session bind | `ZLinkSessionActorCoordinator` 가 local actor ref 또는 remote locator 에서 얻은 actor ref 를 backend stream `BindActorAsync(...)` 로 넘긴다 |
+| session bind | `ZLinkSessionActorCoordinator` 가 local actor ref 또는 remote locator 에서 얻은 actor ref 를 backend stream `BindAsync(...)` 로 넘긴다 |
 | session relay | `IZLinkSessionActor.RelayAsync(...)` 는 framework route mesh packet 을 만들지 않고 backend stream `SendBoundActor(...)` 를 사용한다 |
 | actor push | `ZLinkBoundSessionService` 가 backend ActorGateway send wrapper 로 내려간다 |
 | actor disconnect | `BoundSession.DisconnectAsync(...)` 는 backend ActorGateway close wrapper 로 내려간다 |

@@ -35,6 +35,8 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
             services.AddSingleton(actorRecorder);
             services.AddScoped<GatewayActorFactory>();
             services.AddScoped<GatewayActorHandler>();
+            services.AddScoped<GatewayEntrySpot>();
+            services.AddScoped<GatewayEntrySpotActorHandler>();
             services.AddScoped<GatewaySessionDisconnectHandler>();
             services.AddScoped<GatewaySessionDisconnectRequestHandler>();
             services.AddZLinkFramework(options =>
@@ -51,6 +53,7 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
                         router.SetRoutingId(playRid);
                         router.UseManualConnections(connections => connections.Connect(sessionSpotRouterEndpoint));
                     });
+                    spot.AddEntrySpot<GatewayEntrySpot>();
                 });
                 });
             });
@@ -106,7 +109,10 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
                     ZlinkStreamMetadata.Empty),
                 JsonSerializer.SerializeToUtf8Bytes(new GatewayPing("bind-remote"), JsonOptions)));
             var bindReply = ReceiveFrame(network, new ZlinkStreamRequestSeq(201));
-            var bindBody = JsonSerializer.Deserialize<GatewayPong>(bindReply.Payload, JsonOptions);
+            var bindPayload = (bindReply.Header.Flags & ZlinkStreamHeaderFlags.PayloadCompressed) != 0
+                ? ZLinkStreamProtocolDefaults.Lz4Decompress(bindReply.Payload).ToArray()
+                : bindReply.Payload;
+            var bindBody = JsonSerializer.Deserialize<GatewayPong>(bindPayload, JsonOptions);
             Assert.True(
                 bindReply.Header.Kind == ZlinkStreamMessageKind.Response,
                 Encoding.UTF8.GetString(bindReply.Payload));

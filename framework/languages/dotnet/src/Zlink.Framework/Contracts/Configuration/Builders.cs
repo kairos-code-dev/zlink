@@ -20,7 +20,7 @@ public interface IChannelClientCapabilityBuilder
 
     void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure);
 
-    void UseManualConnections(Action<IChannelClientConnections> configure);
+    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
 }
 
 public interface IDealerMeshChannelClientCapabilityBuilder : IChannelClientCapabilityBuilder
@@ -39,7 +39,7 @@ public interface IChannelSubscriberCapabilityBuilder
 {
     void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
-    void UseManualConnections(Action<IChannelSubscriberConnections> configure);
+    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
 }
 
 public interface ISpotRouterCapabilityBuilder
@@ -52,7 +52,7 @@ public interface ISpotRouterCapabilityBuilder
 
     void ConfigureRouting(Action<IZLinkRouteConfig> configure);
 
-    void UseManualConnections(Action<ISpotRouterConnections> configure);
+    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
 }
 
 public interface ISpotPubSubCapabilityBuilder
@@ -65,14 +65,14 @@ public interface ISpotPubSubCapabilityBuilder
 
     void ConfigureSubscriberConfig(Action<IZLinkSpotSubscriberConfig> configure);
 
-    void UseManualConnections(Action<ISpotPubSubConnections> configure);
+    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
 }
 
 public interface ISpotPublisherClientCapabilityBuilder
 {
     void ConfigureSocket(Action<IZLinkSocketConfig> configure);
 
-    void UseManualConnections(Action<ISpotPublisherConnections> configure);
+    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
 }
 
 public interface ISpotChannelClientCapabilityBuilder
@@ -81,16 +81,7 @@ public interface ISpotChannelClientCapabilityBuilder
 
     void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure);
 
-    void UseManualConnections(Action<IChannelClientConnections> configure);
-}
-
-public interface IRouteChannelConnections
-{
-    void Connect(string endpoint);
-
-    void Disconnect(string endpoint);
-
-    IReadOnlyList<string> ListConnections();
+    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
 }
 
 public interface IZLinkRouteChannelBuilder
@@ -101,7 +92,7 @@ public interface IZLinkRouteChannelBuilder
 
     void ConfigureRouting(Action<IZLinkRouteConfig> configure);
 
-    void UseManualConnections(Action<IRouteChannelConnections> configure);
+    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
 
     void AddHandlerGroup(string groupName);
 
@@ -201,10 +192,6 @@ public interface IZLinkSpotNodeBuilder
         string channelName,
         Action<ISpotChannelClientCapabilityBuilder>? configure = null);
 
-    void AttachClientServerChannelClient(
-        string channelName,
-        Action<ISpotChannelClientCapabilityBuilder>? configure = null);
-
     void AttachSpotPublisherClient(
         string channelName,
         Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
@@ -228,16 +215,7 @@ public interface IZLinkSpotMeshNodeBuilder : IZLinkSpotNodeBuilder
 
 public interface IZLinkSpotRouteChannelAcceptanceBuilder
 {
-    void UseManualConnections(Action<ISpotRouterChannelConnections> configure);
-}
-
-public interface ISpotRouterChannelConnections
-{
-    void Connect(string endpoint);
-
-    void Disconnect(string endpoint);
-
-    IReadOnlyList<string> ListConnections();
+    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
 }
 
 public interface IZLinkSpotMeshBuilder
@@ -314,5 +292,5 @@ public interface IZLinkFrameworkOptions
 
 public interface IZLinkMetadataPolicyBuilder
 {
-    void ForwardApplicationKey(string key);
+    void Forward(string key);
 }

@@ -84,7 +84,7 @@ internal static class FixtureSamples
                     {
                         pubsub.SetPubBind("tcp://127.0.0.1:7301");
                     });
-                    spot.AttachClientServerChannelClient("orders", client =>
+                    spot.AttachChannelClient("orders", client =>
                     {
                         client.UseManualConnections(connections =>
                         {
@@ -218,7 +218,7 @@ internal sealed class FixtureStageSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddSubscribe<FixtureSpotSubscriptionHandler>("stage.event");
+        Context.Handlers.AddSubscribe<FixtureSpotSubscriptionHandler>("stage.event");
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)
@@ -230,7 +230,7 @@ internal sealed class FixtureStageSpot(IZLinkSpotContext context) : IZLinkSpot
     }
 }
 
-internal sealed class FixtureSpotTimerHandler(IZLinkSpotClient spotClient)
+internal sealed class FixtureSpotTimerHandler
     : IZLinkSpotTimerHandler<FixtureStageSpot>
 {
     public async ValueTask HandleAsync(
@@ -239,7 +239,7 @@ internal sealed class FixtureSpotTimerHandler(IZLinkSpotClient spotClient)
         CancellationToken cancellationToken)
     {
         _ = tick;
-        await spotClient.PublishSpot("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
+        await spot.Context.Outbound.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
             .Submit(cancellationToken);
     }
 }
@@ -322,7 +322,7 @@ internal sealed class FixtureActorSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddActorJoin<FixtureActorJoinHandler, FixtureActor, FixtureActorJoinRequest, FixtureActorJoinReply>();
+        Context.Handlers.AddActorJoin<FixtureActorJoinHandler, FixtureActor, FixtureActorJoinRequest, FixtureActorJoinReply>();
     }
 }
 
@@ -414,14 +414,14 @@ internal sealed class FixtureActorPacketSession(
 
     public async ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        await actors.GetOrCreateAsync(
+        var actor = await actors.GetOrCreateAsync(
                 "fixture",
                 "hero",
                 cancellationToken)
             .ConfigureAwait(false);
 
-        _actor = await Context.BindActorAsync(
-            "fixture",
+        _actor = await Context.Actors.BindAsync(
+            actor,
             cancellationToken);
     }
 

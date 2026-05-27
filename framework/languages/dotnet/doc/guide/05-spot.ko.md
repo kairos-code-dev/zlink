@@ -56,7 +56,7 @@ builder.Services.AddZLinkFramework(options =>
             {
                 pubsub.SetPubBind("tcp://0.0.0.0:9000");
             });                                                // 현재 channel publish/subscribe
-            node.AttachClientServerChannelClient("orders");   // 다른 channel 로 send/request
+            node.AttachChannelClient("orders");   // 다른 channel 로 send/request
             node.AddSpotFactory<StageSpot>();          // 이 노드가 만들 타입
         });
     });
@@ -70,7 +70,7 @@ node capability 는 서로 독립이다.
 | `Bind(endpoint)` | 노드의 local endpoint |
 | `EnableRouter(router => router.SetRouterBind(endpoint))` | 다른 SpotNode/채널에서 오는 routed packet 수신 |
 | `EnablePubSub()` | 현재 SPOT channel 의 publish/subscribe (없으면 `Publish` 불가) |
-| `AttachClientServerChannelClient(name)` | 일반 channel 로 send/request 하는 client 부착 |
+| `AttachChannelClient(name)` | 일반 channel 로 send/request 하는 client 부착 |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
 
@@ -184,8 +184,8 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
             // 이전 tick 이 밀렸다는 뜻이다. 무거운 보정 작업은 여기서 줄일 수 있다.
         }
 
-        await spot.Context
-            .PublishSpot("stage.heartbeat", new StageHeartbeat(spot.Context.SpotRid, tick.StartedAt))
+        await spot.Context.Outbound
+            .Publish("stage.heartbeat", new StageHeartbeat(spot.Context.SpotRid, tick.StartedAt))
             .Submit(cancellationToken);
     }
 }
@@ -331,14 +331,14 @@ timer instance 의 callback 은 겹쳐 실행되지 않는다.
 spot 인스턴스는 handler 가 아니라 `IZLinkSpotManager` 로 생성·조회한다.
 
 ```csharp
-public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotClient client)
+public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotPublisherClient publisher)
 {
     public async Task<string> OpenAsync(CancellationToken ct)
     {
         ZLinkSpotCreateResult stage = await spots.CreateAsync<StageSpot>(ct);
 
-        await client
-            .PublishSpot("stage.state.updated",
+        await publisher
+            .Publish("game.stage", "stage.state.updated",
                 new StageStateUpdatedEvent(stage.SpotRid.ToString()))
             .Submit(ct);
 
@@ -361,95 +361,52 @@ SPOT 에서 밖으로 나가는 호출은 세 축으로 나뉜다.
 
 ```mermaid
 flowchart TD
-  Spot[현재 Spot callback] -->|"(a) PublishSpot(topic, ...)"| Sub[현재 channel 구독자]
+  Spot[Current Spot callback] -->|"(a) Publish(topic, ...)"| Sub[Current channel subscribers]
   Spot -->|"(b) SendChannel / RequestChannel"| Ch[attach 된 일반 channel]
   Spot -->|"(c) SendSpot / RequestSpot"| OtherSpot[다른 Spot]
 ```
 
-### (a)(b)(c) current Spot 안에서 — `IZLinkSpotClient`
+### (a)(b)(c) current Spot 안에서 — `IZLinkSpotOutbound`
 
 ```csharp
-public sealed class StageNoticeHandler(IZLinkSpotClient client)
+public sealed class StageNoticeHandler
     : IZLinkSpotRequestHandler<StageSpot, BroadcastRequest, BroadcastReply>
 {
     public async ValueTask<BroadcastReply> HandleAsync(
         StageSpot spot, BroadcastRequest request, CancellationToken ct)
     {
+        var outbound = spot.Context.Outbound;
+
         // (a) 현재 channel 의 topic 으로 publish
-        await client.PublishSpot("stage.notice", new StageNoticeEvent(request.Text)).Submit(ct);
+        await outbound.Publish("stage.notice", new StageNoticeEvent(request.Text)).Submit(ct);
 
         // (b) attach 된 일반 channel 로 send/request
-        await client.SendChannel("orders", new RoomNoticeMessage(request.Text)).Submit(ct);
-        var state = await client
+        await outbound.SendChannel("orders", new RoomNoticeMessage(request.Text)).Submit(ct);
+        var state = await outbound
             .RequestChannel("orders", new GetOrderStateRequest())
             .Timeout(TimeSpan.FromMilliseconds(200))
             .SubmitAsync<GetOrderStateReply>(ct);
 
         // (c) 다른 Spot 으로 (RoutingId)
-        await client.SendSpot(spotRid, new StageNoticeEvent(request.Text)).Submit(ct);
+        await outbound.SendSpot(spotRid, new StageNoticeEvent(request.Text)).Submit(ct);
 
         return new BroadcastReply(state.Count);
     }
 }
 ```
 
-### routed Spot 호출 — current Spot 밖에서
+### current Spot 밖에서
 
 HTTP handler, 일반 channel handler, background service 처럼 **current Spot 이
-없는** 코드에서 특정 Spot 으로 호출할 때는 `IZLinkRoutedSpotClient` 를 쓰고, 사용할
-local egress channel 을 **명시적으로** 고른다.
+없는** 코드에는 target Spot 으로 직접 send/request 하는 public client 를 두지 않는다.
+이 경로에서는 actor 생성 또는 Entry Spot join 으로 `ActorRef` 를 얻고, session 이
+필요하면 그 ref 를 session actor handle 로 bind 한다. current Spot callback 안에서만
+`spot.Context.Outbound.SendSpot(...)` 과 `spot.Context.Outbound.RequestSpot(...)` 을
+사용한다.
 
-```csharp
-app.MapPost("/stage/{rid}/query", async (
-    string rid,
-    IZLinkRoutedSpotClient spots,
-    CancellationToken cancellationToken) =>
-{
-    var reply = await spots
-        .ViaEgressChannel("gateway.client")             // 내가 쓸 local egress channel
-        .RequestSpot(RoutingId.From(rid), new GetStageStateRequest())  // target Spot
-        .SubmitAsync<GetStageStateReply>(cancellationToken);
-
-    return Results.Ok(reply);
-});
-```
-
-이 경로의 배선은 세 부분으로 구성된다.
-
-1. **local egress channel** — 호출 측 프로세스에 `EnableSpotRouteEgress(...)` 가
-   걸린 client-server DEALER channel(또는 route mesh channel).
-2. **target SpotNode ingress channel** — 받는 SpotNode 에
-   `EnableRouter(router => router.SetRouterBind(endpoint))` +
-   `AcceptSpotRoutesFromChannel(name)` 가 걸린 ingress.
-3. **target Spot routing id** — `RoutingId`.
-
-```csharp
-// 호출 측: local egress channel 등록
-options.AddClientServerChannel("gateway.client", channel =>
-{
-    channel.EnableClient(client =>
-        client.UseManualConnections(peers => peers.Connect("tcp://play-node-1:7201")));
-    channel.EnableSpotRouteEgress("play.route");   // 값은 target 의 ingress channel 이름
-});
-
-// 받는 측(SpotNode): ingress 수용
-mesh.AddNode("play-node", node =>
-{
-    node.EnableRouter(router =>
-    {
-        router.SetRouterBind("tcp://0.0.0.0:7202");
-    });
-    node.AcceptSpotRoutesFromChannel("play.route");
-});
-```
-
-> **혼동 주의:** `EnableSpotRouteEgress("play.route")` 의 값은 local channel 이름이
-> 아니라 **target SpotNode 가 `AcceptSpotRoutesFromChannel("play.route")` 로 연
-> ingress channel 이름**이다. target Spot 은 문자열이 아니라 `RoutingId` 로 넘긴다.
-
-`AcceptSpotRoutesFromChannel(...)` 은 application handler 매핑이 아니라 **transport
-연결**이다. router-capable channel 두 종류(`AddClientServerChannel` 의 server
-ROUTER, `AddRouteMeshChannel` 의 route mesh ROUTER)를 ingress 로 받을 수 있다.
+이 경로는 session actor binding 또는 channel request 같은 더 높은 수준의 흐름으로
+표현한다. Spot transport 의 세부 배선은 application guide 가 아니라 internals 문서에서
+다룬다.
 
 ### local spot 없는 노드에서 publish — `IZLinkSpotPublisherClient`
 
@@ -462,7 +419,7 @@ app.MapPost("/stage/publish", async (
     CancellationToken ct) =>
 {
     await spotPublisher
-        .PublishSpot("game.stage", "stage.state.updated",
+        .Publish("game.stage", "stage.state.updated",
             new StageStateUpdatedEvent(request.StageRid))
         .Submit(ct);
     return Results.Accepted();

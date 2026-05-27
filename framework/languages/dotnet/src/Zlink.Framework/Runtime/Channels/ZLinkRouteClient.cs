@@ -20,7 +20,7 @@ internal interface IZLinkMultipartRouteClient : IZLinkRouteClient
 
 internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMultipartRouteClient
 {
-    public IZLinkRouteSendCall Send<TMessage>(
+    public IZLinkSendCall Send<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TMessage message)
@@ -28,7 +28,7 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkMu
         return new ZLinkRouteSendCall<TMessage>(runtime, routerChannelId, targetNodeRid, message);
     }
 
-    public IZLinkRouteRequestCall Request<TRequest>(
+    public IZLinkRequestCall Request<TRequest>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request)
@@ -78,11 +78,11 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
     ZLinkFrameworkRuntime runtime,
     string routerChannelId,
     RoutingId targetNodeRid,
-    TMessage message) : IZLinkRouteSendCall
+    TMessage message) : IZLinkSendCall
 {
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(message);
 
-    public IZLinkRouteSendCall PacketName(string packetName)
+    public IZLinkSendCall PacketName(string packetName)
     {
         _packetName = packetName;
         return this;
@@ -102,18 +102,18 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
     ZLinkFrameworkRuntime runtime,
     string routerChannelId,
     RoutingId targetNodeRid,
-    TRequest request) : IZLinkRouteRequestCall
+    TRequest request) : IZLinkRequestCall
 {
     private string? _packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
     private TimeSpan? _timeout;
 
-    public IZLinkRouteRequestCall PacketName(string packetName)
+    public IZLinkRequestCall PacketName(string packetName)
     {
         _packetName = packetName;
         return this;
     }
 
-    public IZLinkRouteRequestCall Timeout(TimeSpan timeout)
+    public IZLinkRequestCall Timeout(TimeSpan timeout)
     {
         _timeout = timeout;
         return this;

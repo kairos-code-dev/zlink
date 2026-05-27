@@ -187,7 +187,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         using var provider = services.BuildServiceProvider();
         Assert.Null(provider.GetService<IZLinkSpotManager>());
-        Assert.Null(provider.GetService<IZLinkSpotClient>());
+        Assert.Null(provider.GetService<IZLinkSpotOutbound>());
         Assert.Null(provider.GetService<IZLinkSpotPublisherClient>());
     }
 
@@ -213,7 +213,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         using var provider = services.BuildServiceProvider();
         Assert.NotNull(provider.GetService<IZLinkSpotManager>());
-        Assert.NotNull(provider.GetService<IZLinkSpotClient>());
+        Assert.NotNull(provider.GetService<IZLinkSpotOutbound>());
     }
 
     [Fact]
@@ -502,7 +502,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_DoesNot_Register_SpotClient_With_Resolver_Only()
+    public void AddZLinkFramework_DoesNot_Register_SpotOutbound_With_Resolver_Only()
     {
         var services = new ServiceCollection();
 
@@ -512,7 +512,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         });
 
         using var provider = services.BuildServiceProvider();
-        Assert.Null(provider.GetService<IZLinkSpotClient>());
+        Assert.Null(provider.GetService<IZLinkSpotOutbound>());
     }
 
 }

@@ -135,7 +135,7 @@ builder.Services.AddZLinkFramework(options =>
             {
                 pubsub.SetPubBind("tcp://0.0.0.0:9000");
             });
-            node.AttachClientServerChannelClient("orders");
+            node.AttachChannelClient("orders");
             node.AttachSpotPublisherClient("game.stage");
             node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>();
@@ -184,8 +184,8 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
     같은 channel에 속한 다른 `SpotNode`와 routed packet을 주고받는 축이다.
 - `EnablePubSub()`
   - 현재 SPOT channel 안의 publish/subscribe 축을 켠다. local spot 안에서
-    `IZLinkSpotClient.PublishSpot(...)`를 사용하려면 이 capability가 필요하다.
-- `AttachClientServerChannelClient("orders")`
+    `spot.Context.Outbound.Publish(...)`를 사용하려면 이 capability가 필요하다.
+- `AttachChannelClient("orders")`
   - `orders` channel로 outbound[^outbound] send/request를 보낼
     `DEALER(client)`[^dealer-router] 경로를 붙인다.
 - `AttachSpotPublisherClient("game.stage")`
@@ -408,7 +408,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachClientServerChannelClient("orders", client =>
+            node.AttachChannelClient("orders", client =>
             {
                 client.UseManualConnections(peers =>
                 {
@@ -559,7 +559,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachClientServerChannelClient("orders", client =>
+            node.AttachChannelClient("orders", client =>
             {
                 client.ConfigureSocket(socket =>
                 {
@@ -723,8 +723,9 @@ startup 시점에 예외를 던진다. 설정 실수를 바로 드러내는 쪽�
 ```csharp
 var stage = await spotManager.CreateAsync<StageSpot>(cancellationToken);
 
-await spotClient
-    .PublishSpot(
+await spotPublisherClient
+    .Publish(
+        "game.stage",
         "stage.state.updated",
         new StageStateUpdatedEvent
         {
@@ -764,13 +765,13 @@ factory resolve, activation, `OnCreateAsync(...)`, `OnInitializeAsync(...)` 실�
 - `targetRid + spotRid` 를 직접 받는 raw 호출은 하부 바인딩에 남아 있더라도,
   application guide 의 기본 API 로는 문서화하지 않는다.
 
-`IZLinkSpotClient` 인터페이스의 전체 정의는
+`IZLinkSpotOutbound` 인터페이스의 전체 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 section 5.2 를
 참고한다. 현재 방향에서는 `SendSpot(...)`, `RequestSpot(...)`,
 `SendChannel(...)`, `RequestChannel(...)`, `Publish(...)` 를 함께 제공한다.
-SPOT 구현 안에서는 같은 호출 표면이 `IZLinkSpotContext` 와
-`IZLinkEntrySpotContext` 에도 직접 노출된다. 즉 handler 나 lifecycle callback
-안에서는 별도 client 를 찾지 않고 `Context.RequestSpot(...)` 처럼 호출한다.
+SPOT 구현 안에서는 이 호출 표면이 `IZLinkSpotContext.Outbound` 와
+`IZLinkEntrySpotContext.Outbound` 에 노출된다. 즉 handler 나 lifecycle callback
+안에서는 별도 client 를 찾지 않고 `Context.Outbound.RequestSpot(...)` 처럼 호출한다.
 timer 는 `IZLinkSpotContext.AddTimer<THandler>(...)` 처럼 spot lifecycle
 registration 표면으로 두는 쪽이 더 자연스럽다.
 
@@ -783,47 +784,43 @@ framework application 문서에서는 backend / internal transport helper 로만
 예를 들면 다음과 같이 사용할 수 있다.
 
 ```csharp
-await client
+await spot.Context.Outbound
     .SendChannel(
         "orders",
         new RoomNoticeMessage())
     .Submit(cancellationToken);
 
-var reply = await client
+var reply = await spot.Context.Outbound
     .RequestChannel(
         "orders",
         new GetStageStateRequest())
     .Timeout(TimeSpan.FromMilliseconds(200))
     .SubmitAsync<GetStageStateReply>(cancellationToken);
 
-await client
+await spot.Context.Outbound
     .SendSpot(
-        "stage-17",
+        stage.SpotRid,
         new StageNoticeMessage())
     .Submit(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer 도 함께 필요하다. 다만 현재
-초안은 이를 `IZLinkSpotClient` 의 callback scheduler 로 두지 않는다. 대신
+초안은 이를 `IZLinkSpotOutbound` 의 callback scheduler 로 두지 않는다. 대신
 `IZLinkSpotContext.AddTimer<THandler>(...)` 로 등록하는 lifecycle timer 한 가지
 모델로 정리한다. 그래야 stage state 를 별도 lock 없이 다루는 상위 모델을
 설명하기 쉬워진다.
 
-다만 이 관계를 `IZLinkChannelClient` 위에 `IZLinkSpotClient` 를 얹는 형태로 설명하면
+다만 이 관계를 `IZLinkChannelClient` 위에 `IZLinkSpotOutbound` 를 얹는 형태로 설명하면
 안 된다. 두 인터페이스는 하부에서 서로 다른 C API 를 감싸기 때문이다. 현재
 방향에서는 책임을 다음과 같이 나눈다.
 
 - `IZLinkChannelClient` 는 일반 channel messaging 을 맡는다.
-- `IZLinkSpotClient` 는 current SPOT channel publish, 다른 channel
+- `IZLinkSpotOutbound` 는 current SPOT channel publish, 다른 channel
   send / request, spot-routed send / request 를 맡는다.
 
-`IZLinkSpot` 기반 클래스의 `protected Publish(topic, message)` 편의 메서드는
-`IZLinkSpotClient.PublishSpot(...)` 를 내부적으로 위임한다. 즉 spot 코드에서 직접
-`Publish(...)` 를 호출하는 것과, `IZLinkSpotClient` 를 constructor
-injection[^constructor-injection] 해서 호출하는 것은 같은 경로를 사용한다.
-다만 `IZLinkSpot` 외부에서 현재 SPOT channel 로 publish 하는 경우에는
-`IZLinkSpotClient` 를 명시적으로 주입받아 쓰는 쪽이 의도를 더 분명하게
-드러낸다.
+local Spot callback 안에서는 `spot.Context.Outbound.Publish(...)` 를 호출한다.
+`IZLinkSpot` 외부에서 특정 SPOT channel 로 publish 하는 경우에는
+`IZLinkSpotPublisherClient.PublishSpot(channelName, topic, ...)` 를 사용한다.
 
 ## 6. publish 모델 초안
 
@@ -833,7 +830,7 @@ SPOT channel publish 를 본다.
 
 ### 6.1 topic publish
 
-`IZLinkSpotClient` 는 spot-to-spot routed call 과 publish 를 함께 가질 수 있다
+`IZLinkSpotOutbound` 는 spot-to-spot routed call 과 publish 를 함께 가질 수 있다
 ([handler-interfaces.ko.md](./handler-interfaces.ko.md) section 5.2 참고).
 이렇게 둔 이유는 `SPOT` 쪽에서 두 기능을 함께 쓰는 경우가 많기 때문이다.
 
@@ -854,21 +851,21 @@ SPOT channel publish 를 본다.
 channel messaging[^channel-messaging] 과 비슷한 builder 감각으로 읽힌다.
 
 ```csharp
-var reply = await spotClient
+var reply = await spot.Context.Outbound
     .RequestChannel(
         "orders",
         new GetStageStateRequest())
     .Timeout(TimeSpan.FromMilliseconds(200))
     .SubmitAsync<GetStageStateReply>(cancellationToken);
 
-await spotClient
+await spot.Context.Outbound
     .SendSpot(
-        "stage-17",
+        stage.SpotRid,
         new StageNoticeMessage())
     .Submit(cancellationToken);
 
-await spotClient
-    .PublishSpot(
+await spot.Context.Outbound
+    .Publish(
         "stage.state.updated",
         new StageStateUpdatedEvent())
     .Submit(cancellationToken);
@@ -881,13 +878,13 @@ await spotClient
 ### 6.2 외부 노드에서의 SPOT channel publish
 
 local spot 인스턴스를 가지지 않는 외부 노드가 특정 SPOT channel 로 publish
-해야 하는 경우도 있다. 이때는 `IZLinkSpotClient.PublishSpot(...)` 가 아니라
+해야 하는 경우도 있다. 이때는 `spot.Context.Outbound.Publish(...)` 가 아니라
 `IZLinkSpotPublisherClient.PublishSpot(channelName, topic, ...)` 를 사용한다
 ([handler-interfaces.ko.md](./handler-interfaces.ko.md) section 5.3 참고).
 
 ```csharp
 await spotPublisherClient
-    .PublishSpot(
+    .Publish(
         "game.stage",
         "stage.state.updated",
         new StageStateUpdatedEvent())
@@ -961,7 +958,7 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
   세 번째 인자인 `ZLinkTimerOptions` 로 overrun 정책과 handler 예외 정책을 정한다.
 - handler는 별도의 class로 두고, `StageSpot` 안에는 코어 로직만 남길 수 있다.
 - handler가 다른 서버나 다른 spot으로 outbound 호출을 해야 한다면 `IZLinkChannelClient`
-  또는 `IZLinkSpotClient`를 constructor injection으로 받는 쪽이 더 자연스럽다.
+  또는 `IZLinkSpotOutbound`를 constructor injection으로 받는 쪽이 더 자연스럽다.
 - framework는 per-spot scope[^per-spot-scope]를 만들고, 등록된 handler 타입을 그
   scope에서 자동으로 resolve하는 방식을 기본으로 본다.
 
@@ -1147,16 +1144,12 @@ target SpotNode 쪽 ingress channel 의 router-capable socket 과 SpotNode route
 transport peer 를 만든다. handler group 이 없어도 transport 전용 channel 로 사용할 수
 있고, 반대로 handler group 을 매핑해도 Spot route ingress 가 자동으로 켜지지는 않는다.
 
-Spot callback 밖의 channel handler, HTTP handler, background service 에서 target Spot 으로
-보내려면 `IZLinkRoutedSpotClient`를 사용한다. caller 는 target Spot 정보만 넘겨서 runtime
-이 transport 를 역조회하게 하지 않고, 사용할 local egress channel 을 먼저 고른다.
-
-```csharp
-var reply = await spots
-    .ViaEgressChannel("gateway.client")
-    .RequestSpot(RoutingId.From("room-123"), new AllocateRoomReq(playerId))
-    .SubmitAsync<AllocateRoomRes>(cancellationToken);
-```
+Spot callback 밖의 channel handler, HTTP handler, background service 에는 target
+Spot 으로 직접 send/request 하는 별도 public client 를 두지 않는다. 이 경로에서는
+actor 생성 또는 entry spot join 같은 도메인 흐름으로 `ActorRef` 를 얻고, session 이
+필요하면 그 ref 로 session actor handle 을 bind 한다. current Spot callback 안에서
+다른 Spot 으로 보내야 할 때만 `spot.Context.Outbound.SendSpot(...)` 또는
+`spot.Context.Outbound.RequestSpot(...)` 을 사용한다.
 
 local egress channel 은 client-server channel 의 client DEALER 이거나 route mesh channel 일
 수 있다. 두 경우 모두 channel builder 에 target SpotNode ingress channel 이름을 명시한다.

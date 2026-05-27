@@ -87,7 +87,7 @@ dispatch 가 가져간다. **per-room lock 도, Redis 세션 라우팅 캐시도
 
 ```csharp
 // Session 서버: 인증 후 actor 에 bind, 이후 패킷은 actor 로 relay
-public sealed class GameSession(IZLinkSessionContext context) : IZLinkSession
+public sealed class GameSession(IZLinkSessionContext context, IZLinkActorManager actors) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
     private IZLinkSessionActor? _actor;
@@ -98,8 +98,9 @@ public sealed class GameSession(IZLinkSessionContext context) : IZLinkSession
         if (header.Name == "auth")
         {
             var req = payload.Decode<AuthReq>();
-            _actor = await context.BindActorAsync(req.PlayerId, ct); // 재접속 멱등
-            await context.Reply(new AuthOk()).Submit(ct);
+            IZLinkActor actor = await actors.GetOrCreateAsync(req.PlayerId, "player", ct);
+            _actor = await context.Actors.BindAsync(actor, ct); // 재접속 멱등
+            await context.Client.Reply(new AuthOk()).Submit(ct);
             return;
         }
         await _actor!.RelayAsync(header, payload, ct);
@@ -144,7 +145,7 @@ options.AddSpotMesh("play", mesh => mesh.AddNode("play-node", n =>
 ```
 
 > **재접속 이전성은 framework 기본기.** 다른 Session 서버로 다시 붙어도
-> `BindActorAsync(playerId, ...)` 가 actor id 기준으로 멱등하게 이어지며,
+> `BindAsync(actor, ...)` 가 actor id 기준으로 멱등하게 이어지며,
 > actor 인스턴스와 spot membership 은 유지된다([06](../06-actor-session.ko.md) §4).
 > 즉 **Redis 세션 라우팅 캐시가 응용에서 빠진다.**
 
@@ -160,7 +161,7 @@ options.AddSpotMesh("play", mesh => mesh.AddNode("play-node", n =>
 | 축 | 기존(WS + Redis + 게임노드) | ZLink |
 |----|------------------------------|-------|
 | 연결 수용 | WebSocket gateway 직접 구현 | STREAM `IZLinkSession`(framework 소유) |
-| 재접속 라우팅 | Redis 세션 스토어 get/set | `BindActorAsync`(actorId 멱등) |
+| 재접속 라우팅 | Redis 세션 스토어 get/set | `BindAsync`(actorId 멱등) |
 | 방 직렬성 | per-room `lock`/actor runtime | SPOT 단일 실행 큐(lock 없음) |
 | 입력 처리 | `room.PlaceMark(...)` (lock 안) | `IZLinkSpotActorRequestHandler.HandleAsync` |
 | 연결/로직 분리 | gateway↔게임노드 라우팅 직접 | session actor dispatch |

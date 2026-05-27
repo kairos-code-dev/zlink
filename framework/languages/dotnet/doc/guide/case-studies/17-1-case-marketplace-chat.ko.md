@@ -153,7 +153,7 @@ ZLink 로 구축할 때도 DB, 검색, 첨부 저장소는 사라지지 않는�
 ### 3.3 코드 골격
 
 ```csharp
-public sealed class MarketplaceChatSession(IZLinkSessionContext context)
+public sealed class MarketplaceChatSession(IZLinkSessionContext context, IZLinkActorManager actors)
     : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -167,8 +167,9 @@ public sealed class MarketplaceChatSession(IZLinkSessionContext context)
         if (header.Name == "auth")
         {
             var req = payload.Decode<AuthReq>();
-            _user = await context.BindActorAsync(req.UserId, ct);
-            await context.Reply(new AuthOk()).Submit(ct);
+            IZLinkActor actor = await actors.GetOrCreateAsync(req.UserId, "chat-user", ct);
+            _user = await context.Actors.BindAsync(actor, ct);
+            await context.Client.Reply(new AuthOk()).Submit(ct);
             return;
         }
 

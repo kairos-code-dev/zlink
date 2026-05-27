@@ -382,7 +382,7 @@ public sealed class EventsTests
 
         public void Configure()
         {
-            Context.AddSubscribe<StageSubscriptionHandler>("stage.monitor");
+            Context.Handlers.AddSubscribe<StageSubscriptionHandler>("stage.monitor");
         }
     }
 

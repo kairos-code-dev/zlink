@@ -2,31 +2,15 @@ namespace Zlink.Framework.Contracts.Channels;
 
 public interface IZLinkRouteClient
 {
-    IZLinkRouteSendCall Send<TMessage>(
+    IZLinkSendCall Send<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TMessage message);
 
-    IZLinkRouteRequestCall Request<TRequest>(
+    IZLinkRequestCall Request<TRequest>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request);
-}
-
-public interface IZLinkRouteSendCall
-{
-    IZLinkRouteSendCall PacketName(string packetName);
-
-    ValueTask Submit(CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkRouteRequestCall
-{
-    IZLinkRouteRequestCall PacketName(string packetName);
-
-    IZLinkRouteRequestCall Timeout(TimeSpan timeout);
-
-    ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkRouteSendHandler<in TMessage>

@@ -36,7 +36,29 @@ public interface IZLinkSession
     }
 }
 
-public interface IZLinkSessionIdentityContext
+public interface IZLinkSessionClient
+{
+    IZLinkSessionSendCall Send<TMessage>(TMessage message);
+
+    IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
+}
+
+public interface IZLinkSessionActors
+{
+    IReadOnlyCollection<IZLinkSessionActor> Bound { get; }
+
+    ValueTask<IZLinkSessionActor> BindAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IZLinkSessionActor> BindAsync(
+        ActorRef actor,
+        CancellationToken cancellationToken = default);
+
+    IZLinkSessionActor? Find(string actorId);
+}
+
+public interface IZLinkSessionContext
 {
     string SessionId { get; }
 
@@ -45,45 +67,14 @@ public interface IZLinkSessionIdentityContext
     string? LocalAddr { get; }
 
     string? RemoteAddr { get; }
-}
 
-public interface IZLinkSessionClientStream
-{
-    IZLinkSessionSendCall Send<TMessage>(TMessage message);
+    IZLinkSessionClient Client { get; }
 
-    IZLinkSessionReplyCall Reply<TMessage>(TMessage message);
-}
+    IZLinkSessionActors Actors { get; }
 
-public interface IZLinkSessionActorBindingContext
-{
-    IReadOnlyCollection<IZLinkSessionActor> BoundActors { get; }
-
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        string actorId,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        ActorRef actor,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkSessionActor> BindActorAsync(
-        IZLinkSessionActor actor,
-        CancellationToken cancellationToken = default);
-
-    IZLinkSessionActor? FindActor(string actorId);
-}
-
-public interface IZLinkSessionLifecycle
-{
     ValueTask CloseAsync(
         CancellationToken cancellationToken = default);
 }
-
-public interface IZLinkSessionContext :
-    IZLinkSessionIdentityContext,
-    IZLinkSessionClientStream,
-    IZLinkSessionActorBindingContext,
-    IZLinkSessionLifecycle;
 
 public interface IZLinkSessionSendCall
 {

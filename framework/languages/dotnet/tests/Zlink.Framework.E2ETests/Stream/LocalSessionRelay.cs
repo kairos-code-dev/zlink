@@ -151,6 +151,7 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
         await missingActor.Context.JoinEntrySpot(playRid)
             .Timeout(TimeSpan.FromSeconds(5))
             .SubmitAsync();
+        var createdBeforeDispatch = actorRecorder.CreatedCount;
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
@@ -197,7 +198,7 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
 
             var error = ReceiveFrame(network, new ZlinkStreamRequestSeq(301));
             Assert.Equal(ZlinkStreamMessageKind.Error, error.Header.Kind);
-            Assert.Equal(0, actorRecorder.CreatedCount);
+            Assert.Equal(createdBeforeDispatch, actorRecorder.CreatedCount);
             callbackCapture.ThrowIfAny();
         }
         finally

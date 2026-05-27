@@ -185,7 +185,7 @@ public sealed class BuilderContracts
             client.ConfigureRouting(route => route.RoutingId = RoutingId.From("spot-api-client"));
             client.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5000"));
         });
-        spot.AttachClientServerChannelClient("api");
+        spot.AttachChannelClient("api");
         spot.AttachSpotPublisherClient("events", client => client.UseManualConnections(
             connections => connections.Connect("tcp://127.0.0.1:5100")));
         spot.AttachSpotPublisherClient("mesh-events");
@@ -361,18 +361,6 @@ public sealed class BuilderContracts
         public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
             configure(new ConnectionAndConfigContracts.ManualConnections());
 
-        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
-            configure(new ConnectionAndConfigContracts.ManualConnections());
-
-        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
-            configure(new ConnectionAndConfigContracts.ManualConnections());
-
-        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
-            configure(new ConnectionAndConfigContracts.ManualConnections());
-
-        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
-            configure(new ConnectionAndConfigContracts.ManualConnections());
-
         public void ConfigurePublisherConfig(Action<IZLinkSpotPublisherConfig> configure) =>
             configure(new ConnectionAndConfigContracts.SpotPublisherConfig());
 
@@ -495,11 +483,6 @@ public sealed class BuilderContracts
             configure?.Invoke(new CapabilityBuilder());
 
         public void AttachChannelClient(
-            string channelName,
-            Action<ISpotChannelClientCapabilityBuilder>? configure = null) =>
-            configure?.Invoke(new CapabilityBuilder());
-
-        public void AttachClientServerChannelClient(
             string channelName,
             Action<ISpotChannelClientCapabilityBuilder>? configure = null) =>
             configure?.Invoke(new CapabilityBuilder());

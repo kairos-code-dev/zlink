@@ -43,7 +43,7 @@ public abstract partial class SpotTestSupport
                 {
                     router.SetRouterBind(spotNode);
                 });
-                spot.AttachClientServerChannelClient("orders", client =>
+                spot.AttachChannelClient("orders", client =>
                 {
                     client.UseManualConnections(connections => connections.Connect(ordersServer));
                 });

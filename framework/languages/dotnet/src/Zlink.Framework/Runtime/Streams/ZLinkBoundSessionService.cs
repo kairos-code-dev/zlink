@@ -76,38 +76,19 @@ internal sealed class ZLinkBoundSessionService(
         byte[] frame,
         CancellationToken cancellationToken)
     {
-        var timeout = runtime.Registration.DefaultTimeout;
-        var retryDelay = TimeSpan.FromMilliseconds(25);
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        Exception? lastError = null;
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            using var frameMessage = Message.From(frame);
-            try
-            {
-                if (runtime.SendActorBoundSession(
+        await ZLinkRetryingSubmitter.SubmitAsync(
+                () =>
+                {
+                    using var frameMessage = Message.From(frame);
+                    return runtime.SendActorBoundSession(
                         actorId,
                         new[] { frameMessage },
-                        SendFlags.None))
-                {
-                    return;
-                }
-            }
-            catch (ZlinkSubmitException error) when (error.Result == ZlinkSubmitException.ErrorCode.NotConnected)
-            {
-                lastError = error;
-            }
-
-            if (elapsed.Elapsed >= timeout)
-            {
-                throw new InvalidOperationException("Actor bound session send failed.", lastError);
-            }
-
-            var remaining = timeout - elapsed.Elapsed;
-            await Task.Delay(remaining < retryDelay ? remaining : retryDelay, cancellationToken)
-                .ConfigureAwait(false);
-        }
+                        SendFlags.None);
+                },
+                runtime.Registration.DefaultTimeout,
+                "Actor bound session send failed.",
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private ValueTask<ZLinkActorBoundSession> ResolveSessionRouteAsync(

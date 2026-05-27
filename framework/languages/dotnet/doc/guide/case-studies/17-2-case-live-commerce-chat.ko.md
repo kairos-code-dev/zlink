@@ -158,7 +158,7 @@ ZLink 로 구축할 때는 stream room 을 SPOT 으로 두는 편이 자연스�
 ### 3.3 코드 골격
 
 ```csharp
-public sealed class LiveChatSession(IZLinkSessionContext context)
+public sealed class LiveChatSession(IZLinkSessionContext context, IZLinkActorManager actors)
     : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -172,8 +172,9 @@ public sealed class LiveChatSession(IZLinkSessionContext context)
         if (header.Name == "auth")
         {
             var req = payload.Decode<AuthViewerReq>();
-            _viewer = await context.BindActorAsync(req.ViewerId, ct);
-            await context.Reply(new AuthViewerOk()).Submit(ct);
+            IZLinkActor actor = await actors.GetOrCreateAsync(req.ViewerId, "viewer", ct);
+            _viewer = await context.Actors.BindAsync(actor, ct);
+            await context.Client.Reply(new AuthViewerOk()).Submit(ct);
             return;
         }
 

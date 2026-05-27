@@ -165,7 +165,7 @@ room actor 또는 SPOT 으로 둔다.
 ### 3.4 코드 골격
 
 ```csharp
-public sealed class GameChatSession(IZLinkSessionContext context)
+public sealed class GameChatSession(IZLinkSessionContext context, IZLinkActorManager actors)
     : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -179,8 +179,9 @@ public sealed class GameChatSession(IZLinkSessionContext context)
         if (header.Name == "auth")
         {
             var req = payload.Decode<AuthPlayerReq>();
-            _player = await context.BindActorAsync(req.PlayerId, ct);
-            await context.Reply(new AuthPlayerOk()).Submit(ct);
+            IZLinkActor actor = await actors.GetOrCreateAsync(req.PlayerId, "player", ct);
+            _player = await context.Actors.BindAsync(actor, ct);
+            await context.Client.Reply(new AuthPlayerOk()).Submit(ct);
             return;
         }
 

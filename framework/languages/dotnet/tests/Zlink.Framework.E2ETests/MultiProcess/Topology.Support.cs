@@ -230,7 +230,7 @@ public sealed partial class TopologyTests
 
         public void Configure()
         {
-            Context.AddSubscribe<LocalMonitoringStageSubscriptionHandler>("stage.monitor");
+            Context.Handlers.AddSubscribe<LocalMonitoringStageSubscriptionHandler>("stage.monitor");
         }
     }
 

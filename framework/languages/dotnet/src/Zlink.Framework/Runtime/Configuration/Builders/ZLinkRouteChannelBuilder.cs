@@ -23,7 +23,7 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
         configure(registration.RoutingConfig);
     }
 
-    public void UseManualConnections(Action<IRouteChannelConnections> configure)
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkMutableConnections(registration.ManualConnections));
     }

@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLinkSpotClient
+internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLinkSpotOutbound
 {
     public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message)
     {
@@ -20,27 +20,19 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
             request);
     }
 
+    public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
+    {
+        return ZLinkSpotAmbientContext.RequireCurrent().Publish(topic, message);
+    }
+
     public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
     {
-        return new ZLinkCurrentSpotSendCall<TMessage>(
-            ZLinkSpotAmbientContext.RequireCurrent(),
-            channelName,
-            message);
+        return ZLinkSpotAmbientContext.RequireCurrent().SendChannel(channelName, message);
     }
 
-    public IZLinkRequestCall RequestChannel<TMessage>(
-        string channelName,
-        TMessage request)
+    public IZLinkRequestCall RequestChannel<TMessage>(string channelName, TMessage request)
     {
-        return new ZLinkCurrentSpotRequestCall<TMessage>(
-            ZLinkSpotAmbientContext.RequireCurrent(),
-            channelName,
-            request);
-    }
-
-    public IZLinkPublishCall PublishSpot<TEvent>(string topic, TEvent message)
-    {
-        return ZLinkSpotAmbientContext.RequireCurrent().PublishSpot(topic, message);
+        return ZLinkSpotAmbientContext.RequireCurrent().RequestChannel(channelName, request);
     }
 
     private IZLinkSpotRemoteAddressResolver RequireRemoteAddressResolver()
@@ -48,7 +40,7 @@ internal sealed class ZLinkSpotClientService(IServiceProvider services) : IZLink
         return services.GetService(typeof(IZLinkSpotRemoteAddressResolver)) is IZLinkSpotRemoteAddressResolver resolver
             ? resolver
             : throw new ZLinkConfigurationException(
-                "IZLinkSpotClient remote address lookup requires AddSpotRemoteAddressResolver<TResolver>().");
+                "IZLinkSpotOutbound remote address lookup requires AddSpotRemoteAddressResolver<TResolver>().");
     }
 }
 

@@ -56,7 +56,7 @@ internal sealed class SessionRelaySession(
 
     private IZLinkSessionActor RequireSingleBoundActor(string action)
     {
-        var actors = Context.BoundActors;
+        var actors = Context.Actors.Bound;
         return actors.Count switch
         {
             1 => actors.Single(),

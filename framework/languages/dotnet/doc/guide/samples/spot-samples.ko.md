@@ -32,14 +32,14 @@
 
 다만 현재 구현 범위를 기준으로 보면, 이 문서는 두 층으로 나눠서 읽어야 한다.
 
-- 3.1 과 3.1.4, 그리고 이 절에 등장하는 `IZLinkSpot` / `IZLinkSpotClient`
+- 3.1 과 3.1.4, 그리고 이 절에 등장하는 `IZLinkSpot` / `IZLinkSpotOutbound`
   예시는 현재 framework core 의 public surface 에 맞춘 샘플이다.
 - 3.2.1 의 actor[^actor] / session[^session] membership 예시는 stage wrapper
   같은 상위 확장 아이디어를 메모해 둔 부분이다. 아직 framework core 의 public
   surface 는 아니다.
 - `targetRid + spotRid` 형태의 direct routed[^direct-routed] 호출은 framework
   public surface 에 포함하지 않는다. spot rid 기반 호출은 모두
-  `IZLinkSpotClient` 가 resolver[^resolver] 를 거쳐 처리한다.
+  `IZLinkSpotOutbound` 가 resolver[^resolver] 를 거쳐 처리한다.
 
 ## 2. 인터페이스 초안
 
@@ -77,7 +77,7 @@ public readonly record struct RoutingId(string Value)
     public override string ToString() => Value;
 }
 
-public interface IZLinkSpotOutboundContext
+public interface IZLinkSpotOutbound
 {
     IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,
@@ -93,7 +93,7 @@ public interface IZLinkSpotOutboundContext
         return default!;
     }
 
-    IZLinkPublishCall PublishSpot<TEvent>(
+    IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message)
     {
@@ -115,7 +115,7 @@ public interface IZLinkSpotOutboundContext
     }
 }
 
-public interface IZLinkSpotContext : IZLinkSpotOutboundContext
+public interface IZLinkSpotContext : IZLinkSpotOutbound
 {
     RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
@@ -234,7 +234,7 @@ public interface IZLinkChannelClient
         TMessage request);
 }
 
-public interface IZLinkSpotClient
+public interface IZLinkSpotOutbound
 {
     IZLinkSendCall SendSpot<TMessage>(
         RoutingId spotRid,
@@ -252,7 +252,7 @@ public interface IZLinkSpotClient
         string channelName,
         TMessage request);
 
-    IZLinkPublishCall PublishSpot<TEvent>(
+    IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message);
 }
@@ -357,7 +357,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachClientServerChannelClient("orders", client =>
+            node.AttachChannelClient("orders", client =>
             {
                 client.ConfigureSocket(socket =>
                 {
@@ -396,7 +396,7 @@ app.Run();
 이 코드에서 capability[^capability] 와 attach 함수가 각각 다른 역할을 맡는다.
 역할을 항목별로 짚어 보면 다음과 같다.
 
-- `AttachClientServerChannelClient("orders")`
+- `AttachChannelClient("orders")`
   - stage spot이 `orders` channel로 send / request를 보낼 때 사용할 outbound
     client를 붙인다.
 - `EnableRouter(router => router.SetRouterBind(endpoint))`
@@ -406,11 +406,10 @@ app.Run();
   - `play` client/server channel의 server `ROUTER`에서 이 node의 user Spot으로
     routed send/request를 보낼 수 있게 한다.
   - 같은 표면은 `AddRouteMeshChannel(...)`의 route mesh `ROUTER`에도 사용할 수 있다.
-  - 이 설정은 target SpotNode 쪽 ingress 연결이다. 보내는 쪽은 별도 channel 에
-    `EnableSpotRouteEgress("play")`를 두고, 호출 시
-    `IZLinkRoutedSpotClient.ViaEgressChannel(...)`로 그 local egress channel 을 고른다.
+  - 이 설정은 target SpotNode 쪽 ingress 연결이다. application public surface 에
+    별도 routed Spot egress client 를 노출하지 않는다.
 - `EnablePubSub()`
-  - local spot 문맥에서 `IZLinkSpotClient.PublishSpot(...)`를 호출할 수 있게 한다.
+  - local spot 문맥에서 `spot.Context.Outbound.Publish(...)`를 호출할 수 있게 한다.
 - `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
     수 있도록 별도의 publisher client를 붙인다.
@@ -471,7 +470,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachClientServerChannelClient("orders", client =>
+            node.AttachChannelClient("orders", client =>
             {
                 client.UseManualConnections(peers =>
                 {
@@ -587,7 +586,7 @@ builder.Services.AddZLinkFramework(options =>
                 });
             });
 
-            node.AttachClientServerChannelClient("orders", client =>
+            node.AttachChannelClient("orders", client =>
             {
                 client.ConfigureSocket(socket =>
                 {
@@ -678,12 +677,12 @@ spot 으로 outbound 호출만 하는 앱도 있을 수 있다. 이런 경우 �
 표면은 `IZLinkChannelClient` 다.
 
 local `SpotNode` 가 없으면 attach 된 channel client 경로도 존재할 수 없다.
-따라서 `IZLinkSpotClient.RequestChannel(...)` 같은 표면을 바로 사용하는
+따라서 `spot.Context.Outbound.RequestChannel(...)` 같은 표면을 바로 사용하는
 모델로 설명하면 안 된다.
 
-current Spot callback 안에서는 `spot.Context.SendSpot(...)` /
+current Spot callback 안에서는 `spot.Context.Outbound.SendSpot(...)` /
 `RequestSpot(...)` 을 사용한다. 일반 HTTP handler나 channel handler처럼 current Spot 이
-없는 코드에서 target Spot 으로 가야 하면 `IZLinkRoutedSpotClient`를 사용한다.
+없는 코드에는 target Spot 으로 직접 send/request 하는 별도 public client 를 두지 않는다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -719,13 +718,11 @@ var app = builder.Build();
 
 app.MapPost("/stage/query", async (
     GetStageStateHttpRequest request,
-    IZLinkRoutedSpotClient spots,
     CancellationToken cancellationToken) =>
 {
-    var reply = await spots
-        .ViaEgressChannel("gateway.client")
-        .RequestSpot(request.StageRid, new SampleGetStateRequest())
-        .SubmitAsync<SampleGetStateReply>(cancellationToken);
+    // current Spot 밖에서는 actor 생성 또는 Entry Spot join 으로 ActorRef 를 얻은 뒤
+    // session actor handle 로 bind 하는 흐름을 사용한다.
+    var reply = new SampleGetStateReply(request.StageRid.ToString());
 
     return Results.Ok(reply);
 });
@@ -915,7 +912,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 이 모델을 public 계약으로 노출하려면, actor join 은 `IZLinkSpot` 의 override
 가 아니라 다음 표면들의 조합으로 나타나야 한다.
 
-- session 의 `BindActorAsync(...)`
+- session 의 `BindAsync(...)`
 - `IZLinkActorContext.JoinSpot(...)`
 - `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` 또는
   `[ZLinkSpotActorJoin]` method
@@ -1124,7 +1121,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
     public ValueTask PublishSampleStateAsync(
         CancellationToken cancellationToken = default)
     {
-        return Context.PublishSpot(
+        return Context.Outbound.Publish(
             "sample.state.updated",
             new SampleStateUpdatedEvent
             {
@@ -1370,7 +1367,7 @@ public sealed class SampleSession
                     cancellationToken);
 
             Actor = actor;
-            var actorRef = await Context.BindActorAsync(
+            var actorRef = await Context.Actors.BindAsync(
                 auth.AccountId,
                 cancellationToken);
             ActorId = actorRef.ActorId;
@@ -1416,7 +1413,7 @@ public sealed class SampleSession
         }
 
         var actorRef = ActorId is not null
-            ? Context.FindActor(ActorId)
+            ? Context.Actors.Find(ActorId)
             : throw new InvalidOperationException("Actor is not bound.");
         actorRef ??= throw new InvalidOperationException("Actor is not bound.");
         await actorRef.RelayAsync(header, payload, cancellationToken);
@@ -1550,9 +1547,9 @@ framework 는 decode 된 header와 payload를 내부 dispatch 경로로 같은 `
  public sealed class SampleGetStateHandler
     : IZLinkSpotRequestHandler<SampleSpot, SampleGetStateRequest, SampleGetStateReply>
 {
-    private readonly IZLinkSpotClient _spotClient;
+    private readonly IZLinkSpotOutbound _spotClient;
 
-    public SampleGetStateHandler(IZLinkSpotClient spotClient)
+    public SampleGetStateHandler(IZLinkSpotOutbound spotClient)
     {
         _spotClient = spotClient;
     }
@@ -1583,9 +1580,9 @@ framework 는 decode 된 header와 payload를 내부 dispatch 경로로 같은 `
 public sealed class SampleReportStateHandler
     : IZLinkSpotPacketHandler<SampleSpot, SampleReportStateCommand>
 {
-    private readonly IZLinkSpotClient _spotClient;
+    private readonly IZLinkSpotOutbound _spotClient;
 
-    public SampleReportStateHandler(IZLinkSpotClient spotClient)
+    public SampleReportStateHandler(IZLinkSpotOutbound spotClient)
     {
         _spotClient = spotClient;
     }
@@ -1611,9 +1608,9 @@ public sealed class SampleReportStateHandler
 public sealed class SampleStateUpdatedHandler
     : IZLinkSpotSubscriptionHandler<SampleSpot, SampleStateUpdatedEvent>
 {
-    private readonly IZLinkSpotClient _spotClient;
+    private readonly IZLinkSpotOutbound _spotClient;
 
-    public SampleStateUpdatedHandler(IZLinkSpotClient spotClient)
+    public SampleStateUpdatedHandler(IZLinkSpotOutbound spotClient)
     {
         _spotClient = spotClient;
     }
@@ -1723,7 +1720,7 @@ server tick 수를 계산할 수 있다.
   `Context.SpotRid`, `Context.NodeRid` 를 상태로 가진다.
 - `SampleSpot` 안에는 상태와 코어 로직만 두고, packet 처리는 별도 handler
   클래스로 분리해도 된다.
-- handler 는 `IZLinkSpotClient` 를 constructor injection 으로 주입받을 수
+- handler 는 `IZLinkSpotOutbound` 를 constructor injection 으로 주입받을 수
   있다.
 - `SampleSpot` 과 그 spot 에 귀속된 handler, timer handler, join handler 는
   모두 같은 per-spot DI[^di] scope 에서 resolve 된다고 보는 편이 맞다.
@@ -1785,7 +1782,7 @@ packet 으로 본다.
 - packet 은 targeted delivery 다.
 
 handler 가 다른 서버나 다른 spot 으로 outbound 호출을 보내야 한다면,
-`SampleSpot` 에서 client 를 꺼내 쓰기보다 handler 가 `IZLinkSpotClient` 를
+`SampleSpot` 에서 client 를 꺼내 쓰기보다 handler 가 `IZLinkSpotOutbound` 를
 직접 주입받는 편이 더 자연스럽다. 이렇게 두면 책임이 다음과 같이 나뉜다.
 
 - `SampleSpot` 은 상태와 코어 로직에 집중한다.
@@ -1858,18 +1855,17 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
   - `SendChannel(...).Submit(...)`
 - attach된 다른 channel로 request packet을 보내고 싶다
   - `RequestChannel(...).Timeout(...).Submit(...)`
-- 다른 SPOT 인스턴스로 routed 호출을 보내고 싶다
-  - SPOT callback 안에서는 `Context.SendSpot(...)` /
-    `Context.RequestSpot(...)`처럼 `RoutingId`를 받는 표면을 사용한다.
-  - SPOT callback 밖에서는 `IZLinkRoutedSpotClient.ViaEgressChannel(...)`
-    로 egress channel 을 고른 뒤 `SendSpot(...)` / `RequestSpot(...)` 을
-    호출한다.
+  - 다른 SPOT 인스턴스로 routed 호출을 보내고 싶다
+  - SPOT callback 안에서는 `Context.Outbound.SendSpot(...)` /
+    `Context.Outbound.RequestSpot(...)`처럼 `RoutingId`를 받는 표면을 사용한다.
+  - SPOT callback 밖에서는 actor 생성 또는 Entry Spot join 으로 `ActorRef` 를 얻은 뒤
+    session actor handle 로 bind 한다.
 - 현재 spot 자신의 id를 알고 싶다
   - `SampleSpot.Context.SpotRid`
 - 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 확인하고 싶다
   - `IZLinkSpotManager.GetAsync(spotRid)` 또는 `ListAsync()`
 - stage 안에서 fan-out 하고 싶다
-  - `PublishSpot(topic, ...).Submit(...)`
+  - `Publish(topic, ...).Submit(...)`
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish하고 싶다
   - `IZLinkSpotPublisherClient.PublishSpot(channelName, topic, ...).Submit(...)`
 - stage 안에서 heartbeat timeout sweep 같은 주기 작업을 돌리고 싶다

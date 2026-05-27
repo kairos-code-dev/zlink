@@ -19,10 +19,10 @@ internal sealed class TicTacToeGameSpot(
 
     public void Configure()
     {
-        Context.AddActorJoin<TicTacToeGameJoinHandler>();
-        Context.AddHandler<PlaceMarkHandler>();
-        Context.AddHandler<TicTacToeGameSpotActorJoinedHandler>();
-        Context.AddHandler<TicTacToeGameSpotActorLeftHandler>();
+        Context.Handlers.AddActorJoin<TicTacToeGameJoinHandler>();
+        Context.Handlers.AddHandler<PlaceMarkHandler>();
+        Context.Handlers.AddHandler<TicTacToeGameSpotActorJoinedHandler>();
+        Context.Handlers.AddHandler<TicTacToeGameSpotActorLeftHandler>();
     }
 
     public ValueTask OnCreateAsync(

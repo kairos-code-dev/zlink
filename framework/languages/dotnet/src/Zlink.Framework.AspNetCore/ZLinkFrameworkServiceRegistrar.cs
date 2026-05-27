@@ -130,12 +130,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         if (HasSpotNode(registration))
         {
             services.AddSingleton<IZLinkSpotManager, ZLinkSpotManagerService>();
-            services.AddSingleton<IZLinkSpotClient, ZLinkSpotClientService>();
-        }
-
-        if (HasRoutedSpotEgress(registration))
-        {
-            services.AddSingleton<IZLinkRoutedSpotClient, ZLinkRoutedSpotClientService>();
+            services.AddSingleton<IZLinkSpotOutbound, ZLinkSpotOutboundService>();
         }
 
         if (HasSpotPublisherClient(registration))

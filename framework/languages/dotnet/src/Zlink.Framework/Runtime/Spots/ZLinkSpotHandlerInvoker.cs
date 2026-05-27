@@ -152,7 +152,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
 
         foreach (var (key, value) in header.Metadata.Values)
         {
-            if (policy.CanForwardApplicationKey(key))
+            if (policy.CanForward(key))
             {
                 application ??= new Dictionary<string, string>(StringComparer.Ordinal);
                 application[key] = value;

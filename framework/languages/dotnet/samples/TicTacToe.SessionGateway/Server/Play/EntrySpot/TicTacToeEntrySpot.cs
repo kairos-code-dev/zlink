@@ -9,8 +9,8 @@ internal sealed class TicTacToeEntrySpot(IZLinkEntrySpotContext context) : IZLin
 
     public void Configure()
     {
-        Context.AddHandler<JoinMatchHandler>();
-        Context.AddHandler<TicTacToeEntrySpotActorJoinedHandler>();
-        Context.AddHandler<TicTacToeEntrySpotActorLeftHandler>();
+        Context.Handlers.AddHandler<JoinMatchHandler>();
+        Context.Handlers.AddHandler<TicTacToeEntrySpotActorJoinedHandler>();
+        Context.Handlers.AddHandler<TicTacToeEntrySpotActorLeftHandler>();
     }
 }

@@ -28,12 +28,12 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddActorJoin<ActorJoinHandler, TestActor, JoinStageRequest, JoinStageReply>();
-            Context.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch");
-            Context.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch-after-context-join");
-            Context.AddPostActorJoined<ActorStageJoinedHandler, TestActor>();
-            Context.AddActorLeft<ActorStageLeftHandler, TestActor>();
-            Context.AddActorDisconnected<ActorStageDisconnectedHandler, TestActor>();
+            Context.Handlers.AddActorJoin<ActorJoinHandler, TestActor, JoinStageRequest, JoinStageReply>();
+            Context.Handlers.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch");
+            Context.Handlers.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch-after-context-join");
+            Context.Handlers.AddPostActorJoined<ActorStageJoinedHandler, TestActor>();
+            Context.Handlers.AddActorLeft<ActorStageLeftHandler, TestActor>();
+            Context.Handlers.AddActorDisconnected<ActorStageDisconnectedHandler, TestActor>();
         }
 
         internal IDisposable EnterScope(string source)

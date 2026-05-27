@@ -9,7 +9,7 @@ namespace Zlink.Framework.UnitTests;
 public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
 {
     [Fact]
-    public void RoutedSpotClient_DI_RequiresRoutedSpotEgressCapability()
+    public void RemovedSpotEgressClient_DI_IsNotExposed_AsPublicCapability()
     {
         var withoutEgress = new ServiceCollection();
         withoutEgress.AddZLinkFramework(options =>
@@ -23,7 +23,8 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
 
         using (var provider = withoutEgress.BuildServiceProvider())
         {
-            Assert.Null(provider.GetService<IZLinkRoutedSpotClient>());
+            _ = provider;
+            Assert.DoesNotContain(typeof(IZLinkSpotOutbound).Assembly.GetTypes(), IsRemovedSpotEgressClient);
         }
 
         var clientServerEgress = new ServiceCollection();
@@ -39,7 +40,8 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
 
         using (var provider = clientServerEgress.BuildServiceProvider())
         {
-            Assert.NotNull(provider.GetService<IZLinkRoutedSpotClient>());
+            _ = provider;
+            Assert.DoesNotContain(typeof(IZLinkSpotOutbound).Assembly.GetTypes(), IsRemovedSpotEgressClient);
         }
 
         var routeMeshEgress = new ServiceCollection();
@@ -55,8 +57,17 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
 
         using (var provider = routeMeshEgress.BuildServiceProvider())
         {
-            Assert.NotNull(provider.GetService<IZLinkRoutedSpotClient>());
+            _ = provider;
+            Assert.DoesNotContain(typeof(IZLinkSpotOutbound).Assembly.GetTypes(), IsRemovedSpotEgressClient);
         }
+    }
+
+    private static bool IsRemovedSpotEgressClient(Type type)
+    {
+        return type.Namespace == "Zlink.Framework.Contracts.Spots"
+            && type.Name.Contains("Routed", StringComparison.Ordinal)
+            && type.Name.Contains("Spot", StringComparison.Ordinal)
+            && type.Name.Contains("Client", StringComparison.Ordinal);
     }
 
     [Fact]
@@ -125,7 +136,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
                     router.SetRouterBind("tcp://127.0.0.1:9000");
                 });
                 spot.AddSpotFactory<TestSpot>();
-                spot.AttachClientServerChannelClient("profile");
+                spot.AttachChannelClient("profile");
             });
             });
         });

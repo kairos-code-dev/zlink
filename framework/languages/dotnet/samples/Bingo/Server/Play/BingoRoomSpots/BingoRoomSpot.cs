@@ -42,10 +42,10 @@ internal sealed class BingoRoomSpot(
 
     public void Configure()
     {
-        Context.AddActorJoin<BingoRoomJoinHandler, PlayerActor, BingoRoomJoinReq, BingoRoomJoinRes>();
-        Context.AddActorPacket<StartBingoGameHandler, PlayerActor>();
-        Context.AddHandler<BingoRoomActorJoinedHandler>();
-        Context.AddHandler<BingoRoomActorLeftHandler>();
+        Context.Handlers.AddActorJoin<BingoRoomJoinHandler, PlayerActor, BingoRoomJoinReq, BingoRoomJoinRes>();
+        Context.Handlers.AddActorPacket<StartBingoGameHandler, PlayerActor>();
+        Context.Handlers.AddHandler<BingoRoomActorJoinedHandler>();
+        Context.Handlers.AddHandler<BingoRoomActorLeftHandler>();
     }
 
     public async ValueTask OnCreateAsync(

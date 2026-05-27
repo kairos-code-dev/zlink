@@ -93,7 +93,7 @@ public sealed class TickPublishHandler
     : IZLinkSpotPacketHandler<SymbolBookSpot, Trade>
 {
     public ValueTask HandleAsync(SymbolBookSpot spot, Trade t, CancellationToken ct)
-        => spot.Context.PublishSpot($"md.{spot.Symbol}", t).Submit(ct);   // 시세 배포
+        => spot.Context.Outbound.Publish($"md.{spot.Symbol}", t).Submit(ct);   // 시세 배포
 }
 ```
 

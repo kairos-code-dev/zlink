@@ -25,14 +25,14 @@ internal sealed class MatchBingoActorHandler
         CancellationToken cancellationToken)
     {
         _ = context;
-        var matched = await entrySpot.Context.RequestChannel(
+        var matched = await entrySpot.Context.Outbound.RequestChannel(
                 SampleNames.ApiChannel,
                 new MatchBingoApiReq(actor.ActorId, actor.DisplayName, message.Mode))
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<MatchBingoApiRes>(cancellationToken)
             ;
 
-        var roomRid = RoutingId.From(matched.RoomId);
+        var roomRid = RoutingId.FromHex(matched.RoomId);
         var joined = await actor.Context.JoinSpot(
                 roomRid,
                 new BingoRoomJoinReq(matched.RoomId, actor.ActorId, actor.DisplayName))

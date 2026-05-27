@@ -151,7 +151,7 @@ public abstract partial class StreamTestSupport
                 return _context.CloseAsync(cancellationToken);
             }
 
-            return _context.Reply("pong")
+            return _context.Client.Reply("pong")
                 .Submit(cancellationToken);
         }
     }

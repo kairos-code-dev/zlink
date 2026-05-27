@@ -122,7 +122,7 @@ internal sealed class StartupStageSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddSubscribe<StartupStageSubscriptionHandler>("stage.monitor");
+        Context.Handlers.AddSubscribe<StartupStageSubscriptionHandler>("stage.monitor");
     }
 }
 
@@ -238,7 +238,7 @@ internal sealed class TestHostRawStreamSession(
         _ = cancellationToken;
         _ = header;
         recorder.RecordPayload(Encoding.UTF8.GetString(payload.AsReadOnlySpan()));
-        return Context.Reply("pong")
+        return Context.Client.Reply("pong")
             .Submit(cancellationToken);
     }
 }

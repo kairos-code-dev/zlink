@@ -17,18 +17,14 @@ public abstract partial class SpotTestSupport
     {
         private readonly SpotScopeMarker _scopeMarker;
         private readonly SpotEventsRecorder _events;
-        private readonly IZLinkSpotClient _spotClient;
-
         public StageSpot(
             IZLinkSpotContext context,
             SpotScopeMarker scopeMarker,
-            SpotEventsRecorder events,
-            IZLinkSpotClient spotClient)
+            SpotEventsRecorder events)
         {
             Context = context;
             _scopeMarker = scopeMarker;
             _events = events;
-            _spotClient = spotClient;
         }
 
         public IZLinkSpotContext Context { get; }
@@ -39,7 +35,7 @@ public abstract partial class SpotTestSupport
         {
             _events.RecordInitialized(Context.SpotRid, _scopeMarker.Id);
 
-            await _spotClient.SendChannel("orders", new StageBootCommand(_scopeMarker.Id)).Submit(cancellationToken);
+            await Context.Outbound.SendChannel("orders", new StageBootCommand(_scopeMarker.Id)).Submit(cancellationToken);
         }
 
         public ValueTask OnClosingAsync(CancellationToken cancellationToken)

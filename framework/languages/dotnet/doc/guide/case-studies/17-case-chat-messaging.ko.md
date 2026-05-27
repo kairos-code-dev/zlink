@@ -66,7 +66,7 @@ group/fan-out service, 메시지 DB.
 
 ```csharp
 // 채팅 client STREAM session: 메시지를 room actor 로 relay
-public sealed class ChatSession(IZLinkSessionContext context) : IZLinkSession
+public sealed class ChatSession(IZLinkSessionContext context, IZLinkActorManager actors) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
     private IZLinkSessionActor? _user;
@@ -77,8 +77,9 @@ public sealed class ChatSession(IZLinkSessionContext context) : IZLinkSession
         if (header.Name == "auth")
         {
             var req = payload.Decode<AuthReq>();
-            _user = await context.BindActorAsync(req.UserId, ct);
-            await context.Reply(new AuthOk()).Submit(ct);
+            IZLinkActor actor = await actors.GetOrCreateAsync(req.UserId, "chat-user", ct);
+            _user = await context.Actors.BindAsync(actor, ct);
+            await context.Client.Reply(new AuthOk()).Submit(ct);
             return;
         }
         await _user!.RelayAsync(header, payload, ct);

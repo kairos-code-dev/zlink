@@ -1,75 +1,59 @@
 
 namespace Zlink.Framework.Runtime.Streams;
 
-internal sealed class ZLinkSessionContext(
-    ZLinkFrameworkRuntime runtime,
-    IZLinkStream stream,
-    Func<CancellationToken, ValueTask> closeAsync,
-    Func<CancellationToken, ValueTask> closeByProxyAsync)
-    : IZLinkSessionContext
+internal sealed class ZLinkSessionContext : IZLinkSessionContext
 {
+    private readonly ZLinkFrameworkRuntime _runtime;
+    private readonly IZLinkStream _stream;
+    private readonly Func<CancellationToken, ValueTask> _closeAsync;
+    private readonly Func<CancellationToken, ValueTask> _closeByProxyAsync;
     private ZlinkStreamHeader? _currentDispatchHeader;
     private readonly ZLinkSessionRequestTracker _requests = new();
     private ZLinkSessionStreamTransport? _transport;
-    private readonly ZLinkSessionActorCoordinator _actors = new(runtime, stream);
+    private readonly ZLinkSessionActorCoordinator _actors;
+    private readonly ZLinkSessionClientContext _client;
+    private readonly ZLinkSessionActorsContext _actorSurface;
+
+    public ZLinkSessionContext(
+        ZLinkFrameworkRuntime runtime,
+        IZLinkStream stream,
+        Func<CancellationToken, ValueTask> closeAsync,
+        Func<CancellationToken, ValueTask> closeByProxyAsync)
+    {
+        _runtime = runtime;
+        _stream = stream;
+        _closeAsync = closeAsync;
+        _closeByProxyAsync = closeByProxyAsync;
+        _actors = new ZLinkSessionActorCoordinator(runtime, stream);
+        _client = new ZLinkSessionClientContext(this);
+        _actorSurface = new ZLinkSessionActorsContext(this, _actors);
+    }
 
     private ZLinkSessionStreamTransport Transport
-        => _transport ??= new ZLinkSessionStreamTransport(stream, _requests);
+        => _transport ??= new ZLinkSessionStreamTransport(_stream, _requests);
 
-    public string SessionId => stream.SessionId;
+    public string SessionId => _stream.SessionId;
 
-    public RoutingId? RoutingId => stream.RoutingId;
+    public RoutingId? RoutingId => _stream.RoutingId;
 
-    public string? LocalAddr => stream.LocalAddr;
+    public string? LocalAddr => _stream.LocalAddr;
 
-    public string? RemoteAddr => stream.RemoteAddr;
+    public string? RemoteAddr => _stream.RemoteAddr;
 
-    public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _actors.BoundActors;
+    public IZLinkSessionClient Client => _client;
 
-    public IZLinkSessionSendCall Send<TMessage>(TMessage message)
-    {
-        return new ZLinkSessionSendCall<TMessage>(this, message);
-    }
-
-    public IZLinkSessionReplyCall Reply<TMessage>(TMessage message)
-    {
-        return new ZLinkSessionReplyCall<TMessage>(this, message);
-    }
-
-    public ValueTask<IZLinkSessionActor> BindActorAsync(
-        string actorId,
-        CancellationToken cancellationToken = default)
-    {
-        return _actors.BindActorAsync(this, actorId, cancellationToken);
-    }
-
-    public ValueTask<IZLinkSessionActor> BindActorAsync(
-        ActorRef actor,
-        CancellationToken cancellationToken = default)
-    {
-        return _actors.BindActorAsync(this, actor, cancellationToken);
-    }
-
-    public ValueTask<IZLinkSessionActor> BindActorAsync(
-        IZLinkSessionActor actor,
-        CancellationToken cancellationToken = default)
-    {
-        return _actors.BindActorAsync(this, actor, cancellationToken);
-    }
-
-    public IZLinkSessionActor? FindActor(string actorId)
-    {
-        return _actors.FindActor(actorId);
-    }
+    public IZLinkSessionActors Actors => _actorSurface;
+    internal IReadOnlyCollection<IZLinkSessionActor> BoundActors => _actors.BoundActors;
+    internal ZLinkSessionActorCoordinator ActorCoordinator => _actors;
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
     {
-        return closeAsync(cancellationToken);
+        return _closeAsync(cancellationToken);
     }
 
     internal ValueTask CloseByProxyAsync(CancellationToken cancellationToken = default)
     {
-        return closeByProxyAsync(cancellationToken);
+        return _closeByProxyAsync(cancellationToken);
     }
 
     internal async ValueTask RelayActorRefAsync(
@@ -105,9 +89,9 @@ internal sealed class ZLinkSessionContext(
     internal async ValueTask CleanupAsync(CancellationToken cancellationToken)
     {
         await _actors.CleanupAsync(this, cancellationToken).ConfigureAwait(false);
-        if (stream.RoutingId is { } sessionRid)
+        if (_stream.RoutingId is { } sessionRid)
         {
-            runtime.CleanupActorSessionsForSession(sessionRid);
+            _runtime.CleanupActorSessionsForSession(sessionRid);
         }
     }
 
@@ -178,4 +162,43 @@ internal sealed class ZLinkSessionContext(
         return Transport.ReplyErrorAsync(requestHeader, exception, cancellationToken);
     }
 
+}
+
+internal sealed class ZLinkSessionClientContext(ZLinkSessionContext context) : IZLinkSessionClient
+{
+    public IZLinkSessionSendCall Send<TMessage>(TMessage message)
+    {
+        return new ZLinkSessionSendCall<TMessage>(context, message);
+    }
+
+    public IZLinkSessionReplyCall Reply<TMessage>(TMessage message)
+    {
+        return new ZLinkSessionReplyCall<TMessage>(context, message);
+    }
+}
+
+internal sealed class ZLinkSessionActorsContext(
+    ZLinkSessionContext context,
+    ZLinkSessionActorCoordinator actors) : IZLinkSessionActors
+{
+    public IReadOnlyCollection<IZLinkSessionActor> Bound => actors.BoundActors;
+
+    public ValueTask<IZLinkSessionActor> BindAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        return actors.BindActorAsync(context, actor, cancellationToken);
+    }
+
+    public ValueTask<IZLinkSessionActor> BindAsync(
+        ActorRef actor,
+        CancellationToken cancellationToken = default)
+    {
+        return actors.BindActorAsync(context, actor, cancellationToken);
+    }
+
+    public IZLinkSessionActor? Find(string actorId)
+    {
+        return actors.FindActor(actorId);
+    }
 }

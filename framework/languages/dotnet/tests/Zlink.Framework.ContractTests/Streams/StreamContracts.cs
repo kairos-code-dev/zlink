@@ -9,10 +9,8 @@ public sealed class StreamContracts
     [ContractExample(
         typeof(IZLinkSession),
         typeof(IZLinkSessionContext),
-        typeof(IZLinkSessionIdentityContext),
-        typeof(IZLinkSessionClientStream),
-        typeof(IZLinkSessionActorBindingContext),
-        typeof(IZLinkSessionLifecycle),
+        typeof(IZLinkSessionClient),
+        typeof(IZLinkSessionActors),
         typeof(IZLinkSessionSendCall),
         typeof(IZLinkSessionReplyCall),
         typeof(IZLinkSessionPacketHandler<>),
@@ -25,8 +23,8 @@ public sealed class StreamContracts
         var session = new ExampleSession(context);
 
         await session.OnConnectedAsync(CancellationToken.None);
-        var actorRef = await context.BindActorAsync(new Systems.Zlink.ActorRef(RoutingId.From("actor-node"), "player-1", 1));
-        var boundActor = context.FindActor("player-1");
+        var actorRef = await context.Actors.BindAsync(new Systems.Zlink.ActorRef(RoutingId.From("actor-node"), "player-1", 1));
+        var boundActor = context.Actors.Find("player-1");
         await actorRef.RelayAsync(
             new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Send,
@@ -38,7 +36,7 @@ public sealed class StreamContracts
             new Message());
         await actorRef.NotifyDisconnectedAsync();
 
-        await context
+        await context.Client
             .Send(new PlayerJoined("player-1"))
             .PacketName("player.joined")
             .Metadata("trace-id", "abc")
@@ -46,7 +44,7 @@ public sealed class StreamContracts
             .Submit();
 
         await context
-            .Reply(new AuthenticateReply("player-1"))
+            .Client.Reply(new AuthenticateReply("player-1"))
             .Metadata("trace-id", "abc")
             .Compress()
             .Submit();
@@ -128,8 +126,8 @@ public sealed class StreamContracts
         });
 
         Assert.True(boundSession.IsDisconnected);
-        Assert.True(policy.CanForwardApplicationKey("trace-id"));
-        Assert.False(policy.CanForwardApplicationKey("internal-key"));
+        Assert.True(policy.CanForward("trace-id"));
+        Assert.False(policy.CanForward("internal-key"));
         Assert.Equal("abc", metadata.Find("trace-id"));
         Assert.Null(metadata.Find("tenant-id"));
         Assert.Null(typeof(ZLinkMessageMetadata).GetProperty("Application"));
@@ -203,6 +201,8 @@ public sealed class StreamContracts
 
     private sealed class ExampleSessionContext :
         IZLinkSessionContext,
+        IZLinkSessionClient,
+        IZLinkSessionActors,
         IZLinkStream
     {
         public string SessionId => "session-1";
@@ -215,7 +215,11 @@ public sealed class StreamContracts
 
         private readonly Dictionary<string, IZLinkSessionActor> _actors = new(StringComparer.Ordinal);
 
-        public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _actors.Values.ToArray();
+        public IZLinkSessionClient Client => this;
+
+        public IZLinkSessionActors Actors => this;
+
+        public IReadOnlyCollection<IZLinkSessionActor> Bound => _actors.Values.ToArray();
 
         public bool IsClosed { get; private set; }
 
@@ -225,16 +229,16 @@ public sealed class StreamContracts
 
         public IZLinkSessionReplyCall Reply<TMessage>(TMessage message) => new SessionReplyCall();
 
-        public ValueTask<IZLinkSessionActor> BindActorAsync(
-            string actorId,
+        public ValueTask<IZLinkSessionActor> BindAsync(
+            IZLinkActor actor,
             CancellationToken cancellationToken = default)
         {
-            return BindActorAsync(
-                new Systems.Zlink.ActorRef(Systems.Zlink.RoutingId.From("actor-node"), actorId, 1),
+            return BindAsync(
+                new Systems.Zlink.ActorRef(Systems.Zlink.RoutingId.From("actor-node"), actor.ActorId, 1),
                 cancellationToken);
         }
 
-        public ValueTask<IZLinkSessionActor> BindActorAsync(
+        public ValueTask<IZLinkSessionActor> BindAsync(
             Systems.Zlink.ActorRef actorRef,
             CancellationToken cancellationToken = default)
         {
@@ -243,15 +247,7 @@ public sealed class StreamContracts
             return ValueTask.FromResult<IZLinkSessionActor>(actor);
         }
 
-        public ValueTask<IZLinkSessionActor> BindActorAsync(
-            IZLinkSessionActor actor,
-            CancellationToken cancellationToken = default)
-        {
-            _actors[actor.ActorId] = actor;
-            return ValueTask.FromResult(actor);
-        }
-
-        public IZLinkSessionActor? FindActor(string actorId)
+        public IZLinkSessionActor? Find(string actorId)
         {
             return _actors.GetValueOrDefault(actorId);
         }
@@ -348,6 +344,6 @@ public sealed class StreamContracts
 
     private sealed class MetadataPolicy(IReadOnlySet<string> forwardedKeys) : IZLinkMessageMetadataPolicy
     {
-        public bool CanForwardApplicationKey(string key) => forwardedKeys.Contains(key);
+        public bool CanForward(string key) => forwardedKeys.Contains(key);
     }
 }

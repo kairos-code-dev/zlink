@@ -312,7 +312,7 @@ internal static class ZLinkRegistrationBuilderGuard
 internal sealed class ZLinkMetadataPolicyBuilder(ZLinkMetadataPolicyRegistration registration)
     : IZLinkMetadataPolicyBuilder
 {
-    public void ForwardApplicationKey(string key)
+    public void Forward(string key)
     {
         if (string.IsNullOrWhiteSpace(key))
         {

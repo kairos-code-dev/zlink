@@ -41,8 +41,8 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddPacket<SpotRouteTargetCommandHandler>();
-            Context.AddPacket<SpotRouteTargetRequestHandler>();
+            Context.Handlers.AddPacket<SpotRouteTargetCommandHandler>();
+            Context.Handlers.AddPacket<SpotRouteTargetRequestHandler>();
         }
     }
 
@@ -52,8 +52,8 @@ public abstract partial class SpotTestSupport
 
         public void Configure()
         {
-            Context.AddPacket<SpotRouteSendCallerHandler>();
-            Context.AddPacket<SpotRouteRequestCallerHandler>();
+            Context.Handlers.AddPacket<SpotRouteSendCallerHandler>();
+            Context.Handlers.AddPacket<SpotRouteRequestCallerHandler>();
         }
     }
 
@@ -95,7 +95,7 @@ public abstract partial class SpotTestSupport
             SpotRouteSendCallerCommand message,
             CancellationToken cancellationToken)
         {
-            await spot.Context.SendSpot(RoutingId.From("route-target"), new SpotRouteTargetCommand(message.Value))
+            await spot.Context.Outbound.SendSpot(RoutingId.From("route-target"), new SpotRouteTargetCommand(message.Value))
                 .Submit(cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -110,33 +110,12 @@ public abstract partial class SpotTestSupport
             SpotRouteRequestCallerCommand message,
             CancellationToken cancellationToken)
         {
-            var reply = await spot.Context
+            var reply = await spot.Context.Outbound
                 .RequestSpot(RoutingId.From("route-target"), new SpotRouteTargetRequest(message.Value))
                 .Timeout(TimeSpan.FromMilliseconds(500))
                 .SubmitAsync<SpotRouteTargetReply>(cancellationToken)
                 .ConfigureAwait(false);
             recorder.Replies.Enqueue(reply.Value);
-        }
-    }
-
-    public sealed class RoutedSpotApiHandler(IZLinkRoutedSpotClient spots)
-        : IZLinkRequestHandler<RoutedSpotApiRequest, RoutedSpotApiReply>
-    {
-        public async ValueTask<RoutedSpotApiReply> HandleAsync(
-            RoutedSpotApiRequest request,
-            ZLinkRequestContext context,
-            CancellationToken cancellationToken)
-        {
-            _ = context;
-            var reply = await spots
-                .ViaEgressChannel("gateway.client")
-                .RequestSpot(
-                    RoutingId.From(request.SpotRid),
-                    new SpotRouteTargetRequest(request.Value))
-                .Timeout(TimeSpan.FromMilliseconds(500))
-                .SubmitAsync<SpotRouteTargetReply>(cancellationToken)
-                .ConfigureAwait(false);
-            return new RoutedSpotApiReply(reply.Value);
         }
     }
 

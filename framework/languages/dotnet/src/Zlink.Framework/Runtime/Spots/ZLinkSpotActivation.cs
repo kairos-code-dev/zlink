@@ -1,7 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCurrentSpotActivation, IAsyncDisposable
+internal sealed partial class ZLinkSpotActivation :
+    IZLinkSpotContext,
+    IZLinkCurrentSpotActivation,
+    IZLinkSpotHandlerRegistrySink,
+    IZLinkSpotOutboundSink,
+    IAsyncDisposable
 {
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly AsyncServiceScope _scope;
@@ -19,6 +24,9 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
     private readonly ZLinkSpotActorDispatchSubmitter _actorDispatchSubmitter;
     private readonly ZLinkSpotActorLifecycleCoordinator _actorLifecycle;
     private readonly ZLinkSpotOutboundTransport _outbound;
+    private readonly ZLinkSpotOutboundEndpoint _outboundEndpoint;
+    private readonly IZLinkSpotHandlerRegistry _handlersSurface;
+    private readonly IZLinkSpotOutbound _outboundSurface;
     private readonly ZLinkSpotSubscriptionPump _subscriptionPump = new();
     private readonly TimeSpan _defaultTimeout;
     private int _disposed;
@@ -48,6 +56,14 @@ internal sealed partial class ZLinkSpotActivation : IZLinkSpotContext, IZLinkCur
             sendTimeout,
             _stopSource.Token,
             channelSubmitter);
+        _outboundEndpoint = new ZLinkSpotOutboundEndpoint(
+            this,
+            _scope.ServiceProvider,
+            _outbound,
+            _runtime,
+            "IZLinkSpotContext spot routing requires AddSpotRemoteAddressResolver<TResolver>().");
+        _handlersSurface = new ZLinkSpotHandlerRegistrySurface(this);
+        _outboundSurface = new ZLinkSpotOutboundSurface(this);
         _serial = new ZLinkSpotSerialExecutor(this, () => IsDisposed, _stopSource.Token);
         _dispatcher = new ZLinkSpotActivationDispatcher(
             runtime,

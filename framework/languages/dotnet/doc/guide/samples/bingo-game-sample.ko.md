@@ -81,12 +81,9 @@ channel-to-channel request 이다. `IZLinkChannelClient`는 등록된 channel �
 client-server 또는 dealer mesh outbound socket 을 선택한다. `PlayServer` 쪽 handler 가 요청을 받은 뒤
 `BingoRoomSpot` 을 만들거나 기존 room 을 찾아 Entry Spot 에 join 을 요청한다.
 
-이미 target Spot 의 `RoutingId`를 알고 있고, 일반 channel handler 에서 그 Spot 으로
-곧장 보내야 하는 흐름은 별도 routed Spot 패턴으로 본다. 그 경우에는
-`IZLinkRoutedSpotClient.ViaEgressChannel(localEgressChannelName)`으로 사용할 egress
-channel 을 명시하고, egress channel 등록에는
-`EnableSpotRouteEgress(targetSpotNodeChannelName)`으로 Play 서버 SpotNode가 accept 한
-ingress channel 이름을 저장한다.
+Session/API handler 가 actor 를 만들거나 찾은 뒤 Entry Spot 으로 join 하면
+반환된 `ActorRef` 를 session actor handle 로 bind 한다. current Spot 이 없는 handler 에서
+target Spot 으로 직접 request 하는 별도 public client 는 사용하지 않는다.
 
 ## 4. Entry Spot 역할
 
@@ -264,7 +261,7 @@ public sealed record BingoGameEndedNotify(BingoRoomState State);
    확인한다.
 4. `SessionServer` 는 `PlayServer` 로 player actor 준비를 요청하고, 응답으로
    actor id/type 과 remote address 를 받는다.
-5. `SessionServer` 는 remote address 를 받는 `BindActorAsync(...)` 호출로
+5. `SessionServer` 는 remote address 를 받는 `BindAsync(...)` 호출로
    현재 stream session 과 actor 를 bind 한다. remote address 는 Play 서버 runtime 이 발급한
    ActorGateway locator 이며 application route mesh channel 설정이 아니다.
 6. client 는 `AuthenticateRes` 로 `ActorId` 와 `DisplayName` 을 받는다.

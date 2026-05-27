@@ -2,37 +2,33 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkEntrySpotActivation
 {
+    public IZLinkSpotHandlerRegistry Handlers => _handlersSurface;
+
+    public IZLinkSpotOutbound Outbound => _outboundSurface;
+
     public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message)
     {
-        return new ZLinkRoutedSpotSendCall<TMessage>(
-            this,
-            RequireRemoteAddressResolver(),
-            ZLinkSpotRemoteAddressTarget.ByRoutingId(spotRid),
-            message);
+        return _outboundEndpoint.SendSpot(spotRid, message);
     }
 
     public IZLinkRequestCall RequestSpot<TRequest>(RoutingId spotRid, TRequest request)
     {
-        return new ZLinkRoutedSpotRequestCall<TRequest>(
-            this,
-            RequireRemoteAddressResolver(),
-            ZLinkSpotRemoteAddressTarget.ByRoutingId(spotRid),
-            request);
+        return _outboundEndpoint.RequestSpot(spotRid, request);
     }
 
-    public IZLinkPublishCall PublishSpot<TEvent>(string topic, TEvent message)
+    public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
     {
-        return new ZLinkCurrentSpotPublishCall<TEvent>(this, topic, message);
+        return _outboundEndpoint.Publish(topic, message);
     }
 
     public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
     {
-        return new ZLinkCurrentSpotSendCall<TMessage>(this, channelName, message);
+        return _outboundEndpoint.SendChannel(channelName, message);
     }
 
     public IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request)
     {
-        return new ZLinkCurrentSpotRequestCall<TRequest>(this, channelName, request);
+        return _outboundEndpoint.RequestChannel(channelName, request);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
@@ -41,7 +37,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await _outbound.RequestChannelAsync(channelName, parts, timeout, cancellationToken)
+        return await _outboundEndpoint.RequestChannelAsync(channelName, parts, timeout, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -53,12 +49,12 @@ internal sealed partial class ZLinkEntrySpotActivation
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await _runtime.RequestSpotViaRouterChannelAsync(
+        return await _outboundEndpoint.RequestSpotAsync(
                 routerChannelId,
                 targetNodeRid,
                 targetSpotRid,
                 parts,
-                timeout ?? DefaultTimeout,
+                timeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -68,7 +64,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return _outbound.SendChannelAsync(channelName, parts, cancellationToken);
+        return _outboundEndpoint.SendChannelAsync(channelName, parts, cancellationToken);
     }
 
     public ValueTask PublishCurrentAsync(
@@ -76,7 +72,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return _outbound.PublishCurrentAsync(topic, parts, cancellationToken);
+        return _outboundEndpoint.PublishCurrentAsync(topic, parts, cancellationToken);
     }
 
     public bool SendToSpot(
@@ -85,7 +81,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return _outbound.SendToSpot(targetRid, spotRid, parts, flags);
+        return _outboundEndpoint.SendToSpot(targetRid, spotRid, parts, flags);
     }
 
     public ValueTask SendSpotAsync(
@@ -95,19 +91,11 @@ internal sealed partial class ZLinkEntrySpotActivation
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return _runtime.SendSpotViaRouterChannelAsync(
+        return _outboundEndpoint.SendSpotAsync(
             routerChannelId,
             targetNodeRid,
             targetSpotRid,
             parts,
             cancellationToken);
-    }
-
-    private IZLinkSpotRemoteAddressResolver RequireRemoteAddressResolver()
-    {
-        return _scope.ServiceProvider.GetService(typeof(IZLinkSpotRemoteAddressResolver)) is IZLinkSpotRemoteAddressResolver resolver
-            ? resolver
-            : throw new ZLinkConfigurationException(
-                "IZLinkEntrySpotContext spot routing requires AddSpotRemoteAddressResolver<TResolver>().");
     }
 }

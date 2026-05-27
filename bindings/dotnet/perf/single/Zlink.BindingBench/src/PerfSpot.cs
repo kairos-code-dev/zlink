@@ -42,12 +42,12 @@ internal static class PerfSpot
             int readySettleMs = ResolveSingleSpotReadySettleMs();
             int latencySampleCap = ResolveSingleLatencyCount("SPOT");
 
-            using var ctx = new Context();
+            using var ctx = Zlink.CreateContext();
             ApplySingleContextOptions(ctx);
             ApplySingleAutoHwmMsgUnit(ctx, size);
             RecalculateSingleAutoHwm(ctx);
-            using var pubNode = new SpotNode(ctx);
-            using var subNode = new SpotNode(ctx);
+            using var pubNode = ctx.CreateSpotNode();
+            using var subNode = ctx.CreateSpotNode();
             using var spotPub = pubNode.CreateSpot();
             using var spotSub = subNode.CreateSpot();
             // PERF_SINGLE_TEST_POLICY § 1.4: the SPOT one-way stop token is
@@ -115,8 +115,8 @@ internal static class PerfSpot
         }
     }
 
-    private static bool WaitForSubscriptionReady(Spot publisher,
-        Spot subscriber, byte[] probePayload, int msgSize)
+    private static bool WaitForSubscriptionReady(ISpot publisher,
+        ISpot subscriber, byte[] probePayload, int msgSize)
     {
         ulong seq = 1;
         if (!PublishMetricPayload(publisher, probePayload, msgSize, seq++,
@@ -124,9 +124,9 @@ internal static class PerfSpot
             return false;
 
         int readyTimeoutMs = ResolveSpotReadyTimeoutMs();
-        using var deadlineTimer = new Systems.Zlink.Timer();
-        using var retryTimer = new Systems.Zlink.Timer();
-        using var poller = new Poller();
+        using var deadlineTimer = Zlink.CreateTimer();
+        using var retryTimer = Zlink.CreateTimer();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[3];
         poller.Add(subscriber, PollEventFlags.PollIn, SpotSocketTag);
         poller.Add(deadlineTimer, ReadyDeadlineTag);
@@ -162,8 +162,8 @@ internal static class PerfSpot
         }
     }
 
-    private static bool RunActiveWindow(Spot publisher, Spot subscriber,
-        Spot stopPublisher, byte[] payload, int msgSize, int durationSeconds,
+    private static bool RunActiveWindow(ISpot publisher, ISpot subscriber,
+        ISpot stopPublisher, byte[] payload, int msgSize, int durationSeconds,
         int recvTimeoutMs, int latencySampleCap, out long received,
         out List<double> latencySamples)
     {
@@ -279,10 +279,10 @@ internal static class PerfSpot
         return Volatile.Read(ref ok) != 0;
     }
 
-    private static bool WaitForReadyProbeEvent(Poller poller,
-        PollEvent[] events, Spot publisher, byte[] probePayload, int msgSize,
-        ref ulong seq, Systems.Zlink.Timer deadlineTimer,
-        Systems.Zlink.Timer retryTimer)
+    private static bool WaitForReadyProbeEvent(IPoller poller,
+        PollEvent[] events, ISpot publisher, byte[] probePayload, int msgSize,
+        ref ulong seq, Systems.Zlink.IZlinkTimer deadlineTimer,
+        Systems.Zlink.IZlinkTimer retryTimer)
     {
         while (true)
         {
@@ -312,7 +312,7 @@ internal static class PerfSpot
         }
     }
 
-    private static bool PublishMetricPayload(Spot publisher, byte[] payload,
+    private static bool PublishMetricPayload(ISpot publisher, byte[] payload,
         int msgSize, ulong seq, uint phase, out bool sent)
     {
         sent = false;
@@ -336,7 +336,7 @@ internal static class PerfSpot
         }
     }
 
-    private static int ReceiveSpotHeader(Spot subscriber, int msgSize,
+    private static int ReceiveSpotHeader(ISpot subscriber, int msgSize,
         Message subscribed, byte[] topicBuffer, out PerfMetricHeader header,
         out bool headerOk)
     {
@@ -344,7 +344,7 @@ internal static class PerfSpot
             out header, out headerOk, out _);
     }
 
-    private static int ReceiveSpotPayload(Spot subscriber, int msgSize,
+    private static int ReceiveSpotPayload(ISpot subscriber, int msgSize,
         Message subscribed, byte[] topicBuffer, out PerfMetricHeader header,
         out bool headerOk, out bool isStopToken)
     {

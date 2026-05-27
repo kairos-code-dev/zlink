@@ -17,9 +17,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsTransportSupported(transport))
             return;
 
-        using var ctx = new Context();
-        using var sb = new PairSocket(ctx);
-        using var sc = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sb = ctx.CreatePairSocket();
+        using var sc = ctx.CreatePairSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint(transport, "pair");
         sb.Bind(endpoint);
@@ -44,9 +44,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsTransportSupported(transport))
             return;
 
-        using var ctx = new Context();
-        using var server = new PairSocket(ctx);
-        using var client = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreatePairSocket();
+        using var client = ctx.CreatePairSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint(transport,
             "pair-multipart");
@@ -79,9 +79,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sb = new PairSocket(ctx);
-        using var sc = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sb = ctx.CreatePairSocket();
+        using var sc = ctx.CreatePairSocket();
 
         int port = CoreTestSupport.ExtractPort(CoreTestSupport.NewEndpoint("tcp",
             "pair-name"));
@@ -102,15 +102,15 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "pair-poller-span");
         sender.Bind(endpoint);
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        var poller = new Poller();
+        var poller = Zlink.CreatePoller();
         poller.Add(receiver, PollEventFlags.PollIn, 7);
 
         CoreTestSupport.SendWithRetry(sender, "x"u8, 2000);
@@ -129,10 +129,10 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
-        using var poller = new Poller();
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
+        using var poller = Zlink.CreatePoller();
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "pair-poller-clear");
         sender.Bind(endpoint);
         receiver.Connect(endpoint);
@@ -154,10 +154,10 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
-        using var poller = new Poller();
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
+        using var poller = Zlink.CreatePoller();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-poller-modify");
         sender.Bind(endpoint);
@@ -207,12 +207,12 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender1 = new PairSocket(ctx);
-        using var receiver1 = new PairSocket(ctx);
-        using var sender2 = new PairSocket(ctx);
-        using var receiver2 = new PairSocket(ctx);
-        using var poller = new Poller();
+        using var ctx = Zlink.CreateContext();
+        using var sender1 = ctx.CreatePairSocket();
+        using var receiver1 = ctx.CreatePairSocket();
+        using var sender2 = ctx.CreatePairSocket();
+        using var receiver2 = ctx.CreatePairSocket();
+        using var poller = Zlink.CreatePoller();
 
         string endpoint1 = CoreTestSupport.NewEndpoint("inproc",
             "pair-poller-multi-a");
@@ -271,10 +271,10 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
-        using var poller = new Poller();
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
+        using var poller = Zlink.CreatePoller();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-poller-remove");
         sender.Bind(endpoint);
@@ -295,11 +295,11 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
-        using var timer = new Timer();
-        using var poller = new Poller();
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
+        using var timer = Zlink.CreateTimer();
+        using var poller = Zlink.CreatePoller();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-poller-timer-socket");
         sender.Bind(endpoint);
@@ -346,10 +346,10 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
-        using var poller = new Poller();
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
+        using var poller = Zlink.CreatePoller();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-poller-no-alloc");
         sender.Bind(endpoint);
@@ -376,9 +376,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-try-recv-code");
         sender.Bind(endpoint);
@@ -395,9 +395,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-recv-handler");
         sender.Bind(endpoint);
@@ -415,9 +415,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var server = new PairSocket(ctx);
-        using var client = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreatePairSocket();
+        using var client = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "pair-monitor-shape");
         server.Bind(endpoint);
@@ -447,9 +447,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-try-send-backpressured");
 
@@ -479,9 +479,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-recv-part-reuse");
 
@@ -521,9 +521,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-from-bytes-borrowed-lifetime");
 
@@ -556,9 +556,9 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sender = new PairSocket(ctx);
-        using var receiver = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sender = ctx.CreatePairSocket();
+        using var receiver = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pair-public-try-send-backpressured");
 
@@ -588,8 +588,8 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var router = new RouterSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
         router.Options.Mandatory = true;
 
         using Message message = Message.From("no-route");
@@ -605,8 +605,8 @@ public sealed class test_pair_tcp
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var router = new RouterSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
         router.Options.Mandatory = true;
 
         using Message message = Message.From("no-route");

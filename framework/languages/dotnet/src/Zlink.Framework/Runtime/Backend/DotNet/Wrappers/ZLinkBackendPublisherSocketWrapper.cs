@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendPublisherSocketWrapper(PubSocket nativeSocket) : IZLinkBackendPublisherSocket
+internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket) : IZLinkBackendPublisherSocket
 {
     public object NativeInstance => nativeSocket;
 
@@ -17,7 +17,7 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(PubSocket nativeSocket)
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
+        nativeSocket.AttachDiscovery(discovery.RequireNative<IDiscovery>());
     }
 
     public void OnSendReady(Action handler)

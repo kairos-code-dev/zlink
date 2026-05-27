@@ -30,9 +30,9 @@ internal static class PerfMultiStreamServer
         string endpoint = MultiEndpointFor(options.Transport, "multi-stream",
             options);
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         ApplyMultiServerContextOptions(ctx, options);
-        using var server = new StreamSocket(ctx);
+        using var server = ctx.CreateStreamSocket();
         ApplyMultiSocketOptions(server, options);
         ApplyAutoHwmMsgUnit(ctx, options.Size);
         RecalculateAutoHwm(ctx);
@@ -148,7 +148,7 @@ internal static class PerfMultiStreamServer
         return capacity > int.MaxValue ? int.MaxValue : (int)capacity;
     }
 
-    private static bool FlushPendingMessages(SocketBase server,
+    private static bool FlushPendingMessages(ISocket server,
         Queue<PendingStreamMessage> pending, object pendingLock,
         ManualResetEventSlim pendingSignal, ref int rc)
     {
@@ -214,7 +214,7 @@ internal static class PerfMultiStreamServer
         return payload.SequenceEqual(MultiStopToken);
     }
 
-    private static SendStatus TrySendPendingMessage(SocketBase server,
+    private static SendStatus TrySendPendingMessage(ISocket server,
         PendingStreamMessage message)
     {
         while (message.Pending)
@@ -224,7 +224,7 @@ internal static class PerfMultiStreamServer
                 if (message.Payload == null)
                     return SendStatus.Fatal;
 
-                if (((StreamSocket)server).Send(message.RoutingId)
+                if (((IStreamSocket)server).Send(message.RoutingId)
                         .Message(message.Payload).Flags(SendFlags.DontWait)
                         .Submit())
                 {

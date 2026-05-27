@@ -197,7 +197,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static bool WaitForInput(Poller poller, Span<PollEvent> events,
+    internal static bool WaitForInput(IPoller poller, Span<PollEvent> events,
         int timeoutMs)
     {
         try
@@ -217,7 +217,7 @@ internal static partial class PerfRunner
     // receiver blocks until woken by the wire-level stop token (matching C
     // perf_router_router.cpp's blocking recv that ends purely on the stop
     // token). No timer cap, no atomic shutdown flag.
-    internal static bool WaitForInputSignalDriven(Poller poller,
+    internal static bool WaitForInputSignalDriven(IPoller poller,
         Span<PollEvent> events)
     {
         try
@@ -365,7 +365,7 @@ internal static partial class PerfRunner
         return explicitMaxSockets > 0 ? explicitMaxSockets : 0;
     }
 
-    internal static void ApplySingleContextOptions(Context ctx)
+    internal static void ApplySingleContextOptions(IContext ctx)
     {
         int ioThreads = PerfEnv.ReadPositive("PERF_IO_THREADS", 1);
         if (ioThreads > 0)
@@ -395,7 +395,7 @@ internal static partial class PerfRunner
         };
     }
 
-    internal static void ApplySingleSocketOptions(SocketBase socket)
+    internal static void ApplySingleSocketOptions(ISocket socket)
     {
         int sndTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_SNDTIMEO_MS", 200);
         int rcvTimeo = PerfEnv.ReadNonNegative("PERF_SINGLE_RCVTIMEO_MS", 200);
@@ -417,14 +417,14 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void ApplySingleAutoHwmMsgUnit(Context ctx, int msgSize)
+    internal static void ApplySingleAutoHwmMsgUnit(IContext ctx, int msgSize)
     {
         if (msgSize <= 0)
             return;
         ctx.Options.AutoHwmMessageUnitBytes = msgSize;
     }
 
-    internal static void RecalculateSingleAutoHwm(Context ctx)
+    internal static void RecalculateSingleAutoHwm(IContext ctx)
     {
         ctx.RecalculateAutoHwm();
     }

@@ -4,9 +4,9 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-using var ctx = new Context();
-using var dealer = new DealerSocket(ctx);
-using var router = new RouterSocket(ctx);
+using var ctx = Zlink.CreateContext();
+using var dealer = ctx.CreateDealerSocket();
+using var router = ctx.CreateRouterSocket();
 string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 using var dealerMonitor = dealer.MonitorOpen(SocketEvent.ConnectionReady);
 using var routerMonitor = router.MonitorOpen(SocketEvent.ConnectionReady);

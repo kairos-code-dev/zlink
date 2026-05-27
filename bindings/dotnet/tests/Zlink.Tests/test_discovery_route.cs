@@ -15,15 +15,13 @@ public sealed class test_discovery_route
             return;
 
         const string channel = "dotnet-route-api";
-        using var registryContext = new Context();
-        using var ownerContext = new Context();
-        using var resolverContext = new Context();
-        using var registry = new Registry(registryContext);
-        using var ownerDiscovery = new Discovery(ownerContext,
-            AutoConnectType.ClientServer, channel);
-        using var resolverDiscovery = new Discovery(resolverContext,
-            AutoConnectType.ClientServer, channel);
-        var owner = new RouterSocket(ownerContext);
+        using var registryContext = Zlink.CreateContext();
+        using var ownerContext = Zlink.CreateContext();
+        using var resolverContext = Zlink.CreateContext();
+        using var registry = registryContext.CreateRegistry();
+        using var ownerDiscovery = ownerContext.CreateDiscovery(AutoConnectType.ClientServer, channel);
+        using var resolverDiscovery = resolverContext.CreateDiscovery(AutoConnectType.ClientServer, channel);
+        var owner = ownerContext.CreateRouterSocket();
 
         string registryPub = CoreTestSupport.NewEndpoint("tcp",
             "dotnet-route-reg-pub");
@@ -70,7 +68,7 @@ public sealed class test_discovery_route
             sleepMs: 25));
     }
 
-    private static bool TryBindRoute(Discovery discovery, byte[] key,
+    private static bool TryBindRoute(IDiscovery discovery, byte[] key,
         byte[] value)
     {
         try
@@ -84,7 +82,7 @@ public sealed class test_discovery_route
         }
     }
 
-    private static bool TryResolveRoute(Discovery discovery, byte[] key,
+    private static bool TryResolveRoute(IDiscovery discovery, byte[] key,
         RoutingId expectedOwner, byte[] expectedValue)
     {
         try
@@ -100,7 +98,7 @@ public sealed class test_discovery_route
         }
     }
 
-    private static bool ResolveRouteReturnsNoEntity(Discovery discovery,
+    private static bool ResolveRouteReturnsNoEntity(IDiscovery discovery,
         byte[] key)
     {
         try

@@ -18,17 +18,17 @@ internal static class PerfMultiPubSubClient
         int durationSeconds = ResolveMultiDurationSeconds(options);
         string endpoint = options.Endpoint;
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var pollManager = new PollManager();
         using var controlState = new RunnerControlState(size);
         ApplyMultiClientContextOptions(ctx, options);
-        var clients = new List<SocketBase>(clientCount);
+        var clients = new List<ISocket>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
         {
             for (int i = 0; i < clientCount; i++)
             {
-                var client = new SubSocket(ctx);
+                var client = ctx.CreateSubSocket();
                 ApplyMultiSocketOptions(client, options);
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
@@ -40,7 +40,7 @@ internal static class PerfMultiPubSubClient
                 monitors.Add(monitor);
             }
 
-            List<SocketBase> activeClients = WaitClientConnectReadyAll(
+            List<ISocket> activeClients = WaitClientConnectReadyAll(
                 pollManager, clients, monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
@@ -88,7 +88,7 @@ internal static class PerfMultiPubSubClient
     private static (double throughput, double latencyNs, double latencyP95Ns,
         double latencyP99Ns, long measureCount)
         RunMultiPubSubClientLoop(PollManager pollManager,
-            List<SocketBase> activeClients, int msgSize, int latencySampleCap,
+            List<ISocket> activeClients, int msgSize, int latencySampleCap,
             int durationSeconds, int pollTimeoutMs)
     {
         _ = pollManager;
@@ -108,7 +108,7 @@ internal static class PerfMultiPubSubClient
         // no separate stop deadline / timer cap (PERF_MULTI § 1.3.1).
         long benchDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
-        using var poller = new Poller();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[activeClients.Count];
         var subscribedMessages = new TopicMessage[activeClients.Count];
         for (int i = 0; i < activeClients.Count; i++)
@@ -140,7 +140,7 @@ internal static class PerfMultiPubSubClient
                     TopicMessage subscribed = subscribedMessages[i];
                     while (true)
                     {
-                        if (!TrySubscribeNoWait((SubSocket)activeClients[i],
+                        if (!TrySubscribeNoWait((ISubSocket)activeClients[i],
                                 subscribed))
                             break;
 
@@ -207,7 +207,7 @@ internal static class PerfMultiPubSubClient
     // by the wire stop token published over the same topic. Matches C
     // perf_multi_pubsub_client.cpp run_recv_duration's
     // zlink_poller_wait(...,-1,NULL). No timer fallback / no stop deadline.
-    private static int WaitForReadReady(Poller poller, PollEvent[] events)
+    private static int WaitForReadReady(IPoller poller, PollEvent[] events)
     {
         try
         {
@@ -233,7 +233,7 @@ internal static class PerfMultiPubSubClient
             latencySampleCap, ref rng);
     }
 
-    private static bool TrySubscribeNoWait(SubSocket socket,
+    private static bool TrySubscribeNoWait(ISubSocket socket,
         TopicMessage result)
     {
         try

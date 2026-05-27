@@ -3,7 +3,7 @@
 
 namespace Systems.Zlink;
 
-public sealed class PubSocket : PublisherSocketBase, IPubSocket
+internal sealed class PubSocket : PublisherSocketBase, IPubSocket
 {
     public new PubSocketOptions Options { get; }
 

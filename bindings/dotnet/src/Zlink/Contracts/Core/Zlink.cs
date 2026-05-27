@@ -28,6 +28,41 @@ public static class Zlink
         return ZlinkRuntime.Version();
     }
 
+    public static IContext CreateContext()
+    {
+        return new Context();
+    }
+
+    public static IAtomicCounter CreateAtomicCounter()
+    {
+        return new AtomicCounter();
+    }
+
+    public static IZlinkStopwatch CreateStopwatch()
+    {
+        return new ZlinkStopwatch();
+    }
+
+    public static IZlinkThread CreateThread(Action task)
+    {
+        return new ZlinkThread(task);
+    }
+
+    public static IPoller CreatePoller()
+    {
+        return new Poller();
+    }
+
+    public static IZlinkTimer CreateTimer()
+    {
+        return new Timer();
+    }
+
+    public static IZlinkTimer CreateTimer(ISpot spot)
+    {
+        return Timer.FromSpot(SocketInterop.RequireSpot(spot, nameof(spot)));
+    }
+
     public static bool Has(string capability)
     {
         return ZlinkRuntime.Has(capability);

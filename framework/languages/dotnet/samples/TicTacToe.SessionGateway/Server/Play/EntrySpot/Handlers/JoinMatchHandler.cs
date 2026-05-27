@@ -5,6 +5,7 @@ using TicTacToe.SessionGateway.Shared.Actors;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.SessionGateway.Play.EntrySpot.Handlers;
 
@@ -14,10 +15,12 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
     public async ValueTask<JoinMatchRes> HandleAsync(
         TicTacToeEntrySpot entrySpot,
         PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
         JoinMatchReq request,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;
+        _ = context;
         var result = await actor.Context
             .JoinSpot(RoutingId.FromHex(request.MatchId), request)
             .Timeout(SampleTimings.RequestTimeout)

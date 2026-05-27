@@ -11,7 +11,7 @@ public sealed class test_ctx_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         ctx.Options.IoThreads = 1;
         Assert.Equal(1, ctx.Options.IoThreads);
 
@@ -36,7 +36,7 @@ public sealed class test_ctx_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         Assert.True(ctx.Options.MaxSockets > 0);
         Assert.True(ctx.Options.SocketLimit > 0);
         Assert.True(ctx.Options.IoThreads > 0);
@@ -49,7 +49,7 @@ public sealed class test_ctx_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         Assert.True(ctx.Options.Blocky);
         ctx.Options.Blocky = false;
         Assert.False(ctx.Options.Blocky);
@@ -61,7 +61,7 @@ public sealed class test_ctx_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         ctx.Options.ThreadSchedulingPolicy = 0;
         Assert.Equal(0, ctx.Options.ThreadSchedulingPolicy);
 
@@ -75,8 +75,8 @@ public sealed class test_ctx_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using (var preRouter = new RouterSocket(ctx))
+        using var ctx = Zlink.CreateContext();
+        using (var preRouter = ctx.CreateRouterSocket())
         {
             Assert.Null(preRouter.Options.Linger);
         }
@@ -84,7 +84,7 @@ public sealed class test_ctx_options
         ctx.Options.Blocky = false;
         Assert.False(ctx.Options.Blocky);
 
-        using var router = new RouterSocket(ctx);
+        using var router = ctx.CreateRouterSocket();
         Assert.Equal(TimeSpan.Zero, router.Options.Linger);
     }
 
@@ -94,7 +94,7 @@ public sealed class test_ctx_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         ctx.Shutdown();
     }
 }

@@ -11,14 +11,14 @@ public sealed class test_discovery_router_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var registryContext = new Context();
-        using var leftContext = new Context();
-        using var rightContext = new Context();
-        using var registry = new Registry(registryContext);
-        using var leftDiscovery = new Discovery(leftContext, AutoConnectType.RouteMesh, "routed-discovery");
-        using var rightDiscovery = new Discovery(rightContext, AutoConnectType.RouteMesh, "routed-discovery");
-        var left = new RouterSocket(leftContext);
-        var right = new RouterSocket(rightContext);
+        using var registryContext = Zlink.CreateContext();
+        using var leftContext = Zlink.CreateContext();
+        using var rightContext = Zlink.CreateContext();
+        using var registry = registryContext.CreateRegistry();
+        using var leftDiscovery = leftContext.CreateDiscovery(AutoConnectType.RouteMesh, "routed-discovery");
+        using var rightDiscovery = rightContext.CreateDiscovery(AutoConnectType.RouteMesh, "routed-discovery");
+        var left = leftContext.CreateRouterSocket();
+        var right = rightContext.CreateRouterSocket();
 
         var registryPub = CoreTestSupport.NewEndpoint("tcp", "routed-reg-pub");
         var registryRouter = CoreTestSupport.NewEndpoint("tcp", "routed-reg-router");

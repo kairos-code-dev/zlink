@@ -9,7 +9,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class DealerSocket : MessageSocketBase, IDealerSocket
+internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
 {
     private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(5);
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate RequestReplyHandler =

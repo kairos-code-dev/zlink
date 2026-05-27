@@ -2,7 +2,7 @@
 
 namespace Systems.Zlink;
 
-public sealed class XPubSocket : PublisherSocketBase, IXPubSocket
+internal sealed class XPubSocket : PublisherSocketBase, IXPubSocket
 {
     public new PubSocketOptions Options { get; }
 

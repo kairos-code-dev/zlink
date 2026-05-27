@@ -16,15 +16,14 @@ internal static class PerfMultiSpotServer
     internal static int Run(PerfOptions options)
     {
         SpotServerConfig config = BuildConfig(options);
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var controlState = new RunnerControlState(config.Size);
         ApplyMultiServerContextOptions(ctx, options);
         ApplyAutoHwmMsgUnit(ctx, config.Size);
 
-        using var registry = new Registry(ctx);
-        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
-            config.ChannelName);
-        using var nodePub = new SpotNode(ctx);
+        using var registry = ctx.CreateRegistry();
+        using var discovery = ctx.CreateDiscovery(AutoConnectType.SpotMesh, config.ChannelName);
+        using var nodePub = ctx.CreateSpotNode();
         using var spotPub = nodePub.CreateSpot();
         ApplyMultiSpotSocketOptions(spotPub, options);
 
@@ -34,7 +33,7 @@ internal static class PerfMultiSpotServer
         ConfigureSpotDiscoveryTlsIfNeeded(discovery, config.Transport);
         // ITEM 3 fix: the ONLY real defect was the unresolved wildcard
         // ("tcp://127.0.0.1:*") registry endpoint, which made
-        // Discovery.ConnectRegistry fail with errno 22 (EINVAL) and the
+        // discovery.ConnectRegistry fail with errno 22 (EINVAL) and the
         // whole MULTI_SPOT pattern be misreported as UNSUPPORTED. Discovery
         // connects to the registry ROUTER endpoint (matching the working
         // samples/DiscoveryRegistry sample); endpoints are now concrete.
@@ -47,7 +46,7 @@ internal static class PerfMultiSpotServer
             config.Transport, "multi-spot-data", options);
         nodePub.AttachDiscovery(discovery);
 
-        using var controlNode = new SpotNode(ctx);
+        using var controlNode = ctx.CreateSpotNode();
         ConfigureSpotNodeTlsIfNeeded(controlNode, config.Transport);
         ConfigureSpotControlNode(controlNode, config.ReadyTimeoutMs);
         using var controlPub = controlNode.CreateSpot();
@@ -83,7 +82,7 @@ internal static class PerfMultiSpotServer
         });
 
         // ITEM 3 fix: advertise the registry ROUTER endpoint (what the
-        // client's Discovery.ConnectRegistry connects to), now concrete.
+        // client's discovery.ConnectRegistry connects to), now concrete.
         WriteStdoutLine(
             $"READY,{actualDataEndpoint}|{config.RegistryRouterEndpoint}");
         WriteStdoutLine($"CONTROL_READY,{actualControlEndpoint}");
@@ -123,7 +122,7 @@ internal static class PerfMultiSpotServer
             ResolveSpotServerReadyTimeoutMs(options),
             MultiEndpointFor(options.Transport, "multi-spot-data", options),
             // ITEM 3 fix: registry endpoints must be CONCRETE (not "*") so
-            // the bound address can be reused for Discovery.ConnectRegistry
+            // the bound address can be reused for discovery.ConnectRegistry
             // (server side) and advertised to the client via READY.
             MultiRegistryEndpoint(options.Transport, options),
             MultiRegistryEndpoint(options.Transport, options),
@@ -137,7 +136,7 @@ internal static class PerfMultiSpotServer
             Math.Max(1000, connectReadyTimeoutMs * 6));
     }
 
-    private static void ConfigureSpotNodePublisher(SpotNode node,
+    private static void ConfigureSpotNodePublisher(ISpotNode node,
         PerfOptions options, SpotServerConfig config)
     {
         if (ManualSocketOverridesEnabled())
@@ -154,7 +153,7 @@ internal static class PerfMultiSpotServer
                 TimeSpan.FromMilliseconds(config.ReadyTimeoutMs));
     }
 
-    private static void ConfigureSpotControlNode(SpotNode node, int timeoutMs)
+    private static void ConfigureSpotControlNode(ISpotNode node, int timeoutMs)
     {
         TrySetSpotOption(() => node.PublisherNoDrop = true);
         TrySetSpotOption(() =>
@@ -180,7 +179,7 @@ internal static class PerfMultiSpotServer
             "PERF_MULTI_SPOT_LATENCY_ONLY_INTERVAL_US", 1000);
     }
 
-    private static int RunActivePhase(Spot spotPub,
+    private static int RunActivePhase(ISpot spotPub,
         RunnerControlState controlState, SpotServerConfig config)
     {
         ulong seq = 1;
@@ -193,8 +192,8 @@ internal static class PerfMultiSpotServer
         long nextProbeTicks = Stopwatch.GetTimestamp();
 
         long activeDeadlineTicks = DeadlineTicksFromSeconds(config.DurationSeconds);
-        using var activeTimer = new Systems.Zlink.Timer();
-        using var sendPoller = new Poller();
+        using var activeTimer = Zlink.CreateTimer();
+        using var sendPoller = Zlink.CreatePoller();
         var sendEvents = new PollEvent[2];
         sendPoller.Add(spotPub, PollEventFlags.PollOut, SpotSocketTag);
         sendPoller.Add(activeTimer, ActiveDeadlineTag);
@@ -245,12 +244,12 @@ internal static class PerfMultiSpotServer
         return 0;
     }
 
-    private static void TryPublishStopToken(Spot spotPub, SpotServerConfig config)
+    private static void TryPublishStopToken(ISpot spotPub, SpotServerConfig config)
     {
         TryPublish(spotPub, config, MultiStopToken, SendFlags.None);
     }
 
-    private static bool TryPublishActive(Spot spotPub, SpotServerConfig config,
+    private static bool TryPublishActive(ISpot spotPub, SpotServerConfig config,
         ulong seq, SendFlags flags)
     {
         try
@@ -268,13 +267,13 @@ internal static class PerfMultiSpotServer
         }
     }
 
-    private static bool WaitForReadyCount(Spot controlSpot, int size,
+    private static bool WaitForReadyCount(ISpot controlSpot, int size,
         int expectedCount, int timeoutMs)
     {
         int readyCount = 0;
         string prefix = $"READY_COUNT,{size},";
-        using var deadlineTimer = new Systems.Zlink.Timer();
-        using var poller = new Poller();
+        using var deadlineTimer = Zlink.CreateTimer();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[2];
         poller.Add(controlSpot, PollEventFlags.PollIn, SpotSocketTag);
         poller.Add(deadlineTimer, ControlDeadlineTag);
@@ -296,7 +295,7 @@ internal static class PerfMultiSpotServer
         }
     }
 
-    private static bool TryReceiveReadyCount(Spot controlSpot, string prefix,
+    private static bool TryReceiveReadyCount(ISpot controlSpot, string prefix,
         ref int readyCount, int expectedCount, out bool ready)
     {
         ready = false;
@@ -317,25 +316,25 @@ internal static class PerfMultiSpotServer
         return true;
     }
 
-    private static bool PublishControlStart(Spot controlSpot, int size,
+    private static bool PublishControlStart(ISpot controlSpot, int size,
         int timeoutMs)
     {
         string payload = $"START,{size}";
         return PublishControlPayload(controlSpot, payload, timeoutMs);
     }
 
-    private static bool PublishControlStartBurst(Spot controlSpot, int size,
+    private static bool PublishControlStartBurst(ISpot controlSpot, int size,
         int timeoutMs)
     {
         return PublishControlStart(controlSpot, size, timeoutMs);
     }
 
-    private static bool PublishControlPayload(Spot controlSpot, string payload,
+    private static bool PublishControlPayload(ISpot controlSpot, string payload,
         int timeoutMs)
     {
         byte[] bytes = Encoding.ASCII.GetBytes(payload);
-        using var deadlineTimer = new Systems.Zlink.Timer();
-        using var poller = new Poller();
+        using var deadlineTimer = Zlink.CreateTimer();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[2];
         poller.Add(controlSpot, PollEventFlags.PollOut, SpotSocketTag);
         poller.Add(deadlineTimer, ControlDeadlineTag);
@@ -365,7 +364,7 @@ internal static class PerfMultiSpotServer
         }
     }
 
-    private static bool WaitForControlPeerConnected(SpotNode node,
+    private static bool WaitForControlPeerConnected(ISpotNode node,
         string peerEndpoint, int timeoutMs)
     {
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
@@ -388,7 +387,7 @@ internal static class PerfMultiSpotServer
             Console.Error.WriteLine($"control_debug:{message}");
     }
 
-    private static void DebugSubjects(SpotNode node, string label)
+    private static void DebugSubjects(ISpotNode node, string label)
     {
         if (PerfEnv.ReadPositive("PERF_DOTNET_CONTROL_DEBUG", 0) <= 0)
             return;
@@ -402,7 +401,7 @@ internal static class PerfMultiSpotServer
         }
     }
 
-    private static bool TryPublish(Spot spotPub, SpotServerConfig config,
+    private static bool TryPublish(ISpot spotPub, SpotServerConfig config,
         byte[] payload, SendFlags flags)
     {
         try
@@ -418,8 +417,8 @@ internal static class PerfMultiSpotServer
         }
     }
 
-    private static bool WaitForSpotPublishReady(Poller poller,
-        PollEvent[] events, Systems.Zlink.Timer activeTimer, int deadlineTag)
+    private static bool WaitForSpotPublishReady(IPoller poller,
+        PollEvent[] events, Systems.Zlink.IZlinkTimer activeTimer, int deadlineTag)
     {
         while (true)
         {
@@ -449,8 +448,8 @@ internal static class PerfMultiSpotServer
         }
     }
 
-    private static bool WaitForControlEvent(Poller poller, PollEvent[] events,
-        Systems.Zlink.Timer deadlineTimer, PollEventFlags required)
+    private static bool WaitForControlEvent(IPoller poller, PollEvent[] events,
+        Systems.Zlink.IZlinkTimer deadlineTimer, PollEventFlags required)
     {
         while (true)
         {

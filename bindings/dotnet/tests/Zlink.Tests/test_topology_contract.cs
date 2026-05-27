@@ -10,8 +10,8 @@ public sealed class test_topology_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var registry = new Registry(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var registry = ctx.CreateRegistry();
 
         RegistryStatus snapshot = registry.StatusSnapshot();
         Assert.True(snapshot.TopologyEntryCount >= 0);
@@ -27,8 +27,8 @@ public sealed class test_topology_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
 
         SpotNodeStatus snapshot = node.StatusSnapshot();
         Assert.True(snapshot.SubjectCount >= 0);
@@ -42,8 +42,8 @@ public sealed class test_topology_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
 
         RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("spot-node-id");

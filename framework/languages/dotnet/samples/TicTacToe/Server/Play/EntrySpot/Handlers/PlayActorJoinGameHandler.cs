@@ -32,10 +32,12 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
     public async ValueTask<JoinGameRes> HandleAsync(
         PlayEntrySpot entrySpot,
         PlayActor actor,
+        ZLinkSpotActorRequestContext context,
         JoinGameReq message,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;
+        _ = context;
         logger.LogInformation(
             "actor: JoinGameReq received. actor={ActorId}, gameId={GameId}",
             actor.ActorId,

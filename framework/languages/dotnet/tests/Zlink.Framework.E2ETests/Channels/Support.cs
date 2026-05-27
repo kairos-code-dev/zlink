@@ -9,7 +9,7 @@ namespace Zlink.Framework.E2ETests.Channels;
 internal static class ChannelSupport
 {
     internal static async Task RunMeshRouterAsync(
-        RouterSocket router,
+        IRouterSocket router,
         MeshProfileRecorder recorder,
         CancellationToken cancellationToken)
     {

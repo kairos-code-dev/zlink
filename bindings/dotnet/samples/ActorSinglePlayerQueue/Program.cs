@@ -4,7 +4,7 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-static async Task JoinAndAccept(Spot spot, Actor actor)
+static async Task JoinAndAccept(ISpot spot, IActor actor)
 {
     using Message joinMessage = Message.From("join:queue");
     Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
@@ -24,8 +24,8 @@ static async Task JoinAndAccept(Spot spot, Actor actor)
         part.Dispose();
 }
 
-using var ctx = new Context();
-using var node = new SpotNode(ctx);
+using var ctx = Zlink.CreateContext();
+using var node = ctx.CreateSpotNode();
 using var spot = node.CreateSpot();
 using var actor = node.CreateActor("solo-player-1");
 List<string> actorMessages = new();
@@ -42,7 +42,7 @@ spot.OnDispatchEvent(info =>
     }
 });
 
-using var stream = new StreamSocket(ctx);
+using var stream = ctx.CreateStreamSocket();
 string endpoint = SampleSupport.NewEndpoint("tcp", "actor-queue");
 int port = SampleSupport.ExtractPort(endpoint);
 stream.Bind(endpoint);

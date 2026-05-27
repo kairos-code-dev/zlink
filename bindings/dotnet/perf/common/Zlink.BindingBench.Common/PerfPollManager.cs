@@ -50,14 +50,14 @@ public sealed class SocketReadyPoller : IDisposable
     private PollEvent[] _readyEvents = Array.Empty<PollEvent>();
     private int[] _readyIndexes = Array.Empty<int>();
     private PollEventFlags[] _readyMasks = Array.Empty<PollEventFlags>();
-    private Poller? _poller;
-    private SocketBase[] _registeredSockets = Array.Empty<SocketBase>();
+    private IPoller? _poller;
+    private ISocket[] _registeredSockets = Array.Empty<ISocket>();
     private PollEventFlags[] _registeredMasks = Array.Empty<PollEventFlags>();
     private PollEventFlags[] _requestedMasks = Array.Empty<PollEventFlags>();
     private int _activePollerSize;
     private int _readyCount;
 
-    public int Poll(IReadOnlyList<SocketBase> sockets,
+    public int Poll(IReadOnlyList<ISocket> sockets,
         IReadOnlyList<PollEventFlags> eventMasks, int timeoutMs)
     {
         int count = sockets.Count;
@@ -109,7 +109,7 @@ public sealed class SocketReadyPoller : IDisposable
         }
     }
 
-    public int Poll(IReadOnlyList<SocketBase> sockets, PollEventFlags events,
+    public int Poll(IReadOnlyList<ISocket> sockets, PollEventFlags events,
         int timeoutMs)
     {
         int count = sockets.Count;
@@ -153,14 +153,14 @@ public sealed class SocketReadyPoller : IDisposable
         if (_readyMasks.Length < count)
             _readyMasks = new PollEventFlags[count];
         if (_registeredSockets.Length < count)
-            _registeredSockets = new SocketBase[count];
+            _registeredSockets = new ISocket[count];
         if (_registeredMasks.Length < count)
             _registeredMasks = new PollEventFlags[count];
         if (_requestedMasks.Length < count)
             _requestedMasks = new PollEventFlags[count];
     }
 
-    private void EnsurePollerState(IReadOnlyList<SocketBase> sockets,
+    private void EnsurePollerState(IReadOnlyList<ISocket> sockets,
         IReadOnlyList<PollEventFlags> eventMasks, int count)
     {
         if (_poller == null || !HasSameLayout(sockets, count))
@@ -198,7 +198,7 @@ public sealed class SocketReadyPoller : IDisposable
         }
     }
 
-    private bool HasSameLayout(IReadOnlyList<SocketBase> sockets, int count)
+    private bool HasSameLayout(IReadOnlyList<ISocket> sockets, int count)
     {
         for (int i = 0; i < count; i++)
         {
@@ -209,11 +209,11 @@ public sealed class SocketReadyPoller : IDisposable
         return true;
     }
 
-    private void RebuildPoller(IReadOnlyList<SocketBase> sockets,
+    private void RebuildPoller(IReadOnlyList<ISocket> sockets,
         IReadOnlyList<PollEventFlags> eventMasks, int count)
     {
         _poller?.Dispose();
-        _poller = new Poller();
+        _poller = Zlink.CreatePoller();
         _activePollerSize = 0;
         _readyCount = 0;
 
@@ -243,13 +243,13 @@ public sealed class PollManager : IDisposable
             deadlineTicks, nowTicks);
     }
 
-    public int PollSockets(IReadOnlyList<SocketBase> sockets,
+    public int PollSockets(IReadOnlyList<ISocket> sockets,
         IReadOnlyList<PollEventFlags> eventMasks, int timeoutMs)
     {
         return _socketPoller.Poll(sockets, eventMasks, timeoutMs);
     }
 
-    public int PollSockets(IReadOnlyList<SocketBase> sockets, PollEventFlags events,
+    public int PollSockets(IReadOnlyList<ISocket> sockets, PollEventFlags events,
         int timeoutMs)
     {
         return _socketPoller.Poll(sockets, events, timeoutMs);

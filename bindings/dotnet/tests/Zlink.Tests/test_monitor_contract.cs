@@ -12,9 +12,9 @@ public sealed class test_monitor_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var server = new PairSocket(ctx);
-        using var client = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreatePairSocket();
+        using var client = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "monitor-recv");
         server.Bind(endpoint);
 
@@ -32,9 +32,9 @@ public sealed class test_monitor_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var server = new PairSocket(ctx);
-        using var client = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreatePairSocket();
+        using var client = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "monitor-handler");
         server.Bind(endpoint);
 
@@ -67,8 +67,8 @@ public sealed class test_monitor_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var server = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "monitor-try-recv-empty");
         server.Bind(endpoint);
@@ -84,14 +84,14 @@ public sealed class test_monitor_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var server = new PairSocket(ctx);
-        using var client = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreatePairSocket();
+        using var client = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "monitor-ignore");
         server.Bind(endpoint);
 
         using ISocketMonitor monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
-        monitor.OnEvent(SocketMonitor.IgnoreHandler);
+        monitor.OnEvent(_ => { });
 
         client.Connect(endpoint);
 

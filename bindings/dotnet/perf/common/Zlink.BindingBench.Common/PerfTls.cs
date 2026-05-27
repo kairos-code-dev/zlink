@@ -10,7 +10,7 @@ public static class PerfTls
                || transport.Equals("wss", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static void ConfigureTlsServerIfNeeded(SocketBase socket,
+    public static void ConfigureTlsServerIfNeeded(ISocket socket,
         string transport, bool verbose = true)
     {
         if (!IsSecureTransport(transport))
@@ -27,7 +27,7 @@ public static class PerfTls
         socket.SetTlsServer(certPath, keyPath);
     }
 
-    public static void ConfigureTlsClientIfNeeded(SocketBase socket,
+    public static void ConfigureTlsClientIfNeeded(ISocket socket,
         string transport, bool verbose = true)
     {
         if (!IsSecureTransport(transport))
@@ -43,25 +43,25 @@ public static class PerfTls
         socket.SetTlsClient(caPath, "localhost");
     }
 
-    public static void ConfigureReceiverTlsServerIfNeeded(SocketBase receiver,
+    public static void ConfigureReceiverTlsServerIfNeeded(ISocket receiver,
         string transport, bool verbose = true)
     {
         ConfigureTlsServerIfNeeded(receiver, transport, verbose);
     }
 
-    public static void ConfigureSpotTlsPublisherIfNeeded(SpotNode spotNode,
+    public static void ConfigureSpotTlsPublisherIfNeeded(ISpotNode spotNode,
         string transport, bool verbose = true)
     {
         ConfigureSpotNodeTlsIfNeeded(spotNode, transport, verbose);
     }
 
-    public static void ConfigureSpotTlsSubscriberIfNeeded(SpotNode spotNode,
+    public static void ConfigureSpotTlsSubscriberIfNeeded(ISpotNode spotNode,
         string transport, bool verbose = true)
     {
         ConfigureSpotNodeTlsIfNeeded(spotNode, transport, verbose);
     }
 
-    public static void ConfigureSpotNodeTlsIfNeeded(SpotNode spotNode,
+    public static void ConfigureSpotNodeTlsIfNeeded(ISpotNode spotNode,
         string transport, bool verbose = true)
     {
         if (!IsSecureTransport(transport))
@@ -77,7 +77,7 @@ public static class PerfTls
         spotNode.SetTlsClient(caPath, "localhost");
     }
 
-    public static void ConfigureSpotRegistryTlsIfNeeded(Registry registry,
+    public static void ConfigureSpotRegistryTlsIfNeeded(IRegistry registry,
         string transport, bool verbose = true)
     {
         if (!IsSecureTransport(transport))
@@ -92,7 +92,7 @@ public static class PerfTls
         registry.SetTlsServer(certPath, keyPath);
     }
 
-    public static void ConfigureSpotDiscoveryTlsIfNeeded(Discovery discovery,
+    public static void ConfigureSpotDiscoveryTlsIfNeeded(IDiscovery discovery,
         string transport, bool verbose = true)
     {
         if (!IsSecureTransport(transport))

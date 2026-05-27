@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendRegistryQueryClientWrapper(RegistryQueryClient nativeClient)
+internal sealed class ZLinkBackendRegistryQueryClientWrapper(IRegistryQueryClient nativeClient)
     : IZLinkBackendRegistryQueryClient
 {
     public object NativeInstance => nativeClient;

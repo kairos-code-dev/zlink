@@ -6,7 +6,7 @@ using Systems.Zlink.Sockets.Internal;
 namespace Systems.Zlink;
 
 [EditorBrowsable(EditorBrowsableState.Never)]
-public abstract class ConnectableRoutedMessageSocketBase : RoutedMessageSocketBase,
+internal abstract class ConnectableRoutedMessageSocketBase : RoutedMessageSocketBase,
     IConnectableRoutedMessageSocket
 {
     internal ConnectableRoutedMessageSocketBase(Context context, SocketType type)

@@ -3,7 +3,7 @@
 
 namespace Systems.Zlink;
 
-public sealed class SubSocket : SubscriberSocketBase, ISubSocket
+internal sealed class SubSocket : SubscriberSocketBase, ISubSocket
 {
     public new SubSocketOptions Options { get; }
 

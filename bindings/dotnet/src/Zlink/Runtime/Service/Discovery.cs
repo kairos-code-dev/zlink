@@ -8,7 +8,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class Discovery : IDiscovery
+internal sealed class Discovery : IDiscovery
 {
     private IntPtr _handle;
 

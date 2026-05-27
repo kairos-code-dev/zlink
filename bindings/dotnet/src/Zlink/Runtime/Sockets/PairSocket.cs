@@ -2,7 +2,7 @@
 
 namespace Systems.Zlink;
 
-public sealed class PairSocket : MessageSocketBase
+internal sealed class PairSocket : MessageSocketBase, IPairSocket
 {
     public PairSocket(Context context)
         : base(context, SocketType.Pair)

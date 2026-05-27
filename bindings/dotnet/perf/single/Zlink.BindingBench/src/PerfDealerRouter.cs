@@ -10,7 +10,7 @@ internal static class PerfDealerRouter
     private const uint RunId = 1;
     private const uint ActivePhase = 1;
 
-    private static bool TryCleanup(DealerSocket sender, RouterSocket receiver,
+    private static bool TryCleanup(IDealerSocket sender, IRouterSocket receiver,
         string endpoint)
     {
         bool ok = true;
@@ -44,10 +44,10 @@ internal static class PerfDealerRouter
         int readyTimeoutMs = ResolveSingleConnectReadyTimeoutMs();
         int latencySampleCap = ResolveSingleLatencyCount("DEALER_ROUTER");
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         ApplySingleContextOptions(ctx);
-        using var receiver = new RouterSocket(ctx);
-        using var sender = new DealerSocket(ctx);
+        using var receiver = ctx.CreateRouterSocket();
+        using var sender = ctx.CreateDealerSocket();
         ApplySingleAutoHwmMsgUnit(ctx, size);
         RecalculateSingleAutoHwm(ctx);
         ConfigureTlsServerIfNeeded(receiver, transport);
@@ -126,7 +126,7 @@ internal static class PerfDealerRouter
         }
     }
 
-    private static bool RunActivePhase(DealerSocket sender, RouterSocket receiver,
+    private static bool RunActivePhase(IDealerSocket sender, IRouterSocket receiver,
         byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
         int latencyCap, out long receivedOut, out List<double> latencySamples)
     {
@@ -207,7 +207,7 @@ internal static class PerfDealerRouter
         senderThread.IsBackground = true;
         senderThread.Start();
 
-        using var poller = new Poller();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[1];
         poller.Add(receiver, PollEventFlags.PollIn, 0);
         using var maybe = new Received();
@@ -249,7 +249,7 @@ internal static class PerfDealerRouter
         return received > 0 && latencySamples.Count > 0;
     }
 
-    private static bool TryReceive(RouterSocket receiver, Received result)
+    private static bool TryReceive(IRouterSocket receiver, Received result)
     {
         try
         {
@@ -266,7 +266,7 @@ internal static class PerfDealerRouter
         }
     }
 
-    private static bool TryReceiveBlocking(RouterSocket receiver, Received result)
+    private static bool TryReceiveBlocking(IRouterSocket receiver, Received result)
     {
         try
         {

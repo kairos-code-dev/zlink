@@ -19,16 +19,16 @@ internal static class PerfMultiRouterRouterClient
         string endpoint = options.Endpoint;
         ReadOnlySpan<byte> serverRoutingId = "SERVER"u8;
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var pollManager = new PollManager();
         ApplyMultiClientContextOptions(ctx, options);
-        var clients = new List<SocketBase>(clientCount);
+        var clients = new List<ISocket>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
         {
             for (int i = 0; i < clientCount; i++)
             {
-                var client = new RouterSocket(ctx);
+                var client = ctx.CreateRouterSocket();
                 ApplyMultiSocketOptions(client, options);
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
@@ -41,7 +41,7 @@ internal static class PerfMultiRouterRouterClient
                 monitors.Add(monitor);
             }
 
-            List<SocketBase> activeClients = WaitClientConnectReadyAll(
+            List<ISocket> activeClients = WaitClientConnectReadyAll(
                 pollManager, clients, monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
@@ -96,7 +96,7 @@ internal static class PerfMultiRouterRouterClient
     }
 
     private static RouterRouterClientSlot[] CreateSlots(
-        List<SocketBase> activeClients, ReadOnlySpan<byte> serverRoutingId,
+        List<ISocket> activeClients, ReadOnlySpan<byte> serverRoutingId,
         int msgSize, bool borrowPayload)
     {
         var slots = new RouterRouterClientSlot[activeClients.Count];
@@ -229,7 +229,7 @@ internal static class PerfMultiRouterRouterClient
         if ((readyMask & PollEventFlags.PollIn) == 0)
             return;
 
-        RouterSocket routerSock = (RouterSocket)slot.Socket;
+        IRouterSocket routerSock = (IRouterSocket)slot.Socket;
         Message receivedPart = slot.ReusableReceivedPart;
         while (true)
         {
@@ -287,10 +287,10 @@ internal static class PerfMultiRouterRouterClient
         }
     }
 
-    private static List<SocketBase> CollectSockets(
+    private static List<ISocket> CollectSockets(
         RouterRouterClientSlot[] slots)
     {
-        var sockets = new List<SocketBase>(slots.Length);
+        var sockets = new List<ISocket>(slots.Length);
         for (int i = 0; i < slots.Length; i++)
             sockets.Add(slots[i].Socket);
         return sockets;
@@ -320,7 +320,7 @@ internal static class PerfMultiRouterRouterClient
         slot.WaitingForWritable = false;
     }
 
-    private static void DrainRemainingParts(RouterSocket socket,
+    private static void DrainRemainingParts(IRouterSocket socket,
         Message result, bool hasMore)
     {
         while (hasMore
@@ -335,7 +335,7 @@ internal static class PerfMultiRouterRouterClient
         using Message message = slot.BorrowPayload
             ? Message.From(slot.Payload)
             : new Message(slot.Payload.AsSpan());
-        return ((RouterSocket)slot.Socket).Send(slot.ServerRoutingId, message,
+        return ((IRouterSocket)slot.Socket).Send(slot.ServerRoutingId, message,
             SendFlags.DontWait);
     }
 
@@ -354,7 +354,7 @@ internal static class PerfMultiRouterRouterClient
 
     private sealed class RouterRouterClientSlot
     {
-        internal RouterRouterClientSlot(SocketBase socket, RoutingId serverRoutingId,
+        internal RouterRouterClientSlot(ISocket socket, RoutingId serverRoutingId,
             byte[] payload, bool borrowPayload)
         {
             Socket = socket;
@@ -364,7 +364,7 @@ internal static class PerfMultiRouterRouterClient
             ReusableReceivedPart = new Message();
         }
 
-        internal SocketBase Socket { get; }
+        internal ISocket Socket { get; }
         internal RoutingId ServerRoutingId { get; }
         internal byte[] Payload { get; }
         internal bool BorrowPayload { get; }

@@ -115,7 +115,7 @@ public abstract partial class StreamTestSupport
 
         private CallbackExceptionCapture()
         {
-            _eventInfo = typeof(global::Systems.Zlink.Context).Assembly
+            _eventInfo = typeof(global::Systems.Zlink.Zlink).Assembly
                 .GetType("Systems.Zlink.Runtime", throwOnError: true)!
                 .GetEvent("UnhandledCallbackException", BindingFlags.Public | BindingFlags.Static)!
                 ?? throw new InvalidOperationException("Could not locate Systems.Zlink.Runtime.UnhandledCallbackException.");

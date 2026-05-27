@@ -7,7 +7,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class RegistryQueryClient : IRegistryQueryClient
+internal sealed class RegistryQueryClient : IRegistryQueryClient
 {
     private IntPtr _handle;
 

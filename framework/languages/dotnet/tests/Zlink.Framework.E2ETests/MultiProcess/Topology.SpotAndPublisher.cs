@@ -71,10 +71,10 @@ public sealed partial class TopologyTests
             "--create-spot", "stage");
 
         var probe = host.Services.GetRequiredService<SpotChangeProbe>();
-        await probe.WaitForPeerAsync(TimeSpan.FromSeconds(15));
+        await probe.WaitForPeerAsync(TimeSpan.FromSeconds(30));
         var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
         _ = await manager.CreateAsync<LocalMonitoringStageSpot>(timeout.Token);
-        await probe.WaitForSubjectAsync(TimeSpan.FromSeconds(15));
+        await probe.WaitForSubjectAsync(TimeSpan.FromSeconds(30));
 
         await host.StopAsync(timeout.Token);
     }

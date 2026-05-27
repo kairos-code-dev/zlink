@@ -25,8 +25,8 @@ public sealed class test_callback_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "callback-owned");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -58,8 +58,8 @@ public sealed class test_callback_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "callback-packet-ex");
         int port = CoreTestSupport.ExtractPort(endpoint);

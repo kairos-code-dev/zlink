@@ -5,8 +5,8 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-using var ctx = new Context();
-using var node = new SpotNode(ctx);
+using var ctx = Zlink.CreateContext();
+using var node = ctx.CreateSpotNode();
 using var spot = node.CreateSpot();
 using var actor = node.CreateActor("gateway-player-1");
 using var sessionReady = new ManualResetEventSlim(false);
@@ -24,7 +24,7 @@ spot.OnDispatchEvent(info =>
     }
 });
 
-using var stream = new StreamSocket(ctx);
+using var stream = ctx.CreateStreamSocket();
 string endpoint = SampleSupport.NewEndpoint("tcp", "actor-gateway");
 int port = SampleSupport.ExtractPort(endpoint);
 stream.Bind(endpoint);

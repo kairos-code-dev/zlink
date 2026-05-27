@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket) : IZLinkBackendDealerSocket
+internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket) : IZLinkBackendDealerSocket
 {
     public object NativeInstance => nativeSocket;
 
@@ -27,7 +27,7 @@ internal sealed class ZLinkBackendDealerSocketWrapper(DealerSocket nativeSocket)
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
+        nativeSocket.AttachDiscovery(discovery.RequireNative<IDiscovery>());
     }
 
     public void OnSendReady(Action handler)

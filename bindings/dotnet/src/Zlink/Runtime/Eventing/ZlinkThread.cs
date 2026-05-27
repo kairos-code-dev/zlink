@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Systems.Zlink;
 
-public sealed class ZlinkThread : IZlinkThread
+internal sealed class ZlinkThread : IZlinkThread
 {
     private readonly Thread _thread;
     private int _joined;

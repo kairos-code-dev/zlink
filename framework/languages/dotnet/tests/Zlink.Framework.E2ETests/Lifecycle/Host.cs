@@ -32,7 +32,7 @@ public sealed class HostTests
         await host.StartAsync();
 
         Assert.NotNull(runtime.Context);
-        Assert.IsType<global::Systems.Zlink.Context>(runtime.Context!.NativeInstance);
+        Assert.IsAssignableFrom<IContext>(runtime.Context!.NativeInstance);
 
         await host.StopAsync();
 

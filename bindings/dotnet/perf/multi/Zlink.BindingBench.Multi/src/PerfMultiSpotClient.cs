@@ -32,14 +32,13 @@ internal static class PerfMultiSpotClient
             NormalizeClientEndpoint(dataEndpoint, options.Transport),
             NormalizeClientEndpoint(registryEndpoint, options.Transport),
             channelName);
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var controlState = new RunnerControlState(config.Size);
         ApplyMultiClientContextOptions(ctx, options);
         ApplyAutoHwmMsgUnit(ctx, config.Size);
 
-        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
-            config.ChannelName);
-        using var node = new SpotNode(ctx);
+        using var discovery = ctx.CreateDiscovery(AutoConnectType.SpotMesh, config.ChannelName);
+        using var node = ctx.CreateSpotNode();
 
         ConfigureSpotDiscoveryTlsIfNeeded(discovery, config.Transport);
         ConfigureSpotNodeTlsIfNeeded(node, config.Transport);
@@ -78,7 +77,7 @@ internal static class PerfMultiSpotClient
                 slots.Add(slot);
             }
 
-            using var controlNode = new SpotNode(ctx);
+            using var controlNode = ctx.CreateSpotNode();
             ConfigureSpotNodeTlsIfNeeded(controlNode, config.Transport);
             ConfigureSpotControlNode(controlNode, config.ConnectReadyTimeoutMs);
             using var controlPub = controlNode.CreateSpot();
@@ -170,19 +169,19 @@ internal static class PerfMultiSpotClient
         }
     }
 
-    private static bool PublishReadyCount(Spot controlSpot, int size,
+    private static bool PublishReadyCount(ISpot controlSpot, int size,
         int readyCount, int timeoutMs)
     {
         string payload = $"READY_COUNT,{size},{readyCount}";
         return PublishControlPayload(controlSpot, payload, timeoutMs);
     }
 
-    private static bool PublishControlPayload(Spot controlSpot, string payload,
+    private static bool PublishControlPayload(ISpot controlSpot, string payload,
         int timeoutMs)
     {
         byte[] bytes = Encoding.ASCII.GetBytes(payload);
-        using var deadlineTimer = new Systems.Zlink.Timer();
-        using var poller = new Poller();
+        using var deadlineTimer = Zlink.CreateTimer();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[2];
         poller.Add(controlSpot, PollEventFlags.PollOut, SpotSocketTag);
         poller.Add(deadlineTimer, ControlDeadlineTag);
@@ -210,16 +209,16 @@ internal static class PerfMultiSpotClient
     }
 
     private static bool WaitForControlStart(
-        Spot controlSub, Spot controlPub,
+        ISpot controlSub, ISpot controlPub,
         int size, int readyCount, int timeoutMs)
     {
         string expected = $"START,{size}";
         if (!PublishReadyCount(controlPub, size, readyCount, timeoutMs))
             return false;
 
-        using var deadlineTimer = new Systems.Zlink.Timer();
-        using var repeatTimer = new Systems.Zlink.Timer();
-        using var poller = new Poller();
+        using var deadlineTimer = Zlink.CreateTimer();
+        using var repeatTimer = Zlink.CreateTimer();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[3];
         poller.Add(controlSub, PollEventFlags.PollIn, SpotSocketTag);
         poller.Add(deadlineTimer, ControlDeadlineTag);
@@ -242,7 +241,7 @@ internal static class PerfMultiSpotClient
         }
     }
 
-    private static bool TryReceiveControlStart(Spot controlSub, string expected,
+    private static bool TryReceiveControlStart(ISpot controlSub, string expected,
         out bool started)
     {
         started = false;
@@ -257,10 +256,10 @@ internal static class PerfMultiSpotClient
         return true;
     }
 
-    private static bool WaitForControlStartEvent(Poller poller,
-        PollEvent[] events, Spot controlPub, int size, int readyCount,
-        int timeoutMs, Systems.Zlink.Timer deadlineTimer,
-        Systems.Zlink.Timer repeatTimer)
+    private static bool WaitForControlStartEvent(IPoller poller,
+        PollEvent[] events, ISpot controlPub, int size, int readyCount,
+        int timeoutMs, Systems.Zlink.IZlinkTimer deadlineTimer,
+        Systems.Zlink.IZlinkTimer repeatTimer)
     {
         while (true)
         {
@@ -291,8 +290,8 @@ internal static class PerfMultiSpotClient
         }
     }
 
-    private static bool WaitForControlEvent(Poller poller, PollEvent[] events,
-        Systems.Zlink.Timer deadlineTimer, PollEventFlags required)
+    private static bool WaitForControlEvent(IPoller poller, PollEvent[] events,
+        Systems.Zlink.IZlinkTimer deadlineTimer, PollEventFlags required)
     {
         while (true)
         {
@@ -313,7 +312,7 @@ internal static class PerfMultiSpotClient
         }
     }
 
-    private static void DebugSubjects(SpotNode node, string label)
+    private static void DebugSubjects(ISpotNode node, string label)
     {
         if (PerfEnv.ReadPositive("PERF_DOTNET_CONTROL_DEBUG", 0) <= 0)
             return;
@@ -327,7 +326,7 @@ internal static class PerfMultiSpotClient
         }
     }
 
-    private static bool WaitForConnectedPeerEndpoint(SpotNode node,
+    private static bool WaitForConnectedPeerEndpoint(ISpotNode node,
         string peerEndpoint, int timeoutMs)
     {
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
@@ -344,7 +343,7 @@ internal static class PerfMultiSpotClient
         return false;
     }
 
-    private static void TryDisconnectPeer(SpotNode node, string peerEndpoint)
+    private static void TryDisconnectPeer(ISpotNode node, string peerEndpoint)
     {
         if (string.IsNullOrWhiteSpace(peerEndpoint))
             return;
@@ -745,7 +744,7 @@ internal static class PerfMultiSpotClient
             ReservoirSample(target, source[i], ref seenCount, cap, ref rng);
     }
 
-    private static void ApplySpotSubscriberOptions(SpotNode node,
+    private static void ApplySpotSubscriberOptions(ISpotNode node,
         PerfOptions options)
     {
         if (!ManualSocketOverridesEnabled())
@@ -754,7 +753,7 @@ internal static class PerfMultiSpotClient
         TrySetSpotOption(() => node.PubSubHighWaterMark = Math.Max(1, rcvHwm));
     }
 
-    private static void ConfigureSpotControlNode(SpotNode node, int timeoutMs)
+    private static void ConfigureSpotControlNode(ISpotNode node, int timeoutMs)
     {
         TrySetSpotOption(() => node.PublisherNoDrop = true);
         TrySetSpotOption(() =>
@@ -852,13 +851,13 @@ internal static class PerfMultiSpotClient
 
     private sealed class SpotClientSlot : IDisposable
     {
-        internal SpotClientSlot(Spot subscriber, SpotClientSlotState state)
+        internal SpotClientSlot(ISpot subscriber, SpotClientSlotState state)
         {
             Subscriber = subscriber;
             State = state;
         }
 
-        internal Spot Subscriber { get; }
+        internal ISpot Subscriber { get; }
         internal SpotClientSlotState State { get; }
 
         public void Dispose()

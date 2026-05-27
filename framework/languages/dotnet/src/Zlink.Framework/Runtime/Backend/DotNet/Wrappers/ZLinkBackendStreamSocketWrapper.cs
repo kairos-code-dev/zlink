@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket) : IZLinkBackendStreamSocket
+internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket) : IZLinkBackendStreamSocket
 {
     public object NativeInstance => nativeSocket;
 
@@ -52,7 +52,7 @@ internal sealed class ZLinkBackendStreamSocketWrapper(StreamSocket nativeSocket)
 
     public void AttachActorGateway(IZLinkBackendSpotNode node)
     {
-        nativeSocket.AttachActorGateway(node.RequireNative<SpotNode>());
+        nativeSocket.AttachActorGateway(node.RequireNative<ISpotNode>());
     }
 
     public async ValueTask BindActorAsync(

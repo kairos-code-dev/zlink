@@ -20,11 +20,11 @@ internal static class PerfMultiDealerDealerServer
         string endpoint = MultiEndpointFor(options.Transport,
             "multi-dealer-dealer", options);
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var pollManager = new PollManager();
         using var controlState = new RunnerControlState(size);
         ApplyMultiServerContextOptions(ctx, options);
-        using var server = new DealerSocket(ctx);
+        using var server = ctx.CreateDealerSocket();
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
         using var monitor = server.MonitorOpen(SocketEvent.ConnectionReady);
@@ -59,7 +59,7 @@ internal static class PerfMultiDealerDealerServer
 
     private static (double throughput, double latencyNs, double latencyP95Ns,
         double latencyP99Ns, long measureCount)
-        RunReceivePhase(DealerSocket server, int msgSize, int latencySampleCap,
+        RunReceivePhase(IDealerSocket server, int msgSize, int latencySampleCap,
             int durationSeconds)
     {
         const uint expectedRunId = 1;
@@ -109,12 +109,12 @@ internal static class PerfMultiDealerDealerServer
         return Math.Max(configuredCap, (int)expected);
     }
 
-    private static bool ReceiveActiveWindow(DealerSocket server,
+    private static bool ReceiveActiveWindow(IDealerSocket server,
         Message receivedPart, int msgSize, uint expectedRunId,
         PerfPhase expectedPhase, LatencySampleBuffer latSamples,
         ref long messageCount, int durationSeconds)
     {
-        using var poller = new Poller();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[1];
         long activeDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
@@ -149,7 +149,7 @@ internal static class PerfMultiDealerDealerServer
         }
     }
 
-    private static bool ReceiveOneAvailable(DealerSocket server,
+    private static bool ReceiveOneAvailable(IDealerSocket server,
         Message receivedPart, int msgSize, uint expectedRunId,
         PerfPhase expectedPhase, LatencySampleBuffer latSamples,
         ref long messageCount, bool collectMetrics)
@@ -163,7 +163,7 @@ internal static class PerfMultiDealerDealerServer
         return true;
     }
 
-    private static int DrainAvailable(DealerSocket server, Message receivedPart,
+    private static int DrainAvailable(IDealerSocket server, Message receivedPart,
         int msgSize, uint expectedRunId, PerfPhase expectedPhase,
         LatencySampleBuffer latSamples, ref long messageCount,
         bool collectMetrics)
@@ -181,7 +181,7 @@ internal static class PerfMultiDealerDealerServer
         }
     }
 
-    private static void ProcessReceivedPart(DealerSocket server,
+    private static void ProcessReceivedPart(IDealerSocket server,
         Message receivedPart, bool hasMore, int msgSize, uint expectedRunId,
         PerfPhase expectedPhase, LatencySampleBuffer latSamples,
         ref long messageCount, bool collectMetrics)
@@ -238,7 +238,7 @@ internal static class PerfMultiDealerDealerServer
         return true;
     }
 
-    private static void DrainRemainingParts(DealerSocket socket,
+    private static void DrainRemainingParts(IDealerSocket socket,
         Message result, bool hasMore)
     {
         while (hasMore && TryRecvNoWait(socket, result, out hasMore))
@@ -246,7 +246,7 @@ internal static class PerfMultiDealerDealerServer
         }
     }
 
-    private static bool TryRecvNoWait(DealerSocket socket, Message result,
+    private static bool TryRecvNoWait(IDealerSocket socket, Message result,
         out bool hasMore)
     {
         return socket.RecvPart(result, out hasMore, RecvFlags.DontWait);

@@ -12,7 +12,7 @@ using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
 
-public sealed class SpotNode : ISpotNode
+internal sealed class SpotNode : ISpotNode
 {
     private IntPtr _handle;
     private readonly Dictionary<string, DealerSocket> _channelDealers =
@@ -1206,7 +1206,7 @@ public sealed class SpotNode : ISpotNode
 
 }
 
-public sealed partial class Spot : ISpot
+internal sealed partial class Spot : ISpot
 {
     private static readonly NativeMethods.ZlinkReplyHandlerDelegate RoutedReplyHandler =
         OnRoutedReply;

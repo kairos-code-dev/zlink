@@ -165,9 +165,9 @@ public sealed class UnhandledDispatchPolicyTests
             registration,
             null!);
         var endpoint = GetTcpEndpoint();
-        await using var context = new Context();
-        await using var routerSocket = new RouterSocket(context);
-        await using var dealerSocket = new DealerSocket(context);
+        await using var context = global::Systems.Zlink.Zlink.CreateContext();
+        await using var routerSocket = context.CreateRouterSocket();
+        await using var dealerSocket = context.CreateDealerSocket();
         routerSocket.Bind(endpoint);
         dealerSocket.Connect(endpoint);
         var router = new ZLinkBackendRouterSocketWrapper(routerSocket);

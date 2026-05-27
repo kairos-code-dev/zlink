@@ -42,7 +42,7 @@ public sealed class test_stream_socket
         return buffer;
     }
 
-    private static bool TryDrainOneMultipart(StreamSocket streamSocket)
+    private static bool TryDrainOneMultipart(IStreamSocket streamSocket)
     {
         return CoreTestSupport.TryReceiveMultipartLastPart(streamSocket, 512, out _);
     }
@@ -65,7 +65,7 @@ public sealed class test_stream_socket
 
     private static bool HasPublicReceiveWithFlags()
     {
-        return typeof(StreamSocket).GetMethod("Recv",
+        return typeof(IRoutedMessageSocket).GetMethod("Recv",
             BindingFlags.Instance | BindingFlags.Public, binder: null,
             types: new[] { typeof(Received), typeof(RecvFlags) },
             modifiers: null) != null;
@@ -90,9 +90,9 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-        using var node = new SpotNode(ctx, SpotNodeMode.PubSub);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
+        using var node = ctx.CreateSpotNode(SpotNodeMode.PubSub);
 
         ZlinkConfigException error =
             Assert.Throws<ZlinkConfigException>(() =>
@@ -107,8 +107,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
 
         stream.OnPacket((StreamPacketHandler)((_, header, body) =>
         {
@@ -145,8 +145,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-callback-ex");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -199,8 +199,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
 
         stream.Options.Notify = true;
         stream.OnPacket((StreamPacketHandler)((_, _, body) =>
@@ -213,13 +213,13 @@ public sealed class test_stream_socket
     [Fact]
     public void stream_send_message_failure_preserves_ownership()
     {
-        Assert.False(HasPublicMessageSend(typeof(SubSocket)));
+        Assert.False(HasPublicMessageSend(typeof(ISubSocket)));
     }
 
     [Fact]
     public void stream_streamsend_message_failure_preserves_ownership()
     {
-        Assert.False(HasPublicRoutedSend(typeof(DealerSocket)));
+        Assert.False(HasPublicRoutedSend(typeof(IDealerSocket)));
     }
 
     [Fact]
@@ -228,8 +228,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-raw-cb");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -263,8 +263,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-raw-owned");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -308,8 +308,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-zero-cb");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -343,8 +343,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -385,8 +385,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-peers");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -415,8 +415,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-monitor");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -461,8 +461,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-raw-load");
         int port = CoreTestSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
@@ -512,8 +512,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         stream.Options.MaxMessageSize = 4L;
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-maxmsg");
@@ -560,9 +560,9 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-        Assert.Null(typeof(StreamSocket).GetMethod("Connect"));
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
+        Assert.Null(typeof(IStreamSocket).GetMethod("Connect"));
     }
 
     [Fact]
@@ -573,8 +573,8 @@ public sealed class test_stream_socket
         if (!CoreTestSupport.IsTransportSupported("ws"))
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         string endpoint = CoreTestSupport.NewEndpoint("ws", "stream-ws");
         stream.Bind(endpoint);
     }
@@ -599,8 +599,8 @@ public sealed class test_stream_socket
             return;
         }
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         stream.SetTlsServer(cert, key);
         string endpoint = CoreTestSupport.NewEndpoint("wss", "stream-wss");
         stream.Bind(endpoint);

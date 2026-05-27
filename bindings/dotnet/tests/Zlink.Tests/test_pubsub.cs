@@ -17,9 +17,9 @@ public sealed class test_pubsub
         if (!CoreTestSupport.IsTransportSupported(transport))
             return;
 
-        using var ctx = new Context();
-        using var publisher = new PubSocket(ctx);
-        using var subscriber = new SubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var publisher = ctx.CreatePubSocket();
+        using var subscriber = ctx.CreateSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint(transport, "pubsub");
         publisher.Bind(endpoint);
@@ -45,9 +45,9 @@ public sealed class test_pubsub
         if (!CoreTestSupport.IsTransportSupported(transport))
             return;
 
-        using var ctx = new Context();
-        using var publisher = new PubSocket(ctx);
-        using var subscriber = new SubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var publisher = ctx.CreatePubSocket();
+        using var subscriber = ctx.CreateSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint(transport, "pubsub-filter");
         publisher.Bind(endpoint);
@@ -79,9 +79,9 @@ public sealed class test_pubsub
         if (!CoreTestSupport.IsTransportSupported(transport))
             return;
 
-        using var ctx = new Context();
-        using var xpub = new XPubSocket(ctx);
-        using var xsub = new XSubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var xpub = ctx.CreateXPubSocket();
+        using var xsub = ctx.CreateXSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint(transport, "xpub-xsub");
         xpub.Bind(endpoint);
@@ -109,9 +109,9 @@ public sealed class test_pubsub
         if (!CoreTestSupport.IsTransportSupported("inproc"))
             return;
 
-        using var ctx = new Context();
-        using var publisher = new PubSocket(ctx);
-        using var subscriber = new SubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var publisher = ctx.CreatePubSocket();
+        using var subscriber = ctx.CreateSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pubsub-utf8-topic-cache");
@@ -140,9 +140,9 @@ public sealed class test_pubsub
         if (!CoreTestSupport.IsTransportSupported("inproc"))
             return;
 
-        using var ctx = new Context();
-        using var publisher = new PubSocket(ctx);
-        using var subscriber = new SubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var publisher = ctx.CreatePubSocket();
+        using var subscriber = ctx.CreateSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pubsub-direct-single-publish");
@@ -167,9 +167,9 @@ public sealed class test_pubsub
         if (!CoreTestSupport.IsTransportSupported("inproc"))
             return;
 
-        using var ctx = new Context();
-        using var publisher = new PubSocket(ctx);
-        using var subscriber = new SubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var publisher = ctx.CreatePubSocket();
+        using var subscriber = ctx.CreateSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "pubsub-message-pool");

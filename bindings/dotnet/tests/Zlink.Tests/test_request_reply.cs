@@ -14,9 +14,9 @@ public sealed class test_request_reply
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var routerSocket = new RouterSocket(ctx);
-        using var dealerSocket = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var routerSocket = ctx.CreateRouterSocket();
+        using var dealerSocket = ctx.CreateDealerSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "request-reply");
         routerSocket.Bind(endpoint);
@@ -71,10 +71,10 @@ public sealed class test_request_reply
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var server = new DealerSocket(ctx);
-        using var clientA = new DealerSocket(ctx);
-        using var clientB = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreateDealerSocket();
+        using var clientA = ctx.CreateDealerSocket();
+        using var clientB = ctx.CreateDealerSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "dealer-directed-reply");
@@ -132,9 +132,9 @@ public sealed class test_request_reply
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var routerSocket = new RouterSocket(ctx);
-        using var dealerSocket = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var routerSocket = ctx.CreateRouterSocket();
+        using var dealerSocket = ctx.CreateDealerSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "request-reply-data");
@@ -167,9 +167,9 @@ public sealed class test_request_reply
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var routerSocket = new RouterSocket(ctx);
-        using var dealerSocket = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var routerSocket = ctx.CreateRouterSocket();
+        using var dealerSocket = ctx.CreateDealerSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
             "request-reply-callback-owned");
@@ -220,7 +220,7 @@ public sealed class test_request_reply
         await serverTask;
     }
 
-    private static Received RecvWithRetry(DealerSocket socket)
+    private static Received RecvWithRetry(IDealerSocket socket)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
         while (DateTimeOffset.UtcNow < deadline)

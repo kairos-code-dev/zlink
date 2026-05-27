@@ -13,12 +13,11 @@ public sealed class test_discovery_resolve_spot
             || !CoreTestSupport.IsTransportSupported("tcp"))
             return;
 
-        using var ctx = new Context();
-        using var registry = new Registry(ctx);
-        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh,
-            "dotnet-resolve-spot");
-        using var node = new SpotNode(ctx);
-        Spot? spot = node.CreateSpot();
+        using var ctx = Zlink.CreateContext();
+        using var registry = ctx.CreateRegistry();
+        using var discovery = ctx.CreateDiscovery(AutoConnectType.SpotMesh, "dotnet-resolve-spot");
+        using var node = ctx.CreateSpotNode();
+        ISpot? spot = node.CreateSpot();
 
         try
         {
@@ -66,7 +65,7 @@ public sealed class test_discovery_resolve_spot
         }
     }
 
-    private static bool RegistryHasNodeMember(Registry registry,
+    private static bool RegistryHasNodeMember(IRegistry registry,
         string nodeEndpoint, RoutingId nodeRid)
     {
         return registry.MemberPeers("dotnet-resolve-spot").Any(entry =>
@@ -75,7 +74,7 @@ public sealed class test_discovery_resolve_spot
             && entry.RoutingId == nodeRid);
     }
 
-    private static bool RegistryHasSpotTopology(Registry registry,
+    private static bool RegistryHasSpotTopology(IRegistry registry,
         string nodeEndpoint, RoutingId spotRid)
     {
         RegistryTopologyEntry[] entries = registry.TopologyQuery(
@@ -92,7 +91,7 @@ public sealed class test_discovery_resolve_spot
             && entry.State == TopologyState.Ready);
     }
 
-    private static bool TryResolveSpot(Discovery discovery, RoutingId spotRid,
+    private static bool TryResolveSpot(IDiscovery discovery, RoutingId spotRid,
         out SpotRoute route)
     {
         try
@@ -107,7 +106,7 @@ public sealed class test_discovery_resolve_spot
         }
     }
 
-    private static bool ResolveSpotReturnsNoEntity(Discovery discovery,
+    private static bool ResolveSpotReturnsNoEntity(IDiscovery discovery,
         RoutingId spotRid)
     {
         try

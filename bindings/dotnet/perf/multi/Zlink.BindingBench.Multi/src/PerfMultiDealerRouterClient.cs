@@ -18,16 +18,16 @@ internal static class PerfMultiDealerRouterClient
         int pollTimeoutMs = ResolveMultiClientPollTimeoutMs(options);
         string endpoint = options.Endpoint;
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var pollManager = new PollManager();
         ApplyMultiClientContextOptions(ctx, options);
-        var clients = new List<SocketBase>(clientCount);
+        var clients = new List<ISocket>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
         {
             for (int i = 0; i < clientCount; i++)
             {
-                var client = new DealerSocket(ctx);
+                var client = ctx.CreateDealerSocket();
                 ApplyMultiSocketOptions(client, options);
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
@@ -40,7 +40,7 @@ internal static class PerfMultiDealerRouterClient
                 monitors.Add(monitor);
             }
 
-            List<SocketBase> activeClients = WaitClientConnectReadyAll(
+            List<ISocket> activeClients = WaitClientConnectReadyAll(
                 pollManager, clients, monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
@@ -87,7 +87,7 @@ internal static class PerfMultiDealerRouterClient
     }
 
     private static DealerRouterClientSlot[] CreateSlots(
-        List<SocketBase> activeClients, int msgSize, bool borrowPayload)
+        List<ISocket> activeClients, int msgSize, bool borrowPayload)
     {
         var slots = new DealerRouterClientSlot[activeClients.Count];
         for (int i = 0; i < activeClients.Count; i++)
@@ -218,7 +218,7 @@ internal static class PerfMultiDealerRouterClient
         if ((readyMask & PollEventFlags.PollIn) == 0)
             return;
 
-        DealerSocket dealerSock = (DealerSocket)slot.Socket;
+        IDealerSocket dealerSock = (IDealerSocket)slot.Socket;
         Received receivedMessage = slot.ReusableReceived;
         while (true)
         {
@@ -271,10 +271,10 @@ internal static class PerfMultiDealerRouterClient
         }
     }
 
-    private static List<SocketBase> CollectSockets(
+    private static List<ISocket> CollectSockets(
         DealerRouterClientSlot[] slots)
     {
-        var sockets = new List<SocketBase>(slots.Length);
+        var sockets = new List<ISocket>(slots.Length);
         for (int i = 0; i < slots.Length; i++)
             sockets.Add(slots[i].Socket);
         return sockets;
@@ -308,7 +308,7 @@ internal static class PerfMultiDealerRouterClient
         using Message message = slot.BorrowPayload
             ? Message.From(slot.Payload)
             : new Message(slot.Payload.AsSpan());
-        return ((DealerSocket)slot.Socket).Send().Message(message)
+        return ((IDealerSocket)slot.Socket).Send().Message(message)
             .Flags(SendFlags.DontWait).Submit();
     }
 
@@ -327,7 +327,7 @@ internal static class PerfMultiDealerRouterClient
 
     private sealed class DealerRouterClientSlot
     {
-        internal DealerRouterClientSlot(SocketBase socket, byte[] payload,
+        internal DealerRouterClientSlot(ISocket socket, byte[] payload,
             bool borrowPayload)
         {
             Socket = socket;
@@ -336,7 +336,7 @@ internal static class PerfMultiDealerRouterClient
             ReusableReceived = new Received();
         }
 
-        internal SocketBase Socket { get; }
+        internal ISocket Socket { get; }
         internal byte[] Payload { get; }
         internal bool BorrowPayload { get; }
         // Caller-provided storage reused across every recv on this slot.

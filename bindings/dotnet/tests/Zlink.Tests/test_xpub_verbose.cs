@@ -15,9 +15,9 @@ public sealed class test_xpub_verbose
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var xpub = new XPubSocket(ctx);
-        using var sub = new SubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var xpub = ctx.CreateXPubSocket();
+        using var sub = ctx.CreateSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "xpub-verbose");
         xpub.Bind(endpoint);
@@ -65,10 +65,10 @@ public sealed class test_xpub_verbose
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var xpub = new XPubSocket(ctx);
-        using var sub0 = new SubSocket(ctx);
-        using var sub1 = new SubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var xpub = ctx.CreateXPubSocket();
+        using var sub0 = ctx.CreateSubSocket();
+        using var sub1 = ctx.CreateSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "xpub-two");
         xpub.Bind(endpoint);
@@ -119,9 +119,9 @@ public sealed class test_xpub_verbose
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var xpub = new XPubSocket(ctx);
-        using var sub = new SubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var xpub = ctx.CreateXPubSocket();
+        using var sub = ctx.CreateSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "xpub-verboser1");
         xpub.Bind(endpoint);
@@ -167,10 +167,10 @@ public sealed class test_xpub_verbose
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var xpub = new XPubSocket(ctx);
-        using var sub0 = new SubSocket(ctx);
-        using var sub1 = new SubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var xpub = ctx.CreateXPubSocket();
+        using var sub0 = ctx.CreateSubSocket();
+        using var sub1 = ctx.CreateSubSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc", "xpub-verboser2");
         xpub.Bind(endpoint);

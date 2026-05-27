@@ -1,5 +1,6 @@
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Spots;
 using TicTacToe.Server.Play.Actors;
 
 namespace TicTacToe.Server.Play.GameSpots.Handlers;
@@ -10,9 +11,11 @@ internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandle
     public async ValueTask<PlaceMarkRes> HandleAsync(
         TicTacToeGame spot,
         PlayActor actor,
+        ZLinkSpotActorRequestContext context,
         PlaceMarkReq message,
         CancellationToken cancellationToken)
     {
+        _ = context;
         var gameId = actor.RequireJoinedGame();
         logger.LogInformation(
             "actor: PlaceMarkReq received. actor={ActorId}, gameId={GameId}, cell={Cell}",

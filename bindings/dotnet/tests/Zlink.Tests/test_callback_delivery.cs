@@ -40,8 +40,8 @@ public sealed class test_callback_delivery
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "callback-delivery-stream");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -91,9 +91,9 @@ public sealed class test_callback_delivery
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var server = new PairSocket(ctx);
-        using var client = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreatePairSocket();
+        using var client = ctx.CreatePairSocket();
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "callback-delivery-monitor");
         server.Bind(endpoint);
@@ -137,11 +137,11 @@ public sealed class test_callback_delivery
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
-        using var dealer = new DealerSocket(ctx);
-        using var router = new RouterSocket(ctx);
+        using var dealer = ctx.CreateDealerSocket();
+        using var router = ctx.CreateRouterSocket();
         using var dispatchSignal = new ManualResetEventSlim(false);
         using var callbackSignal = new ManualResetEventSlim(false);
         using var callbackContext = new SingleThreadSynchronizationContext();

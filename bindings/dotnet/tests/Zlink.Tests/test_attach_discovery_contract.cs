@@ -10,10 +10,9 @@ public sealed class test_attach_discovery_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var discovery = new Discovery(ctx, AutoConnectType.ClientServer,
-            "attach-discovery");
-        var dealer = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var discovery = ctx.CreateDiscovery(AutoConnectType.ClientServer, "attach-discovery");
+        var dealer = ctx.CreateDealerSocket();
 
         dealer.AttachDiscovery(discovery);
 
@@ -33,10 +32,9 @@ public sealed class test_attach_discovery_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var discovery = new Discovery(ctx, AutoConnectType.ClientServer,
-            "attach-discovery-dispose");
-        var dealer = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var discovery = ctx.CreateDiscovery(AutoConnectType.ClientServer, "attach-discovery-dispose");
+        var dealer = ctx.CreateDealerSocket();
 
         dealer.AttachDiscovery(discovery);
         dealer.Dispose();
@@ -48,10 +46,9 @@ public sealed class test_attach_discovery_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        var discovery = new Discovery(ctx, AutoConnectType.ClientServer,
-            "attach-discovery-double-close");
-        var dealer = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        var discovery = ctx.CreateDiscovery(AutoConnectType.ClientServer, "attach-discovery-double-close");
+        var dealer = ctx.CreateDealerSocket();
 
         dealer.AttachDiscovery(discovery);
         discovery.Dispose();

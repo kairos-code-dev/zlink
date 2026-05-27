@@ -15,7 +15,7 @@ internal static class PerfRouterRouter
     private const uint ReadyPhase = 0;
     private const uint ActivePhase = 1;
 
-    private static void TryCleanup(RouterSocket sender, RouterSocket receiver,
+    private static void TryCleanup(IRouterSocket sender, IRouterSocket receiver,
         string endpoint)
     {
         try
@@ -44,10 +44,10 @@ internal static class PerfRouterRouter
         int readyTimeoutMs = ResolveSingleConnectReadyTimeoutMs();
         int latencySampleCap = ResolveSingleLatencyCount("ROUTER_ROUTER");
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         ApplySingleContextOptions(ctx);
-        using var receiver = new RouterSocket(ctx);
-        using var sender = new RouterSocket(ctx);
+        using var receiver = ctx.CreateRouterSocket();
+        using var sender = ctx.CreateRouterSocket();
         ApplySingleSocketOptions(receiver);
         ApplySingleSocketOptions(sender);
         ApplySingleAutoHwmMsgUnit(ctx, size);
@@ -133,15 +133,15 @@ internal static class PerfRouterRouter
         }
     }
 
-    private static bool CompleteHandshake(RouterSocket sender,
-        RouterSocket receiver, int timeoutMs, out RoutingId targetRoutingId)
+    private static bool CompleteHandshake(IRouterSocket sender,
+        IRouterSocket receiver, int timeoutMs, out RoutingId targetRoutingId)
     {
         targetRoutingId = ReceiverRoutingId;
         ReadOnlySpan<byte> ping = "PING"u8;
         ReadOnlySpan<byte> pong = "PONG"u8;
         RoutingId? senderActualRoutingId = null;
 
-        using var poller = new Poller();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[1];
         poller.Add(receiver, PollEventFlags.PollIn, 0);
         long deadlineTicks = DeadlineTicksFromMilliseconds(Math.Max(1000, timeoutMs));
@@ -193,7 +193,7 @@ internal static class PerfRouterRouter
             return false;
         }
 
-        using var senderPoller = new Poller();
+        using var senderPoller = Zlink.CreatePoller();
         var senderEvents = new PollEvent[1];
         senderPoller.Add(sender, PollEventFlags.PollIn, 0);
         while (Stopwatch.GetTimestamp() < deadlineTicks)
@@ -218,7 +218,7 @@ internal static class PerfRouterRouter
         return false;
     }
 
-    private static bool RunActivePhase(RouterSocket sender, RouterSocket receiver,
+    private static bool RunActivePhase(IRouterSocket sender, IRouterSocket receiver,
         RoutingId targetRoutingId, byte[] payload, int msgSize,
         int durationSeconds, int recvTimeoutMs, int latencyCap,
         out long receivedOut, out List<double> latencySamples)
@@ -315,7 +315,7 @@ internal static class PerfRouterRouter
         senderThread.IsBackground = true;
         senderThread.Start();
 
-        using var poller = new Poller();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[1];
         poller.Add(receiver, PollEventFlags.PollIn, 0);
         var receivedBuffer = new Received();
@@ -352,7 +352,7 @@ internal static class PerfRouterRouter
         return received > 0 && latencySamples.Count > 0;
     }
 
-    private static bool TryReceive(RouterSocket receiver, Received result)
+    private static bool TryReceive(IRouterSocket receiver, Received result)
     {
         try
         {

@@ -9,7 +9,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
+internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
     IRouterSocket
 {
     private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(5);

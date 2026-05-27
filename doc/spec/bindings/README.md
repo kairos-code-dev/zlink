@@ -92,18 +92,63 @@ public 타입이 어떤 범주에 속하는지는 바인딩마다 같은 기준�
 | `SpotDispatchEvent`, `SpotPeerKind` | `service.spot` | Spot service domain 안에서만 의미가 정해진다. |
 | `ConfigResult`, `ErrorCode` | `errors` | 여러 도메인에서 공유되는 실패 의미를 설명한다. |
 
+표준 구조는 .NET binding 구조를 기준으로 한다. 이 기준은 .NET 언어만의 관례가
+아니라, public API surface를 먼저 읽을 수 있게 만들고 구현 세부사항을 뒤로
+숨기기 위한 POSD 기준이다. 다른 언어도 언어 문법과 package/module 관례가 허용하는
+범위에서 이 구조에 맞춘다.
+
+```text
+contracts/
+  core/
+  messaging/
+  sockets/
+  eventing/
+  service/
+  errors/
+
+runtime/
+  native/
+  sockets/
+  messaging/
+  eventing/
+  service/
+  errors/
+  buffers/
+  options/
+  handles/
+```
+
+이 구조에서 `contracts`는 사용자가 먼저 읽는 public contract surface다.
+`contracts`에는 public interface, public value object, public result/flag/error
+type, public builder/facade처럼 사용자가 직접 의존하는 타입을 둔다. 구현 세부사항은
+`runtime`에 숨긴다.
+
+다만 public interface를 남발하지 않는다. `Message`, `RoutingId`, `Received`,
+`TopicMessage`, enum/result/flags 같은 값 객체나 단순 데이터 타입은 별도 interface로
+쪼개지 않는다. interface는 사용자가 다형적으로 받아야 하는 역할에만 둔다. 예를
+들어 socket 공통 역할, poll target, monitor target, codec, handler/callback,
+registry/query/spot client 역할이 이에 해당한다.
+
+`runtime`은 public contract를 실행하는 구현 영역이다. socket send/recv 흐름,
+message materialization, poller/timer/monitor loop, service runtime, native
+interop, buffer/handle/error mapping 같은 구현 결정을 숨긴다. runtime 타입은
+public API로 권장하지 않으며, contract surface를 통하지 않고 사용자가 직접 의존하면
+안 된다.
+
 언어별 적용은 다음 원칙을 따른다.
 
-- `.NET`은 `Contracts/<Category>` 폴더로 의미 범주를 표현할 수 있다. namespace는
-  기존 public surface 안정성을 위해 언어별 문서가 정한 값을 따를 수 있다.
-- Java는 package가 public API에 가깝기 때문에, breaking change가 허용되는
-  정리 범위에서 `systems.zlink.contracts.<category>` 형태로 의미 범주를 맞출 수
-  있다. 이 정책은 기존 flat package를 compatibility 없이 즉시 금지한다는 뜻이
-  아니라, 구조 정리를 수행할 때의 목표 배치를 정의한다.
+- `.NET`은 `Contracts/<Category>`와 `Runtime/<Category>`를 표준 구조로 삼는다.
+  public interface와 public value object는 `Contracts`에 두고, 구현 class와 native
+  interop helper는 `Runtime`에 둔다.
+- Java는 package가 public API에 가깝기 때문에 `systems.zlink.contracts.<category>`
+  아래에 public interface/value object를 두고, 구현 class와 native bridge는
+  `systems.zlink.runtime.<category>` 또는 `systems.zlink.runtime.nativeapi` 아래에
+  둔다. 단순히 method 목록을 보기 위한 `FooContract` interface는 만들지 않는다.
 - C는 package가 없으므로 header 파일, header section, 문서 섹션으로 같은 범주를
   표현한다.
 - C++, Go, Rust, Python, Node는 각 언어의 module/package/export 관례를 따르되,
-  공개 문서와 export surface에서 위 의미 범주를 유지해야 한다.
+  public-facing surface와 runtime implementation을 구분해야 한다. 언어가 interface를
+  자연스럽게 지원하지 않으면 문서와 export surface에서 같은 구분을 명확히 한다.
 
 기존 바인딩에 `monitoring` 또는 `Monitoring` 범주가 있으면 canonical category는
 `eventing`으로 본다. monitor API만 있던 시기에는 monitoring 이름이 충분했지만,
@@ -113,22 +158,22 @@ compatibility가 필요한 경우 기존 import/export 이름을 alias로 둘 �
 
 ## Binding Runtime Category Policy
 
-wrapper binding은 public contract와 runtime implementation을 분리한다. runtime
-하위 분류는 contract 하위 분류와 1:1로 맞추는 것이 아니라, 구현 책임과 변경
-이유가 같은 코드를 함께 두는 기준으로 나눈다.
+wrapper binding은 public contract와 runtime implementation을 분리한다. runtime은
+contract surface 뒤에서 실제 동작을 수행하는 구현 계층이다. public contract는
+사용자가 무엇을 호출할 수 있는지 보여 주고, runtime은 그 호출을 native substrate와
+언어별 실행 모델에 맞게 처리한다.
 
-contract는 사용자가 배우는 public API 개념을 기준으로 한다. runtime은 그 public
-API를 실행하기 위해 필요한 native 연결, handle 수명, buffer 처리, 오류 변환 같은
-구현 결정을 숨기는 계층이다. 따라서 runtime 구조는 public API 모양을 반복하지
-않고, 변경이 발생하는 이유를 기준으로 깊은 모듈을 만들어야 한다.
+runtime 하위 범주는 contract 하위 범주와 1:1로 반드시 같을 필요는 없다. 하지만
+구현 책임과 변경 이유가 분명해야 하며, public contract를 단순 반복하는 얇은
+pass-through class를 늘리면 안 된다.
 
 권장 runtime 범주는 아래와 같다.
 
 | 범주 | 책임 |
 |------|------|
-| `native` | P/Invoke, JNI, FFI, native 함수 선언, ABI 타입 변환 |
+| `native` 또는 언어별 동등 이름 | P/Invoke, JNI, FFI, native 함수 선언, ABI 타입 변환, native symbol loading |
 | `handles` | native handle 소유권, dispose/close, lifetime, reference tracking |
-| `messaging` | native message part 조립, multipart 처리, message 변환 |
+| `messaging` | native message part 조립, multipart 처리, message 변환, request progress |
 | `sockets` | socket operation 실행, send/recv/publish/request/reply 흐름 |
 | `eventing` | poller, timer, monitor, event dispatch loop |
 | `service` | discovery, registry, Spot, Actor service runtime |
@@ -136,34 +181,33 @@ API를 실행하기 위해 필요한 native 연결, handle 수명, buffer 처리
 | `errors` | native errno/result를 public exception/result로 변환 |
 | `buffers` | byte buffer, direct buffer, pooled buffer, pinned memory, copy/borrow 정책 |
 
+언어 예약어 때문에 이름이 달라질 수 있다. 예를 들어 Java는 `native`가 keyword이므로
+`runtime/nativeapi`를 사용할 수 있다. 이름은 달라도 책임은 설명 가능해야 한다.
+
 ### Runtime Category Rules
 
-- runtime 범주는 public contract의 파일 배치를 그대로 복제하지 않는다. 예를 들어
-  `Contracts/Sockets/DealerSocket`이 있어도 반드시
-  `Runtime/Sockets/DealerSocketRuntime` 같은 1:1 타입을 만들 필요는 없다.
-- `native`, `handles`, `buffers`, `errors`처럼 native binding에서 반복되는 복잡한
-  구현 결정은 별도 범주로 숨긴다. 이 결정이 public contract로 새면 안 된다.
-- `service`는 `discovery`, `registry`, `spot`, `actor` 같은 하위 도메인을 둘 수
-  있다. 단, 하위 폴더는 구현 책임이 실제로 나뉠 때만 만든다.
+- runtime은 public API 안정성을 약속하지 않는다. public 계약은 contract 문서와
+  언어별 public surface가 정의한다.
+- runtime 구현 class는 public contract interface 또는 public facade 뒤에 숨긴다.
+  사용자가 runtime class를 직접 생성하거나 호출해야 하면 contract 설계가 새고 있는
+  것이다.
+- contract interface가 runtime 구현과 메서드 목록만 1:1로 반복되면 얕은 모듈 위험
+  신호다. interface는 역할 추상화가 있을 때만 만들고, 값 객체에는 만들지 않는다.
+- runtime 범주는 변경 이유를 기준으로 나눈다. 예를 들어 native symbol 추가는
+  `native`, send/recv 흐름 변경은 `sockets`, message ownership 변경은 `messaging`
+  또는 `buffers`가 바뀌어야 한다.
 - `core`, `common`, `utils`, `internal`, `misc` 같은 포괄 이름은 canonical runtime
   category로 쓰지 않는다. 이런 이름은 서로 다른 변경 이유를 한곳에 섞기 쉽다.
-  기존 바인딩에 `runtime/core`가 있으면 새 기준에서는 canonical category가 아니라
-  임시 집합으로 본다. 구조 정리 시에는 실제 책임에 따라 `native`, `handles`,
-  `buffers`, `options`, `errors`, `messaging`, `sockets`, `eventing`, `service`
-  중 하나로 옮긴다.
-- 언어 런타임 특성 때문에 범주명이 달라질 수는 있다. 그러나 문서와 리뷰에서는
-  위 책임 중 어느 범주에 해당하는지 설명 가능해야 한다.
-- runtime category는 public API 안정성을 약속하지 않는다. public 계약은 contract
-  문서와 언어별 public surface가 정의한다.
 
 기존 runtime에 `monitoring` 또는 `Monitoring` 범주가 있으면 contract와 마찬가지로
 canonical category는 `eventing`이다. monitor 구현만 담긴 파일이라도 poller, timer,
 event dispatch loop와 같은 변경 이유를 공유한다면 `eventing` 아래에 둔다.
 
-POSD 관점에서 이 분리는 정보 은닉을 위한 것이다. ABI 호출 방식, handle ownership,
-buffer pooling, native 오류 매핑은 binding 사용자가 알아야 할 지식이 아니다.
-runtime은 이 복잡성을 아래로 흡수하고, contract는 단순한 public 개념만 유지해야
-한다.
+POSD 관점에서 이 기준은 public surface의 가독성과 구현 정보 은닉을 함께 얻기 위한
+것이다. contract는 사용자가 배워야 할 작고 명확한 표면을 제공하고, runtime은 native
+호출 방식, handle ownership, buffer pooling, 오류 매핑 같은 구현 결정을 아래로
+흡수한다. 단, 추상화가 실제 역할을 줄이지 못하고 메서드 목록만 반복하면 오히려
+복잡성이 늘어나므로 만들지 않는다.
 
 ## Actor/Spot Route Surface
 
@@ -512,7 +556,7 @@ bindings/<lang>/
 |---|---|
 | C | `core/include/zlink.h`가 public C ABI의 단일 기준이다. `bindings/c`는 별도 contract/runtime 계층을 추가하지 않고, C API 기준의 mapping, sample, test, perf, packaging 정책만 정렬한다. |
 | C++ | `bindings/cpp/include/zlink/Contracts/`가 공개 C++ 계약 위치다. `bindings/cpp/include/zlink/Runtime/`은 header-only 구현 세부 위치다. `bindings/cpp/src/`를 계약/런타임 소유 위치로 쓰지 않는다. RAII class와 concrete value를 우선하고, public class를 virtual interface로 과도하게 감싸지 않는다. |
-| .NET | `bindings/dotnet/src/Zlink/Contracts/` 아래에 public contract interface와 value/DTO 타입을 모으고, native handle 구현과 callback bridge는 같은 카테고리의 `Runtime/` 아래에 둔다. DTO와 value object는 concrete로 유지한다. |
+| .NET | `bindings/dotnet/src/Zlink/Contracts/` 아래에 public contract interface, factory facade, value/DTO 타입을 모은다. `Runtime/` 아래의 native handle 구현과 callback bridge class는 `internal`로 숨긴다. 사용자는 `Zlink.CreateContext()`와 `IContext.Create...` factory가 반환하는 contract interface를 기준으로 사용한다. DTO와 value object는 concrete로 유지한다. |
 | Java | `bindings/java/src/main/java/systems/zlink/contracts/` 아래의 public contract package가 공개 계약 위치다. Java는 URL 기반 package layout을 따르므로 lower-case `contracts`와 `runtime` package를 실제 폴더에 반영한다. native bridge는 non-exported `systems.zlink.runtime.nativebridge` 아래에 둔다. |
 | Node | `bindings/node/src/index.ts`와 `package.json` exports가 public contract projection이다. contract source는 `bindings/node/src/zlink/contracts/` 같은 lower-case source path에 두고, runtime/native addon 구현은 `bindings/node/src/zlink/runtime/` 아래에 숨긴다. |
 | Python | `bindings/python/src/zlink/contracts/`가 public contract source다. `zlink` root package는 이 계약을 re-export하는 projection이고, native/FFI 구현은 `_runtime/`과 `_native/` 같은 private package 아래에 둔다. |
@@ -611,6 +655,13 @@ runtime/native bridge 역할에만 존재하며 public contract 역할로 만들
   builder 단계가 변형을 흡수한다. 단, builder의 terminal method는 언어 관례에
   맞게 `SubmitAsync`, `submit_async`, `submit(callback)` 같은 이름을 사용할 수
   있다.
+- resource 생성은 public constructor를 여러 runtime class에 흩어 두지 않는다.
+  binding별 root facade 또는 context factory가 생성 책임을 가진다. 예를 들어
+  .NET binding은 `Zlink.CreateContext()`로 context를 만들고, socket과 service
+  resource는 `IContext.Create...` factory로 만든다.
+- runtime concrete type은 public contract signature에 직접 드러나면 안 된다.
+  public method의 인자와 반환값은 contract interface, value object, DTO, enum,
+  result/error type으로 설명 가능해야 한다.
 - sample, perf, framework adapter는 이 canonical 인터페이스만 사용한다. runtime
   내부 helper나 legacy overload를 기준으로 새 코드를 작성하지 않는다.
 

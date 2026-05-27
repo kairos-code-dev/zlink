@@ -202,7 +202,7 @@ public sealed class ScaffoldSmokeTests
             return;
         }
 
-        if (type.Assembly != typeof(global::Systems.Zlink.Context).Assembly)
+        if (type.Assembly != typeof(global::Systems.Zlink.Zlink).Assembly)
         {
             return;
         }

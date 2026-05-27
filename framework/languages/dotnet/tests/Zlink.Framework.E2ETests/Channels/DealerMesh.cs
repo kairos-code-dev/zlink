@@ -9,8 +9,8 @@ public sealed class DealerMeshTests
     public async Task DealerMeshClient_Request_And_Send_Use_Registered_DealerMesh_Channel()
     {
         var meshEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
-        await using var context = new Context();
-        await using var router = new RouterSocket(context);
+        await using var context = global::Systems.Zlink.Zlink.CreateContext();
+        await using var router = context.CreateRouterSocket();
         router.Bind(meshEndpoint);
 
         using var stopRouter = new CancellationTokenSource();

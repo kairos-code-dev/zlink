@@ -8,7 +8,7 @@ using Systems.Zlink.Sockets.Internal;
 namespace Systems.Zlink;
 
 [EditorBrowsable(EditorBrowsableState.Never)]
-public abstract class RoutedMessageSocketBase : SocketBase, IRoutedMessageSocket
+internal abstract class RoutedMessageSocketBase : SocketBase, IRoutedMessageSocket
 {
     internal RoutedMessageSocketBase(Context context, SocketType type)
         : base(context, type)

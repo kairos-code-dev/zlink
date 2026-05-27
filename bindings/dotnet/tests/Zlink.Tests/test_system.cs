@@ -7,7 +7,7 @@ namespace Systems.Zlink.Tests;
 
 public sealed class test_system
 {
-    private static PairSocket? s_socketThatOutlivesContext;
+    private static IPairSocket? s_socketThatOutlivesContext;
 
     [Fact]
     public void version_matches_core_header()
@@ -29,8 +29,8 @@ public sealed class test_system
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var socket = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var socket = ctx.CreatePairSocket();
 
         var probe = new Received();
         Assert.False(socket.Recv(probe, RecvFlags.DontWait));
@@ -74,7 +74,7 @@ public sealed class test_system
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var counter = new AtomicCounter();
+        using var counter = Zlink.CreateAtomicCounter();
         counter.Set(3);
 
         Assert.Equal(3, counter.Value);
@@ -90,7 +90,7 @@ public sealed class test_system
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var watch = new ZlinkStopwatch();
+        using var watch = Zlink.CreateStopwatch();
 
         ulong intermediate = watch.Intermediate();
         ulong elapsed = watch.Stop();
@@ -105,7 +105,7 @@ public sealed class test_system
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var timer = new Timer();
+        using var timer = Zlink.CreateTimer();
         timer.Start(TimeSpan.FromMilliseconds(5), 1);
 
         ulong? fireCount = timer.Recv();
@@ -119,10 +119,10 @@ public sealed class test_system
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
-        using var timer = Timer.FromSpot(spot);
+        using var timer = Zlink.CreateTimer(spot);
 
         timer.Start(TimeSpan.FromMilliseconds(5), 1);
 
@@ -137,7 +137,7 @@ public sealed class test_system
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var timer = new Timer();
+        using var timer = Zlink.CreateTimer();
         using var fired = new ManualResetEventSlim(false);
         ulong observed = 0;
 
@@ -154,7 +154,7 @@ public sealed class test_system
 
     private static void CreateContextForFinalizerTest()
     {
-        var ctx = new Context();
-        s_socketThatOutlivesContext = new PairSocket(ctx);
+        var ctx = Zlink.CreateContext();
+        s_socketThatOutlivesContext = ctx.CreatePairSocket();
     }
 }

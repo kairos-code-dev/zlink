@@ -18,17 +18,17 @@ internal static class PerfMultiDealerDealerClient
         int durationSeconds = ResolveMultiDurationSeconds(options);
         string endpoint = options.Endpoint;
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var pollManager = new PollManager();
         using var controlState = new RunnerControlState(size);
         ApplyMultiClientContextOptions(ctx, options);
-        var clients = new List<SocketBase>(clientCount);
+        var clients = new List<ISocket>(clientCount);
         var monitors = new List<MonitorSocket>(clientCount);
         try
         {
             for (int i = 0; i < clientCount; i++)
             {
-                var client = new DealerSocket(ctx);
+                var client = ctx.CreateDealerSocket();
                 ApplyMultiSocketOptions(client, options);
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
@@ -41,7 +41,7 @@ internal static class PerfMultiDealerDealerClient
                 monitors.Add(monitor);
             }
 
-            List<SocketBase> activeClients = WaitClientConnectReadyAll(
+            List<ISocket> activeClients = WaitClientConnectReadyAll(
                 pollManager, clients, monitors, readyTimeoutMs);
             if (activeClients.Count != clients.Count)
             {
@@ -82,7 +82,7 @@ internal static class PerfMultiDealerDealerClient
         }
     }
 
-    private static bool RunSendPhase(List<SocketBase> activeClients, int msgSize,
+    private static bool RunSendPhase(List<ISocket> activeClients, int msgSize,
         int durationSeconds, RunnerControlState controlState)
     {
         const uint runId = 1;
@@ -90,8 +90,8 @@ internal static class PerfMultiDealerDealerClient
         int payloadSize = Math.Max(msgSize, PerfMetricHeaderSize);
         long activeDeadlineTicks = Stopwatch.GetTimestamp()
             + (long)Math.Max(1, durationSeconds) * Stopwatch.Frequency;
-        using var activeTimer = new Systems.Zlink.Timer();
-        using var sendPoller = new Poller();
+        using var activeTimer = Zlink.CreateTimer();
+        using var sendPoller = Zlink.CreatePoller();
         var sendEvents = new PollEvent[activeClients.Count + 1];
         var pending = new bool[activeClients.Count];
         int pendingCount = 0;
@@ -111,7 +111,7 @@ internal static class PerfMultiDealerDealerClient
                 if (pending[i])
                     continue;
 
-                DealerSocket socket = (DealerSocket)activeClients[i];
+                IDealerSocket socket = (IDealerSocket)activeClients[i];
                 while (!controlState.StopRequested
                        && Stopwatch.GetTimestamp() < activeDeadlineTicks)
                 {
@@ -148,7 +148,7 @@ internal static class PerfMultiDealerDealerClient
         // signal-driven receiver loop terminates. Send failure is fatal.
         for (int i = 0; i < activeClients.Count; i++)
         {
-            if (!SendStopTokenBlocking((DealerSocket)activeClients[i],
+            if (!SendStopTokenBlocking((IDealerSocket)activeClients[i],
                     controlState))
                 return false;
         }
@@ -160,7 +160,7 @@ internal static class PerfMultiDealerDealerClient
     // transient backpressure (EINTR/EAGAIN/EWOULDBLOCK/ETIMEDOUT), aborting
     // the retry loop early only when shutdown is requested
     // (C g_stop_requested). Any non-transient failure is fatal.
-    private static bool SendStopTokenBlocking(DealerSocket socket,
+    private static bool SendStopTokenBlocking(IDealerSocket socket,
         RunnerControlState controlState)
     {
         while (!controlState.StopRequested)
@@ -191,8 +191,8 @@ internal static class PerfMultiDealerDealerClient
         return true;
     }
 
-    private static bool WaitForWritable(Poller poller, PollEvent[] events,
-        Systems.Zlink.Timer activeTimer, bool[] pending, ref int pendingCount)
+    private static bool WaitForWritable(IPoller poller, PollEvent[] events,
+        Systems.Zlink.IZlinkTimer activeTimer, bool[] pending, ref int pendingCount)
     {
         int written = poller.Wait(events,
             TimeSpan.FromMilliseconds(MultiClientPollTimeoutMs));

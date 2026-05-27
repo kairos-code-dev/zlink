@@ -6,7 +6,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class Context : IContext
+internal sealed class Context : IContext
 {
     private IntPtr _handle;
 
@@ -23,6 +23,72 @@ public sealed class Context : IContext
     public ContextOptions Options { get; }
 
     IContextOptions IContext.Options => Options;
+
+    public IPairSocket CreatePairSocket()
+    {
+        return new PairSocket(this);
+    }
+
+    public IDealerSocket CreateDealerSocket()
+    {
+        return new DealerSocket(this);
+    }
+
+    public IRouterSocket CreateRouterSocket()
+    {
+        return new RouterSocket(this);
+    }
+
+    public IPubSocket CreatePubSocket()
+    {
+        return new PubSocket(this);
+    }
+
+    public ISubSocket CreateSubSocket()
+    {
+        return new SubSocket(this);
+    }
+
+    public IXPubSocket CreateXPubSocket()
+    {
+        return new XPubSocket(this);
+    }
+
+    public IXSubSocket CreateXSubSocket()
+    {
+        return new XSubSocket(this);
+    }
+
+    public IStreamSocket CreateStreamSocket()
+    {
+        return new StreamSocket(this);
+    }
+
+    public IRegistry CreateRegistry()
+    {
+        return new Registry(this);
+    }
+
+    public IRegistryQueryClient CreateRegistryQueryClient()
+    {
+        return new RegistryQueryClient(this);
+    }
+
+    public IDiscovery CreateDiscovery(AutoConnectType autoConnectType,
+        string channelName)
+    {
+        return new Discovery(this, autoConnectType, channelName);
+    }
+
+    public ISpotNode CreateSpotNode()
+    {
+        return new SpotNode(this);
+    }
+
+    public ISpotNode CreateSpotNode(SpotNodeMode mode)
+    {
+        return new SpotNode(this, mode);
+    }
 
     internal void SetOption(ContextOption option, int value)
     {

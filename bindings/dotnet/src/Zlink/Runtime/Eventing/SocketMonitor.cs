@@ -8,7 +8,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class SocketMonitor : ISocketMonitor
+internal sealed class SocketMonitor : ISocketMonitor
 {
     private static readonly NativeMethods.ZlinkMonitorHandlerDelegate NativeIgnore =
         OnIgnoredNativeEvent;

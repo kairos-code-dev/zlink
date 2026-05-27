@@ -1,9 +1,7 @@
-using ZlinkRegistry = Systems.Zlink.Registry;
-
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendRegistryWrapper(ZlinkRegistry nativeRegistry) : IZLinkBackendRegistry
+internal sealed class ZLinkBackendRegistryWrapper(IRegistry nativeRegistry) : IZLinkBackendRegistry
 {
     public object NativeInstance => nativeRegistry;
 

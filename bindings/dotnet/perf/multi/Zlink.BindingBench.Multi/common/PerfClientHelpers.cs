@@ -24,12 +24,12 @@ internal static partial class PerfRunner
         return !string.IsNullOrWhiteSpace(normalizedEndpoint);
     }
 
-    internal static List<SocketBase> WaitClientConnectReadyAll(
-        PollManager pollManager, List<SocketBase> clients,
+    internal static List<ISocket> WaitClientConnectReadyAll(
+        PollManager pollManager, List<ISocket> clients,
         List<MonitorSocket> monitors, int readyTimeoutMs)
     {
         int count = Math.Min(clients.Count, monitors.Count);
-        var activeClients = new List<SocketBase>(count);
+        var activeClients = new List<ISocket>(count);
         if (count == 0)
             return activeClients;
 
@@ -96,13 +96,13 @@ internal static partial class PerfRunner
     }
 
     internal static int PollSocketReadReady(PollManager pollManager,
-        IReadOnlyList<SocketBase> sockets, int timeoutMs)
+        IReadOnlyList<ISocket> sockets, int timeoutMs)
     {
         return pollManager.PollSockets(sockets, PollEventFlags.PollIn, timeoutMs);
     }
 
     internal static int PollSocketEvents(PollManager pollManager,
-        IReadOnlyList<SocketBase> sockets, IReadOnlyList<PollEventFlags> eventMasks,
+        IReadOnlyList<ISocket> sockets, IReadOnlyList<PollEventFlags> eventMasks,
         int timeoutMs)
     {
         return pollManager.PollSockets(sockets, eventMasks, timeoutMs);
@@ -154,7 +154,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void TrySendStopToken(IReadOnlyList<SocketBase> activeClients)
+    internal static void TrySendStopToken(IReadOnlyList<ISocket> activeClients)
     {
         if (activeClients == null || activeClients.Count == 0)
             return;

@@ -33,8 +33,8 @@ public sealed class test_validation_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var socket = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var socket = ctx.CreatePairSocket();
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             socket.MonitorOpen((SocketEvent)0x10000));
@@ -46,9 +46,9 @@ public sealed class test_validation_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var poller = new Poller();
-        using var ctx = new Context();
-        using var socket = new PairSocket(ctx);
+        using var poller = Zlink.CreatePoller();
+        using var ctx = Zlink.CreateContext();
+        using var socket = ctx.CreatePairSocket();
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             poller.Add(socket, (PollEventFlags)16, 1));
@@ -62,10 +62,10 @@ public sealed class test_validation_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var pair = new PairSocket(ctx);
-        using var pub = new PubSocket(ctx);
-        using var router = new RouterSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var pair = ctx.CreatePairSocket();
+        using var pub = ctx.CreatePubSocket();
+        using var router = ctx.CreateRouterSocket();
         using var routedMessage = Message.From("x");
         using var publishedMessage = Message.From("x");
 
@@ -83,13 +83,13 @@ public sealed class test_validation_contract
 
         string overlong = new string('a', 256);
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
-        using var registry = new Registry(ctx);
-        using var query = new RegistryQueryClient(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using var registry = ctx.CreateRegistry();
+        using var query = ctx.CreateRegistryQueryClient();
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            _ = new Discovery(ctx, AutoConnectType.SpotMesh, overlong));
+            _ = ctx.CreateDiscovery(AutoConnectType.SpotMesh, overlong));
         Assert.Throws<ArgumentOutOfRangeException>(() => node.SetPubBind(overlong));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             registry.Bind(overlong, "tcp://127.0.0.1:5555"));
@@ -102,12 +102,12 @@ public sealed class test_validation_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var pair = new PairSocket(ctx);
-        using var pub = new PubSocket(ctx);
-        using var sub = new SubSocket(ctx);
-        using var dealer = new DealerSocket(ctx);
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var pair = ctx.CreatePairSocket();
+        using var pub = ctx.CreatePubSocket();
+        using var sub = ctx.CreateSubSocket();
+        using var dealer = ctx.CreateDealerSocket();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
         using var message = Message.From("x");
 
@@ -137,10 +137,10 @@ public sealed class test_validation_contract
 
         string overlong = new string('t', 256);
 
-        using var ctx = new Context();
-        using var pub = new PubSocket(ctx);
-        using var sub = new SubSocket(ctx);
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var pub = ctx.CreatePubSocket();
+        using var sub = ctx.CreateSubSocket();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
         using var message = Message.From("x");
 
@@ -162,8 +162,8 @@ public sealed class test_validation_contract
 
         string overlong = new string('a', 256);
 
-        using var ctx = new Context();
-        using var dealer = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var dealer = ctx.CreateDealerSocket();
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             dealer.SetChannelName(overlong));
@@ -177,8 +177,8 @@ public sealed class test_validation_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var pair = new PairSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var pair = ctx.CreatePairSocket();
 
         Assert.Throws<ZlinkBindException>(() => pair.Bind("invalid://endpoint"));
         Assert.Throws<ZlinkConnectException>(() =>
@@ -197,8 +197,8 @@ public sealed class test_validation_contract
 
         string maxLength = new string('a', 255);
 
-        using var ctx = new Context();
-        using var discovery = new Discovery(ctx, AutoConnectType.SpotMesh, maxLength);
+        using var ctx = Zlink.CreateContext();
+        using var discovery = ctx.CreateDiscovery(AutoConnectType.SpotMesh, maxLength);
     }
 
     [Fact]
@@ -207,8 +207,8 @@ public sealed class test_validation_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var dealer = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var dealer = ctx.CreateDealerSocket();
         using var message = Message.From("x");
         TimeSpan negative = TimeSpan.FromMilliseconds(-1);
 

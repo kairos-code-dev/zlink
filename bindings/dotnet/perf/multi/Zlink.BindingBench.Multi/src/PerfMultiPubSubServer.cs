@@ -17,10 +17,10 @@ internal static class PerfMultiPubSubServer
         string endpoint = MultiEndpointFor(options.Transport, "multi-pubsub",
             options);
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var controlState = new RunnerControlState(size);
         ApplyMultiServerContextOptions(ctx, options);
-        using var server = new PubSocket(ctx);
+        using var server = ctx.CreatePubSocket();
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
         server.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
@@ -55,7 +55,7 @@ internal static class PerfMultiPubSubServer
         return 0;
     }
 
-    private static bool PublishNoWait(PubSocket server, Message message)
+    private static bool PublishNoWait(IPubSocket server, Message message)
     {
         try
         {
@@ -69,7 +69,7 @@ internal static class PerfMultiPubSubServer
         }
     }
 
-    private static bool PublishStopToken(PubSocket server,
+    private static bool PublishStopToken(IPubSocket server,
         RunnerControlState controlState)
     {
         bool sent = false;
@@ -103,7 +103,7 @@ internal static class PerfMultiPubSubServer
         return IsWouldBlock(errno) || IsInterrupted(errno) || errno == 110;
     }
 
-    private static bool RunPublishPhase(PubSocket server, int payloadSize,
+    private static bool RunPublishPhase(IPubSocket server, int payloadSize,
         uint runId, int size, ref ulong seq, PerfPhase phase, int durationSeconds,
         RunnerControlState controlState)
     {

@@ -6,7 +6,7 @@ using Systems.Zlink.Sockets.Internal;
 namespace Systems.Zlink;
 
 [EditorBrowsable(EditorBrowsableState.Never)]
-public abstract class SubscriberSocketBase : ConnectableSocketBase, ISubscriberSocket
+internal abstract class SubscriberSocketBase : ConnectableSocketBase, ISubscriberSocket
 {
     internal SubscriberSocketBase(Context context, SocketType type)
         : base(context, type)

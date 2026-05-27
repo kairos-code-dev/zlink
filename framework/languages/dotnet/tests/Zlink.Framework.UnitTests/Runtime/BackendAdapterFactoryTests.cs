@@ -27,16 +27,16 @@ public sealed class BackendAdapterFactoryTests
         await using var spotNode = spotAdapter.CreateSpotNode(context, SpotNodeMode.All);
         await using var streamSocket = streamAdapter.CreateStreamSocket(context);
 
-        Assert.IsType<global::Systems.Zlink.Context>(context.NativeInstance);
-        Assert.IsType<global::Systems.Zlink.Discovery>(discovery.NativeInstance);
-        Assert.IsType<global::Systems.Zlink.DealerSocket>(dealer.NativeInstance);
-        Assert.IsType<global::Systems.Zlink.RouterSocket>(router.NativeInstance);
-        Assert.IsType<global::Systems.Zlink.PubSocket>(publisher.NativeInstance);
-        Assert.IsType<global::Systems.Zlink.SubSocket>(subscriber.NativeInstance);
-        Assert.IsType<global::Systems.Zlink.Registry>(registry.NativeInstance);
-        Assert.IsType<global::Systems.Zlink.RegistryQueryClient>(registryQueryClient.NativeInstance);
-        Assert.IsType<global::Systems.Zlink.SpotNode>(spotNode.NativeInstance);
-        Assert.IsType<global::Systems.Zlink.StreamSocket>(streamSocket.NativeInstance);
+        Assert.IsAssignableFrom<IContext>(context.NativeInstance);
+        Assert.IsAssignableFrom<IDiscovery>(discovery.NativeInstance);
+        Assert.IsAssignableFrom<IDealerSocket>(dealer.NativeInstance);
+        Assert.IsAssignableFrom<IRouterSocket>(router.NativeInstance);
+        Assert.IsAssignableFrom<IPubSocket>(publisher.NativeInstance);
+        Assert.IsAssignableFrom<ISubSocket>(subscriber.NativeInstance);
+        Assert.IsAssignableFrom<IRegistry>(registry.NativeInstance);
+        Assert.IsAssignableFrom<IRegistryQueryClient>(registryQueryClient.NativeInstance);
+        Assert.IsAssignableFrom<ISpotNode>(spotNode.NativeInstance);
+        Assert.IsAssignableFrom<IStreamSocket>(streamSocket.NativeInstance);
     }
 
     [Fact]

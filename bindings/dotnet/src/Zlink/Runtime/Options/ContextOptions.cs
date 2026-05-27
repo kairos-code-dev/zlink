@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Systems.Zlink;
 
-public sealed class ContextOptions : IContextOptions
+internal sealed class ContextOptions : IContextOptions
 {
     private readonly Context _context;
     private string _threadNamePrefix = string.Empty;

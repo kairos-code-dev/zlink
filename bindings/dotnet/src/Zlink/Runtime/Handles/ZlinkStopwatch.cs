@@ -6,7 +6,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class ZlinkStopwatch : IZlinkStopwatch
+internal sealed class ZlinkStopwatch : IZlinkStopwatch
 {
     private IntPtr _handle;
 

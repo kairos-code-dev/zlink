@@ -6,7 +6,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class AtomicCounter : IAtomicCounter
+internal sealed class AtomicCounter : IAtomicCounter
 {
     private IntPtr _handle;
 

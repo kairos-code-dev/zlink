@@ -9,7 +9,7 @@ using Systems.Zlink.Sockets.Internal;
 namespace Systems.Zlink;
 
 [EditorBrowsable(EditorBrowsableState.Never)]
-public abstract class PublisherSocketBase : ConnectableSocketBase, IPublisherSocket
+internal abstract class PublisherSocketBase : ConnectableSocketBase, IPublisherSocket
 {
     internal PublisherSocketBase(Context context, SocketType type)
         : base(context, type)

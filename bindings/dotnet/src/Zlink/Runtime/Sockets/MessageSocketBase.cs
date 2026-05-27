@@ -8,7 +8,7 @@ using Systems.Zlink.Sockets.Internal;
 namespace Systems.Zlink;
 
 [EditorBrowsable(EditorBrowsableState.Never)]
-public abstract class MessageSocketBase : ConnectableSocketBase, IMessageSocket
+internal abstract class MessageSocketBase : ConnectableSocketBase, IMessageSocket
 {
     internal MessageSocketBase(Context context, SocketType type)
         : base(context, type)

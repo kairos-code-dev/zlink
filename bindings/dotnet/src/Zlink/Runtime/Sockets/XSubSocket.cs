@@ -2,7 +2,7 @@
 
 namespace Systems.Zlink;
 
-public sealed class XSubSocket : SubscriberSocketBase, IXSubSocket
+internal sealed class XSubSocket : SubscriberSocketBase, IXSubSocket
 {
     public new SubSocketOptions Options { get; }
 

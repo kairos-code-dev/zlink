@@ -15,11 +15,11 @@ internal static class ZLinkBackendNativeAccess
     {
         return socket.NativeInstance switch
         {
-            DealerSocket native => native.MonitorOpen(),
-            RouterSocket native => native.MonitorOpen(),
-            PubSocket native => native.MonitorOpen(),
-            SubSocket native => native.MonitorOpen(),
-            StreamSocket native => native.MonitorOpen(),
+            IDealerSocket native => native.MonitorOpen(),
+            IRouterSocket native => native.MonitorOpen(),
+            IPubSocket native => native.MonitorOpen(),
+            ISubSocket native => native.MonitorOpen(),
+            IStreamSocket native => native.MonitorOpen(),
             _ => throw new InvalidOperationException("Expected a native socket instance."),
         };
     }

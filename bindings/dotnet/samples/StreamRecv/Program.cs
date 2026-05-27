@@ -5,8 +5,8 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-using var ctx = new Context();
-using var stream = new Systems.Zlink.StreamSocket(ctx);
+using var ctx = Zlink.CreateContext();
+using var stream = ctx.CreateStreamSocket();
 stream.Options.Linger = TimeSpan.Zero;
 string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 int port = SampleSupport.ExtractPort(endpoint);

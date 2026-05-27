@@ -5,10 +5,10 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-using var ctx = new Context();
-using var requesterNode = new SpotNode(ctx);
-using var requesterDealer = new DealerSocket(ctx);
-using var responderRouter = new RouterSocket(ctx);
+using var ctx = Zlink.CreateContext();
+using var requesterNode = ctx.CreateSpotNode();
+using var requesterDealer = ctx.CreateDealerSocket();
+using var responderRouter = ctx.CreateRouterSocket();
 using var requester = requesterNode.CreateSpot();
 string endpoint = SampleSupport.NewEndpoint("tcp", "spot-request-async");
 const string channelName = "orders";

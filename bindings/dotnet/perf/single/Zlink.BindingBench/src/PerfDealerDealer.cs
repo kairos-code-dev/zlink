@@ -10,7 +10,7 @@ internal static class PerfDealerDealer
     private const uint RunId = 1;
     private const uint ActivePhase = 1;
 
-    private static void TryCleanup(DealerSocket sender, DealerSocket receiver,
+    private static void TryCleanup(IDealerSocket sender, IDealerSocket receiver,
         string endpoint)
     {
         try
@@ -39,10 +39,10 @@ internal static class PerfDealerDealer
         int readyTimeoutMs = ResolveSingleConnectReadyTimeoutMs();
         int latencySampleCap = ResolveSingleLatencyCount("DEALER_DEALER");
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         ApplySingleContextOptions(ctx);
-        using var receiver = new DealerSocket(ctx);
-        using var sender = new DealerSocket(ctx);
+        using var receiver = ctx.CreateDealerSocket();
+        using var sender = ctx.CreateDealerSocket();
         ApplySingleSocketOptions(receiver);
         ApplySingleSocketOptions(sender);
         ApplySingleAutoHwmMsgUnit(ctx, size);
@@ -114,8 +114,8 @@ internal static class PerfDealerDealer
         }
     }
 
-    private static bool RunActivePhase(DealerSocket sender,
-        DealerSocket receiver, byte[] payload, int msgSize,
+    private static bool RunActivePhase(IDealerSocket sender,
+        IDealerSocket receiver, byte[] payload, int msgSize,
         int durationSeconds, int recvTimeoutMs, int latencyCap,
         out long receivedOut, out List<double> latencySamples)
     {
@@ -132,7 +132,7 @@ internal static class PerfDealerDealer
         // cycle (zlink_recv_part flags=0), then DontWait burst-drain, exit
         // on the wire-level stop token. Mirrors
         // bindings/c/perf/single/common/perf_single_one_way.hpp exactly (no
-        // Poller / no DontWait spin loop).
+        // IPoller / no DontWait spin loop).
         var recvThread = new Thread(() =>
         {
             // Reuse one Received envelope for the whole phase (parity with C

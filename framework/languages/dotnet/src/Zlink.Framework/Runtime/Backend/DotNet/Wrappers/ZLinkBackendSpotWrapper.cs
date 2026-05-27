@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendSpotWrapper(Spot nativeSpot) : IZLinkBackendSpot
+internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendSpot
 {
     public object NativeInstance => nativeSpot;
 

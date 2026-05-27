@@ -13,8 +13,8 @@ public sealed class test_spot_pubsub_basic
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
         const string topic = "zone:12:*";
 
@@ -29,8 +29,8 @@ public sealed class test_spot_pubsub_basic
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
         spot.SetSubscription("own:topic");
 
@@ -44,8 +44,8 @@ public sealed class test_spot_pubsub_basic
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
 
         string tooLongTopic = new string('a', 256);
@@ -68,8 +68,8 @@ public sealed class test_spot_pubsub_basic
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
 
         const string topic = "spot:test";
@@ -86,9 +86,9 @@ public sealed class test_spot_pubsub_basic
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        var node = new SpotNode(ctx);
-        Spot spot = node.CreateSpot();
+        using var ctx = Zlink.CreateContext();
+        var node = ctx.CreateSpotNode();
+        ISpot spot = node.CreateSpot();
 
         node.Dispose();
 
@@ -103,10 +103,10 @@ public sealed class test_spot_pubsub_basic
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var subscriber = node.CreateSpot();
-        using var ingress = new PubSocket(ctx);
+        using var ingress = ctx.CreatePubSocket();
 
         const string topic = "spot:external";
         const string payload = "hello-external";
@@ -157,8 +157,8 @@ public sealed class test_spot_pubsub_basic
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var publisher = node.CreateSpot();
         using var subscriber = node.CreateSpot();
 
@@ -222,8 +222,8 @@ public sealed class test_spot_pubsub_basic
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var sender = node.CreateSpot();
 
         RoutingId missingNodeRid = CoreTestSupport.RoutingIdUtf8(
@@ -247,16 +247,14 @@ public sealed class test_spot_pubsub_basic
             return;
 
         string serviceName = $"game.stage.{Guid.NewGuid():N}";
-        using var registryContext = new Context();
-        using var publisherContext = new Context();
-        using var subscriberContext = new Context();
-        using var registry = new Registry(registryContext);
-        using var publisherDiscovery = new Discovery(publisherContext,
-            AutoConnectType.SpotMesh, serviceName);
-        using var subscriberDiscovery = new Discovery(subscriberContext,
-            AutoConnectType.SpotMesh, serviceName);
-        using var publisherNode = new SpotNode(publisherContext);
-        using var subscriberNode = new SpotNode(subscriberContext);
+        using var registryContext = Zlink.CreateContext();
+        using var publisherContext = Zlink.CreateContext();
+        using var subscriberContext = Zlink.CreateContext();
+        using var registry = registryContext.CreateRegistry();
+        using var publisherDiscovery = publisherContext.CreateDiscovery(AutoConnectType.SpotMesh, serviceName);
+        using var subscriberDiscovery = subscriberContext.CreateDiscovery(AutoConnectType.SpotMesh, serviceName);
+        using var publisherNode = publisherContext.CreateSpotNode();
+        using var subscriberNode = subscriberContext.CreateSpotNode();
         using var publisher = publisherNode.CreateSpot();
         using var subscriber = subscriberNode.CreateSpot();
 
@@ -324,16 +322,14 @@ public sealed class test_spot_pubsub_basic
             return;
 
         string serviceName = $"game.stage.{Guid.NewGuid():N}";
-        using var registryContext = new Context();
-        using var publisherContext = new Context();
-        using var subscriberContext = new Context();
-        using var registry = new Registry(registryContext);
-        using var publisherDiscovery = new Discovery(publisherContext,
-            AutoConnectType.SpotMesh, serviceName);
-        using var subscriberDiscovery = new Discovery(subscriberContext,
-            AutoConnectType.SpotMesh, serviceName);
-        using var publisherNode = new SpotNode(publisherContext);
-        using var subscriberNode = new SpotNode(subscriberContext);
+        using var registryContext = Zlink.CreateContext();
+        using var publisherContext = Zlink.CreateContext();
+        using var subscriberContext = Zlink.CreateContext();
+        using var registry = registryContext.CreateRegistry();
+        using var publisherDiscovery = publisherContext.CreateDiscovery(AutoConnectType.SpotMesh, serviceName);
+        using var subscriberDiscovery = subscriberContext.CreateDiscovery(AutoConnectType.SpotMesh, serviceName);
+        using var publisherNode = publisherContext.CreateSpotNode();
+        using var subscriberNode = subscriberContext.CreateSpotNode();
         using var subscriber = subscriberNode.CreateSpot();
 
         const string topic = "spot:external";

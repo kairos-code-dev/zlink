@@ -19,10 +19,10 @@ public sealed class test_router_multiple_dealers
         if (!CoreTestSupport.IsTransportSupported(transport))
             return;
 
-        using var ctx = new Context();
-        using var router = new RouterSocket(ctx);
-        using var dealer1 = new DealerSocket(ctx);
-        using var dealer2 = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
+        using var dealer1 = ctx.CreateDealerSocket();
+        using var dealer2 = ctx.CreateDealerSocket();
 
         dealer1.SetRoutingId(CoreTestSupport.RoutingIdUtf8("D1"));
         dealer2.SetRoutingId(CoreTestSupport.RoutingIdUtf8("D2"));
@@ -74,9 +74,9 @@ public sealed class test_router_multiple_dealers
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var router = new RouterSocket(ctx);
-        using var dealer = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
+        using var dealer = ctx.CreateDealerSocket();
 
         dealer.SetRoutingId(CoreTestSupport.RoutingIdUtf8("D1"));
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
@@ -105,9 +105,9 @@ public sealed class test_router_multiple_dealers
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var router = new RouterSocket(ctx);
-        using var dealer = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
+        using var dealer = ctx.CreateDealerSocket();
 
         RoutingId dealerRid = CoreTestSupport.RoutingIdUtf8("D1");
         dealer.SetRoutingId(dealerRid);

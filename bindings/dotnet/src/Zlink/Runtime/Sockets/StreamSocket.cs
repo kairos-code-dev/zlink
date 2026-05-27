@@ -7,7 +7,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
+internal sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
 {
     private RoutingId? _routingId;
 
@@ -45,12 +45,12 @@ public sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
         Kernel.DetachStream();
     }
 
-    public void AttachActorGateway(SpotNode node)
+    public void AttachActorGateway(ISpotNode node)
     {
-        if (node == null)
-            throw new ArgumentNullException(nameof(node));
+        SpotNode concreteNode = SocketInterop.RequireSpotNode(node,
+            nameof(node));
         int rc = NativeMethods.zlink_stream_attach_actor_gateway(Handle,
-            node.Handle);
+            concreteNode.Handle);
         ZlinkException.ThrowConfigIfError(rc);
     }
 

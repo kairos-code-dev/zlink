@@ -7,7 +7,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class Poller : IPoller
+internal sealed class Poller : IPoller
 {
     private static readonly string[] RequiredExports = new[]
     {

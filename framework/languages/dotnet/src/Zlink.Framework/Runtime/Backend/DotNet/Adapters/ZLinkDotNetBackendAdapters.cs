@@ -1,5 +1,3 @@
-using ZlinkRegistry = Systems.Zlink.Registry;
-
 namespace Zlink.Framework.Runtime.Backend.DotNet.Adapters;
 
 
@@ -7,7 +5,8 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 {
     public IZLinkBackendContext CreateContext()
     {
-        return new ZLinkBackendContextWrapper(new Context());
+        return new ZLinkBackendContextWrapper(
+            global::Systems.Zlink.Zlink.CreateContext());
     }
 
     public IZLinkBackendDiscovery CreateDiscovery(
@@ -15,15 +14,16 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
         ZLinkAutoConnectType autoConnectType,
         string channelName)
     {
-        var nativeContext = context.RequireNative<Context>();
+        var nativeContext = context.RequireNative<IContext>();
 
         return new ZLinkBackendDiscoveryWrapper(
-            new Discovery(nativeContext, (AutoConnectType)autoConnectType, channelName));
+            nativeContext.CreateDiscovery((AutoConnectType)autoConnectType,
+                channelName));
     }
 
     public IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context)
     {
-        var socket = new DealerSocket(context.RequireNative<Context>());
+        var socket = context.RequireNative<IContext>().CreateDealerSocket();
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendDealerSocketWrapper(
             socket);
@@ -31,7 +31,7 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
     public IZLinkBackendRouterSocket CreateRouterSocket(IZLinkBackendContext context)
     {
-        var socket = new RouterSocket(context.RequireNative<Context>());
+        var socket = context.RequireNative<IContext>().CreateRouterSocket();
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendRouterSocketWrapper(
             socket);
@@ -39,7 +39,7 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
     public IZLinkBackendPublisherSocket CreatePublisherSocket(IZLinkBackendContext context)
     {
-        var socket = new PubSocket(context.RequireNative<Context>());
+        var socket = context.RequireNative<IContext>().CreatePubSocket();
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendPublisherSocketWrapper(
             socket);
@@ -47,7 +47,7 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
     public IZLinkBackendSubscriberSocket CreateSubscriberSocket(IZLinkBackendContext context)
     {
-        var socket = new SubSocket(context.RequireNative<Context>());
+        var socket = context.RequireNative<IContext>().CreateSubSocket();
         socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendSubscriberSocketWrapper(
             socket);
@@ -61,7 +61,7 @@ internal sealed class ZLinkDotNetSpotBackendAdapter : IZLinkSpotBackendAdapter
         SpotNodeMode mode)
     {
         return new ZLinkBackendSpotNodeWrapper(
-            new SpotNode(context.RequireNative<Context>(), mode));
+            context.RequireNative<IContext>().CreateSpotNode(mode));
     }
 }
 
@@ -69,7 +69,7 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
 {
     public IZLinkBackendStreamSocket CreateStreamSocket(IZLinkBackendContext context)
     {
-        var socket = new StreamSocket(context.RequireNative<Context>());
+        var socket = context.RequireNative<IContext>().CreateStreamSocket();
         return new ZLinkBackendStreamSocketWrapper(
             socket);
     }
@@ -80,13 +80,13 @@ internal sealed class ZLinkDotNetRegistryBackendAdapter : IZLinkRegistryBackendA
     public IZLinkBackendRegistry CreateRegistry(IZLinkBackendContext context)
     {
         return new ZLinkBackendRegistryWrapper(
-            new ZlinkRegistry(context.RequireNative<Context>()));
+            context.RequireNative<IContext>().CreateRegistry());
     }
 
     public IZLinkBackendRegistryQueryClient CreateRegistryQueryClient(IZLinkBackendContext context)
     {
         return new ZLinkBackendRegistryQueryClientWrapper(
-            new RegistryQueryClient(context.RequireNative<Context>()));
+            context.RequireNative<IContext>().CreateRegistryQueryClient());
     }
 }
 

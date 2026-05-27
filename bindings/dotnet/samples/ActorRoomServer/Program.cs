@@ -4,11 +4,11 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-using var ctx = new Context();
-using var node = new SpotNode(ctx);
+using var ctx = Zlink.CreateContext();
+using var node = ctx.CreateSpotNode();
 using var spot = node.CreateSpot();
 using var actor = node.CreateActor("room-player-1");
-using var stream = new StreamSocket(ctx);
+using var stream = ctx.CreateStreamSocket();
 stream.AttachActorGateway(node);
 RoutingId sessionRid = SampleSupport.RoutingIdUtf8("room-session");
 Zlink.MultipartClose(await stream.BindActor(sessionRid, actor.Ref)

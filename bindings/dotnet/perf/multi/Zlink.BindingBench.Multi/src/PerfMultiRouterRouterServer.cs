@@ -15,10 +15,10 @@ internal static class PerfMultiRouterRouterServer
         string endpoint = MultiEndpointFor(options.Transport,
             "multi-router-router", options);
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var pollManager = new PollManager();
         ApplyMultiServerContextOptions(ctx, options);
-        using var server = new RouterSocket(ctx);
+        using var server = ctx.CreateRouterSocket();
         ApplyMultiSocketOptions(server, options);
         ConfigureTlsServerIfNeeded(server, options.Transport);
         server.SetRoutingId(RoutingId.From("SERVER"u8));
@@ -36,7 +36,7 @@ internal static class PerfMultiRouterRouterServer
         RecalculateAutoHwm(ctx);
         PrintAutoHwmSnapshot(server, "server", options.Transport, size);
 
-        var sockets = new[] { (SocketBase)server };
+        var sockets = new[] { (ISocket)server };
         var eventMasks = new[] { SocketPollIn };
         var pendingReplies = new Queue<PendingReply>();
         // Caller-provided Received reused across every recv on the server
@@ -111,7 +111,7 @@ internal static class PerfMultiRouterRouterServer
         return 0;
     }
 
-    private static bool EnqueueReplyOrSend(RouterSocket server,
+    private static bool EnqueueReplyOrSend(IRouterSocket server,
         Queue<PendingReply> pendingReplies, RoutingId routingId, Message reply,
         bool tryImmediate = true)
     {
@@ -129,7 +129,7 @@ internal static class PerfMultiRouterRouterServer
         return true;
     }
 
-    private static bool FlushPendingReplies(RouterSocket server,
+    private static bool FlushPendingReplies(IRouterSocket server,
         Queue<PendingReply> pendingReplies)
     {
         while (pendingReplies.Count > 0)
@@ -149,7 +149,7 @@ internal static class PerfMultiRouterRouterServer
         return true;
     }
 
-    private static bool TryRecvNoWait(RouterSocket socket, Received result)
+    private static bool TryRecvNoWait(IRouterSocket socket, Received result)
     {
         return socket.Recv(result, RecvFlags.DontWait);
     }

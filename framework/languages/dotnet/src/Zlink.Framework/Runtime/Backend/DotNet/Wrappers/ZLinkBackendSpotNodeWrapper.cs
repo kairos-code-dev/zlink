@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZLinkBackendSpotNode
+internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZLinkBackendSpotNode
 {
     public object NativeInstance => nativeSpotNode;
 
@@ -24,7 +24,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
-        nativeSpotNode.AttachDiscovery(discovery.RequireNative<Discovery>());
+        nativeSpotNode.AttachDiscovery(discovery.RequireNative<IDiscovery>());
     }
 
     public void ConnectPeer(string endpoint)
@@ -64,7 +64,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
     {
         nativeSpotNode.AttachSpotRouteChannelDiscovery(
             channelName,
-            discovery.RequireNative<Discovery>());
+            discovery.RequireNative<IDiscovery>());
     }
 
     public IZLinkBackendSpot CreateSpot()
@@ -100,15 +100,15 @@ internal sealed class ZLinkBackendSpotNodeWrapper(SpotNode nativeSpotNode) : IZL
     public void AttachChannelDealer(IZLinkBackendDiscovery discovery, IZLinkBackendDealerSocket dealer)
     {
         nativeSpotNode.AttachChannelDealer(
-            discovery.RequireNative<Discovery>(),
-            dealer.RequireNative<DealerSocket>());
+            discovery.RequireNative<IDiscovery>(),
+            dealer.RequireNative<IDealerSocket>());
     }
 
     public void AttachChannelDealerManual(string channelName, IZLinkBackendDealerSocket dealer)
     {
         nativeSpotNode.AttachChannelDealerManual(
             channelName,
-            dealer.RequireNative<DealerSocket>());
+            dealer.RequireNative<IDealerSocket>());
     }
 
     public IZLinkBackendSpot EntrySpot()

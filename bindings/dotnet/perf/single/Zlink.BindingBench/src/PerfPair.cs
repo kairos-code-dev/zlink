@@ -17,10 +17,10 @@ internal static class PerfPair
         int readyTimeoutMs = ResolveSingleConnectReadyTimeoutMs();
         int latencySampleCap = ResolveSingleLatencyCount("PAIR");
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         ApplySingleContextOptions(ctx);
-        using var left = new PairSocket(ctx);
-        using var right = new PairSocket(ctx);
+        using var left = ctx.CreatePairSocket();
+        using var right = ctx.CreatePairSocket();
         ApplySingleSocketOptions(left);
         ApplySingleSocketOptions(right);
         ApplySingleAutoHwmMsgUnit(ctx, size);
@@ -76,7 +76,7 @@ internal static class PerfPair
         }
     }
 
-    private static bool RunActivePhase(PairSocket sender, PairSocket receiver,
+    private static bool RunActivePhase(IPairSocket sender, IPairSocket receiver,
         byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
         int latencyCap, out long receivedOut, out List<double> latencySamples)
     {
@@ -94,7 +94,7 @@ internal static class PerfPair
         // run_active_phase) does a *blocking* recv (zlink_recv_part flags=0)
         // for the first message of each cycle, then burst-drains with
         // DontWait until EAGAIN, and exits on the wire-level stop token. We
-        // mirror that exactly here (no Poller / no DontWait spin loop).
+        // mirror that exactly here (no IPoller / no DontWait spin loop).
         var recvThread = new Thread(() =>
         {
             // Reuse one Received envelope for the whole phase (parity with C

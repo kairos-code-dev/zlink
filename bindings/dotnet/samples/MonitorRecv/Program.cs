@@ -4,9 +4,9 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-using var ctx = new Context();
-using var server = new PairSocket(ctx);
-using var client = new PairSocket(ctx);
+using var ctx = Zlink.CreateContext();
+using var server = ctx.CreatePairSocket();
+using var client = ctx.CreatePairSocket();
 string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 using var serverMonitor = server.MonitorOpen(SocketEvent.ConnectionReady);
 using var clientMonitor = client.MonitorOpen(SocketEvent.ConnectionReady);

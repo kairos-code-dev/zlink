@@ -22,10 +22,10 @@ internal static class PerfPubSub
         int readySettleMs = ResolveSinglePubSubReadySettleMs();
         int latencySampleCap = ResolveSingleLatencyCount("PUBSUB");
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         ApplySingleContextOptions(ctx);
-        using var pub = new PubSocket(ctx);
-        using var sub = new SubSocket(ctx);
+        using var pub = ctx.CreatePubSocket();
+        using var sub = ctx.CreateSubSocket();
         ApplySingleSocketOptions(pub);
         ApplySingleSocketOptions(sub);
         ApplySingleAutoHwmMsgUnit(ctx, size);
@@ -84,7 +84,7 @@ internal static class PerfPubSub
         }
     }
 
-    private static bool RunActivePhase(PubSocket sender, SubSocket receiver,
+    private static bool RunActivePhase(IPubSocket sender, ISubSocket receiver,
         byte[] payload, int msgSize, int durationSeconds, int recvTimeoutMs,
         int latencyCap, out long receivedOut, out List<double> latencySamples)
     {
@@ -99,7 +99,7 @@ internal static class PerfPubSub
 
         // PERF_SINGLE_TEST_POLICY § 1.4 / C parity: blocking first subscribe
         // per cycle (zlink_recv flags=0), then DontWait burst-drain, exit on
-        // the wire-level stop token. Mirrors C perf_pubsub.cpp (no Poller /
+        // the wire-level stop token. Mirrors C perf_pubsub.cpp (no IPoller /
         // no DontWait spin loop).
         var recvThread = new Thread(() =>
         {

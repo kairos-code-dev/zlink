@@ -95,7 +95,7 @@ public static class SampleSupport
         throw new TimeoutException(message);
     }
 
-    public static void WaitSpotPeerConnected(SpotNode node, int timeoutMs = 5000)
+    public static void WaitSpotPeerConnected(ISpotNode node, int timeoutMs = 5000)
     {
         WaitOrThrow(
             () => node.StatusSnapshot().ConnectedPeerCount > 0,

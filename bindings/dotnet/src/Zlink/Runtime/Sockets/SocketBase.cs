@@ -9,7 +9,7 @@ using Systems.Zlink.Native;
 namespace Systems.Zlink;
 
 [EditorBrowsable(EditorBrowsableState.Never)]
-public abstract class SocketBase : ISocket, ISocketOptionEndpoint
+internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
 {
     private readonly SocketKernel _kernel;
 

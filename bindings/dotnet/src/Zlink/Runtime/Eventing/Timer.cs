@@ -8,7 +8,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class Timer : IZlinkTimer
+internal sealed class Timer : IZlinkTimer
 {
     private static readonly ConcurrentDictionary<IntPtr, WeakReference<Timer>>
         TimersByHandle = new();

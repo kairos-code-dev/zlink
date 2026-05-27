@@ -4,9 +4,9 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-using var ctx = new Context();
-using var publisher = new PubSocket(ctx);
-using var subscriber = new SubSocket(ctx);
+using var ctx = Zlink.CreateContext();
+using var publisher = ctx.CreatePubSocket();
+using var subscriber = ctx.CreateSubSocket();
 string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 using var publisherMonitor = publisher.MonitorOpen(SocketEvent.ConnectionReady);
 using var subscriberMonitor = subscriber.MonitorOpen(SocketEvent.ConnectionReady);

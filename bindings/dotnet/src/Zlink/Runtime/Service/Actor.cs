@@ -7,7 +7,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class Actor : IActor
+internal sealed class Actor : IActor
 {
     private readonly SpotNode _node;
     private readonly ActorRef _ref;

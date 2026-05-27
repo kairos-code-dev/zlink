@@ -4,9 +4,9 @@ using Systems.Zlink;
 if (!SampleSupport.IsNativeAvailable())
     return;
 
-using var ctx = new Context();
-using var publisherNode = new SpotNode(ctx);
-using var subscriberNode = new SpotNode(ctx);
+using var ctx = Zlink.CreateContext();
+using var publisherNode = ctx.CreateSpotNode();
+using var subscriberNode = ctx.CreateSpotNode();
 const string serviceName = "direct";
 const string topic = "room:lobby";
 const string payload = "hello-spot";

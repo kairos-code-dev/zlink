@@ -11,9 +11,9 @@ public sealed class test_socket_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var stream = new StreamSocket(ctx);
-        using var dealer = new DealerSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var stream = ctx.CreateStreamSocket();
+        using var dealer = ctx.CreateDealerSocket();
 
         stream.Options.Notify = false;
         Assert.False(stream.Options.Notify);
@@ -32,8 +32,8 @@ public sealed class test_socket_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var router = new RouterSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp",
             "socket-options-last-endpoint");
@@ -49,11 +49,11 @@ public sealed class test_socket_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var dealer = new DealerSocket(ctx);
-        using var router = new RouterSocket(ctx);
-        using var stream = new StreamSocket(ctx);
-        using var xpub = new XPubSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var dealer = ctx.CreateDealerSocket();
+        using var router = ctx.CreateRouterSocket();
+        using var stream = ctx.CreateStreamSocket();
+        using var xpub = ctx.CreateXPubSocket();
 
         RoutingId dealerRid = CoreTestSupport.RoutingIdUtf8("DEALER-RID");
         dealer.SetRoutingId(dealerRid);
@@ -82,9 +82,9 @@ public sealed class test_socket_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var dealer = new DealerSocket(ctx);
-        using var router = new RouterSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var dealer = ctx.CreateDealerSocket();
+        using var router = ctx.CreateRouterSocket();
 
         dealer.Options.PeerWeight = 0;
         dealer.Options.PeerWeight = 100;
@@ -109,9 +109,9 @@ public sealed class test_socket_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var sub = new SubSocket(ctx);
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var sub = ctx.CreateSubSocket();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
 
         Assert.Null(sub.SubscriptionAt(0));
@@ -130,8 +130,8 @@ public sealed class test_socket_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
 
         Assert.True(node.DispatchWorkersMin >= 1);
         Assert.True(node.DispatchWorkersMax >= node.DispatchWorkersMin);
@@ -157,8 +157,8 @@ public sealed class test_socket_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
 
         Assert.Null(node.SpotLookup(CoreTestSupport.RoutingIdUtf8("missing")));
     }
@@ -169,8 +169,8 @@ public sealed class test_socket_options
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         var spotRid = CoreTestSupport.RoutingIdUtf8("managed-room");
 
         using var first = node.GetOrCreateSpot(spotRid, out var firstCreated);

@@ -82,12 +82,12 @@ internal static partial class PerfRunner
         return EndpointFor(transport, name);
     }
 
-    // ITEM 3 (MULTI_SPOT fix): the IRegistry binding exposes no resolved
+    // ITEM 3 (MULTI_SPOT fix): the registry API exposes no resolved
     // endpoint readback after a wildcard bind, so a "tcp://127.0.0.1:*"
     // bind cannot be reused as the connect target (discovery.ConnectRegistry
     // and the READY advertisement need a concrete address). Reserve a
     // concrete free TCP port up front so the SAME endpoint string is valid
-    // for Registry.Bind, the server's own Discovery.ConnectRegistry, and the
+    // for registry.Bind, the server's own discovery.ConnectRegistry, and the
     // client (via the READY line). Mirrors C, whose registry endpoints are
     // concrete addresses the discovery layer reuses verbatim.
     internal static int ReserveFreeTcpPort()
@@ -106,12 +106,12 @@ internal static partial class PerfRunner
     }
 
     // ITEM 3 (MULTI_SPOT fix): zlink_discovery_connect_registry is
-    // non-blocking; immediately after Registry.Bind the registry PUB socket
+    // non-blocking; immediately after registry.Bind the registry PUB socket
     // is not yet connectable and the call returns EAGAIN (errno 11, code
     // 604). C's discovery layer tolerates this via its connect/retry loop;
     // reproduce that here with a bounded retry so MULTI_SPOT is actually
     // exercised instead of being misreported as UNSUPPORTED.
-    internal static void ConnectRegistryWithRetry(Discovery discovery,
+    internal static void ConnectRegistryWithRetry(IDiscovery discovery,
         string registryPubEndpoint, int timeoutMs)
     {
         int budget = Math.Max(2000, timeoutMs);
@@ -146,11 +146,11 @@ internal static partial class PerfRunner
         // Preserve the original data-plane transport scheme (parity with the
         // prior MultiEndpointFor behaviour) but pin a concrete loopback port
         // so the Bind endpoint string can be reused verbatim for
-        // Discovery.ConnectRegistry and the READY advertisement.
+        // discovery.ConnectRegistry and the READY advertisement.
         return $"{transport}://127.0.0.1:{ReserveFreeTcpPort()}";
     }
 
-    internal static string BindSpotNodeWithRetry(SpotNode node,
+    internal static string BindSpotNodeWithRetry(ISpotNode node,
         string transport, string endpointName, PerfOptions options)
     {
         const int maxAttempts = 8;
@@ -274,7 +274,7 @@ internal static partial class PerfRunner
         };
     }
 
-    internal static void ApplyMultiServerContextOptions(Context ctx,
+    internal static void ApplyMultiServerContextOptions(IContext ctx,
         PerfOptions options)
     {
         if (options.IoThreads > 0)
@@ -289,13 +289,13 @@ internal static partial class PerfRunner
         ctx.Options.AutoHwmProfile = ResolveContextAutoHwmProfile();
     }
 
-    internal static void ApplyMultiClientContextOptions(Context ctx,
+    internal static void ApplyMultiClientContextOptions(IContext ctx,
         PerfOptions options)
     {
         ApplyMultiServerContextOptions(ctx, options);
     }
 
-    internal static void ApplyMultiSocketOptions(SocketBase socket,
+    internal static void ApplyMultiSocketOptions(ISocket socket,
         PerfOptions options)
     {
         int sndTimeo = ResolveMultiSndTimeoutMs(options);
@@ -319,7 +319,7 @@ internal static partial class PerfRunner
         socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
     }
 
-    internal static void ApplyMultiSpotSocketOptions(Spot spot,
+    internal static void ApplyMultiSpotSocketOptions(ISpot spot,
         PerfOptions options)
     {
         int sndTimeo = ResolveMultiSndTimeoutMs(options);
@@ -343,7 +343,7 @@ internal static partial class PerfRunner
         spot.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
     }
 
-    internal static void ApplyAutoHwmMsgUnit(Context ctx, int msgSize)
+    internal static void ApplyAutoHwmMsgUnit(IContext ctx, int msgSize)
     {
         if (msgSize <= 0)
             return;
@@ -356,7 +356,7 @@ internal static partial class PerfRunner
         }
     }
 
-    internal static void RecalculateAutoHwm(Context ctx)
+    internal static void RecalculateAutoHwm(IContext ctx)
     {
         try
         {
@@ -382,7 +382,7 @@ internal static partial class PerfRunner
             || !string.Equals(value, "0", StringComparison.Ordinal);
     }
 
-    internal static void PrintAutoHwmSnapshot(SocketBase socket, string label,
+    internal static void PrintAutoHwmSnapshot(ISocket socket, string label,
         string transport, int msgSize)
     {
         if (!AutoHwmDetailEnabled())
@@ -401,7 +401,7 @@ internal static partial class PerfRunner
             fields);
     }
 
-    internal static void PrintSpotNodeAutoHwmSnapshot(SpotNode node,
+    internal static void PrintSpotNodeAutoHwmSnapshot(ISpotNode node,
         string label, string transport, int msgSize)
     {
         if (!AutoHwmDetailEnabled())
@@ -531,7 +531,7 @@ internal static partial class PerfRunner
         WriteStdoutLine(detail);
     }
 
-    private static MonitorSnapshot? TryReadSocketMonitorSnapshot(SocketBase socket)
+    private static MonitorSnapshot? TryReadSocketMonitorSnapshot(ISocket socket)
     {
         try
         {
@@ -558,14 +558,14 @@ internal static partial class PerfRunner
         }
     }
 
-    private static SocketType ResolveSocketType(SocketBase socket)
+    private static SocketType ResolveSocketType(ISocket socket)
         => socket switch
         {
-            DealerSocket => SocketType.Dealer,
-            RouterSocket => SocketType.Router,
-            PubSocket => SocketType.Pub,
-            SubSocket => SocketType.Sub,
-            StreamSocket => SocketType.Stream,
+            IDealerSocket => SocketType.Dealer,
+            IRouterSocket => SocketType.Router,
+            IPubSocket => SocketType.Pub,
+            ISubSocket => SocketType.Sub,
+            IStreamSocket => SocketType.Stream,
             _ => SocketType.Any,
         };
 
@@ -752,7 +752,7 @@ internal static partial class PerfRunner
                 snapshot.AutoHwmDeferredSndHwm,
                 snapshot.AutoHwmDeferredRcvHwm);
 
-        internal static AutoHwmSnapshotFields FromSocketOptions(SocketBase socket)
+        internal static AutoHwmSnapshotFields FromSocketOptions(ISocket socket)
             => new(false, 0, 0, 0, 0, 0, 0, 0,
                 ReadSocketOption(() => socket.Options.SendHighWaterMark),
                 ReadSocketOption(() => socket.Options.ReceiveHighWaterMark),

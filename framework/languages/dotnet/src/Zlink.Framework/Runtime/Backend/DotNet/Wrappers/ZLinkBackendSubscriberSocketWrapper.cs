@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendSubscriberSocketWrapper(SubSocket nativeSocket) : IZLinkBackendSubscriberSocket
+internal sealed class ZLinkBackendSubscriberSocketWrapper(ISubSocket nativeSocket) : IZLinkBackendSubscriberSocket
 {
     public object NativeInstance => nativeSocket;
 
@@ -27,7 +27,7 @@ internal sealed class ZLinkBackendSubscriberSocketWrapper(SubSocket nativeSocket
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
+        nativeSocket.AttachDiscovery(discovery.RequireNative<IDiscovery>());
     }
 
     public void SetSubscription(string topic)

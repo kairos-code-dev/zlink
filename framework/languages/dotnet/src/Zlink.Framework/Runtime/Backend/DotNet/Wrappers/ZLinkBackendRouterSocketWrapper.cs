@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket) : IZLinkBackendRouterSocket
+internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket) : IZLinkBackendRouterSocket
 {
     public object NativeInstance => nativeSocket;
 
@@ -17,7 +17,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(RouterSocket nativeSocket)
 
     public void AttachDiscovery(IZLinkBackendDiscovery discovery)
     {
-        nativeSocket.AttachDiscovery(discovery.RequireNative<Discovery>());
+        nativeSocket.AttachDiscovery(discovery.RequireNative<IDiscovery>());
     }
 
     public void Connect(string endpoint)

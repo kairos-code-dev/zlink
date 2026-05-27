@@ -9,7 +9,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed class Registry : IRegistry
+internal sealed class Registry : IRegistry
 {
     private IntPtr _handle;
 

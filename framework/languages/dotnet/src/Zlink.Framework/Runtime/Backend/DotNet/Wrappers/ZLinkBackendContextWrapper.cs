@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 
-internal sealed class ZLinkBackendContextWrapper(Context nativeContext) : IZLinkBackendContext
+internal sealed class ZLinkBackendContextWrapper(IContext nativeContext) : IZLinkBackendContext
 {
     public object NativeInstance => nativeContext;
 

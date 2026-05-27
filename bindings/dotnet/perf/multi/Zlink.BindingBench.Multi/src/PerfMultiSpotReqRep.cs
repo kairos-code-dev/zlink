@@ -104,15 +104,15 @@ internal static class PerfMultiSpotReqRep
         string controlEndpoint = MultiEndpointFor(options.Transport,
             config.ControlEndpointName, options);
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var controlState = new RunnerControlState(size);
         ApplyMultiServerContextOptions(ctx, options);
         ApplyAutoHwmMsgUnit(ctx, size);
 
-        using var dataNode = new SpotNode(ctx);
+        using var dataNode = ctx.CreateSpotNode();
         using var replier = dataNode.CreateSpot();
         ApplyMultiSpotSocketOptions(replier, options);
-        using var controlNode = new SpotNode(ctx);
+        using var controlNode = ctx.CreateSpotNode();
         using var controlPub = controlNode.CreateSpot();
         using var controlSub = controlNode.CreateSpot();
         var serverStop = new ServerStopFlag();
@@ -231,13 +231,13 @@ internal static class PerfMultiSpotReqRep
         string serverControlEndpoint = NormalizeClientEndpoint(
             options.ControlEndpoint, options.Transport);
 
-        using var ctx = new Context();
+        using var ctx = Zlink.CreateContext();
         using var controlState = new RunnerControlState(size);
         ApplyMultiClientContextOptions(ctx, options);
         ApplyAutoHwmMsgUnit(ctx, size);
 
-        using var dataNode = new SpotNode(ctx);
-        using var controlNode = new SpotNode(ctx);
+        using var dataNode = ctx.CreateSpotNode();
+        using var controlNode = ctx.CreateSpotNode();
         using var controlPub = controlNode.CreateSpot();
         using var controlSub = controlNode.CreateSpot();
         var slots = new List<ClientSlot>(clientCount);
@@ -382,7 +382,7 @@ internal static class PerfMultiSpotReqRep
             Math.Max(1000, connectReadyTimeoutMs * 6));
     }
 
-    private static void ConfigureDataNodeOptions(SpotNode node,
+    private static void ConfigureDataNodeOptions(ISpotNode node,
         PerfOptions options)
     {
         if (!ManualSocketOverridesEnabled())
@@ -392,7 +392,7 @@ internal static class PerfMultiSpotReqRep
         TrySetSpotOption(() => node.RouterHighWaterMark = Math.Max(1, hwm));
     }
 
-    private static void ConfigureControlNodeOptions(SpotNode node, int timeoutMs)
+    private static void ConfigureControlNodeOptions(ISpotNode node, int timeoutMs)
     {
         TrySetSpotOption(() => node.PublisherNoDrop = true);
         TrySetSpotOption(() =>
@@ -400,12 +400,12 @@ internal static class PerfMultiSpotReqRep
                 TimeSpan.FromMilliseconds(Math.Max(1000, timeoutMs)));
     }
 
-    private static bool WaitForReadyBarrier(Spot controlSub, SpotNode dataNode,
+    private static bool WaitForReadyBarrier(ISpot controlSub, ISpotNode dataNode,
         ReadyBarrier barrier, int size, int timeoutMs)
     {
         string readyPrefix = $"READY_COUNT,{size},";
-        using var deadlineTimer = new Systems.Zlink.Timer();
-        using var poller = new Poller();
+        using var deadlineTimer = Zlink.CreateTimer();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[2];
         poller.Add(controlSub, PollEventFlags.PollIn, SpotSocketTag);
         poller.Add(deadlineTimer, ControlDeadlineTag);
@@ -427,8 +427,8 @@ internal static class PerfMultiSpotReqRep
         }
     }
 
-    private static bool TryReceiveReadyBarrier(Spot controlSub,
-        SpotNode dataNode, ReadyBarrier barrier, string readyPrefix,
+    private static bool TryReceiveReadyBarrier(ISpot controlSub,
+        ISpotNode dataNode, ReadyBarrier barrier, string readyPrefix,
         out bool ready)
     {
         ready = false;
@@ -463,14 +463,14 @@ internal static class PerfMultiSpotReqRep
         return true;
     }
 
-    private static bool PublishControlStartBurst(Spot controlSpot, int size,
+    private static bool PublishControlStartBurst(ISpot controlSpot, int size,
         int timeoutMs)
     {
         return PublishControlPayload(controlSpot, $"START,{size}", timeoutMs);
     }
 
     private static bool WaitForControlStart(
-        Spot controlSub, Spot controlPub,
+        ISpot controlSub, ISpot controlPub,
         string dataEndpoint, int size, int readyCount, int timeoutMs)
     {
         string expected = $"START,{size}";
@@ -478,9 +478,9 @@ internal static class PerfMultiSpotReqRep
                 timeoutMs))
             return false;
 
-        using var deadlineTimer = new Systems.Zlink.Timer();
-        using var repeatTimer = new Systems.Zlink.Timer();
-        using var poller = new Poller();
+        using var deadlineTimer = Zlink.CreateTimer();
+        using var repeatTimer = Zlink.CreateTimer();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[3];
         poller.Add(controlSub, PollEventFlags.PollIn, SpotSocketTag);
         poller.Add(deadlineTimer, ControlDeadlineTag);
@@ -504,7 +504,7 @@ internal static class PerfMultiSpotReqRep
         }
     }
 
-    private static bool TryReceiveControlStart(Spot controlSub, string expected,
+    private static bool TryReceiveControlStart(ISpot controlSub, string expected,
         out bool started)
     {
         started = false;
@@ -519,10 +519,10 @@ internal static class PerfMultiSpotReqRep
         return true;
     }
 
-    private static bool WaitForControlStartEvent(Poller poller,
-        PollEvent[] events, Spot controlPub, string dataEndpoint, int size,
-        int readyCount, int timeoutMs, Systems.Zlink.Timer deadlineTimer,
-        Systems.Zlink.Timer repeatTimer)
+    private static bool WaitForControlStartEvent(IPoller poller,
+        PollEvent[] events, ISpot controlPub, string dataEndpoint, int size,
+        int readyCount, int timeoutMs, Systems.Zlink.IZlinkTimer deadlineTimer,
+        Systems.Zlink.IZlinkTimer repeatTimer)
     {
         while (true)
         {
@@ -553,7 +553,7 @@ internal static class PerfMultiSpotReqRep
         }
     }
 
-    private static bool PublishReadyBarrier(Spot controlPub, string dataEndpoint,
+    private static bool PublishReadyBarrier(ISpot controlPub, string dataEndpoint,
         int size, int readyCount, int timeoutMs)
     {
         return PublishControlPayload(controlPub, $"DATA_ENDPOINT,{dataEndpoint}",
@@ -563,12 +563,12 @@ internal static class PerfMultiSpotReqRep
                    $"READY_COUNT,{size},{readyCount}", timeoutMs);
     }
 
-    private static bool PublishControlPayload(Spot controlSpot, string payload,
+    private static bool PublishControlPayload(ISpot controlSpot, string payload,
         int timeoutMs)
     {
         byte[] bytes = Encoding.ASCII.GetBytes(payload);
-        using var deadlineTimer = new Systems.Zlink.Timer();
-        using var poller = new Poller();
+        using var deadlineTimer = Zlink.CreateTimer();
+        using var poller = Zlink.CreatePoller();
         var events = new PollEvent[2];
         poller.Add(controlSpot, PollEventFlags.PollOut, SpotSocketTag);
         poller.Add(deadlineTimer, ControlDeadlineTag);
@@ -595,7 +595,7 @@ internal static class PerfMultiSpotReqRep
         }
     }
 
-    private static bool WaitForConnectedPeers(SpotNode node, int expectedCount,
+    private static bool WaitForConnectedPeers(ISpotNode node, int expectedCount,
         int timeoutMs)
     {
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
@@ -616,7 +616,7 @@ internal static class PerfMultiSpotReqRep
         return false;
     }
 
-    private static bool WaitForConnectedPeerEndpoint(SpotNode node,
+    private static bool WaitForConnectedPeerEndpoint(ISpotNode node,
         string peerEndpoint, int timeoutMs)
     {
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
@@ -633,7 +633,7 @@ internal static class PerfMultiSpotReqRep
         return false;
     }
 
-    private static void DrainRoutedMessages(Spot replier, SpotEchoMode mode,
+    private static void DrainRoutedMessages(ISpot replier, SpotEchoMode mode,
         ServerStopFlag serverStop)
     {
         if (mode == SpotEchoMode.SendSend)
@@ -674,7 +674,7 @@ internal static class PerfMultiSpotReqRep
         }
     }
 
-    private static void DrainSendSendRoutedMessages(Spot replier,
+    private static void DrainSendSendRoutedMessages(ISpot replier,
         ServerStopFlag serverStop)
     {
         using var reply = new Message();
@@ -720,8 +720,8 @@ internal static class PerfMultiSpotReqRep
         }
 
         int activeSlots = ActiveSpotSlotLimit(slots.Count, size);
-        using var activeTimer = new Systems.Zlink.Timer();
-        using var sendPoller = new Poller();
+        using var activeTimer = Zlink.CreateTimer();
+        using var sendPoller = Zlink.CreatePoller();
         var sendEvents = new PollEvent[Math.Max(1, activeSlots * 4 + 3)];
         for (int i = 0; i < activeSlots; i++)
         {
@@ -918,10 +918,10 @@ internal static class PerfMultiSpotReqRep
         return SendResult.Blocked;
     }
 
-    private static bool WaitForSpotReqRepReady(Poller poller,
+    private static bool WaitForSpotReqRepReady(IPoller poller,
         PollEvent[] events, List<ClientSlot> slots, int activeSlots, int size,
         long activeDeadlineTicks, SpotEchoConfig config,
-        Systems.Zlink.Timer activeTimer)
+        Systems.Zlink.IZlinkTimer activeTimer)
     {
         while (true)
         {
@@ -991,8 +991,8 @@ internal static class PerfMultiSpotReqRep
         }
     }
 
-    private static bool WaitForControlEvent(Poller poller, PollEvent[] events,
-        Systems.Zlink.Timer deadlineTimer, PollEventFlags required)
+    private static bool WaitForControlEvent(IPoller poller, PollEvent[] events,
+        Systems.Zlink.IZlinkTimer deadlineTimer, PollEventFlags required)
     {
         while (true)
         {
@@ -1114,7 +1114,7 @@ internal static class PerfMultiSpotReqRep
         return totalSlots;
     }
 
-    private static void WaitForPendingReplies(Poller poller, PollEvent[] events,
+    private static void WaitForPendingReplies(IPoller poller, PollEvent[] events,
         List<ClientSlot> slots, int activeSlots, int timeoutMs)
     {
         long deadlineTicks = DeadlineTicksFromMilliseconds(timeoutMs);
@@ -1248,12 +1248,12 @@ internal static class PerfMultiSpotReqRep
 
     private sealed class ClientSlot : IDisposable
     {
-        internal ClientSlot(Spot requester)
+        internal ClientSlot(ISpot requester)
         {
             Requester = requester;
         }
 
-        internal Spot Requester { get; }
+        internal ISpot Requester { get; }
         internal List<double> LatencySamples { get; } = new();
         internal long MeasureCount;
         internal int WaitingReply;

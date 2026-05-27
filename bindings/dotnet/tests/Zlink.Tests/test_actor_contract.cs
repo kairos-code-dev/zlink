@@ -14,8 +14,8 @@ public sealed class test_actor_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
         using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
         using Message joinMessage = Message.From("join:hello");
@@ -61,8 +61,8 @@ public sealed class test_actor_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
         using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
         using Message joinMessage = Message.From("join:reject");
@@ -102,8 +102,8 @@ public sealed class test_actor_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
         using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
         using Message joinMessage = Message.From("join:lifecycle");
@@ -157,8 +157,8 @@ public sealed class test_actor_contract
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
         using var spot = node.CreateSpot();
         using var entry = node.EntrySpot();
         using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");

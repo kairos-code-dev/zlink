@@ -13,10 +13,10 @@ public sealed class test_spot_router_channel_peer
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
-        using Spot spot = node.CreateSpot();
-        using var router = new RouterSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using ISpot spot = node.CreateSpot();
+        using var router = ctx.CreateRouterSocket();
 
         RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("dotnet-node");
         RoutingId spotRid = CoreTestSupport.RoutingIdUtf8("dotnet-spot");
@@ -68,10 +68,10 @@ public sealed class test_spot_router_channel_peer
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
-        using Spot spot = node.CreateSpot();
-        using var router = new RouterSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using ISpot spot = node.CreateSpot();
+        using var router = ctx.CreateRouterSocket();
 
         RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("dotnet-req-node");
         RoutingId spotRid = CoreTestSupport.RoutingIdUtf8("dotnet-req-spot");
@@ -125,10 +125,10 @@ public sealed class test_spot_router_channel_peer
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
-        using var ctx = new Context();
-        using var node = new SpotNode(ctx);
-        using Spot spot = node.CreateSpot();
-        using var router = new RouterSocket(ctx);
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using ISpot spot = node.CreateSpot();
+        using var router = ctx.CreateRouterSocket();
 
         RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("dotnet-dispatch-node");
         RoutingId spotRid = CoreTestSupport.RoutingIdUtf8("dotnet-dispatch-spot");
@@ -184,7 +184,7 @@ public sealed class test_spot_router_channel_peer
         }
     }
 
-    private static bool HasRouterChannelPeer(SpotNode node, string endpoint)
+    private static bool HasRouterChannelPeer(ISpotNode node, string endpoint)
     {
         foreach (SpotNodePeerEntry entry in node.PeersSnapshot())
         {

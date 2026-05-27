@@ -6,7 +6,7 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
-public sealed partial class Spot
+internal sealed partial class Spot
 {
     private enum SpotMultipartSubmitKind
     {

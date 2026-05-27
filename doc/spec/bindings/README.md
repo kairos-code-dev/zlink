@@ -1436,6 +1436,7 @@ builder 는 하나 이상의 `Message` 를 누적해서 multipart payload 를 �
 | 크기 allocation | `Allocate(size)` | `allocate(size)` | `alloc(size)` / `allocate(size)` | `allocate(size)` | `with_size(size)` / `allocate(size)` | `allocate(size)` | `NewMessageWithSize(size)` |
 | bytes copy | `From(bytes)` | `from(byte[])` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from_bytes(...)` | `NewMessage(data)` / `NewMessageFrom(data)` |
 | UTF-8 string | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `TryFrom<&str>` 또는 equivalent | `from_string` | `NewMessageFromString` |
+| external buffer copy | — | `from(ByteBuffer)` / `from(ByteBuf)` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from_bytes(...)` | `NewMessage(data)` / `NewMessageFrom(data)` |
 | message copy | `Copy()` | `from(Message)` | `copy()` 또는 `from(Message)` | `copy()` | `Clone` 또는 `try_clone()` | copy constructor | `Clone()` / `Copy()` |
 | explicit move | `Move()` / `MoveMessage(...)` | `move()` / `moveMessage(...)` | `moveMessage(...)` | `move_message(...)` | move-by-value | move constructor / rvalue builder | `MoveMessage(...)` |
 | bytes snapshot | `ToArray()` | `toByteArray()` | `toBytes()` | `to_bytes()` | `to_vec()` | `to_bytes()` | `BytesCopy()` 또는 equivalent |
@@ -1448,6 +1449,9 @@ builder 는 하나 이상의 `Message` 를 누적해서 multipart payload 를 �
 규칙:
 - `from(bytes)` 계열은 항상 message-owned storage 로 복사한다. caller 는 입력
   buffer 를 이후 자유롭게 변경하거나 해제할 수 있어야 한다.
+- Java `from(ByteBuf)` 는 Netty `ByteBuf` 의 readable bytes 를 복사하되
+  `readerIndex` 를 변경하지 않는다. `copyTo(ByteBuf)` 는 destination 의
+  writable 영역에 쓰고 `writerIndex` 를 증가시킨다.
 - borrowed / zero-copy 생성자는 canonical public contract 가 아니다. 특정
   바인딩이 내부 최적화로 쓰더라도 public API 에서 lifetime 책임을 caller 에게
   떠넘기면 안 된다.

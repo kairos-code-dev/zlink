@@ -6,6 +6,7 @@ package systems.zlink.contracts;
 import systems.zlink.runtime.nativebridge.Native;
 import systems.zlink.runtime.nativebridge.NativeLayouts;
 import systems.zlink.runtime.nativebridge.NativeMsg;
+import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -240,6 +241,44 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
+    /** Copies the readable bytes from a Netty buffer without mutating its cursor. */
+    public static Message from(ByteBuf data) {
+        Objects.requireNonNull(data, "data");
+        int length = data.readableBytes();
+        if (length <= 0) {
+            return new Message(0);
+        }
+        int readerIndex = data.readerIndex();
+        Message msg = new Message(length);
+        if (data.hasMemoryAddress()) {
+            MemorySegment source = MemorySegment
+                .ofAddress(data.memoryAddress() + readerIndex)
+                .reinterpret(length);
+            MemorySegment.copy(source, 0, msg.dataSegment(length), 0, length);
+            return msg;
+        }
+        if (data.hasArray()) {
+            UNSAFE.copyMemory(data.array(),
+                BYTE_ARRAY_BASE + data.arrayOffset() + readerIndex, null,
+                msg.cachedAddress, length);
+            return msg;
+        }
+        try {
+            ByteBuffer source = data.nioBufferCount() == 1
+                ? data.internalNioBuffer(readerIndex, length)
+                : data.nioBuffer(readerIndex, length);
+            MemorySegment.copy(MemorySegment.ofBuffer(source), 0,
+                msg.dataSegment(length), 0, length);
+            return msg;
+        } catch (UnsupportedOperationException ex) {
+            byte[] tmp = new byte[length];
+            data.getBytes(readerIndex, tmp);
+            UNSAFE.copyMemory(tmp, BYTE_ARRAY_BASE, null, msg.cachedAddress,
+                length);
+            return msg;
+        }
+    }
+
     /** Copies the bytes described by the span into a new frame. */
     public static Message from(ByteSpan span) {
         Objects.requireNonNull(span, "span");
@@ -433,10 +472,38 @@ public final class Message implements AutoCloseable {
         return size;
     }
 
+    public int copyTo(ByteBuf destination) {
+        Objects.requireNonNull(destination, "destination");
+        int size = size();
+        if (destination.writableBytes() < size)
+            throw new IllegalArgumentException("destination buffer too small");
+        if (size == 0)
+            return 0;
+        if (destination.hasMemoryAddress()) {
+            int writerIndex = destination.writerIndex();
+            MemorySegment target = MemorySegment
+                .ofAddress(destination.memoryAddress() + writerIndex)
+                .reinterpret(size);
+            MemorySegment.copy(dataSegment(size), 0, target, 0, size);
+            destination.writerIndex(writerIndex + size);
+            return size;
+        }
+        destination.writeBytes(dataBuffer());
+        return size;
+    }
+
     public boolean tryCopyTo(ByteBuffer destination) {
         Objects.requireNonNull(destination, "destination");
         int size = size();
         if (destination.remaining() < size)
+            return false;
+        copyTo(destination);
+        return true;
+    }
+
+    public boolean tryCopyTo(ByteBuf destination) {
+        Objects.requireNonNull(destination, "destination");
+        if (destination.writableBytes() < size())
             return false;
         copyTo(destination);
         return true;

@@ -25,7 +25,7 @@ sourceSets {
 
 dependencies {
     implementation(project(":"))
-    compileOnly("io.netty:netty-buffer:4.1.100.Final")
+    implementation("io.netty:netty-buffer:4.1.100.Final")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }
 

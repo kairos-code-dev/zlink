@@ -7,6 +7,8 @@ import systems.zlink.contracts.service.registry.*;
 import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Message;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,6 +20,8 @@ final class PerfMeasurement {
     private static final int MAGIC = 0x5A4C4E4B;
     private static final int RUN_ID = 1;
     private static final AtomicLong SEQ = new AtomicLong();
+    private static final boolean USE_NETTY_BYTEBUF_POOL =
+        !"0".equals(System.getenv("PERF_JAVA_NETTY_BYTEBUF_POOL"));
 
     private PerfMeasurement() {
     }
@@ -38,12 +42,32 @@ final class PerfMeasurement {
 
     private static Message payloadTemplate(int size) {
         int capacity = Math.max(size, PerfUtil.HEADER_SIZE);
+        if (USE_NETTY_BYTEBUF_POOL) {
+            return nettyPooledPayloadTemplate(size, capacity);
+        }
         Message payload = new Message(capacity);
         payload.fill((byte) 'a');
         payload.writeIntLe(0, MAGIC);
         payload.writeIntLe(4, RUN_ID);
         payload.writeIntLe(9, size);
         return payload;
+    }
+
+    private static Message nettyPooledPayloadTemplate(int size, int capacity) {
+        ByteBuf payload = PooledByteBufAllocator.DEFAULT.directBuffer(
+            capacity, capacity);
+        try {
+            payload.writerIndex(capacity);
+            for (int i = 0; i < capacity; i++) {
+                payload.setByte(i, 'a');
+            }
+            payload.setIntLE(0, MAGIC);
+            payload.setIntLE(4, RUN_ID);
+            payload.setIntLE(9, size);
+            return Message.from(payload);
+        } finally {
+            payload.release();
+        }
     }
 
     static void writePayload(Message payload, int size, byte phase, long sentNanoTime) {

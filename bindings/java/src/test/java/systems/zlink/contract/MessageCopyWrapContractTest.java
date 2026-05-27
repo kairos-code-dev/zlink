@@ -6,6 +6,8 @@ import systems.zlink.contracts.service.spot.*;
 
 import systems.zlink.contracts.Message;
 import systems.zlink.contracts.TestSupport;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -71,6 +73,41 @@ public class MessageCopyWrapContractTest {
             assertTrue(empty.isEmpty());
             assertFalse(source.isEmpty());
             assertArrayEquals(source.toByteArray(), copy.toByteArray());
+        }
+    }
+
+    @Test
+    public void fromByteBufDoesNotMutateReaderIndex() {
+        TestSupport.assumeNative();
+
+        ByteBuf source = Unpooled.directBuffer();
+        source.writeBytes("alpha".getBytes(StandardCharsets.UTF_8));
+        source.readerIndex(1);
+
+        try (Message msg = Message.from(source)) {
+            assertEquals(1, source.readerIndex());
+            assertArrayEquals("lpha".getBytes(StandardCharsets.UTF_8),
+                msg.toByteArray());
+        } finally {
+            source.release();
+        }
+    }
+
+    @Test
+    public void copyToByteBufWritesAtWriterIndex() {
+        TestSupport.assumeNative();
+
+        ByteBuf destination = Unpooled.buffer(16);
+        destination.writeByte(0x7f);
+        try (Message msg = Message.from("gamma")) {
+            int written = msg.copyTo(destination);
+            assertEquals(5, written);
+            assertEquals(6, destination.writerIndex());
+            byte[] actual = new byte[5];
+            destination.getBytes(1, actual);
+            assertArrayEquals("gamma".getBytes(StandardCharsets.UTF_8), actual);
+        } finally {
+            destination.release();
         }
     }
 

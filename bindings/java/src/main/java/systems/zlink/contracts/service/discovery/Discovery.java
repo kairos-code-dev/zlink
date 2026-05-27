@@ -2,20 +2,22 @@
 
 package systems.zlink.contracts.service.discovery;
 
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.service.registry.AutoConnectType;
-import systems.zlink.contracts.service.registry.MemberPeerEntry;
-import systems.zlink.contracts.ZlinkException;
-import systems.zlink.runtime.nativebridge.InternalAccess;
-import systems.zlink.runtime.nativebridge.ActorInterop;
-import systems.zlink.runtime.nativebridge.EnumCodecs;
-import systems.zlink.runtime.nativebridge.Native;
-import systems.zlink.runtime.nativebridge.NativeHelpers;
-import systems.zlink.runtime.nativebridge.NativeLayouts;
-import systems.zlink.runtime.nativebridge.NativeMsg;
-import systems.zlink.runtime.nativebridge.ServiceDecoders;
+import systems.zlink.contracts.service.spot.Actor;
 import systems.zlink.contracts.service.spot.ActorRoute;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.service.registry.MemberPeerEntry;
+import systems.zlink.contracts.service.registry.Registry;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.runtime.nativeapi.InternalAccess;
+import systems.zlink.runtime.nativeapi.ActorInterop;
+import systems.zlink.runtime.nativeapi.EnumCodecs;
+import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeHelpers;
+import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.ServiceDecoders;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -34,6 +36,10 @@ public final class Discovery implements AutoCloseable {
     private static final int OPT_DISCOVERY_ACTOR_ROUTE_SYNC = 0x3036;
 
     private MemorySegment handle;
+
+    static {
+        InternalAccess.register((InternalAccess.DiscoveryAccess) Discovery::handle);
+    }
 
     /** Opens a discovery handle for one auto-connect type and channel name. */
     public Discovery(Context ctx, AutoConnectType autoConnectType,
@@ -54,11 +60,6 @@ public final class Discovery implements AutoCloseable {
     /** Returns the native discovery handle. */
     MemorySegment handle() {
         return handle;
-    }
-
-    /** Internal bridge for binding helpers. */
-    MemorySegment handleInternal() {
-        return handle();
     }
 
     /** Connects the discovery view to a registry router endpoint. */

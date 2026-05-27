@@ -1,14 +1,11 @@
 package systems.zlink.codec.protobuf;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
+import systems.zlink.contracts.messaging.Message;
 import com.google.protobuf.StringValue;
 import com.google.protobuf.Int32Value;
-import systems.zlink.contracts.Message;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ProtoCodecTest {
     @Test

@@ -5,7 +5,9 @@ mod common;
 
 use std::io::{self, BufRead, Write};
 use std::time::{Duration, Instant};
-use zlink::*;
+use zlink::{
+    DealerSocket, Message, POLLOUT, PollEvent, Poller, SendFlags, SocketMonitor, SubmitResult,
+};
 
 fn main() {
     let args = common::MultiArgs::parse();

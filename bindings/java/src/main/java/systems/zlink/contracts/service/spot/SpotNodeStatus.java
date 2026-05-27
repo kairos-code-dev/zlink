@@ -2,9 +2,9 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.runtime.nativebridge.EnumCodecs;
-import systems.zlink.runtime.nativebridge.NativeHelpers;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.runtime.nativeapi.EnumCodecs;
+import systems.zlink.runtime.nativeapi.NativeHelpers;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 

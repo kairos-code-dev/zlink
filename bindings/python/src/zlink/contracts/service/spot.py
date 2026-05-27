@@ -7,7 +7,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from ..._runtime.core.dispatcher import CallbackDispatcher
+from ..._runtime.eventing.dispatcher import CallbackDispatcher
 from ..._runtime.sockets.socket_base import (
     _classify_nonblocking_send_errno,
     _clone_received_owner,
@@ -16,10 +16,10 @@ from ..._runtime.sockets.socket_base import (
     _leave_callback,
 )
 from ..._runtime.messaging.request_reply import _ensure_reply_flags_supported
-from ..enums.enums import (
-    AutoHwmProfile,
+from ..core.options import AutoHwmProfile
+from ..sockets.codes import SocketType
+from .codes import (
     ServiceKind,
-    SocketType,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
     SpotNodeMode,
@@ -33,6 +33,7 @@ from ..enums.enums import (
     SpotRole,
     SubjectKind,
 )
+from ..messaging.messages import ReceivedMessage
 from ..._native.ffi import (
     ZLINK_PART_FINAL,
     ZLINK_PART_MORE,
@@ -59,7 +60,7 @@ from ..._native.ffi import (
     ZlinkSpotNodeSubjectFilter,
     lib,
 )
-from ..._runtime.core.core import (
+from ..._runtime.handles.native_support import (
     BindError,
     BindResult,
     CloseError,
@@ -103,7 +104,7 @@ from ..._runtime.core.core import (
     _validated_int32,
     _validated_routing_id_bytes,
 )
-from ..monitoring.monitor import MonitorSnapshot, _monitor_snapshot_from_native
+from ..eventing.monitor import MonitorSnapshot, _monitor_snapshot_from_native
 
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
@@ -907,6 +908,95 @@ def _recv_spot_subscribed(handle, flags):
         owner,
         _routing_id_bytes(routing_id) if routing_id is not None else None,
     )
+
+
+class SpotSubscribedPart:
+    def __init__(self):
+        self._topic_raw = None
+        self._topic = ""
+        self._owner = None
+        self.part = None
+        self.routing_id = None
+        self.has_more = False
+
+    @property
+    def topic(self):
+        raw = self._topic_raw
+        if raw is not None:
+            self._topic = raw.decode("utf-8", errors="replace")
+            self._topic_raw = None
+        return self._topic
+
+    def _replace(self, owner, *, topic_raw=None, routing_id=None, has_more=False):
+        self.close()
+        self._topic_raw = topic_raw
+        self._topic = ""
+        self._owner = owner
+        self.part = ReceivedMessage._from_owner(owner, 0)
+        self.routing_id = routing_id
+        self.has_more = bool(has_more)
+
+    def _adopt_from(self, source):
+        if source is self:
+            return
+        self.close()
+        self._topic_raw = source._topic_raw
+        self._topic = source._topic
+        self._owner = source._owner
+        self.part = source.part
+        self.routing_id = source.routing_id
+        self.has_more = source.has_more
+        source._topic_raw = None
+        source._topic = ""
+        source._owner = None
+        source.part = None
+        source.routing_id = None
+        source.has_more = False
+
+    def close(self):
+        if self._owner is not None:
+            self._owner.close()
+        self._owner = None
+        self.part = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+
+def _recv_spot_subscribed_part_into(handle, target, flags):
+    routing_id = ctypes.POINTER(ZlinkRoutingId)()
+    topic_buf = ctypes.create_string_buffer(256)
+    topic_len = ctypes.c_size_t(len(topic_buf))
+    parts_array = (ZlinkMsg * 1)()
+    has_more = ctypes.c_int()
+    rc = lib().zlink_spot_subscribe_part(
+        handle,
+        ctypes.byref(routing_id),
+        topic_buf,
+        len(topic_buf),
+        ctypes.byref(topic_len),
+        ctypes.byref(parts_array[0]),
+        ctypes.byref(has_more),
+        int(flags),
+    )
+    if rc != 0:
+        _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+    routing = _routing_id_bytes(routing_id.contents) if routing_id else None
+    target._replace(
+        _ReceivedPartsOwner(parts_array, 1),
+        topic_raw=bytes(topic_buf.raw[: topic_len.value]),
+        routing_id=routing,
+        has_more=has_more.value != ZLINK_PART_FINAL,
+    )
+
+
+def _recv_spot_subscribed_part(handle, flags):
+    part = SpotSubscribedPart()
+    _recv_spot_subscribed_part_into(handle, part, flags)
+    return part
 
 
 def _recv_spot_subscription_event(handle, flags):
@@ -2979,6 +3069,25 @@ class Spot:
                 return False
             raise
         topic_message._adopt_from(fresh)
+        return True
+
+    def subscribe_part(self, *, flags=0):
+        try:
+            return _recv_spot_subscribed_part(self._handle, flags)
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return None
+            raise
+
+    def subscribe_part_into(self, subscribed_part, *, flags=0):
+        if subscribed_part is None or not hasattr(subscribed_part, "_replace"):
+            raise TypeError("subscribed_part must be a SpotSubscribedPart")
+        try:
+            _recv_spot_subscribed_part_into(self._handle, subscribed_part, flags)
+        except RecvError as ex:
+            if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                return False
+            raise
         return True
 
     def _receive_subscription_event(self, *, flags=0):

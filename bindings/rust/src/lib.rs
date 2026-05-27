@@ -22,21 +22,21 @@ mod ffi;
 #[path = "runtime/messaging/request_progress.rs"]
 mod request_progress;
 
-#[path = "runtime/core/ctx.rs"]
+#[path = "runtime/handles/ctx.rs"]
 mod ctx;
 #[path = "runtime/messaging/domain.rs"]
 mod domain;
 #[path = "contracts/errors/error.rs"]
 mod error;
-#[path = "contracts/enums/flags.rs"]
+#[path = "contracts/sockets/flags.rs"]
 mod flags;
 #[path = "runtime/messaging/message.rs"]
 mod message;
-#[path = "runtime/monitoring/monitor.rs"]
+#[path = "runtime/eventing/monitor.rs"]
 pub mod monitor;
 #[path = "runtime/sockets/options.rs"]
 mod options;
-#[path = "runtime/monitoring/poller.rs"]
+#[path = "runtime/eventing/poller.rs"]
 pub mod poller;
 #[path = "contracts/core/runtime.rs"]
 mod runtime;
@@ -81,7 +81,7 @@ pub use service::{
     SpotNodeSocketOwner, SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter,
     SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
     SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SpotRoute, SpotServiceAttachmentRole,
-    SubjectKind, TopologySource, TopologyState,
+    SpotSubscribedPart, SubjectKind, TopologySource, TopologyState,
 };
 pub use socket::{
     DealerSocket, PairSocket, PubSocket, RouterSocket, SendHandle, StreamSocket, SubSocket,

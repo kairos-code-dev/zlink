@@ -2,12 +2,11 @@
 
 package systems.zlink.contracts.service.registry;
 
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.ZlinkException;
-import systems.zlink.runtime.nativebridge.InternalAccess;
-import systems.zlink.runtime.nativebridge.Native;
-import systems.zlink.runtime.nativebridge.NativeHelpers;
-import systems.zlink.runtime.nativebridge.NativeLayouts;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.runtime.nativeapi.InternalAccess;
+import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeHelpers;
+import systems.zlink.runtime.nativeapi.NativeLayouts;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;

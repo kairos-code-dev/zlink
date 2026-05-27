@@ -2,8 +2,7 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.Message;
-
+import systems.zlink.contracts.messaging.Message;
 /**
  * Reply builder for {@link Spot#replyActorJoin(ActorJoinRequest, int)}.
  * Multipart reply payload is optional; a zero-message submit is allowed.

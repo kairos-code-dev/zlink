@@ -1,21 +1,19 @@
 package systems.zlink.contract;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.PairSocket;
-import systems.zlink.contracts.PollEvents;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.PollSourceKind;
-import systems.zlink.contracts.Poller;
-import systems.zlink.contracts.Received;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.Socket;
-import systems.zlink.contracts.TestSupport;
-import systems.zlink.contracts.Timer;
+import systems.zlink.TestSupport;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.PairSocket;
+import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEvents;
+import systems.zlink.contracts.eventing.PollSourceKind;
+import systems.zlink.contracts.eventing.Poller;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.eventing.Timer;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -253,7 +251,7 @@ public class SocketPollingContractTest {
     public void legacySocketPollSetTypeIsNotPartOfTheRootPackage() {
         assertThrows(
             ClassNotFoundException.class,
-            () -> Class.forName("systems.zlink.contracts.SocketPollSet"));
+            () -> Class.forName("systems.zlink.contracts.sockets.SocketPollSet"));
     }
 
     private static boolean hasPublicMethod(Class<?> type, String name,

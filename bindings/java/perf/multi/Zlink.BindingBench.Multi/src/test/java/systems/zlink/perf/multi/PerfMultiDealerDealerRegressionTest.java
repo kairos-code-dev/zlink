@@ -1,8 +1,5 @@
 package systems.zlink.perf.multi;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
 
 
 import org.junit.jupiter.api.Test;

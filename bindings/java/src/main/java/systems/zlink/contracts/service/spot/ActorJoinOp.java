@@ -2,12 +2,12 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.Message;
-
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.core.RoutingId;
 /**
  * Payload-mandatory Actor join operation builder. Returned by
- * {@link SpotNode#joinActor(ActorRef, systems.zlink.contracts.RoutingId,
- * systems.zlink.contracts.RoutingId)} and {@link Actor#join(Spot)}.
+ * {@link SpotNode#joinActor(ActorRef, systems.zlink.contracts.core.RoutingId,
+ * systems.zlink.contracts.core.RoutingId)} and {@link Actor#join(Spot)}.
  */
 public interface ActorJoinOp {
     ActorJoinSubmitOp message(Message part);

@@ -4,14 +4,14 @@ import ctypes
 import asyncio
 import errno
 
-from ..enums.enums import RouterOption, SocketType
+from .codes import RouterOption, SocketType
 from .options import (
     PubSocketOptions,
     RouterSocketOptions,
     _read_int32,
 )
 from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
-from ..._runtime.core.core import (
+from ..._runtime.handles.native_support import (
     _copy_routing_id,
     _decode_topic_text,
     _msg_to_bytes,
@@ -42,14 +42,8 @@ from ..errors.errors import (
     RequestError,
     SubmitError,
 )
-from ..enums.enums import (
-    ConfigResult,
-    ConnectResult,
-    HandlerResult,
-    RecvResult,
-    RequestResult,
-    SubmitResult,
-)
+from ..errors.codes import ConfigResult, ConnectResult
+from .codes import HandlerResult, RecvResult, RequestResult, SubmitResult
 from ..core.routing_id import RoutingId
 from ..messaging.messages import Message, Received, SubscriptionEvent
 from ..._runtime.messaging.request_reply import (

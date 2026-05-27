@@ -2,11 +2,7 @@
 
 package systems.zlink.perf;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Message;
+import systems.zlink.contracts.messaging.Message;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 

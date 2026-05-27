@@ -2,18 +2,14 @@
 
 package systems.zlink.perf;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
+import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEvents;
+import systems.zlink.contracts.eventing.Poller;
+import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.errors.ZlinkException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import systems.zlink.contracts.PollEvents;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.Poller;
-import systems.zlink.contracts.Socket;
-import systems.zlink.contracts.ZlinkException;
 
 public final class PerfSocketPollSet implements AutoCloseable {
     private static final int ERRNO_EINTR = 4;

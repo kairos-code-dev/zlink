@@ -2,24 +2,20 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.MonitorEventType;
-import systems.zlink.contracts.MonitorSocket;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.PubSocket;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.Socket;
-import systems.zlink.contracts.SocketType;
-import systems.zlink.contracts.SubSocket;
-import systems.zlink.contracts.SubmitException;
-import systems.zlink.contracts.SubmitResult;
-import systems.zlink.contracts.TopicMessage;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.sockets.PubSocket;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.sockets.SocketType;
+import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;

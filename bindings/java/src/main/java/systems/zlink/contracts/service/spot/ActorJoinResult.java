@@ -2,9 +2,8 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.RequestResult;
-import systems.zlink.contracts.RoutingId;
-
+import systems.zlink.contracts.sockets.RequestResult;
+import systems.zlink.contracts.core.RoutingId;
 public record ActorJoinResult(RequestResult result,
                               int joinResultCode,
                               ActorRef actor,

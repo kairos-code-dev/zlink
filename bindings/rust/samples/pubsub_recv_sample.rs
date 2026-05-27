@@ -70,9 +70,11 @@ fn main() {
         .expect("publish failed");
 
     let mut topic_msg = TopicMessage::empty();
-    assert!(sub_sock
-        .subscribe(&mut topic_msg, RecvFlags::NONE)
-        .expect("subscribe recv failed"));
+    assert!(
+        sub_sock
+            .subscribe(&mut topic_msg, RecvFlags::NONE)
+            .expect("subscribe recv failed")
+    );
     assert_eq!(topic_msg.topic(), "prices");
     assert_eq!(topic_msg.parts()[0].as_str().unwrap(), "101.25");
     println!(

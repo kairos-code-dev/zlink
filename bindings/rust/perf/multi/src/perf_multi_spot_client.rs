@@ -6,7 +6,10 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use zlink::*;
+use zlink::{
+    Message, POLLIN, PollEvent, Poller, RecvFlags, RecvResult, RoutingId, SendFlags, Spot,
+    SpotNode, SubmitResult, TopicMessage,
+};
 
 const TOPIC: &str = "bench";
 

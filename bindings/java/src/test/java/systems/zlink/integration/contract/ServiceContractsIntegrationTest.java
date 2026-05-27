@@ -1,22 +1,10 @@
 package systems.zlink.integration.contract;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.MonitorEventType;
-import systems.zlink.contracts.RecvException;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.RecvResult;
-import systems.zlink.contracts.PairSocket;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.SubmitException;
+import systems.zlink.TestSupport;
 import systems.zlink.contracts.service.registry.AutoConnectType;
-import systems.zlink.contracts.TestSupport;
-import systems.zlink.contracts.SpotDispatchEvent;
+import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.registry.RegistryQueryClient;
 import systems.zlink.contracts.service.spot.Spot;

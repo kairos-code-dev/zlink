@@ -8,7 +8,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::poller::POLLCOMPLETION;
-use zlink::*;
+use zlink::{
+    Message, PollEvent, Poller, RecvFlags, RecvResult, RoutingId, SendFlags, Spot, SpotNode,
+    SubmitResult, TopicMessage,
+};
 
 const PATTERN: &str = "MULTI_SPOT_REQREP";
 const TOPIC: &str = "bench";

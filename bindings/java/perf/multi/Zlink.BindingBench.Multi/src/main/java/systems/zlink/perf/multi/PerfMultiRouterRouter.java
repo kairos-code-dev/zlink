@@ -2,24 +2,23 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.MonitorEventType;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.RecvException;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.RecvResult;
-import systems.zlink.contracts.RouterSocket;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.SubmitException;
-import systems.zlink.contracts.SubmitResult;
-import systems.zlink.contracts.SocketType;
-import systems.zlink.contracts.ZlinkException;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RecvResult;
+import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.sockets.SocketType;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
@@ -62,7 +61,7 @@ final class PerfMultiRouterRouter {
             // place via adoptFrom, avoiding the per-recv Received allocation
             // that the legacy `recv() -> Received` path forced. Matches the
             // C++/.NET canonical caller-provided storage pattern.
-            systems.zlink.contracts.Received receivedBuffer = new systems.zlink.contracts.Received();
+            systems.zlink.contracts.messaging.Received receivedBuffer = new systems.zlink.contracts.messaging.Received();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventFlag.POLLIN)) {
                 int stops = 0;
@@ -148,7 +147,7 @@ final class PerfMultiRouterRouter {
 
         try (Context ctx = PerfUtil.newContext(config)) {
             List<RouterSocket> clients = new ArrayList<>(clientCount);
-            List<systems.zlink.contracts.MonitorSocket> monitors =
+            List<systems.zlink.contracts.eventing.MonitorSocket> monitors =
                 new ArrayList<>(clientCount);
             try {
                 for (int i = 0; i < clientCount; i++) {
@@ -216,7 +215,7 @@ final class PerfMultiRouterRouter {
         for (int i = 0; i < n; i++) {
             payloads[i] = PerfUtil.payloadTemplate(msgSize);
         }
-        List<systems.zlink.contracts.Socket> socketsAsBase = new ArrayList<>(n);
+        List<systems.zlink.contracts.sockets.Socket> socketsAsBase = new ArrayList<>(n);
         for (RouterSocket c : clients) {
             socketsAsBase.add(c);
         }
@@ -224,7 +223,7 @@ final class PerfMultiRouterRouter {
         // Long-lived Received reused across recv on every client socket. The
         // canonical ref-out recv refills it in place via populateRoutedSinglePart,
         // avoiding the per-recv Received + ArrayList allocation.
-        systems.zlink.contracts.Received replyBuffer = new systems.zlink.contracts.Received();
+        systems.zlink.contracts.messaging.Received replyBuffer = new systems.zlink.contracts.messaging.Received();
         try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 socketsAsBase, PollEventFlag.POLLIN)) {
             long activeEnd = System.nanoTime()
@@ -296,7 +295,7 @@ final class PerfMultiRouterRouter {
                                      boolean[] waitingWritable,
                                      int msgSize, PerfUtil.Metrics metrics,
                                      PerfSocketPollSet pollSet,
-                                     systems.zlink.contracts.Received replyBuffer) {
+                                     systems.zlink.contracts.messaging.Received replyBuffer) {
         while (true) {
             boolean ok;
             try {

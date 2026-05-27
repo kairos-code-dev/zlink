@@ -9,8 +9,8 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use zlink::Message;
 use zlink::{
-    Context, DealerSocket, PairSocket, PollEvent, Poller, PubSocket, RouterSocket, SocketMonitor,
-    Spot, SpotNode, StreamSocket, SubSocket, ZlinkError, POLLIN, POLLOUT,
+    Context, DealerSocket, Message, POLLIN, POLLOUT, PairSocket, PollEvent, Poller, PubSocket,
+    RouterSocket, SocketMonitor, Spot, SpotNode, StreamSocket,
 };
 
 pub const STOP_TOKEN: &[u8] = b"__zlink_perf_stop__";

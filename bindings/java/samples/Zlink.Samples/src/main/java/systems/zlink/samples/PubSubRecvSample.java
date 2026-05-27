@@ -1,16 +1,12 @@
 package systems.zlink.samples;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.PubSocket;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.SubSocket;
-import systems.zlink.contracts.TopicMessage;
-
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.sockets.PubSocket;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.contracts.messaging.TopicMessage;
 public final class PubSubRecvSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
@@ -21,9 +17,9 @@ public final class PubSubRecvSample {
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
              var pubMonitor = pub.monitorOpen(
-                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY);
+                 systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY);
              var subMonitor = sub.monitorOpen(
-                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY)) {
+                 systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY)) {
             pub.bind(endpoint);
             sub.setSubscription(SampleSupport.PUBSUB_TOPIC);
             sub.connect(endpoint);

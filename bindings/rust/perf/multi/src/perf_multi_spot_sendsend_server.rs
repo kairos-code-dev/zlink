@@ -9,7 +9,10 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, Instant};
 
-use zlink::*;
+use zlink::{
+    Message, POLLIN, PollEvent, Poller, Received, RecvFlags, RecvResult, RoutingId, SendFlags,
+    Spot, SpotNode, SubmitResult, TopicMessage,
+};
 
 const PATTERN: &str = "MULTI_SPOT_SENDSEND";
 const TOPIC: &str = "bench";

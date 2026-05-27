@@ -1,0 +1,67 @@
+namespace Zlink.Framework.Runtime.Actors;
+
+internal sealed record ZLinkSessionBindingEntry(
+    ZLinkSessionContext Context,
+    string BindingToken,
+    ZLinkSessionActor ActorRef);
+
+internal readonly record struct ZLinkSessionBindingKey(
+    string ActorId,
+    string BindingToken);
+
+internal sealed class ZLinkSessionActorBindingTable
+{
+    private readonly Dictionary<ZLinkSessionBindingKey, ZLinkSessionBindingEntry> _entries = new();
+
+    public void Bind(
+        string actorId,
+        ZLinkSessionContext context,
+        string bindingToken,
+        ZLinkSessionActor actorRef)
+    {
+        lock (_entries)
+        {
+            _entries[new ZLinkSessionBindingKey(actorId, bindingToken)] = new ZLinkSessionBindingEntry(
+                context,
+                bindingToken,
+                actorRef);
+        }
+    }
+
+    public void Unbind(
+        string actorId,
+        ZLinkSessionContext context,
+        string bindingToken)
+    {
+        lock (_entries)
+        {
+            var key = new ZLinkSessionBindingKey(actorId, bindingToken);
+            if (_entries.TryGetValue(key, out var existing)
+                && ReferenceEquals(existing.Context, context)
+                && string.Equals(existing.BindingToken, bindingToken, StringComparison.Ordinal))
+            {
+                _entries.Remove(key);
+            }
+        }
+    }
+
+    public bool TryGet(
+        string actorId,
+        string bindingToken,
+        out ZLinkSessionContext context)
+    {
+        lock (_entries)
+        {
+            var key = new ZLinkSessionBindingKey(actorId, bindingToken);
+            if (_entries.TryGetValue(key, out var entry))
+            {
+                context = entry.Context;
+                return true;
+            }
+
+            context = null!;
+            return false;
+        }
+    }
+
+}

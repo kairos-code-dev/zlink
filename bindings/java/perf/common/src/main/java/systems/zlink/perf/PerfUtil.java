@@ -2,27 +2,25 @@
 
 package systems.zlink.perf;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.MonitorSocket;
-import systems.zlink.contracts.PairSocket;
-import systems.zlink.contracts.DealerSocket;
-import systems.zlink.contracts.RouterSocket;
-import systems.zlink.contracts.RecvException;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.RecvResult;
-import systems.zlink.contracts.Socket;
-import systems.zlink.contracts.SocketType;
-import systems.zlink.contracts.SubSocket;
-import systems.zlink.contracts.TopicMessage;
-import systems.zlink.contracts.Context;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.sockets.PairSocket;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.service.registry.Registry;
-import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.contracts.messaging.TopicMessage;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -282,41 +280,41 @@ public final class PerfUtil {
     }
 
     public static void waitForMonitorEvent(MonitorSocket monitor,
-                                           systems.zlink.contracts.MonitorEventType expectedEvent,
+                                           systems.zlink.contracts.eventing.MonitorEventType expectedEvent,
                                            int expectedCount, Duration timeout,
                                            String label) {
         PerfTransport.waitForMonitorEvent(monitor, expectedEvent, expectedCount,
             timeout, label);
     }
 
-    public static systems.zlink.contracts.Received recvNoWait(PairSocket socket) {
+    public static systems.zlink.contracts.messaging.Received recvNoWait(PairSocket socket) {
         try {
-            systems.zlink.contracts.Received received = new systems.zlink.contracts.Received();
+            systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received();
             return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }
     }
 
-    public static systems.zlink.contracts.Received recvNoWait(DealerSocket socket) {
+    public static systems.zlink.contracts.messaging.Received recvNoWait(DealerSocket socket) {
         try {
-            systems.zlink.contracts.Received received = new systems.zlink.contracts.Received();
+            systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received();
             return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }
     }
 
-    public static systems.zlink.contracts.Received recvNoWait(RouterSocket socket) {
+    public static systems.zlink.contracts.messaging.Received recvNoWait(RouterSocket socket) {
         try {
-            systems.zlink.contracts.Received received = new systems.zlink.contracts.Received();
+            systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received();
             return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
         } catch (RecvException ex) {
             return recvExceptionToNull(ex);
         }
     }
 
-    private static systems.zlink.contracts.Received recvExceptionToNull(RecvException ex) {
+    private static systems.zlink.contracts.messaging.Received recvExceptionToNull(RecvException ex) {
         if (ex.getResult() == RecvResult.NO_DATA
             || ex.getResult() == RecvResult.BUSY) {
             return null;

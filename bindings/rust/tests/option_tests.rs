@@ -3,7 +3,9 @@
 
 use std::time::Duration;
 
-use zlink::*;
+use zlink::{
+    AutoHwmProfile, Context, RidDuplicatePolicy, RoutingId, StreamSocket,
+};
 
 #[test]
 fn context_option_auto_hwm_profile() {

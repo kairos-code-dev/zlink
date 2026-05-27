@@ -1,11 +1,7 @@
 package systems.zlink.contract;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.TestSupport;
+import systems.zlink.TestSupport;
+import systems.zlink.contracts.messaging.Message;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

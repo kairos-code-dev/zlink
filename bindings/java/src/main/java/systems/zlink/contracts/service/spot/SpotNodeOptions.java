@@ -3,8 +3,8 @@
 package systems.zlink.contracts.service.spot;
 
 
-record SpotNodeOptions(SpotNodeMode mode) {
-    SpotNodeOptions {
+public record SpotNodeOptions(SpotNodeMode mode) {
+    public SpotNodeOptions {
         if (mode == null)
             mode = SpotNodeMode.ALL;
     }

@@ -1,7 +1,9 @@
 //! Receive Failure Contract Tests – verify EAGAIN handling and
 //! direct recv error propagation.
 
-use zlink::*;
+use zlink::{
+    Context, Received, RecvFlags, SubscriptionEvent, TopicMessage,
+};
 
 #[test]
 fn eagain_returns_false_not_error() {

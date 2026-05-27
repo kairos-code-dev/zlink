@@ -2,7 +2,8 @@
 
 package systems.zlink.contracts.service.registry;
 
-import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.runtime.nativeapi.ServiceDecoders;
 import java.lang.foreign.MemorySegment;
 
 public record MemberPeerEntry(AutoConnectType autoConnectType,
@@ -11,7 +12,7 @@ public record MemberPeerEntry(AutoConnectType autoConnectType,
                               RoutingId routingId, long value,
                               int weight) {
     static MemberPeerEntry fromNative(MemorySegment segment) {
-        return systems.zlink.runtime.nativebridge.ServiceDecoders.memberPeerEntry(
+        return systems.zlink.runtime.nativeapi.ServiceDecoders.memberPeerEntry(
           segment);
     }
 }

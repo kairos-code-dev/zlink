@@ -1,13 +1,10 @@
 package systems.zlink.samples;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.StreamSocket;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.StreamSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 
@@ -20,8 +17,8 @@ public final class StreamPacketCallbackSample {
         try (Context ctx = new Context();
              StreamSocket server = new StreamSocket(ctx);
              var monitor = server.monitorOpen(
-                 systems.zlink.contracts.MonitorEventType.ACCEPTED,
-                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY)) {
+                 systems.zlink.contracts.eventing.MonitorEventType.ACCEPTED,
+                 systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY)) {
             server.bind(endpoint);
             try (var rawClient = SampleSupport.connectRawTcp(endpoint)) {
                 SampleSupport.waitStreamConnected(monitor);

@@ -2,21 +2,21 @@
 
 package systems.zlink.perf.single;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.MonitorEventType;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.RecvException;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.RecvResult;
-import systems.zlink.contracts.RouterSocket;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.SocketType;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RecvResult;
+import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.SocketType;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
@@ -90,7 +90,7 @@ final class PerfRouterRouter {
                         pollSet.poll(-1);
                         boolean stop = false;
                         while (true) {
-                            systems.zlink.contracts.Received received =
+                            systems.zlink.contracts.messaging.Received received =
                                 PerfUtil.recvNoWait(receiver);
                             if (received == null) {
                                 break;
@@ -201,8 +201,8 @@ final class PerfRouterRouter {
                                                           Duration timeout) {
         long deadline = System.nanoTime() + timeout.toNanos();
         RoutingId senderRoute = null;
-        systems.zlink.contracts.Received received =
-            new systems.zlink.contracts.Received();
+        systems.zlink.contracts.messaging.Received received =
+            new systems.zlink.contracts.messaging.Received();
         try {
             while (System.nanoTime() < deadline && senderRoute == null) {
                 try (Message ping = Message.from(PING)) {
@@ -261,8 +261,8 @@ final class PerfRouterRouter {
     }
 
     private static void drainRouterSocket(RouterSocket socket) {
-        systems.zlink.contracts.Received received =
-            new systems.zlink.contracts.Received();
+        systems.zlink.contracts.messaging.Received received =
+            new systems.zlink.contracts.messaging.Received();
         try {
             while (recvIntoNoWait(socket, received)) {
                 received.close();
@@ -273,7 +273,7 @@ final class PerfRouterRouter {
     }
 
     private static boolean recvIntoNoWait(RouterSocket socket,
-                                          systems.zlink.contracts.Received received) {
+                                          systems.zlink.contracts.messaging.Received received) {
         try {
             return socket.recv(received, RecvFlags.DONT_WAIT);
         } catch (RecvException ex) {
@@ -315,13 +315,13 @@ final class PerfRouterRouter {
                 .message(outbound)
                 .flags(SendFlags.DONT_WAIT)
                 .submit();
-        } catch (systems.zlink.contracts.SubmitException ex) {
+        } catch (systems.zlink.contracts.errors.SubmitException ex) {
             if (ex.getResult()
-                == systems.zlink.contracts.SubmitResult.BACKPRESSURED) {
+                == systems.zlink.contracts.sockets.SubmitResult.BACKPRESSURED) {
                 return false;
             }
             throw ex;
-        } catch (systems.zlink.contracts.ZlinkException ex) {
+        } catch (systems.zlink.contracts.errors.ZlinkException ex) {
             int errno = ex.getInternalErrno();
             if (errno == 11 || errno == 4 || errno == 10035) {
                 return false;
@@ -337,13 +337,13 @@ final class PerfRouterRouter {
                 .message(outbound)
                 .flags(SendFlags.NONE)
                 .submit();
-        } catch (systems.zlink.contracts.SubmitException ex) {
+        } catch (systems.zlink.contracts.errors.SubmitException ex) {
             if (ex.getResult()
-                == systems.zlink.contracts.SubmitResult.BACKPRESSURED) {
+                == systems.zlink.contracts.sockets.SubmitResult.BACKPRESSURED) {
                 return false;
             }
             throw ex;
-        } catch (systems.zlink.contracts.ZlinkException ex) {
+        } catch (systems.zlink.contracts.errors.ZlinkException ex) {
             int errno = ex.getInternalErrno();
             if (errno == 11 || errno == 4 || errno == 10035
                 || errno == 110 || errno == 113 || errno == 107) {

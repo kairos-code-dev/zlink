@@ -2,8 +2,8 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.SendFlags;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.SendFlags;
 import java.time.Duration;
 
 public interface ActorJoinCallbackSubmitOp {

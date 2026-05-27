@@ -2,12 +2,7 @@
 
 package systems.zlink.perf;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Message;
-
+import systems.zlink.contracts.messaging.Message;
 final class PerfMetricHeader {
     private static final int GENERIC_MAGIC = 0x5A4C4E4B; // ZLNK
 

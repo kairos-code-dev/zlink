@@ -48,6 +48,123 @@ path는 언어 관례에 맞게 정한다. 언어별 README가 지정한 실제 
 이 문서는 “각 언어가 어떻게 보일 수 있는가”보다 “각 언어가 무엇을 보장해야
 하는가”를 정의한다.
 
+## Binding Contract Category Policy
+
+모든 바인딩은 public contract를 같은 의미 범주로 나누어야 한다. 실제 폴더,
+package, namespace, module 이름은 언어 관례에 맞게 조정할 수 있지만, 어떤
+public 타입이 어떤 범주에 속하는지는 바인딩마다 같은 기준으로 판단해야 한다.
+
+이 정책의 목적은 파일 배치를 보기 좋게 맞추는 것이 아니다. 사용자가 한 언어에서
+배운 개념을 다른 언어에서도 같은 위치와 같은 의미로 찾을 수 있게 만드는 것이다.
+따라서 contract 하위 분류는 구현 파일 구조가 아니라 public API의 개념 경계를
+따른다.
+
+| 범주 | 목적 | 포함 대상 |
+|------|------|-----------|
+| `core` | 라이브러리 전체의 기반 계약 | `Context`, `ContextOptions`, `RoutingId`, 버전/기능 확인처럼 특정 socket이나 service에 묶이지 않는 public 타입 |
+| `messaging` | 메시지 데이터와 수신 결과 계약 | `Message`, `Received`, topic message, subscription event, multipart payload helper처럼 socket 종류와 독립적인 payload 타입 |
+| `sockets` | socket 종류와 socket 작업 계약 | `PairSocket`, `DealerSocket`, `RouterSocket`, `PubSocket`, `SubSocket`, `StreamSocket`, socket interface, send/recv/publish/request/reply builder, socket option |
+| `eventing` | 대기, 이벤트 소스, 관찰 계약 | `Poller`, `PollEvent`, timer, monitor socket, monitor event, monitor snapshot |
+| `service` | core service layer 계약 | discovery, registry, Spot, Actor dispatch처럼 service domain에 속하는 public 타입 |
+| `errors` | public 오류와 실패 표현 계약 | base exception, bind/connect/send/recv/submit/config/request exception, public error code/result mapping |
+
+### Contract Category Rules
+
+- `contract`와 `runtime`의 분리는 public API와 구현 세부사항의 분리다.
+  contract 하위 범주는 runtime 내부 구조를 그대로 반영하면 안 된다.
+- `core`는 작게 유지한다. 특정 도메인을 알아야 설명되는 타입은 `core`에 두지
+  않고 해당 도메인 범주에 둔다.
+- `service`는 `discovery`, `registry`, `spot` 같은 하위 도메인을 둘 수 있다.
+  하위 도메인은 사용자가 독립 개념으로 배워야 할 때만 만든다.
+- `eventing`은 monitoring만 뜻하지 않는다. poller, timer, monitor처럼 이벤트를
+  기다리거나 관찰하는 public 계약을 함께 담는다.
+- `errors`는 여러 도메인에 걸쳐 공유되는 오류 표면을 담는다. 특정 socket 작업의
+  결과값처럼 도메인 의미가 강한 타입은 해당 도메인에 둔다.
+- `enums` 같은 표현 형식 기준의 범주는 canonical category로 만들지 않는다.
+  enum, flags, result는 그 값을 해석하는 public 개념의 범주에 둔다.
+
+대표적인 enum/result/flags 배치 기준은 아래와 같다.
+
+| 타입 예 | 범주 | 이유 |
+|---------|------|------|
+| `SendFlags`, `RecvFlags`, `SubmitResult`, `RecvResult` | `sockets` | socket 작업의 입력 또는 결과를 설명한다. |
+| `PollEventFlag`, `PollSourceKind`, `MonitorEventType` | `eventing` | 이벤트 대기와 관찰 결과를 설명한다. |
+| `SpotDispatchEvent`, `SpotPeerKind` | `service.spot` | Spot service domain 안에서만 의미가 정해진다. |
+| `ConfigResult`, `ErrorCode` | `errors` | 여러 도메인에서 공유되는 실패 의미를 설명한다. |
+
+언어별 적용은 다음 원칙을 따른다.
+
+- `.NET`은 `Contracts/<Category>` 폴더로 의미 범주를 표현할 수 있다. namespace는
+  기존 public surface 안정성을 위해 언어별 문서가 정한 값을 따를 수 있다.
+- Java는 package가 public API에 가깝기 때문에, breaking change가 허용되는
+  정리 범위에서 `systems.zlink.contracts.<category>` 형태로 의미 범주를 맞출 수
+  있다. 이 정책은 기존 flat package를 compatibility 없이 즉시 금지한다는 뜻이
+  아니라, 구조 정리를 수행할 때의 목표 배치를 정의한다.
+- C는 package가 없으므로 header 파일, header section, 문서 섹션으로 같은 범주를
+  표현한다.
+- C++, Go, Rust, Python, Node는 각 언어의 module/package/export 관례를 따르되,
+  공개 문서와 export surface에서 위 의미 범주를 유지해야 한다.
+
+기존 바인딩에 `monitoring` 또는 `Monitoring` 범주가 있으면 canonical category는
+`eventing`으로 본다. monitor API만 있던 시기에는 monitoring 이름이 충분했지만,
+poller와 timer까지 함께 다루는 public 계약에서는 eventing이 더 넓고 정확한
+개념이다. 구조 정리 시에는 `monitoring`을 `eventing`으로 흡수하되, 언어별
+compatibility가 필요한 경우 기존 import/export 이름을 alias로 둘 수 있다.
+
+## Binding Runtime Category Policy
+
+wrapper binding은 public contract와 runtime implementation을 분리한다. runtime
+하위 분류는 contract 하위 분류와 1:1로 맞추는 것이 아니라, 구현 책임과 변경
+이유가 같은 코드를 함께 두는 기준으로 나눈다.
+
+contract는 사용자가 배우는 public API 개념을 기준으로 한다. runtime은 그 public
+API를 실행하기 위해 필요한 native 연결, handle 수명, buffer 처리, 오류 변환 같은
+구현 결정을 숨기는 계층이다. 따라서 runtime 구조는 public API 모양을 반복하지
+않고, 변경이 발생하는 이유를 기준으로 깊은 모듈을 만들어야 한다.
+
+권장 runtime 범주는 아래와 같다.
+
+| 범주 | 책임 |
+|------|------|
+| `native` | P/Invoke, JNI, FFI, native 함수 선언, ABI 타입 변환 |
+| `handles` | native handle 소유권, dispose/close, lifetime, reference tracking |
+| `messaging` | native message part 조립, multipart 처리, message 변환 |
+| `sockets` | socket operation 실행, send/recv/publish/request/reply 흐름 |
+| `eventing` | poller, timer, monitor, event dispatch loop |
+| `service` | discovery, registry, Spot, Actor service runtime |
+| `options` | public option 검증, native option mapping |
+| `errors` | native errno/result를 public exception/result로 변환 |
+| `buffers` | byte buffer, direct buffer, pooled buffer, pinned memory, copy/borrow 정책 |
+
+### Runtime Category Rules
+
+- runtime 범주는 public contract의 파일 배치를 그대로 복제하지 않는다. 예를 들어
+  `Contracts/Sockets/DealerSocket`이 있어도 반드시
+  `Runtime/Sockets/DealerSocketRuntime` 같은 1:1 타입을 만들 필요는 없다.
+- `native`, `handles`, `buffers`, `errors`처럼 native binding에서 반복되는 복잡한
+  구현 결정은 별도 범주로 숨긴다. 이 결정이 public contract로 새면 안 된다.
+- `service`는 `discovery`, `registry`, `spot`, `actor` 같은 하위 도메인을 둘 수
+  있다. 단, 하위 폴더는 구현 책임이 실제로 나뉠 때만 만든다.
+- `core`, `common`, `utils`, `internal`, `misc` 같은 포괄 이름은 canonical runtime
+  category로 쓰지 않는다. 이런 이름은 서로 다른 변경 이유를 한곳에 섞기 쉽다.
+  기존 바인딩에 `runtime/core`가 있으면 새 기준에서는 canonical category가 아니라
+  임시 집합으로 본다. 구조 정리 시에는 실제 책임에 따라 `native`, `handles`,
+  `buffers`, `options`, `errors`, `messaging`, `sockets`, `eventing`, `service`
+  중 하나로 옮긴다.
+- 언어 런타임 특성 때문에 범주명이 달라질 수는 있다. 그러나 문서와 리뷰에서는
+  위 책임 중 어느 범주에 해당하는지 설명 가능해야 한다.
+- runtime category는 public API 안정성을 약속하지 않는다. public 계약은 contract
+  문서와 언어별 public surface가 정의한다.
+
+기존 runtime에 `monitoring` 또는 `Monitoring` 범주가 있으면 contract와 마찬가지로
+canonical category는 `eventing`이다. monitor 구현만 담긴 파일이라도 poller, timer,
+event dispatch loop와 같은 변경 이유를 공유한다면 `eventing` 아래에 둔다.
+
+POSD 관점에서 이 분리는 정보 은닉을 위한 것이다. ABI 호출 방식, handle ownership,
+buffer pooling, native 오류 매핑은 binding 사용자가 알아야 할 지식이 아니다.
+runtime은 이 복잡성을 아래로 흡수하고, contract는 단순한 public 개념만 유지해야
+한다.
+
 ## Actor/Spot Route Surface
 
 모든 바인딩은 core의 Actor route와 Spot route 결과를 손실 없이 노출해야 한다.

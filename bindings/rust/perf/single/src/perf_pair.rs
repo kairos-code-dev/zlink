@@ -2,7 +2,9 @@
 
 mod common;
 
-use zlink::*;
+use zlink::{
+    SocketMonitor, SubmitResult,
+};
 
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
@@ -90,21 +92,19 @@ fn main() {
             zlink::RecvFlags::DONT_WAIT
         };
         match receiver.recv(&mut received, flags) {
-            Ok(true) => {
-                loop {
-                    let data = common::message_payload(received.parts());
-                    if common::is_stop_token(data) {
-                        stop_seen = true;
-                        break;
-                    }
-                    common::handle_recv(data, config.size, &stats, active_deadline);
-                    match receiver.recv(&mut received, zlink::RecvFlags::DONT_WAIT) {
-                        Ok(true) => continue,
-                        Ok(false) => break,
-                        Err(err) => panic!("pair receiver recv failed: {err}"),
-                    }
+            Ok(true) => loop {
+                let data = common::message_payload(received.parts());
+                if common::is_stop_token(data) {
+                    stop_seen = true;
+                    break;
                 }
-            }
+                common::handle_recv(data, config.size, &stats, active_deadline);
+                match receiver.recv(&mut received, zlink::RecvFlags::DONT_WAIT) {
+                    Ok(true) => continue,
+                    Ok(false) => break,
+                    Err(err) => panic!("pair receiver recv failed: {err}"),
+                }
+            },
             Ok(false) => common::poll_idle(std::time::Duration::from_millis(1)),
             Err(err) => panic!("pair receiver recv failed: {err}"),
         }

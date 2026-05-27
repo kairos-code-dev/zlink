@@ -1,16 +1,21 @@
-package systems.zlink.contracts;
+package systems.zlink;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.SpotDispatchEvent;
-import systems.zlink.contracts.SpotDispatchSubjectKind;
-import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.PairSocket;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.service.registry.Registry;
+import systems.zlink.contracts.sockets.RequestResult;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.sockets.SpotDispatchEvent;
+import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
 import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.messaging.TopicMessage;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -41,10 +46,10 @@ public class CallbackModeContractTest {
                 right.send().message(outbound).submit();
             }
 
-            try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+            try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
 
 
-                left.recv(received, systems.zlink.contracts.RecvFlags.NONE);
+                left.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
                 assertArrayEquals("callback-body".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
                 assertTrue(received.isSinglePart());

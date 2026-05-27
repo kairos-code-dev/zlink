@@ -2,16 +2,17 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.ConfigException;
-import systems.zlink.contracts.ConfigResult;
-import systems.zlink.runtime.nativebridge.Native;
+import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ConfigResult;
+import systems.zlink.runtime.nativeapi.InternalAccess;
+import systems.zlink.runtime.nativeapi.Native;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.time.Duration;
 import java.util.Objects;
 
-final class SpotOptions {
+public final class SpotOptions {
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3701;
 
     private final Spot spot;
@@ -34,7 +35,7 @@ final class SpotOptions {
             MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = Native.getSpotOption(spot.handle(), option, nativeValue,
+            int rc = Native.getSpotOption(InternalAccess.spotHandle(spot), option, nativeValue,
               len);
             if (rc != 0)
                 throw new ConfigException(ConfigResult.fromValue(rc));
@@ -46,7 +47,7 @@ final class SpotOptions {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
             nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setSpotOption(spot.handle(), option, nativeValue,
+            int rc = Native.setSpotOption(InternalAccess.spotHandle(spot), option, nativeValue,
               ValueLayout.JAVA_INT.byteSize());
             if (rc != 0)
                 throw new ConfigException(ConfigResult.fromValue(rc));

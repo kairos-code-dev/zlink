@@ -4,21 +4,23 @@ import ctypes
 import errno as _errno
 import threading
 
-from ..core.dispatcher import CallbackDispatcher
-from ..enums.enums import (
+from ..eventing.dispatcher import CallbackDispatcher
+from ...contracts.errors.codes import (
     BindResult,
     CloseResult,
     ConfigResult,
     ConnectResult,
+)
+from ...contracts.eventing.codes import MonitorEventMask
+from ...contracts.sockets.codes import (
     HandlerResult,
-    MonitorEventMask,
     RidDuplicatePolicy,
     SocketOption,
     SocketType,
     SubmitResult,
 )
 from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
-from ..core.byte_helpers import (
+from ..buffers.byte_helpers import (
     _bool_bytes,
     _int32_bytes,
     _int64_bytes,
@@ -31,7 +33,7 @@ from ...contracts.sockets.options import (
     StreamSocketOptions,
     SubSocketOptions,
 )
-from ..core.core import (
+from ..handles.native_support import (
     BindError,
     CloseError,
     ConfigError,
@@ -464,7 +466,7 @@ class _BaseSocket:
         return bool(_read_int32(self._get_pub_option(option, 4)))
 
     def monitor_open(self, events=MonitorEventMask.ALL):
-        from ..monitoring.monitor import open_socket_monitor
+        from ..eventing.monitor import open_socket_monitor
 
         return open_socket_monitor(self, events)
 

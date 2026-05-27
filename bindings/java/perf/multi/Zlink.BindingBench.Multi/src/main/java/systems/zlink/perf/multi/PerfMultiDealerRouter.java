@@ -2,20 +2,20 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.DealerSocket;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.MonitorEventType;
-import systems.zlink.contracts.MonitorSocket;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.RouterSocket;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.SocketType;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.sockets.DealerSocket;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.sockets.SocketType;
+import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
@@ -50,7 +50,7 @@ final class PerfMultiDealerRouter {
                 "server", SocketType.ROUTER);
             int stops = 0;
             Deque<PendingReply> pendingReplies = new ArrayDeque<>();
-            systems.zlink.contracts.Received receivedBuffer = new systems.zlink.contracts.Received();
+            systems.zlink.contracts.messaging.Received receivedBuffer = new systems.zlink.contracts.messaging.Received();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 List.of(server), PollEventFlag.POLLIN)) {
                 // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait (-1);
@@ -69,7 +69,7 @@ final class PerfMultiDealerRouter {
                         flushPending(server, pendingReplies);
                     }
                     while (true) {
-                        if (!server.recv(receivedBuffer, systems.zlink.contracts.RecvFlags.DONT_WAIT)) {
+                        if (!server.recv(receivedBuffer, systems.zlink.contracts.sockets.RecvFlags.DONT_WAIT)) {
                             break;
                         }
                         if (PerfStopToken.isStopTokenMessage(receivedBuffer.firstPart())) {
@@ -178,10 +178,10 @@ final class PerfMultiDealerRouter {
         for (int i = 0; i < n; i++) {
             payloads[i] = PerfUtil.payloadTemplate(msgSize);
         }
-        List<systems.zlink.contracts.Socket> socketsAsBase = new ArrayList<>(n);
+        List<systems.zlink.contracts.sockets.Socket> socketsAsBase = new ArrayList<>(n);
         socketsAsBase.addAll(clients);
         int rrIndex = 0;
-        systems.zlink.contracts.Received replyBuffer = new systems.zlink.contracts.Received();
+        systems.zlink.contracts.messaging.Received replyBuffer = new systems.zlink.contracts.messaging.Received();
         try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                 socketsAsBase, PollEventFlag.POLLIN)) {
             long activeEnd = System.nanoTime()
@@ -248,9 +248,9 @@ final class PerfMultiDealerRouter {
                                      int msgSize,
                                      PerfUtil.Metrics metrics,
                                      PerfSocketPollSet pollSet,
-                                     systems.zlink.contracts.Received replyBuffer) {
+                                     systems.zlink.contracts.messaging.Received replyBuffer) {
         while (true) {
-            if (!client.recv(replyBuffer, systems.zlink.contracts.RecvFlags.DONT_WAIT)) {
+            if (!client.recv(replyBuffer, systems.zlink.contracts.sockets.RecvFlags.DONT_WAIT)) {
                 break;
             }
             if (!waitingReply[idx]) {
@@ -303,7 +303,7 @@ final class PerfMultiDealerRouter {
                 if (pollSet.poll(-1) > 0) {
                     return true;
                 }
-            } catch (systems.zlink.contracts.ZlinkException ex) {
+            } catch (systems.zlink.contracts.errors.ZlinkException ex) {
                 if (ex.getInternalErrno() != 11 && ex.getInternalErrno() != 4) {
                     throw ex;
                 }

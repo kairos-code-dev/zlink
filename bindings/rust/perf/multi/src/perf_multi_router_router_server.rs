@@ -8,7 +8,9 @@ use std::sync::{
     Arc,
 };
 use std::time::Duration;
-use zlink::*;
+use zlink::{
+    Message, POLLIN, POLLOUT, PollEvent, Poller, RecvFlags, RecvResult, RoutingId, SendFlags,
+};
 
 fn main() {
     let args = common::MultiArgs::parse();

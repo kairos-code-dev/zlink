@@ -3,7 +3,7 @@
 import { normalizeBufferLike } from '../core/buffer_like';
 import type { BufferLike } from '../core/buffer_like';
 import { ConfigError, ConfigResult, RecvError, RecvResult, SubmitError, SubmitResult } from '../errors/errors';
-import { SendFlags } from '../enums/socket_constants';
+import { SendFlags } from '../sockets/socket_constants';
 
 /** Minimum user-defined metadata key. */
 export const METADATA_KEY_USER_MIN = 0x0100;

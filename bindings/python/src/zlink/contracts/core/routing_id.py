@@ -2,7 +2,7 @@
 
 import uuid
 
-from ..._runtime.core.core import _validated_routing_id_bytes
+from ..._runtime.handles.native_support import _validated_routing_id_bytes
 
 
 class RoutingId:

@@ -2,21 +2,19 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.DealerSocket;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.MonitorEventType;
-import systems.zlink.contracts.MonitorSocket;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.SocketType;
-import systems.zlink.contracts.SubmitException;
-import systems.zlink.contracts.SubmitResult;
-import systems.zlink.contracts.ZlinkException;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.sockets.DealerSocket;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.sockets.SocketType;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
@@ -107,7 +105,7 @@ final class PerfMultiDealerDealer {
     private static void drainCounted(DealerSocket server, PerfUtil.Config config,
                                       PerfUtil.Metrics metrics) {
         while (true) {
-            systems.zlink.contracts.Received received = PerfUtil.recvNoWait(server);
+            systems.zlink.contracts.messaging.Received received = PerfUtil.recvNoWait(server);
             if (received == null) {
                 return;
             }
@@ -134,7 +132,7 @@ final class PerfMultiDealerDealer {
             && System.nanoTime() < idleDeadline) {
             boolean progressed = false;
             while (true) {
-                systems.zlink.contracts.Received received =
+                systems.zlink.contracts.messaging.Received received =
                     PerfUtil.recvNoWait(server);
                 if (received == null) {
                     break;
@@ -181,7 +179,7 @@ final class PerfMultiDealerDealer {
             }
             PerfControl.emitClientReady(config.size());
             PerfControl.awaitStart(config.size(), "dealer/dealer client");
-            List<systems.zlink.contracts.Socket> pollSockets = new ArrayList<>(clients.size());
+            List<systems.zlink.contracts.sockets.Socket> pollSockets = new ArrayList<>(clients.size());
             pollSockets.addAll(clients);
             Message[] payloads = new Message[clients.size()];
             for (int i = 0; i < payloads.length; i++) {
@@ -297,7 +295,7 @@ final class PerfMultiDealerDealer {
 
     private static void sendStopTokenBlocking(DealerSocket socket) {
         try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                 List.of((systems.zlink.contracts.Socket) socket),
+                 List.of((systems.zlink.contracts.sockets.Socket) socket),
                  PollEventFlag.POLLOUT)) {
             pollSet.setEvents(0);
             while (true) {

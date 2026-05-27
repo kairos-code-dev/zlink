@@ -1,57 +1,72 @@
 package systems.zlink.contract;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.CommonSocketOptions;
-import systems.zlink.contracts.DealerSocket;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.MonitorSocket;
-import systems.zlink.contracts.PairSocket;
-import systems.zlink.contracts.PollEvents;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.Poller;
-import systems.zlink.contracts.PubSocket;
-import systems.zlink.contracts.PubSocketOptions;
-import systems.zlink.contracts.RecvException;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.Received;
-import systems.zlink.contracts.RequestResult;
-import systems.zlink.contracts.RouterSocket;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.SubmitException;
-import systems.zlink.contracts.SubmitResult;
-import systems.zlink.contracts.service.registry.MemberPeerEntry;
-import systems.zlink.contracts.service.registry.AutoConnectType;
-import systems.zlink.contracts.StreamSocket;
-import systems.zlink.contracts.SubSocket;
-import systems.zlink.contracts.SubSocketOptions;
-import systems.zlink.contracts.TestSupport;
-import systems.zlink.contracts.Timer;
-import systems.zlink.contracts.TopicMessage;
-import systems.zlink.contracts.XPubSocket;
-import systems.zlink.contracts.XSubSocket;
-import systems.zlink.contracts.Zlink;
-import systems.zlink.contracts.ZlinkException;
-import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.service.registry.Registry;
-import systems.zlink.contracts.service.spot.ActorRef;
+import systems.zlink.TestSupport;
+import systems.zlink.contracts.service.spot.ActorBindOp;
 import systems.zlink.contracts.service.spot.ActorJoinCallbackSubmitOp;
 import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOp;
 import systems.zlink.contracts.service.spot.ActorJoinOp;
 import systems.zlink.contracts.service.spot.ActorJoinSubmitOp;
+import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ActorRoute;
-import systems.zlink.contracts.service.spot.ActorBindOp;
 import systems.zlink.contracts.service.spot.ActorUnbindOp;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.sockets.CommonSocketOptions;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.sockets.DealerSocket;
+import systems.zlink.contracts.sockets.DisconnectReason;
+import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.errors.ErrorCode;
+import systems.zlink.contracts.service.registry.MemberPeerEntry;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.MonitorSnapshot;
+import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.sockets.PairSocket;
+import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEvents;
+import systems.zlink.contracts.eventing.Poller;
+import systems.zlink.contracts.errors.ProtocolError;
+import systems.zlink.contracts.sockets.PubSocket;
+import systems.zlink.contracts.sockets.PubSocketOptions;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.spot.ReplyOp;
+import systems.zlink.contracts.errors.RequestException;
 import systems.zlink.contracts.service.spot.RequestOp;
+import systems.zlink.contracts.sockets.RequestReplyCallback;
+import systems.zlink.contracts.sockets.RequestResult;
+import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.sockets.SocketOption;
+import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
+import systems.zlink.contracts.sockets.SpotDispatchInfo;
+import systems.zlink.contracts.service.spot.SpotKind;
+import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeActorEntry;
+import systems.zlink.contracts.service.spot.SpotNodeSocketSnapshotFilter;
+import systems.zlink.contracts.sockets.SpotRoutedHandler;
+import systems.zlink.contracts.sockets.StreamDispatchMode;
+import systems.zlink.contracts.sockets.StreamPacketHandler;
+import systems.zlink.contracts.sockets.StreamSocket;
+import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.contracts.sockets.SubSocketOptions;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.contracts.sockets.SubscribeHandler;
+import systems.zlink.contracts.messaging.SubscriptionEntry;
+import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.messaging.TopicMessage;
+import systems.zlink.contracts.sockets.XPubSocket;
+import systems.zlink.contracts.sockets.XSubSocket;
+import systems.zlink.contracts.core.Zlink;
+import systems.zlink.contracts.errors.ZlinkException;
+import systems.zlink.contracts.core.ZlinkVersion;
+import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -96,10 +111,10 @@ public class SocketContractTest {
                 client.send().message(outbound).submit();
             }
 
-            try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+            try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
 
 
-                server.recv(received, systems.zlink.contracts.RecvFlags.NONE);
+                server.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
                 assertArrayEquals("pair-contract".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
             }
@@ -119,9 +134,9 @@ public class SocketContractTest {
             dealerSocket.connect(endpoint);
 
             CompletableFuture<Void> server = CompletableFuture.runAsync(() -> {
-                try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+                try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
 
-                    routerSocket.recv(received, systems.zlink.contracts.RecvFlags.NONE);
+                    routerSocket.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
                     assertArrayEquals("ping".getBytes(StandardCharsets.UTF_8),
                         received.singlePartOrThrow().toByteArray());
                     assertTrue(received.routingId().isPresent());
@@ -165,10 +180,10 @@ public class SocketContractTest {
                 .message(Message.from("plain-data"))
                 .submit();
 
-            try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+            try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
 
 
-                routerSocket.recv(received, systems.zlink.contracts.RecvFlags.NONE);
+                routerSocket.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
                 assertArrayEquals("plain-data".getBytes(StandardCharsets.UTF_8),
                     received.singlePartOrThrow().toByteArray());
             }
@@ -189,9 +204,9 @@ public class SocketContractTest {
             dealerSocket.connect(endpoint);
 
             CompletableFuture<Void> server = CompletableFuture.runAsync(() -> {
-                try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+                try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
 
-                    routerSocket.recv(received, systems.zlink.contracts.RecvFlags.NONE);
+                    routerSocket.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
                     received.reply()
                         .message(Message.from("pong-callback"))
                         .submit();
@@ -236,17 +251,17 @@ public class SocketContractTest {
              PubSocket pub = new PubSocket(ctx);
              SubSocket sub = new SubSocket(ctx);
              var pubMonitor = pub.monitorOpen(
-               systems.zlink.contracts.MonitorEventType.CONNECTION_READY);
+               systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY);
              var subMonitor = sub.monitorOpen(
-               systems.zlink.contracts.MonitorEventType.CONNECTION_READY)) {
+               systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY)) {
             String endpoint = TestSupport.inprocEndpoint("socket-pubsub-contract");
             pub.bind(endpoint);
             sub.setSubscription("socket-topic");
             sub.connect(endpoint);
             TestSupport.awaitMonitorEvent(subMonitor,
-                systems.zlink.contracts.MonitorEventType.CONNECTION_READY);
+                systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY);
             TestSupport.awaitMonitorEvent(pubMonitor,
-                systems.zlink.contracts.MonitorEventType.CONNECTION_READY);
+                systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY);
 
             try (Message payload = Message.from("socket-payload")) {
                 pub.publish("socket-topic").message(payload).submit();
@@ -299,7 +314,7 @@ public class SocketContractTest {
                 String.class, String.class, boolean.class));
             assertTrue(hasPublicMethod(PairSocket.class, "monitorOpen"));
             assertTrue(hasPublicMethod(PairSocket.class, "monitorOpen",
-                systems.zlink.contracts.MonitorEventType[].class));
+                systems.zlink.contracts.eventing.MonitorEventType[].class));
             assertFalse(hasPublicMethod(PairSocket.class, "monitorOpen",
                 int.class));
             assertFalse(hasPublicMethod(Discovery.class, "monitorOpen"));
@@ -367,11 +382,11 @@ public class SocketContractTest {
             RoutingId.class, long.class, Message.class));
         assertTrue(hasPublicMethod(Spot.class, "recvRouted"));
         assertTrue(hasPublicMethod(Spot.class, "onRoutedReceive",
-            systems.zlink.contracts.SpotRoutedHandler.class));
+            systems.zlink.contracts.sockets.SpotRoutedHandler.class));
         assertTrue(hasPublicMethod(Spot.class, "onDispatchEvent",
-            systems.zlink.contracts.SpotDispatchEventHandler.class));
+            systems.zlink.contracts.sockets.SpotDispatchEventHandler.class));
         assertFalse(hasPublicMethod(Spot.class, "drainChannelReply",
-            systems.zlink.contracts.SpotDispatchInfo.class));
+            systems.zlink.contracts.sockets.SpotDispatchInfo.class));
         assertFalse(hasPublicMethod(Spot.class, "drainChannelReplyFrom",
             MemorySegment.class));
         assertTrue(hasPublicMethod(Spot.class, "setRoutingId",
@@ -427,18 +442,18 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(Zlink.class, "errno"));
         assertFalse(hasPublicMethod(ZlinkException.class, "errno"));
         assertFalse(hasPublicMethod(ZlinkException.class, "errorCode"));
-        assertFalse(isPublicClass("systems.zlink.contracts.SubscribeHandler"));
-        assertFalse(isPublicClass("systems.zlink.contracts.SocketOption"));
-        assertFalse(isPublicClass("systems.zlink.contracts.ErrorCode"));
-        assertFalse(isPublicClass("systems.zlink.contracts.RequestReplyCallback"));
-        assertFalse(isPublicClass("systems.zlink.contracts.SocketPollSet"));
-        assertFalse(isPublicClass("systems.zlink.contracts.DisconnectReason"));
-        assertFalse(isPublicClass("systems.zlink.contracts.ProtocolError"));
-        assertFalse(isPublicClass("systems.zlink.contracts.InternalAccess"));
-        assertFalse(isPublicClass("systems.zlink.contracts.StreamDispatchMode"));
-        assertTrue(isPublicClass("systems.zlink.contracts.SubscriptionEntry"));
-        assertFalse(isPublicClass("systems.zlink.contracts.ZlinkVersion"));
-        assertTrue(isPublicClass("systems.zlink.contracts.SocketType"));
+        assertFalse(isPublicClass("systems.zlink.contracts.sockets.SubscribeHandler"));
+        assertFalse(isPublicClass("systems.zlink.contracts.sockets.SocketOption"));
+        assertFalse(isPublicClass("systems.zlink.contracts.errors.ErrorCode"));
+        assertFalse(isPublicClass("systems.zlink.contracts.sockets.RequestReplyCallback"));
+        assertFalse(isPublicClass("systems.zlink.contracts.sockets.SocketPollSet"));
+        assertFalse(isPublicClass("systems.zlink.contracts.sockets.DisconnectReason"));
+        assertFalse(isPublicClass("systems.zlink.contracts.errors.ProtocolError"));
+        assertFalse(isPublicClass("systems.zlink.runtime.nativeapi.InternalAccess"));
+        assertFalse(isPublicClass("systems.zlink.contracts.sockets.StreamDispatchMode"));
+        assertTrue(isPublicClass("systems.zlink.contracts.messaging.SubscriptionEntry"));
+        assertFalse(isPublicClass("systems.zlink.contracts.core.ZlinkVersion"));
+        assertTrue(isPublicClass("systems.zlink.contracts.sockets.SocketType"));
         assertFalse(hasPublicMethod(SubSocketOptions.class, "subscriptionAt",
             int.class));
         assertTrue(hasPublicMethod(SubSocket.class, "subscriptionAt",
@@ -467,7 +482,7 @@ public class SocketContractTest {
             PollEventFlag[].class));
         assertTrue(hasPublicMethod(Poller.class, "remove", Spot.class));
         assertFalse(hasPublicMethod(Poller.class, "readyTimer", int.class));
-        assertTrue(hasPublicMethod(systems.zlink.contracts.MonitorSocket.class,
+        assertTrue(hasPublicMethod(systems.zlink.contracts.eventing.MonitorSocket.class,
             "recv", RecvFlags.class));
     }
 
@@ -543,10 +558,10 @@ public class SocketContractTest {
                     .submitAsync();
             }
 
-            try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+            try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
 
 
-                routerSocket.recv(received, systems.zlink.contracts.RecvFlags.NONE);
+                routerSocket.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
                 SubmitException submitException = assertThrows(
                     SubmitException.class,
                     () -> received.reply()
@@ -559,7 +574,7 @@ public class SocketContractTest {
 
             ExecutionException completion = assertThrows(ExecutionException.class,
                 () -> future.get(1, TimeUnit.SECONDS));
-            assertTrue(completion.getCause() instanceof systems.zlink.contracts.RequestException);
+            assertTrue(completion.getCause() instanceof systems.zlink.contracts.errors.RequestException);
         } finally {
             try {
                 dealerSocket.close();
@@ -592,7 +607,7 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(StreamSocket.class, "streamSend"));
         assertFalse(hasPublicMethod(StreamSocket.class, "onReceive"));
         assertTrue(hasPublicMethod(StreamSocket.class, "onPacket",
-            systems.zlink.contracts.StreamPacketHandler.class));
+            systems.zlink.contracts.sockets.StreamPacketHandler.class));
         assertFalse(hasPublicMethod(StreamSocket.class, "onPacketNative"));
         assertFalse(hasPublicMethod(StreamSocket.class, "onFramedPacket"));
         assertFalse(hasPublicMethod(StreamSocket.class, "onFramedPacketNative"));
@@ -786,7 +801,7 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(Received.class, "routingIdOrNull"));
         assertFalse(hasPublicMethod(Received.class, "routingIdOrThrow"));
         assertFalse(hasPublicMethod(Received.class, "spotRidOrNull"));
-        assertFalse(hasPublicMethod(systems.zlink.contracts.MonitorSnapshot.class,
+        assertFalse(hasPublicMethod(systems.zlink.contracts.eventing.MonitorSnapshot.class,
             "fromNative", java.lang.foreign.MemorySegment.class));
         assertFalse(hasPublicMethod(
             systems.zlink.contracts.service.registry.MemberPeerEntry.class,
@@ -807,13 +822,13 @@ public class SocketContractTest {
             server.bind(endpoint);
             client.connect(endpoint);
 
-            try (systems.zlink.contracts.Received probe = new systems.zlink.contracts.Received()) {
+            try (systems.zlink.contracts.messaging.Received probe = new systems.zlink.contracts.messaging.Received()) {
                 assertFalse(server.recv(probe, RecvFlags.DONT_WAIT));
             }
             try (Message outbound = Message.from("pair-try")) {
                 assertTrue(client.send().message(outbound).flags(SendFlags.DONT_WAIT).submit());
             }
-            try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
+            try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
                 assertTrue(server.recv(received, RecvFlags.DONT_WAIT));
                 assertEquals(List.of("pair-try"),
                     List.of(received.singlePartOrThrow().toUtf8String()));

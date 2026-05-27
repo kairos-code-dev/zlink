@@ -7,7 +7,7 @@ import queue
 import threading
 import time
 
-from ..core.core import (
+from ..handles.native_support import (
     HandlerError,
     HandlerResult,
     Message,

@@ -3,7 +3,10 @@
 
 use std::time::Duration;
 
-use zlink::*;
+use zlink::{
+    AutoConnectType, ConfigResult, Context, Discovery, Message, RoutingId, SpotNode, SpotNodeMode,
+    SpotNodeOptions,
+};
 
 #[test]
 fn routing_id_max_length_accepted() {

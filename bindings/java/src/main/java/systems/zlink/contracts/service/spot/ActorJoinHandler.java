@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.Message;
+import systems.zlink.contracts.messaging.Message;
 import java.util.List;
 
 /** Callback for {@link ActorJoinSubmitOp#submit(ActorJoinHandler)}. */

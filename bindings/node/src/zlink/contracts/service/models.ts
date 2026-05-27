@@ -8,9 +8,9 @@ import {
   SubscriptionEvent,
   type MessageLike,
 } from '../messaging/message';
-import { SendFlags, RecvFlags, type PollEventFlagValue } from '../enums/socket_constants';
+import { SendFlags, RecvFlags, type PollEventFlagValue } from '../sockets/socket_constants';
 import { RequestResult } from '../errors/errors';
-import type { Spot, Timer } from '../../runtime/core/canonical';
+import type { Spot, Timer } from '../../runtime/handles/canonical';
 
 export const ContextOption = Object.freeze({
   IO_THREADS: 1,

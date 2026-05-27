@@ -2,12 +2,12 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.MonitorSnapshot;
-import systems.zlink.contracts.SocketType;
-import systems.zlink.runtime.nativebridge.EnumCodecs;
-import systems.zlink.runtime.nativebridge.NativeHelpers;
-import systems.zlink.runtime.nativebridge.NativeLayouts;
-import systems.zlink.runtime.nativebridge.NativeMonitorSnapshots;
+import systems.zlink.contracts.eventing.MonitorSnapshot;
+import systems.zlink.contracts.sockets.SocketType;
+import systems.zlink.runtime.nativeapi.EnumCodecs;
+import systems.zlink.runtime.nativeapi.NativeHelpers;
+import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeMonitorSnapshots;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 

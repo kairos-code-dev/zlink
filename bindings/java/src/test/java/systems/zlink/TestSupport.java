@@ -1,10 +1,9 @@
-package systems.zlink.contracts;
+package systems.zlink;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-
+import systems.zlink.contracts.eventing.MonitorEvent;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.core.Zlink;
 import org.junit.jupiter.api.Assertions;
 
 import java.io.IOException;

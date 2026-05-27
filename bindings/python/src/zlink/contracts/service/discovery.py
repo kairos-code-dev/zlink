@@ -3,12 +3,12 @@
 import ctypes
 from dataclasses import dataclass
 
-from ..enums.enums import (
+from ..sockets.codes import SocketOption
+from .codes import (
     AutoConnectType,
     RegistryState,
     ServiceKind,
     ServiceRole,
-    SocketOption,
     SpotKind,
     TopologySource,
     TopologyState,
@@ -26,7 +26,7 @@ from ..._native.ffi import (
     lib,
 )
 from .spot import ActorRoute, _actor_id_bytes, _actor_ref_from_native
-from ..._runtime.core.core import (
+from ..._runtime.handles.native_support import (
     BindError,
     BindResult,
     CloseError,

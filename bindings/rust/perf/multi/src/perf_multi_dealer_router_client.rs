@@ -2,7 +2,10 @@
 mod common;
 
 use std::time::{Duration, Instant};
-use zlink::*;
+use zlink::{
+    DealerSocket, Message, POLLIN, POLLOUT, PollEvent, Poller, RecvFlags, RoutingId, SendFlags,
+    SocketMonitor,
+};
 
 fn drain_socket(
     index: usize,

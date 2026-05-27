@@ -1,10 +1,15 @@
-package systems.zlink.contracts;
+package systems.zlink;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.PairSocket;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.StreamSocket;
+import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.contracts.sockets.XPubSocket;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
@@ -32,10 +37,10 @@ public class NativeContractTest {
                     .submit());
             }
 
-            try (systems.zlink.contracts.Received inbound = new systems.zlink.contracts.Received()) {
+            try (systems.zlink.contracts.messaging.Received inbound = new systems.zlink.contracts.messaging.Received()) {
 
 
-                left.recv(inbound, systems.zlink.contracts.RecvFlags.NONE);
+                left.recv(inbound, systems.zlink.contracts.sockets.RecvFlags.NONE);
                 assertArrayEquals(payload,
                     inbound.singlePartOrThrow().toByteArray());
             }

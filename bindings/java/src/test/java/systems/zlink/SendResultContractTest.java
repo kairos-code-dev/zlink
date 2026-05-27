@@ -1,12 +1,22 @@
-package systems.zlink.contracts;
+package systems.zlink;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.SocketOptions;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.PairSocket;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.SendResult;
+import systems.zlink.contracts.sockets.SocketOptions;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.contracts.messaging.SubscriptionEvent;
+import systems.zlink.contracts.messaging.TopicMessage;
+import systems.zlink.contracts.sockets.XPubSocket;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 

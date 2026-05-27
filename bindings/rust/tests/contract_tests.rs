@@ -1,7 +1,10 @@
 //! Contract tests – verify FFI/native call mapping, type conversions,
 //! and resource lifecycle.
 
-use zlink::*;
+use zlink::{
+    ConfigResult, Context, DealerSocket, Message, Received, RecvFlags, RouterSocket, RoutingId,
+    SendFlags, SpotNode, SubmitResult, has, version,
+};
 
 // ---------------------------------------------------------------------------
 // Context lifecycle

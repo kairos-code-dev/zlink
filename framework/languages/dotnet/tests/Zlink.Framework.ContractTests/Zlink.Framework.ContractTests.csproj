@@ -32,7 +32,7 @@
     <Compile Include="Configuration/ConnectionAndConfigContracts.cs" />
     <Compile Include="Coverage/ContractSurfaceCoverage.cs" />
     <Compile Include="Handlers/HandlerContracts.cs" />
-    <Compile Include="Monitoring/MonitoringContracts.cs" />
+    <Compile Include="Eventing/EventingContracts.cs" />
     <Compile Include="Registry/RegistryContracts.cs" />
     <Compile Include="Spots/SpotContracts.cs" />
     <Compile Include="Streams/StreamContracts.cs" />

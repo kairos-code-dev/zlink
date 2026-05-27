@@ -4,7 +4,11 @@ use std::future::Future;
 use std::pin::pin;
 use std::task::{Context as TaskContext, Poll, Waker};
 
-use zlink::*;
+use zlink::{
+    AutoConnectType, Context, Discovery, Message, POLLIN, POLLOUT, PairSocket, PollEvent,
+    PollSourceKind, Poller, Received, RecvFlags, Registry, RegistryQueryClient, RoutingId,
+    SendFlags, SocketMonitor, Spot, SpotDispatchInfo, SpotNode, SubscriptionEvent, Timer,
+};
 
 fn reserve_tcp_port() -> u16 {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -63,6 +67,12 @@ fn spot_callback_surfaces_exist() {
         .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit();
+    let _ = spot.publish_part(
+        "topic",
+        Message::try_from(b"payload").unwrap(),
+        SendFlags::DONT_WAIT,
+    );
+    let _ = spot.subscribe_part(RecvFlags::DONT_WAIT);
     let _ = spot
         .send_channel("svc-surface")
         .message(Message::try_from(b"payload").unwrap())

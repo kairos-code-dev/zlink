@@ -3651,6 +3651,12 @@ pub struct ActorJoinRequest {
     pub message: Message,
 }
 
+pub struct SpotSubscribedPart {
+    pub topic: smol_str::SmolStr,
+    pub part: Message,
+    pub has_more: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Spot
 // ---------------------------------------------------------------------------
@@ -3695,6 +3701,36 @@ impl Spot {
             parts: Vec::new(),
             flags: SendFlags::NONE,
             _state: std::marker::PhantomData,
+        }
+    }
+
+    pub fn publish_part(
+        &self,
+        topic: &str,
+        mut message: Message,
+        flags: SendFlags,
+    ) -> Result<bool, SubmitError> {
+        let topic = fixed_cstring_or_panic(topic, "topic");
+        let mut native = take_message_raw(&mut message);
+        let rc = unsafe {
+            ffi::zlink_spot_publish_part(
+                self.handle,
+                topic.as_ptr(),
+                &mut native,
+                flags.bits(),
+                ffi::zlink_part_flag_t::ZLINK_PART_FINAL,
+            )
+        };
+        if rc != 0 {
+            unsafe {
+                ffi::zlink_msg_close(&mut native);
+            }
+        }
+        std::mem::forget(message);
+        match check_submit_rc(rc) {
+            Ok(()) => Ok(true),
+            Err(err) if err.code() == crate::error::SubmitResult::Backpressured => Ok(false),
+            Err(err) => Err(err),
         }
     }
 
@@ -3834,6 +3870,14 @@ impl Spot {
             }
             None => Ok(false),
         }
+    }
+
+    pub fn subscribe_part(
+        &self,
+        flags: RecvFlags,
+    ) -> Result<Option<SpotSubscribedPart>, RecvError> {
+        let mut topic_buf = [0i8; 256];
+        recv_spot_subscribed_part(self.handle, &mut topic_buf, flags.bits())
     }
 
     pub fn receive_subscription_event(
@@ -4368,6 +4412,50 @@ fn recv_spot_subscribed_parts(
         }
         recv_flags = ffi::ZLINK_DONTWAIT;
     }
+}
+
+fn recv_spot_subscribed_part(
+    handle: *mut c_void,
+    topic_buf: &mut [i8; 256],
+    flags: ffi::zlink_recv_flags_t,
+) -> Result<Option<SpotSubscribedPart>, RecvError> {
+    let mut topic_len = topic_buf.len();
+    let mut part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+    unsafe {
+        ffi::zlink_msg_init(part.as_mut_ptr());
+    }
+    let mut has_more = 0;
+    let rc = unsafe {
+        ffi::zlink_spot_subscribe_part(
+            handle,
+            ptr::null_mut(),
+            topic_buf.as_mut_ptr(),
+            topic_buf.len(),
+            &mut topic_len,
+            part.as_mut_ptr(),
+            &mut has_more,
+            flags,
+        )
+    };
+
+    if rc == RecvResult::NoData as i32 {
+        close_unreceived_part(&mut part);
+        return Ok(None);
+    }
+    if rc != 0 {
+        close_unreceived_part(&mut part);
+        let errno = unsafe { ffi::zlink_errno() };
+        if errno == libc::EAGAIN {
+            return Ok(None);
+        }
+        return Err(check_recv_rc(rc).unwrap_err());
+    }
+
+    Ok(Some(SpotSubscribedPart {
+        topic: crate::socket::cstr_buf_to_smolstr(topic_buf, topic_len),
+        part: unsafe { Message::from_raw(part.assume_init()) },
+        has_more: has_more != 0,
+    }))
 }
 
 fn spot_received_from_raw(

@@ -2,28 +2,28 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.AutoHwmProfile;
-import systems.zlink.contracts.ConfigException;
-import systems.zlink.contracts.ConfigResult;
-import systems.zlink.contracts.DealerSocket;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.PubSocket;
-import systems.zlink.contracts.RequestException;
-import systems.zlink.contracts.RequestResult;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.SubmitException;
-import systems.zlink.contracts.SubmitResult;
-import systems.zlink.runtime.nativebridge.ActorInterop;
-import systems.zlink.runtime.nativebridge.EnumCodecs;
-import systems.zlink.runtime.nativebridge.InternalAccess;
-import systems.zlink.runtime.nativebridge.MessagePartsBuffer;
-import systems.zlink.runtime.nativebridge.Native;
-import systems.zlink.runtime.nativebridge.NativeHelpers;
-import systems.zlink.runtime.nativebridge.NativeLayouts;
-import systems.zlink.runtime.nativebridge.NativeMsg;
+import systems.zlink.contracts.sockets.AutoHwmProfile;
+import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ConfigResult;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.PubSocket;
+import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.sockets.RequestResult;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.runtime.nativeapi.ActorInterop;
+import systems.zlink.runtime.nativeapi.EnumCodecs;
+import systems.zlink.runtime.nativeapi.InternalAccess;
+import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
+import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeHelpers;
+import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -56,6 +56,10 @@ public final class SpotNode implements AutoCloseable {
     private MemorySegment handle;
     private final SpotNodeSocketOptions socketOptions = new SpotNodeSocketOptions();
 
+    static {
+        InternalAccess.register((InternalAccess.SpotNodeAccess) SpotNode::handle);
+    }
+
     /** Creates a spot node owned by the supplied context. */
     public SpotNode(Context ctx) {
         this(ctx, SpotNodeMode.ALL);
@@ -86,11 +90,6 @@ public final class SpotNode implements AutoCloseable {
 
     MemorySegment handle() {
         return handle;
-    }
-
-    /** Internal bridge for binding helpers. */
-    MemorySegment handleInternal() {
-        return handle();
     }
 
     /** Binds the local spot node PUB/SUB endpoint. */
@@ -412,8 +411,8 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeActorNew(handle,
               NativeHelpers.toCString(arena, actorId), out);
             if (rc != 0) {
-                throw new systems.zlink.contracts.ConfigException(
-                  systems.zlink.contracts.ConfigResult.fromValue(rc));
+                throw new systems.zlink.contracts.errors.ConfigException(
+                  systems.zlink.contracts.errors.ConfigResult.fromValue(rc));
             }
             return new Actor(this, ActorInterop.actorRefFromNative(out));
         }
@@ -428,8 +427,8 @@ public final class SpotNode implements AutoCloseable {
             int rc = Native.spotNodeActorLookup(handle,
               NativeHelpers.toCString(arena, actorId), out);
             if (rc != 0) {
-                throw new systems.zlink.contracts.ConfigException(
-                  systems.zlink.contracts.ConfigResult.fromValue(rc));
+                throw new systems.zlink.contracts.errors.ConfigException(
+                  systems.zlink.contracts.errors.ConfigResult.fromValue(rc));
             }
             return ActorInterop.actorRefFromNative(out);
         }

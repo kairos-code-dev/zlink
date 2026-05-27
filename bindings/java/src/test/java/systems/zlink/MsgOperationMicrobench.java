@@ -1,10 +1,7 @@
-package systems.zlink.contracts;
+package systems.zlink;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.util.Locale;
@@ -76,7 +73,7 @@ public final class MsgOperationMicrobench {
 
             bench("message_from_owned_native", size, () -> {
                 initSized(slotA, size);
-                try (Message msg = Message.fromOwnedNative(slotA)) {
+                try (Message msg = InternalAccess.messageFromOwnedNative(slotA)) {
                     blackhole ^= msg.size();
                     blackhole ^= msg.readByte(0);
                 }
@@ -93,7 +90,7 @@ public final class MsgOperationMicrobench {
 
             bench("message_transfer_to_native", size, () -> {
                 try (Message msg = Message.from(payload)) {
-                    msg.transferTo(slotA);
+                    InternalAccess.messageTransferTo(msg, slotA);
                     blackhole ^= MsgFfmBenchSupport.msgSize(slotA);
                     MsgFfmBenchSupport.msgClose(slotA);
                 }

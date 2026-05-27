@@ -3,7 +3,7 @@
 package systems.zlink.contracts.service.spot;
 
 
-enum SpotServiceAttachmentRole {
+public enum SpotServiceAttachmentRole {
     ROUTER(1),
     PUB(2),
     SUB(3);

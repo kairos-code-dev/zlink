@@ -3,7 +3,9 @@
 mod common;
 
 use std::time::Duration;
-use zlink::*;
+use zlink::{
+    Message, RoutingId, SocketMonitor, SubmitResult,
+};
 
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
@@ -90,25 +92,14 @@ fn main() {
             active_deadline,
             config.size,
             common::PHASE_ACTIVE,
-            |msg| match dealer
-                .send()
-                .message(msg)
-                .flags(zlink::SendFlags::DONT_WAIT)
-                .submit()
-            {
+            |msg| match dealer.send().message(msg).submit() {
                 Ok(sent) => sent,
                 Err(err) if err.code() == SubmitResult::NotConnected => false,
                 Err(err) if common::is_single_send_retry_error(&err) => false,
                 Err(err) => panic!("active send: {err}"),
             },
         );
-        common::send_stop_token(|msg| {
-            dealer
-                .send()
-                .message(msg)
-                .flags(zlink::SendFlags::DONT_WAIT)
-                .submit()
-        });
+        common::send_stop_token(|msg| dealer.send().message(msg).submit());
     });
 
     let mut stop_seen = false;

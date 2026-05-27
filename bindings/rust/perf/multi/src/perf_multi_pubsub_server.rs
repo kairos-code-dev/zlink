@@ -3,7 +3,9 @@ mod common;
 
 use std::io::{self, BufRead};
 use std::time::{Duration, Instant};
-use zlink::*;
+use zlink::{
+    Message, SendFlags, SubmitResult,
+};
 
 const TOPIC: &str = "bench";
 const STOP_TOKEN_BURST: usize = 64;

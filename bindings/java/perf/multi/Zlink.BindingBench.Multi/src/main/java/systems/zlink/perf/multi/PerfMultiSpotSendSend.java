@@ -2,29 +2,25 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.PollEvents;
-import systems.zlink.contracts.PollEventFlag;
-import systems.zlink.contracts.Poller;
-import systems.zlink.contracts.RecvException;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.RecvResult;
-import systems.zlink.contracts.Received;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.SpotDispatchEvent;
-import systems.zlink.contracts.SubmitException;
-import systems.zlink.contracts.SubmitResult;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEvents;
+import systems.zlink.contracts.eventing.Poller;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RecvResult;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.service.spot.Spot;
+import systems.zlink.contracts.sockets.SpotDispatchEvent;
+import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
 import systems.zlink.perf.PerfUtil;
-import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.SpotNode;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;

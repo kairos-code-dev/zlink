@@ -4,7 +4,9 @@
 use std::thread;
 use std::time::Duration;
 
-use zlink::*;
+use zlink::{
+    Context, MonitorEvent, MonitorEventType, RecvError, SocketMonitor,
+};
 
 #[test]
 fn socket_monitor_recv_surface() {

@@ -2,15 +2,11 @@
 
 import ctypes
 
-from ..enums.enums import (
-    AutoHwmProfile,
-    CloseResult,
-    ConfigResult,
-    ContextOption,
-)
+from .options import AutoHwmProfile, ContextOption
+from ..errors.codes import CloseResult, ConfigResult
 from ..errors.errors import CloseError, ConfigError
 from ..._native.ffi import lib
-from ..._runtime.core.core import (
+from ..._runtime.handles.native_support import (
     _config_result_from_errno,
     _raise_result_error,
     _raise_zlink_error,

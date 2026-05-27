@@ -1,13 +1,8 @@
 package systems.zlink.samples;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.MonitorEventType;
-import systems.zlink.contracts.PairSocket;
-
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.sockets.PairSocket;
 public final class MonitorRecvSample {
     public static void main(String[] args) {
         SampleSupport.ensureNative();
@@ -17,9 +12,9 @@ public final class MonitorRecvSample {
              PairSocket server = new PairSocket(ctx);
              PairSocket client = new PairSocket(ctx);
              var serverMonitor = server.monitorOpen(
-                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY);
+                 systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY);
              var clientMonitor = client.monitorOpen(
-                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY)) {
+                 systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY)) {
             server.bind(endpoint);
             client.connect(endpoint);
 

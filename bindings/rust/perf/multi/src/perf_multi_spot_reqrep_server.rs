@@ -9,7 +9,10 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, Instant};
 
-use zlink::*;
+use zlink::{
+    Message, PollEvent, Received, RecvFlags, RecvResult, RoutingId, SendFlags, Spot,
+    SpotDispatchEvent, SpotNode, SubmitResult, TopicMessage,
+};
 
 const PATTERN: &str = "MULTI_SPOT_REQREP";
 const TOPIC: &str = "bench";

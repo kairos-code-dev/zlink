@@ -4,10 +4,10 @@ import ctypes
 import sys
 import types
 
-from ..enums.enums import CloseResult, ConfigResult
+from ..errors.codes import CloseResult, ConfigResult
 from ..errors.errors import CloseError, ConfigError
 from ..._native.ffi import lib
-from ..._runtime.core.core import _raise_result_error, _validated_int32
+from ..._runtime.handles.native_support import _raise_result_error, _validated_int32
 
 
 _THREAD_FN = ctypes.CFUNCTYPE(None, ctypes.c_void_p)

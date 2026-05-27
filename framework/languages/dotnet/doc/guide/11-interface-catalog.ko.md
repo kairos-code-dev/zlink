@@ -658,7 +658,7 @@ var snapshot = await client.SnapshotAsync();                    // IZLinkRegistr
 
 ## 7. Monitoring — source 등록과 runtime event handler
 
-> 사용법은 [09-monitoring](./09-monitoring.ko.md). 검증 클래스는 `MonitoringContracts`.
+> 사용법은 [09-monitoring](./09-monitoring.ko.md). 검증 클래스는 `EventingContracts`.
 
 ```csharp
 options.AddSocketEvents("router", ZLinkSocketEventKind.Connected); // IZLinkMonitoringOptions
@@ -681,7 +681,7 @@ await publisher.PublishAsync(socketEvent, ct);   // IZLinkRuntimeEventPublisher
 | `IZLinkRuntimeEventHandler<TEvent>` | 특정 event 타입 수신 handler. DI 로 생성·호출 |
 | `IZLinkRuntimeEventPublisher` | runtime event 발행 표면(`PublishAsync<TEvent>` where `TEvent : IZLinkRuntimeEvent`) |
 
-검증: `MonitoringContracts.Monitoring_contracts_wire_event_sources_to_typed_runtime_handlers`.
+검증: `EventingContracts.Eventing_contracts_wire_event_sources_to_typed_runtime_handlers`.
 
 ## 8. Timer — 등록된 timer 핸들
 
@@ -710,7 +710,7 @@ await timer.CancelAsync();   // IZLinkTimer
 | `Actors` | `ActorContracts` | 2 |
 | `Streams` | `StreamContracts` | 2 |
 | `Registry` | `RegistryContracts` | 1 |
-| `Monitoring` | `MonitoringContracts` | 1 |
+| `Eventing` | `EventingContracts` | 1 |
 | `Timers` | `TimerContracts` | 1 |
 | `Dispatch` | `ConnectionAndConfigContracts`(`IZLinkDispatchOptions`) | (위 5 에 포함) |
 

@@ -10,8 +10,8 @@ use crate::options::{CommonSocketOptions, DealerSocketOptions};
 use crate::service::{Empty, RequestOp, SendOp};
 
 use super::{
-    impl_attach_discovery, impl_base_socket, impl_connect, impl_routing_id_options, SendHandle,
-    SocketInner,
+    SendHandle, SocketInner, impl_attach_discovery, impl_base_socket, impl_connect,
+    impl_routing_id_options,
 };
 
 /// DEALER socket – asynchronous request/reply pattern (client side).

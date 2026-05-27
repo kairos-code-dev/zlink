@@ -1,15 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
-from ..enums.enums import (
-    BindResult,
-    CloseResult,
-    ConfigResult,
-    ConnectResult,
-    HandlerResult,
-    RecvResult,
-    RequestResult,
-    SubmitResult,
-)
+from .codes import BindResult, CloseResult, ConfigResult, ConnectResult
+from ..sockets.codes import HandlerResult, RecvResult, RequestResult, SubmitResult
 
 
 class ZlinkError(RuntimeError):

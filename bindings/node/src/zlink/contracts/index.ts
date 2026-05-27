@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
 export * from './sockets';
-export * from './monitoring';
-export * from '../runtime/core/canonical';
+export * from './eventing';
+export * from '../runtime/handles/canonical';

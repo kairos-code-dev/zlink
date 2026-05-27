@@ -5,7 +5,11 @@
 //! - Typed option surfaces exist (no raw option bags)
 //! - Monitor canonical surface exists (recv)
 
-use zlink::*;
+use zlink::{
+    AutoConnectType, Context, Discovery, Message, MonitorEvent, Received, RecvError, RecvFlags,
+    RidDuplicatePolicy, RoutingId, SendFlags, SendResult, SocketMonitor, SpotNode, StreamSocket,
+    SubscriptionEvent, TopicMessage, XPubSocket,
+};
 
 // ---------------------------------------------------------------------------
 // Socket type capability separation

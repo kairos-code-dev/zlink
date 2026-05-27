@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.Message;
+import systems.zlink.contracts.messaging.Message;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;

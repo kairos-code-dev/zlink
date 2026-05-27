@@ -1,13 +1,9 @@
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.AutoHwmProfile;
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.TestSupport;
+import systems.zlink.TestSupport;
+import systems.zlink.contracts.sockets.AutoHwmProfile;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.RoutingId;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Field;
 import java.time.Duration;

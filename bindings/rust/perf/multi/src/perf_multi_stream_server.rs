@@ -4,7 +4,9 @@ mod common;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use zlink::*;
+use zlink::{
+    Message, SubmitResult,
+};
 
 fn build_packet_frame(header: &[u8], body: &[u8]) -> Message {
     let mut packet = Message::with_size(6 + header.len() + body.len()).expect("packet");

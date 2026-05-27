@@ -3,7 +3,18 @@
 # Re-export shim. The discovery service implementation lives in the public
 # contract source at zlink/contracts/service/discovery.py.
 
-from ...contracts.service.discovery import *  # noqa: F401,F403
+from ...contracts.service.discovery import (  # noqa: F401
+    Discovery,
+    MemberPeerEntry,
+    Registry,
+    RegistryQueryClient,
+    RegistryServiceSummaryEntry,
+    RegistryServiceSummaryFilter,
+    RegistryStatus,
+    RegistryTopologyEntry,
+    RegistryTopologyFilter,
+    SpotRoute,
+)
 
 
 def __getattr__(name):

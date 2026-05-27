@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.service.discovery;
 
-import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SpotKind;
 import java.util.Objects;
 

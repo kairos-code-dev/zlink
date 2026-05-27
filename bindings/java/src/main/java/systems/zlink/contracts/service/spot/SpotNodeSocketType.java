@@ -3,7 +3,7 @@
 package systems.zlink.contracts.service.spot;
 
 
-enum SpotNodeSocketType {
+public enum SpotNodeSocketType {
     ANY(0),
     PAIR(0x1001),
     PUB(0x1002),

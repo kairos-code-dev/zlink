@@ -1,21 +1,17 @@
 package systems.zlink.contract;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.MonitorEventType;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.SubscriptionEvent;
-import systems.zlink.contracts.SubscriptionEntry;
-import systems.zlink.contracts.PubSocket;
-import systems.zlink.contracts.SubSocket;
-import systems.zlink.contracts.TestSupport;
-import systems.zlink.contracts.TopicMessage;
-import systems.zlink.contracts.XSubSocket;
-import systems.zlink.contracts.XPubSocket;
+import systems.zlink.TestSupport;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.sockets.PubSocket;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.contracts.messaging.SubscriptionEntry;
+import systems.zlink.contracts.messaging.SubscriptionEvent;
+import systems.zlink.contracts.messaging.TopicMessage;
+import systems.zlink.contracts.sockets.XPubSocket;
+import systems.zlink.contracts.sockets.XSubSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;

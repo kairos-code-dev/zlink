@@ -2,10 +2,11 @@
 
 import ctypes
 
-from ..enums.enums import CloseResult, ConfigResult, RecvResult, SubmitResult
+from ..errors.codes import CloseResult, ConfigResult
+from ..sockets.codes import RecvResult, SubmitResult
 from ..errors.errors import CloseError, ConfigError, RecvError, SubmitError
 from ..._native.ffi import ZlinkMsg, lib
-from ..._runtime.core.core import (
+from ..._runtime.handles.native_support import (
     _init_msg_from_buffer,
     _msg_data_ptr,
     _msg_gets,

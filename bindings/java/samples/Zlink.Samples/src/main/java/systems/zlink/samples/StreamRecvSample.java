@@ -1,13 +1,11 @@
 package systems.zlink.samples;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.StreamSocket;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.StreamSocket;
 import java.nio.charset.StandardCharsets;
 
 public final class StreamRecvSample {
@@ -18,8 +16,8 @@ public final class StreamRecvSample {
         try (Context ctx = new Context();
              StreamSocket server = new StreamSocket(ctx);
              var monitor = server.monitorOpen(
-                 systems.zlink.contracts.MonitorEventType.ACCEPTED,
-                 systems.zlink.contracts.MonitorEventType.CONNECTION_READY)) {
+                 systems.zlink.contracts.eventing.MonitorEventType.ACCEPTED,
+                 systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY)) {
             server.bind(endpoint);
             try (var rawClient = SampleSupport.connectRawTcp(endpoint)) {
                 SampleSupport.waitStreamConnected(monitor);
@@ -28,8 +26,8 @@ public final class StreamRecvSample {
                     SampleSupport.STREAM_PAYLOAD.getBytes(StandardCharsets.UTF_8);
                 SampleSupport.sendRawTcp(rawClient, payload);
 
-                try (systems.zlink.contracts.Received received = new systems.zlink.contracts.Received()) {
-                    server.recv(received, systems.zlink.contracts.RecvFlags.NONE);
+                try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
+                    server.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
                     String value = SampleSupport.singleUtf8(received);
                     if (!SampleSupport.STREAM_PAYLOAD.equals(value)
                         || received.routingId().isEmpty()) {

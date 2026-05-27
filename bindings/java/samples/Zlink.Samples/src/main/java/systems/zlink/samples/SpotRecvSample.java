@@ -1,16 +1,12 @@
 package systems.zlink.samples;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.TopicMessage;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.messaging.TopicMessage;
 import java.time.Duration;
 import java.time.Instant;
 

@@ -5,12 +5,11 @@
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zlink::{
-    Context, DealerSocket, Message, PairSocket, PubSocket, RouterSocket, SocketMonitor, SubSocket,
-    SubmitError, ZlinkError,
+    Context, DealerSocket, Message, PairSocket, PubSocket, RouterSocket, SocketMonitor,
 };
 
 // -- Metric header (29 bytes) ------------------------------------------------

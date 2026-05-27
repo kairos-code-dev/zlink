@@ -54,7 +54,7 @@ def _spot_publish_blocking(spot, topic, payload):
 
 def _spot_subscribe_once(spot, storage):
     try:
-        if not spot.subscribe_into(storage, flags=zlink.RecvFlags.DONT_WAIT):
+        if not spot.subscribe_part_into(storage, flags=zlink.RecvFlags.DONT_WAIT):
             return None
         return storage
     except zlink.RecvError as exc:
@@ -138,7 +138,7 @@ def main(argv=None):
                                 ):
                                     return
                                 unpack_from = struct.unpack_from
-                                message = zlink.TopicMessage()
+                                message = zlink.SpotSubscribedPart()
                                 while True:
                                     received_message = _spot_subscribe_once(
                                         current_spot, message
@@ -148,12 +148,15 @@ def main(argv=None):
                                     try:
                                         if received_message.topic != TOPIC:
                                             continue
-                                        parts = received_message.parts
-                                        data = parts[0].to_bytes() if parts else b""
+                                        if received_message.has_more:
+                                            received_message.close()
+                                            continue
+                                        part = received_message.part
+                                        data = part.data if part is not None else b""
                                         size = len(data)
                                         if (
                                             size == len(STOP_TOKEN)
-                                            and data == STOP_TOKEN
+                                            and bytes(data) == STOP_TOKEN
                                         ):
                                             stop_received.set()
                                             return

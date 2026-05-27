@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.RoutingId;
+import systems.zlink.contracts.core.RoutingId;
 import java.lang.foreign.MemorySegment;
 import java.util.Objects;
 import java.util.Optional;

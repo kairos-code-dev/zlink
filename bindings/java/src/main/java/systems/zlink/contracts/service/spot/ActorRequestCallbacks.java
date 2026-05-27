@@ -2,11 +2,12 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.RequestResult;
-import systems.zlink.runtime.nativebridge.ActorInterop;
-import systems.zlink.runtime.nativebridge.InternalAccess;
-import systems.zlink.runtime.nativebridge.NativeMsg;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.sockets.RequestResult;
+import systems.zlink.runtime.nativeapi.ActorInterop;
+import systems.zlink.runtime.nativeapi.InternalAccess;
+import systems.zlink.runtime.nativeapi.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -172,7 +173,7 @@ public final class ActorRequestCallbacks {
         try {
             token.future().join();
         } catch (CompletionException ex) {
-            if (ex.getCause() instanceof systems.zlink.contracts.RequestException request) {
+            if (ex.getCause() instanceof systems.zlink.contracts.errors.RequestException request) {
                 throw request;
             }
             throw ex;

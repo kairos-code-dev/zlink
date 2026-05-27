@@ -1,18 +1,15 @@
 package systems.zlink.contract;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.DealerSocket;
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.Received;
-import systems.zlink.contracts.RouterSocket;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.SubmitException;
-import systems.zlink.contracts.SubmitResult;
-import systems.zlink.contracts.TestSupport;
+import systems.zlink.TestSupport;
+import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.sockets.DealerSocket;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -42,10 +39,10 @@ public class ReceivedContractTest {
                 .message(Message.from("part-2"))
                 .submit();
 
-            try (systems.zlink.contracts.Received inbound = new systems.zlink.contracts.Received()) {
+            try (systems.zlink.contracts.messaging.Received inbound = new systems.zlink.contracts.messaging.Received()) {
 
 
-                router.recv(inbound, systems.zlink.contracts.RecvFlags.NONE);
+                router.recv(inbound, systems.zlink.contracts.sockets.RecvFlags.NONE);
                 assertTrue(inbound.routingId().isPresent());
                 assertArrayEquals(dealerRid.toBytes(),
                     inbound.routingId().orElseThrow().toBytes());

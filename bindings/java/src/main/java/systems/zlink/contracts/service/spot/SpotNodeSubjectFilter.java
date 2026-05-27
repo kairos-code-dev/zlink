@@ -2,10 +2,10 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.runtime.nativebridge.EnumCodecs;
-import systems.zlink.runtime.nativebridge.NativeHelpers;
-import systems.zlink.runtime.nativebridge.NativeLayouts;
 import systems.zlink.contracts.service.registry.ServiceEventSubjectKind;
+import systems.zlink.runtime.nativeapi.EnumCodecs;
+import systems.zlink.runtime.nativeapi.NativeHelpers;
+import systems.zlink.runtime.nativeapi.NativeLayouts;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;

@@ -3,7 +3,7 @@
 package systems.zlink.contracts.service.spot;
 
 
-import systems.zlink.runtime.nativebridge.EnumCodecs;
+import systems.zlink.runtime.nativeapi.EnumCodecs;
 
 public enum SpotPeerSource {
     MANUAL,

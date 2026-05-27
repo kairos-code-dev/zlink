@@ -4,7 +4,10 @@
 use std::thread;
 use std::time::Duration;
 
-use zlink::*;
+use zlink::{
+    Context, Message, Received, RecvFlags, RoutingId, SendFlags, SocketMonitor, SubscriptionEvent,
+    TopicMessage,
+};
 
 #[test]
 fn pair_send_recv_roundtrip() {

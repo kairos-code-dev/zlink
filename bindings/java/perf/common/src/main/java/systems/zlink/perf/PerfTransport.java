@@ -2,17 +2,13 @@
 
 package systems.zlink.perf;
 
-import systems.zlink.contracts.service.discovery.*;
-import systems.zlink.contracts.service.registry.*;
-import systems.zlink.contracts.service.spot.*;
-
-import systems.zlink.contracts.AutoHwmProfile;
-import systems.zlink.contracts.Context;
-import systems.zlink.contracts.MonitorEventType;
-import systems.zlink.contracts.MonitorSocket;
-import systems.zlink.contracts.Socket;
+import systems.zlink.contracts.sockets.AutoHwmProfile;
+import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.eventing.MonitorEventType;
+import systems.zlink.contracts.eventing.MonitorSocket;
 import systems.zlink.contracts.service.registry.Registry;
+import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.service.spot.SpotNode;
 import java.nio.file.Files;
 import java.nio.file.Path;

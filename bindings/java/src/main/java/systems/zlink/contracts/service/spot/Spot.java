@@ -2,39 +2,42 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.Message;
-import systems.zlink.contracts.ConfigException;
-import systems.zlink.contracts.ConfigResult;
-import systems.zlink.contracts.RequestResult;
-import systems.zlink.contracts.RequestCallback;
-import systems.zlink.contracts.Received;
-import systems.zlink.contracts.RoutingId;
-import systems.zlink.contracts.RecvException;
-import systems.zlink.contracts.RecvFlags;
-import systems.zlink.contracts.RecvResult;
-import systems.zlink.contracts.RequestException;
-import systems.zlink.contracts.SendFlags;
-import systems.zlink.contracts.SendReadyHandler;
-import systems.zlink.contracts.TopicMessage;
-import systems.zlink.contracts.SubscriptionEntry;
-import systems.zlink.contracts.SubscriptionEvent;
-import systems.zlink.contracts.ZlinkException;
-import systems.zlink.contracts.SpotDispatchEvent;
-import systems.zlink.contracts.SpotDispatchEventHandler;
-import systems.zlink.contracts.SpotDispatchInfo;
-import systems.zlink.contracts.SpotDispatchSubjectKind;
-import systems.zlink.contracts.SpotRoutedHandler;
-import systems.zlink.contracts.SubmitException;
-import systems.zlink.contracts.SubmitResult;
-import systems.zlink.runtime.nativebridge.ActorInterop;
-import systems.zlink.runtime.nativebridge.Native;
-import systems.zlink.runtime.nativebridge.InternalAccess;
-import systems.zlink.runtime.nativebridge.MessagePartsBuffer;
-import systems.zlink.runtime.nativebridge.NativeHelpers;
-import systems.zlink.runtime.nativebridge.NativeLayouts;
-import systems.zlink.runtime.nativebridge.NativeMsg;
-import systems.zlink.runtime.nativebridge.NativeSubmitErrors;
-import systems.zlink.runtime.nativebridge.RequestProgressPump;
+import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ConfigResult;
+import systems.zlink.contracts.errors.HandlerException;
+import systems.zlink.contracts.errors.HandlerResult;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.messaging.Received;
+import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RecvResult;
+import systems.zlink.contracts.messaging.RecvScratch;
+import systems.zlink.contracts.sockets.RequestCallback;
+import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.sockets.RequestResult;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.SendReadyHandler;
+import systems.zlink.contracts.sockets.Socket;
+import systems.zlink.contracts.sockets.SpotDispatchEvent;
+import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
+import systems.zlink.contracts.sockets.SpotDispatchInfo;
+import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
+import systems.zlink.contracts.sockets.SpotRoutedHandler;
+import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.contracts.messaging.SubscriptionEntry;
+import systems.zlink.contracts.messaging.SubscriptionEvent;
+import systems.zlink.contracts.messaging.TopicMessage;
+import systems.zlink.runtime.nativeapi.ActorInterop;
+import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.InternalAccess;
+import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
+import systems.zlink.runtime.nativeapi.NativeHelpers;
+import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
+import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -178,10 +181,30 @@ public final class Spot implements AutoCloseable {
     private final SpotNode ownerNode;
     private final SpotOptions options;
 
+    static {
+        InternalAccess.register(new InternalAccess.SpotAccess() {
+            @Override
+            public MemorySegment handle(Spot spot) {
+                return spot.handle();
+            }
+
+            @Override
+            public boolean requestToSpotPart(Spot spot, RoutingId destNodeRid,
+                                             RoutingId destSpotRid,
+                                             Message part,
+                                             RequestCallback callback,
+                                             SendFlags flags,
+                                             Duration timeout) {
+                return spot.requestToSpotPart(destNodeRid, destSpotRid, part,
+                    callback, flags, timeout);
+            }
+        });
+    }
+
     /** Creates a unified spot facade bound to the supplied node. */
     Spot(SpotNode node) {
         Objects.requireNonNull(node, "node");
-        MemorySegment nativeHandle = Native.spotNew(node.handle());
+        MemorySegment nativeHandle = Native.spotNew(InternalAccess.spotNodeHandle(node));
         if (nativeHandle == null || nativeHandle.address() == 0)
             throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_new");
         this.ownerNode = node;
@@ -216,13 +239,9 @@ public final class Spot implements AutoCloseable {
         return handle;
     }
 
-    /** Internal bridge for binding helpers. */
-    public MemorySegment handleInternal() {
-        return handle();
-    }
-
     MemorySegment ownerNodeHandleInternal() {
-        return ownerNode == null ? MemorySegment.NULL : ownerNode.handleInternal();
+        return ownerNode == null ? MemorySegment.NULL
+            : InternalAccess.spotNodeHandle(ownerNode);
     }
 
     SpotOptions options() {
@@ -1120,8 +1139,8 @@ public final class Spot implements AutoCloseable {
                   MemorySegment.NULL);
                 ActorRequestCallbacks.unregisterLifecycle(old);
                 if (rc != 0) {
-                    throw new systems.zlink.contracts.HandlerException(
-                      systems.zlink.contracts.HandlerResult.fromValue(rc));
+                    throw new systems.zlink.contracts.errors.HandlerException(
+                      systems.zlink.contracts.errors.HandlerResult.fromValue(rc));
                 }
             }
             return;
@@ -1141,8 +1160,8 @@ public final class Spot implements AutoCloseable {
           MemorySegment.ofAddress(id));
         if (rc != 0) {
             ActorRequestCallbacks.unregisterLifecycle(id);
-            throw new systems.zlink.contracts.HandlerException(
-              systems.zlink.contracts.HandlerResult.fromValue(rc));
+            throw new systems.zlink.contracts.errors.HandlerException(
+              systems.zlink.contracts.errors.HandlerResult.fromValue(rc));
         }
         if (previous != 0L) {
             ActorRequestCallbacks.unregisterLifecycle(previous);

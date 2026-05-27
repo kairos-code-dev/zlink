@@ -19,7 +19,7 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
         var streamEndpoint = GetFreeTcpEndpoint();
         var spotEndpoint = GetFreeTcpEndpoint();
         var spotRouterEndpoint = GetFreeTcpEndpoint();
-        var actorNodeRid = RoutingId.Of($"local-relay-node-{Guid.NewGuid():N}");
+        var actorNodeRid = RoutingId.From($"local-relay-node-{Guid.NewGuid():N}");
         var actorId = "local-relay-player-1";
         var recorder = new ActorDispatchRecorder();
         var sessionRecorder = new GatewaySessionRecorder(actorId);
@@ -114,8 +114,8 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
         var playRouterEndpoint = GetFreeTcpEndpoint();
         var playSpotEndpoint = GetFreeTcpEndpoint();
         var playSpotRouterEndpoint = GetFreeTcpEndpoint();
-        var sessionRid = RoutingId.Of($"missing-remote-session-{Guid.NewGuid():N}");
-        var playRid = RoutingId.Of($"missing-remote-play-{Guid.NewGuid():N}");
+        var sessionRid = RoutingId.From($"missing-remote-session-{Guid.NewGuid():N}");
+        var playRid = RoutingId.From($"missing-remote-play-{Guid.NewGuid():N}");
         var actorId = "missing-remote-player-1";
         var actorRecorder = new ActorDispatchRecorder();
         using var callbackCapture = CallbackExceptionCapture.Start();

@@ -28,7 +28,7 @@ public final class RequestReplyAsyncSample {
                  systems.zlink.contracts.MonitorEventType.CONNECTION_READY);
              var dealerMonitor = dealerSocket.monitorOpen(
                  systems.zlink.contracts.MonitorEventType.CONNECTION_READY)) {
-            dealerSocket.setRoutingId(RoutingId.fromBytes("request-reply-client".getBytes()));
+            dealerSocket.setRoutingId(RoutingId.from("request-reply-client".getBytes()));
             routerSocket.bind(endpoint);
             dealerSocket.connect(endpoint);
             SampleSupport.waitConnected(routerMonitor, dealerMonitor);

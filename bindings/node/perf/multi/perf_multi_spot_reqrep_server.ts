@@ -21,10 +21,10 @@ const {
 } = require('./perf_multi_runtime');
 
 const CONTROL_TOPIC = 'bench';
-const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(
+const SERVER_NODE_ROUTING_ID = zlink.RoutingId.from(
   Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii')
 );
-const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(
+const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.from(
   Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii')
 );
 const TRACE = process.env.PERF_MULTI_SPOT_REQREP_TRACE === '1';

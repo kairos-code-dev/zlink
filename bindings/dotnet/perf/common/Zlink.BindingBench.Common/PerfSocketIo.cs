@@ -24,7 +24,7 @@ public static class PerfSocketIo
     public static int Send(IRoutedMessageSocket socket, string routingId,
         ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)
     {
-        return Send(socket, RoutingId.FromBytes(System.Text.Encoding.UTF8.GetBytes(routingId)),
+        return Send(socket, RoutingId.From(System.Text.Encoding.UTF8.GetBytes(routingId)),
             payload, flags);
     }
 

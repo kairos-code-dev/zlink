@@ -18,7 +18,7 @@ public sealed class BuilderContracts
         options.Codecs.AddJson();
         options.AddHandlersFromAssemblyOf<BuilderContracts>();
         options.AddHandlersFromAssembly(typeof(BuilderContracts).Assembly);
-        options.ConfigureMetadata(metadata => metadata.ForwardApplicationKey("trace-id"));
+        options.ConfigureMetadata(metadata => metadata.Forward("trace-id"));
         options.AddActorFactory<ActorFactory>("player");
         options.AddSpotRemoteAddressResolver<SpotRemoteAddressResolver>();
         options.UseRegistrySpotRemoteAddresses("game", registry => registry.RouterChannelId = "play-router");
@@ -43,7 +43,7 @@ public sealed class BuilderContracts
         typeof(IZLinkDealerMeshChannelBuilder),
         typeof(IZLinkRouteChannelBuilder),
         typeof(IZLinkRouteMeshChannelBuilder),
-        typeof(IRouteChannelConnections))]
+        typeof(IZLinkEndpointConnections))]
     public void Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel()
     {
         var options = new FrameworkOptions();
@@ -54,7 +54,7 @@ public sealed class BuilderContracts
             {
                 server.Bind("tcp://127.0.0.1:5000");
                 server.ConfigureSocket(socket => socket.TcpNoDelay = true);
-                server.ConfigureRouting(route => route.RoutingId = RoutingId.Of("api-server"));
+                server.ConfigureRouting(route => route.RoutingId = RoutingId.From("api-server"));
             });
             channel.EnableClient(client =>
             {
@@ -93,7 +93,7 @@ public sealed class BuilderContracts
             {
                 client.Bind("tcp://127.0.0.1:5200");
                 client.ConfigureSocket(socket => socket.TcpNoDelay = true);
-                client.ConfigureRouting(route => route.RoutingId = RoutingId.Of("dealer"));
+                client.ConfigureRouting(route => route.RoutingId = RoutingId.From("dealer"));
                 client.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5201"));
             });
         });
@@ -102,7 +102,7 @@ public sealed class BuilderContracts
         {
             channel.Bind("tcp://127.0.0.1:5300");
             channel.ConfigureSocket(socket => socket.TcpNoDelay = true);
-            channel.ConfigureRouting(route => route.RoutingId = RoutingId.Of("router"));
+            channel.ConfigureRouting(route => route.RoutingId = RoutingId.From("router"));
             channel.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5301"));
             channel.AddHandlerGroup("play");
             channel.AddSendHandler<RouteSendHandler, ApiEvent>();
@@ -128,7 +128,7 @@ public sealed class BuilderContracts
         typeof(IZLinkSpotNodeBuilder),
         typeof(IZLinkSpotMeshNodeBuilder),
         typeof(IZLinkSpotRouteChannelAcceptanceBuilder),
-        typeof(ISpotRouterChannelConnections),
+        typeof(IZLinkEndpointConnections),
         typeof(IZLinkSpotMeshBuilder))]
     public void Spot_and_stream_builders_declare_node_local_roles_and_channel_attachments()
     {
@@ -169,7 +169,7 @@ public sealed class BuilderContracts
         {
             router.SetRouterBind("tcp://127.0.0.1:5501");
             router.ConfigureSocket(socket => socket.TcpNoDelay = true);
-            router.SetRoutingId(RoutingId.Of("spot-router"));
+            router.SetRoutingId(RoutingId.From("spot-router"));
             router.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5501"));
         });
         spot.EnablePubSub(pubSub =>
@@ -182,7 +182,7 @@ public sealed class BuilderContracts
         spot.AttachChannelClient("api", client =>
         {
             client.ConfigureSocket(socket => socket.Immediate = true);
-            client.ConfigureRouting(route => route.RoutingId = RoutingId.Of("spot-api-client"));
+            client.ConfigureRouting(route => route.RoutingId = RoutingId.From("spot-api-client"));
             client.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5000"));
         });
         spot.AttachClientServerChannelClient("api");
@@ -191,7 +191,7 @@ public sealed class BuilderContracts
         spot.AttachSpotPublisherClient("mesh-events");
         spot.AcceptSpotRoutesFromChannel("play-router", accept =>
             accept.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5300")));
-        spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.Of("entry"));
+        spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.From("entry"));
         spot.AddSpotFactory<RoomSpot>();
         spot.AddEntrySpot<EntrySpot>();
     }
@@ -322,7 +322,7 @@ public sealed class BuilderContracts
     {
         public List<string> ForwardedKeys { get; } = [];
 
-        public void ForwardApplicationKey(string key) => ForwardedKeys.Add(key);
+        public void Forward(string key) => ForwardedKeys.Add(key);
     }
 
     private sealed class RegistrySpotRemoteAddressesOptions : IZLinkRegistrySpotRemoteAddressesOptions
@@ -358,19 +358,19 @@ public sealed class BuilderContracts
         public void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure) =>
             configure(new ConnectionAndConfigContracts.OutboundRouteConfig());
 
-        public void UseManualConnections(Action<IChannelClientConnections> configure) =>
+        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
             configure(new ConnectionAndConfigContracts.ManualConnections());
 
-        public void UseManualConnections(Action<IChannelSubscriberConnections> configure) =>
+        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
             configure(new ConnectionAndConfigContracts.ManualConnections());
 
-        public void UseManualConnections(Action<ISpotRouterConnections> configure) =>
+        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
             configure(new ConnectionAndConfigContracts.ManualConnections());
 
-        public void UseManualConnections(Action<ISpotPubSubConnections> configure) =>
+        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
             configure(new ConnectionAndConfigContracts.ManualConnections());
 
-        public void UseManualConnections(Action<ISpotPublisherConnections> configure) =>
+        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
             configure(new ConnectionAndConfigContracts.ManualConnections());
 
         public void ConfigurePublisherConfig(Action<IZLinkSpotPublisherConfig> configure) =>
@@ -452,7 +452,7 @@ public sealed class BuilderContracts
         public void ConfigureRouting(Action<IZLinkRouteConfig> configure) =>
             configure(new ConnectionAndConfigContracts.RouteConfig());
 
-        public void UseManualConnections(Action<IRouteChannelConnections> configure) =>
+        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
             configure(new ConnectionAndConfigContracts.ManualConnections());
 
         public void AddHandlerGroup(string groupName) { }
@@ -526,7 +526,7 @@ public sealed class BuilderContracts
 
     private sealed class SpotRouteChannelAcceptanceBuilder : IZLinkSpotRouteChannelAcceptanceBuilder
     {
-        public void UseManualConnections(Action<ISpotRouterChannelConnections> configure) =>
+        public void UseManualConnections(Action<IZLinkEndpointConnections> configure) =>
             configure(new ConnectionAndConfigContracts.ManualConnections());
     }
 
@@ -560,7 +560,7 @@ public sealed class BuilderContracts
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(new ZLinkSpotRemoteAddress(
                 "play-router",
-                RoutingId.Of("node"),
+                RoutingId.From("node"),
                 spotRid,
                 ZLinkSpotKind.User));
     }

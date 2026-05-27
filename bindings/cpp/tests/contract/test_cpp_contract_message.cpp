@@ -66,20 +66,21 @@ void test_diagnostic_surface_uses_canonical_names ()
     assert (!msg.property ("missing").has_value ());
 }
 
-void test_routing_id_from_string_parses_hex ()
+void test_routing_id_hex_and_display_policy ()
 {
     const zlink::routing_id_t rid =
-      zlink::routing_id_t::from_bytes (std::vector<uint8_t> {0x00, 0x41, 0x42});
+      zlink::routing_id_t::from (std::vector<uint8_t> {0x00, 0x41, 0x42});
     const zlink::routing_id_t parsed =
-      zlink::routing_id_t::from_string ("004142");
+      zlink::routing_id_t::from_hex ("004142");
 
     assert (parsed == rid);
     assert (rid.to_hex () == "004142");
-    assert (zlink::routing_id_t::from_string (std::string (510, 'a')).size () == 255);
+    assert (rid.to_string () == "hex:004142");
+    assert (zlink::routing_id_t::from_hex (std::string (510, 'a')).size () == 255);
 
     bool threw = false;
     try {
-        (void) zlink::routing_id_t::from_string ("not-hex");
+        (void) zlink::routing_id_t::from_hex ("not-hex");
     } catch (const std::invalid_argument &) {
         threw = true;
     }
@@ -87,11 +88,16 @@ void test_routing_id_from_string_parses_hex ()
 
     threw = false;
     try {
-        (void) zlink::routing_id_t::from_string (std::string (512, 'a'));
+        (void) zlink::routing_id_t::from_hex (std::string (512, 'a'));
     } catch (const std::invalid_argument &) {
         threw = true;
     }
     assert (threw);
+
+    assert (zlink::routing_id_t::from (std::string ("dealer-1")).to_string ()
+            == "dealer-1");
+    assert (zlink::routing_id_t::from (static_cast<uint32_t> (23)).to_string ()
+            == "23");
 }
 
 } // namespace
@@ -103,6 +109,6 @@ int main ()
     test_allocate_exposes_writable_owned_payload ();
     test_copy_and_move_preserve_payload ();
     test_diagnostic_surface_uses_canonical_names ();
-    test_routing_id_from_string_parses_hex ();
+    test_routing_id_hex_and_display_policy ();
     return 0;
 }

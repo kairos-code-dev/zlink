@@ -31,7 +31,7 @@ const {
 } = require('./perf_multi_runtime');
 
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
-const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
+const SERVER_ROUTING_ID = zlink.RoutingId.from(SERVER_ID);
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
@@ -52,7 +52,7 @@ async function main() {
       applySocketPolicy(router);
       configureTlsClient(router, options.transport);
       router.setRoutingId(
-        zlink.RoutingId.fromBytes(Buffer.from(`multi-router-client-${i}`, 'ascii'))
+        zlink.RoutingId.from(Buffer.from(`multi-router-client-${i}`, 'ascii'))
       );
       routers.push(router);
       payloads.push(createPayload(options.msgSize));

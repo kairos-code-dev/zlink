@@ -231,7 +231,7 @@ public sealed class Discovery : IDiscovery
                 _handle, kind, keyPtr, (nuint)key.Length, out owner, ref value);
             ZlinkException.ThrowConfigIfError(rc);
             return new DiscoveryRoute(
-                RoutingId.FromBytes(NativeHelpers.ReadRoutingId(ref owner)),
+                RoutingId.From(NativeHelpers.ReadRoutingId(ref owner)),
                 Message.AdoptNative(ref value));
         }
     }

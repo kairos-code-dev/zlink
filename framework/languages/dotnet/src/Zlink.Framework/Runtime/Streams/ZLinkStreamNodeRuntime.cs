@@ -167,11 +167,11 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     {
         if (routingIdText.StartsWith("hex:", StringComparison.OrdinalIgnoreCase))
         {
-            return RoutingId.FromBytes(
+            return RoutingId.From(
                 Convert.FromHexString(routingIdText["hex:".Length..]));
         }
 
-        return RoutingId.FromBytes(
+        return RoutingId.From(
             System.Text.Encoding.UTF8.GetBytes(routingIdText));
     }
 

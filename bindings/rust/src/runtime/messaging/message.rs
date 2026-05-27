@@ -2,7 +2,7 @@ use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::slice;
 
-use crate::error::{check_config_rc, config_validation_error, ConfigError};
+use crate::error::{ConfigError, check_config_rc, config_validation_error};
 use crate::ffi;
 
 /// Owned message frame wrapping a native `zlink_msg_t`.
@@ -215,10 +215,22 @@ impl RoutingId {
     }
 
     pub fn from_string(value: &str) -> Self {
-        Self::try_from_string(value).expect("invalid routing id string")
+        Self::from_bytes(value.as_bytes())
     }
 
-    pub fn try_from_string(value: &str) -> Result<Self, ConfigError> {
+    pub fn from_u32(value: u32) -> Self {
+        Self::from_bytes(&value.to_be_bytes())
+    }
+
+    pub fn from_uuid_bytes(value: [u8; 16]) -> Self {
+        Self::from_bytes(&value)
+    }
+
+    pub fn from_hex(value: &str) -> Self {
+        Self::try_from_hex(value).expect("invalid routing id hex string")
+    }
+
+    pub fn try_from_hex(value: &str) -> Result<Self, ConfigError> {
         if value.is_empty() || value.len() % 2 != 0 || value.len() > Self::MAX_LEN * 2 {
             return Err(config_validation_error());
         }
@@ -230,6 +242,10 @@ impl RoutingId {
             data.push((high << 4) | low);
         }
         Self::new(&data)
+    }
+
+    pub fn try_from_string(value: &str) -> Result<Self, ConfigError> {
+        Self::new(value.as_bytes())
     }
 
     pub(crate) fn new(data: &[u8]) -> Result<Self, ConfigError> {
@@ -301,7 +317,40 @@ fn hex_nibble(value: u8) -> Option<u8> {
 
 impl std::fmt::Display for RoutingId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.to_hex())
+        if let Ok(text) = std::str::from_utf8(self.as_bytes()) {
+            if !text.chars().any(char::is_control) {
+                return f.write_str(text);
+            }
+        }
+        if self.size() == 4 {
+            let mut bytes = [0u8; 4];
+            bytes.copy_from_slice(self.as_bytes());
+            return write!(f, "{}", u32::from_be_bytes(bytes));
+        }
+        if self.size() == 16 {
+            let bytes = self.as_bytes();
+            return write!(
+                f,
+                "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                bytes[0],
+                bytes[1],
+                bytes[2],
+                bytes[3],
+                bytes[4],
+                bytes[5],
+                bytes[6],
+                bytes[7],
+                bytes[8],
+                bytes[9],
+                bytes[10],
+                bytes[11],
+                bytes[12],
+                bytes[13],
+                bytes[14],
+                bytes[15]
+            );
+        }
+        write!(f, "hex:{}", self.to_hex())
     }
 }
 

@@ -1387,7 +1387,8 @@ internal sealed partial class SocketKernel : IDisposable
                     int errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
                         && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy) {
+                            or ErrorCode.EBusy)
+                    {
                         return false;
                     }
                     throw ZlinkException.CreateRecvException(errno);
@@ -1462,7 +1463,8 @@ internal sealed partial class SocketKernel : IDisposable
                     int errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
                         && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy) {
+                            or ErrorCode.EBusy)
+                    {
                         return false;
                     }
                     throw ZlinkException.CreateRecvException(errno);
@@ -1538,7 +1540,8 @@ internal sealed partial class SocketKernel : IDisposable
                     int errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
                         && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy) {
+                            or ErrorCode.EBusy)
+                    {
                         return false;
                     }
 
@@ -1611,7 +1614,8 @@ internal sealed partial class SocketKernel : IDisposable
                     int errno = NativeMethods.zlink_errno();
                     if (allowNoData && nativePartCount == 0
                         && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
-                            or ErrorCode.EBusy) {
+                            or ErrorCode.EBusy)
+                    {
                         return false;
                     }
                     throw ZlinkException.CreateRecvException(errno);
@@ -1891,8 +1895,8 @@ internal sealed partial class SocketKernel : IDisposable
     {
         const string hexPrefix = "hex:";
         return value.StartsWith(hexPrefix, StringComparison.Ordinal)
-            ? RoutingId.FromString(value.Substring(hexPrefix.Length))
-            : RoutingId.FromBytes(Encoding.UTF8.GetBytes(value));
+            ? RoutingId.FromHex(value.Substring(hexPrefix.Length))
+            : RoutingId.From(value);
     }
 
     private static SendResult MapSendResult(int rc)

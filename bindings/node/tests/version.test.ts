@@ -26,7 +26,7 @@ test('legacy compatibility socket stays out of the aligned public api', () => {
 test('dedicated option helpers cover routing id and generic option access', () => {
   const ctx = new zlink.Context();
   const dealer = new zlink.DealerSocket(ctx);
-  const routingId = zlink.RoutingId.fromBytes(Buffer.from('dealer-1'));
+  const routingId = zlink.RoutingId.from(Buffer.from('dealer-1'));
 
   dealer.setRoutingId(routingId);
   assert.equal(dealer.getRoutingId().toBytes().toString(), 'dealer-1');

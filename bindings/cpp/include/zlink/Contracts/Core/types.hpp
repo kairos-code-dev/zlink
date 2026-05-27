@@ -7,9 +7,11 @@
 #include "../Messaging/message.hpp"
 
 #include <chrono>
+#include <array>
 #include <cerrno>
 #include <climits>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -895,7 +897,38 @@ class routing_id_t
           bytes_.empty () ? NULL : bytes_.data (), bytes_.size ());
     }
 
-    static routing_id_t from_string (const std::string &value_)
+    static routing_id_t from (const uint8_t *bytes_, size_t size_)
+    {
+        return from_bytes (bytes_, size_);
+    }
+
+    static routing_id_t from (const std::vector<uint8_t> &bytes_)
+    {
+        return from_bytes (bytes_);
+    }
+
+    static routing_id_t from (const std::string &value_)
+    {
+        return routing_id_t (
+          reinterpret_cast<const uint8_t *> (value_.data ()), value_.size ());
+    }
+
+    static routing_id_t from (uint32_t value_)
+    {
+        const uint8_t bytes[4] = {
+            static_cast<uint8_t> ((value_ >> 24u) & 0xffu),
+            static_cast<uint8_t> ((value_ >> 16u) & 0xffu),
+            static_cast<uint8_t> ((value_ >> 8u) & 0xffu),
+            static_cast<uint8_t> (value_ & 0xffu)};
+        return from_bytes (bytes, sizeof (bytes));
+    }
+
+    static routing_id_t from_uuid (const std::array<uint8_t, 16> &value_)
+    {
+        return from_bytes (value_.data (), value_.size ());
+    }
+
+    static routing_id_t from_hex (const std::string &value_)
     {
         if (value_.empty () || (value_.size () % 2u) != 0u)
             throw std::invalid_argument ("routing id string must be hex");
@@ -915,6 +948,11 @@ class routing_id_t
         return from_bytes (bytes);
     }
 
+    static routing_id_t from_string (const std::string &value_)
+    {
+        return from (value_);
+    }
+
     const uint8_t *data () const noexcept { return native_ref ().data; }
     size_t size () const noexcept { return native_ref ().size; }
 
@@ -927,7 +965,45 @@ class routing_id_t
 
     std::string to_string () const
     {
-        return to_hex ();
+        if (is_printable_utf8 ()) {
+            return std::string (
+              reinterpret_cast<const char *> (data ()), size ());
+        }
+        if (size () == 4u) {
+            const uint8_t *bytes = data ();
+            const uint32_t value =
+              (static_cast<uint32_t> (bytes[0]) << 24u)
+              | (static_cast<uint32_t> (bytes[1]) << 16u)
+              | (static_cast<uint32_t> (bytes[2]) << 8u)
+              | static_cast<uint32_t> (bytes[3]);
+            return std::to_string (value);
+        }
+        if (size () == 16u) {
+            const uint8_t *bytes = data ();
+            char out[37];
+            std::snprintf (
+              out,
+              sizeof (out),
+              "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+              bytes[0],
+              bytes[1],
+              bytes[2],
+              bytes[3],
+              bytes[4],
+              bytes[5],
+              bytes[6],
+              bytes[7],
+              bytes[8],
+              bytes[9],
+              bytes[10],
+              bytes[11],
+              bytes[12],
+              bytes[13],
+              bytes[14],
+              bytes[15]);
+            return std::string (out);
+        }
+        return std::string ("hex:") + to_hex ();
     }
 
     std::string to_hex () const
@@ -1035,6 +1111,43 @@ class routing_id_t
         if (value_ >= 'A' && value_ <= 'F')
             return value_ - 'A' + 10;
         return -1;
+    }
+
+    bool is_printable_utf8 () const noexcept
+    {
+        const uint8_t *bytes = data ();
+        const size_t n = size ();
+        for (size_t i = 0; i < n;) {
+            const uint8_t c = bytes[i];
+            if (c < 0x20u || c == 0x7fu)
+                return false;
+            if (c < 0x80u) {
+                ++i;
+                continue;
+            }
+            size_t need = 0;
+            if ((c & 0xe0u) == 0xc0u) {
+                if (c < 0xc2u)
+                    return false;
+                need = 1;
+            } else if ((c & 0xf0u) == 0xe0u) {
+                need = 2;
+            } else if ((c & 0xf8u) == 0xf0u) {
+                if (c > 0xf4u)
+                    return false;
+                need = 3;
+            } else {
+                return false;
+            }
+            if (i + need >= n)
+                return false;
+            for (size_t j = 1; j <= need; ++j) {
+                if ((bytes[i + j] & 0xc0u) != 0x80u)
+                    return false;
+            }
+            i += need + 1u;
+        }
+        return true;
     }
 
     friend inline routing_id_t

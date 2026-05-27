@@ -95,7 +95,7 @@ public abstract partial class SpotTestSupport
             SpotRouteSendCallerCommand message,
             CancellationToken cancellationToken)
         {
-            await spot.Context.SendSpot(RoutingId.Of("route-target"), new SpotRouteTargetCommand(message.Value))
+            await spot.Context.SendSpot(RoutingId.From("route-target"), new SpotRouteTargetCommand(message.Value))
                 .Submit(cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -111,7 +111,7 @@ public abstract partial class SpotTestSupport
             CancellationToken cancellationToken)
         {
             var reply = await spot.Context
-                .RequestSpot(RoutingId.Of("route-target"), new SpotRouteTargetRequest(message.Value))
+                .RequestSpot(RoutingId.From("route-target"), new SpotRouteTargetRequest(message.Value))
                 .Timeout(TimeSpan.FromMilliseconds(500))
                 .SubmitAsync<SpotRouteTargetReply>(cancellationToken)
                 .ConfigureAwait(false);
@@ -131,7 +131,7 @@ public abstract partial class SpotTestSupport
             var reply = await spots
                 .ViaEgressChannel("gateway.client")
                 .RequestSpot(
-                    RoutingId.FromBytes(request.SpotRid),
+                    RoutingId.From(request.SpotRid),
                     new SpotRouteTargetRequest(request.Value))
                 .Timeout(TimeSpan.FromMilliseconds(500))
                 .SubmitAsync<SpotRouteTargetReply>(cancellationToken)

@@ -19,7 +19,7 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
     {
         _ = entrySpot;
         var result = await actor.Context
-            .JoinSpot(RoutingId.FromString(request.MatchId), request)
+            .JoinSpot(RoutingId.From(request.MatchId), request)
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<JoinMatchSpotResult>(cancellationToken)
             ;

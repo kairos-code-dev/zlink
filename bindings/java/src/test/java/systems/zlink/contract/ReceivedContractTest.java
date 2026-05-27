@@ -28,7 +28,7 @@ public class ReceivedContractTest {
     public void recvReturnsAggregateWithRoutingIdAndMultipartView() {
         TestSupport.assumeNative();
 
-        RoutingId dealerRid = RoutingId.fromBytes("dealer-a".getBytes(StandardCharsets.UTF_8));
+        RoutingId dealerRid = RoutingId.from("dealer-a".getBytes(StandardCharsets.UTF_8));
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx);
              DealerSocket dealer = new DealerSocket(ctx)) {

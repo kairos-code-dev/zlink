@@ -27,15 +27,17 @@ TOPIC = b"room:lobby"
 
 
 class CoreApiAlignmentTests(unittest.TestCase):
-    def test_routing_id_from_string_parses_hex(self):
+    def test_routing_id_hex_and_display_policy(self):
         rid = zlink.RoutingId.from_bytes(bytes([0x00, 0x41, 0x42]))
-        self.assertEqual(zlink.RoutingId.from_string("004142"), rid)
-        self.assertEqual(str(rid), "004142")
-        self.assertEqual(zlink.RoutingId.from_string("a" * 510).size, 255)
+        self.assertEqual(zlink.RoutingId.from_hex("004142"), rid)
+        self.assertEqual(str(rid), "hex:004142")
+        self.assertEqual(zlink.RoutingId.from_hex("a" * 510).size, 255)
         with self.assertRaises(ValueError):
-            zlink.RoutingId.from_string("not-hex")
+            zlink.RoutingId.from_hex("not-hex")
         with self.assertRaises(ValueError):
-            zlink.RoutingId.from_string("a" * 512)
+            zlink.RoutingId.from_hex("a" * 512)
+        self.assertEqual(str(zlink.RoutingId.from_("dealer-1")), "dealer-1")
+        self.assertEqual(str(zlink.RoutingId.from_(23)), "23")
 
     def test_public_surface_uses_canonical_names_only(self):
         self.assertFalse(hasattr(zlink, "SendResult"))

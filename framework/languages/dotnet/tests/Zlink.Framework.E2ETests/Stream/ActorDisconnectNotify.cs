@@ -44,7 +44,7 @@ public sealed class ActorDisconnectNotifyTests : StreamTestSupport
                     spot.EnableRouter(router =>
                     {
                         router.SetRouterBind(spotEndpoint);
-                        router.SetRoutingId(RoutingId.Of("local-notify-actor-node"));
+                        router.SetRoutingId(RoutingId.From("local-notify-actor-node"));
                     });
                     spot.AddEntrySpot<GatewayEntrySpot>();
                 });

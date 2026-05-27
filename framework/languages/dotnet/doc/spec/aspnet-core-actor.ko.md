@@ -470,7 +470,7 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
         _ = entrySpot;
         // request.MatchId는 application domain id다.
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
-        var matchSpotRid = RoutingId.FromString(request.MatchId);
+        var matchSpotRid = RoutingId.From(request.MatchId);
         var result = await actor.Context
             .JoinSpot(matchSpotRid, request)
             .Timeout(TimeSpan.FromSeconds(2))
@@ -658,7 +658,7 @@ validation 단계에서 이루어진다. 자세한 시그니처는
 변환이나 조회는 application registry 가 처리한다.
 
 ```csharp
-var matchSpotRid = RoutingId.FromString(matchId);
+var matchSpotRid = RoutingId.From(matchId);
 var result = await actor.Context
     .JoinSpot(matchSpotRid, new JoinMatchReq(...))
     .Timeout(TimeSpan.FromSeconds(2))

@@ -49,7 +49,7 @@ public final class RouterSocketOptions extends CommonSocketOptions {
     public Optional<RoutingId> connectRoutingId() {
         byte[] value = socket.getOption(SocketOptions.CONNECT_ROUTING_ID_BYTES);
         return value.length == 0 ? Optional.empty()
-            : Optional.of(RoutingId.fromBytes(value));
+            : Optional.of(RoutingId.from(value));
     }
 
     public void connectRoutingId(RoutingId routingId) {

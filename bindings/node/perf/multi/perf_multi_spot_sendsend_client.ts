@@ -38,10 +38,10 @@ const {
 } = require('./perf_multi_runtime');
 
 const CONTROL_TOPIC = 'bench';
-const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(
+const SERVER_NODE_ROUTING_ID = zlink.RoutingId.from(
   Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii')
 );
-const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(
+const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.from(
   Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii')
 );
 
@@ -123,7 +123,7 @@ async function main() {
     controlSub.connect(options.serverControlEndpoint);
     await waitForRunnerControlConnected();
 
-    node.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_CLIENT_NODE', 'ascii')));
+    node.setRoutingId(zlink.RoutingId.from(Buffer.from('PERF_SPOT_SENDSEND_CLIENT_NODE', 'ascii')));
     const dataEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-sendsend-client-${process.pid}`);
     const dataRouterEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-sendsend-client-router-${process.pid}`);
     configureTlsServer(node, options.transport);
@@ -133,7 +133,7 @@ async function main() {
     node.connectPeer(options.peerEndpoint);
     for (let i = 0; i < options.clients; i += 1) {
       const spot = node.createSpot();
-      spot.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`PERF_SPOT_SENDSEND_CLIENT_SPOT_${i}`, 'ascii')));
+      spot.setRoutingId(zlink.RoutingId.from(Buffer.from(`PERF_SPOT_SENDSEND_CLIENT_SPOT_${i}`, 'ascii')));
       slots.push({
         spot,
         payload: createPayload(options.msgSize),

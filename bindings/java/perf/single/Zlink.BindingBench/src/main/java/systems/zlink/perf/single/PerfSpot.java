@@ -294,6 +294,6 @@ final class PerfSpot {
     }
 
     private static RoutingId routingId(String value) {
-        return RoutingId.fromBytes(value.getBytes(StandardCharsets.UTF_8));
+        return RoutingId.from(value.getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -195,6 +195,6 @@ internal sealed class ZLinkSpotNodeInitializer(
             > 0 => 0x80,
             _ => 0x10,
         };
-        return RoutingId.FromBytes(bytes);
+        return RoutingId.From(bytes);
     }
 }

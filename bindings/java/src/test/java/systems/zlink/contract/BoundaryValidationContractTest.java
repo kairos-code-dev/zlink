@@ -45,23 +45,26 @@ public class BoundaryValidationContractTest {
         byte[] max = new byte[RoutingId.MAX_LENGTH];
         byte[] overflow = new byte[RoutingId.MAX_LENGTH + 1];
 
-        RoutingId routingId = assertDoesNotThrow(() -> RoutingId.fromBytes(max));
+        RoutingId routingId = assertDoesNotThrow(() -> RoutingId.from(max));
         assertEquals(RoutingId.MAX_LENGTH, routingId.size());
         assertThrows(IllegalArgumentException.class,
-            () -> RoutingId.fromBytes(overflow));
+            () -> RoutingId.from(overflow));
     }
 
     @Test
     public void routingIdParsesHexString() {
-        RoutingId routingId = RoutingId.fromBytes(new byte[] {0x00, 0x41, 0x42});
+        RoutingId routingId = RoutingId.from(new byte[] {0x00, 0x41, 0x42});
 
-        assertEquals(routingId, RoutingId.fromString("004142"));
+        assertEquals(routingId, RoutingId.fromHex("004142"));
         assertEquals("004142", routingId.toHex());
-        assertEquals(RoutingId.MAX_LENGTH, RoutingId.fromString("a".repeat(510)).size());
+        assertEquals("hex:004142", routingId.toString());
+        assertEquals(RoutingId.MAX_LENGTH, RoutingId.fromHex("a".repeat(510)).size());
         assertThrows(IllegalArgumentException.class,
-            () -> RoutingId.fromString("not-hex"));
+            () -> RoutingId.fromHex("not-hex"));
         assertThrows(IllegalArgumentException.class,
-            () -> RoutingId.fromString("a".repeat(512)));
+            () -> RoutingId.fromHex("a".repeat(512)));
+        assertEquals("dealer-1", RoutingId.from("dealer-1").toString());
+        assertEquals("23", RoutingId.from(23L).toString());
     }
 
     @Test

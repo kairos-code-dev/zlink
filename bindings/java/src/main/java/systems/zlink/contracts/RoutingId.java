@@ -4,11 +4,14 @@ package systems.zlink.contracts;
 
 
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Immutable binary-safe routing id value object. */
 public final class RoutingId {
@@ -101,14 +104,14 @@ public final class RoutingId {
     }
 
     /** Copies the full routing id byte array. */
-    public static RoutingId fromBytes(byte[] value) {
+    public static RoutingId from(byte[] value) {
         Objects.requireNonNull(value, "value");
         validateLength(value.length);
         return new RoutingId(Arrays.copyOf(value, value.length));
     }
 
     /** Copies the selected routing id byte range. */
-    public static RoutingId fromBytes(byte[] value, int offset, int length) {
+    public static RoutingId from(byte[] value, int offset, int length) {
         Objects.requireNonNull(value, "value");
         if (offset < 0 || length < 0 || offset > value.length - length)
             throw new IndexOutOfBoundsException("value range out of bounds");
@@ -116,8 +119,36 @@ public final class RoutingId {
         return new RoutingId(Arrays.copyOfRange(value, offset, offset + length));
     }
 
+    /** Encodes a user-visible routing id string as UTF-8 bytes. */
+    public static RoutingId from(String value) {
+        Objects.requireNonNull(value, "value");
+        return from(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Creates a 4-byte big-endian routing id from an unsigned 32-bit value. */
+    public static RoutingId from(long value) {
+        if ((value & 0xFFFF_FFFF_0000_0000L) != 0L) {
+            throw new IllegalArgumentException("routing id uint32 value must be in range 0..4294967295");
+        }
+        return new RoutingId(new byte[] {
+            (byte) (value >>> 24),
+            (byte) (value >>> 16),
+            (byte) (value >>> 8),
+            (byte) value
+        });
+    }
+
+    /** Creates a 16-byte routing id from a UUID value. */
+    public static RoutingId from(UUID value) {
+        Objects.requireNonNull(value, "value");
+        ByteBuffer buffer = ByteBuffer.allocate(16);
+        buffer.putLong(value.getMostSignificantBits());
+        buffer.putLong(value.getLeastSignificantBits());
+        return new RoutingId(buffer.array());
+    }
+
     /** Parses the lowercase or uppercase hex string returned by {@link #toHex()}. */
-    public static RoutingId fromString(String value) {
+    public static RoutingId fromHex(String value) {
         Objects.requireNonNull(value, "value");
         if (value.isEmpty() || (value.length() & 1) != 0) {
             throw new IllegalArgumentException(
@@ -139,6 +170,24 @@ public final class RoutingId {
         }
         validateLength(bytes.length);
         return new RoutingId(bytes);
+    }
+
+    /** @deprecated Use {@link #from(byte[])}. */
+    @Deprecated(forRemoval = false)
+    public static RoutingId fromBytes(byte[] value) {
+        return from(value);
+    }
+
+    /** @deprecated Use {@link #from(byte[], int, int)}. */
+    @Deprecated(forRemoval = false)
+    public static RoutingId fromBytes(byte[] value, int offset, int length) {
+        return from(value, offset, length);
+    }
+
+    /** @deprecated Use {@link #from(String)} for user strings or {@link #fromHex(String)} for hex. */
+    @Deprecated(forRemoval = false)
+    public static RoutingId fromString(String value) {
+        return from(value);
     }
 
     /** Creates a 4-byte big-endian routing id from an unsigned 32-bit value. */
@@ -189,6 +238,42 @@ public final class RoutingId {
             out.append(Character.forDigit(b & 0xF, 16));
         }
         return out.toString();
+    }
+
+    @Override
+    public String toString() {
+        String utf8 = tryPrintableUtf8();
+        if (utf8 != null) {
+            return utf8;
+        }
+        if (value.length == 4) {
+            long uint = ((value[0] & 0xFFL) << 24)
+                    | ((value[1] & 0xFFL) << 16)
+                    | ((value[2] & 0xFFL) << 8)
+                    | (value[3] & 0xFFL);
+            return Long.toUnsignedString(uint);
+        }
+        if (value.length == 16) {
+            ByteBuffer buffer = ByteBuffer.wrap(value);
+            return new UUID(buffer.getLong(), buffer.getLong()).toString();
+        }
+        return "hex:" + toHex();
+    }
+
+    private String tryPrintableUtf8() {
+        try {
+            String text = StandardCharsets.UTF_8.newDecoder()
+                .decode(ByteBuffer.wrap(value))
+                .toString();
+            for (int i = 0; i < text.length(); i++) {
+                if (Character.isISOControl(text.charAt(i))) {
+                    return null;
+                }
+            }
+            return text;
+        } catch (CharacterCodingException ex) {
+            return null;
+        }
     }
 
     @Override

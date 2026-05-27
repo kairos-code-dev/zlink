@@ -33,7 +33,7 @@ internal static class PerfMultiRouterRouterClient
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
                 client.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
-                client.SetRoutingId(RoutingId.FromBytes(
+                client.SetRoutingId(RoutingId.From(
                     System.Text.Encoding.ASCII.GetBytes($"CLIENT-{i}")));
                 var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
                 client.Connect(endpoint);
@@ -105,7 +105,7 @@ internal static class PerfMultiRouterRouterClient
             var payload = new byte[Math.Max(msgSize, PerfMetricHeaderSize)];
             Array.Fill(payload, (byte)'a');
             slots[i] = new RouterRouterClientSlot(activeClients[i],
-                RoutingId.FromBytes(serverRoutingId), payload, borrowPayload);
+                RoutingId.From(serverRoutingId), payload, borrowPayload);
         }
 
         return slots;

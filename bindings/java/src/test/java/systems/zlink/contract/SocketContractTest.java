@@ -267,7 +267,7 @@ public class SocketContractTest {
 
         try (Context ctx = new Context();
              RouterSocket router = new RouterSocket(ctx)) {
-            RoutingId routerRid = RoutingId.fromBytes("router-self".getBytes(StandardCharsets.UTF_8));
+            RoutingId routerRid = RoutingId.from("router-self".getBytes(StandardCharsets.UTF_8));
             router.setRoutingId(routerRid);
             assertArrayEquals(routerRid.toBytes(), router.routingId().toBytes());
 
@@ -473,9 +473,9 @@ public class SocketContractTest {
 
     @Test
     public void actorRouteSnapshotsExposeCurrentSpotRidAndKind() {
-        RoutingId nodeRid = RoutingId.fromBytes(new byte[] {1});
+        RoutingId nodeRid = RoutingId.from(new byte[] {1});
         ActorRef actor = new ActorRef(nodeRid, "actor", 1L);
-        RoutingId currentSpotRid = RoutingId.fromBytes(new byte[] {2});
+        RoutingId currentSpotRid = RoutingId.from(new byte[] {2});
 
         ActorRoute route = new ActorRoute(actor, currentSpotRid,
             SpotKind.USER);
@@ -644,19 +644,19 @@ public class SocketContractTest {
         try (Context ctx = new Context();
              Discovery discovery = new Discovery(ctx, AutoConnectType.CLIENT_SERVER, "svc");
              SpotNode node = new SpotNode(ctx)) {
-            RoutingId nodeRid = RoutingId.fromBytes(
+            RoutingId nodeRid = RoutingId.from(
               "spot-node".getBytes(StandardCharsets.UTF_8));
             node.setRoutingId(nodeRid);
             assertArrayEquals(nodeRid.toBytes(), node.routingId().toBytes());
 
             try (Spot spot = node.createSpot()) {
-                RoutingId spotRid = RoutingId.fromBytes(
+                RoutingId spotRid = RoutingId.from(
                   "spot-self".getBytes(StandardCharsets.UTF_8));
                 spot.setRoutingId(spotRid);
                 assertArrayEquals(spotRid.toBytes(), spot.routingId().toBytes());
             }
 
-            RoutingId roomRid = RoutingId.fromBytes(
+            RoutingId roomRid = RoutingId.from(
               "java-room".getBytes(StandardCharsets.UTF_8));
             SpotNode.SpotGetOrCreateResult first = node.getOrCreateSpot(roomRid);
             SpotNode.SpotGetOrCreateResult second = node.getOrCreateSpot(roomRid);

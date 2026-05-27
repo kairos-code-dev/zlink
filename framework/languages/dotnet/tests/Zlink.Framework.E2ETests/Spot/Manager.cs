@@ -95,7 +95,7 @@ public sealed class ManagerTests : SpotTestSupport
             var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
             var recorder = host.Services.GetRequiredService<SpotCreatePayloadRecorder>();
             recorder.BlockCreate();
-            var spotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("payload-room"));
+            var spotRid = RoutingId.From(Encoding.UTF8.GetBytes("payload-room"));
             using var firstA = Message.From("first-a");
             using var firstB = Message.From("first-b");
             using var second = Message.From("second");
@@ -130,7 +130,7 @@ public sealed class ManagerTests : SpotTestSupport
         try
         {
             var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
-            var spotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("payload-room-2"));
+            var spotRid = RoutingId.From(Encoding.UTF8.GetBytes("payload-room-2"));
 
             var first = await manager.GetOrCreateAsync<CreatePayloadStageSpot>(spotRid);
             var second = await manager.GetOrCreateAsync<CreatePayloadStageSpot>(spotRid);

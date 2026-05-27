@@ -21,10 +21,10 @@ public sealed class ActorContracts
 
         var actor = await manager.GetOrCreateAsync("player-1", "player");
         var joinReply = await actor.Context
-            .JoinSpot(RoutingId.Of("room-1"), new JoinRoom("room-1"))
+            .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
             .SubmitAsync<JoinedRoom>();
         var entryJoin = await actor.Context
-            .JoinEntrySpot(RoutingId.Of("play-node"))
+            .JoinEntrySpot(RoutingId.From("play-node"))
             .Timeout(TimeSpan.FromSeconds(1))
             .SubmitAsync();
 
@@ -34,7 +34,7 @@ public sealed class ActorContracts
         Assert.Equal(0, joinReply.ResultCode);
         Assert.Equal("room-1", joinReply.Reply.RoomId);
         Assert.Equal("player-1", entryJoin.ActorId);
-        Assert.Equal(RoutingId.Of("play-node"), entryJoin.NodeRid);
+        Assert.Equal(RoutingId.From("play-node"), entryJoin.NodeRid);
     }
 
     private sealed record JoinRoom(string RoomId);
@@ -79,7 +79,7 @@ public sealed class ActorContracts
 
     private sealed class ActorContext(string actorId, IZLinkSpot spot) : IZLinkActorContext
     {
-        public RoutingId? SpotRid => RoutingId.Of("room-1");
+        public RoutingId? SpotRid => RoutingId.From("room-1");
 
         public bool IsJoined => true;
 
@@ -108,7 +108,7 @@ public sealed class ActorContracts
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new ZLinkActorJoinResult<TReply>(
                 0,
-                new ActorRef(RoutingId.Of("room-node"), "player-1", 1),
+                new ActorRef(RoutingId.From("room-node"), "player-1", 1),
                 (TReply)reply));
     }
 

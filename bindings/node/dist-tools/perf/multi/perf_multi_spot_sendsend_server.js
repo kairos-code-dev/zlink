@@ -7,8 +7,8 @@ const { configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, subscribeNoWait, } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
-const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
-const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
+const SERVER_NODE_ROUTING_ID = zlink.RoutingId.from(Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii'));
+const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.from(Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii'));
 function sleepMillis(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }

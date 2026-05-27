@@ -28,13 +28,13 @@ public final class SpotRecvSample {
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
-            publisherNode.setRoutingId(RoutingId.fromBytes(
+            publisherNode.setRoutingId(RoutingId.from(
                 "z-java-spot-recv-publisher".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            subscriberNode.setRoutingId(RoutingId.fromBytes(
+            subscriberNode.setRoutingId(RoutingId.from(
                 "a-java-spot-recv-subscriber".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            publisher.setRoutingId(RoutingId.fromBytes(
+            publisher.setRoutingId(RoutingId.from(
                 "z-java-spot-recv-publisher-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            subscriber.setRoutingId(RoutingId.fromBytes(
+            subscriber.setRoutingId(RoutingId.from(
                 "a-java-spot-recv-subscriber-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             publisherNode.setPubBind(publisherEndpoint);
             subscriberNode.setPubBind(subscriberEndpoint);

@@ -24,7 +24,7 @@ async function main() {
     const ctx = new zlink.Context();
     const routerSocket = new zlink.RouterSocket(ctx);
     const dealerSocket = new zlink.DealerSocket(ctx);
-    const clientRoutingId = zlink.RoutingId.fromBytes(Buffer.from('request-reply-client'));
+    const clientRoutingId = zlink.RoutingId.from(Buffer.from('request-reply-client'));
     try {
         const routerMonitor = routerSocket.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
         const dealerMonitor = dealerSocket.monitorOpen([zlink.MonitorEventType.ConnectionReady]);

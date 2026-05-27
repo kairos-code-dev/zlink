@@ -322,7 +322,7 @@ public final class SpotNode implements AutoCloseable {
                 MemorySegment.copy(outRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
                   MemorySegment.ofArray(value), 0, size);
             }
-            return RoutingId.fromBytes(value);
+            return RoutingId.from(value);
         }
     }
 

@@ -12,10 +12,10 @@ public sealed class test_validation_contract
     {
         string value = new string('r', 255);
 
-        RoutingId routingId = RoutingId.FromBytes(Encoding.UTF8.GetBytes(value));
+        RoutingId routingId = RoutingId.From(Encoding.UTF8.GetBytes(value));
 
-        Assert.Equal(routingId.ToHex(), routingId.ToString());
-        Assert.Equal(510, routingId.ToString().Length);
+        Assert.Equal(value, routingId.ToString());
+        Assert.Equal(255, routingId.ToString().Length);
     }
 
     [Fact]
@@ -24,7 +24,7 @@ public sealed class test_validation_contract
         string value = new string('r', 256);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            _ = RoutingId.FromBytes(Encoding.UTF8.GetBytes(value)));
+            _ = RoutingId.From(Encoding.UTF8.GetBytes(value)));
     }
 
     [Fact]

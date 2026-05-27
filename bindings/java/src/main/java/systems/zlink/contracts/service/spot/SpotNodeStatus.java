@@ -26,7 +26,7 @@ public record SpotNodeStatus(String channelName, String localEndpoint,
         return new SpotNodeStatus(
           NativeHelpers.fromCString(segment.asSlice(0, 256), 256),
           NativeHelpers.fromCString(segment.asSlice(256, 256), 256),
-          RoutingId.fromBytes(routing),
+          RoutingId.from(routing),
           EnumCodecs.spotNodeStateFromValue(segment.get(ValueLayout.JAVA_INT, 768)),
           segment.get(ValueLayout.JAVA_INT, 772),
           segment.get(ValueLayout.JAVA_INT, 776),

@@ -21,7 +21,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() =>
             client.Send(
                     "missing",
-                    global::Systems.Zlink.RoutingId.FromString("01"),
+                    global::Systems.Zlink.RoutingId.From("01"),
                     "ping")
                 .Submit().AsTask());
 

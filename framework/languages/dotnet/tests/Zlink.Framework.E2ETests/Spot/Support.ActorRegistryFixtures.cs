@@ -50,7 +50,7 @@ public abstract partial class SpotTestSupport
             _ = entrySpot;
             _ = context;
             var reply = await actor.Context.JoinSpot(
-                    global::Systems.Zlink.RoutingId.FromString(spotRid),
+                    global::Systems.Zlink.RoutingId.From(spotRid),
                     new RegistryJoinRequest("entry-room"))
                 .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<RegistryJoinReply>(cancellationToken);
@@ -97,7 +97,7 @@ public abstract partial class SpotTestSupport
             await mailboxRecorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             var reply = await actor.Context.JoinSpot(
-                    global::Systems.Zlink.RoutingId.FromString(spotRid),
+                    global::Systems.Zlink.RoutingId.From(spotRid),
                     new RegistryJoinRequest("entry-room"))
                 .Timeout(TimeSpan.FromSeconds(5))
                 .SubmitAsync<RegistryJoinReply>(cancellationToken);

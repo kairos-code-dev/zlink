@@ -247,7 +247,7 @@ builder.Services.AddZLinkFramework(options =>
 
             node.ConfigureEntrySpot(entry =>
             {
-                entry.RoutingId = RoutingId.FromUtf8("entry");
+                entry.RoutingId = RoutingId.From("entry");
             });
             node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>();
@@ -1154,7 +1154,7 @@ Spot callback 밖의 channel handler, HTTP handler, background service 에서 ta
 ```csharp
 var reply = await spots
     .ViaEgressChannel("gateway.client")
-    .RequestSpot(RoutingId.Of("room-123"), new AllocateRoomReq(playerId))
+    .RequestSpot(RoutingId.From("room-123"), new AllocateRoomReq(playerId))
     .SubmitAsync<AllocateRoomRes>(cancellationToken);
 ```
 

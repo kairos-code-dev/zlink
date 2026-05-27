@@ -3704,7 +3704,7 @@ public abstract class Socket implements AutoCloseable {
         }
 
         RoutingId routingId() {
-            return RoutingId.fromBytes(socket.getRoutingIdBytes());
+            return RoutingId.from(socket.getRoutingIdBytes());
         }
 
         void setSubscription(String filter) {

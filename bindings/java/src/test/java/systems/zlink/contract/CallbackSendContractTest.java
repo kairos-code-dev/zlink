@@ -56,7 +56,7 @@ public class CallbackSendContractTest {
             String endpoint = TestSupport.tcpEndpoint();
             try (var routerMon = router.monitorOpen(MonitorEventType.CONNECTION_READY);
                  var dealerMon = dealer.monitorOpen(MonitorEventType.CONNECTION_READY)) {
-                dealer.setRoutingId(RoutingId.fromBytes(
+                dealer.setRoutingId(RoutingId.from(
                     "request-reply-client".getBytes(StandardCharsets.UTF_8)));
                 router.bind(endpoint);
                 dealer.connect(endpoint);
@@ -196,7 +196,7 @@ public class CallbackSendContractTest {
                              MonitorEventType.CONNECTION_READY);
                          var dealerMon = dealer.monitorOpen(
                              MonitorEventType.CONNECTION_READY)) {
-                        dealer.setRoutingId(RoutingId.fromBytes(
+                        dealer.setRoutingId(RoutingId.from(
                             "request-reply-client"
                                 .getBytes(StandardCharsets.UTF_8)));
                         router.bind(endpoint);

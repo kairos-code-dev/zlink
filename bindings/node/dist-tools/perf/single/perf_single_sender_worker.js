@@ -175,7 +175,7 @@ async function main() {
     const payload = createPayload(msgSize);
     let socket = null;
     let activeReceiverRoutingId = receiverRoutingIdBytes
-        ? zlink.RoutingId.fromBytes(Buffer.from(receiverRoutingIdBytes))
+        ? zlink.RoutingId.from(Buffer.from(receiverRoutingIdBytes))
         : null;
     try {
         switch (kind) {
@@ -214,7 +214,7 @@ async function main() {
                 socket = new zlink.RouterSocket(ctx);
                 applySocketPolicy(socket, options);
                 applyAutoHwmMsgUnit(ctx, msgSize);
-                socket.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(senderRoutingIdBytes)));
+                socket.setRoutingId(zlink.RoutingId.from(Buffer.from(senderRoutingIdBytes)));
                 ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 activeReceiverRoutingId = await handshakeRouterSender(port, socket, activeReceiverRoutingId);

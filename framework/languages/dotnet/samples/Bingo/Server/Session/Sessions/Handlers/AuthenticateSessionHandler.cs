@@ -51,7 +51,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)
     {
         return new ActorRef(
-            RoutingId.FromBytes(snapshot.NodeRid),
+            RoutingId.From(snapshot.NodeRid),
             snapshot.ActorId,
             snapshot.Generation);
     }

@@ -25,8 +25,8 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
         var playRouterEndpoint = GetFreeTcpEndpoint();
         var playSpotEndpoint = GetFreeTcpEndpoint();
         var playSpotRouterEndpoint = GetFreeTcpEndpoint();
-        var sessionRid = RoutingId.Of($"remote-relay-session-{Guid.NewGuid():N}");
-        var playRid = RoutingId.Of($"remote-relay-play-{Guid.NewGuid():N}");
+        var sessionRid = RoutingId.From($"remote-relay-session-{Guid.NewGuid():N}");
+        var playRid = RoutingId.From($"remote-relay-play-{Guid.NewGuid():N}");
         var actorId = "remote-relay-player-1";
         var proxyRecorder = new ActorDispatchRecorder();
         GatewaySessionRecorder? sessionRecorder = null;
@@ -54,7 +54,7 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             {
                 options.ConfigureMetadata(metadata =>
                 {
-                    metadata.ForwardApplicationKey("trace-id");
+                    metadata.Forward("trace-id");
                 });
                 options.UseDiscovery(discovery => discovery.Add(registryRouterEndpoint));
                 options.AddActorFactory<GatewayActorFactory>("player");

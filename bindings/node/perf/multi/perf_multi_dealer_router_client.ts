@@ -48,7 +48,7 @@ async function main() {
       const dealer = new zlink.DealerSocket(ctx);
       applySocketPolicy(dealer);
       configureTlsClient(dealer, options.transport);
-      dealer.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`CLIENT-${i}`, 'ascii')));
+      dealer.setRoutingId(zlink.RoutingId.from(Buffer.from(`CLIENT-${i}`, 'ascii')));
       dealers.push(dealer);
       payloads.push(createPayload(options.msgSize));
       replyBuffers.push(Buffer.allocUnsafe(HEADER_SIZE));

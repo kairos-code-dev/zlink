@@ -32,24 +32,26 @@ fn routing_id_one_byte_accepted() {
 }
 
 #[test]
-fn routing_id_from_string_parses_hex() {
+fn routing_id_hex_and_display_policy() {
     let rid = RoutingId::from_bytes(&[0x00, 0x41, 0x42]);
-    assert_eq!(RoutingId::from_string("004142"), rid);
-    assert_eq!(RoutingId::try_from_string("004142").unwrap(), rid);
-    assert_eq!(rid.to_string(), "004142");
+    assert_eq!(RoutingId::from_hex("004142"), rid);
+    assert_eq!(RoutingId::try_from_hex("004142").unwrap(), rid);
+    assert_eq!(rid.to_string(), "hex:004142");
     assert_eq!(
-        RoutingId::try_from_string(&"a".repeat(510)).unwrap().size(),
+        RoutingId::try_from_hex(&"a".repeat(510)).unwrap().size(),
         255
     );
-    let result = std::panic::catch_unwind(|| RoutingId::from_string("not-hex"));
+    let result = std::panic::catch_unwind(|| RoutingId::from_hex("not-hex"));
     assert!(result.is_err(), "invalid hex routing id string must fail");
     let oversized = "a".repeat(512);
-    let result = std::panic::catch_unwind(|| RoutingId::from_string(&oversized));
+    let result = std::panic::catch_unwind(|| RoutingId::from_hex(&oversized));
     assert!(result.is_err(), "oversized hex routing id string must fail");
     assert!(
-        RoutingId::try_from_string(&oversized).is_err(),
+        RoutingId::try_from_hex(&oversized).is_err(),
         "oversized hex routing id string must return ConfigError"
     );
+    assert_eq!(RoutingId::from_string("dealer-1").to_string(), "dealer-1");
+    assert_eq!(RoutingId::from_u32(23).to_string(), "23");
 }
 
 #[test]

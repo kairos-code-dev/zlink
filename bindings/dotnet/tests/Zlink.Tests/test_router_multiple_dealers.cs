@@ -54,12 +54,12 @@ public sealed class test_router_multiple_dealers
 
         using Message reply1 = Message.From("reply_to_d1");
         Assert.True(router.Send(
-                RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer1RoutingId)))
+                RoutingId.From(Encoding.UTF8.GetBytes(dealer1RoutingId)))
             .Message(reply1).Submit());
 
         using Message reply2 = Message.From("reply_to_d2");
         Assert.True(router.Send(
-                RoutingId.FromBytes(Encoding.UTF8.GetBytes(dealer2RoutingId)))
+                RoutingId.From(Encoding.UTF8.GetBytes(dealer2RoutingId)))
             .Message(reply2).Submit());
 
         Assert.Equal("reply_to_d1", CoreTestSupport.ReceiveUtf8WithTimeout(dealer1,

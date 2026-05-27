@@ -25,7 +25,7 @@ public sealed class MonitoringContracts
             "router",
             DateTimeOffset.UtcNow,
             ZLinkSocketEventKind.Connected,
-            RoutingId.Of("node-a"),
+            RoutingId.From("node-a"),
             "tcp://127.0.0.1:1",
             "tcp://127.0.0.1:2",
             null);

@@ -7,8 +7,8 @@ const { configureTlsClient, configureTlsServer } = require('../common/perf_tls')
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
 const { POLLIN, POLLCOMPLETION, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, subscribeNoWait, trySocketPublish, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
-const SERVER_NODE_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
-const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
+const SERVER_NODE_ROUTING_ID = zlink.RoutingId.from(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
+const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.from(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
 const TRACE = process.env.PERF_MULTI_SPOT_REQREP_TRACE === '1';
 function trace(message) {
     if (TRACE) {
@@ -118,13 +118,13 @@ async function main() {
         const dataRouterEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-reqrep-client-router-${process.pid}`);
         configureTlsServer(node, options.transport);
         configureTlsClient(node, options.transport);
-        node.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('PERF_SPOT_REQREP_CLIENT_NODE', 'ascii')));
+        node.setRoutingId(zlink.RoutingId.from(Buffer.from('PERF_SPOT_REQREP_CLIENT_NODE', 'ascii')));
         node.setRouterBind(dataRouterEndpoint);
         node.setPubBind(dataEndpoint);
         node.connectPeer(options.peerEndpoint);
         for (let i = 0; i < options.clients; i += 1) {
             const spot = node.createSpot();
-            spot.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`PERF_SPOT_REQREP_CLIENT_SPOT_${i}`, 'ascii')));
+            spot.setRoutingId(zlink.RoutingId.from(Buffer.from(`PERF_SPOT_REQREP_CLIENT_SPOT_${i}`, 'ascii')));
             slots.push({
                 spot,
                 payload: createPayload(options.msgSize),

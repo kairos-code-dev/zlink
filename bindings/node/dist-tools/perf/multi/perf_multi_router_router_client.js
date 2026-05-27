@@ -7,7 +7,7 @@ const { configureTlsClient } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, sendStopTokenOnce, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 const SERVER_ID = Buffer.from('multi-router-router-server', 'ascii');
-const SERVER_ROUTING_ID = zlink.RoutingId.fromBytes(SERVER_ID);
+const SERVER_ROUTING_ID = zlink.RoutingId.from(SERVER_ID);
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
     const ctx = new zlink.Context();
@@ -25,7 +25,7 @@ async function main() {
             const router = new zlink.RouterSocket(ctx);
             applySocketPolicy(router);
             configureTlsClient(router, options.transport);
-            router.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from(`multi-router-client-${i}`, 'ascii')));
+            router.setRoutingId(zlink.RoutingId.from(Buffer.from(`multi-router-client-${i}`, 'ascii')));
             routers.push(router);
             payloads.push(createPayload(options.msgSize));
             replyBuffers.push(Buffer.allocUnsafe(HEADER_SIZE));

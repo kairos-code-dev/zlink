@@ -19,7 +19,7 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
         var streamEndpoint = GetFreeTcpEndpoint();
         var routerEndpoint = GetFreeTcpEndpoint();
         var spotEndpoint = GetFreeTcpEndpoint();
-        var localRid = RoutingId.FromString("0404");
+        var localRid = RoutingId.From("0404");
         var actorRecorder = new ActorDispatchRecorder();
         var sessionRecorder = new GatewaySessionRecorder();
         using var callbackCapture = CallbackExceptionCapture.Start();
@@ -46,7 +46,7 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
                     spot.EnableRouter(router =>
                     {
                         router.SetRouterBind(spotEndpoint);
-                        router.SetRoutingId(RoutingId.Of("local-notify-actor-node"));
+                        router.SetRoutingId(RoutingId.From("local-notify-actor-node"));
                     });
                     spot.AddEntrySpot<GatewayEntrySpot>();
                 });

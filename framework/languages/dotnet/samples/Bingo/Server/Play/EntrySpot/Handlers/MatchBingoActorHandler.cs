@@ -32,7 +32,7 @@ internal sealed class MatchBingoActorHandler
             .SubmitAsync<MatchBingoApiRes>(cancellationToken)
             ;
 
-        var roomRid = RoutingId.FromString(matched.RoomId);
+        var roomRid = RoutingId.From(matched.RoomId);
         var joined = await actor.Context.JoinSpot(
                 roomRid,
                 new BingoRoomJoinReq(matched.RoomId, actor.ActorId, actor.DisplayName))

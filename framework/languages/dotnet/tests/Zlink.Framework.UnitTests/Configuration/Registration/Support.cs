@@ -270,7 +270,7 @@ public abstract partial class RegistrationValidationSupport
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(new ZLinkSpotRemoteAddress(
                 "spots",
-                global::Systems.Zlink.RoutingId.FromString("03"),
+                global::Systems.Zlink.RoutingId.From("03"),
                 spotRid,
                 ZLinkSpotKind.User));
         }

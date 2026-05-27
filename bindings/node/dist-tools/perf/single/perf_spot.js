@@ -68,11 +68,11 @@ async function runSpotBenchmark(msgSize, options) {
         subscriber = subscriberNode.createSpot();
         stopPublisher = subscriberNode.createSpot();
         ctx.recalculateAutoHwm();
-        publisherNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('z-node-perf-spot-publisher')));
-        subscriberNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('a-node-perf-spot-subscriber')));
-        publisher.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('z-node-perf-spot-publisher-spot')));
-        subscriber.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('a-node-perf-spot-subscriber-spot')));
-        stopPublisher.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('m-node-perf-spot-stop-spot')));
+        publisherNode.setRoutingId(zlink.RoutingId.from(Buffer.from('z-node-perf-spot-publisher')));
+        subscriberNode.setRoutingId(zlink.RoutingId.from(Buffer.from('a-node-perf-spot-subscriber')));
+        publisher.setRoutingId(zlink.RoutingId.from(Buffer.from('z-node-perf-spot-publisher-spot')));
+        subscriber.setRoutingId(zlink.RoutingId.from(Buffer.from('a-node-perf-spot-subscriber-spot')));
+        stopPublisher.setRoutingId(zlink.RoutingId.from(Buffer.from('m-node-perf-spot-stop-spot')));
         (0, perf_single_common_1.configureTlsServer)(publisherNode, options.transport);
         (0, perf_single_common_1.configureTlsClient)(publisherNode, options.transport);
         (0, perf_single_common_1.configureTlsServer)(subscriberNode, options.transport);

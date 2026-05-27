@@ -17,7 +17,7 @@ framework는 Entry Spot routing id 설정을 `SpotNode` builder에서 제공한�
 ```csharp
 spotNode.ConfigureEntrySpot(entry =>
 {
-    entry.RoutingId = RoutingId.FromUtf8("entry");
+    entry.RoutingId = RoutingId.From("entry");
 });
 ```
 

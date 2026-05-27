@@ -22,7 +22,7 @@ public sealed class RoutedClientDiscoveryEgressTests : SpotTestSupport
         var gatewayRouteEndpoint = GetFreeTcpEndpoint();
         var playRouteEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();
-        var targetSpotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("egress-spot-03"));
+        var targetSpotRid = RoutingId.From(Encoding.UTF8.GetBytes("egress-spot-03"));
 
         var registryBuilder = Host.CreateApplicationBuilder();
         registryBuilder.Services.AddZLinkRegistry(options =>
@@ -42,7 +42,7 @@ public sealed class RoutedClientDiscoveryEgressTests : SpotTestSupport
                 channel.Bind(playRouteEndpoint);
                 channel.ConfigureRouting(routing =>
                 {
-                    routing.RoutingId = RoutingId.FromBytes(
+                    routing.RoutingId = RoutingId.From(
                         Encoding.UTF8.GetBytes("egress-target-03"));
                 });
             });
@@ -56,7 +56,7 @@ public sealed class RoutedClientDiscoveryEgressTests : SpotTestSupport
                     router.SetRouterBind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
-                        routing.RoutingId = RoutingId.FromBytes(
+                        routing.RoutingId = RoutingId.From(
                             Encoding.UTF8.GetBytes("egress-node-03"));
                     });
                 });
@@ -78,7 +78,7 @@ public sealed class RoutedClientDiscoveryEgressTests : SpotTestSupport
                 channel.Bind(gatewayRouteEndpoint);
                 channel.ConfigureRouting(routing =>
                 {
-                    routing.RoutingId = RoutingId.FromBytes(
+                    routing.RoutingId = RoutingId.From(
                         Encoding.UTF8.GetBytes("egress-gateway-03"));
                 });
                 channel.UseManualConnections(peers => peers.Connect(playRouteEndpoint));

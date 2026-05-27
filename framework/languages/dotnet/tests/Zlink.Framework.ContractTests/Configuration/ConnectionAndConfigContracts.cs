@@ -7,21 +7,21 @@ public sealed class ConnectionAndConfigContracts
 {
     [Fact]
     [ContractExample(
-        typeof(IChannelClientConnections),
-        typeof(IChannelSubscriberConnections),
-        typeof(ISpotRouterConnections),
-        typeof(ISpotPubSubConnections),
-        typeof(ISpotPublisherConnections),
-        typeof(ISpotRouterChannelConnections))]
+        typeof(IZLinkEndpointConnections),
+        typeof(IZLinkEndpointConnections),
+        typeof(IZLinkEndpointConnections),
+        typeof(IZLinkEndpointConnections),
+        typeof(IZLinkEndpointConnections),
+        typeof(IZLinkEndpointConnections))]
     public void Connection_contracts_record_the_startup_endpoints_owned_by_each_runtime_role()
     {
         var manual = new ManualConnections();
-        IChannelClientConnections channelClient = manual;
-        IChannelSubscriberConnections subscriber = manual;
-        ISpotRouterConnections spotRouter = manual;
-        ISpotPubSubConnections spotPubSub = manual;
-        ISpotPublisherConnections spotPublisher = manual;
-        ISpotRouterChannelConnections spotRouteIngress = manual;
+        IZLinkEndpointConnections channelClient = manual;
+        IZLinkEndpointConnections subscriber = manual;
+        IZLinkEndpointConnections spotRouter = manual;
+        IZLinkEndpointConnections spotPubSub = manual;
+        IZLinkEndpointConnections spotPublisher = manual;
+        IZLinkEndpointConnections spotRouteIngress = manual;
 
         channelClient.Connect("tcp://127.0.0.1:5001");
         subscriber.Connect("tcp://127.0.0.1:5002");
@@ -75,16 +75,16 @@ public sealed class ConnectionAndConfigContracts
 
         var route = new RouteConfig
         {
-            RoutingId = RoutingId.Of("router"),
+            RoutingId = RoutingId.From("router"),
             RequireKnownPeer = true,
             AllowPeerHandover = true,
             EnablePeerProbe = true,
-            ConnectRoutingId = RoutingId.Of("peer")
+            ConnectRoutingId = RoutingId.From("peer")
         };
 
         var outbound = new OutboundRouteConfig
         {
-            RoutingId = RoutingId.Of("client"),
+            RoutingId = RoutingId.From("client"),
             ProbeRouterOnConnect = true
         };
 
@@ -105,7 +105,7 @@ public sealed class ConnectionAndConfigContracts
 
         var entrySpot = new EntrySpotOptions
         {
-            RoutingId = RoutingId.Of("entry")
+            RoutingId = RoutingId.From("entry")
         };
 
         var dispatch = new DispatchOptions
@@ -115,22 +115,22 @@ public sealed class ConnectionAndConfigContracts
         };
 
         Assert.True(socket.Immediate);
-        Assert.Equal(RoutingId.Of("router"), route.RoutingId);
-        Assert.Equal(RoutingId.Of("client"), outbound.RoutingId);
+        Assert.Equal(RoutingId.From("router"), route.RoutingId);
+        Assert.Equal(RoutingId.From("client"), outbound.RoutingId);
         Assert.True(publisher.NoDrop);
         Assert.Equal(64, subscriber.ReceiveHighWaterMark);
-        Assert.Equal(RoutingId.Of("entry"), entrySpot.RoutingId);
+        Assert.Equal(RoutingId.From("entry"), entrySpot.RoutingId);
         Assert.Equal(ZLinkDispatchMode.Compiled, dispatch.SpotDispatchMode);
     }
 
     internal sealed class ManualConnections :
-        IChannelClientConnections,
-        IChannelSubscriberConnections,
-        ISpotRouterConnections,
-        ISpotPubSubConnections,
-        ISpotPublisherConnections,
-        IRouteChannelConnections,
-        ISpotRouterChannelConnections
+        IZLinkEndpointConnections,
+        IZLinkEndpointConnections,
+        IZLinkEndpointConnections,
+        IZLinkEndpointConnections,
+        IZLinkEndpointConnections,
+        IZLinkEndpointConnections,
+        IZLinkEndpointConnections
     {
         private readonly List<string> _endpoints = [];
 

@@ -60,7 +60,7 @@ internal sealed class PlayServer(SampleSettings settings)
             options.AddRouteMeshChannel(SampleChannels.Router, routed =>
             {
                 routed.Bind(settings.PlayRouterEndpoint);
-                routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.FromString(SampleTypes.PlayRouterId));
+                routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.From(SampleTypes.PlayRouterId));
                 routed.UseManualConnections(connections => connections.Connect(settings.PlayRouterEndpoint));
             });
 

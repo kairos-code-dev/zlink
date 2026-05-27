@@ -78,7 +78,7 @@ internal static class CoreTestSupport
 
     internal static RoutingId RoutingIdUtf8(string value)
     {
-        return RoutingId.FromBytes(Encoding.UTF8.GetBytes(value));
+        return RoutingId.From(Encoding.UTF8.GetBytes(value));
     }
 
     internal static byte[] BuildStreamPacket(ReadOnlySpan<byte> body,

@@ -20,7 +20,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
         var apiEndpoint = GetFreeTcpEndpoint();
         var playRouteEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();
-        var targetSpotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("egress-spot-01"));
+        var targetSpotRid = RoutingId.From(Encoding.UTF8.GetBytes("egress-spot-01"));
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton<SpotRouteTransportRecorder>();
@@ -52,7 +52,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                     server.Bind(playRouteEndpoint);
                     server.ConfigureRouting(routing =>
                     {
-                        routing.RoutingId = RoutingId.FromBytes(
+                        routing.RoutingId = RoutingId.From(
                             Encoding.UTF8.GetBytes("egress-target"));
                     });
                 });
@@ -67,7 +67,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                     router.SetRouterBind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
-                        routing.RoutingId = RoutingId.FromBytes(
+                        routing.RoutingId = RoutingId.From(
                             Encoding.UTF8.GetBytes("egress-node"));
                     });
                 });
@@ -116,7 +116,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
         var gatewayRouteEndpoint = GetFreeTcpEndpoint();
         var playRouteEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();
-        var targetSpotRid = RoutingId.FromBytes(Encoding.UTF8.GetBytes("egress-spot-02"));
+        var targetSpotRid = RoutingId.From(Encoding.UTF8.GetBytes("egress-spot-02"));
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton<SpotRouteTransportRecorder>();
@@ -128,7 +128,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                 channel.Bind(gatewayRouteEndpoint);
                 channel.ConfigureRouting(routing =>
                 {
-                    routing.RoutingId = RoutingId.FromBytes(
+                    routing.RoutingId = RoutingId.From(
                         Encoding.UTF8.GetBytes("egress-gateway"));
                 });
                 channel.UseManualConnections(peers => peers.Connect(playRouteEndpoint));
@@ -139,7 +139,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                 channel.Bind(playRouteEndpoint);
                 channel.ConfigureRouting(routing =>
                 {
-                    routing.RoutingId = RoutingId.FromBytes(
+                    routing.RoutingId = RoutingId.From(
                         Encoding.UTF8.GetBytes("egress-target"));
                 });
             });
@@ -153,7 +153,7 @@ public sealed class RoutedClientExplicitEgressTests : SpotTestSupport
                     router.SetRouterBind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
-                        routing.RoutingId = RoutingId.FromBytes(
+                        routing.RoutingId = RoutingId.From(
                             Encoding.UTF8.GetBytes("egress-node"));
                     });
                 });

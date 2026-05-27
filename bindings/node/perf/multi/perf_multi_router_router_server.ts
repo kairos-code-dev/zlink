@@ -64,7 +64,7 @@ async function main() {
     applySocketPolicy(router);
     configureTlsServer(router, options.transport);
     router.setRoutingId(
-      zlink.RoutingId.fromBytes(Buffer.from('multi-router-router-server', 'ascii'))
+      zlink.RoutingId.from(Buffer.from('multi-router-router-server', 'ascii'))
     );
     router.bind(options.endpoint);
     applyAutoHwmMsgUnit(ctx, options.msgSize);

@@ -48,9 +48,9 @@ public sealed record SampleTopology(
             ReadEndpoint("TICTACTOE_SG_PLAY_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:47211"),
             ReadEndpoint("TICTACTOE_SG_STREAM_ENDPOINT", "tcp://127.0.0.1:47212"),
             ReadEndpoint("TICTACTOE_SG_RECONNECT_STREAM_ENDPOINT", "tcp://127.0.0.1:47213"),
-            RoutingId.FromString("1101"),
-            RoutingId.FromString("1102"),
-            RoutingId.FromString("2202"));
+            RoutingId.From("1101"),
+            RoutingId.From("1102"),
+            RoutingId.From("2202"));
     }
 
     private static string ReadEndpoint(string name, string defaultValue)

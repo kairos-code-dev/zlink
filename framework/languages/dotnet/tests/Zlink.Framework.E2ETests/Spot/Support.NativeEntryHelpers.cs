@@ -83,9 +83,9 @@ public abstract partial class SpotTestSupport
             ZlinkStreamMetadata.Empty);
 
         return new ZLinkBackendActorPart(
-            new ZLinkBackendActorRef(RoutingId.FromString("01"), actor.ActorId, 0),
-            RoutingId.FromString("02"),
-            RoutingId.FromString("03"),
+            new ZLinkBackendActorRef(RoutingId.From("01"), actor.ActorId, 0),
+            RoutingId.From("02"),
+            RoutingId.From("03"),
             Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
             More: true);
     }
@@ -95,9 +95,9 @@ public abstract partial class SpotTestSupport
         string value)
     {
         return new ZLinkBackendActorPart(
-            new ZLinkBackendActorRef(RoutingId.FromString("01"), actor.ActorId, 0),
-            RoutingId.FromString("02"),
-            RoutingId.FromString("03"),
+            new ZLinkBackendActorRef(RoutingId.From("01"), actor.ActorId, 0),
+            RoutingId.From("02"),
+            RoutingId.From("03"),
             Message.From(value),
             More: false);
     }

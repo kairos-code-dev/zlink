@@ -18,7 +18,7 @@ public sealed class EntryRoutingTests : SpotTestSupport
     public async Task EntrySpotRoutingId_IsApplied_ToNativeEntrySpot()
     {
         var spotNodeEndpoint = GetFreeTcpEndpoint();
-        var entryRid = RoutingId.FromUtf8("entry");
+        var entryRid = RoutingId.From("entry");
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
@@ -77,7 +77,7 @@ public sealed class EntryRoutingTests : SpotTestSupport
                     server.Bind(channelEndpoint);
                     server.ConfigureRouting(routing =>
                     {
-                        routing.RoutingId = RoutingId.FromString("aabbcc03");
+                        routing.RoutingId = RoutingId.From("aabbcc03");
                     });
                 });
             });

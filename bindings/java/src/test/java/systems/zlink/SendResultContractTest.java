@@ -56,7 +56,7 @@ public class SendResultContractTest {
              RouterSocket router = new RouterSocket(ctx);
              Message payload = Message.from("router-payload")) {
             router.options().mandatory(true);
-            RoutingId missingRid = RoutingId.fromBytes(
+            RoutingId missingRid = RoutingId.from(
                 "router-missing-peer".getBytes(StandardCharsets.UTF_8));
             SendResult result = router.sendNoWaitResult(missingRid, payload);
             assertEquals(SendResult.NOT_READY, result);
@@ -71,7 +71,7 @@ public class SendResultContractTest {
              RouterSocket router = new RouterSocket(ctx);
              Message payload = Message.from("router-payload")) {
             router.options().mandatory(true);
-            RoutingId missingRid = RoutingId.fromBytes(
+            RoutingId missingRid = RoutingId.from(
                 "router-missing-peer".getBytes(StandardCharsets.UTF_8));
             SubmitException ex = assertThrows(SubmitException.class,
                 () -> router.send(missingRid)

@@ -31,7 +31,7 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
                     server.Bind(channelEndpoint);
                     server.ConfigureRouting(routing =>
                     {
-                        routing.RoutingId = RoutingId.FromString("aabbcc01");
+                        routing.RoutingId = RoutingId.From("aabbcc01");
                     });
                 });
             });
@@ -81,7 +81,7 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
                 routed.Bind(routeEndpoint);
                 routed.ConfigureRouting(routing =>
                 {
-                    routing.RoutingId = RoutingId.FromString("aabbcc02");
+                    routing.RoutingId = RoutingId.From("aabbcc02");
                 });
             });
             options.AddSpotMesh("spot.route.mesh", mesh =>

@@ -42,7 +42,7 @@ public sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
 
     public RoutingId GetRoutingId()
     {
-        return RoutingId.FromBytes(Kernel.GetOption(SocketOptions.RoutingId));
+        return RoutingId.From(Kernel.GetOption(SocketOptions.RoutingId));
     }
 
     /// <summary>

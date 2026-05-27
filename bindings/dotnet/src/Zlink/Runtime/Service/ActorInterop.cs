@@ -43,7 +43,7 @@ internal static class ActorInterop
     {
         fixed (byte* actorId = native.ActorId)
         {
-            RoutingId nodeRid = RoutingId.FromBytes(
+            RoutingId nodeRid = RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref native.NodeRid));
             return new ActorRef(nodeRid,
                 NativeHelpers.ReadFixedString(actorId, NativeConstants.ActorIdMax),
@@ -714,7 +714,7 @@ internal static class ActorInterop
                 (RequestResult)native.Result == RequestResult.Ok
                     ? FromNative(ref native.Actor)
                     : default;
-            RoutingId targetNodeRid = RoutingId.FromBytes(
+            RoutingId targetNodeRid = RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref native.TargetNodeRid));
             ActorJoinEntrySpotResult result = new(
                 (RequestResult)native.Result, returnedActor, targetNodeRid,
@@ -758,7 +758,7 @@ internal static class ActorInterop
             }
 
             ActorRef returnedActor = FromNative(ref native.Actor);
-            RoutingId joinedSpot = RoutingId.FromBytes(
+            RoutingId joinedSpot = RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref native.JoinedSpotRid));
             ActorJoinResult result = new((RequestResult)native.Result,
                 native.JoinResultCode, returnedActor, joinedSpot,

@@ -335,7 +335,7 @@ public sealed class DealerSocketOptions : CommonSocketOptions
 
     internal RoutingId RoutingId
     {
-        get => RoutingId.FromBytes(Socket.GetOption(SocketOptions.RoutingId));
+        get => RoutingId.From(Socket.GetOption(SocketOptions.RoutingId));
         set => Socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
     }
 
@@ -366,7 +366,7 @@ public sealed class RouterSocketOptions : CommonSocketOptions
 
     internal RoutingId RoutingId
     {
-        get => RoutingId.FromBytes(Socket.GetOption(SocketOptions.RoutingId));
+        get => RoutingId.From(Socket.GetOption(SocketOptions.RoutingId));
         set => Socket.SetOption(SocketOptions.RoutingId, value.ToBytes());
     }
 
@@ -395,7 +395,7 @@ public sealed class RouterSocketOptions : CommonSocketOptions
         get
         {
             byte[] bytes = Socket.GetOption(SocketOptions.ConnectRoutingId);
-            return bytes.Length == 0 ? null : RoutingId.FromBytes(bytes);
+            return bytes.Length == 0 ? null : RoutingId.From(bytes);
         }
     }
 

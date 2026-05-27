@@ -34,7 +34,7 @@ import java.util.List;
 final class PerfMultiRouterRouter {
     private static final MonitorEventType READY_EVENT =
         MonitorEventType.CONNECTION_READY;
-    private static final RoutingId SERVER_ID = RoutingId.fromBytes(
+    private static final RoutingId SERVER_ID = RoutingId.from(
         "PERF_SERVER".getBytes(StandardCharsets.UTF_8));
 
     private PerfMultiRouterRouter() {
@@ -153,7 +153,7 @@ final class PerfMultiRouterRouter {
             try {
                 for (int i = 0; i < clientCount; i++) {
                     RouterSocket client = new RouterSocket(ctx);
-                    client.setRoutingId(RoutingId.fromBytes(
+                    client.setRoutingId(RoutingId.from(
                         ("PERF_CLIENT_" + i).getBytes(StandardCharsets.UTF_8)));
                     client.options().connectRoutingId(SERVER_ID);
                     var monitor = client.monitorOpen(

@@ -32,7 +32,7 @@ internal static class PerfMultiDealerRouterClient
                 ConfigureTlsClientIfNeeded(client, options.Transport);
                 client.Options.SendTimeout = TimeSpan.FromMilliseconds(sndTimeoutMs);
                 client.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeoutMs);
-                client.SetRoutingId(RoutingId.FromBytes(
+                client.SetRoutingId(RoutingId.From(
                     System.Text.Encoding.ASCII.GetBytes($"CLIENT-{i}")));
                 var monitor = client.MonitorOpen(SocketEvent.ConnectionReady);
                 client.Connect(endpoint);

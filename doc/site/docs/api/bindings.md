@@ -790,22 +790,44 @@ Routing id value object. Binary-safe (1-255 bytes).
 |------|------|------|
 | `bytes` / `data` | `bytes` / `byte[]` / `Vec<u8>` / `Buffer` | raw bytes (immutable view) |
 | `size` | `int` (1-255) | byte length |
-| `from_bytes(bytes)` | static/ctor | 생성자 |
-| `from_string(value)` | static/ctor | `to_hex()` 로 만든 hex 문자열을 다시 생성 |
+| `from(bytes)` | static/ctor | raw bytes 로 생성 |
+| `from(value: string)` | static/ctor | 사용자 문자열을 UTF-8 bytes 로 인코딩 |
+| `from_hex(value)` | static/ctor | `to_hex()` 로 만든 hex 문자열을 다시 생성 |
+| `from(value: uint32)` | static/ctor | 4바이트 big-endian `uint32` routing id 생성 |
+| `from(value: guid)` | static/ctor | 16바이트 UUID routing id 생성 |
 | `to_bytes()` | `bytes` | 원본 바이트 반환 |
+| `to_hex()` | `string` | raw bytes 를 hex 문자열로 표시 |
 | equality / hash | — | 언어별 관용구 (`equals`/`hashCode`, `__eq__`/`__hash__`, `PartialEq+Eq+Hash`) |
 
+언어별 이름은 관용구를 따른다. 의미는 아래 슬롯에 맞춘다.
+
+| 의미 | .NET | Java | Node | Python | Rust | C++ | Go |
+|------|------|------|------|--------|------|-----|----|
+| 사용자 문자열 | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `from_string` / `TryFrom<&str>` | `from(std::string)` | `NewRoutingIDFromString` |
+| raw bytes | `From(bytes)` | `from(byte[])` | `from(Buffer)` | `from_bytes` / `from_` | `from_bytes` | `from(bytes)` | `NewRoutingID` |
+| hex round-trip | `FromHex` | `fromHex` | `fromHex` | `from_hex` | `from_hex` | `from_hex` | `NewRoutingIDFromHex` / `ParseRoutingIDHex` |
+| uint32 | `From(uint)` | `from(long)` | `from(number)` | `from_(int)` | `from_u32` | `from(uint32_t)` | `NewRoutingIDFromUInt32` |
+| UUID | `From(Guid)` | `from(UUID)` | 16-byte `from(Buffer)` | `from_(uuid.UUID)` | `from_uuid_bytes` | `from_uuid` | `NewRoutingIDFromUUIDBytes` |
+
 규칙:
-- **binary-safe value type**. `RoutingId(string value)` 같은 string 전용
-  생성자를 기본으로 두지 않는다. `from_string(value)` 는 임의 문자열을
-  routing id bytes 로 인코딩하는 API가 아니라, `to_hex()` 가 반환한
-  짝수 길이 hex 문자열을 다시 해석하는 편의 팩토리다. 언어별
-  `to_string()` / `String()` 이 hex 표시값으로 정의된 경우에는 그
-  반환값도 같은 입력으로 사용할 수 있다.
-- `from_string(value)` 입력은 hex 문자만 허용한다. hex 문자열은 최대
+- **binary-safe value type**. 사용자 설정 routing id 는 보통 사람이 읽는
+  문자열이므로 string overload `from(value)` 는 UTF-8 인코딩을 뜻한다.
+  native/core 에서 받은 임의 bytes 는 bytes overload `from(bytes)` 로 보존한다.
+- `from_hex(value)` 입력은 hex 문자만 허용한다. hex 문자열은 최대
   510자이며, 디코딩된 routing id가 255 bytes를 넘으면 언어별
   예외나 에러 코드로 실패해야 한다.
+- 4바이트 STREAM routing id 처럼 core 가 `uint32_t`로 다루는 값은
+  `from(value: uint32)` / `try_to_uint32(out value)` 같은 typed API로 다룬다.
+- 16바이트 UUID 값은 `from(value: guid)` / `try_to_guid(out value)` 같은
+  typed API로 다룬다.
+- `to_string()` / `String()` 은 언어별 표시용 문자열이다. printable UTF-8이면
+  그대로, 4바이트 `uint32`이면 숫자 문자열, 16바이트 UUID이면 UUID 문자열,
+  그 외에는 `hex:` 접두어가 붙은 hex 표시를 권장한다. round-trip 저장에는
+  `to_hex()` / `from_hex(value)` 를 사용한다.
 - 불변 (immutable). 한 번 생성하면 내용 변경 불가.
+- 캐싱은 관찰 가능한 계약이 아니다. 바인딩은 필요하면 hash, native struct,
+  recv hot path 의 짧은 lived cache 를 내부에서 사용할 수 있지만, 동등성은
+  항상 bytes 값으로 판단해야 하며 cache hit 여부가 API 동작을 바꾸면 안 된다.
 - Node 에서는 raw `Buffer` 대신 `RoutingId` 래퍼 타입을 그대로 노출한다.
 
 #### `MonitorEvent`

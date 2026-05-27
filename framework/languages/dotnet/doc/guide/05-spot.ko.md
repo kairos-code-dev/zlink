@@ -407,7 +407,7 @@ app.MapPost("/stage/{rid}/query", async (
 {
     var reply = await spots
         .ViaEgressChannel("gateway.client")             // 내가 쓸 local egress channel
-        .RequestSpot(RoutingId.Of(rid), new GetStageStateRequest())  // target Spot
+        .RequestSpot(RoutingId.From(rid), new GetStageStateRequest())  // target Spot
         .SubmitAsync<GetStageStateReply>(cancellationToken);
 
     return Results.Ok(reply);

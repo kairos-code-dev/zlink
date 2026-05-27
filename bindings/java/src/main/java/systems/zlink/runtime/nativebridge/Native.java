@@ -2025,7 +2025,7 @@ public final class Native {
             String remote = NativeHelpers.fromCString(evt.asSlice(NativeLayouts.MONITOR_REMOTE_OFFSET, 256), 256);
             return new MonitorEvent(EnumCodecs.monitorEventTypeFromValue(event), value,
               routingSize == 0 ? java.util.Optional.empty()
-                : java.util.Optional.of(RoutingId.fromBytes(routing)),
+                : java.util.Optional.of(RoutingId.from(routing)),
               local, remote);
         } catch (ZlinkException ex) {
             throw ex;

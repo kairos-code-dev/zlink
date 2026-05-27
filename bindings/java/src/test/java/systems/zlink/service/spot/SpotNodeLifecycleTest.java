@@ -50,11 +50,11 @@ class SpotNodeLifecycleTest {
             assertNotNull(entry);
 
             Spot spot = node.createSpot();
-            RoutingId rid = RoutingId.fromBytes(new byte[] {1, 2, 3, 4});
+            RoutingId rid = RoutingId.from(new byte[] {1, 2, 3, 4});
             spot.setRoutingId(rid);
             Spot lookup = node.spotLookup(rid).orElseThrow();
             assertNotNull(lookup);
-            assertTrue(node.spotLookup(RoutingId.fromBytes(new byte[] {9, 9}))
+            assertTrue(node.spotLookup(RoutingId.from(new byte[] {9, 9}))
                 .isEmpty());
 
             node.routerHwmProfile(AutoHwmProfile.BALANCED);

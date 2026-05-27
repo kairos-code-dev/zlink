@@ -273,7 +273,7 @@ public sealed class TimerTests : SpotTestSupport
                         Peers: null,
                         Subjects: null,
                         TimerDiagnostic: new ZLinkSpotTimerDiagnostic(
-                            RoutingId.FromString("01"),
+                            RoutingId.From("01"),
                             IsEntrySpot: false,
                             tick.Name,
                             "FailingTimerHandler",

@@ -310,7 +310,7 @@ function submitErrorFromResult(result: SubmitResult, message: string): SubmitErr
 
 function remoteActorRef(targetNodeRid: RoutingId, actorId: string): ActorRef {
   return {
-    nodeRid: RoutingId.fromBytes(normalizeRoutingId(targetNodeRid, 'targetNodeRid')),
+    nodeRid: RoutingId.from(normalizeRoutingId(targetNodeRid, 'targetNodeRid')),
     actorId: validateCString(actorId, 'actorId', 255),
     generation: 0n
   };
@@ -423,7 +423,7 @@ function mapMemberPeerEntry(entry: {
     serviceRole: entry.serviceRole as ServiceRoleValue,
     channelName: entry.channelName,
     endpoint: entry.endpoint,
-    routingId: RoutingId.fromBytes(entry.routingId),
+    routingId: RoutingId.from(entry.routingId),
     weight: entry.weight,
     value: BigInt(entry.value)
   };
@@ -446,7 +446,7 @@ function mapRegistryTopologyEntry(entry: {
 }): RegistryTopologyEntry {
   return {
     autoConnectType: entry.autoConnectType as AutoConnectType,
-    routingId: RoutingId.fromBytes(entry.routingId),
+    routingId: RoutingId.from(entry.routingId),
     serviceKind: entry.serviceKind as ServiceKindValue,
     serviceRole: entry.serviceRole as ServiceRoleValue,
     channelName: entry.channelName,
@@ -525,7 +525,7 @@ function mapSpotNodeStatus(entry: {
   lastChangedMs: number | bigint;
 }, fallbackRoutingId: RoutingId): SpotNodeStatus {
   const nodeRoutingId = entry.nodeRoutingId
-    ? RoutingId.fromBytes(entry.nodeRoutingId)
+    ? RoutingId.from(entry.nodeRoutingId)
     : fallbackRoutingId;
   return {
     channelName: entry.channelName,
@@ -589,7 +589,7 @@ function mapSpotNodeSubjectEntry(entry: {
 function actorRefFromRaw(raw: { nodeRid: Buffer; actorId: string; generation: bigint | number }): ActorRef {
   const generation = BigInt(raw.generation);
   return Object.freeze({
-    nodeRid: RoutingId.fromBytes(raw.nodeRid),
+    nodeRid: RoutingId.from(raw.nodeRid),
     actorId: raw.actorId,
     generation
   });
@@ -611,8 +611,8 @@ function actorRecvInfoFromRaw(raw: {
 }): ActorRecvInfo {
   return {
     actor: actorRefFromRaw(raw.actor),
-    sourceNodeRid: RoutingId.fromBytes(raw.sourceNodeRid),
-    sourceSessionRid: RoutingId.fromBytes(raw.sourceSessionRid),
+    sourceNodeRid: RoutingId.from(raw.sourceNodeRid),
+    sourceSessionRid: RoutingId.from(raw.sourceSessionRid),
     flags: raw.flags
   };
 }
@@ -653,7 +653,7 @@ function actorJoinInfoFromRaw(raw: {
   const info = {
     sourceActor,
     targetActor,
-    sourceNodeRid: RoutingId.fromBytes(raw.sourceNodeRid),
+    sourceNodeRid: RoutingId.from(raw.sourceNodeRid),
     sourceSpotRid: wrapRoutingId(raw.sourceSpotRid ?? null) as RoutingId,
     targetNodeRid: wrapRoutingId(raw.targetNodeRid ?? null) as RoutingId,
     targetSpotRid: wrapRoutingId(raw.targetSpotRid ?? null) as RoutingId,
@@ -690,7 +690,7 @@ function actorRouteFromRaw(raw: {
 }): ActorRoute {
   return {
     actor: actorRefFromRaw(raw.actor),
-    currentSpotRid: RoutingId.fromBytes(raw.currentSpotRid),
+    currentSpotRid: RoutingId.from(raw.currentSpotRid),
     currentSpotKind: raw.currentSpotKind as SpotKindValue
   };
 }
@@ -732,8 +732,8 @@ function actorJoinResultFromRaw(raw: ActorJoinResultRaw | null): ActorJoinResult
     return {
       result: RequestResult.InternalError,
       joinResultCode: 0,
-      actor: { nodeRid: RoutingId.fromBytes(Buffer.alloc(1)), actorId: '', generation: 0n },
-      joinedSpotRid: RoutingId.fromBytes(Buffer.alloc(1)),
+      actor: { nodeRid: RoutingId.from(Buffer.alloc(1)), actorId: '', generation: 0n },
+      joinedSpotRid: RoutingId.from(Buffer.alloc(1)),
       joinEpoch: 0n,
       flags: 0,
     };
@@ -742,7 +742,7 @@ function actorJoinResultFromRaw(raw: ActorJoinResultRaw | null): ActorJoinResult
     result: raw.result as RequestResult,
     joinResultCode: raw.joinResultCode ?? 0,
     actor: actorRefFromRaw(raw.actor),
-    joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? RoutingId.fromBytes(Buffer.alloc(1)),
+    joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? RoutingId.from(Buffer.alloc(1)),
     joinEpoch: BigInt(raw.joinEpoch ?? 0),
     flags: raw.flags | 0,
   };
@@ -752,8 +752,8 @@ function actorJoinEntrySpotResultFromRaw(raw: ActorJoinEntrySpotResultRaw | null
   if (!raw) {
     return {
       result: RequestResult.InternalError,
-      actor: { nodeRid: RoutingId.fromBytes(Buffer.alloc(1)), actorId: '', generation: 0n },
-      targetNodeRid: RoutingId.fromBytes(Buffer.alloc(1)),
+      actor: { nodeRid: RoutingId.from(Buffer.alloc(1)), actorId: '', generation: 0n },
+      targetNodeRid: RoutingId.from(Buffer.alloc(1)),
       joinEpoch: 0n,
       flags: 0,
     };
@@ -761,7 +761,7 @@ function actorJoinEntrySpotResultFromRaw(raw: ActorJoinEntrySpotResultRaw | null
   return {
     result: raw.result as RequestResult,
     actor: actorRefFromRaw(raw.actor),
-    targetNodeRid: (wrapRoutingId(raw.targetNodeRid ?? null) as RoutingId) ?? RoutingId.fromBytes(Buffer.alloc(1)),
+    targetNodeRid: (wrapRoutingId(raw.targetNodeRid ?? null) as RoutingId) ?? RoutingId.from(Buffer.alloc(1)),
     joinEpoch: BigInt(raw.joinEpoch ?? 0),
     flags: raw.flags | 0,
   };
@@ -1013,7 +1013,7 @@ function spotNodeSpotEntryFromRaw(raw: {
   lastChangedMs: bigint | number;
 }): SpotNodeSpotEntry {
   return {
-    spotRid: RoutingId.fromBytes(raw.spotRid),
+    spotRid: RoutingId.from(raw.spotRid),
     spotKind: raw.spotKind as SpotKindValue,
     dispatchHandlerAttached: Boolean(raw.dispatchHandlerAttached),
     joinedActorCount: raw.joinedActorCount,
@@ -1033,7 +1033,7 @@ function spotNodeActorEntryFromRaw(raw: {
 }): SpotNodeActorEntry {
   return {
     actor: actorRefFromRaw(raw.actor),
-    currentSpotRid: RoutingId.fromBytes(raw.currentSpotRid),
+    currentSpotRid: RoutingId.from(raw.currentSpotRid),
     currentSpotKind: raw.currentSpotKind as SpotKindValue,
     routeSynced: Boolean(raw.routeSynced),
     pendingMessageCount: raw.pendingMessageCount,
@@ -1252,7 +1252,7 @@ function readInt64Option(buffer: Buffer, name: string): bigint {
 }
 
 function readRoutingIdOption(buffer: Buffer): RoutingId | null {
-  return buffer.length === 0 ? null : RoutingId.fromBytes(buffer);
+  return buffer.length === 0 ? null : RoutingId.from(buffer);
 }
 
 function readStringOption(buffer: Buffer): string {
@@ -1777,7 +1777,7 @@ class SubscriberSocket extends ConnectableSocket {
       return {
         size: raw.size,
         topic: raw.topic,
-        routingId: raw.routingId ? RoutingId.fromBytes(raw.routingId) : null
+        routingId: raw.routingId ? RoutingId.from(raw.routingId) : null
       };
     } catch (error) {
       const recvError = recvNativeError(error, flags, 'subscribePayloadInto failed');
@@ -1849,8 +1849,8 @@ class RoutedMessageSocket extends ConnectableSocket {
         }
         if (raw.spotRid) {
           return (this as unknown as RouterSocket).sendToSpotDirect(
-            RoutingId.fromBytes(raw.routingId),
-            RoutingId.fromBytes(raw.spotRid),
+            RoutingId.from(raw.routingId),
+            RoutingId.from(raw.spotRid),
             parts,
             sendFlags
           );
@@ -1964,7 +1964,7 @@ export class DealerSocket extends MessageSocket {
     });
   }
   getRoutingId(): RoutingId {
-    return RoutingId.fromBytes(
+    return RoutingId.from(
       configCall('routing id get failed', () =>
         requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer
       )
@@ -2036,8 +2036,8 @@ export class RouterSocket extends RoutedMessageSocket {
       };
       return {
         size: raw.size,
-        routingId: raw.routingId ? RoutingId.fromBytes(raw.routingId) : null,
-        spotRid: raw.spotRid ? RoutingId.fromBytes(raw.spotRid) : null,
+        routingId: raw.routingId ? RoutingId.from(raw.routingId) : null,
+        spotRid: raw.spotRid ? RoutingId.from(raw.spotRid) : null,
         requestSeq: raw.requestSeq ?? null
       };
     } catch (error) {
@@ -2071,7 +2071,7 @@ export class RouterSocket extends RoutedMessageSocket {
     });
   }
   getRoutingId(): RoutingId {
-    return RoutingId.fromBytes(
+    return RoutingId.from(
       configCall('routing id get failed', () =>
         requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer
       )
@@ -2362,7 +2362,7 @@ export class StreamSocket extends SocketBase {
         if (!raw.routingId) {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
         }
-        return this.sendDirect(RoutingId.fromBytes(raw.routingId), parts, sendFlags);
+        return this.sendDirect(RoutingId.from(raw.routingId), parts, sendFlags);
       };
     if (!result) return materializeReceived(raw, undefined, send);
     materializeReceivedInto(result, raw, undefined, send);
@@ -2402,7 +2402,7 @@ export class StreamSocket extends SocketBase {
     });
   }
   getRoutingId(): RoutingId {
-    return RoutingId.fromBytes(
+    return RoutingId.from(
       configCall('routing id get failed', () =>
         requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer
       )
@@ -2601,8 +2601,8 @@ export class Discovery extends NativeHandle {
       }
     );
     return {
-      spotRid: RoutingId.fromBytes(raw.spotRid),
-      ownerNodeRid: RoutingId.fromBytes(raw.ownerNodeRid),
+      spotRid: RoutingId.from(raw.spotRid),
+      ownerNodeRid: RoutingId.from(raw.ownerNodeRid),
       spotKind: raw.spotKind as SpotKindValue
     };
   }
@@ -2682,7 +2682,7 @@ export class SpotNode extends NativeHandle {
   private _nodeRoutingId: RoutingId;
   constructor(ctx: Context, mode: SpotNodeModeValue = SpotNodeMode.All) {
     super(requireNative().spotNodeNew(ctx.nativeHandle(), { mode: mode | 0 }));
-    this._nodeRoutingId = RoutingId.fromBytes(randomBytes(16));
+    this._nodeRoutingId = RoutingId.from(randomBytes(16));
   }
   /** @internal */
   nativeHandle(): unknown { return this._native; }
@@ -2800,7 +2800,7 @@ export class SpotNode extends NativeHandle {
     this._nodeRoutingId = routingId;
   }
   get routingId(): RoutingId {
-    this._nodeRoutingId = RoutingId.fromBytes(configCall('spot node routing id get failed', () =>
+    this._nodeRoutingId = RoutingId.from(configCall('spot node routing id get failed', () =>
       requireNative().handleGetRoutingId(this._native) as Buffer
     ));
     return this._nodeRoutingId;
@@ -2850,7 +2850,7 @@ export class SpotNode extends NativeHandle {
         nodeRoutingId?: Buffer | null;
       };
       if (raw?.nodeRoutingId) {
-        this._nodeRoutingId = RoutingId.fromBytes(raw.nodeRoutingId);
+        this._nodeRoutingId = RoutingId.from(raw.nodeRoutingId);
       }
     } catch {
       // Ignore cache warm-up failure; statusSnapshot() will surface real errors later.
@@ -2963,7 +2963,7 @@ export class SpotNode extends NativeHandle {
       lastChangedMs: number | bigint;
     });
     if (raw.nodeRoutingId) {
-      this._nodeRoutingId = RoutingId.fromBytes(raw.nodeRoutingId);
+      this._nodeRoutingId = RoutingId.from(raw.nodeRoutingId);
     }
     return mapSpotNodeStatus(raw, this._nodeRoutingId);
   }
@@ -3444,7 +3444,7 @@ export class Spot extends NativeHandle {
     });
   }
   get routingId(): RoutingId {
-    return RoutingId.fromBytes(configCall('spot routing id get failed', () =>
+    return RoutingId.from(configCall('spot routing id get failed', () =>
       requireNative().handleGetRoutingId(this._native) as Buffer
     ));
   }
@@ -3837,9 +3837,9 @@ export class Spot extends NativeHandle {
         if (!raw.sourceRid) {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed reply target');
         }
-        const sourceRid = RoutingId.fromBytes(raw.sourceRid);
+        const sourceRid = RoutingId.from(raw.sourceRid);
         if (raw.spotRid) {
-          this.replyToSpotInternal(sourceRid, RoutingId.fromBytes(raw.spotRid), requestSeq, parts, flags);
+          this.replyToSpotInternal(sourceRid, RoutingId.from(raw.spotRid), requestSeq, parts, flags);
           return;
         }
         this.replyToRouterInternal(sourceRid, requestSeq, parts, flags);
@@ -3849,8 +3849,8 @@ export class Spot extends NativeHandle {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
         }
         return this.sendToSpotDirect(
-          RoutingId.fromBytes(raw.sourceRid),
-          RoutingId.fromBytes(raw.spotRid),
+          RoutingId.from(raw.sourceRid),
+          RoutingId.from(raw.spotRid),
           parts,
           flags
         );

@@ -29,7 +29,7 @@ const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 
 const RECEIVER_ID = Buffer.from('router-perf-receiver', 'ascii');
 const SENDER_ID = Buffer.from('router-perf-sender', 'ascii');
-const RECEIVER_ROUTING_ID = zlink.RoutingId.fromBytes(RECEIVER_ID);
+const RECEIVER_ROUTING_ID = zlink.RoutingId.from(RECEIVER_ID);
 
 function trace(message) {
   if (process.env.PERF_NODE_TRACE === '1') {
@@ -70,7 +70,7 @@ async function runRouterRouterBenchmark(msgSize, options) {
       createReceiver: (ctx) => new zlink.RouterSocket(ctx),
       createSender: (ctx) => new zlink.RouterSocket(ctx),
       configureReceiver: (socket) => socket.setRoutingId(RECEIVER_ROUTING_ID),
-      configureSender: (socket) => socket.setRoutingId(zlink.RoutingId.fromBytes(SENDER_ID)),
+      configureSender: (socket) => socket.setRoutingId(zlink.RoutingId.from(SENDER_ID)),
       handshake: (sender, receiver) => {
         sender.send(RECEIVER_ROUTING_ID).message(Buffer.from('PING')).submit();
         const senderRid = handshakeRouterReceiver(receiver);

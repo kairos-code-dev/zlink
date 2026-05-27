@@ -111,7 +111,7 @@ public abstract partial class SpotTestSupport
                     router.SetRouterBind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
-                        routing.RoutingId = RoutingId.FromBytes(
+                        routing.RoutingId = RoutingId.From(
                             Encoding.UTF8.GetBytes("target-node"));
                     });
                 });
@@ -146,7 +146,7 @@ public abstract partial class SpotTestSupport
                         server.Bind(channelEndpoint);
                         server.ConfigureRouting(routing =>
                         {
-                            routing.RoutingId = RoutingId.FromString("aabbcc10");
+                            routing.RoutingId = RoutingId.From("aabbcc10");
                         });
                     });
                 });
@@ -158,7 +158,7 @@ public abstract partial class SpotTestSupport
                     route.Bind(channelEndpoint);
                     route.ConfigureRouting(routing =>
                     {
-                        routing.RoutingId = RoutingId.FromString("aabbcc11");
+                        routing.RoutingId = RoutingId.From("aabbcc11");
                     });
                 });
                 break;
@@ -200,7 +200,7 @@ public abstract partial class SpotTestSupport
             var recorder = host.Services.GetRequiredService<SpotRouteTransportRecorder>();
             var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
             var target = await manager.GetOrCreateAsync<SpotRouteTargetSpot>(
-                RoutingId.FromBytes(Encoding.UTF8.GetBytes($"spot{routerChannelId}")));
+                RoutingId.From(Encoding.UTF8.GetBytes($"spot{routerChannelId}")));
             await WaitForAcceptedRoutePeerAsync(nodeRuntime, routerChannelId);
 
             await RetryAsync(

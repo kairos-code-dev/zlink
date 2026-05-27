@@ -179,7 +179,7 @@ public sealed class ActorBindingTests : StreamTestSupport
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(endpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.FromString("1001"));
+                    routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.From("1001"));
                     routed.UseManualConnections(connections => connections.Connect(endpoint));
                 });
             });
@@ -232,7 +232,7 @@ public sealed class ActorBindingTests : StreamTestSupport
                 options.AddRouteMeshChannel("gateway", routed =>
                 {
                     routed.Bind(endpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.FromString("1101"));
+                    routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.From("1101"));
                     routed.UseManualConnections(connections => connections.Connect(endpoint));
                 });
             });
@@ -246,7 +246,7 @@ public sealed class ActorBindingTests : StreamTestSupport
 
             var context = new ZLinkSessionContext(
                 host.Services.GetRequiredService<ZLinkFrameworkRuntime>(),
-                new RoutedTestStream("actor-lookup-session", RoutingId.Of("session-lookup")),
+                new RoutedTestStream("actor-lookup-session", RoutingId.From("session-lookup")),
                 static _ => ValueTask.CompletedTask,
                 static _ => ValueTask.CompletedTask);
 
@@ -273,7 +273,7 @@ public sealed class ActorBindingTests : StreamTestSupport
     {
         var endpoint = GetFreeTcpEndpoint();
         var spotEndpoint = GetFreeTcpEndpoint();
-        var localRid = RoutingId.FromString("1213");
+        var localRid = RoutingId.From("1213");
         var recorder = new ActorDispatchRecorder();
         var host = await CreateHostAsync(endpoint, services =>
         {

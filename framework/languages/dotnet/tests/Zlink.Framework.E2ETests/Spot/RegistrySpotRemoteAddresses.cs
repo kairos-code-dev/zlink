@@ -45,7 +45,7 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
                 route.Bind(routeChannelEndpoint);
                 route.ConfigureRouting(routing =>
                 {
-                    routing.RoutingId = RoutingId.FromBytes(
+                    routing.RoutingId = RoutingId.From(
                         Encoding.UTF8.GetBytes("registry-play-route"));
                 });
             });
@@ -58,7 +58,7 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
                     router.SetRouterBind(GetFreeTcpEndpoint());
                     router.ConfigureRouting(routing =>
                     {
-                        routing.RoutingId = RoutingId.FromBytes(
+                        routing.RoutingId = RoutingId.From(
                             Encoding.UTF8.GetBytes("registry-target-node"));
                     });
                 });

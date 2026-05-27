@@ -145,6 +145,26 @@ Do not make DTOs such as `Message`, `RoutingId`, `Received`, or
 `TopicMessage` into interfaces only for symmetry. They are concrete domain
 values with clear ownership and allocation behavior.
 
+### RoutingId String And Binary Helpers
+
+`RoutingId` remains a binary-safe value type. The public .NET helpers use these
+meanings:
+
+- `RoutingId.From(string value)` encodes a user routing id string as UTF-8.
+- `RoutingId.From(byte[] value)` and `RoutingId.From(ReadOnlySpan<byte> value)`
+  preserve raw routing id bytes.
+- `RoutingId.FromHex(value)` restores bytes previously emitted by `ToHex()`.
+- `RoutingId.From(uint value)` writes a 4-byte big-endian `uint32` routing id.
+- `RoutingId.From(Guid value)` writes a 16-byte UUID routing id.
+- `ToString()` is display-oriented: printable UTF-8 text, then `uint32`, then
+  UUID, then `hex:` plus raw hex when no clearer representation exists.
+
+Use `ToHex()` / `FromHex(value)` for durable raw-byte round trips.
+
+`RoutingId` caching is an internal optimization only. The binding may cache
+hashes or short-lived receive-path values, but equality and public behavior are
+defined only by the immutable byte value.
+
 ## Contract / Runtime Placement Rules
 
 - Public interfaces, concrete DTO/value types, enums, and public exception

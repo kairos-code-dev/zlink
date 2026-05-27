@@ -456,7 +456,7 @@ transport 를 써야 하는지도 모호해진다.
 따라서 Spot target 메시징은 `IZLinkChannelClient`가 아니라 `IZLinkRoutedSpotClient`가 맡고,
 API 는 `ViaEgressChannel(...)`로 사용할 local egress channel 을 먼저 고르게 한다.
 target Spot 은 `RoutingId`만 받는다. string name 이 필요하면 caller 가
-`RoutingId.Of(...)`처럼 명시적으로 routing id 로 바꾼 뒤 넘긴다.
+`RoutingId.From(...)`처럼 명시적으로 routing id 로 바꾼 뒤 넘긴다.
 
 fanout publish 는 별도 publisher interface 를 쓴다.
 
@@ -533,7 +533,7 @@ channel 이 그 target SpotNode router peer 와 현재 연결되어 있지 않�
 올바르더라도 send/request 는 transport failure 로 실패한다.
 
 `RoutingId`만 target 으로 받는 이유는 name resolution 을 transport client 에 섞지 않기
-위해서다. application 이 string name 을 쓰고 싶으면 호출 전에 `RoutingId.Of("room-123")`
+위해서다. application 이 string name 을 쓰고 싶으면 호출 전에 `RoutingId.From("room-123")`
 처럼 routing id 로 바꾼다. 별도 directory 나 resolver 가 필요하면 그 서비스가
 `RoutingId`를 돌려주고, routed Spot client 는 이미 정규화된 target rid 만 전송한다.
 
@@ -797,7 +797,7 @@ channel 등록을 fallback 으로 사용할 수 있다.
    route channel 등록을 fallback 으로 사용할 수 있다.
 
 이 흐름에서 Spot RID string overload 는 제공하지 않는다. string name 을 쓰는 application
-은 호출 전에 `RoutingId.Of(...)`로 target rid 를 만든다. 별도 route resolver 가 필요하면
+은 호출 전에 `RoutingId.From(...)`로 target rid 를 만든다. 별도 route resolver 가 필요하면
 그 resolver 는 `RoutingId` 또는 node routing metadata 를 돌려주는 독립 서비스로 둔다.
 `IZLinkRoutedSpotClient`는 resolver 를 통해 channel 을 찾지 않는다.
 
@@ -1042,7 +1042,7 @@ public sealed class MatchHandler(IZLinkRoutedSpotClient spots)
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        var roomSpotRid = RoutingId.Of("matching-room");
+        var roomSpotRid = RoutingId.From("matching-room");
 
         var reply = await spots
             .ViaEgressChannel("gateway.route")
@@ -1058,7 +1058,7 @@ public sealed class MatchHandler(IZLinkRoutedSpotClient spots)
 이 handler 는 current Spot callback 안에 있지 않다. 따라서 `IZLinkSpotClient`의 ambient
 Spot 전제를 쓰지 않고 `IZLinkRoutedSpotClient`를 쓴다. 사용할 local egress channel 은
 `ViaEgressChannel("gateway.route")`에서 명시한다. `"matching-room"` 같은 string name 은
-`RequestSpot(...)`에 직접 넘기지 않고 `RoutingId.Of(...)`로 target rid 를 만든 뒤 넘긴다.
+`RequestSpot(...)`에 직접 넘기지 않고 `RoutingId.From(...)`로 target rid 를 만든 뒤 넘긴다.
 
 ### 7.5 channel handler 에서 다른 channel 로 request
 

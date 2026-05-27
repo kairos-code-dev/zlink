@@ -14,8 +14,8 @@ public sealed class RouteChannelTests
         var registryRouterEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
         var leftEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
         var rightEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
-        var leftRid = RoutingId.FromString("11");
-        var rightRid = RoutingId.FromString("22");
+        var leftRid = RoutingId.From("11");
+        var rightRid = RoutingId.From("22");
 
         var registryBuilder = Host.CreateApplicationBuilder();
         registryBuilder.Services.AddZLinkRegistry(options =>
@@ -77,8 +77,8 @@ public sealed class RouteChannelTests
     {
         var leftEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
         var rightEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
-        var leftRid = RoutingId.FromString("01");
-        var rightRid = RoutingId.FromString("02");
+        var leftRid = RoutingId.From("01");
+        var rightRid = RoutingId.From("02");
 
         var leftBuilder = Host.CreateApplicationBuilder();
         leftBuilder.Services.AddZLinkFramework(options =>
@@ -147,8 +147,8 @@ public sealed class RouteChannelTests
     {
         var leftEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
         var rightEndpoint = $"tcp://127.0.0.1:{ChannelMessagingTestSupport.GetEphemeralPort()}";
-        var leftRid = RoutingId.FromString("31");
-        var rightRid = RoutingId.FromString("32");
+        var leftRid = RoutingId.From("31");
+        var rightRid = RoutingId.From("32");
 
         var leftBuilder = Host.CreateApplicationBuilder();
         leftBuilder.Services.AddZLinkFramework(options =>

@@ -594,7 +594,7 @@ public sealed class test_pair_tcp
 
         using Message message = Message.From("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
-            router.Send(RoutingId.FromBytes("UNKNOWN"u8)).Message(message)
+            router.Send(RoutingId.From("UNKNOWN"u8)).Message(message)
                 .Flags(SendFlags.DontWait).Submit());
         Assert.Equal(ZlinkSubmitException.ErrorCode.NotConnected, ex.Result);
     }
@@ -611,7 +611,7 @@ public sealed class test_pair_tcp
 
         using Message message = Message.From("no-route");
         var ex = Assert.Throws<ZlinkSubmitException>(() =>
-            router.Send(RoutingId.FromBytes("UNKNOWN"u8)).Message(message)
+            router.Send(RoutingId.From("UNKNOWN"u8)).Message(message)
                 .Flags(SendFlags.DontWait).Submit());
         Assert.Equal(ZlinkSubmitException.ErrorCode.NotConnected, ex.Result);
     }

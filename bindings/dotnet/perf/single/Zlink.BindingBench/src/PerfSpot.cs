@@ -16,15 +16,15 @@ internal static class PerfSpot
     private const int ReadyRetryTag = int.MaxValue - 1;
     private static ReadOnlySpan<byte> TopicBytes => "bench"u8;
     private static readonly RoutingId PubNodeRoutingId =
-        RoutingId.FromBytes("z-perf-spot-pub"u8);
+        RoutingId.From("z-perf-spot-pub"u8);
     private static readonly RoutingId SubNodeRoutingId =
-        RoutingId.FromBytes("a-perf-spot-sub"u8);
+        RoutingId.From("a-perf-spot-sub"u8);
     private static readonly RoutingId PubSpotRoutingId =
-        RoutingId.FromBytes("z-perf-spot-pub-s"u8);
+        RoutingId.From("z-perf-spot-pub-s"u8);
     private static readonly RoutingId SubSpotRoutingId =
-        RoutingId.FromBytes("a-perf-spot-sub-s"u8);
+        RoutingId.From("a-perf-spot-sub-s"u8);
     private static readonly RoutingId StopSpotRoutingId =
-        RoutingId.FromBytes("a-perf-spot-stop-s"u8);
+        RoutingId.From("a-perf-spot-stop-s"u8);
 
     internal static int RunSpot(string transport, int size)
     {

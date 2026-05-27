@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Systems.Zlink.Native;
@@ -29,13 +31,13 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         _native = new NativeRoutingIdBox(_bytes);
     }
 
-    public static RoutingId FromBytes(ReadOnlySpan<byte> bytes)
+    public static RoutingId From(ReadOnlySpan<byte> bytes)
     {
         Validate(bytes, nameof(bytes));
         return new RoutingId(bytes.ToArray(), takeOwnership: true);
     }
 
-    public static RoutingId FromBytes(byte[] bytes)
+    public static RoutingId From(byte[] bytes)
     {
         if (bytes == null)
             throw new ArgumentNullException(nameof(bytes));
@@ -43,19 +45,14 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         return new RoutingId(bytes, takeOwnership: false);
     }
 
-    public static RoutingId FromUtf8(string value)
+    public static RoutingId From(string value)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
-        return FromBytes(Encoding.UTF8.GetBytes(value));
+        return From(Encoding.UTF8.GetBytes(value));
     }
 
-    public static RoutingId Of(string value)
-    {
-        return FromUtf8(value);
-    }
-
-    public static RoutingId FromString(string value)
+    public static RoutingId FromHex(string value)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
@@ -87,6 +84,20 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         return new RoutingId(bytes, takeOwnership: true);
     }
 
+    public static RoutingId From(uint value)
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(bytes, value);
+        return new RoutingId(bytes.ToArray(), takeOwnership: true);
+    }
+
+    public static RoutingId From(Guid value)
+    {
+        byte[] bytes = new byte[16];
+        value.TryWriteBytes(bytes, bigEndian: true, out _);
+        return new RoutingId(bytes, takeOwnership: true);
+    }
+
     public int Size => _bytes?.Length ?? 0;
 
     public bool IsEmpty => Size == 0;
@@ -106,9 +117,42 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         return Convert.ToHexString(ToBytes()).ToLowerInvariant();
     }
 
+    public bool TryToUInt32(out uint value)
+    {
+        ReadOnlySpan<byte> bytes = ToBytes();
+        if (bytes.Length != sizeof(uint))
+        {
+            value = 0;
+            return false;
+        }
+
+        value = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+        return true;
+    }
+
+    public bool TryToGuid(out Guid value)
+    {
+        ReadOnlySpan<byte> bytes = ToBytes();
+        if (bytes.Length != 16)
+        {
+            value = default;
+            return false;
+        }
+
+        value = new Guid(bytes, bigEndian: true);
+        return true;
+    }
+
     public override string ToString()
     {
-        return ToHex();
+        ReadOnlySpan<byte> bytes = ToBytes();
+        if (TryToUtf8String(bytes, out string? text))
+            return text!;
+        if (TryToUInt32(out uint uint32))
+            return uint32.ToString(CultureInfo.InvariantCulture);
+        if (TryToGuid(out Guid guid))
+            return guid.ToString("D");
+        return "hex:" + ToHex();
     }
 
     public bool Equals(RoutingId other)
@@ -140,7 +184,7 @@ public readonly struct RoutingId : IEquatable<RoutingId>
 
     internal static RoutingId? FromOptionalBytes(ReadOnlySpan<byte> bytes)
     {
-        return bytes.Length == 0 ? null : FromBytes(bytes);
+        return bytes.Length == 0 ? null : From(bytes);
     }
 
     internal static RoutingId? FromOwnedOptionalBytes(byte[] bytes)
@@ -261,6 +305,33 @@ public readonly struct RoutingId : IEquatable<RoutingId>
         for (int i = 0; i < bytes.Length; i++)
             hash.Add(bytes[i]);
         return hash.ToHashCode();
+    }
+
+    private static bool TryToUtf8String(ReadOnlySpan<byte> bytes,
+        out string? text)
+    {
+        text = null;
+        if (bytes.Length == 0)
+            return false;
+
+        string decoded = Encoding.UTF8.GetString(bytes);
+        for (int i = 0; i < decoded.Length; i++)
+        {
+            if (char.IsControl(decoded[i]))
+                return false;
+        }
+
+        int byteCount = Encoding.UTF8.GetByteCount(decoded);
+        if (byteCount != bytes.Length)
+            return false;
+
+        byte[] roundtrip = new byte[byteCount];
+        Encoding.UTF8.GetBytes(decoded, roundtrip.AsSpan());
+        if (!roundtrip.AsSpan().SequenceEqual(bytes))
+            return false;
+
+        text = decoded;
+        return true;
     }
 
     private static void Validate(ReadOnlySpan<byte> bytes, string paramName)

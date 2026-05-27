@@ -23,8 +23,8 @@ public sealed class RemoteProxyDisconnectTests : StreamTestSupport
         var playRouterEndpoint = GetFreeTcpEndpoint();
         var playSpotEndpoint = GetFreeTcpEndpoint();
         var playSpotRouterEndpoint = GetFreeTcpEndpoint();
-        var sessionRid = RoutingId.Of($"remote-disconnect-session-{Guid.NewGuid():N}");
-        var playRid = RoutingId.Of($"remote-disconnect-play-{Guid.NewGuid():N}");
+        var sessionRid = RoutingId.From($"remote-disconnect-session-{Guid.NewGuid():N}");
+        var playRid = RoutingId.From($"remote-disconnect-play-{Guid.NewGuid():N}");
         var actorId = "remote-disconnect-player-1";
         var actorRecorder = new ActorDispatchRecorder();
         GatewaySessionRecorder? sessionRecorder = null;

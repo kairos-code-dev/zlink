@@ -28,7 +28,7 @@ public record RegistryTopologyEntry(AutoConnectType autoConnectType,
         }
         return new RegistryTopologyEntry(
           EnumCodecs.autoConnectTypeFromValue(segment.get(ValueLayout.JAVA_INT, 0)),
-          RoutingId.fromBytes(routing),
+          RoutingId.from(routing),
           EnumCodecs.serviceKindFromValue(segment.get(ValueLayout.JAVA_INT, 260)),
           EnumCodecs.serviceRoleFromValue(segment.get(ValueLayout.JAVA_INT, 264)),
           NativeHelpers.fromCString(segment.asSlice(268, 256), 256),

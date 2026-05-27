@@ -580,5 +580,5 @@ export function wrapRoutingId(routingId: Buffer | Uint8Array | null | undefined)
   if (!routingId || routingId.length === 0) {
     return null;
   }
-  return RoutingId.fromBytes(routingId);
+  return RoutingId.from(routingId);
 }

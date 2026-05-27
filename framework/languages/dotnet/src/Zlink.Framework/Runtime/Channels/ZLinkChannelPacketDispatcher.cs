@@ -421,7 +421,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
     {
         var metadata = ZLinkRoutedSpotRelayPackets.DecodeMetadata(received);
         var targetNodeRid = runtime.ResolveAcceptedSpotRouteNodeRid(channelName);
-        var targetSpotRid = RoutingId.FromBytes(metadata.TargetSpotRid);
+        var targetSpotRid = RoutingId.From(metadata.TargetSpotRid);
         var spotParts = ZLinkRoutedSpotRelayPackets.CopySpotPayloadParts(received);
         try
         {
@@ -454,7 +454,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
         {
             var metadata = ZLinkRoutedSpotRelayPackets.DecodeMetadata(received);
             var targetNodeRid = runtime.ResolveAcceptedSpotRouteNodeRid(channelName);
-            var targetSpotRid = RoutingId.FromBytes(metadata.TargetSpotRid);
+            var targetSpotRid = RoutingId.From(metadata.TargetSpotRid);
             var timeout = header.Deadline is { } deadline
                 ? deadline - DateTimeOffset.UtcNow
                 : registration.DefaultTimeout;

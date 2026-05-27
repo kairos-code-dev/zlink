@@ -14,7 +14,7 @@ using var routerSocket = new RouterSocket(ctx);
 string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
 using var dealerMonitor = dealerSocket.MonitorOpen(SocketEvent.ConnectionReady);
 using var routerMonitor = routerSocket.MonitorOpen(SocketEvent.ConnectionReady);
-dealerSocket.SetRoutingId(RoutingId.FromBytes(Encoding.UTF8.GetBytes("request-reply-client")));
+dealerSocket.SetRoutingId(RoutingId.From(Encoding.UTF8.GetBytes("request-reply-client")));
 routerSocket.Bind(endpoint);
 dealerSocket.Connect(endpoint);
 SampleSupport.WaitConnected(routerMonitor, dealerMonitor);

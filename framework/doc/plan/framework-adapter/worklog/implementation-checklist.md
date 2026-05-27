@@ -35,7 +35,7 @@
   `sessionId`와 `bindingToken`이 모두 맞을 때만 삭제해서 reconnect 뒤 늦게 도착한
   unbind가 새 binding을 지우지 않는다.
 - registry metadata에 저장하는 `sessionRouterId`는 `RoutingId.ToHex()`로 기록하고
-  `RoutingId.FromString(...)`으로 복원한다. `RoutingId.ToString()`은 hex가 아니므로
+  `RoutingId.FromHex(...)`로 복원한다. `RoutingId.ToString()`은 hex가 아니므로
   metadata 저장에는 사용하지 않는다.
 - sample의 남은 `RoutingId` 사용은 generated topology, routed channel 설정,
   session location store의 route 복원, session boundary의 remote actor placement에만

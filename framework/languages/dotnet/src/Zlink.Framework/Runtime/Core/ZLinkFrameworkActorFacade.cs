@@ -162,7 +162,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             .ConfigureAwait(false);
 
         var targetRef = new ZLinkBackendActorRef(
-            RoutingId.FromString(reply.TargetNodeRid),
+            RoutingId.From(reply.TargetNodeRid),
             actor.ActorId,
             reply.ActorGeneration);
         actorState.NativeActorRef = targetRef;

@@ -42,10 +42,10 @@ public sealed class UnhandledDispatchPolicyTests
             new { Value = "join" },
             typeof(object));
         var request = new ZLinkBackendActorJoinRequest(
-            new ZLinkBackendActorRef(RoutingId.Of("source-node"), "source-actor", 1),
-            new ZLinkBackendActorRef(RoutingId.Of("target-node"), "target-actor", 1),
-            RoutingId.Of("source-node"),
-            RoutingId.Of("target-spot"),
+            new ZLinkBackendActorRef(RoutingId.From("source-node"), "source-actor", 1),
+            new ZLinkBackendActorRef(RoutingId.From("target-node"), "target-actor", 1),
+            RoutingId.From("source-node"),
+            RoutingId.From("target-spot"),
             1,
             parts[0],
             parts);
@@ -113,10 +113,10 @@ public sealed class UnhandledDispatchPolicyTests
             new { Value = "join" },
             typeof(object));
         var request = new ZLinkBackendActorJoinRequest(
-            new ZLinkBackendActorRef(RoutingId.Of("source-node"), "source-actor", 1),
-            new ZLinkBackendActorRef(RoutingId.Of("target-node"), "target-actor", 1),
-            RoutingId.Of("source-node"),
-            RoutingId.Of("target-spot"),
+            new ZLinkBackendActorRef(RoutingId.From("source-node"), "source-actor", 1),
+            new ZLinkBackendActorRef(RoutingId.From("target-node"), "target-actor", 1),
+            RoutingId.From("source-node"),
+            RoutingId.From("target-spot"),
             1,
             parts[0],
             parts);
@@ -242,7 +242,7 @@ public sealed class UnhandledDispatchPolicyTests
 
         public object NativeInstance => this;
 
-        public RoutingId RoutingId => RoutingId.Of("spot");
+        public RoutingId RoutingId => RoutingId.From("spot");
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

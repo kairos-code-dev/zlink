@@ -28,7 +28,7 @@ test('router recv and reply still work through the canonical socket surface', ()
   const ctx = new zlink.Context();
   const routerSocket = new zlink.RouterSocket(ctx);
   const dealerSocket = new zlink.DealerSocket(ctx);
-  const clientRoutingId = zlink.RoutingId.fromBytes(Buffer.from('request-reply-client'));
+  const clientRoutingId = zlink.RoutingId.from(Buffer.from('request-reply-client'));
 
   routerSocket.bind('inproc://request-reply-contract');
   dealerSocket.setRoutingId(clientRoutingId);
@@ -58,8 +58,8 @@ test('reply helpers reject non-none flags when the core lacks reply flag support
   const routerSocket = new zlink.RouterSocket(ctx);
   const spotNode = new zlink.SpotNode(ctx);
   const spot = spotNode.createSpot();
-  const routingId = zlink.RoutingId.fromBytes(Buffer.from('peer'));
-  const spotRoutingId = zlink.RoutingId.fromBytes(Buffer.from('spot'));
+  const routingId = zlink.RoutingId.from(Buffer.from('peer'));
+  const spotRoutingId = zlink.RoutingId.from(Buffer.from('spot'));
 
   assert.throws(
     () => routerSocket.reply(routingId, 1n).message('pong').flags(zlink.SendFlags.DontWait).submit(),

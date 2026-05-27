@@ -145,7 +145,7 @@ public sealed class SpotNode : ISpotNode
             int rc = NativeMethods.zlink_get_routing_id(_handle,
                 out ZlinkRoutingId routingId);
             ZlinkException.ThrowConfigIfError(rc);
-            return RoutingId.FromBytes(
+            return RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref routingId));
         }
     }
@@ -1300,7 +1300,7 @@ public sealed partial class Spot : ISpot
             int rc = NativeMethods.zlink_get_routing_id(_handle,
                 out ZlinkRoutingId routingId);
             ZlinkException.ThrowConfigIfError(rc);
-            return RoutingId.FromBytes(
+            return RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref routingId));
         }
     }

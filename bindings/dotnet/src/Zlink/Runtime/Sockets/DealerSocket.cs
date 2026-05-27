@@ -32,7 +32,7 @@ public sealed class DealerSocket : MessageSocketBase, IDealerSocket
 
     public RoutingId GetRoutingId()
     {
-        return RoutingId.FromBytes(Kernel.GetOption(SocketOptions.RoutingId));
+        return RoutingId.From(Kernel.GetOption(SocketOptions.RoutingId));
     }
 
     public void AttachDiscovery(IDiscovery discovery)

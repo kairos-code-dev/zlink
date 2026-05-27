@@ -22,7 +22,7 @@ internal sealed class ZLinkRoutedSpotRouteInternalPacketDispatcher(
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
         var metadata = ZLinkRoutedSpotRelayPackets.DecodeMetadata(received);
         var targetNodeRid = runtime.ResolveAcceptedSpotRouteNodeRid(header.ChannelName);
-        var targetSpotRid = RoutingId.FromBytes(metadata.TargetSpotRid);
+        var targetSpotRid = RoutingId.From(metadata.TargetSpotRid);
         var spotParts = ZLinkRoutedSpotRelayPackets.CopySpotPayloadParts(received);
         try
         {
@@ -47,7 +47,7 @@ internal sealed class ZLinkRoutedSpotRouteInternalPacketDispatcher(
     {
         var metadata = ZLinkRoutedSpotRelayPackets.DecodeMetadata(received);
         var targetNodeRid = runtime.ResolveAcceptedSpotRouteNodeRid(routedHeader.ChannelName);
-        var targetSpotRid = RoutingId.FromBytes(metadata.TargetSpotRid);
+        var targetSpotRid = RoutingId.From(metadata.TargetSpotRid);
         var timeout = ResolveInternalTimeout(routedHeader);
         var spotParts = ZLinkRoutedSpotRelayPackets.CopySpotPayloadParts(received);
         IReadOnlyList<Message> reply;

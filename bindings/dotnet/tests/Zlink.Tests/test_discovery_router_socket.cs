@@ -24,8 +24,8 @@ public sealed class test_discovery_router_socket
         var registryRouter = CoreTestSupport.NewEndpoint("tcp", "routed-reg-router");
         var leftEndpoint = CoreTestSupport.NewEndpoint("tcp", "routed-left");
         var rightEndpoint = CoreTestSupport.NewEndpoint("tcp", "routed-right");
-        var leftRid = RoutingId.FromString("01");
-        var rightRid = RoutingId.FromString("02");
+        var leftRid = RoutingId.FromHex("01");
+        var rightRid = RoutingId.FromHex("02");
 
         registry.Bind(registryPub, registryRouter);
         registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));

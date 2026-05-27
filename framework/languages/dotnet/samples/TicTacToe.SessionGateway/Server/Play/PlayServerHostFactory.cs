@@ -55,7 +55,7 @@ public static class PlayServerHostFactory
                 {
                     spot.ConfigureEntrySpot(entry =>
                     {
-                        entry.RoutingId = RoutingId.FromString(SampleNames.EntrySpotRoutingId);
+                        entry.RoutingId = RoutingId.From(SampleNames.EntrySpotRoutingId);
                     });
                     spot.EnableRouter(router =>
                     {

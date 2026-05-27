@@ -52,11 +52,11 @@ public sealed record SampleTopology(
             ReadEndpoint("BINGO_PLAY_SPOT_ROUTER_ENDPOINT", "tcp://127.0.0.1:47111"),
             ReadEndpoint("BINGO_STREAM_ENDPOINT", "tcp://127.0.0.1:47112"),
             ReadEndpoint("BINGO_RECONNECT_STREAM_ENDPOINT", "tcp://127.0.0.1:47113"),
-            RoutingId.FromString("1101"),
-            RoutingId.FromString("1102"),
-            RoutingId.FromString("1103"),
-            RoutingId.FromString("1104"),
-            RoutingId.FromString("2202"));
+            RoutingId.From("1101"),
+            RoutingId.From("1102"),
+            RoutingId.From("1103"),
+            RoutingId.From("1104"),
+            RoutingId.From("2202"));
     }
 
     private static string ReadEndpoint(string name, string defaultValue)

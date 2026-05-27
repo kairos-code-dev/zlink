@@ -39,9 +39,9 @@ internal static class PerfMultiSpotReqRep
         {
             Mode = mode;
             Pattern = pattern;
-            ServerNodeRoutingId = RoutingId.FromBytes(
+            ServerNodeRoutingId = RoutingId.From(
                 Encoding.ASCII.GetBytes(serverNodeRoutingIdText));
-            ServerSpotRoutingId = RoutingId.FromBytes(
+            ServerSpotRoutingId = RoutingId.From(
                 Encoding.ASCII.GetBytes(serverSpotRoutingIdText));
             DataEndpointName = dataEndpointName;
             ControlEndpointName = controlEndpointName;
@@ -272,7 +272,7 @@ internal static class PerfMultiSpotReqRep
             {
                 var requester = dataNode.CreateSpot();
                 ApplyMultiSpotSocketOptions(requester, options);
-                requester.SetRoutingId(RoutingId.FromBytes(
+                requester.SetRoutingId(RoutingId.From(
                     Encoding.ASCII.GetBytes(
                         config.Mode == SpotEchoMode.RequestReply
                             ? $"SPOT-REQREP-{i}"

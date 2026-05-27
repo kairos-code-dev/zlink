@@ -39,7 +39,7 @@ public sealed class ChannelContracts
     public async Task Route_client_addresses_a_target_node_through_a_router_channel()
     {
         var client = new ExampleRouteClient();
-        var target = RoutingId.Of("play-node-1");
+        var target = RoutingId.From("play-node-1");
 
         await client
             .Send("play-router", target, new RoomEvent("opened"))

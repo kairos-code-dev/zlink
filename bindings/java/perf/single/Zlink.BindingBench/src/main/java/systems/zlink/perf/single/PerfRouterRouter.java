@@ -30,9 +30,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 final class PerfRouterRouter {
     private static final MonitorEventType READY_EVENT = MonitorEventType.CONNECTION_READY;
-    private static final RoutingId ROUTER1 = RoutingId.fromBytes(
+    private static final RoutingId ROUTER1 = RoutingId.from(
         "ROUTER1".getBytes(StandardCharsets.UTF_8));
-    private static final RoutingId ROUTER2 = RoutingId.fromBytes(
+    private static final RoutingId ROUTER2 = RoutingId.from(
         "ROUTER2".getBytes(StandardCharsets.UTF_8));
     private static final byte[] PING = "PING".getBytes(StandardCharsets.UTF_8);
     private static final byte[] PONG = "PONG".getBytes(StandardCharsets.UTF_8);

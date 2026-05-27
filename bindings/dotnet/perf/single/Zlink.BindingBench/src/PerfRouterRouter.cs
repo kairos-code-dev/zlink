@@ -8,9 +8,9 @@ using static PerfRunner;
 internal static class PerfRouterRouter
 {
     private static readonly RoutingId ReceiverRoutingId =
-        RoutingId.FromBytes("ROUTER1"u8);
+        RoutingId.From("ROUTER1"u8);
     private static readonly RoutingId SenderRoutingId =
-        RoutingId.FromBytes("ROUTER2"u8);
+        RoutingId.From("ROUTER2"u8);
     private const uint RunId = 1;
     private const uint ReadyPhase = 0;
     private const uint ActivePhase = 1;

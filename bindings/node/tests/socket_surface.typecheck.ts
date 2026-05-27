@@ -1,8 +1,8 @@
 import * as zlink from '@zlink-systems/zlink';
 
 const ctx = new zlink.Context();
-const routingId = zlink.RoutingId.fromBytes(Buffer.from('id'));
-const peerRoutingId = zlink.RoutingId.fromBytes(Buffer.from('peer'));
+const routingId = zlink.RoutingId.from(Buffer.from('id'));
+const peerRoutingId = zlink.RoutingId.from(Buffer.from('peer'));
 const AUTO_CONNECT_SPOT_MESH = 5;
 const AUTO_CONNECT_ROUTE_MESH = 1;
 const AUTO_CONNECT_CLIENT_SERVER = 2;

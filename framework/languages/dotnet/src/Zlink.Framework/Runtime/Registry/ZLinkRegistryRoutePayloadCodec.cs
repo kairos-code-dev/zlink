@@ -85,7 +85,7 @@ internal static class ZLinkRegistryRoutePayloadCodec
         EnsureRemaining(bytes, offset, 1, invalidPayloadMessage);
         var length = bytes[offset++];
         EnsureRemaining(bytes, offset, length, invalidPayloadMessage);
-        var routingId = RoutingId.FromBytes(bytes.Slice(offset, length));
+        var routingId = RoutingId.From(bytes.Slice(offset, length));
         offset += length;
         return routingId;
     }

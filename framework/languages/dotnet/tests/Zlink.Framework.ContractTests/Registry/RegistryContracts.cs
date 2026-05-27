@@ -41,7 +41,7 @@ public sealed class RegistryContracts
         [
             new(
                 ZLinkAutoConnectType.RouteMesh,
-                RoutingId.Of("play-node"),
+                RoutingId.From("play-node"),
                 ZLinkServiceKind.Socket,
                 ZLinkServiceRole.Router,
                 "play",

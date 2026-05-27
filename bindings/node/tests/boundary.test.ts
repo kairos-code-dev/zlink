@@ -11,17 +11,20 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
   const dealer = new zlink.DealerSocket(ctx);
   const router = new zlink.RouterSocket(ctx);
   const stream = new zlink.StreamSocket(ctx);
-  const maxRoutingId = zlink.RoutingId.fromBytes(Buffer.alloc(255, 0x61));
+  const maxRoutingId = zlink.RoutingId.from(Buffer.alloc(255, 0x61));
   const overflowRoutingId = Buffer.alloc(256, 0x62);
 
   assert.doesNotThrow(() => dealer.setRoutingId(maxRoutingId));
 
-  assert.throws(() => zlink.RoutingId.fromBytes(overflowRoutingId), /1\.\.255 bytes/);
-  assert.doesNotThrow(() => zlink.RoutingId.fromBytes(Buffer.alloc(1, 0x63)));
-  assert.ok(zlink.RoutingId.fromString('004142').equals(zlink.RoutingId.fromBytes(Buffer.from([0, 0x41, 0x42]))));
-  assert.equal(zlink.RoutingId.fromString('a'.repeat(510)).size, 255);
-  assert.throws(() => zlink.RoutingId.fromString('not-hex'), /hex string/);
-  assert.throws(() => zlink.RoutingId.fromString('a'.repeat(512)), /255 bytes/);
+  assert.throws(() => zlink.RoutingId.from(overflowRoutingId), /1\.\.255 bytes/);
+  assert.doesNotThrow(() => zlink.RoutingId.from(Buffer.alloc(1, 0x63)));
+  assert.ok(zlink.RoutingId.fromHex('004142').equals(zlink.RoutingId.from(Buffer.from([0, 0x41, 0x42]))));
+  assert.equal(zlink.RoutingId.fromHex('a'.repeat(510)).size, 255);
+  assert.throws(() => zlink.RoutingId.fromHex('not-hex'), /hex string/);
+  assert.throws(() => zlink.RoutingId.fromHex('a'.repeat(512)), /255 bytes/);
+  assert.equal(zlink.RoutingId.from('dealer-1').toString(), 'dealer-1');
+  assert.equal(zlink.RoutingId.from(23).toString(), '23');
+  assert.equal(zlink.RoutingId.fromHex('004142').toString(), 'hex:004142');
   assert.throws(() => router.send(overflowRoutingId).message(Buffer.alloc(0)).submit(), /RoutingId/);
   assert.throws(() => stream.send(overflowRoutingId).message(Buffer.alloc(0)).submit(), /RoutingId/);
 

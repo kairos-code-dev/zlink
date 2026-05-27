@@ -191,7 +191,7 @@ function normalizeRoutingIdBytes(bytes: Buffer | Uint8Array, name: string): Buff
   return normalized;
 }
 
-function normalizeRoutingIdString(value: string): Buffer {
+function normalizeRoutingIdHex(value: string): Buffer {
   if (typeof value !== 'string') {
     throw new TypeError('value must be a string');
   }
@@ -210,6 +210,34 @@ function normalizeRoutingIdString(value: string): Buffer {
     );
   }
   return normalizeRoutingIdBytes(Buffer.from(value, 'hex'), 'value');
+}
+
+function normalizeRoutingIdValue(value: string | Buffer | Uint8Array | number): Buffer {
+  if (typeof value === 'string') {
+    return normalizeRoutingIdBytes(Buffer.from(value, 'utf8'), 'value');
+  }
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value) || value < 0 || value > 0xFFFF_FFFF) {
+      throw new RangeError('routing id uint32 value must be in range 0..4294967295');
+    }
+    const buffer = Buffer.allocUnsafe(4);
+    buffer.writeUInt32BE(value >>> 0, 0);
+    return buffer;
+  }
+  return normalizeRoutingIdBytes(value, 'value');
+}
+
+function tryPrintableUtf8(bytes: Buffer): string | null {
+  const text = bytes.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(bytes)) {
+    return null;
+  }
+  return /[\u0000-\u001f\u007f-\u009f]/u.test(text) ? null : text;
+}
+
+function uuidString(bytes: Buffer): string {
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 export class Message {
@@ -307,18 +335,28 @@ export class RoutingId {
 
   private constructor(token: symbol, bytes: Buffer) {
     if (token !== DOMAIN_CREATE_TOKEN) {
-      throw new TypeError('RoutingId values are created with RoutingId.fromBytes() or RoutingId.fromString()');
+      throw new TypeError('RoutingId values are created with RoutingId.from() or RoutingId.fromHex()');
     }
     this._bytes = bytes;
     Object.freeze(this);
   }
 
-  static fromBytes(bytes: Buffer | Uint8Array): RoutingId {
-    return new RoutingId(DOMAIN_CREATE_TOKEN, normalizeRoutingIdBytes(bytes, 'bytes'));
+  static from(value: string | Buffer | Uint8Array | number): RoutingId {
+    return new RoutingId(DOMAIN_CREATE_TOKEN, normalizeRoutingIdValue(value));
   }
 
+  static fromHex(value: string): RoutingId {
+    return new RoutingId(DOMAIN_CREATE_TOKEN, normalizeRoutingIdHex(value));
+  }
+
+  /** @deprecated Use RoutingId.from(value). */
+  static fromBytes(bytes: Buffer | Uint8Array): RoutingId {
+    return RoutingId.from(bytes);
+  }
+
+  /** @deprecated Use RoutingId.from(value) for user strings or RoutingId.fromHex(value) for hex. */
   static fromString(value: string): RoutingId {
-    return new RoutingId(DOMAIN_CREATE_TOKEN, normalizeRoutingIdString(value));
+    return RoutingId.from(value);
   }
 
   toBytes(): Buffer {
@@ -343,7 +381,17 @@ export class RoutingId {
   }
 
   toString(): string {
-    return this.toHex();
+    const utf8 = tryPrintableUtf8(this._bytes);
+    if (utf8 !== null) {
+      return utf8;
+    }
+    if (this._bytes.length === 4) {
+      return this._bytes.readUInt32BE(0).toString(10);
+    }
+    if (this._bytes.length === 16) {
+      return uuidString(this._bytes);
+    }
+    return `hex:${this.toHex()}`;
   }
 }
 

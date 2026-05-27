@@ -28,6 +28,15 @@ public sealed class test_socket_surface
                 .SequenceEqual(parameterTypes));
     }
 
+    private static bool HasPublicStaticMethod(Type type, string name,
+        params Type[] parameterTypes)
+    {
+        return type.GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Any(method => method.Name == name
+                && method.GetParameters().Select(p => p.ParameterType)
+                    .SequenceEqual(parameterTypes));
+    }
+
     [Fact]
     public void typed_surface_hides_irrelevant_methods()
     {
@@ -845,6 +854,34 @@ public sealed class test_socket_surface
 
         Assert.NotNull(typeof(RoutingId).GetProperty("IsEmpty",
             BindingFlags.Instance | BindingFlags.Public));
+        Assert.False(HasPublicStaticMethod(typeof(RoutingId), "Of",
+            typeof(string)));
+        Assert.False(HasPublicStaticMethod(typeof(RoutingId), "FromUtf8",
+            typeof(string)));
+        Assert.False(HasPublicStaticMethod(typeof(RoutingId), "FromString",
+            typeof(string)));
+        Assert.False(HasPublicStaticMethod(typeof(RoutingId), "FromBytes",
+            typeof(byte[])));
+        Assert.False(HasPublicStaticMethod(typeof(RoutingId), "FromUInt32",
+            typeof(uint)));
+        Assert.False(HasPublicStaticMethod(typeof(RoutingId), "FromGuid",
+            typeof(Guid)));
+        Assert.True(HasPublicStaticMethod(typeof(RoutingId), "From",
+            typeof(string)));
+        Assert.True(HasPublicStaticMethod(typeof(RoutingId), "From",
+            typeof(byte[])));
+        Assert.True(HasPublicStaticMethod(typeof(RoutingId), "From",
+            typeof(ReadOnlySpan<byte>)));
+        Assert.True(HasPublicStaticMethod(typeof(RoutingId), "FromHex",
+            typeof(string)));
+        Assert.True(HasPublicStaticMethod(typeof(RoutingId), "From",
+            typeof(uint)));
+        Assert.True(HasPublicStaticMethod(typeof(RoutingId), "From",
+            typeof(Guid)));
+        Assert.True(HasPublicInstanceMethod(typeof(RoutingId), "TryToUInt32",
+            typeof(uint).MakeByRefType()));
+        Assert.True(HasPublicInstanceMethod(typeof(RoutingId), "TryToGuid",
+            typeof(Guid).MakeByRefType()));
         Assert.True(HasPublicInstanceMethod(typeof(Message), "GetProperty",
             typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(SocketBase), "MonitorOpen",

@@ -323,25 +323,29 @@ const (
 )
 
 var (
-	IgnoreMonitorHandler   = root.IgnoreMonitorHandler
-	OpenSocketMonitor      = root.OpenSocketMonitor
-	NewRoutingID           = root.NewRoutingID
-	NewRoutingIDFromString = root.NewRoutingIDFromString
-	ParseRoutingIDString   = root.ParseRoutingIDString
-	NewMessage             = root.NewMessage
-	NewMessageFrom         = root.NewMessageFrom
-	NewMessageWithSize     = root.NewMessageWithSize
-	RemoteActorRef         = root.RemoteActorRef
-	RuntimeVersion         = root.RuntimeVersion
-	NewContext             = root.NewContext
-	NewTimer               = root.NewTimer
-	NewTimerFromSpot       = root.NewTimerFromSpot
-	NewPoller              = root.NewPoller
-	Poll                   = root.Poll
-	Has                    = root.Has
-	Proxy                  = root.Proxy
-	ProxySteerable         = root.ProxySteerable
-	Sleep                  = root.Sleep
-	MultipartClose         = root.MultipartClose
-	NewStopwatch           = root.NewStopwatch
+	IgnoreMonitorHandler      = root.IgnoreMonitorHandler
+	OpenSocketMonitor         = root.OpenSocketMonitor
+	NewRoutingID              = root.NewRoutingID
+	NewRoutingIDFromString    = root.NewRoutingIDFromString
+	NewRoutingIDFromUInt32    = root.NewRoutingIDFromUInt32
+	NewRoutingIDFromUUIDBytes = root.NewRoutingIDFromUUIDBytes
+	NewRoutingIDFromHex       = root.NewRoutingIDFromHex
+	ParseRoutingIDHex         = root.ParseRoutingIDHex
+	ParseRoutingIDString      = root.ParseRoutingIDString
+	NewMessage                = root.NewMessage
+	NewMessageFrom            = root.NewMessageFrom
+	NewMessageWithSize        = root.NewMessageWithSize
+	RemoteActorRef            = root.RemoteActorRef
+	RuntimeVersion            = root.RuntimeVersion
+	NewContext                = root.NewContext
+	NewTimer                  = root.NewTimer
+	NewTimerFromSpot          = root.NewTimerFromSpot
+	NewPoller                 = root.NewPoller
+	Poll                      = root.Poll
+	Has                       = root.Has
+	Proxy                     = root.Proxy
+	ProxySteerable            = root.ProxySteerable
+	Sleep                     = root.Sleep
+	MultipartClose            = root.MultipartClose
+	NewStopwatch              = root.NewStopwatch
 )

@@ -167,7 +167,7 @@ public abstract partial class StreamTestSupport
                         "player",
                         cancellationToken)
                     .ConfigureAwait(false);
-                var actorRef = await actor.Context.JoinEntrySpot(RoutingId.Of("local-notify-actor-node"))
+                var actorRef = await actor.Context.JoinEntrySpot(RoutingId.From("local-notify-actor-node"))
                     .Timeout(TimeSpan.FromSeconds(5))
                     .SubmitAsync(cancellationToken)
                     .ConfigureAwait(false);

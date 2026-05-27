@@ -195,9 +195,9 @@ public class CallbackModeContractTest {
         CountDownLatch completed = new CountDownLatch(1);
         AtomicReference<RequestResult> resultRef = new AtomicReference<>();
         AtomicReference<Throwable> callbackError = new AtomicReference<>();
-        RoutingId serverNodeRid = RoutingId.fromBytes(
+        RoutingId serverNodeRid = RoutingId.from(
             "timeout-server-node".getBytes(StandardCharsets.UTF_8));
-        RoutingId serverSpotRid = RoutingId.fromBytes(
+        RoutingId serverSpotRid = RoutingId.from(
             "timeout-server-spot".getBytes(StandardCharsets.UTF_8));
 
         try (Context ctx = new Context();

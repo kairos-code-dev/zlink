@@ -132,7 +132,7 @@ public sealed class JoinMatchHandler
         _ = entrySpot;
         // request.MatchId 는 도메인이 정한 match id다.
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
-        var matchSpotRid = RoutingId.FromString(request.MatchId);
+        var matchSpotRid = RoutingId.From(request.MatchId);
         var joined = await actor.Context
             .JoinSpot(matchSpotRid, request)
             .Timeout(TimeSpan.FromSeconds(2))

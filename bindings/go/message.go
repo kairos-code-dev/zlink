@@ -11,8 +11,12 @@ import "C"
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -37,19 +41,35 @@ func NewRoutingID(data []byte) RoutingID {
 	return rid
 }
 
-// NewRoutingIDFromString parses the hex form returned by RoutingID.String or
-// RoutingID.Hex. Invalid input returns the empty RoutingID value.
+// NewRoutingIDFromString encodes a user-visible routing id string as UTF-8.
+// Invalid input returns the empty RoutingID value.
 func NewRoutingIDFromString(value string) RoutingID {
-	rid, err := ParseRoutingIDString(value)
+	return NewRoutingID([]byte(value))
+}
+
+func NewRoutingIDFromUInt32(value uint32) RoutingID {
+	var data [4]byte
+	binary.BigEndian.PutUint32(data[:], value)
+	return NewRoutingID(data[:])
+}
+
+func NewRoutingIDFromUUIDBytes(value [16]byte) RoutingID {
+	return NewRoutingID(value[:])
+}
+
+// NewRoutingIDFromHex parses the hex form returned by RoutingID.Hex. Invalid
+// input returns the empty RoutingID value.
+func NewRoutingIDFromHex(value string) RoutingID {
+	rid, err := ParseRoutingIDHex(value)
 	if err != nil {
 		return RoutingID{}
 	}
 	return rid
 }
 
-// ParseRoutingIDString parses the hex form returned by RoutingID.String or
-// RoutingID.Hex. Invalid input returns *ConfigError.
-func ParseRoutingIDString(value string) (RoutingID, error) {
+// ParseRoutingIDHex parses the hex form returned by RoutingID.Hex. Invalid
+// input returns *ConfigError.
+func ParseRoutingIDHex(value string) (RoutingID, error) {
 	if len(value) == 0 || len(value)%2 != 0 || len(value) > maxRoutingIDSize*2 {
 		return RoutingID{}, validationError("routing id string must be non-empty even-length hex and decode to at most %d bytes", maxRoutingIDSize)
 	}
@@ -62,6 +82,12 @@ func ParseRoutingIDString(value string) (RoutingID, error) {
 		return RoutingID{}, validationError("routing id length must be between 1 and %d bytes", maxRoutingIDSize)
 	}
 	return rid, nil
+}
+
+// ParseRoutingIDString is kept for source compatibility. Use
+// ParseRoutingIDHex for raw hex or NewRoutingIDFromString for user strings.
+func ParseRoutingIDString(value string) (RoutingID, error) {
+	return ParseRoutingIDHex(value)
 }
 
 func (r RoutingID) Bytes() []byte {
@@ -86,7 +112,17 @@ func (r RoutingID) Hash() uint64 {
 }
 
 func (r RoutingID) String() string {
-	return r.Hex()
+	if text := r.printableUTF8(); text != "" {
+		return text
+	}
+	if r.size == 4 {
+		return fmt.Sprintf("%d", binary.BigEndian.Uint32(r.data[:4]))
+	}
+	if r.size == 16 {
+		hexText := r.Hex()
+		return fmt.Sprintf("%s-%s-%s-%s-%s", hexText[:8], hexText[8:12], hexText[12:16], hexText[16:20], hexText[20:])
+	}
+	return "hex:" + r.Hex()
 }
 
 func (r RoutingID) Hex() string {
@@ -95,6 +131,18 @@ func (r RoutingID) Hex() string {
 
 func (r RoutingID) Equal(other RoutingID) bool {
 	return bytes.Equal(r.data[:r.size], other.data[:other.size])
+}
+
+func (r RoutingID) printableUTF8() string {
+	raw := r.data[:r.size]
+	if !utf8.Valid(raw) {
+		return ""
+	}
+	text := string(raw)
+	if strings.IndexFunc(text, unicode.IsControl) >= 0 {
+		return ""
+	}
+	return text
 }
 
 func (r RoutingID) toC() C.zlink_routing_id_t {

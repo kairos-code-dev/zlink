@@ -133,7 +133,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof spotNode.getOrCreateSpot, 'function');
     assert.equal(typeof spotNode.spotsSnapshot, 'function');
     assert.equal(typeof spotNode.actorsSnapshot, 'function');
-    spotNode.setRoutingId(zlink.RoutingId.fromBytes(Buffer.from('node-surface')));
+    spotNode.setRoutingId(zlink.RoutingId.from(Buffer.from('node-surface')));
     assert.ok(spotNode.routingId instanceof zlink.RoutingId);
     const actor = spotNode.createActor('surface-actor');
     const actorRef = actor.ref();
@@ -195,7 +195,7 @@ test('value and handle objects without documented constructors are runtime guard
     assert.throws(() => new zlink.Spot(ctx), TypeError);
     assert.throws(() => new zlink.CommonSocketOptions(pub), TypeError);
     assert.throws(() => new zlink.ContextOptions(ctx), TypeError);
-    assert.ok(zlink.RoutingId.fromBytes(Buffer.from('id')) instanceof zlink.RoutingId);
+    assert.ok(zlink.RoutingId.from(Buffer.from('id')) instanceof zlink.RoutingId);
     assert.ok(zlink.Message.from('payload') instanceof zlink.Message);
     pub.close();
     ctx.close();
@@ -206,7 +206,7 @@ test('spot operation builders keep payload and single-submit validation centrali
     const spot = node.createSpot();
     const actor = node.createActor('builder-actor-owned');
     const actorRef = actor.ref();
-    const rid = zlink.RoutingId.fromBytes(Buffer.from('builder-target'));
+    const rid = zlink.RoutingId.from(Buffer.from('builder-target'));
     assert.throws(() => spot.sendChannel('svc').submit(), /requires at least one message/);
     assert.throws(() => spot.requestChannel('svc').submitAsync(), /requires at least one message/);
     assert.throws(() => spot.replyToRouter(rid, 1n).submit(), /requires at least one message/);

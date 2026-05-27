@@ -113,7 +113,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
         string channelName,
         IZLinkBackendDealerSocket dealer,
         ZLinkDealerMeshPendingRequests pendingRequests,
-        ZLinkBackendDealerReceived received,
+        Received received,
         CancellationToken cancellationToken)
     {
         if (received.Parts.Count == 0)
@@ -123,15 +123,17 @@ internal sealed class ZLinkChannelPacketDispatcher(
 
         switch (received.MessageType)
         {
-            case DealerMessageType.Reply:
-            case DealerMessageType.ErrorReply:
-                if (!pendingRequests.TryComplete(received.RequestSeq, received.Parts))
+            case ReceivedMessageType.Reply:
+            case ReceivedMessageType.ErrorReply:
+                if (!received.RequestSeq.HasValue
+                    || !pendingRequests.TryComplete(
+                        received.RequestSeq.Value, received.Parts))
                 {
                     ZLinkMessageFlowLogger.Dropped(
                         _logger,
                         LogLevel.Warning,
                         "DealerMeshChannel",
-                        received.MessageType == DealerMessageType.Reply
+                        received.MessageType == ReceivedMessageType.Reply
                             ? "Response"
                             : "Error",
                         "unknown",
@@ -139,7 +141,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
                         channelName);
                 }
                 return;
-            case DealerMessageType.Request:
+            case ReceivedMessageType.Request:
                 await DispatchDealerMeshRequestAsync(
                         channelName,
                         dealer,
@@ -147,7 +149,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
                         cancellationToken)
                     .ConfigureAwait(false);
                 return;
-            case DealerMessageType.Raw:
+            case ReceivedMessageType.Raw:
                 await DispatchDealerMeshRawAsync(
                         channelName,
                         received,
@@ -252,7 +254,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
     private async Task DispatchDealerMeshRequestAsync(
         string channelName,
         IZLinkBackendDealerSocket dealer,
-        ZLinkBackendDealerReceived received,
+        Received received,
         CancellationToken cancellationToken)
     {
         ZLinkEnvelopeHeader header;
@@ -308,7 +310,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
                 channelName);
             ZLinkChannelReplyWriter.ReplyDealerRequest(
                 dealer,
-                received.RequestSeq,
+                RequireRequestSeq(received),
                 ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error),
                 null,
                 null);
@@ -337,7 +339,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
                 channelName);
             ZLinkChannelReplyWriter.ReplyDealerRequest(
                 dealer,
-                received.RequestSeq,
+                RequireRequestSeq(received),
                 ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error),
                 null,
                 null);
@@ -356,7 +358,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
                 .ConfigureAwait(false);
             ZLinkChannelReplyWriter.ReplyDealerRequest(
                 dealer,
-                received.RequestSeq,
+                RequireRequestSeq(received),
                 ZLinkChannelReplyWriter.CreateReplyHeader(ZLinkMessageKind.Response, channelName, header),
                 reply,
                 endpoint.ReplyType);
@@ -365,7 +367,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
         {
             ZLinkChannelReplyWriter.ReplyDealerRequest(
                 dealer,
-                received.RequestSeq,
+                RequireRequestSeq(received),
                 ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, ex),
                 null,
                 null);
@@ -374,7 +376,7 @@ internal sealed class ZLinkChannelPacketDispatcher(
 
     private async Task DispatchDealerMeshRawAsync(
         string channelName,
-        ZLinkBackendDealerReceived received,
+        Received received,
         CancellationToken cancellationToken)
     {
         ZLinkEnvelopeHeader header;
@@ -575,5 +577,12 @@ internal sealed class ZLinkChannelPacketDispatcher(
         return registration.Channels.TryGetValue(channelName, out var channel)
             ? channel.HandlerGroups
             : EmptyGroups;
+    }
+
+    private static ulong RequireRequestSeq(Received received)
+    {
+        return received.RequestSeq
+            ?? throw new InvalidOperationException(
+                "Dealer mesh request requires a request sequence.");
     }
 }

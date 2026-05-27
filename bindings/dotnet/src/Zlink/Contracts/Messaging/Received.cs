@@ -179,6 +179,9 @@ public sealed class Received : IDisposable
 
     public ulong? RequestSeq => _metadata?.RequestSeq;
 
+    public ReceivedMessageType MessageType { get; private set; } =
+        ReceivedMessageType.Raw;
+
     public IReadOnlyList<Message> Parts => PartsCollection;
 
     internal int Count => _singlePart != null ? 1 : PartsCollection.Count;
@@ -332,6 +335,7 @@ public sealed class Received : IDisposable
         _sendKernel = null;
         _sendRoutingIdSnapshot = default;
         _sendSpotRidSnapshot = default;
+        MessageType = ReceivedMessageType.Raw;
         _closed = false;
     }
 
@@ -347,6 +351,17 @@ public sealed class Received : IDisposable
         _parts = parts;
     }
 
+    internal void PopulateMessageEnvelope(Message[] parts,
+        ReceivedMessageType messageType, ulong? requestSeq,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        ResetForReuse();
+        _parts = MultipartMessageCollection.FromMessages(parts);
+        MessageType = messageType;
+        _metadata = ReceivedMetadata.Create(default(RoutingId?), requestSeq,
+            replyHandler);
+    }
+
     internal void PopulateRoutedSinglePart(Message singlePart,
         RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
         ulong? requestSeq, ReceivedReplyHandler? replyHandler,
@@ -357,6 +372,7 @@ public sealed class Received : IDisposable
         ResetForReuse();
         _singlePart = singlePart;
         _routingIdSnapshot = routingId;
+        MessageType = ReceivedMessageType.Raw;
         _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;
@@ -373,6 +389,7 @@ public sealed class Received : IDisposable
         ResetForReuse();
         _parts = parts;
         _routingIdSnapshot = routingId;
+        MessageType = ReceivedMessageType.Raw;
         _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;

@@ -586,6 +586,38 @@ C ABI binding 은 이 절의 적용 대상이 아니다. C 바인딩은 `zlink.h
 substrate (`zlink_router_recv_part`, `zlink_subscribe_part` 등) 를 그대로
 노출한다.
 
+#### `Received` envelope 의미 통일
+
+고수준 binding (C++ / .NET / Java / Node / Python / Go / Rust) 에서
+`Received` 는 **한 번의 data-plane recv 결과를 담는 공통 envelope** 다.
+socket 종류나 service 종류가 달라도 request, reply, routed source, payload
+lifecycle 의 의미는 같아야 한다.
+
+아래 규칙은 `Required` 다.
+
+- PAIR / DEALER / ROUTER / STREAM / SPOT routed recv 결과는 모두 같은
+  `Received` 의미를 사용한다.
+- request-reply 수신 결과는 별도 protocol-specific 결과 타입으로 갈라지면
+  안 된다. 예를 들어 `DealerReceived`, `RouterReceived`, `SpotReceived` 처럼
+  request 의미를 socket 종류별 public 타입으로 나누는 표면은 canonical 이 아니다.
+- request 의 의미는 socket 종류와 무관하다. `request_seq` 가 있으면
+  request-reply context 가 있는 수신 결과이고, 없으면 ordinary receive 결과다.
+- reply target, send-back target, source routing metadata 는 `Received` 내부
+  context 로 캡슐화한다. 사용자가 request 를 처리하기 위해 socket 종류별
+  frame 형식이나 내부 dispatch 규칙을 알아야 하면 안 된다.
+- 언어별 이름과 optional 표현(`null`, `None`, `Optional`, `Option`, zero value
+  + `has` flag 등)은 달라도 되지만, canonical field/method 의미는
+  [도메인 객체 Canonical Shape](#도메인-객체-canonical-shape-모든-바인딩-공통)
+  절과 같아야 한다.
+
+C ABI binding 은 예외다. C 는 managed/object 결과 저장소를 만들지 않고
+`zlink_router_recv_part()`, `zlink_spot_recv_part()`,
+`zlink_dealer_recv_part()` 같은 typed out-param 으로 같은 envelope 구성 요소를
+노출한다. C 에 public `zlink_received_t` 같은 aggregate 객체를 추가하지 않는다.
+그 객체를 추가하면 message part 소유권, init/close/reset, reply context 보관
+규칙이 새 public lifetime 계약으로 늘어나기 때문이다. C helper 가 필요하면
+sample/perf/internal helper 로만 둔다.
+
 언어별 세부 문서에는 과거 호환성을 위한 deprecated overload가 별도로 적힐 수
 있다. 위 표는 새 코드와 sample/perf가 따라야 하는 canonical 경로만 정리한다.
 
@@ -1503,11 +1535,19 @@ public API는 part helper 호출 결과를 언어별 multipart 객체로 조립�
 
 #### `Received`
 
-PAIR / DEALER / ROUTER / STREAM / SPOT 의 recv 결과. topic 필드가 없는 점 외에는
-`TopicMessage` 와 동일한 편의 메서드 집합을 가진다. routed recv 결과는
-일반 응답 전송용 `send()` operation builder 를 제공하고, request-reply 결과는
-`reply()` builder 도 함께 제공한다. 두 entrypoint 모두 `Operation Builder
-Policy` 를 따라 payload 와 옵션을 builder 단계로 누적한다.
+PAIR / DEALER / ROUTER / STREAM / SPOT routed recv 결과를 담는 단일 canonical
+도메인 객체다. topic 필드가 없는 점 외에는 `TopicMessage` 와 동일한 편의
+메서드 집합을 가진다. routed recv 결과는 일반 응답 전송용 `send()` operation
+builder 를 제공하고, request-reply 결과는 `reply()` builder 도 함께 제공한다.
+두 entrypoint 모두 `Operation Builder Policy` 를 따라 payload 와 옵션을
+builder 단계로 누적한다.
+
+`Received` 는 socket 종류별 message wrapper 가 아니다. request 의 의미는
+DEALER, ROUTER, SPOT 에서 동일하며, `request_seq` 와 reply context 로만
+표현한다. binding 은 `DealerReceived` / `RouterReceived` / `SpotReceived` 같은
+protocol-specific public 결과 타입을 새 canonical 표면으로 추가하면 안 된다.
+기존 binding 에 이런 타입이 있으면 제거하고, 새 코드, sample, perf, framework
+연동은 `Received` 를 사용해야 한다.
 
 | 구성 | 타입 | 의미 |
 |------|------|------|
@@ -1521,6 +1561,19 @@ Policy` 를 따라 payload 와 옵션을 builder 단계로 누적한다.
 | `send()` | `SendOp` | 이 `Received` 의 송신자에게 일반 routed message 를 보내는 operation builder. routed source context 가 없으면 submit 시점에 `SubmitError` |
 | `reply()` | `ReplyOp` | request 였을 때만 유효한 reply operation builder. `request_seq` 없거나 reply context 가 invalid 하면 submit 시점에 `SubmitError` |
 | `close()` / 동등 | — | 동일 |
+
+`request_seq` 규칙:
+- `null` / `None` / empty `Optional` / `hasRequestSeq == false` 는 ordinary
+  receive 결과를 뜻한다.
+- `0` 은 public high-level `Received` 에서 "request 있음"으로 노출하지 않는다.
+  core out-param 의 `request_seq == 0` 은 high-level binding 에서 absent 로
+  변환한다.
+- non-zero `request_seq` 는 request-reply context 가 있는 수신 결과를 뜻한다.
+  이 의미는 DEALER / ROUTER / SPOT 에서 동일하다.
+- request/reply message type 같은 substrate 세부 구분은 public `Received`
+  의미를 갈라서는 안 된다. 그런 값이 실제 public 계약으로 필요하면
+  protocol-specific 결과 타입이 아니라 `Received` 의 공통 metadata 로만
+  노출한다.
 
 `send()` 규칙:
 - request 여부와 무관하다. `request_seq` 가 없어도 routed source context 가

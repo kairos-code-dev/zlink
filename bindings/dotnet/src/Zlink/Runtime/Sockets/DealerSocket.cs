@@ -85,12 +85,16 @@ public sealed class DealerSocket : MessageSocketBase, IDealerSocket
         }
     }
 
-    public DealerReceived? RecvDealer(RecvFlags flags = RecvFlags.None)
+    public override bool Recv(Received result, RecvFlags flags = RecvFlags.None)
     {
+        if (result == null)
+            throw new ArgumentNullException(nameof(result));
+
         List<Message> parts = new();
-        DealerMessageType messageType = DealerMessageType.Raw;
+        ReceivedMessageType messageType = ReceivedMessageType.Raw;
         ulong requestSeq = 0;
         bool firstPart = true;
+        bool transferred = false;
 
         try
         {
@@ -118,13 +122,13 @@ public sealed class DealerSocket : MessageSocketBase, IDealerSocket
                             && ZlinkException.MapErrorCode(errno) is ErrorCode.EAgain
                                 or ErrorCode.EBusy)
                         {
-                            return null;
+                            return false;
                         }
 
                         throw ZlinkException.CreateRecvException(errno);
                     }
 
-                    messageType = (DealerMessageType)nativeMessageType;
+                    messageType = (ReceivedMessageType)nativeMessageType;
                     requestSeq = nativeRequestSeq;
                     parts.Add(Message.AdoptNative(ref nativePart));
                     ownsNativePart = false;
@@ -140,14 +144,19 @@ public sealed class DealerSocket : MessageSocketBase, IDealerSocket
                 }
             }
 
-            DealerReplyHandler? replyHandler =
-                messageType == DealerMessageType.Request ? Reply : null;
-            return new DealerReceived(messageType, requestSeq, parts.ToArray(),
-                replyHandler);
+            ReceivedReplyHandler? replyHandler =
+                messageType == ReceivedMessageType.Request
+                    ? (replyParts, _) => Reply(requestSeq, replyParts)
+                    : null;
+            result.PopulateMessageEnvelope(parts.ToArray(), messageType,
+                requestSeq == 0 ? null : requestSeq, replyHandler);
+            transferred = true;
+            return true;
         }
         catch
         {
-            RequestReplySupport.DisposeParts(parts);
+            if (!transferred)
+                RequestReplySupport.DisposeParts(parts);
             throw;
         }
     }

@@ -106,8 +106,6 @@ public interface IDealerSocket : IMessageSocket
     bool RequestFrame(ulong requestSeq, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None);
 
-    DealerReceived? RecvDealer(RecvFlags flags = RecvFlags.None);
-
     void Reply(ulong requestToken, IReadOnlyList<Message> parts);
 }
 

@@ -91,13 +91,13 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
         var backoff = new ZLinkPollingBackoff();
         while (!cancellationToken.IsCancellationRequested)
         {
-            ZLinkBackendDealerReceived? received = null;
+            Received? received = null;
             var gateHeld = false;
             try
             {
                 await receiveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 gateHeld = true;
-                received = dealer.RecvDealer(RecvFlags.DontWait);
+                received = dealer.Recv(RecvFlags.DontWait);
                 if (received is null)
                 {
                     await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
@@ -123,10 +123,7 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
             }
             finally
             {
-                if (received is not null)
-                {
-                    await received.DisposeAsync().ConfigureAwait(false);
-                }
+                received?.Dispose();
 
                 if (gateHeld)
                 {

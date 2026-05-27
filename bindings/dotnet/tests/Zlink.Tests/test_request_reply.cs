@@ -92,14 +92,15 @@ public sealed class test_request_reply
         ulong tokenB = 0;
         for (int i = 0; i < 2; i++)
         {
-            using DealerReceived received = RecvDealerWithRetry(server);
-            Assert.Equal(DealerMessageType.Request, received.MessageType);
-            Assert.NotEqual(0UL, received.RequestSeq);
+            using Received received = RecvWithRetry(server);
+            Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+            Assert.True(received.RequestSeq.HasValue);
+            Assert.NotEqual(0UL, received.RequestSeq.Value);
             string payload = received.Parts[0].GetString();
             if (payload == "from-a")
-                tokenA = received.RequestSeq;
+                tokenA = received.RequestSeq.Value;
             else if (payload == "from-b")
-                tokenB = received.RequestSeq;
+                tokenB = received.RequestSeq.Value;
             else
                 throw new InvalidOperationException(
                     $"Unexpected payload '{payload}'.");
@@ -114,13 +115,13 @@ public sealed class test_request_reply
         server.Reply(tokenB, new[] { replyB });
         server.Reply(tokenA, new[] { replyA });
 
-        using DealerReceived clientAReply = RecvDealerWithRetry(clientA);
-        Assert.Equal(DealerMessageType.Reply, clientAReply.MessageType);
+        using Received clientAReply = RecvWithRetry(clientA);
+        Assert.Equal(ReceivedMessageType.Reply, clientAReply.MessageType);
         Assert.Equal(1UL, clientAReply.RequestSeq);
         Assert.Equal("reply-a", clientAReply.Parts[0].GetString());
 
-        using DealerReceived clientBReply = RecvDealerWithRetry(clientB);
-        Assert.Equal(DealerMessageType.Reply, clientBReply.MessageType);
+        using Received clientBReply = RecvWithRetry(clientB);
+        Assert.Equal(ReceivedMessageType.Reply, clientBReply.MessageType);
         Assert.Equal(1UL, clientBReply.RequestSeq);
         Assert.Equal("reply-b", clientBReply.Parts[0].GetString());
     }
@@ -219,15 +220,16 @@ public sealed class test_request_reply
         await serverTask;
     }
 
-    private static DealerReceived RecvDealerWithRetry(DealerSocket socket)
+    private static Received RecvWithRetry(DealerSocket socket)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var received = socket.RecvDealer(RecvFlags.DontWait);
-            if (received is not null)
+            var received = new Received();
+            if (socket.Recv(received, RecvFlags.DontWait))
                 return received;
 
+            received.Dispose();
             Thread.Sleep(1);
         }
 

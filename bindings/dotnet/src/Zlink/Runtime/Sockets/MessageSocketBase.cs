@@ -113,7 +113,7 @@ public abstract class MessageSocketBase : ConnectableSocketBase, IMessageSocket
     /// <returns>true on success, false when DontWait is set and no data is
     /// available.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Recv(Received result, RecvFlags flags = RecvFlags.None)
+    public virtual bool Recv(Received result, RecvFlags flags = RecvFlags.None)
     {
         return Kernel.ReceiveInto(result, (int)flags);
     }

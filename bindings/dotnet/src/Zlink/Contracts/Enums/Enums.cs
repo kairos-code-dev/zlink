@@ -63,7 +63,7 @@ public enum RequestResult
     NotSupported = 112
 }
 
-public enum DealerMessageType
+public enum ReceivedMessageType
 {
     Raw = 0,
     Request = 1,

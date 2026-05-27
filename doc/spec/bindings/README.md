@@ -1401,9 +1401,73 @@ builder의 callback submit 메서드 (`submit(callback)`).
 
 각 도메인 객체는 아래 canonical field/method 집합을 **그대로** 노출한다.
 언어별로 명명법(camelCase / snake_case / PascalCase) 만 변환하고,
-**필드 타입과 메서드 의미는 바꾸지 않는다.** 언어별 "편의" 라는 이유로
-canonical 에 없는 메서드를 추가하거나(`__iter__`, `to_bytes_list` 등) 일부
-메서드만 생략하면 안 된다.
+**필드 타입과 메서드 의미는 바꾸지 않는다.** 언어별 관용 편의 메서드를
+추가할 수는 있지만, canonical 메서드를 대체하거나 일부만 생략하면 안 된다.
+
+#### `Message`
+
+transport payload 를 담는 단일 message part 다. 모든 send/request/reply/publish
+builder 는 하나 이상의 `Message` 를 누적해서 multipart payload 를 만든다.
+
+| 구성 | 타입 | 의미 |
+|------|------|------|
+| empty constructor | ctor/static | zero-length message 생성 |
+| `allocate(size)` | static/ctor | `size` bytes payload buffer 생성 |
+| `from(bytes)` | static/ctor | bytes-like 입력을 message-owned storage 로 복사 |
+| `from(string)` | static/ctor | 사용자 문자열을 UTF-8 payload 로 인코딩 |
+| `copy()` / `from(Message)` | `Message` | source payload 를 새 message 로 복사 |
+| `move()` / consume path | `Message` / builder step | 명시적 ownership 이전. 호출 뒤 source 는 재사용 불가 |
+| `size` | `int` / `usize` | payload byte length |
+| `is_empty()` | `bool` | `size == 0` |
+| `to_bytes()` | `bytes` / `byte[]` / `Vec<u8>` | payload snapshot copy |
+| `data` / `as_bytes()` | view | payload read view. close 이후 lifetime 보장 없음 |
+| `mutable_data` / `as_mut_bytes()` | mutable view | allocated payload 를 채우는 mutable view |
+| `copy_to(destination)` | `int` / `bool` | caller-provided buffer 로 payload 복사 |
+| `to_string()` / `as_str()` | `string` / result | UTF-8 decode convenience |
+| `get_property(name)` | `string?` / result | native message string property 조회 |
+| `ref_count()` | `int` | native storage reference count 진단값 |
+| `close()` / `Dispose()` / `Drop` | — | native storage 정리. 언어별 lifecycle 관용구 적용 |
+
+언어별 이름은 관용구를 따른다. 의미는 아래 슬롯에 맞춘다.
+
+| 의미 | .NET | Java | Node | Python | Rust | C++ | Go |
+|------|------|------|------|--------|------|-----|----|
+| 빈 message | `new Message()` | `new Message()` | `Message.from(Buffer.alloc(0))` 또는 equivalent | `Message()` | `Message::new()` | `message_t()` | `NewMessage(nil)` |
+| 크기 allocation | `Allocate(size)` | `allocate(size)` | `alloc(size)` / `allocate(size)` | `allocate(size)` | `with_size(size)` / `allocate(size)` | `allocate(size)` | `NewMessageWithSize(size)` |
+| bytes copy | `From(bytes)` | `from(byte[])` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from_bytes(...)` | `NewMessage(data)` / `NewMessageFrom(data)` |
+| UTF-8 string | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `TryFrom<&str>` 또는 equivalent | `from_string` | `NewMessageFromString` |
+| message copy | `Copy()` | `from(Message)` | `copy()` 또는 `from(Message)` | `copy()` | `Clone` 또는 `try_clone()` | copy constructor | `Clone()` / `Copy()` |
+| explicit move | `Move()` / `MoveMessage(...)` | `move()` / `moveMessage(...)` | `moveMessage(...)` | `move_message(...)` | move-by-value | move constructor / rvalue builder | `MoveMessage(...)` |
+| bytes snapshot | `ToArray()` | `toByteArray()` | `toBytes()` | `to_bytes()` | `to_vec()` | `to_bytes()` | `BytesCopy()` 또는 equivalent |
+| read view | `AsReadOnlySpan()` | `dataBuffer()` | `data()` | `data` | `as_bytes()` | `bytes()` | `Data()` |
+| mutable view | `AsSpan()` | `mutableDataBuffer()` | `data()` | `data` | `data_mut()` | `bytes()` / `data()` | `Data()` |
+| UTF-8 decode | `GetString()` | `toUtf8String()` | `toString()` / `getString()` | `to_string()` / `decode` helper | `as_str()` | `to_string()` | `String()` / `Text()` |
+| property | `GetProperty(name)` | `getProperty(name)` | `getProperty(name)` | `get_property(name)` | `get_property(name)` | `property(name)` | `GetProperty(name)` |
+| refcount | `RefCount` | `refCount()` | `refCount()` | `ref_count()` | `ref_count()` | `ref_count()` | `RefCount()` |
+
+규칙:
+- `from(bytes)` 계열은 항상 message-owned storage 로 복사한다. caller 는 입력
+  buffer 를 이후 자유롭게 변경하거나 해제할 수 있어야 한다.
+- borrowed / zero-copy 생성자는 canonical public contract 가 아니다. 특정
+  바인딩이 내부 최적화로 쓰더라도 public API 에서 lifetime 책임을 caller 에게
+  떠넘기면 안 된다.
+- `message(...)` builder 단계는 원본 보존 계약을 따른다. submit 실패 뒤에도
+  caller 가 넘긴 message 를 다시 사용할 수 있어야 한다.
+- ownership 이전은 `move`, `MoveMessage`, move-by-value 처럼 이름에서 consume
+  의미가 드러나는 별도 경로에서만 허용한다. 이 경로는 submit 실패 뒤에도 원본
+  message 를 재사용할 수 없다는 계약을 문서화해야 한다.
+- `to_bytes()` 는 snapshot copy 다. allocation 없는 payload 접근은 read view
+  API(`data`, `as_bytes`, `AsReadOnlySpan` 등)로 분리한다.
+- read / mutable view 는 message 가 close / dispose / drop 되기 전까지만
+  유효하다. 바인딩은 close 뒤 view 사용을 보장하지 않는다.
+- `get_property(name)` 은 native message metadata 를 읽는 진단/interop API 다.
+  property 쓰기 API 는 공통 필수 계약이 아니다.
+- `ref_count()` 는 진단값이다. reference count 값으로 ownership 정책이나 send
+  가능 여부를 판단하는 public contract 를 만들면 안 된다.
+- RAII 언어(C++, Rust)는 `close()`를 명시 노출하지 않아도 된다. 명시 lifecycle
+  언어(.NET, Java, Python, Go)는 idempotent close/dispose 를 제공해야 한다.
+- closed / moved-from message 에 대한 `size`, `data`, `get_property` 동작은
+  언어별 관례를 따르되, 빈 값 반환인지 예외/에러인지 문서화해야 한다.
 
 #### `TopicMessage`
 

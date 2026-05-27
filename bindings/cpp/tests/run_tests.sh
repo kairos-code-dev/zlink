@@ -34,6 +34,12 @@ if [[ $# -gt 0 ]]; then
   CONFIGURE_ARGS+=("$@")
 fi
 
+if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]] && \
+    ! grep -q '^ZLINK_CPP_BUILD_TESTS:BOOL=ON$' "${BUILD_DIR}/CMakeCache.txt"; then
+  echo "[cpp-tests] reset stale non-test build: ${BUILD_DIR}"
+  rm -rf "${BUILD_DIR}"
+fi
+
 echo "[cpp-tests] configure: ${BUILD_DIR}"
 cmake -S "${CPP_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
 

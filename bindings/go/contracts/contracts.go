@@ -334,6 +334,7 @@ var (
 	ParseRoutingIDString      = root.ParseRoutingIDString
 	NewMessage                = root.NewMessage
 	NewMessageFrom            = root.NewMessageFrom
+	NewMessageFromString      = root.NewMessageFromString
 	NewMessageWithSize        = root.NewMessageWithSize
 	RemoteActorRef            = root.RemoteActorRef
 	RuntimeVersion            = root.RuntimeVersion

@@ -206,6 +206,10 @@ func NewMessageFrom(data []byte) (*Message, error) {
 	return NewMessage(data)
 }
 
+func NewMessageFromString(value string) (*Message, error) {
+	return NewMessage([]byte(value))
+}
+
 func (m *Message) clone() (*Message, error) {
 	dup := &Message{}
 	if err := configErrorFromResult(ConfigResult(C.zlink_msg_init(&dup.msg))); err != nil {
@@ -216,6 +220,17 @@ func (m *Message) clone() (*Message, error) {
 		return nil, err
 	}
 	return dup, nil
+}
+
+func (m *Message) Clone() (*Message, error) {
+	if m == nil || m.closed {
+		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	return m.clone()
+}
+
+func (m *Message) Copy() (*Message, error) {
+	return m.Clone()
 }
 
 func (m *Message) Close() error {
@@ -241,9 +256,17 @@ func (m *Message) Data() []byte {
 	return unsafe.Slice((*byte)(ptr), size)
 }
 
-// Bytes returns the message payload as a byte slice.
+// Bytes returns a snapshot copy of the message payload.
 func (m *Message) Bytes() []byte {
-	return m.Data()
+	data := m.Data()
+	if len(data) == 0 {
+		return nil
+	}
+	return append([]byte(nil), data...)
+}
+
+func (m *Message) BytesCopy() []byte {
+	return m.Bytes()
 }
 
 func (m *Message) Size() int {
@@ -251,6 +274,31 @@ func (m *Message) Size() int {
 		return 0
 	}
 	return int(C.zlink_msg_size(&m.msg))
+}
+
+func (m *Message) IsEmpty() bool {
+	return m.Size() == 0
+}
+
+func (m *Message) CopyTo(destination []byte) (int, error) {
+	data := m.Data()
+	if len(destination) < len(data) {
+		return 0, validationError("destination buffer too small")
+	}
+	return copy(destination, data), nil
+}
+
+func (m *Message) TryCopyTo(destination []byte) bool {
+	_, err := m.CopyTo(destination)
+	return err == nil
+}
+
+func (m *Message) Text() string {
+	return string(m.Data())
+}
+
+func (m *Message) String() string {
+	return m.Text()
 }
 
 func (m *Message) RefCount() int {

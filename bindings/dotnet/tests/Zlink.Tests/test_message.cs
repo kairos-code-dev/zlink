@@ -106,6 +106,18 @@ public sealed class test_message
     }
 
     [Fact]
+    public void message_from_message_copies_payload()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var source = Message.From("copy-source"u8);
+        using Message copy = Message.From(source);
+
+        Assert.True(copy.AsReadOnlySpan().SequenceEqual("copy-source"u8));
+    }
+
+    [Fact]
     public void message_string_helpers_round_trip_utf8_payload()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -125,6 +137,7 @@ public sealed class test_message
             return;
 
         using Message message = Message.Allocate(3);
+        Assert.False(message.IsEmpty);
         Span<byte> span = message.AsSpan();
         span[0] = 0x01;
         span[1] = 0x02;

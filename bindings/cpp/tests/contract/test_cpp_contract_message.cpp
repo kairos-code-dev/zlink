@@ -33,6 +33,7 @@ void test_allocate_exposes_writable_owned_payload ()
     zlink::message_t msg = zlink::message_t::allocate (3);
     assert (msg.valid ());
     assert (msg.size () == 3);
+    assert (!msg.is_empty ());
 
     std::span<std::byte> bytes = msg.bytes ();
     bytes[0] = std::byte {0x01};
@@ -41,6 +42,31 @@ void test_allocate_exposes_writable_owned_payload ()
 
     const std::vector<uint8_t> out = msg.to_bytes ();
     assert ((out == std::vector<uint8_t> {0x01, 0x02, 0x03}));
+}
+
+void test_copy_helpers_copy_payload ()
+{
+    zlink::message_t empty;
+    assert (empty.valid ());
+    assert (empty.is_empty ());
+
+    zlink::message_t msg = zlink::message_t::from_string ("copy-payload");
+    assert (!msg.is_empty ());
+
+    std::vector<uint8_t> target (msg.size ());
+    assert (msg.copy_to (target.data (), target.size ()) == msg.size ());
+    assert ((target == std::vector<uint8_t> {'c', 'o', 'p', 'y', '-',
+                                             'p', 'a', 'y', 'l', 'o', 'a',
+                                             'd'}));
+
+    bool threw = false;
+    try {
+        std::vector<uint8_t> too_small (msg.size () - 1);
+        (void) msg.copy_to (too_small.data (), too_small.size ());
+    } catch (const std::invalid_argument &) {
+        threw = true;
+    }
+    assert (threw);
 }
 
 void test_copy_and_move_preserve_payload ()
@@ -107,6 +133,7 @@ int main ()
     test_string_roundtrip ();
     test_bytes_roundtrip ();
     test_allocate_exposes_writable_owned_payload ();
+    test_copy_helpers_copy_payload ();
     test_copy_and_move_preserve_payload ();
     test_diagnostic_surface_uses_canonical_names ();
     test_routing_id_hex_and_display_policy ();

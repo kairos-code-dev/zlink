@@ -533,11 +533,27 @@ class CoreApiAlignmentTests(unittest.TestCase):
             _ = options.manual
         self.assertEqual(cm.exception.result, zlink.ConfigResult.NOT_SUPPORTED)
 
+    def test_message_diagnostics_and_copy_helpers(self):
         with zlink.Message.from_(b"payload") as message:
             self.assertEqual(message.size(), 7)
             self.assertEqual(message.to_bytes(), b"payload")
             self.assertEqual(bytes(message.data), b"payload")
             self.assertEqual(message.ref_count(), message.refCount())
+            self.assertFalse(message.is_empty())
+            self.assertEqual(message.to_string(), "payload")
+
+            target = bytearray(8)
+            self.assertEqual(message.copy_to(target, destination_offset=1), 7)
+            self.assertEqual(target, b"\x00payload")
+            self.assertTrue(message.try_copy_to(bytearray(7)))
+            self.assertFalse(message.try_copy_to(bytearray(6)))
+
+            with zlink.Message.from_(message) as copy:
+                self.assertEqual(copy.to_bytes(), b"payload")
+                self.assertIsNot(copy, message)
+
+        with zlink.Message.from_("text") as message:
+            self.assertEqual(message.to_bytes(), b"text")
 
         with zlink.Message.allocate(3) as message:
             data = message.data
@@ -545,6 +561,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
             data[1] = 0x02
             data[2] = 0x03
             self.assertEqual(message.to_bytes(), b"\x01\x02\x03")
+            self.assertFalse(message.is_empty())
+
+        with zlink.Message.allocate(0) as message:
+            self.assertTrue(message.is_empty())
 
     def test_c_string_inputs_reject_embedded_nul(self):
         ctx = zlink.Context()

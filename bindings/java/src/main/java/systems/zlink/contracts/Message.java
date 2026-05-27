@@ -374,6 +374,10 @@ public final class Message implements AutoCloseable {
         return size() == 0;
     }
 
+    public boolean isEmpty() {
+        return empty();
+    }
+
     public boolean valid() {
         return valid && !closed;
     }

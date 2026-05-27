@@ -4,8 +4,10 @@
 
 #include "../Core/common.hpp"
 
+#include <cstring>
 #include <optional>
 #include <span>
+#include <stdexcept>
 
 namespace zlink
 {
@@ -221,6 +223,8 @@ class message_t
         return _valid ? zlink_msg_size (&_msg) : 0;
     }
 
+    bool is_empty () const noexcept { return size () == 0; }
+
     /**
      * @brief Get the storage reference count.
      * @return Reference count, or -1 when invalid.
@@ -250,6 +254,19 @@ class message_t
         const uint8_t *ptr = static_cast<const uint8_t *> (data ());
         return ptr ? std::vector<uint8_t> (ptr, ptr + size ())
                    : std::vector<uint8_t> ();
+    }
+
+    size_t copy_to (void *destination_, size_t destination_size_) const
+    {
+        const size_t payload_size = size ();
+        if (payload_size > destination_size_)
+            throw std::invalid_argument ("destination buffer too small");
+        if (payload_size == 0)
+            return 0;
+        if (!destination_)
+            throw std::invalid_argument ("destination must not be null");
+        std::memcpy (destination_, data (), payload_size);
+        return payload_size;
     }
 
     std::string to_string () const

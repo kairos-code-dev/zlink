@@ -63,6 +63,17 @@ public class MessageCopyWrapContractTest {
         }
     }
 
+    @Test
+    public void canonicalMessageConveniencesExposeCopyAndEmptyState() {
+        try (Message empty = new Message();
+             Message source = Message.from("copy-source");
+             Message copy = Message.from(source)) {
+            assertTrue(empty.isEmpty());
+            assertFalse(source.isEmpty());
+            assertArrayEquals(source.toByteArray(), copy.toByteArray());
+        }
+    }
+
     private static boolean hasPublicMethod(Class<?> type, String name,
                                            Class<?>... parameterTypes) {
         try {

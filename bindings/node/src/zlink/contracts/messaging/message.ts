@@ -264,8 +264,10 @@ export class Message {
     this._metadata = metadata ?? EMPTY_METADATA;
   }
 
-  static from(buffer: BufferLike): Message {
-    return new Message(buffer);
+  static from(buffer: BufferLike | Message): Message {
+    return buffer instanceof Message
+      ? new Message(buffer._buffer)
+      : new Message(buffer);
   }
 
   static alloc(size: number): Message {
@@ -310,8 +312,59 @@ export class Message {
     return this._buffer;
   }
 
+  toBytes(): Buffer {
+    return Buffer.from(this._buffer);
+  }
+
+  copy(): Message {
+    return Message.from(this);
+  }
+
   size(): number {
     return this._buffer.length;
+  }
+
+  isEmpty(): boolean {
+    return this._buffer.length === 0;
+  }
+
+  copyTo(
+    destination: Buffer | Uint8Array,
+    sourceOffset = 0,
+    destinationOffset = 0,
+    length = this._buffer.length - sourceOffset
+  ): number {
+    if (!Buffer.isBuffer(destination) && !(destination instanceof Uint8Array)) {
+      throw new TypeError('destination must be a Buffer or Uint8Array');
+    }
+    if (!Number.isSafeInteger(sourceOffset) || sourceOffset < 0 ||
+        !Number.isSafeInteger(destinationOffset) || destinationOffset < 0 ||
+        !Number.isSafeInteger(length) || length < 0 ||
+        sourceOffset + length > this._buffer.length ||
+        destinationOffset + length > destination.byteLength) {
+      throw new RangeError('copy range is out of bounds');
+    }
+    const target = Buffer.isBuffer(destination)
+      ? destination
+      : Buffer.from(destination.buffer, destination.byteOffset, destination.byteLength);
+    return this._buffer.copy(
+      target,
+      destinationOffset,
+      sourceOffset,
+      sourceOffset + length
+    );
+  }
+
+  tryCopyTo(destination: Buffer | Uint8Array): boolean {
+    if (destination.byteLength < this._buffer.length) {
+      return false;
+    }
+    this.copyTo(destination);
+    return true;
+  }
+
+  getString(encoding: BufferEncoding = 'utf8'): string {
+    return this._buffer.toString(encoding);
   }
 
   getProperty(name: string): string | null {
@@ -328,6 +381,10 @@ export class Message {
   }
 
   close(): void {}
+
+  toString(): string {
+    return this.getString();
+  }
 }
 
 export class RoutingId {

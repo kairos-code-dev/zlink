@@ -62,7 +62,15 @@ fn message_try_from_bytes() {
     let data = b"contract-test-payload";
     let msg = Message::try_from(data).unwrap();
     assert_eq!(msg.as_bytes(), data);
+    assert_eq!(msg.to_vec(), data);
     assert_eq!(msg.size(), data.len());
+}
+
+#[test]
+fn message_try_from_string() {
+    let msg = Message::try_from("contract-text").unwrap();
+    assert_eq!(msg.as_bytes(), b"contract-text");
+    assert_eq!(msg.as_str().unwrap(), "contract-text");
 }
 
 #[test]
@@ -82,6 +90,21 @@ fn message_allocate_writable_payload() {
 fn message_as_str() {
     let msg = Message::try_from(b"hello").unwrap();
     assert_eq!(msg.as_str().unwrap(), "hello");
+}
+
+#[test]
+fn message_copy_helpers_copy_payload() {
+    let msg = Message::try_from(b"copy-payload").unwrap();
+    let copy = msg.try_clone().unwrap();
+    assert_eq!(copy.as_bytes(), msg.as_bytes());
+
+    let mut destination = [0u8; 12];
+    let written = msg.copy_to(&mut destination).unwrap();
+    assert_eq!(written, 12);
+    assert_eq!(&destination, b"copy-payload");
+
+    let mut too_small = [0u8; 11];
+    assert!(msg.copy_to(&mut too_small).is_err());
 }
 
 #[test]

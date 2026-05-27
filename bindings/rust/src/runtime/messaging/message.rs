@@ -59,6 +59,24 @@ impl Message {
         Self::from_slice(data.as_ref())
     }
 
+    pub fn try_clone(&self) -> Result<Self, ConfigError> {
+        unsafe {
+            let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
+            check_config_rc(ffi::zlink_msg_init(msg.as_mut_ptr()))?;
+            let mut inner = msg.assume_init();
+            match check_config_rc(ffi::zlink_msg_copy(
+                &mut inner,
+                &self.inner as *const ffi::zlink_msg_t as *mut ffi::zlink_msg_t,
+            )) {
+                Ok(()) => Ok(Self { inner }),
+                Err(error) => {
+                    let _ = ffi::zlink_msg_close(&mut inner);
+                    Err(error)
+                }
+            }
+        }
+    }
+
     /// View the message payload as a byte slice.
     pub fn as_bytes(&self) -> &[u8] {
         unsafe {
@@ -104,6 +122,19 @@ impl Message {
     /// Interpret the payload as a UTF-8 string.
     pub fn as_str(&self) -> Result<&str, std::str::Utf8Error> {
         std::str::from_utf8(self.data())
+    }
+
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.as_bytes().to_vec()
+    }
+
+    pub fn copy_to(&self, destination: &mut [u8]) -> Result<usize, ConfigError> {
+        let bytes = self.as_bytes();
+        if destination.len() < bytes.len() {
+            return Err(config_validation_error());
+        }
+        destination[..bytes.len()].copy_from_slice(bytes);
+        Ok(bytes.len())
     }
 
     /// Read a string property from the native message metadata.
@@ -167,6 +198,13 @@ impl TryFrom<Vec<u8>> for Message {
     type Error = ConfigError;
     fn try_from(v: Vec<u8>) -> Result<Self, ConfigError> {
         Self::from_slice(&v)
+    }
+}
+
+impl TryFrom<&str> for Message {
+    type Error = ConfigError;
+    fn try_from(value: &str) -> Result<Self, ConfigError> {
+        Self::from_slice(value.as_bytes())
     }
 }
 

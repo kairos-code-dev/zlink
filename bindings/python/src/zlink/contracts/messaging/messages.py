@@ -372,12 +372,19 @@ class Message:
 
     @classmethod
     def from_(cls, data):
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        elif isinstance(data, Message):
+            data = data.to_bytes()
         msg = cls.__new__(cls)
         msg._msg = ZlinkMsg()
         msg._valid = False
         msg._keepalive = _init_msg_from_buffer(msg._msg, data, borrow=False)
         msg._valid = True
         return msg
+
+    def copy(self):
+        return type(self).from_(self)
 
     @classmethod
     def _wrap_buffer(cls, data):
@@ -390,6 +397,9 @@ class Message:
 
     def size(self):
         return _msg_size(self._msg) if self._valid else 0
+
+    def is_empty(self):
+        return self.size() == 0
 
     @property
     def data(self):
@@ -414,6 +424,42 @@ class Message:
 
     def to_bytes(self):
         return _msg_to_bytes(self._msg) if self._valid else b""
+
+    def copy_to(self, destination, source_offset=0, destination_offset=0, length=None):
+        payload = self.to_bytes()
+        if length is None:
+            length = len(payload) - source_offset
+        if (
+            source_offset < 0
+            or destination_offset < 0
+            or length < 0
+            or source_offset + length > len(payload)
+        ):
+            raise ValueError("copy range is out of bounds")
+        view = memoryview(destination)
+        if view.readonly:
+            raise TypeError("destination must be writable")
+        if view.ndim != 1 or view.format != "B":
+            try:
+                view = view.cast("B")
+            except TypeError as exc:
+                raise TypeError("destination must be a writable byte buffer") from exc
+        if destination_offset + length > view.nbytes:
+            raise ValueError("destination buffer is too small")
+        view[destination_offset : destination_offset + length] = payload[
+            source_offset : source_offset + length
+        ]
+        return length
+
+    def try_copy_to(self, destination):
+        try:
+            self.copy_to(destination)
+            return True
+        except ValueError:
+            return False
+
+    def to_string(self, encoding="utf-8"):
+        return self.to_bytes().decode(encoding)
 
     def get_property(self, name):
         return _msg_gets(self._msg, name) if self._valid else None

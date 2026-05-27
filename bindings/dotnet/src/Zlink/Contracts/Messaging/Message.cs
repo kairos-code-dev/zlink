@@ -80,6 +80,8 @@ public sealed class Message : IDisposable, IAsyncDisposable
         }
     }
 
+    public bool IsEmpty => Size == 0;
+
     public int RefCount
     {
         get
@@ -246,6 +248,13 @@ public sealed class Message : IDisposable, IAsyncDisposable
         if (data.IsSingleSegment)
             return From(data.First);
         return From(data.ToArray());
+    }
+
+    public static Message From(Message source)
+    {
+        if (source == null)
+            throw new ArgumentNullException(nameof(source));
+        return source.Copy();
     }
 
     public static Message From(string value)

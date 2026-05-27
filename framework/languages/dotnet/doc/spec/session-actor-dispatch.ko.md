@@ -1026,16 +1026,9 @@ public sealed class ZLinkMessageMetadata
 {
     public static ZLinkMessageMetadata Empty { get; }
 
-    public IReadOnlyDictionary<string, string> Application { get; }
-    public IReadOnlyDictionary<string, string> Codec { get; }
+    public IReadOnlyDictionary<string, string> Values { get; }
 
-    public bool TryGetApplicationValue(
-        string key,
-        out string? value);
-
-    public bool TryGetCodecValue(
-        string key,
-        out string? value);
+    public string? Find(string key);
 }
 
 public interface IZLinkMessageMetadataPolicy
@@ -1044,9 +1037,11 @@ public interface IZLinkMessageMetadataPolicy
 }
 ```
 
-기본 `IZLinkMessageMetadataPolicy` 는 application metadata 를 전달하지 않는다.
-trace id 같은 값을 actor handler 까지 함께 흘려 보내려면, framework 등록
-단계에서 명시적으로 허용해야 한다.
+기본 `IZLinkMessageMetadataPolicy` 는 client stream metadata 를 actor handler
+쪽으로 전달하지 않는다. trace id 같은 값을 actor handler 까지 함께 흘려
+보내려면, framework 등록 단계에서 명시적으로 허용해야 한다. 허용된 값은
+`ZLinkMessageMetadata.Values` 에 저장되며, 사용자 코드는 `Find(key)` 가
+`null` 을 반환하면 해당 key 가 없다고 보면 된다.
 
 ```csharp
 options.ConfigureMetadata(metadata =>
@@ -1402,7 +1397,7 @@ public sealed class JoinMatchHandler
         _ = entrySpot;
         // request.MatchId는 application 도메인이 정한 match id다.
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
-        var matchSpotRid = RoutingId.FromString(request.MatchId);
+        var matchSpotRid = RoutingId.From(request.MatchId);
         var joined = await actor.Context
             .JoinSpot(matchSpotRid, request)
             .SubmitAsync<JoinMatchSpotResult>(cancellationToken);

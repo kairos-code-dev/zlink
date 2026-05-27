@@ -63,6 +63,10 @@ public readonly record struct ZLinkStreamDiagnostic(
 public sealed class ZLinkMessageMetadata
 {
     public static ZLinkMessageMetadata Empty { get; }
+
+    public IReadOnlyDictionary<string, string> Values { get; }
+
+    public string? Find(string key);
 }
 
 public interface IZLinkSession

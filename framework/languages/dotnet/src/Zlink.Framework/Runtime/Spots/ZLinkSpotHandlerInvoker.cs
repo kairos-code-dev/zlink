@@ -164,9 +164,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             return ZLinkMessageMetadata.Empty;
         }
 
-        return new ZLinkMessageMetadata(
-            application,
-            new Dictionary<string, string>(StringComparer.Ordinal));
+        return new ZLinkMessageMetadata(application);
     }
 
     public async ValueTask InvokeActorLifecycleAsync(

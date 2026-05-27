@@ -1,30 +1,15 @@
 namespace Zlink.Framework.Contracts.Streams;
 
 public sealed class ZLinkMessageMetadata(
-    IReadOnlyDictionary<string, string> application,
-    IReadOnlyDictionary<string, string> codec)
+    IReadOnlyDictionary<string, string> values)
 {
     public static ZLinkMessageMetadata Empty { get; } = new(
-        new Dictionary<string, string>(StringComparer.Ordinal),
         new Dictionary<string, string>(StringComparer.Ordinal));
 
-    public IReadOnlyDictionary<string, string> Application { get; } = application;
+    public IReadOnlyDictionary<string, string> Values { get; } = values;
 
-    public IReadOnlyDictionary<string, string> Codec { get; } = codec;
-
-    public bool TryGetApplicationValue(
-        string key,
-        out string? value)
-    {
-        return Application.TryGetValue(key, out value);
-    }
-
-    public bool TryGetCodecValue(
-        string key,
-        out string? value)
-    {
-        return Codec.TryGetValue(key, out value);
-    }
+    public string? Find(string key) =>
+        Values.TryGetValue(key, out var value) ? value : null;
 }
 
 public interface IZLinkMessageMetadataPolicy

@@ -25,7 +25,7 @@ public sealed class StreamContracts
         var session = new ExampleSession(context);
 
         await session.OnConnectedAsync(CancellationToken.None);
-        var actorRef = await context.BindActorAsync(new Systems.Zlink.ActorRef(RoutingId.Of("actor-node"), "player-1", 1));
+        var actorRef = await context.BindActorAsync(new Systems.Zlink.ActorRef(RoutingId.From("actor-node"), "player-1", 1));
         var boundActor = context.FindActor("player-1");
         await actorRef.RelayAsync(
             new ZlinkStreamHeader(
@@ -122,10 +122,20 @@ public sealed class StreamContracts
 
         IZLinkMessageMetadataPolicy policy = new MetadataPolicy(
             new HashSet<string>(StringComparer.Ordinal) { "trace-id" });
+        var metadata = new ZLinkMessageMetadata(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["trace-id"] = "abc"
+        });
 
         Assert.True(boundSession.IsDisconnected);
         Assert.True(policy.CanForwardApplicationKey("trace-id"));
         Assert.False(policy.CanForwardApplicationKey("internal-key"));
+        Assert.Equal("abc", metadata.Find("trace-id"));
+        Assert.Null(metadata.Find("tenant-id"));
+        Assert.Null(typeof(ZLinkMessageMetadata).GetProperty("Application"));
+        Assert.Null(typeof(ZLinkMessageMetadata).GetProperty("Codec"));
+        Assert.Null(typeof(ZLinkMessageMetadata).GetMethod("TryGetApplicationValue"));
+        Assert.Null(typeof(ZLinkMessageMetadata).GetMethod("TryGetCodecValue"));
     }
 
     private sealed record PlayerJoined(string PlayerId);
@@ -197,7 +207,7 @@ public sealed class StreamContracts
     {
         public string SessionId => "session-1";
 
-        public RoutingId? RoutingId => Systems.Zlink.RoutingId.Of("session-route");
+        public RoutingId? RoutingId => Systems.Zlink.RoutingId.From("session-route");
 
         public string? LocalAddr => "tcp://127.0.0.1:5000";
 
@@ -220,7 +230,7 @@ public sealed class StreamContracts
             CancellationToken cancellationToken = default)
         {
             return BindActorAsync(
-                new Systems.Zlink.ActorRef(Systems.Zlink.RoutingId.Of("actor-node"), actorId, 1),
+                new Systems.Zlink.ActorRef(Systems.Zlink.RoutingId.From("actor-node"), actorId, 1),
                 cancellationToken);
         }
 

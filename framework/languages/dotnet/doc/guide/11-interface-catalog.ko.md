@@ -62,7 +62,7 @@ var reply = await client
 ### 1.2 route client — router channel 너머 target node 호출
 
 ```csharp
-var target = RoutingId.Of("play-node-1");
+var target = RoutingId.From("play-node-1");
 
 await client
     .Send("play-router", target, new RoomEvent("opened")) // IZLinkRouteSendCall
@@ -238,7 +238,7 @@ options.AddClientServerChannel("api", channel =>
     {
         server.Bind("tcp://127.0.0.1:5000");
         server.ConfigureSocket(socket => socket.TcpNoDelay = true);
-        server.ConfigureRouting(route => route.RoutingId = RoutingId.Of("api-server"));
+        server.ConfigureRouting(route => route.RoutingId = RoutingId.From("api-server"));
     });
     channel.EnableClient(client =>          // IChannelClientCapabilityBuilder
         client.UseManualConnections(c => c.Connect("tcp://127.0.0.1:5000")));
@@ -284,7 +284,7 @@ options.AddSpotMesh("play-mesh", mesh =>
         spot.EnableRouter(router =>
         {
             router.SetRouterBind("tcp://127.0.0.1:5501");
-            router.SetRoutingId(RoutingId.Of("spot-router"));
+            router.SetRoutingId(RoutingId.From("spot-router"));
         });
         spot.EnablePubSub(pubSub =>
         {
@@ -297,7 +297,7 @@ options.AddSpotMesh("play-mesh", mesh =>
         spot.AttachSpotPublisherClient("mesh-events");
         spot.AcceptSpotRoutesFromChannel("play-router", a =>
             a.UseManualConnections(c => c.Connect("tcp://127.0.0.1:5300")));
-        spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.Of("entry"));
+        spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.From("entry"));
         spot.AddSpotFactory<RoomSpot>();
         spot.AddEntrySpot<EntrySpot>();
     });
@@ -306,7 +306,7 @@ options.AddSpotMesh("play-mesh", mesh =>
         spot.EnableRouter(router =>
         {
             router.SetRouterBind("tcp://127.0.0.1:5601");
-            router.ConfigureRouting(r => r.RoutingId = RoutingId.Of("session-gateway"));
+            router.ConfigureRouting(r => r.RoutingId = RoutingId.From("session-gateway"));
         });
     });
 });
@@ -356,11 +356,11 @@ spotRouteIngress.Connect("tcp://127.0.0.1:5006");  // ISpotRouterChannelConnecti
 
 ```csharp
 var socket = new SocketConfig { TcpNoDelay = true, Immediate = true, MaxMessageSize = 1024, /* ... */ };
-var route = new RouteConfig { RoutingId = RoutingId.Of("router"), RequireKnownPeer = true };
-var outbound = new OutboundRouteConfig { RoutingId = RoutingId.Of("client"), ProbeRouterOnConnect = true };
+var route = new RouteConfig { RoutingId = RoutingId.From("router"), RequireKnownPeer = true };
+var outbound = new OutboundRouteConfig { RoutingId = RoutingId.From("client"), ProbeRouterOnConnect = true };
 var publisher = new SpotPublisherConfig { SendHighWaterMark = 32, NoDrop = true };
 var subscriber = new SpotSubscriberConfig { ReceiveHighWaterMark = 64 };
-var entry = new EntrySpotOptions { RoutingId = RoutingId.Of("entry") };
+var entry = new EntrySpotOptions { RoutingId = RoutingId.From("entry") };
 var dispatch = new DispatchOptions { SpotDispatchMode = ZLinkDispatchMode.Compiled, StreamDispatchMode = ZLinkDispatchMode.Dynamic };
 ```
 
@@ -401,8 +401,8 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
     public async ValueTask OnInitializeAsync(CancellationToken ct)
     {
         await Context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
-        await Context.SendSpot(RoutingId.Of("room-2"), new RoomEvent("opened")).Submit(ct);
-        await Context.RequestSpot(RoutingId.Of("room-2"), new JoinRoom("room-2")).SubmitAsync<JoinedRoom>(ct);
+        await Context.SendSpot(RoutingId.From("room-2"), new RoomEvent("opened")).Submit(ct);
+        await Context.RequestSpot(RoutingId.From("room-2"), new JoinRoom("room-2")).SubmitAsync<JoinedRoom>(ct);
         await Context.PublishSpot("room.events", new RoomEvent("opened")).Submit(ct);
         await Context.SendChannel("api", new RoomEvent("opened")).Submit(ct);
         await Context.RequestChannel("api", new JoinRoom("room-1")).SubmitAsync<JoinedRoom>(ct);
@@ -499,7 +499,7 @@ public sealed class PlayerJoinHandler
 ```csharp
 var actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActorManager
 var joinReply = await actor.Context
-    .JoinSpot(RoutingId.Of("room-1"), new JoinRoom("room-1")) // IZLinkActorContext
+    .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1")) // IZLinkActorContext
     .SubmitAsync<JoinedRoom>();
 if (joinReply.ResultCode != 0)
 {
@@ -622,13 +622,16 @@ await boundSession.DisconnectAsync();
 // 전달 가능한 metadata key 정책
 IZLinkMessageMetadataPolicy policy = /* ... */;
 policy.CanForwardApplicationKey("trace-id");   // true / false
+
+ZLinkMessageMetadata metadata = /* ... */;
+var traceId = metadata.Find("trace-id");        // 없으면 null
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkBoundSession` | actor 에 묶인 client 로의 단방향 push. `Send<TMessage>(message)` + `DisconnectAsync`. (요청 표면 없음 — push 는 단방향) |
 | `IZLinkBoundSessionSendCall` | bound session push 종결자(`PacketName`/`Metadata` → `Submit`) |
-| `IZLinkMessageMetadataPolicy` | 응용 metadata key 전달 허용 여부(`CanForwardApplicationKey`) |
+| `IZLinkMessageMetadataPolicy` | metadata key 전달 허용 여부(`CanForwardApplicationKey`) |
 
 검증: `StreamContracts.Bound_session_sends_to_the_bound_session_without_exposing_stream_transport`.
 

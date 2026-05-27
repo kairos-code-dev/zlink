@@ -126,10 +126,9 @@ public abstract partial class StreamTestSupport
             cancellationToken.ThrowIfCancellationRequested();
 
             recorder.LastPacketName = context.PacketName;
-            recorder.LastTraceId = context.Metadata.TryGetApplicationValue("trace-id", out var traceId)
-                ? traceId
-                : null;
-            recorder.ForwardedTenantId = context.Metadata.Application.ContainsKey("tenant-id");
+            var traceId = context.Metadata.Find("trace-id");
+            recorder.LastTraceId = traceId;
+            recorder.ForwardedTenantId = context.Metadata.Find("tenant-id") is not null;
             context.Reply
                 .Metadata("reply-trace-id", $"reply:{traceId}")
                 .Compress();

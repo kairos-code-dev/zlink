@@ -63,8 +63,8 @@
 | context | `ZLinkSpotActorSendContext` / `ZLinkSpotActorRequestContext` | Spot actor handler 실행 context. packet metadata 와 request reply 옵션을 제공한다 | 4.4.2 |
 | handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` / `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor message handler | 4.4.2 |
 | handler | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` / `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor message handler | 4.4.2 |
-| value | `ZLinkMessageMetadata` | actor/bound session call에 전달되는 application/codec metadata snapshot | 4.4.2 |
-| policy | `IZLinkMessageMetadataPolicy` | application metadata forwarding 허용 여부 | 4.4.2 |
+| value | `ZLinkMessageMetadata` | actor/bound session call에 전달되는 metadata snapshot | 4.4.2 |
+| policy | `IZLinkMessageMetadataPolicy` | metadata forwarding 허용 여부 | 4.4.2 |
 | factory | `IZLinkActorFactory` | actor type별 actor 생성 | 4.4.1 |
 | handler | `IZLinkSpotActorJoinHandler<TSpot, TActor, TRequest, TReply>` | spot에 actor가 join할 때 호출되는 handler | 4.4.1 |
 | internal | route transport helper | routed channel direct target send/request (backend/internal 표면) | 5.5.1 |
@@ -1814,16 +1814,9 @@ public sealed class ZLinkMessageMetadata
 {
     public static ZLinkMessageMetadata Empty { get; }
 
-    public IReadOnlyDictionary<string, string> Application { get; }
-    public IReadOnlyDictionary<string, string> Codec { get; }
+    public IReadOnlyDictionary<string, string> Values { get; }
 
-    public bool TryGetApplicationValue(
-        string key,
-        out string? value);
-
-    public bool TryGetCodecValue(
-        string key,
-        out string? value);
+    public string? Find(string key);
 }
 
 public interface IZLinkMessageMetadataPolicy
@@ -2180,7 +2173,7 @@ framework 초안에서 말하는 "spot 용 함수" 와 "channelName 으로 호�
 send/request 할 때 사용한다. 이 interface 는 spot rid 로 transport 를
 찾지 않는다. 호출자는 먼저 `ViaEgressChannel(...)`로 source process 가 이미
 보유한 local egress channel 을 고른다. target 은 `RoutingId` 로만 받는다.
-string 이름이 필요하면 호출자가 `RoutingId.Of(...)` 같은 변환을 먼저 수행한다.
+string 이름이 필요하면 호출자가 `RoutingId.From(...)` 같은 변환을 먼저 수행한다.
 
 ```csharp
 public interface IZLinkRoutedSpotClient
@@ -2753,8 +2746,7 @@ public interface IZLinkFrameworkOptions
   - protobuf/json/messagepack 같은 codec provider를 framework registry에 등록하는
     진입점이다.
 - `ConfigureMetadata(...)`
-  - session actor dispatch와 bound session 경로에서 전달할 application metadata key를
-    등록한다.
+  - session actor dispatch와 bound session 경로에서 전달할 metadata key를 등록한다.
 - `AddActorFactory(...)`
   - actor type 문자열에 대응하는 actor factory를 등록한다.
 - `AddSpotRemoteAddressResolver(...)`

@@ -16,6 +16,12 @@
 막고, `core/include/zlink.h`를 기준으로 설명 가능하고 일관된 공통 계약을
 강제하는 데 있다.
 
+이 문서는 현재 모든 바인딩이 이미 같은 상태라는 뜻이 아니다. `.NET` binding의
+contract/runtime 분리와 파일 입도를 표준 target으로 삼아, 나머지 wrapper binding을
+단계적으로 정렬하기 위한 기준이다. `Required`로 표시된 항목은 현재 리뷰에서 바로
+적용하고, `Target`으로 표시된 구조와 표면은 해당 바인딩을 정렬하는 작업의 목표로
+적용한다. C binding은 native ABI baseline이므로 별도 예외 규칙을 따른다.
+
 `c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 아래 문서는
 각 바인딩 구현이 실제로 외부에 제공해야 하는 public API contract를 정의한다.
 이 문서들이 규정하는 것은 공개 타입, 메서드, 시그니처, 반환값, 오류 의미이며,
@@ -201,6 +207,41 @@ C를 제외한 wrapper binding은 `.NET` binding처럼 공개 인터페이스/�
   하는 동작 계약은 public contract source에서 먼저 설명되어야 한다.
 - sample, perf, framework adapter는 runtime concrete type이나 native bridge가 아니라
   public contract projection을 기준으로 작성한다.
+
+### File Granularity Policy
+
+모든 wrapper binding은 파일을 나누는 입도도 비슷하게 맞춘다. 목표는 파일 개수나
+파일명을 1:1로 복제하는 것이 아니라, 어느 언어를 읽어도 같은 개념 묶음을 비슷한
+크기의 파일에서 찾을 수 있게 하는 것이다.
+
+기준은 `.NET` binding의 `Contracts` 정리 수준을 따른다. 한 파일은 하나의 독립된
+public 개념이거나, 같은 변경 이유를 공유하는 작고 강하게 붙은 계약 묶음을 담는다.
+
+파일 분할 기준은 아래와 같다.
+
+- `Context`, socket family, `SpotNode`, `Spot`, `Actor`, poller, timer처럼 사용자가
+  직접 찾는 resource 계약은 얇어도 독립 파일로 둘 수 있다.
+- `Message`, `Received`, `TopicMessage`, `RoutingId`처럼 소유권, 저장소, 값 검증,
+  비용 모델이 중요한 타입은 단독 파일로 둔다.
+- marker interface, delegate, 작은 enum, 한 줄 record처럼 단독으로 변경 이유가 약한
+  타입은 가장 가까운 계약 파일에 합친다. 예를 들어 socket marker role은 socket
+  base 계약과, stream packet handler delegate는 stream socket 계약과 함께 둔다.
+- send/request/reply 같은 staged operation builder 계약은 같은 도메인 변경 이유를
+  공유하므로 한 operation contract 파일로 묶을 수 있다.
+- Actor join, actor management, registry model, SpotNode snapshot model처럼 서비스
+  하위 도메인이 뚜렷한 묶음은 도메인별 파일로 둔다. 단, 모델 파일이 너무 커져서
+  peer/status/socket/actor snapshot처럼 서로 다른 변경 이유가 생기면 그때 나눈다.
+- `Enums`, `Types`, `Models`, `Common`, `Utils`처럼 표현 형식이나 포괄 이름만 기준으로
+  파일을 만들지 않는다. 파일명은 사용자가 찾는 도메인 개념이나 변경 이유를 드러내야
+  한다.
+- 각 언어는 casing, suffix, package convention을 따른다. 예를 들어 C#은
+  `OperationContracts.cs`, Rust는 `operation_contracts.rs`, TypeScript는
+  `operation-contracts.ts`처럼 표현할 수 있지만, 같은 책임 묶음이라는 점은 유지한다.
+
+이 기준을 적용할 때 public API compatibility를 깨지 않는다. 파일 이동은 가능한 한
+namespace, package export, crate re-export, package `exports`, generated declaration
+surface를 유지한 채 수행한다. 파일 구조를 맞추기 위해 새 public wrapper나 얕은
+compatibility shim을 만들지 않는다.
 
 언어별 적용은 다음 원칙을 따른다.
 
@@ -645,16 +686,19 @@ bindings/<lang>/
 - 공개 contract만 보고 사용자가 사용할 수 있는 API를 이해할 수 있는가?
 - 공개 contract가 runtime concrete type, native handle, helper bridge 타입을
   직접 요구하지 않는가?
+- 파일이 독립 개념 또는 같은 변경 이유를 공유하는 묶음을 담고 있는가?
+- marker, delegate, 작은 enum, 한 줄 record만 담은 얇은 파일이 가까운 계약 파일로
+  합쳐질 수 있지 않은가?
 - 값 타입을 추상화하느라 오히려 equality, ownership, 비용 모델이 흐려지지
   않았는가?
 - 언어 생태계의 자연스러운 캡슐화 수단을 사용했는가?
 
-#### Required Physical Layout By Binding
+#### Target Physical Layout By Binding
 
-각 언어별 README는 아래 경로를 그대로 기준으로 삼아야 한다. 구현 작업자는 먼저
-이 구조와 실제 소스 위치를 맞춘 뒤 API, sample, perf를 수정한다. public package,
-namespace, module, import path가 아래 `Contracts`나 `Runtime` 이름을 직접
-노출한다는 뜻은 아니다.
+각 언어별 README는 신규 정렬 작업의 목표로 아래 경로와 역할을 기준으로 삼는다.
+현재 구현이 아직 이 구조와 다르면 해당 binding의 구조 정리 작업에서 API, sample,
+perf와 함께 단계적으로 맞춘다. public package, namespace, module, import path가
+아래 `Contracts`나 `Runtime` 이름을 직접 노출한다는 뜻은 아니다.
 
 | Binding | Contract root | Runtime root | Public projection |
 |---|---|---|---|
@@ -663,7 +707,7 @@ namespace, module, import path가 아래 `Contracts`나 `Runtime` 이름을 직�
 | Java | `bindings/java/src/main/java/systems/zlink/contracts/` | `bindings/java/src/main/java/systems/zlink/runtime/` | exported `systems.zlink.contracts.*` JPMS packages and Maven artifact |
 | Node | `bindings/node/src/index.ts` and `bindings/node/src/zlink/contracts/` | `bindings/node/src/zlink/runtime/` | package root export, generated `.d.ts`, and `package.json` exports |
 | Python | `bindings/python/src/zlink/contracts/` | `bindings/python/src/zlink/_runtime/` and `bindings/python/src/zlink/_native/` | `zlink` package exports from `__init__.py` |
-| Go | `bindings/go/contracts/` public subpackages | `bindings/go/internal/runtime/` and `bindings/go/internal/native/` | exported identifiers in `zlink.systems/zlink/contracts/...` packages |
+| Go | `bindings/go/contracts/` public package | current root unexported implementation files and cgo bridge files; future split should use `bindings/go/internal/...` | exported identifiers in `zlink.systems/zlink/contracts` |
 | Rust | `bindings/rust/src/contracts/` | private `bindings/rust/src/runtime/` and `bindings/rust/src/runtime/native/` modules | `lib.rs` re-exports and public rustdoc projection |
 
 각 언어별 README는 `Core`, `Messaging`, `Sockets`, `Eventing`, `Service`,
@@ -4289,7 +4333,12 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 
 언어별 표면은 달라도 의미 계약은 같아야 한다.
 
-### Cross-Language Capability Table
+### Cross-Language Capability Table (Target)
+이 표는 `.NET` 기준으로 정리한 target capability 표다. 이미 구현된 바인딩의 현재
+public surface가 이 표와 다르면, 해당 항목은 구조 정렬 또는 breaking cleanup 작업의
+목표로 해석한다. 단, `Internal-only` 항목은 target 상태에서도 public API, sample,
+guide, spec signature에 노출하지 않는다.
+
 | Area | C API | C++ | .NET | Java | Go | Rust | Node | Python |
 |---|---|---|---|---|---|---|---|---|
 | Multipart-only public surface | Required | Required | Required | Required | Required | Required | Required | Required |

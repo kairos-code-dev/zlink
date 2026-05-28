@@ -11,6 +11,12 @@ owner files, tests, samples, perf runners, and runtime behavior follow this
 blueprint and map the stable capabilities of `core/include/zlink.h` into
 Go-idiomatic APIs.
 
+This README is the target blueprint for aligning the Go binding to the shared
+policy in `../README.md`. Existing exported identifiers or root implementation
+files may lag this target until the Go alignment work lands; treat those
+differences as cleanup targets. When the binding is aligned to this README, the
+target contract becomes the acceptance standard for that work.
+
 This binding follows the shared bindings architecture map with Go naming:
 the public `contracts` package is the consumer projection, while runtime
 implementation remains in root unexported files or future `internal/` packages.
@@ -37,7 +43,7 @@ reach into implementation-only helpers or native bridge details.
 
 ## Repository Layout
 
-Use these paths consistently when changing the Go binding.
+Use these target paths consistently when changing the Go binding.
 
 - Public contract: `bindings/go/contracts/`.
 - Runtime implementation: root implementation files in `bindings/go/`.
@@ -55,12 +61,17 @@ implementation as `zlink.systems/zlink/runtime`. If the root implementation is
 later moved into `internal/`, update the `contracts` projection, samples, perf,
 tests, and this README in the same change.
 
-The following tree is normative for implementation work. Exported types,
+The following tree is the target implementation structure. Exported types,
 functions, errors, enums, and builder contracts belong in the public
 `contracts` package. Root implementation files own the current cgo bridge and
 runtime details. cgo declarations, raw pointers, native struct mirrors,
 callback trampolines, request progress helpers, and marshalling must not become
 the consumer-facing entrypoint.
+
+File granularity follows the common policy in `../README.md`: keep one file
+per independent public concept or tight operation/model group. Very small
+callback, enum, error, or pass-through helper files should be merged into the
+nearby contract file when that makes the public shape easier to read.
 
 ```text
 bindings/go/
@@ -221,9 +232,10 @@ Keep the public `contracts` package tree easy to scan.
 If a helper exists only to call cgo, manage native memory, or advance request
 progress, it is not exported.
 
-## Required Capability Coverage
+## Target Capability Coverage
 
-The Go package must cover stable user-facing core capabilities.
+The Go package must cover these stable user-facing capabilities when the
+binding is aligned to the shared .NET-standard target policy.
 
 - Context lifecycle, context options, shutdown, auto-HWM recalculation,
   version, capability, and strerror.

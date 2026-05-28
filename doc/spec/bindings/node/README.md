@@ -12,6 +12,12 @@ package exports, `.d.ts` types, tests, samples, perf runners, and runtime
 behavior follow this blueprint and map stable `core/include/zlink.h`
 capabilities into TypeScript-idiomatic APIs.
 
+This README is the target blueprint for aligning the Node/TypeScript binding to
+the shared policy in `../README.md`. Existing source, generated declarations,
+or package exports may lag this target until the Node alignment work lands;
+treat those differences as cleanup targets. When the binding is aligned to this
+README, the target contract becomes the acceptance standard for that work.
+
 This binding follows the shared bindings architecture map with TypeScript
 naming: lower-case `contracts` and `runtime` source folders, plus package
 exports that decide what is public. Do not copy capitalized .NET or C++ folder
@@ -36,7 +42,7 @@ Deep imports into source files or native bridge modules are not public API.
 
 ## Repository Layout
 
-Use these paths consistently when changing the Node/TypeScript binding.
+Use these target paths consistently when changing the Node/TypeScript binding.
 
 - Public entrypoint: `bindings/node/src/index.ts`.
 - Contract source: `bindings/node/src/zlink/contracts/`.
@@ -62,6 +68,12 @@ surfaces. `src/zlink/contracts` owns public TypeScript types, classes,
 builders, enums, and errors. `src/zlink/runtime` owns native addon calls,
 handle owners, callback trampolines, request progress helpers, marshalling,
 and platform loading.
+
+File granularity follows the common policy in `../README.md`: keep one file
+per independent public concept or tight operation/model group. Very small type
+aliases, callback types, enum-only files, or pass-through helper modules should
+be merged into the nearby contract file when that makes the public shape easier
+to read.
 
 ```text
 bindings/node/
@@ -221,9 +233,10 @@ The package entrypoint should group the API around domain concepts.
 - Errors: typed error classes or tagged error objects preserving core result
   domains.
 
-## Required Capability Coverage
+## Target Capability Coverage
 
-The public entrypoint must cover stable user-facing core capabilities.
+The public entrypoint must cover these stable user-facing capabilities when
+the binding is aligned to the shared .NET-standard target policy.
 
 - Context lifecycle, options, shutdown, auto-HWM recalculation, version,
   capability, and strerror.

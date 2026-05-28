@@ -16,6 +16,10 @@ This binding follows the shared bindings architecture map with .NET naming:
 owns implementation. Other bindings may use different casing or package names,
 but this document is the .NET projection of the same map.
 
+This README is the reference projection for wrapper binding target docs. Other
+languages should preserve the same contract/runtime ownership and file
+granularity intent while using their own idiomatic names and package paths.
+
 ## Public Contract Source
 
 - Public namespace: `Systems.Zlink`.

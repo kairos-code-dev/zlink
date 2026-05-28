@@ -18,6 +18,10 @@ areas reviewers use when reading the C header. C expresses those areas through
 header sections, type/function prefixes, tests, samples, and documentation
 sections instead of separate `contracts/` and `runtime/` folders.
 
+The shared file granularity policy is review vocabulary for C header sections
+and helper files only. It does not require wrapper-style `contracts/` or
+`runtime/` folders because `core/include/zlink.h` remains the ABI baseline.
+
 ## Public Contract Source
 
 - Public contract: `core/include/zlink.h`.

@@ -12,6 +12,12 @@ runtime tree, public export projection, rustdoc, tests, samples, perf runners,
 and runtime behavior follow this blueprint and map stable `core/include/zlink.h`
 capabilities into Rust-idiomatic APIs.
 
+This README is the target blueprint for aligning the Rust binding to the shared
+policy in `../README.md`. Existing modules, re-exports, or compatibility
+surfaces may lag this target until the Rust alignment work lands; treat those
+differences as cleanup targets. When the binding is aligned to this README, the
+target contract becomes the acceptance standard for that work.
+
 This binding follows the shared bindings architecture map with Rust naming:
 `contracts` and private `runtime` modules organize source ownership, while
 `lib.rs` decides which module paths become public crate API.
@@ -34,7 +40,7 @@ bindings.
 
 ## Repository Layout
 
-Use these paths consistently when changing the Rust binding.
+Use these target paths consistently when changing the Rust binding.
 
 - Public contract: `bindings/rust/src/contracts/`.
 - Crate projection: `bindings/rust/src/lib.rs`.
@@ -52,12 +58,18 @@ the public API when they are exported. The `contracts` and `runtime` source
 trees are implementation organization unless `lib.rs` explicitly exposes a
 module. Do not expose `zlink::runtime` or raw native bridge modules.
 
-The following tree is normative for implementation work. Public structs,
+The following tree is the target implementation structure. Public structs,
 enums, traits, errors, free functions, and builder contracts belong in
 `contracts/` and are re-exported intentionally from `lib.rs`. FFI bindings, raw
 pointers, native struct mirrors, handle owners, callback trampolines, request
 progress helpers, marshalling, and unsafe part loops stay private under
 `runtime/`.
+
+File granularity follows the common policy in `../README.md`: keep one file
+per independent public concept or tight operation/model group. Very small
+marker traits, callback aliases, enum-only modules, or pass-through helper
+modules should be merged into the nearby contract file when that makes the
+public shape easier to read.
 
 ```text
 bindings/rust/
@@ -209,9 +221,10 @@ The crate should expose clear public modules or re-exports.
 The public crate may re-export common types at the crate root, but private FFI
 modules must stay private.
 
-## Required Capability Coverage
+## Target Capability Coverage
 
-The public crate must cover stable user-facing core capabilities.
+The public crate must cover these stable user-facing capabilities when the
+binding is aligned to the shared .NET-standard target policy.
 
 - Context lifecycle, options, shutdown, auto-HWM recalculation, version,
   capability, and strerror.

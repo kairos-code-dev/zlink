@@ -13,6 +13,12 @@ packages, type hints, tests, samples, perf runners, and runtime behavior follow
 this blueprint and map stable `core/include/zlink.h` capabilities into
 Python-idiomatic APIs.
 
+This README is the target blueprint for aligning the Python binding to the
+shared policy in `../README.md`. Existing source, type hints, or package
+exports may lag this target until the Python alignment work lands; treat those
+differences as cleanup targets. When the binding is aligned to this README, the
+target contract becomes the acceptance standard for that work.
+
 This binding follows the shared bindings architecture map with Python naming:
 public names are projected from `zlink`, public contract source lives under
 lower-case `contracts`, and implementation details stay in underscore-prefixed
@@ -33,7 +39,7 @@ Perf, samples, and tests must import from `zlink`, not from underscore modules.
 
 ## Repository Layout
 
-Use these paths consistently when changing the Python binding.
+Use these target paths consistently when changing the Python binding.
 
 - Public contract: `bindings/python/src/zlink/contracts/`.
 - Runtime implementation: `bindings/python/src/zlink/_runtime/`.
@@ -54,6 +60,11 @@ enums, type aliases, and builder contracts belong in `contracts/` and are
 re-exported intentionally from `zlink`. Native extension calls, `ctypes`/CFFI
 declarations, handle owners, callback trampolines, marshalling, and request
 progress helpers belong under `_runtime` or `_native`.
+
+File granularity follows the common policy in `../README.md`: keep one file
+per independent public concept or tight operation/model group. Very small
+protocol, callback, enum, or pass-through helper modules should be merged into
+the nearby contract file when that makes the public shape easier to read.
 
 ```text
 bindings/python/
@@ -202,9 +213,10 @@ The `zlink` package should expose domain-level groups.
   actor refs, actor lifecycle, and operation builders.
 - Errors: typed exception classes preserving core result domains.
 
-## Required Capability Coverage
+## Target Capability Coverage
 
-The public package must cover stable user-facing core capabilities.
+The public package must cover these stable user-facing capabilities when the
+binding is aligned to the shared .NET-standard target policy.
 
 - Context lifecycle, options, shutdown, auto-HWM recalculation, version,
   capability, and strerror.

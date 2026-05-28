@@ -11,6 +11,12 @@ projections, tests, samples, perf runners, and runtime behavior follow this
 blueprint and map the stable capabilities of `core/include/zlink.h` into
 C++-idiomatic types.
 
+This README is the target blueprint for aligning the C++ binding to the shared
+policy in `../README.md`. Existing headers or compatibility projections may
+lag this target until the C++ alignment work lands; treat those differences as
+cleanup targets. When the binding is aligned to this README, the target
+contract becomes the acceptance standard for that work.
+
 This binding follows the shared bindings architecture map with C++ naming:
 `Contracts/` owns the public contract categories and `Runtime/` owns
 implementation helpers. The folder names are C++ header organization, not
@@ -40,7 +46,7 @@ concrete values, and private/detail helper placement as its natural boundary.
 
 ## Repository Layout
 
-Use these paths consistently when changing the C++ binding.
+Use these target paths consistently when changing the C++ binding.
 
 - Public contract: `bindings/cpp/include/zlink/Contracts/`.
 - Runtime implementation: `bindings/cpp/include/zlink/Runtime/`.
@@ -64,6 +70,11 @@ include `<zlink.hpp>` and use the projected `zlink` API, not runtime helper
 paths. Legacy wrapper headers such as `include/zlink/message.hpp`,
 `include/zlink/services/spot.hpp`, or `include/zlink/sockets/dealer.hpp` are
 not part of the target layout.
+
+File granularity follows the common policy in `../README.md`: keep one file
+per independent public concept or tight operation/model group. Very small
+marker, delegate, enum, or pass-through helper files should be merged into the
+nearby contract file when that makes the public shape easier to read.
 
 ```text
 bindings/cpp/
@@ -201,9 +212,10 @@ contract.
   the builder absorb the variation. Terminal builder methods may use idiomatic
   names such as `submit_async`.
 
-## Required Capability Coverage
+## Target Capability Coverage
 
-The public headers must cover these groups.
+The public headers must cover these groups when the C++ binding is aligned to
+the shared .NET-standard target policy.
 
 - Core runtime: context, version/capability helpers, context options, shutdown,
   and auto-HWM recalculation.

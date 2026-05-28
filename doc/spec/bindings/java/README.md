@@ -12,6 +12,12 @@ non-exported `systems.zlink.runtime` package trees, tests, samples, perf
 runners, and runtime behavior follow this blueprint and map the stable
 capabilities of `core/include/zlink.h` into Java-idiomatic APIs.
 
+This README is the target blueprint for aligning the Java binding to the
+shared policy in `../README.md`. Existing source or compatibility surfaces may
+lag this target until the Java alignment work lands; treat those differences as
+cleanup targets. When the binding is aligned to this README, the target
+contract becomes the acceptance standard for that work.
+
 This binding follows the shared bindings architecture map with Java naming:
 lower-case package names express the contract/runtime roles. The map is a
 review ownership model, not a requirement to create one Java subpackage for
@@ -42,7 +48,7 @@ documented service contract subpackages. They must not import
 
 ## Repository Layout
 
-Use these paths consistently when changing the Java binding.
+Use these target paths consistently when changing the Java binding.
 
 - Public contract:
   `bindings/java/src/main/java/systems/zlink/contracts/`.
@@ -66,6 +72,11 @@ are lower-case Java packages. Do not create `systems.zlink.Contracts` or
 `systems.zlink.Runtime` packages. Use `systems.zlink.contracts.*` and
 `systems.zlink.runtime.*` exactly as shown below. The package tree below is the
 implementation and review structure.
+
+File granularity follows the common policy in `../README.md`: keep one file
+per independent public concept or tight operation/model group. Very small
+marker, callback, enum, or pass-through helper classes should be merged into
+the nearby contract file when that makes the public shape easier to read.
 
 ```text
 bindings/java/
@@ -276,9 +287,10 @@ forcing package-private native helpers into the public surface.
 If a package is not exported or documented, it is not public contract even if
 Java visibility is broader for implementation reasons.
 
-## Required Capability Coverage
+## Target Capability Coverage
 
-The Java public contract must cover stable user-facing core capabilities.
+The Java public contract must cover these stable user-facing capabilities
+when the binding is aligned to the shared .NET-standard target policy.
 
 - Context lifecycle, context options, version, capability, strerror, shutdown,
   and auto-HWM recalculation.

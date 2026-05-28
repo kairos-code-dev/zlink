@@ -4,6 +4,13 @@ using System;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Marker interface for zlink endpoints that can participate in poll/proxy APIs.
+/// </summary>
+public interface IZlinkSocket
+{
+}
+
 public interface ISocket : IZlinkSocket, IDisposable, IAsyncDisposable
 {
     CommonSocketOptions Options { get; }

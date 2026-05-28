@@ -2,19 +2,32 @@
 
 package systems.zlink.contracts.service.spot;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum SpotPeerSource {
-    MANUAL,
-    DISCOVERY,
-    MIXED;
+    MANUAL(1),
+    DISCOVERY(2),
+    MIXED(3);
+
+    private final int value;
+
+    SpotPeerSource(int value) {
+        this.value = value;
+    }
 
     int getValue() {
-        return EnumCodecs.spotPeerSourceValue(this);
+        return value;
     }
 
     static SpotPeerSource fromValue(int value) {
-        return EnumCodecs.spotPeerSourceFromValue(value);
+        return switch (value) {
+            case 1 -> MANUAL;
+            case 2 -> DISCOVERY;
+            case 3 -> MIXED;
+            default -> throw invalid("SpotPeerSource", value);
+        };
+    }
+
+    private static IllegalArgumentException invalid(String type, int value) {
+        return new IllegalArgumentException(
+            "invalid " + type + " value: " + value);
     }
 }

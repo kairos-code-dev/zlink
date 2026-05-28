@@ -5,16 +5,14 @@ package systems.zlink.contracts.messaging;
 import systems.zlink.contracts.errors.RecvException;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.service.spot.ReplyOp;
-import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.service.spot.ReplySubmitOp;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.sockets.SendFlag;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.SendSubmitOp;
 import systems.zlink.contracts.errors.SubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.runtime.nativeapi.ReceivedPartCursor;
-import systems.zlink.runtime.nativeapi.InternalAccess;
-import systems.zlink.runtime.nativeapi.SocketOperations;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -66,19 +64,18 @@ public final class Received implements AutoCloseable {
     private boolean hasRequestSequence;
     private BiConsumer<List<Message>, SendFlags> replySender;
     private BiFunction<List<Message>, SendFlags, Boolean> sendSender;
-    private RouterSocket sendRouter;
     private byte[] routingIdBytes;
     private byte[] spotRidBytes;
     private Runnable onTerminalState;
     private ArrayList<Message> realizedParts;
-    private ReceivedPartCursor cursor;
+    private ContractAccess.ReceivedPartCursor cursor;
     private RoutingId routingId;
     private RoutingId spotRid;
     private List<Message> partsView;
     private boolean closed;
 
     static {
-        InternalAccess.register(new InternalAccess.ReceivedAccess() {
+        ContractAccess.register(new ContractAccess.ReceivedAccess() {
             @Override
             public Received create(RoutingId routingId, Message[] parts) {
                 return new Received(routingId, parts);
@@ -126,7 +123,7 @@ public final class Received implements AutoCloseable {
             @Override
             public Received createLazy(byte[] routingIdBytes, byte[] spotRidBytes,
                                        Message firstPart,
-                                       ReceivedPartCursor cursor,
+                                       ContractAccess.ReceivedPartCursor cursor,
                                        long requestSeq, boolean hasRequestSeq,
                                        BiConsumer<List<Message>, SendFlags> replySender,
                                        Runnable onTerminalState) {
@@ -138,7 +135,7 @@ public final class Received implements AutoCloseable {
             @Override
             public Received createLazy(RoutingId routingId, RoutingId spotRid,
                                        Message firstPart,
-                                       ReceivedPartCursor cursor,
+                                       ContractAccess.ReceivedPartCursor cursor,
                                        long requestSeq, boolean hasRequestSeq,
                                        BiConsumer<List<Message>, SendFlags> replySender,
                                        Runnable onTerminalState) {
@@ -147,8 +144,23 @@ public final class Received implements AutoCloseable {
             }
 
             @Override
+            public void populateRoutedSinglePart(Received received,
+                                                 byte[] routingIdBytes,
+                                                 byte[] spotRidBytes,
+                                                 Message singlePart,
+                                                 long requestSequence,
+                                                 boolean hasRequestSequence,
+                                                 BiConsumer<List<Message>,
+                                                     SendFlags> replySender,
+                                                 Runnable onTerminalState) {
+                received.populateRoutedSinglePart(routingIdBytes, spotRidBytes,
+                    singlePart, requestSequence, hasRequestSequence,
+                    replySender, onTerminalState);
+            }
+
+            @Override
             public void forceMaterialize(Received received) {
-                InternalAccess.receivedForceMaterialize(received);
+                received.forceMaterialize();
             }
 
             @Override
@@ -160,7 +172,7 @@ public final class Received implements AutoCloseable {
             public void setSendSender(Received received,
                                       BiFunction<List<Message>, SendFlags,
                                           Boolean> sendSender) {
-                InternalAccess.receivedSetSendSender(received, sendSender);
+                received.setSendSender(sendSender);
             }
         });
     }
@@ -176,7 +188,6 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = false;
         this.replySender = null;
         this.sendSender = null;
-        this.sendRouter = null;
         this.routingIdBytes = null;
         this.spotRidBytes = null;
         this.onTerminalState = null;
@@ -195,7 +206,7 @@ public final class Received implements AutoCloseable {
      * close + adoptFrom would otherwise dominate the GC profile of the
      * canonical ref-out recv hot path.
      */
-    public void populateRoutedSinglePart(byte[] routingIdBytes,
+    void populateRoutedSinglePart(byte[] routingIdBytes,
                                   byte[] spotRidBytes,
                                   Message singlePart,
                                   long requestSequence,
@@ -214,7 +225,7 @@ public final class Received implements AutoCloseable {
             }
             realizedParts.clear();
         }
-        ReceivedPartCursor pendingCursor = cursor;
+        ContractAccess.ReceivedPartCursor pendingCursor = cursor;
         cursor = null;
         this.closed = false;
         this.routingId = null;
@@ -225,7 +236,6 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
-        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         if (this.realizedParts == null) {
             this.realizedParts = acquirePartsList(1);
@@ -254,7 +264,6 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = source.hasRequestSequence;
         this.replySender = source.replySender;
         this.sendSender = source.sendSender;
-        this.sendRouter = source.sendRouter;
         this.routingIdBytes = source.routingIdBytes;
         this.spotRidBytes = source.spotRidBytes;
         this.onTerminalState = source.onTerminalState;
@@ -269,7 +278,6 @@ public final class Received implements AutoCloseable {
         source.hasRequestSequence = false;
         source.replySender = null;
         source.sendSender = null;
-        source.sendRouter = null;
         source.routingIdBytes = null;
         source.spotRidBytes = null;
         source.onTerminalState = null;
@@ -318,7 +326,6 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
-        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         Message[] ownedParts = Objects.requireNonNull(parts, "parts");
         Message[] safeParts = trustedParts ? ownedParts
@@ -349,7 +356,6 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
-        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         Message[] ownedParts = Objects.requireNonNull(parts, "parts");
         Message[] safeParts = trustedParts ? ownedParts
@@ -378,7 +384,6 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
-        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(1);
         this.realizedParts.add(Objects.requireNonNull(singlePart, "singlePart"));
@@ -404,7 +409,6 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
-        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(1);
         this.realizedParts.add(Objects.requireNonNull(singlePart, "singlePart"));
@@ -412,7 +416,7 @@ public final class Received implements AutoCloseable {
     }
 
     Received(byte[] routingIdBytes, byte[] spotRidBytes, Message firstPart,
-             ReceivedPartCursor cursor, long requestSequence,
+             ContractAccess.ReceivedPartCursor cursor, long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
@@ -424,7 +428,6 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
-        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(4);
         this.realizedParts.add(Objects.requireNonNull(firstPart, "firstPart"));
@@ -432,7 +435,7 @@ public final class Received implements AutoCloseable {
     }
 
     Received(RoutingId routingId, RoutingId spotRid, Message firstPart,
-             ReceivedPartCursor cursor, long requestSequence,
+             ContractAccess.ReceivedPartCursor cursor, long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
@@ -444,7 +447,6 @@ public final class Received implements AutoCloseable {
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
         this.sendSender = null;
-        this.sendRouter = null;
         this.onTerminalState = onTerminalState;
         this.realizedParts = acquirePartsList(4);
         this.realizedParts.add(Objects.requireNonNull(firstPart, "firstPart"));
@@ -458,7 +460,7 @@ public final class Received implements AutoCloseable {
 
     RoutingId routingIdOrNull() {
         if (routingId == null && routingIdBytes != null) {
-            routingId = InternalAccess.routingIdFromTrusted(routingIdBytes);
+            routingId = ContractAccess.routingIdFromTrusted(routingIdBytes);
         }
         return routingId;
     }
@@ -476,7 +478,7 @@ public final class Received implements AutoCloseable {
 
     RoutingId spotRidOrNull() {
         if (spotRid == null && spotRidBytes != null) {
-            spotRid = InternalAccess.routingIdFromTrusted(spotRidBytes);
+            spotRid = ContractAccess.routingIdFromTrusted(spotRidBytes);
         }
         return spotRid;
     }
@@ -542,7 +544,7 @@ public final class Received implements AutoCloseable {
     }
 
     public ReplyOp reply() {
-        return SocketOperations.reply(this::submitReply);
+        return new ReplyBuilder();
     }
 
     private void submitReply(List<Message> parts, SendFlags flags) {
@@ -558,29 +560,12 @@ public final class Received implements AutoCloseable {
     }
 
     public SendOp send() {
-        return SocketOperations.send(this::submitSend);
+        return new SendBuilder();
     }
 
     private boolean submitSend(List<Message> parts, SendFlags flags) {
         Objects.requireNonNull(parts, "parts");
         Objects.requireNonNull(flags, "flags");
-        RouterSocket router = sendRouter;
-        if (router != null) {
-            try {
-                if (parts.size() == 1 && spotRidBytes == null
-                    && routingIdBytes != null) {
-                    return router.send(routingIdBytes, parts.get(0),
-                        SendFlag.fromValue(flags.value()));
-                }
-                RoutingId nodeRid = routingIdOrThrow();
-                RoutingId spot = spotRidOrNull();
-                return spot == null
-                    ? router.sendInternal(nodeRid, parts, flags)
-                    : router.sendToSpotInternal(nodeRid, spot, parts, flags);
-            } catch (IllegalStateException ex) {
-                throw new SubmitException(SubmitResult.TERMINATED);
-            }
-        }
         if (sendSender == null) {
             throw new SubmitException(SubmitResult.INVALID_STATE);
         }
@@ -591,18 +576,111 @@ public final class Received implements AutoCloseable {
         }
     }
 
-    public void setSendRouter(RouterSocket router) {
-        this.sendRouter = router;
-        this.sendSender = null;
-    }
-
     void setSendSender(BiFunction<List<Message>, SendFlags, Boolean> sendSender) {
         this.sendSender = sendSender;
-        this.sendRouter = null;
     }
 
-    public boolean hasSendSender() {
-        return sendRouter != null || sendSender != null;
+    private final class SendBuilder implements SendOp, SendSubmitOp {
+        private final BuilderParts parts = new BuilderParts();
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        @Override
+        public SendSubmitOp message(Message part) {
+            ensureNotSubmitted();
+            parts.add(part);
+            return this;
+        }
+
+        @Override
+        public SendSubmitOp flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public boolean submit() {
+            ensureNotSubmitted();
+            if (parts.isEmpty())
+                throw new IllegalArgumentException("at least one message required");
+            submitted = true;
+            return submitSend(parts.asList(), flags);
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    private final class ReplyBuilder implements ReplyOp, ReplySubmitOp {
+        private final BuilderParts parts = new BuilderParts();
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        @Override
+        public ReplySubmitOp message(Message part) {
+            ensureNotSubmitted();
+            parts.add(part);
+            return this;
+        }
+
+        @Override
+        public ReplySubmitOp flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public void submit() {
+            ensureNotSubmitted();
+            if (parts.isEmpty())
+                throw new IllegalArgumentException("at least one message required");
+            submitted = true;
+            submitReply(parts.asList(), flags);
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
+        }
+    }
+
+    private static final class BuilderParts {
+        private Message singlePart;
+        private ArrayList<Message> parts;
+        private List<Message> view;
+
+        void add(Message part) {
+            Objects.requireNonNull(part, "part");
+            view = null;
+            if (parts != null) {
+                parts.add(part);
+                return;
+            }
+            if (singlePart == null) {
+                singlePart = part;
+                return;
+            }
+            parts = new ArrayList<>(4);
+            parts.add(singlePart);
+            parts.add(part);
+            singlePart = null;
+        }
+
+        boolean isEmpty() {
+            return singlePart == null && (parts == null || parts.isEmpty());
+        }
+
+        List<Message> asList() {
+            if (parts != null)
+                return parts;
+            if (view == null)
+                view = singlePart == null ? List.of() : List.of(singlePart);
+            return view;
+        }
     }
 
     @Override
@@ -622,7 +700,7 @@ public final class Received implements AutoCloseable {
             return;
         }
 
-        ReceivedPartCursor pendingCursor;
+        ContractAccess.ReceivedPartCursor pendingCursor;
         Message singleToClose = null;
         List<Message> toClose = null;
         ArrayList<Message> partsToRelease = null;
@@ -701,7 +779,7 @@ public final class Received implements AutoCloseable {
     }
 
     List<Message> takeParts() {
-        ReceivedPartCursor pendingCursor;
+        ContractAccess.ReceivedPartCursor pendingCursor;
         ArrayList<Message> detached;
         ArrayList<Message> partsToRelease;
         synchronized (this) {
@@ -756,7 +834,7 @@ public final class Received implements AutoCloseable {
         }
     }
 
-    private static void closeCursorQuietly(ReceivedPartCursor cursor) {
+    private static void closeCursorQuietly(ContractAccess.ReceivedPartCursor cursor) {
         if (cursor == null)
             return;
         try {

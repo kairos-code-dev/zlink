@@ -2,24 +2,15 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.contracts.messaging.SubscriptionEntry;
-import java.util.List;
-import java.util.Optional;
+import systems.zlink.contracts.internal.ContractAccess;
 
 public final class SubSocketOptions extends CommonSocketOptions {
-    SubSocketOptions(Socket socket) {
+    public SubSocketOptions(Socket socket) {
         super(socket);
     }
 
     public int topicsCount() {
-        return socket.getOption(SocketOptions.TOPICS_COUNT);
+        return ContractAccess.socketGetOption(socket, SocketOptions.TOPICS_COUNT);
     }
 
-    Optional<SubscriptionEntry> subscriptionAt(int index) {
-        if (index < 0)
-            throw new IndexOutOfBoundsException("subscription index " + index);
-        List<SubscriptionEntry> entries = socket.subscriptions();
-        return index < entries.size() ? Optional.of(entries.get(index))
-          : Optional.empty();
-    }
 }

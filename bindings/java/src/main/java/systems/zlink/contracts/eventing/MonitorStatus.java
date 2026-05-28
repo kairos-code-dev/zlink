@@ -4,8 +4,6 @@ package systems.zlink.contracts.eventing;
 
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.sockets.AutoHwmRecalcReason;
-import systems.zlink.runtime.nativeapi.NativeMonitorStatuses;
-import java.lang.foreign.MemorySegment;
 
 public record MonitorStatus(MonitorSourceKind sourceKind, int stateFlags,
                               int detailFlags,
@@ -27,10 +25,6 @@ public record MonitorStatus(MonitorSourceKind sourceKind, int stateFlags,
                               int autoHwmDeferredSndHwm,
                               int autoHwmDeferredRcvHwm) {
     private static final int MONITOR_STATE_READY = 1 << 0;
-
-    static MonitorStatus fromNative(MemorySegment segment) {
-        return NativeMonitorStatuses.fromNative(segment);
-    }
 
     public boolean isReady() {
         return (stateFlags & MONITOR_STATE_READY) != 0;

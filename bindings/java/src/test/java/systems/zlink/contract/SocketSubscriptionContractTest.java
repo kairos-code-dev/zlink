@@ -2,6 +2,7 @@ package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.sockets.PubSocket;
@@ -29,8 +30,8 @@ public class SocketSubscriptionContractTest {
     public void subscriptionHelpersRemainCanonicalWithoutSnapshotSurface() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             SubSocket sub = new SubSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             SubSocket sub = ctx.createSubSocket()) {
             sub.setSubscription("topic-a");
             sub.setSubscription("topic-b");
             assertEquals(2, sub.options().topicsCount());
@@ -50,9 +51,9 @@ public class SocketSubscriptionContractTest {
     public void publishUsesCanonicalTopicPath() throws Exception {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             XPubSocket pub = new XPubSocket(ctx);
-             SubSocket sub = new SubSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             XPubSocket pub = ctx.createXPubSocket();
+             SubSocket sub = ctx.createSubSocket();
              var pubMonitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY);
              var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             String endpoint = TestSupport.inprocEndpoint("publish-contract");
@@ -86,9 +87,9 @@ public class SocketSubscriptionContractTest {
     public void subscribePullsTopicAwareMessage() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PubSocket pub = new PubSocket(ctx);
-             SubSocket sub = new SubSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             PubSocket pub = ctx.createPubSocket();
+             SubSocket sub = ctx.createSubSocket();
              var pubMonitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY);
              var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             String endpoint = TestSupport.inprocEndpoint("subscribe-contract");
@@ -117,9 +118,9 @@ public class SocketSubscriptionContractTest {
     public void xpubSubscriptionEventUsesDedicatedPubOptionSurface() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             XPubSocket pub = new XPubSocket(ctx);
-             XSubSocket sub = new XSubSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             XPubSocket pub = ctx.createXPubSocket();
+             XSubSocket sub = ctx.createXSubSocket()) {
             pub.options().manual(true);
             String endpoint = TestSupport.inprocEndpoint("xpub-manual-contract");
             pub.bind(endpoint);

@@ -2,22 +2,34 @@
 
 package systems.zlink.contracts.sockets;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum AutoHwmRecalcReason {
-    NONE,
-    INITIAL,
-    ROLE_CHANGE,
-    POLICY_TOGGLE,
-    REFRESH,
-    DEFERRED_SHRINK;
+    NONE(0),
+    INITIAL(1),
+    ROLE_CHANGE(2),
+    POLICY_TOGGLE(3),
+    REFRESH(4),
+    DEFERRED_SHRINK(5);
+
+    private final int value;
+
+    AutoHwmRecalcReason(int value) {
+        this.value = value;
+    }
 
     int value() {
-        return EnumCodecs.autoHwmRecalcReasonValue(this);
+        return value;
     }
 
     static AutoHwmRecalcReason fromValue(int value) {
-        return EnumCodecs.autoHwmRecalcReasonFromValue(value);
+        return switch (value) {
+            case 0 -> NONE;
+            case 1 -> INITIAL;
+            case 2 -> ROLE_CHANGE;
+            case 3 -> POLICY_TOGGLE;
+            case 4 -> REFRESH;
+            case 5 -> DEFERRED_SHRINK;
+            default -> throw new IllegalArgumentException(
+                "Invalid AutoHwmRecalcReason value: " + value);
+        };
     }
 }

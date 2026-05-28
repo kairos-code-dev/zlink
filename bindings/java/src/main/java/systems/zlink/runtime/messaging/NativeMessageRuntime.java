@@ -1,0 +1,314 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+package systems.zlink.runtime.messaging;
+
+import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.errors.ZlinkException;
+import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeMsg;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+
+/**
+ * Native-backed message operations used by the public Message value.
+ */
+final class NativeMessageRuntime {
+    static {
+        ContractAccess.register(new ContractAccess.NativeMessageAccess() {
+            @Override
+            public long layoutSize() {
+                return NativeMessageRuntime.layoutSize();
+            }
+
+            @Override
+            public Object openSharedMessageScope() {
+                return Arena.ofShared();
+            }
+
+            @Override
+            public boolean messageScopeAlive(Object scope) {
+                return ((Arena) scope).scope().isAlive();
+            }
+
+            @Override
+            public void closeMessageScope(Object scope) {
+                ((Arena) scope).close();
+            }
+
+            @Override
+            public Object allocate(Object arena) {
+                return NativeMessageRuntime.allocate((Arena) arena);
+            }
+
+            @Override
+            public Object handleFromAddress(long address) {
+                return MemorySegment.ofAddress(address)
+                    .reinterpret(NativeMessageRuntime.layoutSize());
+            }
+
+            @Override
+            public Object segmentFromAddress(long address, long size) {
+                return MemorySegment.ofAddress(address).reinterpret(size);
+            }
+
+            @Override
+            public Object slice(Object segment, long offset, long size) {
+                return ((MemorySegment) segment).asSlice(offset, size);
+            }
+
+            @Override
+            public long address(Object segment) {
+                return ((MemorySegment) segment).address();
+            }
+
+            @Override
+            public int init(Object msg) {
+                return NativeMessageRuntime.init((MemorySegment) msg);
+            }
+
+            @Override
+            public int initSize(Object msg, int size) {
+                return NativeMessageRuntime.initSize((MemorySegment) msg,
+                    size);
+            }
+
+            @Override
+            public int close(Object msg) {
+                return NativeMessageRuntime.close((MemorySegment) msg);
+            }
+
+            @Override
+            public int move(Object destination, Object source) {
+                return NativeMessageRuntime.move((MemorySegment) destination,
+                    (MemorySegment) source);
+            }
+
+            @Override
+            public int copy(Object destination, Object source) {
+                return NativeMessageRuntime.copy((MemorySegment) destination,
+                    (MemorySegment) source);
+            }
+
+            @Override
+            public long size(Object msg) {
+                return NativeMessageRuntime.size((MemorySegment) msg);
+            }
+
+            @Override
+            public long dataAddress(Object msg) {
+                return NativeMessageRuntime.dataAddress((MemorySegment) msg);
+            }
+
+            @Override
+            public int refCount(Object msg) {
+                return NativeMessageRuntime.refCount((MemorySegment) msg);
+            }
+
+            @Override
+            public String getProperty(Object msg, String property) {
+                return NativeMessageRuntime.getProperty((MemorySegment) msg,
+                    property);
+            }
+
+            @Override
+            public void closeVector(Object parts, long count) {
+                NativeMessageRuntime.closeVector((MemorySegment) parts,
+                    count);
+            }
+
+            @Override
+            public Message[] materializeVector(Object parts, long count,
+                                               Message[] reusable,
+                                               boolean closeSourceVector) {
+                return NativeMessageRuntime.materializeVector(
+                    (MemorySegment) parts, count, reusable, closeSourceVector);
+            }
+
+            @Override
+            public Message[] materializeVectorShared(Object parts, long count) {
+                return NativeMessageRuntime.materializeVectorShared(
+                    (MemorySegment) parts, count);
+            }
+
+            @Override
+            public Message adoptOwnedMessage(Object nativeMsg) {
+                return ContractAccess.messageAdoptOwnedNative(nativeMsg);
+            }
+
+            @Override
+            public void copyFromSegment(Object source, long sourceOffset,
+                                        Object destination,
+                                        long destinationOffset, long length) {
+                MemorySegment.copy((MemorySegment) source, sourceOffset,
+                    (MemorySegment) destination, destinationOffset, length);
+            }
+
+            @Override
+            public void copyFromBuffer(ByteBuffer source, Object destination,
+                                       long destinationOffset, long length) {
+                MemorySegment.copy(MemorySegment.ofBuffer(source), 0,
+                    (MemorySegment) destination, destinationOffset, length);
+            }
+
+            @Override
+            public void copyToBuffer(Object source, long sourceOffset,
+                                     ByteBuffer destination, long length) {
+                MemorySegment.copy((MemorySegment) source, sourceOffset,
+                    MemorySegment.ofBuffer(destination), 0, length);
+            }
+
+            @Override
+            public ByteBuffer asReadOnlyBuffer(Object source) {
+                return ((MemorySegment) source).asByteBuffer().asReadOnlyBuffer();
+            }
+
+            @Override
+            public ByteBuffer asMutableBuffer(Object source) {
+                return ((MemorySegment) source).asByteBuffer();
+            }
+        });
+    }
+
+    private NativeMessageRuntime() {
+    }
+
+    static long layoutSize() {
+        return NativeLayouts.MSG_LAYOUT.byteSize();
+    }
+
+    static MemorySegment allocate(Arena arena) {
+        return arena.allocate(NativeLayouts.MSG_LAYOUT);
+    }
+
+    static int init(MemorySegment msg) {
+        return NativeMsg.msgInit(msg);
+    }
+
+    static int initSize(MemorySegment msg, int size) {
+        return NativeMsg.msgInitSize(msg, size);
+    }
+
+    static int close(MemorySegment msg) {
+        return NativeMsg.msgClose(msg);
+    }
+
+    static int move(MemorySegment destination, MemorySegment source) {
+        return NativeMsg.msgMove(destination, source);
+    }
+
+    static int copy(MemorySegment destination, MemorySegment source) {
+        return NativeMsg.msgCopy(destination, source);
+    }
+
+    static long size(MemorySegment msg) {
+        return NativeMsg.msgSize(msg);
+    }
+
+    static long dataAddress(MemorySegment msg) {
+        return NativeMsg.msgDataAddr(msg);
+    }
+
+    static int refCount(MemorySegment msg) {
+        return NativeMsg.msgRefCnt(msg);
+    }
+
+    static String getProperty(MemorySegment msg, String property) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeKey = arena.allocateFrom(property,
+                StandardCharsets.UTF_8);
+            MemorySegment nativeValue = NativeMsg.msgGets(msg, nativeKey);
+            if (nativeValue == null || nativeValue.address() == 0)
+                return null;
+            return nativeValue.reinterpret(Long.MAX_VALUE).getString(0);
+        }
+    }
+
+    static void closeVector(MemorySegment parts, long count) {
+        NativeMsg.msgvClose(parts, count);
+    }
+
+    static Message[] materializeVector(MemorySegment partsAddr,
+                                       long count,
+                                       Message[] reusable,
+                                       boolean closeSourceVector) {
+        if (partsAddr == null || partsAddr.address() == 0 || count <= 0)
+            return new Message[0];
+        if (count > Integer.MAX_VALUE)
+            throw new IllegalArgumentException("msg vector too large: " + count);
+        long msgSize = layoutSize();
+        if (count > Long.MAX_VALUE / msgSize)
+            throw new IllegalArgumentException("msg vector too large: " + count);
+
+        int outSize = (int) count;
+        Message[] out;
+        if (reusable == null || reusable.length != outSize) {
+            out = new Message[outSize];
+            if (reusable != null) {
+                System.arraycopy(reusable, 0, out, 0, Math.min(reusable.length,
+                    out.length));
+            }
+        } else {
+            out = reusable;
+        }
+
+        int built = 0;
+        boolean success = false;
+        MemorySegment parts = MemorySegment.ofAddress(partsAddr.address())
+            .reinterpret(msgSize * count);
+        try {
+            for (int i = 0; i < count; i++) {
+                MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
+                Message msg = ContractAccess.messagePrepareVectorTarget(out[i]);
+                out[i] = msg;
+                int rc = move((MemorySegment) ContractAccess.messageNativeHandle(msg),
+                    src);
+                if (rc != 0)
+                    throw ZlinkException.fromLastError("zlink_msg_move");
+                ContractAccess.messageFinishVectorMove(msg, i + 1 < count);
+                built++;
+            }
+            success = true;
+            return out;
+        } finally {
+            if (closeSourceVector) {
+                closeVector(partsAddr, count);
+                if (!success) {
+                    resetBuilt(out, built);
+                }
+            } else if (!success) {
+                closeRemaining(parts, built, count, msgSize);
+                Message.closeAll(out);
+            }
+        }
+    }
+
+    static Message[] materializeVectorShared(MemorySegment partsAddr,
+                                             long count) {
+        return materializeVector(partsAddr, count, null, false);
+    }
+
+    private static void resetBuilt(Message[] out, int built) {
+        for (int i = 0; i < built; i++) {
+            if (out[i] != null && out[i].isReusable()) {
+                try {
+                    ContractAccess.messageResetReusable(out[i]);
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+    }
+
+    private static void closeRemaining(MemorySegment parts, int built,
+                                       long count, long msgSize) {
+        for (int i = built; i < count; i++) {
+            MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
+            try {
+                close(src);
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+}

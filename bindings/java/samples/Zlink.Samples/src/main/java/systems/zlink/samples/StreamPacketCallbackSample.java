@@ -1,6 +1,7 @@
 package systems.zlink.samples;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -14,8 +15,8 @@ public final class StreamPacketCallbackSample {
         String endpoint = SampleSupport.tcpEndpoint();
         CountDownLatch delivered = new CountDownLatch(1);
 
-        try (Context ctx = new Context();
-             StreamSocket server = new StreamSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             StreamSocket server = ctx.createStreamSocket();
              var monitor = server.monitorOpen(
                  systems.zlink.contracts.eventing.MonitorEventType.ACCEPTED,
                  systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY)) {

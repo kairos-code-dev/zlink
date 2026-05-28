@@ -37,8 +37,8 @@ final class PerfPubSub {
         // pipe and capped subscriber throughput ~4x vs C. Share one context
         // for all transports to match C.
         Context ctx = PerfUtil.newContext(config);
-        try (PubSocket pub = new PubSocket(ctx);
-             SubSocket sub = new SubSocket(ctx)) {
+        try (PubSocket pub = ctx.createPubSocket();
+             SubSocket sub = ctx.createSubSocket()) {
             var pubMonitor = pub.monitorOpen(MonitorEventType.CONNECTION_READY);
             var subMonitor = sub.monitorOpen(MonitorEventType.CONNECTION_READY);
             try {

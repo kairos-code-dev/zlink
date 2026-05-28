@@ -2,19 +2,32 @@
 
 package systems.zlink.contracts.service.registry;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum TopologySource {
-    MANUAL,
-    DISCOVERY,
-    REGISTRY;
+    MANUAL(1),
+    DISCOVERY(2),
+    REGISTRY(3);
+
+    private final int value;
+
+    TopologySource(int value) {
+        this.value = value;
+    }
 
     int getValue() {
-        return EnumCodecs.topologySourceValue(this);
+        return value;
     }
 
     static TopologySource fromValue(int value) {
-        return EnumCodecs.topologySourceFromValue(value);
+        return switch (value) {
+            case 1 -> MANUAL;
+            case 2 -> DISCOVERY;
+            case 3 -> REGISTRY;
+            default -> throw invalid("TopologySource", value);
+        };
+    }
+
+    private static IllegalArgumentException invalid(String type, int value) {
+        return new IllegalArgumentException(
+            "invalid " + type + " value: " + value);
     }
 }

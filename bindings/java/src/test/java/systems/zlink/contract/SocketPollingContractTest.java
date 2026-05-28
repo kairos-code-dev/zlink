@@ -2,6 +2,7 @@ package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.eventing.PollEventFlag;
@@ -28,10 +29,10 @@ public class SocketPollingContractTest {
     public void pollerTracksTypedSocketsThroughAbstractBase() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket server = new PairSocket(ctx);
-             PairSocket client = new PairSocket(ctx);
-             Poller poller = new Poller()) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket server = ctx.createPairSocket();
+             PairSocket client = ctx.createPairSocket();
+             Poller poller = Zlink.createPoller()) {
             String endpoint = TestSupport.inprocEndpoint("poller-contract");
             server.bind(endpoint);
             client.connect(endpoint);
@@ -57,8 +58,8 @@ public class SocketPollingContractTest {
     public void pollerTracksTimersThroughCoreTimerRegistration() {
         TestSupport.assumeNative();
 
-        try (Timer timer = new Timer();
-             Poller poller = new Poller()) {
+        try (Timer timer = Zlink.createTimer();
+             Poller poller = Zlink.createPoller()) {
             poller.add(timer, 11L);
             timer.start(Duration.ofMillis(1), 1L);
 
@@ -82,12 +83,12 @@ public class SocketPollingContractTest {
     public void pollerCapacityLeavesRemainingReadySource() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket sender1 = new PairSocket(ctx);
-             PairSocket receiver1 = new PairSocket(ctx);
-             PairSocket sender2 = new PairSocket(ctx);
-             PairSocket receiver2 = new PairSocket(ctx);
-             Poller poller = new Poller()) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket sender1 = ctx.createPairSocket();
+             PairSocket receiver1 = ctx.createPairSocket();
+             PairSocket sender2 = ctx.createPairSocket();
+             PairSocket receiver2 = ctx.createPairSocket();
+             Poller poller = Zlink.createPoller()) {
             String endpoint1 = TestSupport.inprocEndpoint("poller-capacity-a");
             String endpoint2 = TestSupport.inprocEndpoint("poller-capacity-b");
             sender1.bind(endpoint1);
@@ -130,10 +131,10 @@ public class SocketPollingContractTest {
     public void pollerModifyRemoveAndTimeoutFollowCoreSemantics() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket sender = new PairSocket(ctx);
-             PairSocket receiver = new PairSocket(ctx);
-             Poller poller = new Poller()) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket sender = ctx.createPairSocket();
+             PairSocket receiver = ctx.createPairSocket();
+             Poller poller = Zlink.createPoller()) {
             String endpoint = TestSupport.inprocEndpoint("poller-modify-remove");
             sender.bind(endpoint);
             receiver.connect(endpoint);
@@ -165,11 +166,11 @@ public class SocketPollingContractTest {
     public void pollerDistinguishesTimerAndSocketInSameBuffer() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket sender = new PairSocket(ctx);
-             PairSocket receiver = new PairSocket(ctx);
-             Timer timer = new Timer();
-             Poller poller = new Poller()) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket sender = ctx.createPairSocket();
+             PairSocket receiver = ctx.createPairSocket();
+             Timer timer = Zlink.createTimer();
+             Poller poller = Zlink.createPoller()) {
             String endpoint = TestSupport.inprocEndpoint("poller-timer-socket");
             sender.bind(endpoint);
             receiver.connect(endpoint);
@@ -209,12 +210,12 @@ public class SocketPollingContractTest {
     public void pollerTracksSpotPublishReadinessThroughPublicSpotApi() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             SpotNode publisherNode = new SpotNode(ctx);
-             SpotNode subscriberNode = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode publisherNode = ctx.createSpotNode();
+             SpotNode subscriberNode = ctx.createSpotNode();
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot();
-             Poller poller = new Poller()) {
+             Poller poller = Zlink.createPoller()) {
             String endpoint = TestSupport.tcpEndpoint();
             publisherNode.setPubBind(endpoint);
             subscriberNode.connectPeer(endpoint);

@@ -2,40 +2,41 @@
 
 package systems.zlink.contracts.sockets;
 
+import systems.zlink.contracts.internal.ContractAccess;
+
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.util.Objects;
 
 public class PubSocketOptions extends CommonSocketOptions {
     private boolean manualEnabled;
 
-    PubSocketOptions(Socket socket) {
+    public PubSocketOptions(Socket socket) {
         super(socket);
     }
 
     public boolean verbose() {
-        return socket.getOption(SocketOptions.XPUB_VERBOSE) != 0;
+        return ContractAccess.socketGetOption(socket, SocketOptions.XPUB_VERBOSE) != 0;
     }
 
     public void verbose(boolean enabled) {
-        socket.setOption(SocketOptions.XPUB_VERBOSE, enabled ? 1 : 0);
+        ContractAccess.socketSetOption(socket, SocketOptions.XPUB_VERBOSE, enabled ? 1 : 0);
     }
 
     public boolean verboser() {
-        return socket.getOption(SocketOptions.XPUB_VERBOSER) != 0;
+        return ContractAccess.socketGetOption(socket, SocketOptions.XPUB_VERBOSER) != 0;
     }
 
     public void verboser(boolean enabled) {
-        socket.setOption(SocketOptions.XPUB_VERBOSER, enabled ? 1 : 0);
+        ContractAccess.socketSetOption(socket, SocketOptions.XPUB_VERBOSER, enabled ? 1 : 0);
     }
 
     public boolean noDrop() {
-        return socket.getOption(SocketOptions.XPUB_NODROP) != 0;
+        return ContractAccess.socketGetOption(socket, SocketOptions.XPUB_NODROP) != 0;
     }
 
     public void noDrop(boolean enabled) {
-        socket.setOption(SocketOptions.XPUB_NODROP, enabled ? 1 : 0);
+        ContractAccess.socketSetOption(socket, SocketOptions.XPUB_NODROP, enabled ? 1 : 0);
     }
 
     public boolean manual() {
@@ -44,15 +45,15 @@ public class PubSocketOptions extends CommonSocketOptions {
 
     public void manual(boolean enabled) {
         manualEnabled = enabled;
-        socket.setOption(SocketOptions.XPUB_MANUAL, enabled ? 1 : 0);
+        ContractAccess.socketSetOption(socket, SocketOptions.XPUB_MANUAL, enabled ? 1 : 0);
     }
 
     public boolean manualLastValue() {
-        return socket.getOption(SocketOptions.XPUB_MANUAL_LAST_VALUE) != 0;
+        return ContractAccess.socketGetOption(socket, SocketOptions.XPUB_MANUAL_LAST_VALUE) != 0;
     }
 
     public void manualLastValue(boolean enabled) {
-        socket.setOption(SocketOptions.XPUB_MANUAL_LAST_VALUE, enabled ? 1 : 0);
+        ContractAccess.socketSetOption(socket, SocketOptions.XPUB_MANUAL_LAST_VALUE, enabled ? 1 : 0);
     }
 
     public void approveSubscribe(RoutingId routingId) {
@@ -64,7 +65,7 @@ public class PubSocketOptions extends CommonSocketOptions {
     }
 
     Message welcomeMsg() {
-        byte[] value = socket.getOption(SocketOptions.XPUB_WELCOME_MSG_BYTES);
+        byte[] value = ContractAccess.socketGetOption(socket, SocketOptions.XPUB_WELCOME_MSG_BYTES);
         return Message.from(value);
     }
 
@@ -74,8 +75,8 @@ public class PubSocketOptions extends CommonSocketOptions {
 
     void welcomeMsg(Message message) {
         Objects.requireNonNull(message, "message");
-        socket.setSockOptRaw(SocketOptions.XPUB_WELCOME_MSG.optionId(),
-            InternalAccess.messageDataSegment(message), message.size());
+        ContractAccess.socketSetOption(socket, SocketOptions.XPUB_WELCOME_MSG_BYTES,
+            message.toByteArray());
     }
 
     public void welcomeMessage(Message message) {
@@ -83,12 +84,12 @@ public class PubSocketOptions extends CommonSocketOptions {
     }
 
     public int topicsCount() {
-        return socket.getOption(SocketOptions.TOPICS_COUNT);
+        return ContractAccess.socketGetOption(socket, SocketOptions.TOPICS_COUNT);
     }
 
     private void setSubscribeDecision(SocketOptionKey<byte[]> option,
                                       RoutingId routingId) {
         Objects.requireNonNull(routingId, "routingId");
-        socket.setOption(option, routingId.toBytes());
+        ContractAccess.socketSetOption(socket, option, routingId.toBytes());
     }
 }

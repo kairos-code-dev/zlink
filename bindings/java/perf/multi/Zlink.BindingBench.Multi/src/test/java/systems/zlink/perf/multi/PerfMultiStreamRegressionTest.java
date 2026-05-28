@@ -1,6 +1,7 @@
 package systems.zlink.perf.multi;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -32,8 +33,8 @@ class PerfMultiStreamRegressionTest {
         int port = freePort();
         String endpoint = "tcp://127.0.0.1:" + port;
 
-        try (Context ctx = new Context();
-             StreamSocket server = new StreamSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             StreamSocket server = ctx.createStreamSocket()) {
             server.options().notify(true);
             server.bind(endpoint);
             server.onPacket(

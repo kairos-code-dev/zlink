@@ -3,6 +3,7 @@ package systems.zlink.integration.contract;
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.service.registry.Registry;
@@ -30,12 +31,11 @@ class ServiceContractsIntegrationTest {
         String registryPub = TestSupport.tcpEndpoint();
         String registryRouter = TestSupport.tcpEndpoint();
 
-        try (Context ctx = new Context();
-            Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, AutoConnectType.CLIENT_SERVER,
-               "svc-alpha");
-             SpotNode node = new SpotNode(ctx);
-             RegistryQueryClient queryClient = new RegistryQueryClient(ctx)) {
+        try (Context ctx = Zlink.createContext();
+            Registry registry = ctx.createRegistry();
+             Discovery discovery = ctx.createDiscovery(AutoConnectType.CLIENT_SERVER, "svc-alpha");
+             SpotNode node = ctx.createSpotNode();
+             RegistryQueryClient queryClient = ctx.createRegistryQueryClient()) {
             registry.bind(registryPub, registryRouter);
             queryClient.connect(registryRouter);
             discovery.connectRegistry(registryRouter);
@@ -66,14 +66,14 @@ class ServiceContractsIntegrationTest {
     void monitorStatusExposesCanonicalMonitorState() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket socket = new PairSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             PairSocket socket = ctx.createPairSocket();
              var monitor = socket.monitorOpen()) {
             assertTrue(monitor.status().sndPendingMsgs() >= 0L);
         }
 
-        try (Context ctx = new Context();
-             SpotNode node = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode();
              Spot spot = node.createSpot()) {
             spot.setSubscription("svc-topic");
             assertEquals(0, node.status().connectedPeerCount());
@@ -86,8 +86,8 @@ class ServiceContractsIntegrationTest {
     void spotNodeWrappedHandleExposesCanonicalServiceHandle() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             SpotNode node = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode();
              Spot subscriber = node.createSpot()) {
             subscriber.setSubscription("perf-topic");
             assertTrue(node.subjects().stream()
@@ -102,8 +102,8 @@ class ServiceContractsIntegrationTest {
         AtomicReference<Thread> callbackThread = new AtomicReference<>();
         AtomicReference<Throwable> callbackError = new AtomicReference<>();
 
-        try (Context ctx = new Context();
-             SpotNode node = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode();
              Spot subscriber = node.createSpot()) {
             subscriber.setSubscription("spot-callback-topic");
 

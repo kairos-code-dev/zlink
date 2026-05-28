@@ -2,6 +2,7 @@
 
 package systems.zlink.perf.multi;
 
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.PollEventFlag;
@@ -44,7 +45,7 @@ final class PerfMultiSpot {
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         String controlEndpoint = derivedEndpoint(config.endpoint(), 3);
         try (Context ctx = PerfUtil.newContext(config);
-             SpotNode node = new SpotNode(ctx);
+             SpotNode node = ctx.createSpotNode();
              Spot publisher = node.createSpot();
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, controlEndpoint, "spot-server")) {
@@ -65,8 +66,8 @@ final class PerfMultiSpot {
             long nextSendNanos = System.nanoTime();
             PollEvents publishEvents = new PollEvents(2);
             try (Message active = PerfUtil.payloadTemplate(config.size());
-                 Poller publishPoller = new Poller();
-                 Timer activeTimer = new Timer()) {
+                 Poller publishPoller = Zlink.createPoller();
+                 Timer activeTimer = Zlink.createTimer()) {
                 publishPoller.add(publisher, PUBLISHER_SLOT,
                     PollEventFlag.POLLOUT);
                 publishPoller.add(activeTimer, ACTIVE_DEADLINE_SLOT);
@@ -126,7 +127,7 @@ final class PerfMultiSpot {
             config.transport());
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
-             SpotNode node = new SpotNode(ctx);
+             SpotNode node = ctx.createSpotNode();
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, clientControlEndpoint, "spot-client")) {
             node.setRoutingId(routingId("a-java-multi-spot-client"));

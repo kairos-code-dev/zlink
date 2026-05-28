@@ -5,27 +5,12 @@ package systems.zlink.contracts.errors;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.runtime.nativeapi.InternalAccess;
-import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.util.Locale;
 
 public abstract class ZlinkException extends RuntimeException {
     private final int code;
     private final int internalErrno;
-
-    static {
-        InternalAccess.register(new InternalAccess.ErrorAccess() {
-            @Override
-            public ZlinkException fromLastError(String operation) {
-                return ZlinkException.fromLastError(operation);
-            }
-
-            @Override
-            public ZlinkException fromErrno(String operation, int errno) {
-                return ZlinkException.fromErrno(operation, errno);
-            }
-        });
-    }
 
     protected ZlinkException(int code) {
         this(code, 0);
@@ -99,7 +84,7 @@ public abstract class ZlinkException extends RuntimeException {
 
     private static int safeErrno() {
         try {
-            return Native.errno();
+            return ContractAccess.nativeErrno();
         } catch (RuntimeException ignored) {
             return -1;
         }
@@ -110,7 +95,7 @@ public abstract class ZlinkException extends RuntimeException {
             return "";
         }
         try {
-            String message = Native.strerror(errno);
+            String message = ContractAccess.nativeStrerror(errno);
             return message == null ? "" : message;
         } catch (RuntimeException ignored) {
             return "";

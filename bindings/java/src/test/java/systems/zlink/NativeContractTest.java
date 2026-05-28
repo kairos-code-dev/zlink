@@ -1,6 +1,7 @@
 package systems.zlink;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.messaging.Received;
@@ -22,9 +23,9 @@ public class NativeContractTest {
     public void testRawMultipartSendRecvSinglePart() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket left = new PairSocket(ctx);
-             PairSocket right = new PairSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket left = ctx.createPairSocket();
+             PairSocket right = ctx.createPairSocket()) {
             String endpoint = TestSupport.inprocEndpoint("native-send");
             left.bind(endpoint);
             right.connect(endpoint);
@@ -51,11 +52,11 @@ public class NativeContractTest {
     public void testDedicatedOptionFamilyDowncalls() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             RouterSocket router = new RouterSocket(ctx);
-             XPubSocket xpub = new XPubSocket(ctx);
-             SubSocket sub = new SubSocket(ctx);
-             StreamSocket stream = new StreamSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             RouterSocket router = ctx.createRouterSocket();
+             XPubSocket xpub = ctx.createXPubSocket();
+             SubSocket sub = ctx.createSubSocket();
+             StreamSocket stream = ctx.createStreamSocket()) {
             router.options().mandatory(true);
             assertTrue(router.options().mandatory());
 

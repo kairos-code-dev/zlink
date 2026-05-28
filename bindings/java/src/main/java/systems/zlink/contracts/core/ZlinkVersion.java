@@ -2,13 +2,10 @@
 
 package systems.zlink.contracts.core;
 
-
-import systems.zlink.runtime.nativeapi.Native;
-
 public final class ZlinkVersion {
     private ZlinkVersion() {}
 
     public static int[] get() {
-        return Native.version();
+        return Zlink.version();
     }
 }

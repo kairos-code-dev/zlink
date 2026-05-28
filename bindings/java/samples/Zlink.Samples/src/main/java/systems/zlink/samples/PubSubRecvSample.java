@@ -1,6 +1,7 @@
 package systems.zlink.samples;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.sockets.PubSocket;
@@ -13,9 +14,9 @@ public final class PubSubRecvSample {
         String endpoint = SampleSupport.tcpEndpoint();
         String published = SampleSupport.PUBSUB_TOPIC + "/" + SampleSupport.PUBSUB_PAYLOAD;
 
-        try (Context ctx = new Context();
-             PubSocket pub = new PubSocket(ctx);
-             SubSocket sub = new SubSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             PubSocket pub = ctx.createPubSocket();
+             SubSocket sub = ctx.createSubSocket();
              var pubMonitor = pub.monitorOpen(
                  systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY);
              var subMonitor = sub.monitorOpen(

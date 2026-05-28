@@ -1,6 +1,7 @@
 package systems.zlink.samples;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
@@ -19,10 +20,10 @@ public final class SpotRequestAsyncSample {
         String endpoint = SampleSupport.tcpEndpoint();
         String channelName = "orders";
 
-        try (Context ctx = new Context();
-             SpotNode requesterNode = new SpotNode(ctx);
-             DealerSocket requesterDealer = new DealerSocket(ctx);
-             RouterSocket requesterRouter = new RouterSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode requesterNode = ctx.createSpotNode();
+             DealerSocket requesterDealer = ctx.createDealerSocket();
+             RouterSocket requesterRouter = ctx.createRouterSocket();
              var requester = requesterNode.createSpot()) {
             requesterRouter.bind(endpoint);
             requesterDealer.connect(endpoint);

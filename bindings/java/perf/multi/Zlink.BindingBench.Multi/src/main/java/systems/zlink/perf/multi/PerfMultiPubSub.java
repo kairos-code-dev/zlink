@@ -39,7 +39,7 @@ final class PerfMultiPubSub {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = PerfUtil.newContext(config);
-             PubSocket pub = new PubSocket(ctx)) {
+             PubSocket pub = ctx.createPubSocket()) {
             PerfUtil.applySocketOptions(pub, config);
             PerfUtil.configureServerTls(pub, config.transport());
             pub.bind(config.endpoint());
@@ -83,7 +83,7 @@ final class PerfMultiPubSub {
         Context ctx = PerfUtil.newContext(config);
         try {
             for (int i = 0; i < config.clients(); i++) {
-                SubSocket sub = new SubSocket(ctx);
+                SubSocket sub = ctx.createSubSocket();
                 MonitorSocket monitor = sub.monitorOpen(READY_EVENT);
                 PerfUtil.applyMonitorOptions(monitor, config);
                 PerfUtil.applySocketOptions(sub, config);

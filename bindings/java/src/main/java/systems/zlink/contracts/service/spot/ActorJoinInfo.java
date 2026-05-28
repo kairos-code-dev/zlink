@@ -3,7 +3,8 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.core.RoutingId;
-import java.lang.foreign.MemorySegment;
+import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.contracts.messaging.Message;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -15,12 +16,69 @@ public final class ActorJoinInfo {
     private final RoutingId targetNodeRid;
     private final RoutingId targetSpotRid;
     private final long joinEpoch;
-    private final MemorySegment request;
+    private final Object requestState;
     private final int flags;
+
+    static {
+        ContractAccess.register(new ContractAccess.ActorJoinAccess() {
+            @Override
+            public ActorJoinRequest request(ActorJoinInfo info,
+                                            Message message) {
+                return new ActorJoinRequest(info, message);
+            }
+
+            @Override
+            public ActorJoinInfo infoFromNative(
+              ActorRef sourceActor,
+              ActorRef targetActor,
+              RoutingId sourceNodeRid,
+              RoutingId sourceSpotRid,
+              RoutingId targetNodeRid,
+              RoutingId targetSpotRid,
+              long joinEpoch,
+              Object requestState,
+              int flags) {
+                return ActorJoinInfo.fromNative(sourceActor, targetActor,
+                    sourceNodeRid, sourceSpotRid, targetNodeRid, targetSpotRid,
+                    joinEpoch, requestState, flags);
+            }
+
+            @Override
+            public Object requestState(ActorJoinInfo info) {
+                return info.requestState();
+            }
+
+            @Override
+            public RoutingId sourceNodeRidRaw(ActorJoinInfo info) {
+                return info.sourceNodeRidRaw();
+            }
+
+            @Override
+            public RoutingId sourceSpotRidRaw(ActorJoinInfo info) {
+                return info.sourceSpotRidRaw();
+            }
+
+            @Override
+            public RoutingId targetNodeRidRaw(ActorJoinInfo info) {
+                return info.targetNodeRidRaw();
+            }
+
+            @Override
+            public RoutingId targetSpotRidRaw(ActorJoinInfo info) {
+                return info.targetSpotRidRaw();
+            }
+
+            @Override
+            public SpotActorLifecycleEventKind lifecycleKindFromValue(
+              int value) {
+                return SpotActorLifecycleEventKind.fromValue(value);
+            }
+        });
+    }
 
     ActorJoinInfo(ActorRef actor, RoutingId sourceNodeRid, int flags) {
         this(actor, actor, sourceNodeRid, null, null, null, 0L,
-          MemorySegment.NULL, flags);
+          null, flags);
     }
 
     static ActorJoinInfo fromNative(ActorRef sourceActor,
@@ -30,17 +88,17 @@ public final class ActorJoinInfo {
                                     RoutingId targetNodeRid,
                                     RoutingId targetSpotRid,
                                     long joinEpoch,
-                                    MemorySegment request,
+                                    Object requestState,
                                     int flags) {
         return new ActorJoinInfo(sourceActor, targetActor, sourceNodeRid,
-          sourceSpotRid, targetNodeRid, targetSpotRid, joinEpoch, request,
+          sourceSpotRid, targetNodeRid, targetSpotRid, joinEpoch, requestState,
           flags);
     }
 
     private ActorJoinInfo(ActorRef sourceActor, ActorRef targetActor,
                           RoutingId sourceNodeRid, RoutingId sourceSpotRid,
                           RoutingId targetNodeRid, RoutingId targetSpotRid,
-                          long joinEpoch, MemorySegment request, int flags) {
+                          long joinEpoch, Object requestState, int flags) {
         this.sourceActor = Objects.requireNonNull(sourceActor, "sourceActor");
         this.targetActor = Objects.requireNonNull(targetActor, "targetActor");
         this.sourceNodeRid = sourceNodeRid;
@@ -48,7 +106,7 @@ public final class ActorJoinInfo {
         this.targetNodeRid = targetNodeRid;
         this.targetSpotRid = targetSpotRid;
         this.joinEpoch = joinEpoch;
-        this.request = request == null ? MemorySegment.NULL : request;
+        this.requestState = requestState;
         this.flags = flags;
     }
 
@@ -88,8 +146,8 @@ public final class ActorJoinInfo {
         return flags;
     }
 
-    MemorySegment request() {
-        return request;
+    Object requestState() {
+        return requestState;
     }
 
     RoutingId sourceNodeRidRaw() {

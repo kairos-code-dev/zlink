@@ -2,18 +2,30 @@
 
 package systems.zlink.contracts.service.spot;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum SpotRole {
-    PUB,
-    SUB;
+    PUB(1),
+    SUB(2);
+
+    private final int value;
+
+    SpotRole(int value) {
+        this.value = value;
+    }
 
     int getValue() {
-        return EnumCodecs.spotRoleValue(this);
+        return value;
     }
 
     static SpotRole fromValue(int value) {
-        return EnumCodecs.spotRoleFromValue(value);
+        return switch (value) {
+            case 1 -> PUB;
+            case 2 -> SUB;
+            default -> throw invalid("SpotRole", value);
+        };
+    }
+
+    private static IllegalArgumentException invalid(String type, int value) {
+        return new IllegalArgumentException(
+            "invalid " + type + " value: " + value);
     }
 }

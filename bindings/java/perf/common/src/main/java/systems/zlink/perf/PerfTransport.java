@@ -4,6 +4,7 @@ package systems.zlink.perf;
 
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.MonitorSocket;
@@ -22,7 +23,7 @@ final class PerfTransport {
     }
 
     static Context newContext(PerfUtil.Config config) {
-        Context ctx = new Context();
+        Context ctx = Zlink.createContext();
         if (config.ioThreads() > 0) {
             ctx.options().ioThreads(config.ioThreads());
         }

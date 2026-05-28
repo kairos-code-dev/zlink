@@ -50,8 +50,8 @@ final class PerfRouterRouter {
         boolean sharedContext = true;
         Context receiverCtx = PerfUtil.newContext(config);
         Context senderCtx = sharedContext ? receiverCtx : PerfUtil.newContext(config);
-        try (RouterSocket receiver = new RouterSocket(receiverCtx);
-             RouterSocket sender = new RouterSocket(senderCtx);
+        try (RouterSocket receiver = receiverCtx.createRouterSocket();
+             RouterSocket sender = senderCtx.createRouterSocket();
              var receiverMonitor = receiver.monitorOpen(MonitorEventType.CONNECTION_READY);
              var senderMonitor = sender.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             Duration readyTimeout = Duration.ofMillis(config.connectReadyTimeoutMs());

@@ -671,10 +671,6 @@ public final class Native {
     private static final MethodHandle MH_REG_TOPOLOGY = downcall(
             "zlink_registry_topology",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_REG_TOPOLOGY_FILTERED = downcall(
-            "zlink_registry_topology",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_REG_QUERY_CLIENT_NEW = downcall(
@@ -929,11 +925,7 @@ public final class Native {
             "zlink_spot_node_status",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_PEERS_SNAPSHOT = downcall(
-            "zlink_spot_node_peers",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_PEERS_QUERY = downcall(
+    private static final MethodHandle MH_SPOT_NODE_PEERS = downcall(
             "zlink_spot_node_peers",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -2914,8 +2906,8 @@ public final class Native {
                                                MemorySegment entries,
                                                MemorySegment count) {
         try {
-            return (int) MH_REG_TOPOLOGY.invokeExact(registry, entries,
-              count);
+            return (int) MH_REG_TOPOLOGY.invokeExact(registry,
+              MemorySegment.NULL, entries, count);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_registry_topology failed",
               t);
@@ -2927,7 +2919,7 @@ public final class Native {
                                        MemorySegment entries,
                                        MemorySegment count) {
         try {
-            return (int) MH_REG_TOPOLOGY_FILTERED.invokeExact(registry, filter,
+            return (int) MH_REG_TOPOLOGY.invokeExact(registry, filter,
               entries, count);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_registry_topology failed",
@@ -3636,8 +3628,8 @@ public final class Native {
                                             MemorySegment entries,
                                             MemorySegment count) {
         try {
-            return (int) MH_SPOT_NODE_PEERS_SNAPSHOT.invokeExact(node, entries,
-              count);
+            return (int) MH_SPOT_NODE_PEERS.invokeExact(node,
+              MemorySegment.NULL, entries, count);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_peers failed",
               t);
@@ -3649,7 +3641,7 @@ public final class Native {
                                          MemorySegment entries,
                                          MemorySegment count) {
         try {
-            return (int) MH_SPOT_NODE_PEERS_QUERY.invokeExact(node, filter,
+            return (int) MH_SPOT_NODE_PEERS.invokeExact(node, filter,
               entries, count);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_peers failed", t);

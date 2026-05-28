@@ -2,6 +2,7 @@ package systems.zlink;
 
 import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PairSocket;
@@ -36,9 +37,9 @@ public class CallbackModeContractTest {
     public void onReceiveDeliversReceivedAndClosesFramesAfterReturn() throws Exception {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket left = new PairSocket(ctx);
-             PairSocket right = new PairSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket left = ctx.createPairSocket();
+             PairSocket right = ctx.createPairSocket()) {
             String endpoint = TestSupport.inprocEndpoint("callback-recv");
             left.bind(endpoint);
             right.connect(endpoint);
@@ -72,12 +73,11 @@ public class CallbackModeContractTest {
         AtomicReference<Thread> callbackThread = new AtomicReference<>();
         Thread testThread = Thread.currentThread();
 
-        try (Context ctx = new Context();
-             Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, AutoConnectType.SPOT_MESH,
-                 channelName);
-             SpotNode publisherNode = new SpotNode(ctx);
-             SpotNode subscriberNode = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             Registry registry = ctx.createRegistry();
+             Discovery discovery = ctx.createDiscovery(AutoConnectType.SPOT_MESH, channelName);
+             SpotNode publisherNode = ctx.createSpotNode();
+             SpotNode subscriberNode = ctx.createSpotNode();
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             String registryPub = TestSupport.tcpEndpoint();
@@ -122,12 +122,11 @@ public class CallbackModeContractTest {
 
         CountDownLatch delivered = new CountDownLatch(1);
 
-        try (Context ctx = new Context();
-             Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx,
-               AutoConnectType.SPOT_MESH, "dispatch-drain");
-             SpotNode publisherNode = new SpotNode(ctx);
-             SpotNode subscriberNode = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             Registry registry = ctx.createRegistry();
+             Discovery discovery = ctx.createDiscovery(AutoConnectType.SPOT_MESH, "dispatch-drain");
+             SpotNode publisherNode = ctx.createSpotNode();
+             SpotNode subscriberNode = ctx.createSpotNode();
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             String registryPub = TestSupport.tcpEndpoint();
@@ -169,9 +168,9 @@ public class CallbackModeContractTest {
         CountDownLatch drained = new CountDownLatch(1);
         AtomicReference<String> payloadRef = new AtomicReference<>();
 
-        try (Context ctx = new Context();
-             SpotNode publisherNode = new SpotNode(ctx);
-             SpotNode subscriberNode = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode publisherNode = ctx.createSpotNode();
+             SpotNode subscriberNode = ctx.createSpotNode();
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             publisherNode.setPubBind(TestSupport.tcpEndpoint());
@@ -220,9 +219,9 @@ public class CallbackModeContractTest {
         RoutingId serverSpotRid = RoutingId.from(
             "timeout-server-spot".getBytes(StandardCharsets.UTF_8));
 
-        try (Context ctx = new Context();
-             SpotNode serverNode = new SpotNode(ctx);
-             SpotNode clientNode = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode serverNode = ctx.createSpotNode();
+             SpotNode clientNode = ctx.createSpotNode();
              Spot replier = serverNode.createSpot();
              Spot requester = clientNode.createSpot()) {
             serverNode.setRoutingId(serverNodeRid);
@@ -266,9 +265,9 @@ public class CallbackModeContractTest {
 
         AtomicInteger installs = new AtomicInteger();
 
-        try (Context ctx = new Context();
-             PairSocket left = new PairSocket(ctx);
-             PairSocket right = new PairSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket left = ctx.createPairSocket();
+             PairSocket right = ctx.createPairSocket()) {
             String endpoint = TestSupport.inprocEndpoint("callback-send-ready");
             left.bind(endpoint);
             right.connect(endpoint);

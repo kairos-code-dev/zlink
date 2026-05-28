@@ -2,23 +2,36 @@
 
 package systems.zlink.contracts.sockets;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum SpotDispatchEvent {
-    SUBSCRIBE_READABLE,
-    ROUTED_READABLE,
-    TIMER_READABLE,
-    CHANNEL_REPLY_READABLE,
-    ACTOR_READABLE,
-    ACTOR_JOIN_READABLE,
-    ACTOR_LIFECYCLE_READABLE;
+    SUBSCRIBE_READABLE(1),
+    ROUTED_READABLE(2),
+    TIMER_READABLE(3),
+    CHANNEL_REPLY_READABLE(4),
+    ACTOR_READABLE(5),
+    ACTOR_JOIN_READABLE(6),
+    ACTOR_LIFECYCLE_READABLE(7);
+
+    private final int value;
+
+    SpotDispatchEvent(int value) {
+        this.value = value;
+    }
 
     int value() {
-        return EnumCodecs.spotDispatchEventValue(this);
+        return value;
     }
 
     static SpotDispatchEvent fromValue(int value) {
-        return EnumCodecs.spotDispatchEventFromValue(value);
+        return switch (value) {
+            case 1 -> SUBSCRIBE_READABLE;
+            case 2 -> ROUTED_READABLE;
+            case 3 -> TIMER_READABLE;
+            case 4 -> CHANNEL_REPLY_READABLE;
+            case 5 -> ACTOR_READABLE;
+            case 6 -> ACTOR_JOIN_READABLE;
+            case 7 -> ACTOR_LIFECYCLE_READABLE;
+            default -> throw new IllegalArgumentException(
+                "Invalid SpotDispatchEvent value: " + value);
+        };
     }
 }

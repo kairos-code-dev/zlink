@@ -4,6 +4,7 @@ package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
@@ -35,9 +36,9 @@ public final class RequestReplyTerminationProbe {
         Files.deleteIfExists(LOG_PATH);
         log("start callbackMode=" + callbackMode);
 
-        try (Context ctx = new Context();
-             RouterSocket routerSocket = new RouterSocket(ctx);
-             DealerSocket dealerSocket = new DealerSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             RouterSocket routerSocket = ctx.createRouterSocket();
+             DealerSocket dealerSocket = ctx.createDealerSocket();
              ExecutorService serverExecutor = daemonExecutor("zlink-reqrep-probe")) {
             String endpoint = TestSupport.inprocEndpoint(
                 "request-reply-exit-regression");

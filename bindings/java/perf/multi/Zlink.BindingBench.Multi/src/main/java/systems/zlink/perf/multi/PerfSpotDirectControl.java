@@ -32,7 +32,7 @@ final class PerfSpotDirectControl implements AutoCloseable {
 
     static PerfSpotDirectControl bind(Context ctx, PerfUtil.Config config,
                                       String endpoint, String label) {
-        SpotNode node = new SpotNode(ctx);
+        SpotNode node = ctx.createSpotNode();
         Spot pub = node.createSpot();
         Spot sub = node.createSpot();
         node.setRoutingId(routingId(label + "-control-node"));

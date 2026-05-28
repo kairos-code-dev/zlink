@@ -2,6 +2,7 @@
 
 package systems.zlink.perf;
 
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.eventing.PollEventFlag;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.Poller;
@@ -25,7 +26,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private final int[] readyIndexes;
     private final int[] readyMasks;
     private final int[] currentMasks;
-    private final Poller poller = new Poller();
+    private final Poller poller = Zlink.createPoller();
     private final PollEvents readyEventsBuffer;
     private int readyCount;
 

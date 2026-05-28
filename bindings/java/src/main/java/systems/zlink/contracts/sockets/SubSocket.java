@@ -2,29 +2,22 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.contracts.core.Context;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.TopicMessage;
+import systems.zlink.contracts.service.discovery.Discovery;
 import java.util.Optional;
 
-public final class SubSocket extends Socket {
-    private final SubSocketOptions options = new SubSocketOptions(this);
-
-    public SubSocket(Context ctx) {
-        super(ctx, SocketType.SUB);
-    }
-
-    public void bind(String endpoint) { super.bind(endpoint); }
-    public void connect(String endpoint) { super.connect(endpoint); }
-    public void unbind(String endpoint) { super.unbind(endpoint); }
-    public void disconnect(String endpoint) { super.disconnect(endpoint); }
-    public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
-    public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
-    public void setSubscription(String filter) { super.setSubscription(filter); }
-    public void unsetSubscription(String filter) { super.unsetSubscription(filter); }
-    public Optional<SubscriptionEntry> subscriptionAt(int index) { return options.subscriptionAt(index); }
-    public boolean subscribe(TopicMessage result, RecvFlags flags) { return super.subscribe(result, ReceiveFlag.fromValue(flags.value())); }
-    @Override public SubSocketOptions options() { return options; }
+public interface SubSocket extends Socket {
+    void bind(String endpoint);
+    void connect(String endpoint);
+    void unbind(String endpoint);
+    void disconnect(String endpoint);
+    void disconnectRid(RoutingId routingId);
+    void attachDiscovery(Discovery discovery);
+    void setSubscription(String filter);
+    void unsetSubscription(String filter);
+    Optional<SubscriptionEntry> subscriptionAt(int index);
+    boolean subscribe(TopicMessage result, RecvFlags flags);
+    @Override SubSocketOptions options();
 }

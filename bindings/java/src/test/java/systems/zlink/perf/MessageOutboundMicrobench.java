@@ -1,9 +1,6 @@
 package systems.zlink;
 
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.runtime.nativeapi.InternalAccess;
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
@@ -33,10 +30,8 @@ public final class MessageOutboundMicrobench {
         byte[] replyBytes = new byte[totalSize];
         writeFrame(replyBytes, bodyBytes);
 
-        try (Arena arena = Arena.ofShared();
-             Message headerMessage = Message.from(HEADER);
+        try (Message headerMessage = Message.from(HEADER);
              Message bodyMessage = Message.from(bodyBytes)) {
-            MemorySegment scratchMsg = arena.allocate(MsgFfmBenchSupport.MSG_LAYOUT);
             bench("reply_bytes_only", bodySize, () -> {
                 writeFrame(replyBytes, bodyBytes);
                 blackhole ^= replyBytes[0];
@@ -75,9 +70,7 @@ public final class MessageOutboundMicrobench {
 
             bench("response_copy_of_bytes_send_prepare", bodySize, () -> {
                 try (Message response = Message.from(replyBytes, 0, totalSize)) {
-                    InternalAccess.messageTransferTo(response, scratchMsg);
-                    blackhole ^= MsgFfmBenchSupport.msgSize(scratchMsg);
-                    MsgFfmBenchSupport.msgClose(scratchMsg);
+                    blackhole ^= response.size();
                 }
                 return totalSize;
             });
@@ -88,9 +81,7 @@ public final class MessageOutboundMicrobench {
                     response.copyFrom(HEADER, 0, PREFIX_SIZE, HEADER.length);
                     response.copyFrom(bodyBytes, 0, PREFIX_SIZE + HEADER.length,
                         bodySize);
-                    InternalAccess.messageTransferTo(response, scratchMsg);
-                    blackhole ^= MsgFfmBenchSupport.msgSize(scratchMsg);
-                    MsgFfmBenchSupport.msgClose(scratchMsg);
+                    blackhole ^= response.size();
                 }
                 return totalSize;
             });
@@ -102,9 +93,7 @@ public final class MessageOutboundMicrobench {
                         HEADER.length);
                     response.copyFrom(bodyMessage, 0,
                         PREFIX_SIZE + HEADER.length, bodySize);
-                    InternalAccess.messageTransferTo(response, scratchMsg);
-                    blackhole ^= MsgFfmBenchSupport.msgSize(scratchMsg);
-                    MsgFfmBenchSupport.msgClose(scratchMsg);
+                    blackhole ^= response.size();
                 }
                 return totalSize;
             });

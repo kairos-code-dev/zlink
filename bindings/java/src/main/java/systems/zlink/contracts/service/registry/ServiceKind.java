@@ -2,20 +2,34 @@
 
 package systems.zlink.contracts.service.registry;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum ServiceKind {
-    DISCOVERY,
-    SPOT_SUB,
-    SPOT_PUB,
-    SOCKET;
+    DISCOVERY(1),
+    SPOT_SUB(3),
+    SPOT_PUB(4),
+    SOCKET(5);
+
+    private final int value;
+
+    ServiceKind(int value) {
+        this.value = value;
+    }
 
     int getValue() {
-        return EnumCodecs.serviceKindValue(this);
+        return value;
     }
 
     static ServiceKind fromValue(int value) {
-        return EnumCodecs.serviceKindFromValue(value);
+        return switch (value) {
+            case 1 -> DISCOVERY;
+            case 3 -> SPOT_SUB;
+            case 4 -> SPOT_PUB;
+            case 5 -> SOCKET;
+            default -> throw invalid("ServiceKind", value);
+        };
+    }
+
+    private static IllegalArgumentException invalid(String type, int value) {
+        return new IllegalArgumentException(
+            "invalid " + type + " value: " + value);
     }
 }

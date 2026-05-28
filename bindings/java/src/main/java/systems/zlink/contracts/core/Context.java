@@ -2,122 +2,58 @@
 
 package systems.zlink.contracts.core;
 
-import systems.zlink.contracts.errors.ConfigException;
-import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.contracts.errors.ZlinkException;
-import systems.zlink.runtime.nativeapi.Native;
-import systems.zlink.runtime.nativeapi.NativeHelpers;
-import systems.zlink.runtime.nativeapi.InternalAccess;
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import systems.zlink.contracts.service.discovery.Discovery;
+import systems.zlink.contracts.service.registry.AutoConnectType;
+import systems.zlink.contracts.service.registry.Registry;
+import systems.zlink.contracts.service.registry.RegistryQueryClient;
+import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.SpotNodeMode;
+import systems.zlink.contracts.service.spot.SpotNodeOptions;
+import systems.zlink.contracts.sockets.DealerSocket;
+import systems.zlink.contracts.sockets.PairSocket;
+import systems.zlink.contracts.sockets.PubSocket;
+import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.sockets.StreamSocket;
+import systems.zlink.contracts.sockets.SubSocket;
+import systems.zlink.contracts.sockets.XPubSocket;
+import systems.zlink.contracts.sockets.XSubSocket;
 
-public final class Context implements AutoCloseable {
-    private static final boolean DEBUG_REQREP =
-      Boolean.getBoolean("zlink.reqrep.debug");
-    private static final int ERRNO_EINTR = 4;
-    private final ContextOptions options;
-    private MemorySegment handle;
+public interface Context extends AutoCloseable {
+    ContextOptions options();
 
-    static {
-        InternalAccess.register((InternalAccess.ContextAccess) Context::handle);
-    }
+    PairSocket createPairSocket();
 
-    public Context() {
-        this.handle = Native.ctxNew();
-        if (handle == null || handle.address() == 0)
-            throw ZlinkException.fromLastError("zlink_ctx_new");
-        this.options = new ContextOptions(this);
-    }
+    DealerSocket createDealerSocket();
 
-    public ContextOptions options() {
-        return options;
-    }
+    RouterSocket createRouterSocket();
 
-    MemorySegment handle() {
-        return handle;
-    }
+    PubSocket createPubSocket();
 
-    public void shutdown() {
-        ensureOpen();
-        int rc = Native.ctxShutdown(handle);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_ctx_shutdown");
-    }
+    SubSocket createSubSocket();
 
-    public void recalculateAutoHwm() {
-        ensureOpen();
-        int rc = Native.ctxAutoHwmRecalculate(handle);
-        if (rc != 0) {
-            throw new ConfigException(ConfigResult.fromValue(rc));
-        }
-    }
+    XPubSocket createXPubSocket();
+
+    XSubSocket createXSubSocket();
+
+    StreamSocket createStreamSocket();
+
+    Registry createRegistry();
+
+    RegistryQueryClient createRegistryQueryClient();
+
+    Discovery createDiscovery(AutoConnectType autoConnectType,
+                              String channelName);
+
+    SpotNode createSpotNode();
+
+    SpotNode createSpotNode(SpotNodeMode mode);
+
+    SpotNode createSpotNode(SpotNodeOptions options);
+
+    void shutdown();
+
+    void recalculateAutoHwm();
 
     @Override
-    public void close() {
-        if (handle == null || handle.address() == 0)
-            return;
-        debug("ctxTerm begin");
-        while (true) {
-            int shutdownRc = Native.ctxShutdown(handle);
-            if (shutdownRc == 0 || Native.errno() != ERRNO_EINTR) {
-                break;
-            }
-        }
-        while (true) {
-            int termRc = Native.ctxTerm(handle);
-            if (termRc == 0 || Native.errno() != ERRNO_EINTR) {
-                break;
-            }
-        }
-        debug("ctxTerm end");
-        handle = MemorySegment.NULL;
-    }
-
-    public void setOption(ContextOption option, int value) {
-        ensureOpen();
-        int rc = Native.ctxSet(handle, option.getValue(), value);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_ctx_set");
-    }
-
-    public void setOptionData(ContextOption option, String value) {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment bytes = NativeHelpers.toCString(arena, value);
-            int byteLength = bytes.getString(0).getBytes(
-                java.nio.charset.StandardCharsets.UTF_8).length;
-            int rc = Native.ctxSetData(handle, option.getValue(), bytes,
-                byteLength);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_ctx_set_data");
-        }
-    }
-
-    public int getOption(ContextOption option) {
-        ensureOpen();
-        int rc = Native.ctxGet(handle, option.getValue());
-        if (rc < 0 && option != ContextOption.THREAD_PRIORITY
-            && option != ContextOption.THREAD_SCHED_POLICY)
-            throw ZlinkException.fromLastError("zlink_ctx_get");
-        return rc;
-    }
-
-    private void ensureOpen() {
-        if (handle == null || handle.address() == 0)
-            throw new IllegalStateException("context is closed");
-    }
-
-    private static void debug(String message) {
-        if (DEBUG_REQREP) {
-            try {
-                Files.writeString(Path.of("/tmp/zlink-reqrep.log"),
-                    "[context] " + message + System.lineSeparator(),
-                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            } catch (Exception ignored) {
-            }
-        }
-    }
+    void close();
 }

@@ -2,6 +2,7 @@ package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEvent;
 import systems.zlink.contracts.eventing.MonitorEventType;
@@ -23,9 +24,9 @@ public class MonitorBehaviorContractTest {
     public void blockingRecvReturnsObservedLifecycleEvent() throws Exception {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket server = new PairSocket(ctx);
-             PairSocket client = new PairSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             PairSocket server = ctx.createPairSocket();
+             PairSocket client = ctx.createPairSocket();
              var serverMonitor = server.monitorOpen(
                MonitorEventType.LISTENING, MonitorEventType.ACCEPTED,
                MonitorEventType.CONNECTED)) {

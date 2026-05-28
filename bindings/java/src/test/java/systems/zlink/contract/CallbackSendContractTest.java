@@ -4,6 +4,7 @@ package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
@@ -48,9 +49,9 @@ public class CallbackSendContractTest {
         AtomicReference<byte[]> replyPayload = new AtomicReference<>();
         AtomicReference<Throwable> callbackError = new AtomicReference<>();
 
-        try (Context ctx = new Context();
-             RouterSocket router = new RouterSocket(ctx);
-             DealerSocket dealer = new DealerSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             RouterSocket router = ctx.createRouterSocket();
+             DealerSocket dealer = ctx.createDealerSocket()) {
 
             String endpoint = TestSupport.tcpEndpoint();
             try (var routerMon = router.monitorOpen(MonitorEventType.CONNECTION_READY);
@@ -117,9 +118,9 @@ public class CallbackSendContractTest {
         AtomicReference<byte[]> replyPayload = new AtomicReference<>();
         AtomicReference<Throwable> callbackError = new AtomicReference<>();
 
-        try (Context ctx = new Context();
-             PairSocket left = new PairSocket(ctx);
-             PairSocket right = new PairSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket left = ctx.createPairSocket();
+             PairSocket right = ctx.createPairSocket()) {
 
             String endpoint = TestSupport.tcpEndpoint();
             try (var leftMon = left.monitorOpen(MonitorEventType.CONNECTION_READY);
@@ -181,13 +182,13 @@ public class CallbackSendContractTest {
         CountDownLatch allReplies = new CountDownLatch(roundCount);
         AtomicReference<Throwable> callbackError = new AtomicReference<>();
 
-        try (Context ctx = new Context()) {
+        try (Context ctx = Zlink.createContext()) {
             for (int i = 0; i < roundCount; i++) {
                 int index = i;
                 CountDownLatch roundDone = new CountDownLatch(1);
                 CountDownLatch routerDone = new CountDownLatch(1);
-                try (RouterSocket router = new RouterSocket(ctx);
-                     DealerSocket dealer = new DealerSocket(ctx)) {
+                try (RouterSocket router = ctx.createRouterSocket();
+                     DealerSocket dealer = ctx.createDealerSocket()) {
                     router.options().linger(Duration.ZERO);
                     dealer.options().linger(Duration.ZERO);
                     String endpoint = TestSupport.tcpEndpoint();
@@ -287,8 +288,8 @@ public class CallbackSendContractTest {
         int port = Integer.parseInt(endpoint.substring(endpoint.lastIndexOf(':')
             + 1));
 
-        try (Context ctx = new Context();
-             StreamSocket server = new StreamSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             StreamSocket server = ctx.createStreamSocket()) {
             server.options().notify(true);
             server.bind(endpoint);
             server.onPacket((routingId, header, payload) -> {

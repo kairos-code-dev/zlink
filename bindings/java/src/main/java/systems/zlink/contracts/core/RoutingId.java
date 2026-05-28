@@ -3,7 +3,7 @@
 package systems.zlink.contracts.core;
 
 
-import systems.zlink.runtime.nativeapi.InternalAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
@@ -25,7 +25,7 @@ public final class RoutingId {
     private final int hash;
 
     static {
-        InternalAccess.register(new InternalAccess.RoutingIdAccess() {
+        ContractAccess.register(new ContractAccess.RoutingIdAccess() {
             @Override
             public RoutingId fromTrusted(byte[] value) {
                 return RoutingId.fromTrusted(value);
@@ -185,34 +185,6 @@ public final class RoutingId {
         }
         validateLength(bytes.length);
         return new RoutingId(bytes);
-    }
-
-    /** @deprecated Use {@link #from(byte[])}. */
-    @Deprecated(forRemoval = false)
-    public static RoutingId fromBytes(byte[] value) {
-        return from(value);
-    }
-
-    /** @deprecated Use {@link #from(byte[], int, int)}. */
-    @Deprecated(forRemoval = false)
-    public static RoutingId fromBytes(byte[] value, int offset, int length) {
-        return from(value, offset, length);
-    }
-
-    /** @deprecated Use {@link #from(String)} for user strings or {@link #fromHex(String)} for hex. */
-    @Deprecated(forRemoval = false)
-    public static RoutingId fromString(String value) {
-        return from(value);
-    }
-
-    /** Creates a 4-byte big-endian routing id from an unsigned 32-bit value. */
-    public static RoutingId fromU32(int value) {
-        return new RoutingId(new byte[] {
-            (byte) (value >>> 24),
-            (byte) (value >>> 16),
-            (byte) (value >>> 8),
-            (byte) value
-        });
     }
 
     private static void validateLength(int length) {

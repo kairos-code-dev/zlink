@@ -2,20 +2,30 @@
 
 package systems.zlink.contracts.sockets;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum SpotDispatchSubjectKind {
-    SPOT,
-    TIMER,
-    CHANNEL_DEALER,
-    ACTOR;
+    SPOT(1),
+    TIMER(2),
+    CHANNEL_DEALER(3),
+    ACTOR(4);
+
+    private final int value;
+
+    SpotDispatchSubjectKind(int value) {
+        this.value = value;
+    }
 
     int value() {
-        return EnumCodecs.spotDispatchSubjectKindValue(this);
+        return value;
     }
 
     static SpotDispatchSubjectKind fromValue(int value) {
-        return EnumCodecs.spotDispatchSubjectKindFromValue(value);
+        return switch (value) {
+            case 1 -> SPOT;
+            case 2 -> TIMER;
+            case 3 -> CHANNEL_DEALER;
+            case 4 -> ACTOR;
+            default -> throw new IllegalArgumentException(
+                "Invalid SpotDispatchSubjectKind value: " + value);
+        };
     }
 }

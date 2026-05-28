@@ -1,6 +1,7 @@
 package systems.zlink.samples;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
@@ -12,9 +13,9 @@ public final class DealerRouterRecvSample {
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
 
-        try (Context ctx = new Context();
-             RouterSocket router = new RouterSocket(ctx);
-             DealerSocket dealer = new DealerSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             RouterSocket router = ctx.createRouterSocket();
+             DealerSocket dealer = ctx.createDealerSocket();
              var routerMonitor = router.monitorOpen(
                  systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY);
              var dealerMonitor = dealer.monitorOpen(

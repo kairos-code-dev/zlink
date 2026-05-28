@@ -37,8 +37,8 @@ final class PerfDealerRouter {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
-             RouterSocket receiver = new RouterSocket(ctx);
-             DealerSocket sender = new DealerSocket(ctx);
+             RouterSocket receiver = ctx.createRouterSocket();
+             DealerSocket sender = ctx.createDealerSocket();
              var receiverMonitor = receiver.monitorOpen(MonitorEventType.CONNECTION_READY);
              var senderMonitor = sender.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             Duration readyTimeout = Duration.ofMillis(config.connectReadyTimeoutMs());

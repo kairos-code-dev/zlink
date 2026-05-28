@@ -2,17 +2,30 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum SpotPeerKind {
-    SPOT_MESH,
-    ROUTER_CHANNEL;
+    SPOT_MESH(1),
+    ROUTER_CHANNEL(2);
+
+    private final int value;
+
+    SpotPeerKind(int value) {
+        this.value = value;
+    }
 
     int getValue() {
-        return EnumCodecs.spotPeerKindValue(this);
+        return value;
     }
 
     static SpotPeerKind fromValue(int value) {
-        return EnumCodecs.spotPeerKindFromValue(value);
+        return switch (value) {
+            case 1 -> SPOT_MESH;
+            case 2 -> ROUTER_CHANNEL;
+            default -> throw invalid("SpotPeerKind", value);
+        };
+    }
+
+    private static IllegalArgumentException invalid(String type, int value) {
+        return new IllegalArgumentException(
+            "invalid " + type + " value: " + value);
     }
 }

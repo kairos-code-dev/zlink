@@ -33,8 +33,8 @@ final class PerfPair {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
-             PairSocket receiver = new PairSocket(ctx);
-             PairSocket sender = new PairSocket(ctx);
+             PairSocket receiver = ctx.createPairSocket();
+             PairSocket sender = ctx.createPairSocket();
              var receiverMonitor = receiver.monitorOpen(MonitorEventType.CONNECTION_READY);
              var senderMonitor = sender.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             Duration readyTimeout = Duration.ofMillis(config.connectReadyTimeoutMs());

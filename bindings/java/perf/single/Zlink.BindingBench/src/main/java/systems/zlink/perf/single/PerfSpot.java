@@ -2,6 +2,7 @@
 
 package systems.zlink.perf.single;
 
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.PollEventFlag;
@@ -34,8 +35,8 @@ final class PerfSpot {
             config.transport());
 
         try (var ctx = PerfUtil.newContext(config);
-             SpotNode publisherNode = new SpotNode(ctx);
-             SpotNode subscriberNode = new SpotNode(ctx);
+             SpotNode publisherNode = ctx.createSpotNode();
+             SpotNode subscriberNode = ctx.createSpotNode();
              Spot publisher = publisherNode.createSpot();
              Spot stopPublisher = subscriberNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
@@ -166,7 +167,7 @@ final class PerfSpot {
                                             long activeEnd,
                                             CountDownLatch stopped,
                                             AtomicReference<Throwable> failure) {
-        try (Poller poller = new Poller()) {
+        try (Poller poller = Zlink.createPoller()) {
             poller.add(subscriber, 0L, PollEventFlag.POLLIN);
             while (true) {
                 waitFor(poller, PollEventFlag.POLLIN);

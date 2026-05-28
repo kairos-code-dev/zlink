@@ -3,6 +3,7 @@
 package systems.zlink.contracts.core;
 
 import systems.zlink.contracts.sockets.AutoHwmProfile;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -13,44 +14,44 @@ public final class ContextOptions {
     private final Context context;
     private String threadNamePrefix = "";
 
-    ContextOptions(Context context) {
+    public ContextOptions(Context context) {
         this.context = context;
     }
 
     public int ioThreads() {
-        return context.getOption(ContextOption.IO_THREADS);
+        return ContractAccess.contextGetOption(context, ContextOption.IO_THREADS);
     }
 
     public void ioThreads(int count) {
-        context.setOption(ContextOption.IO_THREADS, count);
+        ContractAccess.contextSetOption(context, ContextOption.IO_THREADS, count);
     }
 
     public int maxSockets() {
-        return context.getOption(ContextOption.MAX_SOCKETS);
+        return ContractAccess.contextGetOption(context, ContextOption.MAX_SOCKETS);
     }
 
     public void maxSockets(int count) {
-        context.setOption(ContextOption.MAX_SOCKETS, count);
+        ContractAccess.contextSetOption(context, ContextOption.MAX_SOCKETS, count);
     }
 
     public int socketLimit() {
-        return context.getOption(ContextOption.SOCKET_LIMIT);
+        return ContractAccess.contextGetOption(context, ContextOption.SOCKET_LIMIT);
     }
 
     public int threadPriority() {
-        return context.getOption(ContextOption.THREAD_PRIORITY);
+        return ContractAccess.contextGetOption(context, ContextOption.THREAD_PRIORITY);
     }
 
     public void threadPriority(int priority) {
-        context.setOption(ContextOption.THREAD_PRIORITY, priority);
+        ContractAccess.contextSetOption(context, ContextOption.THREAD_PRIORITY, priority);
     }
 
     public int threadSchedulingPolicy() {
-        return context.getOption(ContextOption.THREAD_SCHED_POLICY);
+        return ContractAccess.contextGetOption(context, ContextOption.THREAD_SCHED_POLICY);
     }
 
     public void threadSchedulingPolicy(int policy) {
-        context.setOption(ContextOption.THREAD_SCHED_POLICY, policy);
+        ContractAccess.contextSetOption(context, ContextOption.THREAD_SCHED_POLICY, policy);
     }
 
     public String threadNamePrefix() {
@@ -59,60 +60,67 @@ public final class ContextOptions {
 
     public void threadNamePrefix(String prefix) {
         Objects.requireNonNull(prefix, "prefix");
-        context.setOptionData(ContextOption.THREAD_NAME_PREFIX, prefix);
+        ContractAccess.contextSetOptionData(context,
+            ContextOption.THREAD_NAME_PREFIX, prefix);
         threadNamePrefix = prefix;
     }
 
     public int maxMsgSize() {
-        return context.getOption(ContextOption.MAX_MSGSZ);
+        return ContractAccess.contextGetOption(context, ContextOption.MAX_MSGSZ);
     }
 
     public void maxMsgSize(int bytes) {
-        context.setOption(ContextOption.MAX_MSGSZ, bytes);
+        ContractAccess.contextSetOption(context, ContextOption.MAX_MSGSZ, bytes);
     }
 
     public int msgTSize() {
-        return context.getOption(ContextOption.MSG_T_SIZE);
+        return ContractAccess.contextGetOption(context, ContextOption.MSG_T_SIZE);
     }
 
     public boolean blocky() {
-        return context.getOption(ContextOption.BLOCKY) != 0;
+        return ContractAccess.contextGetOption(context, ContextOption.BLOCKY) != 0;
     }
 
     public void blocky(boolean enabled) {
-        context.setOption(ContextOption.BLOCKY, enabled ? 1 : 0);
+        ContractAccess.contextSetOption(context, ContextOption.BLOCKY,
+            enabled ? 1 : 0);
     }
 
     public boolean autoHwmEnabled() {
-        return context.getOption(ContextOption.AUTO_HWM_ENABLE) != 0;
+        return ContractAccess.contextGetOption(context,
+            ContextOption.AUTO_HWM_ENABLE) != 0;
     }
 
     public void autoHwmEnabled(boolean enabled) {
-        context.setOption(ContextOption.AUTO_HWM_ENABLE, enabled ? 1 : 0);
+        ContractAccess.contextSetOption(context, ContextOption.AUTO_HWM_ENABLE,
+            enabled ? 1 : 0);
     }
 
     public Duration autoHwmRecalcDebounce() {
         return Duration.ofMillis(
-          context.getOption(ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS));
+          ContractAccess.contextGetOption(context,
+              ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS));
     }
 
     public void autoHwmRecalcDebounce(Duration value) {
         Objects.requireNonNull(value, "value");
-        context.setOption(ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS,
-          toIntMillis(value, "value"));
+        ContractAccess.contextSetOption(context,
+          ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS, toIntMillis(value, "value"));
     }
 
     public AutoHwmProfile autoHwmProfile() {
         return AutoHwmProfile.fromValue(
-          context.getOption(ContextOption.AUTO_HWM_PROFILE));
+          ContractAccess.contextGetOption(context, ContextOption.AUTO_HWM_PROFILE));
     }
 
     public void autoHwmProfile(AutoHwmProfile profile) {
-        context.setOption(ContextOption.AUTO_HWM_PROFILE, profile.value());
+        ContractAccess.contextSetOption(context, ContextOption.AUTO_HWM_PROFILE,
+            profile.value());
     }
 
     public int autoHwmMessageUnitBytes() {
-        return context.getOption(ContextOption.AUTO_HWM_MSG_UNIT_BYTES);
+        return ContractAccess.contextGetOption(context,
+            ContextOption.AUTO_HWM_MSG_UNIT_BYTES);
     }
 
     public void autoHwmMessageUnitBytes(int value) {
@@ -120,15 +128,18 @@ public final class ContextOptions {
             throw new IllegalArgumentException(
                 "autoHwmMessageUnitBytes must be non-negative");
         }
-        context.setOption(ContextOption.AUTO_HWM_MSG_UNIT_BYTES, value);
+        ContractAccess.contextSetOption(context,
+            ContextOption.AUTO_HWM_MSG_UNIT_BYTES, value);
     }
 
     public void addThreadAffinity(int cpu) {
-        context.setOption(ContextOption.THREAD_AFFINITY_CPU_ADD, cpu);
+        ContractAccess.contextSetOption(context,
+            ContextOption.THREAD_AFFINITY_CPU_ADD, cpu);
     }
 
     public void removeThreadAffinity(int cpu) {
-        context.setOption(ContextOption.THREAD_AFFINITY_CPU_REMOVE, cpu);
+        ContractAccess.contextSetOption(context,
+            ContextOption.THREAD_AFFINITY_CPU_REMOVE, cpu);
     }
 
     private static int toIntMillis(Duration timeout, String name) {

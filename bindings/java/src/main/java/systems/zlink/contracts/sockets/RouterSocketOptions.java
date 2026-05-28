@@ -2,14 +2,8 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.contracts.errors.ConfigException;
-import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.runtime.nativeapi.InternalAccess;
-import systems.zlink.runtime.nativeapi.Native;
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
@@ -18,16 +12,16 @@ public final class RouterSocketOptions extends CommonSocketOptions {
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3105;
     private static final int OPT_WEIGHT = 0x3106;
 
-    RouterSocketOptions(Socket socket) {
+    public RouterSocketOptions(Socket socket) {
         super(socket);
     }
 
     public boolean mandatory() {
-        return socket.getOption(SocketOptions.ROUTER_MANDATORY) != 0;
+        return ContractAccess.socketGetOption(socket, SocketOptions.ROUTER_MANDATORY) != 0;
     }
 
     public void mandatory(boolean enabled) {
-        socket.setOption(SocketOptions.ROUTER_MANDATORY, enabled ? 1 : 0);
+        ContractAccess.socketSetOption(socket, SocketOptions.ROUTER_MANDATORY, enabled ? 1 : 0);
     }
 
     public boolean handover() {
@@ -42,21 +36,21 @@ public final class RouterSocketOptions extends CommonSocketOptions {
     }
 
     public boolean probe() {
-        return socket.getOption(SocketOptions.PROBE_ROUTER) != 0;
+        return ContractAccess.socketGetOption(socket, SocketOptions.PROBE_ROUTER) != 0;
     }
 
     public void probe(boolean enabled) {
-        socket.setOption(SocketOptions.PROBE_ROUTER, enabled ? 1 : 0);
+        ContractAccess.socketSetOption(socket, SocketOptions.PROBE_ROUTER, enabled ? 1 : 0);
     }
 
     public Optional<RoutingId> connectRoutingId() {
-        byte[] value = socket.getOption(SocketOptions.CONNECT_ROUTING_ID_BYTES);
+        byte[] value = ContractAccess.socketGetOption(socket, SocketOptions.CONNECT_ROUTING_ID_BYTES);
         return value.length == 0 ? Optional.empty()
             : Optional.of(RoutingId.from(value));
     }
 
     public void connectRoutingId(RoutingId routingId) {
-        socket.setOption(SocketOptions.CONNECT_ROUTING_ID_BYTES,
+        ContractAccess.socketSetOption(socket, SocketOptions.CONNECT_ROUTING_ID_BYTES,
             routingId == null ? new byte[0] : routingId.toBytes());
     }
 
@@ -78,27 +72,11 @@ public final class RouterSocketOptions extends CommonSocketOptions {
     }
 
     private int getIntOption(int option) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = Native.getRouterOption(InternalAccess.socketHandle(socket), option, nativeValue,
-              len);
-            if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
-            return nativeValue.get(ValueLayout.JAVA_INT, 0);
-        }
+        return ContractAccess.socketGetRouterIntOption(socket, option);
     }
 
     private void setIntOption(int option, int value) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setRouterOption(InternalAccess.socketHandle(socket), option, nativeValue,
-              ValueLayout.JAVA_INT.byteSize());
-            if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
-        }
+        ContractAccess.socketSetRouterIntOption(socket, option, value);
     }
 
     private static int toIntMillis(Duration timeout, String name) {

@@ -2,18 +2,23 @@
 
 package systems.zlink.contracts.eventing;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
+import java.util.EnumSet;
 
 public enum PollEventFlag {
-    POLLIN,
-    POLLOUT,
-    POLLERR,
-    POLLPRI,
-    POLLCOMPLETION;
+    POLLIN(1),
+    POLLOUT(2),
+    POLLERR(4),
+    POLLPRI(8),
+    POLLCOMPLETION(32);
+
+    private final int mask;
+
+    PollEventFlag(int mask) {
+        this.mask = mask;
+    }
 
     public int mask() {
-        return EnumCodecs.pollEventFlagValue(this);
+        return mask;
     }
 
     int value() {
@@ -21,10 +26,20 @@ public enum PollEventFlag {
     }
 
     static int combine(PollEventFlag... flags) {
-        return EnumCodecs.pollEventMask(flags);
+        int out = 0;
+        for (PollEventFlag flag : flags) {
+            out |= flag.mask;
+        }
+        return out;
     }
 
-    static java.util.EnumSet<PollEventFlag> fromMask(int mask) {
-        return EnumCodecs.pollEventFlagsFromMask(mask);
+    static EnumSet<PollEventFlag> fromMask(int mask) {
+        EnumSet<PollEventFlag> out = EnumSet.noneOf(PollEventFlag.class);
+        for (PollEventFlag flag : values()) {
+            if ((mask & flag.mask) != 0) {
+                out.add(flag);
+            }
+        }
+        return out;
     }
 }

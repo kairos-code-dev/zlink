@@ -3,28 +3,7 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.service.registry.ServiceEventSubjectKind;
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-import systems.zlink.runtime.nativeapi.NativeHelpers;
-import systems.zlink.runtime.nativeapi.NativeLayouts;
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 
 public record SpotNodeSubjectFilter(SpotRole role, String subject,
                                     ServiceEventSubjectKind subjectKind) {
-    MemorySegment toNative(Arena arena) {
-        MemorySegment segment = arena.allocate(
-          NativeLayouts.SPOT_NODE_SUBJECT_FILTER_LAYOUT);
-        segment.set(ValueLayout.JAVA_INT, 0,
-          role == null ? 0 : EnumCodecs.spotRoleValue(role));
-        if (subject != null && !subject.isEmpty()) {
-            MemorySegment nativeSubject = NativeHelpers.toCString(arena, subject);
-            MemorySegment.copy(nativeSubject, 0, segment, 4,
-              Math.min(nativeSubject.byteSize(), 256));
-        }
-        segment.set(ValueLayout.JAVA_INT, 260,
-            subjectKind == null ? 0
-              : EnumCodecs.serviceEventSubjectKindValue(subjectKind));
-        return segment;
-    }
 }

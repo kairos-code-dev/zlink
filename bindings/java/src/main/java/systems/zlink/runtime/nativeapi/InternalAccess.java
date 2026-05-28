@@ -3,26 +3,42 @@
 package systems.zlink.runtime.nativeapi;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.ContextOption;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.internal.ContractAccess;
 import systems.zlink.contracts.errors.ZlinkException;
+import systems.zlink.contracts.eventing.MonitorSocket;
 import systems.zlink.contracts.eventing.Timer;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.spot.ActorPart;
+import systems.zlink.contracts.service.spot.ActorRef;
+import systems.zlink.contracts.service.spot.ReplyHandler;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.RequestCallback;
+import systems.zlink.contracts.sockets.RequestResult;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.contracts.sockets.SpotDispatchEvent;
-import systems.zlink.contracts.sockets.SpotDispatchInfo;
-import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
+import systems.zlink.contracts.sockets.SocketMessageHandler;
+import systems.zlink.contracts.sockets.SocketOptionKey;
+import systems.zlink.contracts.sockets.DealerSocket;
+import systems.zlink.contracts.sockets.StreamSocket;
+import systems.zlink.runtime.core.NativeContext;
+import systems.zlink.runtime.eventing.NativeTimer;
+import systems.zlink.runtime.sockets.NativeDealerRequestSupport;
+import systems.zlink.runtime.service.spot.NativeSpot;
+import systems.zlink.runtime.service.spot.NativeSpotNode;
+import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import java.lang.foreign.MemorySegment;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 
@@ -37,21 +53,20 @@ public final class InternalAccess {
     private static volatile ContextAccess contextAccess;
     private static volatile DiscoveryAccess discoveryAccess;
     private static volatile SocketAccess socketAccess;
+    private static volatile RuntimeSocketAccess runtimeSocketAccess;
     private static volatile SpotAccess spotAccess;
     private static volatile SpotNodeAccess spotNodeAccess;
-    private static volatile SpotDispatchInfoAccess spotDispatchInfoAccess;
     private static volatile TimerAccess timerAccess;
-    private static volatile MessageAccess messageAccess;
-    private static volatile ReceivedAccess receivedAccess;
-    private static volatile TopicMessageAccess topicMessageAccess;
-    private static volatile RoutingIdAccess routingIdAccess;
-    private static volatile ErrorAccess errorAccess;
+    private static volatile MonitorAccess monitorAccess;
 
     private InternalAccess() {
     }
 
     public interface ContextAccess {
         MemorySegment handle(Context context);
+        void setOption(Context context, ContextOption option, int value);
+        void setOptionData(Context context, ContextOption option, String value);
+        int getOption(Context context, ContextOption option);
     }
 
     public interface DiscoveryAccess {
@@ -60,13 +75,80 @@ public final class InternalAccess {
 
     public interface SocketAccess {
         MemorySegment handle(Socket socket);
+        void setOption(Socket socket, SocketOptionKey<Integer> option, int value);
+        void setOption(Socket socket, SocketOptionKey<Long> option, long value);
+        void setOption(Socket socket, SocketOptionKey<String> option, String value);
+        void setOption(Socket socket, SocketOptionKey<byte[]> option, byte[] value);
+        <T> T getOption(Socket socket, SocketOptionKey<T> option);
+        void setDealerIntOption(Socket socket, int option, int value);
+        int getRouterIntOption(Socket socket, int option);
+        void setRouterIntOption(Socket socket, int option, int value);
         boolean inCallback();
         void enterCallback();
         void leaveCallback();
     }
 
+    public interface RuntimeSocketAccess {
+        CompletableFuture<List<Message>> dealerRequestAsync(
+            DealerSocket socket, List<Message> parts, SendFlags flags,
+            Duration timeout);
+        boolean dealerRequestCallback(DealerSocket socket, List<Message> parts,
+                                      RequestCallback callback,
+                                      SendFlags flags, Duration timeout);
+        Object routerReceiveSupport(RouterSocket socket,
+                                    boolean closeSocketOnClose);
+        Received routerRecv(Object support, RecvFlags flags);
+        boolean routerRecvInto(Object support, Received target,
+                               RecvFlags flags);
+        void routerOnReceive(Object support, SocketMessageHandler handler);
+        void routerReceiveBeginClose(Object support);
+        void routerReceiveFinishClose(Object support);
+        CompletableFuture<List<Message>> routerRequestAsync(
+            RouterSocket socket, RoutingId routingId, List<Message> parts,
+            SendFlags flags, Duration timeout);
+        boolean routerRequestCallback(
+            RouterSocket socket, RoutingId routingId, List<Message> parts,
+            RequestCallback callback, SendFlags flags, Duration timeout);
+        void routerReply(RouterSocket socket, RoutingId routingId,
+                         long requestSequence, List<Message> parts,
+                         SendFlags flags);
+        boolean routerSendToSpot(RouterSocket socket, RoutingId destNodeRid,
+                                 RoutingId destSpotRid, List<Message> parts,
+                                 SendFlags flags);
+        CompletableFuture<List<Message>> routerRequestToSpotAsync(
+            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
+            List<Message> parts, Duration timeout, SendFlags flags);
+        boolean routerRequestToSpotCallback(
+            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
+            List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
+            SendFlags flags, Duration timeout);
+        void routerReplyToSpot(RouterSocket socket, RoutingId destNodeRid,
+                               RoutingId destSpotRid, long requestSeq,
+                               List<Message> parts, SendFlags flags);
+        void streamAttachActorGateway(StreamSocket socket, SpotNode node);
+        List<ActorRef> streamBoundActors(StreamSocket socket,
+                                         RoutingId sessionRid);
+        boolean streamSubmitBind(StreamSocket socket, RoutingId sessionRid,
+                                 ActorRef actor, Duration timeout,
+                                 ReplyHandler callback);
+        boolean streamSubmitUnbind(StreamSocket socket, RoutingId sessionRid,
+                                   String actorId, Duration timeout,
+                                   ReplyHandler callback);
+        boolean streamSendBoundActorParts(StreamSocket socket,
+                                          RoutingId sessionRid,
+                                          String actorId,
+                                          List<Message> parts,
+                                          SendFlags flags);
+    }
+
     public interface SpotAccess {
         MemorySegment handle(Spot spot);
+
+        MemorySegment ownerNodeHandle(Spot spot);
+
+        Spot createOwned(SpotNode node);
+
+        Spot adoptOwned(SpotNode node, MemorySegment handle);
 
         boolean requestToSpotPart(Spot spot, RoutingId destNodeRid,
                                   RoutingId destSpotRid, Message part,
@@ -76,111 +158,18 @@ public final class InternalAccess {
 
     public interface SpotNodeAccess {
         MemorySegment handle(SpotNode node);
-    }
 
-    public interface SpotDispatchInfoAccess {
-        MemorySegment subject(SpotDispatchInfo info);
-
-        SpotDispatchInfo create(SpotDispatchEvent event,
-                                SpotDispatchSubjectKind subjectKind,
-                                MemorySegment subject);
-
-        SpotDispatchInfo create(SpotDispatchEvent event,
-                                SpotDispatchSubjectKind subjectKind,
-                                MemorySegment subject,
-                                List<ActorPart> actorParts);
-
-        SpotDispatchInfo create(SpotDispatchEvent event,
-                                SpotDispatchSubjectKind subjectKind,
-                                MemorySegment subject,
-                                Timer timer,
-                                String channelName,
-                                List<ActorPart> actorParts);
+        void releaseSpot(SpotNode node, Spot spot);
     }
 
     public interface TimerAccess {
+        MemorySegment handle(Timer timer);
+
         Timer fromBorrowedHandle(MemorySegment handle);
     }
 
-    public interface MessageAccess {
-        MemorySegment dataSegment(Message message);
-        MemorySegment dataSegment(Message message, int knownSize);
-        void copyTo(Message message, MemorySegment destination);
-        void moveTo(Message message, MemorySegment destination);
-        MemorySegment nativeHandle(Message message);
-        void setMore(Message message, boolean more);
-        boolean more(Message message);
-        void finishReceive(Message message, boolean more);
-        void transferTo(Message message, MemorySegment destination);
-        void restoreFromNative(Message message, MemorySegment source,
-                               boolean moreFlag);
-        void markTransferred(Message message);
-        int moveInto(Message source, Message target, boolean moreFlag);
-        Message sharedCopyOf(Message message);
-        Message[] fromMsgVector(MemorySegment partsAddr, long count);
-        Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count);
-        Message[] fromOwnedMsgVectorShared(MemorySegment partsAddr, long count);
-        Message fromOwnedNative(MemorySegment nativeMsg);
-    }
-
-    public interface ReceivedAccess {
-        Received create(RoutingId routingId, Message[] parts);
-        Received create(RoutingId routingId, RoutingId spotRid,
-                        Message[] parts, boolean trustedParts,
-                        long requestSeq, boolean hasRequestSeq,
-                        BiConsumer<List<Message>, SendFlags> replySender);
-
-        Received create(RoutingId routingId, RoutingId spotRid,
-                        Message[] parts, boolean trustedParts,
-                        long requestSeq, boolean hasRequestSeq,
-                        BiConsumer<List<Message>, SendFlags> replySender,
-                        Runnable onTerminalState);
-
-        Received create(byte[] routingIdBytes, byte[] spotRidBytes,
-                        Message[] parts, boolean trustedParts,
-                        long requestSeq, boolean hasRequestSeq,
-                        BiConsumer<List<Message>, SendFlags> replySender,
-                        Runnable onTerminalState);
-
-        Received create(RoutingId routingId, RoutingId spotRid,
-                        Message[] parts, long requestSeq,
-                        boolean hasRequestSeq,
-                        BiConsumer<List<Message>, SendFlags> replySender);
-
-        Received createLazy(byte[] routingIdBytes, byte[] spotRidBytes,
-                            Message firstPart, ReceivedPartCursor cursor,
-                            long requestSeq, boolean hasRequestSeq,
-                            BiConsumer<List<Message>, SendFlags> replySender,
-                            Runnable onTerminalState);
-
-        Received createLazy(RoutingId routingId, RoutingId spotRid,
-                            Message firstPart, ReceivedPartCursor cursor,
-                            long requestSeq, boolean hasRequestSeq,
-                            BiConsumer<List<Message>, SendFlags> replySender,
-                            Runnable onTerminalState);
-
-        void forceMaterialize(Received received);
-        List<Message> takeParts(Received received);
-        void setSendSender(Received received,
-                           BiFunction<List<Message>, SendFlags, Boolean> sendSender);
-    }
-
-    public interface TopicMessageAccess {
-        TopicMessage create(RoutingId routingId, String topicId,
-                            Message[] parts);
-        void adoptSingle(TopicMessage target, RoutingId routingId,
-                         String topicId, Message part);
-        Message prepareReusableSinglePart(TopicMessage target);
-    }
-
-    public interface RoutingIdAccess {
-        RoutingId fromTrusted(byte[] value);
-        byte[] trustedBytes(RoutingId routingId);
-    }
-
-    public interface ErrorAccess {
-        ZlinkException fromLastError(String operation);
-        ZlinkException fromErrno(String operation, int errno);
+    public interface MonitorAccess {
+        MonitorSocket create(MemorySegment handle, boolean own);
     }
 
     public static void register(ContextAccess access) {
@@ -195,6 +184,10 @@ public final class InternalAccess {
         socketAccess = Objects.requireNonNull(access, "access");
     }
 
+    public static void register(RuntimeSocketAccess access) {
+        runtimeSocketAccess = Objects.requireNonNull(access, "access");
+    }
+
     public static void register(SpotAccess access) {
         spotAccess = Objects.requireNonNull(access, "access");
     }
@@ -203,36 +196,36 @@ public final class InternalAccess {
         spotNodeAccess = Objects.requireNonNull(access, "access");
     }
 
-    public static void register(SpotDispatchInfoAccess access) {
-        spotDispatchInfoAccess = Objects.requireNonNull(access, "access");
-    }
-
     public static void register(TimerAccess access) {
         timerAccess = Objects.requireNonNull(access, "access");
     }
 
-    public static void register(MessageAccess access) {
-        messageAccess = Objects.requireNonNull(access, "access");
-    }
-
-    public static void register(ReceivedAccess access) {
-        receivedAccess = Objects.requireNonNull(access, "access");
-    }
-
-    public static void register(TopicMessageAccess access) {
-        topicMessageAccess = Objects.requireNonNull(access, "access");
-    }
-
-    public static void register(RoutingIdAccess access) {
-        routingIdAccess = Objects.requireNonNull(access, "access");
-    }
-
-    public static void register(ErrorAccess access) {
-        errorAccess = Objects.requireNonNull(access, "access");
+    public static void register(MonitorAccess access) {
+        monitorAccess = Objects.requireNonNull(access, "access");
     }
 
     public static MemorySegment contextHandle(Context context) {
         return contextAccess().handle(context);
+    }
+
+    public static MonitorSocket monitorSocket(MemorySegment handle,
+                                              boolean own) {
+        return monitorAccess().create(handle, own);
+    }
+
+    public static void contextSetOption(Context context, ContextOption option,
+                                        int value) {
+        contextAccess().setOption(context, option, value);
+    }
+
+    public static void contextSetOptionData(Context context,
+                                            ContextOption option,
+                                            String value) {
+        contextAccess().setOptionData(context, option, value);
+    }
+
+    public static int contextGetOption(Context context, ContextOption option) {
+        return contextAccess().getOption(context, option);
     }
 
     public static MemorySegment discoveryHandle(Discovery discovery) {
@@ -243,12 +236,71 @@ public final class InternalAccess {
         return socketAccess().handle(socket);
     }
 
+    public static void socketSetOption(Socket socket,
+                                       SocketOptionKey<Integer> option,
+                                       int value) {
+        socketAccess().setOption(socket, option, value);
+    }
+
+    public static void socketSetOption(Socket socket,
+                                       SocketOptionKey<Long> option,
+                                       long value) {
+        socketAccess().setOption(socket, option, value);
+    }
+
+    public static void socketSetOption(Socket socket,
+                                       SocketOptionKey<String> option,
+                                       String value) {
+        socketAccess().setOption(socket, option, value);
+    }
+
+    public static void socketSetOption(Socket socket,
+                                       SocketOptionKey<byte[]> option,
+                                       byte[] value) {
+        socketAccess().setOption(socket, option, value);
+    }
+
+    public static <T> T socketGetOption(Socket socket,
+                                        SocketOptionKey<T> option) {
+        return socketAccess().getOption(socket, option);
+    }
+
+    public static void socketSetDealerIntOption(Socket socket, int option,
+                                                int value) {
+        socketAccess().setDealerIntOption(socket, option, value);
+    }
+
+    public static int socketGetRouterIntOption(Socket socket, int option) {
+        return socketAccess().getRouterIntOption(socket, option);
+    }
+
+    public static void socketSetRouterIntOption(Socket socket, int option,
+                                                int value) {
+        socketAccess().setRouterIntOption(socket, option, value);
+    }
+
     public static MemorySegment spotHandle(Spot spot) {
         return spotAccess().handle(spot);
     }
 
+    public static MemorySegment spotOwnerNodeHandle(Spot spot) {
+        return spotAccess().ownerNodeHandle(spot);
+    }
+
+    public static Spot spotCreateOwned(SpotNode node) {
+        return spotAccess().createOwned(node);
+    }
+
+    public static Spot spotAdoptOwned(SpotNode node, MemorySegment handle) {
+        return spotAccess().adoptOwned(node, handle);
+    }
+
     public static MemorySegment spotNodeHandle(SpotNode node) {
         return spotNodeAccess().handle(node);
+    }
+
+    public static void spotNodeReleaseSpot(SpotNode node, Spot spot) {
+        spotNodeAccess().releaseSpot(node, spot);
     }
 
     public static boolean spotRequestToSpotPart(Spot spot,
@@ -262,79 +314,59 @@ public final class InternalAccess {
             part, callback, flags, timeout);
     }
 
-    public static MemorySegment spotDispatchSubject(SpotDispatchInfo info) {
-        return spotDispatchInfoAccess().subject(info);
-    }
-
-    public static SpotDispatchInfo spotDispatchInfo(
-      SpotDispatchEvent event,
-      SpotDispatchSubjectKind subjectKind,
-      MemorySegment subject) {
-        return spotDispatchInfoAccess().create(event, subjectKind, subject);
-    }
-
-    public static SpotDispatchInfo spotDispatchInfo(
-      SpotDispatchEvent event,
-      SpotDispatchSubjectKind subjectKind,
-      MemorySegment subject,
-      List<ActorPart> actorParts) {
-        return spotDispatchInfoAccess().create(event, subjectKind, subject,
-            actorParts);
-    }
-
-    public static SpotDispatchInfo spotDispatchInfo(
-      SpotDispatchEvent event,
-      SpotDispatchSubjectKind subjectKind,
-      MemorySegment subject,
-      Timer timer,
-      String channelName,
-      List<ActorPart> actorParts) {
-        return spotDispatchInfoAccess().create(event, subjectKind, subject,
-            timer, channelName, actorParts);
-    }
-
     public static Timer timerFromBorrowedHandle(MemorySegment handle) {
         return timerAccess().fromBorrowedHandle(handle);
     }
 
+    public static MemorySegment timerHandle(Timer timer) {
+        return timerAccess().handle(timer);
+    }
+
     public static MemorySegment messageDataSegment(Message message) {
-        return messageAccess().dataSegment(message);
+        return (MemorySegment) ContractAccess.messageDataSegment(message);
     }
 
     public static MemorySegment messageDataSegment(Message message,
                                                    int knownSize) {
-        return messageAccess().dataSegment(message, knownSize);
+        return (MemorySegment) ContractAccess.messageDataSegment(message,
+            knownSize);
     }
 
     public static void messageCopyTo(Message message,
                                      MemorySegment destination) {
-        messageAccess().copyTo(message, destination);
+        ContractAccess.messageCopyTo(message, destination);
+    }
+
+    public static Message messageFromSegment(MemorySegment segment,
+                                             long offset,
+                                             long length) {
+        return ContractAccess.messageFromSegment(segment, offset, length);
     }
 
     public static void messageMoveTo(Message message,
                                      MemorySegment destination) {
-        messageAccess().moveTo(message, destination);
+        ContractAccess.messageMoveTo(message, destination);
     }
 
     public static MemorySegment messageNativeHandle(Message message) {
-        return messageAccess().nativeHandle(message);
+        return (MemorySegment) ContractAccess.messageNativeHandle(message);
     }
 
     public static void messageSetMore(Message message, boolean more) {
-        messageAccess().setMore(message, more);
+        ContractAccess.messageSetMore(message, more);
     }
 
     public static boolean messageMore(Message message) {
-        return messageAccess().more(message);
+        return ContractAccess.messageMore(message);
     }
 
     public static void messageFinishReceive(Message message, boolean more) {
-        messageAccess().finishReceive(message, more);
+        ContractAccess.messageFinishReceive(message, more);
     }
 
     public static Object messageTransferTo(Message message,
                                            MemorySegment destination) {
-        messageAccess().transferTo(message, destination);
+        ContractAccess.messageTransferTo(message, destination);
         return null;
     }
 
@@ -342,44 +374,47 @@ public final class InternalAccess {
                                                 MemorySegment source,
                                                 boolean moreFlag,
                                                 Object anchor) {
-        messageAccess().restoreFromNative(message, source, moreFlag);
+        ContractAccess.messageRestoreFromNative(message, source, moreFlag);
     }
 
     public static void messageMarkTransferred(Message message) {
-        messageAccess().markTransferred(message);
+        ContractAccess.messageMarkTransferred(message);
     }
 
     public static int messageMoveInto(Message source, Message target,
                                       boolean moreFlag) {
-        return messageAccess().moveInto(source, target, moreFlag);
+        return ContractAccess.messageMoveInto(source, target, moreFlag);
     }
 
     public static Message messageSharedCopyOf(Message message) {
-        return messageAccess().sharedCopyOf(message);
+        return ContractAccess.messageSharedCopyOf(message);
     }
 
     public static Message[] messageFromMsgVector(MemorySegment partsAddr,
                                                  long count) {
-        return messageAccess().fromMsgVector(partsAddr, count);
+        return ContractAccess.nativeMessageMaterializeVector(partsAddr, count,
+            null, true);
     }
 
     public static Message[] messageFromOwnedMsgVector(MemorySegment partsAddr,
                                                       long count) {
-        return messageAccess().fromOwnedMsgVector(partsAddr, count);
+        return ContractAccess.nativeMessageMaterializeVector(partsAddr, count,
+            null, false);
     }
 
     public static Message[] messageFromOwnedMsgVectorShared(
       MemorySegment partsAddr,
       long count) {
-        return messageAccess().fromOwnedMsgVectorShared(partsAddr, count);
+        return ContractAccess.nativeMessageMaterializeVectorShared(partsAddr,
+            count);
     }
 
     public static Message messageFromOwnedNative(MemorySegment nativeMsg) {
-        return messageAccess().fromOwnedNative(nativeMsg);
+        return ContractAccess.nativeMessageAdoptOwned(nativeMsg);
     }
 
     public static Received received(RoutingId routingId, Message[] parts) {
-        return receivedAccess().create(routingId, parts);
+        return ContractAccess.received(routingId, parts);
     }
 
     public static Received received(RoutingId routingId,
@@ -388,7 +423,7 @@ public final class InternalAccess {
                                     long requestSeq,
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender) {
-        return receivedAccess().create(routingId, spotRid, parts, requestSeq,
+        return ContractAccess.received(routingId, spotRid, parts, requestSeq,
             hasRequestSeq, replySender);
     }
 
@@ -399,7 +434,7 @@ public final class InternalAccess {
                                     long requestSeq,
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender) {
-        return receivedAccess().create(routingId, spotRid, parts, trustedParts,
+        return ContractAccess.received(routingId, spotRid, parts, trustedParts,
             requestSeq, hasRequestSeq, replySender);
     }
 
@@ -411,7 +446,7 @@ public final class InternalAccess {
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender,
                                     Runnable onTerminalState) {
-        return receivedAccess().create(routingId, spotRid, parts, trustedParts,
+        return ContractAccess.received(routingId, spotRid, parts, trustedParts,
             requestSeq, hasRequestSeq, replySender, onTerminalState);
     }
 
@@ -423,7 +458,7 @@ public final class InternalAccess {
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender,
                                     Runnable onTerminalState) {
-        return receivedAccess().create(routingIdBytes, spotRidBytes, parts,
+        return ContractAccess.received(routingIdBytes, spotRidBytes, parts,
             trustedParts, requestSeq, hasRequestSeq, replySender,
             onTerminalState);
     }
@@ -436,7 +471,7 @@ public final class InternalAccess {
                                         boolean hasRequestSeq,
                                         BiConsumer<List<Message>, SendFlags> replySender,
                                         Runnable onTerminalState) {
-        return receivedAccess().createLazy(routingIdBytes, spotRidBytes,
+        return ContractAccess.receivedLazy(routingIdBytes, spotRidBytes,
             firstPart, cursor, requestSeq, hasRequestSeq, replySender,
             onTerminalState);
     }
@@ -449,40 +484,40 @@ public final class InternalAccess {
                                         boolean hasRequestSeq,
                                         BiConsumer<List<Message>, SendFlags> replySender,
                                         Runnable onTerminalState) {
-        return receivedAccess().createLazy(routingId, spotRid, firstPart,
+        return ContractAccess.receivedLazy(routingId, spotRid, firstPart,
             cursor, requestSeq, hasRequestSeq, replySender, onTerminalState);
     }
 
     public static TopicMessage topicMessage(RoutingId routingId,
                                             String topicId,
                                             Message[] parts) {
-        return topicMessageAccess().create(routingId, topicId, parts);
+        return ContractAccess.topicMessage(routingId, topicId, parts);
     }
 
     public static void topicMessageAdoptSingle(TopicMessage target,
                                                RoutingId routingId,
                                                String topicId,
                                                Message part) {
-        topicMessageAccess().adoptSingle(target, routingId, topicId, part);
+        ContractAccess.topicMessageAdoptSingle(target, routingId, topicId, part);
     }
 
     public static Message topicMessagePrepareReusableSinglePart(
       TopicMessage target) {
-        return topicMessageAccess().prepareReusableSinglePart(target);
+        return ContractAccess.topicMessagePrepareReusableSinglePart(target);
     }
 
     public static void receivedForceMaterialize(Received received) {
-        receivedAccess().forceMaterialize(received);
+        ContractAccess.receivedForceMaterialize(received);
     }
 
     public static List<Message> receivedTakeParts(Received received) {
-        return receivedAccess().takeParts(received);
+        return ContractAccess.receivedTakeParts(received);
     }
 
     public static void receivedSetSendSender(Received received,
                                              BiFunction<List<Message>, SendFlags,
                                                  Boolean> sendSender) {
-        receivedAccess().setSendSender(received, sendSender);
+        ContractAccess.receivedSetSendSender(received, sendSender);
     }
 
     public static boolean inCallback() {
@@ -497,26 +532,156 @@ public final class InternalAccess {
         socketAccess().leaveCallback();
     }
 
+    public static CompletableFuture<List<Message>> dealerRequestAsync(
+            DealerSocket socket, List<Message> parts, SendFlags flags,
+            Duration timeout) {
+        return runtimeSocketAccess().dealerRequestAsync(socket, parts, flags,
+            timeout);
+    }
+
+    public static boolean dealerRequestCallback(
+            DealerSocket socket, List<Message> parts, RequestCallback callback,
+            SendFlags flags, Duration timeout) {
+        return runtimeSocketAccess().dealerRequestCallback(socket, parts,
+            callback, flags, timeout);
+    }
+
+    public static Object routerReceiveSupport(RouterSocket socket,
+                                              boolean closeSocketOnClose) {
+        return runtimeSocketAccess().routerReceiveSupport(socket,
+            closeSocketOnClose);
+    }
+
+    public static Received routerRecv(Object support, RecvFlags flags) {
+        return runtimeSocketAccess().routerRecv(support, flags);
+    }
+
+    public static boolean routerRecvInto(Object support, Received target,
+                                         RecvFlags flags) {
+        return runtimeSocketAccess().routerRecvInto(support, target, flags);
+    }
+
+    public static void routerOnReceive(Object support,
+                                       SocketMessageHandler handler) {
+        runtimeSocketAccess().routerOnReceive(support, handler);
+    }
+
+    public static void routerReceiveBeginClose(Object support) {
+        runtimeSocketAccess().routerReceiveBeginClose(support);
+    }
+
+    public static void routerReceiveFinishClose(Object support) {
+        runtimeSocketAccess().routerReceiveFinishClose(support);
+    }
+
+    public static CompletableFuture<List<Message>> routerRequestAsync(
+            RouterSocket socket, RoutingId routingId, List<Message> parts,
+            SendFlags flags, Duration timeout) {
+        return runtimeSocketAccess().routerRequestAsync(socket, routingId,
+            parts, flags, timeout);
+    }
+
+    public static boolean routerRequestCallback(
+            RouterSocket socket, RoutingId routingId, List<Message> parts,
+            RequestCallback callback, SendFlags flags, Duration timeout) {
+        return runtimeSocketAccess().routerRequestCallback(socket, routingId,
+            parts, callback, flags, timeout);
+    }
+
+    public static void routerReply(RouterSocket socket, RoutingId routingId,
+                                   long requestSequence, List<Message> parts,
+                                   SendFlags flags) {
+        runtimeSocketAccess().routerReply(socket, routingId, requestSequence,
+            parts, flags);
+    }
+
+    public static boolean routerSendToSpot(
+            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
+            List<Message> parts, SendFlags flags) {
+        return runtimeSocketAccess().routerSendToSpot(socket, destNodeRid,
+            destSpotRid, parts, flags);
+    }
+
+    public static CompletableFuture<List<Message>> routerRequestToSpotAsync(
+            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
+            List<Message> parts, Duration timeout, SendFlags flags) {
+        return runtimeSocketAccess().routerRequestToSpotAsync(socket, destNodeRid,
+            destSpotRid, parts, timeout, flags);
+    }
+
+    public static boolean routerRequestToSpotCallback(
+            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
+            List<Message> parts,
+            BiConsumer<RequestResult, List<Message>> callback,
+            SendFlags flags, Duration timeout) {
+        return runtimeSocketAccess().routerRequestToSpotCallback(socket,
+            destNodeRid, destSpotRid, parts, callback, flags, timeout);
+    }
+
+    public static void routerReplyToSpot(
+            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
+            long requestSeq, List<Message> parts, SendFlags flags) {
+        runtimeSocketAccess().routerReplyToSpot(socket, destNodeRid, destSpotRid,
+            requestSeq, parts, flags);
+    }
+
+    public static void streamAttachActorGateway(StreamSocket socket,
+                                                SpotNode node) {
+        runtimeSocketAccess().streamAttachActorGateway(socket, node);
+    }
+
+    public static List<ActorRef> streamBoundActors(StreamSocket socket,
+                                                   RoutingId sessionRid) {
+        return runtimeSocketAccess().streamBoundActors(socket, sessionRid);
+    }
+
+    public static boolean streamSubmitBind(StreamSocket socket,
+                                           RoutingId sessionRid,
+                                           ActorRef actor,
+                                           Duration timeout,
+                                           ReplyHandler callback) {
+        return runtimeSocketAccess().streamSubmitBind(socket, sessionRid, actor,
+            timeout, callback);
+    }
+
+    public static boolean streamSubmitUnbind(StreamSocket socket,
+                                             RoutingId sessionRid,
+                                             String actorId,
+                                             Duration timeout,
+                                             ReplyHandler callback) {
+        return runtimeSocketAccess().streamSubmitUnbind(socket, sessionRid,
+            actorId, timeout, callback);
+    }
+
+    public static boolean streamSendBoundActorParts(StreamSocket socket,
+                                                    RoutingId sessionRid,
+                                                    String actorId,
+                                                    List<Message> parts,
+                                                    SendFlags flags) {
+        return runtimeSocketAccess().streamSendBoundActorParts(socket, sessionRid,
+            actorId, parts, flags);
+    }
+
     public static RoutingId routingIdFromTrusted(byte[] value) {
-        return routingIdAccess().fromTrusted(value);
+        return ContractAccess.routingIdFromTrusted(value);
     }
 
     public static byte[] routingIdTrustedBytes(RoutingId routingId) {
-        return routingIdAccess().trustedBytes(routingId);
+        return ContractAccess.routingIdTrustedBytes(routingId);
     }
 
     public static ZlinkException zlinkExceptionFromLastError(String operation) {
-        return errorAccess().fromLastError(operation);
+        return ZlinkException.fromErrno(operation, Native.errno());
     }
 
     public static ZlinkException zlinkExceptionFromErrno(String operation,
                                                          int errno) {
-        return errorAccess().fromErrno(operation, errno);
+        return ZlinkException.fromErrno(operation, errno);
     }
 
     private static ContextAccess contextAccess() {
-        if (contextAccess == null) load(Context.class);
-        return require(contextAccess, Context.class);
+        if (contextAccess == null) load(NativeContext.class);
+        return require(contextAccess, NativeContext.class);
     }
 
     private static DiscoveryAccess discoveryAccess() {
@@ -525,53 +690,34 @@ public final class InternalAccess {
     }
 
     private static SocketAccess socketAccess() {
-        if (socketAccess == null) load(Socket.class);
+        if (socketAccess == null) load("systems.zlink.runtime.sockets.NativeSocketBase");
         return require(socketAccess, Socket.class);
     }
 
+    private static RuntimeSocketAccess runtimeSocketAccess() {
+        if (runtimeSocketAccess == null) load(NativeDealerRequestSupport.class);
+        return require(runtimeSocketAccess, NativeDealerRequestSupport.class);
+    }
+
     private static SpotAccess spotAccess() {
-        if (spotAccess == null) load(Spot.class);
-        return require(spotAccess, Spot.class);
+        if (spotAccess == null) load(NativeSpot.class);
+        return require(spotAccess, NativeSpot.class);
     }
 
     private static SpotNodeAccess spotNodeAccess() {
-        if (spotNodeAccess == null) load(SpotNode.class);
-        return require(spotNodeAccess, SpotNode.class);
-    }
-
-    private static SpotDispatchInfoAccess spotDispatchInfoAccess() {
-        if (spotDispatchInfoAccess == null) load(SpotDispatchInfo.class);
-        return require(spotDispatchInfoAccess, SpotDispatchInfo.class);
+        if (spotNodeAccess == null) load(NativeSpotNode.class);
+        return require(spotNodeAccess, NativeSpotNode.class);
     }
 
     private static TimerAccess timerAccess() {
-        if (timerAccess == null) load(Timer.class);
-        return require(timerAccess, Timer.class);
+        if (timerAccess == null) load(NativeTimer.class);
+        return require(timerAccess, NativeTimer.class);
     }
 
-    private static MessageAccess messageAccess() {
-        if (messageAccess == null) load(Message.class);
-        return require(messageAccess, Message.class);
-    }
-
-    private static ReceivedAccess receivedAccess() {
-        if (receivedAccess == null) load(Received.class);
-        return require(receivedAccess, Received.class);
-    }
-
-    private static TopicMessageAccess topicMessageAccess() {
-        if (topicMessageAccess == null) load(TopicMessage.class);
-        return require(topicMessageAccess, TopicMessage.class);
-    }
-
-    private static RoutingIdAccess routingIdAccess() {
-        if (routingIdAccess == null) load(RoutingId.class);
-        return require(routingIdAccess, RoutingId.class);
-    }
-
-    private static ErrorAccess errorAccess() {
-        if (errorAccess == null) load(ZlinkException.class);
-        return require(errorAccess, ZlinkException.class);
+    private static MonitorAccess monitorAccess() {
+        if (monitorAccess == null)
+            load("systems.zlink.runtime.eventing.NativeMonitorSocket");
+        return require(monitorAccess, MonitorSocket.class);
     }
 
     private static <T> T require(T access, Class<?> ownerType) {
@@ -585,6 +731,14 @@ public final class InternalAccess {
     private static void load(Class<?> ownerType) {
         try {
             Class.forName(ownerType.getName(), true, ownerType.getClassLoader());
+        } catch (ClassNotFoundException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    private static void load(String className) {
+        try {
+            Class.forName(className, true, InternalAccess.class.getClassLoader());
         } catch (ClassNotFoundException e) {
             throw new ExceptionInInitializerError(e);
         }

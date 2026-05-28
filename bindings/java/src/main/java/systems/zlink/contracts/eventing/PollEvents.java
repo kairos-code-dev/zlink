@@ -2,28 +2,41 @@
 
 package systems.zlink.contracts.eventing;
 
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.util.Objects;
 
 public final class PollEvents {
-    static final long POLLER_EVENT_SIZE = 48;
-    private static final long EVENT_SOURCE_KIND_OFFSET = 0;
-    private static final long EVENT_FD_OFFSET = 16;
-    private static final long EVENT_USER_DATA_OFFSET = 32;
-    private static final long EVENT_EVENTS_OFFSET = 40;
-
-    private final MemorySegment segment;
     private final int capacity;
+    private final PollSourceKind[] sourceKinds;
+    private final long[] slots;
+    private final int[] revents;
+    private final int[] fds;
     private int readyCount;
+
+    static {
+        ContractAccess.register(new ContractAccess.PollEventsAccess() {
+            @Override
+            public void markReadyCount(PollEvents events, int readyCount) {
+                events.markReadyCount(readyCount);
+            }
+
+            @Override
+            public void markEvent(PollEvents events, int index,
+                                  int sourceKindValue, long slot,
+                                  int revents, int fd) {
+                events.markEvent(index, sourceKindValue, slot, revents, fd);
+            }
+        });
+    }
 
     public PollEvents(int capacity) {
         if (capacity <= 0)
             throw new IllegalArgumentException("capacity must be > 0");
         this.capacity = capacity;
-        this.segment = Arena.ofAuto().allocate(POLLER_EVENT_SIZE * capacity,
-            ValueLayout.ADDRESS.byteAlignment());
+        this.sourceKinds = new PollSourceKind[capacity];
+        this.slots = new long[capacity];
+        this.revents = new int[capacity];
+        this.fds = new int[capacity];
     }
 
     public int capacity() {
@@ -36,20 +49,17 @@ public final class PollEvents {
 
     public PollSourceKind sourceKind(int index) {
         checkReadyIndex(index);
-        return PollSourceKind.fromValue(segment.get(ValueLayout.JAVA_INT,
-            offset(index, EVENT_SOURCE_KIND_OFFSET)));
+        return sourceKinds[index];
     }
 
     public long slot(int index) {
         checkReadyIndex(index);
-        return segment.get(ValueLayout.ADDRESS,
-            offset(index, EVENT_USER_DATA_OFFSET)).address();
+        return slots[index];
     }
 
     public int revents(int index) {
         checkReadyIndex(index);
-        return segment.get(ValueLayout.JAVA_SHORT,
-            offset(index, EVENT_EVENTS_OFFSET));
+        return revents[index];
     }
 
     public boolean hasEvent(int index, PollEventFlag event) {
@@ -59,11 +69,7 @@ public final class PollEvents {
 
     public int fd(int index) {
         checkReadyIndex(index);
-        return segment.get(ValueLayout.JAVA_INT, offset(index, EVENT_FD_OFFSET));
-    }
-
-    MemorySegment segment() {
-        return segment;
+        return fds[index];
     }
 
     void markReadyCount(int readyCount) {
@@ -72,12 +78,19 @@ public final class PollEvents {
         this.readyCount = readyCount;
     }
 
+    void markEvent(int index, int sourceKindValue, long slot, int revents,
+                   int fd) {
+        if (index < 0 || index >= capacity)
+            throw new IndexOutOfBoundsException("event index " + index);
+        sourceKinds[index] = PollSourceKind.fromValue(sourceKindValue);
+        slots[index] = slot;
+        this.revents[index] = revents;
+        fds[index] = fd;
+    }
+
     private void checkReadyIndex(int index) {
         if (index < 0 || index >= readyCount)
             throw new IndexOutOfBoundsException("ready index " + index);
     }
 
-    private static long offset(int index, long fieldOffset) {
-        return (long) index * POLLER_EVENT_SIZE + fieldOffset;
-    }
 }

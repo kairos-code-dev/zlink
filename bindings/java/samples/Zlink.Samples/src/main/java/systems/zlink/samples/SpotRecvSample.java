@@ -1,6 +1,7 @@
 package systems.zlink.samples;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.core.RoutingId;
@@ -19,9 +20,9 @@ public final class SpotRecvSample {
         String publisherEndpoint = SampleSupport.tcpEndpoint();
         String subscriberEndpoint = SampleSupport.tcpEndpoint();
 
-        try (Context ctx = new Context();
-             SpotNode publisherNode = new SpotNode(ctx);
-             SpotNode subscriberNode = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode publisherNode = ctx.createSpotNode();
+             SpotNode subscriberNode = ctx.createSpotNode();
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             publisherNode.setRoutingId(RoutingId.from(

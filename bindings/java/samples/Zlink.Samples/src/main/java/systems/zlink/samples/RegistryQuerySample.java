@@ -2,6 +2,7 @@ package systems.zlink.samples;
 
 import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.service.registry.Registry;
@@ -13,16 +14,16 @@ public final class RegistryQuerySample {
         String registryPub = SampleSupport.tcpEndpoint();
         String registryRouter = SampleSupport.tcpEndpoint();
         String serviceEndpoint = SampleSupport.tcpEndpoint();
-        Context ctx = new Context();
+        Context ctx = Zlink.createContext();
         Registry registry = null;
         Discovery discovery = null;
         RegistryQueryClient query = null;
         PubSocket provider = null;
         try {
-            registry = new Registry(ctx);
-            discovery = new Discovery(ctx, AutoConnectType.FANOUT, channelName);
-            query = new RegistryQueryClient(ctx);
-            provider = new PubSocket(ctx);
+            registry = ctx.createRegistry();
+            discovery = ctx.createDiscovery(AutoConnectType.FANOUT, channelName);
+            query = ctx.createRegistryQueryClient();
+            provider = ctx.createPubSocket();
             registry.bind(registryPub, registryRouter);
             discovery.connectRegistry(registryRouter);
             provider.attachDiscovery(discovery);

@@ -4,6 +4,7 @@ import systems.zlink.TestSupport;
 import systems.zlink.contracts.errors.ConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RouterSocket;
@@ -27,9 +28,9 @@ public class BoundaryValidationContractTest {
     public void streamAttachActorGatewayRequiresRoutedNode() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             StreamSocket stream = new StreamSocket(ctx);
-             SpotNode node = new SpotNode(ctx, SpotNodeMode.PUBSUB)) {
+        try (Context ctx = Zlink.createContext();
+             StreamSocket stream = ctx.createStreamSocket();
+             SpotNode node = ctx.createSpotNode(SpotNodeMode.PUBSUB)) {
             ConfigException error = assertThrows(ConfigException.class,
                 () -> stream.attachActorGateway(node));
             assertEquals(ConfigResult.NOT_SUPPORTED, error.getResult());
@@ -72,8 +73,8 @@ public class BoundaryValidationContractTest {
     public void durationTimeoutRejectsIntOverflow() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             RouterSocket router = new RouterSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             RouterSocket router = ctx.createRouterSocket()) {
             RouterSocketOptions options = router.options();
             assertThrows(IllegalArgumentException.class,
                 () -> options.recvTimeout(Duration.ofMillis((long) Integer.MAX_VALUE + 1)));
@@ -96,9 +97,9 @@ public class BoundaryValidationContractTest {
         String max = "a".repeat(255);
         String overflow = "b".repeat(256);
 
-        try (Context ctx = new Context();
-             PubSocket pub = new PubSocket(ctx);
-             SubSocket sub = new SubSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             PubSocket pub = ctx.createPubSocket();
+             SubSocket sub = ctx.createSubSocket();
              Message payload = Message.from("payload")) {
             assertDoesNotThrow(() -> sub.setSubscription(max));
             assertThrows(IllegalArgumentException.class,

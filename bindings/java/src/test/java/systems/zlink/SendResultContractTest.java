@@ -1,13 +1,13 @@
 package systems.zlink;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.sockets.SendResult;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.SubSocket;
@@ -29,8 +29,8 @@ public class SendResultContractTest {
     public void subscribeDontWaitReturnsNoDataWhenNoTopicDeliveryExists() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             SubSocket sub = new SubSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             SubSocket sub = ctx.createSubSocket()) {
             assertFalse(sub.subscribe(new TopicMessage(), RecvFlags.DONT_WAIT));
         }
     }
@@ -39,8 +39,8 @@ public class SendResultContractTest {
     public void spotSubscribeDontWaitReturnsNoDataWhenNoTopicDeliveryExists() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             SpotNode node = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode();
              Spot spot = node.createSpot()) {
             assertFalse(spot.subscribe(new TopicMessage(), RecvFlags.DONT_WAIT));
         }
@@ -50,25 +50,10 @@ public class SendResultContractTest {
     public void receiveSubscriptionEventDontWaitReturnsNoDataWhenNoEventExists() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             XPubSocket pub = new XPubSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             XPubSocket pub = ctx.createXPubSocket()) {
             assertFalse(pub.receiveSubscriptionEvent(
                 new SubscriptionEvent(), RecvFlags.DONT_WAIT));
-        }
-    }
-
-    @Test
-    public void sendNoWaitReturnsNotReadyWhenRouterHasNoMatchingPeer() {
-        TestSupport.assumeNative();
-
-        try (Context ctx = new Context();
-             RouterSocket router = new RouterSocket(ctx);
-             Message payload = Message.from("router-payload")) {
-            router.options().mandatory(true);
-            RoutingId missingRid = RoutingId.from(
-                "router-missing-peer".getBytes(StandardCharsets.UTF_8));
-            SendResult result = router.sendNoWaitResult(missingRid, payload);
-            assertEquals(SendResult.NOT_READY, result);
         }
     }
 
@@ -76,8 +61,8 @@ public class SendResultContractTest {
     public void sendDontWaitThrowsWhenRouterHasNoMatchingPeer() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             RouterSocket router = new RouterSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             RouterSocket router = ctx.createRouterSocket();
              Message payload = Message.from("router-payload")) {
             router.options().mandatory(true);
             RoutingId missingRid = RoutingId.from(
@@ -95,9 +80,9 @@ public class SendResultContractTest {
     public void sendNoWaitReturnsBackpressuredWhenPairQueueFills() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket sender = new PairSocket(ctx);
-             PairSocket receiver = new PairSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket sender = ctx.createPairSocket();
+             PairSocket receiver = ctx.createPairSocket()) {
             sender.options().sendHwm(1);
             receiver.options().recvHwm(1);
             String endpoint = TestSupport.inprocEndpoint("pair-backpressure");
@@ -130,9 +115,9 @@ public class SendResultContractTest {
     public void sendDontWaitReturnsFalseWhenPairQueueFills() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket sender = new PairSocket(ctx);
-             PairSocket receiver = new PairSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket sender = ctx.createPairSocket();
+             PairSocket receiver = ctx.createPairSocket()) {
             sender.options().sendHwm(1);
             receiver.options().recvHwm(1);
             String endpoint = TestSupport.inprocEndpoint("pair-try-backpressure");

@@ -2,6 +2,7 @@ package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.PairSocket;
 import org.junit.jupiter.api.Test;
 
@@ -12,8 +13,8 @@ public class MonitorContractTest {
     public void monitorStatusUsesCanonicalMonitorSurface() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket socket = new PairSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             PairSocket socket = ctx.createPairSocket();
              var monitor = socket.monitorOpen()) {
             assertTrue(monitor.status().sndPendingMsgs() >= 0L);
         }

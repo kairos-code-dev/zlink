@@ -4,6 +4,7 @@ import systems.zlink.contracts.service.spot.Actor;
 import systems.zlink.contracts.service.spot.ActorJoinRequest;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.messaging.Received;
@@ -23,10 +24,10 @@ public final class ActorRoomServerSample {
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
 
-        try (Context ctx = new Context();
-             SpotNode node = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode();
              Spot spot = node.createSpot();
-             StreamSocket stream = new StreamSocket(ctx);
+             StreamSocket stream = ctx.createStreamSocket();
              var monitor = stream.monitorOpen(MonitorEventType.ACCEPTED)) {
             Actor actor = node.createActor("room-1");
             ActorRef actorRef = actor.ref();

@@ -2,26 +2,8 @@
 
 package systems.zlink.contracts.service.spot;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-import systems.zlink.runtime.nativeapi.NativeHelpers;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
-
 public record SpotNodePeerEntry(String channelName, String localEndpoint,
                                 String peerEndpoint, SpotPeerSource source,
                                 SpotPeerKind kind, SpotPeerState state, int weight,
                                 long connectedSinceMs, long lastChangedMs) {
-    static SpotNodePeerEntry fromNative(MemorySegment segment) {
-        return new SpotNodePeerEntry(
-          NativeHelpers.fromCString(segment.asSlice(0, 256), 256),
-          NativeHelpers.fromCString(segment.asSlice(256, 256), 256),
-          NativeHelpers.fromCString(segment.asSlice(512, 256), 256),
-          EnumCodecs.spotPeerSourceFromValue(segment.get(ValueLayout.JAVA_INT, 768)),
-          EnumCodecs.spotPeerKindFromValue(segment.get(ValueLayout.JAVA_INT, 772)),
-          EnumCodecs.spotPeerStateFromValue(segment.get(ValueLayout.JAVA_INT, 776)),
-          segment.get(ValueLayout.JAVA_INT, 780),
-          segment.get(ValueLayout.JAVA_LONG, 784),
-          segment.get(ValueLayout.JAVA_LONG, 792));
-    }
 }

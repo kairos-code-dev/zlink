@@ -6,7 +6,7 @@ import systems.zlink.contracts.errors.RecvException;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.runtime.nativeapi.InternalAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -25,7 +25,7 @@ public final class TopicMessage implements AutoCloseable {
     private Message reusableSinglePart;
 
     static {
-        InternalAccess.register(new InternalAccess.TopicMessageAccess() {
+        ContractAccess.register(new ContractAccess.TopicMessageAccess() {
             @Override
             public TopicMessage create(RoutingId routingId, String topicId,
                                        Message[] parts) {

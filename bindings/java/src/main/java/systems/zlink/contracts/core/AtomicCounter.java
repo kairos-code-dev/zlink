@@ -2,53 +2,15 @@
 
 package systems.zlink.contracts.core;
 
-import systems.zlink.contracts.errors.ConfigException;
-import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.runtime.nativeapi.Native;
-import java.lang.foreign.MemorySegment;
+public interface AtomicCounter extends AutoCloseable {
+    void set(int value);
 
-public final class AtomicCounter implements AutoCloseable {
-    private MemorySegment handle;
+    int increment();
 
-    public AtomicCounter() {
-        this.handle = Native.atomicCounterNew();
-        if (handle == null || handle.address() == 0) {
-            throw new ConfigException(ConfigResult.INVALID_HANDLE);
-        }
-    }
+    int decrement();
 
-    public void set(int value) {
-        ensureOpen();
-        Native.atomicCounterSet(handle, value);
-    }
-
-    public int increment() {
-        ensureOpen();
-        return Native.atomicCounterInc(handle);
-    }
-
-    public int decrement() {
-        ensureOpen();
-        return Native.atomicCounterDec(handle);
-    }
-
-    public int value() {
-        ensureOpen();
-        return Native.atomicCounterValue(handle);
-    }
+    int value();
 
     @Override
-    public void close() {
-        if (handle == null || handle.address() == 0) {
-            return;
-        }
-        Native.atomicCounterDestroy(handle);
-        handle = MemorySegment.NULL;
-    }
-
-    private void ensureOpen() {
-        if (handle == null || handle.address() == 0) {
-            throw new IllegalStateException("atomic counter is closed");
-        }
-    }
+    void close();
 }

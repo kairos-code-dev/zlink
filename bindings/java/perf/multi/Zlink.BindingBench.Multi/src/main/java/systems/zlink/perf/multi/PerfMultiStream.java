@@ -49,7 +49,7 @@ final class PerfMultiStream {
         Thread controlWatcher = startControlWatcher(stopRequested, stopSignal);
 
         try (Context ctx = PerfUtil.newContext(config);
-            StreamSocket server = new StreamSocket(ctx)) {
+            StreamSocket server = ctx.createStreamSocket()) {
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.recalculateAutoHwm(ctx);
             PerfUtil.printMultiSocketAutoHwm(config, server, "server",

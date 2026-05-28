@@ -35,7 +35,7 @@ final class PerfMultiDealerRouter {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = PerfUtil.newContext(config);
-             RouterSocket server = new RouterSocket(ctx);
+             RouterSocket server = ctx.createRouterSocket();
              var monitor = server.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             PerfUtil.applyMonitorOptions(monitor, config);
             PerfUtil.applySocketOptions(server, config);
@@ -111,7 +111,7 @@ final class PerfMultiDealerRouter {
         Context ctx = PerfUtil.newContext(config);
         try {
             for (int i = 0; i < config.clients(); i++) {
-                DealerSocket client = new DealerSocket(ctx);
+                DealerSocket client = ctx.createDealerSocket();
                 MonitorSocket monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
                 PerfUtil.applyMonitorOptions(monitor, config);
                 PerfUtil.applySocketOptions(client, config);

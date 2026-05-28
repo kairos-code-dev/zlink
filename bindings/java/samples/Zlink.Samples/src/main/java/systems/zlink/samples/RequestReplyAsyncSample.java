@@ -1,6 +1,7 @@
 package systems.zlink.samples;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
@@ -20,9 +21,9 @@ public final class RequestReplyAsyncSample {
         String endpoint = SampleSupport.tcpEndpoint();
         CountDownLatch requestHandled = new CountDownLatch(1);
 
-        try (Context ctx = new Context();
-             RouterSocket routerSocket = new RouterSocket(ctx);
-             DealerSocket dealerSocket = new DealerSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             RouterSocket routerSocket = ctx.createRouterSocket();
+             DealerSocket dealerSocket = ctx.createDealerSocket();
              var routerMonitor = routerSocket.monitorOpen(
                  systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY);
              var dealerMonitor = dealerSocket.monitorOpen(

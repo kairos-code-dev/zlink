@@ -3,6 +3,7 @@ package systems.zlink.contract;
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.ContextOptions;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ public class ContextContractTest {
     public void rawContextOptionBagIsHiddenAndTypedSurfaceRemains() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context()) {
+        try (Context ctx = Zlink.createContext()) {
             ContextOptions options = ctx.options();
             assertTrue(hasPublicMethod(Context.class, "options"));
             assertEquals(ContextOptions.class, options.getClass());

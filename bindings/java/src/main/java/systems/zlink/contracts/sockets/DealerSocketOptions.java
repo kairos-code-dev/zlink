@@ -2,13 +2,7 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.contracts.errors.ConfigException;
-import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.runtime.nativeapi.InternalAccess;
-import systems.zlink.runtime.nativeapi.Native;
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -16,16 +10,16 @@ public final class DealerSocketOptions extends CommonSocketOptions {
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3202;
     private static final int OPT_WEIGHT = 0x3203;
 
-    DealerSocketOptions(Socket socket) {
+    public DealerSocketOptions(Socket socket) {
         super(socket);
     }
 
     public boolean probe() {
-        return socket.getOption(SocketOptions.PROBE_ROUTER) != 0;
+        return ContractAccess.socketGetOption(socket, SocketOptions.PROBE_ROUTER) != 0;
     }
 
     public void probe(boolean enabled) {
-        socket.setOption(SocketOptions.PROBE_ROUTER, enabled ? 1 : 0);
+        ContractAccess.socketSetOption(socket, SocketOptions.PROBE_ROUTER, enabled ? 1 : 0);
     }
 
     public void requestTimeout(Duration value) {
@@ -38,14 +32,7 @@ public final class DealerSocketOptions extends CommonSocketOptions {
     }
 
     private void setIntOption(int option, int value) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setDealerOption(InternalAccess.socketHandle(socket), option, nativeValue,
-              ValueLayout.JAVA_INT.byteSize());
-            if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
-        }
+        ContractAccess.socketSetDealerIntOption(socket, option, value);
     }
 
     private static int toIntMillis(Duration timeout, String name) {

@@ -1,6 +1,7 @@
 package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -79,19 +80,13 @@ public class SocketOptionsTypeMapTest {
 
     @Test
     public void aliasOptionId98RespectsSocketTypeOwner() {
-        try (Context ctx = new Context();
-             PairSocket pair = new PairSocket(ctx);
-             XPubSocket xpub = new XPubSocket(ctx)) {
-            assertThrows(IllegalArgumentException.class,
-                () -> pair.validateOptionAccess(SocketOption.TLS_VERIFY.getValue(),
-                    SocketOptions.XPUB_MANUAL_LAST_VALUE.name()));
-            assertThrows(IllegalArgumentException.class,
-                () -> xpub.validateOptionAccess(SocketOption.TLS_VERIFY.getValue(),
-                    SocketOptions.TLS_VERIFY.name()));
-            xpub.validateOptionAccess(SocketOption.TLS_VERIFY.getValue(),
-                SocketOptions.XPUB_MANUAL_LAST_VALUE.name());
-            pair.validateOptionAccess(SocketOption.TLS_VERIFY.getValue(),
-                SocketOptions.TLS_VERIFY.name());
+        try (Context ctx = Zlink.createContext();
+             PairSocket pair = ctx.createPairSocket();
+             XPubSocket xpub = ctx.createXPubSocket()) {
+            assertTrue(pair.options() instanceof CommonSocketOptions);
+            assertTrue(xpub.options() instanceof PubSocketOptions);
+            xpub.options().manualLastValue(true);
+            assertTrue(xpub.options().manualLastValue());
         }
     }
 

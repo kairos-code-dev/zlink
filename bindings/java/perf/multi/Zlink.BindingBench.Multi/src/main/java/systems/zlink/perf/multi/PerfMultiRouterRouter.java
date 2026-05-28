@@ -41,7 +41,7 @@ final class PerfMultiRouterRouter {
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
         try (Context ctx = PerfUtil.newContext(config);
-             RouterSocket server = new RouterSocket(ctx);
+             RouterSocket server = ctx.createRouterSocket();
              var monitor = server.monitorOpen(MonitorEventType.CONNECTION_READY)) {
             server.setRoutingId(SERVER_ID);
             PerfUtil.applyMonitorOptions(monitor, config);
@@ -151,7 +151,7 @@ final class PerfMultiRouterRouter {
                 new ArrayList<>(clientCount);
             try {
                 for (int i = 0; i < clientCount; i++) {
-                    RouterSocket client = new RouterSocket(ctx);
+                    RouterSocket client = ctx.createRouterSocket();
                     client.setRoutingId(RoutingId.from(
                         ("PERF_CLIENT_" + i).getBytes(StandardCharsets.UTF_8)));
                     client.options().connectRoutingId(SERVER_ID);

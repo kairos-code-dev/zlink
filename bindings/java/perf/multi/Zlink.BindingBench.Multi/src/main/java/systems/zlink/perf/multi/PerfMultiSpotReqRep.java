@@ -2,6 +2,7 @@
 
 package systems.zlink.perf.multi;
 
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.PollEventFlag;
@@ -51,7 +52,7 @@ final class PerfMultiSpotReqRep {
         String controlEndpoint = derivedEndpoint(config.endpoint(), 1);
         String routerEndpoint = derivedEndpoint(config.endpoint(), 2);
         try (Context ctx = PerfUtil.newContext(config);
-             SpotNode node = new SpotNode(ctx);
+             SpotNode node = ctx.createSpotNode();
              Spot replier = node.createSpot();
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, controlEndpoint, "reqrep-server")) {
@@ -115,7 +116,7 @@ final class PerfMultiSpotReqRep {
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
 
         try (Context ctx = PerfUtil.newContext(config);
-             SpotNode node = new SpotNode(ctx);
+             SpotNode node = ctx.createSpotNode();
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, clientControlEndpoint, "reqrep-client")) {
             node.setRoutingId(routingId("SPOT-REQREP-CLIENT-NODE"));
@@ -200,8 +201,8 @@ final class PerfMultiSpotReqRep {
             payloads[i] = PerfUtil.payloadTemplate(config.size());
             waitingReply[i] = new AtomicBoolean();
         }
-        try (Poller completionPoller = new Poller();
-             Timer activeTimer = new Timer()) {
+        try (Poller completionPoller = Zlink.createPoller();
+             Timer activeTimer = Zlink.createTimer()) {
             PollEvents completionEvents = new PollEvents(
                 Math.max(1, activeClients + 1));
             for (int i = 0; i < activeClients; i++) {

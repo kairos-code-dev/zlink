@@ -42,6 +42,14 @@ public final class RequestProgressPump {
         track(future, socketHandle, threadName, Kind.SPOT);
     }
 
+    public static void stopSocketProgress(MemorySegment socketHandle) {
+        stopProgress(socketHandle, Kind.SOCKET);
+    }
+
+    public static void stopSpotProgress(MemorySegment socketHandle) {
+        stopProgress(socketHandle, Kind.SPOT);
+    }
+
     private static void track(CompletableFuture<?> future,
                               MemorySegment socketHandle,
                               String threadName,
@@ -91,6 +99,17 @@ public final class RequestProgressPump {
         }
     }
 
+    private static void stopProgress(MemorySegment socketHandle, Kind kind) {
+        Objects.requireNonNull(socketHandle, "socketHandle");
+        if (socketHandle.address() == 0)
+            return;
+        Key key = new Key(kind, socketHandle.address());
+        Pump pump = PUMPS.remove(key);
+        if (pump != null) {
+            pump.stopAndWait();
+        }
+    }
+
     private enum Kind {
         SOCKET,
         SPOT
@@ -105,6 +124,8 @@ public final class RequestProgressPump {
         private final String threadName;
         private final AtomicInteger pending = new AtomicInteger();
         private final AtomicBoolean running = new AtomicBoolean();
+        private final AtomicBoolean stopping = new AtomicBoolean();
+        private volatile Thread thread;
 
         private Pump(Key key, MemorySegment socketHandle, String threadName) {
             this.key = key;
@@ -127,7 +148,21 @@ public final class RequestProgressPump {
             }
             Thread thread = new Thread(this::runLoop, threadName);
             thread.setDaemon(true);
+            this.thread = thread;
             thread.start();
+        }
+
+        private void stopAndWait() {
+            stopping.set(true);
+            Thread current = thread;
+            if (current == null || current == Thread.currentThread()) {
+                return;
+            }
+            try {
+                current.join(100);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         private void runLoop() {
@@ -145,6 +180,9 @@ public final class RequestProgressPump {
                         POLLER_EVENT_SIZE * POLLER_EVENT_BATCH, Long.BYTES);
                     long idleDeadlineNs = 0L;
                     for (;;) {
+                        if (stopping.get()) {
+                            break;
+                        }
                         int timeoutMs = POLL_RECHECK_TIMEOUT_MS;
                         if (pending.get() <= 0) {
                             long now = System.nanoTime();
@@ -176,11 +214,12 @@ public final class RequestProgressPump {
                     }
                 }
                 running.set(false);
-                if (pending.get() > 0) {
+                if (!stopping.get() && pending.get() > 0) {
                     ensureRunning();
                     return;
                 }
                 PUMPS.remove(key, this);
+                thread = null;
             }
         }
     }

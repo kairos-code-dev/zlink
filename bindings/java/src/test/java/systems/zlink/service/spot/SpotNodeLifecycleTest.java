@@ -3,15 +3,15 @@ package systems.zlink.contracts.service.spot;
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.RoutingId;
-import java.lang.foreign.MemorySegment;
-import java.lang.reflect.Field;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SpotNodeLifecycleTest {
@@ -19,18 +19,18 @@ class SpotNodeLifecycleTest {
     void closeCascadesToOwnedSpots() throws Exception {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context()) {
-            SpotNode node = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext()) {
+            SpotNode node = ctx.createSpotNode();
             Spot first = node.createSpot();
             Spot second = node.createSpot();
 
-            assertTrue(handleAddress(first) != 0L);
-            assertTrue(handleAddress(second) != 0L);
+            assertDoesNotThrow(first::routingId);
+            assertDoesNotThrow(second::routingId);
 
             node.close();
 
-            assertEquals(0L, handleAddress(first));
-            assertEquals(0L, handleAddress(second));
+            assertThrows(IllegalStateException.class, first::routingId);
+            assertThrows(IllegalStateException.class, second::routingId);
             assertDoesNotThrow(first::close);
             assertDoesNotThrow(second::close);
         }
@@ -40,8 +40,8 @@ class SpotNodeLifecycleTest {
     void spotLookupAndOptionFacadesUseCoreEntrypoints() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             SpotNode node = new SpotNode(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode()) {
             Spot entry = node.entrySpot();
             assertNotNull(entry);
 
@@ -67,10 +67,4 @@ class SpotNodeLifecycleTest {
         }
     }
 
-    private static long handleAddress(Spot spot) throws Exception {
-        Field handleField = Spot.class.getDeclaredField("handle");
-        handleField.setAccessible(true);
-        MemorySegment handle = (MemorySegment) handleField.get(spot);
-        return handle == null ? 0L : handle.address();
-    }
 }

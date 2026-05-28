@@ -2,19 +2,27 @@
 
 package systems.zlink.contracts.service.spot;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum SpotNodeSocketOwner {
-    ANY,
-    NODE,
-    SPOT;
+    ANY(0),
+    NODE(1),
+    SPOT(2);
+
+    private final int value;
+
+    SpotNodeSocketOwner(int value) {
+        this.value = value;
+    }
 
     int getValue() {
-        return EnumCodecs.spotNodeSocketOwnerValue(this);
+        return value;
     }
 
     static SpotNodeSocketOwner fromValue(int value) {
-        return EnumCodecs.spotNodeSocketOwnerFromValue(value);
+        return switch (value) {
+            case 0 -> ANY;
+            case 1 -> NODE;
+            case 2 -> SPOT;
+            default -> ANY;
+        };
     }
 }

@@ -2,15 +2,18 @@
 
 package systems.zlink.contracts.service.spot;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum SpotNodeMode {
-    PUBSUB,
-    ROUTED,
-    ALL;
+    PUBSUB(1),
+    ROUTED(2),
+    ALL(3);
+
+    private final int value;
+
+    SpotNodeMode(int value) {
+        this.value = value;
+    }
 
     int getValue() {
-        return EnumCodecs.spotNodeModeValue(this);
+        return value;
     }
 }

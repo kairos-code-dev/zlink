@@ -2,28 +2,17 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SendOp;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
-import systems.zlink.runtime.nativeapi.SocketOperations;
-public final class XPubSocket extends Socket {
-    private final PubSocketOptions options = new PubSocketOptions(this);
+import systems.zlink.contracts.service.spot.SendOp;
 
-    public XPubSocket(Context ctx) {
-        super(ctx, SocketType.XPUB);
-    }
-
-    public void bind(String endpoint) { super.bind(endpoint); }
-    public void connect(String endpoint) { super.connect(endpoint); }
-    public void unbind(String endpoint) { super.unbind(endpoint); }
-    public void disconnect(String endpoint) { super.disconnect(endpoint); }
-    public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
-    public SendOp publish(String topicId) {
-        return SocketOperations.send((parts, flags) ->
-            super.publish(topicId, parts, SendFlag.fromValue(flags.value())));
-    }
-    public boolean receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags) { return super.receiveSubscriptionEvent(result, ReceiveFlag.fromValue(flags.value())); }
-    public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
-    @Override public PubSocketOptions options() { return options; }
+public interface XPubSocket extends Socket {
+    void bind(String endpoint);
+    void connect(String endpoint);
+    void unbind(String endpoint);
+    void disconnect(String endpoint);
+    void disconnectRid(RoutingId routingId);
+    SendOp publish(String topicId);
+    boolean receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags);
+    @Override PubSocketOptions options();
 }

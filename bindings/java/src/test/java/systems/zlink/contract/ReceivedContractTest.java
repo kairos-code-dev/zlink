@@ -2,6 +2,7 @@ package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
@@ -26,9 +27,9 @@ public class ReceivedContractTest {
         TestSupport.assumeNative();
 
         RoutingId dealerRid = RoutingId.from("dealer-a".getBytes(StandardCharsets.UTF_8));
-        try (Context ctx = new Context();
-             RouterSocket router = new RouterSocket(ctx);
-             DealerSocket dealer = new DealerSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             RouterSocket router = ctx.createRouterSocket();
+             DealerSocket dealer = ctx.createDealerSocket()) {
             dealer.setRoutingId(dealerRid);
             String endpoint = TestSupport.inprocEndpoint("received-contract");
             router.bind(endpoint);

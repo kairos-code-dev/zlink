@@ -2,19 +2,32 @@
 
 package systems.zlink.contracts.service.registry;
 
-
-import systems.zlink.runtime.nativeapi.EnumCodecs;
-
 public enum ServiceEventSubjectKind {
-    NONE,
-    TOPIC,
-    PATTERN;
+    NONE(0),
+    TOPIC(1),
+    PATTERN(2);
+
+    private final int value;
+
+    ServiceEventSubjectKind(int value) {
+        this.value = value;
+    }
 
     int getValue() {
-        return EnumCodecs.serviceEventSubjectKindValue(this);
+        return value;
     }
 
     static ServiceEventSubjectKind fromValue(int value) {
-        return EnumCodecs.serviceEventSubjectKindFromValue(value);
+        return switch (value) {
+            case 0 -> NONE;
+            case 1 -> TOPIC;
+            case 2 -> PATTERN;
+            default -> throw invalid("ServiceEventSubjectKind", value);
+        };
+    }
+
+    private static IllegalArgumentException invalid(String type, int value) {
+        return new IllegalArgumentException(
+            "invalid " + type + " value: " + value);
     }
 }

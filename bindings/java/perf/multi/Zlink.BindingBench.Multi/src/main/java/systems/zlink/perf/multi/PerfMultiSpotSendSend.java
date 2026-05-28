@@ -2,6 +2,7 @@
 
 package systems.zlink.perf.multi;
 
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.PollEventFlag;
@@ -50,7 +51,7 @@ final class PerfMultiSpotSendSend {
         String controlEndpoint = derivedEndpoint(config.endpoint(), 1);
         String routerEndpoint = derivedEndpoint(config.endpoint(), 2);
         try (Context ctx = PerfUtil.newContext(config);
-             SpotNode node = new SpotNode(ctx);
+             SpotNode node = ctx.createSpotNode();
              Spot spot = node.createSpot();
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, controlEndpoint, "sendsend-server")) {
@@ -117,7 +118,7 @@ final class PerfMultiSpotSendSend {
             config.transport());
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         try (Context ctx = PerfUtil.newContext(config);
-             SpotNode node = new SpotNode(ctx);
+             SpotNode node = ctx.createSpotNode();
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, clientControlEndpoint, "sendsend-client")) {
             node.setRoutingId(routingId("SPOT-SENDSEND-CLIENT-NODE"));
@@ -230,7 +231,7 @@ final class PerfMultiSpotSendSend {
         for (int i = 0; i < n; i++) {
             payloads[i] = PerfUtil.payloadTemplate(msgSize);
         }
-        try (Poller poller = new Poller()) {
+        try (Poller poller = Zlink.createPoller()) {
             for (int i = 0; i < n; i++) {
                 poller.add(spots.get(i), i, PollEventFlag.POLLIN);
             }

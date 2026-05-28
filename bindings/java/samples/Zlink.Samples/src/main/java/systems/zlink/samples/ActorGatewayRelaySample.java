@@ -5,6 +5,7 @@ import systems.zlink.contracts.service.spot.ActorJoinRequest;
 import systems.zlink.contracts.service.spot.ActorPart;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.messaging.Received;
@@ -24,10 +25,10 @@ public final class ActorGatewayRelaySample {
         SampleSupport.ensureNative();
         String endpoint = SampleSupport.tcpEndpoint();
 
-        try (Context ctx = new Context();
-             SpotNode node = new SpotNode(ctx);
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode();
              Spot spot = node.createSpot();
-             StreamSocket stream = new StreamSocket(ctx);
+             StreamSocket stream = ctx.createStreamSocket();
              var monitor = stream.monitorOpen(
                  systems.zlink.contracts.eventing.MonitorEventType.ACCEPTED)) {
             Actor actor = node.createActor("player-1");

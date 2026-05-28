@@ -12,6 +12,7 @@ import systems.zlink.contracts.service.spot.ActorUnbindOp;
 import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.sockets.CommonSocketOptions;
 import systems.zlink.contracts.core.Context;
+import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.service.registry.MemberPeerEntry;
@@ -34,6 +35,7 @@ import systems.zlink.contracts.service.spot.RequestOp;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.sockets.SendFlag;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.SendOp;
 import systems.zlink.contracts.sockets.SocketType;
@@ -55,14 +57,12 @@ import systems.zlink.contracts.eventing.Timer;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.sockets.XPubSocket;
 import systems.zlink.contracts.sockets.XSubSocket;
-import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.core.ZlinkVersion;
-import systems.zlink.runtime.nativeapi.InternalAccess;
-import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -87,14 +87,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SocketContractTest {
     private static final int ERRNO_EFSM = 156384763;
+    private static final Class<?> MEMORY_SEGMENT_CLASS =
+        classNamed("java.lang.foreign.MemorySegment");
 
     @Test
     public void sendAndRecvUseCanonicalMultipartSurface() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket server = new PairSocket(ctx);
-             PairSocket client = new PairSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket server = ctx.createPairSocket();
+             PairSocket client = ctx.createPairSocket()) {
             String endpoint = TestSupport.inprocEndpoint("socket-contract");
             server.bind(endpoint);
             client.connect(endpoint);
@@ -117,9 +119,9 @@ public class SocketContractTest {
     public void requestReplyWrapperSupportsDealerRouterRoundTrip() throws Exception {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             RouterSocket routerSocket = new RouterSocket(ctx);
-             DealerSocket dealerSocket = new DealerSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             RouterSocket routerSocket = ctx.createRouterSocket();
+             DealerSocket dealerSocket = ctx.createDealerSocket();
              ExecutorService serverExecutor = daemonExecutor("zlink-socket-contract")) {
             String endpoint = TestSupport.inprocEndpoint("request-reply");
             routerSocket.bind(endpoint);
@@ -161,9 +163,9 @@ public class SocketContractTest {
     public void requestReplyWrapperPreservesDataReceiveSurface() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             RouterSocket routerSocket = new RouterSocket(ctx);
-             DealerSocket dealerSocket = new DealerSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             RouterSocket routerSocket = ctx.createRouterSocket();
+             DealerSocket dealerSocket = ctx.createDealerSocket()) {
             String endpoint = TestSupport.inprocEndpoint("request-reply-data");
             routerSocket.bind(endpoint);
             dealerSocket.connect(endpoint);
@@ -186,9 +188,9 @@ public class SocketContractTest {
     public void requestReplyCallbackCompletesBeforeSocketClose() throws Exception {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             RouterSocket routerSocket = new RouterSocket(ctx);
-             DealerSocket dealerSocket = new DealerSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             RouterSocket routerSocket = ctx.createRouterSocket();
+             DealerSocket dealerSocket = ctx.createDealerSocket();
              ExecutorService serverExecutor =
                  daemonExecutor("zlink-socket-contract-callback")) {
             String endpoint = TestSupport.inprocEndpoint("request-reply-callback");
@@ -239,9 +241,9 @@ public class SocketContractTest {
     public void publishAndSubscribeUseCanonicalTopicAwareSurface() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PubSocket pub = new PubSocket(ctx);
-             SubSocket sub = new SubSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             PubSocket pub = ctx.createPubSocket();
+             SubSocket sub = ctx.createSubSocket();
              var pubMonitor = pub.monitorOpen(
                systems.zlink.contracts.eventing.MonitorEventType.CONNECTION_READY);
              var subMonitor = sub.monitorOpen(
@@ -272,8 +274,8 @@ public class SocketContractTest {
     public void routerOwnRoutingIdAndTlsSurfaceUseTypedSurface() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             RouterSocket router = new RouterSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             RouterSocket router = ctx.createRouterSocket()) {
             RoutingId routerRid = RoutingId.from("router-self".getBytes(StandardCharsets.UTF_8));
             router.setRoutingId(routerRid);
             assertArrayEquals(routerRid.toBytes(), router.routingId().toBytes());
@@ -291,11 +293,10 @@ public class SocketContractTest {
     public void serviceLayerTlsAndMonitorSurfaceAreCanonical() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             Registry registry = new Registry(ctx);
-             Discovery discovery = new Discovery(ctx, AutoConnectType.CLIENT_SERVER,
-               "svc-tls");
-             PairSocket socket = new PairSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             Registry registry = ctx.createRegistry();
+             Discovery discovery = ctx.createDiscovery(AutoConnectType.CLIENT_SERVER, "svc-tls");
+             PairSocket socket = ctx.createPairSocket()) {
             assertTrue(hasPublicMethod(Registry.class, "setTlsServer",
                 String.class, String.class, boolean.class));
             assertTrue(hasPublicMethod(Registry.class, "setTlsClient",
@@ -381,7 +382,7 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(Spot.class, "drainChannelReply",
             systems.zlink.contracts.sockets.SpotDispatchInfo.class));
         assertFalse(hasPublicMethod(Spot.class, "drainChannelReplyFrom",
-            MemorySegment.class));
+            MEMORY_SEGMENT_CLASS));
         assertTrue(hasPublicMethod(Spot.class, "setRoutingId",
             RoutingId.class));
         assertTrue(hasPublicMethod(Spot.class, "routingId"));
@@ -442,7 +443,13 @@ public class SocketContractTest {
         assertFalse(isPublicClass("systems.zlink.contracts.sockets.SocketPollSet"));
         assertFalse(isPublicClass("systems.zlink.contracts.sockets.DisconnectReason"));
         assertFalse(isPublicClass("systems.zlink.contracts.errors.ProtocolError"));
-        assertTrue(isPublicClass("systems.zlink.runtime.nativeapi.InternalAccess"));
+        assertFalse(isExportedPackage("systems.zlink.runtime.core"));
+        assertFalse(isExportedPackage("systems.zlink.runtime.eventing"));
+        assertFalse(isExportedPackage("systems.zlink.runtime.nativeapi"));
+        assertFalse(isExportedPackage("systems.zlink.runtime.service.discovery"));
+        assertFalse(isExportedPackage("systems.zlink.runtime.service.registry"));
+        assertFalse(isExportedPackage("systems.zlink.runtime.service.spot"));
+        assertFalse(isExportedPackage("systems.zlink.runtime.sockets"));
         assertFalse(isPublicClass("systems.zlink.contracts.sockets.StreamDispatchMode"));
         assertTrue(isPublicClass("systems.zlink.contracts.messaging.SubscriptionEntry"));
         assertTrue(isPublicClass("systems.zlink.contracts.core.ZlinkVersion"));
@@ -535,9 +542,9 @@ public class SocketContractTest {
       throws Exception {
         TestSupport.assumeNative();
 
-        Context ctx = new Context();
-        RouterSocket routerSocket = new RouterSocket(ctx);
-        DealerSocket dealerSocket = new DealerSocket(ctx);
+        Context ctx = Zlink.createContext();
+        RouterSocket routerSocket = ctx.createRouterSocket();
+        DealerSocket dealerSocket = ctx.createDealerSocket();
         try {
             String endpoint = TestSupport.inprocEndpoint("request-reply-flags");
             routerSocket.bind(endpoint);
@@ -605,10 +612,10 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(StreamSocket.class, "onFramedPacket"));
         assertFalse(hasPublicMethod(StreamSocket.class, "onFramedPacketNative"));
         assertFalse(hasPublicMethod(StreamSocket.class, "sendCopied",
-            int.class, java.lang.foreign.MemorySegment.class, int.class,
+            int.class, MEMORY_SEGMENT_CLASS, int.class,
             SendFlags.class));
         assertFalse(hasPublicMethod(StreamSocket.class, "send",
-            int.class, java.lang.foreign.MemorySegment.class, int.class,
+            int.class, MEMORY_SEGMENT_CLASS, int.class,
             SendFlags.class));
         assertFalse(hasPublicMethod(StreamSocket.class, "attachStreamRaw"));
         assertFalse(hasPublicMethod(StreamSocket.class, "connect"));
@@ -649,9 +656,9 @@ public class SocketContractTest {
     public void discoveryAndSpotIdentitySurfaceWorksWithTypedContracts() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             Discovery discovery = new Discovery(ctx, AutoConnectType.CLIENT_SERVER, "svc");
-             SpotNode node = new SpotNode(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             Discovery discovery = ctx.createDiscovery(AutoConnectType.CLIENT_SERVER, "svc");
+             SpotNode node = ctx.createSpotNode()) {
             RoutingId nodeRid = RoutingId.from(
               "spot-node".getBytes(StandardCharsets.UTF_8));
             node.setRoutingId(nodeRid);
@@ -681,13 +688,13 @@ public class SocketContractTest {
     public void rawOptionSurfaceIsHiddenAndTypedOptionsRemain() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket pair = new PairSocket(ctx);
-             PubSocket pub = new PubSocket(ctx);
-             SubSocket sub = new SubSocket(ctx);
-             StreamSocket stream = new StreamSocket(ctx);
-             XPubSocket xpub = new XPubSocket(ctx);
-             XSubSocket xsub = new XSubSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket pair = ctx.createPairSocket();
+             PubSocket pub = ctx.createPubSocket();
+             SubSocket sub = ctx.createSubSocket();
+             StreamSocket stream = ctx.createStreamSocket();
+             XPubSocket xpub = ctx.createXPubSocket();
+             XSubSocket xsub = ctx.createXSubSocket()) {
             assertFalse(hasPublicMethod(PairSocket.class, "setOption"));
             assertFalse(hasPublicMethod(PairSocket.class, "getOption"));
             assertFalse(hasPublicMethod(PairSocket.class, "setSockOpt"));
@@ -716,13 +723,13 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(Message.class, "dataSegment"));
             assertFalse(hasPublicMethod(Message.class, "dataSegment", int.class));
             assertFalse(hasPublicMethod(Message.class, "copyTo",
-                MemorySegment.class));
+                MEMORY_SEGMENT_CLASS));
             assertFalse(hasPublicMethod(Message.class, "moveTo",
-                MemorySegment.class));
+                MEMORY_SEGMENT_CLASS));
             assertFalse(hasPublicMethod(Message.class, "fromMsgVector",
-                MemorySegment.class, long.class));
+                MEMORY_SEGMENT_CLASS, long.class));
             assertFalse(hasPublicMethod(Message.class, "fromOwnedMsgVector",
-                MemorySegment.class, long.class));
+                MEMORY_SEGMENT_CLASS, long.class));
             assertFalse(hasPublicMethod(Message.class, "property",
                 String.class));
             assertTrue(hasPublicMethod(Message.class, "getProperty",
@@ -730,6 +737,19 @@ public class SocketContractTest {
             assertTrue(hasPublicMethod(Message.class, "refCount"));
             assertFalse(hasPublicMethod(XPubSocket.class, "subscriptionEvent"));
             assertFalse(hasPublicMethod(PairSocket.class, "sendNoWaitResult", Message.class));
+            assertFalse(hasPublicMethod(RouterSocket.class, "send",
+                byte[].class, Message.class, SendFlag.class));
+            assertFalse(hasPublicMethod(RouterSocket.class, "sendInternal",
+                RoutingId.class, Message.class, SendFlags.class));
+            assertFalse(hasPublicMethod(RouterSocket.class, "sendInternal",
+                RoutingId.class, List.class, SendFlags.class));
+            assertFalse(hasPublicMethod(RouterSocket.class, "sendNoWaitResult",
+                RoutingId.class, Message.class));
+            assertFalse(hasPublicMethod(RouterSocket.class, "sendNoWaitResult",
+                RoutingId.class, List.class));
+            assertFalse(hasPublicMethod(RouterSocket.class,
+                "sendToSpotInternal", RoutingId.class, RoutingId.class,
+                List.class, SendFlags.class));
             assertFalse(hasPublicMethod(PairSocket.class, "recvNoWait"));
             assertFalse(hasPublicMethod(MonitorSocket.class, "recvNoWait"));
             assertFalse(hasPublicMethod(PairSocket.class, "trySend", Message.class));
@@ -795,10 +815,10 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(Received.class, "routingIdOrThrow"));
         assertFalse(hasPublicMethod(Received.class, "spotRidOrNull"));
         assertFalse(hasPublicMethod(systems.zlink.contracts.eventing.MonitorStatus.class,
-            "fromNative", java.lang.foreign.MemorySegment.class));
+            "fromNative", MEMORY_SEGMENT_CLASS));
         assertFalse(hasPublicMethod(
             systems.zlink.contracts.service.registry.MemberPeerEntry.class,
-            "fromNative", java.lang.foreign.MemorySegment.class));
+            "fromNative", MEMORY_SEGMENT_CLASS));
         assertEquals(7, MemberPeerEntry.class.getRecordComponents().length);
         assertEquals("weight",
             MemberPeerEntry.class.getRecordComponents()[6].getName());
@@ -808,9 +828,9 @@ public class SocketContractTest {
     public void sendAndRecvUseCanonicalNonBlockingSurface() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             PairSocket server = new PairSocket(ctx);
-             PairSocket client = new PairSocket(ctx)) {
+        try (Context ctx = Zlink.createContext();
+             PairSocket server = ctx.createPairSocket();
+             PairSocket client = ctx.createPairSocket()) {
             String endpoint = TestSupport.inprocEndpoint("socket-try-contract");
             server.bind(endpoint);
             client.connect(endpoint);
@@ -833,10 +853,9 @@ public class SocketContractTest {
     public void attachDiscoveryGatesManualPeerApisAndSocketClose() {
         TestSupport.assumeNative();
 
-        try (Context ctx = new Context();
-             Discovery discovery = new Discovery(ctx, AutoConnectType.CLIENT_SERVER,
-               "socket-svc")) {
-            DealerSocket dealer = new DealerSocket(ctx);
+        try (Context ctx = Zlink.createContext();
+             Discovery discovery = ctx.createDiscovery(AutoConnectType.CLIENT_SERVER, "socket-svc")) {
+            DealerSocket dealer = ctx.createDealerSocket();
             dealer.attachDiscovery(discovery);
 
             ZlinkException connectError = assertThrows(ZlinkException.class,
@@ -891,6 +910,24 @@ public class SocketContractTest {
             return Modifier.isPublic(Class.forName(className).getModifiers());
         } catch (ClassNotFoundException ex) {
             return false;
+        }
+    }
+
+    private static Class<?> classNamed(String className) {
+        try {
+            return Class.forName(className);
+        } catch (ClassNotFoundException ex) {
+            throw new AssertionError("missing class " + className, ex);
+        }
+    }
+
+    private static boolean isExportedPackage(String packageName) {
+        try {
+            String moduleInfo = Files.readString(Path.of(
+                "src/main/java/module-info.java"));
+            return moduleInfo.contains("exports " + packageName + ";");
+        } catch (Exception ex) {
+            throw new AssertionError("failed to read module-info.java", ex);
         }
     }
 

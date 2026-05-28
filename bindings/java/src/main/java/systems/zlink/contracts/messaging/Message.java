@@ -3,14 +3,8 @@
 package systems.zlink.contracts.messaging;
 
 import systems.zlink.contracts.errors.ZlinkException;
-import systems.zlink.runtime.nativeapi.InternalAccess;
-import systems.zlink.runtime.nativeapi.Native;
-import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.contracts.internal.ContractAccess;
 import io.netty.buffer.ByteBuf;
-import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -33,17 +27,13 @@ public final class Message implements AutoCloseable {
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
-    private static final ValueLayout.OfInt INT_LE =
-        ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
-    private static final ValueLayout.OfLong LONG_LE =
-        ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN);
     private static final boolean NATIVE_LITTLE_ENDIAN =
         ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
-    private static final long MSG_LAYOUT_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
+    private static final long MSG_LAYOUT_SIZE = ContractAccess.nativeMessageLayoutSize();
 
-    private final Arena arena;
+    private final Object scope;
     private final long ownedMsgSlotAddress;
-    private final MemorySegment msg;
+    private final Object msg;
     private boolean valid;
     private boolean closed;
     private boolean recvArmed;
@@ -52,29 +42,29 @@ public final class Message implements AutoCloseable {
     private long cachedAddress;
 
     static {
-        InternalAccess.register(new InternalAccess.MessageAccess() {
+        ContractAccess.register(new ContractAccess.MessageAccess() {
             @Override
-            public MemorySegment dataSegment(Message message) {
+            public Object dataSegment(Message message) {
                 return message.dataSegment();
             }
 
             @Override
-            public MemorySegment dataSegment(Message message, int knownSize) {
+            public Object dataSegment(Message message, int knownSize) {
                 return message.dataSegment(knownSize);
             }
 
             @Override
-            public void copyTo(Message message, MemorySegment destination) {
+            public void copyTo(Message message, Object destination) {
                 message.copyTo(destination);
             }
 
             @Override
-            public void moveTo(Message message, MemorySegment destination) {
+            public void moveTo(Message message, Object destination) {
                 message.moveTo(destination);
             }
 
             @Override
-            public MemorySegment nativeHandle(Message message) {
+            public Object nativeHandle(Message message) {
                 return message.nativeHandle();
             }
 
@@ -94,12 +84,12 @@ public final class Message implements AutoCloseable {
             }
 
             @Override
-            public void transferTo(Message message, MemorySegment destination) {
+            public void transferTo(Message message, Object destination) {
                 message.transferTo(destination);
             }
 
             @Override
-            public void restoreFromNative(Message message, MemorySegment source,
+            public void restoreFromNative(Message message, Object source,
                                           boolean moreFlag) {
                 message.restoreFromNative(source, moreFlag);
             }
@@ -121,33 +111,37 @@ public final class Message implements AutoCloseable {
             }
 
             @Override
-            public Message[] fromMsgVector(MemorySegment partsAddr, long count) {
-                return Message.fromMsgVector(partsAddr, count);
+            public Message prepareVectorTarget(Message message) {
+                return Message.prepareVectorTarget(message);
             }
 
             @Override
-            public Message[] fromOwnedMsgVector(MemorySegment partsAddr,
-                                                long count) {
-                return Message.fromOwnedMsgVector(partsAddr, count);
+            public void finishVectorMove(Message message, boolean moreFlag) {
+                message.finishVectorMove(moreFlag);
             }
 
             @Override
-            public Message[] fromOwnedMsgVectorShared(MemorySegment partsAddr,
-                                                      long count) {
-                return Message.fromOwnedMsgVectorShared(partsAddr, count);
+            public void resetReusable(Message message) {
+                message.resetForReuse();
             }
 
             @Override
-            public Message fromOwnedNative(MemorySegment nativeMsg) {
-                return Message.fromOwnedNative(nativeMsg);
+            public Message adoptOwnedNative(Object nativeMsg) {
+                return Message.adoptOwnedNative(nativeMsg);
+            }
+
+            @Override
+            public Message fromSegment(Object segment, long offset,
+                                       long length) {
+                return Message.from(segment, offset, length);
             }
         });
     }
 
-    private Message(Arena arena, boolean raw) {
-        this.arena = Objects.requireNonNull(arena, "arena");
+    private Message(Object scope, boolean raw) {
+        this.scope = Objects.requireNonNull(scope, "scope");
         this.ownedMsgSlotAddress = 0L;
-        this.msg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        this.msg = ContractAccess.nativeMessageAllocate(scope);
         this.valid = false;
         this.closed = false;
         this.recvArmed = false;
@@ -156,22 +150,22 @@ public final class Message implements AutoCloseable {
         this.cachedAddress = 0L;
     }
 
-    private Message(MemorySegment adoptedMsg) {
-        this.arena = null;
+    private Message(Object adoptedMsg) {
+        this.scope = null;
         this.ownedMsgSlotAddress = 0L;
         this.msg = Objects.requireNonNull(adoptedMsg, "adoptedMsg");
         this.valid = true;
         this.closed = false;
         this.recvArmed = false;
         this.more = false;
-        cachePayload((int) NativeMsg.msgSize(adoptedMsg));
+        cachePayload((int) ContractAccess.nativeMessageSize(adoptedMsg));
     }
 
     private Message(long ownedMsgSlotAddress) {
-        this.arena = null;
+        this.scope = null;
         this.ownedMsgSlotAddress = ownedMsgSlotAddress;
-        this.msg = MemorySegment.ofAddress(ownedMsgSlotAddress)
-            .reinterpret(MSG_LAYOUT_SIZE);
+        this.msg = ContractAccess.nativeMessageHandleFromAddress(
+            ownedMsgSlotAddress);
         this.valid = false;
         this.closed = false;
         this.recvArmed = false;
@@ -186,7 +180,7 @@ public final class Message implements AutoCloseable {
 
     public Message() {
         this(true);
-        int rc = NativeMsg.msgInit(msg);
+        int rc = ContractAccess.nativeMessageInit(msg);
         if (rc != 0) {
             releaseOwnedResources();
             throw ZlinkException.fromLastError("zlink_msg_init");
@@ -201,7 +195,7 @@ public final class Message implements AutoCloseable {
         this(true);
         if (size < 0)
             throw new IllegalArgumentException("size must be >= 0");
-        int rc = NativeMsg.msgInitSize(msg, size);
+        int rc = ContractAccess.nativeMessageInitSize(msg, size);
         if (rc != 0) {
             releaseOwnedResources();
             throw ZlinkException.fromLastError("zlink_msg_init_size");
@@ -278,10 +272,11 @@ public final class Message implements AutoCloseable {
     public static Message sharedFrom(byte[] data, int offset, int length) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
-        Message msg = new Message(Arena.ofShared(), true);
-        int rc = NativeMsg.msgInitSize(msg.msg, length);
+        Message msg = new Message(ContractAccess.nativeMessageOpenSharedScope(),
+            true);
+        int rc = ContractAccess.nativeMessageInitSize(msg.msg, length);
         if (rc != 0) {
-            msg.arena.close();
+            ContractAccess.nativeMessageCloseScope(msg.scope);
             msg.closed = true;
             throw ZlinkException.fromLastError("zlink_msg_init_size");
         }
@@ -298,20 +293,21 @@ public final class Message implements AutoCloseable {
 
     static Message sharedFrom(Message source) {
         Objects.requireNonNull(source, "source");
-        Message msg = new Message(Arena.ofShared(), true);
-        int rc = NativeMsg.msgInit(msg.msg);
+        Message msg = new Message(ContractAccess.nativeMessageOpenSharedScope(),
+            true);
+        int rc = ContractAccess.nativeMessageInit(msg.msg);
         if (rc != 0) {
-            msg.arena.close();
+            ContractAccess.nativeMessageCloseScope(msg.scope);
             msg.closed = true;
             throw ZlinkException.fromLastError("zlink_msg_init");
         }
-        rc = NativeMsg.msgCopy(msg.msg, source.msg);
+        rc = ContractAccess.nativeMessageCopy(msg.msg, source.msg);
         if (rc != 0) {
             try {
-                NativeMsg.msgClose(msg.msg);
+                ContractAccess.nativeMessageClose(msg.msg);
             } catch (RuntimeException ignored) {
             }
-            msg.arena.close();
+            ContractAccess.nativeMessageCloseScope(msg.scope);
             msg.closed = true;
             throw ZlinkException.fromLastError("zlink_msg_copy");
         }
@@ -329,8 +325,8 @@ public final class Message implements AutoCloseable {
         Message msg = new Message(length);
         if (length > 0) {
             ByteBuffer src = data.slice();
-            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, msg.dataSegment(length), 0,
-                length);
+            ContractAccess.nativeMessageCopyFromBuffer(src,
+                msg.dataSegment(length), 0, length);
         }
         return msg;
     }
@@ -345,10 +341,8 @@ public final class Message implements AutoCloseable {
         int readerIndex = data.readerIndex();
         Message msg = new Message(length);
         if (data.hasMemoryAddress()) {
-            MemorySegment source = MemorySegment
-                .ofAddress(data.memoryAddress() + readerIndex)
-                .reinterpret(length);
-            MemorySegment.copy(source, 0, msg.dataSegment(length), 0, length);
+            UNSAFE.copyMemory(null, data.memoryAddress() + readerIndex, null,
+                msg.cachedAddress, length);
             return msg;
         }
         if (data.hasArray()) {
@@ -361,7 +355,7 @@ public final class Message implements AutoCloseable {
             ByteBuffer source = data.nioBufferCount() == 1
                 ? data.internalNioBuffer(readerIndex, length)
                 : data.nioBuffer(readerIndex, length);
-            MemorySegment.copy(MemorySegment.ofBuffer(source), 0,
+            ContractAccess.nativeMessageCopyFromBuffer(source,
                 msg.dataSegment(length), 0, length);
             return msg;
         } catch (UnsupportedOperationException ex) {
@@ -373,27 +367,16 @@ public final class Message implements AutoCloseable {
         }
     }
 
-    /** Copies the bytes described by the span into a new frame. */
-    public static Message from(ByteSpan span) {
-        Objects.requireNonNull(span, "span");
-        return from(span.segment(), 0, span.length());
-    }
-
-    /** Copies the full memory segment into a new message-owned frame. */
-    public static Message from(MemorySegment data) {
-        Objects.requireNonNull(data, "data");
-        return from(data, 0, data.byteSize());
-    }
-
     /** Copies the selected memory segment range into a new message-owned frame. */
-    public static Message from(MemorySegment data, long offset, long length) {
+    static Message from(Object data, long offset, long length) {
         Objects.requireNonNull(data, "data");
-        validateRange(data.byteSize(), offset, length, "data");
+        validateRange(Long.MAX_VALUE, offset, length, "data");
         if (length > Integer.MAX_VALUE)
             throw new IllegalArgumentException("length too large: " + length);
         Message msg = new Message((int) length);
         if (length > 0) {
-            MemorySegment.copy(data, offset, msg.dataSegment((int) length), 0, length);
+            ContractAccess.nativeMessageCopyFromSegment(data, offset,
+                msg.dataSegment((int) length), 0, length);
         }
         return msg;
     }
@@ -407,22 +390,24 @@ public final class Message implements AutoCloseable {
     }
 
     public int refCount() {
-        return NativeMsg.msgRefCnt(msg);
+        return ContractAccess.nativeMessageRefCount(msg);
     }
 
-    MemorySegment dataSegment() {
+    Object dataSegment() {
         return valid && !closed && cachedAddress != 0
-            ? MemorySegment.ofAddress(cachedAddress).reinterpret(cachedSize)
-            : MemorySegment.NULL;
+            ? ContractAccess.nativeMessageSegmentFromAddress(cachedAddress,
+                cachedSize)
+            : ContractAccess.nativeMessageHandleFromAddress(0L);
     }
 
-    MemorySegment dataSegment(int knownSize) {
+    Object dataSegment(int knownSize) {
         if (!valid || closed || knownSize <= 0 || cachedAddress == 0)
-            return MemorySegment.NULL;
-        return MemorySegment.ofAddress(cachedAddress).reinterpret(knownSize);
+            return ContractAccess.nativeMessageHandleFromAddress(0L);
+        return ContractAccess.nativeMessageSegmentFromAddress(cachedAddress,
+            knownSize);
     }
 
-    MemorySegment nativeHandle() {
+    Object nativeHandle() {
         return msg;
     }
 
@@ -482,17 +467,17 @@ public final class Message implements AutoCloseable {
     }
 
     public ByteBuffer dataBuffer() {
-        MemorySegment seg = dataSegment();
-        if (seg.address() == 0)
+        Object seg = dataSegment();
+        if (ContractAccess.nativeMessageAddress(seg) == 0)
             return ByteBuffer.allocate(0).asReadOnlyBuffer();
-        return seg.asByteBuffer().asReadOnlyBuffer();
+        return ContractAccess.nativeMessageAsReadOnlyBuffer(seg);
     }
 
     public ByteBuffer mutableDataBuffer() {
-        MemorySegment seg = dataSegment();
-        if (seg.address() == 0)
+        Object seg = dataSegment();
+        if (ContractAccess.nativeMessageAddress(seg) == 0)
             return ByteBuffer.allocate(0);
-        return seg.asByteBuffer();
+        return ContractAccess.nativeMessageAsMutableBuffer(seg);
     }
 
     public byte[] toByteArray() {
@@ -561,7 +546,7 @@ public final class Message implements AutoCloseable {
             return 0;
         ByteBuffer dst = destination.slice();
         dst.limit(size);
-        MemorySegment.copy(dataSegment(), 0, MemorySegment.ofBuffer(dst), 0, size);
+        ContractAccess.nativeMessageCopyToBuffer(dataSegment(), 0, dst, size);
         destination.position(destination.position() + size);
         return size;
     }
@@ -575,10 +560,8 @@ public final class Message implements AutoCloseable {
             return 0;
         if (destination.hasMemoryAddress()) {
             int writerIndex = destination.writerIndex();
-            MemorySegment target = MemorySegment
-                .ofAddress(destination.memoryAddress() + writerIndex)
-                .reinterpret(size);
-            MemorySegment.copy(dataSegment(size), 0, target, 0, size);
+            UNSAFE.copyMemory(null, cachedAddress, null,
+                destination.memoryAddress() + writerIndex, size);
             destination.writerIndex(writerIndex + size);
             return size;
         }
@@ -611,19 +594,21 @@ public final class Message implements AutoCloseable {
      * method before filling and sending the same {@code Message} instance again.
      */
     public void reset(int size) {
-        if (arena == null && ownedMsgSlotAddress == 0L)
+        if (scope == null && ownedMsgSlotAddress == 0L)
             throw new IllegalStateException("message is not reusable");
         if (size < 0)
             throw new IllegalArgumentException("size must be >= 0");
-        if (closed || (arena != null && !arena.scope().isAlive()))
+        if (closed || (scope != null
+            && !ContractAccess.nativeMessageScopeAlive(scope)))
             throw new IllegalStateException("message is closed");
         if (valid) {
-            int closeRc = NativeMsg.msgClose(msg);
+            int closeRc = ContractAccess.nativeMessageClose(msg);
             if (closeRc != 0)
                 throw ZlinkException.fromLastError("zlink_msg_close");
             valid = false;
         }
-        int rc = size == 0 ? NativeMsg.msgInit(msg) : NativeMsg.msgInitSize(msg, size);
+        int rc = size == 0 ? ContractAccess.nativeMessageInit(msg)
+            : ContractAccess.nativeMessageInitSize(msg, size);
         if (rc != 0) {
             String op = size == 0 ? "zlink_msg_init" : "zlink_msg_init_size";
             throw ZlinkException.fromLastError(op);
@@ -711,22 +696,22 @@ public final class Message implements AutoCloseable {
         return length;
     }
 
-    void copyTo(MemorySegment destination) {
-        int rc = NativeMsg.msgInit(destination);
+    void copyTo(Object destination) {
+        int rc = ContractAccess.nativeMessageInit(destination);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_init");
-        rc = NativeMsg.msgCopy(destination, msg);
+        rc = ContractAccess.nativeMessageCopy(destination, msg);
         if (rc != 0)
             try {
-                NativeMsg.msgClose(destination);
+                ContractAccess.nativeMessageClose(destination);
             } catch (RuntimeException ignored) {
             }
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_copy");
     }
 
-    void moveTo(MemorySegment destination) {
-        int rc = NativeMsg.msgMove(destination, msg);
+    void moveTo(Object destination) {
+        int rc = ContractAccess.nativeMessageMove(destination, msg);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_move");
         valid = false;
@@ -734,13 +719,13 @@ public final class Message implements AutoCloseable {
         clearPayloadCache();
     }
 
-    void transferTo(MemorySegment destination) {
-        int rc = NativeMsg.msgInit(destination);
+    void transferTo(Object destination) {
+        int rc = ContractAccess.nativeMessageInit(destination);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_init");
-        rc = NativeMsg.msgMove(destination, msg);
+        rc = ContractAccess.nativeMessageMove(destination, msg);
         if (rc != 0) {
-            NativeMsg.msgClose(destination);
+            ContractAccess.nativeMessageClose(destination);
             throw ZlinkException.fromLastError("zlink_msg_move");
         }
         valid = false;
@@ -749,29 +734,30 @@ public final class Message implements AutoCloseable {
         clearPayloadCache();
     }
 
-    void restoreFromNative(MemorySegment source, boolean moreFlag) {
+    void restoreFromNative(Object source, boolean moreFlag) {
         prepareForReceive();
-        int rc = NativeMsg.msgMove(msg, source);
+        int rc = ContractAccess.nativeMessageMove(msg, source);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_move");
         valid = true;
         recvArmed = false;
         more = moreFlag;
-        cachePayload((int) NativeMsg.msgSize(msg));
+        cachePayload((int) ContractAccess.nativeMessageSize(msg));
     }
 
     public void resetForReuse() {
-        if (arena == null && ownedMsgSlotAddress == 0L)
+        if (scope == null && ownedMsgSlotAddress == 0L)
             throw new IllegalStateException("message is not reusable");
-        if (closed || (arena != null && !arena.scope().isAlive()))
+        if (closed || (scope != null
+            && !ContractAccess.nativeMessageScopeAlive(scope)))
             throw new IllegalStateException("message is closed");
         if (valid) {
-            int rc = NativeMsg.msgClose(msg);
+            int rc = ContractAccess.nativeMessageClose(msg);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_msg_close");
             valid = false;
         }
-        int rc = NativeMsg.msgInit(msg);
+        int rc = ContractAccess.nativeMessageInit(msg);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_init");
         valid = true;
@@ -782,127 +768,38 @@ public final class Message implements AutoCloseable {
 
     public boolean isReusable() {
         return !closed && (ownedMsgSlotAddress != 0
-            || (arena != null && arena.scope().isAlive()));
+            || (scope != null && ContractAccess.nativeMessageScopeAlive(scope)));
     }
 
-    static Message[] fromMsgVector(MemorySegment partsAddr, long count) {
-        return fromMsgVector(partsAddr, count, null);
-    }
-
-    static Message[] fromMsgVector(MemorySegment partsAddr, long count,
-                                   Message[] reusable) {
-        return moveFromMsgVector(partsAddr, count, reusable, true, false);
-    }
-
-    static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count) {
-        return fromOwnedMsgVector(partsAddr, count, null);
-    }
-
-    static Message fromOwnedMsgSingle(MemorySegment partsAddr) {
-        if (partsAddr == null || partsAddr.address() == 0) {
-            throw new IllegalArgumentException("partsAddr is null");
-        }
-        MemorySegment src = MemorySegment.ofAddress(partsAddr.address())
-            .reinterpret(MSG_LAYOUT_SIZE);
-        return new Message(src);
-    }
-
-    static Message[] fromOwnedMsgVector(MemorySegment partsAddr, long count,
-                                        Message[] reusable) {
-        return moveFromMsgVector(partsAddr, count, reusable, false, false);
-    }
-
-    static Message[] fromOwnedMsgVectorShared(MemorySegment partsAddr,
-                                              long count) {
-        return moveFromMsgVector(partsAddr, count, null, false, true);
-    }
-
-    private static Message[] moveFromMsgVector(MemorySegment partsAddr,
-                                               long count,
-                                               Message[] reusable,
-                                               boolean closeSourceVector,
-                                               boolean sharedArena) {
-        if (partsAddr == null || partsAddr.address() == 0 || count <= 0)
-            return new Message[0];
-        if (count > Integer.MAX_VALUE)
-            throw new IllegalArgumentException("msg vector too large: " + count);
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        if (count > Long.MAX_VALUE / msgSize)
-            throw new IllegalArgumentException("msg vector too large: " + count);
-        int outSize = (int) count;
-        Message[] out;
-        if (reusable == null || reusable.length != outSize) {
-            out = new Message[outSize];
-            if (reusable != null) {
-                System.arraycopy(reusable, 0, out, 0, Math.min(reusable.length,
-                    out.length));
-            }
-        } else {
-            out = reusable;
-        }
-        int built = 0;
-        boolean success = false;
-        MemorySegment parts = MemorySegment.ofAddress(partsAddr.address())
-            .reinterpret(msgSize * count);
-        try {
-            for (int i = 0; i < count; i++) {
-                MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
-                Message msg = out[i];
-                if (msg == null || !msg.isReusable()) {
-                    msg = new Message(true);
-                    int initRc = NativeMsg.msgInit(msg.msg);
-                    if (initRc != 0) {
-                        msg.releaseOwnedResources();
-                        throw ZlinkException.fromLastError("zlink_msg_init");
-                    }
-                    msg.valid = true;
-                    msg.recvArmed = true;
-                    msg.more = false;
-                    msg.clearPayloadCache();
-                    out[i] = msg;
-                }
-                int rc = NativeMsg.msgMove(msg.msg, src);
-                if (rc != 0) {
-                    throw ZlinkException.fromLastError("zlink_msg_move");
-                }
-                msg.valid = true;
-                msg.recvArmed = false;
-                msg.more = i + 1 < count;
-                msg.cachePayload((int) NativeMsg.msgSize(msg.msg));
-                built++;
-            }
-            success = true;
-            return out;
-        } finally {
-            if (closeSourceVector) {
-                NativeMsg.msgvClose(partsAddr, count);
-                if (!success) {
-                    for (int i = 0; i < built; i++) {
-                        if (out[i] != null && out[i].isReusable()) {
-                            try {
-                                out[i].resetForReuse();
-                            } catch (RuntimeException ignored) {
-                            }
-                        }
-                    }
-                }
-            } else if (!success) {
-                for (int i = built; i < count; i++) {
-                    MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
-                    try {
-                        NativeMsg.msgClose(src);
-                    } catch (RuntimeException ignored) {
-                    }
-                }
-                closeAll(out);
-            }
-        }
-    }
-
-    static Message fromOwnedNative(MemorySegment nativeMsg) {
-        if (nativeMsg == null || nativeMsg.address() == 0)
+    static Message adoptOwnedNative(Object nativeMsg) {
+        if (nativeMsg == null
+            || ContractAccess.nativeMessageAddress(nativeMsg) == 0)
             throw new IllegalArgumentException("nativeMsg is null");
         return new Message(nativeMsg);
+    }
+
+    private static Message prepareVectorTarget(Message message) {
+        Message target = message;
+        if (target == null || !target.isReusable()) {
+            target = new Message(true);
+            int initRc = ContractAccess.nativeMessageInit(target.msg);
+            if (initRc != 0) {
+                target.releaseOwnedResources();
+                throw ZlinkException.fromLastError("zlink_msg_init");
+            }
+            target.valid = true;
+            target.recvArmed = true;
+            target.more = false;
+            target.clearPayloadCache();
+        }
+        return target;
+    }
+
+    private void finishVectorMove(boolean moreFlag) {
+        valid = true;
+        recvArmed = false;
+        more = moreFlag;
+        cachePayload((int) ContractAccess.nativeMessageSize(msg));
     }
 
     public static void closeAll(Message[] parts) {
@@ -933,23 +830,17 @@ public final class Message implements AutoCloseable {
 
     public String getProperty(String key) {
         Objects.requireNonNull(key, "key");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeKey = arena.allocateFrom(key, StandardCharsets.UTF_8);
-            MemorySegment nativeValue = NativeMsg.msgGets(msg, nativeKey);
-            if (nativeValue == null || nativeValue.address() == 0)
-                return null;
-            return nativeValue.reinterpret(Long.MAX_VALUE).getString(0);
-        }
+        return ContractAccess.nativeMessageGetProperty(msg, key);
     }
 
-    MemorySegment handle() {
+    Object handle() {
         return msg;
     }
 
     int moveInto(Message target, boolean moreFlag) {
         Objects.requireNonNull(target, "target");
         target.prepareForReceive();
-        int rc = NativeMsg.msgMove(target.msg, msg);
+        int rc = ContractAccess.nativeMessageMove(target.msg, msg);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_move");
         target.valid = true;
@@ -982,7 +873,7 @@ public final class Message implements AutoCloseable {
         valid = true;
         recvArmed = false;
         more = moreFlag;
-        cachePayload((int) NativeMsg.msgSize(msg));
+        cachePayload((int) ContractAccess.nativeMessageSize(msg));
     }
 
     @Override
@@ -990,7 +881,7 @@ public final class Message implements AutoCloseable {
         if (closed)
             return;
         if (valid) {
-            NativeMsg.msgClose(msg);
+            ContractAccess.nativeMessageClose(msg);
             valid = false;
         }
         recvArmed = false;
@@ -1007,7 +898,7 @@ public final class Message implements AutoCloseable {
 
     private void cachePayload(int size) {
         cachedSize = size;
-        cachedAddress = size > 0 ? NativeMsg.msgDataAddr(msg) : 0L;
+        cachedAddress = size > 0 ? ContractAccess.nativeMessageDataAddress(msg) : 0L;
     }
 
     private void clearPayloadCache() {
@@ -1016,8 +907,8 @@ public final class Message implements AutoCloseable {
     }
 
     private void releaseOwnedResources() {
-        if (arena != null && arena.scope().isAlive()) {
-            arena.close();
+        if (scope != null && ContractAccess.nativeMessageScopeAlive(scope)) {
+            ContractAccess.nativeMessageCloseScope(scope);
         } else if (ownedMsgSlotAddress != 0L) {
             releaseOwnedMsgSlot(ownedMsgSlotAddress);
         }

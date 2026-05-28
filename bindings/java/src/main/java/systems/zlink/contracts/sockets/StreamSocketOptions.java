@@ -2,17 +2,19 @@
 
 package systems.zlink.contracts.sockets;
 
+import systems.zlink.contracts.internal.ContractAccess;
+
 
 public final class StreamSocketOptions extends CommonSocketOptions {
-    StreamSocketOptions(Socket socket) {
+    public StreamSocketOptions(Socket socket) {
         super(socket);
     }
 
     public boolean notifyEnabled() {
-        return socket.getOption(SocketOptions.STREAM_NOTIFY) != 0;
+        return ContractAccess.socketGetOption(socket, SocketOptions.STREAM_NOTIFY) != 0;
     }
 
     public void notify(boolean enabled) {
-        socket.setOption(SocketOptions.STREAM_NOTIFY, enabled ? 1 : 0);
+        ContractAccess.socketSetOption(socket, SocketOptions.STREAM_NOTIFY, enabled ? 1 : 0);
     }
 }

@@ -40,9 +40,9 @@ fn spot_node_snapshot_surfaces_exist() {
     let node = SpotNode::new(&ctx).unwrap();
     let endpoint = format!("tcp://127.0.0.1:{}", reserve_tcp_port());
     node.set_pub_bind(&endpoint).unwrap();
-    let _ = node.status_snapshot().unwrap();
-    let _ = node.peers_snapshot().unwrap();
-    let _ = node.subjects_snapshot(None).unwrap();
+    let _ = node.status().unwrap();
+    let _ = node.peers().unwrap();
+    let _ = node.subjects(None).unwrap();
     let _ = node.set_tls_server("cert", "key", false);
     let _ = node.set_tls_client("ca", "localhost", true);
     node.set_routing_id(&RoutingId::from_bytes(b"node-surface"))
@@ -107,7 +107,7 @@ fn spot_callback_surfaces_exist() {
     let mut event = SubscriptionEvent::empty();
     let _ = spot.receive_subscription_event(&mut event, RecvFlags::DONT_WAIT);
     let _on_send_ready = Spot::on_send_ready::<fn()>;
-    let _on_routed_receive = Spot::on_routed_receive::<fn(Received)>;
+    let _recv_actor_lifecycle = Spot::recv_actor_lifecycle;
     let _on_dispatch_event = Spot::on_dispatch_event::<fn(SpotDispatchInfo<'_>)>;
     let dealer = ctx.dealer_socket().unwrap();
     let _ = dealer.set_channel_name("surface-channel");
@@ -158,9 +158,9 @@ fn discovery_close_terminates_attached_socket_lifecycle() {
 fn registry_snapshot_and_query_surfaces_exist() {
     let ctx = Context::new().unwrap();
     let registry = Registry::new(&ctx).unwrap();
-    let _ = registry.status_snapshot().unwrap();
-    let _ = registry.service_summary_snapshot().unwrap();
-    let _ = registry.topology_snapshot().unwrap();
+    let _ = registry.status().unwrap();
+    let _ = registry.service_summary().unwrap();
+    let _ = registry.topology().unwrap();
     let _ = registry.set_tls_server("cert", "key", false);
     let _ = registry.set_tls_client("ca", "localhost", true);
 }
@@ -169,7 +169,7 @@ fn registry_snapshot_and_query_surfaces_exist() {
 fn registry_query_client_surface_exists() {
     let ctx = Context::new().unwrap();
     let client = RegistryQueryClient::new(&ctx).unwrap();
-    let _ = client.snapshot(None);
+    let _ = client.topology(None);
 }
 
 #[test]
@@ -218,9 +218,9 @@ fn actor_surfaces_exist() {
             .generation,
         0
     );
-    let _ = node.spots_snapshot().unwrap();
-    let _ = node.actors_snapshot().unwrap();
-    let _ = spot.actors_snapshot().unwrap();
+    let _ = node.spots().unwrap();
+    let _ = node.actors().unwrap();
+    let _ = spot.actors().unwrap();
     let _ = actor.recv_part_with_flags(RecvFlags::DONT_WAIT);
     let _ = actor
         .send_bound_session_msg()

@@ -26,14 +26,14 @@ public interface IRegistry : IDisposable, IAsyncDisposable
     void SetTlsClient(string caCertPath, string hostname,
         bool trustSystem = false);
 
-    RegistryStatus StatusSnapshot();
+    RegistryStatus Status();
 
-    RegistryServiceSummaryEntry[] ServiceSummarySnapshot(
+    RegistryServiceSummaryEntry[] ServiceSummary(
         RegistryServiceSummaryFilter? filter = null);
 
-    RegistryTopologyEntry[] TopologySnapshot();
+    RegistryTopologyEntry[] Topology();
 
-    RegistryTopologyEntry[] TopologyQuery(
+    RegistryTopologyEntry[] Topology(
         RegistryTopologyFilter? filter = null);
 
     MemberPeerEntry[] MemberPeers(string channelName);

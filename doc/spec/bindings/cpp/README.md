@@ -11,6 +11,11 @@ projections, tests, samples, perf runners, and runtime behavior follow this
 blueprint and map the stable capabilities of `core/include/zlink.h` into
 C++-idiomatic types.
 
+This binding follows the shared bindings architecture map with C++ naming:
+`Contracts/` owns the public contract categories and `Runtime/` owns
+implementation helpers. The folder names are C++ header organization, not
+namespace segments that users should depend on.
+
 ## Public Contract Source
 
 - Public contract: `bindings/cpp/include/zlink/Contracts/`.
@@ -69,18 +74,16 @@ bindings/cpp/
 |   |   |   +-- Core/
 |   |   |   +-- Messaging/
 |   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
+|   |   |   +-- Eventing/
 |   |   |   +-- Service/
 |   |   |   +-- Errors/
-|   |   |   +-- Enums/
 |   |   +-- Runtime/
 |   |   |   +-- Core/
 |   |   |   +-- Messaging/
 |   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
+|   |   |   +-- Eventing/
 |   |   |   +-- Service/
 |   |   |   +-- Errors/
-|   |   |   +-- Enums/
 |   |   |   +-- Native/
 +-- native/
 +-- codecs/
@@ -161,14 +164,13 @@ contract.
   placeholders in the core binding.
 - `Sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
-- `Monitoring/`: monitor, monitor snapshot/event, poller, poll event, timer, and
+- `Eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
 - `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `Errors/`: exception or typed error-result domains.
-- `Enums/`: public enum domains shared across the binding. Do not create
-  aggregator-only headers in this category; enum definitions or conversion
-  contracts must live here.
+- Enum, flag, and result types live in the category that defines their meaning.
+  Do not create an `Enums/` folder just to group declarations by syntax.
 
 ## Canonical Interface Rules
 
@@ -180,9 +182,20 @@ contract.
 - Builder start methods take only the target identity, topic, channel, routing
   id, or request sequence. Payload, flags, timeout, callback, and async submit
   choices are builder steps.
+- SPOT channel-targeted operations use `send_to_channel(...)` and
+  `request_to_channel(...)`. SPOT topic publish stays `publish(topic)`.
+- Do not add single-payload shortcut overloads with the same name as an
+  operation start method. `send(message)`, `send(routing_id, message)`,
+  `publish(topic, message)`, `send_to_channel(channel, message)`, and
+  `send_to_spot(..., message)` are not public contract members; callers use
+  `send(...).message(message).submit()`.
 - Multipart payload is accumulated by repeated `message(...)` calls.
   `messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in `Contracts/`.
+- Dealer sockets must not expose protocol envelope helpers such as
+  `request_frame(...)` or `reply(request_token, parts)`. A dealer can start a
+  request through `request()`, but it cannot reply to an arbitrary token
+  because it has no API-level peer routing id.
 - Do not add operation-start overload families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
   the builder absorb the variation. Terminal builder methods may use idiomatic
@@ -199,7 +212,7 @@ The public headers must cover these groups.
 - Socket families: pair, dealer, router, pub, sub, xpub, xsub, stream, common
   options, typed socket options, bind/connect/disconnect, TLS, callbacks, and
   request/reply surfaces.
-- Monitoring: socket monitor, monitor event, monitor snapshot, poller, poll
+- Eventing: socket monitor, monitor event, monitor snapshot, poller, poll
   event, timer, and readiness flags.
 - Services: registry, discovery, SPOT node, SPOT handle, topology snapshots,
   actor refs, actor lifecycle, and actor operations.

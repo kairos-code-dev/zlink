@@ -12,6 +12,10 @@ runtime tree, public export projection, rustdoc, tests, samples, perf runners,
 and runtime behavior follow this blueprint and map stable `core/include/zlink.h`
 capabilities into Rust-idiomatic APIs.
 
+This binding follows the shared bindings architecture map with Rust naming:
+`contracts` and private `runtime` modules organize source ownership, while
+`lib.rs` decides which module paths become public crate API.
+
 ## Public Contract Source
 
 - Public contract source: `bindings/rust/src/contracts/`.
@@ -63,18 +67,16 @@ bindings/rust/
 |   |   +-- core/
 |   |   +-- messaging/
 |   |   +-- sockets/
-|   |   +-- monitoring/
+|   |   +-- eventing/
 |   |   +-- service/
 |   |   +-- errors/
-|   |   +-- enums/
 |   +-- runtime/
 |   |   +-- core/
 |   |   +-- messaging/
 |   |   +-- sockets/
-|   |   +-- monitoring/
+|   |   +-- eventing/
 |   |   +-- service/
 |   |   +-- errors/
-|   |   +-- enums/
 |   |   +-- native/
 +-- crates/
 +-- tests/
@@ -150,12 +152,13 @@ ownership map for public crate items and re-exports.
   stream packet data, and builder payload helpers.
 - `Sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
-- `Monitoring/`: monitor, monitor snapshot/event, poller, poll event, timer, and
+- `eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
 - `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `Errors/`: typed error/result domains.
-- `Enums/`: public enum domains shared across the binding.
+- Enum, flag, and result types live in the category that defines their meaning.
+  Do not create an `enums` module just to group declarations by syntax.
 
 ## Canonical Interface Rules
 
@@ -167,9 +170,20 @@ ownership map for public crate items and re-exports.
 - Builder start methods take only the target identity, topic, channel, routing
   id, or request sequence. Payload, flags, timeout, callback, and async submit
   choices are builder states or steps.
+- SPOT channel-targeted operations use `send_to_channel(...)` and
+  `request_to_channel(...)`. SPOT topic publish stays `publish(topic)`.
+- Do not add single-payload shortcut methods with the same name as an operation
+  start method. `send(message)`, `send(routing_id, message)`,
+  `publish(topic, message)`, `send_to_channel(channel, message)`, and
+  `send_to_spot(..., message)` are not public contract members; callers use
+  `send(...).message(message).submit()`.
 - Multipart payload is accumulated by repeated `message(...)` calls.
   `messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in the public crate surface.
+- Dealer sockets must not expose protocol envelope helpers such as
+  `request_frame(...)` or `reply(request_token, parts)`. A dealer can start a
+  request through `request()`, but it cannot reply to an arbitrary token
+  because it has no API-level peer routing id.
 - Message payload factories use the fallible from-source contract:
   `Message::try_from(...)` and `TryFrom` implementations. Copy-specific names
   such as `copy_from` are not part of the public contract.
@@ -187,7 +201,7 @@ The crate should expose clear public modules or re-exports.
   subscription event, and stream packet data.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, typed options,
   callbacks, request/reply, publish/subscribe, and stream packet APIs.
-- Monitoring: monitor, monitor snapshot/event, poller, poll event, and timer.
+- Eventing: monitor, monitor snapshot/event, poller, poll event, and timer.
 - Service: registry, discovery, SPOT node, SPOT handle, topology snapshots,
   actor refs, actor lifecycle, and operation builders.
 - Error: typed error/result domains preserving core semantics.

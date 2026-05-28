@@ -33,7 +33,7 @@
 - `zlink_spot_node_actor_join_spot()` / `zlink_spot_actor_join_recv()` /
   `zlink_spot_actor_join_reply()` 공개 API
 - `zlink_spot_node_actor_leave_spot()` 공개 API
-- `zlink_spot_node_spot_lookup()` / `zlink_spot_node_spots_snapshot()` 공개 API
+- `zlink_spot_node_spot_lookup()` / `zlink_spot_node_spots()` 공개 API
 - same-process `SpotNode` registry를 통한 remote create-or-get과 remote join 경로
 
 ### 후속 구현 범위
@@ -482,7 +482,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup(
   const zlink_routing_id_t *spot_rid_,
   void **spot_out_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots(
   void *node_,
   zlink_spot_node_spot_entry_t *entries_,
   size_t *count_);
@@ -490,7 +490,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots_snapshot(
 
 계약:
 
-- `zlink_spot_node_spots_snapshot()`은 `SpotNode` 안의 live local Spot 목록을
+- `zlink_spot_node_spots()`은 `SpotNode` 안의 live local Spot 목록을
   반환한다. Entry Spot도 이 목록에 포함된다.
 - `zlink_spot_node_spot_lookup()`은 `SpotNode` 안의 live local Spot을 `spot_rid_`로
   조회하고, 성공하면 `*spot_out_`에 새 owned Spot facade handle을 저장한다.
@@ -1572,7 +1572,7 @@ fanout ownership:
   Spot dispatch handler로 올라간다.
 - `zlink_spot_subscribe_part()`는 physical SUB에서 직접 `recv`하지 않고, target
   Spot의 logical subscribe queue에서 다음 part를 꺼낸다.
-- `zlink_spot_subscription_event_recv()`는 peer subscription event queue를 읽는다.
+- `zlink_spot_recv_subscription_event()`는 peer subscription event queue를 읽는다.
   per-Spot SUB socket을 전제로 하지 않는다.
 
 backpressure 정책:
@@ -1788,9 +1788,9 @@ monitoring에서 필요할 때만 다룬다.
 - 기존 `zlink_spot_node_spot_entry_t`와 `zlink_spot_node_actor_entry_t`의 크기는 바꾸지
   않는다.
 - 새 detail row와 새 detail snapshot API는 만들지 않는다.
-- `zlink_spot_node_spots_snapshot()`은 Entry Spot을 포함한 local Spot 목록을 반환한다.
-- `zlink_spot_node_actors_snapshot()`은 live local Actor 목록을 반환한다.
-- `zlink_spot_actors_snapshot()`은 특정 Spot에 속한 Actor ref 목록을 반환한다. Entry
+- `zlink_spot_node_spots()`은 Entry Spot을 포함한 local Spot 목록을 반환한다.
+- `zlink_spot_node_actors()`은 live local Actor 목록을 반환한다.
+- `zlink_spot_actors()`은 특정 Spot에 속한 Actor ref 목록을 반환한다. Entry
   Spot facade를 넘기면 Entry Spot에 있는 Actor 목록을 확인할 수 있다.
 - Entry Spot rid는 `zlink_spot_node_entry_spot()`으로 Entry Spot facade를 얻은 뒤 기존
   `zlink_get_routing_id()`로 조회한다.
@@ -1822,26 +1822,26 @@ monitoring에서 필요할 때만 다룬다.
 기존 조회 API:
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots(
   void *node_,
   zlink_spot_node_spot_entry_t *entries_,
   size_t *count_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors(
   void *node_,
   zlink_spot_node_actor_entry_t *entries_,
   size_t *count_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_actors_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_actors(
   void *spot_,
   zlink_actor_ref_t *entries_,
   size_t *count_);
 ```
 
-`zlink_spot_node_spots_snapshot()`은 Entry Spot을 포함해 node가 소유한 live local Spot
+`zlink_spot_node_spots()`은 Entry Spot을 포함해 node가 소유한 live local Spot
 목록을 반환한다.
-`zlink_spot_node_actors_snapshot()`은 node가 소유한 live local Actor 목록을 반환한다.
-`zlink_spot_actors_snapshot()`은 특정 Spot에 join된 Actor ref 목록을 반환한다. Entry
+`zlink_spot_node_actors()`은 node가 소유한 live local Actor 목록을 반환한다.
+`zlink_spot_actors()`은 특정 Spot에 join된 Actor ref 목록을 반환한다. Entry
 Spot facade를 넘기면 Entry Spot에 남아 있는 Actor 목록을 조회한다.
 
 ## Public C API 변경 요약
@@ -1932,9 +1932,9 @@ option은 만들지 않는다. Discovery actor route sync가 필요하면 기존
 | API | 유지되는 의미 |
 |-----|---------------|
 | `zlink_remote_actor_get_ref()` | network 확인 없이 generation `0` unchecked Actor ref를 만든다 |
-| `zlink_spot_node_spots_snapshot()` | Entry Spot을 포함한 local Spot 목록을 반환한다 |
-| `zlink_spot_node_actors_snapshot()` | live local Actor 목록을 반환한다 |
-| `zlink_spot_actors_snapshot()` | 특정 Spot에 속한 Actor ref 목록을 반환한다 |
+| `zlink_spot_node_spots()` | Entry Spot을 포함한 local Spot 목록을 반환한다 |
+| `zlink_spot_node_actors()` | live local Actor 목록을 반환한다 |
+| `zlink_spot_actors()` | 특정 Spot에 속한 Actor ref 목록을 반환한다 |
 
 ## Public API 변경
 
@@ -2106,17 +2106,17 @@ ZLINK_EXPORT zlink_config_result_t zlink_remote_actor_get_ref(
   const char *actor_id_,
   zlink_actor_ref_t *out_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots(
   void *node_,
   zlink_spot_node_spot_entry_t *entries_,
   size_t *count_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors(
   void *node_,
   zlink_spot_node_actor_entry_t *entries_,
   size_t *count_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_actors_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_actors(
   void *spot_,
   zlink_actor_ref_t *entries_,
   size_t *count_);
@@ -2218,7 +2218,7 @@ zlink_spot_node_actor_leave_spot()
 | ENTRY-09 | spot lookup refcount | lookup으로 얻은 일반 Spot facade가 살아 있는 동안 logical Spot은 제거되지 않고 마지막 facade close 뒤 제거된다 |
 | ENTRY-10 | spot lookup not found | 없는 local Spot rid lookup은 not found로 실패하고 output을 변경하지 않는다 |
 | ENTRY-11 | entry multiple facades | 같은 node에서 얻은 여러 Entry Spot facade가 같은 logical Entry Spot state를 가리킨다 |
-| ENTRY-12 | spots snapshot includes entry | `zlink_spot_node_spots_snapshot()` 결과에 Entry Spot row가 포함된다 |
+| ENTRY-12 | spots snapshot includes entry | `zlink_spot_node_spots()` 결과에 Entry Spot row가 포함된다 |
 | ENTRY-13 | spot destroy with actor busy | joined Actor가 남은 일반 Spot의 마지막 facade close는 `ZLINK_CLOSE_BUSY`로 실패한다 |
 | ENTRY-14 | spot lookup follows rid change | 일반 Spot rid 변경 뒤 old rid lookup은 실패하고 new rid lookup은 같은 logical Spot facade를 반환한다 |
 | ENTRY-15 | spot multi facade shared rid | 같은 logical Spot을 가리키는 여러 facade는 rid 변경 결과를 함께 본다 |

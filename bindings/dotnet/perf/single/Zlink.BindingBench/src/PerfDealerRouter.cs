@@ -210,7 +210,7 @@ internal static class PerfDealerRouter
         using var poller = Zlink.CreatePoller();
         var events = new PollEvent[1];
         poller.Add(receiver, PollEventFlags.PollIn, 0);
-        using var maybe = new Received();
+        using var maybe = Received.Create();
         try
         {
             while (!stopReceived)

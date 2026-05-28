@@ -29,7 +29,7 @@ int main ()
     bool found = false;
     while (std::chrono::steady_clock::now () < deadline) {
         try {
-            const auto entries = query.snapshot ();
+            const auto entries = query.topology ();
             for (const auto &entry : entries) {
                 if (entry.channel_name () == detail::k_spot_service) {
                     found = true;

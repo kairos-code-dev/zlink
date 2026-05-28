@@ -29,7 +29,7 @@ namespace {
 static const char *k_pattern = "MULTI_SPOT_REQREP";
 static const char *k_server_node_rid_text = "SPOT-REQREP-SERVER-NODE";
 static const char *k_server_spot_rid_text = "SPOT-REQREP-SERVER-SPOT";
-static const char *k_control_topic = "bench";
+static const char *k_control_topic = "bench-spot-reqrep";
 
 bool is_supported_transport (const std::string &transport_)
 {
@@ -92,6 +92,10 @@ bool stdin_stop_thread (zlink::service::spot_node_t *control_node_,
                   k_control_topic,
                   start_size,
                   expected_ready_count_,
+                  timeout_ms_)
+                || !perf::multi::wait_for_spot_node_connected_peer_count (
+                  *data_node_,
+                  1,
                   timeout_ms_)
                 || !perf::multi::publish_control_payload (
                   *control_pub_,

@@ -33,7 +33,7 @@ test('socket monitor exposes recv and snapshot surface', () => {
     const monitor = socket.monitorOpen();
     assert.equal(typeof monitor.recv, 'function');
     assert.equal(typeof monitor.snapshot, 'function');
-    const snapshot = monitor.snapshot();
+    const snapshot = monitor.status();
     assert.equal(typeof snapshot.autoHwmProfile, 'number');
     assert.equal(typeof snapshot.autoHwmPolicyClass, 'number');
     assert.equal(typeof snapshot.autoHwmUnitBudgetBytes, 'bigint');
@@ -105,10 +105,10 @@ test('spot node status snapshot starts empty', async () => {
     const spot = node.createSpot();
     const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
     node.setPubBind(endpoint);
-    assert.equal(node.statusSnapshot().connectedPeerCount, 0);
-    assert.equal(node.peersSnapshot().length, 0);
-    assert.equal(node.subjectsSnapshot().length, 0);
-    assert.ok(node.statusSnapshot().nodeRoutingId instanceof zlink.RoutingId);
+    assert.equal(node.status().connectedPeerCount, 0);
+    assert.equal(node.peers().length, 0);
+    assert.equal(node.subjects().length, 0);
+    assert.ok(node.status().nodeRoutingId instanceof zlink.RoutingId);
     spot.close();
     node.close();
     ctx.close();
@@ -155,19 +155,19 @@ test('spot node subject status reflects remote sub readiness after direct peer c
         clientSpot.setSubscription('topic.monitor.remote');
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {
-            if (clientNode.statusSnapshot().readySubjectCount === 1) {
-                assert.equal(clientNode.statusSnapshot().connectedPeerCount, 1);
+            if (clientNode.status().readySubjectCount === 1) {
+                assert.equal(clientNode.status().connectedPeerCount, 1);
                 return;
             }
             await new Promise((resolve) => setImmediate(resolve));
         }
         assert.fail(`spot remote subject ready timeout: ${JSON.stringify({
-            serverStatus: serverNode.statusSnapshot(),
-            clientStatus: clientNode.statusSnapshot(),
-            serverPeers: serverNode.peersSnapshot(),
-            clientPeers: clientNode.peersSnapshot(),
-            serverSubjects: serverNode.subjectsSnapshot(),
-            clientSubjects: clientNode.subjectsSnapshot()
+            serverStatus: serverNode.status(),
+            clientStatus: clientNode.status(),
+            serverPeers: serverNode.peers(),
+            clientPeers: clientNode.peers(),
+            serverSubjects: serverNode.subjects(),
+            clientSubjects: clientNode.subjects()
         })}`);
     }
     finally {
@@ -187,8 +187,8 @@ test('spot node subject status stays unready before peer connect', async () => {
         node.setPubBind(endpoint);
         spot.setSubscription('topic.monitor.local-only');
         await new Promise((resolve) => setImmediate(resolve));
-        assert.equal(node.statusSnapshot().connectedPeerCount, 0);
-        assert.equal(node.statusSnapshot().readySubjectCount, 0);
+        assert.equal(node.status().connectedPeerCount, 0);
+        assert.equal(node.status().readySubjectCount, 0);
     }
     finally {
         spot.close();

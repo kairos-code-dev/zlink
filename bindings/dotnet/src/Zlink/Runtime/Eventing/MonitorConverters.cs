@@ -26,9 +26,9 @@ internal static class MonitorConverters
             local, remote);
     }
 
-    internal static MonitorSnapshot FromNative(ref ZlinkMonitorSnapshot native)
+    internal static MonitorStatus FromNative(ref ZlinkMonitorStatus native)
     {
-        return new MonitorSnapshot((MonitorSourceKind)native.MonitorSourceKind,
+        return new MonitorStatus((MonitorSourceKind)native.MonitorSourceKind,
             native.StateFlags, native.DetailFlags, native.SndPendingMsgs,
             native.RcvPendingMsgs, native.AutoHwmEnabled,
             native.AutoHwmProfile, native.AutoHwmRole,

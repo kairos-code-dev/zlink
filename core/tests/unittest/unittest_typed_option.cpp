@@ -428,7 +428,7 @@ void test_spot_node_internal_socket_snapshot_is_supported ()
     TEST_ASSERT_NOT_NULL (spot);
     size_t socket_count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_internal_sockets_snapshot (node, NULL, NULL,
+      zlink_spot_node_internal_sockets (node, NULL, NULL,
                                                  &socket_count));
     TEST_ASSERT_GREATER_THAN_UINT (0, socket_count);
 

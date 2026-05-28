@@ -283,7 +283,7 @@ std::string bind_client_spot_endpoint(void *node,
 
     zlink_spot_node_status_t status;
     std::memset(&status, 0, sizeof(status));
-    if (zlink_spot_node_status_snapshot(node, &status) != ZLINK_CONFIG_OK
+    if (zlink_spot_node_status(node, &status) != ZLINK_CONFIG_OK
         || status.local_endpoint[0] == '\0') {
         errno = zlink_errno() != 0 ? zlink_errno() : EIO;
         return std::string();

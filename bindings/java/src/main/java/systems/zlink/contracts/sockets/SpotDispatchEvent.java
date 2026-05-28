@@ -11,7 +11,8 @@ public enum SpotDispatchEvent {
     TIMER_READABLE,
     CHANNEL_REPLY_READABLE,
     ACTOR_READABLE,
-    ACTOR_JOIN_READABLE;
+    ACTOR_JOIN_READABLE,
+    ACTOR_LIFECYCLE_READABLE;
 
     int value() {
         return EnumCodecs.spotDispatchEventValue(this);

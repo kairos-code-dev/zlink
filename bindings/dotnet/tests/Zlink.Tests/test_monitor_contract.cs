@@ -48,7 +48,7 @@ public sealed class test_monitor_contract
         Assert.True(events.TryDequeue(20000, out SocketMonitorEvent evt));
         Assert.Equal(MonitorEventType.ConnectionReady, evt.Event);
 
-        MonitorSnapshot snapshot = monitor.Snapshot();
+        MonitorStatus snapshot = monitor.Status();
         Assert.Equal<MonitorSourceKind>(MonitorSourceKind.Socket, snapshot.SourceKind);
         Assert.True(snapshot.SndPendingMsgs >= 0);
         Assert.True(snapshot.AutoHwmProfile >= 0);
@@ -58,7 +58,7 @@ public sealed class test_monitor_contract
         Assert.True(snapshot.AutoHwmSocketMessageSlots >= 0);
 
         monitor.Close();
-        Assert.Throws<ObjectDisposedException>(() => monitor.Snapshot());
+        Assert.Throws<ObjectDisposedException>(() => monitor.Status());
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class test_monitor_contract
         {
             try
             {
-                _ = monitor.Snapshot();
+                _ = monitor.Status();
                 return true;
             }
             catch (ZlinkConfigException)

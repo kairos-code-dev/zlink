@@ -30,7 +30,7 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
         ZlinkException.ThrowConnectIfError(rc);
     }
 
-    public RegistryTopologyEntry[] Snapshot(RegistryTopologyFilter? filter = null)
+    public RegistryTopologyEntry[] Topology(RegistryTopologyFilter? filter = null)
     {
         EnsureNotDisposed();
         unsafe
@@ -72,7 +72,7 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
             }
 
             return ReadTopologyEntries(_handle, filterPtr,
-                NativeMethods.zlink_registry_query_snapshot);
+                NativeMethods.zlink_registry_query_client_topology);
         }
     }
 
@@ -105,7 +105,7 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
 
         IntPtr originalHandle = _handle;
         IntPtr handle = _handle;
-        int rc = NativeMethods.zlink_registry_query_destroy(ref handle);
+        int rc = NativeMethods.zlink_registry_query_client_destroy(ref handle);
         if (rc == 0)
         {
             _handle = IntPtr.Zero;

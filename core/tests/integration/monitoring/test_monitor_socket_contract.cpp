@@ -1456,21 +1456,21 @@ void test_pubsub_delivery_ready_snapshot_and_reopen_after_ready ()
     TEST_ASSERT_NOT_NULL (snapshot_monitor);
     configure_pair_socket (snapshot_monitor);
 
-    zlink_monitor_snapshot_t snapshot;
-    memset (&snapshot, 0, sizeof (snapshot));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_snapshot (snapshot_monitor,
-                                                       &snapshot));
-    TEST_ASSERT_TRUE ((snapshot.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
-    TEST_ASSERT_EQUAL_UINT (1u, snapshot.auto_hwm_enabled);
-    TEST_ASSERT_TRUE ((snapshot.detail_flags
-                       & ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET)
+    zlink_monitor_status_t status;
+    memset (&status, 0, sizeof (status));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_status (snapshot_monitor,
+                                                       &status));
+    TEST_ASSERT_TRUE ((status.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
+    TEST_ASSERT_EQUAL_UINT (1u, status.auto_hwm_enabled);
+    TEST_ASSERT_TRUE ((status.detail_flags
+                       & ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET)
                       != 0);
-    TEST_ASSERT_TRUE ((snapshot.detail_flags
-                       & ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS)
+    TEST_ASSERT_TRUE ((status.detail_flags
+                       & ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS)
                       != 0);
-    TEST_ASSERT_GREATER_THAN_UINT64 (0, snapshot.auto_hwm_effective_message_bytes);
-    TEST_ASSERT_GREATER_THAN_INT (0, snapshot.auto_hwm_effective_sndbuf);
-    TEST_ASSERT_GREATER_THAN_INT (0, snapshot.auto_hwm_effective_rcvbuf);
+    TEST_ASSERT_GREATER_THAN_UINT64 (0, status.auto_hwm_effective_message_bytes);
+    TEST_ASSERT_GREATER_THAN_INT (0, status.auto_hwm_effective_sndbuf);
+    TEST_ASSERT_GREATER_THAN_INT (0, status.auto_hwm_effective_rcvbuf);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&snapshot_monitor));
 
@@ -1481,10 +1481,10 @@ void test_pubsub_delivery_ready_snapshot_and_reopen_after_ready ()
     TEST_ASSERT_NOT_NULL (late_pub_monitor);
     configure_pair_socket (late_pub_monitor);
 
-    memset (&snapshot, 0, sizeof (snapshot));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_snapshot (late_pub_monitor,
-                                                       &snapshot));
-    TEST_ASSERT_TRUE ((snapshot.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
+    memset (&status, 0, sizeof (status));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_status (late_pub_monitor,
+                                                       &status));
+    TEST_ASSERT_TRUE ((status.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&late_pub_monitor));
     test_context_socket_close_zero_linger (sub);
@@ -1539,11 +1539,11 @@ void test_pubsub_delivery_ready_reaches_1000_subscribers ()
       &pub_probe, expected_subscribers, timeout_ms));
     TEST_ASSERT_EQUAL_UINT64 (expected_subscribers, pub_probe.last_value);
 
-    zlink_monitor_snapshot_t snapshot;
-    memset (&snapshot, 0, sizeof (snapshot));
+    zlink_monitor_status_t status;
+    memset (&status, 0, sizeof (status));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_monitor_snapshot (pub_ready_monitor, &snapshot));
-    TEST_ASSERT_TRUE ((snapshot.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
+      zlink_monitor_status (pub_ready_monitor, &status));
+    TEST_ASSERT_TRUE ((status.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&pub_ready_monitor));
     for (size_t i = 0; i < subs.size (); ++i)

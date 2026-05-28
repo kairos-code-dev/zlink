@@ -29,7 +29,6 @@ struct router_router_recv_state_t
         : run_id (0),
           msg_size (0),
           payload_size (0),
-          active_received (0),
           latency ()
     {
     }
@@ -38,7 +37,6 @@ struct router_router_recv_state_t
     size_t msg_size;
     size_t payload_size;
     std::optional<zlink::routing_id_t> target_rid;
-    std::atomic<unsigned long long> active_received;
     perf::single::latency_stats_builder_t latency;
 };
 
@@ -136,7 +134,7 @@ bool record_router_router_sample (uint32_t run_id_,
                                   size_t payload_size_,
                                   zlink::message_t &part_,
                                   perf::single::latency_stats_builder_t *latency_,
-                                  std::atomic<unsigned long long> *received_)
+                                  unsigned long long *received_)
 {
     if (!latency_ || !received_)
         return false;
@@ -155,7 +153,7 @@ bool record_router_router_sample (uint32_t run_id_,
         return true;
     }
 
-    received_->fetch_add (1, std::memory_order_release);
+    ++(*received_);
     const uint64_t now = perf_single_metric::now_ns ();
     const double latency_ns =
       perf_single_metric::elapsed_latency_ns (now, header.sent_ts_ns);
@@ -287,8 +285,6 @@ bool run_pattern_router_router (const std::string &transport,
     state.run_id = run_id;
     state.msg_size = msg_size;
     state.payload_size = payload_size;
-    const auto active_deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
     std::thread sender_thread ([&]() {
         sender_ok.store (
           send_router_samples (
@@ -299,7 +295,7 @@ bool run_pattern_router_router (const std::string &transport,
     perf::single::latency_stats_t latency;
     // C-faithful receiver (bindings/c/perf single perf_router_router.cpp
     // run_active_phase): blocking recv (flags=0, bounded by rcvtimeo) into
-    // a single reused routing_id_t + message_t, exiting on the wire-level
+    // a reused routing id and a single message_t, exiting on the wire-level
     // stop token. The previous poller.wait()+received_t drain allocated a
     // fresh std::vector<message_t> per message (received_t::parts ()
     // materialize), capping ROUTER_ROUTER throughput at ~76-80% of C; C
@@ -311,8 +307,7 @@ bool run_pattern_router_router (const std::string &transport,
         bool stop_received = false;
         while (!stop_received) {
             zlink::message_t part;
-            const int recv_rc =
-              receiver.sock ().recv (source_rid, part, 0);
+            const int recv_rc = receiver.sock ().recv (source_rid, part, 0);
             if (recv_rc != 0) {
                 if (errno == EAGAIN || errno == EINTR)
                     continue;
@@ -326,13 +321,12 @@ bool run_pattern_router_router (const std::string &transport,
                 stop_received = true;
                 break;
             }
-            if (std::chrono::steady_clock::now () < active_deadline
-                && !record_router_router_sample (run_id,
-                                                 msg_size,
-                                                 payload_size,
-                                                 part,
-                                                 &state.latency,
-                                                 &state.active_received)) {
+            if (!record_router_router_sample (run_id,
+                                              msg_size,
+                                              payload_size,
+                                              part,
+                                              &state.latency,
+                                              &received)) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
@@ -348,7 +342,6 @@ bool run_pattern_router_router (const std::string &transport,
     // Stop token is the last in-flight message, so any earlier payloads
     // have already been recorded above. No bounded drain loop needed.
 
-    received = state.active_received.load (std::memory_order_acquire);
     if (received == 0 || state.latency.count () == 0) {
         if (perf_debug_enabled ())
             std::cerr << "router_router: no active data sent="

@@ -433,7 +433,7 @@ inline const char *single_auto_hwm_role_name(uint32_t role_)
 }
 
 inline bool single_auto_hwm_snapshot_visible(
-  const zlink_monitor_snapshot_t &snapshot_)
+  const zlink_monitor_status_t &snapshot_)
 {
     return snapshot_.auto_hwm_applied_sndhwm > 0
            || snapshot_.auto_hwm_applied_rcvhwm > 0
@@ -458,10 +458,10 @@ inline void emit_single_socket_hwm_detail(void *socket_,
     if (!monitor)
         return;
 
-    zlink_monitor_snapshot_t snapshot;
+    zlink_monitor_status_t snapshot;
     std::memset(&snapshot, 0, sizeof(snapshot));
     const zlink_config_result_t snapshot_rc =
-      zlink_monitor_snapshot(monitor, &snapshot);
+      zlink_monitor_status(monitor, &snapshot);
     zlink_monitor_close(&monitor);
     if (snapshot_rc != ZLINK_CONFIG_OK
         || !single_auto_hwm_snapshot_visible(snapshot)) {

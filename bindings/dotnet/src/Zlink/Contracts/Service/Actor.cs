@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Systems.Zlink;
@@ -60,8 +61,46 @@ public sealed record SpotActorLifecycleInfo(ActorRef PreviousActor,
     ActorRef CurrentActor, RoutingId? PreviousSpotRid,
     RoutingId? CurrentSpotRid, ulong JoinEpoch, uint Flags);
 
-public sealed record ActorPart(ActorRecvInfo Info, Message Message,
-    bool More);
+public enum SpotActorLifecycleEventKind
+{
+    Joined = 1,
+    Left = 2
+}
+
+public sealed record SpotActorLifecycleEvent(
+    SpotActorLifecycleEventKind Kind,
+    SpotActorLifecycleInfo Info);
+
+public sealed record ActorReceived(ActorRecvInfo Info,
+    IReadOnlyList<Message> Parts) : IDisposable
+{
+    private int _closed;
+
+    public Message Message => FirstPart();
+
+    public Message FirstPart()
+    {
+        return Parts.Count > 0
+            ? Parts[0]
+            : throw new InvalidOperationException("Actor message has no parts.");
+    }
+
+    public Message SinglePartOrThrow()
+    {
+        if (Parts.Count != 1)
+            throw new InvalidOperationException(
+                "Actor message does not contain exactly one part.");
+        return Parts[0];
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
+            return;
+        foreach (Message part in Parts)
+            part.Dispose();
+    }
+}
 
 public sealed class ActorJoinRequest
 {
@@ -90,15 +129,6 @@ public sealed class ActorJoinRequest
     internal object? RuntimeState { get; }
 }
 
-public sealed record SpotNodeSpotEntry(RoutingId? SpotRid, SpotKind SpotKind,
-    bool DispatchHandlerAttached, uint JoinedActorCount,
-    uint PendingActorJoinCount, bool RouteSynced, ulong LastChangedMs);
-
-public sealed record SpotNodeActorEntry(ActorRef Actor, RoutingId CurrentSpotRid,
-    SpotKind CurrentSpotKind, bool RouteSynced, uint PendingMessageCount,
-    ulong LastChangedMs);
-
-
 public interface IActor : IDisposable, IAsyncDisposable
 {
     ActorRef Ref { get; }
@@ -107,7 +137,7 @@ public interface IActor : IDisposable, IAsyncDisposable
 
     ActorLeaveOperation Leave(ISpot spot);
 
-    ActorPart? RecvPart(RecvFlags flags = RecvFlags.None);
+    ActorReceived? Recv(RecvFlags flags = RecvFlags.None);
 
     SendOperation SendBoundSession();
 

@@ -327,7 +327,7 @@ inline std::string perf_bind_routed_spot_node_fixed_endpoint_range(
 
         zlink_spot_node_status_t status;
         std::memset(&status, 0, sizeof(status));
-        if (zlink_spot_node_status_snapshot(node_, &status) != ZLINK_CONFIG_OK
+        if (zlink_spot_node_status(node_, &status) != ZLINK_CONFIG_OK
             || status.local_endpoint[0] == '\0')
             return endpoint;
         return perf_normalize_bind_endpoint_host(status.local_endpoint,

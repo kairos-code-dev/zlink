@@ -32,7 +32,7 @@ func main() {
 	samplecommon.MustStep("pub.Bind", pub.Bind(serviceEndpoint))
 
 	_ = serviceEndpoint
-	_ = samplecommon.WaitTopologyEntry(registry.TopologySnapshot, "sample")
+	_ = samplecommon.WaitTopologyEntry(registry.Topology, "sample")
 
 	fmt.Println("[discovery-registry] service: \"sample\" -> discovered")
 }

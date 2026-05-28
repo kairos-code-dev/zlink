@@ -41,7 +41,7 @@ void step_log (const char *msg_)
     }
 }
 
-bool read_spot_snapshot (void *spot_, zlink_monitor_snapshot_t *out_)
+bool read_spot_snapshot (void *spot_, zlink_monitor_status_t *out_)
 {
     if (!spot_ || !out_)
         return false;
@@ -52,7 +52,7 @@ bool read_spot_snapshot (void *spot_, zlink_monitor_snapshot_t *out_)
 
     memset (out_, 0, sizeof (*out_));
     zlink_spot_node_status_t status;
-    if (zlink_spot_node_status_snapshot (spot->node, &status) != 0)
+    if (zlink_spot_node_status (spot->node, &status) != 0)
         return false;
 
     const bool is_pub = true;
@@ -387,7 +387,7 @@ static bool wait_for_spot_node_status (
 
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t snapshot;
-        if (zlink_spot_node_status_snapshot (node_, &snapshot) == 0) {
+        if (zlink_spot_node_status (node_, &snapshot) == 0) {
             const uint32_t required_peers =
               min_ready_peer_count_ > 0 ? min_ready_peer_count_ : 1U;
             const bool pub_ready = snapshot.local_endpoint[0] != '\0';
@@ -413,7 +413,7 @@ static bool wait_for_spot_node_status (
     }
 
     zlink_spot_node_status_t snapshot;
-    if (zlink_spot_node_status_snapshot (node_, &snapshot) != 0)
+    if (zlink_spot_node_status (node_, &snapshot) != 0)
         return false;
 
     if (test_debug_enabled ()) {
@@ -471,7 +471,7 @@ bool wait_for_spot_node_connected_peers (void *node_,
       + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t snapshot;
-        if (zlink_spot_node_status_snapshot (node_, &snapshot) == 0
+        if (zlink_spot_node_status (node_, &snapshot) == 0
             && snapshot.connected_peer_count >= min_connected_peer_count_) {
             return true;
         }

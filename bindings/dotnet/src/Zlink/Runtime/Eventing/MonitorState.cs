@@ -14,7 +14,7 @@ internal enum MonitorState
 }
 
 [Flags]
-internal enum MonitorSnapshotDetail
+internal enum MonitorStatusDetail
 {
     None = 0,
     SendPendingMessages = 1 << 1,

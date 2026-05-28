@@ -11,6 +11,12 @@ owner files, tests, samples, perf runners, and runtime behavior follow this
 blueprint and map the stable capabilities of `core/include/zlink.h` into
 Go-idiomatic APIs.
 
+This binding follows the shared bindings architecture map with Go naming:
+the public `contracts` package is the consumer projection, while runtime
+implementation remains in root unexported files or future `internal/` packages.
+Do not force a Java/.NET-style deep package tree when it would create public
+import paths that Go users should not depend on.
+
 ## Public Contract Source
 
 - Public contract source: the public package under `bindings/go/contracts/`.
@@ -138,12 +144,14 @@ the review ownership map for the aggregate public package.
   stream packet callbacks, and builder payload helpers.
 - `Sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
-- `Monitoring/`: monitor, monitor snapshot/event, poller, poll event, timer, and
+- `Eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
 - `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `Errors/`: exported error values or typed error domains.
-- `Enums/`: public enum domains shared across the binding.
+- Enum, flag, and result identifiers live in the category that defines their
+  meaning. Do not create a separate `enums` package just to group declarations
+  by syntax.
 
 ## Canonical Interface Rules
 
@@ -151,23 +159,34 @@ the review ownership map for the aggregate public package.
   fill caller-provided `*Received`, `*TopicMessage`, or `*SubscriptionEvent`
   values and return `(bool, error)`.
 - Part-level receive APIs such as `RecvPart`, `SubscribePart`, and
-  `Spot.RecvRoutedPart` fill caller-provided `*Message` values and return
-  metadata in `RecvPartResult` or `SubscribePartResult`.
-- `Spot.ForwardRouted(...)` consumes one routed Spot message and forwards it
+  `Spot.RecvRoutedPart` are not public contract members. The runtime may use
+  `*_part` C substrate internally, but callers receive aggregate
+  `Received`/`TopicMessage` values.
+- `Spot.receive/send(...)` consumes one routed Spot message and forwards it
   back to the source Spot route without exposing the payload to the caller.
   It is for relay paths that do not inspect or modify payload data. Callers
-  that need payload access must keep using `RecvRouted(...)`,
-  `RecvRoutedPart(...)`, and `SendToSpot(...)`.
+  that need payload access use `RecvRouted(...)` and `SendToSpot(...)`.
 - Send, routed send, publish, request, reply, SPOT operations, and Actor
   location/session operations return fluent builders.
 - Builder start methods take only the target identity, topic, channel, routing
   id, or request sequence. Payload, flags, timeout, callback, and async submit
   choices are builder steps.
+- SPOT channel-targeted operations use `SendToChannel(...)` and
+  `RequestToChannel(...)`. SPOT topic publish stays `Publish(topic)`.
+- Do not add single-payload shortcut methods with the same name as an operation
+  start method. `Send(message)`, `Send(routingID, message)`,
+  `Publish(topic, message)`, `SendToChannel(channel, message)`, and
+  `SendToSpot(..., message)` are not public contract members; callers use
+  `Send(...).Message(message).Submit(...)`.
 - Multipart payload is accumulated by repeated `Message(...)`, `MoveMessage(...)`,
   or `Bytes(...)` calls. `Bytes(...)` reads the caller-owned slice during
   `Submit(...)` and does not retain it after `Submit(...)` returns.
   `Messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in the public package category.
+- Dealer sockets must not expose protocol envelope helpers such as
+  `RequestFrame(...)` or `Reply(requestToken, parts)`. A dealer can start a
+  request through `Request()`, but it cannot reply to an arbitrary token
+  because it has no API-level peer routing id.
 - Send builders also expose `MoveMessage(...)` for hot paths that can transfer
   ownership at submit time. `Message(...)` keeps the existing contract: the
   caller's message is preserved on submit failure and consumed on success.
@@ -192,7 +211,7 @@ Keep the public `contracts` package tree easy to scan.
   message, and subscription event types.
 - Socket identifiers cover pair, dealer, router, pub, sub, xpub, xsub, stream,
   options, callbacks, request/reply, publish/subscribe, and stream packet APIs.
-- Monitoring identifiers cover monitor, monitor snapshot/event, poller, poll
+- Eventing identifiers cover monitor, monitor snapshot/event, poller, poll
   event, and timer.
 - Service identifiers cover registry, discovery, SPOT node, SPOT handle,
   topology snapshots, actor refs, actor lifecycle, and operation builders.

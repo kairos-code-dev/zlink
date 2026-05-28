@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace Systems.Zlink;
 
-public static class OperationMessageExtensions
+public static class MessageOperations
 {
     public static SendSubmitOperation Messages(
         this SendOperation operation,

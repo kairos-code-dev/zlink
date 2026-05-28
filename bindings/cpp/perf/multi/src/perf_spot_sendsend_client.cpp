@@ -23,7 +23,7 @@ namespace {
 static const char *k_pattern = "MULTI_SPOT_SENDSEND";
 static const char *k_server_node_rid = "SPOT-SENDSEND-SERVER-NODE";
 static const char *k_server_spot_rid = "SPOT-SENDSEND-SERVER-SPOT";
-static const char *k_control_topic = "bench";
+static const char *k_control_topic = "bench-spot-sendsend";
 
 bool bench_debug_enabled ()
 {
@@ -195,7 +195,10 @@ bool complete_sendsend_ready_barrier (zlink::service::spot_t &control_pub,
     if (!perf::multi::publish_control_payload (
           control_pub,
           k_control_topic,
-          std::string ("DATA_ENDPOINT,") + local_data_endpoint,
+          std::string ("DATA_ENDPOINT_SIZE,")
+            + std::to_string (msg_size)
+            + std::string (",")
+            + local_data_endpoint,
           timeout_ms))
         return false;
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
@@ -482,9 +485,8 @@ bool run_client (const std::string &lib_name,
           ctx.ctx (), snapshot_msg_size))
         return false;
 
-    const int base_port = perf::multi::bench_port_base (50000);
     const std::string local_control_endpoint =
-      perf::multi::bind_spot_endpoint (control_node, transport, base_port);
+      perf::multi::bind_spot_endpoint (control_node, transport, 0);
     if (local_control_endpoint.empty ())
         return false;
     zlink::service::spot_t control_pub = control_node.create_spot ();
@@ -494,7 +496,7 @@ bool run_client (const std::string &lib_name,
     control_sub.set_subscription (k_control_topic);
     const std::string local_data_endpoint =
       perf::multi::bind_routed_spot_endpoint (
-        data_node, transport, perf::multi::bench_port_base (52000));
+        data_node, transport, 0);
     if (local_data_endpoint.empty ())
         return false;
     control_node.connect_peer (control_endpoint);
@@ -538,6 +540,11 @@ bool run_client (const std::string &lib_name,
     for (size_t i = 0; i < msg_sizes.size (); ++i) {
         const size_t msg_size = msg_sizes[i];
         const size_t ready_count = std::max<size_t> (1, settings.clients);
+        if (!perf::multi::apply_spot_auto_hwm_msg_unit (ctx.ctx (), msg_size)
+            || !perf::multi::recalculate_auto_hwm (ctx)) {
+            rc = 1;
+            break;
+        }
         if (!complete_sendsend_ready_barrier (
               control_pub,
               local_data_endpoint,

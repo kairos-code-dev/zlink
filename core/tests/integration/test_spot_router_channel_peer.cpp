@@ -177,8 +177,30 @@ void capture_spot_request (const zlink_routing_id_t *source_rid_,
             probe->payload = msg_to_string (&parts_[0]);
     }
     if (parts_ && part_count_ > 0)
-        zlink_multipart_close (parts_, part_count_);
+    zlink_multipart_close (parts_, part_count_);
     probe->cv.notify_all ();
+}
+
+void capture_spot_request_dispatch (void *spot_,
+                                    const zlink_spot_dispatch_info_t *info_,
+                                    void *userdata_)
+{
+    if (!info_
+        || info_->event != ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE)
+        return;
+
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    if (zlink_spot_recv (spot_, &source_rid, &spot_rid, &request_seq, &parts,
+                         &part_count, ZLINK_DONTWAIT)
+        != ZLINK_RECV_OK) {
+        return;
+    }
+    capture_spot_request (source_rid, spot_rid, request_seq, parts, part_count,
+                          userdata_);
 }
 
 bool wait_for_spot_request (spot_request_probe_t *probe_)
@@ -315,7 +337,7 @@ bool wait_for_router_channel_peer_snapshot (void *node_,
         zlink_spot_node_peer_entry_t entries[8];
         size_t count = 8;
         memset (entries, 0, sizeof (entries));
-        if (zlink_spot_node_peers_snapshot (node_, entries, &count)
+        if (zlink_spot_node_peers (node_, NULL, entries, &count)
             != ZLINK_CONFIG_OK)
             return false;
         for (size_t i = 0; i < count; ++i) {
@@ -338,7 +360,7 @@ bool wait_for_router_channel_peer_absent (void *node_,
         zlink_spot_node_peer_entry_t entries[8];
         size_t count = 8;
         memset (entries, 0, sizeof (entries));
-        if (zlink_spot_node_peers_snapshot (node_, entries, &count)
+        if (zlink_spot_node_peers (node_, NULL, entries, &count)
             != ZLINK_CONFIG_OK)
             return false;
         for (size_t i = 0; i < count; ++i) {
@@ -485,8 +507,8 @@ void test_spot_node_router_channel_manual_request_spot ()
     msleep (SETTLE_TIME);
 
     spot_request_probe_t request_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_handler (spot, &capture_spot_request, &request_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      spot, &capture_spot_request_dispatch, &request_probe));
 
     const zlink_routing_id_t node_rid = get_routing_id_value (node);
     const zlink_routing_id_t spot_rid = get_routing_id_value (spot);

@@ -452,7 +452,7 @@ func multiSpotPercentile(sorted []float64, pct float64) float64 {
 }
 
 func spotNodeLastEndpoint(node *zlink.SpotNode, fallback string) string {
-	status, err := node.StatusSnapshot()
+	status, err := node.Status()
 	if err == nil && status != nil && status.LocalEndpoint != "" {
 		return status.LocalEndpoint
 	}

@@ -267,4 +267,4 @@ zlink_config_result_t zlink_ctx_auto_hwm_recalculate(void *context_);
 
 **스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
 
-**참고:** `zlink_ctx_set`, `zlink_monitor_snapshot`
+**참고:** `zlink_ctx_set`, `zlink_monitor_status`

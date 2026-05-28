@@ -20,7 +20,7 @@ canonical 이벤트 카탈로그는 [events.ko.md](./events.ko.md)에 정리합�
    이벤트를 가져옵니다.
 2. **핸들러 부착** -- `*_handler()`를 호출하면 **callback-only 모델**로 전환됩니다
    (단방향). 전환 후 `*_recv()`는 `EBUSY`를 반환합니다.
-3. **Snapshot** -- `zlink_monitor_snapshot()`은 두 모델 모두에서 동작합니다.
+3. **Snapshot** -- `zlink_monitor_status()`은 두 모델 모두에서 동작합니다.
 
 모든 모니터는 `zlink_monitor_close()`로 닫습니다.
 
@@ -84,14 +84,14 @@ typedef struct zlink_socket_monitor_open_options_t
 |------|------|
 | `events` | 관찰할 이벤트를 선택하는 `ZLINK_EVENT_*` 플래그 비트마스크. |
 
-### zlink_monitor_snapshot_t
+### zlink_monitor_status_t
 
 ```c
-typedef struct zlink_monitor_snapshot_t
+typedef struct zlink_monitor_status_t
 {
     zlink_monitor_source_kind_t source_kind;
     zlink_monitor_state_mask_t state_flags;
-    zlink_monitor_snapshot_detail_mask_t detail_flags;
+    zlink_monitor_status_detail_mask_t detail_flags;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
     uint32_t auto_hwm_enabled;
@@ -111,7 +111,7 @@ typedef struct zlink_monitor_snapshot_t
     uint32_t auto_hwm_send_blocked_ratio_ppm;
     int32_t auto_hwm_deferred_sndhwm;
     int32_t auto_hwm_deferred_rcvhwm;
-} zlink_monitor_snapshot_t;
+} zlink_monitor_status_t;
 ```
 
 | 필드 | 설명 |
@@ -164,10 +164,10 @@ typedef enum zlink_monitor_source_kind_t
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` 필드가 채워짐. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | auto-HWM role, profile, unit budget, message unit, 적용 HWM 필드가 채워질 수 있음. |
-| `ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | `auto_hwm_effective_sndbuf`, `auto_hwm_effective_rcvbuf` 필드가 채워짐. |
+| `ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS` | `1 << 1` | `snd_pending_msgs` 필드가 채워짐. |
+| `ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS` | `1 << 2` | `rcv_pending_msgs` 필드가 채워짐. |
+| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET` | `1 << 3` | auto-HWM role, profile, unit budget, message unit, 적용 HWM 필드가 채워질 수 있음. |
+| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS` | `1 << 4` | `auto_hwm_effective_sndbuf`, `auto_hwm_effective_rcvbuf` 필드가 채워짐. |
 
 ### Auto-HWM 재계산 사유
 
@@ -288,10 +288,10 @@ callback 모드임을 나타내는 `zlink_recv_result_t` 값을 반환합니다.
 
 ---
 
-### zlink_monitor_snapshot
+### zlink_monitor_status
 
 ```c
-zlink_config_result_t zlink_monitor_snapshot(void *monitor_, zlink_monitor_snapshot_t *out_);
+zlink_config_result_t zlink_monitor_status(void *monitor_, zlink_monitor_status_t *out_);
 ```
 
 socket monitor handle의 현재 aggregate snapshot을 읽습니다.
@@ -346,22 +346,22 @@ snapshot/query API로 관찰합니다.
 
 - Discovery: `zlink_discovery_member_peers()`,
   `zlink_discovery_resolve_spot()`, `zlink_discovery_resolve_actor()`
-- Registry: `zlink_registry_status_snapshot()`,
-  `zlink_registry_service_summary_snapshot()`,
-  `zlink_registry_topology_snapshot()`,
-  `zlink_registry_topology_query()`
-- SpotNode: `zlink_spot_node_status_snapshot()`,
-  `zlink_spot_node_peers_snapshot()`,
-  `zlink_spot_node_peers_query()`,
-  `zlink_spot_node_subjects_snapshot()`,
-  `zlink_spot_node_internal_sockets_snapshot()`,
-  `zlink_spot_node_spots_snapshot()`,
-  `zlink_spot_node_actors_snapshot()`,
-  `zlink_spot_actors_snapshot()`
+- Registry: `zlink_registry_status()`,
+  `zlink_registry_service_summary()`,
+  `zlink_registry_topology()`,
+  `zlink_registry_topology()`
+- SpotNode: `zlink_spot_node_status()`,
+  `zlink_spot_node_peers()`,
+  `zlink_spot_node_peers()`,
+  `zlink_spot_node_subjects()`,
+  `zlink_spot_node_internal_sockets()`,
+  `zlink_spot_node_spots()`,
+  `zlink_spot_node_actors()`,
+  `zlink_spot_actors()`
 - Registry query client: `zlink_registry_query_client_new()`,
   `zlink_registry_query_client_connect()`,
-  `zlink_registry_query_snapshot()`,
-  `zlink_registry_query_destroy()`
+  `zlink_registry_query_client_topology()`,
+  `zlink_registry_query_client_destroy()`
 
 상태 전이를 감지하려면 애플리케이션에서 연속된 snapshot 또는 query 결과를
 비교합니다. 이렇게 해야 `core/include/zlink.h` 기준의 현재 공개 계약과

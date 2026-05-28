@@ -33,6 +33,12 @@ class dealer_socket_t : public message_socket_t
           handle (), NULL, part_out_, flags_);
     }
 
+    ZLINK_CPP_NODISCARD int send_no_wait (send_result_t &result_,
+                                          message_t &part_)
+    {
+        return base_socket_t::send_no_wait_result (result_, part_);
+    }
+
     void on_send_ready (std::function<void()> handler_)
     {
         base_socket_t::on_send_ready (std::move (handler_));

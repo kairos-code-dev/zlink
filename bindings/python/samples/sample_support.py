@@ -20,7 +20,7 @@ def tcp_endpoint():
 def _poll_monitor_event(monitor, timeout_ms):
     deadline = time.monotonic() + (timeout_ms / 1000.0)
     while time.monotonic() < deadline:
-        if monitor.snapshot().is_ready():
+        if monitor.status().is_ready():
             return monitor.recv()
         _MONITOR_WAIT.wait(_MONITOR_POLL_SLEEP_S)
     return None
@@ -89,7 +89,7 @@ def submit_request_op(op, *, timeout=2, description="request"):
 
 def wait_spot_peer_connected(node, timeout_ms=5000):
     wait_until(
-        lambda: node.status_snapshot().connected_peer_count >= 1,
+        lambda: node.status().connected_peer_count >= 1,
         timeout_ms=timeout_ms,
         description="spot peer connection",
     )

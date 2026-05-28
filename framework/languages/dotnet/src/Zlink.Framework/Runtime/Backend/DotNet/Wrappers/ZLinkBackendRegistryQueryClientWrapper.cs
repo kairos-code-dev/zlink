@@ -11,10 +11,10 @@ internal sealed class ZLinkBackendRegistryQueryClientWrapper(IRegistryQueryClien
         nativeClient.Connect(endpoint);
     }
 
-    public IReadOnlyList<ZLinkRegistryTopologyEntry> Snapshot(
+    public IReadOnlyList<ZLinkRegistryTopologyEntry> Topology(
         ZLinkRegistryTopologyFilter? filter)
     {
-        return nativeClient.Snapshot(filter.ToNative())
+        return nativeClient.Topology(filter.ToNative())
             .Select(static entry => entry.ToFramework())
             .ToArray();
     }

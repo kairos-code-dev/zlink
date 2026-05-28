@@ -456,7 +456,7 @@ public final class Received implements AutoCloseable {
         return Optional.ofNullable(routingIdOrNull());
     }
 
-    public RoutingId routingIdOrNull() {
+    RoutingId routingIdOrNull() {
         if (routingId == null && routingIdBytes != null) {
             routingId = InternalAccess.routingIdFromTrusted(routingIdBytes);
         }

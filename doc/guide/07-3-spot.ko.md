@@ -307,18 +307,7 @@ zlink_spot_request_channel(
 
 ## 6. 디스패치 이벤트 핸들러로 통합 소비
 
-SPOT에는 두 가지 핸들러 등록 방식이 있으며, 같은 Spot에서 동시에 쓸 수 없다.
-
-- **`zlink_spot_handler()`** — 라우팅 전용 직접 콜백이다. 콜백 안에서
-  라우팅 메시지 payload를 바로 받는다. 구독, 채널 응답, 타이머, Actor 이벤트는
-  이 방식으로 받을 수 없다. Actor나 구독이 필요하면 이 방식을 사용할 수 없다.
-
-- **`zlink_spot_dispatch_event_handler()`** — 구독, 라우팅, 채널 응답, 타이머,
-  Actor 참가(join), Actor 읽기 준비를 모두 준비 신호(readiness) 형태로 받는다. 콜백은 "읽을 것이 있다"는
-  신호이며, 실제 데이터는 각 소진(drain) API로 읽는다. 구독, 채널 응답, 타이머,
-  Actor 이벤트는 이 방식으로만 받을 수 있다.
-
-Actor가 필요한 경우에는 항상 `zlink_spot_dispatch_event_handler()`를 사용한다.
+`zlink_spot_dispatch_event_handler()`는 SPOT의 단일 readiness handler다. 구독, 라우팅, 채널 응답, 타이머, Actor 참가, Actor 읽기 준비, Actor lifecycle readiness를 알린다. callback은 "읽을 것이 있다"는 신호만 주며, payload와 lifecycle data는 각 drain API로 읽는다.
 
 `zlink_spot_dispatch_event_handler()`를 등록하면 callback signature는 아래처럼
 `event`뿐 아니라 `subject_kind`와 `subject`도 전달한다.
@@ -559,10 +548,10 @@ zlink_spot_node_attach_pub_ingress(node, pub);
 
 ```c
 zlink_spot_node_status_t status;
-zlink_spot_node_status_snapshot(node, &status);
+zlink_spot_node_status(node, &status);
 
 size_t peer_count = 0;
-zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
+zlink_spot_node_peers(node, NULL, &peer_count);
 ```
 
 더 자세한 상태 변화가 필요하면 연속된 snapshot/query 결과를 비교한다.
@@ -574,16 +563,16 @@ delivery target을 끊던 모델의 잔재다. 현재 SPOT delivery 모델은 �
 **HWM 진단**: 입장 허용(admission, 큐 수용 여부 판단)은 `publish_ingress_queue`와
 `routed_send_queue` 큐 한도로 적용된다. `ingress-sub`와 `internal-router`는
 제거되었으며 스냅샷에 나타나지 않는다.
-`zlink_spot_node_internal_sockets_snapshot()`으로 반환되는 `mesh-pub`,
+`zlink_spot_node_internal_sockets()`으로 반환되는 `mesh-pub`,
 `mesh-xsub`, `external-router`의 `snapshot` 필드는 transport 소켓 HWM을 보여준다.
 relay 및 delivery 소켓은 HWM `0`을 보고하며, 이는 정상이다.
 큐 입장 허용 한도는 HWM 프로필 옵션으로 제어하며, 프로필별 메시지 수 기준은
 BALANCED 256 (기본), COMPACT 64, LOW_LATENCY 128, THROUGHPUT 512다.
 
-SpotNode HWM(High Water Mark, 큐 상한선) 옵션은 입장 허용 경계에만 적용된다 — 토픽 발행 입장 허용과 라우팅 입장 허용이 해당된다. Actor 전용 HWM 옵션은 없다. Actor 처리 적체(backlog)는 디스패치 이벤트, 수신 결과, `zlink_spot_actors_snapshot()`의 `unread` 카운트로 진단한다.
+SpotNode HWM(High Water Mark, 큐 상한선) 옵션은 입장 허용 경계에만 적용된다 — 토픽 발행 입장 허용과 라우팅 입장 허용이 해당된다. Actor 전용 HWM 옵션은 없다. Actor 처리 적체(backlog)는 디스패치 이벤트, 수신 결과, `zlink_spot_actors()`의 `unread` 카운트로 진단한다.
 
-Actor 상태 확인에는 `zlink_spot_node_actors_snapshot()`과
-`zlink_spot_actors_snapshot()`을 사용한다. 스냅샷의 unread count와 joined 상태는
+Actor 상태 확인에는 `zlink_spot_node_actors()`과
+`zlink_spot_actors()`을 사용한다. 스냅샷의 unread count와 joined 상태는
 운영 진단용이다. 메시지 처리나 흐름 제어 결정은 디스패치 이벤트와 recv
 결과를 기준으로 한다.
 

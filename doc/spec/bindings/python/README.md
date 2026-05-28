@@ -13,6 +13,11 @@ packages, type hints, tests, samples, perf runners, and runtime behavior follow
 this blueprint and map stable `core/include/zlink.h` capabilities into
 Python-idiomatic APIs.
 
+This binding follows the shared bindings architecture map with Python naming:
+public names are projected from `zlink`, public contract source lives under
+lower-case `contracts`, and implementation details stay in underscore-prefixed
+packages such as `_runtime` and `_native`.
+
 ## Public Contract Source
 
 - Public contract source: `bindings/python/src/zlink/contracts/`.
@@ -59,18 +64,16 @@ bindings/python/
 |   |   |   +-- core/
 |   |   |   +-- messaging/
 |   |   |   +-- sockets/
-|   |   |   +-- monitoring/
+|   |   |   +-- eventing/
 |   |   |   +-- service/
 |   |   |   +-- errors/
-|   |   |   +-- enums/
 |   |   +-- _runtime/
 |   |   |   +-- core/
 |   |   |   +-- messaging/
 |   |   |   +-- sockets/
-|   |   |   +-- monitoring/
+|   |   |   +-- eventing/
 |   |   |   +-- service/
 |   |   |   +-- errors/
-|   |   |   +-- enums/
 |   |   +-- _native/
 +-- codecs/
 +-- tests/
@@ -144,12 +147,13 @@ from `zlink`.
   stream packet data, and builder payload helpers.
 - `Sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
-- `Monitoring/`: monitor, monitor snapshot/event, poller, poll event, timer, and
+- `eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
 - `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `Errors/`: typed exception domains.
-- `Enums/`: public enum domains shared across the binding.
+- Enum, flag, and result types live in the category that defines their meaning.
+  Do not create an `enums` package just to group declarations by syntax.
 
 ## Canonical Interface Rules
 
@@ -161,10 +165,21 @@ from `zlink`.
 - Builder start methods take only the target identity, topic, channel, routing
   id, or request sequence. Payload, flags, timeout, callback, and async submit
   choices are builder steps.
+- SPOT channel-targeted operations use `send_to_channel(...)` and
+  `request_to_channel(...)`. SPOT topic publish stays `publish(topic)`.
+- Do not add single-payload shortcut methods with the same name as an operation
+  start method. `send(message)`, `send(routing_id, message)`,
+  `publish(topic, message)`, `send_to_channel(channel, message)`, and
+  `send_to_spot(..., message)` are not public contract members; callers use
+  `send(...).message(message).submit()`.
 - Multipart payload is accumulated by repeated `message(...)` calls. A
   Python-style `messages(*parts)` convenience may delegate to the same builder.
   That convenience is public contract when exported and belongs in the public
   package category.
+- Dealer sockets must not expose protocol envelope helpers such as
+  `request_frame(...)` or `reply(request_token, parts)`. A dealer can start a
+  request through `request()`, but it cannot reply to an arbitrary token
+  because it has no API-level peer routing id.
 - Message payload factories use `Message.from_(...)` because `from` is a
   Python keyword. `copy_from` and `from_bytes` are not part of the public
   contract.
@@ -182,7 +197,7 @@ The `zlink` package should expose domain-level groups.
   subscription event, and stream packet data.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, typed options,
   callbacks, request/reply, publish/subscribe, and stream packet APIs.
-- Monitoring: monitor, monitor snapshot/event, poller, poll event, and timer.
+- Eventing: monitor, monitor snapshot/event, poller, poll event, and timer.
 - Service: registry, discovery, SPOT node, SPOT handle, topology snapshots,
   actor refs, actor lifecycle, and operation builders.
 - Errors: typed exception classes preserving core result domains.

@@ -263,7 +263,7 @@ bool wait_for_topology_entry_local (
     return zlink_test_wait_until (timeout_ms_, [=] {
         zlink_registry_topology_entry_t entries[8];
         size_t count = 8;
-        if (zlink_registry_topology_query (registry_, filter_, entries, &count)
+        if (zlink_registry_topology (registry_, filter_, entries, &count)
             == ZLINK_CONFIG_OK) {
             for (size_t j = 0; j < count; ++j) {
                 if (entries[j].desired_count != desired_count_)
@@ -305,7 +305,7 @@ bool wait_for_service_summary_count_local (
         zlink_registry_service_summary_entry_t entries[8];
         size_t count = 8;
         memset (entries, 0, sizeof (entries));
-        if (zlink_registry_service_summary_snapshot (
+        if (zlink_registry_service_summary (
               registry_, filter_, entries, &count)
               == ZLINK_CONFIG_OK
             && count == expected_count_)
@@ -325,7 +325,7 @@ bool wait_for_topology_desired_total_local (
         zlink_registry_topology_entry_t entries[8];
         size_t count = 8;
         memset (entries, 0, sizeof (entries));
-        if (zlink_registry_topology_query (registry_, filter_, entries, &count)
+        if (zlink_registry_topology (registry_, filter_, entries, &count)
               == ZLINK_CONFIG_OK
             && count >= min_count_) {
             uint32_t desired_total = 0;

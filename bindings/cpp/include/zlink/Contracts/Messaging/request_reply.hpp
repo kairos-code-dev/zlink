@@ -21,6 +21,14 @@ class send_ready_op_t
         return std::move (*this);
     }
 
+    send_ready_op_t &&message (message_t &&part_) &&
+    {
+        _state.single_part.emplace (std::move (part_));
+        _state.single_part_source = NULL;
+        _state.discard_single_part_on_backpressure = true;
+        return std::move (*this);
+    }
+
     send_ready_op_t &&flags (int flags_) &&
     {
         _state.flags = send_flags_t (flags_);
@@ -50,6 +58,14 @@ class send_op_t
         _state.single_part_source = &part_;
         if (!detail::can_borrow_single_send_part (_state.kind))
             _state.single_part.emplace (std::move (part_));
+        return send_ready_op_t (std::move (_state));
+    }
+
+    send_ready_op_t message (message_t &&part_) &&
+    {
+        _state.single_part.emplace (std::move (part_));
+        _state.single_part_source = NULL;
+        _state.discard_single_part_on_backpressure = true;
         return send_ready_op_t (std::move (_state));
     }
 

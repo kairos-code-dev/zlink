@@ -11,6 +11,7 @@
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <zlink.hpp>
@@ -89,10 +90,10 @@ bool send_spot_payload (zlink::service::spot_t &spot_,
         const bool sent =
           dontwait_
             ? std::move (spot_.publish (k_topic)
-                           .message (msg)
+                           .message (std::move (msg))
                            .flags (ZLINK_DONTWAIT))
                 .submit ()
-            : std::move (spot_.publish (k_topic).message (msg)).submit ();
+            : std::move (spot_.publish (k_topic).message (std::move (msg))).submit ();
         if (sent_out_)
             *sent_out_ = sent;
         return true;
@@ -139,27 +140,27 @@ bool stamp_and_publish (zlink::service::spot_t &spot_,
       spot_, payload_.data (), payload_.size (), dontwait_, sent_out_);
 }
 
-bool decode_spot_header (const zlink::topic_message_t &message_,
+bool decode_spot_header (const std::string &topic_,
+                         zlink::message_t &part_,
                          size_t payload_size_,
                          perf_single_metric::header_t *header_out_)
 {
-    if (!header_out_ || message_.topic () != k_topic
-        || !message_.is_single_part ()) {
+    if (!header_out_ || topic_ != k_topic) {
         return false;
     }
 
-    zlink::message_t &part = const_cast<zlink::topic_message_t &> (
-      message_).first_part ();
-    if (part.size () != payload_size_)
+    if (part_.size () != payload_size_)
         return false;
 
     return perf_single_metric::decode_payload_header (
-      part.data (), part.size (), header_out_);
+      part_.data (), part_.size (), header_out_);
 }
 
 int recv_spot_header_flags (zlink::service::spot_t &subscriber_,
                             size_t payload_size_,
                             zlink::recv_flags_t flags_,
+                            std::string &topic_,
+                            zlink::message_t &part_,
                             perf_single_metric::header_t *header_out_,
                             bool *header_ok_out_,
                             bool *stop_out_ = NULL)
@@ -169,21 +170,23 @@ int recv_spot_header_flags (zlink::service::spot_t &subscriber_,
     if (stop_out_)
         *stop_out_ = false;
     try {
-        zlink::topic_message_t message;
-        const int rc = subscriber_.subscribe (message, flags_);
+        bool has_more = false;
+        const int rc = subscriber_.subscribe_part (
+          topic_, part_, has_more, flags_);
         if (rc == static_cast<int> (zlink::recv_result_t::no_data))
             return 0;
         if (rc != static_cast<int> (zlink::recv_result_t::ok))
             return -1;
-        if (stop_out_ && message.is_single_part ()) {
-            zlink::message_t &part = message.first_part ();
-            if (perf::single::is_stop_token_message (part)) {
+        if (has_more)
+            return -1;
+        if (stop_out_) {
+            if (perf::single::is_stop_token_message (part_)) {
                 *stop_out_ = true;
                 return 1;
             }
         }
         bool header_ok =
-          decode_spot_header (message, payload_size_, header_out_);
+          decode_spot_header (topic_, part_, payload_size_, header_out_);
         if (header_ok_out_)
             *header_ok_out_ = header_ok;
         return 1;
@@ -256,6 +259,8 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
     }
 
     uint64_t seq = 0;
+    std::string topic;
+    zlink::message_t part;
     while (std::chrono::steady_clock::now () < deadline) {
         bool sent = false;
         if (!stamp_and_publish (publisher_,
@@ -264,7 +269,7 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
                                 state_->msg_size,
                                 seq++,
                                 perf_single_metric::phase_warmup,
-                                false,
+                                true,
                                 &sent)) {
             return false;
         }
@@ -276,8 +281,8 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
             perf_single_metric::header_t header = {};
             bool header_ok = false;
             const int recv_rc = recv_spot_header_flags (
-              subscriber_, state_->payload_size, ZLINK_DONTWAIT, &header,
-              &header_ok);
+              subscriber_, state_->payload_size, ZLINK_DONTWAIT, topic, part,
+              &header, &header_ok);
             if (recv_rc > 0) {
                 if (header_ok
                     && header.magic == perf_single_metric::k_magic
@@ -370,19 +375,19 @@ void emit_spot_hwm_detail (zlink::service::spot_node_t &node_,
     if (!component_)
         return;
 
-    std::vector<zlink::spot_node_socket_snapshot_entry_t> entries;
+    std::vector<zlink::spot_node_socket_entry_t> entries;
     try {
-        entries = node_.internal_sockets_snapshot ();
+        entries = node_.internal_sockets ();
     }
     catch (const zlink::zlink_error_t &) {
         return;
     }
 
     for (size_t i = 0; i < entries.size (); ++i) {
-        const zlink::spot_node_socket_snapshot_entry_t &entry = entries[i];
+        const zlink::spot_node_socket_entry_t &entry = entries[i];
         if (!entry.auto_hwm_visible ())
             continue;
-        const zlink::monitor_snapshot_t &snapshot = entry.snapshot ();
+        const zlink::monitor_status_t &snapshot = entry.monitor_status ();
         if (snapshot.auto_hwm_applied_sndhwm <= 0
             && snapshot.auto_hwm_applied_rcvhwm <= 0) {
             continue;
@@ -533,6 +538,8 @@ bool run_pattern_spot (const std::string &transport,
     (void) recv_timeout;
 
     std::thread receiver_thread ([&]() {
+        std::string topic;
+        zlink::message_t part;
         auto collect_header =
           [&] (const perf_single_metric::header_t &header_,
                bool header_ok_) {
@@ -550,8 +557,8 @@ bool run_pattern_spot (const std::string &transport,
             bool header_ok = false;
             bool stop = false;
             const int recv_rc = recv_spot_header_flags (
-              sub_spot, payload_size, ZLINK_DONTWAIT, &header, &header_ok,
-              &stop);
+              sub_spot, payload_size, ZLINK_DONTWAIT, topic, part, &header,
+              &header_ok, &stop);
             if (recv_rc > 0) {
                 if (stop)
                     return;

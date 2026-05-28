@@ -13,12 +13,12 @@ using var sessionReady = new ManualResetEventSlim(false);
 RoutingId? sessionRid = null;
 string receivedPayload = "";
 
-spot.OnDispatchEvent(info =>
+spot.SetDispatchHandler(info =>
 {
-    ActorPart? part = info.RecvActorPart();
+    ActorReceived? part = info.RecvActor();
     if (part == null)
         return;
-    using (part.Message)
+    using (part)
     {
         receivedPayload = part.Message.GetString();
     }

@@ -20,7 +20,7 @@ bool wait_for_spot_ready (zlink::service::spot_node_t &node_,
     while (std::chrono::steady_clock::now () < deadline) {
         zlink::spot_node_status_t status;
         try {
-            status = node_.status_snapshot ();
+            status = node_.status ();
         } catch (...) {
             std::this_thread::yield ();
             continue;

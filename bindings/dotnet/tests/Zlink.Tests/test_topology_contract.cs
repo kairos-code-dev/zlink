@@ -13,11 +13,11 @@ public sealed class test_topology_contract
         using var ctx = Zlink.CreateContext();
         using var registry = ctx.CreateRegistry();
 
-        RegistryStatus snapshot = registry.StatusSnapshot();
+        RegistryStatus snapshot = registry.Status();
         Assert.True(snapshot.TopologyEntryCount >= 0);
-        Assert.Empty(registry.ServiceSummarySnapshot());
-        Assert.Empty(registry.TopologySnapshot());
-        Assert.Empty(registry.TopologyQuery());
+        Assert.Empty(registry.ServiceSummary());
+        Assert.Empty(registry.Topology());
+        Assert.Empty(registry.Topology());
         Assert.Empty(registry.MemberPeers("missing"));
     }
 
@@ -30,10 +30,10 @@ public sealed class test_topology_contract
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateSpotNode();
 
-        SpotNodeStatus snapshot = node.StatusSnapshot();
+        SpotNodeStatus snapshot = node.Status();
         Assert.True(snapshot.SubjectCount >= 0);
-        Assert.Empty(node.PeersSnapshot());
-        Assert.Empty(node.SubjectsSnapshot());
+        Assert.Empty(node.Peers());
+        Assert.Empty(node.Subjects());
     }
 
     [Fact]

@@ -210,7 +210,7 @@ void test_socket_monitor_open_recv_snapshot ()
 
     (void) monitor.recv (ZLINK_DONTWAIT);
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
-    const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
+    const zlink::monitor_status_t snapshot = monitor.status ();
     (void) snapshot.auto_hwm_profile;
     (void) snapshot.auto_hwm_policy_class;
     (void) snapshot.auto_hwm_unit_budget_bytes;
@@ -241,7 +241,7 @@ void test_socket_monitor_ignore_event_and_poller_size ()
       std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
     bool ready = false;
     while (std::chrono::steady_clock::now () < deadline) {
-        const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
+        const zlink::monitor_status_t snapshot = monitor.status ();
         if (snapshot.is_ready ()
             || (snapshot.state_flags
                 & static_cast<uint32_t> (zlink::monitor_state::closed))
@@ -519,21 +519,21 @@ void test_socket_monitor_on_event_callback ()
     }
     assert (static_cast<uint64_t> (callback_state.event.event) != 0u);
 
-    bool snapshot_ready = false;
-    const std::chrono::steady_clock::time_point snapshot_deadline =
+    bool monitor_status_ready = false;
+    const std::chrono::steady_clock::time_point monitor_status_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (500);
-    while (std::chrono::steady_clock::now () < snapshot_deadline) {
-        const zlink::monitor_snapshot_t snapshot = monitor.snapshot ();
+    while (std::chrono::steady_clock::now () < monitor_status_deadline) {
+        const zlink::monitor_status_t snapshot = monitor.status ();
         if (snapshot.is_ready ()
             || (snapshot.state_flags
                 & static_cast<uint32_t> (zlink::monitor_state::closed))
                  != 0u) {
-            snapshot_ready = true;
+            monitor_status_ready = true;
             break;
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
-    assert (snapshot_ready);
+    assert (monitor_status_ready);
 }
 
 } // namespace

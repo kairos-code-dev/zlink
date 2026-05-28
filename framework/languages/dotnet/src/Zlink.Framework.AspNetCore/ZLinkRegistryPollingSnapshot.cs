@@ -9,15 +9,15 @@ internal sealed record ZLinkRegistryPollingSnapshot(
         IZLinkRegistryQuery query,
         CancellationToken cancellationToken)
     {
-        var status = await query.StatusSnapshotAsync(cancellationToken)
+        var status = await query.StatusAsync(cancellationToken)
             .ConfigureAwait(false);
-        var topology = (await query.TopologySnapshotAsync(cancellationToken)
+        var topology = (await query.TopologyAsync(cancellationToken: cancellationToken)
                 .ConfigureAwait(false))
             .OrderBy(static entry => entry.ChannelName, StringComparer.Ordinal)
             .ThenBy(static entry => entry.Endpoint, StringComparer.Ordinal)
             .ThenBy(static entry => entry.RoutingId?.ToString(), StringComparer.Ordinal)
             .ToArray();
-        var summary = (await query.ServiceSummarySnapshotAsync(cancellationToken: cancellationToken)
+        var summary = (await query.ServiceSummaryAsync(cancellationToken: cancellationToken)
                 .ConfigureAwait(false))
             .OrderBy(static entry => entry.ChannelName, StringComparer.Ordinal)
             .ThenBy(static entry => entry.AutoConnectType)

@@ -19,7 +19,7 @@ NetworkStream network = client.GetStream();
 byte[] request = "hello-stream"u8.ToArray();
 SampleSupport.SendAll(network, request);
 
-using var received = new Received();
+using var received = Received.Create();
 if (!stream.Recv(received))
     throw new InvalidOperationException("recv failed");
 if (received.RoutingId == null)

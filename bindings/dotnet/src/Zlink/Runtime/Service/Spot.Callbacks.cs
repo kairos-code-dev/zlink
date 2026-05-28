@@ -7,35 +7,6 @@ namespace Systems.Zlink;
 
 internal sealed partial class Spot
 {
-    private unsafe void OnNativeRoutedReceive(ZlinkRoutingId* sourceRoutingId,
-        ZlinkRoutingId* spotRoutingId, ulong requestSeq, IntPtr parts,
-        nuint partCount, IntPtr userData)
-    {
-        Action<Received>? handler = _routedReceiveHandler;
-        if (handler == null)
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-            return;
-        }
-
-        Message[] managedParts = Message.FromNativeVector(parts, partCount);
-        parts = IntPtr.Zero;
-        partCount = 0;
-        RoutingId? nodeRid = sourceRoutingId == null ? null :
-            RoutingIdCodec.ToRoutingId(
-                NativeHelpers.ReadRoutingId(ref *sourceRoutingId));
-        RoutingId? spotRid = spotRoutingId == null ? null :
-            RoutingIdCodec.ToRoutingId(
-                NativeHelpers.ReadRoutingId(ref *spotRoutingId));
-        Received received = requestSeq == 0
-            ? Received.Create(nodeRid, managedParts, spotRid: spotRid)
-            : Received.Create(nodeRid, managedParts, requestSeq, spotRid,
-                CreateRoutedReplyHandler(nodeRid, spotRid, requestSeq));
-        received.SetSendHandler(CreateRoutedSendHandler(nodeRid, spotRid));
-        CallbackDelivery.Post(_routedReceiveHandlerContext, () => handler(received));
-    }
-
     private ReceivedReplyHandler CreateRoutedReplyHandler(
         RoutingId? nodeRid,
         RoutingId? spotRid,
@@ -80,7 +51,7 @@ internal sealed partial class Spot
         if (eventKind == SpotDispatchEvent.SubscribeReadable
             && subjectKind == SpotDispatchSubjectKind.Spot)
         {
-            Action<SpotDispatchInfo>? dispatchHandler = _dispatchEventHandler;
+            SpotDispatchHandler? dispatchHandler = _dispatchEventHandler;
             if (dispatchHandler == null)
                 return;
 
@@ -95,14 +66,14 @@ internal sealed partial class Spot
             return;
         }
 
-        Action<SpotDispatchInfo>? handler = _dispatchEventHandler;
+        SpotDispatchHandler? handler = _dispatchEventHandler;
         if (handler == null)
             return;
 
-        ActorPart[]? actorParts = eventKind == SpotDispatchEvent.ActorReadable
+        ActorReceived[]? actorMessages = eventKind == SpotDispatchEvent.ActorReadable
             && subjectKind == SpotDispatchSubjectKind.Actor
             && info->Subject != IntPtr.Zero
-                ? ActorInterop.DrainActorParts(_node.Handle, info->Subject)
+                ? ActorInterop.DrainActors(_node.Handle, info->Subject)
                 : null;
         Timer? timer = eventKind == SpotDispatchEvent.TimerReadable
             && subjectKind == SpotDispatchSubjectKind.Timer
@@ -114,40 +85,10 @@ internal sealed partial class Spot
                 ? info->Subject
                 : IntPtr.Zero;
         SpotDispatchInfo dispatchInfo = new(eventKind, subjectKind,
-            timer, channelDealerSubject, DrainChannelReplyFrom, actorParts);
+            timer, channelDealerSubject, DrainChannelReplyFrom, actorMessages);
         try
         {
             handler(dispatchInfo);
-        }
-        catch (Exception ex)
-        {
-            Runtime.ReportUnhandledCallbackException(ex);
-        }
-    }
-
-    private unsafe void OnNativeActorJoin(IntPtr spot,
-        ZlinkSpotActorLifecycleInfo* info, IntPtr userData)
-    {
-        DispatchActorLifecycle(_actorJoinHandler, info);
-    }
-
-    private unsafe void OnNativeActorLeave(IntPtr spot,
-        ZlinkSpotActorLifecycleInfo* info, IntPtr userData)
-    {
-        DispatchActorLifecycle(_actorLeaveHandler, info);
-    }
-
-    private static unsafe void DispatchActorLifecycle(
-        Action<SpotActorLifecycleInfo>? handler,
-        ZlinkSpotActorLifecycleInfo* info)
-    {
-        if (handler == null || info == null)
-            return;
-
-        SpotActorLifecycleInfo managed = ActorInterop.FromNative(ref *info);
-        try
-        {
-            handler(managed);
         }
         catch (Exception ex)
         {

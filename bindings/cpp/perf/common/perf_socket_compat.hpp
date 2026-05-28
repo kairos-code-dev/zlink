@@ -389,6 +389,17 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, pub_socket_t>::value
                           || std::is_same<socket_type_t, xpub_socket_t>::value) {
                 try {
+                    if ((flags_ & ZLINK_DONTWAIT) == ZLINK_DONTWAIT) {
+                        send_result_t result = send_result_t::not_ready;
+                        const int rc =
+                          socket_.publish_no_wait (result, topic_id_, part_);
+                        if (rc != 0)
+                            return -1;
+                        if (result == send_result_t::sent)
+                            return 0;
+                        errno = EAGAIN;
+                        return -1;
+                    }
                     const bool sent = std::move (socket_.publish (topic_id_))
                                         .message (part_)
                                         .flags (flags_)
@@ -552,6 +563,53 @@ class socket_t
                 errno = EOPNOTSUPP;
                 return -1;
             }
+        });
+    }
+
+    int subscribe_part (std::optional<routing_id_t> &source_rid_out_,
+                        std::string &topic_out_,
+                        message_t &part_out_,
+                        bool &has_more_out_,
+                        int flags_ = 0)
+    {
+        return visit ([&] (auto &socket_) -> int {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, sub_socket_t>::value) {
+                try {
+                    const int rc = socket_.subscribe_part (
+                      source_rid_out_,
+                      topic_out_,
+                      part_out_,
+                      has_more_out_,
+                      static_cast<recv_flags_t> (flags_));
+                    if (rc == static_cast<int> (recv_result_t::ok))
+                        return 0;
+                    if (rc == static_cast<int> (recv_result_t::no_data)) {
+                        errno = EAGAIN;
+                        return -1;
+                    }
+                    errno = zlink_errno ();
+                    return -1;
+                }
+                catch (const recv_error_t &err) {
+                    errno = err.internal_errno ();
+                    return -1;
+                }
+            } else {
+                errno = EOPNOTSUPP;
+                return -1;
+            }
+        });
+    }
+
+    void *handle () noexcept
+    {
+        return visit ([] (auto &socket_) -> void * {
+            using socket_type_t = typename std::decay<decltype (socket_)>::type;
+            if constexpr (std::is_same<socket_type_t, std::monostate>::value)
+                return NULL;
+            else
+                return detail::native_handle (socket_);
         });
     }
 

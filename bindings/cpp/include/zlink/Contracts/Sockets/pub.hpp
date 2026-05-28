@@ -17,6 +17,14 @@ class pub_socket_t : public publisher_socket_t
 
     service::send_op_t publish (const std::string &topic_id_);
 
+    ZLINK_CPP_NODISCARD int publish_no_wait (send_result_t &result_,
+                                             const std::string &topic_id_,
+                                             message_t &part_)
+    {
+        return base_socket_t::publish_no_wait_result (
+          result_, topic_id_, part_);
+    }
+
     void on_send_ready (std::function<void()> handler_)
     {
         base_socket_t::on_send_ready (std::move (handler_));

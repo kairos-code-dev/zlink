@@ -155,11 +155,12 @@ internal static class ZLinkDotNetBackendMappings
     public static ZLinkBackendSpotDispatchInfo ToFramework(this SpotDispatchInfo info)
     {
         IReadOnlyList<ZLinkBackendActorPart>? actorParts = null;
-        if (info.Event == SpotDispatchEvent.ActorReadable && info.ActorParts.Count > 0)
+        if (info.Event == SpotDispatchEvent.ActorReadable && info.ActorMessages.Count > 0)
         {
-            actorParts = info.ActorParts
-                .Select(static p => p.ToFramework())
-                .ToArray();
+            var mapped = new List<ZLinkBackendActorPart>();
+            foreach (ActorReceived message in info.ActorMessages)
+                mapped.AddRange(message.ToFrameworkParts());
+            actorParts = mapped;
         }
 
         return new ZLinkBackendSpotDispatchInfo(
@@ -177,14 +178,21 @@ internal static class ZLinkDotNetBackendMappings
             ActorParts: actorParts);
     }
 
-    public static ZLinkBackendActorPart ToFramework(this ActorPart part)
+    public static IReadOnlyList<ZLinkBackendActorPart> ToFrameworkParts(
+        this ActorReceived message)
     {
-        return new ZLinkBackendActorPart(
-            part.Info.Actor.ToBackend(),
-            part.Info.SourceNodeRid,
-            part.Info.SourceSessionRid,
-            part.Message,
-            part.More);
+        var parts = new ZLinkBackendActorPart[message.Parts.Count];
+        for (int i = 0; i < parts.Length; i++)
+        {
+            parts[i] = new ZLinkBackendActorPart(
+                message.Info.Actor.ToBackend(),
+                message.Info.SourceNodeRid,
+                message.Info.SourceSessionRid,
+                message.Parts[i],
+                i + 1 < parts.Length);
+        }
+
+        return parts;
     }
 
     public static ZLinkBackendSpotActorLifecycleInfo ToFramework(

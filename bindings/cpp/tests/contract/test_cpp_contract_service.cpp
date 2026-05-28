@@ -26,6 +26,24 @@ template<typename SpotT> class has_subscribe_result_t
     static const bool value = decltype (test<SpotT> (0))::value;
 };
 
+template<typename SpotT> class has_subscribe_part_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().subscribe_part (
+                      std::declval<std::string &> (),
+                      std::declval<zlink::message_t &> (),
+                      std::declval<bool &> (),
+                      std::declval<zlink::recv_flags_t> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SpotT> (0))::value;
+};
+
 template<typename SpotT> class has_try_subscribe_result_t
 {
   private:
@@ -343,6 +361,8 @@ template<typename T> class has_auto_hwm_msg_unit_setter_t
 
 static_assert (has_subscribe_result_t<zlink::service::spot_t>::value,
                "spot_t must expose subscribe receive");
+static_assert (has_subscribe_part_t<zlink::service::spot_t>::value,
+               "spot_t must expose single part subscribe receive");
 static_assert (!has_try_subscribe_result_t<zlink::service::spot_t>::value,
                "spot_t must not expose subscribe_no_wait");
 static_assert (!has_try_publish_t<zlink::service::spot_t>::value,
@@ -404,11 +424,11 @@ void test_registry_query_and_discovery_metadata ()
     zlink::service::registry_t registry (ctx);
     assert (registry.valid ());
 
-    const zlink::registry_status_t status = registry.status_snapshot ();
+    const zlink::registry_status_t status = registry.status ();
     assert (status.registry_id () == 0);
 
     const std::vector<zlink::registry_topology_entry_t> topology =
-      registry.topology_snapshot ();
+      registry.topology ();
     assert (topology.size () >= 0);
 
     zlink::service::discovery_t discovery (
@@ -441,19 +461,19 @@ void test_spot_node_snapshot_contract ()
       zlink_cpp_contract::unique_inproc ("spot-node");
     node.set_pub_bind (endpoint);
 
-    const zlink::spot_node_status_t status = node.status_snapshot ();
+    const zlink::spot_node_status_t status = node.status ();
     assert (status.local_endpoint ().empty ()
             || status.local_endpoint () == endpoint);
 
     const std::vector<zlink::spot_node_peer_entry_t> peers =
-      node.peers_snapshot ();
+      node.peers ();
     assert (peers.size () >= 0);
     if (!peers.empty ())
         assert (peers[0].kind () == zlink::spot_peer_kind::spot_mesh
                 || peers[0].kind () == zlink::spot_peer_kind::router_channel);
 
     const std::vector<zlink::spot_node_subject_entry_t> subjects =
-      node.subjects_snapshot ();
+      node.subjects ();
     assert (subjects.size () >= 0);
     assert (node.routing_id ().size () == 16);
 

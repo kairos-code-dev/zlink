@@ -48,8 +48,8 @@ use crate::error::{
 use crate::ffi;
 use crate::message::RoutingId;
 use crate::socket::{
-    DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket,
-    XPubSocket, XSubSocket,
+    DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
+    XSubSocket,
 };
 
 fn ignore_monitor_event(_: &MonitorEvent) {}
@@ -149,12 +149,12 @@ impl MonitorEvent {
 }
 
 // ---------------------------------------------------------------------------
-// MonitorSnapshot
+// MonitorStatus
 // ---------------------------------------------------------------------------
 
 /// A point-in-time snapshot of a monitored entity's state.
 #[derive(Debug, Clone)]
-pub struct MonitorSnapshot {
+pub struct MonitorStatus {
     pub source_kind: MonitorSourceKind,
     pub state_flags: u32,
     pub detail_flags: u32,
@@ -179,8 +179,8 @@ pub struct MonitorSnapshot {
     pub auto_hwm_deferred_rcvhwm: i32,
 }
 
-impl MonitorSnapshot {
-    pub(crate) fn from_raw(raw: &ffi::zlink_monitor_snapshot_t) -> Self {
+impl MonitorStatus {
+    pub(crate) fn from_raw(raw: &ffi::zlink_monitor_status_t) -> Self {
         Self {
             source_kind: match raw.source_kind {
                 ffi::zlink_monitor_source_kind_t::ZLINK_MONITOR_SOURCE_SOCKET => {
@@ -294,12 +294,12 @@ impl SocketMonitor {
         Ok(Some(MonitorEvent::from_raw(&val)))
     }
 
-    /// Read the current state snapshot.
-    pub fn snapshot(&self) -> Result<MonitorSnapshot, ConfigError> {
-        let mut raw = MaybeUninit::<ffi::zlink_monitor_snapshot_t>::uninit();
-        check_config_rc(unsafe { ffi::zlink_monitor_snapshot(self.handle, raw.as_mut_ptr()) })?;
+    /// Read the current monitor status.
+    pub fn status(&self) -> Result<MonitorStatus, ConfigError> {
+        let mut raw = MaybeUninit::<ffi::zlink_monitor_status_t>::uninit();
+        check_config_rc(unsafe { ffi::zlink_monitor_status(self.handle, raw.as_mut_ptr()) })?;
         let val = unsafe { raw.assume_init() };
-        Ok(MonitorSnapshot::from_raw(&val))
+        Ok(MonitorStatus::from_raw(&val))
     }
 
     /// Install a callback handler for monitor events.

@@ -237,26 +237,26 @@ SpotNode is a topology and configuration handle, not a topic publisher. Calling
 ### Internal socket snapshot
 
 ```c
-typedef struct zlink_spot_node_socket_snapshot_filter_t {
+typedef struct zlink_spot_node_socket_filter_t {
   zlink_spot_node_socket_owner_t owner;
   zlink_socket_type_t socket_type;
   char socket_name[64];
-} zlink_spot_node_socket_snapshot_filter_t;
+} zlink_spot_node_socket_filter_t;
 
-typedef struct zlink_spot_node_socket_snapshot_entry_t {
+typedef struct zlink_spot_node_socket_entry_t {
   zlink_spot_node_socket_owner_t owner;
   uint64_t owner_id;
   char owner_name[64];
   char socket_name[64];
   zlink_socket_type_t socket_type;
   uint32_t auto_hwm_visible;
-  zlink_monitor_snapshot_t snapshot;
-} zlink_spot_node_socket_snapshot_entry_t;
+  zlink_monitor_status_t snapshot;
+} zlink_spot_node_socket_entry_t;
 
-zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
+zlink_config_result_t zlink_spot_node_internal_sockets(
   void *node,
-  const zlink_spot_node_socket_snapshot_filter_t *filter,
-  zlink_spot_node_socket_snapshot_entry_t *entries,
+  const zlink_spot_node_socket_filter_t *filter,
+  zlink_spot_node_socket_entry_t *entries,
   size_t *count);
 ```
 
@@ -561,6 +561,9 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
   and drains it with `zlink_spot_node_actor_recv_part()`.
 - `ACTOR_JOIN_READABLE` means the Spot has Actor join requests to process.
   Drain with `zlink_spot_actor_join_recv()` until `ZLINK_RECV_NO_DATA`.
+- `ACTOR_LIFECYCLE_READABLE` means the Spot has Actor lifecycle events to
+  process. Drain with `zlink_spot_recv_actor_lifecycle()` until
+  `ZLINK_RECV_NO_DATA`. Its `subject_kind` is `SPOT` and `subject` is `NULL`.
 
 Drain rules by dispatch subject:
 
@@ -572,6 +575,7 @@ Drain rules by dispatch subject:
 | `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | `zlink_spot_channel_reply_progress_from()` |
 | `ACTOR_READABLE` | `ACTOR` | callback-lifetime `const zlink_actor_ref_t *` | `zlink_spot_node_actor_recv_part()` |
 | `ACTOR_JOIN_READABLE` | `SPOT` | `spot_` | `zlink_spot_actor_join_recv()` |
+| `ACTOR_LIFECYCLE_READABLE` | `SPOT` | `NULL` | `zlink_spot_recv_actor_lifecycle()` |
 
 Dispatch priority is fixed as:
 
@@ -583,11 +587,6 @@ Dispatch priority is fixed as:
 6. `ACTOR_READABLE`
 
 ```c
-zlink_handler_result_t zlink_spot_handler(
-  void *spot,
-  zlink_spot_handler_fn handler,
-  void *userdata);
-
 zlink_handler_result_t zlink_spot_dispatch_event_handler(
   void *spot,
   zlink_spot_dispatch_event_handler_fn handler,
@@ -608,22 +607,14 @@ zlink_config_result_t zlink_socket_get_channel_name(
   size_t *channel_name_len_out);
 ```
 
-`zlink_spot_handler()` is a **routed-only direct callback**. The callback receives
-routed message payloads inline. Subscribe, channel reply, timer, and Actor events
-are not delivered through this handler. If any of those event types are needed,
-`zlink_spot_handler()` cannot be used.
-
 `zlink_spot_dispatch_event_handler()` is a **unified readiness notification**. It
 covers all event types (subscribe, routed, channel reply, timer, Actor join, Actor
-readable). The callback signals that data is available; the caller reads it with the
-corresponding drain API (`zlink_spot_recv()`, `zlink_spot_subscribe()`, etc.).
+readable, Actor lifecycle). The callback signals that data is available; the caller
+reads it with the corresponding drain API (`zlink_spot_recv_part()`,
+`zlink_spot_subscribe_part()`, `zlink_spot_recv_actor_lifecycle()`, etc.).
 
-Subscribe, channel reply, timer, and Actor events have **no direct callback mode**.
-They can only be consumed via `zlink_spot_dispatch_event_handler()` readiness.
-
-The two handlers are mutually exclusive. Registering one while the other is active
-fails with `ZLINK_HANDLER_BUSY`. Choosing `zlink_spot_handler()` means the Spot
-cannot receive subscribe, channel reply, timer, or Actor events.
+SPOT routed receive and Actor lifecycle events have **no direct callback mode**.
+They are consumed through dispatch readiness followed by an explicit drain call.
 
 After `SUBSCRIBE_READABLE` or `ROUTED_READABLE`, callers must drain until the
 corresponding pull API returns `ZLINK_RECV_NO_DATA` / `EAGAIN`.
@@ -747,38 +738,38 @@ zlink_submit_result_t zlink_router_reply_spot(
 ## Monitoring and snapshots
 
 ```c
-zlink_config_result_t zlink_spot_node_status_snapshot(
+zlink_config_result_t zlink_spot_node_status(
   void *node,
   zlink_spot_node_status_t *out);
 
-zlink_config_result_t zlink_spot_node_peers_snapshot(
+zlink_config_result_t zlink_spot_node_peers(
   void *node,
   zlink_spot_node_peer_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_node_peers_query(
+zlink_config_result_t zlink_spot_node_peers(
   void *node,
   const zlink_spot_node_peer_filter_t *filter,
   zlink_spot_node_peer_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_node_subjects_snapshot(
+zlink_config_result_t zlink_spot_node_subjects(
   void *node,
   const zlink_spot_node_subject_filter_t *filter,
   zlink_spot_node_subject_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_node_spots_snapshot(
+zlink_config_result_t zlink_spot_node_spots(
   void *node,
   zlink_spot_node_spot_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_node_actors_snapshot(
+zlink_config_result_t zlink_spot_node_actors(
   void *node,
   zlink_spot_node_actor_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_actors_snapshot(
+zlink_config_result_t zlink_spot_actors(
   void *spot,
   zlink_actor_ref_t *entries,
   size_t *count);
@@ -790,15 +781,15 @@ snapshot/query functions.
 - `entries == NULL` causes a snapshot function to write only the required row
   count into `*count`.
 - Insufficient `*count` fails with `ENOBUFS` and writes the required count.
-- `zlink_spot_node_spots_snapshot()` returns the list of local Spots.
+- `zlink_spot_node_spots()` returns the list of local Spots.
   Entry Spot is also included in this list.
   `spot_kind` distinguishes Entry Spot rows from user Spot rows.
   `joined_actor_count`, `pending_actor_join_count`, `route_synced`, and
   `last_changed_ms` are diagnostic values.
-- `zlink_spot_node_actors_snapshot()` returns live local Actor rows. Each row
+- `zlink_spot_node_actors()` returns live local Actor rows. Each row
   contains the Actor ref, current Spot rid, current Spot kind, route sync
   state, unread message count, and `last_changed_ms`.
-- `zlink_spot_actors_snapshot()` returns the list of Actor refs that are joined
+- `zlink_spot_actors()` returns the list of Actor refs that are joined
   to a given Spot.
 - Snapshot values must not be used as flow-control contracts.
 
@@ -905,10 +896,6 @@ typedef void (*zlink_actor_lookup_handler_fn)(
   const zlink_actor_lookup_result_t *result,
   void *userdata);
 
-typedef void (*zlink_spot_actor_lifecycle_handler_fn)(
-  void *spot,
-  const zlink_spot_actor_lifecycle_info_t *info,
-  void *userdata);
 ```
 
 `zlink_actor_route_t` is returned by `zlink_discovery_resolve_actor()`.
@@ -932,14 +919,14 @@ completion handler. On success, `actor` is the final Actor ref after the move an
 `target_node_rid` is the target SpotNode rid supplied by the caller. Entry Spot
 join has no application join payload and no reply payload, so the callback does
 not receive message parts. Idempotent success still returns a success result but
-does not fire joined/left lifecycle callbacks again because the location did not
+does not fire joined/left lifecycle events again because the location did not
 change.
 
 `zlink_actor_lookup_result_t` is delivered to the remote-Actor lookup
 completion handler. `result` is the final outcome. On success, `actor` is a
 checked Actor ref that exists on the target node. `flags` is reserved and 0.
 
-`zlink_spot_actor_lifecycle_info_t` is delivered to a Spot lifecycle handler.
+`zlink_spot_actor_lifecycle_info_t` is delivered to a Spot lifecycle receive API.
 `previous_actor` is the Actor ref before the transition (zero-value ref for
 a creation event); `current_actor` is the Actor ref after the transition
 (zero-value ref for a destroy event). The previous node rid is read from
@@ -1001,7 +988,7 @@ zlink_submit_result_t zlink_remote_actor_get_ref(
   returns a checked ref in `actor_out`. Actor creation does not go through the
   Entry Spot dispatch handler or any join request handler. Creation does not
   publish an active route. Creation schedules the Entry Spot `on_join`
-  lifecycle callback.
+  lifecycle event.
 - Creating with a live actor id that already exists on the same node fails with
   an `EBUSY`-class result.
 - `node == NULL` fails with `ZLINK_CONFIG_INVALID_HANDLE`; `errno` is `EFAULT`.
@@ -1155,7 +1142,7 @@ the Actor's current Spot changes to the target.
   completes as an idempotent success and does not fire joined/left lifecycle
   callbacks again.
 - When the location actually changes, the previous user Spot receives a left
-  lifecycle callback and the target Entry Spot receives a joined lifecycle
+  lifecycle event and the target Entry Spot receives a joined lifecycle
   callback.
 - If the target node is unreachable, completion fails with a not-connected-class
   result.
@@ -1490,32 +1477,38 @@ working. Rejects and timeouts leave the previous session mapping unchanged.
   `ACTOR_READABLE` event is raised on the current Spot dispatch handler.
 - `timeout_ms == 0` is a nonblocking request.
 
-### Spot lifecycle handler
+### Spot lifecycle receive
 
 ```c
-zlink_handler_result_t zlink_spot_actor_lifecycle_handler(
+typedef enum zlink_spot_actor_lifecycle_event_kind_t {
+  ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED = 1,
+  ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT = 2
+} zlink_spot_actor_lifecycle_event_kind_t;
+
+typedef struct zlink_spot_actor_lifecycle_event_t {
+  zlink_spot_actor_lifecycle_event_kind_t kind;
+  zlink_spot_actor_lifecycle_info_t info;
+} zlink_spot_actor_lifecycle_event_t;
+
+zlink_recv_result_t zlink_spot_recv_actor_lifecycle(
   void *spot,
-  zlink_spot_actor_lifecycle_handler_fn on_join,
-  zlink_spot_actor_lifecycle_handler_fn on_leave,
-  void *userdata);
+  zlink_spot_actor_lifecycle_event_t *event_out,
+  zlink_recv_flags_t flags);
 ```
 
-`zlink_spot_actor_lifecycle_handler()` registers Actor location-change
-callbacks for a specific Spot. The callbacks fire after the actual location
-change has committed; they are observation callbacks.
+`zlink_spot_recv_actor_lifecycle()` drains Actor lifecycle events for one Spot.
+Lifecycle readiness is reported by `ACTOR_LIFECYCLE_READABLE`; the event payload
+is not delivered inline through a direct callback.
 
-- `on_join` fires after an Actor enters the Spot; `on_leave` fires after an
-  Actor leaves the Spot.
-- Both the Entry Spot and user Spots support this handler.
-- `on_join == NULL` suppresses join callbacks, `on_leave == NULL` suppresses
-  leave callbacks. With both `NULL`, the existing registration is removed.
-- New registration replaces any previously registered handler.
-- Registration does not replay Actors that are already in the Spot. Only
-  creation, join, leave, and destroy transitions that occur after registration
-  trigger callbacks.
-- `spot == NULL` fails as an invalid-handle-class result.
-- Re-entering this function from inside the same Spot's lifecycle callback
-  fails as invalid-state- or deadlock-class.
+- `kind` is `JOINED` after an Actor enters the Spot and `LEFT` after an Actor
+  leaves the Spot.
+- `kind` is a convenience classification of the state transition already present
+  in `info`; both values must describe the same transition.
+- `spot == NULL` or `event_out == NULL` fails as an invalid-handle-class result.
+- With `ZLINK_DONTWAIT`, an empty lifecycle queue returns `ZLINK_RECV_NO_DATA`
+  and sets errno to `EAGAIN`.
+- Lifecycle events are queued only for Spots with a dispatch handler already
+  registered. Registration does not replay earlier Actor transitions.
 
 `on_join` is invoked for:
 
@@ -1551,28 +1544,28 @@ change has committed; they are observation callbacks.
 
 Delivery rules:
 
-- Lifecycle callbacks are optional. They fire only when a lifecycle handler is
+- Lifecycle events are optional. They fire only when a lifecycle receive API is
   registered on the Spot.
 - Creation, join, leave, and destroy callbacks that occur while no handler is
   registered are not retroactively delivered.
-- Lifecycle callbacks are not Actor queue payload, so they are not read via
+- Lifecycle events are not Actor queue payload, so they are not read via
   `zlink_spot_node_actor_recv_part()`.
-- A lifecycle callback executes in the dispatch worker context of its Spot.
-  The same Spot's dispatch callback and lifecycle callback never run
+- A lifecycle event executes in the dispatch worker context of its Spot.
+  The same Spot's dispatch callback and lifecycle event never run
   concurrently.
-- There is no execution-order guarantee between lifecycle callbacks belonging
+- There is no execution-order guarantee between lifecycle events belonging
   to different Spots. In a single join operation the source `on_leave` and
   target `on_join` are both scheduled after commit, but the actual execution
   order is not part of the public contract.
 - The join completion handler runs after state commit and active route update.
-  Whether the lifecycle callback has already run is not guaranteed.
+  Whether the lifecycle event has already run is not guaranteed.
 - For deciding join completion order, the application must use the join
-  completion handler and the returned final Actor ref. Lifecycle callbacks are
+  completion handler and the returned final Actor ref. Lifecycle events are
   observation-only.
 - The `info` pointer is valid only inside the callback; copy values inside
   the callback if needed later.
 - Re-entering join, leave, or destroy on the same Actor from inside a
-  lifecycle callback is not supported.
+  lifecycle event is not supported.
 
 ### Discovery active route
 

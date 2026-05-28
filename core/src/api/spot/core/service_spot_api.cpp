@@ -574,7 +574,7 @@ zlink_recv_result_t zlink_spot_subscribe_part (
     return ZLINK_RECV_OK;
 }
 
-zlink_recv_result_t zlink_spot_subscription_event_recv (
+zlink_recv_result_t zlink_spot_recv_subscription_event (
   void *spot_,
   const zlink_routing_id_t **source_rid_out_,
   int *subscribed_out_,

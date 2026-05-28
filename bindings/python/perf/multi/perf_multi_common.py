@@ -316,7 +316,7 @@ def wait_spot_peer_connected(node, timeout_s):
     deadline = time.perf_counter() + timeout_s
     while time.perf_counter() < deadline:
         try:
-            if node.status_snapshot().connected_peer_count >= 1:
+            if node.status().connected_peer_count >= 1:
                 return True
         except Exception:
             pass

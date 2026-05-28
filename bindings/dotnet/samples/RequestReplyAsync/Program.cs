@@ -24,7 +24,7 @@ Task serverTask = Task.Run(() =>
 {
     try
     {
-        using var received = new Received();
+        using var received = Received.Create();
         if (!routerSocket.Recv(received))
             throw new InvalidOperationException("recv failed");
         RoutingId routingId = received.RoutingId

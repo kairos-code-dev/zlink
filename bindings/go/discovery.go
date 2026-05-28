@@ -373,7 +373,7 @@ func (c *RegistryQueryClient) Close() error {
 		return nil
 	}
 	handle := c.handle
-	if err := checkRC(C.zlink_registry_query_destroy(&handle)); err != nil {
+	if err := checkRC(C.zlink_registry_query_client_destroy(&handle)); err != nil {
 		return err
 	}
 	c.closed = true
@@ -550,18 +550,18 @@ func (r *Registry) SetBroadcastInterval(intervalMS uint32) error {
 	return r.SetOption(RegistryOptionBroadcastIntervalMS, intervalMS)
 }
 
-func (r *Registry) StatusSnapshot() (*RegistryStatus, error) {
+func (r *Registry) Status() (*RegistryStatus, error) {
 	if r == nil || r.closed {
 		return nil, stateError("registry is closed")
 	}
 	var raw C.zlink_registry_status_t
-	if err := checkRC(C.zlink_registry_status_snapshot(r.raw(), &raw)); err != nil {
+	if err := checkRC(C.zlink_registry_status(r.raw(), &raw)); err != nil {
 		return nil, err
 	}
 	return registryStatusFromC(raw), nil
 }
 
-func (r *Registry) ServiceSummarySnapshot(filter *RegistryServiceSummaryFilter) ([]RegistryServiceSummaryEntry, error) {
+func (r *Registry) ServiceSummary(filter *RegistryServiceSummaryFilter) ([]RegistryServiceSummaryEntry, error) {
 	if r == nil || r.closed {
 		return nil, stateError("registry is closed")
 	}
@@ -575,7 +575,7 @@ func (r *Registry) ServiceSummarySnapshot(filter *RegistryServiceSummaryFilter) 
 		rawFilter = &cfilter
 	}
 	return queryRegistryServiceSummary(func(entries *C.zlink_registry_service_summary_entry_t, count *C.size_t) error {
-		return checkRC(C.zlink_registry_service_summary_snapshot(r.raw(), rawFilter, entries, count))
+		return checkRC(C.zlink_registry_service_summary(r.raw(), rawFilter, entries, count))
 	})
 }
 
@@ -602,16 +602,16 @@ func (r *Registry) MemberPeers(channelName string) ([]MemberPeerEntry, error) {
 	return out, err
 }
 
-func (r *Registry) TopologySnapshot() ([]RegistryTopologyEntry, error) {
+func (r *Registry) Topology() ([]RegistryTopologyEntry, error) {
 	if r == nil || r.closed {
 		return nil, stateError("registry is closed")
 	}
 	return queryRegistryTopology(func(entries *C.zlink_registry_topology_entry_t, count *C.size_t) error {
-		return checkRC(C.zlink_registry_topology_snapshot(r.raw(), entries, count))
+		return checkRC(C.zlink_registry_topology(r.raw(), nil, entries, count))
 	})
 }
 
-func (r *Registry) TopologyQuery(filter *RegistryTopologyFilter) ([]RegistryTopologyEntry, error) {
+func (r *Registry) TopologyWithFilter(filter *RegistryTopologyFilter) ([]RegistryTopologyEntry, error) {
 	if r == nil || r.closed {
 		return nil, stateError("registry is closed")
 	}
@@ -625,7 +625,7 @@ func (r *Registry) TopologyQuery(filter *RegistryTopologyFilter) ([]RegistryTopo
 		rawFilter = &cfilter
 	}
 	return queryRegistryTopology(func(entries *C.zlink_registry_topology_entry_t, count *C.size_t) error {
-		return checkRC(C.zlink_registry_topology_query(r.raw(), rawFilter, entries, count))
+		return checkRC(C.zlink_registry_topology(r.raw(), rawFilter, entries, count))
 	})
 }
 
@@ -635,7 +635,7 @@ func (c *RegistryQueryClient) Connect(endpoint string) error {
 	})
 }
 
-func (c *RegistryQueryClient) Snapshot(filter *RegistryTopologyFilter) ([]RegistryTopologyEntry, error) {
+func (c *RegistryQueryClient) Topology(filter *RegistryTopologyFilter) ([]RegistryTopologyEntry, error) {
 	if c == nil || c.closed {
 		return nil, stateError("registry query client is closed")
 	}
@@ -649,27 +649,27 @@ func (c *RegistryQueryClient) Snapshot(filter *RegistryTopologyFilter) ([]Regist
 		rawFilter = &cfilter
 	}
 	return queryRegistryTopology(func(entries *C.zlink_registry_topology_entry_t, count *C.size_t) error {
-		return checkRC(C.zlink_registry_query_snapshot(c.raw(), rawFilter, entries, count))
+		return checkRC(C.zlink_registry_query_client_topology(c.raw(), rawFilter, entries, count))
 	})
 }
 
-func (n *SpotNode) StatusSnapshot() (*SpotNodeStatus, error) {
+func (n *SpotNode) Status() (*SpotNodeStatus, error) {
 	if n == nil || n.closed {
 		return nil, stateError("spot node is closed")
 	}
 	var raw C.zlink_spot_node_status_t
-	if err := checkRC(C.zlink_spot_node_status_snapshot(n.raw(), &raw)); err != nil {
+	if err := checkRC(C.zlink_spot_node_status(n.raw(), &raw)); err != nil {
 		return nil, err
 	}
 	return spotNodeStatusFromC(raw), nil
 }
 
-func (n *SpotNode) PeersSnapshot() ([]SpotNodePeerEntry, error) {
+func (n *SpotNode) Peers() ([]SpotNodePeerEntry, error) {
 	if n == nil || n.closed {
 		return nil, stateError("spot node is closed")
 	}
 	return querySpotNodePeers(func(entries *C.zlink_spot_node_peer_entry_t, count *C.size_t) error {
-		return checkRC(C.zlink_spot_node_peers_snapshot(n.raw(), entries, count))
+		return checkRC(C.zlink_spot_node_peers(n.raw(), nil, entries, count))
 	})
 }
 
@@ -687,11 +687,11 @@ func (n *SpotNode) PeersQuery(filter *SpotNodePeerFilter) ([]SpotNodePeerEntry, 
 		rawFilter = &cfilter
 	}
 	return querySpotNodePeers(func(entries *C.zlink_spot_node_peer_entry_t, count *C.size_t) error {
-		return checkRC(C.zlink_spot_node_peers_query(n.raw(), rawFilter, entries, count))
+		return checkRC(C.zlink_spot_node_peers(n.raw(), rawFilter, entries, count))
 	})
 }
 
-func (n *SpotNode) SubjectsSnapshot(filters ...*SpotNodeSubjectFilter) ([]SpotNodeSubjectEntry, error) {
+func (n *SpotNode) Subjects(filters ...*SpotNodeSubjectFilter) ([]SpotNodeSubjectEntry, error) {
 	if n == nil || n.closed {
 		return nil, stateError("spot node is closed")
 	}
@@ -709,25 +709,25 @@ func (n *SpotNode) SubjectsSnapshot(filters ...*SpotNodeSubjectFilter) ([]SpotNo
 		rawFilter = &cfilter
 	}
 	return querySpotNodeSubjects(func(entries *C.zlink_spot_node_subject_entry_t, count *C.size_t) error {
-		return checkRC(C.zlink_spot_node_subjects_snapshot(n.raw(), rawFilter, entries, count))
+		return checkRC(C.zlink_spot_node_subjects(n.raw(), rawFilter, entries, count))
 	})
 }
 
-func (n *SpotNode) InternalSocketsSnapshot(filter *SpotNodeSocketSnapshotFilter) ([]SpotNodeSocketSnapshotEntry, error) {
+func (n *SpotNode) InternalSockets(filter *SpotNodeSocketFilter) ([]SpotNodeSocketEntry, error) {
 	if n == nil || n.closed {
 		return nil, stateError("spot node is closed")
 	}
-	var rawFilter *C.zlink_spot_node_socket_snapshot_filter_t
-	var cfilter C.zlink_spot_node_socket_snapshot_filter_t
+	var rawFilter *C.zlink_spot_node_socket_filter_t
+	var cfilter C.zlink_spot_node_socket_filter_t
 	if filter != nil {
-		if err := validateSpotNodeSocketSnapshotFilter(*filter); err != nil {
+		if err := validateSpotNodeSocketFilter(*filter); err != nil {
 			return nil, err
 		}
 		cfilter = filter.toC()
 		rawFilter = &cfilter
 	}
-	return querySpotNodeInternalSockets(func(entries *C.zlink_spot_node_socket_snapshot_entry_t, count *C.size_t) error {
-		return checkRC(C.zlink_spot_node_internal_sockets_snapshot(n.raw(), rawFilter, entries, count))
+	return querySpotNodeInternalSockets(func(entries *C.zlink_spot_node_socket_entry_t, count *C.size_t) error {
+		return checkRC(C.zlink_spot_node_internal_sockets(n.raw(), rawFilter, entries, count))
 	})
 }
 
@@ -771,7 +771,7 @@ func querySpotNodeSubjects(fetch func(*C.zlink_spot_node_subject_entry_t, *C.siz
 	)
 }
 
-func querySpotNodeInternalSockets(fetch func(*C.zlink_spot_node_socket_snapshot_entry_t, *C.size_t) error) ([]SpotNodeSocketSnapshotEntry, error) {
+func querySpotNodeInternalSockets(fetch func(*C.zlink_spot_node_socket_entry_t, *C.size_t) error) ([]SpotNodeSocketEntry, error) {
 	return queryCountedSnapshot(
 		func() (int, error) {
 			var count C.size_t
@@ -780,14 +780,14 @@ func querySpotNodeInternalSockets(fetch func(*C.zlink_spot_node_socket_snapshot_
 			}
 			return int(count), nil
 		},
-		func(native []C.zlink_spot_node_socket_snapshot_entry_t) (int, error) {
+		func(native []C.zlink_spot_node_socket_entry_t) (int, error) {
 			count := C.size_t(len(native))
 			if err := fetch(&native[0], &count); err != nil {
 				return 0, err
 			}
 			return int(count), nil
 		},
-		spotNodeSocketSnapshotEntryFromC,
+		spotNodeSocketEntryFromC,
 	)
 }
 
@@ -950,8 +950,8 @@ func (f SpotNodeSubjectFilter) toC() C.zlink_spot_node_subject_filter_t {
 	return out
 }
 
-func (f SpotNodeSocketSnapshotFilter) toC() C.zlink_spot_node_socket_snapshot_filter_t {
-	var out C.zlink_spot_node_socket_snapshot_filter_t
+func (f SpotNodeSocketFilter) toC() C.zlink_spot_node_socket_filter_t {
+	var out C.zlink_spot_node_socket_filter_t
 	if f.Owner != nil {
 		out.owner = C.zlink_spot_node_socket_owner_t(*f.Owner)
 	}
@@ -1021,15 +1021,15 @@ func spotNodeSubjectEntryFromC(raw C.zlink_spot_node_subject_entry_t) SpotNodeSu
 	}
 }
 
-func spotNodeSocketSnapshotEntryFromC(raw C.zlink_spot_node_socket_snapshot_entry_t) SpotNodeSocketSnapshotEntry {
-	return SpotNodeSocketSnapshotEntry{
+func spotNodeSocketEntryFromC(raw C.zlink_spot_node_socket_entry_t) SpotNodeSocketEntry {
+	return SpotNodeSocketEntry{
 		Owner:          SpotNodeSocketOwner(raw.owner),
 		OwnerID:        uint64(raw.owner_id),
 		OwnerName:      C.GoString(&raw.owner_name[0]),
 		SocketName:     C.GoString(&raw.socket_name[0]),
 		SocketType:     SocketType(raw.socket_type),
 		AutoHwmVisible: uint32(raw.auto_hwm_visible) != 0,
-		Snapshot:       monitorSnapshotFromC(raw.snapshot),
+		MonitorStatus:       monitorStatusFromC(raw.monitor_status),
 	}
 }
 
@@ -1200,7 +1200,7 @@ func validateSpotNodePeerFilter(filter SpotNodePeerFilter) error {
 	return validateFixedCString("peer_endpoint", *filter.PeerEndpoint)
 }
 
-func validateSpotNodeSocketSnapshotFilter(filter SpotNodeSocketSnapshotFilter) error {
+func validateSpotNodeSocketFilter(filter SpotNodeSocketFilter) error {
 	if filter.SocketName == nil || *filter.SocketName == "" {
 		return nil
 	}

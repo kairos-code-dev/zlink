@@ -1,18 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Collections.Generic;
-
 namespace Systems.Zlink;
 
 public interface IMessageSocket : IConnectableSocket
 {
     SendOperation Send();
-
-    bool Send(Message message, SendFlags flags = SendFlags.None);
-
-    bool RecvPart(Message result, out bool hasMore,
-        RecvFlags flags = RecvFlags.None);
 
     bool Recv(Received result, RecvFlags flags = RecvFlags.None);
 
@@ -38,9 +31,4 @@ public interface IDealerSocket : IMessageSocket
     string GetChannelName();
 
     RequestOperation Request();
-
-    bool RequestFrame(ulong requestSeq, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None);
-
-    void Reply(ulong requestToken, IReadOnlyList<Message> parts);
 }

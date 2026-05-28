@@ -47,8 +47,8 @@ func main() {
 	messageReceived := false
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		_, _ = publisherNode.StatusSnapshot()
-		_, _ = subscriberNode.StatusSnapshot()
+		_, _ = publisherNode.Status()
+		_, _ = subscriberNode.Status()
 		_, pubErr := publisher.Publish(topic).Message(samplecommon.Message(payload)).Submit(nil)
 		if pubErr != nil {
 			time.Sleep(10 * time.Millisecond)

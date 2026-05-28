@@ -26,8 +26,8 @@ internal static partial class NativeMethods
         out ZlinkMonitorEvent @event, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_monitor_snapshot(IntPtr monitor,
-        out ZlinkMonitorSnapshot snapshot);
+    internal static extern int zlink_monitor_status(IntPtr monitor,
+        out ZlinkMonitorStatus snapshot);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_monitor_close(ref IntPtr monitor);

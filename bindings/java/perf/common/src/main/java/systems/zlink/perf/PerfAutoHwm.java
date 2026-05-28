@@ -4,13 +4,13 @@ package systems.zlink.perf;
 
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.sockets.AutoHwmRecalcReason;
-import systems.zlink.contracts.eventing.MonitorSnapshot;
+import systems.zlink.contracts.eventing.MonitorStatus;
 import systems.zlink.contracts.eventing.MonitorSocket;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeSocketOwner;
-import systems.zlink.contracts.service.spot.SpotNodeSocketSnapshotEntry;
+import systems.zlink.contracts.service.spot.SpotNodeSocketEntry;
 import java.util.Locale;
 
 final class PerfAutoHwm {
@@ -20,8 +20,8 @@ final class PerfAutoHwm {
     static void printSingleMonitor(PerfUtil.Config config,
                                    MonitorSocket monitor, String component,
                                    SocketType socketType) {
-        MonitorSnapshot snapshot = monitor.snapshot();
-        if (!visible(snapshot)) {
+        MonitorStatus monitorStatus = monitor.status();
+        if (!visible(monitorStatus)) {
             return;
         }
         System.out.println("AUTO_HWM_DETAIL"
@@ -33,26 +33,26 @@ final class PerfAutoHwm {
             + ",owner_id=0"
             + ",socket=" + component
             + ",socket_type=" + socketTypeName(socketType)
-            + ",role=" + roleName(snapshot.autoHwmRole())
-            + ",sndhwm=" + snapshot.autoHwmAppliedSndHwm()
-            + ",rcvhwm=" + snapshot.autoHwmAppliedRcvHwm()
+            + ",role=" + roleName(monitorStatus.autoHwmRole())
+            + ",sndhwm=" + monitorStatus.autoHwmAppliedSndHwm()
+            + ",rcvhwm=" + monitorStatus.autoHwmAppliedRcvHwm()
             + ",effective_message_bytes="
-            + snapshot.autoHwmEffectiveMessageBytes()
-            + ",effective_sndbuf=" + snapshot.autoHwmAppliedSndBuffer()
-            + ",effective_rcvbuf=" + snapshot.autoHwmAppliedRcvBuffer()
+            + monitorStatus.autoHwmEffectiveMessageBytes()
+            + ",effective_sndbuf=" + monitorStatus.autoHwmAppliedSndBuffer()
+            + ",effective_rcvbuf=" + monitorStatus.autoHwmAppliedRcvBuffer()
             + ",socket_message_slots="
-            + snapshot.autoHwmSocketMessageSlots());
+            + monitorStatus.autoHwmSocketMessageSlots());
     }
 
     static void printSingleSpotNode(PerfUtil.Config config, SpotNode node,
                                     String component) {
-        for (SpotNodeSocketSnapshotEntry entry : node.internalSocketsSnapshot()) {
+        for (SpotNodeSocketEntry entry : node.internalSockets()) {
             if (!entry.autoHwmVisible()) {
                 continue;
             }
-            MonitorSnapshot snapshot = entry.snapshot();
-            if (snapshot.autoHwmAppliedSndHwm() <= 0
-                && snapshot.autoHwmAppliedRcvHwm() <= 0) {
+            MonitorStatus monitorStatus = entry.monitorStatus();
+            if (monitorStatus.autoHwmAppliedSndHwm() <= 0
+                && monitorStatus.autoHwmAppliedRcvHwm() <= 0) {
                 continue;
             }
             System.out.println("AUTO_HWM_DETAIL"
@@ -64,15 +64,15 @@ final class PerfAutoHwm {
                 + ",owner_id=" + entry.ownerId()
                 + ",socket=" + entry.socketName()
                 + ",socket_type=" + socketTypeName(entry.socketType())
-                + ",role=" + roleName(snapshot.autoHwmRole())
-                + ",sndhwm=" + snapshot.autoHwmAppliedSndHwm()
-                + ",rcvhwm=" + snapshot.autoHwmAppliedRcvHwm()
+                + ",role=" + roleName(monitorStatus.autoHwmRole())
+                + ",sndhwm=" + monitorStatus.autoHwmAppliedSndHwm()
+                + ",rcvhwm=" + monitorStatus.autoHwmAppliedRcvHwm()
                 + ",effective_message_bytes="
-                + snapshot.autoHwmEffectiveMessageBytes()
-                + ",effective_sndbuf=" + snapshot.autoHwmAppliedSndBuffer()
-                + ",effective_rcvbuf=" + snapshot.autoHwmAppliedRcvBuffer()
+                + monitorStatus.autoHwmEffectiveMessageBytes()
+                + ",effective_sndbuf=" + monitorStatus.autoHwmAppliedSndBuffer()
+                + ",effective_rcvbuf=" + monitorStatus.autoHwmAppliedRcvBuffer()
                 + ",socket_message_slots="
-                + snapshot.autoHwmSocketMessageSlots());
+                + monitorStatus.autoHwmSocketMessageSlots());
         }
     }
 
@@ -87,8 +87,8 @@ final class PerfAutoHwm {
     static void printMultiMonitor(PerfUtil.Config config, MonitorSocket monitor,
                                   String component, String label,
                                   SocketType socketType) {
-        MonitorSnapshot snapshot = monitor.snapshot();
-        if (!visible(snapshot)) {
+        MonitorStatus monitorStatus = monitor.status();
+        if (!visible(monitorStatus)) {
             return;
         }
         System.out.println("AUTO_HWM_DETAIL"
@@ -99,39 +99,39 @@ final class PerfAutoHwm {
             + ",socket_type=" + socketTypeName(socketType)
             + ",msg_size=" + config.size()
             + ",source=monitor_snapshot"
-            + ",enabled=" + (snapshot.autoHwmEnabled() ? 1 : 0)
-            + ",role=" + roleName(snapshot.autoHwmRole())
-            + ",role_id=" + snapshot.autoHwmRole()
-            + ",profile=" + profileName(snapshot.autoHwmProfile())
-            + ",profile_id=" + profileId(snapshot.autoHwmProfile())
-            + ",policy_class=" + policyClassName(snapshot.autoHwmPolicyClass())
-            + ",policy_class_id=" + snapshot.autoHwmPolicyClass()
-            + ",unit_budget_bytes=" + snapshot.autoHwmUnitBudgetBytes()
-            + ",size_cap=" + snapshot.autoHwmSizeCap()
-            + ",sndhwm=" + hwmDisplay(snapshot, socketType, true)
-            + ",rcvhwm=" + hwmDisplay(snapshot, socketType, false)
-            + ",socket_message_slots=" + snapshot.autoHwmSocketMessageSlots()
+            + ",enabled=" + (monitorStatus.autoHwmEnabled() ? 1 : 0)
+            + ",role=" + roleName(monitorStatus.autoHwmRole())
+            + ",role_id=" + monitorStatus.autoHwmRole()
+            + ",profile=" + profileName(monitorStatus.autoHwmProfile())
+            + ",profile_id=" + profileId(monitorStatus.autoHwmProfile())
+            + ",policy_class=" + policyClassName(monitorStatus.autoHwmPolicyClass())
+            + ",policy_class_id=" + monitorStatus.autoHwmPolicyClass()
+            + ",unit_budget_bytes=" + monitorStatus.autoHwmUnitBudgetBytes()
+            + ",size_cap=" + monitorStatus.autoHwmSizeCap()
+            + ",sndhwm=" + hwmDisplay(monitorStatus, socketType, true)
+            + ",rcvhwm=" + hwmDisplay(monitorStatus, socketType, false)
+            + ",socket_message_slots=" + monitorStatus.autoHwmSocketMessageSlots()
             + ",effective_message_bytes="
-            + snapshot.autoHwmEffectiveMessageBytes()
-            + ",effective_sndbuf=" + bufferDisplay(snapshot, socketType, true)
-            + ",effective_rcvbuf=" + bufferDisplay(snapshot, socketType, false)
-            + ",last_recalc_ms=" + snapshot.autoHwmLastRecalcMs()
+            + monitorStatus.autoHwmEffectiveMessageBytes()
+            + ",effective_sndbuf=" + bufferDisplay(monitorStatus, socketType, true)
+            + ",effective_rcvbuf=" + bufferDisplay(monitorStatus, socketType, false)
+            + ",last_recalc_ms=" + monitorStatus.autoHwmLastRecalcMs()
             + ",last_recalc_reason="
-            + recalcReasonName(snapshot.autoHwmLastRecalcReason())
+            + recalcReasonName(monitorStatus.autoHwmLastRecalcReason())
             + ",send_blocked_ratio_ppm="
-            + snapshot.autoHwmSendBlockedRatioPpm()
-            + ",deferred_sndhwm=" + snapshot.autoHwmDeferredSndHwm()
-            + ",deferred_rcvhwm=" + snapshot.autoHwmDeferredRcvHwm());
+            + monitorStatus.autoHwmSendBlockedRatioPpm()
+            + ",deferred_sndhwm=" + monitorStatus.autoHwmDeferredSndHwm()
+            + ",deferred_rcvhwm=" + monitorStatus.autoHwmDeferredRcvHwm());
     }
 
     static void printMultiSpotNode(PerfUtil.Config config, SpotNode node,
                                    String component) {
-        for (SpotNodeSocketSnapshotEntry entry : node.internalSocketsSnapshot()) {
+        for (SpotNodeSocketEntry entry : node.internalSockets()) {
             if (!entry.autoHwmVisible()) {
                 continue;
             }
-            MonitorSnapshot snapshot = entry.snapshot();
-            if (!visible(snapshot)) {
+            MonitorStatus monitorStatus = entry.monitorStatus();
+            if (!visible(monitorStatus)) {
                 continue;
             }
             System.out.println("AUTO_HWM_DETAIL"
@@ -145,38 +145,38 @@ final class PerfAutoHwm {
                 + ",socket_type=" + socketTypeName(entry.socketType())
                 + ",msg_size=" + config.size()
                 + ",source=spotnode_snapshot"
-                + ",enabled=" + (snapshot.autoHwmEnabled() ? 1 : 0)
-                + ",role=" + roleName(snapshot.autoHwmRole())
-                + ",role_id=" + snapshot.autoHwmRole()
-                + ",profile=" + profileName(snapshot.autoHwmProfile())
-                + ",profile_id=" + profileId(snapshot.autoHwmProfile())
+                + ",enabled=" + (monitorStatus.autoHwmEnabled() ? 1 : 0)
+                + ",role=" + roleName(monitorStatus.autoHwmRole())
+                + ",role_id=" + monitorStatus.autoHwmRole()
+                + ",profile=" + profileName(monitorStatus.autoHwmProfile())
+                + ",profile_id=" + profileId(monitorStatus.autoHwmProfile())
                 + ",policy_class="
-                + policyClassName(snapshot.autoHwmPolicyClass())
-                + ",policy_class_id=" + snapshot.autoHwmPolicyClass()
-                + ",unit_budget_bytes=" + snapshot.autoHwmUnitBudgetBytes()
-                + ",size_cap=" + snapshot.autoHwmSizeCap()
+                + policyClassName(monitorStatus.autoHwmPolicyClass())
+                + ",policy_class_id=" + monitorStatus.autoHwmPolicyClass()
+                + ",unit_budget_bytes=" + monitorStatus.autoHwmUnitBudgetBytes()
+                + ",size_cap=" + monitorStatus.autoHwmSizeCap()
                 + ",scope=" + (entry.owner() == SpotNodeSocketOwner.NODE
                     ? "shared" : "per-spot")
-                + ",sndhwm=" + hwmDisplay(snapshot, entry.socketType(), true)
-                + ",rcvhwm=" + hwmDisplay(snapshot, entry.socketType(), false)
+                + ",sndhwm=" + hwmDisplay(monitorStatus, entry.socketType(), true)
+                + ",rcvhwm=" + hwmDisplay(monitorStatus, entry.socketType(), false)
                 + ",socket_message_slots="
-                + snapshot.autoHwmSocketMessageSlots()
+                + monitorStatus.autoHwmSocketMessageSlots()
                 + ",effective_message_bytes="
-                + snapshot.autoHwmEffectiveMessageBytes()
+                + monitorStatus.autoHwmEffectiveMessageBytes()
                 + ",effective_sndbuf="
-                + bufferDisplay(snapshot, entry.socketType(), true)
+                + bufferDisplay(monitorStatus, entry.socketType(), true)
                 + ",effective_rcvbuf="
-                + bufferDisplay(snapshot, entry.socketType(), false)
+                + bufferDisplay(monitorStatus, entry.socketType(), false)
                 + ",last_recalc_reason="
-                + recalcReasonName(snapshot.autoHwmLastRecalcReason()));
+                + recalcReasonName(monitorStatus.autoHwmLastRecalcReason()));
         }
     }
 
-    private static boolean visible(MonitorSnapshot snapshot) {
-        return snapshot.autoHwmAppliedSndHwm() > 0
-            || snapshot.autoHwmAppliedRcvHwm() > 0
-            || snapshot.autoHwmEffectiveMessageBytes() > 0
-            || snapshot.autoHwmSocketMessageSlots() > 0;
+    private static boolean visible(MonitorStatus monitorStatus) {
+        return monitorStatus.autoHwmAppliedSndHwm() > 0
+            || monitorStatus.autoHwmAppliedRcvHwm() > 0
+            || monitorStatus.autoHwmEffectiveMessageBytes() > 0
+            || monitorStatus.autoHwmSocketMessageSlots() > 0;
     }
 
     private static String roleName(int role) {
@@ -247,26 +247,26 @@ final class PerfAutoHwm {
         return type.name().toLowerCase(Locale.ROOT);
     }
 
-    private static String hwmDisplay(MonitorSnapshot snapshot,
+    private static String hwmDisplay(MonitorStatus monitorStatus,
                                      SocketType socketType,
                                      boolean sendSide) {
-        if (!sideVisible(socketType, snapshot.autoHwmRole(), sendSide)) {
+        if (!sideVisible(socketType, monitorStatus.autoHwmRole(), sendSide)) {
             return "-";
         }
         return Integer.toString(sendSide
-            ? snapshot.autoHwmAppliedSndHwm()
-            : snapshot.autoHwmAppliedRcvHwm());
+            ? monitorStatus.autoHwmAppliedSndHwm()
+            : monitorStatus.autoHwmAppliedRcvHwm());
     }
 
-    private static String bufferDisplay(MonitorSnapshot snapshot,
+    private static String bufferDisplay(MonitorStatus monitorStatus,
                                         SocketType socketType,
                                         boolean sendSide) {
-        if (!sideVisible(socketType, snapshot.autoHwmRole(), sendSide)) {
+        if (!sideVisible(socketType, monitorStatus.autoHwmRole(), sendSide)) {
             return "0";
         }
         return Integer.toString(sendSide
-            ? snapshot.autoHwmAppliedSndBuffer()
-            : snapshot.autoHwmAppliedRcvBuffer());
+            ? monitorStatus.autoHwmAppliedSndBuffer()
+            : monitorStatus.autoHwmAppliedRcvBuffer());
     }
 
     private static boolean sideVisible(SocketType socketType, int role,

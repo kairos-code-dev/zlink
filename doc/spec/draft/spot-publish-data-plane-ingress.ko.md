@@ -1280,7 +1280,7 @@ shutdown timeout은 새 public option을 추가하지 않고 기존 `SpotNode` d
 ## Socket snapshot 영향
 
 `pub-ingress-tx`, `ingress-sub`, `internal-router`, `internal-router-tx`가 제거되면
-`zlink_spot_node_internal_sockets_snapshot()` 결과에서 해당 internal ingress row가 사라진다.
+`zlink_spot_node_internal_sockets()` 결과에서 해당 internal ingress row가 사라진다.
 이는 내부 snapshot 변화이며 공개 API 계약의 필드 추가나 삭제가 아니다. 다만 perf 출력과
 내부 문서는 갱신해야 한다.
 

@@ -72,7 +72,7 @@ class spot_sub_t
     int set_option (int option_, const void *optval_, size_t optvallen_);
     int set_routing_id (const void *data_, size_t size_);
     int routing_id (zlink_routing_id_t *out_) const;
-    int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const;
+    int fill_monitor_snapshot (zlink_monitor_status_t *out_) const;
     socket_base_t *poller_socket () const { return socket (); }
     socket_base_t *snapshot_socket () const { return socket (); }
     int set_direct_handler (spot_sub_direct_handler_fn handler_,

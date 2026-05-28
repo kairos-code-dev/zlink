@@ -2,7 +2,7 @@
 
 _MONITOR_NAMES = {
     "MonitorEvent",
-    "MonitorSnapshot",
+    "MonitorStatus",
     "MonitorSocket",
     "SocketMonitorEvent",
 }

@@ -4,9 +4,7 @@
 use std::thread;
 use std::time::Duration;
 
-use zlink::{
-    Context, MonitorEvent, MonitorEventType, RecvError, SocketMonitor,
-};
+use zlink::{Context, MonitorEvent, MonitorEventType, RecvError, SocketMonitor};
 
 #[test]
 fn socket_monitor_recv_surface() {
@@ -70,13 +68,13 @@ fn socket_monitor_blocking_recv_success() {
 }
 
 #[test]
-fn socket_monitor_snapshot() {
+fn socket_monitor_status() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
     sock.bind("inproc://mon-snapshot").unwrap();
 
     let mon = SocketMonitor::open(&sock).unwrap();
-    let snap = mon.snapshot().unwrap();
+    let snap = mon.status().unwrap();
     // Verify snapshot fields are accessible
     let _ = snap.is_ready();
     let _ = snap.is_closed();

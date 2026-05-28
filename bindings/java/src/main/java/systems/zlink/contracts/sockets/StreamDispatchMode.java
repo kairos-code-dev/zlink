@@ -3,7 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
-public enum StreamDispatchMode {
+enum StreamDispatchMode {
     NONE(0),
     LEN32BE(0x0001);
 

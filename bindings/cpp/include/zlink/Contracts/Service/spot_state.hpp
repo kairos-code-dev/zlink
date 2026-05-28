@@ -55,6 +55,7 @@ struct spot_op_state_t
     uint64_t request_seq = 0;
     std::optional<message_t> single_part;
     message_t *single_part_source = NULL;
+    bool discard_single_part_on_backpressure = false;
     std::vector<message_t> parts;
     send_flags_t flags = send_flags_t::none;
     std::chrono::milliseconds timeout {};

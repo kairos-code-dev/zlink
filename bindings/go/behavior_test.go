@@ -754,8 +754,8 @@ func TestSpotSubscribePartRoundTrip(t *testing.T) {
 	topic := make([]byte, 64)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		_, _ = publisherNode.StatusSnapshot()
-		_, _ = subscriberNode.StatusSnapshot()
+		_, _ = publisherNode.Status()
+		_, _ = subscriberNode.Status()
 		if _, err := publisher.Publish("market.price").Message(newMessage(t, "42.5")).Submit(nil); err != nil {
 			time.Sleep(10 * time.Millisecond)
 			continue
@@ -856,8 +856,8 @@ func TestSpotRecvRoutedPartRoundTrip(t *testing.T) {
 	defer msg.Close()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		_, _ = senderNode.StatusSnapshot()
-		_, _ = receiverNode.StatusSnapshot()
+		_, _ = senderNode.Status()
+		_, _ = receiverNode.Status()
 		if _, err := sender.SendToSpot(receiverNodeRID, receiverSpotRID).Message(newMessage(t, "spot-routed-part")).Submit(nil); err != nil {
 			time.Sleep(10 * time.Millisecond)
 			continue
@@ -889,132 +889,6 @@ func TestSpotRecvRoutedPartRoundTrip(t *testing.T) {
 		return
 	}
 	t.Fatalf("spot RecvRoutedPart() did not receive message before timeout")
-}
-
-func TestSpotForwardRoutedRoundTrip(t *testing.T) {
-	ctx := newContext(t)
-	defer ctx.Close()
-
-	senderNode, err := ctx.SpotNode()
-	if err != nil {
-		t.Fatalf("sender SpotNode() error = %v", err)
-	}
-	defer senderNode.Close()
-	receiverNode, err := ctx.SpotNode()
-	if err != nil {
-		t.Fatalf("receiver SpotNode() error = %v", err)
-	}
-	defer receiverNode.Close()
-
-	senderNodeRID := zlink.NewRoutingID([]byte("z-go-test-forward-sender-node"))
-	receiverNodeRID := zlink.NewRoutingID([]byte("a-go-test-forward-receiver-node"))
-	senderSpotRID := zlink.NewRoutingID([]byte("z-go-test-forward-sender-spot"))
-	receiverSpotRID := zlink.NewRoutingID([]byte("a-go-test-forward-receiver-spot"))
-	if err := senderNode.SetRoutingID(senderNodeRID); err != nil {
-		t.Fatalf("sender SetRoutingID() error = %v", err)
-	}
-	if err := receiverNode.SetRoutingID(receiverNodeRID); err != nil {
-		t.Fatalf("receiver SetRoutingID() error = %v", err)
-	}
-
-	senderEndpoint := tcpEndpoint(t)
-	receiverEndpoint := tcpEndpoint(t)
-	senderRouterEndpoint := tcpEndpoint(t)
-	receiverRouterEndpoint := tcpEndpoint(t)
-	if err := senderNode.SetRouterBind(senderRouterEndpoint); err != nil {
-		t.Fatalf("sender SetRouterBind() error = %v", err)
-	}
-	if err := receiverNode.SetRouterBind(receiverRouterEndpoint); err != nil {
-		t.Fatalf("receiver SetRouterBind() error = %v", err)
-	}
-	if err := senderNode.SetPubBind(senderEndpoint); err != nil {
-		t.Fatalf("sender Bind() error = %v", err)
-	}
-	if err := receiverNode.SetPubBind(receiverEndpoint); err != nil {
-		t.Fatalf("receiver Bind() error = %v", err)
-	}
-	if err := senderNode.ConnectPeer(receiverEndpoint); err != nil {
-		t.Fatalf("sender ConnectPeer() error = %v", err)
-	}
-	if err := receiverNode.ConnectPeer(senderEndpoint); err != nil {
-		t.Fatalf("receiver ConnectPeer() error = %v", err)
-	}
-
-	sender, err := senderNode.Spot()
-	if err != nil {
-		t.Fatalf("sender Spot() error = %v", err)
-	}
-	defer sender.Close()
-	receiver, err := receiverNode.Spot()
-	if err != nil {
-		t.Fatalf("receiver Spot() error = %v", err)
-	}
-	defer receiver.Close()
-	if err := sender.SetRoutingID(senderSpotRID); err != nil {
-		t.Fatalf("sender spot SetRoutingID() error = %v", err)
-	}
-	if err := receiver.SetRoutingID(receiverSpotRID); err != nil {
-		t.Fatalf("receiver spot SetRoutingID() error = %v", err)
-	}
-
-	reply, err := zlink.NewMessageWithSize(0)
-	if err != nil {
-		t.Fatalf("NewMessageWithSize() error = %v", err)
-	}
-	defer reply.Close()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		_, _ = senderNode.StatusSnapshot()
-		_, _ = receiverNode.StatusSnapshot()
-		if _, err := sender.SendToSpot(receiverNodeRID, receiverSpotRID).Message(newMessage(t, "spot-forward")).Submit(nil); err != nil {
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-		forward, ok, err := receiver.ForwardRouted(zlink.RecvFlagsDontWait, zlink.SendFlagsDontWait)
-		if err != nil {
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-		if !ok {
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-		if !forward.SourceNodeRID.Equal(senderNodeRID) {
-			t.Fatalf("forward source node RID = %q, want %q", forward.SourceNodeRID.Hex(), senderNodeRID.Hex())
-		}
-		if !forward.SourceSpotRID.Equal(senderSpotRID) {
-			t.Fatalf("forward source spot RID = %q, want %q", forward.SourceSpotRID.Hex(), senderSpotRID.Hex())
-		}
-		if forward.PartCount != 1 {
-			t.Fatalf("forward PartCount = %d, want 1", forward.PartCount)
-		}
-		if forward.PayloadBytes != len("spot-forward") {
-			t.Fatalf("forward PayloadBytes = %d, want %d", forward.PayloadBytes, len("spot-forward"))
-		}
-		result, ok, err := sender.RecvRoutedPart(reply, zlink.RecvFlagsDontWait)
-		if err != nil {
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-		if !ok {
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-		if result.HasRequestSeq {
-			t.Fatalf("forwarded RecvRoutedPart() HasRequestSeq = true, want false")
-		}
-		if !result.RoutingID.Equal(receiverNodeRID) {
-			t.Fatalf("reply source node RID = %q, want %q", result.RoutingID.Hex(), receiverNodeRID.Hex())
-		}
-		if !result.SpotRID.Equal(receiverSpotRID) {
-			t.Fatalf("reply source spot RID = %q, want %q", result.SpotRID.Hex(), receiverSpotRID.Hex())
-		}
-		if got := string(reply.Data()); got != "spot-forward" {
-			t.Fatalf("reply payload = %q, want %q", got, "spot-forward")
-		}
-		return
-	}
-	t.Fatalf("spot ForwardRouted() did not forward message before timeout")
 }
 
 func TestXPubReceiveSubscriptionEventEmpty(t *testing.T) {

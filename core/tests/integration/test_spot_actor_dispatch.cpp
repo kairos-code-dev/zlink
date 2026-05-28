@@ -119,6 +119,36 @@ void lifecycle_leave_handler (void *,
     probe->cv.notify_all ();
 }
 
+void record_lifecycle_event (lifecycle_probe_t *probe_,
+                             const zlink_spot_actor_lifecycle_event_t &event_)
+{
+    if (!probe_)
+        return;
+    std::lock_guard<std::mutex> lock (probe_->mutex);
+    if (event_.kind == ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
+        ++probe_->joined;
+        probe_->last_join = event_.info;
+    } else if (event_.kind == ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT) {
+        ++probe_->left;
+        probe_->last_leave = event_.info;
+    }
+    probe_->cv.notify_all ();
+}
+
+void drain_lifecycle_events (void *spot_, lifecycle_probe_t *probe_)
+{
+    for (;;) {
+        zlink_spot_actor_lifecycle_event_t event;
+        const zlink_recv_result_t rc = zlink_spot_recv_actor_lifecycle (
+          spot_, &event, ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc == ZLINK_RECV_NO_DATA)
+            return;
+        if (rc != ZLINK_RECV_OK)
+            return;
+        record_lifecycle_event (probe_, event);
+    }
+}
+
 zlink_request_result_t wait_request_result (request_wait_t *wait_,
                                             uint32_t timeout_ms_)
 {
@@ -609,11 +639,11 @@ void test_entry_spot_facade_lookup_and_rid ()
 
     size_t count = 0;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_node_spots_snapshot (node, NULL, &count));
+                       zlink_spot_node_spots (node, NULL, &count));
     TEST_ASSERT_TRUE (count >= 1);
     std::vector<zlink_spot_node_spot_entry_t> spot_rows (count);
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_node_spots_snapshot (
+                       zlink_spot_node_spots (
                          node, spot_rows.data (), &count));
     bool found_entry_row = false;
     for (size_t i = 0; i < count; ++i) {
@@ -771,10 +801,10 @@ zlink_routing_id_t find_spot_rid_not_in (
 {
     size_t count = 0;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_node_spots_snapshot (node_, NULL, &count));
+                       zlink_spot_node_spots (node_, NULL, &count));
     std::vector<zlink_spot_node_spot_entry_t> rows (count);
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_node_spots_snapshot (node_, rows.data (),
+                       zlink_spot_node_spots (node_, rows.data (),
                                                        &count));
     for (size_t i = 0; i < count; ++i) {
         bool excluded = false;
@@ -799,10 +829,10 @@ bool find_spot_snapshot_row (void *node_,
 {
     size_t count = 0;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_node_spots_snapshot (node_, NULL, &count));
+                       zlink_spot_node_spots (node_, NULL, &count));
     std::vector<zlink_spot_node_spot_entry_t> rows (count);
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_node_spots_snapshot (node_, rows.data (),
+                       zlink_spot_node_spots (node_, rows.data (),
                                                        &count));
     for (size_t i = 0; i < count; ++i) {
         if (rid_equals (rows[i].spot_rid, spot_rid_)) {
@@ -968,6 +998,7 @@ struct actor_probe_t
         actor_recv_count (0),
         first_part_flag (ZLINK_PART_FINAL)
     {
+        lifecycle = NULL;
         accept_join = true;
         try_destroy_in_actor_callback = false;
         destroy_in_actor_callback_blocked = false;
@@ -988,6 +1019,7 @@ struct actor_probe_t
     int actor_recv_count;
     zlink_part_flag_t first_part_flag;
     zlink_actor_join_info_t last_join_info;
+    lifecycle_probe_t *lifecycle;
     std::string payload;
     std::string join_payload;
     bool accept_join;
@@ -1009,13 +1041,18 @@ void on_join_reply (zlink_request_result_t result_,
     probe->cv.notify_all ();
 }
 
-void on_dispatch (void *,
+void on_dispatch (void *spot_,
                   const zlink_spot_dispatch_info_t *info_,
                   void *userdata_)
 {
     actor_probe_t *probe = static_cast<actor_probe_t *> (userdata_);
     if (!info_)
         return;
+
+    if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE) {
+        drain_lifecycle_events (spot_, probe->lifecycle);
+        return;
+    }
 
     if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE) {
         zlink_actor_join_info_t join_info;
@@ -1130,12 +1167,18 @@ void on_dispatch (void *,
     }
 }
 
-void on_join_only_dispatch (void *,
+void on_join_only_dispatch (void *spot_,
                             const zlink_spot_dispatch_info_t *info_,
                             void *userdata_)
 {
     actor_probe_t *probe = static_cast<actor_probe_t *> (userdata_);
-    if (!info_ || info_->event != ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE)
+    if (!info_)
+        return;
+    if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE) {
+        drain_lifecycle_events (spot_, probe->lifecycle);
+        return;
+    }
+    if (info_->event != ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE)
         return;
 
     zlink_actor_join_info_t join_info;
@@ -1544,7 +1587,7 @@ void test_actor_join_bind_relay_and_dispatch_recv ()
     zlink_actor_ref_t joined_rows[1];
     size_t joined_count = 1;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_actors_snapshot (spot, joined_rows,
+                       zlink_spot_actors (spot, joined_rows,
                                                    &joined_count));
     TEST_ASSERT_EQUAL_UINT (1, joined_count);
     TEST_ASSERT_EQUAL_UINT64 (ref.generation, joined_rows[0].generation);
@@ -1604,22 +1647,16 @@ void test_actor_join_entry_spot_moves_user_spot_actor_to_entry ()
 
     actor_probe_t join_probe;
     actor_probe_t entry_dispatch_probe;
+    lifecycle_probe_t user_lifecycle;
+    lifecycle_probe_t entry_lifecycle;
+    join_probe.lifecycle = &user_lifecycle;
+    entry_dispatch_probe.lifecycle = &entry_lifecycle;
     TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
                        zlink_spot_dispatch_event_handler (
                          spot, on_join_only_dispatch, &join_probe));
     TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
                        zlink_spot_dispatch_event_handler (
                          entry, on_dispatch, &entry_dispatch_probe));
-    lifecycle_probe_t user_lifecycle;
-    lifecycle_probe_t entry_lifecycle;
-    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
-                       zlink_spot_actor_lifecycle_handler (
-                         spot, lifecycle_join_handler,
-                         lifecycle_leave_handler, &user_lifecycle));
-    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
-                       zlink_spot_actor_lifecycle_handler (
-                         entry, lifecycle_join_handler,
-                         lifecycle_leave_handler, &entry_lifecycle));
 
     void *actor = zlink_spot_node_actor_new (node, "entry-return");
     TEST_ASSERT_NOT_NULL (actor);
@@ -1681,7 +1718,7 @@ void test_actor_join_entry_spot_moves_user_spot_actor_to_entry ()
     zlink_actor_ref_t entry_rows[1];
     size_t entry_count = 1;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_actors_snapshot (entry, entry_rows,
+                       zlink_spot_actors (entry, entry_rows,
                                                    &entry_count));
     TEST_ASSERT_EQUAL_UINT (1, entry_count);
     TEST_ASSERT_EQUAL_STRING (ref.actor_id, entry_rows[0].actor_id);
@@ -1717,10 +1754,11 @@ void test_actor_join_entry_spot_is_idempotent_without_lifecycle ()
                        zlink_spot_node_entry_spot (node, &entry));
     TEST_ASSERT_NOT_NULL (entry);
     lifecycle_probe_t entry_lifecycle;
+    actor_probe_t entry_dispatch_probe;
+    entry_dispatch_probe.lifecycle = &entry_lifecycle;
     TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
-                       zlink_spot_actor_lifecycle_handler (
-                         entry, lifecycle_join_handler,
-                         lifecycle_leave_handler, &entry_lifecycle));
+                       zlink_spot_dispatch_event_handler (
+                         entry, on_dispatch, &entry_dispatch_probe));
 
     void *actor = zlink_spot_node_actor_new (node, "entry-idempotent");
     TEST_ASSERT_NOT_NULL (actor);
@@ -1787,22 +1825,16 @@ void test_actor_join_entry_spot_moves_actor_to_remote_node_entry ()
 
     actor_probe_t source_dispatch_probe;
     actor_probe_t target_dispatch_probe;
+    lifecycle_probe_t source_lifecycle;
+    lifecycle_probe_t target_lifecycle;
+    source_dispatch_probe.lifecycle = &source_lifecycle;
+    target_dispatch_probe.lifecycle = &target_lifecycle;
     TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
                        zlink_spot_dispatch_event_handler (
                          source_entry, on_dispatch, &source_dispatch_probe));
     TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
                        zlink_spot_dispatch_event_handler (
                          target_entry, on_dispatch, &target_dispatch_probe));
-    lifecycle_probe_t source_lifecycle;
-    lifecycle_probe_t target_lifecycle;
-    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
-                       zlink_spot_actor_lifecycle_handler (
-                         source_entry, lifecycle_join_handler,
-                         lifecycle_leave_handler, &source_lifecycle));
-    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
-                       zlink_spot_actor_lifecycle_handler (
-                         target_entry, lifecycle_join_handler,
-                         lifecycle_leave_handler, &target_lifecycle));
 
     void *actor = zlink_spot_node_actor_new (source_node, "remote-entry");
     TEST_ASSERT_NOT_NULL (actor);
@@ -2577,7 +2609,7 @@ void test_stream_multipart_selector_and_unbound_relay ()
     zlink_spot_node_actor_entry_t rows[2];
     size_t count = 2;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       zlink_spot_node_actors_snapshot (node, rows, &count));
+                       zlink_spot_node_actors (node, rows, &count));
     TEST_ASSERT_EQUAL_UINT (2, count);
     uint32_t pending_a = 0;
     uint32_t pending_b = 0;

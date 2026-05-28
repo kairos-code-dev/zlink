@@ -12,6 +12,12 @@ considered aligned when the public header, native library behavior, tests,
 samples, packaging, and perf runners agree with the rules in this document and
 with `core/include/zlink.h`.
 
+The shared binding architecture map still applies as a review vocabulary:
+core, messaging, sockets, eventing, service, and errors are the conceptual
+areas reviewers use when reading the C header. C expresses those areas through
+header sections, type/function prefixes, tests, samples, and documentation
+sections instead of separate `contracts/` and `runtime/` folders.
+
 ## Public Contract Source
 
 - Public contract: `core/include/zlink.h`.
@@ -113,7 +119,8 @@ A C review checks these groups in `core/include/zlink.h`.
   lookup.
 - Socket lifecycle, bind/connect, disconnect, options, TLS helpers, routing id,
   send, receive, request, reply, publish, subscribe, and stream APIs.
-- Monitor, poller, timer, callback registration, and readiness semantics.
+- Eventing APIs: monitor, poller, timer, callback registration, and readiness
+  semantics.
 - Registry, discovery, SPOT node, SPOT handle, topology snapshot, actor, and
   service-layer APIs.
 - Error/result enums and errno mapping.

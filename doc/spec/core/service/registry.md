@@ -7,8 +7,8 @@
 ## API Surface
 
 - Registry is the global service directory and topology summary source.
-- Use `zlink_registry_topology_snapshot()` for local in-process summary access.
-- Use `zlink_registry_query_client_*()` and `zlink_registry_query_snapshot()`
+- Use `zlink_registry_topology()` for local in-process summary access.
+- Use `zlink_registry_query_client_*()` and `zlink_registry_query_client_topology()`
   for remote summary queries.
 - Registry topology is intended for global summary only. For detailed local
   state transitions, compare successive snapshot/query results.
@@ -372,7 +372,7 @@ aggregate views of the Registry.
 ### Registry Status Snapshot
 
 ```c
-zlink_config_result_t zlink_registry_status_snapshot(void *registry,
+zlink_config_result_t zlink_registry_status(void *registry,
                                                      zlink_registry_status_t *out);
 ```
 
@@ -416,7 +416,7 @@ typedef struct zlink_registry_status_t
 ### Registry Service Summary Snapshot
 
 ```c
-zlink_config_result_t zlink_registry_service_summary_snapshot(
+zlink_config_result_t zlink_registry_service_summary(
   void *registry,
   const zlink_registry_service_summary_filter_t *filter,
   zlink_registry_service_summary_entry_t *entries,
@@ -578,12 +578,12 @@ fields are treated as wildcards (match all).
 
 ---
 
-### zlink_registry_topology_snapshot
+### zlink_registry_topology
 
 Get a snapshot of the full topology from a local Registry instance.
 
 ```c
-zlink_config_result_t zlink_registry_topology_snapshot(void *registry,
+zlink_config_result_t zlink_registry_topology(void *registry,
                                                        zlink_registry_topology_entry_t *entries,
                                                        size_t *count);
 ```
@@ -596,29 +596,29 @@ Fills `entries` with all registered services in the topology. On input
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_registry_topology_query`
+**See also:** `zlink_registry_topology`
 
 ---
 
-### zlink_registry_topology_query
+### zlink_registry_topology
 
 Query the local topology with a filter.
 
 ```c
-zlink_config_result_t zlink_registry_topology_query(void *registry,
+zlink_config_result_t zlink_registry_topology(void *registry,
                                                     const zlink_registry_topology_filter_t *filter,
                                                     zlink_registry_topology_entry_t *entries,
                                                     size_t *count);
 ```
 
-Like `zlink_registry_topology_snapshot` but only returns entries matching
+Like `zlink_registry_topology` but only returns entries matching
 the `filter` criteria.
 
 **Returns:** A `zlink_config_result_t` value.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_registry_topology_snapshot`
+**See also:** `zlink_registry_topology`
 
 ---
 
@@ -637,7 +637,7 @@ topology. Use this when the Registry is running in a different process.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_registry_query_client_connect`, `zlink_registry_query_destroy`
+**See also:** `zlink_registry_query_client_connect`, `zlink_registry_query_client_destroy`
 
 ---
 
@@ -656,16 +656,16 @@ Connects to the Registry's ROUTER endpoint for topology queries.
 
 **Thread safety:** Not thread-safe.
 
-**See also:** `zlink_registry_query_snapshot`
+**See also:** `zlink_registry_query_client_topology`
 
 ---
 
-### zlink_registry_query_snapshot
+### zlink_registry_query_client_topology
 
 Query the remote Registry topology.
 
 ```c
-zlink_config_result_t zlink_registry_query_snapshot(void *client,
+zlink_config_result_t zlink_registry_query_client_topology(void *client,
                                                     const zlink_registry_topology_filter_t *filter,
                                                     zlink_registry_topology_entry_t *entries,
                                                     size_t *count);
@@ -684,12 +684,12 @@ snapshot.
 
 ---
 
-### zlink_registry_query_destroy
+### zlink_registry_query_client_destroy
 
 Destroy the query client and release resources.
 
 ```c
-zlink_close_result_t zlink_registry_query_destroy(void **client_p);
+zlink_close_result_t zlink_registry_query_client_destroy(void **client_p);
 ```
 
 Closes the client connection and sets `*client_p` to `NULL`.

@@ -236,7 +236,8 @@ typedef enum zlink_spot_dispatch_event_t
     ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3,
     ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4,
     ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE = 5,
-    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE = 6
+    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE = 6,
+    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE = 7
 } zlink_spot_dispatch_event_t;
 
 typedef enum zlink_spot_dispatch_subject_kind_t
@@ -300,7 +301,7 @@ typedef enum zlink_socket_monitor_event_e
 } zlink_socket_monitor_event_e;
 
 typedef uint32_t zlink_monitor_state_mask_t;
-typedef uint32_t zlink_monitor_snapshot_detail_mask_t;
+typedef uint32_t zlink_monitor_status_detail_mask_t;
 
 typedef enum zlink_monitor_state_flag_e
 {
@@ -309,13 +310,13 @@ typedef enum zlink_monitor_state_flag_e
     ZLINK_MONITOR_STATE_CLOSED = 1u << 3
 } zlink_monitor_state_flag_e;
 
-typedef enum zlink_monitor_snapshot_detail_flag_e
+typedef enum zlink_monitor_status_detail_flag_e
 {
-    ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS = 1u << 1,
-    ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS = 1u << 2,
-    ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET = 1u << 3,
-    ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS = 1u << 4
-} zlink_monitor_snapshot_detail_flag_e;
+    ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS = 1u << 1,
+    ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS = 1u << 2,
+    ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET = 1u << 3,
+    ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS = 1u << 4
+} zlink_monitor_status_detail_flag_e;
 
 typedef enum zlink_auto_connect_type_t
 {

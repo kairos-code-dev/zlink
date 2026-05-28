@@ -229,7 +229,7 @@ typedef struct zlink_socket_monitor_open_options_t
     zlink_socket_monitor_event_mask_t events;
 } zlink_socket_monitor_open_options_t;
 
-typedef struct zlink_monitor_snapshot_t
+typedef struct zlink_monitor_status_t
 {
     uint32_t source_kind;
     uint32_t state_flags;
@@ -237,7 +237,7 @@ typedef struct zlink_monitor_snapshot_t
     uint32_t ready_count;
     uint64_t snd_pending_msgs;
     uint64_t rcv_pending_msgs;
-} zlink_monitor_snapshot_t;
+} zlink_monitor_status_t;
 
 typedef struct zlink_poller_event_t
 {
@@ -1195,8 +1195,8 @@ inline int zlink_socket_monitor_recv (void *monitor_,
       static_cast<zlink_monitor_handle_t *> (monitor_), out_);
 }
 
-inline int zlink_monitor_snapshot (void *monitor_,
-                                   zlink_monitor_snapshot_t *out_)
+inline int zlink_monitor_status (void *monitor_,
+                                   zlink_monitor_status_t *out_)
 {
     zlink_monitor_handle_t *handle =
       static_cast<zlink_monitor_handle_t *> (monitor_);

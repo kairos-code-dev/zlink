@@ -28,7 +28,7 @@ public sealed class BackendMonitorWrapperTests
             return nextEvent;
         }
 
-        public MonitorSnapshot Snapshot()
+        public MonitorStatus Status()
         {
             throw new NotSupportedException();
         }

@@ -115,6 +115,28 @@ void capture_spot_request_for_reply (const zlink_routing_id_t *source_rid_,
     probe->invoked.store (true, std::memory_order_release);
 }
 
+void capture_spot_request_dispatch (void *spot_,
+                                    const zlink_spot_dispatch_info_t *info_,
+                                    void *userdata_)
+{
+    if (!info_
+        || info_->event != ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE)
+        return;
+
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    if (zlink_spot_recv (spot_, &source_rid, &spot_rid, &request_seq, &parts,
+                         &part_count, ZLINK_DONTWAIT)
+        != ZLINK_RECV_OK) {
+        return;
+    }
+    capture_spot_request_for_reply (source_rid, spot_rid, request_seq, parts,
+                                    part_count, userdata_);
+}
+
 bool wait_for_spot_request (spot_request_probe_t *probe_, int timeout_ms_)
 {
     const auto deadline =
@@ -316,8 +338,8 @@ void test_spot_poller_progresses_spot_request_reply_completion ()
     TEST_ASSERT_EQUAL (EAGAIN, zlink_errno ());
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, client_spot,
                                                  &user_tag, ZLINK_POLLIN));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_handler (
-      server_spot, &capture_spot_request_for_reply, &request_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      server_spot, &capture_spot_request_dispatch, &request_probe));
 
     zlink_msg_t request_part;
     init_string_part (&request_part, "poll-spot-request");
@@ -395,8 +417,8 @@ void test_spot_poller_wait_returns_promptly_after_reply ()
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, client_spot, &user_tag, ZLINK_POLLIN));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_handler (
-      server_spot, &capture_spot_request_for_reply, &request_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      server_spot, &capture_spot_request_dispatch, &request_probe));
 
     zlink_msg_t request_part;
     init_string_part (&request_part, "wakeup-request");
@@ -738,8 +760,8 @@ void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, client_spot, &user_tag, ZLINK_POLLIN));
     spot_request_probe_t request_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_handler (
-      server_spot, &capture_spot_request_for_reply, &request_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      server_spot, &capture_spot_request_dispatch, &request_probe));
 
     const int kRoundTrips = 16;
     for (int i = 0; i < kRoundTrips; ++i) {
@@ -865,8 +887,8 @@ void test_completion_only_spot_request_returns_zero_after_callback ()
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_poller_add (poller, client_spot, NULL, ZLINK_POLLCOMPLETION));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_handler (
-      server_spot, &capture_spot_request_for_reply, &request_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      server_spot, &capture_spot_request_dispatch, &request_probe));
 
     const zlink_routing_id_t node_rid = get_routing_id_value (node);
     const zlink_routing_id_t server_spot_rid =

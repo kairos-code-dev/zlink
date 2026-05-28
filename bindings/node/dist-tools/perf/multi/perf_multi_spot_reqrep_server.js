@@ -87,15 +87,24 @@ async function main() {
                 }
             }
         })();
-        spot.onRoutedReceive((received) => {
-            try {
-                let reply = received.reply();
-                for (const part of received.parts)
-                    reply = reply.message(part);
-                reply.submit();
+        spot.onDispatchEvent((info) => {
+            if (info.event !== zlink.SpotDispatchEvent.RoutedReadable) {
+                return;
             }
-            finally {
-                received.close();
+            while (true) {
+                const received = spot.recvRouted(zlink.RecvFlags.DontWait);
+                if (!received) {
+                    return;
+                }
+                try {
+                    let reply = received.reply();
+                    for (const part of received.parts)
+                        reply = reply.message(part);
+                    reply.submit();
+                }
+                finally {
+                    received.close();
+                }
             }
         });
         while (!stop && !(connected && dataConnected && readyCount >= options.clients && startRequested)) {

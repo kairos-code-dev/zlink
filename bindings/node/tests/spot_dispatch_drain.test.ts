@@ -48,7 +48,7 @@ test('spot onDispatchEvent permits subscribe drain after async callback delivery
     subscriberNode.connectPeer(endpoint);
 
     await waitFor(
-      () => subscriberNode.statusSnapshot().connectedPeerCount > 0,
+      () => subscriberNode.status().connectedPeerCount > 0,
       'spot peer connection'
     );
 

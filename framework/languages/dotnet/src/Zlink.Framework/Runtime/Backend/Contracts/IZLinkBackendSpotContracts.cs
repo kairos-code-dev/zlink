@@ -33,11 +33,11 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created);
 
-    ZLinkSpotNodeStatus StatusSnapshot();
+    ZLinkSpotNodeStatus Status();
 
-    IReadOnlyList<ZLinkSpotNodePeerEntry> PeersSnapshot();
+    IReadOnlyList<ZLinkSpotNodePeerEntry> Peers();
 
-    IReadOnlyList<ZLinkSpotNodeSubjectEntry> SubjectsSnapshot();
+    IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects();
 
     void AttachChannelDealer(IZLinkBackendDiscovery discovery, IZLinkBackendDealerSocket dealer);
 
@@ -100,10 +100,6 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
     bool RecvRoute(Received result, RecvFlags flags);
 
     void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler);
-
-    void OnActorLifecycle(
-        Action<ZLinkBackendSpotActorLifecycleInfo>? onJoin,
-        Action<ZLinkBackendSpotActorLifecycleInfo>? onLeave);
 
     void OnSendReady(Action handler);
 

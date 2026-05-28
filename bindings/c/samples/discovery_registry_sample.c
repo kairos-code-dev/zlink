@@ -60,7 +60,7 @@ int main (void)
             == ZLINK_CONFIG_OK);
 
     zlink_registry_status_t status;
-    assert (zlink_registry_status_snapshot (registry, &status) == 0);
+    assert (zlink_registry_status (registry, &status) == 0);
     assert (strlen (status.bind_endpoint) > 0);
     assert (zlink_discovery_connect_registry (
               sample.provider_discovery, sample.registry_router)

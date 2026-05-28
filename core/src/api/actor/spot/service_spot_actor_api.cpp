@@ -654,26 +654,9 @@ void collect_received_join_requests_for_stream_locked (
       stream_, already_aborted_, received_aborts_);
 }
 
-lifecycle_registration_t *actor_lifecycle_state_t::find_registration (
-  spot_logical_state_t *key_)
-{
-    std::map<spot_logical_state_t *, lifecycle_registration_t>::iterator it =
-      handlers.find (key_);
-    if (it == handlers.end ())
-        return NULL;
-    return &it->second;
-}
-
 void actor_lifecycle_state_t::clear (spot_logical_state_t *key_)
 {
-    handlers.erase (key_);
     queues.erase (key_);
-}
-
-lifecycle_registration_t &actor_lifecycle_state_t::ensure_registration (
-  spot_logical_state_t *key_)
-{
-    return handlers[key_];
 }
 
 void actor_lifecycle_state_t::enqueue (
@@ -684,10 +667,9 @@ void actor_lifecycle_state_t::enqueue (
 
 bool actor_lifecycle_state_t::pop (
   spot_logical_state_t *key_,
-  lifecycle_event_t *event_out_,
-  lifecycle_registration_t *registration_out_)
+  lifecycle_event_t *event_out_)
 {
-    if (!key_ || !event_out_ || !registration_out_)
+    if (!key_ || !event_out_)
         return false;
     std::map<spot_logical_state_t *, std::deque<lifecycle_event_t> >::iterator
       queue_it = queues.find (key_);
@@ -697,12 +679,6 @@ bool actor_lifecycle_state_t::pop (
     queue_it->second.pop_front ();
     if (queue_it->second.empty ())
         queues.erase (queue_it);
-
-    lifecycle_registration_t *registration = find_registration (key_);
-    if (registration)
-        *registration_out_ = *registration;
-    else
-        *registration_out_ = lifecycle_registration_t ();
     return true;
 }
 
@@ -1865,26 +1841,31 @@ void schedule_lifecycle_event_locked (
 {
     if (!spot_state_)
         return;
-    lifecycle_registration_t *registration =
-      actor_runtime().lifecycle.find_registration (spot_state_.get ());
-    if (!registration)
-        return;
-    zlink_spot_actor_lifecycle_handler_fn handler =
-      join_ ? registration->on_join : registration->on_leave;
-    if (!handler)
-        return;
     spot_handle_t *spot =
       find_spot_facade_for_state_locked (spot_state_->node, spot_state_);
     if (!spot)
         return;
+
+    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
+      state = zlink::spot_reqrep_internal::try_find_spot_state (spot);
+    if (!state)
+        return;
+    {
+        std::lock_guard<std::mutex> state_lock (state->mutex);
+        if (!state->dispatch.handler)
+            return;
+    }
+
     lifecycle_event_t event;
-    event.join = join_;
+    event.kind = join_ ? ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED
+                       : ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT;
     event.info = info_;
     actor_runtime().lifecycle.enqueue (spot_state_.get (), event);
-    zlink::spot_runtime_t *runtime =
-      zlink::spot_reqrep_internal::resolve_spot_runtime (spot);
-    if (runtime)
-        (void) runtime->post_dispatch_event (spot);
+    zlink::spot_reqrep_internal::maybe_dispatch_spot_info (
+      state.get (),
+      ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE,
+      ZLINK_SPOT_DISPATCH_SUBJECT_SPOT,
+      NULL);
 }
 
 zlink_spot_actor_lifecycle_info_t make_lifecycle_info (
@@ -2419,33 +2400,7 @@ zlink_request_result_t run_actor_reply_operation (void *arg_)
 
 void drain_lifecycle_events_for_spot (spot_handle_t *spot_)
 {
-    if (!spot_ || !spot_->logical_state)
-        return;
-
-    for (;;) {
-        lifecycle_event_t event;
-        lifecycle_registration_t registration;
-        void *userdata = NULL;
-        {
-            std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
-            if (!spot_->logical_state)
-                return;
-            if (!actor_runtime().lifecycle.pop (
-                  spot_->logical_state.get (), &event, &registration))
-                return;
-            userdata = registration.userdata;
-        }
-
-        zlink_spot_actor_lifecycle_handler_fn handler =
-          event.join ? registration.on_join : registration.on_leave;
-        if (!handler)
-            continue;
-
-        const zlink::spot_dispatch_event_callback_context_t dispatch_scope (
-          spot_);
-        actor_lifecycle_handler_scope_t lifecycle_scope (spot_, event.info);
-        handler (spot_, &event.info, userdata);
-    }
+    (void) spot_;
 }
 
 zlink_submit_result_t complete_idempotent_join_async (
@@ -3937,37 +3892,34 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg (
     return ZLINK_SUBMIT_OK;
 }
 
-extern "C" zlink_handler_result_t zlink_spot_actor_lifecycle_handler (
+extern "C" zlink_recv_result_t zlink_spot_recv_actor_lifecycle (
   void *spot_,
-  zlink_spot_actor_lifecycle_handler_fn on_join_,
-  zlink_spot_actor_lifecycle_handler_fn on_leave_,
-  void *userdata_)
+  zlink_spot_actor_lifecycle_event_t *event_out_,
+  zlink_recv_flags_t flags_)
 {
-    if (!spot_) {
+    if (!spot_ || !event_out_) {
         errno = EFAULT;
-        return ZLINK_HANDLER_INVALID_HANDLE;
+        return ZLINK_RECV_INVALID_HANDLE;
     }
+    if (validate_recv_flags (flags_) != 0)
+        return zlink::recv_result_internal::from_errno (errno);
+
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot || !spot->logical_state) {
         errno = EFAULT;
-        return ZLINK_HANDLER_INVALID_HANDLE;
-    }
-    if (actor_lifecycle_reenters_same_spot (spot)) {
-        errno = EDEADLK;
-        return ZLINK_HANDLER_DEADLOCK;
+        return ZLINK_RECV_INVALID_HANDLE;
     }
 
     std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
-    if (!on_join_ && !on_leave_) {
-        actor_runtime().lifecycle.clear (spot->logical_state.get ());
-        return ZLINK_HANDLER_OK;
+    lifecycle_event_t event;
+    if (!actor_runtime().lifecycle.pop (spot->logical_state.get (), &event)) {
+        errno = EAGAIN;
+        return ZLINK_RECV_NO_DATA;
     }
-    lifecycle_registration_t &registration =
-      actor_runtime().lifecycle.ensure_registration (spot->logical_state.get ());
-    registration.on_join = on_join_;
-    registration.on_leave = on_leave_;
-    registration.userdata = userdata_;
-    return ZLINK_HANDLER_OK;
+    memset (event_out_, 0, sizeof (*event_out_));
+    event_out_->kind = event.kind;
+    event_out_->info = event.info;
+    return ZLINK_RECV_OK;
 }
 
 extern "C" zlink_config_result_t zlink_stream_bound_actors (
@@ -4100,7 +4052,7 @@ extern "C" zlink_config_result_t zlink_discovery_resolve_actor (
     return ZLINK_CONFIG_OK;
 }
 
-extern "C" zlink_config_result_t zlink_spot_node_spots_snapshot (
+extern "C" zlink_config_result_t zlink_spot_node_spots (
   void *node_, zlink_spot_node_spot_entry_t *entries_, size_t *count_)
 {
     if (!node_ || !count_) {
@@ -4151,7 +4103,7 @@ extern "C" zlink_config_result_t zlink_spot_node_spots_snapshot (
     return ZLINK_CONFIG_OK;
 }
 
-extern "C" zlink_config_result_t zlink_spot_node_actors_snapshot (
+extern "C" zlink_config_result_t zlink_spot_node_actors (
   void *node_, zlink_spot_node_actor_entry_t *entries_, size_t *count_)
 {
     if (!node_ || !count_) {
@@ -4191,7 +4143,7 @@ extern "C" zlink_config_result_t zlink_spot_node_actors_snapshot (
     return ZLINK_CONFIG_OK;
 }
 
-extern "C" zlink_config_result_t zlink_spot_actors_snapshot (
+extern "C" zlink_config_result_t zlink_spot_actors (
   void *spot_, zlink_actor_ref_t *entries_, size_t *count_)
 {
     if (!spot_ || !count_) {

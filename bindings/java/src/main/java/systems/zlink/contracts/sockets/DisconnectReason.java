@@ -3,7 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 
-public enum DisconnectReason {
+enum DisconnectReason {
     UNKNOWN(0),
     HANDSHAKE_FAILED(3), TRANSPORT_ERROR(4), CTX_TERM(5);
 

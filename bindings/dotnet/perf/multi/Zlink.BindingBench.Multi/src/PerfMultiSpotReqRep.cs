@@ -159,7 +159,7 @@ internal static class PerfMultiSpotReqRep
                 }
             });
 
-            replier.OnDispatchEvent(info =>
+            replier.SetDispatchHandler(info =>
             {
                 if (info.Event == SpotDispatchEvent.RoutedReadable
                     && !serverStop.IsSet)
@@ -603,7 +603,7 @@ internal static class PerfMultiSpotReqRep
         {
             try
             {
-                if (node.StatusSnapshot().ConnectedPeerCount >= expectedCount)
+                if (node.Status().ConnectedPeerCount >= expectedCount)
                     return true;
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
@@ -644,7 +644,7 @@ internal static class PerfMultiSpotReqRep
 
         while (!serverStop.IsSet)
         {
-            using var received = new Received();
+            using var received = Received.Create();
             try
             {
                 if (!replier.RecvRouted(received, RecvFlags.DontWait))
@@ -677,23 +677,24 @@ internal static class PerfMultiSpotReqRep
     private static void DrainSendSendRoutedMessages(ISpot replier,
         ServerStopFlag serverStop)
     {
-        using var reply = new Message();
+        using var received = Received.Create();
         int drained = 0;
         while (!serverStop.IsSet && drained < SendSendDrainBatchLimit)
         {
             try
             {
-                if (!replier.RecvRoutedPart(reply, out RoutingId? sourceNode,
-                        out RoutingId? sourceSpot, out ulong? requestSeq,
-                        out bool hasMore, RecvFlags.DontWait))
+                if (!replier.RecvRouted(received, RecvFlags.DontWait))
                     return;
                 drained++;
-                if (requestSeq != null || hasMore)
+                if (received.RequestSeq != null || !received.IsSinglePart)
                     continue;
-                if (sourceNode.HasValue && sourceSpot.HasValue)
+                if (received.RoutingId.HasValue && received.SpotRid.HasValue)
                 {
-                    _ = replier.SendToSpot(sourceNode.Value, sourceSpot.Value,
-                        reply, SendFlags.DontWait);
+                    _ = replier.SendToSpot(received.RoutingId.Value,
+                            received.SpotRid.Value)
+                        .Message(received.FirstPart())
+                        .Flags(SendFlags.DontWait)
+                        .Submit();
                 }
             }
             catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
@@ -898,7 +899,10 @@ internal static class PerfMultiSpotReqRep
         {
             submitted = slot.Requester
                 .SendToSpot(config.ServerNodeRoutingId,
-                    config.ServerSpotRoutingId, payload, SendFlags.DontWait);
+                    config.ServerSpotRoutingId)
+                .Message(payload)
+                .Flags(SendFlags.DontWait)
+                .Submit();
         }
         catch (ZlinkSubmitException ex)
             when (ex.Result == ZlinkSubmitException.ErrorCode.NotConnected)
@@ -1050,15 +1054,15 @@ internal static class PerfMultiSpotReqRep
         {
             try
             {
-                if (!slot.Requester.RecvRoutedPart(slot.ReceivedPart,
-                        out _, out _, out ulong? requestSeq, out bool hasMore,
+                if (!slot.Requester.RecvRouted(slot.Received,
                         RecvFlags.DontWait))
                     return;
 
-                if (requestSeq != null || hasMore)
+                if (slot.Received.RequestSeq != null
+                    || !slot.Received.IsSinglePart)
                     continue;
                 ReadOnlySpan<byte> body =
-                    slot.ReceivedPart.AsReadOnlySpan();
+                    slot.Received.FirstPart().AsReadOnlySpan();
                 if (PerfShared.TryDecodeMetricHeader(body,
                         out PerfMetricHeader header))
                 {
@@ -1262,7 +1266,7 @@ internal static class PerfMultiSpotReqRep
         internal long ActiveDeadlineTicks;
         internal ulong NextSeq = 1;
         internal bool PollRegistered;
-        internal Message ReceivedPart { get; } = new();
+        internal Received Received { get; } = Received.Create();
         private Message? _payload;
         private int _payloadSize;
 
@@ -1296,7 +1300,7 @@ internal static class PerfMultiSpotReqRep
 
         public void Dispose()
         {
-            ReceivedPart.Dispose();
+            Received.Dispose();
             _payload?.Dispose();
             Requester.Dispose();
         }

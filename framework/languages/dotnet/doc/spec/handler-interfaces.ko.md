@@ -3415,17 +3415,17 @@ Registry 조회 인터페이스는 infrastructure 성격이므로 상세 정의�
 ```csharp
 public interface IZLinkRegistryQuery
 {
-    ValueTask<ZLinkRegistryStatus> StatusSnapshotAsync(
+    ValueTask<ZLinkRegistryStatus> StatusAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummarySnapshotAsync(
+    ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummaryAsync(
         ZLinkRegistryServiceSummaryFilter? filter = null,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkRegistryTopologyEntry[]> TopologySnapshotAsync(
+    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyQueryAsync(
+    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         ZLinkRegistryTopologyFilter? filter = null,
         CancellationToken cancellationToken = default);
 
@@ -3616,11 +3616,11 @@ public readonly record struct ZLinkSpotEvent(
     조회한다.
 - registry event
   - 하부 raw monitor 가 아니다. 다음 호출들의 polling + diff 로 합성한다.
-    `StatusSnapshotAsync()`, `TopologySnapshotAsync()`,
-    `ServiceSummarySnapshotAsync()`.
+    `StatusAsync()`, `TopologyAsync()`,
+    `ServiceSummaryAsync()`.
 - spot event
   - 하부 raw monitor 가 아니다. 다음 호출들의 polling + diff 로 합성한다.
-    `StatusSnapshot()`, `PeersSnapshot()`, `SubjectsSnapshot()`.
+    `Status()`, `Peers()`, `Subjects()`.
 
 ## 11. Attribute 정의
 

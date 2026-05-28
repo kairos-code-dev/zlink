@@ -26,7 +26,7 @@ public sealed class test_request_reply
         using var handled = new ManualResetEventSlim(false);
         Task serverTask = Task.Run(() =>
         {
-            var received = new Received();
+            var received = Received.Create();
             routerSocket.Recv(received);
             try
             {
@@ -66,7 +66,7 @@ public sealed class test_request_reply
     }
 
     [Fact]
-    public void dealer_recv_reply_part_routes_same_sequence_to_source_peer()
+    public async Task dealer_received_reply_routes_same_sequence_to_source_peer()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -85,45 +85,54 @@ public sealed class test_request_reply
 
         using Message requestA = Message.From("from-a");
         using Message requestB = Message.From("from-b");
-        Assert.True(clientA.RequestFrame(1, new[] { requestA }));
-        Assert.True(clientB.RequestFrame(1, new[] { requestB }));
+        Task<IReadOnlyList<Message>> requestATask = clientA.Request()
+            .Message(requestA)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .SubmitAsync();
+        Task<IReadOnlyList<Message>> requestBTask = clientB.Request()
+            .Message(requestB)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .SubmitAsync();
 
-        ulong tokenA = 0;
-        ulong tokenB = 0;
+        Received? receivedA = null;
+        Received? receivedB = null;
         for (int i = 0; i < 2; i++)
         {
-            using Received received = RecvWithRetry(server);
+            Received received = RecvWithRetry(server);
             Assert.Equal(ReceivedMessageType.Request, received.MessageType);
             Assert.True(received.RequestSeq.HasValue);
             Assert.NotEqual(0UL, received.RequestSeq.Value);
             string payload = received.Parts[0].GetString();
             if (payload == "from-a")
-                tokenA = received.RequestSeq.Value;
+                receivedA = received;
             else if (payload == "from-b")
-                tokenB = received.RequestSeq.Value;
+                receivedB = received;
             else
+            {
+                received.Dispose();
                 throw new InvalidOperationException(
                     $"Unexpected payload '{payload}'.");
+            }
         }
 
-        Assert.NotEqual(0UL, tokenA);
-        Assert.NotEqual(0UL, tokenB);
-        Assert.NotEqual(tokenA, tokenB);
+        Assert.NotNull(receivedA);
+        Assert.NotNull(receivedB);
+        Assert.NotEqual(receivedA!.RequestSeq, receivedB!.RequestSeq);
 
         using Message replyB = Message.From("reply-b");
         using Message replyA = Message.From("reply-a");
-        server.Reply(tokenB, new[] { replyB });
-        server.Reply(tokenA, new[] { replyA });
+        receivedB.Reply().Message(replyB).Submit();
+        receivedA.Reply().Message(replyA).Submit();
+        receivedA.Dispose();
+        receivedB.Dispose();
 
-        using Received clientAReply = RecvWithRetry(clientA);
-        Assert.Equal(ReceivedMessageType.Reply, clientAReply.MessageType);
-        Assert.Equal(1UL, clientAReply.RequestSeq);
-        Assert.Equal("reply-a", clientAReply.Parts[0].GetString());
+        IReadOnlyList<Message> clientAReply = await requestATask;
+        Assert.Equal("reply-a", clientAReply[0].GetString());
+        Zlink.MultipartClose(clientAReply);
 
-        using Received clientBReply = RecvWithRetry(clientB);
-        Assert.Equal(ReceivedMessageType.Reply, clientBReply.MessageType);
-        Assert.Equal(1UL, clientBReply.RequestSeq);
-        Assert.Equal("reply-b", clientBReply.Parts[0].GetString());
+        IReadOnlyList<Message> clientBReply = await requestBTask;
+        Assert.Equal("reply-b", clientBReply[0].GetString());
+        Zlink.MultipartClose(clientBReply);
     }
 
     [Fact]
@@ -145,7 +154,7 @@ public sealed class test_request_reply
         using Message payload = Message.From("plain-data");
         dealerSocket.Send().Message(payload).Submit();
 
-        var received = new Received();
+        var received = Received.Create();
         routerSocket.Recv(received);
         try
         {
@@ -184,7 +193,7 @@ public sealed class test_request_reply
 
         Task serverTask = Task.Run(() =>
         {
-            var received = new Received();
+            var received = Received.Create();
             routerSocket.Recv(received);
             try
             {
@@ -225,7 +234,7 @@ public sealed class test_request_reply
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var received = new Received();
+            var received = Received.Create();
             if (socket.Recv(received, RecvFlags.DontWait))
                 return received;
 

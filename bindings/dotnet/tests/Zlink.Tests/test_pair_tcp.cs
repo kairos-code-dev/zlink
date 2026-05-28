@@ -58,7 +58,7 @@ public sealed class test_pair_tcp
         using Message part2 = Message.From("world");
         client.Send().Message(part1).Message(part2).Submit();
 
-        var received = new Received();
+        var received = Received.Create();
         server.Recv(received);
         try
         {
@@ -385,7 +385,7 @@ public sealed class test_pair_tcp
         receiver.Connect(endpoint);
         Thread.Sleep(50);
 
-        var probe = new Received();
+        var probe = Received.Create();
         Assert.False(receiver.Recv(probe, RecvFlags.DontWait));
     }
 
@@ -430,7 +430,7 @@ public sealed class test_pair_tcp
         client.Connect(endpoint);
         Thread.Sleep(50);
 
-        MonitorSnapshot snapshot = monitor.Snapshot();
+        MonitorStatus snapshot = monitor.Status();
         Assert.Equal<MonitorSourceKind>(MonitorSourceKind.Socket, snapshot.SourceKind);
         Assert.True(snapshot.SndPendingMsgs >= 0);
 
@@ -438,7 +438,7 @@ public sealed class test_pair_tcp
             Volatile.Read(ref callbackCount) >= 1, 15000, 10));
 
         monitor.Close();
-        Assert.Throws<ObjectDisposedException>(() => monitor.Snapshot());
+        Assert.Throws<ObjectDisposedException>(() => monitor.Status());
     }
 
     [Fact]
@@ -493,26 +493,20 @@ public sealed class test_pair_tcp
         using Message second = Message.From("second"u8.ToArray());
         Assert.True(sender.Send().Message(first).Message(second).Submit());
 
-        using var received = new Message();
+        using var received = Received.Create();
         Assert.True(CoreTestSupport.WaitUntil(
-            () => receiver.RecvPart(received, out bool hasMore,
-                RecvFlags.DontWait) && hasMore,
+            () => receiver.Recv(received, RecvFlags.DontWait),
             5000,
             10));
+        Assert.Equal(2, received.Parts.Count);
         Assert.Equal("first",
-            System.Text.Encoding.UTF8.GetString(received.AsReadOnlySpan()));
-
-        Assert.True(receiver.RecvPart(received, out bool lastHasMore,
-            RecvFlags.DontWait));
-        Assert.False(lastHasMore);
+            System.Text.Encoding.UTF8.GetString(
+                received.Parts[0].AsReadOnlySpan()));
         Assert.Equal("second",
-            System.Text.Encoding.UTF8.GetString(received.AsReadOnlySpan()));
+            System.Text.Encoding.UTF8.GetString(
+                received.Parts[1].AsReadOnlySpan()));
 
-        Assert.False(receiver.RecvPart(received, out bool noDataHasMore,
-            RecvFlags.DontWait));
-        Assert.False(noDataHasMore);
-        Assert.Equal("second",
-            System.Text.Encoding.UTF8.GetString(received.AsReadOnlySpan()));
+        Assert.False(receiver.Recv(received, RecvFlags.DontWait));
     }
 
     [Fact]
@@ -534,7 +528,7 @@ public sealed class test_pair_tcp
         Thread.Sleep(50);
 
         byte[] payloadBytes = new byte[64];
-        using var received = new Message();
+        using var received = Received.Create();
         for (int i = 0; i < 2048; i++)
         {
             payloadBytes[0] = unchecked((byte)i);
@@ -542,8 +536,11 @@ public sealed class test_pair_tcp
             while (!sent)
             {
                 using Message payload = Message.From(payloadBytes);
-                sent = sender.Send(payload, SendFlags.DontWait);
-                while (receiver.RecvPart(received, out _, RecvFlags.DontWait))
+                sent = sender.Send()
+                    .Message(payload)
+                    .Flags(SendFlags.DontWait)
+                    .Submit();
+                while (receiver.Recv(received, RecvFlags.DontWait))
                 {
                 }
             }

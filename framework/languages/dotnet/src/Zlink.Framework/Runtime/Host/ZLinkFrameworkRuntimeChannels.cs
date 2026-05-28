@@ -380,7 +380,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             try
             {
                 queryClient.Connect(endpoint);
-                foreach (var entry in queryClient.Snapshot(new ZLinkRegistryTopologyFilter(
+                foreach (var entry in queryClient.Topology(new ZLinkRegistryTopologyFilter(
                              AutoConnectType: ZLinkAutoConnectType.RouteMesh,
                              ServiceKind: ZLinkServiceKind.Socket,
                              ServiceRole: ZLinkServiceRole.Router,

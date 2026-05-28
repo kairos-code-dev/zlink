@@ -588,16 +588,45 @@ void capture_spot_request (const zlink_routing_id_t *source_rid_,
         std::lock_guard<std::mutex> lock (probe->mutex);
         probe->invoked = true;
         probe->request_seq = request_seq_;
-        probe->source_rid_value = *source_rid_;
-        probe->spot_rid_value = *spot_rid_;
-        probe->source_rid.assign (
-          reinterpret_cast<const char *> (source_rid_->data), source_rid_->size);
-        probe->spot_rid.assign (
-          reinterpret_cast<const char *> (spot_rid_->data), spot_rid_->size);
+        if (source_rid_) {
+            probe->source_rid_value = *source_rid_;
+            probe->source_rid.assign (
+              reinterpret_cast<const char *> (source_rid_->data),
+              source_rid_->size);
+        }
+        if (spot_rid_) {
+            probe->spot_rid_value = *spot_rid_;
+            probe->spot_rid.assign (
+              reinterpret_cast<const char *> (spot_rid_->data),
+              spot_rid_->size);
+        }
         probe->request_payload =
           part_count_ > 0 ? msg_to_string (&parts_[0]) : std::string ();
     }
     probe->cv.notify_all ();
+}
+
+void capture_spot_request_dispatch (void *spot_,
+                                    const zlink_spot_dispatch_info_t *info_,
+                                    void *userdata_)
+{
+    if (!info_
+        || info_->event != ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE)
+        return;
+
+    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    if (zlink_spot_recv (spot_, &source_rid, &spot_rid, &request_seq, &parts,
+                         &part_count, ZLINK_DONTWAIT)
+        != ZLINK_RECV_OK) {
+        return;
+    }
+    capture_spot_request (source_rid, spot_rid, request_seq, parts, part_count,
+                          userdata_);
+    zlink_multipart_close (parts, part_count);
 }
 
 void capture_router_spot_request (const zlink_routing_id_t *source_node_rid_,
@@ -665,7 +694,7 @@ void bind_spot_node (void *node_, char *endpoint_out_, size_t endpoint_size_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_, bind_endpoint_buf));
 
     zlink_spot_node_status_t status;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status_snapshot (node_, &status));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status (node_, &status));
     TEST_ASSERT_TRUE (status.local_endpoint[0] != '\0');
     snprintf (endpoint_out_, endpoint_size_, "%s", status.local_endpoint);
 }
@@ -680,7 +709,7 @@ void bind_spot_node_tls_pub_router (void *node_,
       zlink_spot_node_set_pub_bind (node_, "tls://127.0.0.1:*"));
 
     zlink_spot_node_status_t status;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status_snapshot (node_, &status));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status (node_, &status));
     TEST_ASSERT_TRUE (status.local_endpoint[0] != '\0');
     snprintf (endpoint_out_, endpoint_size_, "%s", status.local_endpoint);
 }
@@ -692,7 +721,7 @@ bool wait_for_spot_node_ready_state (void *node_, int role_, int timeout_ms_)
 
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t status;
-        if (zlink_spot_node_status_snapshot (node_, &status) == 0) {
+        if (zlink_spot_node_status (node_, &status) == 0) {
             const bool pub_ready = status.local_endpoint[0] != '\0';
             const bool sub_ready =
               status.active_peer_count > 0 && status.subject_count > 0;
@@ -713,7 +742,7 @@ bool wait_for_spot_node_subject_ready (void *node_, int timeout_ms_)
 
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t status;
-        if (zlink_spot_node_status_snapshot (node_, &status) == 0
+        if (zlink_spot_node_status (node_, &status) == 0
             && status.subject_count > 0
             && (status.ready_subject_count > 0
                 || status.connected_peer_count > 0
@@ -1238,110 +1267,6 @@ void test_dealer_to_dealer_request_is_not_supported ()
     test_context_socket_close_zero_linger (server_dealer);
 }
 
-void test_dealer_recv_reply_part_routes_same_sequence_to_source_peer ()
-{
-    void *server_dealer = test_context_socket (ZLINK_SOCKET_DEALER);
-    void *client_a = test_context_socket (ZLINK_SOCKET_DEALER);
-    void *client_b = test_context_socket (ZLINK_SOCKET_DEALER);
-    TEST_ASSERT_NOT_NULL (server_dealer);
-    TEST_ASSERT_NOT_NULL (client_a);
-    TEST_ASSERT_NOT_NULL (client_b);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (server_dealer, "inproc://zmp-dealer-dealer-directed-reply"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (client_a, "inproc://zmp-dealer-dealer-directed-reply"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (client_b, "inproc://zmp-dealer-dealer-directed-reply"));
-    msleep (SETTLE_TIME);
-    arm_dealer_recv_part (server_dealer);
-    arm_dealer_recv_part (client_a);
-    arm_dealer_recv_part (client_b);
-
-    zlink_msg_t request_a;
-    zlink_msg_t request_b;
-    zlink_msg_init (&request_a);
-    zlink_msg_init (&request_b);
-    init_string_part (&request_a, "from-a");
-    init_string_part (&request_b, "from-b");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request_frame_part (
-      client_a, 1, &request_a, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request_frame_part (
-      client_b, 1, &request_b, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
-
-    uint64_t token_a = 0;
-    uint64_t token_b = 0;
-    for (int i = 0; i < 2; ++i) {
-        uint8_t message_type = 0;
-        uint64_t request_token = 0;
-        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        zlink_msg_t request_part;
-        zlink_msg_init (&request_part);
-        TEST_ASSERT_EQUAL_INT (
-          ZLINK_RECV_OK,
-          recv_dealer_part_with_retry (
-            server_dealer, &message_type, &request_token, &request_part,
-            &has_more));
-        TEST_ASSERT_EQUAL_UINT8 (ZLINK_DEALER_MESSAGE_REQUEST, message_type);
-        TEST_ASSERT_TRUE (request_token != 0);
-        TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
-        const std::string payload = part_to_string_and_close (&request_part);
-        if (payload == "from-a")
-            token_a = request_token;
-        else if (payload == "from-b")
-            token_b = request_token;
-        else
-            TEST_FAIL_MESSAGE ("unexpected dealer request payload");
-    }
-    TEST_ASSERT_TRUE (token_a != 0);
-    TEST_ASSERT_TRUE (token_b != 0);
-    TEST_ASSERT_TRUE (token_a != token_b);
-
-    zlink_msg_t reply_b;
-    zlink_msg_t reply_a;
-    zlink_msg_init (&reply_b);
-    zlink_msg_init (&reply_a);
-    init_string_part (&reply_b, "reply-b");
-    init_string_part (&reply_a, "reply-a");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_reply_part (
-      server_dealer, token_b, &reply_b, ZLINK_PART_FINAL));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_reply_part (
-      server_dealer, token_a, &reply_a, ZLINK_PART_FINAL));
-
-    uint8_t reply_type = 0;
-    uint64_t reply_seq = 0;
-    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    zlink_msg_t client_reply;
-    zlink_msg_init (&client_reply);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_RECV_OK,
-      recv_dealer_part_with_retry (
-        client_a, &reply_type, &reply_seq, &client_reply, &has_more));
-    TEST_ASSERT_EQUAL_UINT8 (ZLINK_DEALER_MESSAGE_REPLY, reply_type);
-    TEST_ASSERT_EQUAL_UINT64 (1, reply_seq);
-    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
-    const std::string client_a_reply =
-      part_to_string_and_close (&client_reply);
-    TEST_ASSERT_EQUAL_STRING ("reply-a", client_a_reply.c_str ());
-
-    zlink_msg_init (&client_reply);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_RECV_OK,
-      recv_dealer_part_with_retry (
-        client_b, &reply_type, &reply_seq, &client_reply, &has_more));
-    TEST_ASSERT_EQUAL_UINT8 (ZLINK_DEALER_MESSAGE_REPLY, reply_type);
-    TEST_ASSERT_EQUAL_UINT64 (1, reply_seq);
-    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
-    const std::string client_b_reply =
-      part_to_string_and_close (&client_reply);
-    TEST_ASSERT_EQUAL_STRING ("reply-b", client_b_reply.c_str ());
-
-    msleep (SETTLE_TIME);
-    test_context_socket_close_zero_linger (client_b);
-    test_context_socket_close_zero_linger (client_a);
-    test_context_socket_close_zero_linger (server_dealer);
-}
-
 void test_router_request_rejects_non_router_target ()
 {
     void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
@@ -1448,9 +1373,8 @@ void test_router_to_spot_request_reply_basic ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router, "router-cli", 10));
 
     spot_request_handler_probe_t handler_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_handler (spot_case.spot_b, &capture_spot_request,
-                                  &handler_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      spot_case.spot_b, &capture_spot_request_dispatch, &handler_probe));
 
     zlink_msg_t request_part;
     zlink_msg_init (&request_part);
@@ -1517,8 +1441,8 @@ void test_spot_to_spot_request_preserves_source_identity ()
     const zlink_routing_id_t spot_b_rid = get_routing_id_value (spot_b);
 
     spot_request_handler_probe_t handler_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_handler (spot_b, &capture_spot_request, &handler_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      spot_b, &capture_spot_request_dispatch, &handler_probe));
 
     zlink_msg_t request_part;
     zlink_msg_init (&request_part);
@@ -1586,8 +1510,8 @@ void test_spot_to_spot_request_reply_over_tls ()
       zlink_spot_node_connect_peer (spot_case.node_b, endpoint_a));
 
     spot_request_handler_probe_t handler_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_handler (spot_case.spot_b, &capture_spot_request, &handler_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
+      spot_case.spot_b, &capture_spot_request_dispatch, &handler_probe));
 
     zlink_msg_t request_part;
     zlink_msg_init (&request_part);
@@ -1688,7 +1612,6 @@ int main ()
     RUN_TEST (test_multiple_in_flight_requests_complete_independently);
     RUN_TEST (test_out_of_order_replies_match_original_request);
     RUN_TEST (test_extra_reply_is_dropped_after_first_completion);
-    RUN_TEST (test_dealer_recv_reply_part_routes_same_sequence_to_source_peer);
     RUN_TEST (test_dealer_to_dealer_request_is_not_supported);
     RUN_TEST (test_router_request_rejects_non_router_target);
     RUN_TEST (test_dealer_request_uses_socket_default_timeout_when_reply_is_missing);

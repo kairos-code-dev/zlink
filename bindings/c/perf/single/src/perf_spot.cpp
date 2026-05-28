@@ -134,24 +134,24 @@ void emit_spot_hwm_detail (void *node_,
         return;
 
     size_t count = 0;
-    if (zlink_spot_node_internal_sockets_snapshot (node_, NULL, NULL, &count)
+    if (zlink_spot_node_internal_sockets (node_, NULL, NULL, &count)
         != ZLINK_CONFIG_OK
         || count == 0) {
         return;
     }
 
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> entries (count);
-    if (zlink_spot_node_internal_sockets_snapshot (
+    std::vector<zlink_spot_node_socket_entry_t> entries (count);
+    if (zlink_spot_node_internal_sockets (
           node_, NULL, entries.data (), &count)
         != ZLINK_CONFIG_OK) {
         return;
     }
 
     for (size_t i = 0; i < count; ++i) {
-        const zlink_spot_node_socket_snapshot_entry_t &entry = entries[i];
+        const zlink_spot_node_socket_entry_t &entry = entries[i];
         if (entry.auto_hwm_visible == 0)
             continue;
-        const zlink_monitor_snapshot_t &snapshot = entry.snapshot;
+        const zlink_monitor_status_t &snapshot = entry.monitor_status;
         if (snapshot.auto_hwm_applied_sndhwm <= 0
             && snapshot.auto_hwm_applied_rcvhwm <= 0) {
             continue;

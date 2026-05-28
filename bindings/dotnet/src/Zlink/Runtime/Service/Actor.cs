@@ -44,10 +44,10 @@ internal sealed class Actor : IActor
         return new ActorLeaveOperationImpl(_node, _ref, concreteSpot.RoutingId);
     }
 
-    public ActorPart? RecvPart(RecvFlags flags = RecvFlags.None)
+    public ActorReceived? Recv(RecvFlags flags = RecvFlags.None)
     {
         EnsureNotDisposed();
-        return ActorInterop.RecvActorPart(_node.Handle, _ref, flags);
+        return ActorInterop.RecvActor(_node.Handle, _ref, flags);
     }
 
     /// <summary>

@@ -138,7 +138,7 @@ func WaitUntil(timeout time.Duration, description string, predicate func() bool)
 
 func WaitSpotPeerConnected(node *zlink.SpotNode, timeout time.Duration) {
 	WaitUntil(timeout, "spot peer connection", func() bool {
-		status, err := node.StatusSnapshot()
+		status, err := node.Status()
 		return err == nil && status != nil && status.ConnectedPeerCount > 0
 	})
 }

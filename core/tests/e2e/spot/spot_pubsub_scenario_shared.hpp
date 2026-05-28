@@ -29,7 +29,7 @@ struct queued_spot_probe_t
 bool test_debug_enabled ();
 void step_log (const char *msg_);
 
-bool read_spot_snapshot (void *spot_, zlink_monitor_snapshot_t *out_);
+bool read_spot_snapshot (void *spot_, zlink_monitor_status_t *out_);
 int env_int_or_default (const char *name_, int default_value_);
 
 void ignore_spot_handler (const zlink_routing_id_t *,

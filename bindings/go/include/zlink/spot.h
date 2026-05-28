@@ -152,11 +152,10 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg 
   zlink_msg_t *message_,
   zlink_send_flags_t flags_);
 
-ZLINK_EXPORT zlink_handler_result_t zlink_spot_actor_lifecycle_handler (
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv_actor_lifecycle (
   void *spot_,
-  zlink_spot_actor_lifecycle_handler_fn on_join_,
-  zlink_spot_actor_lifecycle_handler_fn on_leave_,
-  void *userdata_);
+  zlink_spot_actor_lifecycle_event_t *event_out_,
+  zlink_recv_flags_t flags_);
 
 ZLINK_EXPORT zlink_config_result_t zlink_stream_bound_actors (
   void *stream_,
@@ -181,7 +180,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_router_bind (
 /** @brief Bind the PUB/SUB mesh endpoint for this SPOT node.
  *
  * Supports port 0 for ephemeral port allocation (e.g. "tcp://127.0.0.1:0").
- * After a successful bind, use zlink_spot_node_status_snapshot() to retrieve
+ * After a successful bind, use zlink_spot_node_status() to retrieve
  * the resolved endpoint (local_endpoint field) with the actual assigned port.
  */
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_pub_bind (
@@ -309,14 +308,14 @@ typedef struct zlink_spot_node_subject_filter_t
     uint32_t subject_kind;
 } zlink_spot_node_subject_filter_t;
 
-typedef struct zlink_spot_node_socket_snapshot_filter_t
+typedef struct zlink_spot_node_socket_filter_t
 {
     zlink_spot_node_socket_owner_t owner;
     zlink_socket_type_t socket_type;
     char socket_name[64];
-} zlink_spot_node_socket_snapshot_filter_t;
+} zlink_spot_node_socket_filter_t;
 
-typedef struct zlink_spot_node_socket_snapshot_entry_t
+typedef struct zlink_spot_node_socket_entry_t
 {
     zlink_spot_node_socket_owner_t owner;
     uint64_t owner_id;
@@ -324,8 +323,8 @@ typedef struct zlink_spot_node_socket_snapshot_entry_t
     char socket_name[64];
     zlink_socket_type_t socket_type;
     uint32_t auto_hwm_visible;
-    zlink_monitor_snapshot_t snapshot;
-} zlink_spot_node_socket_snapshot_entry_t;
+    zlink_monitor_status_t monitor_status;
+} zlink_spot_node_socket_entry_t;
 
 typedef struct zlink_spot_node_spot_entry_t
 {
@@ -348,37 +347,33 @@ typedef struct zlink_spot_node_actor_entry_t
     uint64_t last_changed_ms;
 } zlink_spot_node_actor_entry_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_status_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_status (
   void *node_,
   zlink_spot_node_status_t *out_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_peers_snapshot (
-  void *node_,
-  zlink_spot_node_peer_entry_t *entries_,
-  size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_peers_query (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_peers (
   void *node_,
   const zlink_spot_node_peer_filter_t *filter_,
   zlink_spot_node_peer_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_subjects_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_subjects (
   void *node_,
   const zlink_spot_node_subject_filter_t *filter_,
   zlink_spot_node_subject_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_internal_sockets_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_internal_sockets (
   void *node_,
-  const zlink_spot_node_socket_snapshot_filter_t *filter_,
-  zlink_spot_node_socket_snapshot_entry_t *entries_,
+  const zlink_spot_node_socket_filter_t *filter_,
+  zlink_spot_node_socket_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots (
   void *node_,
   zlink_spot_node_spot_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors (
   void *node_,
   zlink_spot_node_actor_entry_t *entries_,
   size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_actors_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_spot_actors (
   void *spot_,
   zlink_actor_ref_t *entries_,
   size_t *count_);

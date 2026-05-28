@@ -438,8 +438,8 @@ public sealed class Registry : IDisposable
     public void SetBroadcastInterval(uint intervalMs);
     public RegistryStatus Snapshot();
     public RegistryServiceSummaryEntry[] ServiceSummary(...);
-    public RegistryTopologyEntry[] TopologySnapshot(...);
-    public RegistryTopologyEntry[] TopologyQuery(...);
+    public RegistryTopologyEntry[] Topology(...);
+    public RegistryTopologyEntry[] Topology(...);
     public MemberPeerEntry[] MemberPeers(...);
     public Message GetMemberPeerMetadata(...);
 }
@@ -505,7 +505,7 @@ public sealed class SocketMonitor : IDisposable
 {
     public void AttachHandler(...);
     public SocketMonitorEvent Receive();
-    public MonitorSnapshot Snapshot();
+    public MonitorStatus Snapshot();
 }
 
 public sealed class ServiceMonitor : IDisposable
@@ -548,7 +548,7 @@ public sealed class ServiceMonitor : IDisposable
 1. `ZlinkVersionInfo`
 2. `SocketMonitorEvent`
 3. `ServiceMonitorEvent`
-4. `MonitorSnapshot`
+4. `MonitorStatus`
 5. `PeerRecord`
 6. `MemberPeerEntry`
 7. `RegistryStatus`
@@ -636,7 +636,7 @@ public sealed class ServiceMonitor : IDisposable
    - `zlink_socket_attach_discovery`
    - `zlink_socket_monitor_open/handler/recv`,
      `zlink_service_monitor_open/handler/recv`,
-     `zlink_monitor_snapshot`, `zlink_monitor_close`
+     `zlink_monitor_status`, `zlink_monitor_close`
    - `zlink_discovery_set/get_value`, `set/get_metadata`
    - `zlink_registry_*_snapshot`, `topology_*`,
      `member_peers`, `member_peer_metadata`
@@ -740,8 +740,8 @@ public sealed class ServiceMonitor : IDisposable
    - `SetEndpoints + Start` 모델 제거
    - `Bind(pubEndpoint, routerEndpoint)` 모델로 교체
    - `SetId`, `AddPeer`, `SetHeartbeat`, `SetBroadcastInterval` 유지
-   - `StatusSnapshot`, `ServiceSummarySnapshot`,
-     `TopologySnapshot`, `TopologyQuery`,
+   - `Status`, `ServiceSummary`,
+     `Topology`, `Topology`,
      `MemberPeers`, `MemberPeerMetadata` 추가
 3. `Discovery` 재작성
    - 생성자 시그니처를 `service_type + service_name` 고정 모델로 변경

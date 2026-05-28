@@ -104,8 +104,8 @@ struct spot_node_access_t
       std::vector<zlink_spot_node_subject_entry_t> *out_);
     static int internal_sockets_snapshot (
       spot_node_t *node_,
-      const zlink_spot_node_socket_snapshot_filter_t *filter_,
-      std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_);
+      const zlink_spot_node_socket_filter_t *filter_,
+      std::vector<zlink_spot_node_socket_entry_t> *out_);
     static int attach_discovery (spot_node_t *node_, void *discovery_);
     static int attach_router_channel_discovery (spot_node_t *node_,
                                                 const char *channel_name_,

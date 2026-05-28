@@ -81,7 +81,7 @@ class spot_node_t
         zlink_spot_node_status_t status;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_status_snapshot (_node, &status)));
+            zlink_spot_node_status (_node, &status)));
         return fixed_string_to_string (status.local_endpoint);
     }
 
@@ -338,26 +338,26 @@ class spot_node_t
           ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX, value_.value ());
     }
 
-    spot_node_status_t status_snapshot () const
+    spot_node_status_t status () const
     {
         zlink_spot_node_status_t native;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_status_snapshot (_node, &native)));
+            zlink_spot_node_status (_node, &native)));
         return spot_node_status_t (native);
     }
 
-    std::vector<spot_node_peer_entry_t> peers_snapshot () const
+    std::vector<spot_node_peer_entry_t> peers () const
     {
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_peers_snapshot (_node, NULL, &count)));
+            zlink_spot_node_peers (_node, NULL, NULL, &count)));
         std::vector<zlink_spot_node_peer_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_spot_node_peers_snapshot (_node, native.data (), &count)));
+                zlink_spot_node_peers (_node, NULL, native.data (), &count)));
             native.resize (count);
         }
         std::vector<spot_node_peer_entry_t> entries;
@@ -386,11 +386,11 @@ class spot_node_t
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_peers_query (_node, &native_filter, NULL, &count)));
+            zlink_spot_node_peers (_node, &native_filter, NULL, &count)));
         std::vector<zlink_spot_node_peer_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
-              static_cast<config_result_t> (zlink_spot_node_peers_query (
+              static_cast<config_result_t> (zlink_spot_node_peers (
                 _node, &native_filter, native.data (), &count)));
             native.resize (count);
         }
@@ -402,7 +402,7 @@ class spot_node_t
     }
 
     std::vector<spot_node_subject_entry_t>
-    subjects_snapshot (const spot_node_subject_filter_t *filter_ = NULL) const
+    subjects (const spot_node_subject_filter_t *filter_ = NULL) const
     {
         zlink_spot_node_subject_filter_t native_filter;
         const zlink_spot_node_subject_filter_t *filter_ptr = NULL;
@@ -424,12 +424,12 @@ class spot_node_t
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_subjects_snapshot (_node, filter_ptr, NULL, &count)));
+            zlink_spot_node_subjects (_node, filter_ptr, NULL, &count)));
         std::vector<zlink_spot_node_subject_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_spot_node_subjects_snapshot (
+                zlink_spot_node_subjects (
                   _node, filter_ptr, native.data (), &count)));
             native.resize (count);
         }
@@ -441,17 +441,17 @@ class spot_node_t
     }
 
     std::vector<spot_node_subject_entry_t>
-    subjects_snapshot (const spot_node_subject_filter_t &filter_) const
+    subjects (const spot_node_subject_filter_t &filter_) const
     {
-        return subjects_snapshot (&filter_);
+        return subjects (&filter_);
     }
 
-    std::vector<spot_node_socket_snapshot_entry_t>
-    internal_sockets_snapshot (
-      const spot_node_socket_snapshot_filter_t *filter_ = NULL) const
+    std::vector<spot_node_socket_entry_t>
+    internal_sockets (
+      const spot_node_socket_filter_t *filter_ = NULL) const
     {
-        zlink_spot_node_socket_snapshot_filter_t native_filter;
-        const zlink_spot_node_socket_snapshot_filter_t *filter_ptr = NULL;
+        zlink_spot_node_socket_filter_t native_filter;
+        const zlink_spot_node_socket_filter_t *filter_ptr = NULL;
         if (filter_) {
             std::memset (&native_filter, 0, sizeof (native_filter));
             if (filter_->owner ())
@@ -470,28 +470,28 @@ class spot_node_t
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_internal_sockets_snapshot (
+            zlink_spot_node_internal_sockets (
               _node, filter_ptr, NULL, &count)));
-        std::vector<zlink_spot_node_socket_snapshot_entry_t> native (count);
+        std::vector<zlink_spot_node_socket_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_spot_node_internal_sockets_snapshot (
+                zlink_spot_node_internal_sockets (
                   _node, filter_ptr, native.data (), &count)));
             native.resize (count);
         }
-        std::vector<spot_node_socket_snapshot_entry_t> entries;
+        std::vector<spot_node_socket_entry_t> entries;
         entries.reserve (native.size ());
         for (size_t i = 0; i < native.size (); ++i)
-            entries.push_back (spot_node_socket_snapshot_entry_t (native[i]));
+            entries.push_back (spot_node_socket_entry_t (native[i]));
         return entries;
     }
 
-    std::vector<spot_node_socket_snapshot_entry_t>
-    internal_sockets_snapshot (
-      const spot_node_socket_snapshot_filter_t &filter_) const
+    std::vector<spot_node_socket_entry_t>
+    internal_sockets (
+      const spot_node_socket_filter_t &filter_) const
     {
-        return internal_sockets_snapshot (&filter_);
+        return internal_sockets (&filter_);
     }
 
     actor_t create_actor (const std::string &actor_id_);
@@ -546,17 +546,17 @@ class spot_node_t
 
     send_op_t send_bound_session_msg (const actor_ref_t &actor_);
 
-    std::vector<spot_node_spot_entry_t> spots_snapshot () const
+    std::vector<spot_node_spot_entry_t> spots () const
     {
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_spots_snapshot (_node, NULL, &count)));
+            zlink_spot_node_spots (_node, NULL, &count)));
         std::vector<zlink_spot_node_spot_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_spot_node_spots_snapshot (
+                zlink_spot_node_spots (
                   _node, native.data (), &count)));
             native.resize (count);
         }
@@ -567,17 +567,17 @@ class spot_node_t
         return entries;
     }
 
-    std::vector<spot_node_actor_entry_t> actors_snapshot () const
+    std::vector<spot_node_actor_entry_t> actors () const
     {
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_node_actors_snapshot (_node, NULL, &count)));
+            zlink_spot_node_actors (_node, NULL, &count)));
         std::vector<zlink_spot_node_actor_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_spot_node_actors_snapshot (
+                zlink_spot_node_actors (
                   _node, native.data (), &count)));
             native.resize (count);
         }

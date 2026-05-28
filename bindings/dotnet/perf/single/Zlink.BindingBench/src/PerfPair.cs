@@ -101,7 +101,7 @@ internal static class PerfPair
             // which reuses a single stack header buffer). Allocating a fresh
             // envelope per message churned the managed heap on the hot
             // receiver thread.
-            using var maybe = new Received();
+            using var maybe = Received.Create();
 
             try
             {

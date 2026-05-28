@@ -17,7 +17,6 @@ import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
 import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
-import systems.zlink.contracts.sockets.SpotRoutedHandler;
 import systems.zlink.contracts.errors.SubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.ActorInterop;
@@ -62,10 +61,6 @@ public final class SpotRoutedSupport implements AutoCloseable {
     private static final FunctionDescriptor FD_REPLY_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
-    private static final FunctionDescriptor FD_SPOT_HANDLER =
-      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_DISPATCH_HANDLER =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS);
@@ -86,10 +81,8 @@ public final class SpotRoutedSupport implements AutoCloseable {
       Executors.newSingleThreadScheduledExecutor(new TimeoutThreadFactory());
 
     private final Spot spot;
-    private SpotRoutedHandler routedHandler;
     private SpotDispatchEventHandler dispatchEventHandler;
     private ExecutorService callbackExecutor;
-    private Arena routedCallbackArena;
     private Arena dispatchCallbackArena;
     private long dispatchCallbackId;
     private volatile RuntimeException callbackFailure;
@@ -266,125 +259,6 @@ public final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
-    void onRoutedReceive(SpotRoutedHandler handler) {
-        Objects.requireNonNull(handler, "handler");
-        ensureOpen();
-        ensureNoCallbackFailure();
-        ExecutorService executor = ensureCallbackExecutor("zlink-spot-routed-callback");
-        Arena arena = Arena.ofShared();
-        MemorySegment stub = LINKER.upcallStub(callbackHandle(
-          "handleRoutedCallback", MethodType.methodType(void.class,
-            MemorySegment.class, MemorySegment.class, long.class,
-            MemorySegment.class, long.class, MemorySegment.class), this),
-          FD_SPOT_HANDLER, arena);
-        boolean success = false;
-        try {
-            int rc = Native.spotHandler(handle(), stub, MemorySegment.NULL);
-            if (rc != 0) {
-                throw new HandlerException(HandlerResult.fromValue(rc));
-            }
-            success = true;
-            closeArena(routedCallbackArena);
-            routedCallbackArena = arena;
-            routedHandler = handler;
-        } finally {
-            if (!success) {
-                closeArena(arena);
-                if (callbackExecutor == executor && routedHandler == null
-                    && dispatchEventHandler == null) {
-                    shutdownExecutor(executor);
-                    callbackExecutor = null;
-                }
-            }
-        }
-    }
-
-    void onDispatchEvent(SpotDispatchEventHandler handler) {
-        Objects.requireNonNull(handler, "handler");
-        ensureOpen();
-        ensureNoCallbackFailure();
-        ExecutorService executor = ensureCallbackExecutor("zlink-spot-dispatch-callback");
-        Arena arena = Arena.ofShared();
-        long callbackId = NEXT_CALLBACK_ID.getAndIncrement();
-        DISPATCH_RECEIVERS.put(callbackId, this);
-        MemorySegment stub = LINKER.upcallStub(callbackHandle(
-          "handleDispatchEventCallback",
-          MethodType.methodType(void.class, MemorySegment.class,
-            MemorySegment.class, MemorySegment.class)),
-          FD_DISPATCH_HANDLER, arena);
-        boolean success = false;
-        try {
-            int rc = Native.spotDispatchEventHandler(handle(), stub,
-              MemorySegment.ofAddress(callbackId));
-            if (rc != 0) {
-                throw new HandlerException(HandlerResult.fromValue(rc));
-            }
-            success = true;
-            if (dispatchCallbackId != 0L) {
-                DISPATCH_RECEIVERS.remove(dispatchCallbackId);
-            }
-            closeArena(dispatchCallbackArena);
-            dispatchCallbackArena = arena;
-            dispatchCallbackId = callbackId;
-            dispatchEventHandler = handler;
-        } finally {
-            if (!success) {
-                DISPATCH_RECEIVERS.remove(callbackId);
-                closeArena(arena);
-                if (callbackExecutor == executor && routedHandler == null
-                    && dispatchEventHandler == null) {
-                    shutdownExecutor(executor);
-                    callbackExecutor = null;
-                }
-            }
-        }
-    }
-
-    @Override
-    public void close() {
-        routedHandler = null;
-        dispatchEventHandler = null;
-        callbackFailure = null;
-        shutdownExecutor(callbackExecutor);
-        callbackExecutor = null;
-        closeArena(routedCallbackArena);
-        closeArena(dispatchCallbackArena);
-        if (dispatchCallbackId != 0L) {
-            DISPATCH_RECEIVERS.remove(dispatchCallbackId);
-        }
-        routedCallbackArena = null;
-        dispatchCallbackArena = null;
-        dispatchCallbackId = 0L;
-    }
-
-    private void handleRoutedCallback(MemorySegment sourceRid,
-                                      MemorySegment spotRid,
-                                      long requestSeq,
-                                      MemorySegment parts,
-                                      long partCount,
-                                      MemorySegment userdata) {
-        SpotRoutedHandler handler = routedHandler;
-        ExecutorService executor = callbackExecutor;
-        if (handler == null || executor == null) {
-            NativeMsg.multipartClose(parts, partCount);
-            return;
-        }
-        RoutedSnapshot snapshot = null;
-        try {
-            Message[] frames = InternalAccess.messageFromOwnedMsgVectorShared(
-              parts, partCount);
-            snapshot = new RoutedSnapshot(readRoutingId(sourceRid),
-              readRoutingId(spotRid), requestSeq, frames);
-            NativeMsg.multipartClose(parts, partCount);
-            RoutedSnapshot callbackSnapshot = snapshot;
-            executor.execute(() -> dispatchRouted(handler, callbackSnapshot));
-        } catch (RejectedExecutionException ex) {
-            recordCallbackFailure(ex);
-        } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
-        }
-    }
-
     private static void handleDispatchEventCallback(MemorySegment spotHandle,
                                                     MemorySegment info,
                                                     MemorySegment userdata) {
@@ -415,38 +289,6 @@ public final class SpotRoutedSupport implements AutoCloseable {
         } catch (Error ex) {
             recordCallbackFailure(new RuntimeException(
                 "spot dispatch callback failed", ex));
-        }
-    }
-
-    private void dispatchRouted(SpotRoutedHandler handler,
-                                RoutedSnapshot snapshot) {
-        try {
-            Received received = InternalAccess.received(snapshot.sourceRid(),
-              snapshot.spotRid(), snapshot.parts(), snapshot.requestSeq(),
-              snapshot.requestSeq() != 0L,
-              snapshot.requestSeq() == 0L ? null : (replyParts, sendFlags) -> {
-                  if (snapshot.spotRid() != null) {
-                      replyToSpot(snapshot.sourceRid(), snapshot.spotRid(),
-                        snapshot.requestSeq(), replyParts, sendFlags);
-                  } else {
-                      replyToRouter(snapshot.sourceRid(), snapshot.requestSeq(),
-                        replyParts, sendFlags);
-                  }
-              });
-            if (snapshot.sourceRid() != null && snapshot.spotRid() != null) {
-                InternalAccess.receivedSetSendSender(received, (sendParts, sendFlags) ->
-                    sendToSpot(snapshot.sourceRid(), snapshot.spotRid(),
-                      sendParts, sendFlags));
-            }
-            InternalAccess.enterCallback();
-            try (received) {
-                handler.onMessage(snapshot.sourceRid(), snapshot.spotRid(),
-                  snapshot.requestSeq(), received);
-            } finally {
-                InternalAccess.leaveCallback();
-            }
-        } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
         }
     }
 
@@ -534,6 +376,41 @@ public final class SpotRoutedSupport implements AutoCloseable {
             }
         }
         return List.copyOf(parts);
+    }
+
+    void onDispatchEvent(SpotDispatchEventHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        ensureOpen();
+        releaseDispatchEventHandlerSlot();
+        Arena arena = Arena.ofShared();
+        long callbackId = NEXT_CALLBACK_ID.getAndIncrement();
+        MemorySegment callback = LINKER.upcallStub(
+          callbackHandle("handleDispatchEventCallback",
+            MethodType.methodType(void.class, MemorySegment.class,
+              MemorySegment.class, MemorySegment.class)),
+          FD_DISPATCH_HANDLER, arena);
+        int rc = Native.spotDispatchEventHandler(handle(), callback,
+          MemorySegment.ofAddress(callbackId));
+        if (rc != 0) {
+            closeArena(arena);
+            throw new HandlerException(HandlerResult.fromValue(rc),
+              Native.errno());
+        }
+        dispatchEventHandler = handler;
+        dispatchCallbackArena = arena;
+        dispatchCallbackId = callbackId;
+        DISPATCH_RECEIVERS.put(callbackId, this);
+    }
+
+    private void releaseDispatchEventHandlerSlot() {
+        long callbackId = dispatchCallbackId;
+        if (callbackId != 0L) {
+            DISPATCH_RECEIVERS.remove(callbackId);
+            dispatchCallbackId = 0L;
+        }
+        closeArena(dispatchCallbackArena);
+        dispatchCallbackArena = null;
+        dispatchEventHandler = null;
     }
 
     private CompletableFuture<List<Message>> requestViaNative(List<Message> parts,
@@ -990,6 +867,13 @@ public final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
+    @Override
+    public void close() {
+        releaseDispatchEventHandlerSlot();
+        shutdownExecutor(callbackExecutor);
+        callbackExecutor = null;
+    }
+
     private static CompletableFuture<Received> registerPending(long requestId,
                                                                long timeoutMs) {
         CompletableFuture<Received> future = new CompletableFuture<>();
@@ -1212,7 +1096,5 @@ public final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
-    private record RoutedSnapshot(RoutingId sourceRid, RoutingId spotRid,
-                                  long requestSeq, Message[] parts) {
-    }
+
 }

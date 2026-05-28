@@ -87,7 +87,7 @@ is not exposed as a public `StreamSocket` method.
 `requestChannel(channelName, ...)`, `setSubscription()` /
 `unsetSubscription()`, `subscribe(topicMessage, flags?)`,
 `receiveSubscriptionEvent(subscriptionEvent, flags?)`, `recvRouted(received, flags?)`,
-`onRoutedReceive()`, `onDispatchEvent()`, and
+`recvActorLifecycle(flags?)`, `onDispatchEvent()`, and
 `onSendReady()`.
 
 `Discovery` uses `connectRegistry()`, `setValue()` / `getValue()`,
@@ -96,15 +96,15 @@ is not exposed as a public `StreamSocket` method.
 
 `SpotNode` uses `setPubBind()`, `setRouterBind()`,
 `connectPeer()` / `disconnectPeer()`,
-`attachDiscovery()`, `statusSnapshot()`, `peersSnapshot()`,
-`peersQuery()`, `subjectsSnapshot(filter?)`, `setTlsServer()`,
+`attachDiscovery()`, `status()`, `peers()`,
+`peers(filter)()`, `subjects(filter?)`, `setTlsServer()`,
 `setTlsClient()`.
 
 `Registry` uses `bind()`, `setId()`, `addPeer()`, `setHeartbeat()`,
 `setBroadcastInterval()`, `setTlsServer()`, `setTlsClient()`,
-`statusSnapshot()`,
-  `serviceSummarySnapshot(filter?)`, `memberPeers()`,
-  `memberPeerMetadata()`, `topologySnapshot()`, `topologyQuery(filter?)`.
+`status()`,
+  `serviceSummary(filter?)`, `memberPeers()`,
+  `memberPeerMetadata()`, `topology()`, `topology(filter)(filter?)`.
 
 `RegistryQueryClient` uses `connect()` and `snapshot(filter?)`.
 

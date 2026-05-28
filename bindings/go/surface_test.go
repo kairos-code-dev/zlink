@@ -185,8 +185,8 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "GetOrCreateSpot") {
 		t.Fatalf("SpotNode should expose GetOrCreateSpot")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "StatusSnapshot") {
-		t.Fatalf("SpotNode should expose StatusSnapshot")
+	if !hasMethod((*zlink.SpotNode)(nil), "Status") {
+		t.Fatalf("SpotNode should expose Status")
 	}
 	if !hasMethod((*zlink.SpotNode)(nil), "AttachDiscovery") {
 		t.Fatalf("SpotNode should expose AttachDiscovery")
@@ -287,11 +287,11 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if hasMethod((*zlink.Context)(nil), "MaxSockets") {
 		t.Fatalf("Context should not expose direct context option getters")
 	}
-	if !hasMethod((*zlink.Registry)(nil), "TopologySnapshot") {
-		t.Fatalf("Registry should expose TopologySnapshot")
+	if !hasMethod((*zlink.Registry)(nil), "Topology") {
+		t.Fatalf("Registry should expose Topology")
 	}
-	if !hasMethod((*zlink.Registry)(nil), "StatusSnapshot") {
-		t.Fatalf("Registry should expose StatusSnapshot")
+	if !hasMethod((*zlink.Registry)(nil), "Status") {
+		t.Fatalf("Registry should expose Status")
 	}
 	if !hasMethod((*zlink.Discovery)(nil), "MemberPeers") {
 		t.Fatalf("Discovery should expose MemberPeers")
@@ -400,11 +400,11 @@ func TestSurfaceActorCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "LeaveActor") {
 		t.Fatalf("SpotNode should expose LeaveActor")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "SpotsSnapshot") {
-		t.Fatalf("SpotNode should expose SpotsSnapshot")
+	if !hasMethod((*zlink.SpotNode)(nil), "Spots") {
+		t.Fatalf("SpotNode should expose Spots")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "ActorsSnapshot") {
-		t.Fatalf("SpotNode should expose ActorsSnapshot")
+	if !hasMethod((*zlink.SpotNode)(nil), "Actors") {
+		t.Fatalf("SpotNode should expose Actors")
 	}
 
 	if !hasMethod((*zlink.Actor)(nil), "Ref") {
@@ -435,8 +435,8 @@ func TestSurfaceActorCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Spot)(nil), "ReplyActorJoin") {
 		t.Fatalf("Spot should expose ReplyActorJoin")
 	}
-	if !hasMethod((*zlink.Spot)(nil), "ActorsSnapshot") {
-		t.Fatalf("Spot should expose ActorsSnapshot")
+	if !hasMethod((*zlink.Spot)(nil), "Actors") {
+		t.Fatalf("Spot should expose Actors")
 	}
 
 	if !hasMethod((*zlink.StreamSocket)(nil), "BindActor") {
@@ -668,11 +668,17 @@ func TestSurfaceCallbackCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Spot)(nil), "RecvRouted") {
 		t.Fatalf("Spot should expose RecvRouted")
 	}
-	if !hasMethod((*zlink.Spot)(nil), "ForwardRouted") {
-		t.Fatalf("Spot should expose ForwardRouted")
+	if hasMethod((*zlink.Spot)(nil), "ForwardRouted") {
+		t.Fatalf("Spot should not expose ForwardRouted")
 	}
-	if !hasMethod((*zlink.Spot)(nil), "OnRoutedReceive") {
-		t.Fatalf("Spot should expose OnRoutedReceive")
+	if hasMethod((*zlink.Spot)(nil), "OnRoutedReceive") {
+		t.Fatalf("Spot should not expose OnRoutedReceive")
+	}
+	if hasMethod((*zlink.Spot)(nil), "OnActorLifecycle") {
+		t.Fatalf("Spot should not expose OnActorLifecycle")
+	}
+	if !hasMethod((*zlink.Spot)(nil), "RecvActorLifecycle") {
+		t.Fatalf("Spot should expose RecvActorLifecycle")
 	}
 	if !hasMethod((*zlink.Spot)(nil), "OnDispatchEvent") {
 		t.Fatalf("Spot should expose OnDispatchEvent")
@@ -756,10 +762,10 @@ func TestSurfaceSpotDoesNotExposeDirectMessaging(t *testing.T) {
 	if hasMethod((*zlink.Discovery)(nil), "Metadata") {
 		t.Fatalf("Discovery should not expose Metadata")
 	}
-	if hasMethod((*zlink.Registry)(nil), "Status") {
-		t.Fatalf("Registry should not expose Status")
+	if !hasMethod((*zlink.Registry)(nil), "Status") {
+		t.Fatalf("Registry should expose Status")
 	}
-	if hasMethod((*zlink.SpotNode)(nil), "Status") {
-		t.Fatalf("SpotNode should not expose Status")
+	if !hasMethod((*zlink.SpotNode)(nil), "Status") {
+		t.Fatalf("SpotNode should expose Status")
 	}
 }

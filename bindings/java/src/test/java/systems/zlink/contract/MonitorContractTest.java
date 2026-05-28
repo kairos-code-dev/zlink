@@ -9,13 +9,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MonitorContractTest {
     @Test
-    public void monitorSnapshotUsesCanonicalMonitorSurface() {
+    public void monitorStatusUsesCanonicalMonitorSurface() {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
              PairSocket socket = new PairSocket(ctx);
              var monitor = socket.monitorOpen()) {
-            assertTrue(monitor.snapshot().sndPendingMsgs() >= 0L);
+            assertTrue(monitor.status().sndPendingMsgs() >= 0L);
         }
     }
 }

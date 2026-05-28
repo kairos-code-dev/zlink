@@ -24,7 +24,7 @@ Discovery instances.
 **Registry is thread-safe.** A single Registry handle can be used
 concurrently from multiple threads. Configuration APIs (`set_id`, `add_peer`,
 `set_heartbeat`, `set_broadcast_interval`) must be called
-before `bind`. Topology query APIs (`topology_snapshot`, `topology_query`,
+before `bind`. Topology query APIs (`topology`, `topology(filter)`,
 `member_peers`) are safe to call from any
 thread at any time after bind.
 
@@ -280,7 +280,7 @@ Query the operational state of the Registry itself:
 
 ```c
 zlink_registry_status_t status;
-zlink_registry_status_snapshot(registry, &status);
+zlink_registry_status(registry, &status);
 
 printf("registry_id=%u  state=%d  entries=%u  peers=%u/%u\n",
        status.registry_id,
@@ -311,11 +311,11 @@ Aggregate per-channel statistics across the topology:
 ```c
 /* Summary of all channels */
 size_t count = 0;
-zlink_registry_service_summary_snapshot(registry, NULL, NULL, &count);
+zlink_registry_service_summary(registry, NULL, NULL, &count);
 
 zlink_registry_service_summary_entry_t *entries = malloc(
     count * sizeof(zlink_registry_service_summary_entry_t));
-zlink_registry_service_summary_snapshot(registry, NULL, entries, &count);
+zlink_registry_service_summary(registry, NULL, entries, &count);
 
 for (size_t i = 0; i < count; i++) {
     printf("channel=%s  total=%u  ready=%u  err=%u\n",
@@ -352,7 +352,7 @@ strncpy(filter.channel_name, "payment-service",
 
 size_t count = 64;
 zlink_registry_service_summary_entry_t entries[64];
-zlink_registry_service_summary_snapshot(registry, &filter, entries, &count);
+zlink_registry_service_summary(registry, &filter, entries, &count);
 ```
 
 ### 6.1 Local Query (Same Process)
@@ -362,12 +362,12 @@ zlink_registry_service_summary_snapshot(registry, &filter, entries, &count);
 ```c
 /* Query required count first */
 size_t count = 0;
-zlink_registry_topology_snapshot(registry, NULL, &count);
+zlink_registry_topology(registry, NULL, &count);
 
 /* Allocate and fetch */
 zlink_registry_topology_entry_t *entries = malloc(
     count * sizeof(zlink_registry_topology_entry_t));
-zlink_registry_topology_snapshot(registry, entries, &count);
+zlink_registry_topology(registry, entries, &count);
 
 for (size_t i = 0; i < count; i++) {
     printf("channel=%s endpoint=%s state=%d\n",
@@ -391,7 +391,7 @@ filter.state = ZLINK_TOPOLOGY_STATE_READY;
 
 size_t count = 64;
 zlink_registry_topology_entry_t entries[64];
-zlink_registry_topology_query(registry, &filter, entries, &count);
+zlink_registry_topology(registry, &filter, entries, &count);
 
 printf("READY instances: %zu\n", count);
 for (size_t i = 0; i < count; i++) {
@@ -442,11 +442,11 @@ zlink_registry_query_client_connect(client, "tcp://registry1:5551");
 
 /* Unfiltered snapshot (pass NULL filter for all entries) */
 size_t count = 0;
-zlink_registry_query_snapshot(client, NULL, NULL, &count);
+zlink_registry_query_client_topology(client, NULL, NULL, &count);
 
 zlink_registry_topology_entry_t *entries = malloc(
     count * sizeof(zlink_registry_topology_entry_t));
-zlink_registry_query_snapshot(client, NULL, entries, &count);
+zlink_registry_query_client_topology(client, NULL, entries, &count);
 
 /* Print topology dump */
 for (size_t i = 0; i < count; i++) {
@@ -475,11 +475,11 @@ filter.state = ZLINK_TOPOLOGY_STATE_LOST;
 
 size_t lost_count = 64;
 zlink_registry_topology_entry_t lost[64];
-zlink_registry_query_snapshot(client, &filter, lost, &lost_count);
+zlink_registry_query_client_topology(client, &filter, lost, &lost_count);
 printf("LOST entries: %zu\n", lost_count);
 
 /* Cleanup */
-zlink_registry_query_destroy(&client);
+zlink_registry_query_client_destroy(&client);
 zlink_ctx_term(ctx);
 ```
 

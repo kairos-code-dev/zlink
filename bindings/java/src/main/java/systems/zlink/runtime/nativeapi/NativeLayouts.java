@@ -406,6 +406,17 @@ public final class NativeLayouts {
     public static final long SPOT_ACTOR_LIFECYCLE_INFO_FLAGS_OFFSET =
             SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteOffset(
                     PathElement.groupElement("flags"));
+    public static final MemoryLayout SPOT_ACTOR_LIFECYCLE_EVENT_LAYOUT =
+            MemoryLayout.structLayout(
+                    ValueLayout.JAVA_INT.withName("kind"),
+                    MemoryLayout.paddingLayout(4),
+                    SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.withName("info"));
+    public static final long SPOT_ACTOR_LIFECYCLE_EVENT_KIND_OFFSET =
+            SPOT_ACTOR_LIFECYCLE_EVENT_LAYOUT.byteOffset(
+                    PathElement.groupElement("kind"));
+    public static final long SPOT_ACTOR_LIFECYCLE_EVENT_INFO_OFFSET =
+            SPOT_ACTOR_LIFECYCLE_EVENT_LAYOUT.byteOffset(
+                    PathElement.groupElement("info"));
 
     public static final MemoryLayout SPOT_NODE_STATUS_LAYOUT =
             MemoryLayout.structLayout(

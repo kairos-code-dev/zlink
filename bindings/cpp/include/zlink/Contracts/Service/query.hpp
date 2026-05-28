@@ -85,7 +85,7 @@ class registry_query_client_t
     }
 
     std::vector<registry_topology_entry_t>
-    snapshot (const registry_topology_filter_t *filter_ = NULL) const
+    topology (const registry_topology_filter_t *filter_ = NULL) const
     {
         zlink_registry_topology_filter_t native_filter;
         const zlink_registry_topology_filter_t *filter_ptr = NULL;
@@ -121,12 +121,12 @@ class registry_query_client_t
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_registry_query_snapshot (_client, filter_ptr, NULL, &count)));
+            zlink_registry_query_client_topology (_client, filter_ptr, NULL, &count)));
         std::vector<zlink_registry_topology_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_registry_query_snapshot (
+                zlink_registry_query_client_topology (
                   _client, filter_ptr, native.data (), &count)));
             native.resize (count);
         }
@@ -144,7 +144,7 @@ class registry_query_client_t
 
         void *tmp = _client;
         detail::throw_if_failed<close_error_t> (
-          static_cast<close_result_t> (zlink_registry_query_destroy (&tmp)));
+          static_cast<close_result_t> (zlink_registry_query_client_destroy (&tmp)));
         _client = NULL;
     }
 

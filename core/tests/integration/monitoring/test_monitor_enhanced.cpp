@@ -547,12 +547,12 @@ void test_peer_enumeration ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     TEST_ASSERT_TRUE (wait_for_event (mon, ZLINK_EVENT_CONNECTION_READY, &ready));
 
-    zlink_monitor_snapshot_t snapshot;
-    memset (&snapshot, 0, sizeof (snapshot));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_snapshot (mon, &snapshot));
+    zlink_monitor_status_t status;
+    memset (&status, 0, sizeof (status));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_status (mon, &status));
     TEST_ASSERT_TRUE (ready.routing_id.size > 0);
-    TEST_ASSERT_EQUAL_UINT (ZLINK_MONITOR_SOURCE_SOCKET, snapshot.source_kind);
-    TEST_ASSERT_TRUE ((snapshot.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
+    TEST_ASSERT_EQUAL_UINT (ZLINK_MONITOR_SOURCE_SOCKET, status.source_kind);
+    TEST_ASSERT_TRUE ((status.state_flags & ZLINK_MONITOR_STATE_READY) != 0);
 
     int linger = 0;
     zlink_set_option (mon, ZLINK_OPT_LINGER, &linger, sizeof (linger));

@@ -258,7 +258,8 @@ internal static class PerfMultiSpotServer
                 PerfMetricHeaderSize));
             StampMetricHeader(message.AsSpan(), RunId, PerfPhase.Active,
                 config.Size, seq, EpochNs());
-            return spotPub.Publish(Topic, message, flags);
+            return spotPub.Publish(Topic).Message(message).Flags(flags)
+                .Submit();
         }
         catch (ZlinkException ex) when (IsWouldBlock(ex.InternalErrno)
                                         || IsInterrupted(ex.InternalErrno))
@@ -391,10 +392,10 @@ internal static class PerfMultiSpotServer
     {
         if (PerfEnv.ReadPositive("PERF_DOTNET_CONTROL_DEBUG", 0) <= 0)
             return;
-        SpotNodeStatus status = node.StatusSnapshot();
+        SpotNodeStatus status = node.Status();
         Console.Error.WriteLine(
             $"control_debug:{label}:subjects={status.SubjectCount}:ready={status.ReadySubjectCount}:peers={status.ConnectedPeerCount}");
-        foreach (SpotNodeSubjectEntry entry in node.SubjectsSnapshot())
+        foreach (SpotNodeSubjectEntry entry in node.Subjects())
         {
             Console.Error.WriteLine(
                 $"control_debug:{label}:subject:{entry.Role}:{entry.Subject}:{entry.ReadyPeerCount}:{entry.ActivePeerCount}");

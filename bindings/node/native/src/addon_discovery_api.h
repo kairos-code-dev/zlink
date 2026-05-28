@@ -28,14 +28,13 @@ napi_value discovery_resolve_actor(napi_env env, napi_callback_info info);
 napi_value discovery_destroy(napi_env env, napi_callback_info info);
 napi_value discovery_set_tls_client(napi_env env, napi_callback_info info);
 
-napi_value registry_status_snapshot(napi_env env, napi_callback_info info);
-napi_value registry_service_summary_snapshot(napi_env env, napi_callback_info info);
-napi_value registry_topology_snapshot(napi_env env, napi_callback_info info);
-napi_value registry_topology_query(napi_env env, napi_callback_info info);
+napi_value registry_status(napi_env env, napi_callback_info info);
+napi_value registry_service_summary(napi_env env, napi_callback_info info);
+napi_value registry_topology(napi_env env, napi_callback_info info);
 napi_value registry_member_peers(napi_env env, napi_callback_info info);
 napi_value registry_query_client_new(napi_env env, napi_callback_info info);
 napi_value registry_query_client_connect(napi_env env, napi_callback_info info);
-napi_value registry_query_snapshot(napi_env env, napi_callback_info info);
+napi_value registry_query_topology(napi_env env, napi_callback_info info);
 napi_value registry_query_destroy(napi_env env, napi_callback_info info);
 
 napi_value provider_new(napi_env env, napi_callback_info info);

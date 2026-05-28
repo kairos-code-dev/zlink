@@ -33,7 +33,7 @@ public final class RegistryQuerySample {
             SampleSupport.waitUntil("registry query sample",
                 () -> {
                     try {
-                        return finalQuery.snapshot().stream()
+                        return finalQuery.topology().stream()
                             .anyMatch(entry -> channelName.equals(entry.channelName()));
                     } catch (RuntimeException ex) {
                         return false;

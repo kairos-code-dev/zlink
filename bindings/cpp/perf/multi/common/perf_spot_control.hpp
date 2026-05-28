@@ -321,10 +321,13 @@ inline std::string bind_routed_spot_endpoint (SpotNode &node_,
                                               int base_port_)
 {
     for (int i = 0; i < 64; ++i) {
+        const int data_port = base_port_ == 0 ? 0 : base_port_ + i;
+        const int router_port =
+          base_port_ == 0 ? 0 : base_port_ + 10000 + i;
         const std::string requested_endpoint =
-          make_transport_endpoint (transport_, base_port_ + i);
+          make_transport_endpoint (transport_, data_port);
         const std::string requested_router_endpoint =
-          make_transport_endpoint (transport_, base_port_ + 10000 + i);
+          make_transport_endpoint (transport_, router_port);
         try {
             node_.set_router_bind (requested_router_endpoint);
             node_.set_pub_bind (requested_endpoint);
@@ -539,6 +542,14 @@ inline bool wait_for_control_start (SpotHandle &spot_,
     return false;
 }
 
+template<typename SpotNode>
+inline size_t spot_node_observed_peer_count (SpotNode &node_)
+{
+    const zlink::spot_node_status_t status = node_.status ();
+    return std::max<size_t> (
+      status.connected_peer_count (), status.active_peer_count ());
+}
+
 template<typename SpotHandle, typename SpotNode>
 inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
                                                 SpotNode *data_node_,
@@ -568,7 +579,26 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
             const zlink::message_t &part = received->parts ()[0];
             const std::string payload (
               static_cast<const char *> (part.data ()), part.size ());
+            if (payload == "CONNECTED") {
+                continue;
+            }
             std::string endpoint;
+            size_t endpoint_size = 0;
+            if (parse_size_endpoint_command_line (
+                  payload, "DATA_ENDPOINT_SIZE,", &endpoint_size, &endpoint)) {
+                if (endpoint_size != msg_size_)
+                    continue;
+                if (data_node_ && !endpoint.empty ()) {
+                    try {
+                        data_node_->connect_peer (endpoint);
+                        data_endpoint_seen = true;
+                    }
+                    catch (const std::exception &) {
+                        return false;
+                    }
+                }
+                continue;
+            }
             if (parse_endpoint_command_line (
                   payload, "DATA_ENDPOINT,", &endpoint)) {
                 if (data_node_ && !endpoint.empty ()) {
@@ -589,11 +619,18 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
                   payload, "READY_COUNT,", &ready_size, &increment)
                 && ready_size == msg_size_) {
                 ready_count += increment;
-                if (data_endpoint_seen
-                    && ready_count >= expected_ready_count_)
+                const bool data_peer_seen =
+                  data_endpoint_seen
+                  || (data_node_
+                      && spot_node_observed_peer_count (*data_node_) > 0);
+                if (data_peer_seen && ready_count >= expected_ready_count_)
                     return true;
             }
-            if (data_endpoint_seen && ready_count >= expected_ready_count_)
+            const bool data_peer_seen =
+              data_endpoint_seen
+              || (data_node_
+                  && spot_node_observed_peer_count (*data_node_) > 0);
+            if (data_peer_seen && ready_count >= expected_ready_count_)
                 return true;
         }
         catch (const zlink::recv_error_t &err) {
@@ -605,6 +642,40 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
             }
         }
     }
+    errno = ETIMEDOUT;
+    return false;
+}
+
+template<typename SpotNode>
+inline bool wait_for_spot_node_connected_peer_count (
+  SpotNode &node_,
+  size_t expected_connected_count_,
+  int timeout_ms_)
+{
+    if (expected_connected_count_ == 0) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (
+                            std::max (1, timeout_ms_));
+    while (std::chrono::steady_clock::now () < deadline) {
+        try {
+            const zlink::spot_node_status_t status =
+              node_.status ();
+            if (status.connected_peer_count () >= expected_connected_count_
+                || status.active_peer_count () >= expected_connected_count_)
+                return true;
+        }
+        catch (const zlink::config_error_t &err) {
+            errno = err.internal_errno ();
+            return false;
+        }
+
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+
     errno = ETIMEDOUT;
     return false;
 }

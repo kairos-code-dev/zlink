@@ -133,12 +133,13 @@ const (
 type SpotDispatchEvent int
 
 const (
-	SpotDispatchEventSubscribeReadable    SpotDispatchEvent = 1
-	SpotDispatchEventRoutedReadable       SpotDispatchEvent = 2
-	SpotDispatchEventTimerReadable        SpotDispatchEvent = 3
-	SpotDispatchEventChannelReplyReadable SpotDispatchEvent = 4
-	SpotDispatchEventActorReadable        SpotDispatchEvent = 5
-	SpotDispatchEventActorJoinReadable    SpotDispatchEvent = 6
+	SpotDispatchEventSubscribeReadable      SpotDispatchEvent = 1
+	SpotDispatchEventRoutedReadable         SpotDispatchEvent = 2
+	SpotDispatchEventTimerReadable          SpotDispatchEvent = 3
+	SpotDispatchEventChannelReplyReadable   SpotDispatchEvent = 4
+	SpotDispatchEventActorReadable          SpotDispatchEvent = 5
+	SpotDispatchEventActorJoinReadable      SpotDispatchEvent = 6
+	SpotDispatchEventActorLifecycleReadable SpotDispatchEvent = 7
 )
 
 type SpotDispatchSubjectKind int

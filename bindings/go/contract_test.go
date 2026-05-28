@@ -75,23 +75,23 @@ func TestServiceLayerEmptySnapshotsAndCanonicalNames(t *testing.T) {
 		t.Fatalf("GetValue() = (%d, %v), want (7, nil)", got, err)
 	}
 
-	if status, err := registry.StatusSnapshot(); err != nil || status == nil {
-		t.Fatalf("StatusSnapshot() = (%v, %v), want (non-nil, nil)", status, err)
+	if status, err := registry.Status(); err != nil || status == nil {
+		t.Fatalf("Status() = (%v, %v), want (non-nil, nil)", status, err)
 	}
-	if status, err := node.StatusSnapshot(); err != nil || status == nil {
-		t.Fatalf("SpotNode.StatusSnapshot() = (%v, %v), want (non-nil, nil)", status, err)
+	if status, err := node.Status(); err != nil || status == nil {
+		t.Fatalf("SpotNode.Status() = (%v, %v), want (non-nil, nil)", status, err)
 	}
-	if peers, err := node.PeersSnapshot(); err != nil || len(peers) != 0 {
-		t.Fatalf("PeersSnapshot() = (%v, %v), want (empty, nil)", peers, err)
+	if peers, err := node.Peers(); err != nil || len(peers) != 0 {
+		t.Fatalf("Peers() = (%v, %v), want (empty, nil)", peers, err)
 	}
-	if subjects, err := node.SubjectsSnapshot(); err != nil || len(subjects) != 0 {
-		t.Fatalf("SubjectsSnapshot() = (%v, %v), want (empty, nil)", subjects, err)
+	if subjects, err := node.Subjects(); err != nil || len(subjects) != 0 {
+		t.Fatalf("Subjects() = (%v, %v), want (empty, nil)", subjects, err)
 	}
-	if topology, err := registry.TopologySnapshot(); err != nil || len(topology) != 0 {
-		t.Fatalf("TopologySnapshot() = (%v, %v), want (empty, nil)", topology, err)
+	if topology, err := registry.Topology(); err != nil || len(topology) != 0 {
+		t.Fatalf("Topology() = (%v, %v), want (empty, nil)", topology, err)
 	}
-	if snap, err := query.Snapshot(nil); err != nil || len(snap) != 0 {
-		t.Fatalf("Snapshot(nil) = (%v, %v), want (empty, nil)", snap, err)
+	if snap, err := query.Topology(nil); err != nil || len(snap) != 0 {
+		t.Fatalf("Topology(nil) = (%v, %v), want (empty, nil)", snap, err)
 	}
 }
 

@@ -201,74 +201,6 @@ func (s *sendReadyCallbackState) close() {
 	s.dispatcher.close()
 }
 
-type spotRoutedCallbackState struct {
-	dispatcher *callbackDispatcher
-	spot       *Spot
-	handler    func(*Received)
-}
-
-func newSpotRoutedCallbackState(spot *Spot, handler func(*Received)) *spotRoutedCallbackState {
-	return &spotRoutedCallbackState{
-		dispatcher: newCallbackDispatcher(),
-		spot:       spot,
-		handler:    handler,
-	}
-}
-
-func (s *spotRoutedCallbackState) close() {
-	if s == nil {
-		return
-	}
-	s.dispatcher.close()
-}
-
-type spotActorLifecycleCallbackState struct {
-	dispatcher *callbackDispatcher
-	spot       *Spot
-	onJoin     func(spot *Spot, info SpotActorLifecycleInfo)
-	onLeave    func(spot *Spot, info SpotActorLifecycleInfo)
-}
-
-func newSpotActorLifecycleCallbackState(spot *Spot, onJoin, onLeave func(spot *Spot, info SpotActorLifecycleInfo)) *spotActorLifecycleCallbackState {
-	return &spotActorLifecycleCallbackState{
-		dispatcher: newCallbackDispatcher(),
-		spot:       spot,
-		onJoin:     onJoin,
-		onLeave:    onLeave,
-	}
-}
-
-func (s *spotActorLifecycleCallbackState) close() {
-	if s == nil {
-		return
-	}
-	s.dispatcher.close()
-}
-
-func (s *spotActorLifecycleCallbackState) dispatch(isJoin bool, info SpotActorLifecycleInfo) {
-	if s == nil {
-		return
-	}
-	var handler func(*Spot, SpotActorLifecycleInfo)
-	label := "spot-actor-lifecycle-leave"
-	if isJoin {
-		handler = s.onJoin
-		label = "spot-actor-lifecycle-join"
-	} else {
-		handler = s.onLeave
-	}
-	if handler == nil {
-		return
-	}
-	spot := s.spot
-	s.dispatcher.enqueue(&callbackTask{
-		label: label,
-		invoke: func() {
-			handler(spot, info)
-		},
-	})
-}
-
 type spotDispatchCallbackState struct {
 	dispatcher *callbackDispatcher
 	spot       *Spot
@@ -497,43 +429,6 @@ func goZlinkStreamPacketTrampoline(_ unsafe.Pointer, sourceRID *C.zlink_routing_
 	}
 	MultipartClose(headerParts)
 	MultipartClose(bodyParts)
-}
-
-//export goZlinkSpotRoutedTrampoline
-func goZlinkSpotRoutedTrampoline(sourceNodeRID *C.zlink_routing_id_t, sourceSpotRID *C.zlink_routing_id_t, requestSeq C.uint64_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
-	state, ok := safeHandleAs[*spotRoutedCallbackState](userdata)
-	if !ok {
-		return
-	}
-	clonedParts, err := takeParts(parts, partCount)
-	if err != nil {
-		_ = err
-		return
-	}
-	sourceNode := routingIDFromCPtr(sourceNodeRID)
-	sourceSpot := routingIDFromCPtr(sourceSpotRID)
-	received := &Received{
-		routingID:     sourceNode,
-		spotRID:       sourceSpot,
-		parts:         clonedParts,
-		requestSeq:    uint64(requestSeq),
-		hasRequestSeq: requestSeq != 0,
-	}
-	if received.hasRequestSeq && state.spot != nil {
-		received.reply = receivedReplyToSpot(state.spot, sourceNode, sourceSpot, uint64(requestSeq))
-	}
-	if state.dispatcher.enqueue(&callbackTask{
-		label: "spot-routed",
-		invoke: func() {
-			state.handler(received)
-		},
-		cleanup: func() {
-			_ = received.Close()
-		},
-	}) {
-		return
-	}
-	_ = received.Close()
 }
 
 //export goZlinkSpotDispatchEventTrampoline

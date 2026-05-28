@@ -107,16 +107,16 @@ internal sealed class Registry : IRegistry
         ZlinkException.ThrowConfigIfError(rc);
     }
 
-    public RegistryStatus StatusSnapshot()
+    public RegistryStatus Status()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_registry_status_snapshot(_handle,
+        int rc = NativeMethods.zlink_registry_status(_handle,
             out var native);
         ZlinkException.ThrowConfigIfError(rc);
         return TopologyModelConverters.FromNative(ref native);
     }
 
-    public RegistryServiceSummaryEntry[] ServiceSummarySnapshot(
+    public RegistryServiceSummaryEntry[] ServiceSummary(
         RegistryServiceSummaryFilter? filter = null)
     {
         EnsureNotDisposed();
@@ -151,13 +151,13 @@ internal sealed class Registry : IRegistry
         }
     }
 
-    public RegistryTopologyEntry[] TopologySnapshot()
+    public RegistryTopologyEntry[] Topology()
     {
         EnsureNotDisposed();
         return ReadTopologyEntries(IntPtr.Zero, true);
     }
 
-    public RegistryTopologyEntry[] TopologyQuery(
+    public RegistryTopologyEntry[] Topology(
         RegistryTopologyFilter? filter = null)
     {
         EnsureNotDisposed();
@@ -302,7 +302,7 @@ internal sealed class Registry : IRegistry
     private RegistryServiceSummaryEntry[] ReadSummaryEntries(IntPtr filterPtr)
     {
         nuint count = 0;
-        int rc = NativeMethods.zlink_registry_service_summary_snapshot(_handle,
+        int rc = NativeMethods.zlink_registry_service_summary(_handle,
             filterPtr, IntPtr.Zero, ref count);
         ZlinkException.ThrowConfigIfError(rc);
         if (count == 0)
@@ -313,7 +313,7 @@ internal sealed class Registry : IRegistry
         try
         {
             nuint actual = count;
-            rc = NativeMethods.zlink_registry_service_summary_snapshot(_handle,
+            rc = NativeMethods.zlink_registry_service_summary(_handle,
                 filterPtr, entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);
 
@@ -340,11 +340,8 @@ internal sealed class Registry : IRegistry
         for (int attempt = 0; attempt < 4; attempt++)
         {
             nuint count = 0;
-            int rc = snapshot
-                ? NativeMethods.zlink_registry_topology_snapshot(_handle,
-                    IntPtr.Zero, ref count)
-                : NativeMethods.zlink_registry_topology_query(_handle, filterPtr,
-                    IntPtr.Zero, ref count);
+            int rc = NativeMethods.zlink_registry_topology(_handle,
+                snapshot ? IntPtr.Zero : filterPtr, IntPtr.Zero, ref count);
             ZlinkException.ThrowConfigIfError(rc);
             if (count == 0)
                 return Array.Empty<RegistryTopologyEntry>();
@@ -355,11 +352,8 @@ internal sealed class Registry : IRegistry
             try
             {
                 nuint actual = count;
-                rc = snapshot
-                    ? NativeMethods.zlink_registry_topology_snapshot(_handle,
-                        entries, ref actual)
-                    : NativeMethods.zlink_registry_topology_query(_handle,
-                        filterPtr, entries, ref actual);
+                rc = NativeMethods.zlink_registry_topology(_handle,
+                    snapshot ? IntPtr.Zero : filterPtr, entries, ref actual);
                 if (rc != 0 && RegistryReadSupport.IsRetryableSizeRace(
                     NativeMethods.zlink_errno()))
                     continue;

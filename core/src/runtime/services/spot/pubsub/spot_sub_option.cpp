@@ -82,7 +82,7 @@ int spot_sub_t::routing_id (zlink_routing_id_t *out_) const
     return 0;
 }
 
-int spot_sub_t::fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
+int spot_sub_t::fill_monitor_snapshot (zlink_monitor_status_t *out_) const
 {
     if (!out_) {
         errno = EINVAL;

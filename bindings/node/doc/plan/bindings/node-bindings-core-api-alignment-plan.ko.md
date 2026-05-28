@@ -374,7 +374,7 @@ class Socket {
 - `Discovery`는 비어 있지 않은 `serviceName`을 강제하고,
   `Registry.bind(pub, router)`가 native `zlink_registry_bind()` lifecycle에 직접
   매핑되는 canonical entrypoint로 정리됐다.
-- `Registry.serviceSummarySnapshot()`까지 포함한 service snapshot surface가
+- `Registry.serviceSummary()`까지 포함한 service snapshot surface가
   추가됐다.
 - `Receiver`, `ReceiverSocketRole`, `Discovery.getReceivers()`는 public export와
   TS declaration에서 제거했고, runtime alias도 정리했다.

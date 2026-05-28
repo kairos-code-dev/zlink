@@ -823,4 +823,4 @@ void *zlink_socket_monitor_open (void *s_,
 **반환값:** 성공 시 모니터 핸들, 실패 시 `NULL` (errno가 설정됨).
 
 **참고:** `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`,
-`zlink_monitor_snapshot`, `zlink_monitor_close`
+`zlink_monitor_status`, `zlink_monitor_close`

@@ -270,7 +270,7 @@ dotnet run --project /home/hep7/project/kairos/zlink/bindings/dotnet/samples/Spo
 - `Socket`에 raw `RecvHandler` / `SendReadyHandler`가 추가되고
   callback ownership이 managed copy 후 native close 경로로 정리됨
 - `SocketMonitor`에 `AttachHandler`, `Snapshot`, `Close`가 추가되고
-  `MonitorSnapshot` value type이 도입됨
+  `MonitorStatus` value type이 도입됨
 - buffer 기반 raw `Socket.Send/Receive` public overload가 제거되고
   `Message` 중심 public surface로 수렴함
 - `Socket` topic path는 `Send` / `Receive` 강제 대신

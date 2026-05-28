@@ -145,22 +145,22 @@ builder.Services.AddZLinkRegistry(registry =>
 
 ```csharp
 app.MapGet("/admin/topology", async (IZLinkRegistryQuery registry) =>
-    Results.Ok(await registry.TopologySnapshotAsync()));
+    Results.Ok(await registry.TopologyAsync()));
 
 app.MapGet("/admin/services", async (IZLinkRegistryQuery registry) =>
-    Results.Ok(await registry.ServiceSummarySnapshotAsync()));
+    Results.Ok(await registry.ServiceSummaryAsync()));
 
 app.MapGet("/health", async (IZLinkRegistryQuery registry) =>
 {
-    var status = await registry.StatusSnapshotAsync();
+    var status = await registry.StatusAsync();
     return status.State == ZLinkRegistryState.Active
         ? Results.Ok(status)
         : Results.StatusCode(503);
 });
 ```
 
-제공 메서드: `StatusSnapshotAsync`, `ServiceSummarySnapshotAsync(filter?)`,
-`TopologySnapshotAsync`, `TopologyQueryAsync(filter?)`, `MemberPeersAsync(channelName)`.
+제공 메서드: `StatusAsync`, `ServiceSummaryAsync(filter?)`,
+`TopologyAsync`, `TopologyAsync(filter?)`, `MemberPeersAsync(channelName)`.
 모두 `ValueTask` 비동기다(framework 가 host lifecycle 경계를 query 표면에서 숨기지
 않으려고).
 
@@ -175,7 +175,7 @@ builder.Services.AddZLinkRegistryQueryClient(query =>
 });
 
 app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient query) =>
-    Results.Ok(await query.SnapshotAsync()));
+    Results.Ok(await query.TopologyAsync()));
 ```
 
 | 항목 | `IZLinkRegistryQuery` | `IZLinkRegistryQueryClient` |

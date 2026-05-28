@@ -105,10 +105,10 @@ typedef struct zlink_registry_service_summary_filter_t
     char channel_name[256];
 } zlink_registry_service_summary_filter_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_registry_status_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_status (
   void *registry_,
   zlink_registry_status_t *out_);
-ZLINK_EXPORT zlink_config_result_t zlink_registry_service_summary_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_service_summary (
   void *registry_,
   const zlink_registry_service_summary_filter_t *filter_,
   zlink_registry_service_summary_entry_t *entries_,
@@ -147,11 +147,7 @@ typedef struct zlink_registry_topology_filter_t
     zlink_topology_source_t source;
 } zlink_registry_topology_filter_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_registry_topology_snapshot (
-  void *registry,
-  zlink_registry_topology_entry_t *entries,
-  size_t *count);
-ZLINK_EXPORT zlink_config_result_t zlink_registry_topology_query (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_topology (
   void *registry,
   const zlink_registry_topology_filter_t *filter,
   zlink_registry_topology_entry_t *entries,
@@ -160,13 +156,13 @@ ZLINK_EXPORT zlink_config_result_t zlink_registry_topology_query (
 ZLINK_EXPORT void *zlink_registry_query_client_new (void *ctx);
 ZLINK_EXPORT zlink_connect_result_t zlink_registry_query_client_connect (void *client,
                                                       const char *endpoint);
-ZLINK_EXPORT zlink_config_result_t zlink_registry_query_snapshot (
+ZLINK_EXPORT zlink_config_result_t zlink_registry_query_client_topology (
   void *client,
   const zlink_registry_topology_filter_t *filter,
   zlink_registry_topology_entry_t *entries,
   size_t *count);
 
-ZLINK_EXPORT zlink_close_result_t zlink_registry_query_destroy (void **client_p);
+ZLINK_EXPORT zlink_close_result_t zlink_registry_query_client_destroy (void **client_p);
 
 #ifdef __cplusplus
 }

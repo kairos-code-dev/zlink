@@ -7,16 +7,16 @@ use std::time::Duration;
 use crate::ctx::AutoHwmProfile;
 use crate::domain::{Received, SubscriptionEvent, TopicMessage};
 use crate::error::{
-    BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
-    RequestError, SubmitError, ZlinkError, check_bind_rc, check_close_rc, check_config_rc,
-    check_connect_rc, check_handler_rc, check_rc, check_recv_rc, check_submit_rc,
+    BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError,
+    RecvResult, RequestError, SubmitError, ZlinkError, check_bind_rc, check_close_rc,
+    check_config_rc, check_connect_rc, check_handler_rc, check_rc, check_recv_rc, check_submit_rc,
     config_validation_error, last_errno, request_error_from_result, request_error_from_submit,
     submit_not_supported_error,
 };
 use crate::ffi;
 use crate::flags::{RecvFlags, SendFlags};
 use crate::message::{Message, RoutingId};
-use crate::monitor::MonitorSnapshot;
+use crate::monitor::MonitorStatus;
 use crate::request_progress::RequestProgressGuard;
 use crate::socket::{
     CallbackBox, close_unreceived_part, prepare_send_parts, routing_id_from_ptr,
@@ -652,25 +652,25 @@ pub struct SpotNodeSubjectFilter {
 }
 
 #[derive(Debug, Clone)]
-pub struct SpotNodeSocketSnapshotFilter {
+pub struct SpotNodeSocketFilter {
     pub owner: Option<SpotNodeSocketOwner>,
     pub socket_type: Option<SocketType>,
     pub socket_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct SpotNodeSocketSnapshotEntry {
+pub struct SpotNodeSocketEntry {
     pub owner: SpotNodeSocketOwner,
     pub owner_id: u64,
     pub owner_name: String,
     pub socket_name: String,
     pub socket_type: SocketType,
     pub auto_hwm_visible: bool,
-    pub snapshot: MonitorSnapshot,
+    pub snapshot: MonitorStatus,
 }
 
-impl SpotNodeSocketSnapshotEntry {
-    fn from_raw(raw: &ffi::zlink_spot_node_socket_snapshot_entry_t) -> Self {
+impl SpotNodeSocketEntry {
+    fn from_raw(raw: &ffi::zlink_spot_node_socket_entry_t) -> Self {
         Self {
             owner: SpotNodeSocketOwner::from_raw(raw.owner),
             owner_id: raw.owner_id,
@@ -678,7 +678,7 @@ impl SpotNodeSocketSnapshotEntry {
             socket_name: fixed_cstr_to_string(&raw.socket_name),
             socket_type: SocketType::from_raw(raw.socket_type),
             auto_hwm_visible: raw.auto_hwm_visible != 0,
-            snapshot: MonitorSnapshot::from_raw(&raw.snapshot),
+            snapshot: MonitorStatus::from_raw(&raw.monitor_status),
         }
     }
 }
@@ -1177,6 +1177,30 @@ impl ActorJoinInfo {
     }
 }
 
+impl SpotActorLifecycleInfo {
+    fn from_raw(raw: ffi::zlink_spot_actor_lifecycle_info_t) -> Self {
+        Self {
+            previous_actor: ActorRef::from_raw(&raw.previous_actor),
+            current_actor: ActorRef::from_raw(&raw.current_actor),
+            previous_spot_rid: routing_id_option(raw.previous_spot_rid),
+            current_spot_rid: routing_id_option(raw.current_spot_rid),
+            join_epoch: raw.join_epoch,
+            flags: raw.flags,
+        }
+    }
+}
+
+impl SpotActorLifecycleEventKind {
+    fn from_raw(raw: ffi::zlink_spot_actor_lifecycle_event_kind_t) -> Self {
+        match raw {
+            ffi::zlink_spot_actor_lifecycle_event_kind_t::ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT => {
+                Self::Left
+            }
+            _ => Self::Joined,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpotNodeSpotEntry {
     pub spot_rid: RoutingId,
@@ -1293,7 +1317,7 @@ impl SpotNode {
     }
 
     pub fn last_endpoint(&self) -> Result<String, ConfigError> {
-        Ok(self.status_snapshot()?.local_endpoint)
+        Ok(self.status()?.local_endpoint)
     }
 
     pub fn connect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError> {
@@ -1726,11 +1750,9 @@ impl SpotNode {
         }
     }
 
-    pub fn status_snapshot(&self) -> Result<SpotNodeStatus, ConfigError> {
+    pub fn status(&self) -> Result<SpotNodeStatus, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_spot_node_status_t>::uninit();
-        check_config_rc(unsafe {
-            ffi::zlink_spot_node_status_snapshot(self.handle, raw.as_mut_ptr())
-        })?;
+        check_config_rc(unsafe { ffi::zlink_spot_node_status(self.handle, raw.as_mut_ptr()) })?;
         let raw = unsafe { raw.assume_init() };
         Ok(SpotNodeStatus::from_raw(&raw))
     }
@@ -1760,7 +1782,6 @@ impl SpotNode {
             handle: spot_handle,
             node_handle: self.handle,
             send_ready_cb: None,
-            routed_cb: None,
             dispatch_cb: None,
         })
     }
@@ -1781,7 +1802,6 @@ impl SpotNode {
             handle: spot_handle,
             node_handle: self.handle,
             send_ready_cb: None,
-            routed_cb: None,
             dispatch_cb: None,
         }))
     }
@@ -1802,16 +1822,15 @@ impl SpotNode {
                 handle: spot_handle,
                 node_handle: self.handle,
                 send_ready_cb: None,
-                routed_cb: None,
                 dispatch_cb: None,
             },
             created != 0,
         ))
     }
 
-    pub fn peers_snapshot(&self) -> Result<Vec<SpotNodePeerEntry>, ConfigError> {
+    pub fn peers(&self) -> Result<Vec<SpotNodePeerEntry>, ConfigError> {
         let count = count_entries_config(|count| unsafe {
-            ffi::zlink_spot_node_peers_snapshot(self.handle, ptr::null_mut(), count)
+            ffi::zlink_spot_node_peers(self.handle, ptr::null(), ptr::null_mut(), count)
         })?;
         if count == 0 {
             return Ok(Vec::new());
@@ -1822,7 +1841,7 @@ impl SpotNode {
         let actual = read_entries_config(
             count,
             |entries_ptr, count_ptr| unsafe {
-                ffi::zlink_spot_node_peers_snapshot(self.handle, entries_ptr, count_ptr)
+                ffi::zlink_spot_node_peers(self.handle, ptr::null(), entries_ptr, count_ptr)
             },
             entries.as_mut_ptr(),
         )?;
@@ -1838,7 +1857,7 @@ impl SpotNode {
     ) -> Result<Vec<SpotNodePeerEntry>, ConfigError> {
         with_spot_node_peer_filter_config(filter, |filter_ptr| {
             let count = count_entries_config(|count| unsafe {
-                ffi::zlink_spot_node_peers_query(self.handle, filter_ptr, ptr::null_mut(), count)
+                ffi::zlink_spot_node_peers(self.handle, filter_ptr, ptr::null_mut(), count)
             })?;
             if count == 0 {
                 return Ok(Vec::new());
@@ -1849,12 +1868,7 @@ impl SpotNode {
             let actual = read_entries_config(
                 count,
                 |entries_ptr, count_ptr| unsafe {
-                    ffi::zlink_spot_node_peers_query(
-                        self.handle,
-                        filter_ptr,
-                        entries_ptr,
-                        count_ptr,
-                    )
+                    ffi::zlink_spot_node_peers(self.handle, filter_ptr, entries_ptr, count_ptr)
                 },
                 entries.as_mut_ptr(),
             )?;
@@ -1865,23 +1879,23 @@ impl SpotNode {
         })
     }
 
-    pub fn subjects_snapshot(
+    pub fn subjects(
         &self,
         filter: Option<&SpotNodeSubjectFilter>,
     ) -> Result<Vec<SpotNodeSubjectEntry>, ConfigError> {
         self.subjects_query_opt(filter)
     }
 
-    pub fn internal_sockets_snapshot(
+    pub fn internal_sockets(
         &self,
-        filter: Option<&SpotNodeSocketSnapshotFilter>,
-    ) -> Result<Vec<SpotNodeSocketSnapshotEntry>, ConfigError> {
-        self.internal_sockets_snapshot_opt(filter)
+        filter: Option<&SpotNodeSocketFilter>,
+    ) -> Result<Vec<SpotNodeSocketEntry>, ConfigError> {
+        self.internal_sockets_opt(filter)
     }
 
-    pub fn spots_snapshot(&self) -> Result<Vec<SpotNodeSpotEntry>, ConfigError> {
+    pub fn spots(&self) -> Result<Vec<SpotNodeSpotEntry>, ConfigError> {
         let count = count_entries_config(|count| unsafe {
-            ffi::zlink_spot_node_spots_snapshot(self.handle, ptr::null_mut(), count)
+            ffi::zlink_spot_node_spots(self.handle, ptr::null_mut(), count)
         })?;
         if count == 0 {
             return Ok(Vec::new());
@@ -1891,7 +1905,7 @@ impl SpotNode {
         let actual = read_entries_config(
             count,
             |entries_ptr, count_ptr| unsafe {
-                ffi::zlink_spot_node_spots_snapshot(self.handle, entries_ptr, count_ptr)
+                ffi::zlink_spot_node_spots(self.handle, entries_ptr, count_ptr)
             },
             entries.as_mut_ptr(),
         )?;
@@ -1901,9 +1915,9 @@ impl SpotNode {
             .collect())
     }
 
-    pub fn actors_snapshot(&self) -> Result<Vec<SpotNodeActorEntry>, ConfigError> {
+    pub fn actors(&self) -> Result<Vec<SpotNodeActorEntry>, ConfigError> {
         let count = count_entries_config(|count| unsafe {
-            ffi::zlink_spot_node_actors_snapshot(self.handle, ptr::null_mut(), count)
+            ffi::zlink_spot_node_actors(self.handle, ptr::null_mut(), count)
         })?;
         if count == 0 {
             return Ok(Vec::new());
@@ -1913,7 +1927,7 @@ impl SpotNode {
         let actual = read_entries_config(
             count,
             |entries_ptr, count_ptr| unsafe {
-                ffi::zlink_spot_node_actors_snapshot(self.handle, entries_ptr, count_ptr)
+                ffi::zlink_spot_node_actors(self.handle, entries_ptr, count_ptr)
             },
             entries.as_mut_ptr(),
         )?;
@@ -3000,7 +3014,7 @@ pub struct ActorLookupResult {
     pub flags: u32,
 }
 
-/// Information passed to Spot Actor lifecycle handlers.
+/// Information returned by Spot Actor lifecycle receive calls.
 #[derive(Debug, Clone)]
 pub struct SpotActorLifecycleInfo {
     pub previous_actor: ActorRef,
@@ -3009,6 +3023,18 @@ pub struct SpotActorLifecycleInfo {
     pub current_spot_rid: Option<RoutingId>,
     pub join_epoch: u64,
     pub flags: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpotActorLifecycleEventKind {
+    Joined,
+    Left,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpotActorLifecycleEvent {
+    pub kind: SpotActorLifecycleEventKind,
+    pub info: SpotActorLifecycleInfo,
 }
 
 // ---------------------------------------------------------------------------
@@ -3669,7 +3695,6 @@ pub struct Spot {
     handle: *mut c_void,
     node_handle: *mut c_void,
     send_ready_cb: Option<CallbackBox>,
-    routed_cb: Option<CallbackBox>,
     dispatch_cb: Option<CallbackBox>,
 }
 
@@ -3688,7 +3713,6 @@ impl Spot {
             handle,
             node_handle: node.raw(),
             send_ready_cb: None,
-            routed_cb: None,
             dispatch_cb: None,
         })
     }
@@ -3947,9 +3971,9 @@ impl Spot {
         }
     }
 
-    pub fn actors_snapshot(&self) -> Result<Vec<ActorRef>, ConfigError> {
+    pub fn actors(&self) -> Result<Vec<ActorRef>, ConfigError> {
         let count = count_entries_config(|count| unsafe {
-            ffi::zlink_spot_actors_snapshot(self.handle, ptr::null_mut(), count)
+            ffi::zlink_spot_actors(self.handle, ptr::null_mut(), count)
         })?;
         if count == 0 {
             return Ok(Vec::new());
@@ -3958,26 +3982,11 @@ impl Spot {
         let actual = read_entries_config(
             count,
             |entries_ptr, count_ptr| unsafe {
-                ffi::zlink_spot_actors_snapshot(self.handle, entries_ptr, count_ptr)
+                ffi::zlink_spot_actors(self.handle, entries_ptr, count_ptr)
             },
             entries.as_mut_ptr(),
         )?;
         Ok(entries[..actual].iter().map(ActorRef::from_raw).collect())
-    }
-
-    pub fn on_routed_receive<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn(Received) + Send + 'static,
-    {
-        let (cb, userdata) = CallbackBox::new((self.handle, handler));
-        let rc =
-            unsafe { ffi::zlink_spot_handler(self.handle, spot_handler_trampoline::<F>, userdata) };
-        if rc != 0 {
-            drop(cb);
-            return Err(check_handler_rc(rc).unwrap_err());
-        }
-        self.routed_cb = Some(cb);
-        Ok(())
     }
 
     pub fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
@@ -4014,6 +4023,37 @@ impl Spot {
         }
         self.send_ready_cb = Some(cb);
         Ok(())
+    }
+
+    pub fn recv_actor_lifecycle_with_flags(
+        &self,
+        flags: RecvFlags,
+    ) -> Result<Option<SpotActorLifecycleEvent>, RecvError> {
+        let mut raw_event =
+            MaybeUninit::<ffi::zlink_spot_actor_lifecycle_event_t>::zeroed();
+        let rc = unsafe {
+            ffi::zlink_spot_recv_actor_lifecycle(
+                self.handle,
+                raw_event.as_mut_ptr(),
+                flags.bits(),
+            )
+        };
+        if rc != 0 {
+            if last_errno() == libc::EAGAIN && flags == RecvFlags::DONT_WAIT {
+                return Ok(None);
+            }
+            return Err(check_recv_rc(rc).unwrap_err());
+        }
+        let raw_event = unsafe { raw_event.assume_init() };
+        Ok(Some(SpotActorLifecycleEvent {
+            kind: SpotActorLifecycleEventKind::from_raw(raw_event.kind),
+            info: SpotActorLifecycleInfo::from_raw(raw_event.info),
+        }))
+    }
+
+    pub fn recv_actor_lifecycle(&self) -> Result<SpotActorLifecycleEvent, RecvError> {
+        self.recv_actor_lifecycle_with_flags(RecvFlags::NONE)?
+            .ok_or_else(|| RecvError::new(RecvResult::NoData, libc::EAGAIN))
     }
 
     /// Receive a routed message, blocking until one is available.
@@ -4060,6 +4100,7 @@ pub enum SpotDispatchEvent {
     ChannelReplyReadable,
     ActorReadable,
     ActorJoinReadable,
+    ActorLifecycleReadable,
 }
 
 /// Subject variant for a SPOT dispatch event.
@@ -4145,6 +4186,9 @@ impl SpotDispatchEvent {
             }
             ffi::zlink_spot_dispatch_event_t::ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE => {
                 Self::ActorJoinReadable
+            }
+            ffi::zlink_spot_dispatch_event_t::ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE => {
+                Self::ActorLifecycleReadable
             }
         }
     }
@@ -4533,27 +4577,6 @@ unsafe extern "C" fn reply_result_callback(
     }
 }
 
-unsafe extern "C" fn spot_handler_trampoline<F: Fn(Received) + Send + 'static>(
-    source_rid: *const ffi::zlink_routing_id_t,
-    spot_rid: *const ffi::zlink_routing_id_t,
-    request_seq: u64,
-    parts: *mut ffi::zlink_msg_t,
-    part_count: usize,
-    userdata: *mut c_void,
-) {
-    let state = unsafe { &*(userdata as *const (*mut c_void, F)) };
-    let spot_handle = state.0;
-    let handler = &state.1;
-    let received = spot_received_from_raw(
-        spot_handle,
-        source_rid,
-        spot_rid,
-        request_seq,
-        take_parts(parts, part_count),
-    );
-    handler(received);
-}
-
 unsafe extern "C" fn spot_dispatch_trampoline<
     F: for<'a> Fn(SpotDispatchInfo<'a>) + Send + 'static,
 >(
@@ -4633,7 +4656,7 @@ impl RegistryQueryClient {
         })
     }
 
-    pub fn snapshot(
+    pub fn topology(
         &self,
         filter: Option<&RegistryTopologyFilter>,
     ) -> Result<Vec<RegistryTopologyEntry>, ConfigError> {
@@ -4641,27 +4664,25 @@ impl RegistryQueryClient {
     }
 
     pub fn close(&mut self) -> Result<(), CloseError> {
-        destroy_handle_close(&mut self.handle, ffi::zlink_registry_query_destroy)
+        destroy_handle_close(&mut self.handle, ffi::zlink_registry_query_client_destroy)
     }
 }
 
 impl Drop for RegistryQueryClient {
     fn drop(&mut self) {
-        let _ = destroy_handle(&mut self.handle, ffi::zlink_registry_query_destroy);
+        let _ = destroy_handle(&mut self.handle, ffi::zlink_registry_query_client_destroy);
     }
 }
 
 impl Registry {
-    pub fn status_snapshot(&self) -> Result<RegistryStatus, ConfigError> {
+    pub fn status(&self) -> Result<RegistryStatus, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_registry_status_t>::uninit();
-        check_config_rc(unsafe {
-            ffi::zlink_registry_status_snapshot(self.handle, raw.as_mut_ptr())
-        })?;
+        check_config_rc(unsafe { ffi::zlink_registry_status(self.handle, raw.as_mut_ptr()) })?;
         let raw = unsafe { raw.assume_init() };
         Ok(RegistryStatus::from_raw(&raw))
     }
 
-    pub fn service_summary_snapshot(
+    pub fn service_summary(
         &self,
     ) -> Result<Vec<RegistryServiceSummaryEntry>, ConfigError> {
         self.service_summary_query_opt(None)
@@ -4708,15 +4729,11 @@ impl Registry {
             .collect()
     }
 
-    pub fn topology_snapshot(&self) -> Result<Vec<RegistryTopologyEntry>, ConfigError> {
-        self.topology_query_opt(None)
-    }
-
-    pub fn topology_query(
+    pub fn topology(
         &self,
-        filter: &RegistryTopologyFilter,
+        filter: Option<&RegistryTopologyFilter>,
     ) -> Result<Vec<RegistryTopologyEntry>, ConfigError> {
-        self.topology_query_opt(Some(filter))
+        self.topology_opt(filter)
     }
 }
 
@@ -4876,11 +4893,11 @@ fn with_spot_node_subject_filter_config<T>(
     f(ptr)
 }
 
-fn with_spot_node_socket_snapshot_filter_config<T>(
-    filter: &SpotNodeSocketSnapshotFilter,
-    f: impl FnOnce(*const ffi::zlink_spot_node_socket_snapshot_filter_t) -> Result<T, ConfigError>,
+fn with_spot_node_socket_filter_config<T>(
+    filter: &SpotNodeSocketFilter,
+    f: impl FnOnce(*const ffi::zlink_spot_node_socket_filter_t) -> Result<T, ConfigError>,
 ) -> Result<T, ConfigError> {
-    let mut raw = MaybeUninit::<ffi::zlink_spot_node_socket_snapshot_filter_t>::zeroed();
+    let mut raw = MaybeUninit::<ffi::zlink_spot_node_socket_filter_t>::zeroed();
     let ptr = raw.as_mut_ptr();
     unsafe {
         (*ptr).owner = filter.owner.unwrap_or(SpotNodeSocketOwner::Any).to_raw();
@@ -4953,12 +4970,7 @@ impl SpotNode {
     ) -> Result<Vec<SpotNodeSubjectEntry>, ConfigError> {
         let read = |filter_ptr: *const ffi::zlink_spot_node_subject_filter_t| {
             let count = count_entries_config(|count| unsafe {
-                ffi::zlink_spot_node_subjects_snapshot(
-                    self.handle,
-                    filter_ptr,
-                    ptr::null_mut(),
-                    count,
-                )
+                ffi::zlink_spot_node_subjects(self.handle, filter_ptr, ptr::null_mut(), count)
             })?;
             if count == 0 {
                 return Ok(Vec::new());
@@ -4969,12 +4981,7 @@ impl SpotNode {
             let actual = read_entries_config(
                 count,
                 |entries_ptr, count_ptr| unsafe {
-                    ffi::zlink_spot_node_subjects_snapshot(
-                        self.handle,
-                        filter_ptr,
-                        entries_ptr,
-                        count_ptr,
-                    )
+                    ffi::zlink_spot_node_subjects(self.handle, filter_ptr, entries_ptr, count_ptr)
                 },
                 entries.as_mut_ptr(),
             )?;
@@ -4990,13 +4997,13 @@ impl SpotNode {
         }
     }
 
-    fn internal_sockets_snapshot_opt(
+    fn internal_sockets_opt(
         &self,
-        filter: Option<&SpotNodeSocketSnapshotFilter>,
-    ) -> Result<Vec<SpotNodeSocketSnapshotEntry>, ConfigError> {
-        let read = |filter_ptr: *const ffi::zlink_spot_node_socket_snapshot_filter_t| {
+        filter: Option<&SpotNodeSocketFilter>,
+    ) -> Result<Vec<SpotNodeSocketEntry>, ConfigError> {
+        let read = |filter_ptr: *const ffi::zlink_spot_node_socket_filter_t| {
             let count = count_entries_config(|count| unsafe {
-                ffi::zlink_spot_node_internal_sockets_snapshot(
+                ffi::zlink_spot_node_internal_sockets(
                     self.handle,
                     filter_ptr,
                     ptr::null_mut(),
@@ -5008,14 +5015,11 @@ impl SpotNode {
             }
 
             let mut entries =
-                vec![
-                    unsafe { std::mem::zeroed::<ffi::zlink_spot_node_socket_snapshot_entry_t>() };
-                    count
-                ];
+                vec![unsafe { std::mem::zeroed::<ffi::zlink_spot_node_socket_entry_t>() }; count];
             let actual = read_entries_config(
                 count,
                 |entries_ptr, count_ptr| unsafe {
-                    ffi::zlink_spot_node_internal_sockets_snapshot(
+                    ffi::zlink_spot_node_internal_sockets(
                         self.handle,
                         filter_ptr,
                         entries_ptr,
@@ -5026,12 +5030,12 @@ impl SpotNode {
             )?;
             Ok(entries[..actual]
                 .iter()
-                .map(SpotNodeSocketSnapshotEntry::from_raw)
+                .map(SpotNodeSocketEntry::from_raw)
                 .collect())
         };
 
         match filter {
-            Some(filter) => with_spot_node_socket_snapshot_filter_config(filter, read),
+            Some(filter) => with_spot_node_socket_filter_config(filter, read),
             None => read(ptr::null()),
         }
     }
@@ -5044,12 +5048,7 @@ impl Registry {
     ) -> Result<Vec<RegistryServiceSummaryEntry>, ConfigError> {
         let read = |filter_ptr: *const ffi::zlink_registry_service_summary_filter_t| {
             let count = count_entries_config(|count| unsafe {
-                ffi::zlink_registry_service_summary_snapshot(
-                    self.handle,
-                    filter_ptr,
-                    ptr::null_mut(),
-                    count,
-                )
+                ffi::zlink_registry_service_summary(self.handle, filter_ptr, ptr::null_mut(), count)
             })?;
             if count == 0 {
                 return Ok(Vec::new());
@@ -5063,7 +5062,7 @@ impl Registry {
             let actual = read_entries_config(
                 count,
                 |entries_ptr, count_ptr| unsafe {
-                    ffi::zlink_registry_service_summary_snapshot(
+                    ffi::zlink_registry_service_summary(
                         self.handle,
                         filter_ptr,
                         entries_ptr,
@@ -5084,21 +5083,16 @@ impl Registry {
         }
     }
 
-    fn topology_query_opt(
+    fn topology_opt(
         &self,
         filter: Option<&RegistryTopologyFilter>,
     ) -> Result<Vec<RegistryTopologyEntry>, ConfigError> {
         let read = |filter_ptr: *const ffi::zlink_registry_topology_filter_t| {
             let count = count_entries_config(|count| unsafe {
                 if filter_ptr.is_null() {
-                    ffi::zlink_registry_topology_snapshot(self.handle, ptr::null_mut(), count)
+                    ffi::zlink_registry_topology(self.handle, ptr::null(), ptr::null_mut(), count)
                 } else {
-                    ffi::zlink_registry_topology_query(
-                        self.handle,
-                        filter_ptr,
-                        ptr::null_mut(),
-                        count,
-                    )
+                    ffi::zlink_registry_topology(self.handle, filter_ptr, ptr::null_mut(), count)
                 }
             })?;
             if count == 0 {
@@ -5111,13 +5105,14 @@ impl Registry {
                 count,
                 |entries_ptr, count_ptr| unsafe {
                     if filter_ptr.is_null() {
-                        ffi::zlink_registry_topology_snapshot(
+                        ffi::zlink_registry_topology(
                             self.handle,
+                            ptr::null(),
                             entries_ptr.cast(),
                             count_ptr,
                         )
                     } else {
-                        ffi::zlink_registry_topology_query(
+                        ffi::zlink_registry_topology(
                             self.handle,
                             filter_ptr,
                             entries_ptr.cast(),
@@ -5147,7 +5142,12 @@ impl RegistryQueryClient {
     ) -> Result<Vec<RegistryTopologyEntry>, ConfigError> {
         let read = |filter_ptr| {
             let count = count_entries_config(|count| unsafe {
-                ffi::zlink_registry_query_snapshot(self.handle, filter_ptr, ptr::null_mut(), count)
+                ffi::zlink_registry_query_client_topology(
+                    self.handle,
+                    filter_ptr,
+                    ptr::null_mut(),
+                    count,
+                )
             })?;
             if count == 0 {
                 return Ok(Vec::new());
@@ -5158,7 +5158,7 @@ impl RegistryQueryClient {
             let actual = read_entries_config(
                 count,
                 |entries_ptr, count_ptr| unsafe {
-                    ffi::zlink_registry_query_snapshot(
+                    ffi::zlink_registry_query_client_topology(
                         self.handle,
                         filter_ptr,
                         entries_ptr.cast(),

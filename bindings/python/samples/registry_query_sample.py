@@ -25,7 +25,7 @@ def main():
 
         def found():
             try:
-                entries = query.snapshot()
+                entries = query.topology()
             except zlink.ConfigError:
                 return False
             return any(entry.channel_name == SERVICE_NAME for entry in entries)

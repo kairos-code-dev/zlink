@@ -171,7 +171,7 @@ static int copy_fixed_64 (char *dst_, const char *src_)
 }
 
 static bool auto_hwm_visible_from_snapshot (
-  const zlink_monitor_snapshot_t &snapshot_)
+  const zlink_monitor_status_t &snapshot_)
 {
     return snapshot_.auto_hwm_enabled != 0 || snapshot_.auto_hwm_role != 0
            || snapshot_.auto_hwm_applied_sndhwm != 0
@@ -179,8 +179,8 @@ static bool auto_hwm_visible_from_snapshot (
 }
 
 static bool socket_snapshot_matches_filter (
-  const zlink_spot_node_socket_snapshot_entry_t &entry_,
-  const zlink_spot_node_socket_snapshot_filter_t *filter_)
+  const zlink_spot_node_socket_entry_t &entry_,
+  const zlink_spot_node_socket_filter_t *filter_)
 {
     if (!filter_)
         return true;
@@ -197,8 +197,8 @@ static bool socket_snapshot_matches_filter (
 }
 
 static int append_socket_snapshot_row (
-  std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_,
-  const zlink_spot_node_socket_snapshot_filter_t *filter_,
+  std::vector<zlink_spot_node_socket_entry_t> *out_,
+  const zlink_spot_node_socket_filter_t *filter_,
   zlink_spot_node_socket_owner_t owner_,
   uint64_t owner_id_,
   const char *owner_name_,
@@ -208,7 +208,7 @@ static int append_socket_snapshot_row (
     if (!out_ || !socket_)
         return 0;
 
-    zlink_spot_node_socket_snapshot_entry_t entry;
+    zlink_spot_node_socket_entry_t entry;
     memset (&entry, 0, sizeof (entry));
     entry.owner = owner_;
     entry.owner_id = owner_id_;
@@ -220,9 +220,9 @@ static int append_socket_snapshot_row (
         errno = EINVAL;
         return -1;
     }
-    if (socket_->monitor_snapshot (&entry.snapshot) != 0)
+    if (socket_->monitor_snapshot (&entry.monitor_status) != 0)
         return -1;
-    entry.auto_hwm_visible = auto_hwm_visible_from_snapshot (entry.snapshot) ? 1u
+    entry.auto_hwm_visible = auto_hwm_visible_from_snapshot (entry.monitor_status) ? 1u
                                                                              : 0u;
     if (socket_snapshot_matches_filter (entry, filter_))
         out_->push_back (entry);
@@ -964,18 +964,18 @@ int spot_node_t::snapshot_subjects (
 
     out_->reserve (snapshots.size ());
     for (size_t i = 0; i < snapshots.size (); ++i) {
-        const spot_node_summary_state_t::subject_snapshot_entry_t &snapshot =
+        const spot_node_summary_state_t::subject_snapshot_entry_t &status =
           snapshots[i];
         zlink_spot_node_subject_entry_t entry;
         memset (&entry, 0, sizeof (entry));
         entry.role = ZLINK_SPOT_ROLE_SUB;
-        entry.subject_kind = snapshot.subject_kind;
-        entry.ready_peer_count = snapshot.ready ? 1 : 0;
+        entry.subject_kind = status.subject_kind;
+        entry.ready_peer_count = status.ready ? 1 : 0;
         entry.active_peer_count = active_peer_count;
-        entry.last_changed_ms = snapshot.last_changed_ms;
+        entry.last_changed_ms = status.last_changed_ms;
         copy_fixed_c_string_from_bytes (entry.subject, sizeof (entry.subject),
-                                        snapshot.subject.data (),
-                                        snapshot.subject.size ());
+                                        status.subject.data (),
+                                        status.subject.size ());
         if (filter_) {
             if (filter_->role != 0 && filter_->role != entry.role)
                 continue;
@@ -995,8 +995,8 @@ int spot_node_t::snapshot_subjects (
 }
 
 int spot_node_t::snapshot_internal_sockets (
-  const zlink_spot_node_socket_snapshot_filter_t *filter_,
-  std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_) const
+  const zlink_spot_node_socket_filter_t *filter_,
+  std::vector<zlink_spot_node_socket_entry_t> *out_) const
 {
     if (!out_) {
         errno = EINVAL;

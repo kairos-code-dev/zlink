@@ -27,7 +27,7 @@ void test_registry_status_snapshot_tracks_configured_state ()
     zlink_registry_status_t status;
     memset (&status, 0, sizeof (status));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_status_snapshot (registry, &status));
+      zlink_registry_status (registry, &status));
     TEST_ASSERT_EQUAL_UINT32 (0, status.registry_id);
     TEST_ASSERT_EQUAL_INT (ZLINK_REGISTRY_STATE_IDLE, status.state);
     TEST_ASSERT_EQUAL_UINT32 (0, status.peer_registry_count);
@@ -45,7 +45,7 @@ void test_registry_status_snapshot_tracks_configured_state ()
 
     memset (&status, 0, sizeof (status));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_status_snapshot (registry, &status));
+      zlink_registry_status (registry, &status));
     TEST_ASSERT_EQUAL_UINT32 (42, status.registry_id);
     TEST_ASSERT_EQUAL_INT (ZLINK_REGISTRY_STATE_IDLE, status.state);
     TEST_ASSERT_EQUAL_UINT32 (2, status.peer_registry_count);

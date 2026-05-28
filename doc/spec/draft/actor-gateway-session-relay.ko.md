@@ -458,14 +458,14 @@ ActorGateway 는 public socket endpoint 가 아니라 SpotNode 내부 runtime �
 | `zlink_spot_node_attach_pub_ingress(...)` | pub ingress 를 붙인다 | 변경 없음 |
 | `zlink_spot_node_status_t` | node 상태와 peer/subject count 를 담는다 | struct layout 을 바꾸지 않는다. ActorGateway 전용 status API 는 1차 범위에 추가하지 않는다 |
 | `zlink_spot_node_peer_entry_t` | mesh peer 와 router channel peer 를 snapshot 으로 보여 준다 | ActorGateway internal peer 를 application router channel peer 로 노출하지 않는다 |
-| `zlink_spot_node_socket_snapshot_entry_t` | internal socket snapshot 을 보여 준다 | gateway internal socket 이 생기면 `socket_name`은 `actor-gateway-*`처럼 식별 가능해야 한다. application route channel socket 과 섞지 않는다 |
+| `zlink_spot_node_socket_entry_t` | internal socket snapshot 을 보여 준다 | gateway internal socket 이 생기면 `socket_name`은 `actor-gateway-*`처럼 식별 가능해야 한다. application route channel socket 과 섞지 않는다 |
 | `zlink_spot_node_spot_entry_t` | Spot rid/kind, actor count, route sync 를 보여 준다 | layout 유지. ActorGateway lazy init 이후에도 count 의미는 current location 기준임을 명시한다 |
 | `zlink_spot_node_actor_entry_t` | Actor ref, current Spot, pending message count 를 보여 준다 | layout 유지. pending remote join Actor 는 snapshot 에서 제외하는 현재 구현을 유지한다 |
-| `zlink_spot_node_status_snapshot(...)` | node summary 를 반환한다 | 기존 layout 유지. ActorGateway 전용 public status API 는 1차 범위에 추가하지 않는다 |
-| `zlink_spot_node_internal_sockets_snapshot(...)` | internal socket rows 를 반환한다 | gateway socket 을 추가하면 snapshot row 를 추가한다 |
-| `zlink_spot_node_spots_snapshot(...)` | Entry/User Spot snapshot 을 반환한다 | current implementation 유지. ActorGateway route sync 의미와 결합하지 않는다 |
-| `zlink_spot_node_actors_snapshot(...)` | node Actor snapshot 을 반환한다 | current implementation 유지. logical binding 상태를 직접 보여 주지는 않는다 |
-| `zlink_spot_actors_snapshot(...)` | 특정 Spot 에 있는 Actor refs 를 반환한다 | current implementation 유지. pending remote join Actor 는 제외한다 |
+| `zlink_spot_node_status(...)` | node summary 를 반환한다 | 기존 layout 유지. ActorGateway 전용 public status API 는 1차 범위에 추가하지 않는다 |
+| `zlink_spot_node_internal_sockets(...)` | internal socket rows 를 반환한다 | gateway socket 을 추가하면 snapshot row 를 추가한다 |
+| `zlink_spot_node_spots(...)` | Entry/User Spot snapshot 을 반환한다 | current implementation 유지. ActorGateway route sync 의미와 결합하지 않는다 |
+| `zlink_spot_node_actors(...)` | node Actor snapshot 을 반환한다 | current implementation 유지. logical binding 상태를 직접 보여 주지는 않는다 |
+| `zlink_spot_actors(...)` | 특정 Spot 에 있는 Actor refs 를 반환한다 | current implementation 유지. pending remote join Actor 는 제외한다 |
 
 ### 7.11 실제 구현에서 반드시 수정할 내부 지점
 
@@ -504,8 +504,8 @@ ActorGateway 는 사용자 설정 단위가 아니라 SpotNode 내부 relay stat
 status struct 를 만들면 사용자가 내부 상태를 알아야 하는 기능처럼 보일 수 있다.
 
 `zlink_spot_node_status_t` layout 도 늘리지 않는다. 운영 진단이 필요하면 먼저 기존
-`zlink_spot_node_actors_snapshot(...)`, `zlink_stream_bound_actors(...)`,
-`zlink_spot_node_internal_sockets_snapshot(...)` 로 확인 가능한 정보를 사용한다. 이 정보로
+`zlink_spot_node_actors(...)`, `zlink_stream_bound_actors(...)`,
+`zlink_spot_node_internal_sockets(...)` 로 확인 가능한 정보를 사용한다. 이 정보로
 부족한 항목은 구현 후 실제 운영 요구가 확인되면 별도 monitoring draft 로 분리한다.
 
 ### 7.13 error/errno 반영

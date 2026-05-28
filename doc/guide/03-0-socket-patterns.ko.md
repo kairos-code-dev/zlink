@@ -159,20 +159,10 @@ zlink_recv_result_t zlink_recv (
   `zlink_recv_handler()` (raw 콜백), `zlink_stream_packet_handler()`
   (packet 콜백) 세 모델 중 하나를 고른다. 한 핸들에서 두 번째 모델로
   전환하려 하면 `EBUSY`로 실패한다.
-- **SPOT**: 두 가지 상호 배타적 핸들러 등록 방식이 있다.
-  - `zlink_spot_handler()` — routed 전용 직접 콜백이다. routed payload(메시지의 실제 데이터 내용)를 콜백
-    안에서 바로 받는다. subscribe, 타이머, channel reply, Actor 이벤트는 이 방식으로
-    받을 수 없다.
-  - `zlink_spot_dispatch_event_handler()` — subscribe, routed, channel reply, 타이머,
-    Actor 이벤트를 readiness 형태로 통합 수신한다. 콜백은 "읽을 것이 있다"는 신호이며,
-    데이터는 각 drain API(`zlink_spot_recv()`, `zlink_spot_subscribe()` 등)로 읽는다.
+- **SPOT**: `zlink_spot_dispatch_event_handler()`로 readiness를 통합 수신한다. subscribe, routed, channel reply, timer, Actor join, Actor readable, Actor lifecycle event는 readiness 뒤 각 drain API로 읽는다.
 - **monitor / 타이머**: recv와 콜백 두 방식을 모두 지원한다.
 
-data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`,
-monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 사용한다. SPOT은
-`zlink_spot_handler()` (routed 전용 직접 콜백)와
-`zlink_spot_dispatch_event_handler()` (전체 이벤트 readiness 통합) 두 방식 중
-하나를 선택해야 하며, 같은 Spot에서 동시에 쓸 수 없다. request completion
+data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`, monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 사용한다. SPOT은 `zlink_spot_dispatch_event_handler()`를 readiness 신호로만 사용하고 payload는 receive API로 읽는다. request completion
 콜백은 data-plane 수신이 아닌 비동기 작업 완료 통지임에 유의한다.
 
 ## 8. 용어 정리

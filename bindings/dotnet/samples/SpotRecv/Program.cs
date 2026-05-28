@@ -25,8 +25,8 @@ subscriber.SetRoutingId(SampleSupport.RoutingIdUtf8("a-sample-spot-sub-spot"));
 subscriber.SetSubscription(topic);
 
 SampleSupport.WaitOrThrow(
-    () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
-        && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
+    () => publisherNode.Status().ConnectedPeerCount > 0
+        && subscriberNode.Status().ConnectedPeerCount > 0,
     5000,
     "spot peer readiness");
 

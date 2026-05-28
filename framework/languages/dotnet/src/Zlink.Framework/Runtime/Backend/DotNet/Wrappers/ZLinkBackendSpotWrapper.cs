@@ -29,7 +29,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
 
     public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
     {
-        nativeSpot.OnDispatchEvent(info =>
+        nativeSpot.SetDispatchHandler(info =>
         {
             var frameworkInfo = info.ToFramework();
             if (info.Event == SpotDispatchEvent.RoutedReadable)
@@ -49,7 +49,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         List<Received>? receivedMessages = null;
         while (true)
         {
-            var received = new Received();
+            var received = Received.Create();
             if (!nativeSpot.RecvRouted(received, RecvFlags.DontWait))
             {
                 received.Dispose();
@@ -63,18 +63,9 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         return receivedMessages ?? [];
     }
 
-    public void OnActorLifecycle(
-        Action<ZLinkBackendSpotActorLifecycleInfo>? onJoin,
-        Action<ZLinkBackendSpotActorLifecycleInfo>? onLeave)
-    {
-        nativeSpot.OnActorLifecycle(
-            onJoin == null ? null : info => onJoin(info.ToFramework()),
-            onLeave == null ? null : info => onLeave(info.ToFramework()));
-    }
-
     public void OnSendReady(Action handler)
     {
-        nativeSpot.OnSendReady(handler);
+        nativeSpot.SetSendReadyHandler(() => handler());
     }
 
     public bool RequestChannel(
@@ -84,7 +75,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSpot.RequestChannel(channelName)
+        var operation = nativeSpot.RequestToChannel(channelName)
             .Message(message)
             .Flags(flags);
         if (timeout is { } value)
@@ -102,7 +93,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         SendFlags flags,
         TimeSpan? timeout)
     {
-        var operation = nativeSpot.RequestChannel(channelName).Messages(parts);
+        var operation = nativeSpot.RequestToChannel(channelName).Messages(parts);
 
         if (timeout is { } value)
         {
@@ -117,7 +108,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         Message message,
         SendFlags flags)
     {
-        return nativeSpot.SendChannel(channelName)
+        return nativeSpot.SendToChannel(channelName)
             .Message(message)
             .Flags(flags)
             .Submit();
@@ -128,7 +119,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return nativeSpot.SendChannel(channelName)
+        return nativeSpot.SendToChannel(channelName)
             .Messages(parts)
             .Flags(flags)
             .Submit();

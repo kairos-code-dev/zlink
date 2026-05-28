@@ -389,7 +389,7 @@ internal static partial class PerfRunner
             return;
 
         SocketType socketType = ResolveSocketType(socket);
-        MonitorSnapshot? snapshot = TryReadSocketMonitorSnapshot(socket);
+        MonitorStatus? snapshot = TryReadSocketMonitorStatus(socket);
         bool snapshotFromMonitor = snapshot != null;
         AutoHwmSnapshotFields fields = snapshotFromMonitor
             ? AutoHwmSnapshotFields.FromSnapshot(snapshot!)
@@ -407,10 +407,10 @@ internal static partial class PerfRunner
         if (!AutoHwmDetailEnabled())
             return;
 
-        SpotNodeSocketSnapshotEntry[] entries;
+        SpotNodeSocketEntry[] entries;
         try
         {
-            entries = node.InternalSocketsSnapshot();
+            entries = node.InternalSockets();
         }
         catch (ZlinkException)
         {
@@ -419,7 +419,7 @@ internal static partial class PerfRunner
 
         bool controlOnly = label.Contains("control",
             StringComparison.OrdinalIgnoreCase);
-        foreach (SpotNodeSocketSnapshotEntry entry in entries)
+        foreach (SpotNodeSocketEntry entry in entries)
         {
             if (!entry.AutoHwmVisible)
                 continue;
@@ -430,7 +430,7 @@ internal static partial class PerfRunner
                 continue;
             }
 
-            MonitorSnapshot snapshot = entry.Snapshot;
+            MonitorStatus snapshot = entry.MonitorStatus;
             var fields = AutoHwmSnapshotFields.FromSnapshot(snapshot);
             string owner = entry.Owner == SpotNodeSocketOwner.Node
                 ? "node"
@@ -531,12 +531,12 @@ internal static partial class PerfRunner
         WriteStdoutLine(detail);
     }
 
-    private static MonitorSnapshot? TryReadSocketMonitorSnapshot(ISocket socket)
+    private static MonitorStatus? TryReadSocketMonitorStatus(ISocket socket)
     {
         try
         {
             using ISocketMonitor monitor = socket.MonitorOpen(SocketEvent.All);
-            return monitor.Snapshot();
+            return monitor.Status();
         }
         catch (Exception ex) when (ex is ZlinkException
                                   || ex is ObjectDisposedException
@@ -736,7 +736,7 @@ internal static partial class PerfRunner
         internal int DeferredRcvHwm { get; }
 
         internal static AutoHwmSnapshotFields FromSnapshot(
-            MonitorSnapshot snapshot)
+            MonitorStatus snapshot)
             => new(snapshot.AutoHwmEnabled, snapshot.AutoHwmProfile,
                 snapshot.AutoHwmRole, snapshot.AutoHwmPolicyClass,
                 snapshot.AutoHwmUnitBudgetBytes, snapshot.AutoHwmSizeCap,

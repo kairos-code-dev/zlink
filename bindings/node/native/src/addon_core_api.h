@@ -79,7 +79,7 @@ napi_value monitor_open(napi_env env, napi_callback_info info);
 napi_value monitor_handler(napi_env env, napi_callback_info info);
 napi_value monitor_recv(napi_env env, napi_callback_info info);
 napi_value monitor_try_recv(napi_env env, napi_callback_info info);
-napi_value monitor_snapshot(napi_env env, napi_callback_info info);
+napi_value monitor_status(napi_env env, napi_callback_info info);
 napi_value monitor_close(napi_env env, napi_callback_info info);
 
 napi_value poller_new(napi_env env, napi_callback_info info);

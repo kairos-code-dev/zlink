@@ -8,7 +8,7 @@ public interface IRegistryQueryClient : IDisposable, IAsyncDisposable
 {
     void Connect(string endpoint);
 
-    RegistryTopologyEntry[] Snapshot(
+    RegistryTopologyEntry[] Topology(
         RegistryTopologyFilter? filter = null);
 
     void Close();

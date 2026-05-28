@@ -227,6 +227,7 @@ public final class EnumCodecs {
             case 4 -> SpotDispatchEvent.CHANNEL_REPLY_READABLE;
             case 5 -> SpotDispatchEvent.ACTOR_READABLE;
             case 6 -> SpotDispatchEvent.ACTOR_JOIN_READABLE;
+            case 7 -> SpotDispatchEvent.ACTOR_LIFECYCLE_READABLE;
             default -> throw invalid("SpotDispatchEvent", value);
         };
     }
@@ -239,6 +240,7 @@ public final class EnumCodecs {
             case CHANNEL_REPLY_READABLE -> 4;
             case ACTOR_READABLE -> 5;
             case ACTOR_JOIN_READABLE -> 6;
+            case ACTOR_LIFECYCLE_READABLE -> 7;
         };
     }
 

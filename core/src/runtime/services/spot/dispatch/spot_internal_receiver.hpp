@@ -39,7 +39,7 @@ class spot_internal_receiver_t
         return _sub ? _sub->unsubscribe (topic_or_pattern_) : -1;
     }
 
-    int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const
+    int fill_monitor_snapshot (zlink_monitor_status_t *out_) const
     {
         return _sub ? _sub->fill_monitor_snapshot (out_) : -1;
     }

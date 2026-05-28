@@ -451,7 +451,7 @@ final class PerfMultiSpotReqRep {
         long deadline = System.nanoTime()
             + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
         while (System.nanoTime() < deadline) {
-            if (node.statusSnapshot().connectedPeerCount() >= expectedPeers) {
+            if (node.status().connectedPeerCount() >= expectedPeers) {
                 return;
             }
             sleepQuietly(10);

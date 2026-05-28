@@ -3,7 +3,7 @@
 package systems.zlink.contracts.errors;
 
 
-public enum ProtocolError {
+enum ProtocolError {
     ZMP_MALFORMED_COMMAND_HELLO(0x10000013);
 
     private final int value;

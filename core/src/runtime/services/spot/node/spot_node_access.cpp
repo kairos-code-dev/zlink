@@ -385,8 +385,8 @@ int spot_node_access_t::subjects_snapshot (
 
 int spot_node_access_t::internal_sockets_snapshot (
   spot_node_t *node_,
-  const zlink_spot_node_socket_snapshot_filter_t *filter_,
-  std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_)
+  const zlink_spot_node_socket_filter_t *filter_,
+  std::vector<zlink_spot_node_socket_entry_t> *out_)
 {
     if (!node_) {
         errno = EFAULT;

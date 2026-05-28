@@ -10,9 +10,9 @@ namespace Systems.Zlink;
 internal enum SpotOperationKind
 {
     Publish,
-    SendChannel,
+    SendToChannel,
     SendToSpot,
-    RequestChannel,
+    RequestToChannel,
     RequestToSpot,
     RequestToRouter,
     ReplyToSpot,
@@ -66,9 +66,9 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
             SpotOperationKind.Publish => _parts.IsSingle
                 ? _spot.Publish(_topicOrChannel!, _parts.Single, _flags)
                 : _spot.Publish(_topicOrChannel!, _parts.Parts, _flags),
-            SpotOperationKind.SendChannel => _parts.IsSingle
-                ? _spot.SendChannel(_topicOrChannel!, _parts.Single, _flags)
-                : _spot.SendChannel(_topicOrChannel!, _parts.Parts, _flags),
+            SpotOperationKind.SendToChannel => _parts.IsSingle
+                ? _spot.SendToChannel(_topicOrChannel!, _parts.Single, _flags)
+                : _spot.SendToChannel(_topicOrChannel!, _parts.Parts, _flags),
             SpotOperationKind.SendToSpot => _parts.IsSingle
                 ? _spot.SendToSpot(_destNodeRid, _destSpotRid, _parts.Single,
                     _flags)
@@ -166,7 +166,7 @@ internal sealed class SpotRequestOperation : RequestOperation,
         _submitted = true;
         return _kind switch
         {
-            SpotOperationKind.RequestChannel => _spot.RequestChannelAsync(
+            SpotOperationKind.RequestToChannel => _spot.RequestToChannelAsync(
                 _channelName!, _parts.Parts, _timeout, ct),
             SpotOperationKind.RequestToSpot => _spot.RequestToSpotAsync(
                 _destNodeRid, _destSpotRid, _parts.Parts, _timeout, ct),
@@ -183,7 +183,7 @@ internal sealed class SpotRequestOperation : RequestOperation,
         _submitted = true;
         return _kind switch
         {
-            SpotOperationKind.RequestChannel => _spot.RequestChannel(
+            SpotOperationKind.RequestToChannel => _spot.RequestToChannel(
                 _channelName!, _parts.Parts,
                 (result, parts) => callback(result, parts), _flags, _timeout),
             SpotOperationKind.RequestToSpot => _spot.RequestToSpot(_destNodeRid,

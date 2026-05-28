@@ -118,7 +118,8 @@ internal static class PerfMultiDealerDealerClient
                     Message message = Message.Allocate(payloadSize);
                     StampMetricHeader(message.AsSpan(), runId,
                         PerfPhase.Active, msgSize, seq, EpochNs());
-                    bool sent = socket.Send(message, SendFlags.DontWait);
+                    bool sent = socket.Send().Message(message)
+                        .Flags(SendFlags.DontWait).Submit();
                     message.Dispose();
                     if (!sent)
                     {

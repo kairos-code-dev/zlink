@@ -20,7 +20,7 @@ def _tcp_endpoint():
 def _wait_spot_peer_connected(node, timeout_s=5.0):
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        if node.status_snapshot().connected_peer_count > 0 and node.peers_snapshot():
+        if node.status().connected_peer_count > 0 and node.peers():
             return
         time.sleep(0.01)
     raise TimeoutError("spot peer did not connect within 5s")
@@ -34,7 +34,7 @@ class SpotRequestAsyncTests(unittest.TestCase):
         if hasattr(self, "ctx") and self.ctx is not None:
             self.ctx.close()
 
-    def test_request_to_spot_async_completes_via_routed_receive_callback(self):
+    def test_request_to_spot_async_completes_via_dispatch_receive(self):
         pub_endpoint = _tcp_endpoint()
         router_endpoint = _tcp_endpoint()
         requester_node = zlink.SpotNode(self.ctx)
@@ -44,7 +44,12 @@ class SpotRequestAsyncTests(unittest.TestCase):
         handled = threading.Event()
 
         try:
-            def on_routed_receive(received):
+            def on_dispatch_event(spot, info):
+                if info.event != zlink.SpotDispatchEvent.ROUTED_READABLE:
+                    return
+                received = spot.recv_routed(flags=zlink.RecvFlags.DONT_WAIT)
+                if received is None:
+                    return
                 with received:
                     self.assertEqual(received.to_bytes_list(), [b"spot-ping"])
                     self.assertIsNotNone(received.routing_id)
@@ -53,7 +58,7 @@ class SpotRequestAsyncTests(unittest.TestCase):
                     received.reply().message(b"spot-pong").submit()
                 handled.set()
 
-            responder.on_routed_receive(on_routed_receive)
+            responder.on_dispatch_event(on_dispatch_event)
             responder_node.set_router_bind(router_endpoint)
             responder_node.set_pub_bind(pub_endpoint)
             requester_node.connect_peer(pub_endpoint)
@@ -77,7 +82,7 @@ class SpotRequestAsyncTests(unittest.TestCase):
                         part.close()
 
             asyncio.run(issue_request())
-            self.assertTrue(handled.wait(2.0), "routed receive callback did not fire")
+            self.assertTrue(handled.wait(2.0), "routed dispatch receive did not fire")
         finally:
             responder.close()
             requester.close()

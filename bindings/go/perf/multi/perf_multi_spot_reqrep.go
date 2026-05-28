@@ -232,7 +232,7 @@ func waitMultiSpotReqRepServerIdle(
 func waitMultiSpotReqRepConnectedPeer(node *zlink.SpotNode, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		status, err := node.StatusSnapshot()
+		status, err := node.Status()
 		if err == nil && status != nil && status.ConnectedPeerCount > 0 {
 			return
 		}

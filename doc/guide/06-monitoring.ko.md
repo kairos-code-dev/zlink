@@ -340,8 +340,8 @@ zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *monitor = zlink_socket_monitor_open(socket, &opts);
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(monitor, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(monitor, &snapshot);
 printf("sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.snd_pending_msgs,
        (unsigned long long) snapshot.rcv_pending_msgs);
@@ -353,8 +353,8 @@ printf("sndq=%llu, rcvq=%llu\n",
 void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
-        zlink_monitor_snapshot_t snapshot;
-        zlink_monitor_snapshot(g_monitor, &snapshot);
+        zlink_monitor_status_t snapshot;
+        zlink_monitor_status(g_monitor, &snapshot);
         printf("Monitor snapshot updated\n");
     }
 }
@@ -366,11 +366,11 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 상태는 스냅샷 또는 조회 결과를 읽고 시간에 따라 비교해서 확인한다.
 
 - Discovery membership: `zlink_discovery_member_peers()`
-- Registry overview: `zlink_registry_status_snapshot()`,
-  `zlink_registry_topology_snapshot()`
-- Spot node state: `zlink_spot_node_status_snapshot()`,
-  `zlink_spot_node_peers_snapshot()`,
-  `zlink_spot_node_subjects_snapshot()`
+- Registry overview: `zlink_registry_status()`,
+  `zlink_registry_topology()`
+- Spot node state: `zlink_spot_node_status()`,
+  `zlink_spot_node_peers()`,
+  `zlink_spot_node_subjects()`
 
 ## 9. 다중 소켓 모니터링
 
@@ -418,8 +418,8 @@ void *mon = zlink_socket_monitor_open(socket, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 /* Snapshot reads may happen later from another worker thread */
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(mon, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(mon, &snapshot);
 ```
 
 ### 동시 모니터 제한
@@ -548,8 +548,8 @@ STREAM도 다른 기반 소켓과 동일하게
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *monitor = zlink_socket_monitor_open(socket, &opts);
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(monitor, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(monitor, &snapshot);
 printf("sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.snd_pending_msgs,
        (unsigned long long) snapshot.rcv_pending_msgs);
@@ -582,13 +582,13 @@ broadcast_control_start();
 
 ### 11.5 스냅샷
 
-`zlink_monitor_snapshot()`과 `zlink_*_status_snapshot()`은
+`zlink_monitor_status()`과 `zlink_*_status()`은
 현재 상태를 조회하는 용도다. 운영 대시보드, 상태 확인(health check), 디버깅에 활용한다.
 
 ```c
 /* Check current registry health */
 zlink_registry_status_t status;
-zlink_registry_status_snapshot(registry, &status);
+zlink_registry_status(registry, &status);
 printf("state=%d\n", status.state);
 ```
 

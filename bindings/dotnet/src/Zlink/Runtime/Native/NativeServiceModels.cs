@@ -14,7 +14,7 @@ internal struct ZlinkSocketMonitorOpenOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct ZlinkMonitorSnapshot
+internal struct ZlinkMonitorStatus
 {
     public int MonitorSourceKind;
     public uint StateFlags;
@@ -106,7 +106,7 @@ internal struct ZlinkSpotNodeOptions
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct ZlinkSpotNodeSocketSnapshotFilter
+internal unsafe struct ZlinkSpotNodeSocketFilter
 {
     public global::Systems.Zlink.SpotNodeSocketOwner Owner;
     public global::Systems.Zlink.SpotNodeSocketType SocketType;
@@ -114,7 +114,7 @@ internal unsafe struct ZlinkSpotNodeSocketSnapshotFilter
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal unsafe struct ZlinkSpotNodeSocketSnapshotEntry
+internal unsafe struct ZlinkSpotNodeSocketEntry
 {
     public global::Systems.Zlink.SpotNodeSocketOwner Owner;
     public ulong OwnerId;
@@ -122,7 +122,7 @@ internal unsafe struct ZlinkSpotNodeSocketSnapshotEntry
     public fixed byte SocketName[64];
     public global::Systems.Zlink.SpotNodeSocketType SocketType;
     public uint AutoHwmVisible;
-    public ZlinkMonitorSnapshot Snapshot;
+    public ZlinkMonitorStatus MonitorStatus;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -194,6 +194,13 @@ internal struct ZlinkSpotActorLifecycleInfo
     public ZlinkRoutingId CurrentSpotRid;
     public ulong JoinEpoch;
     public uint Flags;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotActorLifecycleEvent
+{
+    public int Kind;
+    public ZlinkSpotActorLifecycleInfo Info;
 }
 
 [StructLayout(LayoutKind.Sequential)]

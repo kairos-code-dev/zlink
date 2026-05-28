@@ -11,7 +11,7 @@ internal sealed partial class Spot
     private enum SpotMultipartSubmitKind
     {
         Publish,
-        SendChannel
+        SendToChannel
     }
 
     private unsafe void PublishCore(string topic, ReadOnlySpan<Message> parts,
@@ -21,10 +21,10 @@ internal sealed partial class Spot
             flags, paramName, mapNoWaitResult: false);
     }
 
-    private unsafe void SendChannelCore(string channelName, ReadOnlySpan<Message> parts,
+    private unsafe void SendToChannelCore(string channelName, ReadOnlySpan<Message> parts,
         int flags, string paramName)
     {
-        SubmitMultipartCore(SpotMultipartSubmitKind.SendChannel, channelName,
+        SubmitMultipartCore(SpotMultipartSubmitKind.SendToChannel, channelName,
             parts, flags, paramName, mapNoWaitResult: false);
     }
 
@@ -48,7 +48,7 @@ internal sealed partial class Spot
                 SpotMultipartSubmitKind.Publish => mapNoWaitResult
                     ? PublishNoWaitSingleCore(subject, part)
                     : SubmitSinglePublish(subject, part, flags),
-                SpotMultipartSubmitKind.SendChannel => SubmitSingleChannel(
+                SpotMultipartSubmitKind.SendToChannel => SubmitSingleChannel(
                     subject, part, flags, mapNoWaitResult),
                 _ => throw new InvalidOperationException()
             };

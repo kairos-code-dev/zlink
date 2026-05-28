@@ -142,22 +142,7 @@ zlink_close_result_t zlink_registry_destroy (void **registry_p_)
     return ZLINK_CLOSE_OK;
 }
 
-zlink_config_result_t zlink_registry_topology_snapshot (void *registry_,
-                                                        zlink_registry_topology_entry_t *entries_,
-                                                        size_t *count_)
-{
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
-    if (!registry) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    return zlink::config_result_internal::from_rc (
-      zlink::registry_access_t::topology_snapshot (registry, entries_,
-                                                    count_));
-}
-
-zlink_config_result_t zlink_registry_status_snapshot (void *registry_,
+zlink_config_result_t zlink_registry_status (void *registry_,
                                                       zlink_registry_status_t *out_)
 {
     zlink::registry_t *registry =
@@ -170,7 +155,7 @@ zlink_config_result_t zlink_registry_status_snapshot (void *registry_,
       zlink::registry_access_t::status_snapshot (registry, out_));
 }
 
-zlink_config_result_t zlink_registry_service_summary_snapshot (
+zlink_config_result_t zlink_registry_service_summary (
   void *registry_,
   const zlink_registry_service_summary_filter_t *filter_,
   zlink_registry_service_summary_entry_t *entries_,
@@ -222,7 +207,7 @@ zlink_config_result_t zlink_registry_member_peers (void *registry_,
         registry, channel_name_, entries_, count_));
 }
 
-zlink_config_result_t zlink_registry_topology_query (
+zlink_config_result_t zlink_registry_topology (
   void *registry_,
   const zlink_registry_topology_filter_t *filter_,
   zlink_registry_topology_entry_t *entries_,
@@ -256,7 +241,7 @@ zlink_connect_result_t zlink_registry_query_client_connect (void *client_,
       zlink::registry_query_access_t::connect (client_, endpoint_));
 }
 
-zlink_config_result_t zlink_registry_query_snapshot (
+zlink_config_result_t zlink_registry_query_client_topology (
   void *client_,
   const zlink_registry_topology_filter_t *filter_,
   zlink_registry_topology_entry_t *entries_,
@@ -267,7 +252,7 @@ zlink_config_result_t zlink_registry_query_snapshot (
                                                        entries_, count_));
 }
 
-zlink_close_result_t zlink_registry_query_destroy (void **client_p_)
+zlink_close_result_t zlink_registry_query_client_destroy (void **client_p_)
 {
     return zlink::close_result_internal::from_rc (
       zlink::registry_query_access_t::destroy (client_p_));

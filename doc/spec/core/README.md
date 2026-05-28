@@ -64,7 +64,7 @@ included by several core translation units.
 | [`zlink_routing_id_t`](./message.md) | message.md | Peer routing identity (1-byte size + 255-byte data) |
 | `zlink_socket_msg_handler_fn` | [socket/](./socket/README.md) | Raw `STREAM` raw receive callback |
 | [`zlink_monitor_event_t`](./monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
-| [`zlink_monitor_snapshot_t`](./monitoring.md) | monitoring.md | Monitor snapshot (state and queue depth) |
+| [`zlink_monitor_status_t`](./monitoring.md) | monitoring.md | Monitor snapshot (state and queue depth) |
 | [`zlink_fd_t`](./polling.md) | polling.md | Platform-dependent file descriptor type |
 
 ## Callback Types
@@ -74,7 +74,6 @@ included by several core translation units.
 | [`zlink_socket_msg_handler_fn`](./socket/README.md) | socket/ | Raw receive callback type for raw `STREAM` |
 | [`zlink_stream_packet_handler_fn`](./socket/README.md) | socket/ | Packet receive callback type for raw `STREAM` |
 | [`zlink_reply_handler_fn`](./socket/README.md) | socket/ | Asynchronous request-reply completion callback |
-| [`zlink_spot_handler_fn`](./service/spot.md) | service/spot.md | SPOT routed message dispatch callback |
 | [`zlink_spot_dispatch_event_handler_fn`](./service/spot.md) | service/spot.md | SPOT dispatch event callback |
 | [`zlink_monitor_handler_fn`](./monitoring.md) | monitoring.md | Socket monitor event callback |
 | [`zlink_send_ready_handler_fn`](./socket/README.md) | socket/ | Send-ready transition callback |

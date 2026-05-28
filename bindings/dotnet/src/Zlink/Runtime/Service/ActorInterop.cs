@@ -150,47 +150,70 @@ internal static class ActorInterop
         return Message.From(copy);
     }
 
-    internal static ActorPart? RecvActorPart(IntPtr node, ActorRef actor,
+    internal static ActorReceived? RecvActor(IntPtr node, ActorRef actor,
         RecvFlags flags = RecvFlags.None)
     {
         ZlinkActorRef nativeActor = ToNative(actor);
-        ZlinkMsg nativePart = default;
-        int rc = NativeMethods.zlink_spot_node_actor_recv_part(node,
-            ref nativeActor,
-            out ZlinkActorRecvInfo info, ref nativePart,
-            out NativeMethods.ZlinkPartFlag hasMore, (int)flags);
-        if (rc != 0)
-        {
-            int errno = NativeMethods.zlink_errno();
-            if ((flags & RecvFlags.DontWait) != 0
-                && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
-                return null;
-            throw ZlinkException.CreateRecvException(errno);
-        }
+        List<Message> parts = new();
+        ActorRecvInfo? managedInfo = null;
+        bool firstPart = true;
+        bool transferred = false;
 
-        Message message = Message.MoveFromNative(ref nativePart);
-        ActorRecvInfo managedInfo = FromNative(ref info);
-        return new ActorPart(managedInfo, message,
-            hasMore == NativeMethods.ZlinkPartFlag.More);
+        try
+        {
+            while (true)
+            {
+                ZlinkMsg nativePart = default;
+                int rc = NativeMethods.zlink_spot_node_actor_recv_part(node,
+                    ref nativeActor,
+                    out ZlinkActorRecvInfo info, ref nativePart,
+                    out NativeMethods.ZlinkPartFlag hasMore,
+                    firstPart ? (int)flags : 0);
+                if (rc != 0)
+                {
+                    int errno = NativeMethods.zlink_errno();
+                    if (firstPart && (flags & RecvFlags.DontWait) != 0
+                        && ZlinkException.MapErrorCode(errno) == ErrorCode.EAgain)
+                        return null;
+                    throw ZlinkException.CreateRecvException(errno);
+                }
+
+                managedInfo ??= FromNative(ref info);
+                parts.Add(Message.MoveFromNative(ref nativePart));
+                firstPart = false;
+
+                if (hasMore == NativeMethods.ZlinkPartFlag.Final)
+                    break;
+            }
+
+            var result = new ActorReceived(managedInfo!, parts.ToArray());
+            transferred = true;
+            return result;
+        }
+        finally
+        {
+            if (!transferred)
+                RequestReplySupport.DisposeParts(parts);
+        }
     }
 
-    internal static unsafe ActorPart[] DrainActorParts(IntPtr node,
+    internal static unsafe ActorReceived[] DrainActors(IntPtr node,
         IntPtr actor)
     {
         if (actor == IntPtr.Zero)
-            return Array.Empty<ActorPart>();
+            return Array.Empty<ActorReceived>();
         ZlinkActorRef nativeActor = Marshal.PtrToStructure<ZlinkActorRef>(actor);
         ActorRef actorRef = FromNative(ref nativeActor);
-        List<ActorPart> parts = new();
+        List<ActorReceived> messages = new();
         while (true)
         {
-            ActorPart? part = RecvActorPart(node, actorRef,
+            ActorReceived? message = RecvActor(node, actorRef,
                 RecvFlags.DontWait);
-            if (part == null)
+            if (message == null)
                 break;
-            parts.Add(part);
+            messages.Add(message);
         }
-        return parts.ToArray();
+        return messages.ToArray();
     }
 
     internal static Task<IReadOnlyList<Message>> TakePartsAsync(

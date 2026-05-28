@@ -104,7 +104,7 @@ internal sealed partial class Spot
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
-            int rc = NativeMethods.zlink_spot_subscription_event_recv(_handle,
+            int rc = NativeMethods.zlink_spot_recv_subscription_event(_handle,
                 out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
                 (nuint)topicBuffer.Length, out nuint topicLength, flags);
             if (rc != 0)
@@ -132,7 +132,7 @@ internal sealed partial class Spot
         byte[] topicBuffer = ArrayPool<byte>.Shared.Rent(TopicBufferSize);
         try
         {
-            int rc = NativeMethods.zlink_spot_subscription_event_recv(_handle,
+            int rc = NativeMethods.zlink_spot_recv_subscription_event(_handle,
                 out IntPtr sourceRoutingId, out int subscribedInt, topicBuffer,
                 (nuint)topicBuffer.Length, out nuint topicLength, flags);
             if (rc != 0)

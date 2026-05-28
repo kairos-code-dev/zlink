@@ -49,7 +49,7 @@ public sealed class test_actor_contract
             Assert.Equal("join:accepted", replies[0].GetString());
         }
 
-        Assert.Contains(spot.ActorsSnapshot(),
+        Assert.Contains(spot.Actors(),
             entry => entry.ActorId == actor.Ref.ActorId);
         Zlink.MultipartClose(await actor.Leave(spot)
             .SubmitAsync().WaitAsync(TimeSpan.FromSeconds(5)));
@@ -86,7 +86,7 @@ public sealed class test_actor_contract
         Assert.Equal(RequestResult.Ok, rejected.Result.Result);
         Assert.Equal(42, rejected.Result.JoinResultCode);
         Assert.Equal(actor.Ref.ActorId, rejected.Result.Actor.ActorId);
-        Assert.DoesNotContain(spot.ActorsSnapshot(),
+        Assert.DoesNotContain(spot.Actors(),
             entry => entry.ActorId == actor.Ref.ActorId);
 
         Assert.Single(rejected.Parts);
@@ -97,7 +97,7 @@ public sealed class test_actor_contract
     }
 
     [Fact]
-    public async Task spot_actor_lifecycle_callbacks_observe_join_and_leave()
+    public async Task spot_actor_lifecycle_events_observe_join_and_leave()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -112,9 +112,24 @@ public sealed class test_actor_contract
         var left = new TaskCompletionSource<SpotActorLifecycleInfo>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
-        spot.OnActorLifecycle(
-            info => joined.TrySetResult(info),
-            info => left.TrySetResult(info));
+        spot.SetDispatchHandler(info =>
+        {
+            if (info.Event != SpotDispatchEvent.ActorLifecycleReadable)
+                return;
+
+            while (true)
+            {
+                SpotActorLifecycleEvent? lifecycle =
+                    spot.RecvActorLifecycle(RecvFlags.DontWait);
+                if (lifecycle == null)
+                    return;
+
+                if (lifecycle.Kind == SpotActorLifecycleEventKind.Joined)
+                    joined.TrySetResult(lifecycle.Info);
+                else if (lifecycle.Kind == SpotActorLifecycleEventKind.Left)
+                    left.TrySetResult(lifecycle.Info);
+            }
+        });
 
         Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
             actor.Join(spot).Message(joinMessage)
@@ -193,7 +208,7 @@ public sealed class test_actor_contract
         Assert.Equal(node.RoutingId, result.Actor.NodeRid);
         Assert.Equal(node.RoutingId, result.TargetNodeRid);
         Assert.True(result.JoinEpoch > 0);
-        Assert.Contains(entry.ActorsSnapshot(),
+        Assert.Contains(entry.Actors(),
             row => row.ActorId == actor.Ref.ActorId);
         Assert.Null(entry.RecvActorJoin(RecvFlags.DontWait));
     }

@@ -25,12 +25,9 @@ void tearDown ()
 
 namespace
 {
-void noop_spot_handler (const zlink_routing_id_t *,
-                        const zlink_routing_id_t *,
-                        uint64_t,
-                        zlink_msg_t *,
-                        size_t,
-                        void *)
+void noop_spot_dispatch_handler (void *,
+                                 const zlink_spot_dispatch_info_t *,
+                                 void *)
 {
 }
 
@@ -66,17 +63,17 @@ void reentrant_send_ready_handler (void *subject_, void *userdata_)
     probe->calls.fetch_add (1, std::memory_order_release);
 }
 
-std::vector<zlink_spot_node_socket_snapshot_entry_t>
+std::vector<zlink_spot_node_socket_entry_t>
 read_socket_snapshot (void *node_)
 {
     size_t count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_internal_sockets_snapshot (node_, NULL, NULL, &count));
+      zlink_spot_node_internal_sockets (node_, NULL, NULL, &count));
 
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows (count);
+    std::vector<zlink_spot_node_socket_entry_t> rows (count);
     if (count != 0) {
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_spot_node_internal_sockets_snapshot (node_, NULL, &rows[0],
+          zlink_spot_node_internal_sockets (node_, NULL, &rows[0],
                                                      &count));
         rows.resize (count);
     }
@@ -85,7 +82,7 @@ read_socket_snapshot (void *node_)
 
 bool snapshot_has_socket (void *node_, const char *socket_name_)
 {
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
+    std::vector<zlink_spot_node_socket_entry_t> rows =
       read_socket_snapshot (node_);
     for (size_t i = 0; i < rows.size (); ++i) {
         if (strcmp (rows[i].socket_name, socket_name_) == 0)
@@ -98,7 +95,7 @@ bool snapshot_has_owner_socket (void *node_,
                                 zlink_spot_node_socket_owner_t owner_,
                                 const char *socket_name_)
 {
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
+    std::vector<zlink_spot_node_socket_entry_t> rows =
       read_socket_snapshot (node_);
     for (size_t i = 0; i < rows.size (); ++i) {
         if (rows[i].owner == owner_
@@ -110,7 +107,7 @@ bool snapshot_has_owner_socket (void *node_,
 }
 
 size_t count_owner_rows (
-  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+  const std::vector<zlink_spot_node_socket_entry_t> &rows_,
   zlink_spot_node_socket_owner_t owner_)
 {
     size_t count = 0;
@@ -122,7 +119,7 @@ size_t count_owner_rows (
 }
 
 size_t count_socket_rows (
-  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+  const std::vector<zlink_spot_node_socket_entry_t> &rows_,
   zlink_socket_type_t socket_type_)
 {
     size_t count = 0;
@@ -134,7 +131,7 @@ size_t count_socket_rows (
 }
 
 size_t count_socket_name_rows (
-  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+  const std::vector<zlink_spot_node_socket_entry_t> &rows_,
   const char *socket_name_)
 {
     size_t count = 0;
@@ -145,8 +142,8 @@ size_t count_socket_name_rows (
     return count;
 }
 
-const zlink_spot_node_socket_snapshot_entry_t *find_socket_row (
-  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+const zlink_spot_node_socket_entry_t *find_socket_row (
+  const std::vector<zlink_spot_node_socket_entry_t> &rows_,
   zlink_spot_node_socket_owner_t owner_,
   const char *socket_name_)
 {
@@ -215,7 +212,8 @@ void test_spot_node_pubsub_mode_disables_routed_sockets_without_lazy_create ()
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_HANDLER_NOT_SUPPORTED,
-      zlink_spot_handler (spot, &noop_spot_handler, NULL));
+      zlink_spot_dispatch_event_handler (
+        spot, &noop_spot_dispatch_handler, NULL));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
     TEST_ASSERT_EQUAL_UINT (count_before, read_socket_snapshot (node).size ());
 
@@ -285,31 +283,31 @@ void test_spot_node_internal_socket_snapshot_contract ()
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_spot_node_internal_sockets_snapshot (node, NULL, NULL, NULL));
+      zlink_spot_node_internal_sockets (node, NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     size_t count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_internal_sockets_snapshot (node, NULL, NULL, &count));
+      zlink_spot_node_internal_sockets (node, NULL, NULL, &count));
     TEST_ASSERT_TRUE (count > 0);
 
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> one (1);
+    std::vector<zlink_spot_node_socket_entry_t> one (1);
     size_t small_count = 0;
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INTERNAL_ERROR,
-      zlink_spot_node_internal_sockets_snapshot (node, NULL, &one[0],
+      zlink_spot_node_internal_sockets (node, NULL, &one[0],
                                                  &small_count));
     TEST_ASSERT_EQUAL_INT (ENOBUFS, errno);
     TEST_ASSERT_EQUAL_UINT (count, small_count);
 
-    zlink_spot_node_socket_snapshot_filter_t filter;
+    zlink_spot_node_socket_filter_t filter;
     memset (&filter, 0, sizeof (filter));
     filter.owner = static_cast<zlink_spot_node_socket_owner_t> (99);
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+      zlink_spot_node_internal_sockets (node, &filter, NULL, &count));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     memset (&filter, 0, sizeof (filter));
@@ -317,7 +315,7 @@ void test_spot_node_internal_socket_snapshot_contract ()
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+      zlink_spot_node_internal_sockets (node, &filter, NULL, &count));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     memset (&filter, 0, sizeof (filter));
@@ -325,10 +323,10 @@ void test_spot_node_internal_socket_snapshot_contract ()
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+      zlink_spot_node_internal_sockets (node, &filter, NULL, &count));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
-    const std::vector<zlink_spot_node_socket_snapshot_entry_t> all_rows =
+    const std::vector<zlink_spot_node_socket_entry_t> all_rows =
       read_socket_snapshot (node);
     TEST_ASSERT_TRUE (
       count_owner_rows (all_rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE) > 0);
@@ -345,11 +343,11 @@ void test_spot_node_internal_socket_snapshot_contract ()
           || all_rows[i].socket_type == ZLINK_SOCKET_ROUTER
           || all_rows[i].socket_type == ZLINK_SOCKET_STREAM
           || all_rows[i].socket_type == ZLINK_SOCKET_PAIR);
-        TEST_ASSERT_TRUE (all_rows[i].snapshot.source_kind
+        TEST_ASSERT_TRUE (all_rows[i].monitor_status.source_kind
                           == ZLINK_MONITOR_SOURCE_SOCKET
-                          || all_rows[i].snapshot.source_kind
+                          || all_rows[i].monitor_status.source_kind
                                == ZLINK_MONITOR_SOURCE_SPOT_PUB
-                          || all_rows[i].snapshot.source_kind
+                          || all_rows[i].monitor_status.source_kind
                                == ZLINK_MONITOR_SOURCE_SPOT_SUB);
     }
 
@@ -357,7 +355,7 @@ void test_spot_node_internal_socket_snapshot_contract ()
     filter.owner = ZLINK_SPOT_NODE_SOCKET_OWNER_NODE;
     count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+      zlink_spot_node_internal_sockets (node, &filter, NULL, &count));
     TEST_ASSERT_EQUAL_UINT (
       count_owner_rows (all_rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE), count);
 
@@ -365,7 +363,7 @@ void test_spot_node_internal_socket_snapshot_contract ()
     filter.socket_type = ZLINK_SOCKET_ROUTER;
     count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+      zlink_spot_node_internal_sockets (node, &filter, NULL, &count));
     TEST_ASSERT_EQUAL_UINT (count_socket_rows (all_rows, ZLINK_SOCKET_ROUTER),
                             count);
 
@@ -374,7 +372,7 @@ void test_spot_node_internal_socket_snapshot_contract ()
               "internal-router");
     count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_internal_sockets_snapshot (node, &filter, NULL, &count));
+      zlink_spot_node_internal_sockets (node, &filter, NULL, &count));
     TEST_ASSERT_EQUAL_UINT (count_socket_name_rows (all_rows, "internal-router"),
                             count);
 
@@ -403,16 +401,16 @@ void test_spot_node_admission_hwm_socket_snapshot_contract ()
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
 
-    const std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
+    const std::vector<zlink_spot_node_socket_entry_t> rows =
       read_socket_snapshot (node);
 
-    const zlink_spot_node_socket_snapshot_entry_t *fanout =
+    const zlink_spot_node_socket_entry_t *fanout =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "local-pub");
-    const zlink_spot_node_socket_snapshot_entry_t *mesh_pub =
+    const zlink_spot_node_socket_entry_t *mesh_pub =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "mesh-pub");
-    const zlink_spot_node_socket_snapshot_entry_t *mesh_xsub =
+    const zlink_spot_node_socket_entry_t *mesh_xsub =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "mesh-xsub");
-    const zlink_spot_node_socket_snapshot_entry_t *external_router =
+    const zlink_spot_node_socket_entry_t *external_router =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
                        "external-router");
 
@@ -429,16 +427,16 @@ void test_spot_node_admission_hwm_socket_snapshot_contract ()
     TEST_ASSERT_NOT_NULL (mesh_xsub);
     TEST_ASSERT_NOT_NULL (external_router);
 
-    TEST_ASSERT_EQUAL_INT (0, fanout->snapshot.auto_hwm_applied_sndhwm);
+    TEST_ASSERT_EQUAL_INT (0, fanout->monitor_status.auto_hwm_applied_sndhwm);
     TEST_ASSERT_EQUAL_INT (pubsub_hwm,
-                           mesh_pub->snapshot.auto_hwm_applied_sndhwm);
+                           mesh_pub->monitor_status.auto_hwm_applied_sndhwm);
     TEST_ASSERT_EQUAL_INT (pubsub_hwm,
-                           mesh_xsub->snapshot.auto_hwm_applied_rcvhwm);
+                           mesh_xsub->monitor_status.auto_hwm_applied_rcvhwm);
 
     TEST_ASSERT_EQUAL_INT (router_hwm,
-                           external_router->snapshot.auto_hwm_applied_rcvhwm);
+                           external_router->monitor_status.auto_hwm_applied_rcvhwm);
     TEST_ASSERT_EQUAL_INT (router_hwm,
-                           external_router->snapshot.auto_hwm_applied_sndhwm);
+                           external_router->monitor_status.auto_hwm_applied_sndhwm);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -497,13 +495,13 @@ void test_spot_node_admission_hwm_changes_apply_to_runtime_data_plane_sockets ()
       zlink_set_spot_node_option (node, ZLINK_SPOT_NODE_OPT_ROUTER_HWM,
                                   &router_hwm, sizeof (router_hwm)));
 
-    const std::vector<zlink_spot_node_socket_snapshot_entry_t> rows =
+    const std::vector<zlink_spot_node_socket_entry_t> rows =
       read_socket_snapshot (node);
-    const zlink_spot_node_socket_snapshot_entry_t *mesh_pub =
+    const zlink_spot_node_socket_entry_t *mesh_pub =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "mesh-pub");
-    const zlink_spot_node_socket_snapshot_entry_t *mesh_xsub =
+    const zlink_spot_node_socket_entry_t *mesh_xsub =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, "mesh-xsub");
-    const zlink_spot_node_socket_snapshot_entry_t *external_router =
+    const zlink_spot_node_socket_entry_t *external_router =
       find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
                        "external-router");
     TEST_ASSERT_NULL (find_socket_row (rows, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE,
@@ -518,13 +516,13 @@ void test_spot_node_admission_hwm_changes_apply_to_runtime_data_plane_sockets ()
     TEST_ASSERT_NOT_NULL (mesh_xsub);
     TEST_ASSERT_NOT_NULL (external_router);
     TEST_ASSERT_EQUAL_INT (pubsub_hwm,
-                           mesh_pub->snapshot.auto_hwm_applied_sndhwm);
+                           mesh_pub->monitor_status.auto_hwm_applied_sndhwm);
     TEST_ASSERT_EQUAL_INT (pubsub_hwm,
-                           mesh_xsub->snapshot.auto_hwm_applied_rcvhwm);
+                           mesh_xsub->monitor_status.auto_hwm_applied_rcvhwm);
     TEST_ASSERT_EQUAL_INT (router_hwm,
-                           external_router->snapshot.auto_hwm_applied_sndhwm);
+                           external_router->monitor_status.auto_hwm_applied_sndhwm);
     TEST_ASSERT_EQUAL_INT (router_hwm,
-                           external_router->snapshot.auto_hwm_applied_rcvhwm);
+                           external_router->monitor_status.auto_hwm_applied_rcvhwm);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));

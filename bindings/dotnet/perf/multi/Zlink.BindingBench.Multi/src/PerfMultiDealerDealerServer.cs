@@ -66,7 +66,7 @@ internal static class PerfMultiDealerDealerServer
         var latSamples = new LatencySampleBuffer(
             EstimateLatencySampleCapacity(latencySampleCap, durationSeconds));
         long measureCount = 0;
-        using var receivedPart = new Message();
+        using var received = Received.Create();
 
         // PERF_MULTI_TEST_POLICY: the active window ends purely on the
         // configured duration (signal-driven -1 poll, duration timer), like C
@@ -78,7 +78,7 @@ internal static class PerfMultiDealerDealerServer
         // each iteration), so there is no cross-size backlog to drain. The
         // process exits after this size, discarding any tail like C discards
         // it across runs. No idle-drain phase is performed.
-        if (!ReceiveActiveWindow(server, receivedPart, msgSize, expectedRunId,
+        if (!ReceiveActiveWindow(server, received, msgSize, expectedRunId,
                 PerfPhase.Active, latSamples, ref measureCount,
                 durationSeconds))
         {
@@ -110,7 +110,7 @@ internal static class PerfMultiDealerDealerServer
     }
 
     private static bool ReceiveActiveWindow(IDealerSocket server,
-        Message receivedPart, int msgSize, uint expectedRunId,
+        Received received, int msgSize, uint expectedRunId,
         PerfPhase expectedPhase, LatencySampleBuffer latSamples,
         ref long messageCount, int durationSeconds)
     {
@@ -131,7 +131,7 @@ internal static class PerfMultiDealerDealerServer
                     || (events[i].Revents & PollEventFlags.PollIn) == 0)
                     continue;
 
-                if (!ReceiveOneAvailable(server, receivedPart, msgSize,
+                if (!ReceiveOneAvailable(server, received, msgSize,
                         expectedRunId, expectedPhase, latSamples,
                         ref messageCount, collectMetrics: true))
                     continue;
@@ -139,7 +139,7 @@ internal static class PerfMultiDealerDealerServer
                 if (Stopwatch.GetTimestamp() >= activeDeadlineTicks)
                     return true;
 
-                DrainAvailable(server, receivedPart, msgSize, expectedRunId,
+                DrainAvailable(server, received, msgSize, expectedRunId,
                     expectedPhase, latSamples, ref messageCount,
                     collectMetrics: true);
 
@@ -150,20 +150,20 @@ internal static class PerfMultiDealerDealerServer
     }
 
     private static bool ReceiveOneAvailable(IDealerSocket server,
-        Message receivedPart, int msgSize, uint expectedRunId,
+        Received received, int msgSize, uint expectedRunId,
         PerfPhase expectedPhase, LatencySampleBuffer latSamples,
         ref long messageCount, bool collectMetrics)
     {
-        if (!TryRecvNoWait(server, receivedPart, out bool hasMore))
+        if (!server.Recv(received, RecvFlags.DontWait))
             return false;
 
-        ProcessReceivedPart(server, receivedPart, hasMore, msgSize,
+        ProcessReceived(server, received, msgSize,
             expectedRunId, expectedPhase, latSamples, ref messageCount,
             collectMetrics);
         return true;
     }
 
-    private static int DrainAvailable(IDealerSocket server, Message receivedPart,
+    private static int DrainAvailable(IDealerSocket server, Received received,
         int msgSize, uint expectedRunId, PerfPhase expectedPhase,
         LatencySampleBuffer latSamples, ref long messageCount,
         bool collectMetrics)
@@ -171,27 +171,25 @@ internal static class PerfMultiDealerDealerServer
         int drained = 0;
         while (true)
         {
-            if (!TryRecvNoWait(server, receivedPart, out bool hasMore))
+            if (!server.Recv(received, RecvFlags.DontWait))
                 return drained;
 
             drained++;
-            ProcessReceivedPart(server, receivedPart, hasMore, msgSize,
+            ProcessReceived(server, received, msgSize,
                 expectedRunId, expectedPhase, latSamples, ref messageCount,
                 collectMetrics);
         }
     }
 
-    private static void ProcessReceivedPart(IDealerSocket server,
-        Message receivedPart, bool hasMore, int msgSize, uint expectedRunId,
+    private static void ProcessReceived(IDealerSocket server,
+        Received received, int msgSize, uint expectedRunId,
         PerfPhase expectedPhase, LatencySampleBuffer latSamples,
         ref long messageCount, bool collectMetrics)
     {
-        ReadOnlySpan<byte> body = receivedPart.AsReadOnlySpan();
-        if (hasMore)
-        {
-            DrainRemainingParts(server, receivedPart, hasMore);
+        if (!received.IsSinglePart)
             return;
-        }
+
+        ReadOnlySpan<byte> body = received.FirstPart().AsReadOnlySpan();
 
         if (IsStopTokenPayload(body))
             return;
@@ -236,20 +234,6 @@ internal static class PerfMultiDealerDealerServer
         sentTsNs = (ulong)Unsafe.ReadUnaligned<long>(
             ref Unsafe.Add(ref head, 21));
         return true;
-    }
-
-    private static void DrainRemainingParts(IDealerSocket socket,
-        Message result, bool hasMore)
-    {
-        while (hasMore && TryRecvNoWait(socket, result, out hasMore))
-        {
-        }
-    }
-
-    private static bool TryRecvNoWait(IDealerSocket socket, Message result,
-        out bool hasMore)
-    {
-        return socket.RecvPart(result, out hasMore, RecvFlags.DontWait);
     }
 
     private sealed class LatencySampleBuffer

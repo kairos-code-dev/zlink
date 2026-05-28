@@ -32,30 +32,30 @@ internal sealed class ZLinkBackendRegistryWrapper(IRegistry nativeRegistry) : IZ
         nativeRegistry.Bind(pubEndpoint, routerEndpoint);
     }
 
-    public ZLinkRegistryStatus StatusSnapshot()
+    public ZLinkRegistryStatus Status()
     {
-        return nativeRegistry.StatusSnapshot().ToFramework();
+        return nativeRegistry.Status().ToFramework();
     }
 
-    public IReadOnlyList<ZLinkRegistryServiceSummaryEntry> ServiceSummarySnapshot(
+    public IReadOnlyList<ZLinkRegistryServiceSummaryEntry> ServiceSummary(
         ZLinkRegistryServiceSummaryFilter? filter)
     {
-        return nativeRegistry.ServiceSummarySnapshot(filter.ToNative())
+        return nativeRegistry.ServiceSummary(filter.ToNative())
             .Select(static entry => entry.ToFramework())
             .ToArray();
     }
 
-    public IReadOnlyList<ZLinkRegistryTopologyEntry> TopologySnapshot()
+    public IReadOnlyList<ZLinkRegistryTopologyEntry> Topology()
     {
-        return nativeRegistry.TopologySnapshot()
+        return nativeRegistry.Topology()
             .Select(static entry => entry.ToFramework())
             .ToArray();
     }
 
-    public IReadOnlyList<ZLinkRegistryTopologyEntry> TopologyQuery(
+    public IReadOnlyList<ZLinkRegistryTopologyEntry> Topology(
         ZLinkRegistryTopologyFilter? filter)
     {
-        return nativeRegistry.TopologyQuery(filter.ToNative())
+        return nativeRegistry.Topology(filter.ToNative())
             .Select(static entry => entry.ToFramework())
             .ToArray();
     }

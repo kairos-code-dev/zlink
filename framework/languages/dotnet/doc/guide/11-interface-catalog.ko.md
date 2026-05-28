@@ -642,16 +642,16 @@ options.AddPeer("tcp://127.0.0.1:7001");
 
 var clientOptions = new ExampleRegistryQueryClientOptions { Endpoint = options.RouterEndpoint };
 
-var status = await query.StatusSnapshotAsync();                 // IZLinkRegistryQuery
-var topology = await query.TopologyQueryAsync(new ZLinkRegistryTopologyFilter(ChannelName: "play"));
-var snapshot = await client.SnapshotAsync();                    // IZLinkRegistryQueryClient
+var status = await query.StatusAsync();                 // IZLinkRegistryQuery
+var topology = await query.TopologyAsync(new ZLinkRegistryTopologyFilter(ChannelName: "play"));
+var snapshot = await client.TopologyAsync();                    // IZLinkRegistryQueryClient
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkRegistryOptions` | Registry 서버 설정(`PubEndpoint`, `RouterEndpoint`, `RegistryId`, heartbeat/broadcast interval, `AddPeer`) |
-| `IZLinkRegistryQuery` | in-process Registry 조회(`StatusSnapshotAsync`, `ServiceSummarySnapshotAsync`, `TopologySnapshotAsync`, `TopologyQueryAsync`, `MemberPeersAsync`) |
-| `IZLinkRegistryQueryClient` | 원격 Registry 조회. topology `SnapshotAsync` 만 제공(C API 제약) |
+| `IZLinkRegistryQuery` | in-process Registry 조회(`StatusAsync`, `ServiceSummaryAsync`, `TopologyAsync`, `TopologyAsync`, `MemberPeersAsync`) |
+| `IZLinkRegistryQueryClient` | 원격 Registry 조회. topology `TopologyAsync` 만 제공(C API 제약) |
 | `IZLinkRegistryQueryClientOptions` | 원격 query client 의 `Endpoint`(ROUTER) |
 
 검증: `RegistryContracts.Registry_contracts_describe_status_topology_and_client_options`.

@@ -58,7 +58,7 @@ static bool wait_for_spot_node_subject_ready (void *node_, int timeout_ms_)
 
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t status;
-        if (zlink_spot_node_status_snapshot (node_, &status) == 0
+        if (zlink_spot_node_status (node_, &status) == 0
             && status.subject_count > 0
             && (status.ready_subject_count > 0
                 || status.connected_peer_count > 0
@@ -737,7 +737,7 @@ static void test_spot_node_snapshot_status_peers_subjects ()
     TEST_ASSERT_TRUE (wait_for_spot_node_subject_ready (sub_node, 3000));
     zlink_spot_node_status_t status;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_status_snapshot (sub_node, &status));
+      zlink_spot_node_status (sub_node, &status));
     TEST_ASSERT_EQUAL_STRING ("", status.channel_name);
     TEST_ASSERT_TRUE (status.configured_peer_count >= 1);
     TEST_ASSERT_TRUE (status.connected_peer_count >= 1
@@ -749,11 +749,11 @@ static void test_spot_node_snapshot_status_peers_subjects ()
 
     size_t count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_peers_snapshot (sub_node, NULL, &count));
+      zlink_spot_node_peers (sub_node, NULL, NULL, &count));
     TEST_ASSERT_EQUAL_UINT (1, count);
     std::vector<zlink_spot_node_peer_entry_t> peers (count);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_peers_snapshot (sub_node, &peers[0], &count));
+      zlink_spot_node_peers (sub_node, NULL, &peers[0], &count));
     TEST_ASSERT_EQUAL_UINT (1, count);
     TEST_ASSERT_EQUAL_STRING (endpoint, peers[0].peer_endpoint);
     TEST_ASSERT_EQUAL_UINT32 (ZLINK_SPOT_PEER_SOURCE_MANUAL, peers[0].source);
@@ -765,10 +765,10 @@ static void test_spot_node_snapshot_status_peers_subjects ()
     filter.role = ZLINK_SPOT_ROLE_SUB;
     size_t subject_count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_subjects_snapshot (sub_node, &filter, NULL, &subject_count));
+      zlink_spot_node_subjects (sub_node, &filter, NULL, &subject_count));
     TEST_ASSERT_EQUAL_UINT (1, subject_count);
     std::vector<zlink_spot_node_subject_entry_t> subjects (subject_count);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_subjects_snapshot (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_subjects (
       sub_node, &filter, &subjects[0], &subject_count));
     TEST_ASSERT_EQUAL_UINT (1, subject_count);
     TEST_ASSERT_EQUAL_UINT32 (ZLINK_SPOT_ROLE_SUB, subjects[0].role);
@@ -781,7 +781,7 @@ static void test_spot_node_snapshot_status_peers_subjects ()
     filter.role = ZLINK_SPOT_ROLE_PUB;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_NOT_SUPPORTED,
-      zlink_spot_node_subjects_snapshot (sub_node, &filter, NULL, &subject_count));
+      zlink_spot_node_subjects (sub_node, &filter, NULL, &subject_count));
     TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub));

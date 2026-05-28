@@ -4,7 +4,6 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.errors.ErrorCode;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.MonitorSocket;
@@ -51,6 +50,7 @@ import java.util.concurrent.RejectedExecutionException;
  * Abstract common socket base for zlink typed socket facades.
  */
 public abstract class Socket implements AutoCloseable {
+    private static final int ERRNO_EFSM = 156384763;
     static final int DEFAULT_IO_BUFFER_SIZE = 8192;
     static final int ERRNO_EINTR = 4;
     static final int ERRNO_EAGAIN = 11;
@@ -86,22 +86,22 @@ public abstract class Socket implements AutoCloseable {
         InternalAccess.register(new InternalAccess.SocketAccess() {
             @Override
             public MemorySegment handle(Socket socket) {
-                return InternalAccess.socketHandle(socket);
+                return socket.handle();
             }
 
             @Override
             public boolean inCallback() {
-                return InternalAccess.inCallback();
+                return Socket.inCallbackContext();
             }
 
             @Override
             public void enterCallback() {
-                InternalAccess.enterCallback();
+                Socket.enterCallbackContext();
             }
 
             @Override
             public void leaveCallback() {
-                InternalAccess.leaveCallback();
+                Socket.leaveCallbackContext();
             }
         });
     }
@@ -256,19 +256,19 @@ public abstract class Socket implements AutoCloseable {
         return socketCore.getSockOptInt(option);
     }
 
-    public void setOption(SocketOptionKey<Integer> option, int value) {
+    void setOption(SocketOptionKey<Integer> option, int value) {
         socketCore.setOption(option, value);
     }
 
-    public void setOption(SocketOptionKey<Long> option, long value) {
+    void setOption(SocketOptionKey<Long> option, long value) {
         socketCore.setOptionLong(option, value);
     }
 
-    public void setOption(SocketOptionKey<String> option, String value) {
+    void setOption(SocketOptionKey<String> option, String value) {
         socketCore.setOptionString(option, value);
     }
 
-    public void setOption(SocketOptionKey<byte[]> option, byte[] value) {
+    void setOption(SocketOptionKey<byte[]> option, byte[] value) {
         socketCore.setOptionBytes(option, value);
     }
 
@@ -662,7 +662,7 @@ public abstract class Socket implements AutoCloseable {
         }
     }
 
-    public Optional<Received> recvNoWait() {
+    Optional<Received> recvNoWait() {
         return Optional.ofNullable(recvNoWaitOrNull());
     }
 
@@ -1184,7 +1184,7 @@ public abstract class Socket implements AutoCloseable {
     void closeInternal() {
         if (socketCore.discoveryAttached()) {
             throw ZlinkException.fromErrno("zlink_close",
-                ErrorCode.EFSM.getValue());
+                ERRNO_EFSM);
         }
         if (handle != null && handle.address() != 0) {
             if (own) {
@@ -2976,7 +2976,7 @@ public abstract class Socket implements AutoCloseable {
 
         private void failIfDiscoveryAttached(String operation) {
             if (discoveryAttached) {
-                throw ZlinkException.fromErrno(operation, ErrorCode.EFSM.getValue());
+                throw ZlinkException.fromErrno(operation, ERRNO_EFSM);
             }
         }
 

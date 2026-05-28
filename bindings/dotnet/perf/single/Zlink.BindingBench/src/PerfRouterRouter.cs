@@ -165,7 +165,7 @@ internal static class PerfRouterRouter
             if (!WaitForInput(poller, events, waitMs))
                 continue;
 
-            using var receivedBuffer = new Received();
+            using var receivedBuffer = Received.Create();
             while (TryReceive(receiver, receivedBuffer))
             {
                 if (receivedBuffer.RoutingId == null
@@ -204,7 +204,7 @@ internal static class PerfRouterRouter
             if (!WaitForInput(senderPoller, senderEvents, waitMs))
                 continue;
 
-            using var response = new Received();
+            using var response = Received.Create();
             while (TryReceive(sender, response))
             {
                 if (response.RoutingId == null || !IsPayload(response, pong))
@@ -318,7 +318,7 @@ internal static class PerfRouterRouter
         using var poller = Zlink.CreatePoller();
         var events = new PollEvent[1];
         poller.Add(receiver, PollEventFlags.PollIn, 0);
-        var receivedBuffer = new Received();
+        var receivedBuffer = Received.Create();
         // PERF_SINGLE_TEST_POLICY § 1.4: signal-driven (-1) poller wait, no
         // sender_done atomic flag, no short-poll/deadline fallback. The phase
         // ends purely when the wire-level stop token arrives, matching C

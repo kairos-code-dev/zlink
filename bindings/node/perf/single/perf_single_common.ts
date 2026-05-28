@@ -159,7 +159,7 @@ function emitSingleSocketHwmDetail(socket, pattern, transport, component, msgSiz
   // the measured RESULT).
   const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
   try {
-    const snapshot = monitor.snapshot();
+    const snapshot = monitor.status();
     if (!singleAutoHwmSnapshotVisible(snapshot)) {
       return;
     }
@@ -189,11 +189,11 @@ function emitSingleSocketHwmDetail(socket, pattern, transport, component, msgSiz
 }
 
 function emitSpotNodeHwmDetail(node, pattern, transport, component, msgSize) {
-  if (!node || typeof node.internalSocketsSnapshot !== 'function') {
+  if (!node || typeof node.internalSockets !== 'function') {
     return;
   }
   try {
-    const entries = node.internalSocketsSnapshot();
+    const entries = node.internalSockets();
     let index = 0;
     for (const entry of entries) {
       const snapshot = entry.snapshot;

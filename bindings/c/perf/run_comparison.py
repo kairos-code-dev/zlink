@@ -4758,6 +4758,7 @@ def main():
 
         c_stats, failures = collect_data(current_bin, "current", p_name, num_runs, pattern_transports, None)
         all_failures.extend(failures)
+        stop_after_pattern = FAIL_FAST and bool(failures)
         failure_lookup = build_failure_lookup(failures, p_name)
 
         # Classify statuses and collect RESULT lines.
@@ -4808,6 +4809,9 @@ def main():
                     actual_result_lines += REQUIRED_RESULT_METRIC_COUNT
 
                 status_counts[status] += 1
+
+        if stop_after_pattern:
+            break
 
         if pattern_transition_ms > 0 and (pattern_idx + 1) < len(selected_comparisons):
             print(f"[pattern cooldown {pattern_transition_ms}ms]")

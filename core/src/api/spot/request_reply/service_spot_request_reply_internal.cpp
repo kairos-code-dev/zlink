@@ -236,9 +236,7 @@ spot_request_reply_request_state_t::spot_request_reply_request_state_t ()
 {
 }
 
-spot_request_reply_recv_state_t::spot_request_reply_recv_state_t () :
-    request_handler (NULL),
-    request_handler_userdata (NULL)
+spot_request_reply_recv_state_t::spot_request_reply_recv_state_t ()
 {
 }
 

@@ -8,9 +8,9 @@
 
 - Registry는 전역 서비스 디렉터리이자 전체 서비스 요약 정보를 보는 기본
   진입점입니다.
-- 같은 프로세스 안에서는 `zlink_registry_topology_snapshot()`을 사용합니다.
+- 같은 프로세스 안에서는 `zlink_registry_topology()`을 사용합니다.
 - 원격 조회는 `zlink_registry_query_client_*()`와
-  `zlink_registry_query_snapshot()`을 사용합니다.
+  `zlink_registry_query_client_topology()`을 사용합니다.
 - Registry topology는 전체 요약을 볼 때 사용합니다. 개별 서비스의 자세한 상태
   변화는 각 서비스의 monitor API를 사용합니다.
 
@@ -372,7 +372,7 @@ API입니다.
 ### Registry Status Snapshot
 
 ```c
-zlink_config_result_t zlink_registry_status_snapshot(void *registry,
+zlink_config_result_t zlink_registry_status(void *registry,
                                                      zlink_registry_status_t *out);
 ```
 
@@ -416,7 +416,7 @@ typedef struct zlink_registry_status_t
 ### Registry Service Summary Snapshot
 
 ```c
-zlink_config_result_t zlink_registry_service_summary_snapshot(
+zlink_config_result_t zlink_registry_service_summary(
   void *registry,
   const zlink_registry_service_summary_filter_t *filter,
   zlink_registry_service_summary_entry_t *entries,
@@ -577,12 +577,12 @@ typedef struct zlink_registry_topology_filter_t
 
 ---
 
-### zlink_registry_topology_snapshot
+### zlink_registry_topology
 
 로컬 Registry 인스턴스에서 전체 토폴로지 스냅샷을 가져옵니다.
 
 ```c
-zlink_config_result_t zlink_registry_topology_snapshot(void *registry,
+zlink_config_result_t zlink_registry_topology(void *registry,
                                                        zlink_registry_topology_entry_t *entries,
                                                        size_t *count);
 ```
@@ -595,29 +595,29 @@ zlink_config_result_t zlink_registry_topology_snapshot(void *registry,
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_registry_topology_query`
+**참고:** `zlink_registry_topology`
 
 ---
 
-### zlink_registry_topology_query
+### zlink_registry_topology
 
 필터를 사용하여 로컬 토폴로지를 조회합니다.
 
 ```c
-zlink_config_result_t zlink_registry_topology_query(void *registry,
+zlink_config_result_t zlink_registry_topology(void *registry,
                                                     const zlink_registry_topology_filter_t *filter,
                                                     zlink_registry_topology_entry_t *entries,
                                                     size_t *count);
 ```
 
-`zlink_registry_topology_snapshot`와 동일하지만 `filter` 조건과 일치하는
+`zlink_registry_topology`와 동일하지만 `filter` 조건과 일치하는
 항목만 반환합니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_registry_topology_snapshot`
+**참고:** `zlink_registry_topology`
 
 ---
 
@@ -636,7 +636,7 @@ Registry가 다른 프로세스에서 실행 중일 때 사용합니다.
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_registry_query_client_connect`, `zlink_registry_query_destroy`
+**참고:** `zlink_registry_query_client_connect`, `zlink_registry_query_client_destroy`
 
 ---
 
@@ -655,16 +655,16 @@ zlink_connect_result_t zlink_registry_query_client_connect(void *client,
 
 **스레드 안전성:** 스레드 안전하지 않음.
 
-**참고:** `zlink_registry_query_snapshot`
+**참고:** `zlink_registry_query_client_topology`
 
 ---
 
-### zlink_registry_query_snapshot
+### zlink_registry_query_client_topology
 
 원격 Registry 토폴로지를 조회합니다.
 
 ```c
-zlink_config_result_t zlink_registry_query_snapshot(void *client,
+zlink_config_result_t zlink_registry_query_client_topology(void *client,
                                                     const zlink_registry_topology_filter_t *filter,
                                                     zlink_registry_topology_entry_t *entries,
                                                     size_t *count);
@@ -682,12 +682,12 @@ zlink_config_result_t zlink_registry_query_snapshot(void *client,
 
 ---
 
-### zlink_registry_query_destroy
+### zlink_registry_query_client_destroy
 
 쿼리 클라이언트를 파괴하고 리소스를 해제합니다.
 
 ```c
-zlink_close_result_t zlink_registry_query_destroy(void **client_p);
+zlink_close_result_t zlink_registry_query_client_destroy(void **client_p);
 ```
 
 클라이언트 연결을 닫고 `*client_p`를 `NULL`로 설정합니다.

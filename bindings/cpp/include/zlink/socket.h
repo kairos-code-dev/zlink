@@ -74,33 +74,10 @@ typedef void (*zlink_actor_lookup_handler_fn) (
   const zlink_actor_lookup_result_t *result_,
   void *userdata_);
 
-typedef struct zlink_spot_forward_result_t
-{
-    zlink_routing_id_t source_node_rid;
-    zlink_routing_id_t source_spot_rid;
-    uint64_t request_seq;
-    uint32_t has_request_seq;
-    size_t part_count;
-    size_t payload_bytes;
-} zlink_spot_forward_result_t;
-
-typedef void (*zlink_spot_actor_lifecycle_handler_fn) (
-  void *spot_,
-  const zlink_spot_actor_lifecycle_info_t *info_,
-  void *userdata_);
-
 typedef void (*zlink_subscribe_handler_fn) (
   const zlink_routing_id_t *source_rid_,
   const char *topic_,
   size_t topic_len_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_);
-
-typedef void (*zlink_spot_handler_fn) (
-  const zlink_routing_id_t *source_rid_,
-  const zlink_routing_id_t *spot_rid_,
-  uint64_t request_seq_,
   zlink_msg_t *parts_,
   size_t part_count_,
   void *userdata_);
@@ -377,19 +354,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_dealer_request_part (
   zlink_reply_handler_fn handler_,
   void *userdata_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_dealer_request_frame_part (
-  void *dealer_,
-  uint64_t request_seq_,
-  zlink_msg_t *part_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_);
-
-ZLINK_EXPORT zlink_submit_result_t zlink_dealer_reply_part (
-  void *dealer_,
-  uint64_t request_token_,
-  zlink_msg_t *part_,
-  zlink_part_flag_t part_flag_);
-
 ZLINK_EXPORT zlink_recv_result_t zlink_dealer_recv_part (
   void *dealer_,
   uint8_t *message_type_out_,
@@ -454,7 +418,7 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscribe_part (
   zlink_part_flag_t *has_more_out_,
   zlink_recv_flags_t flags_);
 
-ZLINK_EXPORT zlink_recv_result_t zlink_spot_subscription_event_recv (
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv_subscription_event (
   void *spot_,
   const zlink_routing_id_t **source_rid_out_,
   int *subscribed_out_,
@@ -524,9 +488,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_reply_router_part (
   zlink_part_flag_t part_flag_);
 
 /* ========== Helper substrate layer (callback dispatch) ========== */
-ZLINK_EXPORT zlink_handler_result_t zlink_spot_handler (
-  void *spot_, zlink_spot_handler_fn handler_, void *userdata_);
-
 ZLINK_EXPORT zlink_handler_result_t zlink_spot_dispatch_event_handler (
   void *spot_,
   zlink_spot_dispatch_event_handler_fn handler_,
@@ -551,12 +512,6 @@ ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv_part (
   zlink_msg_t *part_out_,
   zlink_part_flag_t *has_more_out_,
   zlink_recv_flags_t flags_);
-
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_forward_routed (
-  void *spot_,
-  zlink_recv_flags_t recv_flags_,
-  zlink_send_flags_t send_flags_,
-  zlink_spot_forward_result_t *result_out_);
 
 /* ========== Helper substrate layer (*_part) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_router_request_spot_part (

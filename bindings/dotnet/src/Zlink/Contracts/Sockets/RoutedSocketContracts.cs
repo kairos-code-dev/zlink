@@ -8,12 +8,6 @@ public interface IRoutedMessageSocket : ISocket
 {
     SendOperation Send(RoutingId routingId);
 
-    bool Send(RoutingId routingId, Message message,
-        SendFlags flags = SendFlags.None);
-
-    bool RecvPart(Message result, out RoutingId? routingId,
-        out bool hasMore, RecvFlags flags = RecvFlags.None);
-
     bool Recv(Received result, RecvFlags flags = RecvFlags.None);
 
     void OnSendReady(Action handler);

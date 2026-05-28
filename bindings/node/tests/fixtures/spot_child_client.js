@@ -48,9 +48,9 @@ async function main() {
       await new Promise((resolve) => setImmediate(resolve));
     }
     throw new Error(`recv timeout: ${JSON.stringify({
-      status: node.statusSnapshot(),
-      peers: node.peersSnapshot(),
-      subjects: node.subjectsSnapshot()
+      status: node.status(),
+      peers: node.peers(),
+      subjects: node.subjects()
     })}`);
   } finally {
     if (spot) {

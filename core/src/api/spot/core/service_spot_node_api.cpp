@@ -504,7 +504,7 @@ zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid (
         node, channel_name_, peer_rid_));
 }
 
-zlink_config_result_t zlink_spot_node_status_snapshot (void *node_,
+zlink_config_result_t zlink_spot_node_status (void *node_,
                                                        zlink_spot_node_status_t *out_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
@@ -516,23 +516,7 @@ zlink_config_result_t zlink_spot_node_status_snapshot (void *node_,
       zlink::spot_node_access_t::status_snapshot (node, out_));
 }
 
-zlink_config_result_t zlink_spot_node_peers_snapshot (void *node_,
-                                                      zlink_spot_node_peer_entry_t *entries_,
-                                                      size_t *count_)
-{
-    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
-    if (!node) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    std::vector<zlink_spot_node_peer_entry_t> rows;
-    if (zlink::spot_node_access_t::peers_snapshot (node, NULL, &rows) != 0)
-        return zlink::config_result_internal::from_rc (-1);
-    return zlink::config_result_internal::from_rc (
-      copy_snapshot_rows (rows, entries_, count_));
-}
-
-zlink_config_result_t zlink_spot_node_peers_query (void *node_,
+zlink_config_result_t zlink_spot_node_peers (void *node_,
                                                     const zlink_spot_node_peer_filter_t *filter_,
                                                     zlink_spot_node_peer_entry_t *entries_,
                                                     size_t *count_)
@@ -549,7 +533,7 @@ zlink_config_result_t zlink_spot_node_peers_query (void *node_,
       copy_snapshot_rows (rows, entries_, count_));
 }
 
-zlink_config_result_t zlink_spot_node_subjects_snapshot (
+zlink_config_result_t zlink_spot_node_subjects (
   void *node_,
   const zlink_spot_node_subject_filter_t *filter_,
   zlink_spot_node_subject_entry_t *entries_,
@@ -568,10 +552,10 @@ zlink_config_result_t zlink_spot_node_subjects_snapshot (
       copy_snapshot_rows (rows, entries_, count_));
 }
 
-zlink_config_result_t zlink_spot_node_internal_sockets_snapshot (
+zlink_config_result_t zlink_spot_node_internal_sockets (
   void *node_,
-  const zlink_spot_node_socket_snapshot_filter_t *filter_,
-  zlink_spot_node_socket_snapshot_entry_t *entries_,
+  const zlink_spot_node_socket_filter_t *filter_,
+  zlink_spot_node_socket_entry_t *entries_,
   size_t *count_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
@@ -579,7 +563,7 @@ zlink_config_result_t zlink_spot_node_internal_sockets_snapshot (
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows;
+    std::vector<zlink_spot_node_socket_entry_t> rows;
     if (zlink::spot_node_access_t::internal_sockets_snapshot (node, filter_,
                                                               &rows)
         != 0)

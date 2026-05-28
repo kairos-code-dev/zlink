@@ -95,6 +95,31 @@ pub struct zlink_actor_lookup_result_t {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct zlink_spot_actor_lifecycle_info_t {
+    pub previous_actor: zlink_actor_ref_t,
+    pub current_actor: zlink_actor_ref_t,
+    pub previous_spot_rid: zlink_routing_id_t,
+    pub current_spot_rid: zlink_routing_id_t,
+    pub join_epoch: u64,
+    pub flags: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum zlink_spot_actor_lifecycle_event_kind_t {
+    ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED = 1,
+    ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT = 2,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct zlink_spot_actor_lifecycle_event_t {
+    pub kind: zlink_spot_actor_lifecycle_event_kind_t,
+    pub info: zlink_spot_actor_lifecycle_info_t,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct zlink_actor_route_t {
     pub actor: zlink_actor_ref_t,
     pub current_spot_rid: zlink_routing_id_t,
@@ -410,21 +435,21 @@ pub enum zlink_monitor_source_kind_t {
 }
 
 pub type zlink_monitor_state_mask_t = u32;
-pub type zlink_monitor_snapshot_detail_mask_t = u32;
+pub type zlink_monitor_status_detail_mask_t = u32;
 
 pub const ZLINK_MONITOR_STATE_READY: u32 = 1 << 0;
 pub const ZLINK_MONITOR_STATE_BOUND_READY: u32 = 1 << 1;
 pub const ZLINK_MONITOR_STATE_CLOSED: u32 = 1 << 3;
 
-pub const ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS: u32 = 1 << 1;
-pub const ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS: u32 = 1 << 2;
+pub const ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS: u32 = 1 << 1;
+pub const ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS: u32 = 1 << 2;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct zlink_monitor_snapshot_t {
+pub struct zlink_monitor_status_t {
     pub source_kind: zlink_monitor_source_kind_t,
     pub state_flags: zlink_monitor_state_mask_t,
-    pub detail_flags: zlink_monitor_snapshot_detail_mask_t,
+    pub detail_flags: zlink_monitor_status_detail_mask_t,
     pub snd_pending_msgs: u64,
     pub rcv_pending_msgs: u64,
     pub auto_hwm_enabled: u32,
@@ -454,7 +479,7 @@ pub struct zlink_spot_node_options_t {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct zlink_spot_node_socket_snapshot_filter_t {
+pub struct zlink_spot_node_socket_filter_t {
     pub owner: zlink_spot_node_socket_owner_t,
     pub socket_type: zlink_socket_type_t,
     pub socket_name: [c_char; 64],
@@ -462,14 +487,14 @@ pub struct zlink_spot_node_socket_snapshot_filter_t {
 
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct zlink_spot_node_socket_snapshot_entry_t {
+pub struct zlink_spot_node_socket_entry_t {
     pub owner: zlink_spot_node_socket_owner_t,
     pub owner_id: u64,
     pub owner_name: [c_char; 64],
     pub socket_name: [c_char; 64],
     pub socket_type: zlink_socket_type_t,
     pub auto_hwm_visible: u32,
-    pub snapshot: zlink_monitor_snapshot_t,
+    pub monitor_status: zlink_monitor_status_t,
 }
 
 #[repr(C)]
@@ -577,15 +602,6 @@ pub type zlink_router_handler_fn = unsafe extern "C" fn(
     userdata: *mut c_void,
 );
 
-pub type zlink_spot_handler_fn = unsafe extern "C" fn(
-    source_rid: *const zlink_routing_id_t,
-    spot_rid: *const zlink_routing_id_t,
-    request_seq: u64,
-    parts: *mut zlink_msg_t,
-    part_count: usize,
-    userdata: *mut c_void,
-);
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum zlink_spot_dispatch_event_t {
@@ -595,6 +611,7 @@ pub enum zlink_spot_dispatch_event_t {
     ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4,
     ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE = 5,
     ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE = 6,
+    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE = 7,
 }
 
 #[repr(C)]
@@ -1277,10 +1294,7 @@ unsafe extern "C" {
         out: *mut zlink_socket_monitor_event_t,
         flags: zlink_send_flags_t,
     ) -> c_int;
-    pub fn zlink_monitor_snapshot(
-        monitor: *mut c_void,
-        out: *mut zlink_monitor_snapshot_t,
-    ) -> c_int;
+    pub fn zlink_monitor_status(monitor: *mut c_void, out: *mut zlink_monitor_status_t) -> c_int;
     pub fn zlink_monitor_close(monitor_p: *mut *mut c_void) -> c_int;
     pub fn zlink_monitor_ignore_handler(event: *const zlink_monitor_event_t, userdata: *mut c_void);
 
@@ -1489,10 +1503,10 @@ unsafe extern "C" {
         spot_out: *mut *mut c_void,
         created_out: *mut u32,
     ) -> c_int;
-    pub fn zlink_spot_node_internal_sockets_snapshot(
+    pub fn zlink_spot_node_internal_sockets(
         node: *mut c_void,
-        filter: *const zlink_spot_node_socket_snapshot_filter_t,
-        entries: *mut zlink_spot_node_socket_snapshot_entry_t,
+        filter: *const zlink_spot_node_socket_filter_t,
+        entries: *mut zlink_spot_node_socket_entry_t,
         count: *mut usize,
     ) -> c_int;
     pub fn zlink_spot_send_spot_part(
@@ -1563,11 +1577,6 @@ unsafe extern "C" {
         has_more_out: *mut c_int,
         flags: zlink_recv_flags_t,
     ) -> c_int;
-    pub fn zlink_spot_handler(
-        spot: *mut c_void,
-        handler: zlink_spot_handler_fn,
-        userdata: *mut c_void,
-    ) -> c_int;
     pub fn zlink_spot_dispatch_event_handler(
         spot: *mut c_void,
         handler: zlink_spot_dispatch_event_handler_fn,
@@ -1582,49 +1591,44 @@ unsafe extern "C" {
         has_more_out: *mut c_int,
         flags: zlink_recv_flags_t,
     ) -> c_int;
+    pub fn zlink_spot_recv_actor_lifecycle(
+        spot: *mut c_void,
+        event_out: *mut zlink_spot_actor_lifecycle_event_t,
+        flags: zlink_recv_flags_t,
+    ) -> c_int;
 
     // -- Spot / registry snapshot -------------------------------------------
-    pub fn zlink_spot_node_status_snapshot(
-        node: *mut c_void,
-        out: *mut zlink_spot_node_status_t,
-    ) -> c_int;
-    pub fn zlink_spot_node_peers_snapshot(
-        node: *mut c_void,
-        entries: *mut zlink_spot_node_peer_entry_t,
-        count: *mut usize,
-    ) -> c_int;
-    pub fn zlink_spot_node_peers_query(
+    pub fn zlink_spot_node_status(node: *mut c_void, out: *mut zlink_spot_node_status_t) -> c_int;
+    pub fn zlink_spot_node_peers(
         node: *mut c_void,
         filter: *const zlink_spot_node_peer_filter_t,
         entries: *mut zlink_spot_node_peer_entry_t,
         count: *mut usize,
     ) -> c_int;
-    pub fn zlink_spot_node_subjects_snapshot(
+    pub fn zlink_spot_node_subjects(
         node: *mut c_void,
         filter: *const zlink_spot_node_subject_filter_t,
         entries: *mut zlink_spot_node_subject_entry_t,
         count: *mut usize,
     ) -> c_int;
-    pub fn zlink_spot_node_spots_snapshot(
+    pub fn zlink_spot_node_spots(
         node: *mut c_void,
         entries: *mut zlink_spot_node_spot_entry_t,
         count: *mut usize,
     ) -> c_int;
-    pub fn zlink_spot_node_actors_snapshot(
+    pub fn zlink_spot_node_actors(
         node: *mut c_void,
         entries: *mut zlink_spot_node_actor_entry_t,
         count: *mut usize,
     ) -> c_int;
-    pub fn zlink_spot_actors_snapshot(
+    pub fn zlink_spot_actors(
         spot: *mut c_void,
         entries: *mut zlink_actor_ref_t,
         count: *mut usize,
     ) -> c_int;
-    pub fn zlink_registry_status_snapshot(
-        registry: *mut c_void,
-        out: *mut zlink_registry_status_t,
-    ) -> c_int;
-    pub fn zlink_registry_service_summary_snapshot(
+    pub fn zlink_registry_status(registry: *mut c_void, out: *mut zlink_registry_status_t)
+    -> c_int;
+    pub fn zlink_registry_service_summary(
         registry: *mut c_void,
         filter: *const zlink_registry_service_summary_filter_t,
         entries: *mut zlink_registry_service_summary_entry_t,
@@ -1641,12 +1645,7 @@ unsafe extern "C" {
         entries: *mut zlink_member_peer_entry_t,
         count: *mut usize,
     ) -> c_int;
-    pub fn zlink_registry_topology_snapshot(
-        registry: *mut c_void,
-        entries: *mut zlink_registry_topology_entry_t,
-        count: *mut usize,
-    ) -> c_int;
-    pub fn zlink_registry_topology_query(
+    pub fn zlink_registry_topology(
         registry: *mut c_void,
         filter: *const zlink_registry_topology_filter_t,
         entries: *mut zlink_registry_topology_entry_t,
@@ -1657,13 +1656,13 @@ unsafe extern "C" {
         client: *mut c_void,
         endpoint: *const c_char,
     ) -> c_int;
-    pub fn zlink_registry_query_snapshot(
+    pub fn zlink_registry_query_client_topology(
         client: *mut c_void,
         filter: *const zlink_registry_topology_filter_t,
         entries: *mut zlink_registry_topology_entry_t,
         count: *mut usize,
     ) -> c_int;
-    pub fn zlink_registry_query_destroy(client_p: *mut *mut c_void) -> c_int;
+    pub fn zlink_registry_query_client_destroy(client_p: *mut *mut c_void) -> c_int;
 
     // -- Poller ------------------------------------------------------------
     pub fn zlink_poll(

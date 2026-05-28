@@ -48,8 +48,7 @@ internal static class ZLinkChannelReplyWriter
     }
 
     public static void ReplyDealerRequest(
-        IZLinkBackendDealerSocket dealer,
-        ulong requestToken,
+        Received received,
         ZLinkEnvelopeHeader header,
         object? body,
         Type? bodyType)
@@ -57,7 +56,7 @@ internal static class ZLinkChannelReplyWriter
         var replyParts = ZLinkEnvelopeCodec.EncodeParts(header, body, bodyType);
         try
         {
-            dealer.Reply(requestToken, replyParts);
+            received.Reply().Messages(replyParts).Submit();
         }
         finally
         {

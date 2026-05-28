@@ -333,7 +333,7 @@ internal static class PerfMultiDealerRouterClient
             Socket = socket;
             Payload = payload;
             BorrowPayload = borrowPayload;
-            ReusableReceived = new Received();
+            ReusableReceived = Received.Create();
         }
 
         internal ISocket Socket { get; }

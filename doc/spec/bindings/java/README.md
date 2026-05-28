@@ -12,6 +12,11 @@ non-exported `systems.zlink.runtime` package trees, tests, samples, perf
 runners, and runtime behavior follow this blueprint and map the stable
 capabilities of `core/include/zlink.h` into Java-idiomatic APIs.
 
+This binding follows the shared bindings architecture map with Java naming:
+lower-case package names express the contract/runtime roles. The map is a
+review ownership model, not a requirement to create one Java subpackage for
+every category.
+
 ## Public Contract Source
 
 - Public contract source:
@@ -19,7 +24,7 @@ capabilities of `core/include/zlink.h` into Java-idiomatic APIs.
 - Runtime implementation:
   `bindings/java/src/main/java/systems/zlink/runtime/`.
 - Native bridge:
-  `bindings/java/src/main/java/systems/zlink/runtime/nativebridge/`,
+  `bindings/java/src/main/java/systems/zlink/runtime/nativeapi/`,
   `bindings/java/src/main/resources/native/`, and `bindings/java/native/`.
 - Public package projection: documented packages under
   `systems.zlink.contracts`.
@@ -48,7 +53,7 @@ Use these paths consistently when changing the Java binding.
 - Runtime implementation:
   `bindings/java/src/main/java/systems/zlink/runtime/`.
 - Native bridge/artifacts:
-  `bindings/java/src/main/java/systems/zlink/runtime/nativebridge/`,
+  `bindings/java/src/main/java/systems/zlink/runtime/nativeapi/`,
   `bindings/java/src/main/resources/native/`, and `bindings/java/native/`.
 - Codec extensions: `bindings/java/codec/`.
 - Tests: `bindings/java/src/test/` and `bindings/java/tests/`.
@@ -86,7 +91,7 @@ bindings/java/
 |   |   |   |   |   |   |   +-- discovery/
 |   |   |   |   |   |   |   +-- spot/
 |   |   |   |   |   +-- runtime/
-|   |   |   |   |   |   +-- nativebridge/
+|   |   |   |   |   |   +-- nativeapi/
 |   |   +-- resources/
 |   |   |   +-- native/
 |   |   |   |   +-- linux-x86_64/
@@ -106,8 +111,8 @@ bindings/java/
 +-- perf/
 ```
 
-The Java binding currently keeps core, messaging, sockets, monitoring, errors,
-and enums in one exported `systems.zlink.contracts` package. This keeps
+The Java binding currently keeps core, messaging, sockets, eventing, and errors
+in one exported `systems.zlink.contracts` package. This keeps
 package-private native and marshalling helpers hidden from reflection-based API
 guards while still separating the public contract package from the non-exported
 runtime package. Service contracts use subpackages because their public surface
@@ -121,18 +126,20 @@ create Java subpackages for every category.
 | Core | `systems/zlink/contracts` |
 | Messaging | `systems/zlink/contracts` |
 | Sockets | `systems/zlink/contracts` |
-| Monitoring | `systems/zlink/contracts` |
+| Eventing | `systems/zlink/contracts` |
 | Service | `systems/zlink/contracts/service` and its service subpackages |
 | Errors | `systems/zlink/contracts` |
-| Enums | `systems/zlink/contracts` |
 | Runtime/Core | `systems/zlink/runtime` |
 | Runtime/Messaging | `systems/zlink/runtime` |
 | Runtime/Sockets | `systems/zlink/runtime` |
-| Runtime/Monitoring | `systems/zlink/runtime` |
+| Runtime/Eventing | `systems/zlink/runtime` |
 | Runtime/Service | `systems/zlink/runtime` |
 | Runtime/Errors | `systems/zlink/runtime` |
-| Runtime/Enums | `systems/zlink/runtime` |
-| Runtime/Native | `systems/zlink/runtime/nativebridge` |
+| Runtime/Native | `systems/zlink/runtime/nativeapi` |
+
+Enum, flag, and result classes belong to the category that defines their
+meaning. Do not create a separate Java package just to group declarations by
+syntax.
 
 If a public class appears under `systems.zlink.contracts.*`, reviewers must be
 able to explain which contract category it belongs to from this table. If a
@@ -187,7 +194,7 @@ options should remain concrete unless Java callers gain a real abstraction.
 - Runtime implementation classes, handle owners, request pumps, callback
   adapters, and part-loop helpers belong in `systems.zlink.runtime.*`.
 - JNI/Panama downcalls, native struct mirrors, marshalling helpers, and
-  platform loading code belong in `systems.zlink.runtime.nativebridge` or the
+  platform loading code belong in `systems.zlink.runtime.nativeapi` or the
   native artifact/resource area.
 - Public contract packages must project the contract categories, not expose
   runtime packages.
@@ -205,12 +212,13 @@ subpackages are the source ownership map for public Java APIs.
   stream packet callbacks, and builder payload helpers.
 - `Sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
-- `Monitoring/`: monitor, monitor snapshot/event, poller, poll event, timer, and
+- `Eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
 - `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `Errors/`: exception and typed error-result domains.
-- `Enums/`: public enum domains shared across the binding.
+- Enum, flag, and result classes belong to the category that defines their
+  meaning.
 
 ## Canonical Interface Rules
 
@@ -222,9 +230,20 @@ subpackages are the source ownership map for public Java APIs.
 - Builder start methods take only the target identity, topic, channel, routing
   id, or request sequence. Payload, flags, timeout, callback, and async submit
   choices are builder steps.
+- SPOT channel-targeted operations use `sendToChannel(...)` and
+  `requestToChannel(...)`. SPOT topic publish stays `publish(topic)`.
+- Do not add single-payload shortcut overloads with the same name as an
+  operation start method. `send(message)`, `send(routingId, message)`,
+  `publish(topic, message)`, `sendToChannel(channel, message)`, and
+  `sendToSpot(..., message)` are not public contract members; callers use
+  `send(...).message(message).submit()`.
 - Multipart payload is accumulated by repeated `message(...)` calls.
   `messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in the public package category.
+- Dealer sockets must not expose protocol envelope helpers such as
+  `requestFrame(...)` or `reply(requestToken, parts)`. A dealer can start a
+  request through `request()`, but it cannot reply to an arbitrary token
+  because it has no API-level peer routing id.
 - Java `Message` input APIs must copy into message-owned storage or allocate
   native-owned storage. Do not expose `wrapDirect`, `wrapNative`, or any
   `zlink_msg_init_data(..., NULL, NULL)` send fast path for Java-managed
@@ -242,8 +261,8 @@ subpackages are the source ownership map for public Java APIs.
 The public package layout should make API ownership easy to inspect without
 forcing package-private native helpers into the public surface.
 
-- `systems.zlink.contracts`: core, messaging, sockets, monitoring, errors, and
-  enum contracts.
+- `systems.zlink.contracts`: core, messaging, sockets, eventing, errors, and
+  enum/flag/result contracts owned by those categories.
 - `systems.zlink.contracts.service.registry`: registry public API and registry
   snapshot models.
 - `systems.zlink.contracts.service.discovery`: discovery public API and topology
@@ -251,7 +270,7 @@ forcing package-private native helpers into the public surface.
 - `systems.zlink.contracts.service.spot`: SPOT node, SPOT handle, SPOT
   topology, actor refs, actor lifecycle, and SPOT operation builders.
 - `systems.zlink.runtime.*`: non-exported implementation packages.
-- `systems.zlink.runtime.nativebridge`: native downcalls, handle ownership,
+- `systems.zlink.runtime.nativeapi`: native downcalls, handle ownership,
   callback trampolines, request pumps, converters, and native struct mirrors.
 
 If a package is not exported or documented, it is not public contract even if

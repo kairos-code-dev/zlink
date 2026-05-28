@@ -32,7 +32,7 @@ internal abstract class RoutedMessageSocketBase : SocketBase, IRoutedMessageSock
     /// Send a single routed message part directly.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Send(RoutingId routingId, Message message,
+    internal bool Send(RoutingId routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
         return SendRoutedCore(routingId, message, flags);
@@ -138,7 +138,7 @@ internal abstract class RoutedMessageSocketBase : SocketBase, IRoutedMessageSock
     /// <returns>true on success, false when DontWait is set and no data is
     /// available.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool RecvPart(Message result, out RoutingId? routingId,
+    internal bool RecvPart(Message result, out RoutingId? routingId,
         out bool hasMore, RecvFlags flags = RecvFlags.None)
     {
         return Kernel.ReceiveRoutedPartInto(result, out routingId, out hasMore,

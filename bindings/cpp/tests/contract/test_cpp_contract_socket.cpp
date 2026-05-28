@@ -100,6 +100,57 @@ template<typename SocketT> class has_single_part_recv_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
+template<typename SocketT> class has_send_no_wait_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().send_no_wait (
+                      std::declval<zlink::send_result_t &> (),
+                      std::declval<zlink::message_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_publish_no_wait_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().publish_no_wait (
+                      std::declval<zlink::send_result_t &> (),
+                      std::declval<const std::string &> (),
+                      std::declval<zlink::message_t &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
+template<typename SocketT> class has_subscribe_part_t
+{
+  private:
+    template<typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().subscribe_part (
+                      std::declval<std::optional<zlink::routing_id_t> &> (),
+                      std::declval<std::string &> (),
+                      std::declval<zlink::message_t &> (),
+                      std::declval<bool &> ()),
+                    std::true_type ());
+
+    template<typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<SocketT> (0))::value;
+};
+
 template<typename SocketT> class has_routed_single_part_recv_t
 {
   private:
@@ -242,6 +293,8 @@ static_assert (has_receive_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must expose recv");
 static_assert (has_single_part_recv_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must expose single-part recv");
+static_assert (has_send_no_wait_t<zlink::dealer_socket_t>::value,
+               "dealer_socket_t must expose nonblocking direct send result");
 static_assert (has_attach_discovery_t<zlink::dealer_socket_t>::value,
                "dealer_socket_t must expose attach_discovery");
 static_assert (!has_routed_send_t<zlink::router_socket_t>::value,
@@ -260,14 +313,22 @@ static_assert (has_attach_discovery_t<zlink::pub_socket_t>::value,
                "pub_socket_t must expose attach_discovery");
 static_assert (has_publish_builder_t<zlink::pub_socket_t>::value,
                "pub_socket_t must expose publish builder");
+static_assert (has_publish_no_wait_t<zlink::pub_socket_t>::value,
+               "pub_socket_t must expose nonblocking direct publish result");
 static_assert (has_attach_discovery_t<zlink::sub_socket_t>::value,
                "sub_socket_t must expose attach_discovery");
+static_assert (has_subscribe_part_t<zlink::sub_socket_t>::value,
+               "sub_socket_t must expose single-part subscribe");
 static_assert (!has_attach_discovery_t<zlink::xpub_socket_t>::value,
                "xpub_socket_t must not expose attach_discovery");
 static_assert (has_publish_builder_t<zlink::xpub_socket_t>::value,
                "xpub_socket_t must expose publish builder");
+static_assert (has_publish_no_wait_t<zlink::xpub_socket_t>::value,
+               "xpub_socket_t must expose nonblocking direct publish result");
 static_assert (!has_attach_discovery_t<zlink::xsub_socket_t>::value,
                "xsub_socket_t must not expose attach_discovery");
+static_assert (has_subscribe_part_t<zlink::xsub_socket_t>::value,
+               "xsub_socket_t must expose single-part subscribe");
 static_assert (!has_routed_send_t<zlink::stream_socket_t>::value,
                "stream_socket_t must not expose direct routed send");
 static_assert (has_routed_send_builder_t<zlink::stream_socket_t>::value,
@@ -360,6 +421,45 @@ void test_pair_direct_recv_no_data_preserves_output ()
     if (invalid_rc == -1)
         assert (errno == EAGAIN || errno == EWOULDBLOCK);
     assert (!invalid.valid ());
+}
+
+void test_dealer_send_no_wait_direct ()
+{
+    zlink::context_t ctx;
+    zlink::router_socket_t router (ctx);
+    zlink::dealer_socket_t dealer (ctx);
+    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
+    zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
+
+    const std::string endpoint =
+      zlink_cpp_contract::unique_inproc ("dealer-send-no-wait");
+    const zlink::routing_id_t dealer_id =
+      zlink::routing_id_t::from_bytes (
+        reinterpret_cast<const uint8_t *> ("dealer-direct"), 13);
+    dealer.set_routing_id (dealer_id);
+
+    router.bind (endpoint);
+    dealer.connect (endpoint);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      router_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      dealer_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+
+    zlink::message_t outbound = zlink_cpp_contract::make_message ("direct");
+    zlink::send_result_t send_result = zlink::send_result_t::not_ready;
+    assert (dealer.send_no_wait (send_result, outbound) == 0);
+    assert (send_result == zlink::send_result_t::sent);
+    assert (!outbound.valid ());
+
+    zlink::routing_id_t source =
+      zlink::routing_id_t::from_bytes (
+        reinterpret_cast<const uint8_t *> ("placeholder"), 11);
+    zlink::message_t inbound;
+    assert (router.recv (source, inbound) == 0);
+    assert (source == dealer_id);
+    assert (inbound.to_string () == "direct");
 }
 
 void test_pair_direct_recv_multipart_failure_preserves_output ()
@@ -736,6 +836,7 @@ int main ()
     test_pair_send_recv_single_part ();
     test_pair_send_recv_single_part_direct ();
     test_pair_direct_recv_no_data_preserves_output ();
+    test_dealer_send_no_wait_direct ();
     test_pair_direct_recv_multipart_failure_preserves_output ();
     test_router_recv_single_part_direct ();
     test_router_send_builder_owns_target_rid ();

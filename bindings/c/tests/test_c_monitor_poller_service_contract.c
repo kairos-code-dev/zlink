@@ -91,7 +91,7 @@ int main(void)
     CHECK(spot != NULL);
 
     zlink_spot_node_status_t status;
-    CHECK(zlink_spot_node_status_snapshot(node, &status) == ZLINK_CONFIG_OK);
+    CHECK(zlink_spot_node_status(node, &status) == ZLINK_CONFIG_OK);
 
     CHECK(zlink_spot_destroy(&spot) == ZLINK_CLOSE_OK);
     CHECK(spot == NULL);

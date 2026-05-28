@@ -13,19 +13,16 @@ import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.sockets.CommonSocketOptions;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.sockets.DealerSocket;
-import systems.zlink.contracts.sockets.DisconnectReason;
 import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.errors.ErrorCode;
 import systems.zlink.contracts.service.registry.MemberPeerEntry;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSnapshot;
+import systems.zlink.contracts.eventing.MonitorStatus;
 import systems.zlink.contracts.eventing.MonitorSocket;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.eventing.PollEventFlag;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.Poller;
-import systems.zlink.contracts.errors.ProtocolError;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.PubSocketOptions;
 import systems.zlink.contracts.messaging.Received;
@@ -34,13 +31,11 @@ import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.service.spot.ReplyOp;
 import systems.zlink.contracts.errors.RequestException;
 import systems.zlink.contracts.service.spot.RequestOp;
-import systems.zlink.contracts.sockets.RequestReplyCallback;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.SendOp;
-import systems.zlink.contracts.sockets.SocketOption;
 import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
@@ -48,16 +43,13 @@ import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.service.spot.SpotKind;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeActorEntry;
-import systems.zlink.contracts.service.spot.SpotNodeSocketSnapshotFilter;
-import systems.zlink.contracts.sockets.SpotRoutedHandler;
-import systems.zlink.contracts.sockets.StreamDispatchMode;
+import systems.zlink.contracts.service.spot.SpotNodeSocketFilter;
 import systems.zlink.contracts.sockets.StreamPacketHandler;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubSocket;
 import systems.zlink.contracts.sockets.SubSocketOptions;
 import systems.zlink.contracts.errors.SubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.contracts.sockets.SubscribeHandler;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.eventing.Timer;
 import systems.zlink.contracts.messaging.TopicMessage;
@@ -327,7 +319,7 @@ public class SocketContractTest {
             assertDoesNotThrow(() -> discovery.setTlsClient(ca, "localhost", true));
             assertDoesNotThrow(() -> {
                 try (var monitor = socket.monitorOpen()) {
-                    assertTrue(monitor.snapshot().sndPendingMsgs() >= 0L);
+                    assertTrue(monitor.status().sndPendingMsgs() >= 0L);
                 }
             });
         }
@@ -381,8 +373,9 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(Spot.class, "replyToRouter",
             RoutingId.class, long.class, Message.class));
         assertTrue(hasPublicMethod(Spot.class, "recvRouted"));
-        assertTrue(hasPublicMethod(Spot.class, "onRoutedReceive",
-            systems.zlink.contracts.sockets.SpotRoutedHandler.class));
+        assertFalse(hasPublicMethod(Spot.class, "onRoutedReceive"));
+        assertTrue(hasPublicMethod(Spot.class, "recvActorLifecycle",
+            systems.zlink.contracts.sockets.RecvFlags.class));
         assertTrue(hasPublicMethod(Spot.class, "onDispatchEvent",
             systems.zlink.contracts.sockets.SpotDispatchEventHandler.class));
         assertFalse(hasPublicMethod(Spot.class, "drainChannelReply",
@@ -417,10 +410,10 @@ public class SocketContractTest {
             "attachSpotRouteChannelDiscovery", String.class, Discovery.class));
         assertFalse(hasPublicMethod(SpotNode.class, "socketSnapshots"));
         assertFalse(hasPublicMethod(SpotNode.class, "socketSnapshots",
-            systems.zlink.contracts.service.spot.SpotNodeSocketSnapshotFilter.class));
-        assertTrue(hasPublicMethod(SpotNode.class, "internalSocketsSnapshot"));
-        assertTrue(hasPublicMethod(SpotNode.class, "internalSocketsSnapshot",
-            systems.zlink.contracts.service.spot.SpotNodeSocketSnapshotFilter.class));
+            systems.zlink.contracts.service.spot.SpotNodeSocketFilter.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "internalSockets"));
+        assertTrue(hasPublicMethod(SpotNode.class, "internalSockets",
+            systems.zlink.contracts.service.spot.SpotNodeSocketFilter.class));
         assertTrue(hasPublicMethod(SpotNode.class, "routerHwmProfile"));
         assertTrue(hasPublicMethod(SpotNode.class, "routerHwm", int.class));
         assertTrue(hasPublicMethod(SpotNode.class, "pubsubHwmProfile"));
@@ -449,10 +442,10 @@ public class SocketContractTest {
         assertFalse(isPublicClass("systems.zlink.contracts.sockets.SocketPollSet"));
         assertFalse(isPublicClass("systems.zlink.contracts.sockets.DisconnectReason"));
         assertFalse(isPublicClass("systems.zlink.contracts.errors.ProtocolError"));
-        assertFalse(isPublicClass("systems.zlink.runtime.nativeapi.InternalAccess"));
+        assertTrue(isPublicClass("systems.zlink.runtime.nativeapi.InternalAccess"));
         assertFalse(isPublicClass("systems.zlink.contracts.sockets.StreamDispatchMode"));
         assertTrue(isPublicClass("systems.zlink.contracts.messaging.SubscriptionEntry"));
-        assertFalse(isPublicClass("systems.zlink.contracts.core.ZlinkVersion"));
+        assertTrue(isPublicClass("systems.zlink.contracts.core.ZlinkVersion"));
         assertTrue(isPublicClass("systems.zlink.contracts.sockets.SocketType"));
         assertFalse(hasPublicMethod(SubSocketOptions.class, "subscriptionAt",
             int.class));
@@ -801,7 +794,7 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(Received.class, "routingIdOrNull"));
         assertFalse(hasPublicMethod(Received.class, "routingIdOrThrow"));
         assertFalse(hasPublicMethod(Received.class, "spotRidOrNull"));
-        assertFalse(hasPublicMethod(systems.zlink.contracts.eventing.MonitorSnapshot.class,
+        assertFalse(hasPublicMethod(systems.zlink.contracts.eventing.MonitorStatus.class,
             "fromNative", java.lang.foreign.MemorySegment.class));
         assertFalse(hasPublicMethod(
             systems.zlink.contracts.service.registry.MemberPeerEntry.class,

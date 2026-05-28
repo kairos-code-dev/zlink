@@ -96,7 +96,7 @@ For non-SPOT patterns, the auto-HWM detail table is printed after the result
 rows. It uses the cached runtime snapshots and includes the applied HWM and
 socket buffers.
 
-SPOT output uses `zlink_spot_node_internal_sockets_snapshot()` and prints only
+SPOT output uses `zlink_spot_node_internal_sockets()` and prints only
 actual snapshot rows where `auto_hwm_visible == 1`. The default tables are
 `Auto-HWM spotnode` for node-owned sockets and `Auto-HWM spot handles` for
 per-spot handle sockets. Shared routers, mesh sockets, and peer-control sockets

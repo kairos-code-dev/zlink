@@ -220,21 +220,18 @@ internal sealed class ZLinkChannelPacketDispatcher(
             return;
         }
 
-        var requestSeq = RequireRequestSeq(received);
         await _requestPipeline.DispatchAsync(
                 channelName,
                 "DealerMeshChannel",
                 received,
                 header,
                 (replyHeader, reply, replyType) => ZLinkChannelReplyWriter.ReplyDealerRequest(
-                    dealer,
-                    requestSeq,
+                    received,
                     replyHeader,
                     reply,
                     replyType),
                 errorHeader => ZLinkChannelReplyWriter.ReplyDealerRequest(
-                    dealer,
-                    requestSeq,
+                    received,
                     errorHeader,
                     null,
                     null),

@@ -14,7 +14,6 @@ internal static class PerfSpot
     private const int SpotSocketTag = 0;
     private const int ReadyDeadlineTag = int.MaxValue;
     private const int ReadyRetryTag = int.MaxValue - 1;
-    private static ReadOnlySpan<byte> TopicBytes => "bench"u8;
     private static readonly RoutingId PubNodeRoutingId =
         RoutingId.From("z-perf-spot-pub"u8);
     private static readonly RoutingId SubNodeRoutingId =
@@ -133,15 +132,14 @@ internal static class PerfSpot
         poller.Add(retryTimer, ReadyRetryTag);
         deadlineTimer.Start(TimeSpan.FromMilliseconds(readyTimeoutMs), 1);
         retryTimer.Start(TimeSpan.FromMilliseconds(50), 1);
-        using var subscribed = new Message();
-        byte[] topicBuffer = new byte[64];
+        using var subscribed = new TopicMessage();
 
         while (true)
         {
             while (true)
             {
                 int recvRc = ReceiveSpotHeader(subscriber, msgSize,
-                    subscribed, topicBuffer, out var header, out bool headerOk);
+                    subscribed, out var header, out bool headerOk);
                 if (recvRc > 0)
                 {
                     if (headerOk && IsExpectedSingleHeader(header, msgSize,
@@ -187,12 +185,11 @@ internal static class PerfSpot
             // the resulting GC activity stalled the drain loop and let the
             // multi-hop send/wire pipeline back up, inflating one-way
             // latency 100x-1000x vs C while throughput stayed comparable.
-            using var subscribed = new Message();
-            byte[] topicBuffer = new byte[64];
+            using var subscribed = new TopicMessage();
             while (true)
             {
                 int recvRc = ReceiveSpotPayload(subscriber, msgSize,
-                    subscribed, topicBuffer, out PerfMetricHeader header,
+                    subscribed, out PerfMetricHeader header,
                     out bool headerOk, out bool isStopToken);
                 if (recvRc > 0)
                 {
@@ -337,15 +334,15 @@ internal static class PerfSpot
     }
 
     private static int ReceiveSpotHeader(ISpot subscriber, int msgSize,
-        Message subscribed, byte[] topicBuffer, out PerfMetricHeader header,
+        TopicMessage subscribed, out PerfMetricHeader header,
         out bool headerOk)
     {
-        return ReceiveSpotPayload(subscriber, msgSize, subscribed, topicBuffer,
+        return ReceiveSpotPayload(subscriber, msgSize, subscribed,
             out header, out headerOk, out _);
     }
 
     private static int ReceiveSpotPayload(ISpot subscriber, int msgSize,
-        Message subscribed, byte[] topicBuffer, out PerfMetricHeader header,
+        TopicMessage subscribed, out PerfMetricHeader header,
         out bool headerOk, out bool isStopToken)
     {
         header = default;
@@ -353,11 +350,9 @@ internal static class PerfSpot
         isStopToken = false;
         try
         {
-            if (!subscriber.SubscribePart(subscribed, topicBuffer,
-                    out int topicLength, out bool hasMore, RecvFlags.DontWait))
+            if (!subscriber.Subscribe(subscribed, RecvFlags.DontWait))
                 return 0;
-            if (hasMore || topicLength != TopicBytes.Length
-                || !topicBuffer.AsSpan(0, topicLength).SequenceEqual(TopicBytes))
+            if (!subscribed.IsSinglePart || subscribed.Topic != Topic)
                 return 1;
         }
         catch (ZlinkException ex) when (IsInterrupted(ex.InternalErrno)
@@ -371,7 +366,7 @@ internal static class PerfSpot
             return -1;
         }
 
-        ReadOnlySpan<byte> payload = subscribed.AsReadOnlySpan();
+        ReadOnlySpan<byte> payload = subscribed.FirstPart().AsReadOnlySpan();
         if (StopToken.IsStopToken(payload))
         {
             isStopToken = true;

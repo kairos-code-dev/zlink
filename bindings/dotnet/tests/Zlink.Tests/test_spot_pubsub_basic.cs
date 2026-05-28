@@ -19,7 +19,7 @@ public sealed class test_spot_pubsub_basic
         const string topic = "zone:12:*";
 
         spot.SetSubscription(topic);
-        SpotNodeSubjectEntry[] subjects = node.SubjectsSnapshot();
+        SpotNodeSubjectEntry[] subjects = node.Subjects();
         Assert.Contains(subjects, entry => entry.Subject == topic);
     }
 
@@ -34,7 +34,7 @@ public sealed class test_spot_pubsub_basic
         using var spot = node.CreateSpot();
         spot.SetSubscription("own:topic");
 
-        SpotNodeSubjectEntry[] subjects = node.SubjectsSnapshot();
+        SpotNodeSubjectEntry[] subjects = node.Subjects();
         Assert.Contains(subjects, entry => entry.Subject == "own:topic");
     }
 
@@ -74,8 +74,8 @@ public sealed class test_spot_pubsub_basic
 
         const string topic = "spot:test";
         spot.SetSubscription(topic);
-        SpotNodeStatus status = node.StatusSnapshot();
-        SpotNodeSubjectEntry[] subjects = node.SubjectsSnapshot();
+        SpotNodeStatus status = node.Status();
+        SpotNodeSubjectEntry[] subjects = node.Subjects();
         Assert.Equal(0u, status.ConnectedPeerCount);
         Assert.Contains(subjects, entry => entry.Subject == topic);
     }
@@ -120,7 +120,7 @@ public sealed class test_spot_pubsub_basic
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
-                SpotNodeStatus status = node.StatusSnapshot();
+                SpotNodeStatus status = node.Status();
                 return status.SubjectCount > 0
                     && (status.ReadySubjectCount > 0
                         || status.ConnectedPeerCount > 0
@@ -174,7 +174,10 @@ public sealed class test_spot_pubsub_basic
                 sent = Message.From(payload);
                 try
                 {
-                    return publisher.Publish(topic, sent, SendFlags.DontWait);
+                    return publisher.Publish(topic)
+                        .Message(sent)
+                        .Flags(SendFlags.DontWait)
+                        .Submit();
                 }
                 catch (ZlinkSubmitException ex)
                     when (ex.Result == ZlinkSubmitException.ErrorCode.Backpressured
@@ -190,17 +193,13 @@ public sealed class test_spot_pubsub_basic
         Assert.Throws<ObjectDisposedException>(() => _ = sentMessage.Size);
         sentMessage.Dispose();
 
-        using var subscribed = new Message();
-        byte[] topicBuffer = new byte[64];
-        int topicLength = 0;
-        bool hasMore = true;
+        using var subscribed = new TopicMessage();
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
                 try
                 {
-                    return subscriber.SubscribePart(subscribed, topicBuffer,
-                        out topicLength, out hasMore, RecvFlags.DontWait);
+                    return subscriber.Subscribe(subscribed, RecvFlags.DontWait);
                 }
                 catch (ZlinkRecvException ex)
                     when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
@@ -210,10 +209,8 @@ public sealed class test_spot_pubsub_basic
             },
             5000));
 
-        Assert.False(hasMore);
-        Assert.Equal(topic, Encoding.UTF8.GetString(topicBuffer, 0,
-            topicLength));
-        Assert.Equal(payload, subscribed.ToArray());
+        Assert.Equal(topic, subscribed.Topic);
+        Assert.Equal(payload, subscribed.FirstPart().ToArray());
     }
 
     [Fact]
@@ -234,8 +231,10 @@ public sealed class test_spot_pubsub_basic
 
         using Message sent = Message.From(payload);
         Assert.Throws<ZlinkSubmitException>(() =>
-            sender.SendToSpot(missingNodeRid, missingSpotRid, sent,
-                SendFlags.DontWait));
+            sender.SendToSpot(missingNodeRid, missingSpotRid)
+                .Message(sent)
+                .Flags(SendFlags.DontWait)
+                .Submit());
         Assert.Equal(payload.Length, sent.Size);
         Assert.Equal(payload, sent.ToArray());
     }
@@ -289,8 +288,8 @@ public sealed class test_spot_pubsub_basic
         subscriber.SetSubscription(topic);
 
         Assert.True(CoreTestSupport.WaitUntil(
-            () => publisherNode.StatusSnapshot().ConnectedPeerCount > 0
-                && subscriberNode.StatusSnapshot().ConnectedPeerCount > 0,
+            () => publisherNode.Status().ConnectedPeerCount > 0
+                && subscriberNode.Status().ConnectedPeerCount > 0,
             10000));
 
         using var subscribed = new TopicMessage();

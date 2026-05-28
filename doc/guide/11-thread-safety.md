@@ -154,7 +154,7 @@ Every handle type follows the same three-category model:
 | SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option | `zlink_spot_destroy` |
 | SPOT Node | *(no sending; data plane uses `Spot`)* | bind, connect_peer, disconnect_peer, attach_discovery, subscribe, unsubscribe | `zlink_spot_node_destroy` |
 | Discovery | *(no sending — config only)* | connect_registry, set_routing_id, monitor_open | `zlink_discovery_destroy` |
-| Registry | *(no sending — config only)* | bind, add_peer, set_heartbeat, set_broadcast_interval, topology_query | `zlink_registry_destroy` |
+| Registry | *(no sending — config only)* | bind, add_peer, set_heartbeat, set_broadcast_interval, topology(filter) | `zlink_registry_destroy` |
 
 ## 4. Closing Handles Safely
 
@@ -240,7 +240,7 @@ before returning and must not access them from another thread.
 ## 6. Callback Rules
 
 Socket callbacks (message, XPUB, monitor, send-ready) run on the I/O thread.
-**SPOT dispatch callbacks** (`zlink_spot_handler`, `zlink_spot_dispatch_handler`)
+`zlink_spot_dispatch_event_handler` callbacks
 run on a SpotNode dispatch worker thread — not on the I/O thread. The no-blocking
 and offload rules apply equally to both.
 Here's what you need to know:

@@ -95,13 +95,13 @@ class monitor_handle_t
         return std::optional<monitor_event_t> (monitor_event_t (event));
     }
 
-    monitor_snapshot_t snapshot () const
+    monitor_status_t status () const
     {
-        zlink_monitor_snapshot_t snapshot;
+        zlink_monitor_status_t snapshot;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_monitor_snapshot (_monitor, &snapshot)));
-        return monitor_snapshot_t (snapshot);
+            zlink_monitor_status (_monitor, &snapshot)));
+        return monitor_status_t (snapshot);
     }
 
     void close ()

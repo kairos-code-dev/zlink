@@ -61,7 +61,7 @@
   - raw message frame single-send/single-recv helper가 공개 표면 중심이 아니다
 - 콜백/이벤트 계층:
   - `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`
-  - `zlink_socket_monitor_open` + `zlink_socket_monitor_handler` + `zlink_socket_monitor_recv` + `zlink_monitor_snapshot`
+  - `zlink_socket_monitor_open` + `zlink_socket_monitor_handler` + `zlink_socket_monitor_recv` + `zlink_monitor_status`
   - `zlink_service_monitor_open` + `zlink_service_monitor_handler` + `zlink_service_monitor_recv`
 - 서비스 계층:
   - `Registry`: bind/config/snapshot/query
@@ -517,7 +517,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
 - `NativeLayouts.java` 를 최신 struct 집합 기준으로 재작성한다.
   - `zlink_routing_id_t`
   - `zlink_monitor_event_t`
-  - `zlink_monitor_snapshot_t`
+  - `zlink_monitor_status_t`
   - `zlink_service_event_t`
   - `zlink_spot_node_status_t`
   - `zlink_spot_node_peer_entry_t`
@@ -546,15 +546,15 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   `zlink_routing_id_t` / monitor layout 1차 정렬을 반영했다.
 - `Native` / `NativeLayouts` 에 공식 헤더 기준 누락되어 있던
   `zlink_subscription_at`, `zlink_publish_part`, `zlink_subscribe_part`,
-  `zlink_monitor_snapshot`, `zlink_monitor_close`,
+  `zlink_monitor_status`, `zlink_monitor_close`,
   `zlink_service_monitor_open`, `zlink_service_monitor_handler`,
   `zlink_service_monitor_recv`,
   `zlink_registry_bind`, fixed-service `zlink_discovery_new`,
   registry/discovery/topology snapshot/query, unified
   `zlink_spot_new` / `zlink_spot_destroy`,
   `zlink_spot_node_attach_discovery`,
-  `zlink_spot_node_status_snapshot` 계열 downcall 을 추가했다.
-- `NativeLayouts` 에 `zlink_monitor_snapshot_t`,
+  `zlink_spot_node_status` 계열 downcall 을 추가했다.
+- `NativeLayouts` 에 `zlink_monitor_status_t`,
   `zlink_service_event_t`, `zlink_service_monitor_open_options_t`,
   `zlink_spot_node_status_t`, `zlink_spot_node_peer_entry_t`,
   `zlink_spot_node_subject_entry_t`,
@@ -761,10 +761,10 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
 - old role-based setsockopt model 삭제
 
 추가 대상:
-- `statusSnapshot()`
-- `serviceSummarySnapshot(...)`
-- `topologySnapshot()`
-- `topologyQuery(...)`
+- `status()`
+- `serviceSummary(...)`
+- `topology()`
+- `topology(...)`
 - `memberPeers(...)`
 - `memberPeerMetadata(...)`
 - `RegistryQueryClient`
@@ -897,7 +897,7 @@ contract test는 새 기준으로 아래 골격으로 정리한다.
   - old `PeerInfo`
 - 새 모델 추가:
   - `RoutingId`
-  - `MonitorSnapshot`
+  - `MonitorStatus`
   - `ServiceEvent`
   - `DiscoveryMemberPeer`
   - `RegistryTopologyEntry`

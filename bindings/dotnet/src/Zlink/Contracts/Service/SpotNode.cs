@@ -1,49 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System;
-
 namespace Systems.Zlink;
-
-public enum SpotNodeMode
-{
-    PubSub = 1,
-    Routed = 2,
-    All = 3
-}
-
-public enum SpotNodeSocketOwner
-{
-    Any = 0,
-    Node = 1,
-    Spot = 2
-}
-
-public enum SpotNodeSocketType
-{
-    Any = 0,
-    Pair = 0x1001,
-    Pub = 0x1002,
-    Sub = 0x1003,
-    Dealer = 0x1004,
-    Router = 0x1005,
-    XPub = 0x1006,
-    XSub = 0x1007,
-    Stream = 0x1008
-}
-
-public sealed record SpotNodeSocketSnapshotFilter(
-    SpotNodeSocketOwner? Owner = null,
-    SpotNodeSocketType? SocketType = null,
-    string? SocketName = null);
-
-public sealed record SpotNodeSocketSnapshotEntry(
-    SpotNodeSocketOwner Owner,
-    ulong OwnerId,
-    string OwnerName,
-    string SocketName,
-    SpotNodeSocketType SocketType,
-    bool AutoHwmVisible,
-    MonitorSnapshot Snapshot);
 
 public interface ISpotNode : IDisposable, IAsyncDisposable
 {
@@ -97,14 +54,14 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
         bool requireClientCert = false);
     void SetTlsClient(string caCertPath, string hostname,
         bool trustSystem = false);
-    SpotNodeStatus StatusSnapshot();
-    SpotNodePeerEntry[] PeersSnapshot();
+    SpotNodeStatus Status();
+    SpotNodePeerEntry[] Peers();
     SpotNodePeerEntry[] PeersQuery(SpotNodePeerFilter filter);
-    SpotNodeSubjectEntry[] SubjectsSnapshot(
+    SpotNodeSubjectEntry[] Subjects(
         SpotNodeSubjectFilter? filter = null);
-    SpotNodeSocketSnapshotEntry[] InternalSocketsSnapshot(
-        SpotNodeSocketSnapshotFilter? filter = null);
-    SpotNodeSpotEntry[] SpotsSnapshot();
-    SpotNodeActorEntry[] ActorsSnapshot();
+    SpotNodeSocketEntry[] InternalSockets(
+        SpotNodeSocketFilter? filter = null);
+    SpotNodeSpotEntry[] Spots();
+    SpotNodeActorEntry[] Actors();
     void Close();
 }

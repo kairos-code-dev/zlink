@@ -4,9 +4,7 @@
 use std::thread;
 use std::time::Duration;
 
-use zlink::{
-    Context, Message, RoutingId, SendFlags,
-};
+use zlink::{Context, Message, RoutingId, SendFlags};
 
 #[test]
 fn blocking_send_failure_surfaces_error() {

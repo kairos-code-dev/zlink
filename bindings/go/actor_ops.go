@@ -65,7 +65,7 @@ type ActorLookupCompletion struct {
 	Err    error
 }
 
-// SpotActorLifecycleInfo is the payload delivered to lifecycle callbacks.
+// SpotActorLifecycleInfo describes one Spot Actor lifecycle transition.
 type SpotActorLifecycleInfo struct {
 	PreviousActor   ActorRef
 	CurrentActor    ActorRef
@@ -73,6 +73,18 @@ type SpotActorLifecycleInfo struct {
 	CurrentSpotRID  *RoutingID
 	JoinEpoch       uint64
 	Flags           uint32
+}
+
+type SpotActorLifecycleEventKind int
+
+const (
+	SpotActorLifecycleJoined SpotActorLifecycleEventKind = 1
+	SpotActorLifecycleLeft   SpotActorLifecycleEventKind = 2
+)
+
+type SpotActorLifecycleEvent struct {
+	Kind SpotActorLifecycleEventKind
+	Info SpotActorLifecycleInfo
 }
 
 // --- builder interfaces ---

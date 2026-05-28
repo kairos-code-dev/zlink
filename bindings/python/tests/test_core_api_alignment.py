@@ -111,11 +111,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.SpotNode, "join_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "leave_actor"))
         self.assertTrue(hasattr(zlink.SpotNode, "get_or_create_spot"))
-        self.assertTrue(hasattr(zlink.SpotNode, "spots_snapshot"))
-        self.assertTrue(hasattr(zlink.SpotNode, "actors_snapshot"))
+        self.assertTrue(hasattr(zlink.SpotNode, "spots"))
+        self.assertTrue(hasattr(zlink.SpotNode, "actors"))
         self.assertTrue(hasattr(zlink.Spot, "recv_actor_join"))
         self.assertTrue(hasattr(zlink.Spot, "reply_actor_join"))
-        self.assertTrue(hasattr(zlink.Spot, "actors_snapshot"))
+        self.assertTrue(hasattr(zlink.Spot, "actors"))
         self.assertTrue(hasattr(zlink.StreamSocket, "bind_actor"))
         self.assertTrue(hasattr(zlink.StreamSocket, "unbind_actor"))
         self.assertTrue(hasattr(zlink.StreamSocket, "attach_actor_gateway"))
@@ -365,7 +365,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         self.assertEqual(received.topic, "topic")
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
 
-    def test_monitor_surface_uses_recv_and_snapshot(self):
+    def test_monitor_surface_uses_recv_and_status(self):
         ctx = zlink.Context()
 
         with ctx:
@@ -373,16 +373,16 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 with sock.monitor_open() as monitor:
                     self.assertFalse(hasattr(monitor, "try_recv"))
                     self.assertTrue(hasattr(monitor, "ignore_handler"))
-                    snapshot = monitor.snapshot()
-                    self.assertIsInstance(snapshot, zlink.MonitorSnapshot)
-                    self.assertTrue(hasattr(snapshot, "is_ready"))
-                    self.assertIsInstance(snapshot.is_ready(), bool)
-                    self.assertTrue(hasattr(snapshot, "auto_hwm_profile"))
-                    self.assertTrue(hasattr(snapshot, "auto_hwm_policy_class"))
-                    self.assertTrue(hasattr(snapshot, "auto_hwm_unit_budget_bytes"))
-                    self.assertTrue(hasattr(snapshot, "auto_hwm_size_cap"))
+                    status = monitor.status()
+                    self.assertIsInstance(status, zlink.MonitorStatus)
+                    self.assertTrue(hasattr(status, "is_ready"))
+                    self.assertIsInstance(status.is_ready(), bool)
+                    self.assertTrue(hasattr(status, "auto_hwm_profile"))
+                    self.assertTrue(hasattr(status, "auto_hwm_policy_class"))
+                    self.assertTrue(hasattr(status, "auto_hwm_unit_budget_bytes"))
+                    self.assertTrue(hasattr(status, "auto_hwm_size_cap"))
                     self.assertTrue(
-                        hasattr(snapshot, "auto_hwm_socket_message_slots")
+                        hasattr(status, "auto_hwm_socket_message_slots")
                     )
 
     def test_request_reply_canonical_roundtrip(self):
@@ -456,7 +456,8 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertTrue(hasattr(spot, "reply_to_router"))
                     self.assertTrue(hasattr(spot, "recv_routed"))
                     self.assertTrue(hasattr(spot, "recv_routed_into"))
-                    self.assertTrue(hasattr(spot, "on_routed_receive"))
+                    self.assertFalse(hasattr(spot, "on_routed_receive"))
+                    self.assertTrue(hasattr(spot, "recv_actor_lifecycle"))
                     self.assertTrue(hasattr(spot, "on_dispatch_event"))
                     self.assertTrue(hasattr(spot, "send_channel"))
                     self.assertTrue(hasattr(spot, "request_channel"))
@@ -467,7 +468,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
             with zlink.SpotNode(ctx) as loopback_node:
                 with loopback_node.create_spot() as loopback_spot:
                     loopback_spot.set_subscription(TOPIC)
-                    subjects = loopback_node.subjects_snapshot()
+                    subjects = loopback_node.subjects()
                     self.assertTrue(
                         any(entry.subject == TOPIC.decode("utf-8") for entry in subjects)
                     )
@@ -492,7 +493,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         rid = zlink.RoutingId.from_bytes(b"peer-1")
         self.assertEqual(rid.to_bytes(), b"peer-1")
         self.assertEqual(rid.size, 6)
-        self.assertEqual(str(rid), rid.to_hex())
+        self.assertEqual(str(rid), "peer-1")
         self.assertTrue(hasattr(zlink.Message, "from_"))
         self.assertFalse(hasattr(zlink.Message, "copy_from"))
         self.assertFalse(hasattr(zlink.Message, "from_bytes"))

@@ -73,7 +73,7 @@ import {
   SpotNodeOption,
   SpotOption,
   MonitorState,
-  MonitorSnapshotDetail,
+  MonitorStatusDetail,
   AutoHwmProfile,
   MonitorSourceKind,
   SpotDispatchEvent,
@@ -98,8 +98,8 @@ import {
   type AutoHwmProfileValue,
   type MonitorSourceKindValue,
   type SpotDispatchSubjectKind as SpotDispatchSubjectKindValue,
-  type MonitorSnapshot,
-  type MonitorSnapshotRaw,
+  type MonitorStatus,
+  type MonitorStatusRaw,
   type MonitorEventValueRaw,
   type ServiceRoleValue,
   type ServiceKindValue,
@@ -122,8 +122,8 @@ import {
   type SpotNodeStatus,
   type SpotNodePeerEntry,
   type SpotNodeSubjectEntry,
-  type SpotNodeSocketSnapshotFilter,
-  type SpotNodeSocketSnapshotEntry,
+  type SpotNodeSocketFilter,
+  type SpotNodeSocketEntry,
   type RegistryServiceSummaryFilter,
   type RegistryTopologyFilter,
   type SpotNodePeerFilter,
@@ -133,7 +133,6 @@ import {
   type StreamPacketHandler,
   type SocketMonitorHandler,
   type SpotSendReadyHandler,
-  type SpotRoutedHandler,
   type ActorRef,
   type ActorRoute,
   type SpotRoute,
@@ -145,10 +144,10 @@ import {
   type ActorJoinEntrySpotResult,
   type ActorLookupResult,
   type SpotActorLifecycleInfo,
+  type SpotActorLifecycleEvent,
   type ActorJoinHandler,
   type ActorJoinEntrySpotHandler,
   type ActorLookupHandler,
-  type ActorLifecycleHandler,
   type ReplyHandler,
   type SpotNodeSpotEntry,
   type SpotNodeActorEntry,
@@ -223,8 +222,8 @@ export type {
   SpotNodeStatus,
   SpotNodePeerEntry,
   SpotNodeSubjectEntry,
-  SpotNodeSocketSnapshotFilter,
-  SpotNodeSocketSnapshotEntry,
+  SpotNodeSocketFilter,
+  SpotNodeSocketEntry,
   RegistryServiceSummaryFilter,
   RegistryTopologyFilter,
   SpotNodePeerFilter,
@@ -234,7 +233,6 @@ export type {
   StreamPacketHandler,
   SocketMonitorHandler,
   SpotSendReadyHandler,
-  SpotRoutedHandler,
   ActorRef,
   ActorRoute,
   SpotRoute,
@@ -246,10 +244,10 @@ export type {
   ActorJoinEntrySpotResult,
   ActorLookupResult,
   SpotActorLifecycleInfo,
+  SpotActorLifecycleEvent,
   ActorJoinHandler,
   ActorJoinEntrySpotHandler,
   ActorLookupHandler,
-  ActorLifecycleHandler,
   ReplyHandler,
   SpotNodeSpotEntry,
   SpotNodeActorEntry,
@@ -379,7 +377,7 @@ function normalizeRoutingId(routingId: RoutingId, name = 'routingId'): Buffer {
   return normalized;
 }
 
-function materializeMonitorSnapshot(raw: MonitorSnapshotRaw): MonitorSnapshot {
+function materializeMonitorStatus(raw: MonitorStatusRaw): MonitorStatus {
   return {
     sourceKind: raw.sourceKind as MonitorSourceKindValue,
     stateFlags: raw.stateFlags,
@@ -1560,9 +1558,9 @@ export class MonitorSocket extends NativeHandle {
       });
     });
   }
-  snapshot(): MonitorSnapshot {
-    return materializeMonitorSnapshot(configCall('monitor snapshot failed', () =>
-      requireNative().monitorSnapshot(this._native) as MonitorSnapshotRaw
+  status(): MonitorStatus {
+    return materializeMonitorStatus(configCall('monitor status failed', () =>
+      requireNative().monitorStatus(this._native) as MonitorStatusRaw
     ));
   }
   close(): void {
@@ -2497,27 +2495,21 @@ export class Registry extends NativeHandle {
       requireNative().registrySetTlsClient(this._native, normalizedCa, normalizedHostname, trustSystem ? 1 : 0);
     });
   }
-  statusSnapshot(): RegistryStatus {
+  status(): RegistryStatus {
     return mapRegistryStatus(configCall('registry status snapshot failed', () =>
-      requireNative().registryStatusSnapshot(this._native)
+      requireNative().registryStatus(this._native)
     ));
   }
-  serviceSummarySnapshot(filter?: RegistryServiceSummaryFilter): RegistryServiceSummaryEntry[] {
+  serviceSummary(filter?: RegistryServiceSummaryFilter): RegistryServiceSummaryEntry[] {
     return (configCall('registry service summary snapshot failed', () =>
-      requireNative().registryServiceSummarySnapshot(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+      requireNative().registryServiceSummary(this._native, filter ?? undefined) as Array<Record<string, unknown>>
     ))
       .map((entry) => mapRegistryServiceSummaryEntry(entry as any));
   }
-  topologySnapshot(): RegistryTopologyEntry[] {
-    return (configCall('registry topology snapshot failed', () =>
-      requireNative().registryTopologySnapshot(this._native) as Array<Record<string, unknown>>
-    ))
-      .map((entry) => mapRegistryTopologyEntry(entry as any));
-  }
-  topologyQuery(filter?: RegistryTopologyFilter): RegistryTopologyEntry[] {
+  topology(filter?: RegistryTopologyFilter): RegistryTopologyEntry[] {
     const normalizedFilter = normalizeTopologyFilter(filter);
-    return (configCall('registry topology query failed', () =>
-      requireNative().registryTopologyQuery(this._native, normalizedFilter) as Array<Record<string, unknown>>
+    return (configCall('registry topology failed', () =>
+      requireNative().registryTopology(this._native, normalizedFilter) as Array<Record<string, unknown>>
     ))
       .map((entry) => mapRegistryTopologyEntry(entry as any));
   }
@@ -2546,10 +2538,10 @@ export class RegistryQueryClient extends NativeHandle {
       requireNative().registryQueryClientConnect(this._native, normalizedEndpoint);
     });
   }
-  snapshot(filter?: RegistryTopologyFilter): RegistryTopologyEntry[] {
+  topology(filter?: RegistryTopologyFilter): RegistryTopologyEntry[] {
     const normalizedFilter = normalizeTopologyFilter(filter);
-    return (configCall('registry query snapshot failed', () =>
-      requireNative().registryQuerySnapshot(this._native, normalizedFilter) as Array<Record<string, unknown>>
+    return (configCall('registry query topology failed', () =>
+      requireNative().registryQueryTopology(this._native, normalizedFilter) as Array<Record<string, unknown>>
     ))
       .map((entry) => mapRegistryTopologyEntry(entry as any));
   }
@@ -2846,14 +2838,14 @@ export class SpotNode extends NativeHandle {
     const spot = Spot.create(this);
     this._spots.add(spot);
     try {
-      const raw = requireNative().spotNodeStatusSnapshot(this._native) as {
+      const raw = requireNative().spotNodeStatus(this._native) as {
         nodeRoutingId?: Buffer | null;
       };
       if (raw?.nodeRoutingId) {
         this._nodeRoutingId = RoutingId.from(raw.nodeRoutingId);
       }
     } catch {
-      // Ignore cache warm-up failure; statusSnapshot() will surface real errors later.
+      // Ignore cache warm-up failure; status() will surface real errors later.
     }
     return spot;
   }
@@ -2947,9 +2939,9 @@ export class SpotNode extends NativeHandle {
   unregisterSpot(spot: Spot): void {
     this._spots.delete(spot);
   }
-  statusSnapshot(): SpotNodeStatus {
+  status(): SpotNodeStatus {
     const raw = configCall('spot node status snapshot failed', () =>
-      requireNative().spotNodeStatusSnapshot(this._native) as {
+      requireNative().spotNodeStatus(this._native) as {
       channelName: string;
       localEndpoint: string;
       nodeRoutingId?: Buffer | null;
@@ -2967,9 +2959,9 @@ export class SpotNode extends NativeHandle {
     }
     return mapSpotNodeStatus(raw, this._nodeRoutingId);
   }
-  peersSnapshot(): SpotNodePeerEntry[] {
+  peers(): SpotNodePeerEntry[] {
     return (configCall('spot node peers snapshot failed', () =>
-      requireNative().spotNodePeersSnapshot(this._native) as Array<Record<string, unknown>>
+      requireNative().spotNodePeers(this._native) as Array<Record<string, unknown>>
     ))
       .map((entry) => mapSpotNodePeerEntry(entry as any));
   }
@@ -2979,15 +2971,15 @@ export class SpotNode extends NativeHandle {
     ))
       .map((entry) => mapSpotNodePeerEntry(entry as any));
   }
-  subjectsSnapshot(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[] {
+  subjects(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[] {
     return (configCall('spot node subjects snapshot failed', () =>
-      requireNative().spotNodeSubjectsSnapshot(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+      requireNative().spotNodeSubjects(this._native, filter ?? undefined) as Array<Record<string, unknown>>
     ))
       .map((entry) => mapSpotNodeSubjectEntry(entry as any));
   }
-  internalSocketsSnapshot(filter?: SpotNodeSocketSnapshotFilter): SpotNodeSocketSnapshotEntry[] {
+  internalSockets(filter?: SpotNodeSocketFilter): SpotNodeSocketEntry[] {
     return (configCall('spot node internal socket snapshot failed', () =>
-      requireNative().spotNodeInternalSocketsSnapshot(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+      requireNative().spotNodeInternalSockets(this._native, filter ?? undefined) as Array<Record<string, unknown>>
     ))
       .map((entry) => ({
         owner: entry.owner as SpotNodeSocketOwnerValue,
@@ -2996,18 +2988,18 @@ export class SpotNode extends NativeHandle {
         socketName: entry.socketName as string,
         socketType: entry.socketType as SocketTypeValue,
         autoHwmVisible: Boolean(entry.autoHwmVisible),
-        snapshot: materializeMonitorSnapshot(entry.snapshot as MonitorSnapshotRaw),
+        snapshot: materializeMonitorStatus(entry.snapshot as MonitorStatusRaw),
       }));
   }
-  spotsSnapshot(): SpotNodeSpotEntry[] {
+  spots(): SpotNodeSpotEntry[] {
     return (configCall('spot node spots snapshot failed', () =>
-      requireNative().spotNodeSpotsSnapshot(this._native) as Array<Record<string, unknown>>
+      requireNative().spotNodeSpots(this._native) as Array<Record<string, unknown>>
     ))
       .map((entry) => spotNodeSpotEntryFromRaw(entry as any));
   }
-  actorsSnapshot(): SpotNodeActorEntry[] {
+  actors(): SpotNodeActorEntry[] {
     return (configCall('spot node actors snapshot failed', () =>
-      requireNative().spotNodeActorsSnapshot(this._native) as Array<Record<string, unknown>>
+      requireNative().spotNodeActors(this._native) as Array<Record<string, unknown>>
     ))
       .map((entry) => spotNodeActorEntryFromRaw(entry as any));
   }
@@ -3890,39 +3882,6 @@ export class Spot extends NativeHandle {
       requestSeq: raw.requestSeq ?? 0n,
     };
   }
-  onRoutedReceive(handler: SpotRoutedHandler): void {
-    handlerCall('spot routed handler registration failed', () => {
-      requireNative().spotRoutedHandler(this._native, (sourceRid: Buffer | null, spotRid: Buffer | null, requestSeq: bigint, parts: Buffer[]) => {
-        const source = wrapRoutingId(sourceRid);
-        const spot = wrapRoutingId(spotRid);
-        handler(
-          Received.create(
-            messagesFromNativeBuffers(parts),
-            source,
-            requestSeq,
-            spot,
-            source
-              ? {
-                  reply: (replyParts, flags) => {
-                    if (spot) {
-                      this.replyToSpotInternal(source, spot, requestSeq, replyParts, flags);
-                      return;
-                    }
-                    this.replyToRouterInternal(source, requestSeq, replyParts, flags);
-                  }
-                }
-              : null,
-            source && spot
-              ? {
-                  send: (sendParts, sendFlags) =>
-                    this.sendToSpotDirect(source, spot, sendParts, sendFlags)
-                }
-              : null
-          )
-        );
-      });
-    });
-  }
   onDispatchEvent(handler: SpotDispatchEventHandler): void {
     handlerCall('spot dispatch handler registration failed', () => {
       requireNative().spotDispatchEventHandler(this._native, this._node.nativeHandle(), (raw: {
@@ -4001,23 +3960,27 @@ export class Spot extends NativeHandle {
       }
     });
   }
-  onActorLifecycle(onJoin: ActorLifecycleHandler | null, onLeave: ActorLifecycleHandler | null): void {
-    const spotInstance = this;
-    handlerCall('spot actor lifecycle handler registration failed', () => {
-      requireNative().spotActorLifecycleHandler(
-        this._native,
-        onJoin
-          ? (rawInfo: SpotActorLifecycleInfoRaw) => onJoin(spotInstance, spotActorLifecycleInfoFromRaw(rawInfo))
-          : null,
-        onLeave
-          ? (rawInfo: SpotActorLifecycleInfoRaw) => onLeave(spotInstance, spotActorLifecycleInfoFromRaw(rawInfo))
-          : null,
-      );
-    });
+  recvActorLifecycle(flags: RecvFlags = RecvFlags.None): SpotActorLifecycleEvent | null {
+    let raw;
+    try {
+      raw = requireNative().spotRecvActorLifecycle(this._native, flags | 0) as {
+        kind: number;
+        info: SpotActorLifecycleInfoRaw;
+      } | null;
+    } catch (error) {
+      throw recvNativeError(error, flags, 'actor lifecycle recv failed');
+    }
+    if (!raw) {
+      return null;
+    }
+    return {
+      kind: raw.kind,
+      info: spotActorLifecycleInfoFromRaw(raw.info)
+    };
   }
-  actorsSnapshot(): ActorRef[] {
+  actors(): ActorRef[] {
     return (configCall('spot actors snapshot failed', () =>
-      requireNative().spotActorsSnapshot(this._native) as Array<{ nodeRid: Buffer; actorId: string; generation: bigint | number }>
+      requireNative().spotActors(this._native) as Array<{ nodeRid: Buffer; actorId: string; generation: bigint | number }>
     ))
       .map((entry) => actorRefFromRaw(entry));
   }

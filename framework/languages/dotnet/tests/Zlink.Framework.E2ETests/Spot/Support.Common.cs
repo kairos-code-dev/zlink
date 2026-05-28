@@ -296,7 +296,7 @@ public abstract partial class SpotTestSupport
         IReadOnlyList<ZLinkSpotNodePeerEntry> peers = [];
         while (DateTime.UtcNow < deadline)
         {
-            peers = nodeRuntime.Node.PeersSnapshot();
+            peers = nodeRuntime.Node.Peers();
             if (peers.Any(peer => peer.ChannelName == channelName
                     && (!requireConnected || peer.State == ZLinkSpotPeerState.Connected)))
             {

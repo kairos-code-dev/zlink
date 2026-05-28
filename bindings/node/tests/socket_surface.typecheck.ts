@@ -145,8 +145,8 @@ spotNode.actorLookup('typed-actor');
 spotNode.remoteActorGetRef(routingId, 'typed-actor').submit((_result) => {});
 spotNode.joinActor(actorRef, routingId, routingId).message('join').submit((_result, _parts) => {});
 spotNode.leaveActor(actorRef, routingId).submit((_result, _parts) => {});
-spotNode.spotsSnapshot();
-spotNode.actorsSnapshot();
+spotNode.spots();
+spotNode.actors();
 const entrySpot = spotNode.entrySpot();
 const lookedUpSpot = spotNode.spotLookup(entrySpot.routingId);
 const room = spotNode.getOrCreateSpot(routingId);
@@ -179,23 +179,18 @@ spot.onDispatchEvent((info) => {
   info.timer?.stop();
   info.recvActorPart(zlink.RecvFlags.DontWait);
 });
-spot.onRoutedReceive((message) => {
-  message.parts;
-  message.routingId;
-  message.spotRid;
-  message.requestSeq;
-});
+spot.recvActorLifecycle(zlink.RecvFlags.DontWait)?.info.currentActor.actorId;
 const actorJoin = spot.recvActorJoin(zlink.RecvFlags.DontWait);
 if (actorJoin) {
   spot.replyActorJoin(actorJoin, 0).message('ok').submit();
 }
-spot.actorsSnapshot();
+spot.actors();
 spotNode.attachPubIngress(pub);
 
 const monitor = pub.monitorOpen();
 monitor.recv();
 monitor.onEvent(() => {});
-monitor.snapshot();
+monitor.status();
 monitor.close();
 
 const poller = new zlink.Poller();

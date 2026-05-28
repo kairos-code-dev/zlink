@@ -841,7 +841,7 @@ static void bind_spot_node (void *node_,
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_, bind_endpoint_buf));
 
     zlink_spot_node_status_t status;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status_snapshot (node_, &status));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status (node_, &status));
     TEST_ASSERT_TRUE_MESSAGE (status.local_endpoint[0] != '\0',
                               "spot node bind did not publish local endpoint");
     snprintf (endpoint_out_, endpoint_size_, "%s", status.local_endpoint);
@@ -860,7 +860,7 @@ static bool wait_for_spot_node_ready_state (void *node_,
 
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t status;
-        if (zlink_spot_node_status_snapshot (node_, &status) == 0) {
+        if (zlink_spot_node_status (node_, &status) == 0) {
             const bool pub_ready = status.local_endpoint[0] != '\0';
             const bool sub_ready =
               status.active_peer_count > 0 && status.subject_count > 0;
@@ -885,7 +885,7 @@ static bool wait_for_spot_node_subject_ready (void *node_, int timeout_ms_)
 
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t status;
-        if (zlink_spot_node_status_snapshot (node_, &status) == 0
+        if (zlink_spot_node_status (node_, &status) == 0
             && status.subject_count > 0
             && (status.ready_subject_count > 0
                 || status.connected_peer_count > 0

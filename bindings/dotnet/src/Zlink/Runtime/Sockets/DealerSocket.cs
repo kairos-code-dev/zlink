@@ -59,32 +59,6 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         return new DealerRequestOperation(this);
     }
 
-    public bool RequestFrame(ulong requestSeq, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
-    {
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        try
-        {
-            RequestReplySupport.CloneAndSubmitParts(parts,
-                (ref ZlinkMsg nativePart,
-                    NativeMethods.ZlinkPartFlag partFlag) =>
-                    NativeMethods.zlink_dealer_request_frame_part(Handle,
-                        requestSeq, ref nativePart, (int)flags, partFlag));
-            return true;
-        }
-        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0)
-        {
-            if (RequestReplySupport.MapSendNoWaitResult(error)
-                == SendResult.Backpressured)
-            {
-                return false;
-            }
-
-            throw;
-        }
-    }
-
     public override bool Recv(Received result, RecvFlags flags = RecvFlags.None)
     {
         if (result == null)
@@ -144,12 +118,8 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
                 }
             }
 
-            ReceivedReplyHandler? replyHandler =
-                messageType == ReceivedMessageType.Request
-                    ? (replyParts, _) => Reply(requestSeq, replyParts)
-                    : null;
             result.PopulateMessageEnvelope(parts.ToArray(), messageType,
-                requestSeq == 0 ? null : requestSeq, replyHandler);
+                requestSeq == 0 ? null : requestSeq, replyHandler: null);
             transferred = true;
             return true;
         }
@@ -159,16 +129,6 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
                 RequestReplySupport.DisposeParts(parts);
             throw;
         }
-    }
-
-    public void Reply(ulong requestToken, IReadOnlyList<Message> parts)
-    {
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        RequestReplySupport.CloneAndSubmitParts(parts,
-            (ref ZlinkMsg nativePart, NativeMethods.ZlinkPartFlag partFlag) =>
-                NativeMethods.zlink_dealer_reply_part(Handle, requestToken,
-                    ref nativePart, partFlag));
     }
 
     internal async Task<IReadOnlyList<Message>> RequestCore(

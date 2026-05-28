@@ -255,9 +255,7 @@ zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
 
 대부분의 소켓 타입은 두 방식 중 하나만 지원한다. SPOT과 STREAM은 예외다.
 
-- **SPOT**: 같은 핸들에 `zlink_spot_handler()`(routed 전용 직접 콜백)와
-  `zlink_spot_dispatch_event_handler()`(모든 이벤트 통합 readiness) 중 하나만 등록할 수
-  있다. 먼저 attach한 쪽이 우선하고, 두 번째 attach는 `EBUSY`로 실패한다.
+- **SPOT**: `zlink_spot_dispatch_event_handler()`를 통합 readiness handler로 사용한다. routed receive, subscribe event, channel reply, timer, Actor join, Actor readable, Actor lifecycle event는 readiness 뒤 명시적 receive API로 drain한다.
 - **STREAM**: `zlink_recv()`, raw 콜백, packet 콜백 세 가지 수신 모드 중
   하나를 선택하면 이후 모드 변경이 불가하다.
 
@@ -271,8 +269,7 @@ zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
 | STREAM (raw) | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
 | STREAM (packet) | `zlink_stream_packet_handler()` | `fn(stream, source_rid, header, body, userdata)` |
 | ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` 의 reply 는 별도 완료 콜백으로 전달 |
-| SPOT (routed direct callback) | `zlink_spot_handler()` — 선택적, 여전히 지원 | `fn(source_rid, spot_rid, request_seq, parts, count, userdata)` |
-| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/channel reply/timer를 모두 한 콜백으로 수신 | `fn(spot, const zlink_spot_dispatch_info_t *info, userdata)` |
+| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/channel reply/timer/actor lifecycle를 모두 한 콜백으로 수신 | `fn(spot, const zlink_spot_dispatch_info_t *info, userdata)` |
 | SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv 기반; `SUBSCRIBE_READABLE` 이벤트 후 drain |
 | SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv 기반; `ROUTED_READABLE` 이벤트 후 drain |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` 또는 `zlink_subscribe()` | N/A |

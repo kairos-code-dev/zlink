@@ -106,13 +106,13 @@ public final class Message implements AutoCloseable {
 
             @Override
             public void markTransferred(Message message) {
-                InternalAccess.messageMarkTransferred(message);
+                message.markTransferred();
             }
 
             @Override
             public int moveInto(Message source, Message target,
                                 boolean moreFlag) {
-                return InternalAccess.messageMoveInto(source, target, moreFlag);
+                return source.moveInto(target, moreFlag);
             }
 
             @Override

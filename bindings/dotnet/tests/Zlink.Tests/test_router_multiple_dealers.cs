@@ -87,7 +87,7 @@ public sealed class test_router_multiple_dealers
 
         CoreTestSupport.SendWithRetry(dealer, "ping"u8, 2000);
 
-        using var received = new Received();
+        using var received = Received.Create();
         router.Recv(received);
         Assert.Equal("ping", Encoding.UTF8.GetString(
             received.SinglePartOrThrow().AsReadOnlySpan()));
@@ -118,26 +118,24 @@ public sealed class test_router_multiple_dealers
         Thread.Sleep(100);
 
         using Message outbound = Message.From("ping");
-        Assert.True(dealer.Send(outbound));
+        Assert.True(dealer.Send().Message(outbound).Submit());
 
-        using var inbound = new Message();
-        Assert.True(router.RecvPart(inbound, out RoutingId? sourceRid,
-            out bool hasMore));
-        Assert.False(hasMore);
+        using var inbound = Received.Create();
+        Assert.True(router.Recv(inbound));
+        RoutingId? sourceRid = inbound.RoutingId;
         Assert.True(sourceRid.HasValue);
         RoutingId actualSourceRid = sourceRid.GetValueOrDefault();
         Assert.Equal(dealerRid, actualSourceRid);
         Assert.Equal("ping", Encoding.UTF8.GetString(
-            inbound.AsReadOnlySpan()));
+            inbound.FirstPart().AsReadOnlySpan()));
 
         using Message reply = Message.From("pong");
-        Assert.True(router.Send(actualSourceRid, reply));
+        Assert.True(router.Send(actualSourceRid).Message(reply).Submit());
 
-        using var dealerInbound = new Message();
-        Assert.True(dealer.RecvPart(dealerInbound, out bool dealerHasMore));
-        Assert.False(dealerHasMore);
+        using var dealerInbound = Received.Create();
+        Assert.True(dealer.Recv(dealerInbound));
         Assert.Equal("pong", Encoding.UTF8.GetString(
-            dealerInbound.AsReadOnlySpan()));
+            dealerInbound.FirstPart().AsReadOnlySpan()));
     }
 
 }

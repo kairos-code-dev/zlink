@@ -308,9 +308,9 @@ class Registry:
             _validated_uint32(interval_ms, field="interval_ms"),
         )
 
-    def status_snapshot(self):
+    def status(self):
         native = ZlinkRegistryStatus()
-        rc = lib().zlink_registry_status_snapshot(self._handle, ctypes.byref(native))
+        rc = lib().zlink_registry_status(self._handle, ctypes.byref(native))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return RegistryStatus(
@@ -325,7 +325,7 @@ class Registry:
             last_changed_ms=int(native.last_changed_ms),
         )
 
-    def service_summary_snapshot(self, filter_=None):
+    def service_summary(self, filter_=None):
         count = ctypes.c_size_t(0)
         filter_ptr = None
         filter_native = None
@@ -344,7 +344,7 @@ class Registry:
             )
             filter_ptr = ctypes.byref(filter_native)
 
-        rc = lib().zlink_registry_service_summary_snapshot(
+        rc = lib().zlink_registry_service_summary(
             self._handle, filter_ptr, None, ctypes.byref(count)
         )
         if rc != 0:
@@ -353,7 +353,7 @@ class Registry:
             return []
 
         entries = (ZlinkRegistryServiceSummaryEntry * count.value)()
-        rc = lib().zlink_registry_service_summary_snapshot(
+        rc = lib().zlink_registry_service_summary(
             self._handle, filter_ptr, entries, ctypes.byref(count)
         )
         if rc != 0:
@@ -382,13 +382,12 @@ class Registry:
             ),
         )
 
-    def topology_snapshot(self):
-        return _query_topology(self._handle, lib().zlink_registry_topology_snapshot)
-
-    def topology_query(self, filter_):
+    def topology(self, filter_=None):
+        if filter_ is None:
+            return _query_topology(self._handle, lib().zlink_registry_topology)
         return _query_topology(
             self._handle,
-            lib().zlink_registry_topology_query,
+            lib().zlink_registry_topology,
             ctypes.byref(_build_topology_filter(filter_)),
         )
 
@@ -585,19 +584,19 @@ class RegistryQueryClient:
         if rc != 0:
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
-    def snapshot(self, filter_=None):
+    def topology(self, filter_=None):
         filter_ptr = None
         filter_native = None
         if filter_ is not None:
             filter_native = _build_topology_filter(filter_)
             filter_ptr = ctypes.byref(filter_native)
-        return _query_topology(self._handle, lib().zlink_registry_query_snapshot, filter_ptr)
+        return _query_topology(self._handle, lib().zlink_registry_query_client_topology, filter_ptr)
 
     def close(self):
         if not self._handle:
             return
         handle = ctypes.c_void_p(self._handle)
-        rc = lib().zlink_registry_query_destroy(ctypes.byref(handle))
+        rc = lib().zlink_registry_query_client_destroy(ctypes.byref(handle))
         self._handle = None
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())

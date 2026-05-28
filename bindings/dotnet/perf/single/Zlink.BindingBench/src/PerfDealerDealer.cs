@@ -137,7 +137,7 @@ internal static class PerfDealerDealer
         {
             // Reuse one Received envelope for the whole phase (parity with C
             // which reuses a single stack header buffer).
-            using var maybe = new Received();
+            using var maybe = Received.Create();
 
             try
             {

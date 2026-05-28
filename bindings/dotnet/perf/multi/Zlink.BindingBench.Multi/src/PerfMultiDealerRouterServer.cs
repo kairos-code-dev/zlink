@@ -39,7 +39,7 @@ internal static class PerfMultiDealerRouterServer
         var sockets = new[] { (ISocket)server };
         var eventMasks = new[] { SocketPollIn };
         var pendingReplies = new Queue<PendingReply>();
-        using var receivedBuffer = new Received();
+        using var receivedBuffer = Received.Create();
 
         bool stop = false;
         while (!stop)

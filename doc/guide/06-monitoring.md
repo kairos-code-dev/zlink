@@ -342,8 +342,8 @@ applied-HWM fields.
 ```c
 zlink_socket_monitor_open_options_t opts = { .events = ZLINK_EVENT_ALL };
 void *monitor = zlink_socket_monitor_open(socket, &opts);
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(monitor, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(monitor, &snapshot);
 printf("sndq=%llu, rcvq=%llu\n",
        (unsigned long long) snapshot.snd_pending_msgs,
        (unsigned long long) snapshot.rcv_pending_msgs);
@@ -355,8 +355,8 @@ You can also combine snapshot queries inside event callbacks.
 void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 {
     if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
-        zlink_monitor_snapshot_t snapshot;
-        zlink_monitor_snapshot(g_monitor, &snapshot);
+        zlink_monitor_status_t snapshot;
+        zlink_monitor_status(g_monitor, &snapshot);
         printf("Monitor snapshot updated\n");
     }
 }
@@ -369,11 +369,11 @@ handle. For service-layer checks, read snapshots or query results and
 compare them over time.
 
 - Discovery membership: `zlink_discovery_member_peers()`
-- Registry overview: `zlink_registry_status_snapshot()`,
-  `zlink_registry_topology_snapshot()`
-- Spot node state: `zlink_spot_node_status_snapshot()`,
-  `zlink_spot_node_peers_snapshot()`,
-  `zlink_spot_node_subjects_snapshot()`
+- Registry overview: `zlink_registry_status()`,
+  `zlink_registry_topology()`
+- Spot node state: `zlink_spot_node_status()`,
+  `zlink_spot_node_peers()`,
+  `zlink_spot_node_subjects()`
 
 ## 9. Multi-Socket Monitoring
 
@@ -421,8 +421,8 @@ void *mon = zlink_socket_monitor_open(socket, &opts);
 zlink_socket_monitor_handler(mon, on_monitor_event, NULL);
 
 /* Snapshot reads may happen later from another worker thread */
-zlink_monitor_snapshot_t snapshot;
-zlink_monitor_snapshot(mon, &snapshot);
+zlink_monitor_status_t snapshot;
+zlink_monitor_status(mon, &snapshot);
 ```
 
 ### Concurrent Monitor Limitation
@@ -557,14 +557,14 @@ broadcast_control_start();
 
 ### 11.5 Snapshots
 
-`zlink_monitor_snapshot()` and `zlink_*_status_snapshot()` return
+`zlink_monitor_status()` and `zlink_*_status()` return
 a point-in-time view of the current state. Use them for dashboards,
 health checks, and debugging.
 
 ```c
 /* Check current registry health */
 zlink_registry_status_t status;
-zlink_registry_status_snapshot(registry, &status);
+zlink_registry_status(registry, &status);
 printf("state=%d\n", status.state);
 ```
 

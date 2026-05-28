@@ -61,7 +61,7 @@ translation unit이 함께 include하더라도 내부 구현 계약이며 public
 | [`zlink_routing_id_t`](./message.ko.md) | message.ko.md | 피어 라우팅 아이덴티티 |
 | `zlink_socket_msg_handler_fn` | [socket/](./socket/README.ko.md) | raw `STREAM` raw 수신 콜백 |
 | [`zlink_monitor_event_t`](./monitoring.ko.md) | monitoring.ko.md | 모니터 이벤트 구조체 (이벤트, 값, 주소) |
-| [`zlink_monitor_snapshot_t`](./monitoring.ko.md) | monitoring.ko.md | monitor snapshot (state, queue depth) |
+| [`zlink_monitor_status_t`](./monitoring.ko.md) | monitoring.ko.md | monitor snapshot (state, queue depth) |
 | [`zlink_fd_t`](./polling.ko.md) | polling.ko.md | 플랫폼 의존적 파일 디스크립터 타입 |
 
 ## 콜백 타입
@@ -71,7 +71,6 @@ translation unit이 함께 include하더라도 내부 구현 계약이며 public
 | [`zlink_socket_msg_handler_fn`](./socket/README.ko.md) | socket/ | raw `STREAM`의 raw 수신 콜백 타입 |
 | [`zlink_stream_packet_handler_fn`](./socket/README.ko.md) | socket/ | raw `STREAM`의 packet 수신 콜백 타입 |
 | [`zlink_reply_handler_fn`](./socket/README.ko.md) | socket/ | 비동기 request-reply 완료 콜백 |
-| [`zlink_spot_handler_fn`](./service/spot.ko.md) | service/spot.ko.md | SPOT routed 메시지 dispatch 콜백 |
 | [`zlink_spot_dispatch_event_handler_fn`](./service/spot.ko.md) | service/spot.ko.md | SPOT dispatch 이벤트 콜백 |
 | [`zlink_monitor_handler_fn`](./monitoring.ko.md) | monitoring.ko.md | 소켓 모니터 이벤트 콜백 |
 | [`zlink_send_ready_handler_fn`](./socket/README.ko.md) | socket/ | send-ready 전환 콜백 |

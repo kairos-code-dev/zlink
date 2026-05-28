@@ -131,33 +131,33 @@ public final class Registry implements AutoCloseable {
     }
 
     /** Returns a point-in-time registry status snapshot. */
-    public RegistryStatus statusSnapshot() {
+    public RegistryStatus status() {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment out = arena.allocate(NativeLayouts.REGISTRY_STATUS_LAYOUT);
-            int rc = Native.registryStatusSnapshot(handle, out);
+            int rc = Native.registryStatus(handle, out);
             if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_status_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_status");
             return RegistryStatus.fromNative(out);
         }
     }
 
     /** Returns the current service summary snapshot. */
-    public List<RegistryServiceSummaryEntry> serviceSummarySnapshot() {
-        return serviceSummarySnapshot(null);
+    public List<RegistryServiceSummaryEntry> serviceSummary() {
+        return serviceSummary(null);
     }
 
     /** Returns the filtered service summary snapshot. */
-    public List<RegistryServiceSummaryEntry> serviceSummarySnapshot(
+    public List<RegistryServiceSummaryEntry> serviceSummary(
       RegistryServiceSummaryFilter filter) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : filter.toNative(arena);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.registryServiceSummarySnapshot(handle, nativeFilter,
+            int rc = Native.registryServiceSummary(handle, nativeFilter,
               MemorySegment.NULL, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_registry_service_summary_snapshot");
+                  "zlink_registry_service_summary");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
@@ -165,11 +165,11 @@ public final class Registry implements AutoCloseable {
             MemorySegment entries = arena.allocate(
               NativeLayouts.REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT, available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.registryServiceSummarySnapshot(handle, nativeFilter,
+            rc = Native.registryServiceSummary(handle, nativeFilter,
               entries, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_registry_service_summary_snapshot");
+                  "zlink_registry_service_summary");
             }
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
@@ -213,12 +213,12 @@ public final class Registry implements AutoCloseable {
     }
 
     /** Returns the full current topology snapshot. */
-    public List<RegistryTopologyEntry> topologySnapshot() {
+    public List<RegistryTopologyEntry> topology() {
         return readTopology(null);
     }
 
     /** Returns topology entries matching the supplied filter. */
-    public List<RegistryTopologyEntry> topologyQuery(
+    public List<RegistryTopologyEntry> topology(
       RegistryTopologyFilter filter) {
         Objects.requireNonNull(filter, "filter");
         return readTopology(filter);
@@ -239,14 +239,14 @@ public final class Registry implements AutoCloseable {
               : filter.toNative(arena);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = filter == null
-              ? Native.registryTopologySnapshot(handle, MemorySegment.NULL,
+              ? Native.registryTopology(handle, MemorySegment.NULL,
                 count)
-              : Native.registryTopologyQuery(handle, nativeFilter,
+              : Native.registryTopology(handle, nativeFilter,
                 MemorySegment.NULL, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(filter == null
-                  ? "zlink_registry_topology_snapshot"
-                  : "zlink_registry_topology_query");
+                  ? "zlink_registry_topology"
+                  : "zlink_registry_topology");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
@@ -255,13 +255,13 @@ public final class Registry implements AutoCloseable {
               NativeLayouts.REGISTRY_TOPOLOGY_ENTRY_LAYOUT, available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
             rc = filter == null
-              ? Native.registryTopologySnapshot(handle, entries, count)
-              : Native.registryTopologyQuery(handle, nativeFilter, entries,
+              ? Native.registryTopology(handle, entries, count)
+              : Native.registryTopology(handle, nativeFilter, entries,
                 count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(filter == null
-                  ? "zlink_registry_topology_snapshot"
-                  : "zlink_registry_topology_query");
+                  ? "zlink_registry_topology"
+                  : "zlink_registry_topology");
             }
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));

@@ -86,7 +86,7 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
 
     public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
-        var received = new Received();
+        var received = Received.Create();
         if (nativeSocket.Recv(received, flags))
         {
             return received;
@@ -94,19 +94,6 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
 
         received.Dispose();
         return null;
-    }
-
-    public bool RequestFrame(
-        ulong requestSeq,
-        IReadOnlyList<Message> parts,
-        SendFlags flags)
-    {
-        return nativeSocket.RequestFrame(requestSeq, parts, flags);
-    }
-
-    public void Reply(ulong requestToken, IReadOnlyList<Message> parts)
-    {
-        nativeSocket.Reply(requestToken, parts);
     }
 
     public ValueTask DisposeAsync() => nativeSocket.DisposeAsync();

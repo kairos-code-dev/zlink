@@ -161,7 +161,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var received = new Received();
+                var received = Received.Create();
                 if (!_nativeSpot.RecvRoute(received, RecvFlags.DontWait))
                 {
                     received.Dispose();

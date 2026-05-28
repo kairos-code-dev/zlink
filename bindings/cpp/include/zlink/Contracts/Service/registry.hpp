@@ -158,17 +158,17 @@ class registry_t
               _registry, ca, hostname, trust_system_ ? 1 : 0)));
     }
 
-    registry_status_t status_snapshot () const
+    registry_status_t status () const
     {
         zlink_registry_status_t native;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_registry_status_snapshot (_registry, &native)));
+            zlink_registry_status (_registry, &native)));
         return registry_status_t (native);
     }
 
     std::vector<registry_service_summary_entry_t>
-    service_summary_snapshot (
+    service_summary (
       const registry_service_summary_filter_t *filter_ = NULL) const
     {
         zlink_registry_service_summary_filter_t native_filter;
@@ -193,13 +193,13 @@ class registry_t
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_registry_service_summary_snapshot (
+            zlink_registry_service_summary (
               _registry, filter_ptr, NULL, &count)));
         std::vector<zlink_registry_service_summary_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_registry_service_summary_snapshot (
+                zlink_registry_service_summary (
                   _registry, filter_ptr, native.data (), &count)));
             native.resize (count);
         }
@@ -211,24 +211,24 @@ class registry_t
     }
 
     std::vector<registry_service_summary_entry_t>
-    service_summary_snapshot (
+    service_summary (
       const registry_service_summary_filter_t &filter_) const
     {
-        return service_summary_snapshot (&filter_);
+        return service_summary (&filter_);
     }
 
-    std::vector<registry_topology_entry_t> topology_snapshot () const
+    std::vector<registry_topology_entry_t> topology () const
     {
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_registry_topology_snapshot (_registry, NULL, &count)));
+            zlink_registry_topology (_registry, NULL, NULL, &count)));
         std::vector<zlink_registry_topology_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_registry_topology_snapshot (
-                  _registry, native.data (), &count)));
+                zlink_registry_topology (
+                  _registry, NULL, native.data (), &count)));
             native.resize (count);
         }
         std::vector<registry_topology_entry_t> entries;
@@ -239,7 +239,7 @@ class registry_t
     }
 
     std::vector<registry_topology_entry_t>
-    topology_query (const registry_topology_filter_t &filter_) const
+    topology (const registry_topology_filter_t &filter_) const
     {
         zlink_registry_topology_filter_t native_filter;
         std::memset (&native_filter, 0, sizeof (native_filter));
@@ -270,13 +270,13 @@ class registry_t
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_registry_topology_query (
+            zlink_registry_topology (
               _registry, &native_filter, NULL, &count)));
         std::vector<zlink_registry_topology_entry_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_registry_topology_query (
+                zlink_registry_topology (
                   _registry, &native_filter, native.data (), &count)));
             native.resize (count);
         }

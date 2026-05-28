@@ -77,7 +77,7 @@ public sealed class test_discovery_resolve_spot
     private static bool RegistryHasSpotTopology(IRegistry registry,
         string nodeEndpoint, RoutingId spotRid)
     {
-        RegistryTopologyEntry[] entries = registry.TopologyQuery(
+        RegistryTopologyEntry[] entries = registry.Topology(
             new RegistryTopologyFilter(
                 AutoConnectType: AutoConnectType.SpotMesh,
                 ServiceKind: ServiceKind.SpotPub,

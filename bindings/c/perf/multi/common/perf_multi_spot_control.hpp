@@ -455,7 +455,7 @@ inline bool wait_for_connected_peer_count(void *node,
     while (std::chrono::steady_clock::now() < deadline) {
         zlink_spot_node_status_t status;
         std::memset(&status, 0, sizeof(status));
-        if (zlink_spot_node_status_snapshot(node, &status) == 0
+        if (zlink_spot_node_status(node, &status) == 0
             && status.connected_peer_count >= expected_connected_count) {
             return true;
         }

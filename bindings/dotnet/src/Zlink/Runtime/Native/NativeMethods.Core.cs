@@ -39,8 +39,6 @@ internal static partial class NativeMethods
         "zlink_msg_gets",
         "zlink_multipart_close",
         "zlink_dealer_request_part",
-        "zlink_dealer_request_frame_part",
-        "zlink_dealer_reply_part",
         "zlink_dealer_recv_part",
         "zlink_router_request_part",
         "zlink_socket_set_channel_name",
@@ -53,7 +51,6 @@ internal static partial class NativeMethods
         "zlink_spot_request_router_part",
         "zlink_spot_reply_spot_part",
         "zlink_spot_reply_router_part",
-        "zlink_spot_handler",
         "zlink_spot_dispatch_event_handler",
         "zlink_spot_recv_part",
         "zlink_stream_attach_actor_gateway",
@@ -67,7 +64,7 @@ internal static partial class NativeMethods
         "zlink_spot_request_channel_part",
         "zlink_spot_publish_part",
         "zlink_spot_subscribe_part",
-        "zlink_spot_subscription_event_recv",
+        "zlink_spot_recv_subscription_event",
         "zlink_spot_node_connect_router_channel_peer",
         "zlink_spot_node_disconnect_router_channel_peer",
         "zlink_spot_node_disconnect_router_channel_peer_rid",
@@ -89,13 +86,13 @@ internal static partial class NativeMethods
         "zlink_spot_actor_join_reply",
         "zlink_spot_node_actor_leave_spot",
         "zlink_spot_node_actor_recv_part",
-        "zlink_spot_actor_lifecycle_handler",
+        "zlink_spot_recv_actor_lifecycle",
         "zlink_spot_node_entry_spot",
         "zlink_spot_node_spot_get_or_new",
         "zlink_spot_node_spot_lookup",
-        "zlink_spot_node_spots_snapshot",
-        "zlink_spot_node_actors_snapshot",
-        "zlink_spot_actors_snapshot",
+        "zlink_spot_node_spots",
+        "zlink_spot_node_actors",
+        "zlink_spot_actors",
         "zlink_timer_new",
         "zlink_spot_timer_new",
         "zlink_timer_destroy",
@@ -232,31 +229,13 @@ internal static partial class NativeMethods
         IntPtr userData);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal unsafe delegate void ZlinkSpotRequestHandlerDelegate(
-        ZlinkRoutingId* sourceRoutingId, ZlinkRoutingId* spotRoutingId,
-        ulong requestSeq, IntPtr parts, nuint partCount, IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal unsafe delegate void ZlinkSpotDispatchEventHandlerDelegate(
         IntPtr spot, ZlinkSpotDispatchInfoNative* info, IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal unsafe delegate void ZlinkSpotActorLifecycleHandlerDelegate(
-        IntPtr spot, ZlinkSpotActorLifecycleInfo* info, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_dealer_request_part(IntPtr dealer,
         ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag, uint timeoutMs,
         IntPtr handler, IntPtr userData);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_dealer_request_frame_part(IntPtr dealer,
-        ulong requestSeq, ref ZlinkMsg part, int flags,
-        ZlinkPartFlag partFlag);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_dealer_reply_part(IntPtr dealer,
-        ulong requestToken, ref ZlinkMsg part, ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_dealer_recv_part(IntPtr dealer,
@@ -333,10 +312,6 @@ internal static partial class NativeMethods
     internal static extern int zlink_spot_reply_router_part(IntPtr spot,
         ref ZlinkRoutingId peerRoutingId, ulong requestSeq,
         ref ZlinkMsg part, ZlinkPartFlag partFlag);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_handler(IntPtr spot,
-        ZlinkSpotRequestHandlerDelegate handler, IntPtr userData);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_dispatch_event_handler(IntPtr spot,

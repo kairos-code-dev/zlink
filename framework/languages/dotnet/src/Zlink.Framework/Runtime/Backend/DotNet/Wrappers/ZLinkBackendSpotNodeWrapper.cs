@@ -78,21 +78,21 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
             nativeSpotNode.GetOrCreateSpot(spotRid, out created));
     }
 
-    public ZLinkSpotNodeStatus StatusSnapshot()
+    public ZLinkSpotNodeStatus Status()
     {
-        return nativeSpotNode.StatusSnapshot().ToFramework();
+        return nativeSpotNode.Status().ToFramework();
     }
 
-    public IReadOnlyList<ZLinkSpotNodePeerEntry> PeersSnapshot()
+    public IReadOnlyList<ZLinkSpotNodePeerEntry> Peers()
     {
-        return nativeSpotNode.PeersSnapshot()
+        return nativeSpotNode.Peers()
             .Select(static entry => entry.ToFramework())
             .ToArray();
     }
 
-    public IReadOnlyList<ZLinkSpotNodeSubjectEntry> SubjectsSnapshot()
+    public IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects()
     {
-        return nativeSpotNode.SubjectsSnapshot()
+        return nativeSpotNode.Subjects()
             .Select(static entry => entry.ToFramework())
             .ToArray();
     }

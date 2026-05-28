@@ -84,6 +84,7 @@ struct spot_dispatch_state_t
     std::deque<zlink_spot_dispatch_info_t> subscribe_pending;
     std::deque<zlink_spot_dispatch_info_t> routed_pending;
     std::deque<zlink_spot_dispatch_info_t> actor_join_pending;
+    std::deque<zlink_spot_dispatch_info_t> actor_lifecycle_pending;
     std::deque<zlink_spot_dispatch_info_t> actor_readable_pending;
     std::deque<zlink_spot_dispatch_info_t> channel_reply_pending;
     std::deque<zlink_spot_dispatch_info_t> timer_pending;
@@ -185,8 +186,6 @@ struct spot_request_reply_recv_state_t
 
     spot_subscribe_dispatch_queue_t subscribe_queue;
     routed_message_queue_t routed_recv_queue;
-    zlink_spot_handler_fn request_handler;
-    void *request_handler_userdata;
 };
 
 struct spot_request_reply_completion_state_t

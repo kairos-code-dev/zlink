@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -54,7 +55,9 @@ public class CallbackModeContractTest {
                     received.singlePartOrThrow().toByteArray());
                 assertTrue(received.isSinglePart());
             }
-            assertTrue(left.recvNoWait().isEmpty());
+            try (Received probe = new Received()) {
+                assertFalse(left.recv(probe, systems.zlink.contracts.sockets.RecvFlags.DONT_WAIT));
+            }
         }
     }
 
@@ -83,10 +86,10 @@ public class CallbackModeContractTest {
             discovery.connectRegistry(registryRouter);
             publisherNode.attachDiscovery(discovery);
             publisherNode.setPubBind(TestSupport.tcpEndpoint());
-            String endpoint = publisherNode.statusSnapshot().localEndpoint();
+            String endpoint = publisherNode.status().localEndpoint();
             subscriberNode.connectPeer(endpoint);
             subscriber.setSubscription("alpha");
-            awaitCondition(() -> subscriberNode.statusSnapshot()
+            awaitCondition(() -> subscriberNode.status()
                 .connectedPeerCount() > 0, "spot peer connection");
 
             subscriber.onDispatchEvent(info -> {
@@ -120,15 +123,23 @@ public class CallbackModeContractTest {
         CountDownLatch delivered = new CountDownLatch(1);
 
         try (Context ctx = new Context();
+             Registry registry = new Registry(ctx);
+             Discovery discovery = new Discovery(ctx,
+               AutoConnectType.SPOT_MESH, "dispatch-drain");
              SpotNode publisherNode = new SpotNode(ctx);
              SpotNode subscriberNode = new SpotNode(ctx);
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
+            String registryPub = TestSupport.tcpEndpoint();
+            String registryRouter = TestSupport.tcpEndpoint();
+            registry.bind(registryPub, registryRouter);
+            discovery.connectRegistry(registryRouter);
+            publisherNode.attachDiscovery(discovery);
             publisherNode.setPubBind(TestSupport.tcpEndpoint());
-            subscriberNode.connectPeer(publisherNode.statusSnapshot()
+            subscriberNode.connectPeer(publisherNode.status()
                 .localEndpoint());
             subscriber.setSubscription("close-race");
-            awaitCondition(() -> subscriberNode.statusSnapshot()
+            awaitCondition(() -> subscriberNode.status()
                 .connectedPeerCount() > 0, "spot peer connection");
 
             subscriber.onDispatchEvent(info -> {
@@ -164,12 +175,11 @@ public class CallbackModeContractTest {
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
             publisherNode.setPubBind(TestSupport.tcpEndpoint());
-            subscriberNode.connectPeer(publisherNode.statusSnapshot()
+            subscriberNode.connectPeer(publisherNode.status()
                 .localEndpoint());
             subscriber.setSubscription("drain");
-            awaitCondition(() -> subscriberNode.statusSnapshot()
+            awaitCondition(() -> subscriberNode.status()
                 .connectedPeerCount() > 0, "spot peer connection");
-
             subscriber.onDispatchEvent(info -> {
                 if (info.event() != SpotDispatchEvent.SUBSCRIBE_READABLE) {
                     return;
@@ -182,8 +192,13 @@ public class CallbackModeContractTest {
                 }
             });
 
-            try (Message part = Message.from("dispatch-drain")) {
-                publisher.publish("drain").message(part).submit();
+            long deadline = System.nanoTime()
+              + TimeUnit.MILLISECONDS.toNanos(TestSupport.DEFAULT_TIMEOUT_MS);
+            while (drained.getCount() > 0 && System.nanoTime() < deadline) {
+                try (Message part = Message.from("dispatch-drain")) {
+                    publisher.publish("drain").message(part).submit();
+                }
+                drained.await(10, TimeUnit.MILLISECONDS);
             }
 
             assertTrue(drained.await(TestSupport.DEFAULT_TIMEOUT_MS,
@@ -215,9 +230,9 @@ public class CallbackModeContractTest {
             replier.onDispatchEvent(info -> {
             });
             serverNode.setPubBind(TestSupport.tcpEndpoint());
-            clientNode.connectPeer(serverNode.statusSnapshot()
+            clientNode.connectPeer(serverNode.status()
                 .localEndpoint());
-            awaitCondition(() -> clientNode.statusSnapshot()
+            awaitCondition(() -> clientNode.status()
                 .connectedPeerCount() > 0, "spot request peer connection");
 
             try (Message request = Message.from("timeout-request")) {

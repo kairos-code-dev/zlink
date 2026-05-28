@@ -38,6 +38,72 @@ struct bench_result_t
     }
 };
 
+enum pubsub_recv_result_t
+{
+    pubsub_recv_error = -1,
+    pubsub_recv_empty = 0,
+    pubsub_recv_payload = 1,
+    pubsub_recv_stop = 2
+};
+
+pubsub_recv_result_t recv_one_pubsub_message (
+  ::perf::socket_t &sock,
+  size_t expected_msg_size,
+  perf_metric::header_t *header_out)
+{
+    void *handle = sock.handle ();
+    if (!handle)
+        return pubsub_recv_error;
+
+    const zlink_routing_id_t *source_rid = NULL;
+    char topic[256];
+    size_t topic_len = sizeof (topic);
+    zlink_msg_t part;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+    if (zlink_msg_init (&part) != 0)
+        return pubsub_recv_error;
+
+    const int rc = zlink_subscribe_part (
+      handle, &source_rid, topic, sizeof (topic), &topic_len, &part, &has_more,
+      ZLINK_RECV_FLAGS_DONTWAIT);
+    if (rc != ZLINK_RECV_OK) {
+        const int err = zlink_errno ();
+        zlink_msg_close (&part);
+        if (err == EAGAIN || err == EINTR)
+            return pubsub_recv_empty;
+        return pubsub_recv_error;
+    }
+
+    if ((source_rid && source_rid->size > 0)
+        || topic_len != std::strlen (k_topic)
+        || std::memcmp (topic, k_topic, topic_len) != 0
+        || has_more != ZLINK_PART_FINAL) {
+        zlink_msg_close (&part);
+        return pubsub_recv_payload;
+    }
+
+    const size_t recv_size = zlink_msg_size (&part);
+    void *recv_data = zlink_msg_data (&part);
+    if (perf::multi::is_stop_token (recv_data, recv_size)) {
+        zlink_msg_close (&part);
+        return pubsub_recv_stop;
+    }
+
+    perf_metric::header_t header;
+    const bool decoded =
+      perf_metric::decode_payload_header (recv_data, recv_size, &header);
+    zlink_msg_close (&part);
+    if (!decoded || header.magic != perf_metric::k_magic
+        || header.run_id != k_run_id
+        || header.msg_size != static_cast<uint32_t> (expected_msg_size)) {
+        return pubsub_recv_payload;
+    }
+
+    if (header_out)
+        *header_out = header;
+    return pubsub_recv_payload;
+}
+
 class pubsub_client_bench_t
 {
   public:
@@ -219,44 +285,15 @@ class pubsub_client_bench_t
                     continue;
 
                 for (;;) {
-                    zlink::topic_message_t received;
-                    const int recv_rc =
-                      sock->subscribe (received, ZLINK_DONTWAIT);
-                    if (recv_rc != 0) {
-                        const int err = errno;
-                        if (err == EAGAIN)
-                            break;
-                        if (err == EINTR)
-                            continue;
+                    perf_metric::header_t header = {};
+                    const pubsub_recv_result_t recv_rc =
+                      recv_one_pubsub_message (*sock, _msg_size, &header);
+                    if (recv_rc == pubsub_recv_error)
                         return false;
-                    }
-
-                    if (received.topic () != k_topic || received.parts ().empty ()) {
-                        continue;
-                    }
-
-                    const zlink::message_t &part = received.parts ()[0];
-                    const size_t recv_size = part.size ();
-
-                    // Check the wire-level stop token BEFORE parsing the
-                    // payload header (matches C reference
-                    // recv_one_pubsub_message lines 76-79).
-                    if (perf::multi::is_stop_token (
-                          part.data (), recv_size)) {
+                    if (recv_rc == pubsub_recv_empty)
+                        break;
+                    if (recv_rc == pubsub_recv_stop) {
                         phase_done = true;
-                        continue;
-                    }
-
-                    perf_metric::header_t header;
-                    if (!perf_metric::decode_payload_header (
-                          part.data (),
-                          recv_size,
-                          &header)) {
-                        continue;
-                    }
-                    if (header.magic != perf_metric::k_magic
-                        || header.run_id != k_run_id
-                        || header.msg_size != static_cast<uint32_t> (_msg_size)) {
                         continue;
                     }
 

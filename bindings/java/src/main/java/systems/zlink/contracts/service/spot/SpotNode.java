@@ -571,20 +571,20 @@ public final class SpotNode implements AutoCloseable {
     }
 
     /** Returns the current node status snapshot. */
-    public SpotNodeStatus statusSnapshot() {
+    public SpotNodeStatus status() {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment out = arena.allocate(NativeLayouts.SPOT_NODE_STATUS_LAYOUT);
-            int rc = Native.spotNodeStatusSnapshot(handle, out);
+            int rc = Native.spotNodeStatus(handle, out);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_status_snapshot");
+                  "zlink_spot_node_status");
             }
             return SpotNodeStatus.fromNative(out);
         }
     }
 
     /** Returns the current peer snapshot. */
-    public List<SpotNodePeerEntry> peersSnapshot() {
+    public List<SpotNodePeerEntry> peers() {
         return readPeerEntries(null);
     }
 
@@ -595,22 +595,22 @@ public final class SpotNode implements AutoCloseable {
     }
 
     /** Returns the current subject snapshot. */
-    public List<SpotNodeSubjectEntry> subjectsSnapshot() {
-        return subjectsSnapshot(null);
+    public List<SpotNodeSubjectEntry> subjects() {
+        return subjects(null);
     }
 
     /** Returns subject entries matching the supplied filter. */
-    public List<SpotNodeSubjectEntry> subjectsSnapshot(
+    public List<SpotNodeSubjectEntry> subjects(
       SpotNodeSubjectFilter filter) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : filter.toNative(arena);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotNodeSubjectsSnapshot(handle, nativeFilter,
+            int rc = Native.spotNodeSubjects(handle, nativeFilter,
               MemorySegment.NULL, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_subjects_snapshot");
+                  "zlink_spot_node_subjects");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
@@ -618,11 +618,11 @@ public final class SpotNode implements AutoCloseable {
             MemorySegment entries = arena.allocate(
               NativeLayouts.SPOT_NODE_SUBJECT_ENTRY_LAYOUT, available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodeSubjectsSnapshot(handle, nativeFilter, entries,
+            rc = Native.spotNodeSubjects(handle, nativeFilter, entries,
               count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_subjects_snapshot");
+                  "zlink_spot_node_subjects");
             }
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
@@ -638,22 +638,22 @@ public final class SpotNode implements AutoCloseable {
     }
 
     /** Returns diagnostic socket snapshot rows that exist on this node. */
-    public List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot() {
+    public List<SpotNodeSocketEntry> internalSockets() {
         return socketSnapshots(null);
     }
 
-    List<SpotNodeSocketSnapshotEntry> socketSnapshots() {
-        return internalSocketsSnapshot();
+    List<SpotNodeSocketEntry> socketSnapshots() {
+        return internalSockets();
     }
 
-    public List<SpotNodeSpotEntry> spotsSnapshot() {
+    public List<SpotNodeSpotEntry> spots() {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotNodeSpotsSnapshot(handle, MemorySegment.NULL,
+            int rc = Native.spotNodeSpots(handle, MemorySegment.NULL,
               count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_spots_snapshot");
+                  "zlink_spot_node_spots");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0) {
@@ -662,10 +662,10 @@ public final class SpotNode implements AutoCloseable {
             MemorySegment entries = arena.allocate(
               NativeLayouts.SPOT_NODE_SPOT_ENTRY_LAYOUT, available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodeSpotsSnapshot(handle, entries, count);
+            rc = Native.spotNodeSpots(handle, entries, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_spots_snapshot");
+                  "zlink_spot_node_spots");
             }
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
@@ -679,14 +679,14 @@ public final class SpotNode implements AutoCloseable {
         }
     }
 
-    public List<SpotNodeActorEntry> actorsSnapshot() {
+    public List<SpotNodeActorEntry> actors() {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotNodeActorsSnapshot(handle, MemorySegment.NULL,
+            int rc = Native.spotNodeActors(handle, MemorySegment.NULL,
               count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_actors_snapshot");
+                  "zlink_spot_node_actors");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0) {
@@ -695,10 +695,10 @@ public final class SpotNode implements AutoCloseable {
             MemorySegment entries = arena.allocate(
               NativeLayouts.SPOT_NODE_ACTOR_ENTRY_LAYOUT, available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodeActorsSnapshot(handle, entries, count);
+            rc = Native.spotNodeActors(handle, entries, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_actors_snapshot");
+                  "zlink_spot_node_actors");
             }
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
@@ -713,17 +713,17 @@ public final class SpotNode implements AutoCloseable {
     }
 
     /** Returns diagnostic socket snapshot rows matching the supplied filter. */
-    public List<SpotNodeSocketSnapshotEntry> internalSocketsSnapshot(
-      SpotNodeSocketSnapshotFilter filter) {
+    public List<SpotNodeSocketEntry> internalSockets(
+      SpotNodeSocketFilter filter) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : filter.toNative(arena);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotNodeInternalSocketsSnapshot(handle,
+            int rc = Native.spotNodeInternalSockets(handle,
               nativeFilter, MemorySegment.NULL, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_internal_sockets_snapshot");
+                  "zlink_spot_node_internal_sockets");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
@@ -731,29 +731,29 @@ public final class SpotNode implements AutoCloseable {
             MemorySegment entries = arena.allocate(
               NativeLayouts.SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT, available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodeInternalSocketsSnapshot(handle, nativeFilter,
+            rc = Native.spotNodeInternalSockets(handle, nativeFilter,
               entries, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_internal_sockets_snapshot");
+                  "zlink_spot_node_internal_sockets");
             }
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
             long stride =
               NativeLayouts.SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteSize();
-            ArrayList<SpotNodeSocketSnapshotEntry> out =
+            ArrayList<SpotNodeSocketEntry> out =
               new ArrayList<>(actual);
             for (int i = 0; i < actual; i++) {
-                out.add(SpotNodeSocketSnapshotEntry.fromNative(entries.asSlice(
+                out.add(SpotNodeSocketEntry.fromNative(entries.asSlice(
                   (long) i * stride, stride)));
             }
             return List.copyOf(out);
         }
     }
 
-    List<SpotNodeSocketSnapshotEntry> socketSnapshots(
-      SpotNodeSocketSnapshotFilter filter) {
-        return internalSocketsSnapshot(filter);
+    List<SpotNodeSocketEntry> socketSnapshots(
+      SpotNodeSocketFilter filter) {
+        return internalSockets(filter);
     }
 
     @Override
@@ -845,13 +845,13 @@ public final class SpotNode implements AutoCloseable {
               : filter.toNative(arena);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = filter == null
-              ? Native.spotNodePeersSnapshot(handle, MemorySegment.NULL, count)
+              ? Native.spotNodePeers(handle, MemorySegment.NULL, count)
               : Native.spotNodePeersQuery(handle, nativeFilter,
                 MemorySegment.NULL, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(filter == null
-                  ? "zlink_spot_node_peers_snapshot"
-                  : "zlink_spot_node_peers_query");
+                  ? "zlink_spot_node_peers"
+                  : "zlink_spot_node_peers");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
@@ -860,12 +860,12 @@ public final class SpotNode implements AutoCloseable {
               NativeLayouts.SPOT_NODE_PEER_ENTRY_LAYOUT, available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
             rc = filter == null
-              ? Native.spotNodePeersSnapshot(handle, entries, count)
+              ? Native.spotNodePeers(handle, entries, count)
               : Native.spotNodePeersQuery(handle, nativeFilter, entries, count);
             if (rc != 0) {
                 throw InternalAccess.zlinkExceptionFromLastError(filter == null
-                  ? "zlink_spot_node_peers_snapshot"
-                  : "zlink_spot_node_peers_query");
+                  ? "zlink_spot_node_peers"
+                  : "zlink_spot_node_peers");
             }
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));

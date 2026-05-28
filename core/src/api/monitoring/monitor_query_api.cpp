@@ -41,7 +41,7 @@ bool copy_u64_frame (const zlink::scoped_msg_t &frame_, uint64_t *out_)
 }
 
 int socket_monitor_snapshot_provider (void *subject_,
-                                      zlink_monitor_snapshot_t *out_)
+                                      zlink_monitor_status_t *out_)
 {
     zlink::socket_base_t *socket =
       static_cast<zlink::socket_base_t *> (subject_);
@@ -147,8 +147,8 @@ zlink_recv_result_t zlink_socket_monitor_recv (void *monitor_,
                                            static_cast<int> (flags_)));
 }
 
-zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
-                                              zlink_monitor_snapshot_t *out_)
+zlink_config_result_t zlink_monitor_status (void *monitor_,
+                                              zlink_monitor_status_t *out_)
 {
     if (!out_) {
         errno = EINVAL;

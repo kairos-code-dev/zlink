@@ -1483,6 +1483,30 @@ struct spot_actor_lifecycle_info_t
     uint32_t flags;
 };
 
+enum class spot_actor_lifecycle_event_kind_t : int
+{
+    joined = ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED,
+    left = ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT
+};
+
+struct spot_actor_lifecycle_event_t
+{
+    spot_actor_lifecycle_event_t ()
+        : kind (spot_actor_lifecycle_event_kind_t::joined), info ()
+    {
+    }
+
+    explicit spot_actor_lifecycle_event_t (
+      const zlink_spot_actor_lifecycle_event_t &native_)
+        : kind (static_cast<spot_actor_lifecycle_event_kind_t> (native_.kind)),
+          info (native_.info)
+    {
+    }
+
+    spot_actor_lifecycle_event_kind_t kind;
+    spot_actor_lifecycle_info_t info;
+};
+
 using actor_join_callback_t =
   std::function<void(const actor_join_result_t &, std::vector<message_t>)>;
 
@@ -1491,9 +1515,6 @@ using actor_join_entry_spot_callback_t =
 
 using actor_lookup_callback_t =
   std::function<void(const actor_lookup_result_t &)>;
-
-using spot_actor_lifecycle_callback_t =
-  std::function<void(service::spot_t &, const spot_actor_lifecycle_info_t &)>;
 
 enum class spot_kind : int
 {
@@ -1958,16 +1979,16 @@ inline monitor_state operator| (monitor_state a, monitor_state b)
                                        | static_cast<uint32_t> (b));
 }
 
-enum class monitor_snapshot_detail : uint32_t
+enum class monitor_status_detail : uint32_t
 {
-    snd_pending_msgs = ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS,
-    rcv_pending_msgs = ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS
+    snd_pending_msgs = ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS,
+    rcv_pending_msgs = ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS
 };
 
-inline monitor_snapshot_detail operator| (monitor_snapshot_detail a,
-                                          monitor_snapshot_detail b)
+inline monitor_status_detail operator| (monitor_status_detail a,
+                                          monitor_status_detail b)
 {
-    return static_cast<monitor_snapshot_detail> (
+    return static_cast<monitor_status_detail> (
       static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
 }
 
@@ -2056,9 +2077,9 @@ struct monitor_event_t
     std::string remote_addr;
 };
 
-struct monitor_snapshot_t
+struct monitor_status_t
 {
-    monitor_snapshot_t ()
+    monitor_status_t ()
         : source_kind (monitor_source_kind::socket), state_flags (0),
           detail_flags (0), snd_pending_msgs (0), rcv_pending_msgs (0),
           auto_hwm_enabled (false), auto_hwm_profile (0),
@@ -2075,7 +2096,7 @@ struct monitor_snapshot_t
     {
     }
 
-    explicit monitor_snapshot_t (const zlink_monitor_snapshot_t &native_)
+    explicit monitor_status_t (const zlink_monitor_status_t &native_)
         : source_kind (
             static_cast<monitor_source_kind> (native_.source_kind)),
           state_flags (native_.state_flags),
@@ -2884,25 +2905,25 @@ class spot_node_subject_filter_t
     std::optional<subject_kind_t> subject_kind_;
 };
 
-class spot_node_socket_snapshot_filter_t
+class spot_node_socket_filter_t
 {
   public:
-    spot_node_socket_snapshot_filter_t () = default;
+    spot_node_socket_filter_t () = default;
 
-    spot_node_socket_snapshot_filter_t &owner (spot_node_socket_owner_t value_)
+    spot_node_socket_filter_t &owner (spot_node_socket_owner_t value_)
     {
         owner_ = value_;
         return *this;
     }
 
-    spot_node_socket_snapshot_filter_t &socket_type (
+    spot_node_socket_filter_t &socket_type (
       spot_node_socket_type_t value_)
     {
         socket_type_ = value_;
         return *this;
     }
 
-    spot_node_socket_snapshot_filter_t &socket_name (std::string value_)
+    spot_node_socket_filter_t &socket_name (std::string value_)
     {
         socket_name_ = std::move (value_);
         return *this;
@@ -2929,18 +2950,18 @@ class spot_node_socket_snapshot_filter_t
     std::optional<std::string> socket_name_;
 };
 
-class spot_node_socket_snapshot_entry_t
+class spot_node_socket_entry_t
 {
   public:
-    spot_node_socket_snapshot_entry_t ()
+    spot_node_socket_entry_t ()
         : owner_ (spot_node_socket_owner::any), owner_id_ (0), owner_name_ (),
           socket_name_ (), socket_type_ (spot_node_socket_type_t::pair),
-          auto_hwm_visible_ (false), snapshot_ ()
+          auto_hwm_visible_ (false), monitor_status_ ()
     {
     }
 
-    explicit spot_node_socket_snapshot_entry_t (
-      const zlink_spot_node_socket_snapshot_entry_t &entry_)
+    explicit spot_node_socket_entry_t (
+      const zlink_spot_node_socket_entry_t &entry_)
         : owner_ (static_cast<spot_node_socket_owner> (entry_.owner)),
           owner_id_ (entry_.owner_id),
           owner_name_ (fixed_string_to_string (entry_.owner_name)),
@@ -2948,7 +2969,7 @@ class spot_node_socket_snapshot_entry_t
           socket_type_ (
             static_cast<spot_node_socket_type_t> (entry_.socket_type)),
           auto_hwm_visible_ (entry_.auto_hwm_visible != 0),
-          snapshot_ (entry_.snapshot)
+          monitor_status_ (entry_.monitor_status)
     {
     }
 
@@ -2967,7 +2988,7 @@ class spot_node_socket_snapshot_entry_t
 
     bool auto_hwm_visible () const noexcept { return auto_hwm_visible_; }
 
-    const monitor_snapshot_t &snapshot () const noexcept { return snapshot_; }
+    const monitor_status_t &monitor_status () const noexcept { return monitor_status_; }
 
   private:
     spot_node_socket_owner owner_;
@@ -2976,7 +2997,7 @@ class spot_node_socket_snapshot_entry_t
     std::string socket_name_;
     spot_node_socket_type_t socket_type_;
     bool auto_hwm_visible_;
-    monitor_snapshot_t snapshot_;
+    monitor_status_t monitor_status_;
 };
 
 class spot_node_spot_entry_t

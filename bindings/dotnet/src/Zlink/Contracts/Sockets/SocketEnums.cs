@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Collections.Generic;
-
 namespace Systems.Zlink;
 
 public enum SocketType
@@ -45,31 +43,3 @@ public enum RecvFlags
     None = 0,
     DontWait = 1
 }
-
-public enum RequestResult
-{
-    Ok = 0,
-    TimedOut = 101,
-    NotFound = 102,
-    Terminated = 103,
-    ProtocolError = 104,
-    InternalError = 105,
-    Rejected = 106,
-    Conflict = 107,
-    Busy = 108,
-    NotConnected = 109,
-    InvalidArgument = 110,
-    InvalidState = 111,
-    NotSupported = 112
-}
-
-public enum ReceivedMessageType
-{
-    Raw = 0,
-    Request = 1,
-    Reply = 2,
-    ErrorReply = 3
-}
-
-public delegate void RequestCallback(RequestResult result,
-    IReadOnlyList<Message> parts);

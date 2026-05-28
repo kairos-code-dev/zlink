@@ -10,7 +10,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
-public record SpotNodeSocketSnapshotFilter(
+public record SpotNodeSocketFilter(
     SpotNodeSocketOwner owner,
     SocketType socketType,
     String socketName) {

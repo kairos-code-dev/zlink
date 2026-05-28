@@ -18,7 +18,7 @@ namespace {
 static const char *k_pattern = "MULTI_SPOT_SENDSEND";
 static const char *k_server_node_rid = "SPOT-SENDSEND-SERVER-NODE";
 static const char *k_server_spot_rid = "SPOT-SENDSEND-SERVER-SPOT";
-static const char *k_control_topic = "bench";
+static const char *k_control_topic = "bench-spot-sendsend";
 
 bool bench_debug_enabled ()
 {
@@ -243,6 +243,11 @@ bool run_server (const std::string &lib_name,
 
     bool ok = true;
     for (size_t msg_size : msg_sizes) {
+        if (!perf::multi::apply_spot_auto_hwm_msg_unit (ctx.ctx (), msg_size)
+            || !perf::multi::recalculate_auto_hwm (ctx)) {
+            ok = false;
+            break;
+        }
         if (!wait_for_start (msg_size, start_timeout_ms)) {
             ok = false;
             break;
@@ -253,6 +258,10 @@ bool run_server (const std::string &lib_name,
               k_control_topic,
               msg_size,
               std::max<size_t> (1, settings.clients),
+              start_timeout_ms)
+            || !perf::multi::wait_for_spot_node_connected_peer_count (
+              node,
+              1,
               start_timeout_ms)
             || !perf::multi::publish_control_payload (
               control_pub,

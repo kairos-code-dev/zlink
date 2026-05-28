@@ -36,30 +36,23 @@ public sealed class test_spot_router_channel_peer
             () => HasRouterChannelPeer(node, endpoint),
             timeoutMs: 5000),
             string.Join(Environment.NewLine,
-                Array.ConvertAll(node.PeersSnapshot(),
+                Array.ConvertAll(node.Peers(),
                     entry => entry.ToString())));
-        using var received = new Message();
-        RoutingId? sourceRid = null;
-        RoutingId? sourceSpotRid = null;
-        ulong? requestSeq = null;
-        bool hasMore = false;
+        using var received = Received.Create();
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
             {
                 using Message sent = Message.From("hello-spot-route");
                 _ = router.SendToSpot(nodeRid, spotRid).Message(sent).Submit();
-                return spot.RecvRoutedPart(received, out sourceRid,
-                    out sourceSpotRid, out requestSeq, out hasMore,
-                    RecvFlags.DontWait);
+                return spot.RecvRouted(received, RecvFlags.DontWait);
             },
             timeoutMs: 5000));
 
         Assert.Equal("hello-spot-route",
-            Encoding.UTF8.GetString(received.AsReadOnlySpan()).Trim('\0'));
-        Assert.Equal(routerRid, sourceRid);
-        Assert.Null(sourceSpotRid);
-        Assert.Null(requestSeq);
-        Assert.False(hasMore);
+            Encoding.UTF8.GetString(received.FirstPart().AsReadOnlySpan()).Trim('\0'));
+        Assert.Equal(routerRid, received.RoutingId);
+        Assert.Null(received.SpotRid);
+        Assert.Null(received.RequestSeq);
     }
 
     [Fact]
@@ -85,11 +78,17 @@ public sealed class test_spot_router_channel_peer
         string endpoint = router.Options.LastEndpoint;
         node.ConnectRouterChannelPeer("api", endpoint);
 
-        spot.OnRoutedReceive(received =>
+        spot.SetDispatchHandler(info =>
         {
-            using (received)
-            using (Message reply = Message.From("reply-from-spot"))
+            if (info.Event != SpotDispatchEvent.RoutedReadable)
+                return;
+
+            while (true)
             {
+                using var received = Received.Create();
+                if (!spot.RecvRouted(received, RecvFlags.DontWait))
+                    return;
+                using Message reply = Message.From("reply-from-spot");
                 received.Reply().Message(reply).Submit();
             }
         });
@@ -142,14 +141,14 @@ public sealed class test_spot_router_channel_peer
         string endpoint = router.Options.LastEndpoint;
         node.ConnectRouterChannelPeer("api", endpoint);
 
-        spot.OnDispatchEvent(info =>
+        spot.SetDispatchHandler(info =>
         {
             if (info.Event != SpotDispatchEvent.RoutedReadable)
                 return;
 
             while (true)
             {
-                using var received = new Received();
+                using var received = Received.Create();
                 if (!spot.RecvRouted(received, RecvFlags.DontWait))
                     return;
                 using Message reply = Message.From("dispatch-reply");
@@ -186,7 +185,7 @@ public sealed class test_spot_router_channel_peer
 
     private static bool HasRouterChannelPeer(ISpotNode node, string endpoint)
     {
-        foreach (SpotNodePeerEntry entry in node.PeersSnapshot())
+        foreach (SpotNodePeerEntry entry in node.Peers())
         {
             if (entry.Kind == SpotPeerKind.RouterChannel
                 && entry.Source == SpotPeerSource.Manual

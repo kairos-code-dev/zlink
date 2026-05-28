@@ -3,7 +3,7 @@
 from .ffi import (
     ZlinkMemberPeerEntry,
     ZlinkMonitorEvent,
-    ZlinkMonitorSnapshot,
+    ZlinkMonitorStatus,
     ZlinkMsg,
     ZlinkPollItem,
     ZlinkPollerEvent,
@@ -16,7 +16,7 @@ from .ffi import (
 __all__ = [
     "ZlinkMemberPeerEntry",
     "ZlinkMonitorEvent",
-    "ZlinkMonitorSnapshot",
+    "ZlinkMonitorStatus",
     "ZlinkMsg",
     "ZlinkPollItem",
     "ZlinkPollerEvent",

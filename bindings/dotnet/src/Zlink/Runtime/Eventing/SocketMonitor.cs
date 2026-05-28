@@ -71,10 +71,10 @@ internal sealed class SocketMonitor : ISocketMonitor
         return monitorEvent != null;
     }
 
-    public MonitorSnapshot Snapshot()
+    public MonitorStatus Status()
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_monitor_snapshot(_handle, out var native);
+        int rc = NativeMethods.zlink_monitor_status(_handle, out var native);
         if (rc != 0)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
         return MonitorConverters.FromNative(ref native);

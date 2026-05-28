@@ -85,6 +85,18 @@ typedef struct zlink_spot_actor_lifecycle_info_t
     uint32_t flags;
 } zlink_spot_actor_lifecycle_info_t;
 
+typedef enum zlink_spot_actor_lifecycle_event_kind_t
+{
+    ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED = 1,
+    ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT = 2
+} zlink_spot_actor_lifecycle_event_kind_t;
+
+typedef struct zlink_spot_actor_lifecycle_event_t
+{
+    zlink_spot_actor_lifecycle_event_kind_t kind;
+    zlink_spot_actor_lifecycle_info_t info;
+} zlink_spot_actor_lifecycle_event_t;
+
 #ifdef __cplusplus
 }
 #endif

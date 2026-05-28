@@ -58,7 +58,7 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
         var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
         await WaitForAcceptedRoutePeerAsync(nodeRuntime, "api");
-        var peer = Assert.Single(nodeRuntime.Node.PeersSnapshot(), peer => peer.ChannelName == "api");
+        var peer = Assert.Single(nodeRuntime.Node.Peers(), peer => peer.ChannelName == "api");
         Assert.Equal(ZLinkSpotPeerKind.RouterChannel, peer.Kind);
         Assert.Equal(ZLinkSpotPeerSource.Manual, peer.Source);
 
@@ -107,7 +107,7 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
         var runtime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
         var nodeRuntime = runtime.GetSpotNodeRuntime("route-target-node");
         await WaitForAcceptedRoutePeerAsync(nodeRuntime, "play");
-        var peer = Assert.Single(nodeRuntime.Node.PeersSnapshot(), peer => peer.ChannelName == "play");
+        var peer = Assert.Single(nodeRuntime.Node.Peers(), peer => peer.ChannelName == "play");
         Assert.Equal(ZLinkSpotPeerKind.RouterChannel, peer.Kind);
         Assert.Equal(ZLinkSpotPeerSource.Manual, peer.Source);
 

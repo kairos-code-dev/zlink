@@ -388,8 +388,8 @@ func submitMultiSpotSendSend(spot *zlink.Spot, transport string, payload []byte)
 }
 
 func drainMultiSpotSendSendServer(replier *zlink.Spot, transport string, msgSize int) {
-	if useMultiSpotSendSendForwardRouted(transport, msgSize) {
-		drainMultiSpotSendSendServerForwardRouted(replier)
+	if useMultiSpotSendSendReceiveSend(transport, msgSize) {
+		drainMultiSpotSendSendServerReceiveSend(replier)
 		return
 	}
 	for {
@@ -439,36 +439,39 @@ func drainMultiSpotSendSendServer(replier *zlink.Spot, transport string, msgSize
 	}
 }
 
-func useMultiSpotSendSendForwardRouted(transport string, msgSize int) bool {
-	switch transport {
-	case "tls":
-		return msgSize >= 65536
-	case "wss":
-		return msgSize >= 65536
-	case "ws":
-		return msgSize >= 65536
-	case "tcp":
-		// Under LockOSThread the consume-forward echo (C zlink_spot_forward_routed
-		// parity) is the stable choice for tcp large and prevents builder-echo
-		// collapse on large routed replies.
-		return msgSize >= 65536
-	default:
-		return false
-	}
+func useMultiSpotSendSendReceiveSend(transport string, msgSize int) bool {
+	return false
 }
 
-func drainMultiSpotSendSendServerForwardRouted(replier *zlink.Spot) {
+func drainMultiSpotSendSendServerReceiveSend(replier *zlink.Spot) {
 	for {
-		_, ok, err := replier.ForwardRouted(zlink.RecvFlagsDontWait, zlink.SendFlagsDontWait)
+		received := &zlink.Received{}
+		ok, err := replier.RecvRouted(received, zlink.RecvFlagsDontWait)
 		if err != nil {
+			perfcommon.Must(received.Close())
 			if perfcommon.IsTransient(err) || perfcommon.IsSubmitNotConnected(err) {
 				return
 			}
 			perfcommon.Must(err)
 		}
 		if !ok {
+			perfcommon.Must(received.Close())
 			return
 		}
+		parts := received.Parts()
+		if len(parts) > 0 {
+			send := received.Send()
+			op := send.Message(parts[0])
+			for _, part := range parts[1:] {
+				op = op.Message(part)
+			}
+			_, sendErr := op.Flags(zlink.SendFlagsDontWait).Submit(nil)
+			if sendErr != nil && !perfcommon.IsTransient(sendErr) {
+				perfcommon.Must(received.Close())
+				perfcommon.Must(sendErr)
+			}
+		}
+		perfcommon.Must(received.Close())
 	}
 }
 

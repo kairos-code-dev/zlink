@@ -35,11 +35,11 @@ public final class RegistryQueryClient implements AutoCloseable {
         }
     }
 
-    public List<RegistryTopologyEntry> snapshot() {
-        return snapshot(null);
+    public List<RegistryTopologyEntry> topology() {
+        return topology(null);
     }
 
-    public List<RegistryTopologyEntry> snapshot(RegistryTopologyFilter filter) {
+    public List<RegistryTopologyEntry> topology(RegistryTopologyFilter filter) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : filter.toNative(arena);
@@ -47,7 +47,7 @@ public final class RegistryQueryClient implements AutoCloseable {
             int rc = Native.registryQuerySnapshot(handle, nativeFilter,
               MemorySegment.NULL, count);
             if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_query_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_query_client_topology");
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
                 return List.of();
@@ -57,7 +57,7 @@ public final class RegistryQueryClient implements AutoCloseable {
             rc = Native.registryQuerySnapshot(handle, nativeFilter, entries,
               count);
             if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_query_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_query_client_topology");
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
             long stride = NativeLayouts.REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteSize();

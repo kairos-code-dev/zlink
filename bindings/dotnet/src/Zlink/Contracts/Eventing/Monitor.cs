@@ -10,7 +10,7 @@ public interface ISocketMonitor : IDisposable, IAsyncDisposable
 
     MonitorEvent? Recv(RecvFlags flags = RecvFlags.None);
 
-    MonitorSnapshot Snapshot();
+    MonitorStatus Status();
 
     void Close();
 }
@@ -22,9 +22,9 @@ public sealed record MonitorEvent(
     string LocalAddr,
     string RemoteAddr);
 
-public sealed class MonitorSnapshot
+public sealed class MonitorStatus
 {
-    internal MonitorSnapshot(MonitorSourceKind sourceKind, uint stateFlags,
+    internal MonitorStatus(MonitorSourceKind sourceKind, uint stateFlags,
         uint detailFlags, ulong sndPendingMsgs, ulong rcvPendingMsgs,
         uint autoHwmEnabled, uint autoHwmProfile, uint autoHwmRole,
         uint autoHwmPolicyClass,

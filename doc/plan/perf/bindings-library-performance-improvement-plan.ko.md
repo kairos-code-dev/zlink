@@ -364,7 +364,7 @@ public API 추가 대상으로 분리한다.
 C 기준과 대상 binding 결과를 다시 비교해 갱신하는 상태표다. 이미 갱신된 칸은 결과 파일과
 C 대비 비율을 함께 남기고, 아직 같은 조건 비교가 없는 칸은 `미측정`으로 둔다.
 
-표 구조는 모든 언어에서 같다. 행은 transport와 pattern을 고정하고, 열은 message size를 고정한다. 각 size 칸은 해당 transport/pattern/size 조합의 상태를 뜻한다. `MULTI_STREAM`은 정책상 `64,256,1024,65536`만 측정하므로 `131072`, `262144`는 `해당 없음`으로 둔다.
+표 구조는 모든 언어에서 같다. 행은 transport와 pattern을 고정하고, 열은 message size를 고정한다. 각 size 칸은 해당 transport/pattern/size 조합의 상태를 뜻한다. Single suite는 기존 기본 size `64,256,1024,65536,131072,262144`를 유지한다. Multi suite는 새 측정 라운드에서 `64,256,1024,4096,65536,131072`만 측정하고, 기존 `262144` 열은 더 이상 새 판정에 사용하지 않는다. `MULTI_STREAM`은 정책상 측정 대상 size만 채우고 나머지는 `해당 없음`으로 둔다.
 
 상태 칸에는 `미측정`, `통과(비율%)`, `미달(비율%)`, `보류(비율%)`, `해당 없음` 형식만
 쓴다. 예를 들어 C 대비 85%로 목표를 만족하면 `통과(85%)`, 내부 개선 후보가 소진된
@@ -377,18 +377,58 @@ C 대비 비율을 함께 남기고, 아직 같은 조건 비교가 없는 칸�
 
 | 순서 | 언어 | perf 경로 | Single 상태 | Multi 상태 | 다음 작업 |
 |------|------|-----------|-------------|------------|-----------|
-| 1 | C++ | `bindings/cpp/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 통과` | 상세 표 반영 완료. core 안정 후 최종 회귀 full run에서 현재 통과 상태를 다시 확인 |
-| 2 | .NET | `bindings/dotnet/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 통과` | 상세 표 반영 완료. core 안정 후 최종 회귀 full run에서 현재 통과 상태를 다시 확인 |
-| 3 | Java | `bindings/java/perf` | `tcp/ws/wss/tls 통과` | `tcp/ws/wss/tls 통과` | 상세 표 반영 완료. core 안정 후 최종 회귀 full run에서 현재 통과 상태를 다시 확인 |
-| 4 | Node | `bindings/node/perf` | `tcp/ws single routed large 보류, wss PAIR 64B 보류, tls PAIR 64B 및 DEALER_DEALER 64B 보류 외 통과` | `tcp/ws/wss/tls 재측정 완료, tcp full-run partial 행은 제한 재측정으로 보강` | multi 상세 표 반영 완료. 남은 single routed large, small PAIR/DEALER_DEALER, SPOT 의미 보류를 public API 계약 안에서 재검토 |
-| 5 | Go | `bindings/go/perf` | `tcp/ws/wss/tls single 통과 (6.0.3 재검증, SPOT large 회귀 수정, latency 발산은 측정 아티팩트로 판정)` | `2026-05-25 추가 수정으로 ROUTER_ROUTER/DEALER_ROUTER/PUBSUB 전 transport 통과, DD 전 transport 통과, SPOT/SPOT_REQREP/SPOT_SENDSEND 통과` | multi DD 64B는 public `Bytes(...)` client send와 latency sampling으로 보류 해소 |
-| 6 | Rust | `bindings/rust/perf` | `tcp/ws/wss/tls 측정 완료, routed large와 SPOT 1024B 보류 남음` | `tcp/ws/wss/tls 측정 완료, PUBSUB 및 MULTI_SPOT 전 transport 통과` | Rust 완료 아님. single routed large와 single SPOT 1024B를 후속 재검토 |
-| 7 | Python | `bindings/python/perf` | `tcp/ws/wss/tls 측정 완료, large single outlier와 small/native boundary 보류 남음` | `tcp/ws/wss/tls 측정 완료, SPOT/send-send/stream small 보류 남음` | Python 완료 아님. multi SPOT/send-send/stream small path와 single small/outlier 항목 후속 개선 필요 |
+| 1 | C++ | `bindings/cpp/perf` | `재측정 완료, 보류 3건` | `재측정 완료, 미달 없음` | Single routed large 3건은 개선 후보가 통과에 못 닿아 보류로 넘겼다. 다음은 .NET 재측정이다. |
+| 2 | .NET | `bindings/dotnet/perf` | `재측정 대기` | `재측정 대기` | C++ 이후 같은 순서로 재측정한다. 기존 2026-05-27 .NET 결과는 새 기준 라운드의 최종 판정으로 사용하지 않는다. |
+| 3 | Java | `bindings/java/perf` | `재측정 대기` | `재측정 대기` | .NET 완료 뒤 single 기본 size, multi 새 size set으로 재측정한다. |
+| 4 | Node | `bindings/node/perf` | `재측정 대기` | `재측정 대기` | Java 완료 뒤 재측정한다. |
+| 5 | Go | `bindings/go/perf` | `재측정 대기` | `재측정 대기` | Node 완료 뒤 재측정한다. |
+| 6 | Rust | `bindings/rust/perf` | `재측정 대기` | `재측정 대기` | Go 완료 뒤 재측정한다. |
+| 7 | Python | `bindings/python/perf` | `재측정 대기` | `재측정 대기` | Rust 완료 뒤 재측정한다. |
 
-Core runtime 변경 중에는 새 perf 실행을 보류한다. 현재 Go는 표 기준으로 single/multi
-대상이 모두 통과 상태이므로 후속 재개 순서는 Rust single routed/SPOT, Python
-SPOT/send-send/stream small path 순서다. 새 실행 전에는 `core/build` runtime stale 여부와
-실제 `libzlink.so` 경로를 확인한다.
+**2026-05-27 새 측정 라운드 진행 로그**: 기존 기록은 새 판정 기준으로 재사용하지 않는다.
+Single suite는 기존 기본 size를 유지하고, multi suite만 `64,256,1024,4096,65536,131072`
+size set으로 다시 측정한다. C single 기준은
+`perf_c_single_linux_20260527_123415_codex_refresh_c_single_default_20260527.txt`로
+확보했으며, `status=complete`, 결과 라인은 `1020/1020`이다. 첫 C multi 시도
+`perf_c_multi_linux_20260527_125615_codex_refresh_c_multi_64_256_1k_4k_64k_128k_20260527.txt`는
+새 size set으로 실행했지만 `MULTI_PUBSUB ws`의 `64,256,1024,4096,65536,131072B`가 모두
+`FAIL`이었다. 또한 `PERF_FAIL_FAST=1`인데도 runner가 다음 패턴으로 넘어가 full 기준으로
+쓸 수 없어 수동 중지했다. 이 파일은 C multi 기준 파일로 사용하지 않는다. C multi runner의
+fail-fast 동작을 먼저 고쳤고, 같은 조건 제한 재측정
+`perf_c_multi_linux_20260527_131226_codex_c_multi_pubsub_ws_new_sizes_recheck_20260527.txt`에서는
+`MULTI_PUBSUB ws`의 새 size set 전부가 `status=complete`, 결과 라인 `30/30`이었다.
+따라서 C multi full을 새 size set으로 다시 실행해 기준 파일을 확보한다. 각 언어 상세 표는
+해당 언어의 single/multi 재측정이 끝난 뒤 기존 표 형식을 유지한 채 갱신한다. full 재시도
+`perf_c_multi_linux_20260527_131318_codex_refresh_c_multi_64_256_1k_4k_64k_128k_retry_20260527.txt`는
+`MULTI_PUBSUB ws`를 통과했지만, `MULTI_STREAM ws 1024B`에서 client가 exit 2로 종료해
+`status=partial`, 결과 라인 `900/960`으로 끝났다. 이 파일도 full C multi 기준으로 쓰지
+않는다. 같은 조건 제한 재측정
+`perf_c_multi_linux_20260527_134501_codex_c_multi_stream_ws_new_sizes_recheck_20260527.txt`에서는
+`MULTI_STREAM ws`의 새 size set 전부가 `status=complete`, 결과 라인 `30/30`이었다.
+따라서 실패는 full-run 안정성 문제로 보고 C multi full을 다시 시도한다.
+두 번째 full 재시도
+`perf_c_multi_linux_20260527_134603_codex_refresh_c_multi_64_256_1k_4k_64k_128k_retry2_20260527.txt`는
+새 multi size set으로 `status=complete`, 결과 라인 `960/960`을 확보했다. msg-size를
+명시한 새 라운드 기준 파일이므로 동일 파일을 `bindings/c/perf/baseline/`에도 복사했다.
+C++ single 첫 full 시도
+`perf_cpp_single_linux_20260527_141949_codex_refresh_cpp_single_default_20260527.txt`는
+기존 single 기본 size로 실행했지만 `ROUTER_ROUTER tcp 256B` timeout 뒤 같은 transport의
+나머지 size가 `no_data`가 되어 `status=partial`, 결과 라인 `725/1020`으로 끝났다. 이
+파일은 C++ single full 판정 파일로 쓰지 않고, `ROUTER_ROUTER tcp`를 제한 재측정해 실패
+재현 여부를 확인했다. 제한 재측정
+`perf_cpp_single_linux_20260527_143736_codex_cpp_single_router_router_tcp_recheck_20260527.txt`는
+`ROUTER_ROUTER tcp` 전 size가 `status=complete`, 결과 라인 `30/30`이었다. 따라서 C++
+single full을 다시 실행해 판정 파일을 확보한다. 첫 retry는 incremental CMake build가
+`cpp_perf_dealer_dealer` target을 찾지 못해 벤치 실행 전 종료했으므로 측정 파일로 기록하지
+않고 clean build로 다시 실행한다. clean build full retry
+`perf_cpp_single_linux_20260527_143903_codex_refresh_cpp_single_default_retry_clean_20260527.txt`는
+기존 single 기본 size로 `status=complete`, 결과 라인 `1020/1020`을 확보했다. 이 파일을
+C++ single 기준 파일로 쓰고 6.2.1 표를 갱신한다.
+C++ multi full
+`perf_cpp_multi_linux_20260527_150546_codex_refresh_cpp_multi_64_256_1k_4k_64k_128k_20260527.txt`는
+새 multi size set으로 `status=complete`, 결과 라인 `960/960`을 확보했다. msg-size를
+명시한 새 라운드 기준 파일이므로 동일 파일을 `bindings/cpp/perf/baseline/`에도 복사했다.
+이 파일을 C++ multi 기준 파일로 쓰고 6.2.2 표를 갱신한다.
 
 **2026-05-23 core 6.0.3 재검증 로그**: 세션 중 core가 6.0.2→6.0.3로 bump(spot node bind API rename 포함)되어
 이전 baseline/측정이 무효화됐다. 6.0.3 fresh full C baseline을 재생성했다
@@ -398,7 +438,7 @@ multi `perf_c_multi_linux_20260523_111534_goal_c_multi_603_baseline.txt`). 이 b
 - .NET single tcp: 전 pattern 70~123%, latency 정상 → 통과 유지.
 - Java single tcp: 전 pattern 75~119%(SPOT는 117~177% outlier, SPOT large는 full-run partial) → 통과 유지.
 - Go single tcp/ws/wss/tls: 전 pattern 통과(아래 6.6.3 — SPOT large 회귀 수정 + latency 발산 측정-아티팩트 판정).
-- Rust single tcp: non-routed(PAIR/DEALER_DEALER/PUBSUB) 96~119% 통과, SPOT 86~158%(1024B 39% 보류). 단 routed
+- Rust single tcp: non-routed(PAIR/DEALER_DEALER/PUBSUB) 96~119% 통과, 2026-05-23 기준 SPOT 1024B는 보류였으나 2026-05-27 public `Spot::publish_part`/`subscribe_part` 경로 적용 뒤 해소됐다. 단 routed
   `DEALER_ROUTER`/`ROUTER_ROUTER` large(65536/131072/262144)는 11~13%(latency 13~35x)로 기존 문서 보류와 동일하게 재현됐다(회귀 아님).
 - Python single tcp: large(65536+)는 DD 72~80%/PAIR 73~88%/PUBSUB 63~69%로 통과권, 그러나 small(64/256/1024)은 전 pattern 1.7~13.8%다.
   Python small throughput은 pattern 무관하게 ~45k msg/s에 고정되는데(C는 1.2M+), 이는 매 송수신마다 Python↔C 경계를 넘는 **per-call FFI 고정 비용의 벽**이다(할당이 아니라 호출 횟수 비용). routed large와 SPOT large도 10~44%로 보류다. 문서 상태와 동일하게 재현됐다.
@@ -406,9 +446,10 @@ multi `perf_c_multi_linux_20260523_111534_goal_c_multi_603_baseline.txt`). 이 b
 **구조적 결론 (2026-05-23 6.0.3 전면 재검증 기준)**: re-baseline은 문서의 기존 상태를 그대로 재현한다 — 강한 바인딩(C++/.NET/Java/Rust non-routed,
 Go single)은 통과, 보류 cell은 그대로 보류다. 당시 신규로 해결한 것은 Go single SPOT large 회귀(per-send 할당 → public `.Bytes()` 재사용)와 Go single
 latency 발산(측정 아티팩트 판정)이었다. 이후 2026-05-25 추가 수정으로 Go single/multi
-보류는 표 기준 모두 해소됐다. 현재 남은 보류 cell — Python/Node small(per-call FFI 벽),
-Rust routed-large와 single SPOT 1024B, Python SPOT/send-send/stream small — 은 이전 전문
-세션들이 "추가 내부 후보 소진"으로 기록했고 이번 독립 재검증·진단도 같은 결론이다.
+보류는 표 기준 모두 해소됐다. 2026-05-27에는 Rust single SPOT 1024B도 public
+`Spot::publish_part`/`subscribe_part` 경로 적용 뒤 통과로 갱신했다. 현재 남은 보류 cell —
+Python/Node small(per-call FFI 벽), Rust routed-large, Python SPOT/send-send/stream small —
+은 이전 전문 세션들이 "추가 내부 후보 소진"으로 기록했고 이번 독립 재검증·진단도 같은 결론이다.
 이들을 통과로 올리려면 **메시지 배치(batch) 또는 zero-copy 우회 같은 perf 지향 public
 API/아키텍처 변경**이 필요할 수 있는데, 이는 섹션 2 고정 원칙과 별도 설계로 분리해야
 한다. 따라서 섹션 7의 "보류 0" 완료 기준은 현재 고정 원칙 안에서 이들 cell에 대해
@@ -512,111 +553,194 @@ SPOT 계열 14~15개 수준이었다. 두 언어 모두 client 수가 OS thread 
 
 #### 6.2.1 Single suite
 
-| Transport | Pattern | 64 | 1024 | 16384 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
-|-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `PAIR` | `통과(101%)` | `통과(100%)` | `통과(119%)` | `통과(121%)` | `통과(122%)` | `통과(135%)` | C: `perf_c_single_linux_20260519_182557_codex_c_tcp_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_182647_codex_cpp_tcp_single_smoke_all_c_setup_20260519.txt` |
-| `tcp` | `PUBSUB` | `통과(120%)` | `통과(114%)` | `통과(131%)` | `통과(228%)` | `통과(541%)` | `통과(561%)` | C: `perf_c_single_linux_20260519_182557_codex_c_tcp_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_182647_codex_cpp_tcp_single_smoke_all_c_setup_20260519.txt` |
-| `tcp` | `DEALER_DEALER` | `통과(99%)` | `통과(156%)` | `통과(103%)` | `통과(99%)` | `통과(99%)` | `통과(99%)` | C: `perf_c_single_linux_20260519_182557_codex_c_tcp_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_182647_codex_cpp_tcp_single_smoke_all_c_setup_20260519.txt` |
-| `tcp` | `DEALER_ROUTER` | `통과(96%)` | `통과(96%)` | `통과(100%)` | `통과(71%)` | `통과(74%)` | `통과(119%)` | C: `perf_c_single_linux_20260519_182557_codex_c_tcp_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_182647_codex_cpp_tcp_single_smoke_all_c_setup_20260519.txt`; large 반복 확인: `perf_cpp_single_linux_20260519_182803_codex_cpp_dr_large_repeat3_20260519.txt`. C++ setup을 C `DEALER_ROUTER`와 같은 monitor 순서로 정렬 |
-| `tcp` | `ROUTER_ROUTER` | `통과(108%)` | `통과(106%)` | `통과(104%)` | `통과(93%)` | `통과(95%)` | `통과(105%)` | C: `perf_c_single_linux_20260519_182557_codex_c_tcp_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_182647_codex_cpp_tcp_single_smoke_all_c_setup_20260519.txt`; 64KB 반복 확인: `perf_cpp_single_linux_20260519_182905_codex_cpp_rr65536_repeat3_20260519.txt` |
-| `tcp` | `SPOT` | `통과(110%)` | `통과(104%)` | `통과(100%)` | `통과(95%)` | `통과(85%)` | `통과(79%)` | C: `perf_c_single_linux_20260519_182557_codex_c_tcp_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_182647_codex_cpp_tcp_single_smoke_all_c_setup_20260519.txt`; large 반복 확인: `perf_cpp_single_linux_20260519_182840_codex_cpp_spot_large_repeat3_20260519.txt` |
-| `ws` | `PAIR` | `통과(100%)` | `통과(103%)` | `통과(100%)` | `통과(101%)` | `통과(101%)` | `통과(101%)` | C: `perf_c_single_linux_20260519_183218_codex_c_ws_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_183308_codex_cpp_ws_single_smoke_all_20260519.txt` |
-| `ws` | `PUBSUB` | `통과(86%)` | `통과(115%)` | `통과(121%)` | `통과(192%)` | `통과(251%)` | `통과(391%)` | C: `perf_c_single_linux_20260519_183218_codex_c_ws_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_183308_codex_cpp_ws_single_smoke_all_20260519.txt` |
-| `ws` | `DEALER_DEALER` | `통과(99%)` | `통과(98%)` | `통과(98%)` | `통과(99%)` | `통과(99%)` | `통과(99%)` | C: `perf_c_single_linux_20260519_183218_codex_c_ws_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_183308_codex_cpp_ws_single_smoke_all_20260519.txt` |
-| `ws` | `DEALER_ROUTER` | `통과(92%)` | `통과(97%)` | `통과(97%)` | `통과(103%)` | `통과(99%)` | `통과(101%)` | C: `perf_c_single_linux_20260519_183218_codex_c_ws_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_183308_codex_cpp_ws_single_smoke_all_20260519.txt` |
-| `ws` | `ROUTER_ROUTER` | `통과(99%)` | `통과(99%)` | `통과(100%)` | `통과(84%)` | `통과(95%)` | `통과(105%)` | C: `perf_c_single_linux_20260519_183218_codex_c_ws_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_183308_codex_cpp_ws_single_smoke_all_20260519.txt` |
-| `ws` | `SPOT` | `통과(111%)` | `통과(106%)` | `통과(95%)` | `통과(93%)` | `통과(82%)` | `통과(98%)` | C: `perf_c_single_linux_20260519_183218_codex_c_ws_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_183308_codex_cpp_ws_single_smoke_all_20260519.txt` |
-| `wss` | `PAIR` | `통과(100%)` | `통과(100%)` | `통과(99%)` | `통과(100%)` | `통과(99%)` | `통과(88%)` | C: `perf_c_single_linux_20260519_183421_codex_c_wss_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_185145_codex_cpp_wss_single_smoke_all_final_20260519.txt` |
-| `wss` | `PUBSUB` | `통과(100%)` | `통과(117%)` | `통과(99%)` | `통과(107%)` | `통과(93%)` | `통과(89%)` | C: `perf_c_single_linux_20260519_183421_codex_c_wss_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_185145_codex_cpp_wss_single_smoke_all_final_20260519.txt` |
-| `wss` | `DEALER_DEALER` | `통과(101%)` | `통과(98%)` | `통과(101%)` | `통과(101%)` | `통과(103%)` | `통과(99%)` | C: `perf_c_single_linux_20260519_183421_codex_c_wss_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_185145_codex_cpp_wss_single_smoke_all_final_20260519.txt` |
-| `wss` | `DEALER_ROUTER` | `통과(98%)` | `통과(99%)` | `통과(96%)` | `통과(93%)` | `통과(97%)` | `통과(100%)` | C: `perf_c_single_linux_20260519_183421_codex_c_wss_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_185145_codex_cpp_wss_single_smoke_all_final_20260519.txt` |
-| `wss` | `ROUTER_ROUTER` | `통과(88%)` | `통과(95%)` | `통과(91%)` | `통과(100%)` | `통과(98%)` | `통과(122%)` | C: `perf_c_single_linux_20260519_183421_codex_c_wss_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_185145_codex_cpp_wss_single_smoke_all_final_20260519.txt` |
-| `wss` | `SPOT` | `통과(106%)` | `통과(99%)` | `통과(185%)` | `통과(103%)` | `통과(106%)` | `통과(99%)` | C full: `perf_c_single_linux_20260519_183421_codex_c_wss_single_smoke_all_20260519.txt`; C++ full: `perf_cpp_single_linux_20260519_185145_codex_cpp_wss_single_smoke_all_final_20260519.txt`; 256KB은 full smoke 74%, 같은 조건 repeat3에서 C `perf_c_single_linux_20260519_183618_codex_c_wss_single_spot_large_repeat3_20260519.txt` 대비 C++ `perf_cpp_single_linux_20260519_184454_codex_cpp_wss_single_spot_borrow_publish_repeat3_20260519.txt` 99% |
-| `tls` | `PAIR` | `통과(100%)` | `통과(106%)` | `통과(99%)` | `통과(104%)` | `통과(100%)` | `통과(99%)` | C: `perf_c_single_linux_20260519_184702_codex_c_tls_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_184924_codex_cpp_tls_single_smoke_all_20260519.txt` |
-| `tls` | `PUBSUB` | `통과(103%)` | `통과(123%)` | `통과(120%)` | `통과(121%)` | `통과(132%)` | `통과(129%)` | C: `perf_c_single_linux_20260519_184702_codex_c_tls_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_184924_codex_cpp_tls_single_smoke_all_20260519.txt` |
-| `tls` | `DEALER_DEALER` | `통과(98%)` | `통과(93%)` | `통과(98%)` | `통과(100%)` | `통과(98%)` | `통과(99%)` | C: `perf_c_single_linux_20260519_184702_codex_c_tls_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_184924_codex_cpp_tls_single_smoke_all_20260519.txt` |
-| `tls` | `DEALER_ROUTER` | `통과(94%)` | `통과(102%)` | `통과(99%)` | `통과(94%)` | `통과(93%)` | `통과(99%)` | C: `perf_c_single_linux_20260519_184702_codex_c_tls_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_184924_codex_cpp_tls_single_smoke_all_20260519.txt` |
-| `tls` | `ROUTER_ROUTER` | `통과(93%)` | `통과(100%)` | `통과(96%)` | `통과(94%)` | `통과(98%)` | `통과(98%)` | C: `perf_c_single_linux_20260519_184702_codex_c_tls_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_184924_codex_cpp_tls_single_smoke_all_20260519.txt` |
-| `tls` | `SPOT` | `통과(115%)` | `통과(97%)` | `통과(98%)` | `통과(99%)` | `통과(98%)` | `통과(98%)` | C: `perf_c_single_linux_20260519_184702_codex_c_tls_single_smoke_all_20260519.txt`; C++: `perf_cpp_single_linux_20260519_184924_codex_cpp_tls_single_smoke_all_20260519.txt` |
-
-#### 6.2.2 Multi suite
-
-2026-05-21 재측정 결과로 대표 표를 갱신했다. 판정은 `doc/perf` 기준처럼 C `bindings/c/perf`와 같은 suite/pattern/transport/size의 throughput 비율로 계산한다. HWM은 튜닝 값으로 쓰지 않고, auto-HWM 활성 여부와 size별 `MsgUnit(B)` 일치 여부만 확인한다.
+2026-05-27 새 측정 라운드 기준으로 기존 2026-05-19, 2026-05-26 단편 파일 기준은 리셋한다.
+최신 기준 파일은 C `perf_c_single_linux_20260527_123415_codex_refresh_c_single_default_20260527.txt`,
+C++ `perf_cpp_single_linux_20260527_143903_codex_refresh_cpp_single_default_retry_clean_20260527.txt`다.
+두 파일 모두 `status=complete`, 결과 라인은 `1020/1020`이다.
+Routed large는 같은 조건으로 C와 C++를 제한 재측정했다. C 재확인 파일은
+`perf_c_single_linux_20260527_180106_codex_c_single_cpp_remaining_routed_large_recheck_20260527.txt`이고,
+C++ 보강 파일은
+`perf_cpp_single_linux_20260527_175819_codex_cpp_single_dealer_router_inproc_large_recheck_20260527.txt`,
+`perf_cpp_single_linux_20260527_175836_codex_cpp_single_router_router_inproc_ws_large_recheck_20260527.txt`,
+`perf_cpp_single_linux_20260527_175934_codex_cpp_single_wss_pair_pubsub_spot_recheck_20260527.txt`,
+`perf_cpp_single_linux_20260527_180056_codex_cpp_single_dealer_router_tcp128k_recheck_20260527.txt`다.
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `MULTI_DEALER_DEALER` | `통과(89.1%)` | `통과(104.6%)` | `통과(109.2%)` | `통과(100.8%)` | `통과(95.0%)` | `통과(97.7%)` | 대표 C `perf_c_multi_linux_20260519_194121_codex_c_tcp_multi_smoke_all_after_spot_recv_guard_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_123539_codex_cpp_tcp_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `통과(89.6%)` | `통과(91.9%)` | `통과(92.6%)` | `통과(123.3%)` | `통과(86.5%)` | `통과(92.1%)` | 65536B는 C `perf_c_multi_linux_20260521_190248_codex_c_tcp_multi_dr65536_for_cpp_recheck_20260521.txt` 대비 C++ `perf_cpp_multi_linux_20260521_192618_codex_cpp_tcp_routed_poller_order_recheck_20260521.txt`에서 통과했다. C++ public `poller_t` socket-only `modify()` 내부가 전체 poll item 재구성 대신 기존 등록 순서를 보존한 항목 갱신을 하도록 바꿨다. 나머지는 대표 C `perf_c_multi_linux_20260519_194121_codex_c_tcp_multi_smoke_all_after_spot_recv_guard_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_123539_codex_cpp_tcp_multi_remeasure_20260521.txt`. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `통과(91.2%)` | `통과(91.5%)` | `통과(90.1%)` | `통과(79.2%)` | `통과(76.8%)` | `통과(76.8%)` | 65536B는 C `perf_c_multi_linux_20260521_192650_codex_c_tcp_rr_for_cpp_order_recheck_20260521.txt` 대비 C++ `perf_cpp_multi_linux_20260521_194038_codex_cpp_tcp_rr_server_direct_poll_recheck_20260521.txt`에서 통과했다. 131072B는 같은 조건 C `perf_c_multi_linux_20260521_194106_codex_c_tcp_rr131072_for_cpp_direct_poll_recheck_20260521.txt` 대비 C++ `perf_cpp_multi_linux_20260521_194121_codex_cpp_tcp_rr131072_server_direct_poll_single_recheck_20260521.txt`에서 통과했다. C++ ROUTER_ROUTER 서버는 C relay server와 같은 단일 `zlink_poll(..., -1)` 대기로 맞췄다. 나머지는 대표 C `perf_c_multi_linux_20260519_194121_codex_c_tcp_multi_smoke_all_after_spot_recv_guard_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_123539_codex_cpp_tcp_multi_remeasure_20260521.txt`. |
-| `tcp` | `MULTI_PUBSUB` | `통과(88.2%)` | `통과(92.5%)` | `통과(108.8%)` | `통과(104.7%)` | `통과(132.7%)` | `통과(136.9%)` | 131072B는 C 대표 `perf_c_multi_linux_20260519_194121_codex_c_tcp_multi_smoke_all_after_spot_recv_guard_20260519.txt` 대비 C++ `perf_cpp_multi_linux_20260521_191818_codex_cpp_pubsub_stream_recheck_20260521.txt`에서 통과했다. 나머지는 C++ `perf_cpp_multi_linux_20260521_123539_codex_cpp_tcp_multi_remeasure_20260521.txt`. |
-| `tcp` | `MULTI_SPOT` | `통과(93.1%)` | `통과(122.7%)` | `통과(75.4%)` | `통과(93.0%)` | `통과(98.1%)` | `통과(158.0%)` | 대표 C `perf_c_multi_linux_20260519_194121_codex_c_tcp_multi_smoke_all_after_spot_recv_guard_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_123539_codex_cpp_tcp_multi_remeasure_20260521.txt`. 256B는 같은 조건 제한 재측정 C `perf_c_multi_linux_20260521_190130_codex_c_tcp_multi_spot256_for_cpp_recheck_20260521.txt` 대비 C++ `perf_cpp_multi_linux_20260521_190202_codex_cpp_tcp_multi_spot256_recheck_20260521.txt`에서 통과했다. |
-| `tcp` | `MULTI_SPOT_REQREP` | `통과(101.2%)` | `통과(103.8%)` | `통과(102.4%)` | `통과(112.0%)` | `통과(110.2%)` | `통과(117.3%)` | 대표 C `perf_c_multi_linux_20260519_194121_codex_c_tcp_multi_smoke_all_after_spot_recv_guard_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_165846_codex_cpp_multi_spot_reqrep_pollcompletion_full_20260521.txt`. auto-HWM 활성과 size별 spotnode `MsgUnit(B)` 일치를 확인했다. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `통과(110.5%)` | `통과(114.3%)` | `통과(110.1%)` | `통과(115.6%)` | `통과(121.8%)` | `통과(103.4%)` | 대표 C `perf_c_multi_linux_20260519_194121_codex_c_tcp_multi_smoke_all_after_spot_recv_guard_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_123539_codex_cpp_tcp_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `tcp` | `MULTI_STREAM` | `통과(103.9%)` | `통과(99.1%)` | `통과(100.9%)` | `통과(113.5%)` | `해당 없음` | `해당 없음` | 대표 C `perf_c_multi_linux_20260519_194121_codex_c_tcp_multi_smoke_all_after_spot_recv_guard_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_123539_codex_cpp_tcp_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `ws` | `MULTI_DEALER_DEALER` | `통과(89.8%)` | `통과(96.5%)` | `통과(89.0%)` | `통과(89.2%)` | `통과(100.5%)` | `통과(100.8%)` | 131072B는 C 대표 `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt` 대비 C++ `perf_cpp_multi_linux_20260521_191441_codex_cpp_routed_poller_cache_recheck_20260521.txt`에서 통과했다. C++ public `poller_t` socket-only `modify()` 캐시 갱신을 적용했다. 나머지는 C++ `perf_cpp_multi_linux_20260521_130227_codex_cpp_ws_multi_remeasure_20260521.txt`. |
-| `ws` | `MULTI_DEALER_ROUTER` | `통과(82.1%)` | `통과(80.5%)` | `통과(84.5%)` | `통과(81.3%)` | `통과(82.6%)` | `통과(106.7%)` | 대표 C `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_130227_codex_cpp_ws_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `ws` | `MULTI_ROUTER_ROUTER` | `통과(88.3%)` | `통과(86.4%)` | `통과(81.4%)` | `통과(112.4%)` | `통과(121.0%)` | `통과(97.0%)` | 대표 C `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_130227_codex_cpp_ws_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `ws` | `MULTI_PUBSUB` | `통과(92.2%)` | `통과(90.0%)` | `통과(91.9%)` | `통과(96.2%)` | `통과(99.4%)` | `통과(124.9%)` | 262144B는 C 대표 `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt` 대비 C++ `perf_cpp_multi_linux_20260521_191818_codex_cpp_pubsub_stream_recheck_20260521.txt`에서 통과했다. 나머지는 C++ `perf_cpp_multi_linux_20260521_130227_codex_cpp_ws_multi_remeasure_20260521.txt`. |
-| `ws` | `MULTI_SPOT` | `통과(95.9%)` | `통과(98.5%)` | `통과(96.8%)` | `통과(94.4%)` | `통과(96.9%)` | `통과(95.7%)` | 대표 C `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_130227_codex_cpp_ws_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `ws` | `MULTI_SPOT_REQREP` | `통과(94.1%)` | `통과(96.2%)` | `통과(89.4%)` | `통과(105.8%)` | `통과(101.0%)` | `통과(84.6%)` | 대표 C `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_165846_codex_cpp_multi_spot_reqrep_pollcompletion_full_20260521.txt`. auto-HWM 활성과 size별 spotnode `MsgUnit(B)` 일치를 확인했다. |
-| `ws` | `MULTI_SPOT_SENDSEND` | `통과(92.1%)` | `통과(78.3%)` | `통과(79.3%)` | `통과(100.2%)` | `통과(96.4%)` | `통과(144.4%)` | 대표 C `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_130227_codex_cpp_ws_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `ws` | `MULTI_STREAM` | `통과(99.8%)` | `통과(98.7%)` | `통과(99.0%)` | `통과(89.7%)` | `해당 없음` | `해당 없음` | 대표 C `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_130227_codex_cpp_ws_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `wss` | `MULTI_DEALER_DEALER` | `통과(91.8%)` | `통과(101.6%)` | `통과(106.1%)` | `통과(98.0%)` | `통과(94.4%)` | `통과(106.6%)` | 1024/65536/131072B는 C 대표 `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt` 대비 C++ `perf_cpp_multi_linux_20260521_191441_codex_cpp_routed_poller_cache_recheck_20260521.txt`에서 통과했다. C++ public `poller_t` socket-only `modify()` 캐시 갱신을 적용했다. 나머지는 C++ `perf_cpp_multi_linux_20260521_131047_codex_cpp_wss_multi_remeasure_20260521.txt`. |
-| `wss` | `MULTI_DEALER_ROUTER` | `통과(86.0%)` | `통과(83.6%)` | `통과(86.4%)` | `통과(85.0%)` | `통과(81.0%)` | `통과(82.3%)` | 대표 C `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_131047_codex_cpp_wss_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `wss` | `MULTI_ROUTER_ROUTER` | `통과(83.0%)` | `통과(86.0%)` | `통과(84.0%)` | `통과(76.2%)` | `통과(70.4%)` | `통과(71.6%)` | 대표 C `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_131047_codex_cpp_wss_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `wss` | `MULTI_PUBSUB` | `통과(86.1%)` | `통과(83.8%)` | `통과(82.0%)` | `통과(80.8%)` | `통과(81.1%)` | `통과(103.7%)` | 65536/131072B는 같은 조건 C 재측정 `perf_c_multi_linux_20260521_193207_codex_c_wss_pubsub_for_cpp_recheck_20260521.txt` 대비 C++ `perf_cpp_multi_linux_20260521_191818_codex_cpp_pubsub_stream_recheck_20260521.txt`에서 통과했다. 262144B는 C 대표 `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt` 대비 같은 C++ 파일에서 통과했다. |
-| `wss` | `MULTI_SPOT` | `통과(232.4%)` | `통과(462.8%)` | `통과(88.1%)` | `통과(91.2%)` | `통과(109.5%)` | `통과(108.3%)` | 1024B는 같은 조건 재측정 C `perf_c_multi_linux_20260521_210632_codex_c_wss_multi_spot1024_outlier_apply_20260521.txt` 대비 C++ `perf_cpp_multi_linux_20260521_210739_codex_cpp_wss_multi_spot1024_outlier_apply_20260521.txt`로 갱신했다. 나머지는 대표 C `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_131047_codex_cpp_wss_multi_remeasure_20260521.txt`. |
-| `wss` | `MULTI_SPOT_REQREP` | `통과(94.5%)` | `통과(93.4%)` | `통과(92.0%)` | `통과(107.4%)` | `통과(101.7%)` | `통과(100.0%)` | 대표 C `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_165846_codex_cpp_multi_spot_reqrep_pollcompletion_full_20260521.txt`. auto-HWM 활성과 size별 spotnode `MsgUnit(B)` 일치를 확인했다. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `통과(93.6%)` | `통과(93.3%)` | `통과(80.6%)` | `통과(98.8%)` | `통과(84.6%)` | `통과(95.5%)` | 대표 C `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_131047_codex_cpp_wss_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `wss` | `MULTI_STREAM` | `통과(88.1%)` | `통과(87.3%)` | `통과(85.7%)` | `통과(81.5%)` | `해당 없음` | `해당 없음` | 65536B는 C `perf_c_multi_linux_20260521_012140_codex_c_wss_multi_current_for_node_20260521.txt` 대비 C++ `perf_cpp_multi_linux_20260521_191818_codex_cpp_pubsub_stream_recheck_20260521.txt`에서 통과했다. 나머지는 대표 C `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt`; C++ `perf_cpp_multi_linux_20260521_131047_codex_cpp_wss_multi_remeasure_20260521.txt`. |
-| `tls` | `MULTI_DEALER_DEALER` | `통과(91.3%)` | `통과(108.7%)` | `통과(92.8%)` | `통과(91.8%)` | `통과(85.2%)` | `통과(96.0%)` | 대표 C `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt`; C++ `perf_cpp_multi_linux_20260521_132452_codex_cpp_tls_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `tls` | `MULTI_DEALER_ROUTER` | `통과(92.8%)` | `통과(89.8%)` | `통과(89.0%)` | `통과(84.8%)` | `통과(90.7%)` | `통과(90.3%)` | 대표 C `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt`; C++ `perf_cpp_multi_linux_20260521_132452_codex_cpp_tls_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `tls` | `MULTI_ROUTER_ROUTER` | `통과(95.6%)` | `통과(94.0%)` | `통과(90.6%)` | `통과(93.7%)` | `통과(143.7%)` | `통과(95.2%)` | 65536/262144B는 C 대표 `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt` 대비 C++ `perf_cpp_multi_linux_20260521_191441_codex_cpp_routed_poller_cache_recheck_20260521.txt`에서 통과했다. C++ public `poller_t` socket-only `modify()` 캐시 갱신을 적용했다. 나머지는 C++ `perf_cpp_multi_linux_20260521_132452_codex_cpp_tls_multi_remeasure_20260521.txt`. |
-| `tls` | `MULTI_PUBSUB` | `통과(80.8%)` | `통과(81.2%)` | `통과(85.9%)` | `통과(81.9%)` | `통과(82.5%)` | `통과(88.5%)` | 131072/262144B는 C 대표 `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt` 대비 C++ `perf_cpp_multi_linux_20260521_191818_codex_cpp_pubsub_stream_recheck_20260521.txt`에서 통과했다. 나머지는 C++ `perf_cpp_multi_linux_20260521_132452_codex_cpp_tls_multi_remeasure_20260521.txt`. |
-| `tls` | `MULTI_SPOT` | `통과(104.5%)` | `통과(99.9%)` | `통과(162.4%)` | `통과(101.1%)` | `통과(99.1%)` | `통과(93.4%)` | 대표 C `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt`; C++ `perf_cpp_multi_linux_20260521_132452_codex_cpp_tls_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `tls` | `MULTI_SPOT_REQREP` | `통과(92.5%)` | `통과(82.9%)` | `통과(90.4%)` | `통과(95.1%)` | `통과(98.6%)` | `통과(98.9%)` | 대표 C `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt`; C++ `perf_cpp_multi_linux_20260521_165846_codex_cpp_multi_spot_reqrep_pollcompletion_full_20260521.txt`. auto-HWM 활성과 size별 spotnode `MsgUnit(B)` 일치를 확인했다. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `통과(86.8%)` | `통과(92.2%)` | `통과(78.3%)` | `통과(88.4%)` | `통과(94.1%)` | `통과(94.3%)` | 대표 C `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt`; C++ `perf_cpp_multi_linux_20260521_132452_codex_cpp_tls_multi_remeasure_20260521.txt`. 보강 파일은 아래 목록 참조. |
-| `tls` | `MULTI_STREAM` | `통과(82.5%)` | `통과(84.7%)` | `통과(99.8%)` | `통과(97.2%)` | `해당 없음` | `해당 없음` | 1024B는 C `perf_c_multi_linux_20260521_024327_codex_c_tls_multi_current_for_node_20260521.txt` 대비 C++ `perf_cpp_multi_linux_20260521_191818_codex_cpp_pubsub_stream_recheck_20260521.txt`에서 통과했다. 나머지는 대표 C `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt`; C++ `perf_cpp_multi_linux_20260521_132452_codex_cpp_tls_multi_remeasure_20260521.txt`. |
+| `tcp` | `PAIR` | `통과(100.0%)` | `통과(99.9%)` | `통과(100.8%)` | `통과(100.6%)` | `통과(98.2%)` | `통과(99.5%)` | C: `perf_c_single_linux_20260527_123415_codex_refresh_c_single_default_20260527.txt`; C++: `perf_cpp_single_linux_20260527_143903_codex_refresh_cpp_single_default_retry_clean_20260527.txt` |
+| `tcp` | `PUBSUB` | `통과(96.3%)` | `통과(117.0%)` | `통과(124.3%)` | `통과(413.8%)` | `통과(349.4%)` | `통과(567.6%)` | C/C++: 위 파일 |
+| `tcp` | `DEALER_DEALER` | `통과(100.2%)` | `통과(100.3%)` | `통과(100.1%)` | `통과(100.1%)` | `통과(100.1%)` | `통과(99.9%)` | C/C++: 위 파일 |
+| `tcp` | `DEALER_ROUTER` | `통과(94.0%)` | `통과(92.3%)` | `통과(97.9%)` | `통과(78.3%)` | `보류(59.7%)` | `통과(75.4%)` | 131072B는 위 routed large 재확인 기준. direct native submit 후보는 통과에 못 닿고 inproc large를 낮춰 반영하지 않았다. |
+| `tcp` | `ROUTER_ROUTER` | `통과(105.9%)` | `통과(114.2%)` | `통과(98.2%)` | `통과(97.0%)` | `통과(92.4%)` | `통과(82.1%)` | C/C++: 위 파일 |
+| `tcp` | `SPOT` | `통과(100.3%)` | `통과(90.3%)` | `통과(104.0%)` | `통과(91.2%)` | `통과(82.0%)` | `통과(98.9%)` | C/C++: 위 파일 |
+| `ws` | `PAIR` | `통과(100.0%)` | `통과(100.1%)` | `통과(98.6%)` | `통과(100.0%)` | `통과(100.2%)` | `통과(99.6%)` | C/C++: 위 파일 |
+| `ws` | `PUBSUB` | `통과(92.2%)` | `통과(103.4%)` | `통과(115.3%)` | `통과(190.5%)` | `통과(279.4%)` | `통과(454.0%)` | C/C++: 위 파일 |
+| `ws` | `DEALER_DEALER` | `통과(101.3%)` | `통과(101.0%)` | `통과(95.7%)` | `통과(99.7%)` | `통과(99.1%)` | `통과(99.5%)` | C/C++: 위 파일 |
+| `ws` | `DEALER_ROUTER` | `통과(93.6%)` | `통과(94.7%)` | `통과(98.5%)` | `통과(90.0%)` | `통과(98.5%)` | `통과(95.7%)` | C/C++: 위 파일 |
+| `ws` | `ROUTER_ROUTER` | `통과(111.6%)` | `통과(97.0%)` | `통과(93.2%)` | `통과(85.4%)` | `통과(95.9%)` | `통과(98.1%)` | 262144B는 `perf_cpp_single_linux_20260527_175836_codex_cpp_single_router_router_inproc_ws_large_recheck_20260527.txt` 기준 |
+| `ws` | `SPOT` | `통과(113.4%)` | `통과(104.1%)` | `통과(112.2%)` | `통과(102.5%)` | `통과(113.4%)` | `통과(101.3%)` | C/C++: 위 파일 |
+| `wss` | `PAIR` | `통과(100.0%)` | `통과(98.3%)` | `통과(97.6%)` | `통과(106.8%)` | `통과(90.4%)` | `통과(87.3%)` | 262144B는 `perf_cpp_single_linux_20260527_175934_codex_cpp_single_wss_pair_pubsub_spot_recheck_20260527.txt` 기준 |
+| `wss` | `PUBSUB` | `통과(86.4%)` | `통과(103.5%)` | `통과(114.0%)` | `통과(107.6%)` | `통과(80.4%)` | `통과(92.1%)` | 256B/65536B는 `perf_cpp_single_linux_20260527_175934_codex_cpp_single_wss_pair_pubsub_spot_recheck_20260527.txt` 기준 |
+| `wss` | `DEALER_DEALER` | `통과(99.6%)` | `통과(96.7%)` | `통과(94.3%)` | `통과(103.2%)` | `통과(86.9%)` | `통과(85.4%)` | C/C++: 위 파일 |
+| `wss` | `DEALER_ROUTER` | `통과(93.6%)` | `통과(89.2%)` | `통과(96.0%)` | `통과(91.6%)` | `통과(83.1%)` | `통과(88.9%)` | C/C++: 위 파일 |
+| `wss` | `ROUTER_ROUTER` | `통과(107.6%)` | `통과(95.9%)` | `통과(97.6%)` | `통과(99.6%)` | `통과(99.2%)` | `통과(100.0%)` | C/C++: 위 파일 |
+| `wss` | `SPOT` | `통과(106.6%)` | `통과(107.1%)` | `통과(198.8%)` | `통과(103.8%)` | `통과(123.6%)` | `통과(174.0%)` | 262144B는 `perf_cpp_single_linux_20260527_175934_codex_cpp_single_wss_pair_pubsub_spot_recheck_20260527.txt` 기준 |
+| `tls` | `PAIR` | `통과(99.6%)` | `통과(99.7%)` | `통과(96.0%)` | `통과(88.6%)` | `통과(97.1%)` | `통과(98.2%)` | C/C++: 위 파일 |
+| `tls` | `PUBSUB` | `통과(100.4%)` | `통과(106.8%)` | `통과(117.6%)` | `통과(116.0%)` | `통과(118.3%)` | `통과(132.0%)` | C/C++: 위 파일 |
+| `tls` | `DEALER_DEALER` | `통과(100.0%)` | `통과(100.1%)` | `통과(96.6%)` | `통과(92.1%)` | `통과(96.7%)` | `통과(96.2%)` | C/C++: 위 파일 |
+| `tls` | `DEALER_ROUTER` | `통과(92.6%)` | `통과(96.6%)` | `통과(96.2%)` | `통과(96.8%)` | `통과(93.5%)` | `통과(251.6%)` | C/C++: 위 파일 |
+| `tls` | `ROUTER_ROUTER` | `통과(116.3%)` | `통과(114.4%)` | `통과(99.8%)` | `통과(90.5%)` | `통과(96.7%)` | `통과(174.9%)` | C/C++: 위 파일 |
+| `tls` | `SPOT` | `통과(111.6%)` | `통과(103.4%)` | `통과(99.9%)` | `통과(98.5%)` | `통과(106.1%)` | `통과(79.3%)` | C/C++: 위 파일 |
+| `inproc` | `PAIR` | `통과(85.2%)` | `통과(93.3%)` | `통과(88.9%)` | `통과(100.6%)` | `통과(99.7%)` | `통과(99.7%)` | C/C++: 위 파일 |
+| `inproc` | `PUBSUB` | `통과(86.3%)` | `통과(92.6%)` | `통과(91.9%)` | `통과(1025.6%)` | `통과(806.9%)` | `통과(295.3%)` | C/C++: 위 파일 |
+| `inproc` | `DEALER_DEALER` | `통과(93.5%)` | `통과(93.3%)` | `통과(92.2%)` | `통과(100.0%)` | `통과(100.1%)` | `통과(99.9%)` | C/C++: 위 파일 |
+| `inproc` | `DEALER_ROUTER` | `통과(95.9%)` | `통과(102.7%)` | `통과(95.6%)` | `통과(80.2%)` | `통과(89.5%)` | `보류(34.2%)` | 131072/262144B는 위 routed large 재확인 기준. direct native submit 후보는 262144B를 더 낮춰 반영하지 않았다. |
+| `inproc` | `ROUTER_ROUTER` | `통과(107.1%)` | `통과(98.9%)` | `통과(89.0%)` | `통과(81.4%)` | `통과(72.6%)` | `보류(55.5%)` | 131072/262144B는 위 routed large 재확인 기준. direct native submit 후보는 262144B를 더 낮춰 반영하지 않았다. |
+| `inproc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | full single에서 SPOT inproc 조합은 결과가 없다. |
+| `ipc` | `PAIR` | `통과(98.9%)` | `통과(101.7%)` | `통과(103.6%)` | `통과(83.4%)` | `통과(95.6%)` | `통과(98.5%)` | C/C++: 위 파일 |
+| `ipc` | `PUBSUB` | `통과(97.3%)` | `통과(113.4%)` | `통과(113.4%)` | `통과(348.1%)` | `통과(313.0%)` | `통과(545.0%)` | C/C++: 위 파일 |
+| `ipc` | `DEALER_DEALER` | `통과(100.2%)` | `통과(100.2%)` | `통과(103.6%)` | `통과(100.0%)` | `통과(100.2%)` | `통과(100.0%)` | C/C++: 위 파일 |
+| `ipc` | `DEALER_ROUTER` | `통과(95.7%)` | `통과(94.2%)` | `통과(98.4%)` | `통과(92.8%)` | `통과(87.5%)` | `통과(76.8%)` | C/C++: 위 파일 |
+| `ipc` | `ROUTER_ROUTER` | `통과(103.8%)` | `통과(102.6%)` | `통과(100.3%)` | `통과(100.8%)` | `통과(101.3%)` | `통과(82.6%)` | C/C++: 위 파일 |
+| `ipc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | full single에서 SPOT ipc 조합은 결과가 없다. |
 
-측정 결과 파일:
+#### 6.2.2 Multi suite
 
-- C 기준: `perf_c_multi_linux_20260519_194121_codex_c_tcp_multi_smoke_all_after_spot_recv_guard_20260519.txt`, `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt`, `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt`, `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt`, `perf_c_multi_linux_20260519_234246_codex_c_tls_stream64_debug_recheck_20260519.txt`, `perf_c_multi_linux_20260519_235205_codex_c_tls_stream256_recheck_20260519.txt`, `perf_c_multi_linux_20260519_234152_codex_c_tls_stream1024_recheck_20260519.txt`, `perf_c_multi_linux_20260519_234308_codex_c_tls_stream65536_recheck_20260519.txt`, `perf_c_multi_linux_20260521_130140_codex_c_tcp_rr_large_repeat_for_cpp_20260521.txt`, `perf_c_multi_linux_20260521_130951_codex_c_ws_rr_large_for_cpp_20260521.txt`, `perf_c_multi_linux_20260521_132328_codex_c_wss_dd_rr_large_for_cpp_20260521.txt`, `perf_c_multi_linux_20260521_133217_codex_c_tls_sendsend262144_for_cpp_20260521.txt`, `perf_c_multi_linux_20260521_133338_codex_c_tls_rr_stream_large_for_cpp_20260521.txt`, `perf_c_multi_linux_20260521_133503_codex_c_tls_stream_large_single_for_cpp_20260521.txt`
-- C++ 측정: `perf_cpp_multi_linux_20260521_123539_codex_cpp_tcp_multi_remeasure_20260521.txt`, `perf_cpp_multi_linux_20260521_130227_codex_cpp_ws_multi_remeasure_20260521.txt`, `perf_cpp_multi_linux_20260521_131047_codex_cpp_wss_multi_remeasure_20260521.txt`, `perf_cpp_multi_linux_20260521_132452_codex_cpp_tls_multi_remeasure_20260521.txt`, `perf_cpp_multi_linux_20260521_133213_codex_cpp_tls_sendsend262144_repro_20260521.txt`, `perf_cpp_multi_linux_20260521_133233_codex_cpp_tls_stream_large_recheck_20260521.txt`, `perf_cpp_multi_linux_20260521_133335_codex_cpp_tls_rr_stream_large_recheck_20260521.txt`, `perf_cpp_multi_linux_20260521_165846_codex_cpp_multi_spot_reqrep_pollcompletion_full_20260521.txt`, `perf_cpp_multi_linux_20260521_174933_codex_cpp_wss_multi_spot1024_recheck_20260521.txt`, `perf_cpp_multi_linux_20260521_191441_codex_cpp_routed_poller_cache_recheck_20260521.txt`, `perf_cpp_multi_linux_20260521_191818_codex_cpp_pubsub_stream_recheck_20260521.txt`, `perf_cpp_multi_linux_20260521_192618_codex_cpp_tcp_routed_poller_order_recheck_20260521.txt`, `perf_cpp_multi_linux_20260521_194038_codex_cpp_tcp_rr_server_direct_poll_recheck_20260521.txt`, `perf_cpp_multi_linux_20260521_194121_codex_cpp_tcp_rr131072_server_direct_poll_single_recheck_20260521.txt`
-- C++ 보강 C 기준: `perf_c_multi_linux_20260521_190248_codex_c_tcp_multi_dr65536_for_cpp_recheck_20260521.txt`, `perf_c_multi_linux_20260521_192650_codex_c_tcp_rr_for_cpp_order_recheck_20260521.txt`, `perf_c_multi_linux_20260521_193207_codex_c_wss_pubsub_for_cpp_recheck_20260521.txt`, `perf_c_multi_linux_20260521_194106_codex_c_tcp_rr131072_for_cpp_direct_poll_recheck_20260521.txt`
-- C++ 최신 재측정에서는 서버 poll loop와 routed echo large 보강 뒤 `tcp/ws/wss/tls` multi 대표 표의 미달 항목이 해소됐다.
+2026-05-27 새 측정 라운드 기준으로 기존 2026-05-21, 2026-05-26 단편 파일 기준은 리셋한다.
+최신 C 기준 파일은
+`perf_c_multi_linux_20260527_134603_codex_refresh_c_multi_64_256_1k_4k_64k_128k_retry2_20260527.txt`,
+C 재확인 파일은
+`perf_c_multi_linux_20260527_165625_codex_c_multi_remaining_cpp_misses_recheck_20260527.txt`다.
+둘 다 `status=complete`다. C++ full 대표 파일은
+`perf_cpp_multi_linux_20260527_160322_codex_refresh_cpp_multi_64_256_1k_4k_64k_128k_after_fastpaths_20260527.txt`이며
+`status=complete`, 결과 라인은 `960/960`이다. 이후 낮게 나온 조합은 같은 조건 제한 재측정으로
+확인했고, 최신 보강 파일까지 합치면 C++ multi 미달은 없다.
+
+| Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
+|-----------|---------|----|-----|------|-------|--------|--------|------------------|
+| `tcp` | `MULTI_DEALER_DEALER` | 통과(85.7%) | 통과(94.6%) | 통과(101.0%) | 통과(104.9%) | 통과(100.1%) | 통과(93.4%) | C: 대표 full + C 재확인; C++: 대표 full + 보강 파일 |
+| `tcp` | `MULTI_DEALER_ROUTER` | 통과(96.9%) | 통과(92.2%) | 통과(84.3%) | 통과(86.6%) | 통과(76.9%) | 통과(69.2%) | C/C++: 위 파일 |
+| `tcp` | `MULTI_ROUTER_ROUTER` | 통과(87.8%) | 통과(83.5%) | 통과(90.3%) | 통과(96.9%) | 통과(77.5%) | 통과(73.9%) | C/C++: 위 파일 |
+| `tcp` | `MULTI_PUBSUB` | 통과(96.4%) | 통과(98.3%) | 통과(129.9%) | 통과(115.6%) | 통과(116.8%) | 통과(92.6%) | C/C++: 위 파일 |
+| `tcp` | `MULTI_SPOT` | 통과(93.9%) | 통과(92.5%) | 통과(94.9%) | 통과(99.6%) | 통과(97.5%) | 통과(93.3%) | C/C++: 위 파일 |
+| `tcp` | `MULTI_SPOT_REQREP` | 통과(96.5%) | 통과(97.4%) | 통과(105.7%) | 통과(85.1%) | 통과(101.1%) | 통과(109.8%) | C/C++: 위 파일 |
+| `tcp` | `MULTI_SPOT_SENDSEND` | 통과(100.8%) | 통과(101.0%) | 통과(110.4%) | 통과(109.1%) | 통과(105.6%) | 통과(233.6%) | C/C++: 위 파일 |
+| `tcp` | `MULTI_STREAM` | 통과(126.8%) | 통과(155.8%) | 통과(132.2%) | 통과(172.6%) | 통과(201.6%) | 통과(121.9%) | C/C++: 위 파일 |
+| `ws` | `MULTI_DEALER_DEALER` | 통과(84.4%) | 통과(98.9%) | 통과(86.7%) | 통과(103.2%) | 통과(96.4%) | 통과(119.3%) | C/C++: 위 파일 |
+| `ws` | `MULTI_DEALER_ROUTER` | 통과(85.8%) | 통과(78.9%) | 통과(93.6%) | 통과(86.2%) | 통과(74.8%) | 통과(84.0%) | C/C++: 위 파일 |
+| `ws` | `MULTI_ROUTER_ROUTER` | 통과(117.8%) | 통과(74.1%) | 통과(98.1%) | 통과(85.2%) | 통과(105.7%) | 통과(122.3%) | C/C++: 위 파일 |
+| `ws` | `MULTI_PUBSUB` | 통과(95.4%) | 통과(85.2%) | 통과(104.3%) | 통과(117.2%) | 통과(80.5%) | 통과(90.7%) | C/C++: 위 파일 |
+| `ws` | `MULTI_SPOT` | 통과(85.2%) | 통과(86.6%) | 통과(98.7%) | 통과(91.2%) | 통과(91.5%) | 통과(101.0%) | C/C++: 위 파일 |
+| `ws` | `MULTI_SPOT_REQREP` | 통과(91.1%) | 통과(87.7%) | 통과(100.0%) | 통과(93.4%) | 통과(97.3%) | 통과(101.2%) | C/C++: 위 파일 |
+| `ws` | `MULTI_SPOT_SENDSEND` | 통과(95.3%) | 통과(88.0%) | 통과(83.2%) | 통과(99.4%) | 통과(90.2%) | 통과(82.9%) | C/C++: 위 파일 |
+| `ws` | `MULTI_STREAM` | 통과(87.6%) | 통과(174.8%) | 통과(100.4%) | 통과(133.5%) | 통과(200.8%) | 통과(178.8%) | C/C++: 위 파일 |
+| `wss` | `MULTI_DEALER_DEALER` | 통과(87.5%) | 통과(101.7%) | 통과(96.8%) | 통과(103.4%) | 통과(105.5%) | 통과(120.2%) | C/C++: 위 파일 |
+| `wss` | `MULTI_DEALER_ROUTER` | 통과(91.8%) | 통과(94.3%) | 통과(97.2%) | 통과(102.8%) | 통과(91.2%) | 통과(79.2%) | C/C++: 위 파일 |
+| `wss` | `MULTI_ROUTER_ROUTER` | 통과(90.6%) | 통과(93.0%) | 통과(87.6%) | 통과(121.1%) | 통과(99.3%) | 통과(92.6%) | C/C++: 위 파일 |
+| `wss` | `MULTI_PUBSUB` | 통과(81.2%) | 통과(93.4%) | 통과(88.4%) | 통과(90.0%) | 통과(95.2%) | 통과(119.3%) | C/C++: 위 파일 |
+| `wss` | `MULTI_SPOT` | 통과(114.9%) | 통과(97.1%) | 통과(100.9%) | 통과(101.5%) | 통과(105.0%) | 통과(106.7%) | C/C++: 위 파일 |
+| `wss` | `MULTI_SPOT_REQREP` | 통과(89.4%) | 통과(81.4%) | 통과(88.0%) | 통과(90.8%) | 통과(93.2%) | 통과(102.8%) | C/C++: 위 파일 |
+| `wss` | `MULTI_SPOT_SENDSEND` | 통과(96.7%) | 통과(95.4%) | 통과(94.0%) | 통과(92.7%) | 통과(102.9%) | 통과(105.3%) | C/C++: 위 파일 |
+| `wss` | `MULTI_STREAM` | 통과(80.4%) | 통과(212.5%) | 통과(93.4%) | 통과(182.5%) | 통과(228.3%) | 통과(275.6%) | C/C++: 위 파일 |
+| `tls` | `MULTI_DEALER_DEALER` | 통과(84.8%) | 통과(104.3%) | 통과(96.3%) | 통과(90.2%) | 통과(92.0%) | 통과(93.6%) | C/C++: 위 파일 |
+| `tls` | `MULTI_DEALER_ROUTER` | 통과(78.4%) | 통과(93.2%) | 통과(82.2%) | 통과(82.6%) | 통과(95.1%) | 통과(105.0%) | C/C++: 위 파일 |
+| `tls` | `MULTI_ROUTER_ROUTER` | 통과(98.3%) | 통과(82.5%) | 통과(89.9%) | 통과(88.3%) | 통과(111.2%) | 통과(90.2%) | C/C++: 위 파일 |
+| `tls` | `MULTI_PUBSUB` | 통과(94.7%) | 통과(92.2%) | 통과(142.3%) | 통과(133.0%) | 통과(83.6%) | 통과(97.6%) | C/C++: 위 파일 |
+| `tls` | `MULTI_SPOT` | 통과(89.7%) | 통과(76.7%) | 통과(97.2%) | 통과(97.2%) | 통과(103.7%) | 통과(106.1%) | C/C++: 위 파일 |
+| `tls` | `MULTI_SPOT_REQREP` | 통과(97.2%) | 통과(105.4%) | 통과(76.8%) | 통과(91.5%) | 통과(95.9%) | 통과(89.4%) | C/C++: 위 파일 |
+| `tls` | `MULTI_SPOT_SENDSEND` | 통과(96.5%) | 통과(111.5%) | 통과(109.3%) | 통과(95.8%) | 통과(93.8%) | 통과(95.9%) | C/C++: 위 파일 |
+| `tls` | `MULTI_STREAM` | 통과(85.9%) | 통과(188.3%) | 통과(84.3%) | 통과(197.7%) | 통과(174.0%) | 통과(153.6%) | C/C++: 위 파일 |
+
+보강 파일은 `perf_cpp_multi_linux_20260527_163929_codex_cpp_multi_remaining_misses_recheck_after_full_20260527.txt`,
+`perf_cpp_multi_linux_20260527_173402_codex_cpp_multi_new_miss_candidates_recheck_20260527.txt`,
+`perf_cpp_multi_linux_20260527_174433_codex_cpp_multi_dealer_router_tcp128k_final_recheck_20260527.txt`,
+`perf_cpp_multi_linux_20260527_174442_codex_cpp_multi_spot_wss64k_final_recheck_20260527.txt`와
+중간 단일 셀 재확인 파일들이다. C++ binding에는 C public 계약에 대응하는
+`sub_socket_t::subscribe_part(...)`, `xsub_socket_t::subscribe_part(...)`,
+`dealer_socket_t::send_no_wait(...)`, `pub_socket_t::publish_no_wait(...)`,
+`xpub_socket_t::publish_no_wait(...)`를 추가했다. PUBSUB client hot path는 perf wrapper의
+raw native handle로 `zlink_subscribe_part`를 직접 호출해 C 수신 루프와 같은 비용 구조로 맞췄다.
 
 ### 6.3 .NET 상태
 
 #### 6.3.1 Single suite
 
+2026-05-27 full refresh 기준으로 기존 2026-05-20/22 단편 파일 기준은 리셋한다. 최신 기준 파일은
+C `perf_c_single_linux_20260526_213234_codex_full_refresh_c_single_full_20260526.txt`,
+.NET `perf_dotnet_single_linux_20260527_105052_codex_full_refresh_dotnet_single_reset_retry3_20260527.txt`다.
+두 파일 모두 `status=complete`, 결과 라인은 `1020/1020`이다. 이전 retry
+`perf_dotnet_single_linux_20260527_101911_codex_full_refresh_dotnet_single_reset_retry_20260527.txt`는
+`DEALER_DEALER ws 131072/262144B`에서 partial이었지만, 같은 조건 제한 재측정
+`perf_dotnet_single_linux_20260527_103044_codex_dotnet_single_dd_ws_large_repro_20260527.txt`와
+최신 full retry3에서는 모두 통과했다.
+
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
-| `tcp` | `PAIR` | `통과(100%)` | `통과(75%)` | `통과(118%)` | `통과(99%)` | `통과(99%)` | `통과(101%)` | C: `perf_c_single_linux_20260520_000429_codex_c_tcp_single_duration5_for_dotnet_20260520.txt`; .NET: `perf_dotnet_single_linux_20260520_001758_codex_dotnet_tcp_single_smoke_all_after_dr_poller_drain_20260520.txt` |
-| `tcp` | `PUBSUB` | `통과(88%)` | `통과(89%)` | `통과(114%)` | `통과(101%)` | `통과(101%)` | `통과(100%)` | C/.NET: 위 파일 |
-| `tcp` | `DEALER_DEALER` | `통과(97%)` | `통과(74%)` | `통과(117%)` | `통과(100%)` | `통과(101%)` | `통과(101%)` | C/.NET: 위 파일 |
-| `tcp` | `DEALER_ROUTER` | `통과(75%)` | `통과(79%)` | `통과(85%)` | `통과(79%)` | `통과(98%)` | `통과(91%)` | C/.NET: 위 파일. `DEALER` explicit routing id와 recv deadline count를 제거하고, active phase는 wire stop token까지 유지한다. ROUTER 수신은 signal-driven wait 뒤 `DontWait` drain으로 처리해 C와 같은 stop-token 종료 의미를 유지하면서 blocking routed recv 병목을 제거했다. 제한 확인: `perf_dotnet_single_linux_20260520_001728_codex_dotnet_tcp_single_dr_large_poller_drain_20260520.txt` |
-| `tcp` | `ROUTER_ROUTER` | `통과(89%)` | `통과(91%)` | `통과(89%)` | `통과(90%)` | `통과(78%)` | `통과(94%)` | C/.NET: 위 파일. `ROUTER_ROUTER / DEALER_ROUTER` 상대 기준은 절대 기준 통과 항목의 진단 보조로만 사용 |
-| `tcp` | `SPOT` | `통과(176%)` | `통과(132%)` | `통과(109%)` | `통과(125%)` | `통과(103%)` | `통과(102%)` | C/.NET: 위 파일. .NET `PerfSpot`에 single auto-HWM message unit 적용을 추가했고 `test_single_spot_auto_hwm_msgunit_matches_size.sh`로 size별 `MsgUnit(B)` 일치를 확인 |
-| `ws` | `PAIR` | `통과(96%)` | `통과(72%)` | `통과(103%)` | `통과(98%)` | `통과(99%)` | `통과(100%)` | C: `perf_c_single_linux_20260520_002250_codex_c_ws_single_for_dotnet_20260520.txt`; .NET: `perf_dotnet_single_linux_20260520_002601_codex_dotnet_ws_single_smoke_all_20260520.txt` |
-| `ws` | `PUBSUB` | `통과(85%)` | `통과(83%)` | `통과(91%)` | `통과(100%)` | `통과(100%)` | `통과(100%)` | C/.NET: 위 파일 |
-| `ws` | `DEALER_DEALER` | `통과(97%)` | `통과(72%)` | `통과(102%)` | `통과(100%)` | `통과(100%)` | `통과(99%)` | C/.NET: 위 파일 |
-| `ws` | `DEALER_ROUTER` | `통과(78%)` | `통과(80%)` | `통과(89%)` | `통과(85%)` | `통과(93%)` | `통과(102%)` | C/.NET: 위 파일 |
-| `ws` | `ROUTER_ROUTER` | `통과(85%)` | `통과(84%)` | `통과(90%)` | `통과(88%)` | `통과(94%)` | `통과(102%)` | C/.NET: 위 파일 |
-| `ws` | `SPOT` | `통과(166%)` | `통과(118%)` | `통과(97%)` | `통과(120%)` | `통과(102%)` | `통과(101%)` | C/.NET: 위 파일 |
-| `wss` | `PAIR` | `통과(97%)` | `통과(68%)` | `통과(101%)` | `통과(104%)` | `통과(93%)` | `통과(102%)` | C: `perf_c_single_linux_20260520_003001_codex_c_wss_single_for_dotnet_20260520.txt`; .NET: `perf_dotnet_single_linux_20260520_003309_codex_dotnet_wss_single_smoke_all_20260520.txt` |
-| `wss` | `PUBSUB` | `통과(91%)` | `통과(82%)` | `통과(97%)` | `통과(99%)` | `통과(98%)` | `통과(100%)` | C/.NET: 위 파일 |
-| `wss` | `DEALER_DEALER` | `통과(97%)` | `통과(70%)` | `통과(104%)` | `통과(106%)` | `통과(93%)` | `통과(98%)` | C/.NET: 위 파일 |
-| `wss` | `DEALER_ROUTER` | `통과(76%)` | `통과(80%)` | `통과(98%)` | `통과(93%)` | `통과(99%)` | `통과(118%)` | C/.NET: 위 파일 |
-| `wss` | `ROUTER_ROUTER` | `통과(81%)` | `통과(84%)` | `통과(97%)` | `통과(95%)` | `통과(98%)` | `통과(118%)` | C/.NET: 위 파일 |
-| `wss` | `SPOT` | `통과(161%)` | `통과(106%)` | `통과(467%)` | `통과(63.5%)` | `통과(197%)` | `통과(369%)` | 65536B는 C `perf_c_single_linux_20260521_210757_codex_c_wss_single_spot65536_outlier_apply_20260521.txt` 대비 .NET `perf_dotnet_single_linux_20260522_005548_codex_dotnet_wss_single_spot65536_subscribe_part_20260522.txt`로 갱신했다. C에 없는 기본 in-flight cap을 제거하고 수신 hot path를 public `SubscribePart`로 바꿔 C의 single-part subscribe 의미에 맞췄다. auto-HWM 적용과 size별 `MsgUnit(B)` 일치를 확인했다. 나머지는 C/.NET 위 파일. |
-| `tls` | `PAIR` | `통과(97%)` | `통과(74%)` | `통과(125%)` | `통과(99%)` | `통과(101%)` | `통과(100%)` | C: `perf_c_single_linux_20260520_003724_codex_c_tls_single_for_dotnet_20260520.txt`; .NET: `perf_dotnet_single_linux_20260520_004037_codex_dotnet_tls_single_smoke_all_20260520.txt` |
-| `tls` | `PUBSUB` | `통과(91%)` | `통과(83%)` | `통과(117%)` | `통과(99%)` | `통과(99%)` | `통과(100%)` | C/.NET: 위 파일 |
-| `tls` | `DEALER_DEALER` | `통과(97%)` | `통과(74%)` | `통과(130%)` | `통과(96%)` | `통과(100%)` | `통과(101%)` | C/.NET: 위 파일 |
-| `tls` | `DEALER_ROUTER` | `통과(77%)` | `통과(76%)` | `통과(99%)` | `통과(107%)` | `통과(105%)` | `통과(107%)` | C/.NET: 위 파일 |
-| `tls` | `ROUTER_ROUTER` | `통과(90%)` | `통과(92%)` | `통과(96%)` | `통과(97%)` | `통과(99%)` | `통과(97%)` | C/.NET: 위 파일 |
-| `tls` | `SPOT` | `통과(160%)` | `통과(124%)` | `통과(102%)` | `통과(102%)` | `통과(99%)` | `통과(99%)` | C/.NET: 위 파일. auto-HWM 적용과 size별 `MsgUnit(B)` 일치를 확인 |
+| `tcp` | `PAIR` | `통과(98%)` | `통과(77%)` | `통과(114%)` | `통과(96%)` | `통과(99%)` | `통과(99%)` | C: `perf_c_single_linux_20260526_213234_codex_full_refresh_c_single_full_20260526.txt`; .NET: `perf_dotnet_single_linux_20260527_105052_codex_full_refresh_dotnet_single_reset_retry3_20260527.txt` |
+| `tcp` | `PUBSUB` | `통과(90%)` | `개선 대상(59.1%)` | `통과(113%)` | `통과(98%)` | `통과(98%)` | `통과(94%)` | C/.NET: 위 파일. 256B는 최신 full 기준 미달이다. |
+| `tcp` | `DEALER_DEALER` | `통과(98%)` | `통과(81%)` | `통과(118%)` | `통과(98%)` | `통과(96%)` | `통과(84%)` | C/.NET: 위 파일 |
+| `tcp` | `DEALER_ROUTER` | `통과(79%)` | `개선 대상(74.7%)` | `통과(83%)` | `개선 대상(74.8%)` | `통과(95%)` | `통과(92%)` | C/.NET: 위 파일. 256B/65536B는 최신 full 기준 미달이다. |
+| `tcp` | `ROUTER_ROUTER` | `통과(94%)` | `통과(89%)` | `통과(86%)` | `개선 대상(74.9%)` | `통과(89%)` | `통과(90%)` | C/.NET: 위 파일. 65536B는 최신 full 기준 미달이다. |
+| `tcp` | `SPOT` | `통과(110%)` | `통과(97%)` | `통과(98%)` | `통과(91%)` | `통과(92%)` | `통과(91%)` | C/.NET: 위 파일 |
+| `ws` | `PAIR` | `통과(97%)` | `통과(95%)` | `통과(110%)` | `통과(98%)` | `통과(98%)` | `통과(98%)` | C/.NET: 위 파일 |
+| `ws` | `PUBSUB` | `통과(89%)` | `통과(89%)` | `통과(108%)` | `통과(99%)` | `통과(97%)` | `통과(98%)` | C/.NET: 위 파일 |
+| `ws` | `DEALER_DEALER` | `통과(98%)` | `통과(95%)` | `통과(120%)` | `통과(98%)` | `통과(98%)` | `통과(98%)` | C/.NET: 위 파일 |
+| `ws` | `DEALER_ROUTER` | `통과(76%)` | `개선 대상(74.9%)` | `통과(83%)` | `통과(87%)` | `통과(90%)` | `통과(98%)` | C/.NET: 위 파일. 256B는 최신 full 기준 미달이다. |
+| `ws` | `ROUTER_ROUTER` | `통과(92%)` | `통과(81%)` | `통과(83%)` | `통과(88%)` | `통과(93%)` | `통과(95%)` | C/.NET: 위 파일 |
+| `ws` | `SPOT` | `통과(110%)` | `통과(102%)` | `통과(94%)` | `통과(87%)` | `통과(98%)` | `통과(98%)` | C/.NET: 위 파일 |
+| `wss` | `PAIR` | `통과(98%)` | `개선 대상(44.0%)` | `통과(108%)` | `통과(103%)` | `통과(90%)` | `통과(88%)` | C/.NET: 위 파일. 256B는 최신 full 기준 미달이다. |
+| `wss` | `PUBSUB` | `통과(94%)` | `통과(96%)` | `통과(104%)` | `통과(97%)` | `통과(95%)` | `통과(102%)` | C/.NET: 위 파일 |
+| `wss` | `DEALER_DEALER` | `통과(98%)` | `통과(94%)` | `통과(105%)` | `통과(100%)` | `통과(91%)` | `통과(97%)` | C/.NET: 위 파일 |
+| `wss` | `DEALER_ROUTER` | `통과(77%)` | `통과(79%)` | `통과(94%)` | `통과(90%)` | `통과(95%)` | `통과(123%)` | C/.NET: 위 파일 |
+| `wss` | `ROUTER_ROUTER` | `통과(83%)` | `통과(79%)` | `통과(93%)` | `통과(83%)` | `통과(94%)` | `통과(120%)` | C/.NET: 위 파일 |
+| `wss` | `SPOT` | `통과(110%)` | `통과(97%)` | `통과(93%)` | `통과(80%)` | `개선 대상(48.4%)` | `개선 대상(67.0%)` | C/.NET: 위 파일. 131072B/262144B는 최신 full 기준 미달이다. |
+| `tls` | `PAIR` | `통과(97%)` | `통과(96%)` | `통과(115%)` | `통과(96%)` | `통과(98%)` | `통과(98%)` | C/.NET: 위 파일 |
+| `tls` | `PUBSUB` | `통과(95%)` | `통과(87%)` | `통과(108%)` | `통과(83%)` | `통과(98%)` | `통과(96%)` | C/.NET: 위 파일 |
+| `tls` | `DEALER_DEALER` | `통과(98%)` | `통과(96%)` | `통과(112%)` | `통과(97%)` | `통과(96%)` | `통과(97%)` | C/.NET: 위 파일 |
+| `tls` | `DEALER_ROUTER` | `통과(78%)` | `통과(75%)` | `통과(92%)` | `통과(98%)` | `통과(98%)` | `통과(99%)` | C/.NET: 위 파일 |
+| `tls` | `ROUTER_ROUTER` | `통과(88%)` | `통과(89%)` | `통과(96%)` | `통과(92%)` | `통과(91%)` | `통과(92%)` | C/.NET: 위 파일 |
+| `tls` | `SPOT` | `통과(105%)` | `통과(99%)` | `통과(93%)` | `통과(100%)` | `통과(100%)` | `통과(101%)` | C/.NET: 위 파일 |
+| `inproc` | `PAIR` | `통과(77%)` | `통과(79%)` | `통과(87%)` | `개선 대상(30.7%)` | `통과(98%)` | `통과(98%)` | C/.NET: 위 파일. 65536B는 최신 full 기준 미달이다. |
+| `inproc` | `PUBSUB` | `통과(94%)` | `통과(93%)` | `통과(98%)` | `통과(98%)` | `통과(98%)` | `통과(98%)` | C/.NET: 위 파일 |
+| `inproc` | `DEALER_DEALER` | `개선 대상(75.0%)` | `통과(78%)` | `개선 대상(71.2%)` | `통과(100%)` | `통과(98%)` | `통과(98%)` | C/.NET: 위 파일. 64B/1024B는 최신 full 기준 미달이다. |
+| `inproc` | `DEALER_ROUTER` | `통과(75%)` | `통과(77%)` | `개선 대상(74.2%)` | `개선 대상(33.9%)` | `개선 대상(33.7%)` | `통과(101%)` | C/.NET: 위 파일. 1024B/65536B/131072B는 최신 full 기준 미달이다. |
+| `inproc` | `ROUTER_ROUTER` | `통과(84%)` | `통과(77%)` | `개선 대상(74.2%)` | `개선 대상(34.8%)` | `통과(84%)` | `통과(148%)` | C/.NET: 위 파일. 1024B/65536B는 최신 full 기준 미달이다. |
+| `inproc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | full single에서 SPOT inproc 조합은 결과가 없다. |
+| `ipc` | `PAIR` | `통과(98%)` | `통과(95%)` | `통과(113%)` | `통과(91%)` | `통과(98%)` | `통과(97%)` | C/.NET: 위 파일 |
+| `ipc` | `PUBSUB` | `개선 대상(41.0%)` | `통과(93%)` | `통과(105%)` | `통과(98%)` | `통과(98%)` | `통과(98%)` | C/.NET: 위 파일. 64B는 최신 full 기준 미달이다. |
+| `ipc` | `DEALER_DEALER` | `통과(96%)` | `개선 대상(74.9%)` | `통과(113%)` | `통과(99%)` | `통과(98%)` | `통과(98%)` | C/.NET: 위 파일. 256B는 최신 full 기준 미달이다. |
+| `ipc` | `DEALER_ROUTER` | `개선 대상(73.2%)` | `개선 대상(71.7%)` | `통과(80%)` | `통과(80%)` | `개선 대상(72.7%)` | `통과(92%)` | C/.NET: 위 파일. 64B/256B/131072B는 최신 full 기준 미달이다. |
+| `ipc` | `ROUTER_ROUTER` | `통과(82%)` | `통과(87%)` | `통과(86%)` | `통과(90%)` | `개선 대상(71.2%)` | `통과(81%)` | C/.NET: 위 파일. 131072B는 최신 full 기준 미달이다. |
+| `ipc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | full single에서 SPOT ipc 조합은 결과가 없다. |
 
 #### 6.3.2 Multi suite
+
+2026-05-27 full refresh 재측정은
+`perf_dotnet_multi_linux_20260527_111459_codex_full_refresh_dotnet_multi_reset_20260527.txt`에서
+`MULTI_SPOT_REQREP tcp 256B` client가 5초 안에 종료하지 못해 `partial`로 끝났다
+(`success=121`, `fail=1`, `expected_result_lines=610`, `actual_result_lines=605`).
+실패 지점 전까지 `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`,
+`MULTI_PUBSUB`, `MULTI_SPOT`은 full run 안에서 완료됐다. 이 partial 파일은 최신 장애
+기록으로 남긴다. 같은 조건 단독 재측정
+`perf_dotnet_multi_linux_20260527_113523_codex_dotnet_multi_spot_reqrep_tcp256_repro_20260527.txt`는
+complete였고 170.431 Kops/s로 측정됐다. 따라서 full retry를 다시 실행해 전체
+complete 파일을 확보한다. full retry
+`perf_dotnet_multi_linux_20260527_113556_codex_full_refresh_dotnet_multi_reset_retry_20260527.txt`는
+앞선 `MULTI_SPOT_REQREP tcp 256B`를 통과했지만 `MULTI_SPOT_SENDSEND ws 65536B`에서
+server가 5초 안에 종료하지 못해 다시 `partial`로 끝났다(`success=159`, `fail=1`,
+`expected_result_lines=800`, `actual_result_lines=795`). 같은 retry에서
+`MULTI_SPOT tcp 131072B`는 0.160 Kmsg/s로 비정상적으로 낮아 별도 재측정 후보로 둔다.
+같은 조건 단독 재측정
+`perf_dotnet_multi_linux_20260527_120023_codex_dotnet_multi_sendsend_ws65536_repro_20260527.txt`는
+complete였고 35.924 Kops/s로 측정됐다. full retry2
+`perf_dotnet_multi_linux_20260527_120109_codex_full_refresh_dotnet_multi_reset_retry2_20260527.txt`는
+`MULTI_SPOT_REQREP tcp 256B`와 앞선 `MULTI_SPOT_SENDSEND ws 65536B` 지점을 통과했지만,
+`MULTI_SPOT_SENDSEND tls 131072B`에서 `zlink error code 704 (errno 98)`와
+`server_ready_timeout`으로 partial 종료됐다(`success=154`, `fail=1`,
+`expected_result_lines=775`, `actual_result_lines=770`). 세 번의 full 시도가 모두
+SPOT reqrep/sendsend 계열에서 서로 다른 shutdown/bind-ready 실패를 냈으므로, 최신
+전체 complete 파일은 아직 확보되지 않았다. 이 항목은 성능 비율 이전에 full-run 안정화
+보류로 둔다.
 
 2026-05-21 재측정 결과로 대표 표를 갱신했다. 판정은 `doc/perf` 기준처럼 C `bindings/c/perf`와 같은 suite/pattern/transport/size의 throughput 비율로 계산한다. HWM은 튜닝 값으로 쓰지 않고, auto-HWM 활성 여부와 size별 `MsgUnit(B)` 일치 여부만 확인한다.
 
@@ -664,6 +788,15 @@ SPOT 계열 14~15개 수준이었다. 두 언어 모두 client 수가 OS thread 
 ### 6.4 Java 상태
 
 #### 6.4.1 Single suite
+
+2026-05-27 full refresh 첫 실행
+`perf_java_single_linux_20260527_122518_codex_full_refresh_java_single_reset_20260527.txt`는
+기본 wrapper가 `PAIR`부터 실행한 뒤 `PAIR ws 256B`에서 `timeout_after_45s`로
+`partial` 종료됐다(`expected_result_lines=70`, `actual_result_lines=65`). 이 파일은
+최신 장애 기록으로 남긴다. 해당 조건 단독 재측정
+`perf_java_single_linux_20260527_122803_codex_java_single_pair_ws256_repro_20260527.txt`는
+complete였고 1228.82 Kmsg/s로 측정됐다. 따라서 `--pattern ALL`로 full 실행을 다시
+진행한다.
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |-----------|---------|----|-----|------|-------|--------|--------|------------------|
@@ -1368,33 +1501,34 @@ Go는 현재 표 기준으로 single/multi 전 대상이 `통과` 상태다. 아
 | `tcp` | `PAIR` | `통과(100.5%)` | `통과(99.5%)` | `통과(113.8%)` | `통과(98.6%)` | `통과(99.1%)` | `통과(96.2%)` | C `perf_c_single_linux_20260522_073013_codex_c_tcp_single_for_rust_20260522.txt` 대비 Rust `perf_rust_single_linux_20260522_125722_codex_rust_tcp_single_complete_after_stop_token_fix_20260522.txt`. balanced auto-HWM에서 stop token이 HWM 뒤에 막히던 `PAIR 1024B` timeout은 single stop-token retry와 burst drain 정렬 뒤 해소했다. |
 | `tcp` | `PUBSUB` | `통과(82.5%)` | `통과(89.2%)` | `통과(111.4%)` | `통과(99.3%)` | `통과(99.3%)` | `통과(96.4%)` | 64B/1024B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 64B는 Rust 단순 one-way 최소 기준을 넘어 보류에서 통과로 바뀌었다. 1024B는 C보다 높아 outlier 재검토 대상으로 남긴다. 나머지는 C/Rust 파일은 위 행과 같다. |
 | `tcp` | `DEALER_DEALER` | `통과(97.9%)` | `통과(102.0%)` | `통과(118.5%)` | `통과(100.7%)` | `통과(100.1%)` | `통과(96.8%)` | C/Rust 파일은 위 행과 같다. receiver는 C single처럼 blocking recv 뒤 `DONT_WAIT` burst drain을 수행하고, stop token은 transient backpressure를 bounded retry로 처리한다. 1024B는 C보다 높아 outlier 재검토 대상으로 남긴다. |
-| `tcp` | `DEALER_ROUTER` | `통과(87.1%)` | `통과(88.2%)` | `보류(64.3%)` | `보류(14.4%)` | `보류(12.3%)` | `보류(11.6%)` | 64B/1024B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 256B는 기존 Rust 파일 기준이다. 65536B 이상은 C `perf_c_single_linux_20260525_134314_rust_single_routed_current_c.txt` 대비 Rust `perf_rust_single_linux_20260525_141227_single_routed_recv_part_stopwait_fixed.txt` 기준이다. `RouterSocket::recv_part(...)` part 단위 수신과 active 이후 bounded stop wait를 적용해 complete를 확보했지만, 1024B 이상은 routed one-way 기준보다 낮아 보류한다. |
-| `tcp` | `ROUTER_ROUTER` | `통과(100.6%)` | `통과(103.5%)` | `보류(61.9%)` | `보류(14.5%)` | `보류(11.6%)` | `보류(11.2%)` | 64B/1024B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 256B는 기존 Rust 파일 기준이다. 65536B 이상은 C `perf_c_single_linux_20260525_134314_rust_single_routed_current_c.txt` 대비 Rust `perf_rust_single_linux_20260525_141227_single_routed_recv_part_stopwait_fixed.txt` 기준이다. `RouterSocket::recv_part(...)` part 단위 수신과 active 이후 bounded stop wait를 적용해 제한 재측정 complete를 확보했다. 64B/256B는 C보다 높아 outlier 재검토 대상으로 남기고, 1024B 이상은 routed one-way 기준보다 낮아 보류한다. |
-| `tcp` | `SPOT` | `통과(147.7%)` | `통과(105.3%)` | `보류(47.2%)` | `통과(127.8%)` | `통과(102.7%)` | `통과(84.6%)` | 64B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 1024B는 clean 후 current HEAD fresh 재측정 C `perf_c_single_linux_20260525_211940_rust_single_spot1024_current_after_clean_c.txt` 대비 Rust `perf_rust_single_linux_20260525_212023_single_spot1024_current_after_clean.txt` 기준이며 SPOT 기준보다 낮다. 64B와 65536B는 120%를 넘어 outlier 재검토 대상으로 남긴다. 나머지는 C/Rust 파일은 위 행과 같다. |
+| `tcp` | `DEALER_ROUTER` | `통과(87.1%)` | `통과(88.2%)` | `보류(64.3%)` | `보류(13.0%)` | `보류(11.5%)` | `보류(10.7%)` | 64B/1024B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 256B는 기존 Rust 파일 기준이다. 65536B 이상은 current C `perf_c_single_linux_20260527_074526_codex_c_single_routed_large_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_081513_codex_rust_single_routed_large_blocking_send_tcp_20260527.txt` 기준이다. Rust perf active/stop send를 C `ZLINK_SEND_FLAGS_NONE` 의미와 맞췄지만 throughput은 기존 900MB/s대와 같아 보류를 유지한다. socket single-part send 후보 `perf_rust_single_linux_20260527_075139_codex_rust_single_routed_large_send_part_20260527.txt`는 개선이 없어 반영하지 않는다. |
+| `tcp` | `ROUTER_ROUTER` | `통과(100.6%)` | `통과(103.5%)` | `보류(61.9%)` | `보류(13.2%)` | `보류(11.4%)` | `보류(11.2%)` | 64B/1024B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 256B는 기존 Rust 파일 기준이다. 65536B 이상은 current C `perf_c_single_linux_20260527_074526_codex_c_single_routed_large_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_081513_codex_rust_single_routed_large_blocking_send_tcp_20260527.txt` 기준이다. `RouterSocket::recv_part(...)` part 단위 수신과 active 이후 bounded stop wait를 적용했고, active/stop send도 C blocking send 의미로 맞췄지만 routed one-way 기준보다 낮아 보류한다. |
+| `tcp` | `SPOT` | `통과(147.7%)` | `통과(105.3%)` | `통과(78.5%)` | `통과(127.8%)` | `통과(102.7%)` | `통과(84.6%)` | 1024B는 current C `perf_c_single_linux_20260527_073913_codex_c_single_spot1024_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_074321_codex_rust_single_spot1024_publish_subscribe_part_20260527.txt` 기준이다. Rust public `Spot::publish_part(...)`/`subscribe_part(...)` 단일-part 경로로 C `zlink_spot_publish_part`/`zlink_spot_subscribe_part` 의미에 맞췄다. 64B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145442_rust_single_tcp_small_border_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_145523_single_tcp_small_border_recheck.txt` 기준이다. 64B와 65536B는 120%를 넘어 outlier 재검토 대상으로 남긴다. 나머지는 C/Rust 파일은 위 행과 같다. |
 | `ws` | `PAIR` | `통과(98.9%)` | `통과(102.9%)` | `통과(128.1%)` | `통과(100.6%)` | `통과(97.7%)` | `통과(95.3%)` | C full `perf_c_single_linux_20260522_130546_codex_c_ws_single_for_rust_20260522.txt`, C 1024B 보강 `perf_c_single_linux_20260522_132034_codex_c_ws_single_1024_rust_outlier_recheck_20260522.txt`, Rust full `perf_rust_single_linux_20260522_131244_codex_rust_ws_single_current_20260522.txt` 기준이다. 1024B는 같은 조건 C 보강 뒤에도 120%를 넘어 outlier 재검토 대상으로 남긴다. |
 | `ws` | `PUBSUB` | `통과(84.0%)` | `통과(98.1%)` | `통과(134.8%)` | `통과(97.9%)` | `통과(98.2%)` | `통과(98.0%)` | C/Rust 파일은 위 행과 같다. 1024B는 같은 조건 C 보강 뒤에도 120%를 넘어 outlier 재검토 대상으로 남긴다. |
 | `ws` | `DEALER_DEALER` | `통과(101.1%)` | `통과(100.8%)` | `통과(132.1%)` | `통과(97.0%)` | `통과(100.2%)` | `통과(99.2%)` | C/Rust 파일은 위 행과 같다. 1024B는 같은 조건 C 보강 뒤에도 120%를 넘어 outlier 재검토 대상으로 남긴다. |
-| `ws` | `DEALER_ROUTER` | `통과(91.0%)` | `통과(99.5%)` | `통과(94.9%)` | `보류(31.0%)` | `보류(24.7%)` | `보류(21.0%)` | 1024B는 Rust 보강 `perf_rust_single_linux_20260522_131936_codex_rust_ws_single_dealer_router1024_reuse_20260522.txt`와 C 보강 `perf_c_single_linux_20260522_132034_codex_c_ws_single_1024_rust_outlier_recheck_20260522.txt`로 binary_exit 없이 complete를 확보했다. 65536B 이상은 `RouterSocket::recv_part(...)` 적용 뒤 같은 조건 complete 재측정 C `perf_c_single_linux_20260525_142618_rust_single_routed_wstls_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_142618_single_routed_wstls_recv_part_recheck.txt` 기준이며 routed one-way 기준보다 낮아 보류한다. |
-| `ws` | `ROUTER_ROUTER` | `통과(100.0%)` | `통과(108.8%)` | `통과(94.5%)` | `보류(32.6%)` | `보류(24.7%)` | `보류(22.5%)` | 131072B/262144B C 기준은 보강 `perf_c_single_linux_20260522_131031_codex_c_ws_single_rr_large_for_rust_recheck_20260522.txt`, 1024B C 기준은 보강 `perf_c_single_linux_20260522_132034_codex_c_ws_single_1024_rust_outlier_recheck_20260522.txt`다. 65536B 이상은 `RouterSocket::recv_part(...)` 적용 뒤 같은 조건 complete 재측정 C `perf_c_single_linux_20260525_142618_rust_single_routed_wstls_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_142618_single_routed_wstls_recv_part_recheck.txt` 기준이며 routed one-way 기준보다 낮아 보류한다. |
-| `ws` | `SPOT` | `통과(149.2%)` | `통과(111.1%)` | `보류(53.9%)` | `통과(188.9%)` | `통과(179.4%)` | `통과(114.4%)` | 256B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145909_rust_single_spot_small_nontcp_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_150009_single_spot_small_nontcp_recheck.txt` 기준이다. 1024B는 clean 후 current HEAD fresh 재측정 C `perf_c_single_linux_20260525_211940_rust_single_spot1024_current_after_clean_c.txt` 대비 Rust `perf_rust_single_linux_20260525_212023_single_spot1024_current_after_clean.txt` 기준이며 SPOT 기준보다 낮다. 64B/65536B/131072B는 120%를 넘어 outlier 재검토 대상으로 남긴다. 나머지 C 기준은 기존 `perf_c_single_linux_20260522_131048_codex_c_ws_single_spot_for_rust_20260522.txt`, large/outlier 보강 `perf_c_single_linux_20260522_132112_codex_c_ws_single_spot_outliers_for_rust_recheck_20260522.txt`다. |
+| `ws` | `DEALER_ROUTER` | `통과(91.0%)` | `통과(99.5%)` | `통과(94.9%)` | `보류(30.0%)` | `보류(23.2%)` | `보류(20.7%)` | 1024B는 Rust 보강 `perf_rust_single_linux_20260522_131936_codex_rust_ws_single_dealer_router1024_reuse_20260522.txt`와 C 보강 `perf_c_single_linux_20260522_132034_codex_c_ws_single_1024_rust_outlier_recheck_20260522.txt`로 binary_exit 없이 complete를 확보했다. 65536B 이상은 current C `perf_c_single_linux_20260527_074526_codex_c_single_routed_large_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_074713_codex_rust_single_routed_large_current_20260527.txt` 기준이며 routed one-way 기준보다 낮아 보류한다. |
+| `ws` | `ROUTER_ROUTER` | `통과(100.0%)` | `통과(108.8%)` | `통과(94.5%)` | `보류(30.9%)` | `보류(23.0%)` | `보류(20.4%)` | 1024B C 기준은 보강 `perf_c_single_linux_20260522_132034_codex_c_ws_single_1024_rust_outlier_recheck_20260522.txt`다. 65536B 이상은 current C `perf_c_single_linux_20260527_074526_codex_c_single_routed_large_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_074713_codex_rust_single_routed_large_current_20260527.txt` 기준이며 routed one-way 기준보다 낮아 보류한다. |
+| `ws` | `SPOT` | `통과(149.2%)` | `통과(111.1%)` | `통과(144.8%)` | `통과(188.9%)` | `통과(179.4%)` | `통과(114.4%)` | 1024B는 current C `perf_c_single_linux_20260527_073913_codex_c_single_spot1024_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_074321_codex_rust_single_spot1024_publish_subscribe_part_20260527.txt` 기준이다. Rust public 단일-part publish/subscribe 경로 적용 뒤 SPOT 기준을 넘었다. 256B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145909_rust_single_spot_small_nontcp_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_150009_single_spot_small_nontcp_recheck.txt` 기준이다. 64B/1024B/65536B/131072B는 120%를 넘어 outlier 재검토 대상으로 남긴다. 나머지 C 기준은 기존 `perf_c_single_linux_20260522_131048_codex_c_ws_single_spot_for_rust_20260522.txt`, large/outlier 보강 `perf_c_single_linux_20260522_132112_codex_c_ws_single_spot_outliers_for_rust_recheck_20260522.txt`다. |
 | `wss` | `PAIR` | `통과(100.4%)` | `통과(100.4%)` | `통과(133.3%)` | `통과(128.3%)` | `통과(110.1%)` | `통과(112.1%)` | C `perf_c_single_linux_20260522_133130_codex_c_wss_single_for_rust_20260522.txt`, Rust full `perf_rust_single_linux_20260522_133454_codex_rust_wss_single_current_20260522.txt`, 65536B 보강 `perf_rust_single_linux_20260522_141058_codex_rust_wss_single_pair65536_recheck_20260522.txt` 기준이다. 1024B/65536B는 120%를 넘어 outlier 재검토 대상으로 남긴다. |
 | `wss` | `PUBSUB` | `통과(86.0%)` | `통과(96.8%)` | `통과(141.8%)` | `통과(118.4%)` | `통과(105.0%)` | `통과(102.0%)` | C/Rust full 파일은 위 행과 같다. 1024B는 120%를 넘어 outlier 재검토 대상으로 남긴다. |
 | `wss` | `DEALER_DEALER` | `통과(100.0%)` | `통과(97.0%)` | `통과(142.6%)` | `통과(134.3%)` | `통과(104.5%)` | `통과(113.1%)` | C/Rust full 파일은 위 행과 같다. 1024B/65536B는 120%를 넘어 outlier 재검토 대상으로 남긴다. |
 | `wss` | `DEALER_ROUTER` | `통과(84.8%)` | `통과(95.0%)` | `통과(111.2%)` | `통과(82.6%)` | `통과(81.7%)` | `통과(84.7%)` | C/Rust full 파일과 65536B 보강 `perf_rust_single_linux_20260522_141108_codex_rust_wss_single_dealer_router65536_recheck_20260522.txt` 기준이다. routed large도 이번 wss에서는 최소 기준을 넘었다. |
 | `wss` | `ROUTER_ROUTER` | `통과(95.2%)` | `통과(96.2%)` | `통과(105.3%)` | `통과(84.1%)` | `통과(81.9%)` | `통과(88.1%)` | C/Rust full 파일, 65536B 보강 `perf_rust_single_linux_20260522_141258_codex_rust_wss_single_router_router65536_recheck_20260522.txt`, 1024B 보강 `perf_rust_single_linux_20260522_141753_codex_rust_wss_single_router_router1024_duration1_20260522.txt` 기준이다. 1024B는 5초 direct binary에서는 complete였지만 runner 5초 캡처 경로에서 timeout이 반복되어 종료 처리 재검토 대상으로 남긴다. |
-| `wss` | `SPOT` | `통과(154.8%)` | `통과(84.7%)` | `보류(62.2%)` | `통과(151.1%)` | `통과(161.2%)` | `통과(281.7%)` | 256B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145909_rust_single_spot_small_nontcp_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_150009_single_spot_small_nontcp_recheck.txt` 기준이다. 256B는 fresh 기준에서 SPOT 최소 기준을 넘어 보류에서 통과로 바뀌었다. Rust SPOT TLS 설정은 PEM 내용이 아니라 C/C++/Go perf와 같은 인증서 파일 경로를 넘기도록 수정해 binary_exit를 해소했다. 1024B는 clean 후 current HEAD fresh 재측정 C `perf_c_single_linux_20260525_211940_rust_single_spot1024_current_after_clean_c.txt` 대비 Rust `perf_rust_single_linux_20260525_212023_single_spot1024_current_after_clean.txt` 기준이며 SPOT 기준보다 낮다. 64B/65536B/131072B/262144B는 120%를 넘어 outlier 재검토 대상으로 남긴다. |
+| `wss` | `SPOT` | `통과(154.8%)` | `통과(84.7%)` | `통과(84.6%)` | `통과(151.1%)` | `통과(161.2%)` | `통과(281.7%)` | 1024B는 current C `perf_c_single_linux_20260527_073913_codex_c_single_spot1024_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_074321_codex_rust_single_spot1024_publish_subscribe_part_20260527.txt` 기준이다. 256B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145909_rust_single_spot_small_nontcp_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_150009_single_spot_small_nontcp_recheck.txt` 기준이다. Rust SPOT TLS 설정은 PEM 내용이 아니라 C/C++/Go perf와 같은 인증서 파일 경로를 넘기도록 수정해 binary_exit를 해소했다. 64B/65536B/131072B/262144B는 120%를 넘어 outlier 재검토 대상으로 남긴다. |
 | `tls` | `PAIR` | `통과(99.3%)` | `통과(102.7%)` | `통과(133.4%)` | `통과(102.8%)` | `통과(100.4%)` | `통과(99.3%)` | C `perf_c_single_linux_20260522_141933_codex_c_tls_single_for_rust_20260522.txt`, Rust `perf_rust_single_linux_20260522_142522_codex_rust_tls_single_pair_20260522.txt`, 262144B 보강 `perf_rust_single_linux_20260522_142627_codex_rust_tls_single_pair262_duration1_20260522.txt` 기준이다. 1024B는 120%를 넘어 outlier 재검토 대상으로 남긴다. |
 | `tls` | `PUBSUB` | `통과(85.8%)` | `통과(92.4%)` | `통과(131.7%)` | `통과(101.1%)` | `통과(100.3%)` | `통과(97.5%)` | Rust `perf_rust_single_linux_20260522_142637_codex_rust_tls_single_pubsub_20260522.txt`, 1024B 보강 `perf_rust_single_linux_20260522_142746_codex_rust_tls_single_pubsub1024_duration1_20260522.txt` 기준이다. 1024B는 5초 active window에서 timeout이 반복되어 1초 보강 report를 사용했고, 120% 초과 outlier로도 남긴다. |
 | `tls` | `DEALER_DEALER` | `통과(99.5%)` | `통과(99.6%)` | `통과(126.3%)` | `통과(98.5%)` | `통과(100.6%)` | `통과(98.7%)` | Rust `perf_rust_single_linux_20260522_142813_codex_rust_tls_single_dealer_dealer_20260522.txt`, 65536B 보강 `perf_rust_single_linux_20260522_142918_codex_rust_tls_single_dealer_dealer65536_duration1_20260522.txt` 기준이다. 1024B는 120%를 넘어 outlier 재검토 대상으로 남긴다. |
-| `tls` | `DEALER_ROUTER` | `통과(85.8%)` | `통과(90.5%)` | `통과(87.2%)` | `보류(60.6%)` | `보류(55.4%)` | `보류(52.8%)` | Rust `perf_rust_single_linux_20260522_142918_codex_rust_tls_single_dealer_router_20260522.txt`, 1024B/131072B 보강 `perf_rust_single_linux_20260522_143047_codex_rust_tls_single_dealer_router_missing_duration1_20260522.txt` 기준이다. 65536B 이상은 `RouterSocket::recv_part(...)` 적용 뒤 같은 조건 complete 재측정 C `perf_c_single_linux_20260525_142618_rust_single_routed_wstls_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_142618_single_routed_wstls_recv_part_recheck.txt` 기준이며 routed one-way 기준보다 낮아 보류한다. |
-| `tls` | `ROUTER_ROUTER` | `통과(99.4%)` | `통과(102.3%)` | `통과(87.8%)` | `보류(58.6%)` | `보류(55.1%)` | `보류(52.3%)` | Rust `perf_rust_single_linux_20260522_143047_codex_rust_tls_single_router_router_20260522.txt` 기준이다. 262144B runner report `perf_rust_single_linux_20260522_143245_codex_rust_tls_single_router_router262_recheck_20260522.txt`는 timeout이지만 direct binary 5초 측정에서 3592.6 msg/s를 확인했다. 65536B 이상은 `RouterSocket::recv_part(...)` 적용 뒤 같은 조건 complete 재측정 C `perf_c_single_linux_20260525_142618_rust_single_routed_wstls_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_142618_single_routed_wstls_recv_part_recheck.txt` 기준이며 routed one-way 기준보다 낮아 보류한다. |
-| `tls` | `SPOT` | `통과(152.3%)` | `통과(113.8%)` | `보류(54.0%)` | `통과(168.1%)` | `통과(166.3%)` | `통과(160.5%)` | 256B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145909_rust_single_spot_small_nontcp_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_150009_single_spot_small_nontcp_recheck.txt` 기준이다. 1024B는 clean 후 current HEAD fresh 재측정 C `perf_c_single_linux_20260525_211940_rust_single_spot1024_current_after_clean_c.txt` 대비 Rust `perf_rust_single_linux_20260525_212023_single_spot1024_current_after_clean.txt` 기준이며 SPOT 기준보다 낮다. 64B/65536B/131072B/262144B는 120%를 넘어 outlier 재검토 대상으로 남긴다. 나머지는 Rust `perf_rust_single_linux_20260522_143152_codex_rust_tls_single_spot_20260522.txt` 기준이다. |
+| `tls` | `DEALER_ROUTER` | `통과(85.8%)` | `통과(90.5%)` | `통과(87.2%)` | `보류(57.4%)` | `보류(54.7%)` | `보류(53.5%)` | Rust `perf_rust_single_linux_20260522_142918_codex_rust_tls_single_dealer_router_20260522.txt`, 1024B/131072B 보강 `perf_rust_single_linux_20260522_143047_codex_rust_tls_single_dealer_router_missing_duration1_20260522.txt` 기준이다. 65536B 이상은 current C `perf_c_single_linux_20260527_074526_codex_c_single_routed_large_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_074713_codex_rust_single_routed_large_current_20260527.txt` 기준이며 routed one-way 기준보다 낮아 보류한다. |
+| `tls` | `ROUTER_ROUTER` | `통과(99.4%)` | `통과(102.3%)` | `통과(87.8%)` | `보류(56.1%)` | `보류(52.7%)` | `보류(53.6%)` | Rust `perf_rust_single_linux_20260522_143047_codex_rust_tls_single_router_router_20260522.txt` 기준이다. 262144B runner report `perf_rust_single_linux_20260522_143245_codex_rust_tls_single_router_router262_recheck_20260522.txt`는 timeout이지만 direct binary 5초 측정에서 3592.6 msg/s를 확인했다. 65536B 이상은 current C `perf_c_single_linux_20260527_074526_codex_c_single_routed_large_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_074713_codex_rust_single_routed_large_current_20260527.txt` 기준이며 routed one-way 기준보다 낮아 보류한다. |
+| `tls` | `SPOT` | `통과(152.3%)` | `통과(113.8%)` | `통과(84.9%)` | `통과(168.1%)` | `통과(166.3%)` | `통과(160.5%)` | 1024B는 current C `perf_c_single_linux_20260527_073913_codex_c_single_spot1024_for_rust_current_20260527.txt` 대비 Rust `perf_rust_single_linux_20260527_074321_codex_rust_single_spot1024_publish_subscribe_part_20260527.txt` 기준이다. 256B는 같은 조건 재측정 C `perf_c_single_linux_20260525_145909_rust_single_spot_small_nontcp_c_recheck.txt` 대비 Rust `perf_rust_single_linux_20260525_150009_single_spot_small_nontcp_recheck.txt` 기준이다. 64B/65536B/131072B/262144B는 120%를 넘어 outlier 재검토 대상으로 남긴다. 나머지는 Rust `perf_rust_single_linux_20260522_143152_codex_rust_tls_single_spot_20260522.txt` 기준이다. |
 
 #### 6.7.1.1 Rust 남은 작업
 
 Rust는 아직 완료가 아니다. multi suite는 2026-05-25 재측정과 수정으로
-`MULTI_PUBSUB`/`MULTI_SPOT` 계열까지 통과권에 올랐지만, single routed large와
-single SPOT 1024B 보류가 남아 있다.
+`MULTI_PUBSUB`/`MULTI_SPOT` 계열까지 통과권에 올랐다. 2026-05-27에는 single
+SPOT 1024B도 public `Spot::publish_part(...)`/`subscribe_part(...)` 단일-part 경로를
+적용해 통과권에 올렸고, single routed large 보류가 남아 있다.
 
 - balanced auto-HWM에서 single one-way 종료 신호가 HWM 뒤에 막히던 문제는
   `ctx.recalculate_auto_hwm()`, stop-token bounded retry 확대, receiver burst drain으로
@@ -1846,6 +1980,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   complete였다. tcp median은 `DEALER_ROUTER` 14.431/7.199/3.653Kmsg/s,
   `ROUTER_ROUTER` 14.383/7.215/3.576Kmsg/s로 기존과 같은 대역이다. latency storage
   잠금 제거는 large throughput 병목이 아니므로 코드는 반영하지 않는다.
+- **single routed active send 의미 정렬**: Rust routed active/stop send가 C single
+  routed의 `ZLINK_SEND_FLAGS_NONE`과 달리 `DONT_WAIT`로 보내고 실패 시 메시지를 버리던
+  차이를 바로잡았다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은
+  통과했고, 공식 wrapper
+  `perf_rust_single_linux_20260527_081513_codex_rust_single_routed_large_blocking_send_tcp_20260527.txt`
+  는 complete였다. current C
+  `perf_c_single_linux_20260527_074526_codex_c_single_routed_large_for_rust_current_20260527.txt`
+  대비 tcp `DEALER_ROUTER` 65536/131072/262144B는 13.0/11.5/10.7%,
+  `ROUTER_ROUTER`는 13.2/11.4/11.2%다. C와 send 의미는 맞췄지만 throughput은 기존
+  900MB/s대와 같아 single routed large 보류는 유지한다.
 - **single SPOT 1024B backpressure yield 후보 기각**: active publish backpressure 때
   C의 1ms poll 대기와 다른 `thread::yield_now()`로 더 자주 재시도하는 후보를 시험했다.
   `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고,
@@ -1862,7 +2006,8 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   clean current 재측정보다 낮았다. sender payload 복사 제거는 single SPOT 1024B의
   병목을 해소하지 못하므로 코드는 반영하지 않는다.
 - **2026-05-24 tcp full 재측정 요약**: DEALER_ROUTER 46~107%(전 size 통과), ROUTER_ROUTER small 통과/large 보류, SPOT_REQREP 64/256/1024/65536B 통과 및 131072/262144B 보류, STREAM 90~101% 통과, DD small 통과/large 보류, SPOT small 통과권/large 보류(copy 영역), SPOT_SENDSEND 64/256/1024/65536/131072B 통과 및 262144B 보류, PUBSUB 일부만 통과였다. 당시 PUBSUB small은 fresh baseline 대비 ~3~5%였지만, 2026-05-25 server `POLLOUT` wait 제거 뒤 `MULTI_PUBSUB` small 보류는 해소됐다.
-- **남은 보류(Rust)**: single routed large, single SPOT 1024B.
+- **남은 보류(Rust)**: single routed large. single SPOT 1024B는 2026-05-27 public
+  `Spot::publish_part`/`subscribe_part` 경로 적용 뒤 통과로 갱신했다.
 
 ### 6.8 Python 상태
 
@@ -1875,25 +2020,25 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 | `tcp` | `DEALER_DEALER` | `보류(6.7%)` | `보류(6.7%)` | `보류(9.7%)` | `통과(78.4%)` | `통과(86.7%)` | `통과(91.1%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_201321_python_single_native_recv_part_c.txt` 대비 Python `perf_python_single_linux_20260525_201459_single_native_recv_part_header_candidate.txt` 기준이다. message-socket send native result fast path와 receiver `zlink_recv_part` 직접 수신으로 55.4/55.6/57.0Kmsg/s에서 88.1/87.7/81.7Kmsg/s로 올렸지만, C 기준 대비 한 자릿수 비율이라 보류를 유지한다. large size는 기존 파일 기준선을 넘었다. |
 | `tcp` | `DEALER_ROUTER` | `보류(3.0%)` | `보류(2.8%)` | `보류(3.3%)` | `보류(17.8%)` | `보류(18.4%)` | `보류(15.1%)` | 64/256/1024/65536B는 같은 조건 fresh C `perf_c_single_linux_20260525_184018_python_single_routed_current_c.txt` 대비 Python `perf_python_single_linux_20260525_184450_single_routed_native_result_default.txt` 기준이다. sender가 non-routed message-socket native result fast path를 쓰지만 routed one-way 기준보다 낮아 보류한다. 131072/262144B는 기존 파일 기준이다. |
 | `tcp` | `ROUTER_ROUTER` | `보류(5.9%)` | `보류(3.0%)` | `보류(2.9%)` | `보류(18.3%)` | `보류(14.7%)` | `보류(16.1%)` | 64/256/1024/65536B는 같은 조건 fresh C `perf_c_single_linux_20260525_184018_python_single_routed_current_c.txt` 대비 Python `perf_python_single_linux_20260525_184450_single_routed_native_result_default.txt` 기준이다. Python single receiver를 bounded DONTWAIT drain으로 바꾼 뒤 complete를 확보했고, routed send도 native result fast path로 좁혀 64/256/1024/65536B를 36.4/33.0/35.6/16.4Kmsg/s까지 올렸다. 전 size는 기준보다 낮아 보류한다. |
-| `tcp` | `SPOT` | `보류(18.1%)` | `보류(16.5%)` | `보류(14.3%)` | `통과(39.2%)` | `통과(43.1%)` | `통과(36.7%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_203205_python_single_spot_native_part_c.txt` 대비 Python `perf_python_single_linux_20260525_203500_single_spot_native_part_all.txt` 기준이다. publish/subscribe hot path를 C와 같은 `zlink_spot_publish_part`/`zlink_spot_subscribe_part` 단일 part 경로로 좁혔다. small 처리량은 61.7/59.5/53.8Kmsg/s까지 올랐지만 SPOT 기준보다 낮다. 131072B는 C `perf_c_single_linux_20260522_201611_codex_c_single_tcp_spot131072_python_outlier_recheck_20260522.txt`, Python `perf_python_single_linux_20260522_201626_codex_python_single_tcp_spot131072_outlier_recheck_20260522.txt` 기준으로 갱신했다. 기존 131072B의 271880.0%는 C 기준 throughput이 5 msg/s로 낮게 나온 outlier였다. |
+| `tcp` | `SPOT` | `보류(13.2%)` | `보류(12.3%)` | `보류(11.4%)` | `통과(39.2%)` | `통과(43.1%)` | `통과(36.7%)` | 64/256/1024B는 current C `perf_c_single_linux_20260527_080022_codex_c_single_python_spot_small_recheck_20260527.txt` 대비 Python `perf_python_single_linux_20260527_080727_codex_python_single_spot_small_subscribe_part_all_20260527.txt` 기준이다. binding에 public `SpotSubscribedPart`와 `Spot.subscribe_part_into(...)`를 추가해 callback 내부 `TopicMessage`/parts 구성을 피했다. 처리량은 42.8/43.0/41.2Kmsg/s로 이전보다 개선됐지만 SPOT 기준보다 낮다. 131072B는 C `perf_c_single_linux_20260522_201611_codex_c_single_tcp_spot131072_python_outlier_recheck_20260522.txt`, Python `perf_python_single_linux_20260522_201626_codex_python_single_tcp_spot131072_outlier_recheck_20260522.txt` 기준으로 갱신했다. 기존 131072B의 271880.0%는 C 기준 throughput이 5 msg/s로 낮게 나온 outlier였다. |
 | `ws` | `PAIR` | `보류(6.3%)` | `보류(6.4%)` | `보류(12.1%)` | `통과(82.7%)` | `통과(84.9%)` | `통과(88.5%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_201556_python_single_native_recv_part_nontcp_c.txt` 대비 Python `perf_python_single_linux_20260525_201815_single_native_recv_part_nontcp.txt` 기준이다. receiver `zlink_recv_part` 직접 수신 뒤에도 small size는 기준보다 낮고, large size는 기존 파일 기준선을 넘었다. |
 | `ws` | `PUBSUB` | `보류(4.2%)` | `보류(5.1%)` | `보류(8.7%)` | `통과(70.0%)` | `통과(73.2%)` | `통과(80.5%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_205828_python_single_pubsub_publish_native_nontcp_c.txt` 대비 Python `perf_python_single_linux_20260525_210032_single_pubsub_publish_native_nontcp_candidate.txt` 기준이다. publisher native result fast path와 subscriber `zlink_subscribe_part` 직접 수신 뒤에도 small size는 기준보다 낮고, large size는 기존 파일 기준선을 넘었다. |
 | `ws` | `DEALER_DEALER` | `보류(6.2%)` | `보류(6.0%)` | `보류(11.1%)` | `통과(81.2%)` | `통과(85.8%)` | `통과(91.3%)` | C/Python 파일은 위 PAIR 행과 같다. receiver `zlink_recv_part` 직접 수신 뒤에도 small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `ws` | `DEALER_ROUTER` | `보류(2.1%)` | `보류(2.6%)` | `보류(3.8%)` | `통과(39.1%)` | `보류(31.2%)` | `보류(26.8%)` | C/Python 파일은 위 PAIR 행과 같다. 65536B는 routed one-way 최소 기준을 넘었지만 나머지는 낮아 보류한다. |
 | `ws` | `ROUTER_ROUTER` | `보류(2.3%)` | `보류(2.8%)` | `보류(3.7%)` | `통과(37.9%)` | `보류(29.9%)` | `보류(26.4%)` | C/Python 파일은 위 PAIR 행과 같다. 65536B는 routed one-way 최소 기준을 넘었지만 나머지는 낮아 보류한다. |
-| `ws` | `SPOT` | `보류(17.2%)` | `보류(15.2%)` | `보류(17.2%)` | `통과(54.8%)` | `통과(64.6%)` | `통과(49.0%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_203205_python_single_spot_native_part_c.txt` 대비 Python `perf_python_single_linux_20260525_203500_single_spot_native_part_all.txt` 기준이다. SPOT native part publish/subscribe 뒤에도 small size는 기준보다 낮고, large size는 기존 파일 기준선을 넘었다. |
+| `ws` | `SPOT` | `보류(13.3%)` | `보류(11.2%)` | `보류(11.6%)` | `통과(54.8%)` | `통과(64.6%)` | `통과(49.0%)` | 64/256/1024B는 current C `perf_c_single_linux_20260527_080022_codex_c_single_python_spot_small_recheck_20260527.txt` 대비 Python `perf_python_single_linux_20260527_080727_codex_python_single_spot_small_subscribe_part_all_20260527.txt` 기준이다. public `Spot.subscribe_part_into(...)` 단일-part 수신 경로 뒤에도 small size는 기준보다 낮고, large size는 기존 파일 기준선을 넘었다. |
 | `wss` | `PAIR` | `보류(6.3%)` | `보류(6.4%)` | `보류(18.7%)` | `통과(89.4%)` | `통과(96.4%)` | `통과(105.1%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_201556_python_single_native_recv_part_nontcp_c.txt` 대비 Python `perf_python_single_linux_20260525_201815_single_native_recv_part_nontcp.txt` 기준이다. receiver `zlink_recv_part` 직접 수신 뒤에도 small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `wss` | `PUBSUB` | `보류(3.7%)` | `보류(5.1%)` | `보류(12.7%)` | `통과(78.4%)` | `통과(86.7%)` | `통과(86.1%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_205828_python_single_pubsub_publish_native_nontcp_c.txt` 대비 Python `perf_python_single_linux_20260525_210032_single_pubsub_publish_native_nontcp_candidate.txt` 기준이다. publisher native result fast path와 subscriber `zlink_subscribe_part` 직접 수신 뒤에도 small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `wss` | `DEALER_DEALER` | `보류(6.0%)` | `보류(6.0%)` | `보류(18.0%)` | `통과(87.1%)` | `통과(101.9%)` | `통과(97.8%)` | C/Python 파일은 위 PAIR 행과 같다. receiver `zlink_recv_part` 직접 수신 뒤에도 small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `wss` | `DEALER_ROUTER` | `보류(1.9%)` | `보류(2.2%)` | `보류(5.7%)` | `통과(79.2%)` | `통과(90.0%)` | `통과(98.9%)` | C/Python 파일은 위 PAIR 행과 같다. small size는 기준보다 낮고, large size는 routed one-way 기준선을 넘었다. |
 | `wss` | `ROUTER_ROUTER` | `보류(3.0%)` | `보류(2.6%)` | `보류(7.5%)` | `통과(75.2%)` | `통과(89.0%)` | `통과(93.3%)` | C/Python 파일은 위 PAIR 행과 같다. small size는 기준보다 낮고, large size는 routed one-way 기준선을 넘었다. |
-| `wss` | `SPOT` | `보류(17.6%)` | `보류(15.8%)` | `보류(24.0%)` | `통과(97.6%)` | `통과(89.8%)` | `통과(67.4%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_203205_python_single_spot_native_part_c.txt` 대비 Python `perf_python_single_linux_20260525_203500_single_spot_native_part_all.txt` 기준이다. SPOT native part publish/subscribe 뒤에도 small size는 기준보다 낮고, large size는 기존 파일 기준선을 넘었다. |
+| `wss` | `SPOT` | `보류(12.6%)` | `보류(11.8%)` | `보류(16.3%)` | `통과(97.6%)` | `통과(89.8%)` | `통과(67.4%)` | 64/256/1024B는 current C `perf_c_single_linux_20260527_080022_codex_c_single_python_spot_small_recheck_20260527.txt` 대비 Python `perf_python_single_linux_20260527_080727_codex_python_single_spot_small_subscribe_part_all_20260527.txt` 기준이다. public `Spot.subscribe_part_into(...)` 단일-part 수신 경로 뒤에도 small size는 기준보다 낮고, large size는 기존 파일 기준선을 넘었다. |
 | `tls` | `PAIR` | `보류(6.3%)` | `보류(6.3%)` | `보류(13.0%)` | `통과(86.6%)` | `통과(79.4%)` | `통과(85.2%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_201556_python_single_native_recv_part_nontcp_c.txt` 대비 Python `perf_python_single_linux_20260525_201815_single_native_recv_part_nontcp.txt` 기준이다. receiver `zlink_recv_part` 직접 수신 뒤에도 small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `tls` | `PUBSUB` | `보류(4.1%)` | `보류(4.6%)` | `보류(8.7%)` | `통과(65.0%)` | `통과(69.8%)` | `통과(80.7%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_205828_python_single_pubsub_publish_native_nontcp_c.txt` 대비 Python `perf_python_single_linux_20260525_210032_single_pubsub_publish_native_nontcp_candidate.txt` 기준이다. publisher native result fast path와 subscriber `zlink_subscribe_part` 직접 수신 뒤에도 small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `tls` | `DEALER_DEALER` | `보류(6.2%)` | `보류(6.3%)` | `보류(12.7%)` | `통과(73.1%)` | `통과(81.7%)` | `통과(89.4%)` | C/Python 파일은 위 PAIR 행과 같다. receiver `zlink_recv_part` 직접 수신 뒤에도 small size는 기준보다 낮고, large size는 기준선을 넘었다. |
 | `tls` | `DEALER_ROUTER` | `보류(1.6%)` | `보류(1.8%)` | `보류(3.4%)` | `통과(54.4%)` | `통과(65.0%)` | `통과(65.3%)` | C/Python 파일은 위 PAIR 행과 같다. small size는 기준보다 낮고, large size는 routed one-way 기준선을 넘었다. |
 | `tls` | `ROUTER_ROUTER` | `보류(2.6%)` | `보류(2.7%)` | `보류(4.5%)` | `통과(57.0%)` | `통과(62.7%)` | `통과(62.4%)` | C/Python 파일은 위 PAIR 행과 같다. small size는 기준보다 낮고, large size는 routed one-way 기준선을 넘었다. |
-| `tls` | `SPOT` | `보류(18.8%)` | `보류(15.6%)` | `보류(17.9%)` | `통과(91.5%)` | `통과(94.0%)` | `통과(84.3%)` | 64/256/1024B는 fresh C `perf_c_single_linux_20260525_203205_python_single_spot_native_part_c.txt` 대비 Python `perf_python_single_linux_20260525_203500_single_spot_native_part_all.txt` 기준이다. SPOT native part publish/subscribe 뒤에도 small size는 기준보다 낮고, large size는 기존 파일 기준선을 넘었다. |
+| `tls` | `SPOT` | `보류(13.0%)` | `보류(11.1%)` | `보류(12.2%)` | `통과(91.5%)` | `통과(94.0%)` | `통과(84.3%)` | 64/256/1024B는 current C `perf_c_single_linux_20260527_080022_codex_c_single_python_spot_small_recheck_20260527.txt` 대비 Python `perf_python_single_linux_20260527_080727_codex_python_single_spot_small_subscribe_part_all_20260527.txt` 기준이다. public `Spot.subscribe_part_into(...)` 단일-part 수신 경로 뒤에도 small size는 기준보다 낮고, large size는 기존 파일 기준선을 넘었다. |
 
 #### 6.8.2 Multi suite
 
@@ -1905,7 +2050,7 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 | `tcp` | `MULTI_PUBSUB` | `보류(7.6%)` | `보류(7.9%)` | `보류(17.7%)` | `통과(58.7%)` | `통과(90.9%)` | `통과(95.0%)` | 64/256/1024/65536B는 같은 조건 fresh C `perf_c_multi_linux_20260525_190118_python_multi_pubsub_publish_native_c.txt` 대비 Python `perf_python_multi_linux_20260525_192512_multi_pubsub_client_len_fastpath_candidate.txt` median 기준이다. subscriber는 stop token과 payload length로 active count를 유지하고, header decode는 latency sampling 대상에만 수행한다. 131072/262144B는 기존 `perf_python_multi_linux_20260524_191738.txt` 기준이다. small size는 아직 기준보다 낮다. |
 | `tcp` | `MULTI_SPOT` | `보류(6.7%)` | `보류(8.7%)` | `보류(8.4%)` | `보류(8.4%)` | `보류(4.7%)` | `보류(6.1%)` | 64/256/1024/65536B는 같은 조건 fresh C `perf_c_multi_linux_20260525_221504_python_multi_spot_native_subscribe_metric_c.txt` 대비 Python `perf_python_multi_linux_20260525_223653_multi_spot_native_subscribe_metric_candidate.txt` 기준이다. client drain을 `TopicMessage` 구성 없이 native `zlink_spot_subscribe_part` 단일 part 수신과 단일 header unpack으로 좁혀 64/256/1024/65536B를 308.6/324.6/299.9/130.9Kmsg/s까지 올렸다. 기존 1.9/1.9/1.9/4.3%보다 개선됐지만 SPOT 기준보다 낮고 latency backlog가 수백 ms 이상이라 보류를 유지한다. 131072/262144B는 기존 파일 기준이다. |
 | `tcp` | `MULTI_SPOT_REQREP` | `보류(14.6%)` | `보류(15.0%)` | `보류(16.3%)` | `보류(29.2%)` | `통과(39.7%)` | `통과(41.8%)` | C `perf_c_multi_linux_20260522_162958_codex_c_multi_tcp_for_python_duration1_20260522.txt`, Python `perf_python_multi_linux_20260524_192625.txt` 기준이다. reply callback의 metric header decode에서 추가 `to_bytes()` 복사를 피했지만, callback으로 들어오기 전 reply part는 이미 Python `Message`로 clone되므로 효과는 제한적이다. large timeout은 active window 뒤 pending reply drain 누락 때문이었고, drain 보강 뒤 complete를 확보했다. 131072B와 262144B는 SPOT 기준선을 넘고 나머지는 낮다. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `보류(11.8%)` | `보류(11.8%)` | `통과(74.7%)` | `보류(12.4%)` | `보류(18.6%)` | `통과(43.6%)` | C `perf_c_multi_linux_20260522_162958_codex_c_multi_tcp_for_python_duration1_20260522.txt` 기준이다. 64/65536/262144B는 routed reply decode를 `ReceivedMessage.data` view로 바꾼 뒤 제한 재측정 `perf_python_multi_linux_20260524_192915.txt`로 갱신했고, 256/1024B는 Python `perf_python_multi_linux_20260522_204542_codex_python_multi_tcp_sendsend_small_final_recheck_20260522.txt`, 131072B는 `perf_python_multi_linux_20260522_204134_codex_python_multi_tcp_sendsend_large_no_poller_recheck_20260522.txt` 기준이다. server/client는 각 `nlwp=12` 수준으로 thread 폭증은 아니었다. small size는 서버/client의 고정 1ms sleep 대신 poller wake를 쓰도록 바꿔 64/256/1024B가 개선됐고, 65536B 이상은 Spot poller 등록 자체가 timeout을 유발해 기존 sleep fallback을 유지한다. 1024B와 262144B만 기준선을 넘고 나머지는 낮다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `보류(10.9%)` | `보류(11.3%)` | `보류(12.1%)` | `보류(12.4%)` | `보류(18.6%)` | `통과(43.6%)` | 64/256/1024B는 current C `perf_c_multi_linux_20260527_082237_codex_c_multi_sendsend_small_recheck_20260527.txt` 대비 Python `perf_python_multi_linux_20260527_083127_codex_python_multi_sendsend_small_recheck_20260527.txt` 기준이다. Python median은 29.033/29.211/28.548Kops/s였고 C 기준은 266.306/257.744/235.179Kops/s라 최신 같은 조건 재측정에서도 small size는 기준보다 낮다. 65536/262144B는 routed reply decode를 `ReceivedMessage.data` view로 바꾼 뒤 제한 재측정 `perf_python_multi_linux_20260524_192915.txt`로 갱신했고, 131072B는 `perf_python_multi_linux_20260522_204134_codex_python_multi_tcp_sendsend_large_no_poller_recheck_20260522.txt` 기준이다. server/client는 각 `nlwp=12` 수준으로 thread 폭증은 아니었다. small size는 서버/client의 고정 1ms sleep 대신 poller wake를 쓰도록 바꿨지만 최신 C 기준을 넘지 못했고, 65536B 이상은 Spot poller 등록 자체가 timeout을 유발해 기존 sleep fallback을 유지한다. 262144B만 기준선을 넘고 나머지는 낮다. |
 | `tcp` | `MULTI_STREAM` | `보류(1.3%)` | `보류(1.3%)` | `보류(1.3%)` | `보류(4.0%)` | `보류(8.2%)` | `보류(16.0%)` | C/Python 파일은 위 MULTI_DEALER_DEALER 행과 같다. Python STREAM server와 shared C stream client 조합 기준이며 전 size가 기준보다 낮다. |
 | `ws` | `MULTI_DEALER_DEALER` | `보류(5.7%)` | `보류(9.6%)` | `보류(11.7%)` | `통과(59.6%)` | `통과(53.9%)` | `통과(71.2%)` | C `perf_c_multi_linux_20260522_150505_codex_c_multi_ws_no_stream_for_rust_20260522.txt`, Python `perf_python_multi_linux_20260522_182833_codex_python_multi_ws_duration1_20260522.txt` 기준이다. large size는 기준선을 넘고 small size는 낮다. |
 | `ws` | `MULTI_DEALER_ROUTER` | `보류(13.3%)` | `보류(13.2%)` | `보류(13.0%)` | `통과(38.0%)` | `통과(42.0%)` | `통과(46.2%)` | C `perf_c_multi_linux_20260522_150505_codex_c_multi_ws_no_stream_for_rust_20260522.txt` 대비 Python `perf_python_multi_linux_20260525_000108.txt` median 기준이다. routed `recv_into` single-part fast path 뒤 65536B가 routed multi 기준선을 넘었다. small size는 여전히 낮다. |
@@ -2119,6 +2264,23 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   Python `perf_python_single_linux_20260525_203500_single_spot_native_part_all.txt`가 complete였고,
   tcp 64/256/1024B는 61.7/59.5/53.8Kmsg/s로 올랐다. ws/wss/tls도 small 비율이
   15.2~24.0%까지 올라 직전보다 개선됐지만 SPOT 최소 기준에는 아직 낮아 보류를 유지한다.
+- **single SPOT public subscribe-part 경로 적용**: 2026-05-27에는 binding에 public
+  `SpotSubscribedPart`와 `Spot.subscribe_part_into(...)`를 추가해 callback 내부
+  `TopicMessage`/parts tuple 구성을 피했다. C
+  `perf_c_single_linux_20260527_080022_codex_c_single_python_spot_small_recheck_20260527.txt`
+  대비 Python
+  `perf_python_single_linux_20260527_080727_codex_python_single_spot_small_subscribe_part_all_20260527.txt`
+  는 complete였고, tcp 64/256/1024B는 42.8/43.0/41.2Kmsg/s다. 직전 current
+  재측정의 39.7/38.8/37.4Kmsg/s보다는 올랐지만 C 대비 11.1~16.3% 범위라
+  single SPOT small 보류는 유지한다.
+- **MULTI_SPOT public subscribe-part 후보 기각**: 같은 public
+  `Spot.subscribe_part_into(...)` 수신 경로를 multi spot client drain에도 적용해 봤다.
+  C `perf_c_multi_linux_20260527_080915_codex_c_multi_spot_small_for_python_subscribe_part_20260527.txt`
+  대비 Python 후보
+  `perf_python_multi_linux_20260527_081051_codex_python_multi_spot_small_subscribe_part_tcp_20260527.txt`
+  는 complete였지만 tcp 64/256/1024B가 148.6/148.7/145.7Kmsg/s로 기존 multi
+  spot native subscribe metric 후보보다 낮았다. multi에서는 poll/backlog 비용이 더 커서
+  단일-part storage 변경만으로 보류를 해소하지 못하므로 코드는 반영하지 않는다.
 - **multi non-routed message-socket native result fast path 적용**: single에서 효과가
   확인된 단일 part native result send를 multi 공용 `send_nonblocking(...)`의
   non-routed send에도 적용했다. 공식 wrapper
@@ -2250,6 +2412,14 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 - **SPOT send-send 최신 제한 재측정도 불안정**: current HEAD에서도 C 기준 확보를 위해 묶은 실행은 C `MULTI_SPOT_REQREP ws 131072B` fast_mutex partial로 끝났고(`perf_c_multi_linux_20260525_023516.txt`), `MULTI_SPOT_SENDSEND`를 함께 보려던 Python 묶음도 `ws 65536B` client timeout partial로 끝났다(`perf_python_multi_linux_20260525_024649.txt`). timeout을 만드는 결과는 통과 근거로 쓰지 않고, SPOT send-send는 계속 별도 안정화 대상으로 둔다.
 - **SPOT send-send small active-slot 32 후보 기각**: small size에서 100개 spot을 모두 active로 스캔하는 비용을 줄이기 위해 active slot을 32로 제한하는 후보를 시험했다. 공식 wrapper `perf_python_multi_linux_20260525_051821.txt`는 complete였지만 tcp 64/256/1024B median이 27.8/27.9/27.4Kops/s로 기존 `perf_python_multi_linux_20260522_204542_codex_python_multi_tcp_sendsend_small_final_recheck_20260522.txt`의 29.5/28.7/28.8Kops/s보다 낮았다. small size에서는 active slot 축소가 per-call FFI 비용을 줄이지 못하고 in-flight echo만 줄이므로 반영하지 않는다.
 - **SPOT send-send small active-slot 16 후보 기각**: active slot 32보다 더 좁힌 16-slot 후보도 tcp 64/256/1024B에 재시험했다. C 기준 `perf_c_multi_linux_20260525_060714.txt` 대비 후보 `perf_python_multi_linux_20260525_061604.txt`는 25.260/24.181/24.943Kops/s, 9.6/9.2/10.4%에 그쳤다. 기존 대표값과 active-slot 32 후보보다 낮으므로 small active slot 축소는 더 진행하지 않는다.
+- **SPOT send-send `tcp 64/256/1024B` 최신 재측정**: 2026-05-27 같은 조건으로
+  C `perf_c_multi_linux_20260527_082237_codex_c_multi_sendsend_small_recheck_20260527.txt`와
+  Python `perf_python_multi_linux_20260527_083127_codex_python_multi_sendsend_small_recheck_20260527.txt`를
+  단독 실행했다. 두 파일 모두 complete였고 Python median은 29.033/29.211/28.548Kops/s,
+  C median은 266.306/257.744/235.179Kops/s라 C 대비 10.9/11.3/12.1%다. 1024B는
+  오래된 C 기준에서는 통과권으로 보였지만 최신 같은 조건 C 기준을 갱신하면 보류권이다.
+  기존 active-slot 축소와 view-send 후보가 이미 낮은 처리량 또는 timeout을 만들었기 때문에
+  추가 perf 변경 없이 보류를 유지한다.
 - **SPOT send-send `ws 64B` 최신 재측정 및 active-slot 32 후보 기각**: 오래된
   표의 0.2%는 current HEAD에서 재현되지 않았다. 같은 조건 최신 재측정 C
   `perf_c_multi_linux_20260525_084304.txt` 대비 no-code Python

@@ -112,6 +112,13 @@ class ZlinkSpotActorLifecycleInfo(ctypes.Structure):
     ]
 
 
+class ZlinkSpotActorLifecycleEvent(ctypes.Structure):
+    _fields_ = [
+        ("kind", ctypes.c_int),
+        ("info", ZlinkSpotActorLifecycleInfo),
+    ]
+
+
 class ZlinkMonitorEvent(ctypes.Structure):
     _fields_ = [
         ("event", ctypes.c_uint64),
@@ -126,7 +133,7 @@ class ZlinkSocketMonitorOpenOptions(ctypes.Structure):
     _fields_ = [("events", ctypes.c_uint64)]
 
 
-class ZlinkMonitorSnapshot(ctypes.Structure):
+class ZlinkMonitorStatus(ctypes.Structure):
     _fields_ = [
         ("source_kind", ctypes.c_uint32),
         ("state_flags", ctypes.c_uint32),
@@ -216,7 +223,7 @@ class ZlinkSpotNodeOptions(ctypes.Structure):
     _fields_ = [("mode", ctypes.c_uint32)]
 
 
-class ZlinkSpotNodeSocketSnapshotFilter(ctypes.Structure):
+class ZlinkSpotNodeSocketFilter(ctypes.Structure):
     _fields_ = [
         ("owner", ctypes.c_uint32),
         ("socket_type", ctypes.c_uint32),
@@ -224,7 +231,7 @@ class ZlinkSpotNodeSocketSnapshotFilter(ctypes.Structure):
     ]
 
 
-class ZlinkSpotNodeSocketSnapshotEntry(ctypes.Structure):
+class ZlinkSpotNodeSocketEntry(ctypes.Structure):
     _fields_ = [
         ("owner", ctypes.c_uint32),
         ("owner_id", ctypes.c_uint64),
@@ -232,7 +239,7 @@ class ZlinkSpotNodeSocketSnapshotEntry(ctypes.Structure):
         ("socket_name", ctypes.c_char * 64),
         ("socket_type", ctypes.c_uint32),
         ("auto_hwm_visible", ctypes.c_uint32),
-        ("snapshot", ZlinkMonitorSnapshot),
+        ("monitor_status", ZlinkMonitorStatus),
     ]
 
 
@@ -806,7 +813,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_subscription_event_recv",
+            "zlink_spot_recv_subscription_event",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ctypes.POINTER(ZlinkRoutingId)),
@@ -835,8 +842,8 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_monitor_snapshot",
-            [ctypes.c_void_p, ctypes.POINTER(ZlinkMonitorSnapshot)],
+            "zlink_monitor_status",
+            [ctypes.c_void_p, ctypes.POINTER(ZlinkMonitorStatus)],
             ctypes.c_int,
         )
         self._require(
@@ -940,12 +947,12 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_registry_status_snapshot",
+            "zlink_registry_status",
             [ctypes.c_void_p, ctypes.POINTER(ZlinkRegistryStatus)],
             ctypes.c_int,
         )
         self._require(
-            "zlink_registry_service_summary_snapshot",
+            "zlink_registry_service_summary",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRegistryServiceSummaryFilter),
@@ -1138,16 +1145,6 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_actor_lifecycle_handler",
-            [
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-            ],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_stream_bound_actors",
             [
                 ctypes.c_void_p,
@@ -1271,12 +1268,12 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_status_snapshot",
+            "zlink_spot_node_status",
             [ctypes.c_void_p, ctypes.POINTER(ZlinkSpotNodeStatus)],
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_peers_snapshot",
+            "zlink_spot_node_peers",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkSpotNodePeerEntry),
@@ -1285,7 +1282,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_peers_query",
+            "zlink_spot_node_peers",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkSpotNodePeerFilter),
@@ -1295,7 +1292,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_subjects_snapshot",
+            "zlink_spot_node_subjects",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkSpotNodeSubjectFilter),
@@ -1305,17 +1302,17 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_internal_sockets_snapshot",
+            "zlink_spot_node_internal_sockets",
             [
                 ctypes.c_void_p,
-                ctypes.POINTER(ZlinkSpotNodeSocketSnapshotFilter),
-                ctypes.POINTER(ZlinkSpotNodeSocketSnapshotEntry),
+                ctypes.POINTER(ZlinkSpotNodeSocketFilter),
+                ctypes.POINTER(ZlinkSpotNodeSocketEntry),
                 ctypes.POINTER(ctypes.c_size_t),
             ],
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_spots_snapshot",
+            "zlink_spot_node_spots",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkSpotNodeSpotEntry),
@@ -1324,7 +1321,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_actors_snapshot",
+            "zlink_spot_node_actors",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkSpotNodeActorEntry),
@@ -1333,7 +1330,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_actors_snapshot",
+            "zlink_spot_actors",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkActorRef),
@@ -1457,11 +1454,6 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_handler",
-            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_spot_dispatch_event_handler",
             [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
             ctypes.c_int,
@@ -1475,6 +1467,15 @@ class _Lib:
                 ctypes.POINTER(ctypes.c_uint64),
                 ctypes.POINTER(ZlinkMsg),
                 ctypes.POINTER(ctypes.c_int),
+                ctypes.c_uint32,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_recv_actor_lifecycle",
+            [
+                ctypes.c_void_p,
+                ctypes.POINTER(ZlinkSpotActorLifecycleEvent),
                 ctypes.c_uint32,
             ],
             ctypes.c_int,
@@ -1529,7 +1530,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_registry_topology_snapshot",
+            "zlink_registry_topology",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRegistryTopologyEntry),
@@ -1538,7 +1539,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_registry_topology_query",
+            "zlink_registry_topology",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRegistryTopologyFilter),
@@ -1558,7 +1559,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_registry_query_snapshot",
+            "zlink_registry_query_client_topology",
             [
                 ctypes.c_void_p,
                 ctypes.POINTER(ZlinkRegistryTopologyFilter),
@@ -1568,7 +1569,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_registry_query_destroy",
+            "zlink_registry_query_client_destroy",
             [ctypes.POINTER(ctypes.c_void_p)],
             ctypes.c_int,
         )

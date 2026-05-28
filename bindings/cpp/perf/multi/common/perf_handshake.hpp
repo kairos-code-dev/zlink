@@ -60,6 +60,35 @@ inline bool parse_endpoint_command_line (const std::string &line_,
     return !endpoint_out_->empty ();
 }
 
+inline bool parse_size_endpoint_command_line (const std::string &line_,
+                                              const char *prefix_,
+                                              size_t *size_out_,
+                                              std::string *endpoint_out_)
+{
+    if (!prefix_ || !*prefix_ || !size_out_ || !endpoint_out_)
+        return false;
+
+    const size_t prefix_len = std::strlen (prefix_);
+    if (line_.compare (0, prefix_len, prefix_) != 0)
+        return false;
+
+    const size_t comma = line_.find (',', prefix_len);
+    if (comma == std::string::npos)
+        return false;
+
+    char *end = NULL;
+    const unsigned long long parsed_size =
+      std::strtoull (line_.c_str () + prefix_len, &end, 10);
+    if (!end || static_cast<size_t> (end - line_.c_str ()) != comma
+        || parsed_size == 0) {
+        return false;
+    }
+
+    *size_out_ = static_cast<size_t> (parsed_size);
+    *endpoint_out_ = line_.substr (comma + 1);
+    return !endpoint_out_->empty ();
+}
+
 inline bool parse_size_count_command_line (const std::string &line_,
                                            const char *prefix_,
                                            size_t *size_out_,

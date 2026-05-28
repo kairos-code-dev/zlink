@@ -165,7 +165,7 @@ public sealed class test_callback_delivery
 
         callbackContext.Invoke(() =>
         {
-            spot.OnDispatchEvent(info =>
+            spot.SetDispatchHandler(info =>
             {
                 dispatchThreadId = Environment.CurrentManagedThreadId;
                 if (info.Event == SpotDispatchEvent.ChannelReplyReadable)
@@ -188,7 +188,7 @@ public sealed class test_callback_delivery
             });
 
             using Message request = Message.From("ping");
-            spot.RequestChannel("svc")
+            spot.RequestToChannel("svc")
                 .Message(request)
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Submit((result, parts) =>
@@ -214,7 +214,7 @@ public sealed class test_callback_delivery
             });
         });
 
-        var received = new Received();
+        var received = Received.Create();
         router.Recv(received);
         try
         {

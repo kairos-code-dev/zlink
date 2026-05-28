@@ -158,7 +158,7 @@ builder.Services.AddZLinkRegistryQueryClient(query =>
 });
 
 app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient registry) =>
-    Results.Ok(await registry.SnapshotAsync()));
+    Results.Ok(await registry.TopologyAsync()));
 
 // correlation·로깅 같은 공통 처리는 filter 로 (gRPC interceptor 대체)
 options.UseFilter<CorrelationFilter>();        // IZLinkHandlerFilter

@@ -328,9 +328,9 @@ spot만 허용한다.
 | API | 목적 |
 |-----|------|
 | `zlink_actor_recv_part()` | dispatch callback에서 Actor queue part 수신 |
-| `zlink_spot_node_spots_snapshot()` | SpotNode 아래의 local Spot 진단 snapshot |
-| `zlink_spot_node_actors_snapshot()` | Actor 진단 snapshot |
-| `zlink_spot_actors_snapshot()` | 특정 local Spot에 join된 Actor ref 목록 snapshot |
+| `zlink_spot_node_spots()` | SpotNode 아래의 local Spot 진단 snapshot |
+| `zlink_spot_node_actors()` | Actor 진단 snapshot |
+| `zlink_spot_actors()` | 특정 local Spot에 join된 Actor ref 목록 snapshot |
 
 ### 변경되는 기존 타입
 
@@ -2005,13 +2005,13 @@ typedef struct zlink_spot_node_spot_entry_t
     uint64_t last_changed_ms;
 } zlink_spot_node_spot_entry_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots(
   void *node_,
   zlink_spot_node_spot_entry_t *entries_,
   size_t *count_);
 ```
 
-`zlink_spot_node_spots_snapshot()` 계약은 기존 `SpotNode` snapshot API와 같은
+`zlink_spot_node_spots()` 계약은 기존 `SpotNode` snapshot API와 같은
 in/out count 패턴을 따른다.
 
 - `node_ == NULL`이면 `EINVAL`이다.
@@ -2040,15 +2040,15 @@ millisecond 값이다.
 특정 local `Spot`에 join된 Actor ref 목록만 필요하면 아래 API를 사용한다.
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_spot_actors_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_actors(
   void *spot_,
   zlink_actor_ref_t *entries_,
   size_t *count_);
 ```
 
-`zlink_spot_actors_snapshot()`은 local `Spot` handle 기준으로 현재 join된 Actor ref만
+`zlink_spot_actors()`은 local `Spot` handle 기준으로 현재 join된 Actor ref만
 반환한다. Actor의 pending message 수, route sync 상태 같은 진단 정보는 반환하지
-않는다. 상세 진단 정보가 필요하면 `zlink_spot_node_actors_snapshot()`을 사용한다.
+않는다. 상세 진단 정보가 필요하면 `zlink_spot_node_actors()`을 사용한다.
 
 계약은 기존 `SpotNode` snapshot API와 같은 in/out count 패턴을 따른다.
 
@@ -2075,13 +2075,13 @@ typedef struct zlink_spot_node_actor_entry_t
     uint64_t last_changed_ms;
 } zlink_spot_node_actor_entry_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors_snapshot(
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors(
   void *node_,
   zlink_spot_node_actor_entry_t *entries_,
   size_t *count_);
 ```
 
-`zlink_spot_node_actors_snapshot()` 계약도 기존 `SpotNode` snapshot API와 같은
+`zlink_spot_node_actors()` 계약도 기존 `SpotNode` snapshot API와 같은
 in/out count 패턴을 따른다.
 
 - `node_ == NULL`이면 `EINVAL`이다.
@@ -2204,15 +2204,15 @@ Actor row의 `last_changed_ms`는 Actor 생성 이후 이 snapshot row의 진단
 | ID | 항목 | 기대 결과 |
 |----|------|-----------|
 | ACT-SNAPSHOT-01 | Spot snapshot count 조회 | `entries_ == NULL` 호출이 live local Spot 수를 `count_`에 기록한다 |
-| ACT-SNAPSHOT-02 | Spot snapshot row | `zlink_spot_node_spots_snapshot()`가 local Spot의 `spot_rid`를 반환한다 |
+| ACT-SNAPSHOT-02 | Spot snapshot row | `zlink_spot_node_spots()`가 local Spot의 `spot_rid`를 반환한다 |
 | ACT-SNAPSHOT-03 | Spot destroy 반영 | `zlink_spot_destroy()` 뒤 Spot snapshot에서 해당 `spot_rid`가 사라진다 |
 | ACT-SNAPSHOT-04 | joined Actor count | Actor join/leave에 따라 Spot snapshot의 `joined_actor_count`가 갱신된다 |
 | ACT-SNAPSHOT-05 | pending join count | reply되지 않은 join request가 있으면 `pending_actor_join_count`가 증가하고 reply 뒤 감소한다 |
 | ACT-SNAPSHOT-06 | Spot route synced | SPOT owner sync가 켜지고 owner row가 현재 SpotNode를 가리키면 `route_synced != 0`이다 |
 | ACT-SNAPSHOT-07 | Actor snapshot count 조회 | `entries_ == NULL` 호출이 live Actor 수를 `count_`에 기록한다 |
-| ACT-SNAPSHOT-08 | Spot joined Actor 목록 | `zlink_spot_actors_snapshot()`이 특정 Spot에 join된 Actor ref 목록을 반환한다 |
-| ACT-SNAPSHOT-09 | Spot joined Actor leave 반영 | Actor leave 뒤 `zlink_spot_actors_snapshot()` 결과에서 해당 Actor ref가 사라진다 |
-| ACT-SNAPSHOT-10 | Spot snapshot null handle | `zlink_spot_destroy()`가 handle을 NULL로 만든 뒤 `zlink_spot_actors_snapshot(NULL, ...)`은 `EINVAL` 계열로 실패한다 |
+| ACT-SNAPSHOT-08 | Spot joined Actor 목록 | `zlink_spot_actors()`이 특정 Spot에 join된 Actor ref 목록을 반환한다 |
+| ACT-SNAPSHOT-09 | Spot joined Actor leave 반영 | Actor leave 뒤 `zlink_spot_actors()` 결과에서 해당 Actor ref가 사라진다 |
+| ACT-SNAPSHOT-10 | Spot snapshot null handle | `zlink_spot_destroy()`가 handle을 NULL로 만든 뒤 `zlink_spot_actors(NULL, ...)`은 `EINVAL` 계열로 실패한다 |
 
 ### Actor queue와 relay
 

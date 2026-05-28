@@ -32,7 +32,7 @@ func main() {
 	samplecommon.MustStep("pub.Bind", pub.Bind(serviceEndpoint))
 
 	_ = serviceEndpoint
-	_ = samplecommon.WaitTopologyEntry(registry.TopologySnapshot, "sample")
+	_ = samplecommon.WaitTopologyEntry(registry.Topology, "sample")
 
 	query, err := ctx.RegistryQueryClient()
 	samplecommon.MustStep("RegistryQueryClient", err)
@@ -40,7 +40,7 @@ func main() {
 	samplecommon.MustStep("query.Connect", query.Connect(registryRouter))
 
 	_ = samplecommon.WaitTopologyEntry(func() ([]zlink.RegistryTopologyEntry, error) {
-		return query.Snapshot(nil)
+		return query.Topology(nil)
 	}, "sample")
 
 	fmt.Println("[registry-query] service: \"sample\" -> snapshot: found")

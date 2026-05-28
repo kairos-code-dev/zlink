@@ -74,12 +74,12 @@ static inline zlink_routing_id_t actor_sample_find_spot_rid_not (
   void *node, const zlink_routing_id_t *excluded, size_t excluded_count)
 {
     size_t count = 0;
-    assert (zlink_spot_node_spots_snapshot (node, NULL, &count)
+    assert (zlink_spot_node_spots (node, NULL, &count)
             == ZLINK_CONFIG_OK);
     zlink_spot_node_spot_entry_t *rows =
       (zlink_spot_node_spot_entry_t *) calloc (count, sizeof (*rows));
     assert (rows != NULL);
-    assert (zlink_spot_node_spots_snapshot (node, rows, &count)
+    assert (zlink_spot_node_spots (node, rows, &count)
             == ZLINK_CONFIG_OK);
     for (size_t i = 0; i < count; ++i) {
         int skip = 0;

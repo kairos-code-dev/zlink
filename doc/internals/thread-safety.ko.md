@@ -58,7 +58,7 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 - `zlink_*_monitor_open()`
 - `zlink_send_ready_handler()`
 - `zlink_registry_add_peer()` / `zlink_registry_set()``
-- Heavy query: `zlink_registry_topology_query()`, 스냅샷 함수
+- Heavy query: `zlink_registry_topology()`, 스냅샷 함수
 
 **정확성 우선 직렬화:**
 

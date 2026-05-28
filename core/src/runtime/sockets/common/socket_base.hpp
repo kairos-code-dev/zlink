@@ -282,7 +282,7 @@ class socket_base_t : public own_t,
     virtual int get_peer_state (const void *routing_id_,
                                 size_t routing_id_size_) const;
 
-    int monitor_snapshot (zlink_monitor_snapshot_t *out_);
+    int monitor_snapshot (zlink_monitor_status_t *out_);
     bool auto_hwm_policy_enabled () const;
     auto_hwm_socket_plan_t prepare_auto_hwm_socket_plan (
       const auto_hwm_context_plan_t &context_);

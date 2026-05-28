@@ -195,7 +195,7 @@ flowchart LR
 
 `pub-ingress-tx`, `ingress-sub`, `internal-router`, `internal-router-tx`는 제거되었다.
 이 socket들이 담당하던 staging 역할은 `publish_ingress_queue`와 `routed_send_queue`가
-대체한다. `zlink_spot_node_internal_sockets_snapshot()`은 이 4개의 row를 더 이상
+대체한다. `zlink_spot_node_internal_sockets()`은 이 4개의 row를 더 이상
 반환하지 않는다. perf의 `Auto-HWM spotnode` 표도 이에 맞게 갱신되었다.
 
 ### 2.2 Router channel peer
@@ -230,7 +230,7 @@ discovery 연결은 channel 이름별 discovery pointer와 discovery가 알려 �
 endpoint set으로 관리된다. 같은 channel 안에서 수동 endpoint와 discovery pointer를
 동시에 둘 수 없게 한 이유는 연결 소유자를 하나로 유지하기 위해서다.
 
-`zlink_spot_node_peers_snapshot()`은 SPOT mesh peer와 router channel peer를
+`zlink_spot_node_peers()`은 SPOT mesh peer와 router channel peer를
 구분한다. router channel peer row는 channel name, peer endpoint, source(manual
 또는 discovery), kind(router channel), state를 함께 보여 준다. 운영 도구는 이
 구분을 사용해 "mesh가 끊어진 것"과 "router channel ingress가 아직 준비되지 않은
@@ -638,15 +638,11 @@ owner `SpotNode`의 Discovery에서
 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜져 있고 Registry와 통신할 수 있을 때 Registry
 visible 상태가 된다.
 
-### 9.4 Actor lifecycle callback
+### 9.4 Actor lifecycle event
 
-`zlink_spot_actor_lifecycle_handler()`로 등록한 Spot lifecycle callback은 Actor의 실제
-위치 변경이 commit되고 active route 갱신이 끝난 뒤 dispatch worker context에서 실행된다.
-Entry Spot과 user Spot 모두 callback 대상이고, 같은 Spot의 dispatch callback과 lifecycle
-callback은 동시에 실행되지 않는다. handler 등록은 이미 Spot에 속해 있던 Actor를 replay
-하지 않는다.
+Actor lifecycle event는 Actor의 실제 위치 변경이 commit되고 active route 갱신이 끝난 뒤 Spot dispatch queue에서 readable 상태가 된다. Entry Spot과 user Spot 모두 `zlink_spot_recv_actor_lifecycle()`로 event를 받을 수 있다. dispatch handler가 이미 등록된 Spot에만 event를 쌓으므로 이전 Actor 전이는 replay하지 않는다.
 
-| trigger | callback | `previous_actor` | `current_actor` |
+| trigger | event | `previous_actor` | `current_actor` |
 |---------|----------|------------------|-----------------|
 | Actor 생성 | Entry Spot `on_join` | zero-value ref | 생성된 Actor ref |
 | user Spot join 성공 | target Spot `on_join` (+ source Spot `on_leave`) | source Actor ref | target Actor ref |
@@ -660,9 +656,9 @@ epoch다. remote join에서는 source `on_leave`, target `on_join`, join complet
 다른 SpotNode의 epoch 값을 가질 수 있다.
 
 `info` pointer는 callback 실행 동안만 유효하므로 필요한 값은 callback 안에서 복사한다.
-join completion handler는 commit이 끝난 뒤 호출되지만 lifecycle callback이 이미 실행
+join completion handler는 commit이 끝난 뒤 호출되지만 lifecycle event이 이미 실행
 되었는지는 보장하지 않는다. application state machine은 join 완료를 결정할 때
-lifecycle callback이 아니라 join completion handler가 돌려준 최종 Actor ref를 기준으로
+lifecycle event이 아니라 join completion handler가 돌려준 최종 Actor ref를 기준으로
 삼는다.
 
 ## 10. Entry Spot과 Spot queue 소유권
@@ -1002,7 +998,7 @@ STREAM session 연결 흐름은 §12를 본다. 공개 join 계약은
 
 local join은 같은 `SpotNode` 안에서 Actor의 current Spot만 바꾼다. accept가 이루어지기 전까지
 source Spot이 Actor의 current Spot으로 남는다. accept 처리, current Spot 교체, active
-route 갱신, lifecycle callback scheduling은 같은 `SpotNode` critical section 또는
+route 갱신, lifecycle event scheduling은 같은 `SpotNode` critical section 또는
 event-loop turn 안에서 수행한다. session attach 여부는 join 요청의 유효성 조건이
 아니므로 bound STREAM session ref 검증을 거치지 않는다. `dest_spot_rid`가 Entry Spot
 이면 invalid-argument 계열로 즉시 실패한다.

@@ -91,20 +91,6 @@ int dispatch_spot_message_local (spot_request_reply_state_t *state_,
                                  zlink_msg_t *parts_,
                                  size_t part_count_)
 {
-    zlink_spot_handler_fn handler = NULL;
-    void *handler_userdata = NULL;
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        handler = state_->recv.request_handler;
-        handler_userdata = state_->recv.request_handler_userdata;
-    }
-
-    if (handler) {
-        handler (source_rid_, spot_rid_, request_seq_, parts_, part_count_,
-                 handler_userdata);
-        return 0;
-    }
-
     if (zlink::spot_reqrep_internal::queue_spot_message (
           state_, source_rid_, spot_rid_, request_seq_, parts_, part_count_)
         != 0) {

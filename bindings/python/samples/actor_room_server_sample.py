@@ -70,7 +70,7 @@ def main():
                                 or replies[0][1] != [b"joined"]
                             ):
                                 raise AssertionError("unexpected join reply")
-                            if spot.actors_snapshot()[0].actor_id != "room-1":
+                            if spot.actors()[0].actor_id != "room-1":
                                 raise AssertionError("joined actor snapshot missing")
                             submit_request_op(
                                 actor.leave(spot), description="actor leave"

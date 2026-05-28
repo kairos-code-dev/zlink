@@ -4,6 +4,6 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.messaging.Received;
 @FunctionalInterface
-public interface RequestReplyCallback {
+interface RequestReplyCallback {
     void onComplete(Throwable error, Received reply);
 }

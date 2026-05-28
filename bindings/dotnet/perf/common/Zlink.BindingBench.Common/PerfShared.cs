@@ -183,7 +183,7 @@ public static class PerfShared
         };
     }
 
-    private static bool SingleAutoHwmSnapshotVisible(MonitorSnapshot s)
+    private static bool SingleAutoHwmStatusVisible(MonitorStatus s)
     {
         return s.AutoHwmAppliedSndHwm > 0
             || s.AutoHwmAppliedRcvHwm > 0
@@ -202,16 +202,16 @@ public static class PerfShared
     {
         if (monitor is null)
             return;
-        MonitorSnapshot snapshot;
+        MonitorStatus snapshot;
         try
         {
-            snapshot = monitor.Snapshot();
+            snapshot = monitor.Status();
         }
         catch
         {
             return;
         }
-        if (snapshot is null || !SingleAutoHwmSnapshotVisible(snapshot))
+        if (snapshot is null || !SingleAutoHwmStatusVisible(snapshot))
             return;
 
         WriteStdoutLine(
@@ -270,10 +270,10 @@ public static class PerfShared
     {
         if (node is null)
             return;
-        SpotNodeSocketSnapshotEntry[] entries;
+        SpotNodeSocketEntry[] entries;
         try
         {
-            entries = node.InternalSocketsSnapshot();
+            entries = node.InternalSockets();
         }
         catch
         {
@@ -281,11 +281,11 @@ public static class PerfShared
         }
         if (entries is null)
             return;
-        foreach (SpotNodeSocketSnapshotEntry entry in entries)
+        foreach (SpotNodeSocketEntry entry in entries)
         {
             if (!entry.AutoHwmVisible)
                 continue;
-            MonitorSnapshot s = entry.Snapshot;
+            MonitorStatus s = entry.MonitorStatus;
             if (s is null
                 || (s.AutoHwmAppliedSndHwm <= 0 && s.AutoHwmAppliedRcvHwm <= 0))
             {

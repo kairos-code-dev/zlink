@@ -231,7 +231,7 @@ bool wait_for_spot_owner_topology_entry_local (
     return zlink_test_wait_until (timeout_ms_, [=, &filter] {
         zlink_registry_topology_entry_t entries[4];
         size_t count = 4;
-        if (zlink_registry_topology_query (registry_, &filter, entries, &count)
+        if (zlink_registry_topology (registry_, &filter, entries, &count)
               == ZLINK_CONFIG_OK
             && count == 1 && strcmp (entries[0].endpoint, expected_endpoint_) == 0
             && entries[0].routing_id.size == spot_rid_->size
@@ -265,7 +265,7 @@ bool wait_for_no_spot_owner_topology_entry_local (
     return zlink_test_wait_until (timeout_ms_, [=, &filter] {
         zlink_registry_topology_entry_t entries[4];
         size_t count = 4;
-        if (zlink_registry_topology_query (registry_, &filter, entries, &count)
+        if (zlink_registry_topology (registry_, &filter, entries, &count)
               == ZLINK_CONFIG_OK
             && count == 0) {
             return true;

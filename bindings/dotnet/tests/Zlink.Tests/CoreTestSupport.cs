@@ -195,7 +195,7 @@ internal static class CoreTestSupport
         int timeoutMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        var received = new Received();
+        var received = Received.Create();
         while (DateTime.UtcNow < deadline)
         {
             if (socket.Recv(received, RecvFlags.DontWait))
@@ -324,7 +324,7 @@ internal static class CoreTestSupport
         _ = maxSize;
         try
         {
-            var received = new Received();
+            var received = Received.Create();
             if (!socket.Recv(received, RecvFlags.DontWait))
             {
                 lastPart = Array.Empty<byte>();
@@ -361,7 +361,7 @@ internal static class CoreTestSupport
         _ = maxSize;
         try
         {
-            var received = new Received();
+            var received = Received.Create();
             if (!socket.Recv(received, RecvFlags.DontWait))
             {
                 lastPart = Array.Empty<byte>();
@@ -395,7 +395,7 @@ internal static class CoreTestSupport
     internal static bool ExpectNoMessage(IMessageSocket socket, int probeMs)
     {
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
-        var received = new Received();
+        var received = Received.Create();
         while (DateTime.UtcNow < deadline)
         {
             if (socket.Recv(received, RecvFlags.DontWait))
@@ -431,7 +431,7 @@ internal static class CoreTestSupport
         socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(timeoutMs);
         try
         {
-            var received = new Received();
+            var received = Received.Create();
             socket.Recv(received);
             try
             {

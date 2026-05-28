@@ -58,15 +58,6 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket
         TimeSpan? timeout);
 
     Received? Recv(RecvFlags flags = RecvFlags.None);
-
-    bool RequestFrame(
-        ulong requestSeq,
-        IReadOnlyList<Message> parts,
-        SendFlags flags);
-
-    void Reply(
-        ulong requestToken,
-        IReadOnlyList<Message> parts);
 }
 
 internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket

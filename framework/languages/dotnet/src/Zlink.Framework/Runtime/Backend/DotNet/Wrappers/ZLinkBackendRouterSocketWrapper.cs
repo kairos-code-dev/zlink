@@ -47,7 +47,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         // the binding migration and still allocates a fresh Received per
         // call; future work can lift the caller-provided pattern up to
         // the framework adapter too.
-        var result = new Received();
+        var result = Received.Create();
         if (nativeSocket.Recv(result, flags))
             return result;
         result.Dispose();

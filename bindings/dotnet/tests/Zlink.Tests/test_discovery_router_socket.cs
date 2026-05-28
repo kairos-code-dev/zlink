@@ -52,7 +52,7 @@ public sealed class test_discovery_router_socket
         var received = new ManualResetEventSlim(false);
         var server = Task.Run(() =>
         {
-            var request = new Received();
+            var request = Received.Create();
             right.Recv(request);
             try
             {

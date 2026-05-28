@@ -12,12 +12,10 @@ internal static class PerfMultiSpotClient
     private const string Pattern = "SPOT";
     private const uint ExpectedRunId = 1;
     private const string Topic = "bench";
-    private const int TopicBufferSize = 256;
     private const string ControlTopic = Topic;
     private const int SpotSocketTag = 0;
     private const int ControlDeadlineTag = int.MaxValue;
     private const int ReadyRepeatTag = int.MaxValue - 1;
-    private static readonly byte[] TopicBytes = Encoding.ASCII.GetBytes(Topic);
     internal static int Run(PerfOptions options)
     {
         if (!TryParseSpotEndpoints(options.Endpoint, out string dataEndpoint,
@@ -316,10 +314,10 @@ internal static class PerfMultiSpotClient
     {
         if (PerfEnv.ReadPositive("PERF_DOTNET_CONTROL_DEBUG", 0) <= 0)
             return;
-        SpotNodeStatus status = node.StatusSnapshot();
+        SpotNodeStatus status = node.Status();
         Console.Error.WriteLine(
             $"control_debug:{label}:subjects={status.SubjectCount}:ready={status.ReadySubjectCount}:peers={status.ConnectedPeerCount}");
-        foreach (SpotNodeSubjectEntry entry in node.SubjectsSnapshot())
+        foreach (SpotNodeSubjectEntry entry in node.Subjects())
         {
             Console.Error.WriteLine(
                 $"control_debug:{label}:subject:{entry.Role}:{entry.Subject}:{entry.ReadyPeerCount}:{entry.ActivePeerCount}");
@@ -626,8 +624,7 @@ internal static class PerfMultiSpotClient
         try
         {
             SpotClientSlotState state = slot.State;
-            Message receivedPart = state.ReceivedPart;
-            byte[] topicBuffer = state.TopicBuffer;
+            TopicMessage received = state.Received;
             bool progressed = false;
             while (true)
             {
@@ -642,13 +639,10 @@ internal static class PerfMultiSpotClient
 
                 try
                 {
-                    if (!slot.Subscriber.SubscribePart(receivedPart,
-                            topicBuffer, out int topicLength,
-                            out bool hasMore, RecvFlags.DontWait))
+                    if (!slot.Subscriber.Subscribe(received,
+                            RecvFlags.DontWait))
                         return progressed;
-                    if (hasMore || topicLength != Topic.Length
-                        || !topicBuffer.AsSpan(0, topicLength)
-                            .SequenceEqual(TopicBytes))
+                    if (!received.IsSinglePart || received.Topic != Topic)
                     {
                         continue;
                     }
@@ -660,7 +654,8 @@ internal static class PerfMultiSpotClient
                 }
 
                 progressed = true;
-                ReadOnlySpan<byte> payload = receivedPart.AsReadOnlySpan();
+                ReadOnlySpan<byte> payload =
+                    received.FirstPart().AsReadOnlySpan();
                 if (IsStopTokenPayload(payload))
                 {
                     state.CooldownSeen = 1;
@@ -885,15 +880,13 @@ internal static class PerfMultiSpotClient
             LatencySampleCap = Math.Max(0, latencySampleCap);
             LatencySampleStride = Math.Max(1, latencySampleStride);
             PayloadBuffer = new byte[Math.Max(1, payloadBufferSize)];
-            ReceivedPart = new Message();
-            TopicBuffer = new byte[TopicBufferSize];
+            Received = new TopicMessage();
             LatencySamples = new List<double>(LatencySampleCap);
             Rng = 0xC0FFEEu;
         }
 
         internal byte[] PayloadBuffer { get; }
-        internal Message ReceivedPart { get; }
-        internal byte[] TopicBuffer { get; }
+        internal TopicMessage Received { get; }
         internal List<double> LatencySamples { get; }
         internal int LatencySampleCap { get; }
         internal int LatencySampleStride { get; }
@@ -913,7 +906,7 @@ internal static class PerfMultiSpotClient
 
         public void Dispose()
         {
-            ReceivedPart.Dispose();
+            Received.Dispose();
         }
     }
 }

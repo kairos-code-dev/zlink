@@ -139,7 +139,7 @@ internal sealed class ZLinkSpotActivationDispatcher(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var received = new Received();
+            var received = Received.Create();
             if (!nativeSpot.RecvRoute(received, RecvFlags.DontWait))
             {
                 received.Dispose();

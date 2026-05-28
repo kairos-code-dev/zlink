@@ -41,12 +41,12 @@ func TestMonitorRecv(t *testing.T) {
 		t.Fatalf("unexpected monitor event: %+v", event)
 	}
 
-	snapshot, err := serverMon.Snapshot()
+	snapshot, err := serverMon.Status()
 	if err != nil {
-		t.Fatalf("Snapshot() error = %v", err)
+		t.Fatalf("Status() error = %v", err)
 	}
 	if snapshot == nil {
-		t.Fatalf("Snapshot() returned nil")
+		t.Fatalf("Status() returned nil")
 	}
 	_ = snapshot.AutoHwmProfile
 	_ = snapshot.AutoHwmPolicyClass

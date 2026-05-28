@@ -4,8 +4,6 @@ package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.errors.ConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.contracts.errors.HandlerException;
-import systems.zlink.contracts.errors.HandlerResult;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.errors.RecvException;
@@ -23,7 +21,6 @@ import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
 import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
-import systems.zlink.contracts.sockets.SpotRoutedHandler;
 import systems.zlink.contracts.errors.SubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
@@ -1057,10 +1054,6 @@ public final class Spot implements AutoCloseable {
         return true;
     }
 
-    public void onRoutedReceive(SpotRoutedHandler handler) {
-        routedSupport.onRoutedReceive(handler);
-    }
-
     public void onDispatchEvent(SpotDispatchEventHandler handler) {
         routedSupport.onDispatchEvent(handler);
     }
@@ -1123,53 +1116,34 @@ public final class Spot implements AutoCloseable {
         return new ActorJoinReplyBuilder(request, joinResultCode);
     }
 
-    /**
-     * Register Actor lifecycle callbacks on this Spot. Passing {@code null}
-     * for both removes the registration.
-     */
-    public void onActorLifecycle(ActorLifecycleHandler onJoin,
-                                 ActorLifecycleHandler onLeave) {
+    public SpotActorLifecycleEvent recvActorLifecycle(RecvFlags flags) {
         ensureOpen();
-        if (onJoin == null && onLeave == null) {
-            long old = lifecycleRegistrationId;
-            lifecycleRegistrationId = 0L;
-            if (old != 0L) {
-                int rc = Native.spotActorLifecycleHandler(handle,
-                  MemorySegment.NULL, MemorySegment.NULL,
-                  MemorySegment.NULL);
-                ActorRequestCallbacks.unregisterLifecycle(old);
-                if (rc != 0) {
-                    throw new systems.zlink.contracts.errors.HandlerException(
-                      systems.zlink.contracts.errors.HandlerResult.fromValue(rc));
+        Objects.requireNonNull(flags, "flags");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment eventOut = arena.allocate(
+              NativeLayouts.SPOT_ACTOR_LIFECYCLE_EVENT_LAYOUT);
+            int rc = Native.spotRecvActorLifecycle(handle, eventOut,
+              flags.value());
+            if (rc != 0) {
+                if (flags == RecvFlags.DONT_WAIT
+                    && rc == RecvResult.NO_DATA.value()) {
+                    return null;
                 }
+                throw new RecvException(RecvResult.fromValue(rc));
             }
-            return;
+            return new SpotActorLifecycleEvent(
+              SpotActorLifecycleEventKind.fromValue(eventOut.get(
+                ValueLayout.JAVA_INT,
+                NativeLayouts.SPOT_ACTOR_LIFECYCLE_EVENT_KIND_OFFSET)),
+              ActorInterop.lifecycleInfoFromNative(eventOut.asSlice(
+                NativeLayouts.SPOT_ACTOR_LIFECYCLE_EVENT_INFO_OFFSET,
+                NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_LAYOUT.byteSize())));
         }
-        Spot self = this;
-        long id = ActorRequestCallbacks.registerLifecycle(
-          onJoin == null ? null : (spotHandle, info) ->
-            onJoin.onLifecycleEvent(self, info),
-          onLeave == null ? null : (spotHandle, info) ->
-            onLeave.onLifecycleEvent(self, info));
-        long previous = lifecycleRegistrationId;
-        int rc = Native.spotActorLifecycleHandler(handle,
-          onJoin == null ? MemorySegment.NULL
-            : ActorRequestCallbacks.ACTOR_LIFECYCLE_JOIN_CALLBACK,
-          onLeave == null ? MemorySegment.NULL
-            : ActorRequestCallbacks.ACTOR_LIFECYCLE_LEAVE_CALLBACK,
-          MemorySegment.ofAddress(id));
-        if (rc != 0) {
-            ActorRequestCallbacks.unregisterLifecycle(id);
-            throw new systems.zlink.contracts.errors.HandlerException(
-              systems.zlink.contracts.errors.HandlerResult.fromValue(rc));
-        }
-        if (previous != 0L) {
-            ActorRequestCallbacks.unregisterLifecycle(previous);
-        }
-        lifecycleRegistrationId = id;
     }
 
-    private long lifecycleRegistrationId;
+    public SpotActorLifecycleEvent recvActorLifecycle() {
+        return recvActorLifecycle(RecvFlags.NONE);
+    }
 
     private final class ActorJoinReplyBuilder implements ActorJoinReplyOp {
         private final ActorJoinRequest request;
@@ -1283,14 +1257,14 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    public List<ActorRef> actorsSnapshot() {
+    public List<ActorRef> actors() {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotActorsSnapshot(handle, MemorySegment.NULL,
+            int rc = Native.spotActors(handle, MemorySegment.NULL,
               count);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_actors_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_actors");
             }
             int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0) {
@@ -1299,9 +1273,9 @@ public final class Spot implements AutoCloseable {
             MemorySegment entries = arena.allocate(
               NativeLayouts.ACTOR_REF_LAYOUT, available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotActorsSnapshot(handle, entries, count);
+            rc = Native.spotActors(handle, entries, count);
             if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_actors_snapshot");
+                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_actors");
             }
             int actual = Math.min(available, boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));

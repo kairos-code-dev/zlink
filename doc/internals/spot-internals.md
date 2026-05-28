@@ -196,7 +196,7 @@ flowchart LR
 
 `pub-ingress-tx`, `ingress-sub`, `internal-router`, and `internal-router-tx` have
 been removed. Their staging role is replaced by `publish_ingress_queue` and
-`routed_send_queue`. `zlink_spot_node_internal_sockets_snapshot()` no longer returns
+`routed_send_queue`. `zlink_spot_node_internal_sockets()` no longer returns
 rows for those four sockets. The perf `Auto-HWM spotnode` table is updated accordingly.
 
 ### 2.2 Router Channel Peer
@@ -227,7 +227,7 @@ name and derives the active endpoint set from that discovery view. Manual
 endpoints and a discovery pointer cannot coexist for the same channel because
 the connection owner must stay unambiguous.
 
-`zlink_spot_node_peers_snapshot()` distinguishes SPOT mesh peers from router
+`zlink_spot_node_peers()` distinguishes SPOT mesh peers from router
 channel peers. A router channel peer row includes channel name, peer endpoint,
 source (manual or discovery), kind (router channel), and state. Operators use
 that split to diagnose "the mesh is down" separately from "router channel
@@ -638,16 +638,11 @@ route, the route is preserved. These updates become Registry-visible when the
 owning `SpotNode`'s Discovery has `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`
 enabled and is connected to the Registry.
 
-### 9.4 Actor lifecycle callback
+### 9.4 Actor lifecycle event
 
-Spot lifecycle callbacks registered via `zlink_spot_actor_lifecycle_handler()`
-run on the dispatch worker context after the actual location change has
-committed and the active route update is complete. Both Entry Spot and user
-Spot can receive them. The same Spot's dispatch callback and lifecycle
-callback never execute concurrently. Registration does not replay Actors that
-were already in the Spot.
+Actor lifecycle events become readable through the Spot dispatch queue after the actual location change has committed and the active route update is complete. Both Entry Spot and user Spot can receive them through `zlink_spot_recv_actor_lifecycle()`. Events are queued only for Spots with a dispatch handler already registered, so earlier Actor transitions are not replayed.
 
-| Trigger | Callback | `previous_actor` | `current_actor` |
+| Trigger | Event | `previous_actor` | `current_actor` |
 |---------|----------|------------------|-----------------|
 | Actor creation | Entry Spot `on_join` | zero-value ref | newly created ref |
 | User Spot join success | target Spot `on_join` (+ source Spot `on_leave`) | source ref | target ref |
@@ -662,9 +657,9 @@ completion may carry epoch values from different SpotNodes.
 
 The `info` pointer is valid only inside the callback; copy values inside the
 callback if needed later. The join completion handler runs after commit, but
-the public contract does not guarantee whether the lifecycle callback has
+the public contract does not guarantee whether the lifecycle event has
 already executed. The application state machine relies on the join completion
-handler's final Actor ref, not on the lifecycle callback, to decide that a
+handler's final Actor ref, not on the lifecycle event, to decide that a
 join has finished.
 
 ## 10. Entry Spot and Spot queue ownership
@@ -1002,7 +997,7 @@ For STREAM session binding flow see section 12. For the public join contract see
 
 Local join only changes `current Spot` within the same `SpotNode`. The source Spot
 remains the Actor's `current Spot` until accept. Accept handling, `current Spot`
-swap, active route update, and lifecycle callback scheduling all execute in the
+swap, active route update, and lifecycle event scheduling all execute in the
 same `SpotNode` critical section or event-loop turn. Bound STREAM session ref is
 not a precondition for join — Actor location and session attach are independent
 state transitions. The `dest_spot_rid` must be a user Spot; passing the Entry

@@ -33,7 +33,7 @@ internal sealed class ZLinkMonitoringSourceValidator(
         if (registryRuntime is not null && registration.RegistrySources.Count > 0)
         {
             _ = await services.GetRequiredService<IZLinkRegistryQuery>()
-                .StatusSnapshotAsync(cancellationToken);
+                .StatusAsync(cancellationToken);
         }
 
         if (frameworkRuntime is null)

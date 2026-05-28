@@ -202,28 +202,14 @@ struct session_binding_t
     }
 };
 
-struct lifecycle_registration_t
-{
-    lifecycle_registration_t () :
-        on_join (NULL),
-        on_leave (NULL),
-        userdata (NULL)
-    {
-    }
-
-    zlink_spot_actor_lifecycle_handler_fn on_join;
-    zlink_spot_actor_lifecycle_handler_fn on_leave;
-    void *userdata;
-};
-
 struct lifecycle_event_t
 {
-    lifecycle_event_t () : join (false)
+    lifecycle_event_t () : kind (ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED)
     {
         memset (&info, 0, sizeof (info));
     }
 
-    bool join;
+    zlink_spot_actor_lifecycle_event_kind_t kind;
     zlink_spot_actor_lifecycle_info_t info;
 };
 
@@ -378,15 +364,10 @@ struct actor_join_state_t
 
 struct actor_lifecycle_state_t
 {
-    lifecycle_registration_t *find_registration (spot_logical_state_t *key_);
     void clear (spot_logical_state_t *key_);
-    lifecycle_registration_t &ensure_registration (spot_logical_state_t *key_);
     void enqueue (spot_logical_state_t *key_, const lifecycle_event_t &event_);
-    bool pop (spot_logical_state_t *key_,
-              lifecycle_event_t *event_out_,
-              lifecycle_registration_t *registration_out_);
+    bool pop (spot_logical_state_t *key_, lifecycle_event_t *event_out_);
 
-    std::map<spot_logical_state_t *, lifecycle_registration_t> handlers;
     std::map<spot_logical_state_t *, std::deque<lifecycle_event_t> > queues;
 };
 

@@ -4,37 +4,29 @@ namespace Zlink.Framework.Runtime.Registry;
 
 internal sealed class ZLinkRegistryQuery(ZLinkRegistryRuntime runtime) : IZLinkRegistryQuery
 {
-    public async ValueTask<ZLinkRegistryStatus> StatusSnapshotAsync(
+    public async ValueTask<ZLinkRegistryStatus> StatusAsync(
         CancellationToken cancellationToken = default)
     {
         return await runtime.ExecuteAsync(
-            static registry => registry.StatusSnapshot(),
+            static registry => registry.Status(),
             cancellationToken);
     }
 
-    public async ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummarySnapshotAsync(
+    public async ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummaryAsync(
         ZLinkRegistryServiceSummaryFilter? filter = null,
         CancellationToken cancellationToken = default)
     {
         return await runtime.ExecuteAsync(
-            registry => registry.ServiceSummarySnapshot(filter).ToArray(),
+            registry => registry.ServiceSummary(filter).ToArray(),
             cancellationToken);
     }
 
-    public async ValueTask<ZLinkRegistryTopologyEntry[]> TopologySnapshotAsync(
-        CancellationToken cancellationToken = default)
-    {
-        return await runtime.ExecuteAsync(
-            static registry => registry.TopologySnapshot().ToArray(),
-            cancellationToken);
-    }
-
-    public async ValueTask<ZLinkRegistryTopologyEntry[]> TopologyQueryAsync(
+    public async ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         ZLinkRegistryTopologyFilter? filter = null,
         CancellationToken cancellationToken = default)
     {
         return await runtime.ExecuteAsync(
-            registry => registry.TopologyQuery(filter).ToArray(),
+            registry => registry.Topology(filter).ToArray(),
             cancellationToken);
     }
 
@@ -64,11 +56,11 @@ internal sealed class ZLinkRegistryQueryClientService : IZLinkRegistryQueryClien
         _client.Connect(registration.Endpoint!);
     }
 
-    public ValueTask<ZLinkRegistryTopologyEntry[]> SnapshotAsync(
+    public ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         ZLinkRegistryTopologyFilter? filter = null,
         CancellationToken cancellationToken = default)
     {
-        return ValueTask.FromResult(_client.Snapshot(filter).ToArray());
+        return ValueTask.FromResult(_client.Topology(filter).ToArray());
     }
 
     public async ValueTask DisposeAsync()

@@ -220,21 +220,21 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
   `zlink_multipart_close + free()` 경로를 추가했다.
 - `Native` / `NativeLayouts` 에 공식 헤더 기준 누락되어 있던
   `zlink_subscription_at`, `zlink_publish_part`, `zlink_subscribe_part`,
-  `zlink_monitor_snapshot`, `zlink_monitor_close`,
+  `zlink_monitor_status`, `zlink_monitor_close`,
   `zlink_service_monitor_open`, `zlink_service_monitor_handler`,
   `zlink_service_monitor_recv`,
   `zlink_registry_bind`, `zlink_discovery_new`,
   registry/discovery/topology snapshot/query downcall, unified
   `zlink_spot_new` / `zlink_spot_destroy`,
   `zlink_spot_node_attach_discovery`,
-  `zlink_spot_node_status_snapshot` 계열 downcall 을 추가했다.
+  `zlink_spot_node_status` 계열 downcall 을 추가했다.
 - 또한 Phase 1 누락분이던 dedicated option family downcall
   (`zlink_set/get_router_option`, `zlink_set/get_pub_option`,
   `zlink_set/get_sub_option`, `zlink_set/get_stream_option`,
   `zlink_subscription_event`) 과 direct callback downcall
   (`zlink_recv_handler`, `zlink_subscribe_handler`,
   `zlink_send_ready_handler`) 도 `Native` 에 추가했다.
-- `NativeLayouts` 에 `zlink_monitor_snapshot_t`,
+- `NativeLayouts` 에 `zlink_monitor_status_t`,
   `zlink_service_event_t`, `zlink_service_monitor_open_options_t`,
   `zlink_spot_node_status_t`, `zlink_spot_node_peer_entry_t`,
   `zlink_spot_node_subject_entry_t`,
@@ -423,7 +423,7 @@ cd bindings/java && ./gradlew :samples:runSpotCallback
 진행 메모:
 
 - `MonitorSocket` 는 `zlink_socket_monitor_open` / `zlink_socket_monitor_recv`
-  / `zlink_monitor_snapshot` canonical 경로 위로 동작하고,
+  / `zlink_monitor_status` canonical 경로 위로 동작하고,
   `Poller` 는 generic socket/fd add/modify/remove surface 만 남기도록
   이미 축소됐다.
 - `Native.java` 에 남아 있던 `poller_add_spot_*`, `poller_add_receiver`,

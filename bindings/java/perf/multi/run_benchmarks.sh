@@ -1623,7 +1623,7 @@ def emit_spot_auto_hwm(pattern_rows):
     # every spot-node snapshot socket whose core `auto_hwm_visible == 0`
     # BEFORE emitting its AUTO_HWM_DETAIL line, so the C reference report
     # never contains the `internal_receiver` dispatch socket. The Java JNI
-    # binding's SpotNodeSocketSnapshotEntry.autoHwmVisible() mis-reports that
+    # binding's SpotNodeSocketEntry.autoHwmVisible() mis-reports that
     # internal socket as visible (binding-library gap, out of scope for
     # bindings/java/perf), so mirror C's effective visible-socket set here in
     # the report emitter to keep the spotnode table byte-identical to C.

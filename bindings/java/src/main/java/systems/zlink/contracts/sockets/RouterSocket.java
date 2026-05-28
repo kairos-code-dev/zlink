@@ -102,7 +102,7 @@ public final class RouterSocket extends Socket {
 
     private void attachSendRouter(Received result) {
         if (result.hasSendSender()) return;
-        if (result.routingIdOrNull() != null) {
+        if (result.routingId().isPresent()) {
             result.setSendRouter(this);
         }
     }

@@ -24,7 +24,7 @@ uint32_t compute_blocked_ratio_ppm_local (uint64_t attempts_, uint64_t blocked_)
 
 }
 
-int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
+int zlink::socket_base_t::monitor_snapshot (zlink_monitor_status_t *out_)
 {
     if (!out_) {
         errno = EINVAL;
@@ -35,10 +35,10 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_snapshot_t *out_)
     memset (out_, 0, sizeof (*out_));
     out_->source_kind = ZLINK_MONITOR_SOURCE_SOCKET;
     out_->detail_flags =
-      ZLINK_MONITOR_SNAPSHOT_DETAIL_SND_PENDING_MSGS
-      | ZLINK_MONITOR_SNAPSHOT_DETAIL_RCV_PENDING_MSGS
-      | ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUDGET
-      | ZLINK_MONITOR_SNAPSHOT_DETAIL_AUTO_HWM_BUFFERS;
+      ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS
+      | ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS
+      | ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET
+      | ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
         if (monitor_ready_count () > 0)

@@ -367,7 +367,7 @@ napi_value registry_destroy(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value registry_status_snapshot(napi_env env, napi_callback_info info)
+napi_value registry_status(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
@@ -377,9 +377,9 @@ napi_value registry_status_snapshot(napi_env env, napi_callback_info info)
 
     zlink_registry_status_t status;
     memset(&status, 0, sizeof(status));
-    int rc = zlink_registry_status_snapshot(registry, &status);
+    int rc = zlink_registry_status(registry, &status);
     if (rc != 0)
-        return throw_last_error(env, "registry_status_snapshot failed");
+        return throw_last_error(env, "registry_status failed");
 
     napi_value obj;
     napi_create_object(env, &obj);
@@ -397,7 +397,7 @@ napi_value registry_status_snapshot(napi_env env, napi_callback_info info)
     return obj;
 }
 
-napi_value registry_service_summary_snapshot(napi_env env, napi_callback_info info)
+napi_value registry_service_summary(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
@@ -412,11 +412,11 @@ napi_value registry_service_summary_snapshot(napi_env env, napi_callback_info in
 
     for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
         size_t count = 0;
-        int rc = zlink_registry_service_summary_snapshot(registry, filter_ptr, NULL, &count);
+        int rc = zlink_registry_service_summary(registry, filter_ptr, NULL, &count);
         if (rc != 0) {
             if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
                 continue;
-            return throw_last_error(env, "registry_service_summary_snapshot failed");
+            return throw_last_error(env, "registry_service_summary failed");
         }
 
         napi_value arr;
@@ -425,12 +425,12 @@ napi_value registry_service_summary_snapshot(napi_env env, napi_callback_info in
             return arr;
 
         std::vector<zlink_registry_service_summary_entry_t> entries(count);
-        rc = zlink_registry_service_summary_snapshot(registry, filter_ptr, entries.data(),
+        rc = zlink_registry_service_summary(registry, filter_ptr, entries.data(),
                                                     &count);
         if (rc != 0) {
             if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
                 continue;
-            return throw_last_error(env, "registry_service_summary_snapshot failed");
+            return throw_last_error(env, "registry_service_summary failed");
         }
 
         for (size_t i = 0; i < count; ++i) {
@@ -453,45 +453,10 @@ napi_value registry_service_summary_snapshot(napi_env env, napi_callback_info in
         return arr;
     }
 
-    return throw_last_error(env, "registry_service_summary_snapshot failed");
+    return throw_last_error(env, "registry_service_summary failed");
 }
 
-napi_value registry_topology_snapshot(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *registry = NULL;
-    napi_get_value_external(env, argv[0], &registry);
-
-    for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
-        size_t count = 0;
-        int rc = zlink_registry_topology_snapshot(registry, NULL, &count);
-        if (rc != 0) {
-            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
-                continue;
-            return throw_last_error(env, "registry_topology_snapshot failed");
-        }
-        if (count == 0) {
-            napi_value arr;
-            napi_create_array_with_length(env, 0, &arr);
-            return arr;
-        }
-
-        std::vector<zlink_registry_topology_entry_t> entries(count);
-        rc = zlink_registry_topology_snapshot(registry, entries.data(), &count);
-        if (rc != 0) {
-            if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
-                continue;
-            return throw_last_error(env, "registry_topology_snapshot failed");
-        }
-        return create_registry_topology_array(env, entries.data(), count);
-    }
-
-    return throw_last_error(env, "registry_topology_snapshot failed");
-}
-
-napi_value registry_topology_query(napi_env env, napi_callback_info info)
+napi_value registry_topology(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
@@ -505,11 +470,11 @@ napi_value registry_topology_query(napi_env env, napi_callback_info info)
                                                                       : NULL;
     for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
         size_t count = 0;
-        int rc = zlink_registry_topology_query(registry, filter_ptr, NULL, &count);
+        int rc = zlink_registry_topology(registry, filter_ptr, NULL, &count);
         if (rc != 0) {
             if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
                 continue;
-            return throw_last_error(env, "registry_topology_query failed");
+            return throw_last_error(env, "registry_topology failed");
         }
         if (count == 0) {
             napi_value arr;
@@ -518,16 +483,16 @@ napi_value registry_topology_query(napi_env env, napi_callback_info info)
         }
 
         std::vector<zlink_registry_topology_entry_t> entries(count);
-        rc = zlink_registry_topology_query(registry, filter_ptr, entries.data(), &count);
+        rc = zlink_registry_topology(registry, filter_ptr, entries.data(), &count);
         if (rc != 0) {
             if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
                 continue;
-            return throw_last_error(env, "registry_topology_query failed");
+            return throw_last_error(env, "registry_topology failed");
         }
         return create_registry_topology_array(env, entries.data(), count);
     }
 
-    return throw_last_error(env, "registry_topology_query failed");
+    return throw_last_error(env, "registry_topology failed");
 }
 
 napi_value registry_member_peers(napi_env env, napi_callback_info info)
@@ -599,7 +564,7 @@ napi_value registry_query_client_connect(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value registry_query_snapshot(napi_env env, napi_callback_info info)
+napi_value registry_query_topology(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
@@ -614,11 +579,11 @@ napi_value registry_query_snapshot(napi_env env, napi_callback_info info)
 
     for (int attempt = 0; attempt < k_snapshot_retry_limit; ++attempt) {
         size_t count = 0;
-        int rc = zlink_registry_query_snapshot(client, filter_ptr, NULL, &count);
+        int rc = zlink_registry_query_client_topology(client, filter_ptr, NULL, &count);
         if (rc != 0) {
             if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
                 continue;
-            return throw_last_error(env, "registry_query_snapshot failed");
+            return throw_last_error(env, "registry_query_topology failed");
         }
         if (count == 0) {
             napi_value arr;
@@ -627,16 +592,16 @@ napi_value registry_query_snapshot(napi_env env, napi_callback_info info)
         }
 
         std::vector<zlink_registry_topology_entry_t> entries(count);
-        rc = zlink_registry_query_snapshot(client, filter_ptr, entries.data(), &count);
+        rc = zlink_registry_query_client_topology(client, filter_ptr, entries.data(), &count);
         if (rc != 0) {
             if (zlink_errno() == ENOBUFS && attempt + 1 < k_snapshot_retry_limit)
                 continue;
-            return throw_last_error(env, "registry_query_snapshot failed");
+            return throw_last_error(env, "registry_query_topology failed");
         }
         return create_registry_topology_array(env, entries.data(), count);
     }
 
-    return throw_last_error(env, "registry_query_snapshot failed");
+    return throw_last_error(env, "registry_query_topology failed");
 }
 
 napi_value registry_query_destroy(napi_env env, napi_callback_info info)
@@ -647,7 +612,7 @@ napi_value registry_query_destroy(napi_env env, napi_callback_info info)
     void *client = NULL;
     napi_get_value_external(env, argv[0], &client);
     void *tmp = client;
-    int rc = zlink_registry_query_destroy(&tmp);
+    int rc = zlink_registry_query_client_destroy(&tmp);
     if (rc != 0)
         return throw_last_error(env, "registry_query_destroy failed");
     napi_value ok;

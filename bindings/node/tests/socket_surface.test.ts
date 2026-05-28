@@ -143,8 +143,8 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof spotNode.entrySpot, 'function');
   assert.equal(typeof spotNode.spotLookup, 'function');
   assert.equal(typeof spotNode.getOrCreateSpot, 'function');
-  assert.equal(typeof spotNode.spotsSnapshot, 'function');
-  assert.equal(typeof spotNode.actorsSnapshot, 'function');
+  assert.equal(typeof spotNode.spots, 'function');
+  assert.equal(typeof spotNode.actors, 'function');
   spotNode.setRoutingId(zlink.RoutingId.from(Buffer.from('node-surface')));
   assert.ok(spotNode.routingId instanceof zlink.RoutingId);
   const actor = spotNode.createActor('surface-actor');
@@ -169,10 +169,11 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof spot.recvRoutedPayloadInto, 'function');
   assert.equal(typeof spot.receiveSubscriptionEvent, 'function');
   assert.equal(typeof spot.onDispatchEvent, 'function');
-  assert.equal(typeof spot.onRoutedReceive, 'function');
+  assert.equal(spot.onRoutedReceive, undefined);
+  assert.equal(typeof spot.recvActorLifecycle, 'function');
   assert.equal(typeof spot.recvActorJoin, 'function');
   assert.equal(typeof spot.replyActorJoin, 'function');
-  assert.equal(typeof spot.actorsSnapshot, 'function');
+  assert.equal(typeof spot.actors, 'function');
   assert.equal(spot.onSubscribe, undefined);
   spot.close();
   actor.close();

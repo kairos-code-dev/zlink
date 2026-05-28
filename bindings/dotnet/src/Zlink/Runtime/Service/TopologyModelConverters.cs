@@ -122,14 +122,14 @@ internal static class TopologyModelConverters
         }
     }
 
-    internal static unsafe SpotNodeSocketSnapshotEntry FromNative(
-        ref ZlinkSpotNodeSocketSnapshotEntry native)
+    internal static unsafe SpotNodeSocketEntry FromNative(
+        ref ZlinkSpotNodeSocketEntry native)
     {
         fixed (byte* ownerName = native.OwnerName)
         fixed (byte* socketName = native.SocketName)
         {
-            ZlinkMonitorSnapshot snapshot = native.Snapshot;
-            return new SpotNodeSocketSnapshotEntry(
+            ZlinkMonitorStatus snapshot = native.MonitorStatus;
+            return new SpotNodeSocketEntry(
                 native.Owner,
                 native.OwnerId,
                 NativeHelpers.ReadFixedString(ownerName, 64),

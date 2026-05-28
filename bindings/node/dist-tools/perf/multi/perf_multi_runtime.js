@@ -259,7 +259,7 @@ function spotNodeIdentity(node) {
 // peer_ctrl_*). Presentation-only; never touches measured RESULT or the
 // termination/2-pass paths.
 function emitSpotNodeAutoHwmSnapshot(node, label, transport, msgSize) {
-    if (typeof node.internalSocketsSnapshot !== 'function') {
+    if (typeof node.internalSockets !== 'function') {
         return false;
     }
     const pattern = process.env.PERF_MULTI_PATTERN || process.env.PERF_PATTERN || 'unknown';
@@ -278,7 +278,7 @@ function emitSpotNodeAutoHwmSnapshot(node, label, transport, msgSize) {
     emittedSpotNodeAutoHwmSnapshots.add(dedupKey);
     let rows;
     try {
-        rows = node.internalSocketsSnapshot();
+        rows = node.internalSockets();
     }
     catch (err) {
         return false;
@@ -369,7 +369,7 @@ function emitMultiSocketHwmDetail(socket, label, transport, msgSize) {
     // instead of the per-socket monitor path, yielding the C
     // `Auto-HWM spotnode:` per-size tables.
     if (typeof label === 'string' && label.indexOf('spotnode') === 0
-        && typeof socket.internalSocketsSnapshot === 'function') {
+        && typeof socket.internalSockets === 'function') {
         if (emitSpotNodeAutoHwmSnapshot(socket, label, transport, msgSize)) {
             return;
         }
@@ -385,7 +385,7 @@ function emitMultiSocketHwmDetail(socket, label, transport, msgSize) {
     // the measured RESULT).
     const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
     try {
-        const snapshot = monitor.snapshot();
+        const snapshot = monitor.status();
         const pattern = process.env.PERF_MULTI_PATTERN || process.env.PERF_PATTERN || 'unknown';
         const component = process.env.PERF_MULTI_COMPONENT || 'process';
         const effectiveTransport = transport || process.env.PERF_MULTI_TRANSPORT || 'unknown';

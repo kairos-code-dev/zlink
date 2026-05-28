@@ -42,7 +42,7 @@ internal static class PerfMultiRouterRouterServer
         // Caller-provided Received reused across every recv on the server
         // hot path. The binding overwrites the internal state in place,
         // avoiding the per-recv Received allocation.
-        using var receivedBuffer = new Received();
+        using var receivedBuffer = Received.Create();
 
         bool stop = false;
         while (!stop)

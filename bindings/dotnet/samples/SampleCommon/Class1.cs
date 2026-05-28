@@ -98,7 +98,7 @@ public static class SampleSupport
     public static void WaitSpotPeerConnected(ISpotNode node, int timeoutMs = 5000)
     {
         WaitOrThrow(
-            () => node.StatusSnapshot().ConnectedPeerCount > 0,
+            () => node.Status().ConnectedPeerCount > 0,
             timeoutMs,
             "spot peer connection");
     }
@@ -106,7 +106,7 @@ public static class SampleSupport
     public static string ReceiveUtf8(IMessageSocket socket, int timeoutMs)
     {
         _ = timeoutMs;
-        using var received = new Received();
+        using var received = Received.Create();
         if (!socket.Recv(received))
             throw new InvalidOperationException("recv failed");
         if (received.Parts.Count == 0)

@@ -8,7 +8,6 @@ import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SendResult;
-import systems.zlink.contracts.sockets.SocketOptions;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.SubSocket;
@@ -99,8 +98,8 @@ public class SendResultContractTest {
         try (Context ctx = new Context();
              PairSocket sender = new PairSocket(ctx);
              PairSocket receiver = new PairSocket(ctx)) {
-            sender.setOption(SocketOptions.SNDHWM, 1);
-            receiver.setOption(SocketOptions.RCVHWM, 1);
+            sender.options().sendHwm(1);
+            receiver.options().recvHwm(1);
             String endpoint = TestSupport.inprocEndpoint("pair-backpressure");
             sender.bind(endpoint);
             receiver.connect(endpoint);
@@ -111,16 +110,19 @@ public class SendResultContractTest {
                 throw new RuntimeException(e);
             }
 
-            SendResult result = SendResult.SENT;
+            boolean sent = true;
             for (int i = 0; i < 1_024; i++) {
                 try (Message payload = Message.from("bp-" + i)) {
-                    result = sender.sendNoWaitResult(payload);
+                    sent = sender.send()
+                        .message(payload)
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit();
                 }
-                if (result != SendResult.SENT) {
+                if (!sent) {
                     break;
                 }
             }
-            assertEquals(SendResult.BACKPRESSURED, result);
+            assertFalse(sent);
         }
     }
 
@@ -131,8 +133,8 @@ public class SendResultContractTest {
         try (Context ctx = new Context();
              PairSocket sender = new PairSocket(ctx);
              PairSocket receiver = new PairSocket(ctx)) {
-            sender.setOption(SocketOptions.SNDHWM, 1);
-            receiver.setOption(SocketOptions.RCVHWM, 1);
+            sender.options().sendHwm(1);
+            receiver.options().recvHwm(1);
             String endpoint = TestSupport.inprocEndpoint("pair-try-backpressure");
             sender.bind(endpoint);
             receiver.connect(endpoint);

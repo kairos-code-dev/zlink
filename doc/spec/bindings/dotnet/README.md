@@ -11,6 +11,11 @@ classes, tests, samples, perf runners, and package behavior follow this
 blueprint and map the stable capabilities of `core/include/zlink.h` into
 .NET-idiomatic APIs.
 
+This binding follows the shared bindings architecture map with .NET naming:
+`Contracts/<Category>` owns public contract source and `Runtime/<Category>`
+owns implementation. Other bindings may use different casing or package names,
+but this document is the .NET projection of the same map.
+
 ## Public Contract Source
 
 - Public namespace: `Systems.Zlink`.
@@ -66,18 +71,16 @@ bindings/dotnet/
 |   |   |   +-- Core/
 |   |   |   +-- Messaging/
 |   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
+|   |   |   +-- Eventing/
 |   |   |   +-- Service/
 |   |   |   +-- Errors/
-|   |   |   +-- Enums/
 |   |   +-- Runtime/
 |   |   |   +-- Core/
 |   |   |   +-- Messaging/
 |   |   |   +-- Sockets/
-|   |   |   +-- Monitoring/
+|   |   |   +-- Eventing/
 |   |   |   +-- Service/
 |   |   |   +-- Errors/
-|   |   |   +-- Enums/
 |   |   |   +-- Native/
 |   +-- Zlink.Codecs.Json/
 |   +-- Zlink.Codecs.MessagePack/
@@ -143,7 +146,8 @@ The .NET binding uses a contract/runtime split.
 
 Do not make DTOs such as `Message`, `RoutingId`, `Received`, or
 `TopicMessage` into interfaces only for symmetry. They are concrete domain
-values with clear ownership and allocation behavior.
+values with clear ownership and allocation behavior. `Received` is created
+with `Received.Create()` because it is caller-provided reusable recv storage.
 
 ### RoutingId String And Binary Helpers
 
@@ -184,14 +188,27 @@ defined only by the immutable byte value.
 - Data-plane `Recv`, routed recv, `Subscribe`, and subscription-event receive
   fill caller-provided `Received`, `TopicMessage`, or `SubscriptionEvent`
   instances and return `bool`.
+- .NET callers create reusable receive storage with `Received.Create()`.
+  `Received` has no public constructor.
 - `Send`, routed send, `Publish`, `Request`, `Reply`, SPOT operations, and
   Actor location/session operations return fluent operation builders.
 - Builder start methods take only the target identity, topic, channel, routing
   id, or request sequence. Payload, flags, timeout, callback, and async submit
   choices are builder steps.
+- Do not add single-payload shortcut overloads with the same name as an
+  operation start method. `Send(Message)`, `Send(RoutingId, Message)`,
+  `Publish(string, Message)`, `SendToChannel(string, Message)`, and
+  `SendToSpot(..., Message)` are not public contract members; callers use
+  `Send(...).Message(message).Submit()`.
 - Multipart payload is accumulated by repeated `Message(...)` calls.
   `Messages(...)` style convenience methods are allowed, but they are public
   builder contract members and belong in `Contracts/`.
+- `IDealerSocket` must not expose protocol envelope helpers such as
+  `RequestFrame(...)` or `Reply(requestToken, parts)`. A dealer can start a
+  request through `Request()`, but it cannot reply to an arbitrary token
+  because it has no API-level peer routing id. Reply starts from a received
+  request context or from router/SPOT reply surfaces where the target context
+  is explicit.
 - Message payload factories use `Message.From(...)` overloads. Source-type
   suffixes such as `FromBytes` and value-style factories such as `Of` are not
   part of the public contract.
@@ -206,32 +223,49 @@ defined only by the immutable byte value.
 
 - `Core/`: context, context options, routing id, utility resource contracts.
 - `Messaging/`: message, received metadata, topic messages, subscription
-  events, stream packet callbacks, and common message-domain types.
+  events, common send/request/reply operation contracts, and message-domain
+  convenience helpers.
 - `Sockets/`: socket behavior contracts, socket capability interfaces, and
   typed option facades.
-- `Monitoring/`: monitor, monitor snapshot/event, poller, timer, and poll
+- `Eventing/`: monitor, monitor snapshot/event, poller, timer, and poll
   event contracts. Static poll helpers are included here when public.
 - `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
-  actor refs, actor lifecycle, and operation builders.
+  actor refs, actor lifecycle, and service-specific operation builders.
 - `Errors/`: exception hierarchy and error-domain mapping.
-- `Enums/`: public enum domains shared across the binding.
+
+Files inside each category follow the user-facing concept, not implementation
+sequence. Common messaging operations are split as send, request, and reply;
+service topology models are split between registry models, SPOT node models,
+and shared topology enums. Request result and callback types belong with
+messaging request contracts, not socket enum files. Received message kind
+belongs with received-message metadata. SPOT node modes, socket snapshots, Spot
+snapshots, and actor snapshots belong with SPOT node models.
+
+SPOT remains a single handle contract through `ISpot`. Do not split it into
+role interfaces unless callers actually need to accept those roles separately.
+Use named callback delegates for SPOT callback registration so public
+signatures describe the callback meaning without adding wrapper context
+objects. Registration methods use `Set...Handler` names because the current
+handler is stored or replaced; `On...` names are reserved for methods that are
+called when an event happens. Declare those delegates next to `ISpot` because
+they are only used by the SPOT handle contract. Lifecycle data records stay
+with actor models. Actor operation contracts are split by join, management,
+and session binding.
 
 If a user or framework adapter needs a public API, it should be discoverable
 from this folder without reading P/Invoke or runtime bridge code.
 
 ## Construction Entry Points
 
-Interfaces define behavior; construction is provided by default runtime
-classes and factories.
+Interfaces define behavior; construction is provided by public factories.
 
-- `new Context()` creates the default context implementation.
-- `new PairSocket(context)`, `new DealerSocket(context)`,
-  `new RouterSocket(context)`, `new PubSocket(context)`,
-  `new SubSocket(context)`, `new XPubSocket(context)`,
-  `new XSubSocket(context)`, and `new StreamSocket(context)` create default
-  socket implementations.
-- `new Registry(context)`, `new Discovery(context)`, and
-  `new SpotNode(context[, mode])` create service-layer implementations.
+- `Zlink.CreateContext()` creates the default context implementation.
+- `IContext.CreatePairSocket()`, `CreateDealerSocket()`,
+  `CreateRouterSocket()`, `CreatePubSocket()`, `CreateSubSocket()`,
+  `CreateXPubSocket()`, `CreateXSubSocket()`, and `CreateStreamSocket()`
+  create default socket implementations.
+- `IContext.CreateRegistry()`, `CreateDiscovery(...)`, and
+  `CreateSpotNode(...)` create service-layer implementations.
 - `Spot` handles are obtained through `ISpotNode.CreateSpot()`,
   `ISpotNode.EntrySpot()`, `ISpotNode.GetOrCreateSpot(...)`, or
   `ISpotNode.SpotLookup(...)`; direct `Spot` construction is not public.
@@ -240,8 +274,8 @@ classes and factories.
   combining lookup and create in managed code.
 - `Actor` handles are created through `ISpotNode.CreateActor(...)`; direct
   Actor construction is not public.
-- `new Poller()`, `new Timer()`, and `Timer.FromSpot(...)` create monitoring
-  resources.
+- `Zlink.CreatePoller()`, `Zlink.CreateTimer()`, and
+  `Zlink.CreateTimer(ISpot)` create eventing resources.
 - `Zlink.Version()`, `Zlink.Has(...)`, `Zlink.Strerror(...)`, `Zlink.Proxy(...)`,
   `Zlink.ProxySteerable(...)`, `Zlink.Sleep(...)`, `Zlink.MultipartClose(...)`,
   and `ZlinkPoll.Poll(...)` are public static facades. Their callable behavior
@@ -278,8 +312,8 @@ userdata, interop marshalling, or request progress stay internal.
 .NET recv-style data-plane APIs use caller-provided output storage for
 allocation-free draining.
 
-- Message/routed receive fills a caller-provided `Received` object and returns
-  `bool`.
+- Message/routed receive fills a caller-provided `Received` object created by
+  `Received.Create()` and returns `bool`.
 - Raw `SUB` / `XSUB` and SPOT subscribe fill a caller-provided `TopicMessage`
   or `SubscriptionEvent` object and return `bool`.
 - `false` means no data only for nonblocking receive with `RecvFlags.DontWait`.
@@ -305,6 +339,12 @@ SPOT is a service-layer API, not a raw socket leak.
   lifecycle callbacks.
 - `Spot.Publish(topic)` enters the owning node's SPOT topic plane. It does not
   expose or select a raw `PUB` socket.
+- `Spot.Publish(topic)` keeps the short publish name because the receiver is
+  already a publish-capable `Spot`. Do not rename it to `PublishSpot` or
+  `PublishToTopic` in the binding contract.
+- Channel-targeted SPOT operations use `SendToChannel(...)` and
+  `RequestToChannel(...)` so destination-bearing send/request names align with
+  `SendToSpot(...)`, `RequestToSpot(...)`, and `RequestToRouter(...)`.
 - `AttachPubIngress(IPubSocket)` registers an external raw `PUB` as ingress;
   it is separate from `Spot.Publish(...)`.
 - Actor location and stream session binding are independent. A bound stream
@@ -326,7 +366,8 @@ SPOT is a service-layer API, not a raw socket leak.
   avoidable allocation, avoidable buffer copies, hidden sleeps, busy waits,
   thread joins, or broad locks.
 - Native interop constructs managed `Message`, `Received`, and `TopicMessage`
-  values directly from the core part substrate.
+  values directly from the core part substrate. Public caller-owned
+  `Received` buffers are created through `Received.Create()`.
 - Request progress is shared per handle where possible; do not create one
   polling thread or timer per request.
 - Perf, samples, and framework adapters must use public contracts and

@@ -68,7 +68,7 @@ func (e *MonitorEvent) IsConnectionReady() bool {
 	return e != nil && e.Event&MonitorEventType(C.ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY) != 0
 }
 
-type MonitorSnapshot struct {
+type MonitorStatus struct {
 	SourceKind                   MonitorSourceKind
 	StateFlags                   uint32
 	DetailFlags                  uint32
@@ -93,12 +93,12 @@ type MonitorSnapshot struct {
 	AutoHwmDeferredRcvHwm        int32
 }
 
-func (s *MonitorSnapshot) IsReady() bool {
+func (s *MonitorStatus) IsReady() bool {
 	return s != nil && s.StateFlags&uint32(C.ZLINK_MONITOR_STATE_READY) != 0
 }
 
-func monitorSnapshotFromC(raw C.zlink_monitor_snapshot_t) MonitorSnapshot {
-	return MonitorSnapshot{
+func monitorStatusFromC(raw C.zlink_monitor_status_t) MonitorStatus {
+	return MonitorStatus{
 		SourceKind:                   MonitorSourceKind(raw.source_kind),
 		StateFlags:                   uint32(raw.state_flags),
 		DetailFlags:                  uint32(raw.detail_flags),
@@ -167,12 +167,12 @@ func (m *SocketMonitor) Recv(flags RecvFlags) (*MonitorEvent, error) {
 	return monitorEventFromC(raw), nil
 }
 
-func (m *SocketMonitor) Snapshot() (*MonitorSnapshot, error) {
-	var raw C.zlink_monitor_snapshot_t
-	if err := configErrorFromResult(C.zlink_monitor_snapshot(m.handle, &raw)); err != nil {
+func (m *SocketMonitor) Status() (*MonitorStatus, error) {
+	var raw C.zlink_monitor_status_t
+	if err := configErrorFromResult(C.zlink_monitor_status(m.handle, &raw)); err != nil {
 		return nil, err
 	}
-	snapshot := monitorSnapshotFromC(raw)
+	snapshot := monitorStatusFromC(raw)
 	return &snapshot, nil
 }
 

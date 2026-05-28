@@ -32,7 +32,7 @@ public sealed class test_system
         using var ctx = Zlink.CreateContext();
         using var socket = ctx.CreatePairSocket();
 
-        var probe = new Received();
+        var probe = Received.Create();
         Assert.False(socket.Recv(probe, RecvFlags.DontWait));
         Assert.True(Zlink.Has("tcp") || !Zlink.Has("tcp"));
     }

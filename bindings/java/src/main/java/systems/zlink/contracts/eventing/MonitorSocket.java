@@ -103,14 +103,14 @@ public final class MonitorSocket implements AutoCloseable {
         return Optional.ofNullable(recv(RecvFlags.DONT_WAIT));
     }
 
-    public MonitorSnapshot snapshot() {
+    public MonitorStatus status() {
         try (java.lang.foreign.Arena arena = java.lang.foreign.Arena.ofConfined()) {
             MemorySegment out = arena.allocate(
               systems.zlink.runtime.nativeapi.NativeLayouts.MONITOR_SNAPSHOT_LAYOUT);
-            int rc = Native.monitorSnapshot(handle, out);
+            int rc = Native.monitorStatus(handle, out);
             if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_monitor_snapshot");
-            return MonitorSnapshot.fromNative(out);
+                throw ZlinkException.fromLastError("zlink_monitor_status");
+            return MonitorStatus.fromNative(out);
         }
     }
 

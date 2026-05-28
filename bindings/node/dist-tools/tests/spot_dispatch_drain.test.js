@@ -41,7 +41,7 @@ test('spot onDispatchEvent permits subscribe drain after async callback delivery
             }
         });
         subscriberNode.connectPeer(endpoint);
-        await waitFor(() => subscriberNode.statusSnapshot().connectedPeerCount > 0, 'spot peer connection');
+        await waitFor(() => subscriberNode.status().connectedPeerCount > 0, 'spot peer connection');
         const payload = Buffer.from('dispatch-payload');
         const publishDeadline = Date.now() + 5000;
         while (readableEvents === 0 && Date.now() < publishDeadline) {

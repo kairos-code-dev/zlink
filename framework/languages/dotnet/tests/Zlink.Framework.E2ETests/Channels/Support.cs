@@ -15,7 +15,7 @@ internal static class ChannelSupport
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            using var received = new Received();
+            using var received = Received.Create();
             if (!router.Recv(received, RecvFlags.DontWait))
             {
                 await Task.Delay(10).ConfigureAwait(false);

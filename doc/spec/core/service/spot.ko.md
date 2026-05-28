@@ -232,26 +232,26 @@ SpotNode는 topology와 설정 handle이며 topic publisher가 아니다. SpotNo
 ### 내부 socket snapshot
 
 ```c
-typedef struct zlink_spot_node_socket_snapshot_filter_t {
+typedef struct zlink_spot_node_socket_filter_t {
   zlink_spot_node_socket_owner_t owner;
   zlink_socket_type_t socket_type;
   char socket_name[64];
-} zlink_spot_node_socket_snapshot_filter_t;
+} zlink_spot_node_socket_filter_t;
 
-typedef struct zlink_spot_node_socket_snapshot_entry_t {
+typedef struct zlink_spot_node_socket_entry_t {
   zlink_spot_node_socket_owner_t owner;
   uint64_t owner_id;
   char owner_name[64];
   char socket_name[64];
   zlink_socket_type_t socket_type;
   uint32_t auto_hwm_visible;
-  zlink_monitor_snapshot_t snapshot;
-} zlink_spot_node_socket_snapshot_entry_t;
+  zlink_monitor_status_t snapshot;
+} zlink_spot_node_socket_entry_t;
 
-zlink_config_result_t zlink_spot_node_internal_sockets_snapshot(
+zlink_config_result_t zlink_spot_node_internal_sockets(
   void *node,
-  const zlink_spot_node_socket_snapshot_filter_t *filter,
-  zlink_spot_node_socket_snapshot_entry_t *entries,
+  const zlink_spot_node_socket_filter_t *filter,
+  zlink_spot_node_socket_entry_t *entries,
   size_t *count);
 ```
 
@@ -647,32 +647,20 @@ ZLINK_EXPORT int zlink_spot_channel_reply_progress_from (
 #### Handler 등록
 
 ```c
-zlink_handler_result_t zlink_spot_handler(
-  void *spot,
-  zlink_spot_handler_fn handler,
-  void *userdata);
-
 zlink_handler_result_t zlink_spot_dispatch_event_handler(
   void *spot,
   zlink_spot_dispatch_event_handler_fn handler,
   void *userdata);
 ```
 
-`zlink_spot_handler()`는 **routed 전용 직접 callback**이다. callback 안에서 routed
-message payload를 직접 받는다. subscribe, channel reply, timer, Actor 이벤트는
-이 handler에 전달되지 않는다. routed 이외 이벤트가 필요하면 이 handler를 쓸 수 없다.
-
 `zlink_spot_dispatch_event_handler()`는 **통합 readiness notification**이다. 모든
-이벤트 종류(subscribe, routed, channel reply, timer, Actor join, Actor readable)를
-readiness 형태로 알린다. callback은 "읽을 것이 있다"는 신호이며, 실제 데이터는
-각 plane의 drain API(`zlink_spot_recv()`, `zlink_spot_subscribe()` 등)로 읽는다.
+이벤트 종류(subscribe, routed, channel reply, timer, Actor join, Actor readable,
+Actor lifecycle)를 readiness 형태로 알린다. callback은 "읽을 것이 있다"는 신호이며,
+실제 데이터는 각 plane의 drain API(`zlink_spot_recv_part()`,
+`zlink_spot_subscribe_part()`, `zlink_spot_recv_actor_lifecycle()` 등)로 읽는다.
 
-subscribe, channel reply, timer, Actor 이벤트는 **직접 callback 모드가 없다**.
-이 이벤트들은 `zlink_spot_dispatch_event_handler()` readiness 모드로만 소비할 수 있다.
-
-두 handler는 상호 배타적이다. 하나가 등록된 상태에서 다른 쪽을 등록하면
-`ZLINK_HANDLER_BUSY`로 실패한다. `zlink_spot_handler()`를 선택하면 해당 Spot에서
-subscribe, channel reply, timer, Actor 이벤트를 받을 수 없다.
+SPOT routed receive와 Actor lifecycle event는 **직접 callback 모드가 없다**.
+dispatch readiness를 받은 뒤 명시적 drain API로 소비한다.
 
 ### Poller와의 관계
 
@@ -779,10 +767,6 @@ typedef void (*zlink_actor_lookup_handler_fn)(
   const zlink_actor_lookup_result_t *result,
   void *userdata);
 
-typedef void (*zlink_spot_actor_lifecycle_handler_fn)(
-  void *spot,
-  const zlink_spot_actor_lifecycle_info_t *info,
-  void *userdata);
 ```
 
 `zlink_actor_route_t`는 `zlink_discovery_resolve_actor()`의 출력 타입입니다.
@@ -804,13 +788,13 @@ SpotNode 안에서 0이 아닌 값으로 증가한다. `flags`는 현재 예약 
 `target_node_rid`는 호출자가 지정한 target SpotNode rid다. Entry Spot join은
 application join payload와 reply payload가 없으므로 callback은 message part를 받지
 않는다. idempotent success도 성공 result를 반환하지만 위치가 바뀌지 않았으므로
-joined/left lifecycle callback을 다시 발생시키지 않는다.
+joined/left lifecycle event을 다시 발생시키지 않는다.
 
 `zlink_actor_lookup_result_t`는 remote Actor lookup completion handler에 전달된다.
 `result`는 lookup operation의 최종 결과이고, 성공이면 `actor`는 target node에 존재하는
 checked Actor ref다. `flags`는 현재 예약 필드이며 0이다.
 
-`zlink_spot_actor_lifecycle_info_t`는 Spot lifecycle handler에 전달된다.
+`zlink_spot_actor_lifecycle_info_t`는 Spot lifecycle receive API에 전달된다.
 `previous_actor`는 이동 전 Actor ref(생성 이벤트면 zero-value ref), `current_actor`는
 이동 후 Actor ref(destroy 이벤트면 zero-value ref)다. 이동 전 node rid는
 `previous_actor.node_rid`, 이동 후 node rid는 `current_actor.node_rid`로 읽는다.
@@ -860,7 +844,7 @@ zlink_submit_result_t zlink_remote_actor_get_ref(
 - `zlink_spot_node_actor_new()`는 local Actor를 Entry Spot에 만들고 checked ref를
   `actor_out`에 반환한다. Actor 생성은 Entry Spot dispatch handler나 join request
   handler를 거치지 않는다. 생성은 active route를 공개하지 않는다. 생성은 Entry
-  Spot의 `on_join` lifecycle callback을 scheduling한다.
+  Spot의 `joined lifecycle event을 scheduling한다.
 - 같은 node에 같은 live Actor id가 이미 있으면 생성은 `EBUSY` 계열로 실패한다.
 - `node_ == NULL`이면 `ZLINK_CONFIG_INVALID_HANDLE`로 실패하고 `errno`는 `EFAULT`다.
 - `actor_id_ == NULL` 또는 `actor_out_ == NULL`이면 `ZLINK_CONFIG_INVALID_ARGUMENT`로
@@ -995,9 +979,9 @@ zlink_submit_result_t zlink_spot_actor_join_reply(
 - 성공 completion의 `actor`는 이동 이후 최종 Actor ref이고,
   `target_node_rid`는 호출자가 넘긴 target SpotNode rid다.
 - 이미 같은 target SpotNode의 Entry Spot에 있는 Actor는 idempotent success로
-  완료한다. 이 경우 joined/left lifecycle callback을 다시 발생시키지 않는다.
-- 실제 위치가 바뀌면 이전 user Spot에는 leave lifecycle callback이, target Entry
-  Spot에는 joined lifecycle callback이 발생한다.
+  완료한다. 이 경우 joined/left lifecycle event을 다시 발생시키지 않는다.
+- 실제 위치가 바뀌면 이전 user Spot에는 leave lifecycle event이, target Entry
+  Spot에는 joined lifecycle event이 발생한다.
 - target node에 도달할 수 없으면 not-connected 계열 completion으로 끝난다.
 - invalid actor ref, checked ref generation mismatch, pending join 중복은 기존
   Actor API 정책과 같은 invalid-argument 또는 invalid-state 계열 실패로 끝난다.
@@ -1076,7 +1060,7 @@ API다. local Actor와 remote Actor 모두 같은 submit + completion 경로를 
 - Actor에 join request가 pending이면 busy 또는 invalid-state 계열로 실패한다. leave는
   pending join을 취소하지 않는다.
 - user Spot에서 Entry Spot으로 실제 위치가 바뀐 leave 성공은 source Spot `on_leave`와
-  Entry Spot `on_join` lifecycle callback을 scheduling하고, active route를 Entry Spot
+  Entry Spot `joined lifecycle event을 scheduling하고, active route를 Entry Spot
   위치로 갱신한다.
 - leave 성공 뒤 Actor message는 Entry Spot dispatch event로 올라간다. leave는 Actor
   queue를 비우지 않는다. leave 전후 message 순서는 보존한다.
@@ -1109,7 +1093,7 @@ zlink_submit_result_t zlink_spot_node_actor_destroy(
 - destroy 성공 시 Entry Spot에서 Actor를 제거하고, active route가 이 Actor ref를
   가리키면 route를 제거한다. active route가 다른 generation의 Actor를 가리키면
   destroy는 그 route를 제거하지 않는다.
-- destroy 성공은 current Spot의 `on_leave` lifecycle callback을 scheduling한다.
+- destroy 성공은 current Spot의 `left lifecycle event을 scheduling한다.
 - destroy 성공 뒤 해당 Actor ref는 stale이 된다. local Actor와 remote Actor 모두
   같은 submit + completion 경로를 사용한다.
 - destroy 최종 결과는 `zlink_reply_handler_fn` completion으로 전달한다. completion
@@ -1302,31 +1286,36 @@ Actor ref로 다시 attach할 필요는 없다. reject와 timeout은 기존 sess
   handler에 `ACTOR_READABLE` event를 올린다.
 - `timeout_ms == 0`은 nonblocking request다.
 
-### Spot lifecycle handler
+### Spot lifecycle receive
 
 ```c
-zlink_handler_result_t zlink_spot_actor_lifecycle_handler(
+typedef enum zlink_spot_actor_lifecycle_event_kind_t {
+  ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED = 1,
+  ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT = 2
+} zlink_spot_actor_lifecycle_event_kind_t;
+
+typedef struct zlink_spot_actor_lifecycle_event_t {
+  zlink_spot_actor_lifecycle_event_kind_t kind;
+  zlink_spot_actor_lifecycle_info_t info;
+} zlink_spot_actor_lifecycle_event_t;
+
+zlink_recv_result_t zlink_spot_recv_actor_lifecycle(
   void *spot,
-  zlink_spot_actor_lifecycle_handler_fn on_join,
-  zlink_spot_actor_lifecycle_handler_fn on_leave,
-  void *userdata);
+  zlink_spot_actor_lifecycle_event_t *event_out,
+  zlink_recv_flags_t flags);
 ```
 
-`zlink_spot_actor_lifecycle_handler()`는 특정 Spot의 Actor 위치 변경 callback을
-등록한다. Actor의 실제 위치 변경이 완료된 뒤 호출되는 관측용 callback이다.
+`zlink_spot_recv_actor_lifecycle()`는 특정 Spot의 Actor lifecycle event를 하나씩
+drain한다. lifecycle readiness는 `ACTOR_LIFECYCLE_READABLE` dispatch event로 알리고,
+payload는 직접 callback으로 전달하지 않는다.
 
-- `on_join`은 Actor가 해당 Spot에 들어온 뒤, `on_leave`는 Actor가 해당 Spot을 떠난
-  뒤 호출된다.
-- Entry Spot과 일반 Spot 모두 이 함수를 사용할 수 있다.
-- `on_join == NULL`이면 join callback을 받지 않고, `on_leave == NULL`이면 leave
-  callback을 받지 않는다. 둘 다 `NULL`이면 기존 lifecycle handler 등록을 제거한다.
-- 새 handler 등록은 replace 동작이다. 이미 등록된 handler가 있으면 새 `on_join`,
-  `on_leave`, `userdata`로 교체한다.
-- handler 등록은 현재 Spot에 이미 속한 Actor를 replay하지 않는다. 등록 뒤에 발생한
-  생성, join, leave, destroy 전이만 callback 대상이다.
-- `spot == NULL`이면 invalid handle 계열 실패다.
-- 같은 Spot의 lifecycle callback 안에서 이 함수를 재진입 호출하면 invalid-state 또는
-  deadlock 계열로 실패한다.
+- `kind`는 Actor가 Spot에 들어오면 `JOINED`, Spot을 떠나면 `LEFT`다.
+- `kind`는 `info`가 담고 있는 상태 전이를 읽기 쉽게 분류한 값이며, 둘은 항상 같은
+  전이를 가리켜야 한다.
+- `spot == NULL` 또는 `event_out == NULL`이면 invalid handle 계열 실패다.
+- `ZLINK_DONTWAIT`이고 queue가 비어 있으면 `ZLINK_RECV_NO_DATA`와 `EAGAIN`을 반환한다.
+- lifecycle event는 dispatch handler가 이미 등록된 Spot에만 쌓인다. 등록 전 과거
+  전이는 나중에 replay하지 않는다.
 
 `on_join` 발생 조건:
 
@@ -1358,24 +1347,24 @@ zlink_handler_result_t zlink_spot_actor_lifecycle_handler(
 
 전달 규칙:
 
-- lifecycle callback은 선택 사항이다. 해당 Spot에 lifecycle handler가 등록된 경우에만
+- lifecycle event은 선택 사항이다. 해당 Spot에 lifecycle receive API가 등록된 경우에만
   호출한다.
 - handler가 없을 때 발생한 생성, join, leave, destroy callback은 나중에 재전달하지
   않는다.
-- lifecycle callback은 Actor queue payload가 아니므로 `zlink_spot_node_actor_recv_part()`
+- lifecycle event은 Actor queue payload가 아니므로 `zlink_spot_node_actor_recv_part()`
   로 읽지 않는다.
 - callback은 해당 Spot의 dispatch worker context에서 호출한다. 같은 Spot의 dispatch
-  callback과 lifecycle callback은 동시에 실행되지 않는다.
-- 서로 다른 Spot의 lifecycle callback 사이에는 실행 순서 보장이 없다. 하나의 join
+  callback과 lifecycle event은 동시에 실행되지 않는다.
+- 서로 다른 Spot의 lifecycle event 사이에는 실행 순서 보장이 없다. 하나의 join
   operation에서 source `on_leave`와 target `on_join`은 모두 commit 뒤 scheduling되지만
   두 callback이 실제로 어느 순서로 실행되는지는 공개 계약으로 보장하지 않는다.
 - join completion handler는 state commit과 active route 갱신이 끝난 뒤 호출된다.
-  lifecycle callback이 이미 실행되었는지는 보장하지 않는다.
+  lifecycle event이 이미 실행되었는지는 보장하지 않는다.
 - application state machine이 join 완료 순서를 결정할 때는 join completion handler와
-  반환된 최종 Actor ref를 기준으로 삼아야 한다. lifecycle callback은 관측용이다.
+  반환된 최종 Actor ref를 기준으로 삼아야 한다. lifecycle event은 관측용이다.
 - `info` pointer는 callback 호출 중에만 유효하므로 필요한 값은 callback 안에서
   복사한다.
-- lifecycle callback 안에서 같은 Actor에 대해 join, leave, destroy를 재진입 호출하는
+- lifecycle event 안에서 같은 Actor에 대해 join, leave, destroy를 재진입 호출하는
   것은 지원하지 않는다.
 
 ### Discovery active route
@@ -1529,38 +1518,38 @@ zlink_submit_result_t zlink_router_reply_spot(
 ## 관찰과 스냅샷
 
 ```c
-zlink_config_result_t zlink_spot_node_status_snapshot(
+zlink_config_result_t zlink_spot_node_status(
   void *node,
   zlink_spot_node_status_t *out);
 
-zlink_config_result_t zlink_spot_node_peers_snapshot(
+zlink_config_result_t zlink_spot_node_peers(
   void *node,
   zlink_spot_node_peer_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_node_peers_query(
+zlink_config_result_t zlink_spot_node_peers(
   void *node,
   const zlink_spot_node_peer_filter_t *filter,
   zlink_spot_node_peer_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_node_subjects_snapshot(
+zlink_config_result_t zlink_spot_node_subjects(
   void *node,
   const zlink_spot_node_subject_filter_t *filter,
   zlink_spot_node_subject_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_node_spots_snapshot(
+zlink_config_result_t zlink_spot_node_spots(
   void *node,
   zlink_spot_node_spot_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_node_actors_snapshot(
+zlink_config_result_t zlink_spot_node_actors(
   void *node,
   zlink_spot_node_actor_entry_t *entries,
   size_t *count);
 
-zlink_config_result_t zlink_spot_actors_snapshot(
+zlink_config_result_t zlink_spot_actors(
   void *spot,
   zlink_actor_ref_t *entries,
   size_t *count);
@@ -1576,13 +1565,13 @@ zlink_config_result_t zlink_spot_actors_snapshot(
   `zlink_spot_node_status_t.disconnected_routed_target_count`는 ABI 호환을 위해 남아
   있다. 현재 HWM 정책은 delivery queue가 깊어졌다는 이유로 local subscribe 또는
   routed target을 끊지 않는다.
-- `zlink_spot_node_spots_snapshot()`은 local Spot 목록을 반환한다. Entry Spot도 이 목록에 포함된다.
+- `zlink_spot_node_spots()`은 local Spot 목록을 반환한다. Entry Spot도 이 목록에 포함된다.
   `spot_kind`는 Entry Spot과 user Spot을 구분한다. `joined_actor_count`,
   `pending_actor_join_count`, `route_synced`, `last_changed_ms`는 진단용 값이다.
-- `zlink_spot_node_actors_snapshot()`은 live local Actor row를 반환한다. 각 row에는
+- `zlink_spot_node_actors()`은 live local Actor row를 반환한다. 각 row에는
   Actor ref, current Spot rid, current Spot kind, route sync 여부, unread message count,
   `last_changed_ms`가 들어간다.
-- `zlink_spot_actors_snapshot()`은 특정 Spot에 join된 Actor ref 목록을 반환한다.
+- `zlink_spot_actors()`은 특정 Spot에 join된 Actor ref 목록을 반환한다.
 - snapshot 값은 flow control 계약으로 쓰지 않는다.
 
 ## 제약 요약

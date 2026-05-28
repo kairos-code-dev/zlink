@@ -127,8 +127,8 @@ source 이름은 다음 규칙으로 잡는 편이 자연스럽다.
   - 예: `profile.server`, `profile.client`
 - discovery
   - framework는 별도의 monitoring source 이름을 두지 않는다.
-  - 현재 provider 상태는 `IZLinkRegistryQuery.TopologySnapshotAsync(...)`,
-    `ServiceSummarySnapshotAsync(...)`, `MemberPeersAsync(...)`로 조회한다.
+  - 현재 provider 상태는 `IZLinkRegistryQuery.TopologyAsync(...)`,
+    `ServiceSummaryAsync(...)`, `MemberPeersAsync(...)`로 조회한다.
   - application logging 쪽에서 discovery 활동을 별도 식별자로 남기고 싶다면,
     `profile.client.discovery`, `game.stage.discovery` 같은 이름을 application
     logging convention으로 둘 수는 있다. 이 이름은 framework monitoring source의
@@ -324,7 +324,7 @@ public sealed class StageNodeMonitor
 ```
 
 spot 도 registry 와 같은 이유로, raw monitor 보다 snapshot diff 표면이 더 잘
-맞는다. 즉 `StatusSnapshot()`, `PeersSnapshot()`, `SubjectsSnapshot()` 를
+맞는다. 즉 `Status()`, `Peers()`, `Subjects()` 를
 주기적으로 읽고, 변화가 있을 때 typed event 로 올리는 방향을 기본으로 본다.
 
 timer handler failure 는 snapshot diff 가 아니다. `TimerHandlerFailed` 와

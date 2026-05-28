@@ -50,34 +50,34 @@ class ServiceContractsIntegrationTest {
             assertEquals(7L, discovery.getValue());
             assertTrue(discovery.memberPeers().isEmpty());
 
-            assertEquals(0, registry.statusSnapshot().topologyEntryCount());
-            assertTrue(registry.serviceSummarySnapshot().isEmpty());
-            assertTrue(registry.topologySnapshot().isEmpty());
+            assertEquals(0, registry.status().topologyEntryCount());
+            assertTrue(registry.serviceSummary().isEmpty());
+            assertTrue(registry.topology().isEmpty());
             assertTrue(registry.memberPeers("svc-alpha").isEmpty());
-            assertTrue(queryClient.snapshot().isEmpty());
+            assertTrue(queryClient.topology().isEmpty());
 
-            assertEquals(0, node.statusSnapshot().configuredPeerCount());
-            assertTrue(node.peersSnapshot().isEmpty());
-            assertTrue(node.subjectsSnapshot().isEmpty());
+            assertEquals(0, node.status().configuredPeerCount());
+            assertTrue(node.peers().isEmpty());
+            assertTrue(node.subjects().isEmpty());
         }
     }
 
     @Test
-    void monitorSnapshotExposesCanonicalMonitorState() {
+    void monitorStatusExposesCanonicalMonitorState() {
         TestSupport.assumeNative();
 
         try (Context ctx = new Context();
              PairSocket socket = new PairSocket(ctx);
              var monitor = socket.monitorOpen()) {
-            assertTrue(monitor.snapshot().sndPendingMsgs() >= 0L);
+            assertTrue(monitor.status().sndPendingMsgs() >= 0L);
         }
 
         try (Context ctx = new Context();
              SpotNode node = new SpotNode(ctx);
              Spot spot = node.createSpot()) {
             spot.setSubscription("svc-topic");
-            assertEquals(0, node.statusSnapshot().connectedPeerCount());
-            assertTrue(node.subjectsSnapshot().stream()
+            assertEquals(0, node.status().connectedPeerCount());
+            assertTrue(node.subjects().stream()
                 .anyMatch(entry -> "svc-topic".equals(entry.subject())));
         }
     }
@@ -90,7 +90,7 @@ class ServiceContractsIntegrationTest {
              SpotNode node = new SpotNode(ctx);
              Spot subscriber = node.createSpot()) {
             subscriber.setSubscription("perf-topic");
-            assertTrue(node.subjectsSnapshot().stream()
+            assertTrue(node.subjects().stream()
                 .anyMatch(entry -> "perf-topic".equals(entry.subject())));
         }
     }
@@ -117,7 +117,7 @@ class ServiceContractsIntegrationTest {
 
             assertNull(callbackError.get(), "callback raised: "
                 + callbackError.get());
-            assertTrue(node.subjectsSnapshot().stream()
+            assertTrue(node.subjects().stream()
                 .anyMatch(entry -> "spot-callback-topic".equals(entry.subject())));
             assertNull(callbackThread.get());
         }

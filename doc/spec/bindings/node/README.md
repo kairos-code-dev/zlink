@@ -12,6 +12,11 @@ package exports, `.d.ts` types, tests, samples, perf runners, and runtime
 behavior follow this blueprint and map stable `core/include/zlink.h`
 capabilities into TypeScript-idiomatic APIs.
 
+This binding follows the shared bindings architecture map with TypeScript
+naming: lower-case `contracts` and `runtime` source folders, plus package
+exports that decide what is public. Do not copy capitalized .NET or C++ folder
+names into the Node package.
+
 ## Public Contract Source
 
 - Public contract projection: `bindings/node/src/index.ts`, generated `.d.ts`,
@@ -67,18 +72,16 @@ bindings/node/
 |   |   |   +-- core/
 |   |   |   +-- messaging/
 |   |   |   +-- sockets/
-|   |   |   +-- monitoring/
+|   |   |   +-- eventing/
 |   |   |   +-- service/
 |   |   |   +-- errors/
-|   |   |   +-- enums/
 |   |   +-- runtime/
 |   |   |   +-- core/
 |   |   |   +-- messaging/
 |   |   |   +-- sockets/
-|   |   |   +-- monitoring/
+|   |   |   +-- eventing/
 |   |   |   +-- service/
 |   |   |   +-- errors/
-|   |   |   +-- enums/
 |   |   |   +-- native/
 +-- native/
 +-- packages/
@@ -158,12 +161,14 @@ and published TypeScript declarations when category separation is needed.
   events, stream packet data, and builder payload helpers.
 - `Sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
-- `Monitoring/`: monitor, monitor snapshot/event, poller, poll event, timer, and
+- `eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
 - `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
 - `Errors/`: typed error classes or tagged error domains.
-- `Enums/`: public enum or literal-union domains shared across the binding.
+- Enum, flag, result, and literal-union types live in the category that defines
+  their meaning. Do not create an `enums` folder just to group declarations by
+  syntax.
 
 ## Canonical Interface Rules
 
@@ -175,9 +180,20 @@ and published TypeScript declarations when category separation is needed.
 - Builder start methods take only the target identity, topic, channel, routing
   id, or request sequence. Payload, flags, timeout, callback, and async submit
   choices are builder steps.
+- SPOT channel-targeted operations use `sendToChannel(...)` and
+  `requestToChannel(...)`. SPOT topic publish stays `publish(topic)`.
+- Do not add single-payload shortcut overloads with the same name as an
+  operation start method. `send(message)`, `send(routingId, message)`,
+  `publish(topic, message)`, `sendToChannel(channel, message)`, and
+  `sendToSpot(..., message)` are not public contract members; callers use
+  `send(...).message(message).submit()`.
 - Multipart payload is accumulated by repeated `message(...)` calls.
   `messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in the contract source.
+- Dealer sockets must not expose protocol envelope helpers such as
+  `requestFrame(...)` or `reply(requestToken, parts)`. A dealer can start a
+  request through `request()`, but it cannot reply to an arbitrary token
+  because it has no API-level peer routing id.
 - Node `Buffer` / `Uint8Array` payload inputs must be copied into
   message-owned native storage before the native queue can outlive the call.
   Do not expose or use borrowed Buffer send helpers such as
@@ -199,7 +215,7 @@ The package entrypoint should group the API around domain concepts.
   subscription events, and stream packet data.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, typed options,
   callbacks, request/reply, publish/subscribe, and stream packet APIs.
-- Monitoring: monitor, monitor snapshot/event, poller, poll event, and timer.
+- Eventing: monitor, monitor snapshot/event, poller, poll event, and timer.
 - Service: registry, discovery, SPOT node, SPOT handle, topology snapshots,
   actor refs, actor lifecycle, and operation builders.
 - Errors: typed error classes or tagged error objects preserving core result

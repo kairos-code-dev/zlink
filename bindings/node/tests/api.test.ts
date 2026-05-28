@@ -52,11 +52,11 @@ test('service objects expose aligned monitor and query surface', () => {
   discovery.actorRouteSyncEnabled = true;
   assert.equal(discovery.actorRouteSyncEnabled, true);
 
-  assert.equal(registry.statusSnapshot().topologyEntryCount, 0);
-  assert.deepEqual(registry.serviceSummarySnapshot(), []);
-  assert.deepEqual(registry.topologySnapshot(), []);
-  assert.deepEqual(registry.topologyQuery(), []);
-  assert.deepEqual(query.snapshot(), []);
+  assert.equal(registry.status().topologyEntryCount, 0);
+  assert.deepEqual(registry.serviceSummary(), []);
+  assert.deepEqual(registry.topology(), []);
+  assert.deepEqual(registry.topology(), []);
+  assert.deepEqual(query.topology(), []);
   assert.equal(discovery.getValue(), 7);
   assert.deepEqual(discovery.memberPeers(), []);
   assert.equal(discovery.memberPeerMetadata, undefined);
@@ -66,9 +66,9 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(discovery.setDealerPeerMode, undefined);
   assert.equal(typeof spot.onDispatchEvent, 'function');
   assert.equal(spot.drainChannelReplyFrom, undefined);
-  assert.equal(node.peersSnapshot().length, 0);
+  assert.equal(node.peers().length, 0);
   assert.equal(node.peersQuery().length, 0);
-  assert.equal(node.subjectsSnapshot().length, 0);
+  assert.equal(node.subjects().length, 0);
   node.setRoutingId(zlink.RoutingId.from(Buffer.from('node-id')));
   assert.equal(node.routingId.toBytes().toString(), 'node-id');
   spot.setRoutingId(zlink.RoutingId.from(Buffer.from('spot-id')));
@@ -284,7 +284,7 @@ test('native failures surface documented zlink error classes', () => {
     assert.throws(() => monitor.recv(), zlink.RecvError);
 
     monitor.close();
-    assert.throws(() => monitor.snapshot(), zlink.ConfigError);
+    assert.throws(() => monitor.status(), zlink.ConfigError);
   } finally {
     pair.close();
     ctx.close();
@@ -300,14 +300,14 @@ test('spot close leaves spot node alive and discovery close tears down attached 
   const standaloneEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
   standaloneNode.setPubBind(standaloneEndpoint);
-  assert.ok(standaloneNode.statusSnapshot().nodeRoutingId instanceof zlink.RoutingId);
+  assert.ok(standaloneNode.status().nodeRoutingId instanceof zlink.RoutingId);
   attachedNode.attachDiscovery(discovery);
   spot.close();
 
-  assert.equal(standaloneNode.statusSnapshot().configuredPeerCount, 0);
+  assert.equal(standaloneNode.status().configuredPeerCount, 0);
 
   discovery.close();
-  assert.throws(() => attachedNode.statusSnapshot(), /shutdown|closed|transport/i);
+  assert.throws(() => attachedNode.status(), /shutdown|closed|transport/i);
 
   standaloneNode.close();
   ctx.close();
@@ -344,13 +344,13 @@ test('registry, discovery, and query client expose canonical service discovery f
     node.setPubBind(serviceEndpoint);
 
     const topologyEntry = await waitFor(5000, () => (
-      registry.topologySnapshot().find((entry) => entry.channelName === 'service-found') ?? null
+      registry.topology().find((entry) => entry.channelName === 'service-found') ?? null
     ));
     assert.ok(topologyEntry);
     assert.equal(topologyEntry.channelName, 'service-found');
 
     const serviceSummary = await waitFor(5000, () => {
-      const [entry] = registry.serviceSummarySnapshot({
+      const [entry] = registry.serviceSummary({
         channelName: 'service-found'
       });
       return entry ?? null;
@@ -359,7 +359,7 @@ test('registry, discovery, and query client expose canonical service discovery f
     assert.equal(serviceSummary.channelName, 'service-found');
 
     const queryEntry = await waitFor(5000, () => (
-      query.snapshot({ channelName: 'service-found' }).find((entry) => (
+      query.topology({ channelName: 'service-found' }).find((entry) => (
         entry.channelName === 'service-found'
       )) ?? null
     ));

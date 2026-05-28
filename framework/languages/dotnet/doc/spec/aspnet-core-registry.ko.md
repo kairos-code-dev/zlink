@@ -47,7 +47,7 @@ Registry 는 channel 등록, heartbeat[^heartbeat], topology[^topology] broadcas
   routerEndpoint)` 로 서버를 띄운다. 그리고 `SetId`, `AddPeer`, `SetHeartbeat`,
   `SetBroadcastInterval` 로 동작을 조정한다.
 - `RegistryQueryClient` -- 원격 Registry 에 topology 를 묻는 클라이언트다.
-  `Connect(endpoint)` 로 접속한 뒤 `SnapshotAsync(filter?)` 를 통해 조회한다.
+  `Connect(endpoint)` 로 접속한 뒤 `TopologyAsync(filter?)` 를 통해 조회한다.
 
 즉 이 문서가 새로 만드는 Registry 기능은 없다. 이미 존재하는 binding 표면을
 `ASP.NET Core` 의 lifecycle 과 DI 안에 자연스럽게 녹여 내는 일에 초점이 있다.
@@ -270,14 +270,14 @@ builder.Services.AddZLinkRegistry(registry =>
 ```csharp
 public interface IZLinkRegistryQuery
 {
-    ValueTask<ZLinkRegistryStatus> StatusSnapshotAsync(
+    ValueTask<ZLinkRegistryStatus> StatusAsync(
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummarySnapshotAsync(
+    ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummaryAsync(
         ZLinkRegistryServiceSummaryFilter? filter = null,
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkRegistryTopologyEntry[]> TopologySnapshotAsync(
+    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyQueryAsync(
+    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         ZLinkRegistryTopologyFilter? filter = null,
         CancellationToken cancellationToken = default);
     ValueTask<ZLinkMemberPeerEntry[]> MemberPeersAsync(
@@ -296,19 +296,19 @@ HTTP endpoint 에서 topology 를 조회하는 예시는 다음과 같다.
 ```csharp
 app.MapGet("/admin/topology", async (IZLinkRegistryQuery registry) =>
 {
-    var entries = await registry.TopologySnapshotAsync();
+    var entries = await registry.TopologyAsync();
     return Results.Ok(entries);
 });
 
 app.MapGet("/admin/services", async (IZLinkRegistryQuery registry) =>
 {
-    var summary = await registry.ServiceSummarySnapshotAsync();
+    var summary = await registry.ServiceSummaryAsync();
     return Results.Ok(summary);
 });
 
 app.MapGet("/admin/registry/status", async (IZLinkRegistryQuery registry) =>
 {
-    var status = await registry.StatusSnapshotAsync();
+    var status = await registry.StatusAsync();
     return Results.Ok(status);
 });
 ```
@@ -333,7 +333,7 @@ builder.Services.AddZLinkRegistryQueryClient(query =>
 ```csharp
 public interface IZLinkRegistryQueryClient
 {
-    ValueTask<ZLinkRegistryTopologyEntry[]> SnapshotAsync(
+    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         ZLinkRegistryTopologyFilter? filter = null,
         CancellationToken cancellationToken = default);
 }
@@ -344,7 +344,7 @@ HTTP endpoint 에서 원격 topology 를 조회하는 예시는 다음과 같다
 ```csharp
 app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient query) =>
 {
-    var entries = await query.SnapshotAsync();
+    var entries = await query.TopologyAsync();
     return Results.Ok(entries);
 });
 ```
@@ -361,7 +361,7 @@ app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient query) =>
 | 네트워크 | 없음(in-process 호출) | ROUTER endpoint로 요청 전송 |
 
 `RegistryQueryClient` 가 제공하는 API 폭이 in-process 보다 좁은 이유가 있다. 하부
-C API 인 `zlink_registry_query_snapshot` 이 topology snapshot 만 지원하기
+C API 인 `zlink_registry_query_client_topology` 이 topology snapshot 만 지원하기
 때문이다.
 
 ## 8. 전체 구성 예시
@@ -407,11 +407,11 @@ var app = builder.Build();
 // --- 관리 endpoint ---
 app.MapGet("/admin/topology", async (IZLinkRegistryQuery registry) =>
 {
-    return Results.Ok(await registry.TopologySnapshotAsync());
+    return Results.Ok(await registry.TopologyAsync());
 });
 app.MapGet("/admin/registry/status", async (IZLinkRegistryQuery registry) =>
 {
-    return Results.Ok(await registry.StatusSnapshotAsync());
+    return Results.Ok(await registry.StatusAsync());
 });
 
 app.Run();
@@ -437,18 +437,18 @@ var app = builder.Build();
 // --- 관리 endpoint ---
 app.MapGet("/health", async (IZLinkRegistryQuery registry) =>
 {
-    var status = await registry.StatusSnapshotAsync();
+    var status = await registry.StatusAsync();
     return status.State == ZLinkRegistryState.Active
         ? Results.Ok(status)
         : Results.StatusCode(503);
 });
 app.MapGet("/admin/topology", async (IZLinkRegistryQuery registry) =>
 {
-    return Results.Ok(await registry.TopologySnapshotAsync());
+    return Results.Ok(await registry.TopologyAsync());
 });
 app.MapGet("/admin/services", async (IZLinkRegistryQuery registry) =>
 {
-    return Results.Ok(await registry.ServiceSummarySnapshotAsync());
+    return Results.Ok(await registry.ServiceSummaryAsync());
 });
 
 app.Run();
@@ -468,7 +468,7 @@ var app = builder.Build();
 
 app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient query) =>
 {
-    return Results.Ok(await query.SnapshotAsync());
+    return Results.Ok(await query.TopologyAsync());
 });
 
 app.Run();

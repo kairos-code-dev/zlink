@@ -8,6 +8,14 @@ using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
 
+public enum ReceivedMessageType
+{
+    Raw = 0,
+    Request = 1,
+    Reply = 2,
+    ErrorReply = 3
+}
+
 public sealed class Received : IDisposable
 {
     private ReceivedMetadata? _metadata;
@@ -22,14 +30,88 @@ public sealed class Received : IDisposable
     private RoutingIdSnapshot _sendRoutingIdSnapshot;
     private RoutingIdSnapshot _sendSpotRidSnapshot;
 
+    private Received()
+    {
+    }
+
     /// <summary>
     /// Create an empty <see cref="Received"/> for caller-provided storage.
     /// Hand the same instance to <c>Recv(Received, ...)</c> across calls to
     /// avoid the per-recv allocation; the binding overwrites the internal
     /// state on each successful receive.
     /// </summary>
-    public Received()
+    public static Received Create()
     {
+        return new Received();
+    }
+
+    public RoutingId? RoutingId
+    {
+        get
+        {
+            if (_routingIdSnapshot.HasValue)
+                _routingId ??= _routingIdSnapshot.ToRoutingId();
+            return _routingId;
+        }
+    }
+
+    public RoutingId? SpotRid
+    {
+        get
+        {
+            return _metadata?.SpotRid;
+        }
+    }
+
+    public ulong? RequestSeq => _metadata?.RequestSeq;
+
+    public ReceivedMessageType MessageType { get; private set; } =
+        ReceivedMessageType.Raw;
+
+    public IReadOnlyList<Message> Parts => PartsCollection;
+
+    public bool IsSinglePart => _singlePart != null || PartsCollection.IsSinglePart;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Message FirstPart()
+    {
+        return _singlePart ?? PartsCollection.First();
+    }
+
+    public Message SinglePartOrThrow()
+    {
+        return _singlePart ?? PartsCollection.Single();
+    }
+
+    /// <summary>
+    /// Start a reply (operation builder).
+    /// </summary>
+    public ReplyOperation Reply()
+    {
+        return new ReceivedReplyOperationImpl(this);
+    }
+
+    /// <summary>
+    /// Start a send (operation builder).
+    /// </summary>
+    public SendOperation Send()
+    {
+        return new ReceivedSendOperationImpl(this);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Dispose()
+    {
+        if (_closed)
+            return;
+        _closed = true;
+        if (_singlePart != null)
+        {
+            _singlePart.DisposeNativeOwned();
+            _singlePart = null;
+            return;
+        }
+        _parts?.Dispose();
     }
 
     internal static Received Create(RoutingId? routingId, Message[] parts,
@@ -159,31 +241,6 @@ public sealed class Received : IDisposable
         _singlePart = singlePart ?? throw new ArgumentNullException(nameof(singlePart));
     }
 
-    public RoutingId? RoutingId
-    {
-        get
-        {
-            if (_routingIdSnapshot.HasValue)
-                _routingId ??= _routingIdSnapshot.ToRoutingId();
-            return _routingId;
-        }
-    }
-
-    public RoutingId? SpotRid
-    {
-        get
-        {
-            return _metadata?.SpotRid;
-        }
-    }
-
-    public ulong? RequestSeq => _metadata?.RequestSeq;
-
-    public ReceivedMessageType MessageType { get; private set; } =
-        ReceivedMessageType.Raw;
-
-    public IReadOnlyList<Message> Parts => PartsCollection;
-
     internal int Count => _singlePart != null ? 1 : PartsCollection.Count;
 
     internal Message this[int index]
@@ -200,19 +257,6 @@ public sealed class Received : IDisposable
         }
     }
 
-    public bool IsSinglePart => _singlePart != null || PartsCollection.IsSinglePart;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Message FirstPart()
-    {
-        return _singlePart ?? PartsCollection.First();
-    }
-
-    public Message SinglePartOrThrow()
-    {
-        return _singlePart ?? PartsCollection.Single();
-    }
-
     internal IReadOnlyList<Message> TakePartsOwnership()
     {
         if (_singlePart != null)
@@ -223,14 +267,6 @@ public sealed class Received : IDisposable
             return new SingleMessageList(part);
         }
         return PartsCollection.TakeMessages();
-    }
-
-    /// <summary>
-    /// Start a reply (operation builder).
-    /// </summary>
-    public ReplyOperation Reply()
-    {
-        return new ReceivedReplyOperationImpl(this);
     }
 
     internal void ReplyCore(IReadOnlyList<Message> parts,
@@ -246,14 +282,6 @@ public sealed class Received : IDisposable
         }
 
         replyHandler(parts, flags);
-    }
-
-    /// <summary>
-    /// Start a send (operation builder).
-    /// </summary>
-    public SendOperation Send()
-    {
-        return new ReceivedSendOperationImpl(this);
     }
 
     internal bool SendCore(Message part, SendFlags flags = SendFlags.None)
@@ -289,21 +317,6 @@ public sealed class Received : IDisposable
         }
 
         return _sendHandler(parts, flags);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Dispose()
-    {
-        if (_closed)
-            return;
-        _closed = true;
-        if (_singlePart != null)
-        {
-            _singlePart.DisposeNativeOwned();
-            _singlePart = null;
-            return;
-        }
-        _parts?.Dispose();
     }
 
     internal IEnumerator<Message> GetEnumerator()
@@ -513,31 +526,3 @@ public sealed class Received : IDisposable
         }
     }
 }
-
-public sealed class SubscriptionEvent
-{
-    public SubscriptionEvent()
-    {
-    }
-
-    internal SubscriptionEvent(RoutingId? routingId, string topic,
-        bool subscribed)
-    {
-        Populate(routingId, topic, subscribed);
-    }
-
-    public RoutingId? RoutingId { get; private set; }
-
-    public string Topic { get; private set; } = string.Empty;
-
-    public bool Subscribed { get; private set; }
-
-    internal void Populate(RoutingId? routingId, string topic, bool subscribed)
-    {
-        RoutingId = routingId;
-        Topic = topic ?? string.Empty;
-        Subscribed = subscribed;
-    }
-}
-
-public sealed record SubscriptionEntry(string Filter, bool IsPattern);

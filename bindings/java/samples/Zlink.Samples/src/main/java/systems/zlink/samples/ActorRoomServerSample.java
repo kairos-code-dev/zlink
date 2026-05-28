@@ -80,7 +80,7 @@ public final class ActorRoomServerSample {
 
                 if (!List.of("join-room").equals(joins)
                     || replies.get(0) != RequestResult.OK
-                    || spot.actorsSnapshot().isEmpty()) {
+                    || spot.actors().isEmpty()) {
                     throw new IllegalStateException("actor room join failed");
                 }
                 actor.leave(spot).submitAsync().join().forEach(Message::close);

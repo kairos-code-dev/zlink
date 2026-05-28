@@ -164,6 +164,47 @@ class spot_t
         return true;
     }
 
+    bool publish_discard_on_backpressure (const std::string &topic_,
+                                          message_t &part_)
+    {
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            throw submit_error_t (submit_result_t::invalid_argument, errno);
+        }
+        if (!part_.valid ())
+            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+
+        zlink_msg_t native;
+        zlink::detail::move_to_native (part_, &native);
+        if (part_.valid ()) {
+            (void) zlink_msg_close (&native);
+            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+        }
+
+        const int rc = zlink_spot_publish_part (
+          _spot, topic_.c_str (), &native, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
+        if (rc == 0)
+            return true;
+
+        const int err = zlink_errno ();
+        (void) zlink_msg_close (&native);
+        if (rc == ZLINK_SUBMIT_BACKPRESSURED)
+            return false;
+        send_result_t result = send_result_t::sent;
+        if (detail::classify_nonblocking_send_errno (err, result)
+            && result != send_result_t::sent) {
+            errno = err;
+            if (result == send_result_t::backpressured)
+                return false;
+            throw submit_error_t (submit_result_t::not_connected, err);
+        }
+        throw submit_error_t (
+          rc == ZLINK_SUBMIT_NOT_CONNECTED
+            ? submit_result_t::not_connected
+            : static_cast<submit_result_t> (rc),
+          err);
+    }
+
     bool send_channel (const std::string &channel_name_,
                        message_t &part_,
                        send_flags_t flags_ = send_flags_t::none)
@@ -570,6 +611,25 @@ class spot_t
         return subscribe_impl (out_, flags_);
     }
 
+    int subscribe_part (std::optional<routing_id_t> &source_rid_out_,
+                        std::string &topic_out_,
+                        message_t &part_out_,
+                        bool &has_more_out_,
+                        recv_flags_t flags_ = recv_flags_t::none)
+    {
+        return subscribe_part_impl (
+          source_rid_out_, topic_out_, part_out_, has_more_out_, flags_);
+    }
+
+    int subscribe_part (std::string &topic_out_,
+                        message_t &part_out_,
+                        bool &has_more_out_,
+                        recv_flags_t flags_ = recv_flags_t::none)
+    {
+        return subscribe_part_impl (
+          NULL, topic_out_, part_out_, has_more_out_, flags_);
+    }
+
     int receive_subscription_event (
       subscription_event_t &out_,
       recv_flags_t flags_ = recv_flags_t::none)
@@ -796,6 +856,15 @@ class spot_t
             result_out_ = send_result_t::sent;
             return 0;
         }
+        if (rc == ZLINK_SUBMIT_BACKPRESSURED
+            || rc == ZLINK_SUBMIT_NOT_CONNECTED) {
+            result_out_ = zlink::detail::to_send_result (rc);
+            part_.init ();
+            if (part_.valid ())
+                (void) zlink_msg_move (zlink::detail::native_handle (part_), &native);
+            (void) zlink_msg_close (&native);
+            return 0;
+        }
 
         const int err = errno;
         if (detail::classify_nonblocking_send_errno (err, result_out_)) {
@@ -907,6 +976,67 @@ class spot_t
     }
 
     ZLINK_CPP_NODISCARD int
+    subscribe_part_impl (std::optional<routing_id_t> &source_rid_out_,
+                         std::string &topic_out_,
+                         message_t &part_out_,
+                         bool &has_more_out_,
+                         recv_flags_t flags_ = recv_flags_t::none)
+    {
+        source_rid_out_ = std::nullopt;
+        return subscribe_part_impl (
+          &source_rid_out_, topic_out_, part_out_, has_more_out_, flags_);
+    }
+
+    ZLINK_CPP_NODISCARD int
+    subscribe_part_impl (std::optional<routing_id_t> *source_rid_out_,
+                         std::string &topic_out_,
+                         message_t &part_out_,
+                         bool &has_more_out_,
+                         recv_flags_t flags_ = recv_flags_t::none)
+    {
+        if (source_rid_out_)
+            *source_rid_out_ = std::nullopt;
+        topic_out_.clear ();
+        has_more_out_ = false;
+        part_out_.close ();
+
+        if (!_spot) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        char topic_buffer[256];
+        size_t topic_length = sizeof (topic_buffer);
+        const zlink_routing_id_t *source_rid = NULL;
+
+        zlink_msg_t native_part;
+        if (zlink_msg_init (&native_part) != 0)
+            return -1;
+
+        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+        const int rc = zlink_spot_subscribe_part (
+          _spot, &source_rid, topic_buffer, sizeof (topic_buffer),
+          &topic_length, &native_part, &has_more,
+          static_cast<zlink_recv_flags_t> (flags_));
+        if (rc != ZLINK_RECV_OK) {
+            const int err = errno;
+            (void) zlink_msg_close (&native_part);
+            errno = err;
+            return rc;
+        }
+
+        const size_t topic_size =
+          topic_length < sizeof (topic_buffer) ? topic_length
+                                               : sizeof (topic_buffer) - 1u;
+        topic_out_.assign (topic_buffer, topic_size);
+        if (source_rid_out_ && source_rid && source_rid->size > 0)
+            *source_rid_out_ = zlink::detail::native_routing_id (*source_rid);
+        zlink::detail::adopt_native_message (part_out_, &native_part);
+        has_more_out_ = has_more != ZLINK_PART_FINAL;
+        return 0;
+    }
+
+    ZLINK_CPP_NODISCARD int
     subscription_event_impl (routing_id_t &source_rid_out_,
                              bool &subscribed_out_,
                              std::string &topic_,
@@ -921,7 +1051,7 @@ class spot_t
         size_t topic_length = 0;
         int subscribed = 0;
         const zlink_routing_id_t *source_rid = NULL;
-        const int rc = zlink_spot_subscription_event_recv (
+        const int rc = zlink_spot_recv_subscription_event (
           _spot, &source_rid, &subscribed, topic_buffer, sizeof (topic_buffer),
           &topic_length,
           static_cast<zlink_recv_flags_t> (flags_));
@@ -971,6 +1101,12 @@ class spot_t
             result_out_ = send_result_t::sent;
             return 0;
         }
+        if (rc == ZLINK_SUBMIT_BACKPRESSURED
+            || rc == ZLINK_SUBMIT_NOT_CONNECTED) {
+            result_out_ = zlink::detail::to_send_result (rc);
+            detail::restore_parts_from_native (parts_, native, failed_index);
+            return 0;
+        }
 
         const int err = errno;
         if (detail::classify_nonblocking_send_errno (err, result_out_)) {
@@ -1008,6 +1144,15 @@ class spot_t
           _spot, topic_, &native, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
         if (rc == 0) {
             result_out_ = send_result_t::sent;
+            return 0;
+        }
+        if (rc == ZLINK_SUBMIT_BACKPRESSURED
+            || rc == ZLINK_SUBMIT_NOT_CONNECTED) {
+            result_out_ = zlink::detail::to_send_result (rc);
+            part_.init ();
+            if (part_.valid ())
+                (void) zlink_msg_move (zlink::detail::native_handle (part_), &native);
+            (void) zlink_msg_close (&native);
             return 0;
         }
 
@@ -1362,16 +1507,6 @@ class spot_t
         }
     }
 
-    void on_routed_receive (std::function<void(received_t)> handler_)
-    {
-        _routed_receive_handler = std::move (handler_);
-        const handler_result_t rc = static_cast<handler_result_t> (
-          zlink_spot_handler (
-            _spot, &spot_t::routed_receive_trampoline, this));
-        if (rc != handler_result_t::ok)
-            throw handler_error_t (rc, zlink_errno ());
-    }
-
     void on_dispatch_event (
       std::function<void(spot_t &, const spot_dispatch_info_t &)> handler_)
     {
@@ -1390,7 +1525,23 @@ class spot_t
           [handler = std::move (handler_)] (
             spot_t &, const spot_dispatch_info_t &info_) mutable {
               handler (info_);
-          });
+        });
+    }
+
+    std::optional<spot_actor_lifecycle_event_t>
+    recv_actor_lifecycle (recv_flags_t flags_ = recv_flags_t::none)
+    {
+        zlink_spot_actor_lifecycle_event_t native_event;
+        std::memset (&native_event, 0, sizeof (native_event));
+        const recv_result_t rc = static_cast<recv_result_t> (
+          zlink_spot_recv_actor_lifecycle (
+            _spot, &native_event, static_cast<zlink_recv_flags_t> (flags_)));
+        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
+            return std::nullopt;
+        if (rc != recv_result_t::ok)
+            throw recv_error_t (rc, zlink_errno ());
+        return std::optional<spot_actor_lifecycle_event_t> (
+          spot_actor_lifecycle_event_t (native_event));
     }
 
     std::optional<actor_join_request_t>
@@ -1431,17 +1582,17 @@ class spot_t
         return actor_join_reply_op_t (std::move (state));
     }
 
-    std::vector<actor_ref_t> actors_snapshot () const
+    std::vector<actor_ref_t> actors () const
     {
         size_t count = 0;
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
-            zlink_spot_actors_snapshot (_spot, NULL, &count)));
+            zlink_spot_actors (_spot, NULL, &count)));
         std::vector<zlink_actor_ref_t> native (count);
         if (count > 0) {
             detail::throw_if_failed<config_error_t> (
               static_cast<config_result_t> (
-                zlink_spot_actors_snapshot (_spot, native.data (), &count)));
+                zlink_spot_actors (_spot, native.data (), &count)));
             native.resize (count);
         }
         std::vector<actor_ref_t> entries;
@@ -1553,6 +1704,14 @@ inline bool send_ready_op_t::submit () &&
 
     switch (_state.kind) {
     case detail::spot_op_kind_t::publish:
+        if (detail::send_part_count (_state) == 1u
+            && _state.flags == send_flags_t::dontwait
+            && _state.discard_single_part_on_backpressure
+            && _state.single_part.has_value ()
+            && !_state.single_part_source) {
+            return _state.spot->publish_discard_on_backpressure (
+              _state.topic, *_state.single_part);
+        }
         return detail::send_part_count (_state) == 1u
           ? _state.spot->publish (
               _state.topic, detail::send_single_part (_state), _state.flags)

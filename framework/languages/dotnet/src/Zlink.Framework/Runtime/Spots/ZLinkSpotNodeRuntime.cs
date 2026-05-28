@@ -232,7 +232,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot()
     {
-        return _monitoringSnapshots.Snapshot();
+        return _monitoringSnapshots.MonitorStatus();
     }
 
     public void AddChannelBundle(string channelName, ZLinkSpotAttachedChannelBundle bundle)

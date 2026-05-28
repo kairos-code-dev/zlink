@@ -18,7 +18,7 @@ requesterNode.AttachChannelDealerManual(channelName, requesterDealer);
 
 Task responderTask = Task.Run(() =>
 {
-    using var received = new Received();
+    using var received = Received.Create();
     if (!responderRouter.Recv(received))
         throw new InvalidOperationException("recv failed");
     RoutingId routingId = received.RoutingId
@@ -31,7 +31,7 @@ Task responderTask = Task.Run(() =>
 });
 
 using var request = Message.From("spot-ping");
-var replyParts = await requester.RequestChannel(channelName)
+var replyParts = await requester.RequestToChannel(channelName)
     .Message(request)
     .Timeout(TimeSpan.FromSeconds(2))
     .SubmitAsync();

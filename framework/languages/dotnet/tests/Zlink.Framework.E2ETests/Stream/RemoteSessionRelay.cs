@@ -226,14 +226,14 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
 
     private static bool HasActorNodeRouterPeer(ZLinkSpotNodeRuntime nodeRuntime)
     {
-        return nodeRuntime.Node.PeersSnapshot().Any(
+        return nodeRuntime.Node.Peers().Any(
             peer => string.Equals(peer.ChannelName, "actor-node", StringComparison.Ordinal)
                 && peer.Kind == ZLinkSpotPeerKind.RouterChannel);
     }
 
     private static string DescribeActorNodePeers(ZLinkSpotNodeRuntime nodeRuntime)
     {
-        var peers = nodeRuntime.Node.PeersSnapshot()
+        var peers = nodeRuntime.Node.Peers()
             .Select(static peer =>
                 $"{peer.ChannelName}:{peer.PeerEndpoint}:{peer.Source}:{peer.Kind}:{peer.State}");
         return string.Join(", ", peers);

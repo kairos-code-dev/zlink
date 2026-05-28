@@ -58,7 +58,7 @@ pub use flags::{RecvFlags, SendFlags};
 pub use message::{IntoMultipart, Message, RoutingId};
 pub use monitor::{MONITOR_EVENT_ALL, MONITOR_EVENT_CONNECTION_READY, SocketMonitorEventMask};
 pub use monitor::{
-    MonitorEvent, MonitorEventType, MonitorSnapshot, MonitorSourceKind, MonitorTarget,
+    MonitorEvent, MonitorEventType, MonitorStatus, MonitorSourceKind, MonitorTarget,
     SocketMonitor,
 };
 pub use options::{
@@ -78,7 +78,7 @@ pub use service::{
     RequestOp, SendOp, ServiceKind, ServiceRole, SocketType, Spot, SpotDispatchEvent,
     SpotDispatchInfo, SpotDispatchSubject, SpotDispatchSubjectKind, SpotKind, SpotNode,
     SpotNodeActorEntry, SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter,
-    SpotNodeSocketOwner, SpotNodeSocketSnapshotEntry, SpotNodeSocketSnapshotFilter,
+    SpotNodeSocketOwner, SpotNodeSocketEntry, SpotNodeSocketFilter,
     SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
     SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SpotRoute, SpotServiceAttachmentRole,
     SpotSubscribedPart, SubjectKind, TopologySource, TopologyState,

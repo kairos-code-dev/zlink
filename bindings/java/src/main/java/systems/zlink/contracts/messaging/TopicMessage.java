@@ -35,7 +35,7 @@ public final class TopicMessage implements AutoCloseable {
             @Override
             public void adoptSingle(TopicMessage target, RoutingId routingId,
                                     String topicId, Message part) {
-                InternalAccess.topicMessageAdoptSingle(target, routingId, topicId, part);
+                target.adoptSingle(routingId, topicId, part);
             }
 
             @Override

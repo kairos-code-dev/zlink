@@ -38,7 +38,7 @@ typedef struct zlink_socket_monitor_open_options_t
 ZLINK_EXPORT void zlink_monitor_ignore_handler (
   const zlink_monitor_event_t *event_, void *userdata_);
 
-typedef struct zlink_monitor_snapshot_t
+typedef struct zlink_monitor_status_t
 {
     /* snapshot 대상 종류입니다. raw socket, SPOT pub, SPOT sub 중 하나입니다. */
     zlink_monitor_source_kind_t source_kind;
@@ -47,7 +47,7 @@ typedef struct zlink_monitor_snapshot_t
     zlink_monitor_state_mask_t state_flags;
 
     /* 어떤 세부 값이 채워졌는지 나타내는 비트마스크입니다. */
-    zlink_monitor_snapshot_detail_mask_t detail_flags;
+    zlink_monitor_status_detail_mask_t detail_flags;
 
     /* 현재 송신 큐에 남아 있는 메시지 수입니다. */
     uint64_t snd_pending_msgs;
@@ -105,7 +105,7 @@ typedef struct zlink_monitor_snapshot_t
 
     /* HWM 축소가 지연 중이면 목표 수신 HWM, 없으면 -1입니다. */
     int32_t auto_hwm_deferred_rcvhwm;
-} zlink_monitor_snapshot_t;
+} zlink_monitor_status_t;
 
 /**
  * @brief Open and return a socket monitor handle directly.
@@ -126,8 +126,8 @@ ZLINK_EXPORT zlink_recv_result_t zlink_socket_monitor_recv (
   zlink_recv_flags_t flags_);
 
 /** @brief Read the current snapshot for a monitor handle. */
-ZLINK_EXPORT zlink_config_result_t zlink_monitor_snapshot (void *monitor_,
-                                         zlink_monitor_snapshot_t *out_);
+ZLINK_EXPORT zlink_config_result_t zlink_monitor_status (void *monitor_,
+                                         zlink_monitor_status_t *out_);
 
 ZLINK_EXPORT zlink_close_result_t zlink_monitor_close (void **monitor_p_);
 

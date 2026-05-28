@@ -52,7 +52,7 @@ public final class DiscoveryRegistrySample {
                     SampleSupport.waitUntil("discovery registry sample",
                         () -> {
                             try {
-                                return queryView.snapshot().stream().anyMatch(
+                                return queryView.topology().stream().anyMatch(
                                     entry -> channelName.equals(
                                         entry.channelName()));
                             } catch (ConfigException transientNotReady) {

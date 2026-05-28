@@ -40,4 +40,5 @@
     <Compile Include="Timers/TimerContracts.cs" />
     <Compile Include="GlobalUsings.cs" />
   </ItemGroup>
+
 </Project>

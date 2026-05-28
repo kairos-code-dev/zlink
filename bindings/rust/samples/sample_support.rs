@@ -60,7 +60,7 @@ where
 pub fn wait_spot_peer_connected(node: &SpotNode, timeout: Duration) {
     wait_until(
         || {
-            node.status_snapshot()
+            node.status()
                 .map(|status| status.connected_peer_count > 0)
                 .unwrap_or(false)
         },

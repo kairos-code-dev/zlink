@@ -319,7 +319,7 @@ static inline int wait_for_spot_node_subject_ready (void *node_,
 
     for (;;) {
         zlink_spot_node_status_t status;
-        if (zlink_spot_node_status_snapshot (node_, &status) == 0
+        if (zlink_spot_node_status (node_, &status) == 0
             && status.subject_count > 0
             && (status.ready_subject_count > 0
                 || status.connected_peer_count > 0

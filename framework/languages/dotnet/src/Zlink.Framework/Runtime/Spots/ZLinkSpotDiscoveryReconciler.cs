@@ -19,7 +19,7 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
             return;
         }
 
-        var localEndpoint = node.StatusSnapshot().LocalEndpoint;
+        var localEndpoint = node.Status().LocalEndpoint;
         var peers = discovery.MemberPeers();
         Debug(
             $"scan channel={spotChannelName} local={localEndpoint} peers={peers.Count} router={routerEnabled} pubsub={pubSubEnabled}");

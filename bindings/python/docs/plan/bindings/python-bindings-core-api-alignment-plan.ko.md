@@ -124,7 +124,7 @@
 - 콜백/이벤트 계층:
   - `zlink_recv_handler`, `zlink_subscribe_handler`, `zlink_send_ready_handler`
   - `zlink_socket_monitor_open`, `zlink_socket_monitor_recv`,
-    `zlink_monitor_snapshot`
+    `zlink_monitor_status`
   - `zlink_service_monitor_open`, `zlink_service_monitor_recv`
 - 서비스 계층:
   - `Registry`: bind/config/snapshot/query

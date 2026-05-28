@@ -92,6 +92,11 @@ class SpotDispatchEvent(IntEnum):
     CHANNEL_REPLY_READABLE = 4
     ACTOR_READABLE = 5
     ACTOR_JOIN_READABLE = 6
+    ACTOR_LIFECYCLE_READABLE = 7
+
+class SpotActorLifecycleEventKind(IntEnum):
+    JOINED = 1
+    LEFT = 2
 
 class SpotDispatchSubjectKind(IntEnum):
     SPOT = 1

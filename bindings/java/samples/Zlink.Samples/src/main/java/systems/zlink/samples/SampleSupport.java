@@ -98,7 +98,7 @@ final class SampleSupport {
 
     static void waitSpotPeerConnected(SpotNode node) {
         waitUntil("spot peer connection",
-            () -> node.statusSnapshot().connectedPeerCount() > 0);
+            () -> node.status().connectedPeerCount() > 0);
     }
 
     static void closeQuietly(AutoCloseable resource) {

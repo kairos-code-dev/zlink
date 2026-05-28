@@ -16,7 +16,7 @@ SampleSupport.WaitConnected(routerMonitor, dealerMonitor);
 
 using (Message request = Message.From("ping"))
     dealer.Send().Message(request).Submit();
-using var received = new Received();
+using var received = Received.Create();
 if (!router.Recv(received))
     throw new InvalidOperationException("recv failed");
 string requestPayload = received.Parts[0].GetString();

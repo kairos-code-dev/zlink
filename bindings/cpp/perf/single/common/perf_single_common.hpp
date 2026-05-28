@@ -304,13 +304,13 @@ inline const char *single_auto_hwm_role_name (uint32_t role_)
     }
 }
 
-inline bool single_auto_hwm_snapshot_visible (
-  const zlink::monitor_snapshot_t &snapshot_)
+inline bool single_auto_hwm_monitor_status_visible (
+  const zlink::monitor_status_t &monitor_status_)
 {
-    return snapshot_.auto_hwm_applied_sndhwm > 0
-           || snapshot_.auto_hwm_applied_rcvhwm > 0
-           || snapshot_.auto_hwm_effective_message_bytes > 0
-           || snapshot_.auto_hwm_socket_message_slots > 0;
+    return monitor_status_.auto_hwm_applied_sndhwm > 0
+           || monitor_status_.auto_hwm_applied_rcvhwm > 0
+           || monitor_status_.auto_hwm_effective_message_bytes > 0
+           || monitor_status_.auto_hwm_socket_message_slots > 0;
 }
 
 template<typename SocketLike>
@@ -324,18 +324,18 @@ inline void emit_single_socket_hwm_detail (const SocketLike &socket_,
     if (!pattern_ || !component_ || !socket_type_)
         return;
 
-    zlink::monitor_snapshot_t snapshot;
+    zlink::monitor_status_t snapshot;
     try {
         zlink::monitor_handle_t monitor =
           socket_.monitor_handle (zlink::monitor_event::connection_ready);
         if (!monitor.valid ())
             return;
-        snapshot = monitor.snapshot ();
+        snapshot = monitor.status ();
     }
     catch (const zlink::zlink_error_t &) {
         return;
     }
-    if (!single_auto_hwm_snapshot_visible (snapshot))
+    if (!single_auto_hwm_monitor_status_visible (snapshot))
         return;
 
     std::cout << "AUTO_HWM_DETAIL"

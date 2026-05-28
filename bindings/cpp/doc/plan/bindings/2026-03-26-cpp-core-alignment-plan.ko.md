@@ -69,7 +69,7 @@
 
 - [`include/zlink/monitor.hpp`](/home/hep7/project/kairos/zlink/bindings/cpp/include/zlink/monitor.hpp)
   는 `zlink_monitor_recv`를 전제로 하지만 최신 `core`는
-  `zlink_socket_monitor_recv`, `zlink_monitor_snapshot`, `zlink_monitor_close`
+  `zlink_socket_monitor_recv`, `zlink_monitor_status`, `zlink_monitor_close`
   구조다.
 - [`include/zlink/poller.hpp`](/home/hep7/project/kairos/zlink/bindings/cpp/include/zlink/poller.hpp)
   는 `zlink_poller_add_spot_sub`, `zlink_poller_add_receiver` 같은
@@ -636,7 +636,7 @@ CTest 등록 방식:
 핵심 작업:
 
 - socket monitor open/recv/close RAII 래퍼 추가
-- `zlink_monitor_snapshot()` wrapper 추가
+- `zlink_monitor_status()` wrapper 추가
 - monitor event mask와 snapshot state/detail mask typed enum은 `types.hpp`에 정리
 - service monitor open/recv/close wrapper 추가
 - `zlink_service_event_t`를 C++에서 읽기 쉬운 helper 제공
@@ -703,12 +703,12 @@ CTest 등록 방식:
 - `set_heartbeat`
 - `set_broadcast_interval`
 - `destroy`
-- `status_snapshot`
-- `service_summary_snapshot`
+- `status`
+- `service_summary`
 - `member_peers`
 - `member_peer_metadata`
-- `topology_snapshot`
-- `topology_query`
+- `topology`
+- `topology`
 
 #### 5.2 registry_query_client_t 신규 추가
 
@@ -755,10 +755,10 @@ CTest 등록 방식:
 - `connect_peer`
 - `disconnect_peer`
 - `attach_discovery`
-- `status_snapshot`
-- `peers_snapshot`
+- `status`
+- `peers`
 - `peers_query`
-- `subjects_snapshot`
+- `subjects`
 - `destroy`
 
 #### 5.5 unified spot_t

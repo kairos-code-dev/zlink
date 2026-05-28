@@ -44,7 +44,8 @@ public sealed class test_socket_surface
 
     private static void AssertNullableReturn(Type type, string methodName)
     {
-        MethodInfo method = type.GetMethod(methodName)
+        MethodInfo method = PublicInstanceMethods(type)
+            .FirstOrDefault(method => method.Name == methodName)
             ?? throw new InvalidOperationException(
                 $"{type.Name}.{methodName} was not found.");
         var nullability = new NullabilityInfoContext();
@@ -191,10 +192,8 @@ public sealed class test_socket_surface
             typeof(Received), typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(IDealerSocket), "Recv",
             typeof(Received), typeof(RecvFlags)));
-        Assert.True(HasPublicInstanceMethod(typeof(IRouterSocket), "RecvPart",
-            typeof(Message), typeof(RoutingId?).MakeByRefType(),
-            typeof(bool).MakeByRefType(), typeof(RecvFlags)));
-        Assert.True(HasPublicInstanceMethod(typeof(IRouterSocket), "Send",
+        AssertNoPublicInstanceMethod(typeof(IRouterSocket), "RecvPart");
+        Assert.False(HasPublicInstanceMethod(typeof(IRouterSocket), "Send",
             typeof(RoutingId), typeof(Message), typeof(SendFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(IStreamSocket), "Recv",
             typeof(Received), typeof(RecvFlags)));
@@ -301,8 +300,8 @@ public sealed class test_socket_surface
     [Fact]
     public void service_surface_uses_contract_interfaces()
     {
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode), "StatusSnapshot"));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode), "PeersSnapshot"));
+        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode), "Status"));
+        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode), "Peers"));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode), "PeersQuery",
             typeof(SpotNodePeerFilter)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
@@ -351,25 +350,27 @@ public sealed class test_socket_surface
             nameof(ISpot.ReceiveSubscriptionEvent), typeof(SubscriptionEvent),
             typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpot),
-            nameof(ISpot.RecvRoutedPart), typeof(Message),
-            typeof(RoutingId?).MakeByRefType(),
-            typeof(RoutingId?).MakeByRefType(),
-            typeof(ulong?).MakeByRefType(), typeof(bool).MakeByRefType(),
-            typeof(RecvFlags)));
+            nameof(ISpot.RecvRouted), typeof(Received), typeof(RecvFlags)));
+        AssertNoPublicInstanceMethod(typeof(ISpot), "RecvRoutedPart");
+        AssertNoPublicInstanceMethod(typeof(ISpot), "SubscribePart");
         Assert.True(HasPublicInstanceMethod(typeof(ISpot),
-            nameof(ISpot.SubscribePart), typeof(Message), typeof(Span<byte>),
-            typeof(int).MakeByRefType(), typeof(bool).MakeByRefType(),
-            typeof(RecvFlags)));
+            nameof(ISpot.SendToChannel), typeof(string)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpot),
-            nameof(ISpot.OnDispatchEvent), typeof(Action<SpotDispatchInfo>)));
+            nameof(ISpot.RequestToChannel), typeof(string)));
+        AssertNoPublicInstanceMethod(typeof(ISpot), "SendChannel");
+        AssertNoPublicInstanceMethod(typeof(ISpot), "RequestChannel");
         Assert.True(HasPublicInstanceMethod(typeof(ISpot),
-            nameof(ISpot.OnActorLifecycle),
-            typeof(Action<SpotActorLifecycleInfo>),
-            typeof(Action<SpotActorLifecycleInfo>)));
+            nameof(ISpot.SetDispatchHandler), typeof(SpotDispatchHandler)));
+        Assert.True(HasPublicInstanceMethod(typeof(ISpot),
+            nameof(ISpot.RecvActorLifecycle), typeof(RecvFlags)));
+        AssertNoPublicInstanceMethod(typeof(ISpot), "SetActorLifecycleHandlers");
+        AssertNoPublicInstanceMethod(typeof(ISpot), "SetRoutedReceiveHandler");
         Assert.False(HasPublicInstanceMethod(typeof(ISpot), "Publish",
-            typeof(string), typeof(string), typeof(Message),
+            typeof(string), typeof(Message), typeof(SendFlags)));
+        Assert.False(HasPublicInstanceMethod(typeof(ISpot), "SendToSpot",
+            typeof(RoutingId), typeof(RoutingId), typeof(Message),
             typeof(SendFlags)));
-        Assert.Null(typeof(ISpot).GetMethod("RequestChannelAsync"));
+        Assert.Null(typeof(ISpot).GetMethod("RequestToChannelAsync"));
         Assert.Null(typeof(ISpot).GetMethod("DrainChannelReplyFrom"));
 
         Assert.False(HasPublicInstanceMethod(typeof(IDiscovery),
@@ -402,11 +403,11 @@ public sealed class test_socket_surface
             typeof(Message).GetMethod(nameof(Message.GetProperty))!
                 .ReturnParameter.ParameterType);
 
-        ParameterInfo registryTopologyQueryFilter =
-            typeof(IRegistry).GetMethod(nameof(IRegistry.TopologyQuery))!
+        ParameterInfo registryTopologyFilter =
+            typeof(IRegistry).GetMethod(nameof(IRegistry.Topology))!
                 .GetParameters().Single();
-        Assert.True(registryTopologyQueryFilter.HasDefaultValue);
-        Assert.Null(registryTopologyQueryFilter.DefaultValue);
+        Assert.True(registryTopologyFilter.HasDefaultValue);
+        Assert.Null(registryTopologyFilter.DefaultValue);
 
         Assert.Equal(typeof(ActorRef),
             typeof(SpotActorLifecycleInfo)
@@ -457,6 +458,35 @@ public sealed class test_socket_surface
             typeof(Guid).MakeByRefType()));
         Assert.NotNull(typeof(RoutingId).GetProperty("IsEmpty",
             BindingFlags.Instance | BindingFlags.Public));
+    }
+
+    [Fact]
+    public void message_operation_extension_type_uses_canonical_name()
+    {
+        string[] exportedTypeNames = typeof(Zlink).Assembly.GetExportedTypes()
+            .Select(type => type.FullName!)
+            .ToArray();
+
+        Assert.Contains("Systems.Zlink.MessageOperations", exportedTypeNames);
+        Assert.DoesNotContain("Systems.Zlink.OperationMessageExtensions",
+            exportedTypeNames);
+    }
+
+    [Fact]
+    public void received_uses_factory_without_public_constructor()
+    {
+        Assert.Null(typeof(Received).GetConstructor(Type.EmptyTypes));
+        Assert.Equal(typeof(Received),
+            typeof(Received).GetMethod(nameof(Received.Create),
+                Type.EmptyTypes)!.ReturnType);
+        Assert.True(HasPublicInstanceMethod(typeof(Received),
+            nameof(Received.FirstPart)));
+        Assert.True(HasPublicInstanceMethod(typeof(Received),
+            nameof(Received.SinglePartOrThrow)));
+        Assert.True(HasPublicInstanceMethod(typeof(Received),
+            nameof(Received.Reply)));
+        Assert.True(HasPublicInstanceMethod(typeof(Received),
+            nameof(Received.Send)));
     }
 
     [Fact]

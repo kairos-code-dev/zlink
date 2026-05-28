@@ -32,12 +32,12 @@ List<string> actorMessages = new();
 using var sessionReady = new ManualResetEventSlim(false);
 RoutingId? sessionRid = null;
 
-spot.OnDispatchEvent(info =>
+spot.SetDispatchHandler(info =>
 {
-    ActorPart? part;
-    while ((part = info.RecvActorPart()) != null)
+    ActorReceived? part;
+    while ((part = info.RecvActor()) != null)
     {
-        using (part.Message)
+        using (part)
             actorMessages.Add(part.Message.GetString());
     }
 });

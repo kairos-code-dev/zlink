@@ -42,7 +42,7 @@ static const char *k_pattern_env = "SPOT_REQREP";
 static const char *k_pattern_result = "MULTI_SPOT_REQREP";
 static const char *k_server_node_rid_text = "SPOT-REQREP-SERVER-NODE";
 static const char *k_server_spot_rid_text = "SPOT-REQREP-SERVER-SPOT";
-static const char *k_control_topic = "bench";
+static const char *k_control_topic = "bench-spot-reqrep";
 static const char k_payload_fill = 's';
 
 struct start_gate_t
@@ -334,7 +334,7 @@ class spot_reqrep_client_bench_t
             return false;
         _local_data_endpoint =
           perf::multi::bind_routed_spot_endpoint (
-            *_data_node, _transport, perf::multi::bench_port_base (52000));
+            *_data_node, _transport, 0);
         if (_local_data_endpoint.empty ())
             return false;
         try {
@@ -630,9 +630,8 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
           control_ctx.ctx (), snapshot_msg_size))
         return false;
 
-    const int base_port = perf::multi::bench_port_base (50000);
     const std::string local_control_endpoint =
-      perf::multi::bind_spot_endpoint (control_node, transport, base_port);
+      perf::multi::bind_spot_endpoint (control_node, transport, 0);
     if (local_control_endpoint.empty ())
         return false;
     zlink::service::spot_t control_spot = control_node.create_spot ();
@@ -673,7 +672,10 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
     if (!perf::multi::publish_control_payload (
           control_spot,
           k_control_topic,
-          std::string ("DATA_ENDPOINT,") + bench->local_data_endpoint (),
+          std::string ("DATA_ENDPOINT_SIZE,")
+            + std::to_string (msg_size)
+            + std::string (",")
+            + bench->local_data_endpoint (),
           start_timeout_ms)) {
         stop_and_release_stdin_thread (stdin_thread);
         return false;

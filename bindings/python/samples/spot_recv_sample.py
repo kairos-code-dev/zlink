@@ -58,9 +58,9 @@ def main():
                                     subscriber.set_subscription(TOPIC)
 
                                     def attempt_receive():
-                                        publisher_node.status_snapshot()
-                                        subscriber_node.status_snapshot()
-                                        subscriber_node.subjects_snapshot()
+                                        publisher_node.status()
+                                        subscriber_node.status()
+                                        subscriber_node.subjects()
                                         publisher.publish(TOPIC).message(
                                             b"hello-spot"
                                         ).submit()

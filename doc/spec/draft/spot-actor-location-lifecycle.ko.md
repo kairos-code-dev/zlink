@@ -613,7 +613,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg(
 - `zlink_stream_bind_actor()`는 active route를 만들거나 갱신하지 않는다.
 - `zlink_stream_unbind_actor()`는 active route를 제거하지 않는다.
 - `zlink_stream_bound_actors()`는 session Actor mapping을 조회하는 새 API다. 기존
-  `zlink_spot_node_actors_snapshot()`과 `zlink_spot_actors_snapshot()`은 Actor 위치 기준
+  `zlink_spot_node_actors()`과 `zlink_spot_actors()`은 Actor 위치 기준
   snapshot이므로 session별 mapping 조회를 대신하지 않는다.
 - `zlink_spot_node_actor_send_bound_session_msg()`는 completion 없는 fire-and-forget
   relay API로 유지한다. 구현은 내부 lock이나 queue가 즉시 준비되지 않았을 때 호출

@@ -17,31 +17,31 @@ public sealed class SpotDispatchInfo
 
     private readonly IntPtr _channelDealerSubject;
     private readonly Action<IntPtr>? _drainChannelReply;
-    private int _actorPartIndex;
+    private int _actorMessageIndex;
 
     internal SpotDispatchInfo(SpotDispatchEvent @event,
         SpotDispatchSubjectKind subjectKind, IZlinkTimer? timer,
         IntPtr channelDealerSubject, Action<IntPtr>? drainChannelReply,
-        IReadOnlyList<ActorPart>? actorParts = null)
+        IReadOnlyList<ActorReceived>? actorMessages = null)
     {
         Event = @event;
         SubjectKind = subjectKind;
         Timer = timer;
         _channelDealerSubject = channelDealerSubject;
         _drainChannelReply = drainChannelReply;
-        ActorParts = actorParts ?? Array.Empty<ActorPart>();
+        ActorMessages = actorMessages ?? Array.Empty<ActorReceived>();
     }
 
     public SpotDispatchEvent Event { get; }
     public SpotDispatchSubjectKind SubjectKind { get; }
     internal IntPtr Subject => _channelDealerSubject;
     public IZlinkTimer? Timer { get; }
-    public IReadOnlyList<ActorPart> ActorParts { get; }
+    public IReadOnlyList<ActorReceived> ActorMessages { get; }
 
-    public ActorPart? RecvActorPart()
+    public ActorReceived? RecvActor()
     {
-        int index = Interlocked.Increment(ref _actorPartIndex) - 1;
-        return index < ActorParts.Count ? ActorParts[index] : null;
+        int index = Interlocked.Increment(ref _actorMessageIndex) - 1;
+        return index < ActorMessages.Count ? ActorMessages[index] : null;
     }
 
     public void DrainChannelReply()

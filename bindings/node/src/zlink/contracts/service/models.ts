@@ -56,7 +56,7 @@ export type MonitorSourceKindValue = typeof MonitorSourceKind[keyof typeof Monit
 export const MonitorState = Object.freeze({
   READY: 1 << 0, BOUND_READY: 1 << 1, CLOSED: 1 << 3
 } as const);
-export const MonitorSnapshotDetail = Object.freeze({
+export const MonitorStatusDetail = Object.freeze({
   SND_PENDING_MSGS: 1 << 1, RCV_PENDING_MSGS: 1 << 2
 } as const);
 
@@ -66,7 +66,8 @@ export const SpotDispatchEvent = Object.freeze({
   TimerReadable: 3,
   ChannelReplyReadable: 4,
   ActorReadable: 5,
-  ActorJoinReadable: 6
+  ActorJoinReadable: 6,
+  ActorLifecycleReadable: 7
 } as const);
 export type SpotDispatchEvent = typeof SpotDispatchEvent[keyof typeof SpotDispatchEvent];
 
@@ -98,7 +99,7 @@ export const MonitorEventType = Object.freeze({
 } as const);
 export type MonitorEventType = typeof MonitorEventType[keyof typeof MonitorEventType];
 
-export interface MonitorSnapshot {
+export interface MonitorStatus {
   readonly sourceKind: MonitorSourceKindValue;
   readonly stateFlags: number;
   readonly detailFlags: number;
@@ -124,7 +125,7 @@ export interface MonitorSnapshot {
   isReady(): boolean;
 }
 
-export interface MonitorSnapshotRaw {
+export interface MonitorStatusRaw {
   sourceKind: number;
   stateFlags: number;
   detailFlags: number;
@@ -327,20 +328,20 @@ export interface SpotNodeSubjectEntry {
   readonly lastChangedMs: bigint;
 }
 
-export interface SpotNodeSocketSnapshotFilter {
+export interface SpotNodeSocketFilter {
   readonly owner?: SpotNodeSocketOwnerValue;
   readonly socketType?: SocketTypeValue;
   readonly socketName?: string;
 }
 
-export interface SpotNodeSocketSnapshotEntry {
+export interface SpotNodeSocketEntry {
   readonly owner: SpotNodeSocketOwnerValue;
   readonly ownerId: bigint;
   readonly ownerName: string;
   readonly socketName: string;
   readonly socketType: SocketTypeValue;
   readonly autoHwmVisible: boolean;
-  readonly snapshot: MonitorSnapshot;
+  readonly snapshot: MonitorStatus;
 }
 
 export interface RegistryServiceSummaryFilter {
@@ -380,7 +381,6 @@ export type SocketSendReadyHandler = () => void;
 export type StreamPacketHandler = (sourceRid: RoutingId, header: Message, body: Message) => void;
 export type SocketMonitorHandler = (event: MonitorEvent) => void;
 export type SpotSendReadyHandler = () => void;
-export type SpotRoutedHandler = (message: Received) => void;
 export interface ActorRef {
   readonly nodeRid: RoutingId;
   readonly actorId: string;
@@ -444,10 +444,19 @@ export interface SpotActorLifecycleInfo {
   readonly joinEpoch: bigint;
   readonly flags: number;
 }
+export const SpotActorLifecycleEventKind = Object.freeze({
+  Joined: 1,
+  Left: 2
+} as const);
+export type SpotActorLifecycleEventKind =
+  typeof SpotActorLifecycleEventKind[keyof typeof SpotActorLifecycleEventKind];
+export interface SpotActorLifecycleEvent {
+  readonly kind: SpotActorLifecycleEventKind;
+  readonly info: SpotActorLifecycleInfo;
+}
 export type ActorJoinHandler = (result: ActorJoinResult, parts: Message[]) => void;
 export type ActorJoinEntrySpotHandler = (result: ActorJoinEntrySpotResult) => void;
 export type ActorLookupHandler = (result: ActorLookupResult) => void;
-export type ActorLifecycleHandler = (spot: Spot, info: SpotActorLifecycleInfo) => void;
 export type ReplyHandler = (result: RequestResult, parts: Message[]) => void;
 export interface SpotNodeSpotEntry {
   readonly spotRid: RoutingId;

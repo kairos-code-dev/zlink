@@ -20,6 +20,7 @@ from ..core.options import AutoHwmProfile
 from ..sockets.codes import SocketType
 from .codes import (
     ServiceKind,
+    SpotActorLifecycleEventKind,
     SpotDispatchEvent,
     SpotDispatchSubjectKind,
     SpotNodeMode,
@@ -47,12 +48,13 @@ from ..._native.ffi import (
     ZlinkPollerEvent,
     ZlinkRoutingId,
     ZlinkSpotActorLifecycleInfo,
+    ZlinkSpotActorLifecycleEvent,
     ZlinkSpotDispatchInfo,
     ZlinkSpotNodePeerEntry,
     ZlinkSpotNodePeerFilter,
     ZlinkSpotNodeOptions,
-    ZlinkSpotNodeSocketSnapshotEntry,
-    ZlinkSpotNodeSocketSnapshotFilter,
+    ZlinkSpotNodeSocketEntry,
+    ZlinkSpotNodeSocketFilter,
     ZlinkSpotNodeActorEntry,
     ZlinkSpotNodeSpotEntry,
     ZlinkSpotNodeStatus,
@@ -104,7 +106,7 @@ from ..._runtime.handles.native_support import (
     _validated_int32,
     _validated_routing_id_bytes,
 )
-from ..eventing.monitor import MonitorSnapshot, _monitor_snapshot_from_native
+from ..eventing.monitor import MonitorStatus, _monitor_status_from_native
 
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
@@ -347,6 +349,12 @@ class SpotActorLifecycleInfo:
 
 
 @dataclass(frozen=True)
+class SpotActorLifecycleEvent:
+    kind: SpotActorLifecycleEventKind
+    info: SpotActorLifecycleInfo
+
+
+@dataclass(frozen=True)
 class SpotNodeSpotEntry:
     spot_rid: RoutingId
     spot_kind: SpotKind
@@ -422,6 +430,17 @@ def _routing_id_optional(native):
         return None
     raw = bytes(native.data[:size])
     return RoutingId(raw)
+
+
+def _spot_actor_lifecycle_info_from_native(native):
+    return SpotActorLifecycleInfo(
+        previous_actor=_actor_ref_from_native(native.previous_actor),
+        current_actor=_actor_ref_from_native(native.current_actor),
+        previous_spot_rid=_routing_id_optional(native.previous_spot_rid),
+        current_spot_rid=_routing_id_optional(native.current_spot_rid),
+        join_epoch=int(native.join_epoch),
+        flags=int(native.flags),
+    )
 
 
 def _recv_actor_part(node_handle, actor_ref, flags=0):
@@ -1004,7 +1023,7 @@ def _recv_spot_subscription_event(handle, flags):
     subscribed = ctypes.c_int()
     topic_buf = ctypes.create_string_buffer(256)
     topic_len = ctypes.c_size_t(len(topic_buf))
-    rc = lib().zlink_spot_subscription_event_recv(
+    rc = lib().zlink_spot_recv_subscription_event(
         handle,
         ctypes.byref(routing_id),
         ctypes.byref(subscribed),
@@ -1219,21 +1238,21 @@ class SpotNodeSubjectFilter:
 
 
 @dataclass(frozen=True)
-class SpotNodeSocketSnapshotFilter:
+class SpotNodeSocketFilter:
     owner: SpotNodeSocketOwner | None = None
     socket_type: SocketType | None = None
     socket_name: str | None = None
 
 
 @dataclass(frozen=True)
-class SpotNodeSocketSnapshotEntry:
+class SpotNodeSocketEntry:
     owner: SpotNodeSocketOwner
     owner_id: int
     owner_name: str
     socket_name: str
     socket_type: SocketType
     auto_hwm_visible: bool
-    snapshot: MonitorSnapshot
+    snapshot: MonitorStatus
 
 
 class SpotNode:
@@ -1277,7 +1296,7 @@ class SpotNode:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def last_endpoint(self) -> str:
-        return self.status_snapshot().local_endpoint
+        return self.status().local_endpoint
 
     def connect_peer(self, endpoint: str):
         rc = lib().zlink_spot_node_connect_peer(
@@ -1807,15 +1826,15 @@ class SpotNode:
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
         return True
 
-    def spots_snapshot(self):
+    def spots(self):
         count = ctypes.c_size_t()
-        rc = lib().zlink_spot_node_spots_snapshot(self._handle, None, ctypes.byref(count))
+        rc = lib().zlink_spot_node_spots(self._handle, None, ctypes.byref(count))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         if count.value == 0:
             return []
         entries = (ZlinkSpotNodeSpotEntry * int(count.value))()
-        rc = lib().zlink_spot_node_spots_snapshot(
+        rc = lib().zlink_spot_node_spots(
             self._handle, entries, ctypes.byref(count)
         )
         if rc != 0:
@@ -1833,15 +1852,15 @@ class SpotNode:
             for entry in entries[: int(count.value)]
         ]
 
-    def actors_snapshot(self):
+    def actors(self):
         count = ctypes.c_size_t()
-        rc = lib().zlink_spot_node_actors_snapshot(self._handle, None, ctypes.byref(count))
+        rc = lib().zlink_spot_node_actors(self._handle, None, ctypes.byref(count))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         if count.value == 0:
             return []
         entries = (ZlinkSpotNodeActorEntry * int(count.value))()
-        rc = lib().zlink_spot_node_actors_snapshot(
+        rc = lib().zlink_spot_node_actors(
             self._handle, entries, ctypes.byref(count)
         )
         if rc != 0:
@@ -1918,9 +1937,9 @@ class SpotNode:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def status_snapshot(self):
+    def status(self):
         native = ZlinkSpotNodeStatus()
-        rc = lib().zlink_spot_node_status_snapshot(self._handle, ctypes.byref(native))
+        rc = lib().zlink_spot_node_status(self._handle, ctypes.byref(native))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return SpotNodeStatus(
@@ -1939,7 +1958,7 @@ class SpotNode:
             last_changed_ms=int(native.last_changed_ms),
         )
 
-    def peers_snapshot(self):
+    def peers(self):
         return self.peers_query(None)
 
     def peers_query(self, filter_=None):
@@ -1954,7 +1973,7 @@ class SpotNode:
             filter_native.source = 0 if filter_.source is None else int(filter_.source)
             filter_native.state = 0 if filter_.state is None else int(filter_.state)
             filter_ptr = ctypes.byref(filter_native)
-        rc = lib().zlink_spot_node_peers_query(
+        rc = lib().zlink_spot_node_peers(
             self._handle, filter_ptr, None, ctypes.byref(count)
         )
         if rc != 0:
@@ -1962,7 +1981,7 @@ class SpotNode:
         if count.value == 0:
             return []
         entries = (ZlinkSpotNodePeerEntry * int(count.value))()
-        rc = lib().zlink_spot_node_peers_query(
+        rc = lib().zlink_spot_node_peers(
             self._handle, filter_ptr, entries, ctypes.byref(count)
         )
         if rc != 0:
@@ -1982,7 +2001,7 @@ class SpotNode:
             for entry in entries[: int(count.value)]
         ]
 
-    def subjects_snapshot(self, filter_=None):
+    def subjects(self, filter_=None):
         count = ctypes.c_size_t()
         filter_ptr = None
         filter_native = None
@@ -1992,7 +2011,7 @@ class SpotNode:
             filter_native.subject = _fixed_buffer_value(filter_.subject, 256)
             filter_native.subject_kind = 0 if filter_.subject_kind is None else int(filter_.subject_kind)
             filter_ptr = ctypes.byref(filter_native)
-        rc = lib().zlink_spot_node_subjects_snapshot(
+        rc = lib().zlink_spot_node_subjects(
             self._handle, filter_ptr, None, ctypes.byref(count)
         )
         if rc != 0:
@@ -2000,7 +2019,7 @@ class SpotNode:
         if count.value == 0:
             return []
         entries = (ZlinkSpotNodeSubjectEntry * int(count.value))()
-        rc = lib().zlink_spot_node_subjects_snapshot(
+        rc = lib().zlink_spot_node_subjects(
             self._handle, filter_ptr, entries, ctypes.byref(count)
         )
         if rc != 0:
@@ -2017,12 +2036,12 @@ class SpotNode:
             for entry in entries[: int(count.value)]
         ]
 
-    def internal_sockets_snapshot(self, filter_=None):
+    def internal_sockets(self, filter_=None):
         count = ctypes.c_size_t()
         filter_ptr = None
         filter_native = None
         if filter_ is not None:
-            filter_native = ZlinkSpotNodeSocketSnapshotFilter()
+            filter_native = ZlinkSpotNodeSocketFilter()
             filter_native.owner = (
                 int(SpotNodeSocketOwner.ANY)
                 if filter_.owner is None
@@ -2033,28 +2052,28 @@ class SpotNode:
             )
             filter_native.socket_name = _fixed_buffer_value(filter_.socket_name, 64)
             filter_ptr = ctypes.byref(filter_native)
-        rc = lib().zlink_spot_node_internal_sockets_snapshot(
+        rc = lib().zlink_spot_node_internal_sockets(
             self._handle, filter_ptr, None, ctypes.byref(count)
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         if count.value == 0:
             return []
-        entries = (ZlinkSpotNodeSocketSnapshotEntry * int(count.value))()
-        rc = lib().zlink_spot_node_internal_sockets_snapshot(
+        entries = (ZlinkSpotNodeSocketEntry * int(count.value))()
+        rc = lib().zlink_spot_node_internal_sockets(
             self._handle, filter_ptr, entries, ctypes.byref(count)
         )
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return [
-            SpotNodeSocketSnapshotEntry(
+            SpotNodeSocketEntry(
                 owner=SpotNodeSocketOwner(int(entry.owner)),
                 owner_id=int(entry.owner_id),
                 owner_name=_decode_fixed(entry.owner_name),
                 socket_name=_decode_fixed(entry.socket_name),
                 socket_type=SocketType(int(entry.socket_type)),
                 auto_hwm_visible=bool(entry.auto_hwm_visible),
-                snapshot=_monitor_snapshot_from_native(entry.snapshot),
+                snapshot=_monitor_status_from_native(entry.monitor_status),
             )
             for entry in entries[: int(count.value)]
         ]
@@ -3389,69 +3408,6 @@ class Spot:
         received._adopt_from(fresh)
         return True
 
-    def on_routed_receive(self, handler):
-        if handler is None:
-            raise ValueError("handler must not be None")
-        if self._routed_handler_cb is not None:
-            raise RuntimeError("routed handler is already attached")
-
-        def _callback(source_node_rid_ptr, source_spot_rid_ptr, request_seq, parts_ptr, part_count, _):
-            received = None
-            try:
-                source_node_rid = (
-                    source_node_rid_ptr.contents
-                    if source_node_rid_ptr
-                    else None
-                )
-                source_spot_rid = (
-                    source_spot_rid_ptr.contents
-                    if source_spot_rid_ptr
-                    else None
-                )
-                received = _make_routed_received(
-                    source_node_rid,
-                    source_spot_rid,
-                    int(request_seq),
-                    parts_ptr,
-                    int(part_count),
-                    reply_sender=_make_spot_routed_reply_sender(
-                        self,
-                        _routing_id_bytes(source_node_rid)
-                        if source_node_rid is not None
-                        else None,
-                        _routing_id_bytes(source_spot_rid)
-                        if source_spot_rid is not None
-                        else None,
-                        int(request_seq),
-                    ),
-                    send_sender=_make_spot_routed_send_sender(
-                        self,
-                        _routing_id_bytes(source_node_rid)
-                        if source_node_rid is not None
-                        else None,
-                        _routing_id_bytes(source_spot_rid)
-                        if source_spot_rid is not None
-                        else None,
-                    ),
-                )
-                _enter_callback()
-                try:
-                    handler(received)
-                finally:
-                    _leave_callback()
-            except Exception:
-                _report_unhandled_callback_exception(handler)
-            finally:
-                if received is not None:
-                    received.close()
-
-        callback = _SPOT_ROUTED_HANDLER(_callback)
-        rc = lib().zlink_spot_handler(self._handle, callback, None)
-        if rc != 0:
-            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
-        self._routed_handler = handler
-        self._routed_handler_cb = callback
-
     def on_dispatch_event(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")
@@ -3540,6 +3496,25 @@ class Spot:
             _native=info,
         )
 
+    def recv_actor_lifecycle(self, *, flags=0):
+        event = ZlinkSpotActorLifecycleEvent()
+        rc = lib().zlink_spot_recv_actor_lifecycle(
+            self._handle,
+            ctypes.byref(event),
+            int(flags),
+        )
+        if rc != 0:
+            try:
+                _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
+            except RecvError as ex:
+                if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
+                    return None
+                raise
+        return SpotActorLifecycleEvent(
+            kind=SpotActorLifecycleEventKind(int(event.kind)),
+            info=_spot_actor_lifecycle_info_from_native(event.info),
+        )
+
     def reply_actor_join(self, request, join_result_code):
         if not isinstance(request, ActorJoinRequest):
             raise TypeError("request must be ActorJoinRequest")
@@ -3566,73 +3541,15 @@ class Spot:
             _close_native_parts(native_parts)
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
 
-    def on_actor_lifecycle(self, on_join, on_leave):
-        """Register Actor lifecycle callbacks for this Spot. Passing None for
-        both clears the registration."""
-        on_join_cb = None
-        on_leave_cb = None
-
-        if on_join is not None:
-            def _on_join(spot_handle, info_ptr, _ud):
-                if not info_ptr:
-                    return
-                native = info_ptr.contents
-                try:
-                    info = SpotActorLifecycleInfo(
-                        previous_actor=_actor_ref_from_native(native.previous_actor),
-                        current_actor=_actor_ref_from_native(native.current_actor),
-                        previous_spot_rid=_routing_id_optional(native.previous_spot_rid),
-                        current_spot_rid=_routing_id_optional(native.current_spot_rid),
-                        join_epoch=int(native.join_epoch),
-                        flags=int(native.flags),
-                    )
-                    on_join(self, info)
-                except Exception:
-                    _report_unhandled_callback_exception(on_join)
-            on_join_cb = _ACTOR_LIFECYCLE_HANDLER(_on_join)
-
-        if on_leave is not None:
-            def _on_leave(spot_handle, info_ptr, _ud):
-                if not info_ptr:
-                    return
-                native = info_ptr.contents
-                try:
-                    info = SpotActorLifecycleInfo(
-                        previous_actor=_actor_ref_from_native(native.previous_actor),
-                        current_actor=_actor_ref_from_native(native.current_actor),
-                        previous_spot_rid=_routing_id_optional(native.previous_spot_rid),
-                        current_spot_rid=_routing_id_optional(native.current_spot_rid),
-                        join_epoch=int(native.join_epoch),
-                        flags=int(native.flags),
-                    )
-                    on_leave(self, info)
-                except Exception:
-                    _report_unhandled_callback_exception(on_leave)
-            on_leave_cb = _ACTOR_LIFECYCLE_HANDLER(_on_leave)
-
-        rc = lib().zlink_spot_actor_lifecycle_handler(
-            self._handle,
-            on_join_cb if on_join_cb is not None else ctypes.c_void_p(0),
-            on_leave_cb if on_leave_cb is not None else ctypes.c_void_p(0),
-            None,
-        )
-        if rc != 0:
-            _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
-        # Keep references alive so the callbacks aren't GC'd.
-        self._actor_lifecycle_on_join_cb = on_join_cb
-        self._actor_lifecycle_on_leave_cb = on_leave_cb
-        self._actor_lifecycle_on_join = on_join
-        self._actor_lifecycle_on_leave = on_leave
-
-    def actors_snapshot(self):
+    def actors(self):
         count = ctypes.c_size_t()
-        rc = lib().zlink_spot_actors_snapshot(self._handle, None, ctypes.byref(count))
+        rc = lib().zlink_spot_actors(self._handle, None, ctypes.byref(count))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         if count.value == 0:
             return []
         entries = (ZlinkActorRef * int(count.value))()
-        rc = lib().zlink_spot_actors_snapshot(
+        rc = lib().zlink_spot_actors(
             self._handle, entries, ctypes.byref(count)
         )
         if rc != 0:

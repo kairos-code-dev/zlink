@@ -60,7 +60,7 @@ test('compat enums and errno helper are not public', () => {
     assert.equal(zlink.ContextOption, undefined);
     assert.equal(zlink.SocketOption, undefined);
     assert.equal(zlink.MonitorState, undefined);
-    assert.equal(zlink.MonitorSnapshotDetail, undefined);
+    assert.equal(zlink.MonitorStatusDetail, undefined);
     assert.equal(zlink.ServiceMonitorEvent, undefined);
     assert.equal(zlink.ServiceType, undefined);
     assert.equal(zlink.AUTO_CONNECT_SPOT_MESH, undefined);

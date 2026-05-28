@@ -98,8 +98,8 @@ fn main() {
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
-        let _ = publisher_node.status_snapshot();
-        let _ = subscriber_node.status_snapshot();
+        let _ = publisher_node.status();
+        let _ = subscriber_node.status();
         match publisher
             .publish(TOPIC)
             .message(Message::try_from(b"hello-spot").unwrap())

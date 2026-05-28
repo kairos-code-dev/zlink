@@ -2,16 +2,16 @@
 
 package systems.zlink.runtime.nativeapi;
 
-import systems.zlink.contracts.eventing.MonitorSnapshot;
+import systems.zlink.contracts.eventing.MonitorStatus;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
-public final class NativeMonitorSnapshots {
-    private NativeMonitorSnapshots() {
+public final class NativeMonitorStatuses {
+    private NativeMonitorStatuses() {
     }
 
-    public static MonitorSnapshot fromNative(MemorySegment segment) {
-        return new MonitorSnapshot(
+    public static MonitorStatus fromNative(MemorySegment segment) {
+        return new MonitorStatus(
           EnumCodecs.monitorSourceKindFromValue(segment.get(ValueLayout.JAVA_INT,
             NativeLayouts.MONITOR_SNAPSHOT_SOURCE_KIND_OFFSET)),
           segment.get(ValueLayout.JAVA_INT,

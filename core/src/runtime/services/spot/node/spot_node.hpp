@@ -183,8 +183,8 @@ class spot_node_t : public discovery_observer_t
       const zlink_spot_node_subject_filter_t *filter_,
       std::vector<zlink_spot_node_subject_entry_t> *out_) const;
     int snapshot_internal_sockets (
-      const zlink_spot_node_socket_snapshot_filter_t *filter_,
-      std::vector<zlink_spot_node_socket_snapshot_entry_t> *out_) const;
+      const zlink_spot_node_socket_filter_t *filter_,
+      std::vector<zlink_spot_node_socket_entry_t> *out_) const;
     void notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
                                         const std::string &subject_,
                                         const std::string &ack_source_id_,

@@ -58,8 +58,8 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
 
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
-      if (serverNode.statusSnapshot().connectedPeerCount > 0
-          && clientNode.statusSnapshot().connectedPeerCount > 0) {
+      if (serverNode.status().connectedPeerCount > 0
+          && clientNode.status().connectedPeerCount > 0) {
         serverSpot.publishFrom(topic, Buffer.from('payload'));
       }
       const received = new zlink.TopicMessage();
@@ -101,12 +101,12 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     }
 
     assert.fail(`remote spot delivery timeout: ${JSON.stringify({
-      serverStatus: serverNode.statusSnapshot(),
-      clientStatus: clientNode.statusSnapshot(),
-      serverPeers: serverNode.peersSnapshot(),
-      clientPeers: clientNode.peersSnapshot(),
-      serverSubjects: serverNode.subjectsSnapshot(),
-      clientSubjects: clientNode.subjectsSnapshot()
+      serverStatus: serverNode.status(),
+      clientStatus: clientNode.status(),
+      serverPeers: serverNode.peers(),
+      clientPeers: clientNode.peers(),
+      serverSubjects: serverNode.subjects(),
+      clientSubjects: clientNode.subjects()
     })}`);
   } finally {
     if (clientSpot) {
@@ -144,9 +144,9 @@ test('spot node peersQuery filters manual peer connections', async () => {
     }
 
     assert.fail(`spot peersQuery timeout: ${JSON.stringify({
-      serverStatus: serverNode.statusSnapshot(),
-      clientStatus: clientNode.statusSnapshot(),
-      clientPeers: clientNode.peersSnapshot()
+      serverStatus: serverNode.status(),
+      clientStatus: clientNode.status(),
+      clientPeers: clientNode.peers()
     })}`);
   } finally {
     clientNode.close();

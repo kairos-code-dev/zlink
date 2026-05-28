@@ -20,7 +20,7 @@ provider.Bind(serviceEndpoint);
 try
 {
     SampleSupport.WaitOrThrow(
-        () => Array.Exists(registry.TopologySnapshot(),
+        () => Array.Exists(registry.Topology(),
             entry => entry.ChannelName == "sample"),
         5000,
         "discovery registry sample");

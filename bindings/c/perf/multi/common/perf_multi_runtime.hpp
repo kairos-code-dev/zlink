@@ -274,7 +274,7 @@ inline bool perf_auto_hwm_recv_side_visible(uint32_t socket_type_,
 }
 
 inline std::string perf_auto_hwm_sndhwm_display(
-  const zlink_monitor_snapshot_t &snapshot_, uint32_t socket_type_)
+  const zlink_monitor_status_t &snapshot_, uint32_t socket_type_)
 {
     if (!perf_auto_hwm_send_side_visible(socket_type_, snapshot_.auto_hwm_role))
         return "-";
@@ -282,7 +282,7 @@ inline std::string perf_auto_hwm_sndhwm_display(
 }
 
 inline std::string perf_auto_hwm_rcvhwm_display(
-  const zlink_monitor_snapshot_t &snapshot_, uint32_t socket_type_)
+  const zlink_monitor_status_t &snapshot_, uint32_t socket_type_)
 {
     if (!perf_auto_hwm_recv_side_visible(socket_type_, snapshot_.auto_hwm_role))
         return "-";
@@ -290,7 +290,7 @@ inline std::string perf_auto_hwm_rcvhwm_display(
 }
 
 inline std::string perf_auto_hwm_sndbuf_display(
-  const zlink_monitor_snapshot_t &snapshot_, uint32_t socket_type_)
+  const zlink_monitor_status_t &snapshot_, uint32_t socket_type_)
 {
     if (!perf_auto_hwm_send_side_visible(socket_type_, snapshot_.auto_hwm_role))
         return "0";
@@ -298,7 +298,7 @@ inline std::string perf_auto_hwm_sndbuf_display(
 }
 
 inline std::string perf_auto_hwm_rcvbuf_display(
-  const zlink_monitor_snapshot_t &snapshot_, uint32_t socket_type_)
+  const zlink_monitor_status_t &snapshot_, uint32_t socket_type_)
 {
     if (!perf_auto_hwm_recv_side_visible(socket_type_, snapshot_.auto_hwm_role))
         return "0";
@@ -306,8 +306,8 @@ inline std::string perf_auto_hwm_rcvbuf_display(
 }
 
 inline bool perf_auto_hwm_snapshot_row_less(
-  const zlink_spot_node_socket_snapshot_entry_t &lhs_,
-  const zlink_spot_node_socket_snapshot_entry_t &rhs_)
+  const zlink_spot_node_socket_entry_t &lhs_,
+  const zlink_spot_node_socket_entry_t &rhs_)
 {
     if (lhs_.owner_id != rhs_.owner_id)
         return lhs_.owner_id < rhs_.owner_id;
@@ -315,7 +315,7 @@ inline bool perf_auto_hwm_snapshot_row_less(
       std::strcmp(lhs_.socket_name, rhs_.socket_name);
     if (socket_cmp != 0)
         return socket_cmp < 0;
-    return lhs_.snapshot.auto_hwm_role < rhs_.snapshot.auto_hwm_role;
+    return lhs_.monitor_status.auto_hwm_role < rhs_.monitor_status.auto_hwm_role;
 }
 
 inline size_t perf_auto_hwm_effective_msg_size(size_t msg_size_)
@@ -337,7 +337,7 @@ inline size_t perf_auto_hwm_effective_msg_size(size_t msg_size_)
 
 inline void perf_print_auto_hwm_snapshot_table(
   const char *title_,
-  const std::vector<zlink_spot_node_socket_snapshot_entry_t> &rows_,
+  const std::vector<zlink_spot_node_socket_entry_t> &rows_,
   const std::string &transport_,
   size_t msg_size_)
 {
@@ -353,7 +353,7 @@ inline void perf_print_auto_hwm_snapshot_table(
 	      << "  |---------|------------|--------|------|---------|-------|------|-----|-------|--------|--------|"
 	      << std::endl;
     for (size_t i = 0; i < rows_.size(); ++i) {
-        const zlink_monitor_snapshot_t &snapshot = rows_[i].snapshot;
+        const zlink_monitor_status_t &snapshot = rows_[i].monitor_status;
         std::cout << "  | " << msg_size_
                   << " | " << snapshot.auto_hwm_effective_message_bytes
                   << " | " << rows_[i].socket_name
@@ -377,11 +377,11 @@ inline void perf_print_auto_hwm_snapshot_table(
 }
 
 inline void perf_emit_spot_node_auto_hwm_detail(
-  const zlink_spot_node_socket_snapshot_entry_t &row_,
+  const zlink_spot_node_socket_entry_t &row_,
   const std::string &transport_,
   size_t msg_size_)
 {
-    const zlink_monitor_snapshot_t &snapshot = row_.snapshot;
+    const zlink_monitor_status_t &snapshot = row_.monitor_status;
     const size_t msg_size = perf_auto_hwm_effective_msg_size(msg_size_);
     const std::string pattern =
       perf_auto_hwm_env_or_default("PERF_MULTI_PATTERN", "unknown");
@@ -440,7 +440,7 @@ inline bool perf_auto_hwm_label_is_control_snapshot(const char *label_)
 
 inline bool perf_auto_hwm_include_spot_snapshot_row(
   const char *label_,
-  const zlink_spot_node_socket_snapshot_entry_t &row_)
+  const zlink_spot_node_socket_entry_t &row_)
 {
     if (!perf_auto_hwm_label_is_control_snapshot(label_))
         return true;
@@ -470,20 +470,20 @@ inline bool perf_print_spot_node_auto_hwm_snapshot(void *node_,
     }
 
     size_t count = 0;
-    if (zlink_spot_node_internal_sockets_snapshot(node_, NULL, NULL, &count)
+    if (zlink_spot_node_internal_sockets(node_, NULL, NULL, &count)
         != ZLINK_CONFIG_OK)
         return false;
     if (count == 0)
         return true;
 
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> rows(count);
-    if (zlink_spot_node_internal_sockets_snapshot(node_, NULL, &rows[0], &count)
+    std::vector<zlink_spot_node_socket_entry_t> rows(count);
+    if (zlink_spot_node_internal_sockets(node_, NULL, &rows[0], &count)
         != ZLINK_CONFIG_OK)
         return false;
     rows.resize(count);
 
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> node_rows;
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> spot_rows;
+    std::vector<zlink_spot_node_socket_entry_t> node_rows;
+    std::vector<zlink_spot_node_socket_entry_t> spot_rows;
     for (size_t i = 0; i < rows.size(); ++i) {
         if (rows[i].auto_hwm_visible == 0)
             continue;
@@ -520,7 +520,7 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
     if (!handle_ || !perf_auto_hwm_detail_enabled())
         return;
 
-    zlink_monitor_snapshot_t snapshot;
+    zlink_monitor_status_t snapshot;
     std::memset(&snapshot, 0, sizeof(snapshot));
 
     void *monitor = NULL;
@@ -533,7 +533,7 @@ inline void perf_print_auto_hwm_snapshot(void *handle_,
         opts.events = ZLINK_SOCKET_MONITOR_EVENT_ALL;
         monitor = zlink_socket_monitor_open(handle_, &opts);
         if (monitor) {
-            rc = zlink_monitor_snapshot(monitor, &snapshot);
+            rc = zlink_monitor_status(monitor, &snapshot);
             zlink_monitor_close(&monitor);
         }
     }

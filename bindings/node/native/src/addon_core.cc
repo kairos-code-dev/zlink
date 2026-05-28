@@ -5595,7 +5595,7 @@ napi_value monitor_try_recv(napi_env env, napi_callback_info info)
     return obj;
 }
 
-napi_value monitor_snapshot(napi_env env, napi_callback_info info)
+napi_value monitor_status(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
@@ -5603,11 +5603,11 @@ napi_value monitor_snapshot(napi_env env, napi_callback_info info)
     void *monitor = NULL;
     napi_get_value_external(env, argv[0], &monitor);
 
-    zlink_monitor_snapshot_t snapshot;
+    zlink_monitor_status_t snapshot;
     memset(&snapshot, 0, sizeof(snapshot));
-    int rc = zlink_monitor_snapshot(monitor, &snapshot);
+    int rc = zlink_monitor_status(monitor, &snapshot);
     if (rc != 0)
-        return throw_last_error(env, "monitor_snapshot failed");
+        return throw_last_error(env, "monitor_status failed");
 
     napi_value obj;
     napi_create_object(env, &obj);

@@ -243,7 +243,7 @@ cd bindings/python && python -m pytest -q tests/integration
 - 2026-03-26: `Socket.set_router_option`, `set_pub_option`, `set_sub_option`,
   `set_stream_option` 및 대응 getter 반영
 - `src/zlink/_monitor.py`를 `zlink_socket_monitor_open`,
-  `zlink_socket_monitor_recv`, `zlink_monitor_snapshot`,
+  `zlink_socket_monitor_recv`, `zlink_monitor_status`,
   `zlink_service_monitor_recv` 기준으로 유지
 - `src/zlink/_poller.py`를 `zlink_poller_*` 기준으로 유지하고
   poller + callback 배타성 contract test 추가

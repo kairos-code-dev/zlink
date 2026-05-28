@@ -12,14 +12,14 @@ internal interface IZLinkBackendRegistry : IZLinkBackendObject, IAsyncDisposable
 
     void Bind(string pubEndpoint, string routerEndpoint);
 
-    ZLinkRegistryStatus StatusSnapshot();
+    ZLinkRegistryStatus Status();
 
-    IReadOnlyList<ZLinkRegistryServiceSummaryEntry> ServiceSummarySnapshot(
+    IReadOnlyList<ZLinkRegistryServiceSummaryEntry> ServiceSummary(
         ZLinkRegistryServiceSummaryFilter? filter);
 
-    IReadOnlyList<ZLinkRegistryTopologyEntry> TopologySnapshot();
+    IReadOnlyList<ZLinkRegistryTopologyEntry> Topology();
 
-    IReadOnlyList<ZLinkRegistryTopologyEntry> TopologyQuery(
+    IReadOnlyList<ZLinkRegistryTopologyEntry> Topology(
         ZLinkRegistryTopologyFilter? filter);
 
     IReadOnlyList<ZLinkMemberPeerEntry> MemberPeers(string channelName);
@@ -29,6 +29,6 @@ internal interface IZLinkBackendRegistryQueryClient : IZLinkBackendObject, IAsyn
 {
     void Connect(string endpoint);
 
-    IReadOnlyList<ZLinkRegistryTopologyEntry> Snapshot(
+    IReadOnlyList<ZLinkRegistryTopologyEntry> Topology(
         ZLinkRegistryTopologyFilter? filter);
 }

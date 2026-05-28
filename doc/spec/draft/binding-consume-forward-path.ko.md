@@ -1,14 +1,19 @@
 # Binding consume-forward path 초안
 
-이 문서는 **정식 spec 승격 전 설계 기록**이다.
-2026-05-22 현재 core C API와 Go API의 1차 구현은 들어갔지만, 정식 공개 계약 문서로
-나누어 반영하는 작업은 아직 끝나지 않았다. 실제 공개 surface는 `core/include/zlink.h`,
-관련 core spec, 각 바인딩의 정식 문서를 기준으로 한다.
+> 이 초안은 **기각된 설계 기록**이다.
+> `zlink_spot_forward_routed(...)`와 Go `Spot.ForwardRouted(...)`는 특정 perf echo 경로를
+> 빠르게 만들기 위한 좁은 fast path로 판단했으며, 정식 public API로 승격하지 않는다.
+> 구현 정리 시 해당 C API와 바인딩 API는 제거하고, perf/sample은 public receive/send API
+> 조합으로 다시 맞춘다.
+
+이 문서는 구현 이력을 남기기 위한 **기각된 설계 기록**이다.
+2026-05-22 현재 core C API와 Go API의 1차 구현은 들어갔지만, 이후 검토에서 정식 공개
+계약으로 승격하지 않기로 했다. 실제 공개 surface는 `core/include/zlink.h`, 관련 core
+spec, 각 바인딩의 정식 문서를 기준으로 한다.
 
 이 초안은 바인딩이 받은 메시지를 다시 보낼 때 생기는 복사와 경계 호출 비용을 줄이기 위한
-공개 계약 후보를 정리한다. 첫 대상은 Go `MULTI_SPOT_SENDSEND` 보류 항목이다.
-다만 계약은 perf 전용 이름이나 perf 전용 조건을 드러내지 않고, 일반적인 routed relay
-용도로 쓸 수 있어야 한다.
+공개 계약 후보였던 내용을 기록한다. 첫 대상은 Go `MULTI_SPOT_SENDSEND` 보류 항목이었다.
+이후 검토에서는 perf 전용 fast path가 public API에 섞이는 비용이 더 크다고 판단했다.
 
 ## 배경
 
@@ -109,8 +114,9 @@ zlink_submit_result_t zlink_spot_forward_routed(
 - invalid handle, invalid state, terminated, internal error는 기존 submit result domain을
   따른다.
 
-`ZLINK_SUBMIT_NOT_FOUND`는 receive no-data를 submit result domain에서 표현하기 위해
-사용한다. 정식 spec 승격 시 errno/result 문서에도 같은 의미를 반영해야 한다.
+`ZLINK_SUBMIT_NOT_FOUND`는 receive no-data를 submit result domain에서 표현하려던
+초안 의미다. 이 설계는 정식 spec으로 승격하지 않으므로 errno/result 문서에는 반영하지
+않는다.
 
 ## Go API 초안
 

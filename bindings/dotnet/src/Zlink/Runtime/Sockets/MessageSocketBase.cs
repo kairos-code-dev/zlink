@@ -33,7 +33,7 @@ internal abstract class MessageSocketBase : ConnectableSocketBase, IMessageSocke
     /// Send a single message part directly.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Send(Message message, SendFlags flags = SendFlags.None)
+    internal bool Send(Message message, SendFlags flags = SendFlags.None)
     {
         return SendCore(message, flags);
     }
@@ -93,7 +93,7 @@ internal abstract class MessageSocketBase : ConnectableSocketBase, IMessageSocke
     /// <returns>true on success, false when DontWait is set and no data is
     /// available.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool RecvPart(Message result, out bool hasMore,
+    internal bool RecvPart(Message result, out bool hasMore,
         RecvFlags flags = RecvFlags.None)
     {
         return Kernel.ReceivePartInto(result, out hasMore, (int)flags);

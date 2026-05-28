@@ -114,7 +114,7 @@ internal static class PerfMultiRouterRouterClient
     private static void DisposeSlots(RouterRouterClientSlot[] slots)
     {
         for (int i = 0; i < slots.Length; i++)
-            slots[i].ReusableReceivedPart.Dispose();
+            slots[i].ReusableReceived.Dispose();
     }
 
     private static (double throughput, double latencyNs, double latencyP95Ns,
@@ -230,18 +230,14 @@ internal static class PerfMultiRouterRouterClient
             return;
 
         IRouterSocket routerSock = (IRouterSocket)slot.Socket;
-        Message receivedPart = slot.ReusableReceivedPart;
+        Received received = slot.ReusableReceived;
         while (true)
         {
-            if (!routerSock.RecvPart(receivedPart, out _, out bool hasMore,
-                    RecvFlags.DontWait))
+            if (!routerSock.Recv(received, RecvFlags.DontWait))
                 break;
 
-            if (hasMore)
-            {
-                DrainRemainingParts(routerSock, receivedPart, hasMore);
+            if (!received.IsSinglePart)
                 continue;
-            }
 
             if (!slot.WaitingForReply)
                 continue;
@@ -249,7 +245,7 @@ internal static class PerfMultiRouterRouterClient
             slot.WaitingForReply = false;
             if (phase == PerfPhase.Active)
             {
-                ReadOnlySpan<byte> body = receivedPart.AsReadOnlySpan();
+                ReadOnlySpan<byte> body = received.FirstPart().AsReadOnlySpan();
                 // Match C reference: outer while loop bounds the active
                 // window; dropping replies that arrive after activeDeadline
                 // would lower throughput vs C for replies whose sends were
@@ -320,23 +316,15 @@ internal static class PerfMultiRouterRouterClient
         slot.WaitingForWritable = false;
     }
 
-    private static void DrainRemainingParts(IRouterSocket socket,
-        Message result, bool hasMore)
-    {
-        while (hasMore
-               && socket.RecvPart(result, out _, out hasMore,
-                   RecvFlags.DontWait))
-        {
-        }
-    }
-
     private static bool TrySend(RouterRouterClientSlot slot)
     {
         using Message message = slot.BorrowPayload
             ? Message.From(slot.Payload)
             : new Message(slot.Payload.AsSpan());
-        return ((IRouterSocket)slot.Socket).Send(slot.ServerRoutingId, message,
-            SendFlags.DontWait);
+        return ((IRouterSocket)slot.Socket).Send(slot.ServerRoutingId)
+            .Message(message)
+            .Flags(SendFlags.DontWait)
+            .Submit();
     }
 
     private static int RemainingMilliseconds(long deadlineTicks)
@@ -361,7 +349,7 @@ internal static class PerfMultiRouterRouterClient
             ServerRoutingId = serverRoutingId;
             Payload = payload;
             BorrowPayload = borrowPayload;
-            ReusableReceivedPart = new Message();
+            ReusableReceived = Received.Create();
         }
 
         internal ISocket Socket { get; }
@@ -369,7 +357,7 @@ internal static class PerfMultiRouterRouterClient
         internal byte[] Payload { get; }
         internal bool BorrowPayload { get; }
         // Caller-provided storage reused across every recv on this slot.
-        internal Message ReusableReceivedPart { get; }
+        internal Received ReusableReceived { get; }
         internal bool WaitingForWritable { get; set; }
         internal bool WaitingForReply { get; set; }
     }

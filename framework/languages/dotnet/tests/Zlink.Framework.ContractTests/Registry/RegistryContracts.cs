@@ -23,10 +23,10 @@ public sealed class RegistryContracts
         };
 
         var query = new ExampleRegistryQuery();
-        var status = await query.StatusSnapshotAsync();
-        var topology = await query.TopologyQueryAsync(new ZLinkRegistryTopologyFilter(ChannelName: "play"));
+        var status = await query.StatusAsync();
+        var topology = await query.TopologyAsync(new ZLinkRegistryTopologyFilter(ChannelName: "play"));
         IZLinkRegistryQueryClient client = query;
-        var snapshot = await client.SnapshotAsync();
+        var snapshot = await client.TopologyAsync();
 
         Assert.Equal("tcp://127.0.0.1:6002", clientOptions.Endpoint);
         Assert.Equal(ZLinkRegistryState.Active, status.State);
@@ -55,7 +55,7 @@ public sealed class RegistryContracts
                 ZLinkSpotKind.Invalid)
         ];
 
-        public ValueTask<ZLinkRegistryStatus> StatusSnapshotAsync(
+        public ValueTask<ZLinkRegistryStatus> StatusAsync(
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new ZLinkRegistryStatus(
                 1,
@@ -68,16 +68,12 @@ public sealed class RegistryContracts
                 0,
                 1));
 
-        public ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummarySnapshotAsync(
+        public ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummaryAsync(
             ZLinkRegistryServiceSummaryFilter? filter = null,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(Array.Empty<ZLinkRegistryServiceSummaryEntry>());
 
-        public ValueTask<ZLinkRegistryTopologyEntry[]> TopologySnapshotAsync(
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(_topology);
-
-        public ValueTask<ZLinkRegistryTopologyEntry[]> TopologyQueryAsync(
+        public ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
             ZLinkRegistryTopologyFilter? filter = null,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(_topology
@@ -89,10 +85,6 @@ public sealed class RegistryContracts
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(Array.Empty<ZLinkMemberPeerEntry>());
 
-        public ValueTask<ZLinkRegistryTopologyEntry[]> SnapshotAsync(
-            ZLinkRegistryTopologyFilter? filter = null,
-            CancellationToken cancellationToken = default) =>
-            TopologyQueryAsync(filter, cancellationToken);
     }
 
     private sealed class ExampleRegistryQueryClientOptions : IZLinkRegistryQueryClientOptions

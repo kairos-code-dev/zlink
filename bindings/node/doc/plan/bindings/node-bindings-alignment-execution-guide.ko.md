@@ -255,7 +255,7 @@ cd bindings/node && node examples/discovery-service-view.js
 
 진행 메모:
 
-- `MonitorSocket.snapshot()`, `ServiceMonitor`, `MonitorSnapshotDetail`,
+- `MonitorSocket.snapshot()`, `ServiceMonitor`, `MonitorStatusDetail`,
   `MonitorSourceKind`, `MonitorState`를 추가해 monitor result shape를 고정했다.
 - `Socket.setOption/getOption`, `setRoutingId/getRoutingId`,
   `subscribe/unsubscribe` helper를 추가해 old `setSockOpt/getSockOpt` 의존을
@@ -306,7 +306,7 @@ cd bindings/node && node examples/discovery-service-view.js
   `Registry.bind(pub, router)`가 native `zlink_registry_bind()` lifecycle에 직접
   매핑되는 canonical entrypoint가 되도록 정리했다.
 - `Discovery.setValue/value`, `setMetadata/metadata`,
-  `Registry.serviceSummarySnapshot`, `RegistryQueryClient`,
+  `Registry.serviceSummary`, `RegistryQueryClient`,
   registry topology/status snapshot, discovery member peers를 추가했다.
 - unified `Spot`, `Receiver` 제거 방침을 JS/TS/runtime에 반영했고,
   `Receiver`, `ReceiverSocketRole`, `Discovery.getReceivers()`는 public export와

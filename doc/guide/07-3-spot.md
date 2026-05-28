@@ -303,20 +303,7 @@ Bindings do not need a separate per-dealer progress pump.
 
 ## 6. Unified dispatch event handler
 
-There are two mutually exclusive handler registration modes for a Spot:
-
-- **`zlink_spot_handler()`** — routed-only direct callback. Routed message
-  payloads are delivered inline inside the callback. Subscribe, channel reply,
-  timer, and Actor events cannot be received through this handler. If any of
-  those event types are needed, this mode cannot be used.
-
-- **`zlink_spot_dispatch_event_handler()`** — unified readiness notification
-  for subscribe, routed, channel reply, timer, Actor join, and Actor readable
-  events. The callback signals that work is ready; data is pulled with the
-  corresponding drain API. Subscribe, channel reply, timer, and Actor events
-  can only be received through this mode.
-
-If Actors are needed, always use `zlink_spot_dispatch_event_handler()`.
+`zlink_spot_dispatch_event_handler()` is the single SPOT readiness handler. It reports subscribe, routed, channel reply, timer, Actor join, Actor readable, and Actor lifecycle readiness. The callback only signals that work is ready; payload and lifecycle data are pulled with the corresponding drain API.
 
 Registering `zlink_spot_dispatch_event_handler()` gives a callback with
 `event`, `subject_kind`, and `subject`:
@@ -528,10 +515,10 @@ Use node snapshots and query results for status and debugging.
 
 ```c
 zlink_spot_node_status_t status;
-zlink_spot_node_status_snapshot(node, &status);
+zlink_spot_node_status(node, &status);
 
 size_t peer_count = 0;
-zlink_spot_node_peers_snapshot(node, NULL, &peer_count);
+zlink_spot_node_peers(node, NULL, &peer_count);
 ```
 
 `status.disconnected_sub_target_count` and
@@ -544,7 +531,7 @@ diagnostics.
 **What to use instead for HWM diagnostics**: admission is enforced at the
 `publish_ingress_queue` and `routed_send_queue` queue limits — `ingress-sub`
 and `internal-router` have been removed and do not appear in snapshot output.
-Call `zlink_spot_node_internal_sockets_snapshot()` and inspect the `snapshot`
+Call `zlink_spot_node_internal_sockets()` and inspect the `snapshot`
 field of the returned `mesh-pub`, `mesh-xsub`, and `external-router` entries to
 see transport socket HWM values. Relay and delivery sockets always show HWM
 `0`, which is expected. Queue admission limits are controlled by the HWM
@@ -554,10 +541,10 @@ THROUGHPUT 512 (message-count basis).
 SpotNode HWM options apply to the admission boundary only — topic publish
 admission and routed admission. There is no per-Actor HWM knob. Actor
 processing backlog is diagnosed through dispatch events, recv results, and the
-`unread` count in `zlink_spot_actors_snapshot()`.
+`unread` count in `zlink_spot_actors()`.
 
-For Actor state, use `zlink_spot_node_actors_snapshot()` and
-`zlink_spot_actors_snapshot()`. The unread count and joined state in a snapshot
+For Actor state, use `zlink_spot_node_actors()` and
+`zlink_spot_actors()`. The unread count and joined state in a snapshot
 are for operational diagnostics. Base flow-control decisions on dispatch events
 and recv results, not snapshot values.
 

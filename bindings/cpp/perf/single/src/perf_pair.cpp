@@ -17,11 +17,11 @@ bool perf_debug_enabled ()
 }
 
 int recv_pair_payload (zlink::pair_socket_t &socket_,
-                       zlink::received_t &received_,
+                       zlink::message_t &part_,
                        zlink::recv_flags_t flags_)
 {
     try {
-        return socket_.recv (received_, flags_);
+        return socket_.recv (part_, flags_);
     }
     catch (const zlink::recv_error_t &err) {
         errno = err.internal_errno ();
@@ -29,26 +29,19 @@ int recv_pair_payload (zlink::pair_socket_t &socket_,
     }
 }
 
-bool record_pair_payload (const zlink::received_t &received,
+bool record_pair_payload (const zlink::message_t &payload,
                           uint32_t run_id,
                           size_t msg_size,
                           size_t payload_size,
                           std::atomic<unsigned long long> &received_count,
                           perf::single::latency_stats_builder_t &latency_builder)
 {
-    const zlink::message_t *payload = NULL;
-    const std::vector<zlink::message_t> &parts = received.parts ();
-    if (parts.size () == 1) {
-        payload = &parts[0];
-    } else if (parts.size () == 2 && parts[0].size () == 0) {
-        payload = &parts[1];
-    }
-    if (!payload || payload->size () != payload_size)
+    if (payload.size () != payload_size)
         return true;
 
     perf_single_metric::header_t header;
     if (!perf_single_metric::decode_payload_header (
-          payload->data (), payload->size (), &header)) {
+          payload.data (), payload.size (), &header)) {
         return true;
     }
     if (!perf_single_metric::is_expected (
@@ -156,24 +149,21 @@ bool run_pattern_pair (const std::string &transport,
             }
 
             for (;;) {
-                zlink::received_t received;
+                zlink::message_t part;
                 const int recv_rc =
                   recv_pair_payload (
-                    bind_socket, received, zlink::recv_flags_t::dontwait);
+                    bind_socket, part, zlink::recv_flags_t::dontwait);
                 if (recv_rc != 0) {
                     if (errno == EAGAIN || errno == EINTR)
                         break;
                     sender_ok.store (false, std::memory_order_release);
                     return;
                 }
-                const std::vector<zlink::message_t> &parts = received.parts ();
-                if (parts.size () == 1
-                    && perf::single::is_stop_token_message (
-                         parts[0])) {
+                if (perf::single::is_stop_token_message (part)) {
                     return;
                 }
                 if (std::chrono::steady_clock::now () < active_deadline
-                    && !record_pair_payload (received,
+                    && !record_pair_payload (part,
                                              run_id,
                                              msg_size,
                                              payload_size,

@@ -276,4 +276,4 @@ errno for diagnostics.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_ctx_set`, `zlink_monitor_snapshot`
+**See also:** `zlink_ctx_set`, `zlink_monitor_status`

@@ -43,7 +43,7 @@ static void registry_query_client_thread (void *arg_)
                    + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
         assert (elapsed_ms < 5000);
 
-        assert (zlink_registry_query_snapshot (
+        assert (zlink_registry_query_client_topology (
                   sample->query, NULL, entries, &count)
                 == ZLINK_CONFIG_OK);
         for (size_t i = 0; i < count; ++i) {
@@ -84,7 +84,7 @@ int main (void)
             == 0);
 
     zlink_registry_status_t status;
-    assert (zlink_registry_status_snapshot (registry, &status) == 0);
+    assert (zlink_registry_status (registry, &status) == 0);
     assert (strlen (status.bind_endpoint) > 0);
 
     assert (zlink_discovery_connect_registry (
@@ -104,7 +104,7 @@ int main (void)
             k_channel_name);
 
     zlink_close (sample.provider);
-    zlink_registry_query_destroy (&sample.query);
+    zlink_registry_query_client_destroy (&sample.query);
     zlink_discovery_destroy (&sample.discovery);
     zlink_registry_destroy (&registry);
     zlink_ctx_term (ctx);

@@ -211,41 +211,26 @@ in flags.
 > `timeout_ms == 0` it stays pending until a handler is installed or the
 > Spot/SpotNode terminates.
 
-### Spot lifecycle handler
+### Spot lifecycle events
 
-To observe Actor location changes (creation, join, leave, destroy) on a Spot,
-register a lifecycle handler. Callbacks run after the location change commits.
+To observe Actor location changes (creation, join, leave, destroy) on a Spot, install `zlink_spot_dispatch_event_handler()` before the Actor transition can occur. When it reports `ACTOR_LIFECYCLE_READABLE`, drain events with `zlink_spot_recv_actor_lifecycle()`.
 
 ```c
-static void on_spot_join(
-    void *spot, const zlink_spot_actor_lifecycle_info_t *info, void *ud)
-{
-    /* info->current_actor entered this Spot */
+zlink_spot_actor_lifecycle_event_t event;
+while (zlink_spot_recv_actor_lifecycle(spot, &event, ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
+    if (event.kind == ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
+        /* event.info.current_actor entered this Spot */
+    }
 }
-
-static void on_spot_leave(
-    void *spot, const zlink_spot_actor_lifecycle_info_t *info, void *ud)
-{
-    /* info->previous_actor left this Spot. For destroy,
-       info->current_actor is a zero-value ref. */
-}
-
-zlink_spot_actor_lifecycle_handler(spot, on_spot_join, on_spot_leave, userdata);
 ```
 
-Passing `NULL` for `on_join` or `on_leave` suppresses that callback. Passing
-both `NULL` removes the registered handler. Registration does not replay
-Actors that are already in the Spot; only transitions that occur after
-registration trigger callbacks.
-
-Lifecycle callbacks are observation-only. For deciding join completion, the
-application uses the join completion handler and the final Actor ref it returns.
+Lifecycle events are observation-only. For deciding join completion, the application uses the join completion handler and the final Actor ref it returns.
 
 ## 3. Spot leave
 
 `leave` is an async submit API that moves an Actor from its current Spot back
 to the same node's Entry Spot. If the Actor is already in the Entry Spot, the
-call is idempotent success and no lifecycle callbacks fire. After a successful
+call is idempotent success and no lifecycle events fire. After a successful
 leave, Actor messages surface through the Entry Spot dispatch event.
 
 ```c

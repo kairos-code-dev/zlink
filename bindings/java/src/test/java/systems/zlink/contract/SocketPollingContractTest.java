@@ -219,7 +219,7 @@ public class SocketPollingContractTest {
             publisherNode.setPubBind(endpoint);
             subscriberNode.connectPeer(endpoint);
             subscriber.setSubscription("pollout-topic");
-            TestSupport.awaitCondition(() -> subscriberNode.statusSnapshot()
+            TestSupport.awaitCondition(() -> subscriberNode.status()
                 .connectedPeerCount() > 0);
 
             poller.add(publisher, 51L, PollEventFlag.POLLOUT);

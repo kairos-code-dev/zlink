@@ -49,7 +49,7 @@ public sealed partial class TopologyTests
 
         var client = host.Services.GetRequiredService<IZLinkRegistryQueryClient>();
         var snapshot = await RetryAsync(
-            () => client.SnapshotAsync().AsTask(),
+            () => client.TopologyAsync().AsTask(),
             entries => entries.Any(entry =>
                 entry.ChannelName == "profile"
                 && entry.Endpoint == channelEndpoint

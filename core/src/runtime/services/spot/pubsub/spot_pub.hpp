@@ -39,7 +39,7 @@ class spot_pub_t
                                 void *subject_,
                                 void *userdata_);
     int routing_id (zlink_routing_id_t *out_) const;
-    int fill_monitor_snapshot (zlink_monitor_snapshot_t *out_) const;
+    int fill_monitor_snapshot (zlink_monitor_status_t *out_) const;
     socket_base_t *poller_socket () const { return socket (); }
     socket_base_t *snapshot_socket () const { return socket (); }
     bool owns_socket (const socket_base_t *socket_) const;

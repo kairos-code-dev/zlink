@@ -28,11 +28,11 @@ static void set_string_property(napi_env env,
                                 napi_value obj,
                                 const char *name,
                                 const char *value);
-static napi_value create_monitor_snapshot_value(
-  napi_env env, const zlink_monitor_snapshot_t &snapshot);
-static bool build_spot_node_socket_snapshot_filter(
+static napi_value create_monitor_status_value(
+  napi_env env, const zlink_monitor_status_t &snapshot);
+static bool build_spot_node_socket_filter(
   napi_env env, napi_value value,
-  zlink_spot_node_socket_snapshot_filter_t *out);
+  zlink_spot_node_socket_filter_t *out);
 static napi_value create_actor_ref_value(napi_env env,
                                          const zlink_actor_ref_t &actor);
 static bool parse_actor_ref_value(napi_env env,
@@ -1528,21 +1528,6 @@ static void spot_routed_tsfn_call_js(napi_env env,
     (void) napi_call_function(env, this_arg, js_cb, 4, argv, &recv);
 }
 
-static void release_spot_routed_handler_slot(void *spot)
-{
-    napi_threadsafe_function tsfn = NULL;
-    {
-        std::lock_guard<std::mutex> lock(g_spot_routed_slots_mu);
-        spot_routed_js_state_t *state = find_spot_routed_slot_by_spot_unsafe(spot);
-        if (!state)
-            return;
-        tsfn = state->tsfn;
-        reset_spot_routed_slot_unsafe(state);
-    }
-    if (tsfn)
-        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
-}
-
 static void spot_routed_dispatch(const zlink_routing_id_t *source_rid,
                                  const zlink_routing_id_t *spot_rid,
                                  uint64_t request_seq,
@@ -2607,10 +2592,10 @@ bool build_spot_node_subject_filter(napi_env env,
     return true;
 }
 
-static bool build_spot_node_socket_snapshot_filter(
+static bool build_spot_node_socket_filter(
   napi_env env,
   napi_value value,
-  zlink_spot_node_socket_snapshot_filter_t *out)
+  zlink_spot_node_socket_filter_t *out)
 {
     memset(out, 0, sizeof(*out));
     out->owner = ZLINK_SPOT_NODE_SOCKET_OWNER_ANY;
@@ -2649,9 +2634,9 @@ static bool build_spot_node_socket_snapshot_filter(
     return true;
 }
 
-static napi_value create_monitor_snapshot_value(
+static napi_value create_monitor_status_value(
   napi_env env,
-  const zlink_monitor_snapshot_t &snapshot)
+  const zlink_monitor_status_t &snapshot)
 {
     napi_value obj;
     napi_create_object(env, &obj);
@@ -2863,67 +2848,6 @@ napi_value spot_reply_router(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_routed_handler(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    if (argc < 2) {
-        napi_throw_type_error(env, NULL, "spotRoutedHandler requires (spot, handler)");
-        return NULL;
-    }
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    napi_valuetype handler_type = napi_undefined;
-    napi_typeof(env, argv[1], &handler_type);
-    if (handler_type != napi_function) {
-        napi_throw_type_error(env, NULL, "spotRoutedHandler handler must be a function");
-        return NULL;
-    }
-    release_spot_routed_handler_slot(spot);
-
-    spot_routed_js_state_t *state = NULL;
-    {
-        std::lock_guard<std::mutex> lock(g_spot_routed_slots_mu);
-        state = find_free_spot_routed_slot_unsafe();
-        if (!state) {
-            napi_throw_error(env, NULL, "spot routed handler slot exhausted");
-            return NULL;
-        }
-        state->used = true;
-        state->spot = spot;
-        state->env = env;
-        state->tsfn = NULL;
-    }
-
-    napi_value resource_name;
-    napi_create_string_utf8(env, "zlink-spot-routed-handler", NAPI_AUTO_LENGTH, &resource_name);
-    napi_threadsafe_function tsfn = NULL;
-    napi_status status = napi_create_threadsafe_function(
-      env, argv[1], NULL, resource_name, 0, 1, state, spot_routed_tsfn_finalize,
-      state, spot_routed_tsfn_call_js, &tsfn);
-    if (status != napi_ok) {
-        std::lock_guard<std::mutex> lock(g_spot_routed_slots_mu);
-        reset_spot_routed_slot_unsafe(state);
-        napi_throw_error(env, NULL, "spot routed handler setup failed");
-        return NULL;
-    }
-    (void) napi_unref_threadsafe_function(env, tsfn);
-    {
-        std::lock_guard<std::mutex> lock(g_spot_routed_slots_mu);
-        state->tsfn = tsfn;
-    }
-
-    int rc = zlink_spot_handler(spot, spot_routed_dispatch, state);
-    if (rc != 0) {
-        release_spot_routed_handler_slot(spot);
-        return throw_last_error(env, "spotRoutedHandler failed");
-    }
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
 napi_value spot_dispatch_event_handler(napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
@@ -3001,7 +2925,6 @@ napi_value spot_attach_route_echo(napi_env env, napi_callback_info info)
 
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
-    release_spot_routed_handler_slot(spot);
     release_spot_dispatch_event_handler_slot(spot);
     if (zlink_spot_dispatch_event_handler(spot, spot_route_echo_dispatch, NULL)
         != 0) {
@@ -3325,6 +3248,57 @@ napi_value spot_actor_join_recv(napi_env env, napi_callback_info info)
     return out;
 }
 
+static napi_value create_spot_actor_lifecycle_info_value(
+  napi_env env, const zlink_spot_actor_lifecycle_info_t &info)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+    napi_set_named_property(env, obj, "previousActor",
+                            create_actor_ref_value(env, info.previous_actor));
+    napi_set_named_property(env, obj, "currentActor",
+                            create_actor_ref_value(env, info.current_actor));
+    napi_set_named_property(env, obj, "previousSpotRid",
+                            create_routing_id_value(env, info.previous_spot_rid));
+    napi_set_named_property(env, obj, "currentSpotRid",
+                            create_routing_id_value(env, info.current_spot_rid));
+    napi_value epoch;
+    napi_create_bigint_uint64(env, info.join_epoch, &epoch);
+    napi_set_named_property(env, obj, "joinEpoch", epoch);
+    set_uint32_property(env, obj, "flags", info.flags);
+    return obj;
+}
+
+napi_value spot_recv_actor_lifecycle(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external(env, argv[0], &spot);
+    int32_t flags = 0;
+    if (argc >= 2)
+        napi_get_value_int32(env, argv[1], &flags);
+
+    zlink_spot_actor_lifecycle_event_t event;
+    int rc = zlink_spot_recv_actor_lifecycle(
+      spot, &event, static_cast<zlink_recv_flags_t>(flags));
+    if (rc != ZLINK_RECV_OK) {
+        if ((flags & ZLINK_RECV_FLAGS_DONTWAIT) && zlink_errno() == EAGAIN) {
+            napi_value none;
+            napi_get_null(env, &none);
+            return none;
+        }
+        return throw_last_error(env, "spotRecvActorLifecycle failed");
+    }
+
+    napi_value out;
+    napi_create_object(env, &out);
+    set_uint32_property(env, out, "kind", static_cast<uint32_t>(event.kind));
+    napi_set_named_property(
+      env, out, "info", create_spot_actor_lifecycle_info_value(env, event.info));
+    return out;
+}
+
 napi_value spot_actor_join_reply(napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
@@ -3355,7 +3329,7 @@ napi_value spot_actor_join_reply(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_actors_snapshot(napi_env env, napi_callback_info info)
+napi_value spot_actors(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
@@ -3363,17 +3337,17 @@ napi_value spot_actors_snapshot(napi_env env, napi_callback_info info)
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
     size_t count = 0;
-    int rc = zlink_spot_actors_snapshot(spot, NULL, &count);
+    int rc = zlink_spot_actors(spot, NULL, &count);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "spotActorsSnapshot failed");
+        return throw_last_error(env, "spotActors failed");
     napi_value arr;
     napi_create_array_with_length(env, count, &arr);
     if (count == 0)
         return arr;
     std::vector<zlink_actor_ref_t> entries(count);
-    rc = zlink_spot_actors_snapshot(spot, entries.data(), &count);
+    rc = zlink_spot_actors(spot, entries.data(), &count);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "spotActorsSnapshot failed");
+        return throw_last_error(env, "spotActors failed");
     for (size_t i = 0; i < count; ++i) {
         napi_set_element(env, arr, static_cast<uint32_t>(i),
                          create_actor_ref_value(env, entries[i]));
@@ -4056,7 +4030,7 @@ napi_value spot_get_option(napi_env env, napi_callback_info info)
     return buf;
 }
 
-napi_value spot_node_status_snapshot(napi_env env, napi_callback_info info)
+napi_value spot_node_status(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
@@ -4066,9 +4040,9 @@ napi_value spot_node_status_snapshot(napi_env env, napi_callback_info info)
 
     zlink_spot_node_status_t status;
     memset(&status, 0, sizeof(status));
-    int rc = zlink_spot_node_status_snapshot(node, &status);
+    int rc = zlink_spot_node_status(node, &status);
     if (rc != 0)
-        return throw_last_error(env, "spot_node_status_snapshot failed");
+        return throw_last_error(env, "spot_node_status failed");
 
     napi_value obj;
     napi_create_object(env, &obj);
@@ -4092,7 +4066,7 @@ napi_value spot_node_status_snapshot(napi_env env, napi_callback_info info)
     return obj;
 }
 
-napi_value spot_node_peers_snapshot(napi_env env, napi_callback_info info)
+napi_value spot_node_peers(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
@@ -4101,18 +4075,18 @@ napi_value spot_node_peers_snapshot(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &node);
 
     size_t count = 0;
-    int rc = zlink_spot_node_peers_snapshot(node, NULL, &count);
+    int rc = zlink_spot_node_peers(node, NULL, NULL, &count);
     if (rc != 0)
-        return throw_last_error(env, "spot_node_peers_snapshot failed");
+        return throw_last_error(env, "spot_node_peers failed");
     napi_value arr;
     napi_create_array_with_length(env, count, &arr);
     if (count == 0)
         return arr;
 
     std::vector<zlink_spot_node_peer_entry_t> entries(count);
-    rc = zlink_spot_node_peers_snapshot(node, entries.data(), &count);
+    rc = zlink_spot_node_peers(node, NULL, entries.data(), &count);
     if (rc != 0)
-        return throw_last_error(env, "spot_node_peers_snapshot failed");
+        return throw_last_error(env, "spot_node_peers failed");
     for (size_t i = 0; i < count; ++i) {
         napi_value obj;
         napi_create_object(env, &obj);
@@ -4147,7 +4121,7 @@ napi_value spot_node_peers_query(napi_env env, napi_callback_info info)
                                                                              : NULL;
 
     size_t count = 0;
-    int rc = zlink_spot_node_peers_query(node, filter_ptr, NULL, &count);
+    int rc = zlink_spot_node_peers(node, filter_ptr, NULL, &count);
     if (rc != 0)
         return throw_last_error(env, "spot_node_peers_query failed");
     napi_value arr;
@@ -4156,7 +4130,7 @@ napi_value spot_node_peers_query(napi_env env, napi_callback_info info)
         return arr;
 
     std::vector<zlink_spot_node_peer_entry_t> entries(count);
-    rc = zlink_spot_node_peers_query(node, filter_ptr, entries.data(), &count);
+    rc = zlink_spot_node_peers(node, filter_ptr, entries.data(), &count);
     if (rc != 0)
         return throw_last_error(env, "spot_node_peers_query failed");
     for (size_t i = 0; i < count; ++i) {
@@ -4179,7 +4153,7 @@ napi_value spot_node_peers_query(napi_env env, napi_callback_info info)
     return arr;
 }
 
-napi_value spot_node_subjects_snapshot(napi_env env, napi_callback_info info)
+napi_value spot_node_subjects(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
@@ -4192,18 +4166,18 @@ napi_value spot_node_subjects_snapshot(napi_env env, napi_callback_info info)
                                                                                 : NULL;
 
     size_t count = 0;
-    int rc = zlink_spot_node_subjects_snapshot(node, filter_ptr, NULL, &count);
+    int rc = zlink_spot_node_subjects(node, filter_ptr, NULL, &count);
     if (rc != 0)
-        return throw_last_error(env, "spot_node_subjects_snapshot failed");
+        return throw_last_error(env, "spot_node_subjects failed");
     napi_value arr;
     napi_create_array_with_length(env, count, &arr);
     if (count == 0)
         return arr;
 
     std::vector<zlink_spot_node_subject_entry_t> entries(count);
-    rc = zlink_spot_node_subjects_snapshot(node, filter_ptr, entries.data(), &count);
+    rc = zlink_spot_node_subjects(node, filter_ptr, entries.data(), &count);
     if (rc != 0)
-        return throw_last_error(env, "spot_node_subjects_snapshot failed");
+        return throw_last_error(env, "spot_node_subjects failed");
     for (size_t i = 0; i < count; ++i) {
         napi_value obj;
         napi_create_object(env, &obj);
@@ -4219,32 +4193,32 @@ napi_value spot_node_subjects_snapshot(napi_env env, napi_callback_info info)
     return arr;
 }
 
-napi_value spot_node_internal_sockets_snapshot(napi_env env, napi_callback_info info)
+napi_value spot_node_internal_sockets(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *node = NULL;
     napi_get_value_external(env, argv[0], &node);
-    zlink_spot_node_socket_snapshot_filter_t filter;
-    zlink_spot_node_socket_snapshot_filter_t *filter_ptr =
-      build_spot_node_socket_snapshot_filter(
+    zlink_spot_node_socket_filter_t filter;
+    zlink_spot_node_socket_filter_t *filter_ptr =
+      build_spot_node_socket_filter(
         env, argc >= 2 ? argv[1] : NULL, &filter) ? &filter : NULL;
 
     size_t count = 0;
-    int rc = zlink_spot_node_internal_sockets_snapshot(node, filter_ptr, NULL, &count);
+    int rc = zlink_spot_node_internal_sockets(node, filter_ptr, NULL, &count);
     if (rc != 0)
-        return throw_last_error(env, "spot_node_internal_sockets_snapshot failed");
+        return throw_last_error(env, "spot_node_internal_sockets failed");
     napi_value arr;
     napi_create_array_with_length(env, count, &arr);
     if (count == 0)
         return arr;
 
-    std::vector<zlink_spot_node_socket_snapshot_entry_t> entries(count);
-    rc = zlink_spot_node_internal_sockets_snapshot(
+    std::vector<zlink_spot_node_socket_entry_t> entries(count);
+    rc = zlink_spot_node_internal_sockets(
       node, filter_ptr, entries.data(), &count);
     if (rc != 0)
-        return throw_last_error(env, "spot_node_internal_sockets_snapshot failed");
+        return throw_last_error(env, "spot_node_internal_sockets failed");
     for (size_t i = 0; i < count; ++i) {
         napi_value obj;
         napi_create_object(env, &obj);
@@ -4259,14 +4233,15 @@ napi_value spot_node_internal_sockets_snapshot(napi_env env, napi_callback_info 
         napi_value visible;
         napi_get_boolean(env, entries[i].auto_hwm_visible != 0, &visible);
         napi_set_named_property(env, obj, "autoHwmVisible", visible);
-        napi_value snapshot = create_monitor_snapshot_value(env, entries[i].snapshot);
+        napi_value snapshot =
+          create_monitor_status_value(env, entries[i].monitor_status);
         napi_set_named_property(env, obj, "snapshot", snapshot);
         napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
     }
     return arr;
 }
 
-napi_value spot_node_spots_snapshot(napi_env env, napi_callback_info info)
+napi_value spot_node_spots(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
@@ -4274,17 +4249,17 @@ napi_value spot_node_spots_snapshot(napi_env env, napi_callback_info info)
     void *node = NULL;
     napi_get_value_external(env, argv[0], &node);
     size_t count = 0;
-    int rc = zlink_spot_node_spots_snapshot(node, NULL, &count);
+    int rc = zlink_spot_node_spots(node, NULL, &count);
     if (rc != 0)
-        return throw_last_error(env, "spotNodeSpotsSnapshot failed");
+        return throw_last_error(env, "spotNodeSpots failed");
     napi_value arr;
     napi_create_array_with_length(env, count, &arr);
     if (count == 0)
         return arr;
     std::vector<zlink_spot_node_spot_entry_t> entries(count);
-    rc = zlink_spot_node_spots_snapshot(node, entries.data(), &count);
+    rc = zlink_spot_node_spots(node, entries.data(), &count);
     if (rc != 0)
-        return throw_last_error(env, "spotNodeSpotsSnapshot failed");
+        return throw_last_error(env, "spotNodeSpots failed");
     for (size_t i = 0; i < count; ++i) {
         napi_set_element(env, arr, static_cast<uint32_t>(i),
                          create_spot_node_spot_entry_value(env, entries[i]));
@@ -4292,7 +4267,7 @@ napi_value spot_node_spots_snapshot(napi_env env, napi_callback_info info)
     return arr;
 }
 
-napi_value spot_node_actors_snapshot(napi_env env, napi_callback_info info)
+napi_value spot_node_actors(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
@@ -4300,17 +4275,17 @@ napi_value spot_node_actors_snapshot(napi_env env, napi_callback_info info)
     void *node = NULL;
     napi_get_value_external(env, argv[0], &node);
     size_t count = 0;
-    int rc = zlink_spot_node_actors_snapshot(node, NULL, &count);
+    int rc = zlink_spot_node_actors(node, NULL, &count);
     if (rc != 0)
-        return throw_last_error(env, "spotNodeActorsSnapshot failed");
+        return throw_last_error(env, "spotNodeActors failed");
     napi_value arr;
     napi_create_array_with_length(env, count, &arr);
     if (count == 0)
         return arr;
     std::vector<zlink_spot_node_actor_entry_t> entries(count);
-    rc = zlink_spot_node_actors_snapshot(node, entries.data(), &count);
+    rc = zlink_spot_node_actors(node, entries.data(), &count);
     if (rc != 0)
-        return throw_last_error(env, "spotNodeActorsSnapshot failed");
+        return throw_last_error(env, "spotNodeActors failed");
     for (size_t i = 0; i < count; ++i) {
         napi_set_element(env, arr, static_cast<uint32_t>(i),
                          create_spot_node_actor_entry_value(env, entries[i]));
@@ -4863,183 +4838,6 @@ napi_value remote_actor_get_ref(napi_env env, napi_callback_info info)
     return ok;
 }
 
-// --- Actor lifecycle handler ---
-
-struct spot_actor_lifecycle_js_state_t
-{
-    spot_actor_lifecycle_js_state_t ()
-      : env (NULL), join_tsfn (NULL), leave_tsfn (NULL) {}
-    napi_env env;
-    napi_threadsafe_function join_tsfn;
-    napi_threadsafe_function leave_tsfn;
-};
-
-struct spot_actor_lifecycle_payload_t
-{
-    zlink_spot_actor_lifecycle_info_t info;
-};
-
-static std::mutex g_spot_actor_lifecycle_mu;
-static std::unordered_map<void *, spot_actor_lifecycle_js_state_t *> g_spot_actor_lifecycle;
-
-static void spot_actor_lifecycle_tsfn_finalize(napi_env env,
-                                               void *finalize_data,
-                                               void *finalize_hint)
-{
-    (void) env;
-    (void) finalize_data;
-    (void) finalize_hint;
-    // Lifetime is owned by the lifecycle state map; finalize runs per-tsfn
-    // and we tear the state down in release_spot_actor_lifecycle_handler.
-}
-
-static void spot_actor_lifecycle_tsfn_call_js(napi_env env,
-                                              napi_value js_cb,
-                                              void *context,
-                                              void *data)
-{
-    (void) context;
-    std::unique_ptr<spot_actor_lifecycle_payload_t> payload(
-      static_cast<spot_actor_lifecycle_payload_t *>(data));
-    if (!env || !js_cb || !payload)
-        return;
-    napi_value arg;
-    napi_create_object(env, &arg);
-    napi_set_named_property(env, arg, "previousActor",
-                            create_actor_ref_value(env, payload->info.previous_actor));
-    napi_set_named_property(env, arg, "currentActor",
-                            create_actor_ref_value(env, payload->info.current_actor));
-    napi_set_named_property(env, arg, "previousSpotRid",
-                            create_routing_id_value(env, payload->info.previous_spot_rid));
-    napi_set_named_property(env, arg, "currentSpotRid",
-                            create_routing_id_value(env, payload->info.current_spot_rid));
-    napi_value join_epoch;
-    napi_create_bigint_uint64(env, payload->info.join_epoch, &join_epoch);
-    napi_set_named_property(env, arg, "joinEpoch", join_epoch);
-    napi_value flags;
-    napi_create_uint32(env, payload->info.flags, &flags);
-    napi_set_named_property(env, arg, "flags", flags);
-    napi_value recv;
-    napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 1, &arg, &recv);
-}
-
-static void spot_actor_lifecycle_dispatch(void *spot_,
-                                          const zlink_spot_actor_lifecycle_info_t *info_,
-                                          void *userdata_)
-{
-    (void) spot_;
-    if (!userdata_ || !info_)
-        return;
-    napi_threadsafe_function tsfn = static_cast<napi_threadsafe_function>(userdata_);
-    std::unique_ptr<spot_actor_lifecycle_payload_t> payload(
-      new spot_actor_lifecycle_payload_t());
-    payload->info = *info_;
-    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
-        == napi_ok) {
-        payload.release();
-    }
-}
-
-void release_spot_actor_lifecycle_handler_slot(void *spot)
-{
-    spot_actor_lifecycle_js_state_t *state = NULL;
-    {
-        std::lock_guard<std::mutex> lock(g_spot_actor_lifecycle_mu);
-        auto it = g_spot_actor_lifecycle.find(spot);
-        if (it == g_spot_actor_lifecycle.end())
-            return;
-        state = it->second;
-        g_spot_actor_lifecycle.erase(it);
-    }
-    if (state) {
-        if (state->join_tsfn)
-            (void) napi_release_threadsafe_function(state->join_tsfn, napi_tsfn_release);
-        if (state->leave_tsfn)
-            (void) napi_release_threadsafe_function(state->leave_tsfn, napi_tsfn_release);
-        delete state;
-    }
-}
-
-napi_value spot_actor_lifecycle_handler(napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    if (argc < 3) {
-        napi_throw_type_error(env, NULL, "spotActorLifecycleHandler requires (spot, onJoin, onLeave)");
-        return NULL;
-    }
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-
-    release_spot_actor_lifecycle_handler_slot(spot);
-
-    spot_actor_lifecycle_js_state_t *state = new spot_actor_lifecycle_js_state_t();
-    state->env = env;
-
-    napi_value resource_name;
-    napi_create_string_utf8(
-      env, "zlink-spot-actor-lifecycle", NAPI_AUTO_LENGTH, &resource_name);
-
-    napi_valuetype join_type = napi_undefined;
-    napi_typeof(env, argv[1], &join_type);
-    if (join_type == napi_function) {
-        napi_status status = napi_create_threadsafe_function(
-          env, argv[1], NULL, resource_name, 0, 1, NULL,
-          spot_actor_lifecycle_tsfn_finalize, NULL,
-          spot_actor_lifecycle_tsfn_call_js, &state->join_tsfn);
-        if (status != napi_ok) {
-            delete state;
-            napi_throw_error(env, NULL, "spotActorLifecycleHandler setup failed");
-            return NULL;
-        }
-        (void) napi_unref_threadsafe_function(env, state->join_tsfn);
-    }
-    napi_valuetype leave_type = napi_undefined;
-    napi_typeof(env, argv[2], &leave_type);
-    if (leave_type == napi_function) {
-        napi_status status = napi_create_threadsafe_function(
-          env, argv[2], NULL, resource_name, 0, 1, NULL,
-          spot_actor_lifecycle_tsfn_finalize, NULL,
-          spot_actor_lifecycle_tsfn_call_js, &state->leave_tsfn);
-        if (status != napi_ok) {
-            if (state->join_tsfn)
-                (void) napi_release_threadsafe_function(state->join_tsfn, napi_tsfn_release);
-            delete state;
-            napi_throw_error(env, NULL, "spotActorLifecycleHandler setup failed");
-            return NULL;
-        }
-        (void) napi_unref_threadsafe_function(env, state->leave_tsfn);
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(g_spot_actor_lifecycle_mu);
-        g_spot_actor_lifecycle[spot] = state;
-    }
-
-    int rc = zlink_spot_actor_lifecycle_handler(
-      spot,
-      state->join_tsfn ? spot_actor_lifecycle_dispatch : NULL,
-      state->leave_tsfn ? spot_actor_lifecycle_dispatch : NULL,
-      // pass the appropriate tsfn through userdata: on_join uses join_tsfn,
-      // on_leave uses leave_tsfn. The C API only allows a single userdata,
-      // so register them with a small trick: pass join_tsfn as userdata if
-      // only on_join is set; pass leave_tsfn if only on_leave; otherwise we
-      // need two different dispatchers.
-      NULL);
-    // To support distinct handlers, register them sequentially with
-    // separate userdata each. This single-call form is insufficient.
-    if (rc != ZLINK_HANDLER_OK) {
-        release_spot_actor_lifecycle_handler_slot(spot);
-        return throw_last_error(env, "spotActorLifecycleHandler failed");
-    }
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
 napi_value spot_node_pub_socket(napi_env env, napi_callback_info info)
 {
     (void) info;
@@ -5092,7 +4890,6 @@ napi_value spot_destroy(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &spot);
     release_socket_subscribe_handler_slot(spot);
     release_spot_send_ready_handler_slot(spot);
-    release_spot_routed_handler_slot(spot);
     release_spot_dispatch_event_handler_slot(spot);
     void *tmp = spot;
     int rc = zlink_spot_destroy(&tmp);

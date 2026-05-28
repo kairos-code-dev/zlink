@@ -76,30 +76,40 @@ static void pump_requester_progress (void *requester_)
     (void) zlink_poller_destroy (&poller);
 }
 
-static void handle_spot_request (const zlink_routing_id_t *source_node_rid_,
-                                 const zlink_routing_id_t *source_spot_rid_,
-                                 uint64_t request_seq_,
-                                 zlink_msg_t *parts_,
-                                 size_t part_count_,
-                                 void *userdata_)
+static int drain_spot_request (responder_capture_t *capture_)
 {
-    responder_capture_t *capture = (responder_capture_t *) userdata_;
+    const zlink_routing_id_t *source_node_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t request;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     zlink_msg_t reply;
+    zlink_recv_result_t recv_rc;
 
-    assert (capture != NULL);
-    assert (capture->responder != NULL);
-    assert (source_node_rid_ != NULL);
-    assert (source_spot_rid_ != NULL);
-    assert (request_seq_ != 0);
-    assert (part_count_ == 1);
-    assert (zlink_msg_size (&parts_[0]) == strlen ("spot-ping"));
+    assert (capture_ != NULL);
+    assert (capture_->responder != NULL);
+
+    zlink_msg_init (&request);
+    recv_rc = zlink_spot_recv_part (
+      capture_->responder, &source_node_rid, &source_spot_rid, &request_seq,
+      &request, &has_more, ZLINK_DONTWAIT);
+    if (recv_rc == ZLINK_RECV_NO_DATA)
+        return 0;
+    assert (recv_rc == ZLINK_RECV_OK);
+    assert (source_node_rid != NULL);
+    assert (source_spot_rid != NULL);
+    assert (request_seq != 0);
+    assert (has_more == ZLINK_PART_FINAL);
+    assert (zlink_msg_size (&request) == strlen ("spot-ping"));
 
     make_message (&reply, "spot-pong");
     assert (zlink_spot_reply_spot_part (
-              capture->responder, source_node_rid_, source_spot_rid_,
-              request_seq_, &reply, ZLINK_PART_FINAL)
+              capture_->responder, source_node_rid, source_spot_rid,
+              request_seq, &reply, ZLINK_PART_FINAL)
             == ZLINK_SUBMIT_OK);
-    capture->handled = 1;
+    zlink_msg_close (&request);
+    capture_->handled = 1;
+    return 1;
 }
 
 static int drive_spot_to_spot (void *requester_,
@@ -115,7 +125,7 @@ static int drive_spot_to_spot (void *requester_,
         if (capture_->completed)
             break;
         if (!responder_capture_->handled)
-            sample_pause_ms (1);
+            (void) drain_spot_request (responder_capture_);
 
         struct timespec now;
         clock_gettime (CLOCK_MONOTONIC, &now);
@@ -170,9 +180,6 @@ int main (void)
 
     responder_capture_t responder_capture;
     init_responder_capture (&responder_capture, responder);
-    assert (zlink_spot_handler (responder, &handle_spot_request,
-                                &responder_capture)
-            == ZLINK_HANDLER_OK);
 
     reply_capture_t capture;
     init_capture (&capture);

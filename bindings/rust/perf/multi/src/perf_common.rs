@@ -697,7 +697,7 @@ pub fn wait_spot_peer_connected(node: &SpotNode, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         if node
-            .status_snapshot()
+            .status()
             .map(|status| status.connected_peer_count > 0)
             .unwrap_or(false)
         {

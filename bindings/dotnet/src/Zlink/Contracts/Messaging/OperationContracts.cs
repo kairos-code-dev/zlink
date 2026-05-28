@@ -52,3 +52,23 @@ public interface ReplySubmitOperation
     ReplySubmitOperation Flags(SendFlags flags);
     void Submit();
 }
+
+public enum RequestResult
+{
+    Ok = 0,
+    TimedOut = 101,
+    NotFound = 102,
+    Terminated = 103,
+    ProtocolError = 104,
+    InternalError = 105,
+    Rejected = 106,
+    Conflict = 107,
+    Busy = 108,
+    NotConnected = 109,
+    InvalidArgument = 110,
+    InvalidState = 111,
+    NotSupported = 112
+}
+
+public delegate void RequestCallback(RequestResult result,
+    IReadOnlyList<Message> parts);

@@ -128,7 +128,18 @@ async function main() {
       }
     })();
 
-    spot.onRoutedReceive(echoRouted);
+    spot.onDispatchEvent((info) => {
+      if (info.event !== zlink.SpotDispatchEvent.RoutedReadable) {
+        return;
+      }
+      while (true) {
+        const received = spot.recvRouted(zlink.RecvFlags.DontWait);
+        if (!received) {
+          return;
+        }
+        echoRouted(received);
+      }
+    });
 
     while (!stop && !(connected && readyCount >= options.clients && startRequested)) {
       let drained = false;

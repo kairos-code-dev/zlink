@@ -4,9 +4,7 @@
 use std::thread;
 use std::time::Duration;
 
-use zlink::{
-    Context, Message, Received, RecvFlags, RoutingId,
-};
+use zlink::{Context, Message, Received, RecvFlags, RoutingId};
 
 #[test]
 fn send_consumes_message_ownership() {

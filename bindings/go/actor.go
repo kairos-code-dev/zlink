@@ -13,8 +13,6 @@ extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *
 extern void goZlinkActorJoinTrampoline(zlink_actor_join_result_t *result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkActorJoinEntrySpotTrampoline(zlink_actor_join_entry_spot_result_t *result_, uintptr_t userdata_);
 extern void goZlinkActorLookupTrampoline(zlink_actor_lookup_result_t *result_, uintptr_t userdata_);
-extern void goZlinkSpotActorLifecycleJoinTrampoline(void *spot_, zlink_spot_actor_lifecycle_info_t *info_, uintptr_t userdata_);
-extern void goZlinkSpotActorLifecycleLeaveTrampoline(void *spot_, zlink_spot_actor_lifecycle_info_t *info_, uintptr_t userdata_);
 
 static inline int zlink_spot_node_actor_destroy_close(void *node, const zlink_actor_ref_t *actor, uint32_t timeout_ms, uintptr_t userdata) {
     return zlink_spot_node_actor_destroy(node, actor, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
@@ -48,11 +46,6 @@ static inline int zlink_stream_unbind_actor_go_ops(void *stream, const zlink_rou
     return zlink_stream_unbind_actor(stream, session, actor_id, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, timeout_ms);
 }
 
-static inline int zlink_spot_actor_lifecycle_handler_go(void *spot, int with_join, int with_leave, uintptr_t userdata) {
-    zlink_spot_actor_lifecycle_handler_fn join_fn = with_join ? (zlink_spot_actor_lifecycle_handler_fn)goZlinkSpotActorLifecycleJoinTrampoline : NULL;
-    zlink_spot_actor_lifecycle_handler_fn leave_fn = with_leave ? (zlink_spot_actor_lifecycle_handler_fn)goZlinkSpotActorLifecycleLeaveTrampoline : NULL;
-    return zlink_spot_actor_lifecycle_handler(spot, join_fn, leave_fn, (void *)userdata);
-}
 */
 import "C"
 
@@ -119,7 +112,7 @@ type ActorPart struct {
 	More    bool
 }
 
-// SpotNodeSpotEntry is an entry from SpotNode.SpotsSnapshot.
+// SpotNodeSpotEntry is an entry from SpotNode.Spots.
 type SpotNodeSpotEntry struct {
 	SpotRID                 RoutingID
 	SpotKind                SpotKind
@@ -130,7 +123,7 @@ type SpotNodeSpotEntry struct {
 	LastChangedMs           uint64
 }
 
-// SpotNodeActorEntry is an entry from SpotNode.ActorsSnapshot.
+// SpotNodeActorEntry is an entry from SpotNode.Actors.
 type SpotNodeActorEntry struct {
 	Actor               ActorRef
 	CurrentSpotRID      RoutingID
@@ -503,61 +496,20 @@ func (s *Spot) ReplyActorJoin(request *ActorJoinRequest, joinResultCode int32) A
 	})
 }
 
-// OnActorLifecycle registers join/leave callbacks for this Spot. Passing nil
-// for both removes the registration.
-func (s *Spot) OnActorLifecycle(
-	onJoin func(spot *Spot, info SpotActorLifecycleInfo),
-	onLeave func(spot *Spot, info SpotActorLifecycleInfo)) error {
-	if s == nil || s.core == nil || s.core.closed {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EFAULT)}
-	}
-	if onJoin == nil && onLeave == nil {
-		// Pass NULL handlers to clear the registration.
-		if err := handlerErrorFromResult(C.zlink_spot_actor_lifecycle_handler_go(s.raw(), 0, 0, 0)); err != nil {
-			return err
-		}
-		if s.core.lifecycleHandle != 0 {
-			releaseCallbackHandle(s.core.lifecycleHandle)
-			s.core.lifecycleHandle = 0
-		}
-		return nil
-	}
-	state := newSpotActorLifecycleCallbackState(s, onJoin, onLeave)
-	handle := cgo.NewHandle(state)
-	withJoin := C.int(0)
-	if onJoin != nil {
-		withJoin = 1
-	}
-	withLeave := C.int(0)
-	if onLeave != nil {
-		withLeave = 1
-	}
-	if err := handlerErrorFromResult(C.zlink_spot_actor_lifecycle_handler_go(s.raw(), withJoin, withLeave, C.uintptr_t(handle))); err != nil {
-		state.close()
-		handle.Delete()
-		return err
-	}
-	if s.core.lifecycleHandle != 0 {
-		releaseCallbackHandle(s.core.lifecycleHandle)
-	}
-	s.core.lifecycleHandle = handle
-	return nil
-}
-
-// ActorsSnapshot lists actors currently joined to this Spot.
-func (s *Spot) ActorsSnapshot() ([]ActorRef, error) {
+// Actors lists actors currently joined to this Spot.
+func (s *Spot) Actors() ([]ActorRef, error) {
 	if s == nil || s.core == nil || s.core.closed {
 		return nil, &ConfigError{Result: ConfigInvalidHandle, internalErrno: int(C.EFAULT)}
 	}
 	var count C.size_t
-	if err := configErrorFromResult(C.zlink_spot_actors_snapshot(s.raw(), nil, &count)); err != nil {
+	if err := configErrorFromResult(C.zlink_spot_actors(s.raw(), nil, &count)); err != nil {
 		return nil, err
 	}
 	if count == 0 {
 		return []ActorRef{}, nil
 	}
 	entries := make([]C.zlink_actor_ref_t, int(count))
-	if err := configErrorFromResult(C.zlink_spot_actors_snapshot(s.raw(), &entries[0], &count)); err != nil {
+	if err := configErrorFromResult(C.zlink_spot_actors(s.raw(), &entries[0], &count)); err != nil {
 		return nil, err
 	}
 	out := make([]ActorRef, int(count))
@@ -569,20 +521,20 @@ func (s *Spot) ActorsSnapshot() ([]ActorRef, error) {
 
 // --- SpotNode snapshots ---
 
-func (n *SpotNode) SpotsSnapshot() ([]SpotNodeSpotEntry, error) {
+func (n *SpotNode) Spots() ([]SpotNodeSpotEntry, error) {
 	handle, err := n.handleOrError()
 	if err != nil {
 		return nil, err
 	}
 	var count C.size_t
-	if err := configErrorFromResult(C.zlink_spot_node_spots_snapshot(handle, nil, &count)); err != nil {
+	if err := configErrorFromResult(C.zlink_spot_node_spots(handle, nil, &count)); err != nil {
 		return nil, err
 	}
 	if count == 0 {
 		return []SpotNodeSpotEntry{}, nil
 	}
 	entries := make([]C.zlink_spot_node_spot_entry_t, int(count))
-	if err := configErrorFromResult(C.zlink_spot_node_spots_snapshot(handle, &entries[0], &count)); err != nil {
+	if err := configErrorFromResult(C.zlink_spot_node_spots(handle, &entries[0], &count)); err != nil {
 		return nil, err
 	}
 	out := make([]SpotNodeSpotEntry, int(count))
@@ -592,20 +544,20 @@ func (n *SpotNode) SpotsSnapshot() ([]SpotNodeSpotEntry, error) {
 	return out, nil
 }
 
-func (n *SpotNode) ActorsSnapshot() ([]SpotNodeActorEntry, error) {
+func (n *SpotNode) Actors() ([]SpotNodeActorEntry, error) {
 	handle, err := n.handleOrError()
 	if err != nil {
 		return nil, err
 	}
 	var count C.size_t
-	if err := configErrorFromResult(C.zlink_spot_node_actors_snapshot(handle, nil, &count)); err != nil {
+	if err := configErrorFromResult(C.zlink_spot_node_actors(handle, nil, &count)); err != nil {
 		return nil, err
 	}
 	if count == 0 {
 		return []SpotNodeActorEntry{}, nil
 	}
 	entries := make([]C.zlink_spot_node_actor_entry_t, int(count))
-	if err := configErrorFromResult(C.zlink_spot_node_actors_snapshot(handle, &entries[0], &count)); err != nil {
+	if err := configErrorFromResult(C.zlink_spot_node_actors(handle, &entries[0], &count)); err != nil {
 		return nil, err
 	}
 	out := make([]SpotNodeActorEntry, int(count))
@@ -798,24 +750,7 @@ func goZlinkActorJoinEntrySpotTrampoline(result *C.zlink_actor_join_entry_spot_r
 	}
 }
 
-//export goZlinkSpotActorLifecycleJoinTrampoline
-func goZlinkSpotActorLifecycleJoinTrampoline(_ unsafe.Pointer, info *C.zlink_spot_actor_lifecycle_info_t, userdata C.uintptr_t) {
-	dispatchSpotActorLifecycle(true, info, userdata)
-}
-
-//export goZlinkSpotActorLifecycleLeaveTrampoline
-func goZlinkSpotActorLifecycleLeaveTrampoline(_ unsafe.Pointer, info *C.zlink_spot_actor_lifecycle_info_t, userdata C.uintptr_t) {
-	dispatchSpotActorLifecycle(false, info, userdata)
-}
-
-func dispatchSpotActorLifecycle(isJoin bool, info *C.zlink_spot_actor_lifecycle_info_t, userdata C.uintptr_t) {
-	if info == nil {
-		return
-	}
-	state, ok := safeHandleAs[*spotActorLifecycleCallbackState](userdata)
-	if !ok || state == nil {
-		return
-	}
+func spotActorLifecycleInfoFromC(info *C.zlink_spot_actor_lifecycle_info_t) SpotActorLifecycleInfo {
 	lifecycle := SpotActorLifecycleInfo{
 		PreviousActor: actorRefFromC(info.previous_actor),
 		CurrentActor:  actorRefFromC(info.current_actor),
@@ -830,7 +765,7 @@ func dispatchSpotActorLifecycle(isJoin bool, info *C.zlink_spot_actor_lifecycle_
 	if currSpot.Size() > 0 {
 		lifecycle.CurrentSpotRID = &currSpot
 	}
-	state.dispatch(isJoin, lifecycle)
+	return lifecycle
 }
 
 func recvActorPart(node unsafe.Pointer, actor ActorRef, flags RecvFlags) (*ActorPart, error) {

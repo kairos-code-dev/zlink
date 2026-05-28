@@ -22,7 +22,7 @@ query.Connect(registryRouter);
 try
 {
     SampleSupport.WaitOrThrow(
-        () => Array.Exists(query.Snapshot(),
+        () => Array.Exists(query.Status(),
             entry => entry.ChannelName == "sample"),
         5000,
         "registry query sample");

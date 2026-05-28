@@ -118,53 +118,22 @@ internal sealed class ZLinkRequestCall<TMessage>(
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var requestSeq = bundle.DealerMeshPendingRequests.NextRequestSeq();
-        var completion = new TaskCompletionSource<TReply>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        if (!bundle.DealerMeshPendingRequests.TryRegister(
-                requestSeq,
-                reply => ZLinkEnvelopeReplyCompletion.Complete<TReply>(
-                    RequestResult.Ok,
-                    reply,
-                    result => completion.TrySetResult(result),
-                    error => completion.TrySetException(error),
-                    "ZLink dealer mesh request")))
-        {
-            throw new InvalidOperationException(
-                $"DealerMesh request sequence '{requestSeq}' is already pending.");
-        }
-
-        try
-        {
-            await (bundle.Submitter
-                    ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
-                .SubmitAsync(
-                    message,
-                    pending => dealer.RequestFrame(
-                        requestSeq,
-                        pending,
-                        SendFlags.DontWait),
-                    cancellationToken)
-                .ConfigureAwait(false);
-
-            var timeoutTask = Task.Delay(timeout, cancellationToken);
-            var completed = await Task.WhenAny(completion.Task, timeoutTask)
-                .ConfigureAwait(false);
-            if (completed == completion.Task)
-            {
-                return await completion.Task.ConfigureAwait(false);
-            }
-
-            bundle.DealerMeshPendingRequests.Remove(requestSeq);
-            cancellationToken.ThrowIfCancellationRequested();
-            throw new TimeoutException("ZLink dealer mesh request timed out.");
-        }
-        catch
-        {
-            bundle.DealerMeshPendingRequests.Remove(requestSeq);
-            throw;
-        }
+        return await (bundle.Submitter
+                ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
+            .SubmitRequestAsync<TReply>(
+                message,
+                (pending, complete, fail) => dealer.Request(
+                    pending,
+                    (result, reply) => ZLinkEnvelopeReplyCompletion.Complete(
+                        result,
+                        reply,
+                        complete,
+                        fail,
+                        "ZLink dealer mesh request"),
+                    SendFlags.DontWait,
+                    timeout),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 }
 

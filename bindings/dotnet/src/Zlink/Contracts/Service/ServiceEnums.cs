@@ -17,7 +17,8 @@ public enum SpotDispatchEvent
     TimerReadable = 3,
     ChannelReplyReadable = 4,
     ActorReadable = 5,
-    ActorJoinReadable = 6
+    ActorJoinReadable = 6,
+    ActorLifecycleReadable = 7
 }
 
 public enum SpotDispatchSubjectKind

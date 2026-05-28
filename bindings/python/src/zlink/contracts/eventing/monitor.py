@@ -10,7 +10,7 @@ from ..sockets.codes import HandlerResult, RecvResult
 from ..errors.errors import CloseError, ConfigError, HandlerError, RecvError
 from ..._native.ffi import (
     ZlinkMonitorEvent,
-    ZlinkMonitorSnapshot,
+    ZlinkMonitorStatus,
     ZlinkSocketMonitorOpenOptions,
     lib,
 )
@@ -27,7 +27,7 @@ def _decode_fixed(buf):
     return bytes(buf).split(b"\0", 1)[0].decode("utf-8", errors="replace")
 
 
-class MonitorSnapshot:
+class MonitorStatus:
     def __init__(
         self,
         *,
@@ -93,8 +93,8 @@ class MonitorEvent:
 SocketMonitorEvent = MonitorEvent
 
 
-def _monitor_snapshot_from_native(snapshot):
-    return MonitorSnapshot(
+def _monitor_status_from_native(snapshot):
+    return MonitorStatus(
         source_kind=int(snapshot.source_kind),
         state_flags=int(snapshot.state_flags),
         detail_flags=int(snapshot.detail_flags),
@@ -174,12 +174,12 @@ class _BaseMonitor:
             _raise_result_error(HandlerError, HandlerResult, rc, lib().zlink_errno())
         self._handler_cb = callback
 
-    def snapshot(self):
-        snapshot = ZlinkMonitorSnapshot()
-        rc = lib().zlink_monitor_snapshot(self._handle, ctypes.byref(snapshot))
+    def status(self):
+        snapshot = ZlinkMonitorStatus()
+        rc = lib().zlink_monitor_status(self._handle, ctypes.byref(snapshot))
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return _monitor_snapshot_from_native(snapshot)
+        return _monitor_status_from_native(snapshot)
 
     def close(self):
         if not self._handle:

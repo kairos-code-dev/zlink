@@ -17,7 +17,7 @@ async function reservePort() {
 async function waitForPeer(node) {
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
-        const peers = node.peersSnapshot();
+        const peers = node.peers();
         if (peers.some((peer) => peer.channelName === 'api'
             && peer.kind === zlink.SpotPeerKind.RouterChannel)) {
             await new Promise((resolve) => setTimeout(resolve, 250));

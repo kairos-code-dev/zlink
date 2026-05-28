@@ -57,19 +57,15 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string peerPubEndpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_registry_status_snapshot(IntPtr registry,
+    internal static extern int zlink_registry_status(IntPtr registry,
         out ZlinkRegistryStatus status);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_registry_service_summary_snapshot(
+    internal static extern int zlink_registry_service_summary(
         IntPtr registry, IntPtr filter, IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_registry_topology_snapshot(
-        IntPtr registry, IntPtr entries, ref nuint count);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_registry_topology_query(IntPtr registry,
+    internal static extern int zlink_registry_topology(IntPtr registry,
         IntPtr filter, IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -86,11 +82,11 @@ internal static partial class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_registry_query_snapshot(IntPtr client,
+    internal static extern int zlink_registry_query_client_topology(IntPtr client,
         IntPtr filter, IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_registry_query_destroy(ref IntPtr client);
+    internal static extern int zlink_registry_query_client_destroy(ref IntPtr client);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_registry_destroy(ref IntPtr registry);
@@ -238,23 +234,19 @@ internal static partial class NativeMethods
         ref ZlinkRoutingId spotRid, out IntPtr spot, out uint created);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_status_snapshot(IntPtr node,
+    internal static extern int zlink_spot_node_status(IntPtr node,
         out ZlinkSpotNodeStatus status);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_peers_snapshot(IntPtr node,
-        IntPtr entries, ref nuint count);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_peers_query(IntPtr node,
+    internal static extern int zlink_spot_node_peers(IntPtr node,
         IntPtr filter, IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_subjects_snapshot(IntPtr node,
+    internal static extern int zlink_spot_node_subjects(IntPtr node,
         IntPtr filter, IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_internal_sockets_snapshot(
+    internal static extern int zlink_spot_node_internal_sockets(
         IntPtr node, IntPtr filter, IntPtr entries, ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -343,11 +335,10 @@ internal static partial class NativeMethods
         int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_actor_lifecycle_handler(
+    internal static extern int zlink_spot_recv_actor_lifecycle(
         IntPtr spot,
-        NativeMethods.ZlinkSpotActorLifecycleHandlerDelegate? onJoin,
-        NativeMethods.ZlinkSpotActorLifecycleHandlerDelegate? onLeave,
-        IntPtr userData);
+        out ZlinkSpotActorLifecycleEvent lifecycleEvent,
+        int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_actor_send_bound_session_msg(
@@ -363,17 +354,17 @@ internal static partial class NativeMethods
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_spots_snapshot(IntPtr node,
+    internal static extern int zlink_spot_node_spots(IntPtr node,
         IntPtr entries,
         ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actors_snapshot(IntPtr node,
+    internal static extern int zlink_spot_node_actors(IntPtr node,
         IntPtr entries,
         ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_actors_snapshot(IntPtr spot,
+    internal static extern int zlink_spot_actors(IntPtr spot,
         IntPtr entries,
         ref nuint count);
 
@@ -420,7 +411,7 @@ internal static partial class NativeMethods
         ref ZlinkMsg part, out int hasMore, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_subscription_event_recv(IntPtr spot,
+    internal static extern int zlink_spot_recv_subscription_event(IntPtr spot,
         out IntPtr sourceRoutingId, out int subscribed, byte[] topicIdBuffer,
         nuint topicIdCapacity, out nuint topicIdLenOut, int flags);
 

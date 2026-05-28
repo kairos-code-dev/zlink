@@ -9,16 +9,11 @@ package zlink
 
 extern void goZlinkSubscribeTrampoline(zlink_routing_id_t *source_rid_, char *topic_, size_t topic_len_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkSendReadyTrampoline(void *subject_, uintptr_t userdata_);
-extern void goZlinkSpotRoutedTrampoline(zlink_routing_id_t *source_node_rid_, zlink_routing_id_t *source_spot_rid_, uint64_t request_seq_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 extern void goZlinkSpotDispatchEventTrampoline(void *spot_, const zlink_spot_dispatch_info_t *info_, uintptr_t userdata_);
 extern void goZlinkReplyTrampoline(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, uintptr_t userdata_);
 
 static inline int zlink_spot_send_ready_handler_go_local(void *s, uintptr_t userdata) {
     return zlink_send_ready_handler(s, (zlink_send_ready_handler_fn)goZlinkSendReadyTrampoline, (void *)userdata);
-}
-
-static inline int zlink_spot_handler_go_local(void *s, uintptr_t userdata) {
-    return zlink_spot_handler(s, (zlink_spot_handler_fn)goZlinkSpotRoutedTrampoline, (void *)userdata);
 }
 
 static inline int zlink_spot_dispatch_event_handler_go_local(void *s, uintptr_t userdata) {
@@ -103,20 +98,20 @@ type SpotNodeOptions struct {
 	Mode SpotNodeMode
 }
 
-type SpotNodeSocketSnapshotFilter struct {
+type SpotNodeSocketFilter struct {
 	Owner      *SpotNodeSocketOwner
 	SocketType *SocketType
 	SocketName *string
 }
 
-type SpotNodeSocketSnapshotEntry struct {
+type SpotNodeSocketEntry struct {
 	Owner          SpotNodeSocketOwner
 	OwnerID        uint64
 	OwnerName      string
 	SocketName     string
 	SocketType     SocketType
 	AutoHwmVisible bool
-	Snapshot       MonitorSnapshot
+	MonitorStatus       MonitorStatus
 }
 
 func newSpotNode(ctx *Context) (*SpotNode, error) {
@@ -622,10 +617,8 @@ type spotCore struct {
 	handle          unsafe.Pointer
 	closed          bool
 	subscribeHandle cgo.Handle
-	routedHandle    cgo.Handle
 	sendReadyHandle cgo.Handle
 	dispatchHandle  cgo.Handle
-	lifecycleHandle cgo.Handle
 	owner           *SpotNode
 	mu              sync.Mutex
 }
@@ -652,12 +645,10 @@ func (s *spotCore) Close() error {
 		return err
 	}
 	subscribeHandle := s.subscribeHandle
-	routedHandle := s.routedHandle
 	sendReadyHandle := s.sendReadyHandle
 	dispatchHandle := s.dispatchHandle
 	owner := s.owner
 	s.subscribeHandle = 0
-	s.routedHandle = 0
 	s.sendReadyHandle = 0
 	s.dispatchHandle = 0
 	s.closed = true
@@ -666,9 +657,6 @@ func (s *spotCore) Close() error {
 	s.mu.Unlock()
 	if subscribeHandle != 0 {
 		subscribeHandle.Delete()
-	}
-	if routedHandle != 0 {
-		routedHandle.Delete()
 	}
 	if sendReadyHandle != 0 {
 		sendReadyHandle.Delete()
@@ -1315,34 +1303,6 @@ func (s *Spot) RecvRoutedPart(out *Message, flags RecvFlags) (RecvPartResult, bo
 	return result, true, nil
 }
 
-func (s *Spot) ForwardRouted(recvFlags RecvFlags, sendFlags SendFlags) (SpotForwardResult, bool, error) {
-	if s.isInvalid() {
-		return SpotForwardResult{}, false, &SubmitError{Result: SubmitInvalidHandle, internalErrno: int(C.EFAULT)}
-	}
-	var raw C.zlink_spot_forward_result_t
-	rc := C.zlink_spot_forward_routed(
-		s.raw(),
-		C.zlink_recv_flags_t(recvFlags),
-		C.zlink_send_flags_t(sendFlags),
-		&raw,
-	)
-	result := SpotForwardResult{
-		SourceNodeRID: routingIDFromC(raw.source_node_rid),
-		SourceSpotRID: routingIDFromC(raw.source_spot_rid),
-		RequestSeq:    uint64(raw.request_seq),
-		HasRequestSeq: raw.has_request_seq != 0,
-		PartCount:     int(raw.part_count),
-		PayloadBytes:  int(raw.payload_bytes),
-	}
-	if SubmitResult(rc) == SubmitOK {
-		return result, true, nil
-	}
-	if SubmitResult(rc) == SubmitNotFound {
-		return result, false, nil
-	}
-	return result, false, submitErrorFromResult(rc)
-}
-
 func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error) {
 	if out == nil {
 		return false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EINVAL)}
@@ -1376,24 +1336,6 @@ func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error) {
 	return true, nil
 }
 
-func (s *Spot) OnRoutedReceive(handler func(*Received)) error {
-	if handler == nil {
-		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
-	}
-	state := newSpotRoutedCallbackState(s, handler)
-	handle := cgo.NewHandle(state)
-	if err := handlerErrorFromResult(C.zlink_spot_handler_go_local(s.raw(), C.uintptr_t(handle))); err != nil {
-		state.close()
-		handle.Delete()
-		return err
-	}
-	if s.core.routedHandle != 0 {
-		releaseCallbackHandle(s.core.routedHandle)
-	}
-	s.core.routedHandle = handle
-	return nil
-}
-
 func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error {
 	if handler == nil {
 		return &HandlerError{Result: HandlerInvalidArgument, internalErrno: int(C.EINVAL)}
@@ -1410,6 +1352,24 @@ func (s *Spot) OnDispatchEvent(handler func(*Spot, SpotDispatchInfo)) error {
 	}
 	s.core.dispatchHandle = handle
 	return nil
+}
+
+func (s *Spot) RecvActorLifecycle(flags RecvFlags) (SpotActorLifecycleEvent, bool, error) {
+	if s == nil || s.core == nil || s.core.closed {
+		return SpotActorLifecycleEvent{}, false, &RecvError{Result: RecvInvalidHandle, internalErrno: int(C.EFAULT)}
+	}
+	var event C.zlink_spot_actor_lifecycle_event_t
+	if err := recvErrorFromResult(C.zlink_spot_recv_actor_lifecycle(s.raw(), &event, C.zlink_recv_flags_t(flags))); err != nil {
+		var recvErr *RecvError
+		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+			return SpotActorLifecycleEvent{}, false, nil
+		}
+		return SpotActorLifecycleEvent{}, false, err
+	}
+	return SpotActorLifecycleEvent{
+		Kind: SpotActorLifecycleEventKind(event.kind),
+		Info: spotActorLifecycleInfoFromC(&event.info),
+	}, true, nil
 }
 
 func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {

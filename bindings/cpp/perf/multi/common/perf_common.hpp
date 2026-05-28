@@ -492,13 +492,13 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
     if (!auto_hwm_detail_enabled ())
         return;
 
-    zlink::monitor_snapshot_t snapshot;
+    zlink::monitor_status_t snapshot;
     try {
         zlink::monitor_handle_t monitor =
           socket.monitor_handle (zlink::monitor_event::all);
         if (!monitor.valid ())
             return;
-        snapshot = monitor.snapshot ();
+        snapshot = monitor.status ();
     }
     catch (const zlink::zlink_error_t &) {
         return;
@@ -637,9 +637,9 @@ inline void emit_spot_node_auto_hwm_snapshot (
     if (!auto_hwm_detail_enabled ())
         return;
 
-    std::vector<zlink::spot_node_socket_snapshot_entry_t> entries;
+    std::vector<zlink::spot_node_socket_entry_t> entries;
     try {
-        entries = node.internal_sockets_snapshot ();
+        entries = node.internal_sockets ();
     }
     catch (const zlink::config_error_t &) {
         return;
@@ -654,10 +654,10 @@ inline void emit_spot_node_auto_hwm_snapshot (
 
     static std::mutex mutex;
     static std::set<std::string> emitted;
-    for (const zlink::spot_node_socket_snapshot_entry_t &entry : entries) {
+    for (const zlink::spot_node_socket_entry_t &entry : entries) {
         if (!entry.auto_hwm_visible ())
             continue;
-        const zlink::monitor_snapshot_t &snapshot = entry.snapshot ();
+        const zlink::monitor_status_t &snapshot = entry.monitor_status ();
         const std::string socket = entry.socket_name ();
         if (socket == "internal_receiver")
             continue;

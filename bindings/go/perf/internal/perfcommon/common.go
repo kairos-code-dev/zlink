@@ -120,8 +120,8 @@ func PrintSingleAutoHWMDetail(
 	if monitor == nil || pattern == "" || component == "" {
 		return
 	}
-	snapshot, err := monitor.Snapshot()
-	if err != nil || !autoHWMSnapshotVisible(snapshot) {
+	snapshot, err := monitor.Status()
+	if err != nil || !autoHWMStatusVisible(snapshot) {
 		return
 	}
 	printAutoHWMDetail(pattern, transport, component, msgSize, "socket", 0, component, socketType, snapshot)
@@ -137,12 +137,12 @@ func PrintSingleSpotNodeAutoHWMDetail(
 	if node == nil || pattern == "" || component == "" {
 		return
 	}
-	entries, err := node.InternalSocketsSnapshot(nil)
+	entries, err := node.InternalSockets(nil)
 	if err != nil {
 		return
 	}
 	for _, entry := range entries {
-		if !entry.AutoHwmVisible || !autoHWMSnapshotVisible(&entry.Snapshot) {
+		if !entry.AutoHwmVisible || !autoHWMStatusVisible(&entry.MonitorStatus) {
 			continue
 		}
 		printAutoHWMDetail(
@@ -154,12 +154,12 @@ func PrintSingleSpotNodeAutoHWMDetail(
 			entry.OwnerID,
 			entry.SocketName,
 			entry.SocketType,
-			&entry.Snapshot,
+			&entry.MonitorStatus,
 		)
 	}
 }
 
-func autoHWMSnapshotVisible(snapshot *zlink.MonitorSnapshot) bool {
+func autoHWMStatusVisible(snapshot *zlink.MonitorStatus) bool {
 	return snapshot != nil &&
 		(snapshot.AutoHwmAppliedSndHwm > 0 ||
 			snapshot.AutoHwmAppliedRcvHwm > 0 ||
@@ -176,7 +176,7 @@ func printAutoHWMDetail(
 	ownerID uint64,
 	socketName string,
 	socketType zlink.SocketType,
-	snapshot *zlink.MonitorSnapshot,
+	snapshot *zlink.MonitorStatus,
 ) {
 	if socketName == "" {
 		socketName = component

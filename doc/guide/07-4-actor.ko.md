@@ -228,40 +228,25 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE: {
 > `timeout_ms > 0`이면 timeout까지 pending이고, `timeout_ms == 0`이면 handler가
 > 등록되어 처리하거나 Spot/SpotNode가 종료될 때까지 pending 상태로 남는다.
 
-### Spot lifecycle handler
+### Spot lifecycle event
 
-Actor의 위치 변경(생성, join, leave, destroy)을 관측하려면 해당 Spot에 lifecycle
-handler를 등록한다. callback은 위치 변경이 commit된 뒤 실행된다.
+Actor의 위치 변경(생성, join, leave, destroy)을 관측하려면 Actor 전이가 발생하기 전에 `zlink_spot_dispatch_event_handler()`를 등록한다. `ACTOR_LIFECYCLE_READABLE`이 오면 `zlink_spot_recv_actor_lifecycle()`로 event를 drain한다.
 
 ```c
-static void on_spot_join(
-    void *spot, const zlink_spot_actor_lifecycle_info_t *info, void *ud)
-{
-    /* info->current_actor가 이 Spot에 들어온 Actor */
+zlink_spot_actor_lifecycle_event_t event;
+while (zlink_spot_recv_actor_lifecycle(spot, &event, ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
+    if (event.kind == ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
+        /* event.info.current_actor가 이 Spot에 들어온 Actor */
+    }
 }
-
-static void on_spot_leave(
-    void *spot, const zlink_spot_actor_lifecycle_info_t *info, void *ud)
-{
-    /* info->previous_actor가 이 Spot에서 떠난 Actor.
-       destroy면 info->current_actor는 zero-value ref */
-}
-
-zlink_spot_actor_lifecycle_handler(spot, on_spot_join, on_spot_leave, userdata);
 ```
 
-`on_join == NULL` 또는 `on_leave == NULL`은 해당 callback을 받지 않는다. 둘 다 NULL이면
-기존 lifecycle handler 등록을 제거한다. handler 등록은 이미 Spot에 있는 Actor를
-replay하지 않으며, 등록 이후 발생한 transition만 callback 대상이다.
-
-lifecycle callback은 관측용이다. application state machine이 join 완료나 session
-join 완료 순서를 결정할 때는 join completion handler와 반환된 최종 Actor ref를 기준으로
-삼는다.
+lifecycle event는 관측용이다. application state machine이 join 완료나 session join 완료 순서를 결정할 때는 join completion handler와 반환된 최종 Actor ref를 기준으로 삼는다.
 
 ## 3. Spot leave
 
 `leave`는 Actor를 현재 Spot에서 같은 node의 Entry Spot으로 돌려보내는 async submit
-API다. Actor가 이미 Entry Spot에 있으면 멱등(idempotent) 성공이고, lifecycle callback은
+API다. Actor가 이미 Entry Spot에 있으면 멱등(idempotent) 성공이고, lifecycle event은
 발생하지 않는다. 탈퇴 후 Actor 메시지는 Entry Spot 디스패치 이벤트로 올라간다.
 
 ```c

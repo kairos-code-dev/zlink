@@ -322,22 +322,12 @@ framework 가 source peer 를 추측하지 않고 같은 request 에 reply 할 �
 framework 는 이 public API 만 사용해야 한다. binding 내부 멤버를 reflection 으로 호출하거나
 `InternalsVisibleTo` 로 우회하면 framework 와 binding 의 변경 경계가 깨진다.
 
-core C API delta 는 최소한 아래 의미를 가져야 한다.
+이 절의 초기안은 DEALER가 request sequence와 reply token을 직접 다루는 C API를
+전제로 했다. 현재 C API 정리 기준에서는 그 방향을 폐기한다. DEALER는 특정 peer를
+지정해 reply할 수 있는 주체가 아니므로 public API에 request sequence 주입이나
+reply helper를 두지 않는다.
 
 ```c
-ZLINK_EXPORT zlink_submit_result_t zlink_dealer_request_frame_part(
-  void *dealer,
-  uint64_t request_seq,
-  zlink_msg_t *part,
-  zlink_send_flags_t flags,
-  zlink_part_flag_t part_flag);
-
-ZLINK_EXPORT zlink_submit_result_t zlink_dealer_reply_part(
-  void *dealer,
-  uint64_t request_token,
-  zlink_msg_t *part,
-  zlink_part_flag_t part_flag);
-
 ZLINK_EXPORT zlink_recv_result_t zlink_dealer_recv_part(
   void *dealer,
   uint8_t *message_type_out,
@@ -347,16 +337,10 @@ ZLINK_EXPORT zlink_recv_result_t zlink_dealer_recv_part(
   zlink_recv_flags_t flags);
 ```
 
-`zlink_dealer_request_frame_part(...)` 는 framework 가 outbound request sequence 를 직접
-관리하고 pending map 을 소유할 때 사용한다. 기존 `zlink_dealer_request_part(...)` 는 native
-callback 으로 completion 을 완료하므로 DealerMesh receive loop 와 같은 socket 소유권을 공유할
-수 없다.
-
 `zlink_dealer_recv_part(...)` 가 request 를 돌려줄 때의 `request_seq_out` 은 단순 숫자가
-아니다. core 가 inbound peer 또는 pipe 와 함께 등록한 reply token 이어야 한다. framework 는
-그 값을 새로 만들거나 peer 를 추측하지 않고, 받은 token 을 `zlink_dealer_reply_part(...)` 에
-그대로 넘긴다. 이 규칙이 있어야 여러 peer 가 같은 DEALER mesh 에 붙어도 reply 가 원래
-request 를 보낸 peer 로 돌아간다.
+아니다. framework는 이 값을 새 outbound request sequence로 재사용하거나 reply token으로
+해석하지 않는다. DEALER에서 reply 동작이 필요해 보이는 흐름은 ROUTER 또는 SPOT reply
+context로 모델을 다시 잡아야 한다.
 
 `message_type_out` 은 raw send, request, reply 를 구분할 수 있어야 한다. raw send 는 request
 sequence 가 없어야 하고, request/reply 는 request sequence 를 보존해야 한다. 이 이름과 상수
@@ -1267,7 +1251,7 @@ sample 에서 아래 패턴이 다시 생기지 않도록 회귀 테스트를 �
 
 | 문서 | 반영 내용 |
 |------|-----------|
-| `doc/spec/core/` 아래 request/reply 또는 socket spec | `zlink_dealer_request_frame_part`, `zlink_dealer_recv_part`, `zlink_dealer_reply_part` 의 인자, 반환값, errno, ownership 계약 |
+| `doc/spec/core/` 아래 request/reply 또는 socket spec | `zlink_dealer_recv_part` 의 message kind, request sequence 출력, 반환값, errno, ownership 계약 |
 | `doc/spec/core/` 아래 errno spec | DEALER receive/reply API 의 `EAGAIN`, `ENOENT`, `EHOSTUNREACH`, `EPROTO`, `EINVAL` 의미 |
 | `doc/spec/bindings/` | DEALER inbound message kind, request token, directed reply, message ownership 규칙 |
 | 각 binding public API 문서 | binding 별 `DealerReceived` 또는 같은 의미의 type, `RequestFrame`, `RecvDealer`, `Reply` 표면 |

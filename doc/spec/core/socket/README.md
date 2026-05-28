@@ -850,4 +850,4 @@ needed.
 **Returns:** Monitor handle on success, `NULL` on failure (errno is set).
 
 **See also:** `zlink_socket_monitor_handler`, `zlink_socket_monitor_recv`,
-`zlink_monitor_snapshot`, `zlink_monitor_close`
+`zlink_monitor_status`, `zlink_monitor_close`

@@ -47,6 +47,16 @@ class sub_socket_t : public subscriber_socket_t
         return base_socket_t::subscribe (out_, flags_);
     }
 
+    int subscribe_part (std::optional<routing_id_t> &source_rid_out_,
+                        std::string &topic_out_,
+                        message_t &part_out_,
+                        bool &has_more_out_,
+                        recv_flags_t flags_ = recv_flags_t::none)
+    {
+        return base_socket_t::subscribe_part (
+          source_rid_out_, topic_out_, part_out_, has_more_out_, flags_);
+    }
+
     template<typename DiscoveryT>
     void attach_discovery (DiscoveryT &discovery_)
     {

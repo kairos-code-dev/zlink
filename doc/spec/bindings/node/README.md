@@ -165,19 +165,19 @@ access to native objects.
 ## Contract Category Map
 
 `src/zlink/contracts` is the source ownership map for the package entrypoint
-and published TypeScript declarations when category separation is needed.
+and published TypeScript declarations.
 
-- `Core/`: context, context options, routing id, version/capability helpers, and
+- `core/`: context, context options, routing id, version/capability helpers, and
   utility contracts.
-- `Messaging/`: `Message`, received metadata, topic messages, subscription
+- `messaging/`: `Message`, received metadata, topic messages, subscription
   events, stream packet data, and builder payload helpers.
-- `Sockets/`: socket behavior, socket families, typed options, request/reply,
+- `sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
-- `eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
+- `eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
-- `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
-- `Errors/`: typed error classes or tagged error domains.
+- `errors/`: typed error classes or tagged error domains.
 - Enum, flag, result, and literal-union types live in the category that defines
   their meaning. Do not create an `enums` folder just to group declarations by
   syntax.

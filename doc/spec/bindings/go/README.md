@@ -63,10 +63,12 @@ tests, and this README in the same change.
 
 The following tree is the target implementation structure. Exported types,
 functions, errors, enums, and builder contracts belong in the public
-`contracts` package. Root implementation files own the current cgo bridge and
-runtime details. cgo declarations, raw pointers, native struct mirrors,
-callback trampolines, request progress helpers, and marshalling must not become
-the consumer-facing entrypoint.
+`contracts` package. Do not create `contracts/core` or `contracts/sockets`
+packages unless the public Go import policy is changed, because those paths
+would become user-facing API. Root implementation files own the current cgo
+bridge and runtime details. cgo declarations, raw pointers, native struct
+mirrors, callback trampolines, request progress helpers, and marshalling must
+not become the consumer-facing entrypoint.
 
 File granularity follows the common policy in `../README.md`: keep one file
 per independent public concept or tight operation/model group. Very small
@@ -146,20 +148,21 @@ result values, snapshots, and option structs stay concrete.
 
 ## Contract Category Map
 
-These categories map to exported identifiers in `bindings/go/contracts/` and are
-the review ownership map for the aggregate public package.
+These categories map to exported identifiers in the aggregate
+`bindings/go/contracts/` package. They are review ownership labels, not Go
+subpackage names.
 
-- `Core/`: context, context options, routing id, version/capability helpers, and
+- `Core`: context, context options, routing id, version/capability helpers, and
   runtime utility contracts.
-- `Messaging/`: message, received metadata, topic messages, subscription events,
+- `Messaging`: message, received metadata, topic messages, subscription events,
   stream packet callbacks, and builder payload helpers.
-- `Sockets/`: socket behavior, socket families, typed options, request/reply,
+- `Sockets`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
 - `Eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
-- `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `Service`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
-- `Errors/`: exported error values or typed error domains.
+- `Errors`: exported error values or typed error domains.
 - Enum, flag, and result identifiers live in the category that defines their
   meaning. Do not create a separate `enums` package just to group declarations
   by syntax.

@@ -155,20 +155,20 @@ The binding should feel like a safe Rust crate over a native runtime.
 
 ## Contract Category Map
 
-These categories map to `bindings/rust/src/contracts/` and are the review
-ownership map for public crate items and re-exports.
+These categories map to lower-case modules under `bindings/rust/src/contracts/`
+and are the review ownership map for public crate items and re-exports.
 
-- `Core/`: context, context options, routing id, version/capability helpers, and
+- `core/`: context, context options, routing id, version/capability helpers, and
   utility contracts.
-- `Messaging/`: message, received metadata, topic messages, subscription events,
+- `messaging/`: message, received metadata, topic messages, subscription events,
   stream packet data, and builder payload helpers.
-- `Sockets/`: socket behavior, socket families, typed options, request/reply,
+- `sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
-- `eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
+- `eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
-- `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
-- `Errors/`: typed error/result domains.
+- `errors/`: typed error/result domains.
 - Enum, flag, and result types live in the category that defines their meaning.
   Do not create an `enums` module just to group declarations by syntax.
 

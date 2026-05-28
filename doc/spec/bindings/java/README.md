@@ -7,8 +7,8 @@ list of every class or method. The concrete public contract is
 `bindings/java/src/main/java/systems/zlink/contracts/`. Service APIs use
 documented public subpackages below that path.
 
-A Java implementation is aligned when the `systems.zlink.contracts` and
-non-exported `systems.zlink.runtime` package trees, tests, samples, perf
+A Java implementation is aligned when the `systems.zlink.contracts.*` and
+non-exported `systems.zlink.runtime.*` package trees, tests, samples, perf
 runners, and runtime behavior follow this blueprint and map the stable
 capabilities of `core/include/zlink.h` into Java-idiomatic APIs.
 
@@ -19,9 +19,9 @@ cleanup targets. When the binding is aligned to this README, the target
 contract becomes the acceptance standard for that work.
 
 This binding follows the shared bindings architecture map with Java naming:
-lower-case package names express the contract/runtime roles. The map is a
-review ownership model, not a requirement to create one Java subpackage for
-every category.
+lower-case package names express the contract/runtime roles. Java uses
+category subpackages under `systems.zlink.contracts.*` so JPMS exports,
+Javadoc, and source ownership follow the same map.
 
 ## Public Contract Source
 
@@ -36,15 +36,15 @@ every category.
   `systems.zlink.contracts`.
 - Runtime packages: `systems.zlink.runtime.*`; these packages are not public
   API and must not be exported by JPMS.
-- Module boundary: if JPMS is used, only `systems.zlink.contracts` and
-  documented service contract subpackages are exported.
+- Module boundary: if JPMS is used, only documented contract packages under
+  `systems.zlink.contracts.*` are exported.
 - Documentation role: this README defines the library shape and required
   semantic coverage. The `contracts` package tree owns the exact public member
   list. Java source and generated API docs must project it intentionally.
 
-Applications, perf, and samples must import only `systems.zlink.contracts` and
-documented service contract subpackages. They must not import
-`systems.zlink.runtime.*` or native bridge classes.
+Applications, perf, and samples must import only documented contract packages
+under `systems.zlink.contracts.*`. They must not import `systems.zlink.runtime.*`
+or native bridge classes.
 
 ## Repository Layout
 
@@ -71,7 +71,8 @@ list. Java uses URL-style package naming in its source tree, so the role names
 are lower-case Java packages. Do not create `systems.zlink.Contracts` or
 `systems.zlink.Runtime` packages. Use `systems.zlink.contracts.*` and
 `systems.zlink.runtime.*` exactly as shown below. The package tree below is the
-implementation and review structure.
+target implementation and review structure. It is grouped by the shared
+contract categories, not by one flat package of all public Java classes.
 
 File granularity follows the common policy in `../README.md`: keep one file
 per independent public concept or tight operation/model group. Very small
@@ -86,21 +87,26 @@ bindings/java/
 |   |   |   +-- systems/
 |   |   |   |   +-- zlink/
 |   |   |   |   |   +-- contracts/
-|   |   |   |   |   |   +-- Context.java
-|   |   |   |   |   |   +-- Zlink.java
-|   |   |   |   |   |   +-- RoutingId.java
-|   |   |   |   |   |   +-- Message.java
-|   |   |   |   |   |   +-- Received.java
-|   |   |   |   |   |   +-- TopicMessage.java
-|   |   |   |   |   |   +-- PairSocket.java
-|   |   |   |   |   |   +-- DealerSocket.java
-|   |   |   |   |   |   +-- RouterSocket.java
-|   |   |   |   |   |   +-- MonitorSocket.java
-|   |   |   |   |   |   +-- Poller.java
+|   |   |   |   |   |   +-- core/
+|   |   |   |   |   |   |   +-- Context.java
+|   |   |   |   |   |   |   +-- Zlink.java
+|   |   |   |   |   |   |   +-- RoutingId.java
+|   |   |   |   |   |   +-- messaging/
+|   |   |   |   |   |   |   +-- Message.java
+|   |   |   |   |   |   |   +-- Received.java
+|   |   |   |   |   |   |   +-- TopicMessage.java
+|   |   |   |   |   |   +-- sockets/
+|   |   |   |   |   |   |   +-- PairSocket.java
+|   |   |   |   |   |   |   +-- DealerSocket.java
+|   |   |   |   |   |   |   +-- RouterSocket.java
+|   |   |   |   |   |   +-- eventing/
+|   |   |   |   |   |   |   +-- MonitorSocket.java
+|   |   |   |   |   |   |   +-- Poller.java
 |   |   |   |   |   |   +-- service/
 |   |   |   |   |   |   |   +-- registry/
 |   |   |   |   |   |   |   +-- discovery/
 |   |   |   |   |   |   |   +-- spot/
+|   |   |   |   |   |   +-- errors/
 |   |   |   |   |   +-- runtime/
 |   |   |   |   |   |   +-- nativeapi/
 |   |   +-- resources/
@@ -122,30 +128,29 @@ bindings/java/
 +-- perf/
 ```
 
-The Java binding currently keeps core, messaging, sockets, eventing, and errors
-in one exported `systems.zlink.contracts` package. This keeps
-package-private native and marshalling helpers hidden from reflection-based API
-guards while still separating the public contract package from the non-exported
-runtime package. Service contracts use subpackages because their public surface
-does not require the same package-private sharing.
+The Java binding uses documented subpackages under `systems.zlink.contracts`
+for the shared categories. This keeps public contract ownership clear while
+keeping native and marshalling helpers in the non-exported runtime package.
+Do not flatten category-owned public classes into one root package just to make
+the Java tree shorter.
 
-The category table below is the review and ownership map, not a request to
-create Java subpackages for every category.
+The category table below is the Java package ownership map for the shared
+contract categories.
 
 | Contract category | Java package path |
 |---|---|
-| Core | `systems/zlink/contracts` |
-| Messaging | `systems/zlink/contracts` |
-| Sockets | `systems/zlink/contracts` |
-| Eventing | `systems/zlink/contracts` |
+| Core | `systems/zlink/contracts/core` |
+| Messaging | `systems/zlink/contracts/messaging` |
+| Sockets | `systems/zlink/contracts/sockets` |
+| Eventing | `systems/zlink/contracts/eventing` |
 | Service | `systems/zlink/contracts/service` and its service subpackages |
-| Errors | `systems/zlink/contracts` |
-| Runtime/Core | `systems/zlink/runtime` |
-| Runtime/Messaging | `systems/zlink/runtime` |
-| Runtime/Sockets | `systems/zlink/runtime` |
-| Runtime/Eventing | `systems/zlink/runtime` |
-| Runtime/Service | `systems/zlink/runtime` |
-| Runtime/Errors | `systems/zlink/runtime` |
+| Errors | `systems/zlink/contracts/errors` |
+| Runtime/Core | `systems/zlink/runtime` or `systems/zlink/runtime/core` |
+| Runtime/Messaging | `systems/zlink/runtime` or `systems/zlink/runtime/messaging` |
+| Runtime/Sockets | `systems/zlink/runtime` or `systems/zlink/runtime/sockets` |
+| Runtime/Eventing | `systems/zlink/runtime` or `systems/zlink/runtime/eventing` |
+| Runtime/Service | `systems/zlink/runtime` or `systems/zlink/runtime/service` |
+| Runtime/Errors | `systems/zlink/runtime` or `systems/zlink/runtime/errors` |
 | Runtime/Native | `systems/zlink/runtime/nativeapi` |
 
 Enum, flag, and result classes belong to the category that defines their
@@ -272,8 +277,16 @@ subpackages are the source ownership map for public Java APIs.
 The public package layout should make API ownership easy to inspect without
 forcing package-private native helpers into the public surface.
 
-- `systems.zlink.contracts`: core, messaging, sockets, eventing, errors, and
-  enum/flag/result contracts owned by those categories.
+- `systems.zlink.contracts.core`: core public API, routing id, version, and
+  capability helpers.
+- `systems.zlink.contracts.messaging`: message, receive metadata, topic, and
+  subscription event contracts.
+- `systems.zlink.contracts.sockets`: socket families, options, flags, request,
+  reply, publish, subscribe, and stream contracts.
+- `systems.zlink.contracts.eventing`: monitor, poller, timer, and event
+  contracts.
+- `systems.zlink.contracts.errors`: public exception, error code, and result
+  contracts shared across domains.
 - `systems.zlink.contracts.service.registry`: registry public API and registry
   snapshot models.
 - `systems.zlink.contracts.service.discovery`: discovery public API and topology

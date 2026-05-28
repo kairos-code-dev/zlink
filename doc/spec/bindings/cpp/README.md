@@ -71,6 +71,11 @@ paths. Legacy wrapper headers such as `include/zlink/message.hpp`,
 `include/zlink/services/spot.hpp`, or `include/zlink/sockets/dealer.hpp` are
 not part of the target layout.
 
+If existing C++ source still uses a `Monitoring/` contract folder for monitor,
+poller, or timer types, treat it as the legacy name for the shared `Eventing/`
+category. New alignment work should move those public contracts under
+`Eventing/` and update `zlink.hpp` projection in the same change.
+
 File granularity follows the common policy in `../README.md`: keep one file
 per independent public concept or tight operation/model group. Very small
 marker, delegate, enum, or pass-through helper files should be merged into the

@@ -43,7 +43,9 @@ Use these target paths consistently when changing the Python binding.
 
 - Public contract: `bindings/python/src/zlink/contracts/`.
 - Runtime implementation: `bindings/python/src/zlink/_runtime/`.
-- Native bridge/artifacts: `bindings/python/src/zlink/_native/`.
+- Native bridge/artifacts: `bindings/python/src/zlink/_native/` for private
+  bridge code and `bindings/python/src/zlink/native/` for packaged native
+  binaries.
 - Codec extensions: `bindings/python/codecs/`.
 - Tests: `bindings/python/tests/`.
 - Samples: `bindings/python/samples/` and `bindings/python/examples/`.
@@ -86,6 +88,7 @@ bindings/python/
 |   |   |   +-- service/
 |   |   |   +-- errors/
 |   |   +-- _native/
+|   |   +-- native/
 +-- codecs/
 +-- tests/
 +-- samples/
@@ -152,17 +155,17 @@ Do not expose private extension objects for convenience in perf or samples.
 The `zlink/contracts/` package is the source ownership map for names exported
 from `zlink`.
 
-- `Core/`: context, context options, routing id, version/capability helpers, and
+- `core/`: context, context options, routing id, version/capability helpers, and
   utility contracts.
-- `Messaging/`: message, received metadata, topic messages, subscription events,
+- `messaging/`: message, received metadata, topic messages, subscription events,
   stream packet data, and builder payload helpers.
-- `Sockets/`: socket behavior, socket families, typed options, request/reply,
+- `sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
-- `eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
+- `eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, and
   public poll helpers.
-- `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
+- `service/`: registry, discovery, SPOT node, SPOT handle, topology models,
   actor refs, actor lifecycle, and operation builders.
-- `Errors/`: typed exception domains.
+- `errors/`: typed exception domains.
 - Enum, flag, and result types live in the category that defines their meaning.
   Do not create an `enums` package just to group declarations by syntax.
 

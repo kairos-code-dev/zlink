@@ -40,7 +40,7 @@ int main ()
     const std::chrono::steady_clock::time_point subscribe_deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < subscribe_deadline) {
-        const int rc = topic_spot.subscribe (inbound, ZLINK_DONTWAIT);
+        const int rc = topic_spot.subscribe (inbound, zlink::recv_flags_t::dontwait);
         if (rc == static_cast<int> (zlink::recv_result_t::ok)) {
             received_topic = true;
             break;

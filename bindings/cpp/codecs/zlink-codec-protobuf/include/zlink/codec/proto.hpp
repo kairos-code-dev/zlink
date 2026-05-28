@@ -2,7 +2,7 @@
 #ifndef ZLINK_CPP_CODEC_PROTO_HPP_INCLUDED
 #define ZLINK_CPP_CODEC_PROTO_HPP_INCLUDED
 
-#include <zlink/message.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
 
 #include <google/protobuf/message.h>
 

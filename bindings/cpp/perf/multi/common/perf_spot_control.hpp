@@ -4,7 +4,7 @@
 #include "perf_common_multi.hpp"
 #include "perf_spot_handshake.hpp"
 #include "perf_tls.hpp"
-#include "../../common/perf_socket_compat.hpp"
+#include "../../common/perf_socket_adapter.hpp"
 
 #include <cerrno>
 #include <chrono>
@@ -122,7 +122,7 @@ try_publish_nowait (SpotHandle &spot_,
     try {
         return spot_.publish (topic_)
             .message (outbound)
-            .flags (ZLINK_DONTWAIT)
+            .flags (static_cast<int>(zlink::send_flags_t::dontwait))
             .submit ()
           ? zlink::send_result_t::sent
           : zlink::send_result_t::backpressured;
@@ -146,7 +146,7 @@ inline std::optional<zlink::topic_message_t>
 try_subscribe_nowait (SpotHandle &spot_)
 {
     zlink::topic_message_t message;
-    const int rc = spot_.subscribe (message, ZLINK_DONTWAIT);
+    const int rc = spot_.subscribe (message, static_cast<int>(zlink::send_flags_t::dontwait));
     if (rc == static_cast<int> (zlink::recv_result_t::no_data))
         return std::nullopt;
     if (rc != static_cast<int> (zlink::recv_result_t::ok))
@@ -465,7 +465,8 @@ inline bool publish_control_message (SpotHandle &spot_,
                             std::max (1, timeout_ms_));
     while (std::chrono::steady_clock::now () < deadline) {
         zlink::message_t outbound =
-          zlink::message_t::from_bytes (payload_.data (), payload_.size ());
+          zlink::message_t::from_bytes (std::as_bytes (
+            std::span<const char> (payload_.data (), payload_.size ())));
         if (!outbound.valid ()) {
             errno = EINVAL;
             return false;
@@ -523,7 +524,7 @@ inline bool wait_for_control_start (SpotHandle &spot_,
 
             const zlink::message_t &part = received->parts ()[0];
             const std::string payload (
-              static_cast<const char *> (part.data ()), part.size ());
+              reinterpret_cast<const char *> (part.data ()), part.size ());
             size_t start_size = 0;
             if (parse_size_command_line (payload, "START,", &start_size)
                 && start_size == msg_size_)
@@ -578,7 +579,7 @@ inline bool wait_ready_count_and_data_endpoint (SpotHandle &control_sub_,
 
             const zlink::message_t &part = received->parts ()[0];
             const std::string payload (
-              static_cast<const char *> (part.data ()), part.size ());
+              reinterpret_cast<const char *> (part.data ()), part.size ());
             if (payload == "CONNECTED") {
                 continue;
             }
@@ -712,7 +713,7 @@ inline bool wait_for_ready_counts (SpotHandle &spot_,
             continue;
 
         const std::string payload (
-          static_cast<const char *> (received.parts ()[0].data ()),
+          reinterpret_cast<const char *> (received.parts ()[0].data ()),
           received.parts ()[0].size ());
         size_t ready_size = 0;
         size_t increment = 0;

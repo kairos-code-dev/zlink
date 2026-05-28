@@ -17,10 +17,9 @@ set(PERF_SINGLE_COMMON_SRCS
 )
 
 function(configure_perf_target target_name out_subdir)
-  target_compile_features(${target_name} PRIVATE cxx_std_17)
+  target_compile_features(${target_name} PRIVATE cxx_std_20)
   target_link_libraries(${target_name} PRIVATE
-    ${ZLINK_CPP_CORE_TARGET}
-    zlink-cpp
+    zlink_cpp
     Threads::Threads)
   target_include_directories(${target_name} PRIVATE
     "${PERF_CORE_INCLUDE_DIR}"

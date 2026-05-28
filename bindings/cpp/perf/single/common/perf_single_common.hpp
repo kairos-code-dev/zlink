@@ -4,7 +4,7 @@
 #include "perf_single_metric_header.hpp"
 #include "../../common/perf_latency_sampler.hpp"
 #include "../../common/perf_monitor_wait.hpp"
-#include "../../common/perf_socket_compat.hpp"
+#include "../../common/perf_socket_adapter.hpp"
 #include "../../common/perf_tls.hpp"
 
 #include <chrono>
@@ -16,6 +16,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,6 +29,13 @@ typedef ::perf::socket_t perf_socket_t;
 typedef ::perf::latency_sampler_stats_t latency_stats_t;
 
 typedef ::perf::latency_sampler_t latency_stats_builder_t;
+
+inline zlink::message_t message_from_payload (const void *data_, size_t size_)
+{
+    return zlink::message_t::from_bytes (
+      std::as_bytes (std::span<const char> (
+        static_cast<const char *> (data_), size_)));
+}
 
 class ctx_guard_t
 {
@@ -64,34 +72,34 @@ bool bench_debug_enabled ();
 // Applies shared benchmark context options (io_threads/max_sockets).
 void apply_ctx_options (zlink::context_t &ctx_);
 bool set_sockopt_int (perf_socket_t &socket_,
-                      zlink::compat::options::socket_option_key_t<int> option_,
+                      perf::options::socket_option_key_t<int> option_,
                       int value_,
                       const char *name_);
 template<typename SocketLike>
 bool set_sockopt_int (SocketLike &socket_,
-                      zlink::compat::options::socket_option_key_t<int> option_,
+                      perf::options::socket_option_key_t<int> option_,
                       int value_,
                       const char *name_)
 {
     try {
         zlink::common_socket_options_t options = socket_.options ();
         switch (option_.option) {
-        case zlink::compat::options::socket_option::linger:
+        case perf::options::socket_option::linger:
             options.linger (std::chrono::milliseconds (value_));
             return true;
-        case zlink::compat::options::socket_option::sndhwm:
+        case perf::options::socket_option::sndhwm:
             options.send_hwm (zlink::message_count_t::value (value_));
             return true;
-        case zlink::compat::options::socket_option::rcvhwm:
+        case perf::options::socket_option::rcvhwm:
             options.recv_hwm (zlink::message_count_t::value (value_));
             return true;
-        case zlink::compat::options::socket_option::sndtimeo:
+        case perf::options::socket_option::sndtimeo:
             options.send_timeout (std::chrono::milliseconds (value_));
             return true;
-        case zlink::compat::options::socket_option::rcvtimeo:
+        case perf::options::socket_option::rcvtimeo:
             options.recv_timeout (std::chrono::milliseconds (value_));
             return true;
-        case zlink::compat::options::socket_option::tcp_nodelay:
+        case perf::options::socket_option::tcp_nodelay:
             options.tcp_no_delay (value_ != 0);
             return true;
         default:
@@ -103,7 +111,7 @@ bool set_sockopt_int (SocketLike &socket_,
             return false;
         }
     }
-    catch (const zlink::zlink_error_t &err) {
+    catch (const zlink::binding_error_t &err) {
         errno = err.internal_errno ();
         if (bench_debug_enabled ()) {
             std::cerr << "setsockopt(" << (name_ ? name_ : "?")
@@ -124,9 +132,9 @@ void apply_single_hwm (SocketLike &socket_)
     const int sndhwm = resolve_single_socket_hwm (true);
     const int rcvhwm = resolve_single_socket_hwm (false);
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::sndhwm, sndhwm, "sndhwm");
+      socket_, perf::options::socket_options::sndhwm, sndhwm, "sndhwm");
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
+      socket_, perf::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
 }
 // Applies linger/send/recv timeout defaults for benchmark sockets.
 void apply_single_benchmark_socket_options (perf_socket_t &socket_,
@@ -142,11 +150,11 @@ void apply_single_benchmark_socket_options (SocketLike &socket_,
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::linger, linger_ms, "linger");
+      socket_, perf::options::socket_options::linger, linger_ms, "linger");
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
+      socket_, perf::options::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
+      socket_, perf::options::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
 }
 
 // Creates wildcard endpoint string for a transport/id pair.
@@ -168,7 +176,7 @@ std::string bind_and_resolve_endpoint (SocketLike &socket_,
     try {
         socket_.bind (endpoint);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return std::string ();
     }
 
@@ -224,7 +232,7 @@ bool setup_connected_pair (BindSocketLike &bind_socket_,
     try {
         connect_socket_.connect (endpoint);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 
@@ -332,7 +340,7 @@ inline void emit_single_socket_hwm_detail (const SocketLike &socket_,
             return;
         snapshot = monitor.status ();
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return;
     }
     if (!single_auto_hwm_monitor_status_visible (snapshot))
@@ -363,13 +371,13 @@ inline bool send_payload_blocking (perf_socket_t &socket_,
                                    const void *data_,
                                    size_t size_)
 {
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    zlink::message_t msg = message_from_payload (data_, size_);
     if (!msg.valid ())
         return false;
     try {
         return ::perf::send_socket (socket_, msg, 0) == 0;
     }
-    catch (const zlink::zlink_error_t &err) {
+    catch (const zlink::binding_error_t &err) {
         errno = err.internal_errno ();
         return false;
     }
@@ -380,13 +388,13 @@ inline bool send_payload_blocking (perf_socket_t &socket_,
                                    const void *data_,
                                    size_t size_)
 {
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    zlink::message_t msg = message_from_payload (data_, size_);
     if (!msg.valid ())
         return false;
     try {
         return ::perf::send_socket (socket_, routing_id_, msg, 0) == 0;
     }
-    catch (const zlink::zlink_error_t &err) {
+    catch (const zlink::binding_error_t &err) {
         errno = err.internal_errno ();
         return false;
     }
@@ -447,13 +455,13 @@ inline bool send_payload_blocking (zlink::pair_socket_t &socket_,
                                    const void *data_,
                                    size_t size_)
 {
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    zlink::message_t msg = message_from_payload (data_, size_);
     if (!msg.valid ())
         return false;
     try {
         return socket_.send ().message (msg).submit ();
     }
-    catch (const zlink::zlink_error_t &err) {
+    catch (const zlink::binding_error_t &err) {
         errno = err.internal_errno ();
         return false;
     }
@@ -464,13 +472,13 @@ inline bool publish_payload_blocking (zlink::pub_socket_t &publisher_,
                                       const void *data_,
                                       size_t size_)
 {
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    zlink::message_t msg = message_from_payload (data_, size_);
     if (!msg.valid ())
         return false;
     try {
         return publisher_.publish (topic_).message (msg).submit ();
     }
-    catch (const zlink::zlink_error_t &err) {
+    catch (const zlink::binding_error_t &err) {
         errno = err.internal_errno ();
         return false;
     }
@@ -498,13 +506,13 @@ inline bool publish_payload_blocking (zlink::service::spot_t &spot_,
                                       const void *data_,
                                       size_t size_)
 {
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    zlink::message_t msg = message_from_payload (data_, size_);
     if (!msg.valid ())
         return false;
     try {
         return spot_.publish (topic_).message (msg).submit ();
     }
-    catch (const zlink::zlink_error_t &err) {
+    catch (const zlink::binding_error_t &err) {
         errno = err.internal_errno ();
         return false;
     }
@@ -540,16 +548,16 @@ inline int send_payload_dontwait (zlink::pair_socket_t &socket_,
                                    const void *data_,
                                    size_t size_)
 {
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    zlink::message_t msg = message_from_payload (data_, size_);
     if (!msg.valid ())
         return -1;
     try {
         const bool sent =
-          std::move (socket_.send ().message (msg).flags (ZLINK_DONTWAIT))
+          std::move (socket_.send ().message (msg).flags (static_cast<int>(zlink::send_flags_t::dontwait)))
             .submit ();
         return sent ? 1 : 0;
     }
-    catch (const zlink::zlink_error_t &err) {
+    catch (const zlink::binding_error_t &err) {
         errno = err.internal_errno ();
         if (is_transient_send_errno (errno))
             return 0;
@@ -561,17 +569,17 @@ inline int send_payload_dontwait (perf_socket_t &socket_,
                                    const void *data_,
                                    size_t size_)
 {
-    zlink::message_t msg = zlink::message_t::from_bytes (data_, size_);
+    zlink::message_t msg = message_from_payload (data_, size_);
     if (!msg.valid ())
         return -1;
     try {
         // send_socket() returns 0 on success and -1 with errno already
         // set (EAGAIN on backpressure, internal_errno on error).
-        if (::perf::send_socket (socket_, msg, ZLINK_DONTWAIT) == 0)
+        if (::perf::send_socket (socket_, msg, static_cast<int>(zlink::send_flags_t::dontwait)) == 0)
             return 1;
         return is_transient_send_errno (errno) ? 0 : -1;
     }
-    catch (const zlink::zlink_error_t &err) {
+    catch (const zlink::binding_error_t &err) {
         errno = err.internal_errno ();
         if (is_transient_send_errno (errno))
             return 0;

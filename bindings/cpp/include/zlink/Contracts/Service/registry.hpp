@@ -1,13 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-#ifndef ZLINK_CPP_SERVICES_REGISTRY_HPP_INCLUDED
-#define ZLINK_CPP_SERVICES_REGISTRY_HPP_INCLUDED
+#pragma once
 
 #include "../Core/context.hpp"
 #include "../Messaging/message.hpp"
-#include "../Core/types.hpp"
+#include "../Core/routing_id.hpp"
+#include "models.hpp"
 
-#include <cerrno>
-#include <cstdio>
+#include <memory>
 
 namespace zlink
 {
@@ -20,8 +19,7 @@ class registry_t;
 
 namespace detail
 {
-inline void *native_handle (service::registry_t &registry_) noexcept;
-inline const void *native_handle (const service::registry_t &registry_) noexcept;
+struct registry_access_t;
 } // namespace detail
 
 namespace service
@@ -30,91 +28,36 @@ namespace service
 class registry_t
 {
   public:
-    explicit registry_t (context_t &ctx_)
-        : _registry (zlink_registry_new (detail::native_handle (ctx_))), _last_error (0)
-    {
-        if (!_registry)
-            _last_error = errno != 0 ? errno : EFAULT;
-    }
+    explicit registry_t (context_t &ctx_);
 
-    ~registry_t ()
-    {
-        try {
-            close ();
-        } catch (...) {
-        }
-    }
+    ~registry_t ();
 
-    registry_t (registry_t &&other) noexcept
-        : _registry (other._registry), _last_error (other._last_error)
-    {
-        other._registry = NULL;
-        other._last_error = 0;
-    }
+    registry_t (registry_t &&other) noexcept;
 
-    registry_t &operator= (registry_t &&other) noexcept
-    {
-        if (this == &other)
-            return *this;
-
-        try {
-            close ();
-        } catch (...) {
-        }
-        _registry = other._registry;
-        _last_error = other._last_error;
-        other._registry = NULL;
-        other._last_error = 0;
-        return *this;
-    }
+    registry_t &operator= (registry_t &&other) noexcept;
 
     registry_t (const registry_t &) = delete;
     registry_t &operator= (const registry_t &) = delete;
 
-    bool valid () const noexcept { return _registry != NULL; }
+    bool valid () const noexcept;
 
-    void bind (const std::string &pub_endpoint_, const std::string &router_endpoint_)
-    {
-        zlink::detail::validate_bounded_c_string (pub_endpoint_, 255u, "endpoint");
-        zlink::detail::validate_bounded_c_string (router_endpoint_, 255u, "endpoint");
-        detail::throw_if_failed<bind_error_t> (
-          static_cast<bind_result_t> (zlink_registry_bind (
-            _registry, pub_endpoint_.c_str (), router_endpoint_.c_str ())));
-    }
+    void bind (const std::string &pub_endpoint_, const std::string &router_endpoint_);
 
     void set_id (uint32_t registry_id_)
     {
-        set (ZLINK_REGISTRY_OPT_ID, registry_id_);
+        set (14337, registry_id_);
     }
 
-    void set (zlink_registry_option_t option_, uint32_t value_)
-    {
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_registry_set (_registry, option_, value_)));
-    }
+    void set (int option_, uint32_t value_);
 
-    uint32_t get (zlink_registry_option_t option_) const
-    {
-        zlink_config_result_t err = ZLINK_CONFIG_OK;
-        const uint32_t value = zlink_registry_get (_registry, option_, &err);
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (err));
-        return value;
-    }
+    uint32_t get (int option_) const;
 
-    void add_peer (const std::string &peer_pub_endpoint_)
-    {
-        zlink::detail::validate_bounded_c_string (peer_pub_endpoint_, 255u, "endpoint");
-        detail::throw_if_failed<connect_error_t> (
-          static_cast<connect_result_t> (
-            zlink_registry_add_peer (_registry, peer_pub_endpoint_.c_str ())));
-    }
+    void add_peer (const std::string &peer_pub_endpoint_);
 
     void set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
     {
-        set (ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, interval_ms_);
-        set (ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, timeout_ms_);
+        set (14338, interval_ms_);
+        set (14339, timeout_ms_);
     }
 
     void set_heartbeat (std::chrono::milliseconds interval_,
@@ -126,7 +69,7 @@ class registry_t
 
     void set_broadcast_interval (uint32_t interval_ms_)
     {
-        set (ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS, interval_ms_);
+        set (14340, interval_ms_);
     }
 
     void set_broadcast_interval (std::chrono::milliseconds interval_)
@@ -136,79 +79,17 @@ class registry_t
 
     void set_tls_server (const std::string &cert_,
                          const std::string &key_,
-                         bool require_client_cert_ = false)
-    {
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_set_tls_server (
-              _registry, cert_.c_str (), key_.c_str (),
-              require_client_cert_ ? 1 : 0)));
-    }
+                         bool require_client_cert_ = false);
 
     void set_tls_client (const std::string &ca_cert_,
                          const std::string &hostname_ = std::string (),
-                         bool trust_system_ = false)
-    {
-        const char *ca = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
-        const char *hostname =
-          hostname_.empty () ? NULL : hostname_.c_str ();
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_set_tls_client (
-              _registry, ca, hostname, trust_system_ ? 1 : 0)));
-    }
+                         bool trust_system_ = false);
 
-    registry_status_t status () const
-    {
-        zlink_registry_status_t native;
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_registry_status (_registry, &native)));
-        return registry_status_t (native);
-    }
+    registry_status_t status () const;
 
     std::vector<registry_service_summary_entry_t>
     service_summary (
-      const registry_service_summary_filter_t *filter_ = NULL) const
-    {
-        zlink_registry_service_summary_filter_t native_filter;
-        const zlink_registry_service_summary_filter_t *filter_ptr = NULL;
-        if (filter_) {
-            std::memset (&native_filter, 0, sizeof (native_filter));
-            if (filter_->auto_connect_type ())
-                native_filter.auto_connect_type =
-                  static_cast<zlink_auto_connect_type_t> (
-                    *filter_->auto_connect_type ());
-            if (filter_->service_role ())
-                native_filter.service_role =
-                  static_cast<zlink_service_role_t> (*filter_->service_role ());
-            if (filter_->channel_name ())
-                std::snprintf (
-                  native_filter.channel_name,
-                  sizeof (native_filter.channel_name), "%s",
-                  filter_->channel_name ()->c_str ());
-            filter_ptr = &native_filter;
-        }
-
-        size_t count = 0;
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_registry_service_summary (
-              _registry, filter_ptr, NULL, &count)));
-        std::vector<zlink_registry_service_summary_entry_t> native (count);
-        if (count > 0) {
-            detail::throw_if_failed<config_error_t> (
-              static_cast<config_result_t> (
-                zlink_registry_service_summary (
-                  _registry, filter_ptr, native.data (), &count)));
-            native.resize (count);
-        }
-        std::vector<registry_service_summary_entry_t> entries;
-        entries.reserve (native.size ());
-        for (size_t i = 0; i < native.size (); ++i)
-            entries.push_back (registry_service_summary_entry_t (native[i]));
-        return entries;
-    }
+      const registry_service_summary_filter_t *filter_ = NULL) const;
 
     std::vector<registry_service_summary_entry_t>
     service_summary (
@@ -217,135 +98,57 @@ class registry_t
         return service_summary (&filter_);
     }
 
-    std::vector<registry_topology_entry_t> topology () const
-    {
-        size_t count = 0;
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_registry_topology (_registry, NULL, NULL, &count)));
-        std::vector<zlink_registry_topology_entry_t> native (count);
-        if (count > 0) {
-            detail::throw_if_failed<config_error_t> (
-              static_cast<config_result_t> (
-                zlink_registry_topology (
-                  _registry, NULL, native.data (), &count)));
-            native.resize (count);
-        }
-        std::vector<registry_topology_entry_t> entries;
-        entries.reserve (native.size ());
-        for (size_t i = 0; i < native.size (); ++i)
-            entries.push_back (registry_topology_entry_t (native[i]));
-        return entries;
-    }
+    std::vector<registry_topology_entry_t> topology () const;
 
     std::vector<registry_topology_entry_t>
-    topology (const registry_topology_filter_t &filter_) const
-    {
-        zlink_registry_topology_filter_t native_filter;
-        std::memset (&native_filter, 0, sizeof (native_filter));
-        if (filter_.service_kind ())
-            native_filter.service_kind =
-              static_cast<zlink_service_kind_t> (*filter_.service_kind ());
-        if (filter_.service_role ())
-            native_filter.service_role =
-              static_cast<zlink_service_role_t> (*filter_.service_role ());
-        if (filter_.auto_connect_type ())
-            native_filter.auto_connect_type =
-              static_cast<zlink_auto_connect_type_t> (
-                *filter_.auto_connect_type ());
-        if (filter_.channel_name ())
-            std::snprintf (
-              native_filter.channel_name, sizeof (native_filter.channel_name),
-              "%s", filter_.channel_name ()->c_str ());
-        if (filter_.state ())
-            native_filter.state =
-              static_cast<zlink_topology_state_t> (*filter_.state ());
-        if (filter_.source ())
-            native_filter.source =
-              static_cast<zlink_topology_source_t> (*filter_.source ());
-        if (filter_.routing_id ())
-            native_filter.routing_id =
-              *zlink::detail::routing_id_native (*filter_.routing_id ());
-
-        size_t count = 0;
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_registry_topology (
-              _registry, &native_filter, NULL, &count)));
-        std::vector<zlink_registry_topology_entry_t> native (count);
-        if (count > 0) {
-            detail::throw_if_failed<config_error_t> (
-              static_cast<config_result_t> (
-                zlink_registry_topology (
-                  _registry, &native_filter, native.data (), &count)));
-            native.resize (count);
-        }
-        std::vector<registry_topology_entry_t> entries;
-        entries.reserve (native.size ());
-        for (size_t i = 0; i < native.size (); ++i)
-            entries.push_back (registry_topology_entry_t (native[i]));
-        return entries;
-    }
+    topology (const registry_topology_filter_t &filter_) const;
 
     std::vector<member_peer_entry_t>
-    member_peers (const std::string &channel_name_) const
-    {
-        zlink::detail::validate_bounded_c_string (channel_name_, 255u, "channel_name");
-        size_t count = 0;
-        detail::throw_if_failed<config_error_t> (
-          static_cast<config_result_t> (
-            zlink_registry_member_peers (
-              _registry, channel_name_.c_str (), NULL, &count)));
-        std::vector<zlink_member_peer_entry_t> native (count);
-        if (count > 0) {
-            detail::throw_if_failed<config_error_t> (
-              static_cast<config_result_t> (
-                zlink_registry_member_peers (
-                  _registry, channel_name_.c_str (), native.data (), &count)));
-            native.resize (count);
-        }
-        std::vector<member_peer_entry_t> entries;
-        entries.reserve (native.size ());
-        for (size_t i = 0; i < native.size (); ++i)
-            entries.push_back (member_peer_entry_t (native[i]));
-        return entries;
-    }
+    member_peers (const std::string &channel_name_) const;
 
-    void close ()
-    {
-        if (!_registry)
-            return;
-
-        void *tmp = _registry;
-        detail::throw_if_failed<close_error_t> (
-          static_cast<close_result_t> (zlink_registry_destroy (&tmp)));
-        _registry = NULL;
-    }
+    void close ();
 
   private:
-    friend void *zlink::detail::native_handle (registry_t &registry_) noexcept;
-    friend const void *
-    zlink::detail::native_handle (const registry_t &registry_) noexcept;
+    friend struct zlink::detail::registry_access_t;
 
-    void *_registry;
+    struct impl;
+    std::unique_ptr<impl> _impl;
+    int _last_error;
+};
+
+class registry_query_client_t
+{
+  public:
+    explicit registry_query_client_t (context_t &ctx_);
+
+    ~registry_query_client_t ();
+
+    registry_query_client_t (registry_query_client_t &&other) noexcept;
+
+    registry_query_client_t &
+    operator= (registry_query_client_t &&other) noexcept;
+
+    registry_query_client_t (const registry_query_client_t &) = delete;
+    registry_query_client_t &
+    operator= (const registry_query_client_t &) = delete;
+
+    bool valid () const noexcept;
+
+    void connect (const std::string &endpoint_);
+
+    std::vector<registry_topology_entry_t>
+    topology (const registry_topology_filter_t *filter_ = NULL) const;
+
+    void close ();
+
+  private:
+    friend struct zlink::detail::registry_access_t;
+
+    struct impl;
+    std::unique_ptr<impl> _impl;
     int _last_error;
 };
 
 } // namespace service
 
-namespace detail
-{
-inline void *native_handle (service::registry_t &registry_) noexcept
-{
-    return registry_._registry;
-}
-
-inline const void *native_handle (const service::registry_t &registry_) noexcept
-{
-    return registry_._registry;
-}
-} // namespace detail
-
 } // namespace zlink
-
-#endif

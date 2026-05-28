@@ -51,48 +51,39 @@ pubsub_recv_result_t recv_one_pubsub_message (
   size_t expected_msg_size,
   perf_metric::header_t *header_out)
 {
-    void *handle = sock.handle ();
-    if (!handle)
-        return pubsub_recv_error;
+    std::optional<zlink::routing_id_t> source_rid;
+    std::string topic;
+    zlink::message_t part;
+    bool has_more = false;
 
-    const zlink_routing_id_t *source_rid = NULL;
-    char topic[256];
-    size_t topic_len = sizeof (topic);
-    zlink_msg_t part;
-    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    if (zlink_msg_init (&part) != 0)
-        return pubsub_recv_error;
-
-    const int rc = zlink_subscribe_part (
-      handle, &source_rid, topic, sizeof (topic), &topic_len, &part, &has_more,
-      ZLINK_RECV_FLAGS_DONTWAIT);
-    if (rc != ZLINK_RECV_OK) {
-        const int err = zlink_errno ();
-        zlink_msg_close (&part);
+    const int rc = sock.subscribe_part (
+      source_rid,
+      topic,
+      part,
+      has_more,
+      static_cast<int> (zlink::recv_flags_t::dontwait));
+    if (rc != 0) {
+        const int err = errno;
         if (err == EAGAIN || err == EINTR)
             return pubsub_recv_empty;
         return pubsub_recv_error;
     }
 
-    if ((source_rid && source_rid->size > 0)
-        || topic_len != std::strlen (k_topic)
-        || std::memcmp (topic, k_topic, topic_len) != 0
-        || has_more != ZLINK_PART_FINAL) {
-        zlink_msg_close (&part);
+    if ((source_rid && source_rid->size () > 0)
+        || topic != k_topic
+        || has_more) {
         return pubsub_recv_payload;
     }
 
-    const size_t recv_size = zlink_msg_size (&part);
-    void *recv_data = zlink_msg_data (&part);
+    const size_t recv_size = part.size ();
+    const void *recv_data = part.data ();
     if (perf::multi::is_stop_token (recv_data, recv_size)) {
-        zlink_msg_close (&part);
         return pubsub_recv_stop;
     }
 
     perf_metric::header_t header;
     const bool decoded =
       perf_metric::decode_payload_header (recv_data, recv_size, &header);
-    zlink_msg_close (&part);
     if (!decoded || header.magic != perf_metric::k_magic
         || header.run_id != k_run_id
         || header.msg_size != static_cast<uint32_t> (expected_msg_size)) {
@@ -200,7 +191,7 @@ class pubsub_client_bench_t
             }
             try {
                 sock.connect (_endpoint);
-            } catch (const zlink::zlink_error_t &) {
+            } catch (const zlink::binding_error_t &) {
                 close_monitors ();
                 return false;
             }

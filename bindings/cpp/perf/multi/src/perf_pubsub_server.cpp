@@ -48,7 +48,8 @@ bool publish_stop_token (::perf::socket_t &publisher)
           part.data (), perf::multi::k_stop_token, token_size);
 
         const int rc =
-          publisher.publish (k_topic, part, ZLINK_SEND_FLAGS_NONE);
+          publisher.publish (
+            k_topic, part, static_cast<int> (zlink::send_flags_t::none));
         if (rc == 0)
             return true;
 
@@ -99,7 +100,7 @@ bool run_phase (::perf::socket_t &publisher,
         }
 
         const int sent = publisher.publish (
-          k_topic, payload_part, ZLINK_DONTWAIT);
+          k_topic, payload_part, static_cast<int>(zlink::send_flags_t::dontwait));
         if (sent == 0)
             continue;
 
@@ -110,7 +111,7 @@ bool run_phase (::perf::socket_t &publisher,
 
     return true;
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 }

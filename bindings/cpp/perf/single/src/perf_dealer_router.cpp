@@ -32,7 +32,7 @@ bool wait_dealer_router_monitor_event (
             activity_socket_->poller_add (
               poller, zlink::poll_event_flag_t::pollin, activity_slot);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 
@@ -53,7 +53,7 @@ bool wait_dealer_router_monitor_event (
 
         for (;;) {
             const std::optional<zlink::monitor_event_t> event =
-              monitor_.recv (ZLINK_DONTWAIT);
+              monitor_.recv (static_cast<int>(zlink::send_flags_t::dontwait));
             if (!event)
                 break;
             if (static_cast<uint64_t> (event->event) == success_event_)
@@ -91,7 +91,7 @@ bool setup_dealer_router_session (perf::single::perf_socket_t &router_,
     try {
         dealer_.connect (endpoint);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 

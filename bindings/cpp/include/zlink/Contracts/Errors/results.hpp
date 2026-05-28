@@ -1,0 +1,78 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../Core/routing_id.hpp"
+
+#include <cerrno>
+
+namespace zlink
+{
+
+enum class handler_result_t : int
+{
+    ok = 0,
+    invalid_argument = 301,
+    busy = 302,
+    not_supported = 303,
+    deadlock = 304,
+    invalid_handle = 305,
+    internal_error = 306
+};
+
+enum class close_result_t : int
+{
+    ok = 0,
+    busy = 401,
+    shutdown = 402,
+    invalid_handle = 403,
+    internal_error = 404
+};
+
+enum class bind_result_t : int
+{
+    ok = 0,
+    invalid_argument = 501,
+    addr_in_use = 502,
+    not_supported = 503,
+    invalid_handle = 504,
+    internal_error = 505
+};
+
+enum class connect_result_t : int
+{
+    ok = 0,
+    invalid_argument = 601,
+    not_supported = 602,
+    invalid_handle = 603,
+    internal_error = 604,
+    not_found = 605,
+    conflict = 606,
+    busy = 607
+};
+
+enum class config_result_t : int
+{
+    ok = 0,
+    invalid_handle = 701,
+    invalid_argument = 702,
+    not_supported = 703,
+    internal_error = 704,
+    invalid_state = 705,
+    not_found = 706
+};
+
+
+enum class error_code : int
+{
+    efsm = 156384763,
+    enocompatproto = 156384764,
+    eterm = 156384765,
+    emthread = 156384766
+};
+
+enum class protocol_error : int
+{
+    zmp_malformed_command_hello = 0x10000013
+};
+
+} // namespace zlink

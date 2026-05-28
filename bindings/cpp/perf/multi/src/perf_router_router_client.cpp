@@ -227,7 +227,7 @@ class router_router_client_bench_t
 
         return !_socket_states.empty ();
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             debug_log ("connect failed endpoint=" + _endpoint
                        + " errno=" + std::to_string (errno));
             return false;
@@ -257,7 +257,7 @@ class router_router_client_bench_t
             state.poll_events = events;
             return true;
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             return false;
         }
     }
@@ -281,12 +281,8 @@ class router_router_client_bench_t
         }
         zlink::message_t request =
           state.borrow_payload
-            ? zlink::advanced::external_message_t::adopt (
-                request_buffer.empty () ? NULL : request_buffer.data (),
-                state.payload_size, NULL, NULL)
-            : zlink::message_t::from_bytes (
-                request_buffer.empty () ? NULL : request_buffer.data (),
-                state.payload_size);
+            ? zlink::message_t::from_bytes (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)))
+            : zlink::message_t::from_bytes (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)));
         if (!request.valid ()) {
             return false;
         }
@@ -494,7 +490,7 @@ class router_router_client_bench_t
             *lat_out = latency.snapshot ();
         return true;
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             return false;
         }
     }

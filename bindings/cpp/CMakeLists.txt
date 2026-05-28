@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(zlink_cpp LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 get_filename_component(ZLINK_CPP_BINDINGS_DIR "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
 get_filename_component(ZLINK_REPO_ROOT_DIR "${ZLINK_CPP_BINDINGS_DIR}/../.." ABSOLUTE)
 
@@ -142,15 +144,62 @@ endfunction()
 
 zlink_cpp_ensure_core_target(ZLINK_CPP_CORE_TARGET ZLINK_CPP_RUNTIME_DIR)
 
-add_library(zlink-cpp INTERFACE)
-target_include_directories(zlink-cpp INTERFACE
-  ${ZLINK_CORE_DIR}/include
-  ${ZLINK_CORE_DIR}/external/boost
-  ${CMAKE_CURRENT_LIST_DIR}/include
+add_library(zlink_cpp STATIC
+  src/Runtime/zlink_cpp.cpp
+  src/Runtime/Core/capability.cpp
+  src/Runtime/Core/context.cpp
+  src/Runtime/Errors/error.cpp
+  src/Runtime/Eventing/poller.cpp
+  src/Runtime/Eventing/monitor.cpp
+  src/Runtime/Eventing/timers.cpp
+  src/Runtime/Messaging/message.cpp
+  src/Runtime/Options/socket_options.cpp
+  src/Runtime/Sockets/base_socket.cpp
+  src/Runtime/Sockets/dealer.cpp
+  src/Runtime/Sockets/pair.cpp
+  src/Runtime/Sockets/proxy.cpp
+  src/Runtime/Sockets/pubsub.cpp
+  src/Runtime/Sockets/router.cpp
+  src/Runtime/Sockets/stream.cpp
+  src/Runtime/Service/actor.cpp
+  src/Runtime/Service/actor_ops.cpp
+  src/Runtime/Service/discovery.cpp
+  src/Runtime/Service/query.cpp
+  src/Runtime/Service/registry.cpp
+  src/Runtime/Service/request_reply.cpp
+  src/Runtime/Service/spot.cpp
+  src/Runtime/Service/spot_node.cpp
 )
-target_link_libraries(zlink-cpp INTERFACE ${ZLINK_CPP_CORE_TARGET})
 
-target_compile_features(zlink-cpp INTERFACE cxx_std_20)
+target_include_directories(zlink_cpp
+  PUBLIC
+    $<BUILD_INTERFACE:${ZLINK_CORE_DIR}/include>
+    $<BUILD_INTERFACE:${ZLINK_CORE_DIR}/external/boost>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/src
+)
+target_link_libraries(zlink_cpp PUBLIC ${ZLINK_CPP_CORE_TARGET})
+target_compile_features(zlink_cpp PUBLIC cxx_std_20)
+set_target_properties(zlink_cpp PROPERTIES
+  POSITION_INDEPENDENT_CODE ON
+)
+
+install(TARGETS zlink_cpp
+  EXPORT zlink_cppTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+install(DIRECTORY include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  FILES_MATCHING PATTERN "*.hpp"
+)
+install(EXPORT zlink_cppTargets
+  NAMESPACE zlink::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_cpp
+)
 
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
@@ -185,7 +234,7 @@ endif()
 if(ZLINK_CPP_BUILD_TESTS OR ZLINK_CPP_BUILD_SAMPLES)
   function(add_cpp_binding_executable target_name source_file)
     add_executable(${target_name} ${source_file})
-    target_link_libraries(${target_name} PRIVATE ${ZLINK_CPP_CORE_TARGET} zlink-cpp)
+    target_link_libraries(${target_name} PRIVATE zlink_cpp)
     if(UNIX AND NOT APPLE)
       set_target_properties(${target_name} PROPERTIES
         BUILD_RPATH "${ZLINK_CPP_RUNTIME_DIR}"

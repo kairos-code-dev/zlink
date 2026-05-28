@@ -77,7 +77,8 @@ inline void actor_sample_dispatch (
   const zlink::spot_dispatch_info_t &info_)
 {
     if (info_.event == zlink::spot_dispatch_event_t::actor_join_readable) {
-        auto request = state_.spot->recv_actor_join (ZLINK_DONTWAIT);
+        auto request =
+          state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
         assert (request.has_value ());
         zlink::message_t reply = zlink::message_t::from_string ("accepted");
         state_.spot->reply_actor_join (*request, 0).message (reply).submit ();
@@ -86,25 +87,15 @@ inline void actor_sample_dispatch (
 
     if (info_.event == zlink::spot_dispatch_event_t::actor_readable) {
         assert (info_.actor.has_value ());
+        assert (state_.actor != nullptr);
         for (;;) {
-            zlink_actor_recv_info_t native_info;
-            std::memset (&native_info, 0, sizeof (native_info));
-            zlink_msg_t native_part;
-            std::memset (&native_part, 0, sizeof (native_part));
-            zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-            const zlink_recv_result_t rc = zlink_spot_node_actor_recv_part (
-              zlink::detail::native_handle (*state_.node),
-              zlink::detail::actor_ref_native (*info_.actor), &native_info,
-              &native_part, &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
-            if (rc == ZLINK_RECV_NO_DATA)
+            std::optional<zlink::actor_part_t> received =
+              state_.node->recv_actor_part (
+                *info_.actor, zlink::recv_flags_t::dontwait);
+            if (!received.has_value ())
                 break;
-            assert (rc == ZLINK_RECV_OK);
-            zlink::message_t part;
-            assert (zlink_msg_move (zlink::detail::native_handle (part),
-                                    &native_part)
-                    == 0);
             std::lock_guard<std::mutex> lock (state_.capture->mutex);
-            state_.capture->payload += part.to_string ();
+            state_.capture->payload += received->part.to_string ();
             state_.capture->actor_read = true;
             state_.capture->cv.notify_all ();
         }

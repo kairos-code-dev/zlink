@@ -379,7 +379,7 @@ class spot_reqrep_client_bench_t
                   i);
             }
         }
-        catch (const zlink::zlink_error_t &err) {
+        catch (const zlink::binding_error_t &err) {
             debug_log (std::string ("poller add failed errno=")
                        + std::to_string (err.internal_errno ()));
             return false;
@@ -406,9 +406,9 @@ class spot_reqrep_client_bench_t
             return false;
         }
 
-        zlink::message_t request =
-          zlink::advanced::external_message_t::adopt (
-            slot_.payload.data (), slot_.payload.size (), NULL, NULL);
+        zlink::message_t request = zlink::message_t::from_bytes (
+          std::as_bytes (std::span<const char> (slot_.payload.data (),
+                                                slot_.payload.size ())));
         if (!request.valid ())
             return false;
 
@@ -427,7 +427,7 @@ class spot_reqrep_client_bench_t
                 .message (request)
                 .timeout (std::chrono::milliseconds (
                   std::max (1, _settings.rcvtimeo_ms)))
-                .flags (ZLINK_DONTWAIT)
+                .flags (static_cast<int>(zlink::send_flags_t::dontwait))
                 .submit ([slot_ptr] (
                             zlink::request_result_t result,
                             std::vector<zlink::message_t> parts) {

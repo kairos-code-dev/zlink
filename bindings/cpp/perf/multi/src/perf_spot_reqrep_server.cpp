@@ -228,7 +228,7 @@ bool perf_spot_reqrep_server (const std::string &lib_name,
       std::ref (stop_cv));
 
     try {
-        responder.on_dispatch_event (
+        responder.set_dispatch_handler (
           [&responder, &stop_requested, &failed, &request_stop] (
             const zlink::spot_dispatch_info_t &info_) {
               (void) info_;

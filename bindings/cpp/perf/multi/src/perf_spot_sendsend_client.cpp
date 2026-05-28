@@ -238,8 +238,8 @@ bool submit_request (client_slot_t &slot,
           slot.next_seq,
           perf_metric::now_ns ()))
         return false;
-    slot.message = zlink::advanced::external_message_t::adopt (
-      slot.payload.data (), slot.payload.size (), NULL, NULL);
+    slot.message = zlink::message_t::from_bytes (std::as_bytes (
+      std::span<const char> (slot.payload.data (), slot.payload.size ())));
     if (!slot.message.valid ())
         return false;
 
@@ -247,7 +247,7 @@ bool submit_request (client_slot_t &slot,
         const bool sent = slot.spot->send_to_spot (
                                       server_node_rid, server_spot_rid)
                             .message (slot.message)
-                            .flags (ZLINK_DONTWAIT)
+                            .flags (static_cast<int>(zlink::send_flags_t::dontwait))
                             .submit ();
         if (!sent) {
             if (bench_debug_enabled ()
@@ -303,7 +303,7 @@ bool drain_reply (client_slot_t &slot,
         if (rc == static_cast<int> (zlink::recv_result_t::no_data))
             return true;
         if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
-            errno = zlink_errno ();
+            errno = EIO;
             return false;
         }
         slot.waiting_reply = false;

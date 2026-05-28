@@ -123,7 +123,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
             try {
                 if (server.send (front.rid)
                       .message (front.payload)
-                      .flags (ZLINK_DONTWAIT)
+                      .flags (static_cast<int>(zlink::send_flags_t::dontwait))
                       .submit ()) {
                     pending_replies.pop_front ();
                     continue;
@@ -186,7 +186,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
             if (!readable)
                 continue;
         }
-        catch (const zlink::zlink_error_t &err) {
+        catch (const zlink::binding_error_t &err) {
             const int err_no = err.internal_errno ();
             if (err_no == EINTR)
                 continue;
@@ -221,7 +221,7 @@ bool perf_dealer_router_server (const std::string &lib_name,
             try {
                 if (!server.send (source_rid)
                        .message (part)
-                       .flags (ZLINK_DONTWAIT)
+                       .flags (static_cast<int>(zlink::send_flags_t::dontwait))
                        .submit ()) {
                     pending_replies.push_back (pending_reply_t {
                       source_rid, std::move (part) });

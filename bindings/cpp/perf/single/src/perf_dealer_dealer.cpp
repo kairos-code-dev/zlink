@@ -29,8 +29,8 @@ bool run_pattern_dealer_dealer (const std::string &transport,
         return false;
     }
 
-    (void) bind_socket.sock ().set_option (zlink::compat::options::socket_options::tcp_nodelay, 1);
-    (void) conn_socket.sock ().set_option (zlink::compat::options::socket_options::tcp_nodelay, 1);
+    (void) bind_socket.sock ().set_option (perf::options::socket_options::tcp_nodelay, 1);
+    (void) conn_socket.sock ().set_option (perf::options::socket_options::tcp_nodelay, 1);
     if (!perf::single::apply_single_auto_hwm_msg_unit (ctx, msg_size)
         || !perf::single::recalculate_single_auto_hwm (ctx)) {
         return false;
@@ -45,9 +45,9 @@ bool run_pattern_dealer_dealer (const std::string &transport,
 
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
     (void) bind_socket.sock ().set_option (
-      zlink::compat::options::socket_options::rcvtimeo, recv_timeout);
+      perf::options::socket_options::rcvtimeo, recv_timeout);
     (void) conn_socket.sock ().set_option (
-      zlink::compat::options::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
+      perf::options::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());
@@ -68,7 +68,7 @@ bool run_pattern_dealer_dealer (const std::string &transport,
         uint64_t seq = 1;
         // C-faithful send model (bindings/c/perf single
         // perf_single_one_way.hpp send_active_samples +
-        // send_socket_active_message with ZLINK_DONTWAIT,
+        // send_socket_active_message with static_cast<int>(zlink::send_flags_t::dontwait),
         // retry_on_eagain=true): on transient backpressure, re-stamp a
         // fresh timestamp and retry immediately. A blocking send stamps
         // once then parks for the full TLS/WS write, so every delivered
@@ -157,7 +157,7 @@ bool run_pattern_dealer_dealer (const std::string &transport,
             for (;;) {
                 zlink::message_t burst;
                 const int burst_rc =
-                  bind_socket.sock ().recv (burst, ZLINK_DONTWAIT);
+                  bind_socket.sock ().recv (burst, static_cast<int>(zlink::send_flags_t::dontwait));
                 if (burst_rc != 0) {
                     if (errno == EAGAIN || errno == EINTR)
                         break;

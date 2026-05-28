@@ -61,7 +61,7 @@ bool complete_handshake (::perf::socket_t &receiver,
             return false;
 
         if (perf::send_socket (
-              sender, receiver_rid, outbound, ZLINK_DONTWAIT) != 0) {
+              sender, receiver_rid, outbound, static_cast<int>(zlink::send_flags_t::dontwait)) != 0) {
             const int err = errno;
             if (err != EAGAIN && err != EINTR && err != EHOSTUNREACH
                 && err != ENOTCONN) {
@@ -73,7 +73,7 @@ bool complete_handshake (::perf::socket_t &receiver,
         } else {
             for (;;) {
                 zlink::received_t inbound;
-                if (receiver.receive (inbound, ZLINK_DONTWAIT) != 0) {
+                if (receiver.receive (inbound, static_cast<int>(zlink::send_flags_t::dontwait)) != 0) {
                     if (errno == EAGAIN || errno == EINTR)
                         break;
                     if (perf_debug_enabled ())
@@ -245,8 +245,8 @@ bool run_pattern_router_router (const std::string &transport,
 
     (void) receiver.sock ().set_routing_id (std::string (k_receiver_id));
     (void) sender.sock ().set_routing_id (std::string (k_sender_id));
-    (void) receiver.sock ().set (zlink::compat::options::router_options::mandatory, 1);
-    (void) sender.sock ().set (zlink::compat::options::router_options::mandatory, 1);
+    (void) receiver.sock ().set (perf::options::router_options::mandatory, 1);
+    (void) sender.sock ().set (perf::options::router_options::mandatory, 1);
     if (!perf::single::apply_single_auto_hwm_msg_unit (ctx, msg_size)
         || !perf::single::recalculate_single_auto_hwm (ctx)) {
         perf::single::print_fail_result (
@@ -268,9 +268,9 @@ bool run_pattern_router_router (const std::string &transport,
     }
 
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
-    (void) receiver.sock ().set_option (zlink::compat::options::socket_options::rcvtimeo, recv_timeout);
+    (void) receiver.sock ().set_option (perf::options::socket_options::rcvtimeo, recv_timeout);
     (void) sender.sock ().set_option (
-      zlink::compat::options::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
+      perf::options::socket_options::sndtimeo, perf::single::resolve_single_send_timeout_ms ());
 
     const size_t payload_size =
       std::max<size_t> (msg_size, perf_single_metric::header_size ());

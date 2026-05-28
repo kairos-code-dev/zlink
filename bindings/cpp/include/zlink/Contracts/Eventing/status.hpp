@@ -1,0 +1,103 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "../Core/routing_id.hpp"
+
+#include <cstdint>
+
+namespace zlink
+{
+
+enum class monitor_source_kind : int
+{
+    socket = 1,
+    spot_pub = 3,
+    spot_sub = 4
+};
+
+enum class monitor_state : uint32_t
+{
+    ready = 1,
+    bound_ready = 2,
+    send_ready = 1,
+    closed = 8
+};
+
+inline monitor_state operator| (monitor_state a, monitor_state b)
+{
+    return static_cast<monitor_state> (static_cast<uint32_t> (a)
+                                       | static_cast<uint32_t> (b));
+}
+
+enum class monitor_status_detail : uint32_t
+{
+    snd_pending_msgs = 2,
+    rcv_pending_msgs = 4
+};
+
+inline monitor_status_detail operator| (monitor_status_detail a,
+                                          monitor_status_detail b)
+{
+    return static_cast<monitor_status_detail> (
+      static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
+}
+
+enum class disconnect_reason : int
+{
+    unknown = 0,
+    handshake_failed = 3,
+    transport_error = 4,
+    ctx_term = 5
+};
+
+struct monitor_status_t
+{
+    monitor_status_t ()
+        : source_kind (monitor_source_kind::socket), state_flags (0),
+          detail_flags (0), snd_pending_msgs (0), rcv_pending_msgs (0),
+          auto_hwm_enabled (false), auto_hwm_profile (0),
+          auto_hwm_role (0), auto_hwm_policy_class (0),
+          auto_hwm_unit_budget_bytes (0), auto_hwm_size_cap (0),
+          auto_hwm_socket_message_slots (0),
+          auto_hwm_effective_message_bytes (0),
+          auto_hwm_applied_sndhwm (0), auto_hwm_applied_rcvhwm (0),
+          auto_hwm_effective_sndbuf (0), auto_hwm_effective_rcvbuf (0),
+          auto_hwm_last_recalc_ms (0),
+          auto_hwm_last_recalc_reason (0),
+          auto_hwm_send_blocked_ratio_ppm (0),
+          auto_hwm_deferred_sndhwm (-1), auto_hwm_deferred_rcvhwm (-1)
+    {
+    }
+
+    bool is_ready () const noexcept
+    {
+        return (state_flags & 1) != 0u;
+    }
+
+    monitor_source_kind source_kind;
+    uint32_t state_flags;
+    uint32_t detail_flags;
+    uint64_t snd_pending_msgs;
+    uint64_t rcv_pending_msgs;
+    bool auto_hwm_enabled;
+    uint32_t auto_hwm_profile;
+    uint32_t auto_hwm_role;
+    uint32_t auto_hwm_policy_class;
+    uint64_t auto_hwm_unit_budget_bytes;
+    uint32_t auto_hwm_size_cap;
+    uint64_t auto_hwm_socket_message_slots;
+    uint64_t auto_hwm_effective_message_bytes;
+    int32_t auto_hwm_applied_sndhwm;
+    int32_t auto_hwm_applied_rcvhwm;
+    int32_t auto_hwm_effective_sndbuf;
+    int32_t auto_hwm_effective_rcvbuf;
+    uint64_t auto_hwm_last_recalc_ms;
+    uint32_t auto_hwm_last_recalc_reason;
+    uint32_t auto_hwm_send_blocked_ratio_ppm;
+    int32_t auto_hwm_deferred_sndhwm;
+    int32_t auto_hwm_deferred_rcvhwm;
+};
+
+using monitor_source_kind_t = monitor_source_kind;
+
+} // namespace zlink

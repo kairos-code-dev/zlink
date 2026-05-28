@@ -186,7 +186,7 @@ bool run_server (const std::string &lib_name,
 
     std::atomic<bool> failed (false);
     try {
-        spot.on_dispatch_event (
+        spot.set_dispatch_handler (
           [&spot, &failed] (const zlink::spot_dispatch_info_t &info_) {
               (void) info_;
               while (!g_stop.load (std::memory_order_acquire)) {
@@ -215,7 +215,7 @@ bool run_server (const std::string &lib_name,
                       (void) spot.send_to_spot (*probe.routing_id (),
                                                 *probe.spot_rid ())
                         .message (parts.front ())
-                        .flags (ZLINK_DONTWAIT)
+                        .flags (static_cast<int>(zlink::send_flags_t::dontwait))
                         .submit ();
                   }
                   catch (const zlink::submit_error_t &err) {

@@ -1,0 +1,367 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "message.hpp"
+#include "request_result.hpp"
+#include "../Sockets/results.hpp"
+
+#include <atomic>
+#include <chrono>
+#if defined(__cpp_impl_coroutine) || defined(__cpp_coroutines)
+#include <coroutine>
+#define CPP_BINDING_HAS_COROUTINE_SUPPORT 1
+#endif
+#include <exception>
+#include <functional>
+#include <future>
+#include <memory>
+#include <thread>
+#include <vector>
+
+namespace zlink
+{
+
+template<typename T> class async_result_t
+{
+  public:
+    explicit async_result_t (std::future<T> future_)
+        : async_result_t (std::move (future_), std::function<void()> ())
+    {
+    }
+
+    async_result_t (std::future<T> future_, std::function<void()> progress_)
+        : _state (new shared_state_t (std::move (future_)))
+    {
+        _state->progress = std::move (progress_);
+    }
+
+    async_result_t (async_result_t &&) noexcept = default;
+    async_result_t &operator= (async_result_t &&) noexcept = default;
+
+    async_result_t (const async_result_t &) = delete;
+    async_result_t &operator= (const async_result_t &) = delete;
+
+    [[nodiscard]] bool valid () const
+    {
+        return _state && _state->future.valid ();
+    }
+
+    void wait () const
+    {
+        if (!_state->progress) {
+            _state->future.wait ();
+            return;
+        }
+
+        while (_state->future.wait_for (std::chrono::milliseconds (0))
+               != std::future_status::ready) {
+            pump_progress_once ();
+            (void) _state->future.wait_for (progress_slice ());
+        }
+    }
+
+    template<typename Rep, typename Period>
+    [[nodiscard]] std::future_status
+    wait_for (const std::chrono::duration<Rep, Period> &timeout_) const
+    {
+        if (!_state->progress)
+            return _state->future.wait_for (timeout_);
+
+        if (timeout_ <= timeout_.zero ()) {
+            if (_state->future.wait_for (std::chrono::milliseconds (0))
+                == std::future_status::ready)
+                return std::future_status::ready;
+            pump_progress_once ();
+            return _state->future.wait_for (std::chrono::milliseconds (0));
+        }
+
+        const std::chrono::steady_clock::time_point deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+            timeout_);
+
+        while (true) {
+            if (_state->future.wait_for (std::chrono::milliseconds (0))
+                == std::future_status::ready)
+                return std::future_status::ready;
+
+            pump_progress_once ();
+
+            const std::chrono::steady_clock::time_point now =
+              std::chrono::steady_clock::now ();
+            if (now >= deadline)
+                return std::future_status::timeout;
+
+            const std::chrono::steady_clock::duration remaining =
+              deadline - now;
+            const std::chrono::steady_clock::duration slice =
+              remaining < progress_slice () ? remaining : progress_slice ();
+            if (_state->future.wait_for (slice) == std::future_status::ready)
+                return std::future_status::ready;
+        }
+    }
+
+    template<typename Clock, typename Duration>
+    [[nodiscard]] std::future_status
+    wait_until (const std::chrono::time_point<Clock, Duration> &deadline_) const
+    {
+        if (!_state->progress)
+            return _state->future.wait_until (deadline_);
+
+        const std::chrono::time_point<Clock, Duration> now = Clock::now ();
+        if (deadline_ <= now)
+            return _state->future.wait_for (std::chrono::milliseconds (0));
+
+        return wait_for (deadline_ - now);
+    }
+
+    [[nodiscard]] T get ()
+    {
+        wait ();
+        return _state->future.get ();
+    }
+
+#if defined(CPP_BINDING_HAS_COROUTINE_SUPPORT)
+    [[nodiscard]] bool await_ready () const
+    {
+        return wait_for (std::chrono::milliseconds (0))
+               == std::future_status::ready;
+    }
+
+    void await_suspend (std::coroutine_handle<> continuation_)
+    {
+        std::shared_ptr<shared_state_t> state = _state;
+        state->waiter_started.store (true);
+        std::thread ([state, continuation_]() mutable {
+            try {
+                state->value.reset (new T (state->future.get ()));
+            } catch (...) {
+                state->error = std::current_exception ();
+            }
+            continuation_.resume ();
+        }).detach ();
+    }
+
+    [[nodiscard]] T await_resume ()
+    {
+        if (!_state->waiter_started.load ())
+            return _state->future.get ();
+        if (_state->error)
+            std::rethrow_exception (_state->error);
+        return std::move (*_state->value);
+    }
+#endif
+
+  private:
+    struct shared_state_t
+    {
+        explicit shared_state_t (std::future<T> future_)
+            : future (std::move (future_)), waiter_started (false)
+        {
+        }
+
+        std::future<T> future;
+        std::function<void()> progress;
+        std::atomic<bool> waiter_started;
+#if defined(CPP_BINDING_HAS_COROUTINE_SUPPORT)
+        std::unique_ptr<T> value;
+        std::exception_ptr error;
+#endif
+    };
+
+    static std::chrono::milliseconds progress_slice ()
+    {
+        return std::chrono::milliseconds (1);
+    }
+
+    void pump_progress_once () const
+    {
+        if (_state->progress)
+            _state->progress ();
+    }
+
+    std::shared_ptr<shared_state_t> _state;
+};
+
+class dealer_socket_t;
+class pair_socket_t;
+class pub_socket_t;
+class received_t;
+class router_socket_t;
+class stream_socket_t;
+class xpub_socket_t;
+
+namespace service
+{
+namespace detail
+{
+struct spot_op_state_t;
+} // namespace detail
+
+class send_ready_op_t
+{
+  public:
+    ~send_ready_op_t ();
+    send_ready_op_t (send_ready_op_t &&) noexcept;
+    send_ready_op_t &operator= (send_ready_op_t &&) noexcept;
+
+    send_ready_op_t &&message (message_t &part_) &&;
+    send_ready_op_t &&message (message_t &&part_) &&;
+    send_ready_op_t &&flags (int flags_) &&;
+    bool submit () &&;
+
+  private:
+    explicit send_ready_op_t (detail::spot_op_state_t &&state_);
+
+    detail::spot_op_state_t &state () noexcept;
+    const detail::spot_op_state_t &state () const noexcept;
+
+    std::unique_ptr<detail::spot_op_state_t> _state;
+    friend class send_op_t;
+};
+
+class send_op_t
+{
+  public:
+    ~send_op_t ();
+    send_op_t (send_op_t &&) noexcept;
+    send_op_t &operator= (send_op_t &&) noexcept;
+
+    send_ready_op_t message (message_t &part_) &&;
+    send_ready_op_t message (message_t &&part_) &&;
+
+  private:
+    explicit send_op_t (detail::spot_op_state_t &&state_);
+
+    detail::spot_op_state_t &state () noexcept;
+    const detail::spot_op_state_t &state () const noexcept;
+
+    std::unique_ptr<detail::spot_op_state_t> _state;
+    friend class zlink::pair_socket_t;
+    friend class zlink::dealer_socket_t;
+    friend class zlink::router_socket_t;
+    friend class zlink::stream_socket_t;
+    friend class zlink::pub_socket_t;
+    friend class zlink::xpub_socket_t;
+    friend class spot_t;
+    friend class spot_node_t;
+    friend class zlink::received_t;
+    friend class zlink::stream_socket_t;
+};
+
+class request_callback_ready_op_t;
+
+class request_ready_op_t
+{
+  public:
+    ~request_ready_op_t ();
+    request_ready_op_t (request_ready_op_t &&) noexcept;
+    request_ready_op_t &operator= (request_ready_op_t &&) noexcept;
+
+    request_ready_op_t &&message (message_t &part_) &&;
+    request_ready_op_t &&timeout (std::chrono::milliseconds timeout_) &&;
+    request_callback_ready_op_t flags (int flags_) &&;
+    async_result_t<std::vector<message_t>> submit_async () &&;
+    bool submit (request_callback_t callback_) &&;
+
+  private:
+    explicit request_ready_op_t (detail::spot_op_state_t &&state_);
+
+    detail::spot_op_state_t &state () noexcept;
+    const detail::spot_op_state_t &state () const noexcept;
+
+    std::unique_ptr<detail::spot_op_state_t> _state;
+    friend class request_op_t;
+    friend class request_callback_ready_op_t;
+};
+
+class request_op_t
+{
+  public:
+    ~request_op_t ();
+    request_op_t (request_op_t &&) noexcept;
+    request_op_t &operator= (request_op_t &&) noexcept;
+
+    request_ready_op_t message (message_t &part_) &&;
+
+  private:
+    explicit request_op_t (detail::spot_op_state_t &&state_);
+
+    detail::spot_op_state_t &state () noexcept;
+    const detail::spot_op_state_t &state () const noexcept;
+
+    std::unique_ptr<detail::spot_op_state_t> _state;
+    friend class spot_t;
+    friend class zlink::dealer_socket_t;
+    friend class zlink::router_socket_t;
+};
+
+class request_callback_ready_op_t
+{
+  public:
+    ~request_callback_ready_op_t ();
+    request_callback_ready_op_t (request_callback_ready_op_t &&) noexcept;
+    request_callback_ready_op_t &
+    operator= (request_callback_ready_op_t &&) noexcept;
+
+    request_callback_ready_op_t &&message (message_t &part_) &&;
+    request_callback_ready_op_t &&
+    timeout (std::chrono::milliseconds timeout_) &&;
+    request_callback_ready_op_t &&flags (int flags_) &&;
+    bool submit (request_callback_t callback_) &&;
+
+  private:
+    explicit request_callback_ready_op_t (detail::spot_op_state_t &&state_);
+
+    detail::spot_op_state_t &state () noexcept;
+    const detail::spot_op_state_t &state () const noexcept;
+
+    std::unique_ptr<detail::spot_op_state_t> _state;
+    friend class request_ready_op_t;
+};
+
+class reply_ready_op_t
+{
+  public:
+    ~reply_ready_op_t ();
+    reply_ready_op_t (reply_ready_op_t &&) noexcept;
+    reply_ready_op_t &operator= (reply_ready_op_t &&) noexcept;
+
+    reply_ready_op_t &&message (message_t &part_) &&;
+    reply_ready_op_t &&flags (int flags_) &&;
+    void submit () &&;
+
+  private:
+    explicit reply_ready_op_t (detail::spot_op_state_t &&state_);
+
+    detail::spot_op_state_t &state () noexcept;
+    const detail::spot_op_state_t &state () const noexcept;
+
+    std::unique_ptr<detail::spot_op_state_t> _state;
+    friend class reply_op_t;
+};
+
+class reply_op_t
+{
+  public:
+    ~reply_op_t ();
+    reply_op_t (reply_op_t &&) noexcept;
+    reply_op_t &operator= (reply_op_t &&) noexcept;
+
+    reply_ready_op_t message (message_t &part_) &&;
+
+  private:
+    explicit reply_op_t (detail::spot_op_state_t &&state_);
+
+    detail::spot_op_state_t &state () noexcept;
+    const detail::spot_op_state_t &state () const noexcept;
+
+    std::unique_ptr<detail::spot_op_state_t> _state;
+    friend class spot_t;
+    friend class spot_node_t;
+    friend class zlink::received_t;
+    friend class zlink::router_socket_t;
+};
+
+} // namespace service
+} // namespace zlink

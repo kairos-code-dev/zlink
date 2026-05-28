@@ -99,7 +99,7 @@ inline zlink::message_t build_packet_frame (const zlink::message_t &header_,
     if (!packet.valid ())
         return packet;
 
-    unsigned char *frame = static_cast<unsigned char *> (packet.data ());
+    unsigned char *frame = reinterpret_cast<unsigned char *> (packet.data ());
     frame[0] = static_cast<unsigned char> ((header_size >> 8) & 0xFF);
     frame[1] = static_cast<unsigned char> (header_size & 0xFF);
     store_u32_be (
@@ -323,7 +323,7 @@ bool perf_stream_server (const std::string &lib_name,
 
         stream_handler_context_t handler_context;
         handler_context.server = &server;
-        server.on_packet (
+        server.set_packet_handler (
           [&handler_context] (const zlink::routing_id_t &source_rid_,
                               zlink::message_t header_,
                               zlink::message_t body_) {
@@ -341,7 +341,7 @@ bool perf_stream_server (const std::string &lib_name,
         event_loop_thread.join ();
         return true;
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 }

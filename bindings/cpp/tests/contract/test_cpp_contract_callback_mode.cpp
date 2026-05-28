@@ -81,7 +81,7 @@ int main ()
         spot.publish ("topic:alpha")
           .message (outbound)
           .submit ();
-        const int rc = spot.subscribe (inbound, ZLINK_DONTWAIT);
+        const int rc = spot.subscribe (inbound, zlink::recv_flags_t::dontwait);
         if (rc == static_cast<int> (zlink::recv_result_t::ok)) {
             got_message = true;
             break;

@@ -11,7 +11,7 @@ int main ()
 
     actor_sample_capture_t capture;
     actor_sample_dispatch_state_t state {&spot, &node, &actor, &capture};
-    spot.on_dispatch_event (
+    spot.set_dispatch_handler (
       [&state] (zlink::service::spot_t &,
                 const zlink::spot_dispatch_info_t &info) {
           actor_sample_dispatch (state, info);
@@ -27,7 +27,7 @@ int main ()
     zlink::message_t join = zlink::message_t::from_string ("enter-room");
     assert (actor.join (spot)
       .message (join)
-      .flags (ZLINK_DONTWAIT)
+      .flags (zlink::recv_flags_t::dontwait)
       .timeout (std::chrono::milliseconds (1000))
       .submit (
       [&] (const zlink::actor_join_result_t &result,
@@ -41,7 +41,7 @@ int main ()
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "room-player-1")
       .message (event)
-      .flags (ZLINK_DONTWAIT)
+      .flags (zlink::recv_flags_t::dontwait)
       .submit ());
     assert (wait_until_flag (capture, &actor_sample_capture_t::actor_read));
     assert (capture.payload == "move:north");

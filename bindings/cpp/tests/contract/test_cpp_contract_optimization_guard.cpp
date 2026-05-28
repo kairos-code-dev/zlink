@@ -23,7 +23,7 @@ void collect_files(const std::filesystem::path& dir,
         if (!entry.is_regular_file())
             continue;
         const auto ext = entry.path().extension().string();
-        if (ext == ".hpp" || ext == ".h")
+        if (ext == ".cpp" || ext == ".hpp" || ext == ".h")
             out.push_back(entry.path());
     }
 }
@@ -56,7 +56,7 @@ int main()
       this_file.parent_path().parent_path().parent_path();
 
     std::vector<std::filesystem::path> files;
-    collect_files(cpp_root / "include" / "zlink", files);
+    collect_files(cpp_root / "src" / "Runtime", files);
 
     std::string all;
     for (const auto& file : files)

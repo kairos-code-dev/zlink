@@ -45,7 +45,7 @@ bool wait_for_spot_send_progress (zlink::poller_t *poller_, bool send_enabled_)
             (void) poller_->wait (&event, 1, std::chrono::milliseconds (-1));
             return true;
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             return false;
         }
     }
@@ -238,7 +238,7 @@ bool run_phase (zlink::service::spot_t &spot_,
           };
 
         int saved_errno = 0;
-        const int rc = publish_once (ZLINK_DONTWAIT, &saved_errno);
+        const int rc = publish_once (static_cast<int>(zlink::send_flags_t::dontwait), &saved_errno);
 
         if (rc == 0) {
             ++publish_ok_count;
@@ -326,7 +326,7 @@ bool perf_spot_server (const std::string &lib_name,
     try {
         send_poller.add (spot, zlink::poll_event_flag_t::pollout, 0);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
     zlink::service::spot_t control_pub = control_node.create_spot ();

@@ -1,7 +1,7 @@
 #ifndef ZLINK_CPP_PERF_TLS_HPP
 #define ZLINK_CPP_PERF_TLS_HPP
 
-#include "perf_socket_compat.hpp"
+#include "perf_socket_adapter.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -108,7 +108,7 @@ inline bool setup_tls_server (SocketLike &socket,
     try {
         socket.set_tls_server (cert, key, false);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
     return true;
@@ -130,7 +130,7 @@ inline bool setup_tls_client (SocketLike &socket,
     try {
         socket.set_tls_client (ca, "localhost", false);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
     return true;

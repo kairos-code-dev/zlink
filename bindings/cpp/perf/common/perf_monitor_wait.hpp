@@ -15,7 +15,7 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
 {
     for (;;) {
         const std::optional<zlink::monitor_event_t> event =
-      monitor.recv (ZLINK_DONTWAIT);
+      monitor.recv (static_cast<int>(zlink::send_flags_t::dontwait));
         if (!event)
             break;
         if (static_cast<uint64_t> (event->event) != event_type)
@@ -28,7 +28,7 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
     try {
         poller.add (monitor, zlink::poll_event_flag_t::pollin, 0);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 
@@ -50,7 +50,7 @@ inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
 
         for (;;) {
             const std::optional<zlink::monitor_event_t> event =
-      monitor.recv (ZLINK_DONTWAIT);
+      monitor.recv (static_cast<int>(zlink::send_flags_t::dontwait));
             if (!event)
                 break;
             if (static_cast<uint64_t> (event->event) != event_type)

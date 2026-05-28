@@ -9,7 +9,7 @@
 #include "perf_tls.hpp"
 #include "../../common/perf_latency_sampler.hpp"
 #include "../../common/perf_monitor_wait.hpp"
-#include "../../common/perf_socket_compat.hpp"
+#include "../../common/perf_socket_adapter.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -38,7 +38,7 @@ static const char *k_stop_token = "__zlink_perf_stop__";
 template<typename SocketLike, typename T>
 inline auto set_common_socket_option_impl (
   SocketLike &socket,
-  zlink::compat::options::socket_option_key_t<T> key,
+  perf::options::socket_option_key_t<T> key,
   const T &value,
   int) -> decltype (socket.set_option (key, value), int ())
 {
@@ -48,25 +48,25 @@ inline auto set_common_socket_option_impl (
 template<typename SocketLike, typename T>
 inline int set_common_socket_option_impl (
   SocketLike &socket,
-  zlink::compat::options::socket_option_key_t<T> key,
+  perf::options::socket_option_key_t<T> key,
   const T &value,
   long)
 {
     try {
         switch (key.option) {
-        case zlink::compat::options::socket_option::sndhwm:
+        case perf::options::socket_option::sndhwm:
             socket.options ().send_hwm (zlink::message_count_t::value (value));
             return 0;
-        case zlink::compat::options::socket_option::rcvhwm:
+        case perf::options::socket_option::rcvhwm:
             socket.options ().recv_hwm (zlink::message_count_t::value (value));
             return 0;
-        case zlink::compat::options::socket_option::sndtimeo:
+        case perf::options::socket_option::sndtimeo:
             socket.options ().send_timeout (std::chrono::milliseconds (value));
             return 0;
-        case zlink::compat::options::socket_option::rcvtimeo:
+        case perf::options::socket_option::rcvtimeo:
             socket.options ().recv_timeout (std::chrono::milliseconds (value));
             return 0;
-        case zlink::compat::options::socket_option::linger:
+        case perf::options::socket_option::linger:
             socket.options ().linger (std::chrono::milliseconds (value));
             return 0;
         default:
@@ -83,7 +83,7 @@ inline int set_common_socket_option_impl (
 template<typename SocketLike, typename T>
 inline int set_common_socket_option (
   SocketLike &socket,
-  zlink::compat::options::socket_option_key_t<T> key,
+  perf::options::socket_option_key_t<T> key,
   const T &value)
 {
     return set_common_socket_option_impl (socket, key, value, 0);
@@ -92,7 +92,7 @@ inline int set_common_socket_option (
 template<typename SocketLike, typename T>
 inline auto get_common_socket_option_impl (
   SocketLike &socket,
-  zlink::compat::options::socket_option_key_t<T> key,
+  perf::options::socket_option_key_t<T> key,
   T &value,
   int) -> decltype (socket.get_option (key, &value), int ())
 {
@@ -102,7 +102,7 @@ inline auto get_common_socket_option_impl (
 template<typename SocketLike, typename T>
 inline int get_common_socket_option_impl (
   SocketLike &socket,
-  zlink::compat::options::socket_option_key_t<T> key,
+  perf::options::socket_option_key_t<T> key,
   T &value,
   long)
 {
@@ -116,7 +116,7 @@ inline int get_common_socket_option_impl (
 template<typename SocketLike>
 inline auto get_common_socket_option_string_impl (
   SocketLike &socket,
-  zlink::compat::options::socket_option_key_t<std::string> key,
+  perf::options::socket_option_key_t<std::string> key,
   std::string &value,
   int) -> decltype (socket.get_option (key, value), int ())
 {
@@ -126,12 +126,12 @@ inline auto get_common_socket_option_string_impl (
 template<typename SocketLike>
 inline int get_common_socket_option_string_impl (
   SocketLike &socket,
-  zlink::compat::options::socket_option_key_t<std::string> key,
+  perf::options::socket_option_key_t<std::string> key,
   std::string &value,
   long)
 {
     try {
-        if (key.option == zlink::compat::options::socket_option::last_endpoint) {
+        if (key.option == perf::options::socket_option::last_endpoint) {
             value = socket.options ().last_endpoint ();
             return 0;
         }
@@ -147,7 +147,7 @@ inline int get_common_socket_option_string_impl (
 template<typename SocketLike, typename T>
 inline int get_common_socket_option (
   SocketLike &socket,
-  zlink::compat::options::socket_option_key_t<T> key,
+  perf::options::socket_option_key_t<T> key,
   T &value)
 {
     return get_common_socket_option_impl (socket, key, value, 0);
@@ -156,7 +156,7 @@ inline int get_common_socket_option (
 template<typename SocketLike>
 inline int get_common_socket_option (
   SocketLike &socket,
-  zlink::compat::options::socket_option_key_t<std::string> key,
+  perf::options::socket_option_key_t<std::string> key,
   std::string &value)
 {
     return get_common_socket_option_string_impl (socket, key, value, 0);
@@ -176,8 +176,7 @@ inline zlink::message_t message_from_external_buffer (std::vector<char> &buffer,
                                                       size_t size)
 {
     return zlink::message_t::from_bytes (
-      size > 0 ? static_cast<const void *> (&buffer[0]) : NULL,
-      size);
+      std::as_bytes (std::span<const char> (buffer.data (), size)));
 }
 
 inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)
@@ -335,9 +334,9 @@ inline void apply_benchmark_hwm (SocketLike &socket,
     const int snd_value = sndhwm > 0 ? sndhwm : 1;
     const int rcv_value = rcvhwm > 0 ? rcvhwm : 1;
     (void) set_common_socket_option (
-      socket, zlink::compat::options::socket_options::sndhwm, snd_value);
+      socket, perf::options::socket_options::sndhwm, snd_value);
     (void) set_common_socket_option (
-      socket, zlink::compat::options::socket_options::rcvhwm, rcv_value);
+      socket, perf::options::socket_options::rcvhwm, rcv_value);
 }
 
 template<typename SocketLike>
@@ -346,13 +345,13 @@ inline void apply_debug_timeouts (SocketLike &socket,
 {
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     (void) set_common_socket_option (
-      socket, zlink::compat::options::socket_options::sndtimeo,
+      socket, perf::options::socket_options::sndtimeo,
       settings.sndtimeo_ms);
     (void) set_common_socket_option (
-      socket, zlink::compat::options::socket_options::rcvtimeo,
+      socket, perf::options::socket_options::rcvtimeo,
       settings.rcvtimeo_ms);
     (void) set_common_socket_option (
-      socket, zlink::compat::options::socket_options::linger, 0);
+      socket, perf::options::socket_options::linger, 0);
 }
 
 inline bool apply_benchmark_auto_hwm_msg_unit (ctx_guard_t &ctx,
@@ -419,13 +418,13 @@ inline const char *auto_hwm_role_name (uint32_t role)
 inline const char *auto_hwm_profile_name (uint32_t profile)
 {
     switch (profile) {
-    case ZLINK_AUTO_HWM_PROFILE_COMPACT:
+    case static_cast<uint32_t> (zlink::auto_hwm_profile::compact):
         return "compact";
-    case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+    case static_cast<uint32_t> (zlink::auto_hwm_profile::low_latency):
         return "low_latency";
-    case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+    case static_cast<uint32_t> (zlink::auto_hwm_profile::balanced):
         return "balanced";
-    case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
+    case static_cast<uint32_t> (zlink::auto_hwm_profile::throughput):
         return "throughput";
     default:
         return "unknown";
@@ -457,15 +456,15 @@ inline const char *auto_hwm_policy_class_name (uint32_t policy_class)
 inline const char *auto_hwm_recalc_reason_name (uint32_t reason)
 {
     switch (reason) {
-    case ZLINK_AUTO_HWM_RECALC_REASON_INITIAL:
+    case 1:
         return "initial";
-    case ZLINK_AUTO_HWM_RECALC_REASON_ROLE_CHANGE:
+    case 2:
         return "role_change";
-    case ZLINK_AUTO_HWM_RECALC_REASON_POLICY_TOGGLE:
+    case 3:
         return "policy_toggle";
-    case ZLINK_AUTO_HWM_RECALC_REASON_REFRESH:
+    case 4:
         return "refresh";
-    case ZLINK_AUTO_HWM_RECALC_REASON_DEFERRED_SHRINK:
+    case 5:
         return "deferred_shrink";
     default:
         return "unknown";
@@ -500,7 +499,7 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
             return;
         snapshot = monitor.status ();
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return;
     }
 
@@ -773,7 +772,7 @@ inline int poll_connect_ready_count (connect_monitor_t &mon)
     int ready = 0;
     for (;;) {
         const std::optional<zlink::monitor_event_t> ev =
-          mon.monitor->recv (ZLINK_DONTWAIT);
+          mon.monitor->recv (static_cast<int>(zlink::send_flags_t::dontwait));
         if (!ev)
             break;
         if (static_cast<uint64_t> (ev->event)
@@ -805,7 +804,7 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
     try {
         poller.add (*mon.monitor, zlink::poll_event_flag_t::pollin, 0);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 
@@ -871,7 +870,7 @@ inline bool wait_connect_ready_all (std::vector<connect_monitor_t> &monitors,
                         zlink::poll_event_flag_t::pollin, i);
         }
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 
@@ -972,7 +971,7 @@ inline std::string bind_and_resolve_endpoint (SocketLike &socket,
     const std::string endpoint = make_endpoint (transport, id, fixed_port);
     try {
         socket.bind (endpoint);
-    } catch (const zlink::zlink_error_t &) {
+    } catch (const zlink::binding_error_t &) {
         return std::string ();
     }
 
@@ -981,7 +980,7 @@ inline std::string bind_and_resolve_endpoint (SocketLike &socket,
 
     std::string last;
     if (get_common_socket_option (
-          socket, zlink::compat::options::socket_options::last_endpoint, last)
+          socket, perf::options::socket_options::last_endpoint, last)
         != 0)
         return std::string ();
 

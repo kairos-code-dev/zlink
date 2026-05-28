@@ -36,12 +36,12 @@ template<typename T> class has_open_t
 static_assert (has_open_t<zlink::monitor_handle_t>::value,
                "monitor_handle_t must expose open");
 
-template<typename T> class has_on_event_t
+template<typename T> class has_set_event_handler_t
 {
   private:
     template<typename U>
     static auto test (int)
-      -> decltype (std::declval<U &> ().on_event (
+      -> decltype (std::declval<U &> ().set_event_handler (
                       std::function<void(const zlink::monitor_event_t &)> ()),
                     std::true_type ());
 
@@ -51,8 +51,8 @@ template<typename T> class has_on_event_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
-static_assert (has_on_event_t<zlink::monitor_handle_t>::value,
-               "monitor_handle_t must expose on_event");
+static_assert (has_set_event_handler_t<zlink::monitor_handle_t>::value,
+               "monitor_handle_t must expose set_event_handler");
 
 template<typename T> class has_ignore_event_t
 {
@@ -186,7 +186,7 @@ bool wait_for_any_socket_monitor_event (zlink::monitor_handle_t &monitor_,
             continue;
         }
 
-        if (monitor_.recv (ZLINK_DONTWAIT))
+        if (monitor_.recv (zlink::recv_flags_t::dontwait))
             return true;
     }
 
@@ -208,7 +208,7 @@ void test_socket_monitor_open_recv_snapshot ()
     assert (!endpoint.empty ());
     client.connect (endpoint);
 
-    (void) monitor.recv (ZLINK_DONTWAIT);
+    (void) monitor.recv (zlink::recv_flags_t::dontwait);
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
     const zlink::monitor_status_t snapshot = monitor.status ();
     (void) snapshot.auto_hwm_profile;
@@ -231,7 +231,7 @@ void test_socket_monitor_ignore_event_and_poller_size ()
     poller.add (server, zlink::poll_event_flag_t::pollin, 1);
     assert (poller.size () == 1);
 
-    monitor.on_event (zlink::monitor_handle_t::ignore_event);
+    monitor.set_event_handler (zlink::monitor_handle_t::ignore_event);
 
     server.bind ("tcp://127.0.0.1:*");
     const std::string endpoint = server.options ().last_endpoint ();
@@ -489,7 +489,7 @@ void test_poller_distinguishes_timer_and_socket_in_same_buffer ()
     assert (saw_timer);
 }
 
-void test_socket_monitor_on_event_callback ()
+void test_socket_monitor_set_event_handler_callback ()
 {
     zlink::context_t ctx;
     zlink::pair_socket_t server (ctx);
@@ -499,7 +499,7 @@ void test_socket_monitor_on_event_callback ()
     assert (monitor.valid ());
 
     monitor_callback_state_t callback_state;
-    monitor.on_event (
+    monitor.set_event_handler (
       [&callback_state] (const zlink::monitor_event_t &event) {
           socket_monitor_callback (callback_state, event);
       });
@@ -547,6 +547,6 @@ int main ()
     test_poller_capacity_leaves_remaining_ready_source ();
     test_poller_remove_suppresses_ready_events ();
     test_poller_distinguishes_timer_and_socket_in_same_buffer ();
-    test_socket_monitor_on_event_callback ();
+    test_socket_monitor_set_event_handler_callback ();
     return 0;
 }

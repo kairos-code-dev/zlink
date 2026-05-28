@@ -42,7 +42,7 @@ std::string bind_dealer_endpoint (zlink::dealer_socket_t &socket,
     try {
         socket.bind (bind_endpoint);
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return std::string ();
     }
     return transport == "inproc"
@@ -205,7 +205,7 @@ bool perf_dealer_dealer_server (const std::string &lib_name,
                                latency_stats.p99_ns);
     return true;
     }
-    catch (const zlink::zlink_error_t &) {
+    catch (const zlink::binding_error_t &) {
         return false;
     }
 }

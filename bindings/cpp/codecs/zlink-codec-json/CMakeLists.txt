@@ -17,16 +17,9 @@ set(
 find_package(nlohmann_json REQUIRED)
 
 add_library(zlink-codec-json INTERFACE)
-target_compile_features(zlink-codec-json INTERFACE cxx_std_17)
+target_compile_features(zlink-codec-json INTERFACE cxx_std_20)
 
-if(TARGET zlink-cpp)
-  target_link_libraries(zlink-codec-json INTERFACE zlink-cpp)
-else()
-  target_include_directories(zlink-codec-json INTERFACE
-    ${ZLINK_CPP_DIR}/include
-    ${ZLINK_CORE_DIR}/include
-  )
-endif()
+target_link_libraries(zlink-codec-json INTERFACE zlink_cpp)
 
 target_include_directories(zlink-codec-json INTERFACE
   ${CMAKE_CURRENT_LIST_DIR}/include

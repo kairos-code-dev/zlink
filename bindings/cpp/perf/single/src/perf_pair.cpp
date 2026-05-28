@@ -180,7 +180,7 @@ bool run_pattern_pair (const std::string &transport,
         uint64_t seq = 0;
         // C-faithful send model (bindings/c/perf single
         // perf_single_one_way.hpp send_active_samples +
-        // send_socket_active_message with ZLINK_DONTWAIT,
+        // send_socket_active_message with static_cast<int>(zlink::send_flags_t::dontwait),
         // retry_on_eagain=true): on transient backpressure, re-stamp a
         // fresh timestamp and retry immediately. A blocking send instead
         // stamps once then parks for the full TLS/WS write, so every

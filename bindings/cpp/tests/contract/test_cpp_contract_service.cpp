@@ -546,7 +546,7 @@ void test_unified_spot_self_delivery_recv_contract ()
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < deadline) {
-        const int rc = spot.subscribe (inbound, ZLINK_DONTWAIT);
+        const int rc = spot.subscribe (inbound, zlink::recv_flags_t::dontwait);
         if (rc == static_cast<int> (zlink::recv_result_t::ok)) {
             received = true;
             break;

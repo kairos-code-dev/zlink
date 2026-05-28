@@ -153,13 +153,13 @@ void apply_ctx_options (zlink::context_t &ctx_)
       parse_nonnegative_env ("PERF_CTX_BLOCKY", 0) != 0);
     (void) options.auto_hwm_enabled (
       parse_nonnegative_env ("PERF_CTX_AUTO_HWM_ENABLE",
-                             ZLINK_CTX_AUTO_HWM_ENABLE_DFLT)
+                             1)
       != 0);
     (void) options.auto_hwm_profile (resolve_single_ctx_auto_hwm_profile ());
 }
 
 bool set_sockopt_int (perf_socket_t &socket_,
-                      zlink::compat::options::socket_option_key_t<int> option_,
+                      perf::options::socket_option_key_t<int> option_,
                       int value_,
                       const char *name_)
 {
@@ -178,9 +178,9 @@ void apply_single_hwm (perf_socket_t &socket_)
     const int sndhwm = resolve_single_socket_hwm (true);
     const int rcvhwm = resolve_single_socket_hwm (false);
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::sndhwm, sndhwm, "sndhwm");
+      socket_, perf::options::socket_options::sndhwm, sndhwm, "sndhwm");
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
+      socket_, perf::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
 }
 
 bool apply_single_auto_hwm_msg_unit (ctx_guard_t &ctx_, size_t msg_size_)
@@ -221,11 +221,11 @@ void apply_single_benchmark_socket_options (perf_socket_t &socket_,
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::linger, linger_ms, "linger");
+      socket_, perf::options::socket_options::linger, linger_ms, "linger");
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
+      socket_, perf::options::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
     (void) set_sockopt_int (
-      socket_, zlink::compat::options::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
+      socket_, perf::options::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
 }
 
 std::string make_endpoint (const std::string &transport,
@@ -298,13 +298,13 @@ std::string bind_and_resolve_endpoint (perf_socket_t &socket_,
         return std::string ();
     try {
         socket_.bind (endpoint);
-    } catch (const zlink::zlink_error_t &) {
+    } catch (const zlink::binding_error_t &) {
         return std::string ();
     }
 
     if (transport != "inproc") {
         std::string last_endpoint;
-        if (socket_.get (zlink::compat::options::socket_options::last_endpoint, last_endpoint) != 0)
+        if (socket_.get (perf::options::socket_options::last_endpoint, last_endpoint) != 0)
             return std::string ();
         endpoint = last_endpoint;
 
@@ -364,7 +364,7 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
         return false;
     try {
         connect_socket_.connect (endpoint);
-    } catch (const zlink::zlink_error_t &) {
+    } catch (const zlink::binding_error_t &) {
         return false;
     }
 

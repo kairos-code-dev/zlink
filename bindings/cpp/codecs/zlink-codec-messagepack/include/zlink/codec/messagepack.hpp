@@ -2,7 +2,7 @@
 #ifndef ZLINK_CPP_CODEC_MESSAGEPACK_HPP_INCLUDED
 #define ZLINK_CPP_CODEC_MESSAGEPACK_HPP_INCLUDED
 
-#include <zlink/message.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
 
 #include <msgpack.hpp>
 
@@ -13,7 +13,8 @@ template<typename T>
 T decode (const message_t &msg)
 {
     const auto handle =
-      msgpack::unpack (static_cast<const char *> (msg.data ()), msg.size ());
+      msgpack::unpack (reinterpret_cast<const char *> (msg.data ()),
+                       msg.size ());
     return handle.get ().template as<T> ();
 }
 
@@ -22,7 +23,8 @@ message_t encode (const T &value)
 {
     msgpack::sbuffer buffer;
     msgpack::pack (buffer, value);
-    return message_t::from_bytes (buffer.data (), buffer.size ());
+    return message_t::from_bytes (
+      std::as_bytes (std::span<const char> (buffer.data (), buffer.size ())));
 }
 
 template<typename T>

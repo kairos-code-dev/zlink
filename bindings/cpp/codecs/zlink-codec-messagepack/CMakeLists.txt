@@ -17,16 +17,9 @@ set(
 find_package(msgpack-cxx REQUIRED CONFIG)
 
 add_library(zlink-codec-messagepack INTERFACE)
-target_compile_features(zlink-codec-messagepack INTERFACE cxx_std_17)
+target_compile_features(zlink-codec-messagepack INTERFACE cxx_std_20)
 
-if(TARGET zlink-cpp)
-  target_link_libraries(zlink-codec-messagepack INTERFACE zlink-cpp)
-else()
-  target_include_directories(zlink-codec-messagepack INTERFACE
-    ${ZLINK_CPP_DIR}/include
-    ${ZLINK_CORE_DIR}/include
-  )
-endif()
+target_link_libraries(zlink-codec-messagepack INTERFACE zlink_cpp)
 
 target_include_directories(zlink-codec-messagepack INTERFACE
   ${CMAKE_CURRENT_LIST_DIR}/include

@@ -187,7 +187,7 @@ bool run_pattern_pubsub (const std::string &transport,
 
         for (;;) {
             try {
-                const int rc = subscriber.subscribe (message, ZLINK_DONTWAIT);
+                const int rc = subscriber.subscribe (message, static_cast<int>(zlink::send_flags_t::dontwait));
                 if (rc == static_cast<int> (zlink::recv_result_t::no_data))
                     break;
                 if (rc != static_cast<int> (zlink::recv_result_t::ok)) {

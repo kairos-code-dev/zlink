@@ -193,7 +193,7 @@ class dealer_dealer_client_bench_t
 
         return !_socket_states.empty ();
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             return false;
         }
     }
@@ -221,7 +221,7 @@ class dealer_dealer_client_bench_t
             state.pollout_enabled = enabled;
             return true;
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             debug_log ("poller modify failed errno=" + std::to_string (errno));
             return false;
         }
@@ -250,7 +250,7 @@ class dealer_dealer_client_bench_t
             debug_log ("message allocate failed");
             return false;
         }
-        char *const payload = static_cast<char *> (state.message.data ());
+        char *const payload = reinterpret_cast<char *> (state.message.data ());
         if (!payload) {
             debug_log ("message data missing");
             return false;
@@ -308,8 +308,8 @@ class dealer_dealer_client_bench_t
             return false;
         const size_t token_size = std::strlen (perf::multi::k_stop_token);
         zlink::message_t part =
-          zlink::message_t::from_bytes (
-            perf::multi::k_stop_token, token_size);
+          zlink::message_t::from_bytes (std::as_bytes (
+            std::span<const char> (perf::multi::k_stop_token, token_size)));
         if (!part.valid ())
             return false;
 
@@ -452,7 +452,7 @@ class dealer_dealer_client_bench_t
             *lat_out = latency.snapshot ();
         return true;
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             return false;
         }
     }

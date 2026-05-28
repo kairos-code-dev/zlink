@@ -46,7 +46,7 @@ int main ()
 
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
-    server.on_packet (
+    server.set_packet_handler (
       [&result_promise] (const zlink::routing_id_t &source_rid_,
                          zlink::message_t header_, zlink::message_t body_) {
           callback_result_t result;

@@ -180,7 +180,7 @@ class dealer_router_client_bench_t
 
         return !_socket_states.empty ();
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             return false;
         }
     }
@@ -204,7 +204,7 @@ class dealer_router_client_bench_t
             state.pollout_enabled = enabled;
             return true;
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             return false;
         }
     }
@@ -229,10 +229,8 @@ class dealer_router_client_bench_t
 
         state.request =
           state.borrow_payload
-            ? zlink::advanced::external_message_t::adopt (
-                request_buffer.data (), state.payload_size, NULL, NULL)
-            : zlink::message_t::from_bytes (
-                request_buffer.data (), state.payload_size);
+            ? zlink::message_t::from_bytes (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)))
+            : zlink::message_t::from_bytes (std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)));
         if (!state.request.valid ()) {
             return false;
         }
@@ -404,7 +402,7 @@ class dealer_router_client_bench_t
             *lat_out = latency.snapshot ();
         return true;
         }
-        catch (const zlink::zlink_error_t &) {
+        catch (const zlink::binding_error_t &) {
             return false;
         }
     }

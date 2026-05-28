@@ -19,7 +19,7 @@ This README is the C++ binding's final-state interpretation of the shared
 policy in `../README.md`. The completed C++ binding does not keep old include
 paths, alias methods, alternate projections, or wrapper layers only to preserve
 the previous surface. This document is the acceptance standard for the
-refactored C++ binding.
+refactored C++ binding, not a progress report about the current tree.
 Do not weaken this document to match a partial implementation. If the code and
 this document disagree, the code is incomplete unless the user explicitly asks
 to change the target design.
@@ -36,8 +36,8 @@ namespace segments that users should depend on.
 - Public entrypoint projection: `bindings/cpp/include/zlink.hpp`.
 - Installed projection: `bindings/cpp/include/zlink.hpp` and
   `bindings/cpp/include/zlink/Contracts/...`.
-- Compiled library: the C++ binding builds and installs a C++ library target
-  such as `zlink_cpp` in addition to the core native `zlink` library.
+- Compiled library: the C++ binding builds and installs the C++ library target
+  `zlink_cpp` in addition to the core native `zlink` library.
 - Language baseline: C++20.
 - Namespace: all public types live under `zlink`; service types live under
   `zlink::service`.
@@ -54,59 +54,83 @@ The refactor is not complete until every item below is true. Build success or
 CTest success alone is not enough.
 
 1. The repository layout matches the `Repository Layout` section in this
-   document. The public file list is an acceptance inventory, not an example.
-   Extra public files require an explicit contract purpose in this document
-   before implementation. Extra runtime files are allowed only under
-   `src/Runtime/`.
-2. `bindings/cpp/include/zlink/Contracts/` contains public C++ contract
+   document. That section is an exact target inventory for public contract
+   headers and a minimum private runtime ownership map. It is not an example,
+   suggestion, or naming inspiration.
+2. Extra public files are rejected by default. A public file can remain only
+   when this README first names it and explains the independent contract
+   concept it owns. "It existed before the refactor" is not a contract purpose.
+3. Extra runtime files are allowed only under `src/Runtime/` and only when they
+   are private implementation support for a listed public contract.
+4. `bindings/cpp/include/zlink/Contracts/` contains public C++ contract
    headers only. It does not contain implementation headers, native marshalling
    helpers, private state structs, or old compatibility folders.
-3. No file under `bindings/cpp/include/zlink/Contracts/` includes a private
+5. No file under `bindings/cpp/include/zlink/Contracts/` includes a private
    runtime header or a private runtime include path.
-4. No file under `bindings/cpp/include/zlink/Contracts/` includes `<zlink.h>`
+6. No file under `bindings/cpp/include/zlink/Contracts/` includes `<zlink.h>`
    directly or indirectly as part of the C++ public contract design. If a
    generated or transitional native constant bridge is ever needed, it must be
    explicitly documented here before use.
-5. No public C++ contract header exposes C API names as public types or member
+7. No public C++ contract header exposes C API names as public types or member
    signatures. Public headers must not expose names such as `zlink_msg_t`,
    `zlink_routing_id_t`, `zlink_actor_ref_t`, `zlink_*_fn`,
    `zlink_*_option_t`, or raw `void *` native handles.
-6. No public C++ contract header uses `ZLINK_*` macros as its public contract
+8. No public C++ contract header uses `ZLINK_*` macros as its public contract
    surface. Public C++ enums and constants must be C++ names. Their native
    values are verified in runtime/tests against `core/include/zlink.h`.
-7. Every public contract header is self-contained. Including any single
+9. Every public contract header is self-contained. Including any single
    `bindings/cpp/include/zlink/Contracts/**/*.hpp` header in a C++20
    translation unit must compile without relying on prior includes.
-8. Public samples, public tests, perf runners, and codec packages include only
+10. Public samples, public tests, perf runners, and codec packages include only
    `<zlink.hpp>` or public `Contracts/...` headers. They do not include
    `src/Runtime/...` or any runtime helper path.
-9. Samples, tests, perf runners, codec packages, and external applications link
+11. Samples, tests, perf runners, codec packages, and external applications link
    the compiled `zlink_cpp` target. They do not compile private runtime source
    files directly and do not link the core native library as a substitute for
    the C++ binding.
-10. CMake install/export metadata exists for the public headers and compiled
+12. CMake install/export metadata exists for the public headers and compiled
     `zlink_cpp` target before the binding is considered package-complete.
-11. The final review compares this document to the filesystem, CMake graph,
-    public include graph, public C API leakage scan, build output, CTest output,
-    samples, and perf smoke results. Any mismatch is a remaining issue, not a
-    documentation adjustment opportunity.
-12. The work is not complete while public headers still contain native C API
+13. The final review compares this document to the filesystem, CMake graph,
+    public include graph, public C API leakage scan, public compatibility scan,
+    build output, CTest output, samples, and perf smoke results. Any mismatch
+    is a remaining issue, not a documentation adjustment opportunity.
+14. The work is not complete while public headers still contain native C API
     storage, native conversion helpers, inline native calls, native callback
     signatures, or runtime implementation logic. Passing tests do not override
     this boundary.
-13. The work is not complete while samples, tests, perf runners, or codec
+15. The work is not complete while samples, tests, perf runners, or codec
     packages depend on private runtime paths or direct C API calls that a normal
     C++ binding user cannot call through the public C++ contract.
-14. The work is not complete while the public layout has extra legacy
+16. The work is not complete while the public layout has extra legacy
     categories, wrapper include paths, or compatibility aliases that are not
     deliberately listed in this document.
-15. The work is not complete while any public header exists only because it was
+17. The work is not complete while any public header exists only because it was
     present before the refactor. Each public header must either be listed in
     `Repository Layout` or be added to this README with a short reason that
     explains the public concept it owns.
-16. The work is not complete while `zlink_cpp` is only a convenience target for
+18. The work is not complete while `zlink_cpp` is only a convenience target for
     tests. It must be the application-facing C++ binding target used by
     samples, tests, perf runners, codecs, and install/export metadata.
+19. The work is not complete while any audit command in this README reports a
+    mismatch after the final source change. The final answer must include the
+    exact remaining mismatch count or the zero-result evidence.
+20. The work is not complete until a fresh review after the last edit confirms
+    that samples and perf were updated to the same public include/link model as
+    tests.
+21. The work is not complete while C API headers are copied, generated, or
+    vendored under `bindings/cpp/include/` as part of the C++ installed include
+    projection. The C++ public include tree contains `<zlink.hpp>` and
+    `zlink/Contracts/...` only. The core C header remains the native semantic
+    source, but it is consumed through the core build/include dependency, not
+    mixed into the C++ public header layout.
+22. The work is not complete while the C++ binding does not build from a clean
+    CMake graph after the final source change. A broken build is a hard blocker,
+    even when layout scans look correct.
+23. The work is not complete while public headers expose `compat`,
+    `compatibility`, `legacy`, `shim`, or alias namespaces or names that exist
+    only to preserve the pre-refactor API. If a compatibility surface is ever
+    reintroduced, this README must first define it as a deliberate public
+    package boundary. Otherwise it is a mismatch.
 
 Do not mark an implementation goal complete until the audit commands below, the
 build, CTest, sample smoke, and relevant perf smoke all pass after the final
@@ -118,17 +142,62 @@ Recommended audit commands:
 ```sh
 find bindings/cpp/include/zlink/Contracts -type f | sort
 find bindings/cpp/src/Runtime -type f | sort
+find bindings/cpp/include -type f -name '*.h' | sort
 rg -n 'Runtime/|<Runtime/|zlink/Runtime' bindings/cpp/include/zlink/Contracts
 rg -n '#include\\s*[<"]zlink\\.h|\\bzlink_[A-Za-z0-9_]+\\b|\\bZLINK_[A-Z0-9_]+\\b' \
   bindings/cpp/include/zlink/Contracts
-rg -n 'src/Runtime|Runtime/Native|<zlink\\.h>|\\bzlink_[A-Za-z0-9_]+\\b|\\bZLINK_[A-Z0-9_]+\\b' \
+rg -n '\\bcompat\\b|compat::|compatibility|legacy|shim|alias' \
+  bindings/cpp/include/zlink/Contracts bindings/cpp/include/zlink.hpp
+rg -n '#include\\s*[<"].*(src/Runtime|Runtime/|zlink/Runtime)|#include\\s*[<"]zlink\\.h[">]|#include\\s*[<"]zlink/[^">]*\\.h[">]|#include\\s*[<"]zlink_enum\\.h[">]|#include\\s*[<"]zlink_errno\\.h[">]|\\bzlink_[a-z][A-Za-z0-9_]*\\s*\\(' \
   bindings/cpp/samples bindings/cpp/tests bindings/cpp/perf bindings/cpp/codecs
 git diff --check -- bindings/cpp doc/spec/bindings/cpp/README.md
 ```
 
-The C API leakage scan above should return no public contract usage except
-items explicitly documented in this README. If the scan returns many hits, the
-implementation has not reached the target architecture.
+The private dependency scan above is the completion gate for samples, tests,
+perf, and codecs. It checks private runtime includes, copied native C headers,
+and direct lowercase C API function calls. Broader text searches for
+`zlink_*`, `ZLINK_*`, or build variable names can be useful during
+investigation, but they are not a completion count by themselves because tests
+and CMake files may contain guard strings, target names, or diagnostic text.
+When a broad search finds a line, classify it before counting it as a defect.
+
+The public file list comparison must be exact. Use the `Repository Layout`
+inventory as the expected public header set and count both missing files and
+extra files. An extra compatibility header is a mismatch even when it only
+includes another public header. A missing listed header is a mismatch even when
+the same type is available through a different legacy header.
+
+When reporting layout status, use these terms consistently:
+
+- `missing public headers`: files named in `Repository Layout` that do not
+  exist under `bindings/cpp/include/zlink/Contracts/`.
+- `extra public headers`: files under `bindings/cpp/include/zlink/Contracts/`
+  that are not named in `Repository Layout`.
+- `runtime misplaced files`: private implementation files that still live under
+  `bindings/cpp/include/zlink/Contracts/` or any installed public include path.
+- `C API header copies`: `.h` native C API headers that still live under
+  `bindings/cpp/include/` instead of the core C include tree.
+- `private dependency hits`: samples, tests, perf, or codecs that include
+  private runtime paths or call the C API directly instead of the public C++
+  contract.
+- `public compatibility hits`: public contract names, namespaces, forwarding
+  headers, aliases, or shim terms that exist only to preserve the old C++
+  binding surface.
+
+All named mismatch counts and leakage counts must be zero before completion.
+A build pass, a CTest pass, or an older audit result does not reduce those
+counts.
+
+The C API leakage scan above should return zero public contract hits. Any
+exception requires an explicit subsection in this README that names the exact
+identifier and explains why no C++ contract representation is possible. An
+undocumented scan hit is a defect.
+
+The compatibility scan above should return zero public contract hits. A
+namespace such as `compat`, a public alias kept only for a previous name, or a
+forwarding header that only redirects to the new layout is a defect unless this
+README first defines it as an intentional public compatibility package. This
+refactor currently has no such package.
 
 Every public contract header must also pass a standalone include check:
 
@@ -158,11 +227,23 @@ The final implementation review must use a loop, not a single pass:
 If any item remains, report it as remaining work. Do not call the goal complete
 and do not commit/push the partial state as a finished refactor.
 
+Completion is a current-state claim, not a progress claim. It is invalid to
+mark the goal complete because many files were moved, because the build reached
+a later failure, because one audit category reached zero, or because a previous
+turn reported success. Completion requires all evidence in the same final
+review cycle after the last source change.
+
 The review must report the concrete evidence. A final status that only says
 "build passed" or "tests passed" is insufficient. The report must include the
 layout mismatch count, public C API leakage result, runtime include leakage
-result, build command, CTest command, sample smoke command, and perf smoke
-command used after the last source change.
+result, public compatibility scan result, private dependency scan result for
+samples/tests/perf/codecs, build command, CTest command, sample smoke command,
+and perf smoke command used after the last source change.
+
+Completion is invalid if any required evidence is stale. Evidence becomes stale
+after any change to a public header, runtime source, CMake file, codec, sample,
+test, perf source, or this README. In that case the affected audit, build, and
+runtime checks must be rerun and the final report must use the rerun result.
 
 C++ is no longer modeled as a header-only binding. Do not create a second
 `bindings/cpp/src/zlink/Contracts/` tree. Public contracts stay in installed
@@ -176,10 +257,11 @@ natural boundary.
 ## Repository Layout
 
 The completed C++ binding uses these paths consistently. The file names below
-are the target ownership map and acceptance inventory. A category can split
-further only when a public concept or runtime responsibility has an independent
-reason to change, and that reason must be added to this section before the
-implementation is accepted.
+are the target ownership map and acceptance inventory. Public contract files
+must match this list exactly unless this section is updated first with a clear
+contract reason. A category can split further only when a public concept or
+runtime responsibility has an independent reason to change, and that reason
+must be added to this section before the implementation is accepted.
 
 ```text
 bindings/cpp/
@@ -283,9 +365,9 @@ bindings/cpp/
 +-- perf/
 ```
 
-`CMakeLists.txt` defines the compiled C++ binding target, for example
-`zlink_cpp`, and links it to the core native `zlink` library. Samples, tests,
-perf binaries, and applications link that target instead of compiling private
+`CMakeLists.txt` defines the compiled C++ binding target `zlink_cpp` and links
+it to the core native `zlink` library. Samples, tests, perf binaries, codec
+packages, and applications link that target instead of compiling private
 runtime source files directly.
 
 `Contracts/` is the installed public contract surface under
@@ -293,6 +375,13 @@ runtime source files directly.
 under `bindings/cpp/src/Runtime/`. The `zlink` namespace and `zlink.hpp` are
 the C++ projection of the contract. Do not expose `Contracts` or `Runtime` as
 namespace segments.
+
+The completed C++ include projection does not contain native C API headers
+such as `bindings/cpp/include/zlink.h`, `bindings/cpp/include/zlink/*.h`,
+`bindings/cpp/include/zlink_enum.h`, or `bindings/cpp/include/zlink_errno.h`.
+Those files are not C++ contract headers and are not accepted as convenience
+copies. If the C++ runtime needs the native C API, it includes it from the core
+native include dependency inside `src/Runtime/` implementation files.
 
 Runtime helper headers are not public contract API. Public samples, perf, and
 tests include `<zlink.hpp>` and link the C++ binding library; they do not include
@@ -305,9 +394,9 @@ forwarding headers.
 Public headers such as `base_socket.hpp`, `dealer.hpp`, `router.hpp`,
 `publisher_socket.hpp`, `subscriber_socket.hpp`, `spot_common.hpp`,
 `spot_node_ops.hpp`, or `spot_socket_ops.hpp` are not accepted as leftover
-implementation buckets. If one of these names remains public, this README must
-first explain the independent contract concept it owns. Otherwise it must be
-merged into the category contract header or moved behind `src/Runtime/`.
+implementation buckets. They are examples of public files that must either be
+removed, merged into the listed category contract headers, or first added to
+the `Repository Layout` inventory with a clear public contract purpose.
 
 Monitor, poller, and timer contracts live under the shared `Eventing/`
 category. `Contracts/Monitoring/` is not part of the completed public contract,
@@ -459,6 +548,41 @@ If a previous implementation attempt partially moved files, the next attempt
 starts by measuring the current tree against this README. Do not assume the
 current `bindings/cpp` tree is closer to completion just because it builds.
 
+If a previous attempt claimed completion while the layout, public/private
+boundary, samples, perf, or codec integration still differed from this README,
+treat that claim as a process failure, not as design evidence. The recovery task
+is to re-audit from the filesystem and source graph, then continue from the
+actual mismatches. Do not defend or preserve a partial shape just because it was
+introduced by an earlier refactor attempt.
+
+The first report in a resumed refactor must state that the current tree is
+being audited against this document. It must not claim the layout is complete
+until the audit has compared actual public files, runtime files, include
+dependencies, and CMake link targets to the requirements above.
+
+The resumed refactor must begin with a current-state report in this shape:
+
+```text
+Current C++ binding refactor audit:
+- missing public headers: <count>
+- extra public headers: <count>
+- runtime misplaced files: <count>
+- C API header copies: <count>
+- public C API leakage hits: <count>
+- runtime include leakage hits: <count>
+- public compatibility hits: <count>
+- private dependency hits in samples/tests/perf/codecs: <count>
+- build status: <not run | pass | fail, with first failing target>
+- CTest status: <not run | pass | fail, with failing test>
+- sample smoke status: <not run | pass | fail>
+- perf smoke status: <not run | pass | fail>
+```
+
+If any count is nonzero, the report must say `refactor incomplete`. If any
+required command has not been run after the last edit, the report must say
+`evidence stale` or `evidence missing`. Do not summarize a nonzero audit as
+"mostly done" when deciding whether the goal can close.
+
 Use this order:
 
 1. Capture `git status --short` and scope the work to `bindings/cpp` plus this
@@ -466,15 +590,138 @@ Use this order:
 2. List public contract files and compare them to `Repository Layout`.
 3. List runtime files and confirm every implementation helper lives under
    `src/Runtime/`.
-4. Run the C API leakage scan on `Contracts/` before editing. The scan result
+4. List native `.h` files under `bindings/cpp/include/`. Any result is a
+   misplaced C API header copy unless this README later defines a separate C
+   compatibility package.
+5. Run the C API leakage scan on `Contracts/` before editing. The scan result
    is the initial defect list, not a warning to ignore.
-5. Remove or relocate public headers that are only old implementation buckets.
-6. Move native calls, callback trampolines, native storage, and native
+6. Run the public compatibility scan on `Contracts/` and `zlink.hpp` before
+   editing. Any hit is a real defect unless this README first defines an
+   intentional compatibility package.
+7. Run the private dependency scan on samples, tests, perf, and codecs before
+   editing. Any private include or direct C API dependency is part of the
+   defect list.
+8. Remove or relocate public headers that are only old implementation buckets.
+9. Move native calls, callback trampolines, native storage, and native
    conversion helpers into `.cpp` files or private runtime headers.
-7. Rebuild and rerun the audit loop after every batch.
+10. Update CMake so `zlink_cpp` is the target used by samples, tests, perf,
+   codecs, and install/export metadata.
+11. Rebuild and rerun the audit loop after every batch.
 
 Partial states are acceptable only as intermediate working states. They are not
 acceptable as a committed or pushed completed refactor.
+
+If the tree does not compile, stop treating higher-level validation as current.
+Fix the build first, then rerun the layout and leakage scans. A stale passing
+CTest result from before the last edit is not evidence for the current tree.
+
+Do not change files outside `bindings/cpp` and this README unless the audit
+shows a direct dependency that must change for the C++ binding to build or run.
+When another binding subtree is already dirty, leave it untouched and do not
+stage, revert, or explain it as part of C++ completion.
+
+## Implementation Restart Prompt
+
+Use the following prompt when restarting this refactor in a fresh agent or
+goal. The prompt is intentionally strict because partial build success is not
+evidence of completion.
+
+```text
+Work in /home/hep7/project/kairos/zlink.
+
+Refactor bindings/cpp to match doc/spec/bindings/cpp/README.md exactly.
+The README is the final-state acceptance standard, not a description of the
+current implementation. C++20 is the baseline. Compatibility with the old C++
+binding surface is not required.
+
+Create or continue a goal only for this objective. Do not mark it complete
+until fresh evidence after the last source change proves every required count
+is zero and all required build/test/sample/perf checks have passed. A build
+pass, CTest pass, or previous audit result is not completion by itself.
+
+Do not weaken the README to match the current code. If code and README differ,
+the implementation is incomplete unless the user explicitly changes the target
+design.
+
+Keep the contract/runtime split:
+- public installed headers live under bindings/cpp/include/zlink/Contracts
+- the public entrypoint is bindings/cpp/include/zlink.hpp
+- private implementation lives under bindings/cpp/src/Runtime
+- public code links the compiled zlink_cpp target
+
+Do not mix C API headers or native runtime helpers into Contracts. Public
+Contracts headers must not include <zlink.h>, expose zlink_* identifiers,
+ZLINK_* macros, native callback signatures, raw native handles, native storage,
+or native conversion helpers.
+
+Start by auditing, not editing:
+1. Capture git status for bindings/cpp and doc/spec/bindings/cpp/README.md.
+2. Compare the actual public contract file list with the README Repository
+   Layout inventory. Report missing public headers and extra public headers.
+3. Compare runtime files with src/Runtime ownership. Report misplaced runtime
+   files if any implementation helper remains in a public include path.
+4. Report every native .h file under bindings/cpp/include as a C API header
+   copy mismatch. The completed C++ include tree contains zlink.hpp and
+   zlink/Contracts/... only.
+5. Run the README C API leakage scan on Contracts.
+6. Run the README public compatibility scan on Contracts and zlink.hpp. Public
+   compat, legacy, shim, or alias surfaces are defects unless this README first
+   defines them as an intentional package boundary.
+7. Run the README private dependency scan on samples, tests, perf, and codecs.
+8. Try a build before broad edits if the tree may already be broken. If it is
+   broken, report the first compiler error and fix it before claiming any check
+   is current.
+9. Report the concrete mismatch counts before the first code batch using this
+   exact status shape:
+   - missing public headers: <count>
+   - extra public headers: <count>
+   - runtime misplaced files: <count>
+   - C API header copies: <count>
+   - public C API leakage hits: <count>
+   - runtime include leakage hits: <count>
+   - public compatibility hits: <count>
+   - private dependency hits in samples/tests/perf/codecs: <count>
+   - build status: <not run | pass | fail>
+   - CTest status: <not run | pass | fail>
+   - sample smoke status: <not run | pass | fail>
+   - perf smoke status: <not run | pass | fail>
+
+Then fix in scoped batches:
+1. Move implementation, native conversion, callback trampoline, request pump,
+   and native handle logic out of public headers into .cpp files or private
+   headers under src/Runtime.
+2. Remove or merge public headers that are only legacy implementation buckets.
+3. Update zlink.hpp, CMake, samples, tests, perf, and codecs to use the public
+   Contracts surface and link zlink_cpp.
+4. Preserve performance: do not add avoidable hot-path virtual dispatch,
+   heap allocation, std::function rebuilding, hidden waits, sleeps, broad
+   locks, or unnecessary copies.
+5. Repeat audit -> fix -> build -> test -> sample smoke -> perf smoke until
+   there are no README/layout/API/build/test/sample/perf mismatches.
+
+Required final evidence after the last source change:
+- missing public header count and extra public header count
+- misplaced runtime file count
+- C API header copy count under bindings/cpp/include
+- public C API leakage scan result
+- runtime include leakage scan result
+- public compatibility scan result
+- private dependency scan result for samples/tests/perf/codecs
+- cmake build command/result for zlink_cpp and affected targets
+- CTest command/result
+- sample smoke command/result
+- relevant perf smoke command/result and comparison meaning against
+  bindings/c/perf
+
+Do not mark the goal complete, commit, or push while any mismatch remains.
+If any check cannot be run, report the refactor as incomplete and explain the
+blocker instead of substituting an older result.
+
+If the implementation becomes difficult to finish in one turn, leave a precise
+handoff note with the latest audit counts, the first failing compiler/test
+error, and the next file to fix. Do not convert that handoff into goal
+completion.
+```
 
 ## Core Capability Ownership
 
@@ -613,7 +860,7 @@ RAII/Pimpl idioms.
 Moving C++ off header-only means the binding has an additional compiled
 artifact. The completed binding therefore maintains these build rules:
 
-- The C++ binding builds a library target such as `zlink_cpp`.
+- The C++ binding builds the library target `zlink_cpp`.
 - The C++ binding is built as C++20. Do not add C++17-era compatibility
   wrappers, alternate headers, or macro paths to preserve old compiler support.
 - `zlink_cpp` links against the core native `zlink` library and has a version

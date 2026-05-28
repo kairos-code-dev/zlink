@@ -18,7 +18,7 @@ int main ()
 
     actor_sample_dispatch_state_t state {
       &play_spot, &play_node, &play_actor, &capture};
-    play_spot.on_dispatch_event (
+    play_spot.set_dispatch_handler (
       [&state] (zlink::service::spot_t &,
                 const zlink::spot_dispatch_info_t &info) {
           actor_sample_dispatch (state, info);
@@ -35,7 +35,7 @@ int main ()
     zlink::message_t join = zlink::message_t::from_string ("join-play");
     assert (gateway_node.join_actor (concrete, play_node_rid, play_spot_rid)
       .message (join)
-      .flags (ZLINK_DONTWAIT)
+      .flags (zlink::recv_flags_t::dontwait)
       .timeout (std::chrono::milliseconds (1000))
       .submit (
       [&] (const zlink::actor_join_result_t &result,
@@ -50,7 +50,7 @@ int main ()
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "play-session-actor")
       .message (frame)
-      .flags (ZLINK_DONTWAIT)
+      .flags (zlink::recv_flags_t::dontwait)
       .submit ());
     assert (wait_until_flag (capture, &actor_sample_capture_t::actor_read));
     assert (capture.payload == "client-input");

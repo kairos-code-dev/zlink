@@ -54,7 +54,8 @@ void test_copy_helpers_copy_payload ()
     assert (!msg.is_empty ());
 
     std::vector<uint8_t> target (msg.size ());
-    assert (msg.copy_to (target.data (), target.size ()) == msg.size ());
+    assert (msg.copy_to (std::span<uint8_t> (target.data (), target.size ()))
+            == msg.size ());
     assert ((target == std::vector<uint8_t> {'c', 'o', 'p', 'y', '-',
                                              'p', 'a', 'y', 'l', 'o', 'a',
                                              'd'}));
@@ -62,7 +63,8 @@ void test_copy_helpers_copy_payload ()
     bool threw = false;
     try {
         std::vector<uint8_t> too_small (msg.size () - 1);
-        (void) msg.copy_to (too_small.data (), too_small.size ());
+        (void) msg.copy_to (
+          std::span<uint8_t> (too_small.data (), too_small.size ()));
     } catch (const std::invalid_argument &) {
         threw = true;
     }

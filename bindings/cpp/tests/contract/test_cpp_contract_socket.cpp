@@ -173,7 +173,7 @@ template<typename SocketT> class has_raw_common_option_set_t
     template<typename T>
     static auto test (int)
       -> decltype (std::declval<T &> ().set_option (
-                      zlink::compat::options::socket_option::linger, 0),
+                      0, 0),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -188,8 +188,7 @@ template<typename SocketT> class has_raw_common_option_get_t
     template<typename T>
     static auto test (int)
       -> decltype (std::declval<T &> ().get_option (
-                      zlink::compat::options::socket_option::linger,
-                      static_cast<int *> (NULL)),
+                      0, static_cast<int *> (NULL)),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);
@@ -640,9 +639,9 @@ void test_router_recv_received_single_part_large ()
     zlink::message_t &part = inbound.first_part ();
     assert (part.valid ());
     assert (part.size () == payload_size);
-    assert (static_cast<const unsigned char *> (part.data ())[0] == 0x7b);
-    assert (static_cast<const unsigned char *> (part.data ())[payload_size - 1]
-            == 0x7b);
+    const std::span<const std::byte> bytes = part.bytes ();
+    assert (std::to_integer<unsigned char> (bytes[0]) == 0x7b);
+    assert (std::to_integer<unsigned char> (bytes[payload_size - 1]) == 0x7b);
 
     assert (inbound.send ().message (part).submit ());
 

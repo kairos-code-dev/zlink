@@ -9,7 +9,7 @@ static void join_only_dispatch (
     if (info_.event != zlink::spot_dispatch_event_t::actor_join_readable)
         return;
 
-    auto request = state_.spot->recv_actor_join (ZLINK_DONTWAIT);
+    auto request = state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
     assert (request.has_value ());
     zlink::message_t reply = zlink::message_t::from_string ("accepted");
     state_.spot->reply_actor_join (*request, 0).message (reply).submit ();
@@ -33,7 +33,7 @@ int main ()
     actor_sample_capture_t first_capture;
     actor_sample_dispatch_state_t first_state {
       &first_spot, &node, &actor, &first_capture};
-    first_spot.on_dispatch_event (
+    first_spot.set_dispatch_handler (
       [&first_state] (zlink::service::spot_t &,
                       const zlink::spot_dispatch_info_t &info) {
           join_only_dispatch (first_state, info);
@@ -41,7 +41,7 @@ int main ()
     zlink::message_t join_first = zlink::message_t::from_string ("join-first");
     assert (actor.join (first_spot)
       .message (join_first)
-      .flags (ZLINK_DONTWAIT)
+      .flags (zlink::recv_flags_t::dontwait)
       .timeout (std::chrono::milliseconds (1000))
       .submit (
       [&] (const zlink::actor_join_result_t &result,
@@ -55,7 +55,7 @@ int main ()
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "single-player")
       .message (before)
-      .flags (ZLINK_DONTWAIT)
+      .flags (zlink::recv_flags_t::dontwait)
       .submit ());
     (void) actor.leave (first_spot).submit_async ().get ();
 
@@ -63,13 +63,13 @@ int main ()
     assert (stream_session.stream.send_bound_actor (
       stream_session.session, "single-player")
       .message (between)
-      .flags (ZLINK_DONTWAIT)
+      .flags (zlink::recv_flags_t::dontwait)
       .submit ());
 
     actor_sample_capture_t second_capture;
     actor_sample_dispatch_state_t second_state {&second_spot, &node,
                                                 &actor, &second_capture};
-    second_spot.on_dispatch_event (
+    second_spot.set_dispatch_handler (
       [&second_state] (zlink::service::spot_t &,
                        const zlink::spot_dispatch_info_t &info) {
           actor_sample_dispatch (second_state, info);
@@ -77,7 +77,7 @@ int main ()
     zlink::message_t join_second = zlink::message_t::from_string ("join-second");
     assert (node.join_actor (ref, node.routing_id (), second_spot.routing_id ())
       .message (join_second)
-      .flags (ZLINK_DONTWAIT)
+      .flags (zlink::recv_flags_t::dontwait)
       .timeout (std::chrono::milliseconds (1000))
       .submit (
       [&] (const zlink::actor_join_result_t &result,

@@ -22,15 +22,15 @@ _SOCKET_NAMES = {
 
 def __getattr__(name):
     if name in _OPTION_NAMES:
-        from . import options
+        from . import socket_options
 
-        value = getattr(options, name)
+        value = getattr(socket_options, name)
         globals()[name] = value
         return value
     if name in _SOCKET_NAMES:
-        from . import sockets
+        from . import socket
 
-        value = getattr(sockets, name)
+        value = getattr(socket, name)
         globals()[name] = value
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

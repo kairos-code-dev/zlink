@@ -7,19 +7,19 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from ..eventing.dispatcher import CallbackDispatcher
-from ..messaging.messages import Message as _RuntimeMessage
-from ..sockets.socket_base import (
+from ...eventing.dispatcher import CallbackDispatcher
+from ...messaging.message_materializer import Message as _RuntimeMessage
+from ...sockets.socket_base import (
     _classify_nonblocking_send_errno,
     _clone_received_owner,
     _ensure_not_in_callback,
     _enter_callback,
     _leave_callback,
 )
-from ..messaging.request_reply import _ensure_reply_flags_supported
-from ...contracts.core.options import AutoHwmProfile
-from ...contracts.sockets.codes import SocketType
-from ...contracts.service.codes import (
+from ...messaging.request_reply import _ensure_reply_flags_supported
+from ....contracts.core.options import AutoHwmProfile
+from ....contracts.sockets.codes import SocketType
+from ....contracts.service.codes import (
     ServiceKind,
     SpotActorLifecycleEventKind,
     SpotDispatchEvent,
@@ -35,8 +35,8 @@ from ...contracts.service.codes import (
     SpotRole,
     SubjectKind,
 )
-from ...contracts.messaging.messages import ReceivedMessage
-from ..._native.ffi import (
+from ....contracts.messaging.message import ReceivedMessage
+from ...._native.ffi import (
     ZLINK_PART_FINAL,
     ZLINK_PART_MORE,
     ZlinkActorJoinInfo,
@@ -63,7 +63,7 @@ from ..._native.ffi import (
     ZlinkSpotNodeSubjectFilter,
     lib,
 )
-from ..handles.native_support import (
+from ...handles.native_support import (
     BindError,
     BindResult,
     CloseError,
@@ -107,8 +107,8 @@ from ..handles.native_support import (
     _validated_int32,
     _validated_routing_id_bytes,
 )
-from ...contracts.eventing.monitor import MonitorStatus
-from ..eventing.monitor import _monitor_status_from_native
+from ....contracts.eventing.monitor import MonitorStatus
+from ...eventing.monitor import _monitor_status_from_native
 
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)

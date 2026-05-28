@@ -30,7 +30,7 @@ from ..handles.native_support import (
     _raise_result_error,
     _routing_id_bytes,
 )
-from .messages import Message
+from .message_materializer import Message
 from ..sockets.socket_base import _enter_callback, _leave_callback
 from ..._native.ffi import ZlinkPollerEvent, lib
 

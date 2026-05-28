@@ -139,22 +139,22 @@ from .contracts.eventing.timer import register_timer_factories
 from ._runtime.eventing.timer import create_timer, create_timer_from_spot
 from .contracts.eventing.monitor import register_socket_monitor_factory
 from ._runtime.eventing.monitor import open_socket_monitor as runtime_open_socket_monitor
-from .contracts.messaging.messages import register_messaging_factories
-from ._runtime.messaging import messages as messaging_runtime
-from .contracts.sockets.options import register_socket_option_factories
-from ._runtime.sockets import options as socket_options_runtime
-from .contracts.sockets.sockets import (
+from .contracts.messaging.message import register_messaging_factories
+from ._runtime.messaging import message_materializer as messaging_runtime
+from .contracts.sockets.socket_options import register_socket_option_factories
+from ._runtime.options import option_mapping as socket_options_runtime
+from .contracts.sockets.socket import (
     register_socket_factories,
     register_socket_implementation_types,
 )
-from ._runtime.sockets import socket_types as socket_runtime
+from ._runtime.sockets import socket_base_impl as socket_runtime
 from .contracts.service.discovery import register_discovery_factories
-from ._runtime.service import discovery as discovery_runtime
+from ._runtime.service.discovery import discovery as discovery_runtime
 from .contracts.service.spot import (
     register_spot_factories,
     register_spot_implementation_types,
 )
-from ._runtime.service import spot as spot_runtime
+from ._runtime.service.spot import spot as spot_runtime
 
 register_context_factory(create_context)
 register_core_implementation(

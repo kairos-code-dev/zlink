@@ -5,7 +5,7 @@ import ctypes
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.sockets.codes import RecvResult, SubmitResult
 from ...contracts.errors.errors import CloseError, ConfigError, RecvError, SubmitError
-from ...contracts.messaging.messages import (
+from ...contracts.messaging.message import (
     Message as _ContractMessage,
     Received as _ContractReceived,
     ReceivedMessage as _ContractReceivedMessage,
@@ -512,7 +512,7 @@ for _public_type in (
     SubscriptionEvent,
     Message,
 ):
-    _public_type.__module__ = "zlink.contracts.messaging.messages"
+    _public_type.__module__ = "zlink.contracts.messaging.message"
 
 
 def create_message(size=None):

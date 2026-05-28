@@ -189,13 +189,13 @@ def _validate_slot(slot):
 
 
 def _acquire_external_progress(handle):
-    from ...contracts.service.spot import _acquire_external_request_progress
+    from ..service.spot import _acquire_external_request_progress
 
     _acquire_external_request_progress(handle)
 
 
 def _release_external_progress(handle):
-    from ...contracts.service.spot import _release_external_request_progress
+    from ..service.spot import _release_external_request_progress
 
     _release_external_request_progress(handle)
 

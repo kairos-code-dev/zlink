@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 
-from ..core.routing_id import RoutingId
-from .codes import (
+from ...core.routing_id import RoutingId
+from ..codes import (
     AutoConnectType,
     RegistryState,
     ServiceKind,

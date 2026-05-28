@@ -88,10 +88,6 @@ from .messaging import (
     Received,
     TopicMessage,
     SubscriptionEvent,
-    SendOp,
-    RequestOp,
-    RequestCallbackOp,
-    ReplyOp,
 )
 from .eventing import (
     MonitorEvent,
@@ -134,6 +130,10 @@ from .service import (
     SpotNodeSubjectFilter,
     SpotNodeSocketEntry,
     SpotNodeSocketFilter,
+    SendOp,
+    RequestOp,
+    RequestCallbackOp,
+    ReplyOp,
 )
 from .sockets import (
     CommonSocketOptions,

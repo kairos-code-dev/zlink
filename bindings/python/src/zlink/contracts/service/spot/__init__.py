@@ -1,18 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
-from .discovery import Discovery, SpotRoute
-from .registry import (
-    MemberPeerEntry,
-    Registry,
-    RegistryQueryClient,
-    RegistryServiceSummaryEntry,
-    RegistryServiceSummaryFilter,
-    RegistryStatus,
-    RegistryTopologyEntry,
-    RegistryTopologyFilter,
-)
+from .actor import Actor
 from .spot import (
-    Actor,
     ActorJoinEntrySpotResult,
     ActorJoinInfo,
     ActorJoinRequest,
@@ -34,21 +23,14 @@ from .spot import (
     SpotNodeStatus,
     SpotNodeSubjectEntry,
     SpotNodeSubjectFilter,
+    register_spot_factories,
+    register_spot_implementation_types,
     remote_actor_ref,
 )
-from .spot.spot_operations import ReplyOp, RequestCallbackOp, RequestOp, SendOp
+from .spot_models import *
+from .spot_operations import *
 
 __all__ = [
-    "Discovery",
-    "MemberPeerEntry",
-    "Registry",
-    "RegistryQueryClient",
-    "RegistryServiceSummaryEntry",
-    "RegistryServiceSummaryFilter",
-    "RegistryStatus",
-    "RegistryTopologyEntry",
-    "RegistryTopologyFilter",
-    "SpotRoute",
     "Actor",
     "ActorJoinEntrySpotResult",
     "ActorJoinInfo",
@@ -72,8 +54,6 @@ __all__ = [
     "SpotNodeSubjectEntry",
     "SpotNodeSubjectFilter",
     "remote_actor_ref",
-    "SendOp",
-    "RequestOp",
-    "RequestCallbackOp",
-    "ReplyOp",
+    "register_spot_factories",
+    "register_spot_implementation_types",
 ]

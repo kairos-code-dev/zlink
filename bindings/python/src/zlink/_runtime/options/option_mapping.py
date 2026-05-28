@@ -4,8 +4,8 @@ import ctypes
 
 from ...contracts.core.routing_id import RoutingId
 from ...contracts.sockets.codes import RidDuplicatePolicy, RouterOption, SocketOption
-from ...contracts.messaging.messages import Message
-from ...contracts.sockets.options import (
+from ...contracts.messaging.message import Message
+from ...contracts.sockets.socket_options import (
     CommonSocketOptions as _ContractCommonSocketOptions,
     DealerSocketOptions as _ContractDealerSocketOptions,
     PubSocketOptions as _ContractPubSocketOptions,
@@ -14,7 +14,7 @@ from ...contracts.sockets.options import (
     SubSocketOptions as _ContractSubSocketOptions,
 )
 from ..._native.ffi import lib
-from ..buffers.byte_helpers import (
+from ..buffers.payload_buffers import (
     _bool_bytes,
     _int32_bytes,
     _int64_bytes,
@@ -412,7 +412,7 @@ for _public_type in (
     PubSocketOptions,
     RouterSocketOptions,
 ):
-    _public_type.__module__ = "zlink.contracts.sockets.options"
+    _public_type.__module__ = "zlink.contracts.sockets.socket_options"
 
 
 def create_common_socket_options(socket):

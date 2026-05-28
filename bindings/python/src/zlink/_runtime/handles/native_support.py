@@ -591,14 +591,14 @@ def __getattr__(name):
         "Context": ("zlink.contracts.core.context", "Context"),
         "ContextOptions": ("zlink.contracts.core.context", "ContextOptions"),
         "RoutingId": ("zlink.contracts.core.routing_id", "RoutingId"),
-        "Message": ("zlink.contracts.messaging.messages", "Message"),
-        "Received": ("zlink.contracts.messaging.messages", "Received"),
-        "ReceivedMessage": ("zlink.contracts.messaging.messages", "ReceivedMessage"),
-        "ReceivedMultipart": ("zlink.contracts.messaging.messages", "ReceivedMultipart"),
-        "SubscriptionEvent": ("zlink.contracts.messaging.messages", "SubscriptionEvent"),
-        "TopicMessage": ("zlink.contracts.messaging.messages", "TopicMessage"),
-        "METADATA_KEY_USER_MIN": ("zlink.contracts.messaging.messages", "METADATA_KEY_USER_MIN"),
-        "METADATA_VALUE_MAX": ("zlink.contracts.messaging.messages", "METADATA_VALUE_MAX"),
+        "Message": ("zlink.contracts.messaging.message", "Message"),
+        "Received": ("zlink.contracts.messaging.message", "Received"),
+        "ReceivedMessage": ("zlink.contracts.messaging.message", "ReceivedMessage"),
+        "ReceivedMultipart": ("zlink.contracts.messaging.message", "ReceivedMultipart"),
+        "SubscriptionEvent": ("zlink.contracts.messaging.message", "SubscriptionEvent"),
+        "TopicMessage": ("zlink.contracts.messaging.message", "TopicMessage"),
+        "METADATA_KEY_USER_MIN": ("zlink.contracts.messaging.message", "METADATA_KEY_USER_MIN"),
+        "METADATA_VALUE_MAX": ("zlink.contracts.messaging.message", "METADATA_VALUE_MAX"),
     }
     target = _public.get(name)
     if target is None:

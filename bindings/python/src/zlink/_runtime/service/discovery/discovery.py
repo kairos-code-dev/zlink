@@ -3,8 +3,8 @@
 import ctypes
 from dataclasses import dataclass
 
-from ...contracts.sockets.codes import SocketOption
-from ...contracts.service.codes import (
+from ....contracts.sockets.codes import SocketOption
+from ....contracts.service.codes import (
     AutoConnectType,
     RegistryState,
     ServiceKind,
@@ -13,7 +13,7 @@ from ...contracts.service.codes import (
     TopologySource,
     TopologyState,
 )
-from ..._native.ffi import (
+from ...._native.ffi import (
     ZlinkActorRoute,
     ZlinkMemberPeerEntry,
     ZlinkMsg,
@@ -25,7 +25,7 @@ from ..._native.ffi import (
     ZlinkSpotRoute,
     lib,
 )
-from ...contracts.service.discovery import (
+from ....contracts.service.discovery import (
     Discovery as _ContractDiscovery,
     MemberPeerEntry,
     Registry as _ContractRegistry,
@@ -37,9 +37,9 @@ from ...contracts.service.discovery import (
     RegistryTopologyFilter,
     SpotRoute,
 )
-from ...contracts.service.spot import ActorRoute
-from .spot import _actor_id_bytes, _actor_ref_from_native
-from ..handles.native_support import (
+from ....contracts.service.spot import ActorRoute
+from ..spot import _actor_id_bytes, _actor_ref_from_native
+from ...handles.native_support import (
     BindError,
     BindResult,
     CloseError,

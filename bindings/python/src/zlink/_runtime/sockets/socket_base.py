@@ -20,14 +20,14 @@ from ...contracts.sockets.codes import (
     SubmitResult,
 )
 from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
-from ..buffers.byte_helpers import (
+from ..buffers.payload_buffers import (
     _bool_bytes,
     _int32_bytes,
     _int64_bytes,
     _read_int32,
     _read_int64,
 )
-from ...contracts.sockets.options import (
+from ...contracts.sockets.socket_options import (
     CommonSocketOptions,
     DealerSocketOptions,
     StreamSocketOptions,

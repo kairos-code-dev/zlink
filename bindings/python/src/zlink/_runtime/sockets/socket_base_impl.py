@@ -5,11 +5,11 @@ import asyncio
 import errno
 
 from ...contracts.sockets.codes import RouterOption, SocketType
-from ...contracts.sockets.options import (
+from ...contracts.sockets.socket_options import (
     PubSocketOptions,
     RouterSocketOptions,
 )
-from ..buffers.byte_helpers import _read_int32
+from ..buffers.payload_buffers import _read_int32
 from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
 from ..handles.native_support import (
     _copy_routing_id,
@@ -45,7 +45,7 @@ from ...contracts.errors.errors import (
 from ...contracts.errors.codes import ConfigResult, ConnectResult
 from ...contracts.sockets.codes import HandlerResult, RecvResult, RequestResult, SubmitResult
 from ...contracts.core.routing_id import RoutingId
-from ..messaging.messages import Message, Received, SubscriptionEvent
+from ..messaging.message_materializer import Message, Received, SubscriptionEvent
 from ..messaging.request_reply import (
     _PendingRequest,
     _RequestProgressPump,
@@ -974,7 +974,7 @@ for _public_type in (
     XPubSocket,
     XSubSocket,
 ):
-    _public_type.__module__ = "zlink.contracts.sockets.sockets"
+    _public_type.__module__ = "zlink.contracts.sockets.socket"
 
 
 def create_pair_socket(context):

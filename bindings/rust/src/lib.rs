@@ -44,6 +44,8 @@ mod flags;
 mod message;
 #[path = "runtime/messaging/message.rs"]
 mod message_runtime;
+#[path = "contracts/sockets/message_socket_contracts.rs"]
+mod message_socket_contracts;
 #[path = "runtime/messaging/domain.rs"]
 mod messaging_domain_runtime;
 #[path = "contracts/messaging/operation_contracts.rs"]
@@ -64,6 +66,8 @@ mod options;
 mod poller;
 #[path = "contracts/eventing/poller.rs"]
 mod poller_contracts;
+#[path = "contracts/sockets/pubsub_socket_contracts.rs"]
+mod pubsub_socket_contracts;
 #[path = "contracts/service/registry/registry_models.rs"]
 mod registry_models;
 #[path = "contracts/service/registry/registry_query_client.rs"]
@@ -72,6 +76,8 @@ mod registry_query_client_resource;
 mod registry_resource;
 #[path = "contracts/errors/results.rs"]
 mod results;
+#[path = "contracts/sockets/routed_socket_contracts.rs"]
+mod routed_socket_contracts;
 #[path = "contracts/core/routing_id.rs"]
 mod routing_id;
 #[path = "runtime/core/runtime.rs"]
@@ -90,6 +96,10 @@ mod spot_node_resource;
 mod spot_operations;
 #[path = "contracts/service/spot/spot.rs"]
 mod spot_resource;
+#[path = "contracts/sockets/stream_socket.rs"]
+mod stream_socket_contract;
+#[path = "contracts/messaging/topic_message.rs"]
+mod topic_message_contract;
 
 // -- Public re-exports -------------------------------------------------------
 
@@ -102,7 +112,7 @@ pub use actor_received::ActorReceived;
 pub use actor_resource::Actor;
 pub use core_context::{AutoHwmProfile, AutoHwmRecalcReason, Context, ContextOptions};
 pub use discovery_resource::Discovery;
-pub use domain::{Received, TopicMessage};
+pub use domain::Received;
 pub use error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RequestError,
     SubmitError, ZlinkError,
@@ -112,6 +122,7 @@ pub use flags::{
     RouterSocketOptions, SendFlags, StreamSocketOptions, SubSocketOptions,
 };
 pub use message::Message;
+pub use message_socket_contracts::{DealerSocket, PairSocket};
 pub use messaging_operation_contracts::SendResult;
 pub use messaging_subscription_event::SubscriptionEvent;
 pub use monitor_contracts::{
@@ -121,6 +132,7 @@ pub use monitor_contracts::{
 pub use poller_contracts::{
     POLLCOMPLETION, POLLIN, POLLOUT, PollEvent, PollItem, PollSourceKind, Pollable, Poller, Timer,
 };
+pub use pubsub_socket_contracts::{PubSocket, SubSocket, XPubSocket, XSubSocket};
 pub use registry_models::{
     MemberPeerEntry, RegistryServiceSummaryEntry, RegistryServiceSummaryFilter, RegistryStatus,
     RegistryTopologyEntry, RegistryTopologyFilter,
@@ -131,11 +143,8 @@ pub use results::{
     BindResult, CloseResult, ConfigResult, ConnectResult, HandlerResult, RecvResult, RequestResult,
     SubmitResult,
 };
+pub use routed_socket_contracts::RouterSocket;
 pub use routing_id::RoutingId;
-pub use socket_contracts::{
-    DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
-    XSubSocket,
-};
 pub use spot_models::{
     AutoConnectType, RegistryState, ServiceKind, ServiceRole, SocketType, SpotDispatchEvent,
     SpotDispatchInfo, SpotKind, SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry,
@@ -147,6 +156,8 @@ pub use spot_models::{
 pub use spot_node_resource::SpotNode;
 pub use spot_operations::{CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp};
 pub use spot_resource::Spot;
+pub use stream_socket_contract::StreamSocket;
+pub use topic_message_contract::TopicMessage;
 
 pub fn version() -> (i32, i32, i32) {
     ctx::version()

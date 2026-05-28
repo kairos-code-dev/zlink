@@ -5,14 +5,16 @@ import ctypes
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.sockets.codes import RecvResult, SubmitResult
 from ...contracts.errors.errors import CloseError, ConfigError, RecvError, SubmitError
-from ...contracts.messaging.message import (
-    Message as _ContractMessage,
+from ...contracts.messaging.message import Message as _ContractMessage
+from ...contracts.messaging.received import (
     Received as _ContractReceived,
     ReceivedMessage as _ContractReceivedMessage,
     ReceivedMultipart as _ContractReceivedMultipart,
-    SubscriptionEvent as _ContractSubscriptionEvent,
-    TopicMessage as _ContractTopicMessage,
 )
+from ...contracts.messaging.subscription_event import (
+    SubscriptionEvent as _ContractSubscriptionEvent,
+)
+from ...contracts.messaging.topic_message import TopicMessage as _ContractTopicMessage
 from ..._native.ffi import ZlinkMsg, lib
 from ..._runtime.handles.native_support import (
     _init_msg_from_buffer,

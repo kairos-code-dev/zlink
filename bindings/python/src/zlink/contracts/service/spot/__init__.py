@@ -2,6 +2,12 @@
 
 from .actor import Actor
 from .spot import (
+    Spot,
+    register_spot_factories,
+    register_spot_implementation_types,
+    remote_actor_ref,
+)
+from .spot_models import (
     ActorJoinEntrySpotResult,
     ActorJoinInfo,
     ActorJoinRequest,
@@ -9,11 +15,9 @@ from .spot import (
     ActorRecvInfo,
     ActorRef,
     ActorRoute,
-    Spot,
     SpotActorLifecycleEvent,
     SpotActorLifecycleInfo,
     SpotDispatchInfo,
-    SpotNode,
     SpotNodeActorEntry,
     SpotNodePeerEntry,
     SpotNodePeerFilter,
@@ -23,10 +27,8 @@ from .spot import (
     SpotNodeStatus,
     SpotNodeSubjectEntry,
     SpotNodeSubjectFilter,
-    register_spot_factories,
-    register_spot_implementation_types,
-    remote_actor_ref,
 )
+from .spot_node import SpotNode
 from .spot_models import *
 from .spot_operations import *
 

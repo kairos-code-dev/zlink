@@ -27,10 +27,24 @@ def __getattr__(name):
         value = getattr(socket_options, name)
         globals()[name] = value
         return value
-    if name in _SOCKET_NAMES:
-        from . import socket
+    if name in {"DealerSocket", "PairSocket"}:
+        from . import message_socket_contracts
 
-        value = getattr(socket, name)
+        value = getattr(message_socket_contracts, name)
+        globals()[name] = value
+        return value
+    if name == "RouterSocket":
+        from .routed_socket_contracts import RouterSocket as value
+        globals()[name] = value
+        return value
+    if name in {"PubSocket", "SubSocket", "XPubSocket", "XSubSocket"}:
+        from . import pubsub_socket_contracts
+
+        value = getattr(pubsub_socket_contracts, name)
+        globals()[name] = value
+        return value
+    if name == "StreamSocket":
+        from .stream_socket import StreamSocket as value
         globals()[name] = value
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

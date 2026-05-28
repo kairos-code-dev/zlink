@@ -1,11 +1,11 @@
 use super::{SocketInner, impl_base_socket, impl_connect};
 use crate::core_context::Context;
-use crate::domain::TopicMessage;
 use crate::error::{ConfigError, RecvError};
 use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::flags::{CommonSocketOptions, SubSocketOptions};
 use crate::socket_contracts::{SocketRuntime, XSubSocket};
+use crate::topic_message_contract::TopicMessage;
 
 struct NativeXSubSocket {
     inner: SocketInner,

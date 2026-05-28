@@ -75,150 +75,20 @@ class _SocketContract(metaclass=_SocketContractMeta):
     def options(self): ...
 
 
-class PairSocket(_SocketContract):
-    def __new__(cls, context=None):
-        if cls is PairSocket:
-            return _require(_pair_socket_factory, "pair socket")(context)
-        return object.__new__(cls)
+def __getattr__(name):
+    if name in {"PairSocket", "DealerSocket"}:
+        from . import message_socket_contracts
 
-    def send(self): ...
+        value = getattr(message_socket_contracts, name)
+    elif name == "RouterSocket":
+        from .routed_socket_contracts import RouterSocket as value
+    elif name in {"PubSocket", "SubSocket", "XPubSocket", "XSubSocket"}:
+        from . import pubsub_socket_contracts
 
-    def recv(self, *, flags=0): ...
-
-    def recv_into(self, received, *, flags=0): ...
-
-    def disconnect_rid(self, peer_rid): ...
-
-
-class DealerSocket(_SocketContract):
-    def __new__(cls, context=None):
-        if cls is DealerSocket:
-            return _require(_dealer_socket_factory, "dealer socket")(context)
-        return object.__new__(cls)
-
-    @property
-    def dealer_options(self): ...
-
-    def send(self): ...
-
-    def request(self): ...
-
-    def recv(self, *, flags=0): ...
-
-    def recv_into(self, received, *, flags=0): ...
-
-
-class RouterSocket(_SocketContract):
-    def __new__(cls, context=None):
-        if cls is RouterSocket:
-            return _require(_router_socket_factory, "router socket")(context)
-        return object.__new__(cls)
-
-    @property
-    def router_options(self): ...
-
-    def send(self, routing_id): ...
-
-    def request(self, routing_id): ...
-
-    def reply(self, received): ...
-
-    def recv(self, *, flags=0): ...
-
-    def recv_into(self, received, *, flags=0): ...
-
-    def send_to_spot(self, node_rid, spot_rid): ...
-
-    def request_to_spot(self, node_rid, spot_rid): ...
-
-    def reply_to_spot(self, node_rid, spot_rid, request_seq): ...
-
-
-class StreamSocket(_SocketContract):
-    def __new__(cls, context=None):
-        if cls is StreamSocket:
-            return _require(_stream_socket_factory, "stream socket")(context)
-        return object.__new__(cls)
-
-    @property
-    def stream_options(self): ...
-
-    def send(self, routing_id): ...
-
-    def recv(self, *, flags=0): ...
-
-    def recv_into(self, received, *, flags=0): ...
-
-    def attach_actor_gateway(self, node): ...
-
-    def bind_actor(self, session_id, actor_id, *, callback=None): ...
-
-    def unbind_actor(self, session_id, actor_id, *, callback=None): ...
-
-    def send_bound_actor(self, session_id, actor_id): ...
-
-    def bound_actors(self, session_id): ...
-
-    def set_packet_handler(self, handler): ...
-
-    def on_packet(self, handler): ...
-
-    def disconnect_rid(self, peer_rid): ...
-
-
-class PubSocket(_SocketContract):
-    def __new__(cls, context=None):
-        if cls is PubSocket:
-            return _require(_pub_socket_factory, "pub socket")(context)
-        return object.__new__(cls)
-
-    @property
-    def pub_options(self): ...
-
-    def publish(self, topic): ...
-
-
-class SubSocket(_SocketContract):
-    def __new__(cls, context=None):
-        if cls is SubSocket:
-            return _require(_sub_socket_factory, "sub socket")(context)
-        return object.__new__(cls)
-
-    @property
-    def sub_options(self): ...
-
-    def subscribe(self, topic): ...
-
-    def unsubscribe(self, topic): ...
-
-    def recv(self, *, flags=0): ...
-
-    def recv_into(self, topic_message, *, flags=0): ...
-
-
-class XPubSocket(_SocketContract):
-    def __new__(cls, context=None):
-        if cls is XPubSocket:
-            return _require(_xpub_socket_factory, "xpub socket")(context)
-        return object.__new__(cls)
-
-    @property
-    def pub_options(self): ...
-
-    def publish(self, topic): ...
-
-    def recv_subscription(self, *, flags=0): ...
-
-
-class XSubSocket(_SocketContract):
-    def __new__(cls, context=None):
-        if cls is XSubSocket:
-            return _require(_xsub_socket_factory, "xsub socket")(context)
-        return object.__new__(cls)
-
-    @property
-    def sub_options(self): ...
-
-    def subscribe(self, topic): ...
-
-    def unsubscribe(self, topic): ...
+        value = getattr(pubsub_socket_contracts, name)
+    elif name == "StreamSocket":
+        from .stream_socket import StreamSocket as value
+    else:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    globals()[name] = value
+    return value

@@ -35,7 +35,7 @@ from ....contracts.service.codes import (
     SpotRole,
     SubjectKind,
 )
-from ....contracts.messaging.message import ReceivedMessage
+from ....contracts.messaging.received import ReceivedMessage
 from ...._native.ffi import (
     ZLINK_PART_FINAL,
     ZLINK_PART_MORE,

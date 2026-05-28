@@ -13,7 +13,7 @@ use crate::actor_received::ActorReceived;
 use crate::actor_resource::{Actor, ActorRuntime};
 use crate::core_context::AutoHwmProfile;
 use crate::discovery_resource::{Discovery, DiscoveryRuntime};
-use crate::domain::{Received, TopicMessage};
+use crate::domain::Received;
 use crate::error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
     RequestError, SubmitError, ZlinkError,
@@ -53,6 +53,7 @@ use crate::spot_operations::{
     SendOpRuntime,
 };
 use crate::spot_resource::{Spot, SpotRuntime};
+use crate::topic_message_contract::TopicMessage;
 
 // ---------------------------------------------------------------------------
 // Registry

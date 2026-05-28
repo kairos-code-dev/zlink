@@ -275,7 +275,7 @@ public sealed class ClientHeaderSession(
   안에서는 payload 를 해제하거나 `Move()` 로 소비하지 않고, 바로 읽거나 다른
   framework API 에 넘긴다.
 - 다른 서버로의 outbound 호출은 session 이 생성자에서 함께 받은
-  `IZLinkChannelClient` 로 `SendChannel(...)` 또는 `RequestChannel(...)` 를 호출해 처리한다.
+  `IZLinkChannelClient` 로 `SendToChannel(...)` 또는 `RequestToChannel(...)` 를 호출해 처리한다.
   이 호출은 stream 연결이 아니라 channel client socket 을 사용한다.
 - packet decode 는 payload 의 serializer helper 를 거쳐 수행한다.
 - 타입이 protobuf generated 타입(`IMessage<T>` 계열) 이면 protobuf 로 읽는다.

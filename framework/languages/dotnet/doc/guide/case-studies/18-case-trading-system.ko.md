@@ -100,7 +100,7 @@ public sealed class TickPublishHandler
 ```csharp
 // 리스크 점검 같은 주변부는 일반 channel request (마이크로초 핫패스 밖)
 var decision = await client
-    .RequestChannel("risk", new CheckLimit(order.AccountId, order.Notional))
+    .RequestToChannel("risk", new CheckLimit(order.AccountId, order.Notional))
     .Timeout(TimeSpan.FromMilliseconds(50))
     .SubmitAsync<RiskDecision>(ct);
 ```

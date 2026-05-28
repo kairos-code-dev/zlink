@@ -22,7 +22,7 @@ internal sealed class MatchBingoHandler(IZLinkChannelClient client)
         CancellationToken cancellationToken)
     {
         _ = context;
-        var allocated = await client.RequestChannel(
+        var allocated = await client.RequestToChannel(
                 SampleNames.PlayChannel,
                 new AllocateBingoRoomReq(request.Mode))
             .Timeout(SampleTimings.RequestTimeout)

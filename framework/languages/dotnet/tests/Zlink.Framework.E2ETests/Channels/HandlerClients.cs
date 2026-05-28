@@ -67,7 +67,7 @@ public sealed class HandlerClientsTests
         var client = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () => await client
-                .RequestChannel("api", new ForwardProfileRequest { UserId = "forwarded" })
+                .RequestToChannel("api", new ForwardProfileRequest { UserId = "forwarded" })
                 .SubmitAsync<ProfileReply>(),
             static result => result.Name == "user:forwarded");
 
@@ -138,7 +138,7 @@ public sealed class HandlerClientsTests
             async () =>
             {
                 var reply = await client
-                    .RequestChannel("api", new PublishProfileRequest { UserId = "published" })
+                    .RequestToChannel("api", new PublishProfileRequest { UserId = "published" })
                     .SubmitAsync<PublishProfileReply>();
                 Assert.True(reply.Accepted);
                 await Task.Yield();

@@ -1,6 +1,5 @@
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Json;
 

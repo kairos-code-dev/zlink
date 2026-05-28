@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLinkSpotOutbound
 {
-    public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message)
+    public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
     {
         return new ZLinkRoutedSpotSendCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
@@ -11,7 +11,7 @@ internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLi
             message);
     }
 
-    public IZLinkRequestCall RequestSpot<TMessage>(RoutingId spotRid, TMessage request)
+    public IZLinkRequestCall RequestToSpot<TMessage>(RoutingId spotRid, TMessage request)
     {
         return new ZLinkRoutedSpotRequestCall<TMessage>(
             ZLinkSpotAmbientContext.RequireCurrent(),
@@ -25,14 +25,14 @@ internal sealed class ZLinkSpotOutboundService(IServiceProvider services) : IZLi
         return ZLinkSpotAmbientContext.RequireCurrent().Publish(topic, message);
     }
 
-    public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
+    public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
     {
-        return ZLinkSpotAmbientContext.RequireCurrent().SendChannel(channelName, message);
+        return ZLinkSpotAmbientContext.RequireCurrent().SendToChannel(channelName, message);
     }
 
-    public IZLinkRequestCall RequestChannel<TMessage>(string channelName, TMessage request)
+    public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
     {
-        return ZLinkSpotAmbientContext.RequireCurrent().RequestChannel(channelName, request);
+        return ZLinkSpotAmbientContext.RequireCurrent().RequestToChannel(channelName, request);
     }
 
     private IZLinkSpotRemoteAddressResolver RequireRemoteAddressResolver()
@@ -67,7 +67,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
             remoteAddress.RouterChannelId,
             _messageName ?? throw new InvalidOperationException("Message name is required."));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message);
-        await activation.SendSpotAsync(
+        await activation.SendToSpotAsync(
             remoteAddress.RouterChannelId,
             remoteAddress.TargetNodeRid,
             remoteAddress.SpotRid,
@@ -112,7 +112,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             timeout);
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
-        var reply = await activation.RequestSpotAsync(
+        var reply = await activation.RequestToSpotAsync(
             remoteAddress.RouterChannelId,
             remoteAddress.TargetNodeRid,
             remoteAddress.SpotRid,
@@ -168,7 +168,7 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message);
-        return activation.SendChannelAsync(channelName, parts, cancellationToken);
+        return activation.SendToChannelAsync(channelName, parts, cancellationToken);
     }
 }
 
@@ -201,7 +201,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             timeout);
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
-        var reply = await activation.RequestChannelAsync(channelName, parts, timeout, cancellationToken);
+        var reply = await activation.RequestToChannelAsync(channelName, parts, timeout, cancellationToken);
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
             reply,
             "SPOT channel request reply is empty.",

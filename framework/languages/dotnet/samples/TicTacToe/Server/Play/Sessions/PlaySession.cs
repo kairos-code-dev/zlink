@@ -103,7 +103,7 @@ sealed class PlaySession(
             "play stream -> api: authenticate requested. sessionId={SessionId}",
             Context.SessionId);
 
-        var reply = await channels.RequestChannel(
+        var reply = await channels.RequestToChannel(
                 SampleChannels.Api,
                 new AuthenticatePlayerReq(authenticate.AccessToken))
             .Timeout(SampleTimeouts.Request)

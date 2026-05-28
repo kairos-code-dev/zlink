@@ -593,8 +593,8 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 이때 timeout 은 socket option 이 아니다. 실제 low-level 바인딩의
-`Spot.RequestChannelAsync(..., TimeSpan timeout, ...)` 처럼 호출 단위 인자로
-들어가는 값이다. 즉 `RequestChannel(...).Timeout(...)` 같은 framework builder
+`Spot.RequestToChannelAsync(..., TimeSpan timeout, ...)` 처럼 호출 단위 인자로
+들어가는 값이다. 즉 `RequestToChannel(...).Timeout(...)` 같은 framework builder
 옵션은 특정 요청 하나에만 적용된다. 위 등록 설정은 그와 별개로 runtime
 기본값으로 유지된다.
 
@@ -623,7 +623,7 @@ builder.Services.AddZLinkFramework(options =>
 여기서 핵심은 channel reply completion 과 timer callback 이 모두 같은 spot
 실행 계약 안에 포함된다는 점이다.
 
-- `Spot.RequestChannelAsync(...)` 호출이 반환하는 `Task`는 임의의 thread가
+- `Spot.RequestToChannelAsync(...)` 호출이 반환하는 `Task`는 임의의 thread가
   아니라 **spot execution context 안에서** complete된다.
 - request completion callback이 같은 spot executor에서 실행되므로,
   continuation도 spot state에 별도 lock 없이 접근할 수 있다.
@@ -758,20 +758,20 @@ factory resolve, activation, `OnCreateAsync(...)`, `OnInitializeAsync(...)` 실�
 
 각 표면이 맡는 역할은 다음과 같다.
 
-- `SendChannel(...)` / `RequestChannel(...)` 는 attach 된 channel client 를
+- `SendToChannel(...)` / `RequestToChannel(...)` 는 attach 된 channel client 를
   사용한다.
-- `SendSpot(...)` / `RequestSpot(...)` 는 spot remote address resolver 가 찾은 target
+- `SendToSpot(...)` / `RequestToSpot(...)` 는 spot remote address resolver 가 찾은 target
   route 를 이용한다.
 - `targetRid + spotRid` 를 직접 받는 raw 호출은 하부 바인딩에 남아 있더라도,
   application guide 의 기본 API 로는 문서화하지 않는다.
 
 `IZLinkSpotOutbound` 인터페이스의 전체 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 section 5.2 를
-참고한다. 현재 방향에서는 `SendSpot(...)`, `RequestSpot(...)`,
-`SendChannel(...)`, `RequestChannel(...)`, `Publish(...)` 를 함께 제공한다.
+참고한다. 현재 방향에서는 `SendToSpot(...)`, `RequestToSpot(...)`,
+`SendToChannel(...)`, `RequestToChannel(...)`, `Publish(...)` 를 함께 제공한다.
 SPOT 구현 안에서는 이 호출 표면이 `IZLinkSpotContext.Outbound` 와
 `IZLinkEntrySpotContext.Outbound` 에 노출된다. 즉 handler 나 lifecycle callback
-안에서는 별도 client 를 찾지 않고 `Context.Outbound.RequestSpot(...)` 처럼 호출한다.
+안에서는 별도 client 를 찾지 않고 `Context.Outbound.RequestToSpot(...)` 처럼 호출한다.
 timer 는 `IZLinkSpotContext.AddTimer<THandler>(...)` 처럼 spot lifecycle
 registration 표면으로 두는 쪽이 더 자연스럽다.
 
@@ -785,20 +785,20 @@ framework application 문서에서는 backend / internal transport helper 로만
 
 ```csharp
 await spot.Context.Outbound
-    .SendChannel(
+    .SendToChannel(
         "orders",
         new RoomNoticeMessage())
     .Submit(cancellationToken);
 
 var reply = await spot.Context.Outbound
-    .RequestChannel(
+    .RequestToChannel(
         "orders",
         new GetStageStateRequest())
     .Timeout(TimeSpan.FromMilliseconds(200))
     .SubmitAsync<GetStageStateReply>(cancellationToken);
 
 await spot.Context.Outbound
-    .SendSpot(
+    .SendToSpot(
         stage.SpotRid,
         new StageNoticeMessage())
     .Submit(cancellationToken);
@@ -852,14 +852,14 @@ channel messaging[^channel-messaging] 과 비슷한 builder 감각으로 읽힌�
 
 ```csharp
 var reply = await spot.Context.Outbound
-    .RequestChannel(
+    .RequestToChannel(
         "orders",
         new GetStageStateRequest())
     .Timeout(TimeSpan.FromMilliseconds(200))
     .SubmitAsync<GetStageStateReply>(cancellationToken);
 
 await spot.Context.Outbound
-    .SendSpot(
+    .SendToSpot(
         stage.SpotRid,
         new StageNoticeMessage())
     .Submit(cancellationToken);
@@ -1148,8 +1148,8 @@ Spot callback 밖의 channel handler, HTTP handler, background service 에는 ta
 Spot 으로 직접 send/request 하는 별도 public client 를 두지 않는다. 이 경로에서는
 actor 생성 또는 entry spot join 같은 도메인 흐름으로 `ActorRef` 를 얻고, session 이
 필요하면 그 ref 로 session actor handle 을 bind 한다. current Spot callback 안에서
-다른 Spot 으로 보내야 할 때만 `spot.Context.Outbound.SendSpot(...)` 또는
-`spot.Context.Outbound.RequestSpot(...)` 을 사용한다.
+다른 Spot 으로 보내야 할 때만 `spot.Context.Outbound.SendToSpot(...)` 또는
+`spot.Context.Outbound.RequestToSpot(...)` 을 사용한다.
 
 local egress channel 은 client-server channel 의 client DEALER 이거나 route mesh channel 일
 수 있다. 두 경우 모두 channel builder 에 target SpotNode ingress channel 이름을 명시한다.

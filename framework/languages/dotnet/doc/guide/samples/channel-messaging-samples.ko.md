@@ -291,7 +291,7 @@ builder.Services.AddZLinkFramework(options =>
   routed 연결 정책을 따로 둔다는 뜻이다. public 설정 이름은 `RequireKnownPeer`,
   `AllowPeerHandover`, `ProbeRouterOnConnect` 처럼 framework 의미가 드러나는 이름을
   쓴다. 하부 backend option 이름은 노출하지 않는다.
-- `client.RequestChannel(...).Timeout(...)` 은 특정 호출 하나에만 적용되는 값이다. 실제
+- `client.RequestToChannel(...).Timeout(...)` 은 특정 호출 하나에만 적용되는 값이다. 실제
   low-level 바인딩에서도, `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)` 처럼
   호출 인자로 전달된다. 반면 위 `ConfigureSocket(...)` 설정은, capability 전체의
   기본값이다.

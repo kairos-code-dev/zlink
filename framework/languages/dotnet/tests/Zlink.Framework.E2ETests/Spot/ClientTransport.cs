@@ -7,7 +7,7 @@ namespace Zlink.Framework.E2ETests.Spot;
 public sealed class ClientTransportTests : SpotTestSupport
 {
     [Fact]
-    public async Task SendSpot_UsesRouterChannelIdTransport()
+    public async Task SendToSpot_UsesRouterChannelIdTransport()
     {
         var channelEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();
@@ -48,7 +48,7 @@ public sealed class ClientTransportTests : SpotTestSupport
     }
 
     [Fact]
-    public async Task RequestSpot_UsesRouterChannelIdTransport()
+    public async Task RequestToSpot_UsesRouterChannelIdTransport()
     {
         var routeEndpoint = GetFreeTcpEndpoint();
         var spotNodeEndpoint = GetFreeTcpEndpoint();

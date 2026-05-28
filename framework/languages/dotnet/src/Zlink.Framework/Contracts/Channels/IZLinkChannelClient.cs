@@ -2,9 +2,9 @@ namespace Zlink.Framework.Contracts.Channels;
 
 public interface IZLinkChannelClient
 {
-    IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message);
+    IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message);
 
-    IZLinkRequestCall RequestChannel<TMessage>(
+    IZLinkRequestCall RequestToChannel<TMessage>(
         string channelName,
         TMessage request);
 }

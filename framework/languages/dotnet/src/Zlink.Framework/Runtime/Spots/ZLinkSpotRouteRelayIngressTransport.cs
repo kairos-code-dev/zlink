@@ -67,7 +67,7 @@ internal sealed class ZLinkSpotRouteRelayIngressTransport(
             IReadOnlyList<Message> reply;
             try
             {
-                reply = await RequestSpotFromIngressRouterAsync(
+                reply = await RequestToSpotFromIngressRouterAsync(
                         channelName,
                         router,
                         targetNodeRid,
@@ -100,7 +100,7 @@ internal sealed class ZLinkSpotRouteRelayIngressTransport(
         }
     }
 
-    private static async ValueTask<IReadOnlyList<Message>> RequestSpotFromIngressRouterAsync(
+    private static async ValueTask<IReadOnlyList<Message>> RequestToSpotFromIngressRouterAsync(
         string channelName,
         IZLinkBackendRouterSocket router,
         RoutingId targetNodeRid,

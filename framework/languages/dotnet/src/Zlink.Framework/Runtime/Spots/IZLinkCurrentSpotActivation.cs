@@ -10,21 +10,21 @@ internal interface IZLinkCurrentSpotActivation
         string topic,
         TEvent message);
 
-    IZLinkSendCall SendChannel<TMessage>(
+    IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestChannel<TRequest>(
+    IZLinkRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 
-    ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
+    ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
         CancellationToken cancellationToken);
 
-    ValueTask<IReadOnlyList<Message>> RequestSpotAsync(
+    ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
@@ -32,7 +32,7 @@ internal interface IZLinkCurrentSpotActivation
         TimeSpan? timeout,
         CancellationToken cancellationToken);
 
-    ValueTask SendChannelAsync(
+    ValueTask SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken);
@@ -42,7 +42,7 @@ internal interface IZLinkCurrentSpotActivation
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken);
 
-    ValueTask SendSpotAsync(
+    ValueTask SendToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,

@@ -212,8 +212,8 @@ configuration error 로 표현한다.
 
 | 호출 | 오류 조건 | 예외 |
 |------|-----------|------|
-| `IZLinkChannelClient.RequestChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
-| `IZLinkChannelClient.SendChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
+| `IZLinkChannelClient.RequestToChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
+| `IZLinkChannelClient.SendToChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
 | `IZLinkFanoutClient.Publish(channelName, ...)` | channel 이 없거나 publisher capability 가 없음 | `ZLinkConfigurationException` |
 | `IZLinkRouteClient.Send(routerChannelId, ...)` | route mesh channel 이 없음 | `ZLinkConfigurationException` |
 

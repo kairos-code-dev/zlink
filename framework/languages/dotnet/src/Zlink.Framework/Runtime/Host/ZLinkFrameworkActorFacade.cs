@@ -28,10 +28,10 @@ internal sealed class ZLinkFrameworkActorFacade(
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
         var node = getActorSpotNode();
 
-        if (node is not null
-            && actorState.NativeActorRef is { } actorRef
-            && actorState.Stream is ZLinkManagedStream
-            && actorState.CurrentDispatch is null)
+        if (actorState.Stream is ZLinkManagedStream
+            && actorState.CurrentDispatch is null
+            && node is not null
+            && actorState.NativeActorRef is { } actorRef)
         {
             return await NativeJoinActorAsync<TRequest, TReply>(
                 state,

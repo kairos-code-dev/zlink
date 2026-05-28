@@ -68,7 +68,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         nativeSpot.SetSendReadyHandler(() => handler());
     }
 
-    public bool RequestChannel(
+    public bool RequestToChannel(
         string channelName,
         Message message,
         RequestCallback callback,
@@ -86,7 +86,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         return operation.Submit(callback);
     }
 
-    public bool RequestChannel(
+    public bool RequestToChannel(
         string channelName,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
@@ -103,7 +103,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
         return operation.Flags(flags).Submit(callback);
     }
 
-    public bool SendChannel(
+    public bool SendToChannel(
         string channelName,
         Message message,
         SendFlags flags)
@@ -114,7 +114,7 @@ internal sealed class ZLinkBackendSpotWrapper(ISpot nativeSpot) : IZLinkBackendS
             .Submit();
     }
 
-    public bool SendChannel(
+    public bool SendToChannel(
         string channelName,
         IReadOnlyList<Message> parts,
         SendFlags flags)

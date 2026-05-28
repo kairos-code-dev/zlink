@@ -35,7 +35,7 @@ public abstract partial class SpotTestSupport
         {
             _events.RecordInitialized(Context.SpotRid, _scopeMarker.Id);
 
-            await Context.Outbound.SendChannel("orders", new StageBootCommand(_scopeMarker.Id)).Submit(cancellationToken);
+            await Context.Outbound.SendToChannel("orders", new StageBootCommand(_scopeMarker.Id)).Submit(cancellationToken);
         }
 
         public ValueTask OnClosingAsync(CancellationToken cancellationToken)

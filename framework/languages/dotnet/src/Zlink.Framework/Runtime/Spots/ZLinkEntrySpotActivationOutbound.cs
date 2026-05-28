@@ -6,14 +6,14 @@ internal sealed partial class ZLinkEntrySpotActivation
 
     public IZLinkSpotOutbound Outbound => _outboundSurface;
 
-    public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message)
+    public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
     {
-        return _outboundEndpoint.SendSpot(spotRid, message);
+        return _outboundEndpoint.SendToSpot(spotRid, message);
     }
 
-    public IZLinkRequestCall RequestSpot<TRequest>(RoutingId spotRid, TRequest request)
+    public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request)
     {
-        return _outboundEndpoint.RequestSpot(spotRid, request);
+        return _outboundEndpoint.RequestToSpot(spotRid, request);
     }
 
     public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
@@ -21,27 +21,27 @@ internal sealed partial class ZLinkEntrySpotActivation
         return _outboundEndpoint.Publish(topic, message);
     }
 
-    public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
+    public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
     {
-        return _outboundEndpoint.SendChannel(channelName, message);
+        return _outboundEndpoint.SendToChannel(channelName, message);
     }
 
-    public IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request)
+    public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
     {
-        return _outboundEndpoint.RequestChannel(channelName, request);
+        return _outboundEndpoint.RequestToChannel(channelName, request);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await _outboundEndpoint.RequestChannelAsync(channelName, parts, timeout, cancellationToken)
+        return await _outboundEndpoint.RequestToChannelAsync(channelName, parts, timeout, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestSpotAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
@@ -49,7 +49,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await _outboundEndpoint.RequestSpotAsync(
+        return await _outboundEndpoint.RequestToSpotAsync(
                 routerChannelId,
                 targetNodeRid,
                 targetSpotRid,
@@ -59,12 +59,12 @@ internal sealed partial class ZLinkEntrySpotActivation
             .ConfigureAwait(false);
     }
 
-    public ValueTask SendChannelAsync(
+    public ValueTask SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return _outboundEndpoint.SendChannelAsync(channelName, parts, cancellationToken);
+        return _outboundEndpoint.SendToChannelAsync(channelName, parts, cancellationToken);
     }
 
     public ValueTask PublishCurrentAsync(
@@ -84,14 +84,14 @@ internal sealed partial class ZLinkEntrySpotActivation
         return _outboundEndpoint.SendToSpot(targetRid, spotRid, parts, flags);
     }
 
-    public ValueTask SendSpotAsync(
+    public ValueTask SendToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return _outboundEndpoint.SendSpotAsync(
+        return _outboundEndpoint.SendToSpotAsync(
             routerChannelId,
             targetNodeRid,
             targetSpotRid,

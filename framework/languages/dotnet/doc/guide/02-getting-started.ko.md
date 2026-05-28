@@ -126,7 +126,7 @@ app.MapGet("/price/{symbol}", async (
     CancellationToken cancellationToken) =>
 {
     var reply = await client
-        .RequestChannel("price", new PriceRequest(symbol))
+        .RequestToChannel("price", new PriceRequest(symbol))
         .SubmitAsync<PriceReply>(cancellationToken);
 
     return Results.Ok(reply);

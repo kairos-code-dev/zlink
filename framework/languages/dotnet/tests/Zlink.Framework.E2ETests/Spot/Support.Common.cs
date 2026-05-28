@@ -214,7 +214,7 @@ public abstract partial class SpotTestSupport
                     var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
                         header,
                         new SpotRouteTargetCommand($"direct:{routerChannelId}"));
-                    await runtime.SendSpotViaRouterChannelAsync(
+                    await runtime.SendToSpotViaRouterChannelAsync(
                             routerChannelId,
                             nodeRuntime.Node.RoutingId,
                             target.SpotRid,

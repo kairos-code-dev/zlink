@@ -7,7 +7,7 @@ namespace Zlink.Framework.E2ETests.Spot;
 public sealed class EntryOutboundTests : SpotTestSupport
 {
     [Fact]
-    public async Task EntrySpot_RequestChannel_Uses_DiscoveredAttachedChannelClient()
+    public async Task EntrySpot_RequestToChannel_Uses_DiscoveredAttachedChannelClient()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
         var registryRouterEndpoint = GetFreeTcpEndpoint();

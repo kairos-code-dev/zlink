@@ -21,7 +21,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
     {
         _ = header;
         var request = payload.Decode<AuthenticateReq>();
-        var authenticated = await channels.RequestChannel(
+        var authenticated = await channels.RequestToChannel(
                 SampleNames.ApiChannel,
                 new AuthenticatePlayerReq(request.AccessToken))
             .Timeout(SampleTimings.RequestTimeout)
@@ -34,7 +34,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
         }
 
-        var ensured = await channels.RequestChannel(
+        var ensured = await channels.RequestToChannel(
                 SampleNames.PlayChannel,
                 new EnsurePlayerActorReq(authenticated.ActorId, authenticated.DisplayName))
             .Timeout(SampleTimings.RequestTimeout)

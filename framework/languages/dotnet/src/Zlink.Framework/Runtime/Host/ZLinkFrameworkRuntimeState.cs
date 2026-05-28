@@ -48,6 +48,21 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
         StopTokenSource.Cancel();
         await WaitForListenerTasksAsync();
 
+        foreach (var node in SpotNodes.Values)
+        {
+            await DisposeSafelyAsync(node);
+        }
+
+        foreach (var routed in RouteChannels.Values)
+        {
+            await DisposeSafelyAsync(routed);
+        }
+
+        foreach (var discovery in SpotDiscoveries.Values)
+        {
+            await DisposeSafelyAsync(discovery);
+        }
+
         foreach (var stream in StreamNodes.Values)
         {
             await DisposeSafelyAsync(stream);
@@ -71,21 +86,6 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
         foreach (var bundle in ServerBundles.Values)
         {
             await DisposeSafelyAsync(bundle);
-        }
-
-        foreach (var node in SpotNodes.Values)
-        {
-            await DisposeSafelyAsync(node);
-        }
-
-        foreach (var routed in RouteChannels.Values)
-        {
-            await DisposeSafelyAsync(routed);
-        }
-
-        foreach (var discovery in SpotDiscoveries.Values)
-        {
-            await DisposeSafelyAsync(discovery);
         }
 
         StopTokenSource.Dispose();

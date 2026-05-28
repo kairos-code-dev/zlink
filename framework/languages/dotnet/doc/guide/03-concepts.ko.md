@@ -58,8 +58,8 @@ handler · client · DI/lifecycle**.
 
 | 공통 모델 | handler 인터페이스 | attribute | outbound 호출 |
 |-----------|--------------------|-----------|----------------|
-| request-response | `IZLinkRequestHandler<TReq,TRes>` | `[ZLinkRequest]` | `client.RequestChannel(...).SubmitAsync<TRes>(ct)` |
-| command(단방향 send) | `IZLinkSendHandler<TMsg>` | `[ZLinkSend]` | `client.SendChannel(...).Submit(ct)` |
+| request-response | `IZLinkRequestHandler<TReq,TRes>` | `[ZLinkRequest]` | `client.RequestToChannel(...).SubmitAsync<TRes>(ct)` |
+| command(단방향 send) | `IZLinkSendHandler<TMsg>` | `[ZLinkSend]` | `client.SendToChannel(...).Submit(ct)` |
 | publish-subscribe | `IZLinkPublishHandler<TEvt>` | `[ZLinkPublish]` | `publisher.PublishSpot(...).Submit(ct)` |
 | SPOT 내부/외부 | `IZLinkSpot*Handler<...>` | (Spot 등록) | `IZLinkSpotOutbound` |
 | STREAM session | `IZLinkSession` | (stream 등록) | `IZLinkSessionContext` / `IZLinkBoundSession` |
@@ -155,8 +155,8 @@ channel 이름은 위치마다 뜻이 다르다는 점에 주의한다.
 
 | 위치 | channel 이름의 뜻 |
 |------|------------------|
-| `client.RequestChannel("profile", ...)` | request/send 를 보낼 **target** channel |
-| `spot.Context.Outbound.SendChannel("orders", ...)` | current Spot 이 attach 해서 사용할 **target** channel |
+| `client.RequestToChannel("profile", ...)` | request/send 를 보낼 **target** channel |
+| `spot.Context.Outbound.SendToChannel("orders", ...)` | current Spot 이 attach 해서 사용할 **target** channel |
 | `IZLinkSpotPublisherClient.PublishSpot("game.stage", topic, ...)` | local spot 없는 노드가 publish 할 **target SPOT channel** |
 
 ## 7. send 는 async submit

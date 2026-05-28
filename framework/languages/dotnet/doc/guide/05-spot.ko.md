@@ -362,8 +362,8 @@ SPOT 에서 밖으로 나가는 호출은 세 축으로 나뉜다.
 ```mermaid
 flowchart TD
   Spot[Current Spot callback] -->|"(a) Publish(topic, ...)"| Sub[Current channel subscribers]
-  Spot -->|"(b) SendChannel / RequestChannel"| Ch[attach 된 일반 channel]
-  Spot -->|"(c) SendSpot / RequestSpot"| OtherSpot[다른 Spot]
+  Spot -->|"(b) SendToChannel / RequestToChannel"| Ch[attach 된 일반 channel]
+  Spot -->|"(c) SendToSpot / RequestToSpot"| OtherSpot[다른 Spot]
 ```
 
 ### (a)(b)(c) current Spot 안에서 — `IZLinkSpotOutbound`
@@ -381,14 +381,14 @@ public sealed class StageNoticeHandler
         await outbound.Publish("stage.notice", new StageNoticeEvent(request.Text)).Submit(ct);
 
         // (b) attach 된 일반 channel 로 send/request
-        await outbound.SendChannel("orders", new RoomNoticeMessage(request.Text)).Submit(ct);
+        await outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text)).Submit(ct);
         var state = await outbound
-            .RequestChannel("orders", new GetOrderStateRequest())
+            .RequestToChannel("orders", new GetOrderStateRequest())
             .Timeout(TimeSpan.FromMilliseconds(200))
             .SubmitAsync<GetOrderStateReply>(ct);
 
         // (c) 다른 Spot 으로 (RoutingId)
-        await outbound.SendSpot(spotRid, new StageNoticeEvent(request.Text)).Submit(ct);
+        await outbound.SendToSpot(spotRid, new StageNoticeEvent(request.Text)).Submit(ct);
 
         return new BroadcastReply(state.Count);
     }
@@ -401,7 +401,7 @@ HTTP handler, 일반 channel handler, background service 처럼 **current Spot �
 없는** 코드에는 target Spot 으로 직접 send/request 하는 public client 를 두지 않는다.
 이 경로에서는 actor 생성 또는 Entry Spot join 으로 `ActorRef` 를 얻고, session 이
 필요하면 그 ref 를 session actor handle 로 bind 한다. current Spot callback 안에서만
-`spot.Context.Outbound.SendSpot(...)` 과 `spot.Context.Outbound.RequestSpot(...)` 을
+`spot.Context.Outbound.SendToSpot(...)` 과 `spot.Context.Outbound.RequestToSpot(...)` 을
 사용한다.
 
 이 경로는 session actor binding 또는 channel request 같은 더 높은 수준의 흐름으로

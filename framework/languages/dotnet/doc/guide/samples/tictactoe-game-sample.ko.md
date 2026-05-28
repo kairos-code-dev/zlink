@@ -81,7 +81,7 @@ public sealed record TicTacToeGameJoinRes(GameState State);
 
 현재 샘플에서 Session/API 쪽 matching 흐름은 Play 서버의 server channel 로 일반 request 를
 보낸다. Play 서버 handler 가 room Spot 을 만들거나 찾아 actor 를 join 시키므로, 이 단계는
-`IZLinkChannelClient.RequestChannel(...)` 기반 channel-to-channel 호출이다. `IZLinkChannelClient`는 등록된
+`IZLinkChannelClient.RequestToChannel(...)` 기반 channel-to-channel 호출이다. `IZLinkChannelClient`는 등록된
 channel 이름을 보고 client-server 또는 dealer mesh outbound socket 을 선택한다.
 
 Session/API handler 가 actor 를 만든 뒤 Play 서버의 Entry Spot 으로 join 하면

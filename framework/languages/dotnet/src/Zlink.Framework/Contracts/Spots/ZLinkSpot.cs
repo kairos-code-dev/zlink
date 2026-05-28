@@ -163,11 +163,11 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 
 public interface IZLinkSpotOutbound
 {
-    IZLinkSendCall SendSpot<TMessage>(
+    IZLinkSendCall SendToSpot<TMessage>(
         RoutingId spotRid,
         TMessage message);
 
-    IZLinkRequestCall RequestSpot<TRequest>(
+    IZLinkRequestCall RequestToSpot<TRequest>(
         RoutingId spotRid,
         TRequest request);
 
@@ -175,11 +175,11 @@ public interface IZLinkSpotOutbound
         string topic,
         TEvent message);
 
-    IZLinkSendCall SendChannel<TMessage>(
+    IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestChannel<TRequest>(
+    IZLinkRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 }

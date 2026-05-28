@@ -103,26 +103,26 @@ internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable
 
     void OnSendReady(Action handler);
 
-    bool RequestChannel(
+    bool RequestToChannel(
         string channelName,
         Message message,
         RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout);
 
-    bool RequestChannel(
+    bool RequestToChannel(
         string channelName,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout);
 
-    bool SendChannel(
+    bool SendToChannel(
         string channelName,
         Message message,
         SendFlags flags);
 
-    bool SendChannel(
+    bool SendToChannel(
         string channelName,
         IReadOnlyList<Message> parts,
         SendFlags flags);

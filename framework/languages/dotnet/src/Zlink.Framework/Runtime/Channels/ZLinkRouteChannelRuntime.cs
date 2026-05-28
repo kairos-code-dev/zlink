@@ -151,7 +151,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             cancellationToken);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestSpotPartsAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestToSpotPartsAsync(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,

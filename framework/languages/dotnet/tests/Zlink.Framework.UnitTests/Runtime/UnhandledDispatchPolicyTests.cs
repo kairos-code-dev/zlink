@@ -272,7 +272,7 @@ public sealed class UnhandledDispatchPolicyTests
         {
         }
 
-        public bool RequestChannel(
+        public bool RequestToChannel(
             string channelName,
             Message message,
             RequestCallback callback,
@@ -282,7 +282,7 @@ public sealed class UnhandledDispatchPolicyTests
             return false;
         }
 
-        public bool RequestChannel(
+        public bool RequestToChannel(
             string channelName,
             IReadOnlyList<Message> parts,
             RequestCallback callback,
@@ -292,9 +292,9 @@ public sealed class UnhandledDispatchPolicyTests
             return false;
         }
 
-        public bool SendChannel(string channelName, Message message, SendFlags flags) => false;
+        public bool SendToChannel(string channelName, Message message, SendFlags flags) => false;
 
-        public bool SendChannel(string channelName, IReadOnlyList<Message> parts, SendFlags flags) => false;
+        public bool SendToChannel(string channelName, IReadOnlyList<Message> parts, SendFlags flags) => false;
 
         public bool Publish(string topic, Message message, SendFlags flags) => false;
 

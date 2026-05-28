@@ -71,7 +71,7 @@ public sealed class PlaceOrderHandler
 
 // 클라이언트: gRPC stub 대신 IZLinkChannelClient 주입
 var placed = await client
-    .RequestChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+    .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
     .Timeout(TimeSpan.FromSeconds(2))    // reply 대기 상한
     .SubmitAsync<OrderPlaced>(ct);
 ```
@@ -259,7 +259,7 @@ public sealed class PriceService(IZLinkChannelClient client)
     public async Task<decimal> GetAsync(string symbol, CancellationToken ct)
     {
         var reply = await client
-            .RequestChannel("price", new PriceRequest(symbol))
+            .RequestToChannel("price", new PriceRequest(symbol))
             .Timeout(TimeSpan.FromMilliseconds(200))   // reply 대기 시간
             .SubmitAsync<PriceReply>(ct);
         return reply.Price;
@@ -267,7 +267,7 @@ public sealed class PriceService(IZLinkChannelClient client)
 
     public ValueTask RefreshAsync(string accountId, CancellationToken ct)
         => client
-            .SendChannel("profile", new RefreshCacheCommand(accountId))
+            .SendToChannel("profile", new RefreshCacheCommand(accountId))
             .PacketName("profile.refresh-cache")        // 선택: packet 이름 override
             .Submit(ct);
 }
@@ -414,7 +414,7 @@ app.MapPost("/users/{id}", async (
     string id, IZLinkChannelClient client, CancellationToken ct) =>
 {
     var account = await client
-        .RequestChannel("account", new GetAccountRequest(id))
+        .RequestToChannel("account", new GetAccountRequest(id))
         .SubmitAsync<GetAccountReply>(ct);
     return Results.Ok(account);
 });

@@ -15,7 +15,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         sendTimeout,
         stopToken);
 
-    public async ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
         string channelName,
         Message message,
         TimeSpan? timeout,
@@ -25,7 +25,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         return await ResolveSubmitter(channelName)
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 message,
-                (pending, complete, fail) => nativeSpot.RequestChannel(
+                (pending, complete, fail) => nativeSpot.RequestToChannel(
                     channelName,
                     pending,
                     (result, reply) => ZLinkRawReplyCompletion.Complete(
@@ -40,7 +40,7 @@ internal sealed class ZLinkSpotOutboundTransport(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestChannelAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
@@ -50,7 +50,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         return await ResolveSubmitter(channelName)
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 parts,
-                (pending, complete, fail) => nativeSpot.RequestChannel(
+                (pending, complete, fail) => nativeSpot.RequestToChannel(
                     channelName,
                     pending,
                     (result, reply) => ZLinkRawReplyCompletion.Complete(
@@ -65,29 +65,29 @@ internal sealed class ZLinkSpotOutboundTransport(
             .ConfigureAwait(false);
     }
 
-    public ValueTask SendChannelAsync(
+    public ValueTask SendToChannelAsync(
         string channelName,
         Message message,
         CancellationToken cancellationToken)
     {
         return ResolveSubmitter(channelName).SubmitAsync(
             message,
-            pending => nativeSpot.SendChannel(channelName, pending, SendFlags.DontWait),
+            pending => nativeSpot.SendToChannel(channelName, pending, SendFlags.DontWait),
             cancellationToken);
     }
 
-    public ValueTask SendChannelAsync(
+    public ValueTask SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
         return ResolveSubmitter(channelName).SubmitAsync(
             parts,
-            pending => nativeSpot.SendChannel(channelName, pending, SendFlags.DontWait),
+            pending => nativeSpot.SendToChannel(channelName, pending, SendFlags.DontWait),
             cancellationToken);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestSpotAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         Message message,
@@ -114,7 +114,7 @@ internal sealed class ZLinkSpotOutboundTransport(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<IReadOnlyList<Message>> RequestSpotAsync(
+    public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,

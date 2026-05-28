@@ -116,7 +116,7 @@
   `TIMER_READABLE` 이 모두 같은 dispatch event 축으로 올라온다.
 - channel request reply 의 transport owner 는 attached `DEALER` 다. 하지만
   callback delivery owner 는 request 를 시작한 `Spot` 의 dispatch stream 이다.
-- `RequestChannelAsync(...)` 의 continuation 도 같은 spot execution context 에서
+- `RequestToChannelAsync(...)` 의 continuation 도 같은 spot execution context 에서
   실행된다. 즉 임의의 thread 에서 직접 promise 를 resolve 하지 않는다.
 
 따라서 framework 문서에서 해야 할 일은 새로운 의미를 만드는 것이 아니다. 그

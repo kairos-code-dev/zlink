@@ -17,7 +17,7 @@ internal static class CreateGameHttpHandler
         logger.LogInformation("client -> api: create game requested. game={GameName}", gameName);
         logger.LogInformation("api -> play: requesting CreateGameReq. game={GameName}", gameName);
 
-        var reply = await client.RequestChannel(
+        var reply = await client.RequestToChannel(
                 SampleChannels.Play,
                 new CreateGameReq(gameName))
             .Timeout(SampleTimeouts.Request)

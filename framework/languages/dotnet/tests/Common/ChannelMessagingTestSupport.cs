@@ -386,7 +386,7 @@ public sealed class ProfileForwardHandlers(IZLinkChannelClient client)
     {
         _ = context;
         return await client
-            .RequestChannel("backend", new GetProfileRequest { UserId = request.UserId })
+            .RequestToChannel("backend", new GetProfileRequest { UserId = request.UserId })
             .SubmitAsync<ProfileReply>(cancellationToken)
             .ConfigureAwait(false);
     }

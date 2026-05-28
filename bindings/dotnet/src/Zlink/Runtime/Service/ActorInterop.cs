@@ -168,7 +168,7 @@ internal static class ActorInterop
                     ref nativeActor,
                     out ZlinkActorRecvInfo info, ref nativePart,
                     out NativeMethods.ZlinkPartFlag hasMore,
-                    firstPart ? (int)flags : 0);
+                    (int)flags);
                 if (rc != 0)
                 {
                     int errno = NativeMethods.zlink_errno();

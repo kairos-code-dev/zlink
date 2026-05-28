@@ -54,7 +54,7 @@ public sealed class ClientServerTests
         var recorder = serverHost.Services.GetRequiredService<ProfileCommandRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.RequestChannel("api", new GetProfileRequest { UserId = "discovery" }).SubmitAsync<ProfileReply>(),
+            async () => await client.RequestToChannel("api", new GetProfileRequest { UserId = "discovery" }).SubmitAsync<ProfileReply>(),
             static result => result.Name == "user:discovery");
 
         Assert.Equal("user:discovery", reply.Name);
@@ -62,7 +62,7 @@ public sealed class ClientServerTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                await client.SendChannel("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Submit();
+                await client.SendToChannel("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Submit();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },
@@ -110,7 +110,7 @@ public sealed class ClientServerTests
         var recorder = serverHost.Services.GetRequiredService<ProfileCommandRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.RequestChannel("api", new GetProfileRequest { UserId = "alice" }).SubmitAsync<ProfileReply>(),
+            async () => await client.RequestToChannel("api", new GetProfileRequest { UserId = "alice" }).SubmitAsync<ProfileReply>(),
             static result => result.Name == "user:alice");
 
         Assert.Equal("user:alice", reply.Name);
@@ -118,7 +118,7 @@ public sealed class ClientServerTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                await client.SendChannel("api", new RefreshProfileCacheCommand { UserId = "alice" }).Submit();
+                await client.SendToChannel("api", new RefreshProfileCacheCommand { UserId = "alice" }).Submit();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },

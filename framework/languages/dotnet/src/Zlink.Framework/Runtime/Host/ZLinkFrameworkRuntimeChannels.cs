@@ -22,7 +22,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _channelFacade.GetRouteChannel(routerChannelId);
     }
 
-    internal async ValueTask SendSpotViaRouterChannelAsync(
+    internal async ValueTask SendToSpotViaRouterChannelAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
@@ -68,7 +68,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             $"Router-capable channel '{routerChannelId}' is not registered in this process.");
     }
 
-    internal ValueTask SendSpotViaEgressChannelAsync(
+    internal ValueTask SendToSpotViaEgressChannelAsync(
         string localEgressChannelName,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
@@ -77,7 +77,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (_registration.Channels.TryGetValue(localEgressChannelName, out var channel)
             && channel.SpotRouteEgress is { } channelEgress)
         {
-            return SendSpotViaClientEgressChannelAsync(
+            return SendToSpotViaClientEgressChannelAsync(
                 localEgressChannelName,
                 channelEgress.TargetSpotNodeChannelName,
                 targetSpotRid,
@@ -88,7 +88,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (_registration.RouteChannels.TryGetValue(localEgressChannelName, out var routeChannel)
             && routeChannel.SpotRouteEgress is { } routeEgress)
         {
-            return SendSpotViaRouteEgressChannelAsync(
+            return SendToSpotViaRouteEgressChannelAsync(
                 localEgressChannelName,
                 routeEgress.TargetSpotNodeChannelName,
                 targetSpotRid,
@@ -100,7 +100,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             $"Routed SPOT egress channel '{localEgressChannelName}' is not registered.");
     }
 
-    internal async ValueTask<IReadOnlyList<Message>> RequestSpotViaEgressChannelAsync(
+    internal async ValueTask<IReadOnlyList<Message>> RequestToSpotViaEgressChannelAsync(
         string localEgressChannelName,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
@@ -110,7 +110,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (_registration.Channels.TryGetValue(localEgressChannelName, out var channel)
             && channel.SpotRouteEgress is { } channelEgress)
         {
-            return await RequestSpotViaClientEgressChannelAsync(
+            return await RequestToSpotViaClientEgressChannelAsync(
                     localEgressChannelName,
                     channelEgress.TargetSpotNodeChannelName,
                     targetSpotRid,
@@ -123,7 +123,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (_registration.RouteChannels.TryGetValue(localEgressChannelName, out var routeChannel)
             && routeChannel.SpotRouteEgress is { } routeEgress)
         {
-            return await RequestSpotViaRouteEgressChannelAsync(
+            return await RequestToSpotViaRouteEgressChannelAsync(
                     localEgressChannelName,
                     routeEgress.TargetSpotNodeChannelName,
                     targetSpotRid,
@@ -163,7 +163,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 $"Routed SPOT target channel '{targetSpotNodeChannelName}' is not accepted by a SPOT node in this process.");
     }
 
-    private async ValueTask SendSpotViaClientEgressChannelAsync(
+    private async ValueTask SendToSpotViaClientEgressChannelAsync(
         string localEgressChannelName,
         string targetSpotNodeChannelName,
         RoutingId targetSpotRid,
@@ -186,7 +186,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    private async ValueTask<IReadOnlyList<Message>> RequestSpotViaClientEgressChannelAsync(
+    private async ValueTask<IReadOnlyList<Message>> RequestToSpotViaClientEgressChannelAsync(
         string localEgressChannelName,
         string targetSpotNodeChannelName,
         RoutingId targetSpotRid,
@@ -220,7 +220,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    private ValueTask SendSpotViaRouteEgressChannelAsync(
+    private ValueTask SendToSpotViaRouteEgressChannelAsync(
         string localEgressChannelName,
         string targetSpotNodeChannelName,
         RoutingId targetSpotRid,
@@ -243,7 +243,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             cancellationToken);
     }
 
-    private async ValueTask<IReadOnlyList<Message>> RequestSpotViaRouteEgressChannelAsync(
+    private async ValueTask<IReadOnlyList<Message>> RequestToSpotViaRouteEgressChannelAsync(
         string localEgressChannelName,
         string targetSpotNodeChannelName,
         RoutingId targetSpotRid,
@@ -423,7 +423,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         return true;
     }
 
-    internal async ValueTask<IReadOnlyList<Message>> RequestSpotViaRouterChannelAsync(
+    internal async ValueTask<IReadOnlyList<Message>> RequestToSpotViaRouterChannelAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
@@ -434,7 +434,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         var state = GetOrStartState();
         if (state.RouteChannels.TryGetValue(routerChannelId, out var routeChannel))
         {
-            return await routeChannel.RequestSpotPartsAsync(
+            return await routeChannel.RequestToSpotPartsAsync(
                 targetNodeRid,
                 targetSpotRid,
                 parts,
@@ -445,7 +445,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (state.ServerBundles.TryGetValue(routerChannelId, out var serverBundle)
             && serverBundle.Socket is IZLinkBackendRouterSocket router)
         {
-            return await RequestSpotViaServerRouterAsync(
+            return await RequestToSpotViaServerRouterAsync(
                 routerChannelId,
                 router,
                 serverBundle.ReceiveGate,
@@ -460,7 +460,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             $"Router-capable channel '{routerChannelId}' is not registered in this process.");
     }
 
-    private static async ValueTask<IReadOnlyList<Message>> RequestSpotViaServerRouterAsync(
+    private static async ValueTask<IReadOnlyList<Message>> RequestToSpotViaServerRouterAsync(
         string routerChannelId,
         IZLinkBackendRouterSocket router,
         SemaphoreSlim receiveGate,

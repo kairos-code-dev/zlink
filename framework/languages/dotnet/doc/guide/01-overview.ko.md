@@ -77,7 +77,7 @@ builder.Services.AddZLinkFramework(options =>
 
 // 클라이언트: IZLinkChannelClient 를 주입받아 builder + 종결자로 호출
 var reply = await client
-    .RequestChannel("price", new PriceRequest("AAPL"))
+    .RequestToChannel("price", new PriceRequest("AAPL"))
     .SubmitAsync<PriceReply>(ct);
 ```
 

@@ -20,6 +20,7 @@ public static class SessionServerHostFactory
             options.Codecs.AddJson();
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
             options.UseDiscovery(discovery => discovery.Add(topology.RegistryRouterEndpoint));
+            options.UseRegistrySpotRemoteAddresses("tictactoe");
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {
                 channel.EnableClient();

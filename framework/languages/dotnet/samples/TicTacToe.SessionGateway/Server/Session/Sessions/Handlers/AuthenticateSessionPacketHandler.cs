@@ -3,16 +3,13 @@ using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.SessionGateway.Shared.Configuration;
 using TicTacToe.SessionGateway.Shared.Contracts;
-using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
 
 namespace TicTacToe.SessionGateway.Session.Sessions.Handlers;
 
 internal sealed class AuthenticateSessionPacketHandler(
-    IZLinkChannelClient channels,
-    IZLinkActorManager actors,
-    SampleTopology topology)
+    IZLinkChannelClient channels)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     public string PacketName => nameof(AuthenticateReq);
@@ -25,7 +22,7 @@ internal sealed class AuthenticateSessionPacketHandler(
     {
         _ = header;
         var request = payload.Decode<AuthenticateReq>();
-        var authenticated = await channels.RequestChannel(
+        var authenticated = await channels.RequestToChannel(
                 SampleNames.ApiChannel,
                 new AuthenticateActorReq(request.ActorId))
             .Timeout(SampleTimings.RequestTimeout)
@@ -35,20 +32,26 @@ internal sealed class AuthenticateSessionPacketHandler(
             throw new InvalidOperationException(authenticated.Reason ?? "Actor authentication failed.");
         }
 
-        var actor = await actors.GetOrCreateAsync(
-                authenticated.ActorId,
-                SampleNames.PlayerActorType,
-                cancellationToken);
-
-        var joined = await actor.Context.JoinEntrySpot(topology.PlayRid)
+        var ensured = await channels.RequestToChannel(
+                SampleNames.PlayChannel,
+                new EnsurePlayerActorReq(authenticated.ActorId))
             .Timeout(SampleTimings.RequestTimeout)
-            .SubmitAsync(cancellationToken);
+            .SubmitAsync<EnsurePlayerActorRes>(cancellationToken)
+            ;
 
         await context.Actors.BindAsync(
-                joined,
+                ToActorRef(ensured.Actor),
                 cancellationToken);
 
-        await context.Client.Reply(new AuthenticateRes(joined.ActorId))
+        await context.Client.Reply(new AuthenticateRes(ensured.ActorId))
             .Submit(cancellationToken);
+    }
+
+    private static ActorRef ToActorRef(ActorRefSnapshot snapshot)
+    {
+        return new ActorRef(
+            RoutingId.From(snapshot.NodeRid),
+            snapshot.ActorId,
+            snapshot.Generation);
     }
 }

@@ -9,12 +9,12 @@ namespace Zlink.Framework.Runtime.Channels;
 internal sealed class ZLinkChannelClient(ZLinkFrameworkRuntime runtime, ZLinkFrameworkRegistration registration)
     : IZLinkChannelClient
 {
-    public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
+    public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
     {
         return new ZLinkSendCall(runtime, registration, channelName, message);
     }
 
-    public IZLinkRequestCall RequestChannel<TMessage>(string channelName, TMessage request)
+    public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
         => new ZLinkRequestCall<TMessage>(runtime, registration, channelName, request);
 }
 

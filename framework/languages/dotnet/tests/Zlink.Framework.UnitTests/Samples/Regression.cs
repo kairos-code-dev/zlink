@@ -241,11 +241,11 @@ public sealed class RegressionTests
             .EnumerateFiles(Path.Combine(sampleRoot, "Server", "Session"), "AuthenticateSessionPacketHandler.cs", SearchOption.AllDirectories)
             .Single();
         var text = File.ReadAllText(handler);
-        var joinIndex = text.IndexOf("JoinEntrySpot(topology.PlayRid)", StringComparison.Ordinal);
+        var ensureIndex = text.IndexOf("EnsurePlayerActorReq", StringComparison.Ordinal);
         var bindIndex = text.IndexOf("Actors.BindAsync", StringComparison.Ordinal);
 
-        Assert.True(joinIndex >= 0, "Authenticate handler must join the actor to the Play EntrySpot.");
-        Assert.True(bindIndex > joinIndex, "Authenticate handler must bind the returned ActorRef after JoinEntrySpot.");
+        Assert.True(ensureIndex >= 0, "Authenticate handler must request the Play server to ensure the actor.");
+        Assert.True(bindIndex > ensureIndex, "Authenticate handler must bind the returned ActorRef after the Play actor is ensured.");
         Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
     }
 

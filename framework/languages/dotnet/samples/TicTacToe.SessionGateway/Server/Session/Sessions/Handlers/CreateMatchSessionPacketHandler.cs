@@ -22,7 +22,7 @@ namespace TicTacToe.SessionGateway.Session.Sessions.Handlers
             _ = header;
             var actorId = RequireSingleBoundActor(context, "creating a match").ActorId;
             var request = payload.Decode<CreateMatchReq>();
-            var reply = await channels.RequestChannel(
+            var reply = await channels.RequestToChannel(
                         SampleNames.ApiChannel,
                         new CreateMatchReq(OwnerActorId: actorId))
                     .Timeout(SampleTimings.RequestTimeout)

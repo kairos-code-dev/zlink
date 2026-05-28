@@ -14,12 +14,12 @@ public sealed class ChannelContracts
         var client = new ExampleClient();
 
         await client
-            .SendChannel("api", new AuthenticateRequest("player-1"))
+            .SendToChannel("api", new AuthenticateRequest("player-1"))
             .PacketName("authenticate")
             .Submit();
 
         var reply = await client
-            .RequestChannel("api", new AuthenticateRequest("player-1"))
+            .RequestToChannel("api", new AuthenticateRequest("player-1"))
             .PacketName("authenticate")
             .Timeout(TimeSpan.FromSeconds(3))
             .SubmitAsync<AuthenticateReply>();
@@ -89,14 +89,14 @@ public sealed class ChannelContracts
 
         // gRPC unary RPC -> request/response on a logical channel name.
         var placed = await orders
-            .RequestChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+            .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
             .PacketName("orders.place")
             .Timeout(TimeSpan.FromSeconds(2))
             .SubmitAsync<OrderPlaced>();
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
         await orders
-            .SendChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
+            .SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
             .PacketName("inventory.reserve")
             .Submit();
 
@@ -137,13 +137,13 @@ public sealed class ChannelContracts
 
         public string? LastPacketName { get; private set; }
 
-        public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
+        public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
         {
             LastChannelName = channelName;
             return new ExampleSendCall(packetName => LastPacketName = packetName);
         }
 
-        public IZLinkRequestCall RequestChannel<TMessage>(string channelName, TMessage request)
+        public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
         {
             LastChannelName = channelName;
             object? reply = request switch

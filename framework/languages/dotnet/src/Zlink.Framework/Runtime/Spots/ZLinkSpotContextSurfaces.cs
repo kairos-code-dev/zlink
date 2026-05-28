@@ -39,15 +39,15 @@ internal interface IZLinkSpotHandlerRegistrySink
 
 internal interface IZLinkSpotOutboundSink
 {
-    IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message);
+    IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message);
 
-    IZLinkRequestCall RequestSpot<TRequest>(RoutingId spotRid, TRequest request);
+    IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request);
 
     IZLinkPublishCall Publish<TEvent>(string topic, TEvent message);
 
-    IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message);
+    IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message);
 
-    IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request);
+    IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request);
 }
 
 internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistrySink activation)
@@ -102,18 +102,18 @@ internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistryS
 internal sealed class ZLinkSpotOutboundSurface(IZLinkSpotOutboundSink activation)
     : IZLinkSpotOutbound
 {
-    public IZLinkSendCall SendSpot<TMessage>(RoutingId spotRid, TMessage message)
-        => activation.SendSpot(spotRid, message);
+    public IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message)
+        => activation.SendToSpot(spotRid, message);
 
-    public IZLinkRequestCall RequestSpot<TRequest>(RoutingId spotRid, TRequest request)
-        => activation.RequestSpot(spotRid, request);
+    public IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request)
+        => activation.RequestToSpot(spotRid, request);
 
     public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
         => activation.Publish(topic, message);
 
-    public IZLinkSendCall SendChannel<TMessage>(string channelName, TMessage message)
-        => activation.SendChannel(channelName, message);
+    public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
+        => activation.SendToChannel(channelName, message);
 
-    public IZLinkRequestCall RequestChannel<TRequest>(string channelName, TRequest request)
-        => activation.RequestChannel(channelName, request);
+    public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
+        => activation.RequestToChannel(channelName, request);
 }

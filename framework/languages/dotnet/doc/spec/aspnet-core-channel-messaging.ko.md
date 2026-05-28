@@ -834,12 +834,12 @@ app.MapPost("/profiles/get", async (
 
 ```csharp
 var reply = await client
-    .RequestChannel("profile", new GetProfileRequest { AccountId = accountId })
+    .RequestToChannel("profile", new GetProfileRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
     .SubmitAsync<GetProfileReply>(cancellationToken);
 
 await client
-    .SendChannel("profile", new RefreshProfileCacheCommand { AccountId = accountId })
+    .SendToChannel("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .PacketName("profile.refresh-cache")
     .Submit(cancellationToken);
 ```

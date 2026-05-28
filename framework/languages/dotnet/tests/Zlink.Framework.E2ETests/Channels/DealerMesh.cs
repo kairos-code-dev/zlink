@@ -37,7 +37,7 @@ public sealed class DealerMeshTests
         var client = clientHost.Services.GetRequiredService<IZLinkChannelClient>();
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () => await client
-                .RequestChannel("mesh", new MeshProfileRequest { UserId = "mesh-request" })
+                .RequestToChannel("mesh", new MeshProfileRequest { UserId = "mesh-request" })
                 .Timeout(TimeSpan.FromMilliseconds(500))
                 .SubmitAsync<MeshProfileReply>(),
             static result => result.Name == "mesh:mesh-request");
@@ -48,7 +48,7 @@ public sealed class DealerMeshTests
             async () =>
             {
                 await client
-                    .SendChannel("mesh", new MeshProfileRequest { UserId = "mesh-send" })
+                    .SendToChannel("mesh", new MeshProfileRequest { UserId = "mesh-send" })
                     .Submit();
                 await Task.Yield();
                 return recorder.Commands.Count;

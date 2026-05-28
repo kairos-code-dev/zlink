@@ -26,7 +26,7 @@ internal sealed class ZLinkRoutedSpotRouteInternalPacketDispatcher(
         var spotParts = ZLinkRoutedSpotRelayPackets.CopySpotPayloadParts(received);
         try
         {
-            await runtime.SendSpotViaRouterChannelAsync(
+            await runtime.SendToSpotViaRouterChannelAsync(
                     header.ChannelName,
                     targetNodeRid,
                     targetSpotRid,
@@ -53,7 +53,7 @@ internal sealed class ZLinkRoutedSpotRouteInternalPacketDispatcher(
         IReadOnlyList<Message> reply;
         try
         {
-            reply = await runtime.RequestSpotViaRouterChannelAsync(
+            reply = await runtime.RequestToSpotViaRouterChannelAsync(
                     routedHeader.ChannelName,
                     targetNodeRid,
                     targetSpotRid,

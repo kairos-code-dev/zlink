@@ -11,6 +11,18 @@ public sealed record AuthenticateActorRes(
     string? ActorId,
     string? Reason);
 
+public sealed record EnsurePlayerActorReq(string ActorId);
+
+public sealed record ActorRefSnapshot(
+    byte[] NodeRid,
+    string ActorId,
+    ulong Generation);
+
+public sealed record EnsurePlayerActorRes(
+    string ActorId,
+    string ActorType,
+    ActorRefSnapshot Actor);
+
 public sealed record CreateMatchReq(string? OwnerActorId = null);
 
 public sealed record CreateMatchRes(

@@ -377,11 +377,11 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
 
 public interface IZLinkSpotOutbound
 {
-    IZLinkSendCall SendSpot<TMessage>(
+    IZLinkSendCall SendToSpot<TMessage>(
         RoutingId spotRid,
         TMessage message);
 
-    IZLinkRequestCall RequestSpot<TRequest>(
+    IZLinkRequestCall RequestToSpot<TRequest>(
         RoutingId spotRid,
         TRequest request);
 
@@ -389,11 +389,11 @@ public interface IZLinkSpotOutbound
         string topic,
         TEvent message);
 
-    IZLinkSendCall SendChannel<TMessage>(
+    IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestChannel<TRequest>(
+    IZLinkRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 }
@@ -956,13 +956,13 @@ registry 안에서 동일 actor 타입에 대해 하나씩만 허용한다.
 
 `IZLinkSpotContext` 가 노출하는 호출 표면들은 다음 역할을 한다.
 
-- `Context.Outbound.SendSpot(...)` 과 `Context.Outbound.RequestSpot(...)` 은 현재 SPOT 의
+- `Context.Outbound.SendToSpot(...)` 과 `Context.Outbound.RequestToSpot(...)` 은 현재 SPOT 의
   실행 문맥에서 다른 SPOT 으로 routed send/request 를 보낸다. target 은
   `RoutingId` 로 지정하고, 실제 target node 와 route channel 은
   `IZLinkSpotRemoteAddressResolver` 가 해소한다.
 - `Context.Outbound.Publish(topic, ...)` 는 편의 함수다. 현재 SPOT 이 속한 active
   SPOT channel 에 publish 하기 위한 것이다.
-- `Context.Outbound.SendChannel(...)` 과 `Context.Outbound.RequestChannel(...)` 은 현재 SPOT
+- `Context.Outbound.SendToChannel(...)` 과 `Context.Outbound.RequestToChannel(...)` 은 현재 SPOT
   의 실행 문맥에서 channel client 를 호출한다.
 
 `OnClosingAsync(...)` 의 호출 시점은 한정된다.
@@ -997,9 +997,9 @@ public sealed class Spot : IDisposable, IAsyncDisposable
     public Received RecvRoute(RecvFlags flags = RecvFlags.None);
 
     // channel 이름 기반 호출 (attach된 dealer 경유)
-    public void SendChannel(string channelName, ReadOnlyMemory<byte> payload);
+    public void SendToChannel(string channelName, ReadOnlyMemory<byte> payload);
 
-    public Task<Received> RequestChannelAsync(
+    public Task<Received> RequestToChannelAsync(
         string channelName,
         ReadOnlyMemory<byte> payload,
         TimeSpan timeout = default,
@@ -1088,7 +1088,7 @@ user Spot timer 는 그 tick 을 같은 spot execution context 안으로 enqueue
 timer handler 를 호출한다. Entry Spot timer 는 Entry Spot 전체 queue 에 묶지
 않고 별도 task 흐름에서 호출한다.
 
-`RequestChannelAsync(...)` 의 completion 은 **항상 같은 spot execution
+`RequestToChannelAsync(...)` 의 completion 은 **항상 같은 spot execution
 context 안에서** 실행된다. 즉 임의의 thread 에서 promise 를 직접 완료하지
 않는다.
 
@@ -1632,11 +1632,11 @@ public interface IZLinkSpotActorJoinHandler<TSpot, TActor, in TRequest, TReply>
 
 public interface IZLinkSpotOutbound
 {
-    IZLinkSendCall SendSpot<TMessage>(
+    IZLinkSendCall SendToSpot<TMessage>(
         RoutingId spotRid,
         TMessage message);
 
-    IZLinkRequestCall RequestSpot<TRequest>(
+    IZLinkRequestCall RequestToSpot<TRequest>(
         RoutingId spotRid,
         TRequest request);
 
@@ -1644,11 +1644,11 @@ public interface IZLinkSpotOutbound
         string topic,
         TEvent message);
 
-    IZLinkSendCall SendChannel<TMessage>(
+    IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestChannel<TRequest>(
+    IZLinkRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 }
@@ -1726,8 +1726,8 @@ actor class 안에서 상태 분기로 섞을 필요가 없다.
 
 outbound 는 actor context 의 기능이 아니다. Entry Spot 또는 user Spot 안에서
 다른 Spot 이나 channel 로 메시지를 보내야 하면 handler 가 받은
-`entrySpot.Context` 또는 `spot.Context` 의 `SendSpot(...)`,
-`RequestSpot(...)`, `SendChannel(...)`, `RequestChannel(...)` 을 사용한다.
+`entrySpot.Context` 또는 `spot.Context` 의 `SendToSpot(...)`,
+`RequestToSpot(...)`, `SendToChannel(...)`, `RequestToChannel(...)` 을 사용한다.
 client stream 으로 push 해야 하면 Spot actor handler 가 받은 actor 의
 `Context.BoundSession` 을 사용한다. actor handler 는 `ZLinkSpotActorSendContext`
 또는 `ZLinkSpotActorRequestContext` 로 stream packet metadata 를 받는다.
@@ -1934,7 +1934,7 @@ payload 타입의 `Type.Name` 을 사용해 해석하는 쪽을 기준으로 본
 `GetProfileRequest` 는 기본적으로 `GetProfileRequest` packet 으로 매핑된다.
 
 이 기본 규칙만으로 충분하지 않은 경우를 위해, public 표면은 builder
-패턴을 따른다. 즉 `RequestChannel(...)` 와 `SendChannel(...)` 가 builder 를 돌려준다.
+패턴을 따른다. 즉 `RequestToChannel(...)` 와 `SendToChannel(...)` 가 builder 를 돌려준다.
 `PacketName`, `Timeout` 같은 변형은 builder 에 체이닝으로 이어 붙인다.
 
 이렇게 두는 이유는 단순하다. `packetName` 과 `timeout` 조합마다 overload
@@ -1961,11 +1961,11 @@ public interface IZLinkRequestCall
 
 public interface IZLinkChannelClient
 {
-    IZLinkSendCall SendChannel<TMessage>(
+    IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestChannel<TMessage>(
+    IZLinkRequestCall RequestToChannel<TMessage>(
         string channelName,
         TMessage request);
 }
@@ -2008,10 +2008,10 @@ packet key 해석 규칙은 다음 순서를 기본으로 본다.
 
 timeout 은 request 와 send 간에 다르게 다룬다.
 
-- `RequestChannel(...)` 는 reply 를 기다리므로 `Timeout(...)` 을 둘 수 있다.
-- `SendChannel(...)` 는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
+- `RequestToChannel(...)` 는 reply 를 기다리므로 `Timeout(...)` 을 둘 수 있다.
+- `SendToChannel(...)` 는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
 - `Publish(...)` 도 같은 이유로 timeout 설정을 두지 않는다.
-- `SendChannel(...).Submit(...)` 는 handler 완료를 기다리는 호출이 아니다.
+- `SendToChannel(...).Submit(...)` 는 handler 완료를 기다리는 호출이 아니다.
   framework 가 메시지를 transport 에 위임할 수 있을 때까지 기다리는,
   비동기 submit 이다.
 - `Publish(...).Submit(...)` 도 동일한 의미다. subscriber 의 handler
@@ -2025,10 +2025,10 @@ timeout 은 request 와 send 간에 다르게 다룬다.
   option 에 설정한 resolved `SendTimeout` 값을 읽는다. 사용자가
   `SendTimeout = null` 로 명시한 경우에 한해, core `-1` 과 같은 무한 대기
   로 본다.
-- `RequestChannel(...).SubmitAsync<TReply>(...)` 도 마찬가지다. request packet 을
-  내보내는 단계에서는, `SendChannel(...).Submit(...)` 와 동일한 nonblocking
+- `RequestToChannel(...).SubmitAsync<TReply>(...)` 도 마찬가지다. request packet 을
+  내보내는 단계에서는, `SendToChannel(...).Submit(...)` 와 동일한 nonblocking
   submit 경로를 사용한다.
-- `RequestChannel(...).Timeout(...)` 은 reply 대기 시간만을 결정한다.
+- `RequestToChannel(...).Timeout(...)` 은 reply 대기 시간만을 결정한다.
 - 이 문서는 별도의 public no-wait 옵션을 제공하지 않는다. temporary
   backpressure 는 public `false` 반환값이 아니라, framework 내부의 queue
   와 ready notification 으로 처리한다.
@@ -2066,12 +2066,12 @@ pending submit 을 이어서 진행해야 한다.
 
 ```csharp
 var reply = await client
-    .RequestChannel("profile", new GetProfileRequest { AccountId = accountId })
+    .RequestToChannel("profile", new GetProfileRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
     .SubmitAsync<GetProfileReply>(cancellationToken);
 
 await client
-    .SendChannel("profile", new RefreshProfileCacheCommand { AccountId = accountId })
+    .SendToChannel("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .PacketName("profile.refresh-cache")
     .Submit(cancellationToken);
 ```
@@ -2097,19 +2097,19 @@ application 이 `targetRid + spotRid` 를 직접 넘기는 일은 없다.
 ```csharp
 public interface IZLinkSpotOutbound
 {
-    IZLinkSendCall SendSpot<TMessage>(
+    IZLinkSendCall SendToSpot<TMessage>(
         RoutingId spotRid,
         TMessage message);
 
-    IZLinkRequestCall RequestSpot<TMessage>(
+    IZLinkRequestCall RequestToSpot<TMessage>(
         RoutingId spotRid,
         TMessage request);
 
-    IZLinkSendCall SendChannel<TMessage>(
+    IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestChannel<TMessage>(
+    IZLinkRequestCall RequestToChannel<TMessage>(
         string channelName,
         TMessage request);
 
@@ -2121,16 +2121,16 @@ public interface IZLinkSpotOutbound
 
 `IZLinkSpotContext` 와 `IZLinkEntrySpotContext` 는 같은 outbound 표면을
 직접 노출한다. 따라서 SPOT lifecycle callback 이나 handler 안에서는 별도
-client 를 주입하지 않고 `Context.Outbound.SendSpot(...)`, `Context.Outbound.RequestSpot(...)`,
-`Context.Outbound.SendChannel(...)`, `Context.Outbound.RequestChannel(...)`, `Context.Outbound.Publish(...)`
+client 를 주입하지 않고 `Context.Outbound.SendToSpot(...)`, `Context.Outbound.RequestToSpot(...)`,
+`Context.Outbound.SendToChannel(...)`, `Context.Outbound.RequestToChannel(...)`, `Context.Outbound.Publish(...)`
 를 사용할 수 있다.
 
 `IZLinkChannelClient` 와 비교했을 때의 차이는 다음과 같다.
 
 - `Publish(topic, ...)` 가 포함된다. SPOT 쪽은 현재 channel 안에서 topic
   publish 를 함께 사용하는 경우가 많기 때문에, 같은 interface 에 둔다.
-- `SendSpot(...)` / `RequestSpot(...)` 은 spot remote address resolver 를 사용한다.
-- `SendChannel(...)` / `RequestChannel(...)` 은 attach 된 channel client
+- `SendToSpot(...)` / `RequestToSpot(...)` 은 spot remote address resolver 를 사용한다.
+- `SendToChannel(...)` / `RequestToChannel(...)` 은 attach 된 channel client
   를 통해 해소한다.
 - 따라서 local `SpotNode` 나 local spot runtime 이 없는 앱이라면, 기본
   outbound 표면은 `IZLinkChannelClient` 다. 그런 앱에서 외부 SPOT channel
@@ -2181,8 +2181,8 @@ public interface IZLinkRouteClient
 
 Spot 으로 가는 routed transport 는 application 이 직접 egress client 를 고르는
 public 표면으로 노출하지 않는다. current Spot callback 안에서는
-`spot.Context.Outbound.SendSpot(...)` 또는
-`spot.Context.Outbound.RequestSpot(...)` 을 사용한다. current Spot 이 없는
+`spot.Context.Outbound.SendToSpot(...)` 또는
+`spot.Context.Outbound.RequestToSpot(...)` 을 사용한다. current Spot 이 없는
 session, HTTP handler, background service 에서는 actor 생성 또는 entry spot
 join 같은 도메인 흐름으로 `ActorRef` 를 얻은 뒤 session actor handle 로 bind 한다.
 
@@ -2258,7 +2258,7 @@ public interface IZLinkFanoutClient
 다음과 같다. `profile` channel 안의 `profile.cache-refreshed` topic 으로
 fan-out 한다는 뜻이다.
 
-일반 `PUB/SUB` publish 도 `SendChannel(...)` 와 마찬가지로 timeout 을 두지
+일반 `PUB/SUB` publish 도 `SendToChannel(...)` 와 마찬가지로 timeout 을 두지
 않는다. 다만 필요할 때 packet 이름 override 정도는 지정할 수 있다.
 
 여기서 `Async(...)` 의 의미에 주의한다. remote peer 의 처리 완료를
@@ -3179,7 +3179,7 @@ public interface IZLinkEntrySpotOptions
   - request 한 번에만 적용되는 호출 단위 옵션이다.
   - 실제 바인딩에서도 `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)`,
     `RouterSocket.RequestAsync(..., TimeSpan timeout, ...)`,
-    `Spot.RequestChannelAsync(..., TimeSpan timeout, ...)`처럼 호출 인자로 받는다.
+    `Spot.RequestToChannelAsync(..., TimeSpan timeout, ...)`처럼 호출 인자로 받는다.
   - 위 등록 설정과 달리 capability runtime 기본값을 바꾸지 않는다.
 
 `AddSpotMesh(channelName, ...)` 는 SPOT channel 이름과 node 묶음을 함께
@@ -3366,7 +3366,7 @@ request 메시지 타입에는 framework 전용 marker interface 를 붙이지 �
 
 ```csharp
 var reply = await client
-    .RequestChannel("profile", new GetProfileRequest { AccountId = accountId })
+    .RequestToChannel("profile", new GetProfileRequest { AccountId = accountId })
     .SubmitAsync<GetProfileReply>(cancellationToken);
 ```
 

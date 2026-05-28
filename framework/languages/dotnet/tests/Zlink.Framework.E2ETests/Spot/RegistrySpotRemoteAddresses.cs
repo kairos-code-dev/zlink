@@ -102,7 +102,7 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
                 var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
                     header,
                     new SpotRouteTargetRequest("registry-request"));
-                var reply = await runtime.RequestSpotViaRouterChannelAsync(
+                var reply = await runtime.RequestToSpotViaRouterChannelAsync(
                         route.RouterChannelId,
                         route.TargetNodeRid,
                         route.SpotRid,
@@ -141,7 +141,7 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
                 var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
                     header,
                     new SpotRouteTargetCommand("registry-send"));
-                await runtime.SendSpotViaRouterChannelAsync(
+                await runtime.SendToSpotViaRouterChannelAsync(
                         route.RouterChannelId,
                         route.TargetNodeRid,
                         route.SpotRid,

@@ -79,14 +79,14 @@ public readonly record struct RoutingId(string Value)
 
 public interface IZLinkSpotOutbound
 {
-    IZLinkSendCall SendSpot<TMessage>(
+    IZLinkSendCall SendToSpot<TMessage>(
         RoutingId spotRid,
         TMessage message)
     {
         return default!;
     }
 
-    IZLinkRequestCall RequestSpot<TRequest>(
+    IZLinkRequestCall RequestToSpot<TRequest>(
         RoutingId spotRid,
         TRequest request)
     {
@@ -100,14 +100,14 @@ public interface IZLinkSpotOutbound
         return default!;
     }
 
-    IZLinkSendCall SendChannel<TMessage>(
+    IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message)
     {
         return default!;
     }
 
-    IZLinkRequestCall RequestChannel<TRequest>(
+    IZLinkRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request)
     {
@@ -236,19 +236,19 @@ public interface IZLinkChannelClient
 
 public interface IZLinkSpotOutbound
 {
-    IZLinkSendCall SendSpot<TMessage>(
+    IZLinkSendCall SendToSpot<TMessage>(
         RoutingId spotRid,
         TMessage message);
 
-    IZLinkRequestCall RequestSpot<TMessage>(
+    IZLinkRequestCall RequestToSpot<TMessage>(
         RoutingId spotRid,
         TMessage request);
 
-    IZLinkSendCall SendChannel<TMessage>(
+    IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestChannel<TMessage>(
+    IZLinkRequestCall RequestToChannel<TMessage>(
         string channelName,
         TMessage request);
 
@@ -629,7 +629,7 @@ builder.Services.AddZLinkFramework(options =>
   `CommonSocketOptions` 같은 공통 socket 기본 동작을 정한다.
 - `router.ConfigureRouting(...)`, `client.ConfigureRouting(...)` 은 route
   policy 와 outbound route policy 에 대응하는 capability 전용 facade 다.
-- `RequestChannel(...).Timeout(...)` 같은 호출 단위 옵션은 그 호출 하나에만
+- `RequestToChannel(...).Timeout(...)` 같은 호출 단위 옵션은 그 호출 하나에만
   적용된다. 반면 위에 정리한 설정은 runtime 의 기본값을 잡는 용도다.
 
 이렇게 두면 두 가지 이점이 생긴다.
@@ -677,11 +677,11 @@ spot 으로 outbound 호출만 하는 앱도 있을 수 있다. 이런 경우 �
 표면은 `IZLinkChannelClient` 다.
 
 local `SpotNode` 가 없으면 attach 된 channel client 경로도 존재할 수 없다.
-따라서 `spot.Context.Outbound.RequestChannel(...)` 같은 표면을 바로 사용하는
+따라서 `spot.Context.Outbound.RequestToChannel(...)` 같은 표면을 바로 사용하는
 모델로 설명하면 안 된다.
 
-current Spot callback 안에서는 `spot.Context.Outbound.SendSpot(...)` /
-`RequestSpot(...)` 을 사용한다. 일반 HTTP handler나 channel handler처럼 current Spot 이
+current Spot callback 안에서는 `spot.Context.Outbound.SendToSpot(...)` /
+`RequestToSpot(...)` 을 사용한다. 일반 HTTP handler나 channel handler처럼 current Spot 이
 없는 코드에는 target Spot 으로 직접 send/request 하는 별도 public client 를 두지 않는다.
 
 ```csharp
@@ -1560,7 +1560,7 @@ framework 는 decode 된 header와 payload를 내부 dispatch 경로로 같은 `
         CancellationToken cancellationToken)
     {
         await _spotClient
-            .SendChannel(
+            .SendToChannel(
                 "orders",
                 new SampleReportStateQueryCommand
                 {
@@ -1595,7 +1595,7 @@ public sealed class SampleReportStateHandler
         spot.ApplyReportedState(message);
 
         await _spotClient
-            .SendChannel(
+            .SendToChannel(
                 "orders",
                 new SampleReportStateQueryCommand
                 {
@@ -1621,7 +1621,7 @@ public sealed class SampleStateUpdatedHandler
         CancellationToken cancellationToken)
     {
         await _spotClient
-            .RequestChannel(
+            .RequestToChannel(
                 "orders",
                 new SampleSyncStateRequest
                 {
@@ -1736,7 +1736,7 @@ server tick 수를 계산할 수 있다.
 - `Context.AddTimer<THandler>(...)` 는 spot lifecycle[^lifecycle] 안에서 timer
   를 등록한다.
 - 다른 channel 로의 호출은 attach 된 channel client 를 통해 전송한다.
-- **`RequestChannel(...).Submit(...)` 는 같은 spot execution context 안에서
+- **`RequestToChannel(...).Submit(...)` 는 같은 spot execution context 안에서
   완료된다.** 임의의 thread 에서 promise 를 직접 resolve 하지 않는다. 따라서
   continuation 도 spot state 에 별도의 lock 없이 접근할 수 있다.
 
@@ -1852,12 +1852,12 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 - 명시적 `spotRid`가 있고 없으면 만들고 있으면 가져오고 싶다
   - `IZLinkSpotManager.GetOrCreateAsync<StageSpot>(spotRid, createParts, ...)`
 - attach된 다른 channel로 send packet을 보내고 싶다
-  - `SendChannel(...).Submit(...)`
+  - `SendToChannel(...).Submit(...)`
 - attach된 다른 channel로 request packet을 보내고 싶다
-  - `RequestChannel(...).Timeout(...).Submit(...)`
+  - `RequestToChannel(...).Timeout(...).Submit(...)`
   - 다른 SPOT 인스턴스로 routed 호출을 보내고 싶다
-  - SPOT callback 안에서는 `Context.Outbound.SendSpot(...)` /
-    `Context.Outbound.RequestSpot(...)`처럼 `RoutingId`를 받는 표면을 사용한다.
+  - SPOT callback 안에서는 `Context.Outbound.SendToSpot(...)` /
+    `Context.Outbound.RequestToSpot(...)`처럼 `RoutingId`를 받는 표면을 사용한다.
   - SPOT callback 밖에서는 actor 생성 또는 Entry Spot join 으로 `ActorRef` 를 얻은 뒤
     session actor handle 로 bind 한다.
 - 현재 spot 자신의 id를 알고 싶다

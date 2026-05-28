@@ -85,7 +85,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | event handler group mapping | `unit` | `channel.AddHandlerGroup("...")`로 매핑한 그룹의 publish handler만 해당 subscriber channel에서 dispatch된다 |
 | HTTP handler에서 `IZLinkChannelClient` 사용 | `integration-single-process` | route handler와 동일한 DI[^di] 컨테이너에서 정상 동작 |
 | channel handler에서 `IZLinkChannelClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `IZLinkChannelClient`로 다른 channel 에 request 하고 reply 를 받는다 |
-| dealer mesh channel client | `integration-single-process` | `IZLinkChannelClient.SendChannel(...)`와 `RequestChannel(...)`가 `AddDealerMeshChannel(...)` 등록의 DEALER socket 을 통해 동작한다 |
+| dealer mesh channel client | `integration-single-process` | `IZLinkChannelClient.SendToChannel(...)`와 `RequestToChannel(...)`가 `AddDealerMeshChannel(...)` 등록의 DEALER socket 을 통해 동작한다 |
 | channel handler에서 fanout publish | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `IZLinkFanoutClient`로 fanout event 를 publish 하고 subscriber handler가 수신한다 |
 | send async submit backpressure[^backpressure] | `integration-single-process` | HWM[^hwm]에 도달해도 caller thread를 block하지 않고, ready 이후에 완료된다 |
 | publish async submit backpressure | `integration-single-process` | `NoDrop` 또는 HWM 조건에서 thread를 block하지 않고 `SendTimeout` 정책에 따라 완료 또는 실패 |
@@ -182,8 +182,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
-| spot context channel request 경로 | `integration-single-process` | `Spot.Context.Outbound.RequestChannel(...)`이 현재 Spot 에 attach 된 channel client 경로를 사용한다 |
-| spot context routed send/request 표면 | `contract`, `integration-single-process` | `IZLinkSpotOutbound`가 `SendSpot`, `RequestSpot`, `Publish`, `SendChannel`, `RequestChannel`을 모두 노출하고, `Spot.Context.Outbound.SendSpot(...)` / `RequestSpot(...)`이 route transport를 사용한다 |
+| spot context channel request 경로 | `integration-single-process` | `Spot.Context.Outbound.RequestToChannel(...)`이 현재 Spot 에 attach 된 channel client 경로를 사용한다 |
+| spot context routed send/request 표면 | `contract`, `integration-single-process` | `IZLinkSpotOutbound`가 `SendToSpot`, `RequestToSpot`, `Publish`, `SendToChannel`, `RequestToChannel`을 모두 노출하고, `Spot.Context.Outbound.SendToSpot(...)` / `RequestToSpot(...)`이 route transport를 사용한다 |
 | actor bound session send API | `integration-single-process` | actor는 `Context.BoundSession.Send(...)`로 client stream에 push하고, `IZLinkStream`을 직접 노출받지 않는다 |
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | Spot actor request handler reply | `unit` | Entry Spot/user Spot actor request packet은 request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |

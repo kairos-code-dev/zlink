@@ -552,7 +552,7 @@ builder.Services.AddZLinkFramework(options =>
 actor 가 다른 user Spot 으로 이동하려면 framework 가 attach 한
 `IZLinkActorContext` 를 거쳐야 한다. channel outbound 는 actor context 의
 기능이 아니다. Entry Spot 또는 user Spot 안에서 channel 로 메시지를 보내려면
-해당 spot 의 `Context.Outbound.SendChannel(...)` / `Context.Outbound.RequestChannel(...)` 을
+해당 spot 의 `Context.Outbound.SendToChannel(...)` / `Context.Outbound.RequestToChannel(...)` 을
 사용한다.
 
 ```csharp

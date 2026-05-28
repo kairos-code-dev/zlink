@@ -25,7 +25,7 @@ internal sealed class MatchBingoActorHandler
         CancellationToken cancellationToken)
     {
         _ = context;
-        var matched = await entrySpot.Context.Outbound.RequestChannel(
+        var matched = await entrySpot.Context.Outbound.RequestToChannel(
                 SampleNames.ApiChannel,
                 new MatchBingoApiReq(actor.ActorId, actor.DisplayName, message.Mode))
             .Timeout(SampleTimings.RequestTimeout)

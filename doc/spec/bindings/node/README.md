@@ -12,16 +12,41 @@ package exports, `.d.ts` types, tests, samples, perf runners, and runtime
 behavior follow this blueprint and map stable `core/include/zlink.h`
 capabilities into TypeScript-idiomatic APIs.
 
-This README is the target blueprint for aligning the Node/TypeScript binding to
-the shared policy in `../README.md`. Existing source, generated declarations,
-or package exports may lag this target until the Node alignment work lands;
-treat those differences as cleanup targets. When the binding is aligned to this
-README, the target contract becomes the acceptance standard for that work.
+This README describes the completed Node/TypeScript binding shape after it is
+aligned to the shared policy in `../README.md`, and it is also the guide for
+the Node refactoring work. During the refactor, use this document to decide
+where each public contract, runtime implementation, native bridge helper,
+test, sample, and perf import belongs. Once the Node binding is declared
+aligned, generated declarations, package exports, tests, samples, perf, and
+runtime behavior must match this document.
+
+The Node refactor is a breaking cleanup. Do not keep compatibility shims,
+deprecated wrappers, duplicate construction paths, or runtime re-export aliases
+only to preserve the pre-refactor public surface.
 
 This binding follows the shared bindings architecture map with TypeScript
 naming: lower-case `contracts` and `runtime` source folders, plus package
 exports that decide what is public. Do not copy capitalized .NET or C++ folder
 names into the Node package.
+
+Node follows the [.NET design shape](../dotnet/README.md) after alignment. Native-backed resource
+behavior is described by public contract interfaces and types under
+`src/zlink/contracts`; native-backed runtime implementations live under
+`src/zlink/runtime` and are obtained through package-root factory functions.
+Concrete value classes, DTO-like objects, enums, literal unions, results, and
+errors stay in the contract source.
+
+The first code a reviewer reads should be the public contract under
+`src/zlink/contracts`, in the same way the .NET binding starts from
+`Contracts/`. Runtime files must implement those contracts; they must not be
+the place where new user-facing behavior is discovered.
+
+Keep TypeScript and Node conventions while using the same architecture map.
+Use lower-case folders, camelCase methods, PascalCase public types, structural
+interfaces where they fit TypeScript, plain objects for small DTO-like results
+when that is clearer, and package-root exports as the consumer surface. Do not
+copy C# interface prefixes, namespace casing, or file names literally when a
+TypeScript idiom is clearer.
 
 ## Public Contract Source
 
@@ -42,7 +67,7 @@ Deep imports into source files or native bridge modules are not public API.
 
 ## Repository Layout
 
-Use these target paths consistently when changing the Node/TypeScript binding.
+Use these paths consistently when changing the Node/TypeScript binding.
 
 - Public entrypoint: `bindings/node/src/index.ts`.
 - Contract source: `bindings/node/src/zlink/contracts/`.
@@ -61,13 +86,14 @@ entrypoint. Do not document or test deep source imports as public API.
 `index.ts`, published `.d.ts` files, and `package.json` exports are the
 TypeScript package projection of the contract. Do not expose deep source paths
 as public API unless they are deliberately listed in `package.json` exports.
-The following tree is the target implementation structure. Use lower-case
+The following tree is the aligned implementation structure. Use lower-case
 source directory names. Do not create `src/zlink/Contracts` or
 `src/zlink/Runtime`; those names can be mistaken for public deep-import
 surfaces. `src/zlink/contracts` owns public TypeScript types, classes,
-builders, enums, and errors. `src/zlink/runtime` owns native addon calls,
-handle owners, callback trampolines, request progress helpers, marshalling,
-and platform loading.
+builders, enums, errors, and factory return contracts. The package entrypoint
+or a runtime factory module owns factory implementation. `src/zlink/runtime`
+owns native-backed implementations, native addon calls, handle owners, callback
+trampolines, request progress helpers, marshalling, and platform loading.
 
 File granularity follows the common policy in `../README.md`: keep one file
 per independent public concept or tight operation/model group. Very small type
@@ -82,19 +108,96 @@ bindings/node/
 |   +-- zlink/
 |   |   +-- contracts/
 |   |   |   +-- core/
+|   |   |   |   +-- context.ts
+|   |   |   |   +-- zlink.ts
+|   |   |   |   +-- routing_id.ts
 |   |   |   +-- messaging/
+|   |   |   |   +-- message.ts
+|   |   |   |   +-- received.ts
+|   |   |   |   +-- topic_message.ts
+|   |   |   |   +-- subscription_event.ts
 |   |   |   +-- sockets/
+|   |   |   |   +-- socket.ts
+|   |   |   |   +-- pair_socket.ts
+|   |   |   |   +-- dealer_socket.ts
+|   |   |   |   +-- router_socket.ts
+|   |   |   |   +-- pubsub_sockets.ts
+|   |   |   |   +-- stream_socket.ts
+|   |   |   |   +-- socket_options.ts
+|   |   |   |   +-- socket_operations.ts
 |   |   |   +-- eventing/
+|   |   |   |   +-- monitor.ts
+|   |   |   |   +-- poller.ts
+|   |   |   |   +-- timer.ts
 |   |   |   +-- service/
+|   |   |   |   +-- registry/
+|   |   |   |   |   +-- registry.ts
+|   |   |   |   |   +-- registry_query_client.ts
+|   |   |   |   |   +-- registry_models.ts
+|   |   |   |   +-- discovery/
+|   |   |   |   |   +-- discovery.ts
+|   |   |   |   |   +-- discovery_models.ts
+|   |   |   |   +-- spot/
+|   |   |   |   |   +-- spot_node.ts
+|   |   |   |   |   +-- spot.ts
+|   |   |   |   |   +-- actor.ts
+|   |   |   |   |   +-- spot_operations.ts
+|   |   |   |   |   +-- spot_models.ts
 |   |   |   +-- errors/
+|   |   |   |   +-- errors.ts
+|   |   |   |   +-- results.ts
 |   |   +-- runtime/
 |   |   |   +-- core/
+|   |   |   |   +-- context.ts
+|   |   |   |   +-- context_options.ts
+|   |   |   |   +-- runtime_info.ts
+|   |   |   +-- handles/
+|   |   |   |   +-- native_handle.ts
+|   |   |   |   +-- lifetime.ts
 |   |   |   +-- messaging/
+|   |   |   |   +-- message_materializer.ts
+|   |   |   |   +-- request_progress.ts
+|   |   |   +-- buffers/
+|   |   |   |   +-- message_conversion.ts
+|   |   |   |   +-- buffer_policy.ts
 |   |   |   +-- sockets/
+|   |   |   |   +-- socket_base.ts
+|   |   |   |   +-- socket_options.ts
+|   |   |   |   +-- socket_operations.ts
+|   |   |   |   +-- pair_socket.ts
+|   |   |   |   +-- dealer_socket.ts
+|   |   |   |   +-- router_socket.ts
+|   |   |   |   +-- pub_socket.ts
+|   |   |   |   +-- sub_socket.ts
+|   |   |   |   +-- xpub_socket.ts
+|   |   |   |   +-- xsub_socket.ts
+|   |   |   |   +-- stream_socket.ts
 |   |   |   +-- eventing/
+|   |   |   |   +-- monitor_socket.ts
+|   |   |   |   +-- poller.ts
+|   |   |   |   +-- poll_events.ts
+|   |   |   |   +-- timer.ts
+|   |   |   +-- options/
+|   |   |   |   +-- option_mapping.ts
+|   |   |   |   +-- validation.ts
 |   |   |   +-- service/
+|   |   |   |   +-- registry/
+|   |   |   |   |   +-- registry.ts
+|   |   |   |   |   +-- registry_query_client.ts
+|   |   |   |   +-- discovery/
+|   |   |   |   |   +-- discovery.ts
+|   |   |   |   +-- spot/
+|   |   |   |   |   +-- spot_node.ts
+|   |   |   |   |   +-- spot.ts
+|   |   |   |   |   +-- actor.ts
+|   |   |   |   |   +-- spot_operations.ts
 |   |   |   +-- errors/
+|   |   |   |   +-- native_errors.ts
 |   |   |   +-- native/
+|   |   |   |   +-- native.ts
+|   |   |   +-- internal/
+|   |   |   |   +-- request_pump.ts
+|   |   |   |   +-- service_mapping.ts
 +-- native/
 +-- packages/
 +-- tests/
@@ -120,28 +223,93 @@ When mapping a new core capability:
    projection.
 3. Keep native addon calls, N-API handles, and request progress helpers behind
    private modules.
-4. Choose a class, interface, type alias, or tagged object according to normal
-   TypeScript usage.
+4. Choose a class, interface, type alias, literal union, or plain object shape
+   according to normal TypeScript usage.
 5. Add runtime tests and type-surface tests against the package entrypoint.
 6. Update samples and perf only through public imports.
 7. Verify generated `dist` and `.d.ts` output do not expose private bridge
    modules.
 
+When refactoring existing code to this shape:
+
+1. Move public behavior declarations to `src/zlink/contracts/<category>/`.
+2. Move native-backed implementations to `src/zlink/runtime/<category>/`.
+3. Keep native addon loading and N-API calls under `src/zlink/runtime/native/`.
+4. Replace direct runtime construction in public code with package-root
+   factories or contract methods.
+5. Remove compatibility exports that expose runtime modules as public API.
+6. Remove deprecated wrappers, duplicate overload families, and old naming
+   aliases instead of preserving them as shims.
+7. Update tests, samples, and perf to import from the package root only.
+8. Regenerate declarations and verify that `dist/index.d.ts` contains the
+   contract surface, not runtime implementation modules.
+
+The refactor is complete only when the old Node-specific shortcuts below are
+removed. These items are not optional compatibility layers.
+
+- `src/zlink/contracts` must not re-export runtime handle modules.
+- Contract files must not import runtime resource classes to describe public
+  service models.
+- A public runtime aggregate such as `runtime/handles/canonical.ts` must not
+  remain the source of public resource behavior. Split those declarations into
+  named contract files and resource-named runtime implementation files.
+- `src/index.ts` must export package contract names and factories, not runtime
+  implementation modules.
+- `package.json` must not expose runtime, native, generated, or private source
+  subpaths.
+- Generated declarations must not mention runtime implementation module paths
+  as public types.
+
+For handoff work, the short task statement should be enough: refactor the Node
+binding according to this README and `../README.md`, use the .NET design shape,
+preserve TypeScript naming style, remove compatibility shims, and pass the
+verification gates in this document.
+
 ## Library Shape
 
 The binding should feel like a TypeScript package with a native backend.
 
-- Public classes own resource lifetime and expose `close()` or equivalent
-  lifecycle methods.
-- Public TypeScript interfaces/types describe structural contracts where that
-  helps callers, but runtime-only native state remains hidden.
+- Native-backed resource behavior contracts are public TypeScript interfaces
+  under `src/zlink/contracts`.
+- Native-backed runtime implementations live under `src/zlink/runtime`.
+  They are not package exports and are not construction entrypoints.
+- The public contract files must be readable without opening runtime files.
+  A reviewer should be able to understand callable methods, return values,
+  lifecycle, error behavior, and builder shape from `contracts/`.
+- Resource contracts expose `close()` or equivalent lifecycle methods.
 - Values such as message, routing id, received metadata, topic message,
-  snapshots, options, enums, and errors stay concrete or structural according
-  to normal TypeScript practice.
-- Operation builders are required for multipart send, publish, request, reply,
-  SPOT, and actor operations.
+  snapshots, options, enums, literal unions, and errors stay concrete or
+  structural according to normal TypeScript practice.
+- Operation builders use public contract interfaces because they hide staged
+  native request state and multipart accumulation.
 - Native addon handles, raw pointers, callback userdata, request pumps, and
   part-loop sequencing are never exposed.
+
+Do not introduce interfaces for pure DTO/value objects only for symmetry.
+`Message`, `RoutingId`, `Received`, `TopicMessage`, route results, snapshots,
+option objects, enums, literal unions, and errors remain concrete or structural
+public values.
+
+Define public TypeScript interfaces for these native-backed resources and
+roles before writing or exposing runtime classes:
+
+- `Context`.
+- Socket roles: common socket behavior, `PairSocket`, `DealerSocket`,
+  `RouterSocket`, `PubSocket`, `SubSocket`, `XPubSocket`, `XSubSocket`, and
+  `StreamSocket`.
+- Eventing roles: `MonitorSocket`, `Poller`, poll event source, `Timer`,
+  `Stopwatch`, and `AtomicCounter` when those resources are present.
+- Service roles: `Registry`, `RegistryQueryClient`, `Discovery`, `SpotNode`,
+  `Spot`, and `Actor`.
+- Operation builders: send, routed send, request, reply, publish,
+  channel send/request, SPOT send/request/reply, actor create, actor join, and
+  actor join reply builders.
+- Callback roles: stream packet handlers, monitor handlers, poll handlers,
+  SPOT dispatch handlers, route handlers, and admission handlers.
+
+The runtime class that implements one of these roles may have a private or
+unexported name, but the package-root factory and generated declarations must
+use the public contract interface name.
 
 Do not rely on undocumented deep import paths to give perf or samples faster
 access to native objects.
@@ -150,17 +318,27 @@ access to native objects.
 
 - Exported TypeScript classes, interfaces, type aliases, error types, and
   builder contracts belong in `src/zlink/contracts` or the package entrypoint.
-- Exported package functions, static helpers, convenience methods, and builder
-  helper functions belong in the contract source when callers can use them
-  directly.
+- Exported package functions, static helper types, convenience method
+  contracts, and builder helper contracts belong in the contract source when
+  callers can use them directly.
+- Factory return types and callable factory signatures belong to the public
+  contract. Factory implementation belongs in the package entrypoint or a
+  runtime factory module so contract files do not import runtime implementations.
 - JavaScript runtime implementations, native handle owners, request pumps,
   callback adapters, and part-loop helpers belong in `src/zlink/runtime`.
 - N-API bindings, native addon handles, marshalling helpers, and platform
   loading code belong in `src/zlink/runtime/native`.
 - Package exports and published `.d.ts` files must project the contract source,
   not expose runtime modules.
-- If a runtime concrete class is exported for construction, its public behavior
-  must still be described by the public contract.
+- Runtime concrete classes are construction targets behind package-root
+  factories; callers should not import runtime modules directly.
+- Do not export `src/zlink/runtime/*` from `src/zlink/contracts` or
+  `src/index.ts`. `src/index.ts` may import runtime modules only to wire
+  package-root factories. A runtime implementation type may satisfy a public
+  contract, but the exported type name should come from the contract source.
+- Package-root factories must declare contract return types explicitly. For
+  example, `createContext(): Context` returns the public contract type even
+  though it instantiates a native-backed runtime implementation.
 
 ## Contract Category Map
 
@@ -181,6 +359,184 @@ and published TypeScript declarations.
 - Enum, flag, result, and literal-union types live in the category that defines
   their meaning. Do not create an `enums` folder just to group declarations by
   syntax.
+
+## Contract File Layout
+
+The contract source must use the same classification as the
+[.NET binding blueprint](../dotnet/README.md), with TypeScript naming. Keep the same conceptual file grouping so a
+developer who knows the .NET binding can find the same public concept in Node
+quickly. The folder map is shared with .NET, but the names inside it should
+stay idiomatic TypeScript.
+
+- `core/`: `context.ts`, `zlink.ts`, `routing_id.ts`, and core option/value
+  files.
+- `messaging/`: `message.ts`, `received.ts`, `topic_message.ts`,
+  `subscription_event.ts`, and common operation payload types.
+- `sockets/`: socket interfaces, socket option types, send/request/reply
+  builder contracts, stream packet handler contracts, and socket flags.
+- `eventing/`: monitor, monitor event/status, poller, poll events, timer, and
+  event handler contracts.
+- `service/`: `registry/`, `discovery/`, and `spot/` subfolders when the
+  service surface is large enough to read better that way. Use named files
+  such as `registry.ts`, `registry_query_client.ts`, `discovery.ts`,
+  `spot_node.ts`, `spot.ts`, `actor.ts`, `spot_operations.ts`, and model files
+  grouped with their service domain.
+- `errors/`: public error classes, result domains, and error-code mapping.
+
+Avoid a single aggregate `models.ts` or runtime-export barrel for public
+resource behavior. Small DTO-like object shapes and literal unions may be
+grouped with the contract that gives them meaning, but native-backed resources
+and operation builders need named contract files.
+
+## Runtime File Layout
+
+Runtime source mirrors the runtime classification in the
+[.NET binding blueprint](../dotnet/README.md) but contains only implementation.
+Node runtime file names must use the same lower-case
+TypeScript concept names as the contract tree. Do not use a `default_` file
+prefix such as `default_context.ts` or `default_pair_socket.ts`. In this
+package, resource implementation files under `src/zlink/runtime` are already
+the native-backed implementation side of the contract/runtime split; their
+file names should describe the resource or operation they implement.
+
+- `core/`: `context.ts`, `context_options.ts`, and runtime helper functions
+  such as version/capability wrappers.
+- `handles/`: native handle owners, lifetime checks, close/dispose state, and
+  reference tracking.
+- `messaging/`: message materialization, request progress, request execution,
+  and multipart progress helpers.
+- `buffers/`: message conversion, buffer ownership, copy/borrow policy, and
+  any pooled or pinned storage helpers.
+- `sockets/`: `socket_base.ts`, `socket_options.ts`,
+  `socket_operations.ts`, and one implementation file per socket family:
+  `pair_socket.ts`, `dealer_socket.ts`, `router_socket.ts`, `pub_socket.ts`,
+  `sub_socket.ts`, `xpub_socket.ts`, `xsub_socket.ts`, and
+  `stream_socket.ts`.
+- `eventing/`: `monitor_socket.ts`, `poller.ts`, `poll_events.ts`,
+  `timer.ts`, and related event materialization helpers.
+- `options/`: option validation and native option id/value mapping shared by
+  context, sockets, and services.
+- `service/`: registry, registry query client, discovery, SPOT node, Spot,
+  Actor, topology, and service operation implementations. Use
+  `registry/`, `discovery/`, and `spot/` subfolders when the implementation is
+  large enough.
+- `errors/`: native error translation and validation helpers.
+- `native/`: native addon loading, platform lookup, and N-API binding surface.
+- `internal/`: private glue that does not fit a standard .NET runtime
+  classification. It must stay small. Do not put handle ownership, buffer
+  policy, option mapping, native declarations, or public resource behavior here
+  when a standard runtime category exists.
+
+Runtime files may import contract types, but contract files must not import
+runtime files. The package root may instantiate native-backed runtime
+implementations in factories, but it must export contract names, not runtime
+implementation modules.
+
+Category entry files should be `index.ts` barrels. During an unfinished
+refactor, existing category-name files such as `runtime/sockets/sockets.ts`,
+`runtime/service/service.ts`, and `runtime/eventing/eventing.ts` may remain
+only if they are short barrels. An aligned final tree should use `index.ts`
+barrels or no category barrel at all. Category entry files may re-export nearby
+implementation files and define factory wiring that stays private to runtime,
+but they must not contain native-backed resource class bodies, operation
+builders, or marshalling logic. If a reviewer must read a category entry file
+to understand how `RouterSocket`, `SpotNode`, or `Poller` works, the file
+split is not aligned.
+
+Runtime implementation files should be named after the resource or operation
+they implement, not after the fact that they are native-backed
+implementations. Use `router_socket.ts`, `spot_node.ts`,
+`registry_query_client.ts`, `poller.ts`, and `timer.ts`; do not use
+`default_router_socket.ts`,
+`default_spot_node.ts`, `default_registry_query_client.ts`,
+`default_poller.ts`, or similar names.
+
+Shared helpers must not become a second public implementation aggregate.
+`runtime/internal/*` may own narrow private glue such as request pumping that
+crosses several runtime categories, but it must not own the behavior of public
+resources and must not hide standard .NET runtime categories. Native handle
+ownership belongs in `runtime/handles`, buffer conversion belongs in
+`runtime/buffers`, option mapping belongs in `runtime/options`, native addon
+declarations belong in `runtime/native`, and public resource behavior belongs
+in the resource's runtime file, for example `sockets/router_socket.ts` or
+`service/spot/spot_node.ts`.
+
+Shared helper files under a category follow the same rule. A file such as
+`runtime/sockets/socket_common.ts` may hold narrow socket helper types or
+private base utilities, but it must not contain several unrelated concerns at
+once. If it contains operation builders, monitor socket behavior, routing
+helpers, marshalling helpers, and concrete resource behavior together, it has
+become a hidden aggregate and must be split into `socket_base.ts`,
+`socket_options.ts`, `socket_operations.ts`, and smaller internal helpers.
+
+The following shapes are explicit alignment failures:
+
+- `runtime/service/service.ts` contains `Registry`, `RegistryQueryClient`,
+  `Discovery`, `SpotNode`, `Spot`, and `Actor` implementations in one file,
+  even if it also re-exports those implementations.
+- `runtime/eventing/eventing.ts` contains monitor socket, poll events, poller,
+  timer, stopwatch, and counter implementations in one file, even if those
+  types are all event-related.
+- `runtime/core/context.ts` contains context, context options, and unrelated
+  runtime helper implementation in one file.
+- `runtime/core/runtime_info.ts` contains a copied implementation prelude or
+  socket/service behavior only to reach helper functions.
+- `runtime/sockets/socket_common.ts` owns operation builders, monitor socket
+  behavior, route helpers, message conversion, and base socket behavior in one
+  large file.
+- `runtime/internal/*` owns public resource behavior instead of private helper
+  mechanics.
+- `runtime/internal/*` owns handle lifetime, buffer conversion, option mapping,
+  native addon declarations, or error mapping that should be in the .NET
+  standard runtime category.
+
+## Construction Entry Points
+
+Interfaces define behavior; construction is provided by package-root factories
+and public contract methods.
+
+- `createContext()` creates the native-backed context implementation.
+- `Context.createPairSocket()`, `createDealerSocket()`,
+  `createRouterSocket()`, `createPubSocket()`, `createSubSocket()`,
+  `createXPubSocket()`, `createXSubSocket()`, and `createStreamSocket()`
+  create native-backed socket implementations.
+- `Context.createRegistry()`, `createDiscovery(...)`, and
+  `createSpotNode(...)` create service-layer implementations.
+- `Spot` handles are obtained through `SpotNode.createSpot()`,
+  `entrySpot()`, `getOrCreateSpot(...)`, or `spotLookup(...)`; direct `Spot`
+  construction is not public.
+- Actor handles are created through `SpotNode.createActor(...)`; direct Actor
+  construction is not public.
+- `createPoller()`, `createTimer()`, and `createTimer(spot)` create eventing
+  resources.
+- Package-root factory/helper functions such as version, capability, strerror,
+  proxy, sleep, and multipart cleanup helpers are public contract functions.
+  Native calls behind those functions stay in runtime modules.
+
+Direct construction of native-backed runtime classes is not part of the aligned
+contract. Factories are the stable creation surface.
+
+## Function Naming Rules
+
+Function names follow the shared binding meaning rules from `../README.md`,
+but use TypeScript spelling.
+
+- Use `camelCase` for methods and functions.
+- Use the same canonical action names as other bindings after casing:
+  `send`, `request`, `reply`, `publish`, `subscribe`, `unsubscribe`,
+  `recv`, `recvRouted`, `receiveSubscriptionEvent`, `setSendReadyHandler`,
+  `setPacketHandler`, `setDispatchHandler`, `getOrCreateSpot`,
+  `sendToChannel`, `requestToChannel`, `sendToSpot`, `requestToSpot`,
+  `connectRouterChannelPeer`, `disconnectRouterChannelPeer`, and
+  `disconnectRouterChannelPeerRid`.
+- Do not keep old aliases only for compatibility. If a pre-refactor name
+  conflicts with the canonical meaning, remove it and expose the canonical
+  TypeScript name.
+- Do not use `on...` names for handler registration. Use `set...Handler`
+  when the API stores or replaces the current handler.
+- Do not create operation-start variants such as `sendNoWait`,
+  `publishWithFlags`, or `requestAsync`. Keep one operation name and put
+  flags, timeout, callback, and async submit choices on the builder.
 
 ## Canonical Interface Rules
 
@@ -213,10 +569,8 @@ and published TypeScript declarations.
 - Message payload factories use `Message.from(...)`. The public TypeScript
   contract should not require callers to use `new Message(...)` for payload
   construction.
-- Do not add operation-start method families such as `sendNoWait`,
-  `publishWithFlags`, or `requestAsync`; keep one operation name and let the
-  builder absorb the variation. Terminal builder methods may use idiomatic
-  names such as `submitAsync`.
+- Operation-start naming follows the Function Naming Rules above. Terminal
+  builder methods may use idiomatic names such as `submitAsync`.
 
 ## Public Entry Shape
 
@@ -233,10 +587,10 @@ The package entrypoint should group the API around domain concepts.
 - Errors: typed error classes or tagged error objects preserving core result
   domains.
 
-## Target Capability Coverage
+## Required Capability Coverage
 
 The public entrypoint must cover these stable user-facing capabilities when
-the binding is aligned to the shared .NET-standard target policy.
+the binding is aligned to the shared .NET-standard policy.
 
 - Context lifecycle, options, shutdown, auto-HWM recalculation, version,
   capability, and strerror.
@@ -306,6 +660,46 @@ logical spot.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.
 - Perf meaning matches `bindings/c/perf`.
+- `src/zlink/contracts` has no import or export dependency on
+  `src/zlink/runtime`.
+- `src/index.ts` imports runtime modules only for factory wiring and does not
+  export runtime modules or runtime implementation type names.
+- Category entry files are short barrels only. They do not contain resource
+  class bodies, operation builders, marshalling logic, or callback bridges.
+- Runtime implementation files are named after resources or operations and do
+  not use `default_` filename prefixes.
+- Explicit alignment failure files listed in the Runtime File Layout section do
+  not remain in that failed shape.
+- Tests, samples, and perf do not use deep runtime imports.
+- Native-backed resources are created through package-root factories or
+  contract methods and are typed as contract interfaces.
+- Each required native-backed resource, operation builder, and callback role
+  listed in Library Shape has a public contract interface before its runtime
+  implementation class is wired into factories.
+- No old aliases, duplicate operation-start names, or deprecated wrappers are
+  kept only for compatibility.
+
+Required verification after the Node refactor. Run these commands from
+`bindings/node/`:
+
+- Run `npm run build`.
+- Run `npm run typecheck`.
+- Run `npm test`.
+- Run `npm run samples` when public examples or construction paths changed.
+- Run `npm run perf:single` and `npm run perf:multi` as smoke gates when hot
+  path, receive, send, request, poller, timer, or service behavior changed.
+- Inspect generated declarations and confirm the package root exposes contract
+  types, not runtime implementation modules.
+- Search the public surface for private imports. At minimum, check
+  `src/zlink/contracts`, `tests`, `samples`, and `perf` for imports from
+  `src/zlink/runtime`, `../runtime`, runtime handle aggregates, native addon
+  modules, or generated private files. Check `src/index.ts` separately to
+  confirm any runtime import is factory wiring only and does not appear in
+  exported declarations.
+- Confirm runtime file names do not use `default_` prefixes:
+  `find src/zlink/runtime -type f -name 'default_*'` should print nothing.
+- Confirm category entry files are short barrels, and the explicit alignment
+  failure shapes listed in Runtime File Layout are gone.
 
 ## Actor And Spot Route Results
 

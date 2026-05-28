@@ -1,408 +1,888 @@
+[English](./README.md) | [한국어](./README.ko.md)
+
 [Spec Index](../../README.md) · [Bindings Policy](../README.md)
 
 # Java Binding Implementation Blueprint
 
-This document defines the expected Java library shape. It is not an exhaustive
-list of every class or method. The concrete public contract is
-`bindings/java/src/main/java/systems/zlink/contracts/`. Service APIs use
-documented public subpackages below that path.
+This document defines the target Java binding shape. It is not an exhaustive
+method reference. The exact public member list belongs in
+`bindings/java/src/main/java/systems/zlink/contracts/` after the refactor is
+complete.
 
-A Java implementation is aligned when the `systems.zlink.contracts.*` and
-non-exported `systems.zlink.runtime.*` package trees, tests, samples, perf
-runners, and runtime behavior follow this blueprint and map the stable
-capabilities of `core/include/zlink.h` into Java-idiomatic APIs.
+The Java binding is aligned only when it uses the same architecture map as the
+.NET binding:
 
-This README is the target blueprint for aligning the Java binding to the
-shared policy in `../README.md`. Existing source or compatibility surfaces may
-lag this target until the Java alignment work lands; treat those differences as
-cleanup targets. When the binding is aligned to this README, the target
-contract becomes the acceptance standard for that work.
+- public resource behavior is expressed as contract interfaces;
+- native-backed runtime implementations live under runtime packages;
+- creation flows through public factory entrypoints;
+- DTO, value, record, enum, result, and exception types stay concrete;
+- runtime/native details do not appear in public contract signatures;
+- tests, samples, perf, and applications import only public contract packages.
 
-This binding follows the shared bindings architecture map with Java naming:
-lower-case package names express the contract/runtime roles. Java uses
-category subpackages under `systems.zlink.contracts.*` so JPMS exports,
-Javadoc, and source ownership follow the same map.
+The Java public contract classification follows the
+[.NET binding blueprint](../dotnet/README.md) as the baseline. Java does not have to
+copy every C# file literally when Java's public type rules make that awkward,
+but it must preserve the same category ownership, resource boundary, and
+operation/model grouping.
 
-## Public Contract Source
+This is a breaking target. Do not keep compatibility shims, deprecated
+wrappers, duplicate construction paths, public runtime aliases, or direct
+constructors only to preserve the old Java surface.
+
+## Source Of Truth
+
+The semantic source of truth is `core/include/zlink.h`. The shared binding
+policy is `doc/spec/bindings/README.md`. The .NET projection is the
+[.NET binding blueprint](../dotnet/README.md), and Java follows that design
+while using Java package names and Java naming conventions.
+
+The Java repository ownership boundaries are:
 
 - Public contract source:
   `bindings/java/src/main/java/systems/zlink/contracts/`.
-- Runtime implementation:
+- Native-backed runtime implementation:
   `bindings/java/src/main/java/systems/zlink/runtime/`.
-- Native bridge:
-  `bindings/java/src/main/java/systems/zlink/runtime/nativeapi/`,
-  `bindings/java/src/main/resources/native/`, and `bindings/java/native/`.
-- Public package projection: documented packages under
-  `systems.zlink.contracts`.
-- Runtime packages: `systems.zlink.runtime.*`; these packages are not public
-  API and must not be exported by JPMS.
-- Module boundary: if JPMS is used, only documented contract packages under
-  `systems.zlink.contracts.*` are exported.
-- Documentation role: this README defines the library shape and required
-  semantic coverage. The `contracts` package tree owns the exact public member
-  list. Java source and generated API docs must project it intentionally.
-
-Applications, perf, and samples must import only documented contract packages
-under `systems.zlink.contracts.*`. They must not import `systems.zlink.runtime.*`
-or native bridge classes.
-
-## Repository Layout
-
-Use these target paths consistently when changing the Java binding.
-
-- Public contract:
-  `bindings/java/src/main/java/systems/zlink/contracts/`.
-- Public service contract:
-  `bindings/java/src/main/java/systems/zlink/contracts/service/registry/`,
-  `bindings/java/src/main/java/systems/zlink/contracts/service/discovery/`,
-  and `bindings/java/src/main/java/systems/zlink/contracts/service/spot/`.
-- Runtime implementation:
-  `bindings/java/src/main/java/systems/zlink/runtime/`.
-- Native bridge/artifacts:
-  `bindings/java/src/main/java/systems/zlink/runtime/nativeapi/`,
-  `bindings/java/src/main/resources/native/`, and `bindings/java/native/`.
-- Codec extensions: `bindings/java/codec/`.
+- Native bridge and Panama/JNI downcalls:
+  `bindings/java/src/main/java/systems/zlink/runtime/nativeapi/`.
+- Native artifacts and resources:
+  `bindings/java/src/main/resources/native/` and `bindings/java/native/`.
 - Tests: `bindings/java/src/test/` and `bindings/java/tests/`.
 - Samples: `bindings/java/samples/`.
 - Perf: `bindings/java/perf/`.
 
-If the project uses JPMS, package exports must match the public contract package
-list. Java uses URL-style package naming in its source tree, so the role names
-are lower-case Java packages. Do not create `systems.zlink.Contracts` or
-`systems.zlink.Runtime` packages. Use `systems.zlink.contracts.*` and
-`systems.zlink.runtime.*` exactly as shown below. The package tree below is the
-target implementation and review structure. It is grouped by the shared
-contract categories, not by one flat package of all public Java classes.
+JPMS exports must include only documented packages under
+`systems.zlink.contracts.*`. Packages under `systems.zlink.runtime.*`,
+including `systems.zlink.runtime.nativeapi`, are implementation packages and
+must not be exported.
 
-File granularity follows the common policy in `../README.md`: keep one file
-per independent public concept or tight operation/model group. Very small
-marker, callback, enum, or pass-through helper classes should be merged into
-the nearby contract file when that makes the public shape easier to read.
+## Current Refactor Rule
+
+During the Java refactor, code may temporarily be in transition, but the target
+shape is fixed. A change moves in the right direction only if it makes one of
+these statements more true:
+
+- a native-backed resource is typed by a public contract interface;
+- a native-backed implementation moves under `systems.zlink.runtime.*`;
+- a factory returns a contract type and hides the runtime class;
+- a public contract file no longer imports `systems.zlink.runtime.*`;
+- a sample, perf runner, or test no longer imports runtime packages;
+- a native handle, raw part loop, callback trampoline, request pump, or native
+  struct mirror moves out of public contract source.
+
+Moving only a native helper while leaving the main public resource as a
+concrete contract class is not sufficient. The .NET-standard target is a
+contract/runtime split at the resource boundary, not only at the helper
+boundary.
+
+## Architecture Map
+
+Java uses lower-case package names for the same conceptual map used by .NET.
+The package names are Java-specific, but the ownership rules are the same.
+
+```text
+bindings/java/src/main/java/systems/zlink/
++-- contracts/
+|   +-- core/
+|   +-- messaging/
+|   +-- sockets/
+|   +-- eventing/
+|   +-- service/
+|   |   +-- registry/
+|   |   +-- discovery/
+|   |   +-- spot/
+|   +-- errors/
++-- runtime/
+|   +-- core/
+|   +-- messaging/
+|   +-- sockets/
+|   +-- eventing/
+|   +-- service/
+|   |   +-- registry/
+|   |   +-- discovery/
+|   |   +-- spot/
+|   +-- errors/
+|   +-- nativeapi/
+```
+
+`contracts` is the public API map. A reviewer should be able to understand all
+user-observable behavior by reading this tree and the public factories.
+
+`runtime` is the implementation map. It mirrors the Java target classification:
+`core`, `messaging`, `sockets`, `eventing`, `service`, `errors`, and Java's
+`nativeapi` equivalent of `.NET` `Runtime/Native`. It owns native handles,
+downcalls, marshalling, callback bridge state, request progress, socket
+kernels, service kernels, option mapping, and lifecycle details. Runtime
+support code such as handle lifetime, buffer conversion, and option mapping is
+kept under the owning runtime category instead of introducing extra public
+package categories.
+
+The two trees do not need a strict one-file-to-one-file mapping. They do need
+clear ownership. For every native-backed resource, there must be a public
+contract owner and a runtime implementation owner.
+
+## Public Contract Categories
+
+The Java contract categories are normative.
+
+| Package | Purpose |
+|---------|---------|
+| `systems.zlink.contracts.core` | Library entrypoint, context resource contract, routing ids, version/capability helpers, process-level helpers. |
+| `systems.zlink.contracts.messaging` | Message values, received envelopes, topic messages, subscription events, payload ownership, common message metadata. |
+| `systems.zlink.contracts.sockets` | Socket resource contracts, socket operation builders, socket options, send/recv/request/reply/publish surfaces. |
+| `systems.zlink.contracts.eventing` | Poller, poll events, monitor socket, monitor snapshots, timer resource contracts. |
+| `systems.zlink.contracts.service.registry` | Registry resource contract, registry query/filter models, registry snapshot models. |
+| `systems.zlink.contracts.service.discovery` | Discovery resource contract, discovery filters, and discovery snapshot models. |
+| `systems.zlink.contracts.service.spot` | SpotNode, Spot, Actor, route/admission handlers, actor lifecycle, and service operation builders. |
+| `systems.zlink.contracts.errors` | Public exception and typed error/result domains. |
+
+Runtime packages use the same .NET-standard classification with Java package
+names:
+
+| Package | Purpose |
+|---------|---------|
+| `systems.zlink.runtime.core` | Context implementation, context option application, runtime version/capability calls. |
+| `systems.zlink.runtime.messaging` | Message materialization, multipart progress, request progress, and request execution. |
+| `systems.zlink.runtime.sockets` | Socket kernels, socket family implementations, callback adapters, and socket operation execution. |
+| `systems.zlink.runtime.eventing` | Monitor, poller, poll event, timer, and dispatch loop implementations. |
+| `systems.zlink.runtime.service.*` | Registry, discovery, SpotNode, Spot, Actor, topology, and service operation implementations. |
+| `systems.zlink.runtime.errors` | Native errno/result conversion into public exception/result domains. |
+| `systems.zlink.runtime.nativeapi` | JNI/Panama declarations, ABI mirrors, symbol loading, and native artifact lookup. |
+
+Enum, flag, and result types live with the concept that gives them meaning.
+Do not create syntax-only packages such as `enums` or `callbacks`.
+
+## Proposed Repository Layout
+
+This is the review target for the Java binding repository layout. It keeps the
+same public contract classification as `.NET`, while using Java package names
+and Java file rules.
 
 ```text
 bindings/java/
++-- build.gradle.kts
++-- settings.gradle.kts
++-- gradle/
++-- native/
+|   +-- linux-x86_64/
+|   +-- linux-aarch64/
+|   +-- macos-x86_64/
+|   +-- macos-aarch64/
+|   +-- windows-x86_64/
 +-- src/
 |   +-- main/
 |   |   +-- java/
+|   |   |   +-- module-info.java
 |   |   |   +-- systems/
-|   |   |   |   +-- zlink/
-|   |   |   |   |   +-- contracts/
-|   |   |   |   |   |   +-- core/
-|   |   |   |   |   |   |   +-- Context.java
-|   |   |   |   |   |   |   +-- Zlink.java
-|   |   |   |   |   |   |   +-- RoutingId.java
-|   |   |   |   |   |   +-- messaging/
-|   |   |   |   |   |   |   +-- Message.java
-|   |   |   |   |   |   |   +-- Received.java
-|   |   |   |   |   |   |   +-- TopicMessage.java
-|   |   |   |   |   |   +-- sockets/
-|   |   |   |   |   |   |   +-- PairSocket.java
-|   |   |   |   |   |   |   +-- DealerSocket.java
-|   |   |   |   |   |   |   +-- RouterSocket.java
-|   |   |   |   |   |   +-- eventing/
-|   |   |   |   |   |   |   +-- MonitorSocket.java
-|   |   |   |   |   |   |   +-- Poller.java
-|   |   |   |   |   |   +-- service/
-|   |   |   |   |   |   |   +-- registry/
-|   |   |   |   |   |   |   +-- discovery/
-|   |   |   |   |   |   |   +-- spot/
-|   |   |   |   |   |   +-- errors/
-|   |   |   |   |   +-- runtime/
-|   |   |   |   |   |   +-- nativeapi/
+|   |   |       +-- zlink/
+|   |   |           +-- contracts/
+|   |   |           +-- runtime/
 |   |   +-- resources/
-|   |   |   +-- native/
-|   |   |   |   +-- linux-x86_64/
-|   |   |   |   +-- linux-aarch64/
-|   |   |   |   +-- darwin-x86_64/
-|   |   |   |   +-- darwin-aarch64/
-|   |   |   |   +-- windows-x86_64/
-|   |   |   |   +-- windows-aarch64/
+|   |       +-- native/
+|   |           +-- linux-x86_64/
+|   |           +-- linux-aarch64/
+|   |           +-- macos-x86_64/
+|   |           +-- macos-aarch64/
+|   |           +-- windows-x86_64/
 |   +-- test/
-|   |   +-- java/
-|   |   |   +-- systems/
-|   |   |   |   +-- zlink/
-+-- native/
-+-- codec/
+|       +-- java/
+|           +-- systems/
+|               +-- zlink/
+|                   +-- contract/
+|                   +-- integration/
 +-- tests/
+|   +-- run_tests.sh
+|   +-- contract/
+|   +-- integration/
+|   +-- native-loading/
 +-- samples/
+|   +-- README.md
+|   +-- basic/
+|   +-- messaging/
+|   +-- service/
+|   +-- spot/
 +-- perf/
+    +-- README.md
+    +-- run_benchmarks_multi.sh
+    +-- scenarios/
+    +-- results/
 ```
 
-The Java binding uses documented subpackages under `systems.zlink.contracts`
-for the shared categories. This keeps public contract ownership clear while
-keeping native and marshalling helpers in the non-exported runtime package.
-Do not flatten category-owned public classes into one root package just to make
-the Java tree shorter.
+`contracts` is the only public Java API tree. `runtime`, `native`, and
+`src/main/resources/native` are implementation and packaging trees. Samples,
+perf, and application-facing tests must import `systems.zlink.contracts.*`,
+not `systems.zlink.runtime.*`.
 
-The category table below is the Java package ownership map for the shared
-contract categories.
+### Public Contract Layout
 
-| Contract category | Java package path |
-|---|---|
-| Core | `systems/zlink/contracts/core` |
-| Messaging | `systems/zlink/contracts/messaging` |
-| Sockets | `systems/zlink/contracts/sockets` |
-| Eventing | `systems/zlink/contracts/eventing` |
-| Service | `systems/zlink/contracts/service` and its service subpackages |
-| Errors | `systems/zlink/contracts/errors` |
-| Runtime/Core | `systems/zlink/runtime` or `systems/zlink/runtime/core` |
-| Runtime/Messaging | `systems/zlink/runtime` or `systems/zlink/runtime/messaging` |
-| Runtime/Sockets | `systems/zlink/runtime` or `systems/zlink/runtime/sockets` |
-| Runtime/Eventing | `systems/zlink/runtime` or `systems/zlink/runtime/eventing` |
-| Runtime/Service | `systems/zlink/runtime` or `systems/zlink/runtime/service` |
-| Runtime/Errors | `systems/zlink/runtime` or `systems/zlink/runtime/errors` |
-| Runtime/Native | `systems/zlink/runtime/nativeapi` |
+This tree is the Java projection of the contract categories defined by the
+[.NET binding blueprint](../dotnet/README.md). Do not copy the .NET file list
+here. When one .NET contract owner contains several public C# types, Java may
+represent that owner as a directory with the same group name. The directory
+then contains one public Java type per file.
 
-Enum, flag, and result classes belong to the category that defines their
-meaning. Do not create a separate Java package just to group declarations by
-syntax.
+```text
+systems/zlink/contracts/
++-- core/
+|   +-- AtomicCounter.java
+|   +-- Context.java
+|   +-- ContextOptions.java
+|   +-- RoutingId.java
+|   +-- Zlink.java
+|   +-- ZlinkStopwatch.java
+|   +-- ZlinkThread.java
++-- errors/
+|   +-- Errors/
+|       +-- ZlinkException.java
+|       +-- ZlinkError.java
+|       +-- ZlinkErrorCode.java
+|       +-- SubmitException.java
+|       +-- RecvException.java
+|       +-- RequestException.java
+|       +-- ConfigException.java
++-- eventing/
+|   +-- EventEnums/
+|   |   +-- PollEvents.java
+|   |   +-- MonitorEvents.java
+|   |   +-- TimerState.java
+|   +-- Monitor.java
+|   +-- PollEvent.java
+|   +-- Poller.java
+|   +-- Timer.java
+|   +-- ZlinkPoll.java
++-- messaging/
+|   +-- Message.java
+|   +-- MessageOperations/
+|   |   +-- MessageSendOperation.java
+|   |   +-- MessageRequestOperation.java
+|   +-- OperationContracts/
+|   |   +-- SendOperation.java
+|   |   +-- RequestOperation.java
+|   |   +-- ReplyOperation.java
+|   |   +-- SubmitResult.java
+|   +-- Received.java
+|   +-- SubscriptionEvent.java
+|   +-- TopicMessage.java
++-- service/
+|   +-- discovery/
+|   |   +-- Discovery.java
+|   +-- registry/
+|   |   +-- Registry.java
+|   |   +-- RegistryModels/
+|   |   |   +-- RegistryEntry.java
+|   |   |   +-- RegistrySnapshot.java
+|   |   +-- RegistryQueryClient.java
+|   +-- spot/
+|       +-- Actor.java
+|       +-- ActorJoinOperations/
+|       |   +-- ActorJoinOperation.java
+|       |   +-- ActorLeaveOperation.java
+|       +-- ActorManagementOperations/
+|       |   +-- ActorCreateOperation.java
+|       |   +-- ActorLookupOperation.java
+|       |   +-- ActorLocationOperation.java
+|       +-- ServiceEnums/
+|       |   +-- ServiceState.java
+|       |   +-- DispatchResult.java
+|       +-- Spot.java
+|       +-- SpotDispatchInfo.java
+|       +-- SpotNode.java
+|       +-- SpotNodeModels/
+|       |   +-- SpotNodeInfo.java
+|       |   +-- SpotLookupResult.java
+|       +-- TopologyEnums/
+|           +-- TopologyRole.java
+|           +-- TopologyState.java
++-- sockets/
+    +-- Socket.java
+    +-- StreamSocket.java
+    +-- MessageSocketContracts/
+    |   +-- MessageSocket.java
+    |   +-- PairSocket.java
+    |   +-- DealerSocket.java
+    +-- PubSubSocketContracts/
+    |   +-- PubSocket.java
+    |   +-- SubSocket.java
+    |   +-- XPubSocket.java
+    |   +-- XSubSocket.java
+    +-- RoutedSocketContracts/
+    |   +-- RoutedSocket.java
+    |   +-- RouterSocket.java
+    |   +-- RoutedSendOperation.java
+    |   +-- RoutedRequestOperation.java
+    |   +-- RoutedReplyOperation.java
+    +-- SocketEnums/
+    |   +-- SocketType.java
+    |   +-- SendFlags.java
+    |   +-- RecvFlags.java
+    |   +-- BindResult.java
+    +-- SocketOptionFacades/
+        +-- SocketOptions.java
+        +-- SendOptions.java
+        +-- RecvOptions.java
+        +-- LingerOptions.java
+```
 
-If a public class appears under `systems.zlink.contracts.*`, reviewers must be
-able to explain which contract category it belongs to from this table. If a
-class exists only to hold JNI/Panama calls, raw handles, native struct mirrors,
-marshalling, request progress, part loops, or callback trampolines, it must
-stay under `systems.zlink.runtime.*`, and JPMS must not export that package.
+The group directories are not arbitrary subpackages. They are Java projections
+of the contract groups defined by the
+[.NET binding blueprint](../dotnet/README.md).
 
-## API Change Workflow
+Java public names should still be Java names. The C# `I` prefix is not copied:
+`.NET` `ISocket.cs` maps to Java `Socket.java`, and `IStreamSocket.cs` maps to
+Java `StreamSocket.java`.
 
-When mapping a new core capability:
+### Runtime Layout
 
-1. Choose the shared contract category that owns the domain.
-2. Add a Java class, record, interface, builder, or exception using Java
-   conventions.
-3. Update the public `contracts` package and JPMS projection when the new API
-   is public.
-4. Keep native handles, downcalls, callback userdata, and part loops inside
-   `runtime` packages.
-5. Add tests that import only public packages.
-6. Update samples and perf only when public user workflows or measurement
-   behavior changes.
-7. If a runtime package becomes necessary for users, redesign the public facade
-   instead of exporting the runtime package.
+The runtime tree mirrors the public contract tree only where that helps a
+reader find the implementation owner. It is not public API, and JPMS must not
+export it.
 
-## Library Shape
+```text
+systems/zlink/runtime/
++-- core/
+|   +-- NativeContext.java
+|   +-- NativeZlink.java
+|   +-- ContextOptionApplier.java
++-- messaging/
+|   +-- NativeMessageStorage.java
+|   +-- MessageMaterializer.java
+|   +-- MultipartCursor.java
+|   +-- RequestProgressPump.java
++-- sockets/
+|   +-- NativeSocket.java
+|   +-- NativePairSocket.java
+|   +-- NativeDealerSocket.java
+|   +-- NativeRouterSocket.java
+|   +-- NativePubSocket.java
+|   +-- NativeSubSocket.java
+|   +-- NativeXPubSocket.java
+|   +-- NativeXSubSocket.java
+|   +-- NativeStreamSocket.java
+|   +-- SocketKernels.java
+|   +-- RouterReceiveRuntime.java
+|   +-- RouterRequestRuntime.java
++-- eventing/
+|   +-- NativeMonitor.java
+|   +-- NativePoller.java
+|   +-- NativeTimer.java
+|   +-- PollEventDecoder.java
++-- service/
+|   +-- discovery/
+|   |   +-- NativeDiscovery.java
+|   +-- registry/
+|   |   +-- NativeRegistry.java
+|   |   +-- RegistryModelDecoder.java
+|   +-- spot/
+|       +-- NativeActorRuntime.java
+|       +-- NativeSpot.java
+|       +-- NativeSpotNode.java
+|       +-- SpotDispatchRuntime.java
++-- errors/
+|   +-- NativeErrorMapper.java
+|   +-- NativeResult.java
++-- nativeapi/
+    +-- Native.java
+    +-- NativeLayouts.java
+    +-- NativeMsg.java
+    +-- NativeLibraryLoader.java
+```
 
-The Java binding should look like a Java library, not a C header translated
-method by method.
+Runtime support files are allowed only when they hide real implementation
+complexity inside one of the target runtime categories. They are not a
+substitute for resource owners such as `NativeRouterSocket`, `NativeSpotNode`,
+or `NativePoller`.
 
-- Resource types implement `AutoCloseable`.
-- Public resource abstractions may use interfaces when they let callers depend
-  on behavior instead of implementation classes.
-- Concrete values use records or final classes where appropriate.
-- Exceptions represent typed zlink error domains.
-- Builders are required for multipart send, publish, request, reply, SPOT, and
-  actor operations so native request state stays hidden.
-- JNI, Panama, native handles, callback userdata, part-loop sequencing, and
-  request progress helpers stay inside non-exported runtime packages.
+## Contract Interface Rule
 
-Do not introduce interfaces for pure DTOs only for symmetry. Messages,
-routing ids, received metadata, topic messages, result values, snapshots, and
-options should remain concrete unless Java callers gain a real abstraction.
+Only native-backed resource behavior and staged operation behavior become
+interfaces. Value-like types stay concrete.
 
-## Contract / Runtime Placement Rules
+### Must Be Public Interfaces
 
-- Public interfaces, records/classes, enums, exceptions, and builder contracts
-  belong in `systems.zlink.contracts` or a documented service contract
-  subpackage.
-- Public static helpers, factory facades, package-level utility classes, and
-  builder convenience helpers belong in `contracts` packages when callers can
-  use them directly.
-- Runtime implementation classes, handle owners, request pumps, callback
-  adapters, and part-loop helpers belong in `systems.zlink.runtime.*`.
-- JNI/Panama downcalls, native struct mirrors, marshalling helpers, and
-  platform loading code belong in `systems.zlink.runtime.nativeapi` or the
-  native artifact/resource area.
-- Public contract packages must project the contract categories, not expose
-  runtime packages.
-- If a runtime concrete class is public for construction, its public behavior
-  must still be described by the public contract.
+These are resource contracts. Runtime implementations must implement these
+interfaces and must be created by factories.
 
-## Contract Category Map
+- `Context`
+- `Socket`
+- `PairSocket`
+- `DealerSocket`
+- `RouterSocket`
+- `PubSocket`
+- `SubSocket`
+- `XPubSocket`
+- `XSubSocket`
+- `StreamSocket`
+- `MonitorSocket`
+- `Poller`
+- `Timer`
+- `Registry`
+- `Discovery`
+- `SpotNode`
+- `Spot`
+- Actor resource contracts when the Java surface exposes actor handles or actor
+  lifecycle resources as native-backed handles
 
-The public `systems.zlink.contracts` package and documented service
-subpackages are the source ownership map for public Java APIs.
+These are operation contracts because they hide staged multipart state, request
+state, callback state, or native submit state:
 
-- `Core/`: context, context options, routing id, version/capability helpers, and
-  utility contracts.
-- `Messaging/`: message, received metadata, topic messages, subscription events,
-  stream packet callbacks, and builder payload helpers.
-- `Sockets/`: socket behavior, socket families, typed options, request/reply,
-  and publish/subscribe surfaces.
-- `Eventing`: monitor, monitor snapshot/event, poller, poll event, timer, and
-  public poll helpers.
-- `Service/`: registry, discovery, SPOT node, SPOT handle, topology models,
-  actor refs, actor lifecycle, and operation builders.
-- `Errors/`: exception and typed error-result domains.
-- Enum, flag, and result classes belong to the category that defines their
-  meaning.
+- send operation
+- routed send operation
+- publish operation
+- request operation
+- reply operation
+- SPOT send/request/reply operation
+- Actor create/join/reply/location operation
+- stream actor bind/unbind/send operation
 
-## Canonical Interface Rules
+Handler and callback roles may be interfaces or functional interfaces when
+callers provide behavior to the runtime:
 
-- Data-plane `recv`, routed recv, `subscribe`, and subscription-event receive
-  fill caller-provided `Received`, `TopicMessage`, or `SubscriptionEvent`
-  objects and return `boolean`.
-- Send, routed send, publish, request, reply, SPOT operations, and Actor
-  location/session operations return staged builders.
-- Builder start methods take only the target identity, topic, channel, routing
-  id, or request sequence. Payload, flags, timeout, callback, and async submit
-  choices are builder steps.
-- SPOT channel-targeted operations use `sendToChannel(...)` and
-  `requestToChannel(...)`. SPOT topic publish stays `publish(topic)`.
-- Do not add single-payload shortcut overloads with the same name as an
-  operation start method. `send(message)`, `send(routingId, message)`,
-  `publish(topic, message)`, `sendToChannel(channel, message)`, and
-  `sendToSpot(..., message)` are not public contract members; callers use
-  `send(...).message(message).submit()`.
-- Multipart payload is accumulated by repeated `message(...)` calls.
-  `messages(...)` convenience is allowed when it delegates to the same builder
-  contract and is declared in the public package category.
-- Dealer sockets must not expose protocol envelope helpers such as
-  `requestFrame(...)` or `reply(requestToken, parts)`. A dealer can start a
-  request through `request()`, but it cannot reply to an arbitrary token
-  because it has no API-level peer routing id.
-- Java `Message` input APIs must copy into message-owned storage or allocate
-  native-owned storage. Do not expose `wrapDirect`, `wrapNative`, or any
-  `zlink_msg_init_data(..., NULL, NULL)` send fast path for Java-managed
-  buffers.
-- Message payload factories use `Message.from(...)` overloads. Source-type
-  suffixes such as `copyOf`, `copyOfUtf8`, or `fromBytes` are not part of the
+- socket receive handler
+- send-ready handler
+- stream packet handler
+- monitor handler
+- timer handler
+- SPOT dispatch handler
+- actor lifecycle handler
+- request callback
+- reply callback
+
+### Must Stay Concrete
+
+Do not create interfaces for these only for symmetry:
+
+- `Message`
+- `Received`
+- `TopicMessage`
+- `SubscriptionEvent`
+- `RoutingId`
+- options and filter value objects
+- route result models
+- snapshot models
+- actor references
+- enum/flag/result types
+- exceptions
+
+These are values or result objects. They may own native-backed storage
+internally, but callers do not need substitutable behavior for them.
+
+## Factory Entry Points
+
+Construction is public only through contract factories. Direct construction of
+runtime implementations is not part of the target API.
+
+### Root Factory
+
+`Zlink` belongs in `systems.zlink.contracts.core`.
+
+Required root factory methods:
+
+- `Zlink.createContext()`
+- `Zlink.createPoller()`
+- `Zlink.createTimer()`
+- `Zlink.createTimer(Spot spot)`
+
+`Zlink` may also own public static helpers such as version, capability,
+strerror, proxy, shutdown, sleep, and auto-HWM recalculation. Those helpers may
+delegate to runtime/native code, but their public signatures must not mention
+runtime packages or native bridge types.
+
+### Context Factories
+
+`Context` is a public interface in `systems.zlink.contracts.core`.
+
+Required context factory methods:
+
+- `createPairSocket()`
+- `createDealerSocket()`
+- `createRouterSocket()`
+- `createPubSocket()`
+- `createSubSocket()`
+- `createXPubSocket()`
+- `createXSubSocket()`
+- `createStreamSocket()`
+- `createRegistry()`
+- `createDiscovery(...)`
+- `createSpotNode(...)`
+
+Every factory returns a public contract interface or concrete value type. It
+never returns `NativeContext`, `NativeRouterSocket`, `NativeSpotNode`, or any
+other runtime class.
+
+### Service Factories
+
+SPOT and Actor handles are created only by service methods on `SpotNode` or
+other contract-owned service objects.
+
+Allowed SPOT construction patterns:
+
+- `SpotNode.createSpot(...)`
+- `SpotNode.entrySpot()`
+- `SpotNode.getOrCreateSpot(...)`
+- `SpotNode.spotLookup(...)`
+
+Allowed Actor construction patterns:
+
+- `SpotNode.createActor(...)`
+- actor factory/service methods explicitly owned by `SpotNode` or `Spot`
+
+Direct public constructors for `Spot`, `SpotNode`, `Actor`, or runtime service
+classes are not part of the target contract.
+
+## Contract File Requirements
+
+Contract files must be readable without knowing Panama, JNI, native handles,
+native struct layouts, callback userdata, request pump threads, or raw
+`*_part` loops.
+
+Contract files may import:
+
+- other `systems.zlink.contracts.*` packages;
+- JDK types needed for public signatures, such as `Duration`,
+  `AutoCloseable`, `CompletableFuture`, `Optional`, `List`, records, or
+  functional interfaces;
+- third-party public value types only when they are intentionally part of the
   public contract.
-- Do not add operation-start method families such as `sendNoWait`,
-  `publishWithFlags`, or `requestAsync`; keep one operation name and let the
-  builder absorb the variation. Terminal builder methods may use idiomatic
-  names such as `submitAsync`.
 
-## Package Layout
+Contract files must not import:
 
-The public package layout should make API ownership easy to inspect without
-forcing package-private native helpers into the public surface.
+- `systems.zlink.runtime.*`;
+- `systems.zlink.runtime.nativeapi.*`;
+- `java.lang.foreign.*` for public native/Panama details;
+- runtime implementation classes;
+- native handle wrappers;
+- marshalling helpers;
+- request progress helpers.
 
-- `systems.zlink.contracts.core`: core public API, routing id, version, and
-  capability helpers.
-- `systems.zlink.contracts.messaging`: message, receive metadata, topic, and
-  subscription event contracts.
-- `systems.zlink.contracts.sockets`: socket families, options, flags, request,
-  reply, publish, subscribe, and stream contracts.
-- `systems.zlink.contracts.eventing`: monitor, poller, timer, and event
-  contracts.
-- `systems.zlink.contracts.errors`: public exception, error code, and result
-  contracts shared across domains.
-- `systems.zlink.contracts.service.registry`: registry public API and registry
-  snapshot models.
-- `systems.zlink.contracts.service.discovery`: discovery public API and topology
-  models.
-- `systems.zlink.contracts.service.spot`: SPOT node, SPOT handle, SPOT
-  topology, actor refs, actor lifecycle, and SPOT operation builders.
-- `systems.zlink.runtime.*`: non-exported implementation packages.
-- `systems.zlink.runtime.nativeapi`: native downcalls, handle ownership,
-  callback trampolines, request pumps, converters, and native struct mirrors.
+The only exception is a public factory facade such as `Zlink` if Java chooses
+direct static construction wiring. Even then, runtime references must be
+private implementation details in method bodies and must not appear in public
+signatures. Prefer a small runtime factory bridge when that keeps the contract
+file clean.
 
-If a package is not exported or documented, it is not public contract even if
-Java visibility is broader for implementation reasons.
+## Runtime Implementation Requirements
 
-## Target Capability Coverage
+Runtime classes implement public contract interfaces. They must not introduce
+extra user-observable behavior that cannot be found from the contract
+interface, concrete value type, or documented factory.
 
-The Java public contract must cover these stable user-facing capabilities
-when the binding is aligned to the shared .NET-standard target policy.
+Runtime classes may be `public` for Java package or JPMS mechanics, but they
+are not public API because `systems.zlink.runtime.*` is not exported. Samples,
+perf, applications, and contract tests must not import them.
 
-- Context lifecycle, context options, version, capability, strerror, shutdown,
-  and auto-HWM recalculation.
-- Message ownership, multipart payloads, routing ids, received metadata, topic
-  messages, subscription events, and stream packet callbacks.
-- Pair, dealer, router, pub, sub, xpub, xsub, and stream sockets.
-- Common options, typed socket options, TLS, bind/connect/disconnect, routing
-  id, channel name, request/reply, publish/subscribe, and callback surfaces.
-- Monitor, monitor event/snapshot, poller, poll event, timer, and timer/SPOT
-  integration.
-- Registry, discovery, SPOT node, SPOT handle, topology snapshots, actor refs,
-  actor operations, actor lifecycle, and stream actor binding.
-- Typed exceptions that preserve core submit/request/recv/handler/close/bind/
-  connect/config result meanings.
+Runtime owns:
 
-Raw `*_part` loops, callback userdata, and native handle helpers are internal
-implementation primitives unless the public Java API intentionally exposes a
-typed facade for the same capability.
+- native handle lifecycle;
+- close and idempotent cleanup rules;
+- native downcalls;
+- native struct mirrors;
+- message marshalling;
+- request progress pumps;
+- callback trampolines;
+- receive cursors;
+- part-loop sequencing;
+- native error mapping;
+- typed option mapping;
+- native resource adoption and release;
+- service snapshots decoded from native data.
+
+If a runtime implementation needs package-private access to a concrete value
+object, use a narrow internal bridge owned by runtime/nativeapi. Do not expose
+native handles or internal fields in the public contract.
+
+## Socket Contract Shape
+
+Socket contracts are interfaces. They should expose behavior, not native
+transport mechanics.
+
+Common socket behavior belongs in `Socket`:
+
+- `bind`
+- `connect`
+- `unbind`
+- `disconnect`
+- `disconnectRid`
+- `attachDiscovery`
+- `setChannelName`
+- `getChannelName`
+- `options`
+- `setSendReadyHandler`
+- `close`
+
+Typed socket contracts add only capabilities that are meaningful for that
+socket type:
+
+- `PairSocket`: send and recv.
+- `DealerSocket`: send, recv, request.
+- `RouterSocket`: routed send, routed recv, request, reply, SPOT routing.
+- `PubSocket`: publish.
+- `SubSocket`: subscribe and subscription event receive.
+- `XPubSocket`: publish plus subscription event receive.
+- `XSubSocket`: send and subscription control as defined by the public
+  binding contract.
+- `StreamSocket`: stream send/recv, packet handler, actor gateway, bound actor
+  operations.
+
+Do not expose protocol envelope helpers, request tokens, raw native part
+submission, callback userdata, or native routing-id pointers.
+
+## Operation Builder Shape
+
+Operation builders are public interfaces because they hide mutable staged
+state. They live in the category that owns the operation.
+
+Builder start methods take only the target identity:
+
+- `send()`
+- `send(routingId)`
+- `publish(topic)`
+- `request()`
+- `request(routingId)`
+- `reply(routingId, requestSequence)`
+- `sendToSpot(nodeRid, spotRid)`
+- `requestToSpot(nodeRid, spotRid)`
+- `replyToSpot(nodeRid, spotRid, requestSequence)`
+- `sendBoundActor(sessionRid, actorId)`
+
+Payload, flags, timeout, callback, and async behavior are builder steps.
+Representative terminal methods:
+
+- `submit()`
+- `submitAsync()`
+- `submit(callback)`
+
+Do not add separate operation-start families such as `sendNoWait`,
+`sendWithFlags`, `requestAsync`, `publishWithFlags`, or direct
+`send(message)` shortcuts. Use one operation name and let the builder absorb
+the variation.
+
+## Messaging Values
+
+`Message`, `Received`, `TopicMessage`, and `SubscriptionEvent` are concrete
+contract types.
+
+`Message`:
+
+- owns or shares message payload according to documented ownership rules;
+- exposes Java-friendly factories such as `Message.from(...)`;
+- must not expose raw `wrapNative`, `wrapDirect`, native pointer, or borrowed
+  Java-buffer send paths as public API.
+
+`Received`:
+
+- is reusable caller-provided receive storage;
+- owns received message parts until closed or adopted;
+- may carry routing id, SPOT routing id, request sequence, and reply sender
+  metadata;
+- does not expose native receive cursors or native handles.
+
+`TopicMessage` and `SubscriptionEvent`:
+
+- are concrete result/storage types;
+- are filled through public receive/subscribe APIs;
+- do not expose raw native topic buffers.
+
+## Receive And Subscribe Shape
+
+Data-plane receive APIs use caller-provided storage and return `boolean`.
+
+Examples of target shape:
+
+```java
+Received received = new Received();
+boolean ok = router.recv(received, RecvFlags.DONT_WAIT);
+```
+
+No-data is a normal `false` result for caller-provided no-wait receive.
+Hard receive failures throw the documented exception type.
+
+SPOT readable dispatch events are readiness notifications. Callers drain the
+corresponding receive API until no-data.
+
+Service control/admission receive APIs may use `Optional`, nullable, or typed
+result-return forms when those are clearer than reusable data-plane storage.
+They still must distinguish no-data from hard receive failure.
+
+## Handler Registration Naming
+
+Handler registration names describe registration, not event occurrence.
+
+- Use `set...Handler` for a single active handler per subject.
+- Calling the same setter again replaces the handler.
+- Use `add...Handler` or `register...Handler` only when the public contract
+  intentionally supports multiple active handlers.
+- Do not use `on...` as the canonical public registration name.
+
+Canonical Java names:
+
+- `setSendReadyHandler`
+- `setPacketHandler`
+- `setDispatchHandler`
+- `recvRouted`
+- `recvActorLifecycle`
+
+## Error And Result Policy
+
+Java public errors preserve core result-domain meaning but do not expose native
+errno as the primary user API.
+
+- Fixed-size boundary values are validated before native calls.
+- Routing ids, actor ids, endpoints, channel names, and topics are not silently
+  truncated.
+- `SubmitException`, `RecvException`, `RequestException`,
+  `ConfigException`, and other typed exceptions preserve the relevant public
+  result values.
+- Native errno and platform-specific error text may appear as diagnostic
+  detail, not as the main public contract.
+
+## Spot And Actor Contract Shape
+
+SPOT service contracts live under `systems.zlink.contracts.service.spot`.
+
+`SpotNode` is the owner for:
+
+- node lifecycle;
+- service registration;
+- peer/channel configuration;
+- route lookup;
+- spot creation and lookup;
+- actor creation;
+- actor route lookup;
+- actor lifecycle receive;
+- SPOT dispatch receive.
+
+`Spot` is the handle contract for SPOT-level send/request/reply, publish,
+dispatch, actor operation entrypoints, and timer integration.
+
+Actor and SPOT route results are concrete contract models:
+
+- `ActorRoute` preserves resolved Actor ref, Actor node RID, current Spot RID,
+  and current Spot kind.
+- `SpotRoute` preserves Spot RID, owner node RID, and Spot kind.
+- `SpotKind` distinguishes Entry Spot from user Spot.
+- Invalid kind is not a successful route result.
+
+Java must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
+Callers compose `Discovery.resolveActor()` or `Discovery.resolveSpot()` with
+existing SPOT routed APIs.
 
 ## Spot Get-Or-Create
 
 Java exposes `SpotNode.getOrCreateSpot(RoutingId)`. It maps directly to
-`zlink_spot_node_spot_get_or_new(...)`; it must not be implemented by composing
-`spotLookup` and `createSpot`.
+`zlink_spot_node_spot_get_or_new(...)`; it must not be implemented by
+composing `spotLookup` and `createSpot`.
 
-The method returns a concrete result containing the caller-owned `Spot` facade
-and a `created` boolean. `created` is `true` only for the call that created the
-logical spot.
-
-## Receive And Subscribe Shape
-
-Java receive APIs should avoid unnecessary allocation while staying idiomatic.
-
-- Data-plane receive and subscribe APIs must use caller-provided result objects
-  for reusable storage.
-- No-data must be distinguishable from hard receive failure.
-- Hard receive failures raise the documented zlink exception type.
-- SPOT readable dispatch events are readiness notifications. Callers drain the
-  corresponding receive API until no-data.
-- Service control/admission receive paths such as Actor join request receive may
-  use `Optional`, nullable, or typed result-return forms when they are clearer
-  than reusable data-plane storage. They must still distinguish no-data from hard
-  receive failure.
-
-## Error And Validation Policy
-
-- Validate fixed-size native boundary values before calling core.
-- Do not silently truncate routing ids, actor ids, endpoints, channel names, or
-  topics.
-- Preserve core result-domain meaning in Java exceptions and result values.
-- Do not expose native errno as the primary public error API.
-
-## Performance Policy
-
-- Hot paths must not use reflection, dynamic method lookup, classpath scanning,
-  avoidable allocation, avoidable buffer copies, hidden waits, sleeps, busy
-  waits, broad locks, or thread joins.
-- Callback stub or method-handle setup may happen during registration, not in
-  the per-message processing loop.
-- Native bridge code should materialize Java values directly from the core
-  part substrate.
-- Perf, samples, and tests use exported public packages only.
-
-## Implementation Checklist
-
-- Exported packages cover all public behavior.
-- Internal packages do not leak through public signatures.
-- Resource classes close deterministically.
-- DTOs and records remain concrete.
-- Public static helpers and builder convenience methods are declared in public
-  packages, not only in runtime helpers.
-- Receive/subscription semantics match the shared binding policy.
-- Service control/admission receive exceptions are documented where they differ
-  from data-plane caller-provided storage.
-- Perf measurement meaning matches `bindings/c/perf`.
-
-## Actor And Spot Route Results
-
-Java exposes Actor and Spot route lookup results through public contract
-classes.
-
-- `ActorRoute` preserves the resolved Actor ref, Actor node RID, current Spot
-  RID, and current Spot kind.
-- `SpotRoute` preserves Spot RID, owner node RID, and Spot kind.
-- `SpotKind` distinguishes Entry Spot from user Spot. Invalid kind is not a
-  successful route result.
-- SpotNode snapshot entries expose the same Spot kind/current Spot fields as the
-  core snapshots.
-
-Java must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
-Callers compose `Discovery.resolveActor()` or `Discovery.resolveSpot()` with
-the existing Spot routed APIs.
+The method returns a concrete result containing the caller-owned `Spot`
+contract and a `created` boolean. `created` is `true` only for the call that
+created the logical spot.
 
 ## SpotNode Router Channel Peers
 
-Java exposes router channel peer wiring on the public SpotNode contract:
-`connectRouterChannelPeer(channelName, endpoint)`,
-`disconnectRouterChannelPeer(channelName, endpoint)`,
-`disconnectRouterChannelPeerRid(channelName, peerRid)`, and
-`attachSpotRouteChannelDiscovery(channelName, discovery)`. The implementation
-maps these methods to the matching native core APIs and uses the established
-Java exception mapping.
+Java exposes router channel peer wiring on the public `SpotNode` contract:
+
+- `connectRouterChannelPeer(channelName, endpoint)`
+- `disconnectRouterChannelPeer(channelName, endpoint)`
+- `disconnectRouterChannelPeerRid(channelName, peerRid)`
+- `attachSpotRouteChannelDiscovery(channelName, discovery)`
+
+The runtime maps these methods to the matching native core APIs and uses the
+established Java exception mapping.
+
+## Performance Policy
+
+Hot paths must not use reflection, dynamic method lookup, classpath scanning,
+avoidable allocation, avoidable buffer copies, hidden waits, sleeps, busy
+waits, broad locks, or thread joins.
+
+Callback stub and method-handle setup may happen during registration, not in
+the per-message processing loop.
+
+Native bridge code should materialize Java values directly from core receive
+substrates. Public contract code should not contain raw native receive loops.
+
+Perf, samples, and tests use exported public contract packages only.
+
+## Refactor Workflow
+
+Use this order when aligning the Java binding:
+
+1. Define the public resource interfaces under `systems.zlink.contracts.*`.
+2. Keep value/model/result/exception types concrete in their contract
+   category.
+3. Move native-backed concrete resource classes to `systems.zlink.runtime.*`
+   and rename them with implementation-oriented names such as `NativeContext`
+   or `NativeRouterSocket`.
+4. Make runtime classes implement the contract interfaces.
+5. Move factory entrypoints to public contract types and make them return
+   contract interfaces.
+6. Remove direct public constructors for native-backed resources.
+7. Move native handles, Panama/JNI calls, callback trampolines, request pumps,
+   marshalling helpers, and part loops into runtime/nativeapi or runtime
+   support classes.
+8. Update samples, perf, tests, and documentation examples to import only
+   `systems.zlink.contracts.*`.
+9. Remove compatibility aliases and deprecated wrappers that preserve the old
+   direct-concrete shape.
+10. Verify JPMS exports expose only contract packages.
+
+Do not start by only extracting helper classes from concrete contract
+resources. That hides implementation details but leaves the wrong public
+resource design in place.
+
+## Implementation Checklist
+
+The Java binding is aligned only when all items are true:
+
+- `Context`, sockets, eventing resources, registry, discovery, SpotNode, Spot,
+  and Actor native-backed resources are public contract interfaces.
+- Runtime native-backed implementations live under `systems.zlink.runtime.*`.
+- Factory entrypoints return contract interfaces and hide runtime class names.
+- Runtime packages are not JPMS-exported.
+- Contract files, except narrowly justified factory wiring, do not import
+  `systems.zlink.runtime.*`.
+- Public signatures do not mention native handles, Panama memory segments,
+  native bridge types, callback userdata, request pumps, or raw part loops.
+- DTO/value/record/enum/result/exception types remain concrete.
+- Operation builders are public contracts and hide staged state.
+- Samples, perf, tests, and applications import only
+  `systems.zlink.contracts.*`.
+- No direct constructors for native-backed resources remain as public
+  construction paths.
+- No compatibility wrappers, old aliases, or deprecated duplicate operation
+  names remain.
+- Public contract package and file layout matches the category map in this
+  document.
+
+## Verification
+
+Run verification from `bindings/java/` after the refactor.
+
+Required baseline:
+
+- `./gradlew build`
+- `./tests/run_tests.sh`
+
+Run sample verification when construction paths, public examples, or resource
+lifecycles change:
+
+- `./samples/run_samples.sh`
+
+Run perf smoke gates when send, receive, request, poller, timer, service, or
+hot-path behavior changes:
+
+- `./perf/single/run_benchmarks.sh`
+- `./perf/multi/run_benchmarks.sh`
+
+Required structural searches:
+
+```sh
+rg -n "exports systems\\.zlink\\.runtime" src/main/java/module-info.java
+rg -n "import systems\\.zlink\\.runtime\\." src/test samples perf -g'*.java'
+rg -n "import systems\\.zlink\\.runtime\\." src/main/java/systems/zlink/contracts -g'*.java'
+rg -n "java\\.lang\\.foreign|MemorySegment|Native[A-Za-z]*|RequestProgressPump" \
+  src/main/java/systems/zlink/contracts -g'*.java'
+```
+
+The first three searches must return no public-surface leaks. The last search
+may only return intentionally concrete value internals after review; it must
+not show public resource interfaces or operation contracts depending on native
+bridge details.

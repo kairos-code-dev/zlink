@@ -12,15 +12,29 @@ runtime tree, public export projection, rustdoc, tests, samples, perf runners,
 and runtime behavior follow this blueprint and map stable `core/include/zlink.h`
 capabilities into Rust-idiomatic APIs.
 
-This README is the target blueprint for aligning the Rust binding to the shared
-policy in `../README.md`. Existing modules, re-exports, or compatibility
-surfaces may lag this target until the Rust alignment work lands; treat those
-differences as cleanup targets. When the binding is aligned to this README, the
-target contract becomes the acceptance standard for that work.
+This README describes the completed Rust binding shape after it is aligned to
+the shared policy in `../README.md`, and it is also the guide for Rust
+refactoring work. During the refactor, use this document to decide where each
+public contract, runtime implementation, native bridge helper, test, sample,
+and perf import belongs. Once the Rust binding is declared aligned, source
+layout, public re-exports, rustdoc, tests, samples, perf, and runtime behavior
+must match this document.
+
+The Rust refactor is a breaking cleanup. Do not keep compatibility shims,
+deprecated wrappers, duplicate construction paths, or old re-export aliases
+only to preserve the pre-refactor public surface.
 
 This binding follows the shared bindings architecture map with Rust naming:
 `contracts` and private `runtime` modules organize source ownership, while
 `lib.rs` decides which module paths become public crate API.
+
+Rust should keep the physical source tree close to the .NET category map.
+`contracts/core`, `contracts/messaging`, `contracts/sockets`,
+`contracts/eventing`, `contracts/service`, and `contracts/errors` are the
+public contract owners. `runtime/` mirrors those categories and also keeps
+implementation-only support folders such as `handles`, `buffers`, `options`,
+and `native`. This is a directory and responsibility alignment, not a request
+to turn every native-backed resource into a trait.
 
 ## Public Contract Source
 
@@ -32,7 +46,7 @@ This binding follows the shared bindings architecture map with Rust naming:
   raw handles, callback trampolines, request progress helpers, and part-loop
   helpers.
 - Documentation role: this README defines shape and semantic coverage.
-  public crate exports own the exact member list. Each public item must still
+  Public crate exports own the exact member list. Each public item must still
   map to one of the shared contract categories.
 
 Applications, perf, and samples must not depend on private modules or raw FFI
@@ -40,7 +54,7 @@ bindings.
 
 ## Repository Layout
 
-Use these target paths consistently when changing the Rust binding.
+Use these paths consistently when changing the Rust binding.
 
 - Public contract: `bindings/rust/src/contracts/`.
 - Crate projection: `bindings/rust/src/lib.rs`.
@@ -58,7 +72,7 @@ the public API when they are exported. The `contracts` and `runtime` source
 trees are implementation organization unless `lib.rs` explicitly exposes a
 module. Do not expose `zlink::runtime` or raw native bridge modules.
 
-The following tree is the target implementation structure. Public structs,
+The following tree is the aligned implementation structure. Public structs,
 enums, traits, errors, free functions, and builder contracts belong in
 `contracts/` and are re-exported intentionally from `lib.rs`. FFI bindings, raw
 pointers, native struct mirrors, handle owners, callback trampolines, request
@@ -77,19 +91,83 @@ bindings/rust/
 |   +-- lib.rs
 |   +-- contracts/
 |   |   +-- core/
+|   |   |   +-- context.rs
+|   |   |   +-- zlink.rs
+|   |   |   +-- routing_id.rs
 |   |   +-- messaging/
+|   |   |   +-- message.rs
+|   |   |   +-- received.rs
+|   |   |   +-- topic_message.rs
+|   |   |   +-- subscription_event.rs
+|   |   |   +-- operation_contracts.rs
 |   |   +-- sockets/
+|   |   |   +-- socket.rs
+|   |   |   +-- message_socket_contracts.rs
+|   |   |   +-- routed_socket_contracts.rs
+|   |   |   +-- pubsub_socket_contracts.rs
+|   |   |   +-- stream_socket.rs
+|   |   |   +-- socket_options.rs
 |   |   +-- eventing/
+|   |   |   +-- monitor.rs
+|   |   |   +-- poller.rs
+|   |   |   +-- timer.rs
 |   |   +-- service/
+|   |   |   +-- registry/
+|   |   |   |   +-- registry.rs
+|   |   |   |   +-- registry_query_client.rs
+|   |   |   |   +-- registry_models.rs
+|   |   |   +-- discovery/
+|   |   |   |   +-- discovery.rs
+|   |   |   |   +-- discovery_models.rs
+|   |   |   +-- spot/
+|   |   |   |   +-- spot_node.rs
+|   |   |   |   +-- spot.rs
+|   |   |   |   +-- actor.rs
+|   |   |   |   +-- spot_operations.rs
+|   |   |   |   +-- spot_models.rs
 |   |   +-- errors/
+|   |   |   +-- errors.rs
+|   |   |   +-- results.rs
 |   +-- runtime/
 |   |   +-- core/
+|   |   |   +-- context.rs
+|   |   +-- handles/
+|   |   |   +-- native_handle.rs
 |   |   +-- messaging/
+|   |   |   +-- message_materializer.rs
+|   |   |   +-- request_progress.rs
+|   |   +-- buffers/
+|   |   |   +-- payload_buffers.rs
 |   |   +-- sockets/
+|   |   |   +-- socket_base.rs
+|   |   |   +-- pair_socket.rs
+|   |   |   +-- dealer_socket.rs
+|   |   |   +-- router_socket.rs
+|   |   |   +-- pub_socket.rs
+|   |   |   +-- sub_socket.rs
+|   |   |   +-- xpub_socket.rs
+|   |   |   +-- xsub_socket.rs
+|   |   |   +-- stream_socket.rs
 |   |   +-- eventing/
+|   |   |   +-- poller.rs
+|   |   |   +-- timer.rs
 |   |   +-- service/
+|   |   |   +-- registry/
+|   |   |   |   +-- registry.rs
+|   |   |   |   +-- registry_query_client.rs
+|   |   |   +-- discovery/
+|   |   |   |   +-- discovery.rs
+|   |   |   +-- spot/
+|   |   |   |   +-- spot_node.rs
+|   |   |   |   +-- spot.rs
+|   |   |   |   +-- actor.rs
 |   |   +-- errors/
+|   |   |   +-- native_errors.rs
+|   |   |   +-- validation.rs
+|   |   +-- options/
+|   |   |   +-- option_mapping.rs
 |   |   +-- native/
+|   |   |   +-- native.rs
 +-- crates/
 +-- tests/
 +-- samples/
@@ -121,6 +199,33 @@ When mapping a new core capability:
 7. Update samples and perf only through public APIs.
 8. Run formatting and clippy-style checks where available.
 
+When refactoring existing code to this shape:
+
+1. Move public behavior declarations to `src/contracts/<category>/`.
+2. Move native-backed implementations to `src/runtime/<category>/`.
+3. Keep unsafe FFI, native loading, raw handles, and callback trampolines under
+   `src/runtime/native/`.
+4. Replace direct runtime construction in public code with crate-root
+   constructors or contract methods.
+5. Remove compatibility re-exports that expose runtime modules as public API.
+6. Remove deprecated wrappers, duplicate operation-start names, and old naming
+   aliases instead of preserving them as shims.
+7. Update tests, samples, and perf to use public crate exports only.
+8. Regenerate/check rustdoc so private implementation modules do not appear as
+   public API.
+
+The refactor is complete only when Rust-specific shortcuts below are removed.
+
+- `contracts` modules must not re-export `runtime` or `runtime::native`.
+- Contract files must not import runtime resource types to describe public
+  service models.
+- Public re-export barrels must not remain the source of resource behavior.
+  Split declarations into named contract modules and runtime implementation
+  modules.
+- `lib.rs` must export contract names and constructors, not runtime modules.
+- Public rustdoc must not expose runtime implementation module paths as public
+  types.
+
 ## Library Shape
 
 The binding should feel like a safe Rust crate over a native runtime.
@@ -150,8 +255,87 @@ The binding should feel like a safe Rust crate over a native runtime.
   platform loading code stay in private FFI/runtime owners.
 - `lib.rs` and public rustdoc modules must project the contract categories, not
   expose runtime modules.
-- If a runtime concrete type is re-exported for construction, its public
-  behavior must still be described by the shared contract category.
+- Runtime concrete types are construction targets behind crate-root
+  constructors or contract methods. `lib.rs` may import runtime modules only to
+  wire those constructors, but public signatures must use contract names.
+
+## Contract File Layout
+
+The contract source must use the same classification as the
+[.NET binding blueprint](../dotnet/README.md), with Rust naming. Keep the same
+conceptual file grouping so a developer who knows another binding can find the
+same public concept in Rust quickly.
+
+- `core/`: `context.rs`, `zlink.rs`, `routing_id.rs`, and core option/value
+  files.
+- `messaging/`: `message.rs`, `received.rs`, `topic_message.rs`,
+  `subscription_event.rs`, `operation_contracts.rs`, and common operation
+  payload types.
+- `sockets/`: `socket.rs`, `message_socket_contracts.rs`,
+  `routed_socket_contracts.rs`, `pubsub_socket_contracts.rs`,
+  `stream_socket.rs`, socket option types, stream packet handler contracts, and
+  socket flags.
+- `eventing/`: monitor, monitor event/status, poller, poll events, timer, and
+  event handler contracts.
+- `service/`: `registry/`, `discovery/`, and `spot/` submodules. The Rust
+  binding uses these submodules because the service surface is large enough to
+  read better that way.
+- `errors/`: public error types, result domains, and error-code mapping.
+
+Avoid a single aggregate `models.rs` or runtime-export barrel for public
+resource behavior. Small DTO-like structs and enums may be grouped with the
+contract that gives them meaning, but native-backed resources and operation
+builders need named contract files.
+
+## Runtime File Layout
+
+Runtime source mirrors the runtime classification in the
+[.NET binding blueprint](../dotnet/README.md) but contains only implementation.
+
+- `core/`: context implementation and context option helpers.
+- `handles/`: native handle ownership, close state, lifetime checks, and
+  reference tracking.
+- `messaging/`: message materialization, request progress, request execution,
+  and multipart progress helpers.
+- `buffers/`: native buffer conversion, copy/borrow policy, and any pooled or
+  pinned storage helpers.
+- `sockets/`: socket base types, socket kernels, socket implementations for
+  every socket family, callback adapters, and operation implementation types.
+- `eventing/`: poller/timer/monitor implementations and event
+  materialization helpers.
+- `service/`: registry, discovery, SPOT node, Spot, Actor, topology, and
+  service operation implementations.
+- `options/`: option validation and native option id/value mapping.
+- `errors/`: native error translation and validation helpers.
+- `native/`: FFI bindings, native loading, raw handles, and unsafe boundary
+  code.
+
+Runtime modules may import contract types, but contract modules must not import
+runtime modules. The crate root may instantiate runtime implementations in
+constructors, but it must export contract names, not runtime implementation
+modules.
+
+## Construction Entry Points
+
+Public construction is provided by crate-root constructors and public contract
+methods.
+
+- `Context::new(...)` creates the native-backed context implementation.
+- `Context::create_pair_socket()`, `create_dealer_socket()`,
+  `create_router_socket()`, `create_pub_socket()`, `create_sub_socket()`,
+  `create_xpub_socket()`, `create_xsub_socket()`, and
+  `create_stream_socket()` create native-backed socket implementations.
+- `Context::create_registry()`, `create_discovery(...)`, and
+  `create_spot_node(...)` create service-layer implementations.
+- `Spot` handles are obtained through `SpotNode::create_spot(...)`,
+  `entry_spot()`, `get_or_create_spot(...)`, or `spot_lookup(...)`; direct
+  `Spot` construction is not public.
+- Actor handles are created through `SpotNode::create_actor(...)`; direct Actor
+  construction is not public.
+- `Poller::new(...)`, `Timer::new(...)`, and timer-on-SPOT helpers create
+  eventing resources.
+- Version, capability, strerror, proxy, sleep, and multipart cleanup helpers
+  are public crate functions. FFI calls behind those functions stay private.
 
 ## Contract Category Map
 
@@ -221,10 +405,10 @@ The crate should expose clear public modules or re-exports.
 The public crate may re-export common types at the crate root, but private FFI
 modules must stay private.
 
-## Target Capability Coverage
+## Required Capability Coverage
 
 The public crate must cover these stable user-facing capabilities when the
-binding is aligned to the shared .NET-standard target policy.
+binding is aligned to the shared .NET-standard policy.
 
 - Context lifecycle, options, shutdown, auto-HWM recalculation, version,
   capability, and strerror.
@@ -292,6 +476,34 @@ rules. The boolean is `true` only for the call that created the logical spot.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.
 - Perf meaning matches `bindings/c/perf`.
+- `src/contracts` has no import or export dependency on `src/runtime`.
+- `lib.rs` imports runtime modules only for constructor wiring and does not
+  export runtime modules or runtime implementation type names.
+- Tests, samples, and perf do not use private runtime imports.
+- Native-backed resources are created through crate-root constructors or
+  contract methods and are typed as public contract types.
+- No old aliases, duplicate operation-start names, or deprecated wrappers are
+  kept only for compatibility.
+
+Required verification after the Rust refactor. Run these commands from
+`bindings/rust/`:
+
+- Run `cargo fmt --all --check`.
+- Run `cargo test --workspace --all-targets`.
+- Run `cargo clippy --workspace --all-targets -- -D warnings` when clippy is
+  available.
+- Run `./tests/run_tests.sh`.
+- Run `./samples/run_samples.sh` when public examples or construction paths
+  changed.
+- Run `./perf/run_benchmarks.sh` and `./perf/run_benchmarks_multi.sh` as smoke
+  gates when hot path, receive, send, request, poller, timer, or service
+  behavior changed.
+- Inspect rustdoc/public re-exports and confirm crate exports expose contract
+  types, not runtime implementation modules.
+- Search `src/contracts`, `tests`, `samples`, and `perf` for imports from
+  `crate::runtime`, `runtime::native`, raw FFI modules, or generated private
+  files. Check `src/lib.rs` separately to confirm runtime imports are
+  constructor wiring only and do not appear in public signatures.
 
 ## Actor And Spot Route Results
 

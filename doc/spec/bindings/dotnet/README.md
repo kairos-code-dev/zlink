@@ -1,3 +1,5 @@
+[English](./README.md) | [한국어](./README.ko.md)
+
 [Spec Index](../../README.md) · [Bindings Policy](../README.md)
 
 # .NET Binding Implementation Blueprint
@@ -6,29 +8,37 @@ This document defines the expected .NET library shape. It is not an exhaustive
 list of every interface member. The concrete public contract source is
 `bindings/dotnet/src/Zlink/Contracts/`.
 
-A .NET implementation is aligned when `Contracts/`, the default runtime
+A .NET implementation is aligned when `Contracts/`, the runtime implementation
 classes, tests, samples, perf runners, and package behavior follow this
 blueprint and map the stable capabilities of `core/include/zlink.h` into
 .NET-idiomatic APIs.
+
+This README describes the completed .NET binding shape, not a temporary target
+draft. It is also the reference guide for keeping other wrapper binding
+documents aligned to the same architecture map. When another binding uses
+language-specific naming, it should still preserve the same contract/runtime
+ownership, public contract categories, file granularity, and verification
+intent described here.
 
 This binding follows the shared bindings architecture map with .NET naming:
 `Contracts/<Category>` owns public contract source and `Runtime/<Category>`
 owns implementation. Other bindings may use different casing or package names,
 but this document is the .NET projection of the same map.
 
-This README is the reference projection for wrapper binding target docs. Other
-languages should preserve the same contract/runtime ownership and file
-granularity intent while using their own idiomatic names and package paths.
+The first code a reviewer reads should be the public contract under
+`Contracts/`. Runtime files must implement that contract; they must not be the
+place where new user-facing behavior is discovered.
 
 ## Public Contract Source
 
 - Public namespace: `Systems.Zlink`.
 - Package identity: `Systems.Zlink`.
 - Public contract: `bindings/dotnet/src/Zlink/Contracts/`.
-- Default runtime implementation: `bindings/dotnet/src/Zlink/Runtime/`.
+- Runtime implementation: `bindings/dotnet/src/Zlink/Runtime/`.
 - Internal implementation: P/Invoke declarations, `SafeHandle` or native
   handle ownership, callback trampolines, request progress pumps, native model
-  converters, and socket kernels.
+  converters, socket kernels, option accessors, buffer codecs, and validation
+  helpers.
 - Documentation role: this README defines the library shape and review rules.
   `Contracts/` owns the exact public behavior surface.
 
@@ -61,11 +71,11 @@ Native bridge declarations and marshalling-only mirrors still belong in
 that contract.
 Do not expose namespace segments named `Contracts` or `Runtime` as the primary
 user-facing namespace.
-The following tree is normative for implementation work. Files that define
-public behavior must be placed under `Contracts/`; files that exist to call
-native code, own handles, marshal structs, or run callback/request progress
-logic must be placed under `Runtime/`, with native bridge code under
-`Runtime/Native/`.
+The following tree is normative for ownership and shows representative files.
+It is not a complete file inventory. Files that define public behavior must be
+placed under `Contracts/`; files that exist to call native code, own handles,
+marshal structs, or run callback/request progress logic must be placed under
+`Runtime/`, with native bridge code under `Runtime/Native/`.
 
 ```text
 bindings/dotnet/
@@ -73,18 +83,49 @@ bindings/dotnet/
 |   +-- Zlink/
 |   |   +-- Contracts/
 |   |   |   +-- Core/
+|   |   |   |   +-- Context.cs
+|   |   |   |   +-- ContextOptions.cs
+|   |   |   |   +-- RoutingId.cs
+|   |   |   |   +-- Zlink.cs
 |   |   |   +-- Messaging/
+|   |   |   |   +-- Message.cs
+|   |   |   |   +-- Received.cs
+|   |   |   |   +-- TopicMessage.cs
+|   |   |   |   +-- SubscriptionEvent.cs
+|   |   |   |   +-- OperationContracts.cs
 |   |   |   +-- Sockets/
+|   |   |   |   +-- ISocket.cs
+|   |   |   |   +-- MessageSocketContracts.cs
+|   |   |   |   +-- RoutedSocketContracts.cs
+|   |   |   |   +-- PubSubSocketContracts.cs
+|   |   |   |   +-- IStreamSocket.cs
+|   |   |   |   +-- SocketOptionFacades.cs
 |   |   |   +-- Eventing/
+|   |   |   |   +-- Monitor.cs
+|   |   |   |   +-- Poller.cs
+|   |   |   |   +-- PollEvent.cs
+|   |   |   |   +-- Timer.cs
+|   |   |   |   +-- ZlinkPoll.cs
 |   |   |   +-- Service/
+|   |   |   |   +-- Registry.cs
+|   |   |   |   +-- Discovery.cs
+|   |   |   |   +-- SpotNode.cs
+|   |   |   |   +-- Spot.cs
+|   |   |   |   +-- Actor.cs
+|   |   |   |   +-- RegistryModels.cs
+|   |   |   |   +-- SpotNodeModels.cs
 |   |   |   +-- Errors/
+|   |   |   |   +-- Errors.cs
 |   |   +-- Runtime/
 |   |   |   +-- Core/
+|   |   |   +-- Handles/
 |   |   |   +-- Messaging/
 |   |   |   +-- Sockets/
 |   |   |   +-- Eventing/
 |   |   |   +-- Service/
 |   |   |   +-- Errors/
+|   |   |   +-- Buffers/
+|   |   |   +-- Options/
 |   |   |   +-- Native/
 |   +-- Zlink.Codecs.Json/
 |   +-- Zlink.Codecs.MessagePack/
@@ -99,10 +140,18 @@ bindings/dotnet/
 
 The `Contracts` and `Runtime` folder names are repository ownership boundaries.
 They are not a license to expose `Systems.Zlink.Contracts` or
-`Systems.Zlink.Runtime` as user-facing namespaces. Public construction can
-return default concrete runtime classes such as `Context`, socket classes,
-`SpotNode`, `Poller`, or `Timer`, but their observable behavior must be
-specified by contracts in the matching category.
+`Systems.Zlink.Runtime` as user-facing namespaces. Public construction should
+return public contracts such as `IContext`, socket interfaces, `ISpotNode`,
+`IPoller`, or `IZlinkTimer` unless the public contract explicitly requires a
+concrete value type. Runtime classes such as `Context`, socket classes,
+`SpotNode`, `Poller`, and `Timer` are implementation owners, not the preferred
+consumer-facing surface.
+
+`Runtime/Buffers`, `Runtime/Handles`, and `Runtime/Options` are implementation
+support categories. They exist because the .NET binding has real native
+ownership, routing-id encoding, and option-validation decisions to hide. Other
+bindings may name these support areas differently, but they should not move
+those details into public contract files.
 
 ## API Change Workflow
 
@@ -116,9 +165,31 @@ When mapping a new core capability:
 4. Document any new construction entrypoint if an interface alone cannot
    create the object.
 5. Add tests against the public contract, not `internal` members.
-6. Update samples and perf only through public contracts/default constructors.
+6. Update samples and perf only through public contracts and public factories.
 7. Verify framework adapters do not use reflection or `InternalsVisibleTo` to
    reach private binding members.
+
+When refactoring existing .NET code:
+
+1. Move user-facing declarations to the matching `Contracts/` category.
+2. Move native-backed implementation, handle ownership, request progress,
+   marshalling, and option validation to `Runtime/`.
+3. Keep P/Invoke declarations and native struct mirrors in `Runtime/Native/`.
+4. Remove duplicate public entrypoints that preserve an old shape without
+   reducing caller complexity.
+5. Update samples, perf, and framework adapters through public contracts and
+   documented construction entrypoints only.
+6. Add or update tests from the public `Systems.Zlink` surface.
+
+The refactor is complete only when .NET-specific shortcuts below are absent.
+
+- Public contracts do not mention P/Invoke, `SafeHandle`, native structs, raw
+  option ids, callback userdata, request pump state, or part-loop helpers.
+- Runtime classes do not introduce public behavior that cannot be found from
+  `Contracts/`.
+- Framework adapters, samples, perf, and tests do not use reflection,
+  `NonPublic` lookup, or private runtime shortcuts.
+- Compatibility wrappers are not kept only to preserve an older public shape.
 
 ## Library Shape
 
@@ -127,13 +198,14 @@ The .NET binding uses a contract/runtime split.
 - Behavior contracts are public `I*` interfaces in `Contracts/`.
   Operation builder contracts may use domain names such as `SendOperation` or
   `RequestOperation` when that is the package's established public shape.
-- Default implementations are public sealed classes in `Runtime/` when direct
-  construction is part of the package contract, such as `Context`,
-  `DealerSocket`, `RouterSocket`, `SpotNode`, `Poller`, and `Timer`.
+- Native-backed implementations are internal sealed classes in `Runtime/` when
+  callers should construct resources through public factories, such as
+  `Context`, `DealerSocket`, `RouterSocket`, `SpotNode`, `Poller`, and
+  `Timer`.
 - Non-constructible abstract base classes may exist in `Runtime/` only as
-  implementation support for those default classes. They are not construction
-  entrypoints, and their public behavior must be covered by `Contracts/`
-  interfaces or value types.
+  implementation support for those runtime implementation classes. They are
+  not construction entrypoints, and their public behavior must be covered by
+  `Contracts/` interfaces or value types.
 - DTO, value, result, option, enum, and exception types stay concrete. Use
   `record`, `sealed class`, `readonly struct`, or `enum` according to normal
   .NET usage.
@@ -152,6 +224,26 @@ Do not make DTOs such as `Message`, `RoutingId`, `Received`, or
 `TopicMessage` into interfaces only for symmetry. They are concrete domain
 values with clear ownership and allocation behavior. `Received` is created
 with `Received.Create()` because it is caller-provided reusable recv storage.
+
+The following .NET types define the standard interface classification that
+other wrapper binding documents mirror:
+
+- Core resource: `IContext`.
+- Socket resource roles: `ISocket`, `IMessageSocket`, routed socket contracts,
+  pub/sub socket contracts, and family interfaces for pair, dealer, router,
+  pub, sub, xpub, xsub, and stream sockets when the family has native-backed
+  behavior.
+- Eventing resource roles: monitor socket contract, `IPoller`, poll event
+  source contracts, and `IZlinkTimer`.
+- Service resource roles: `IRegistry`, `IRegistryQueryClient`, `IDiscovery`,
+  `ISpotNode`, `ISpot`, and `IActor` or the equivalent actor resource contract
+  when actor handles are exposed.
+- Operation builder roles: send, routed send, request, reply, publish, channel
+  send/request, SPOT send/request/reply, actor create, actor join, and actor
+  join reply operations.
+- Callback roles: stream packet handlers, monitor handlers, poll handlers,
+  SPOT dispatch handlers, route handlers, admission handlers, request
+  callbacks, and reply callbacks.
 
 ### RoutingId String And Binary Helpers
 
@@ -184,8 +276,9 @@ defined only by the immutable byte value.
 - P/Invoke declarations, `SafeHandle` implementations, native struct mirrors,
   marshalling helpers, and platform loading code belong in `Runtime/Native/`.
 - `Contracts/` public signatures must not mention `Runtime/Native/` types.
-- If a `Runtime/` class is directly constructible, its public behavior must
-  still be described by `Contracts/`.
+- If a runtime class is ever intentionally exposed for direct construction, its
+  public behavior must still be described by `Contracts/`. This is an
+  exception, not the default shape.
 
 ## Canonical Interface Rules
 
@@ -259,17 +352,49 @@ and session binding.
 If a user or framework adapter needs a public API, it should be discoverable
 from this folder without reading P/Invoke or runtime bridge code.
 
+## Runtime Folder Layout
+
+`Runtime/` mirrors the same standard map, but it contains implementation only.
+
+- `Core/`: context lifecycle, counters, stopwatch, thread helpers, and runtime
+  version/capability calls.
+- `Handles/`: native resource ownership, close state, lifetime checks, and
+  reference tracking.
+- `Messaging/`: multipart message materialization, request/reply progress,
+  request state, received handlers, and topic encoding.
+- `Sockets/`: socket base classes, socket kernels, socket implementations,
+  callback adapters, option accessors, receive helpers, and operation
+  implementation classes.
+- `Eventing/`: poller, timer, monitor state, callback delivery, and event
+  materialization helpers.
+- `Service/`: registry, discovery, SPOT node, Spot, Actor, topology converters,
+  service option support, and service operation implementations.
+- `Errors/`: boundary validation, native result mapping, and errno translation.
+- `Buffers/`: routing-id codec, payload buffer ownership, copy/borrow policy,
+  and snapshot buffer helpers.
+- `Options/`: context/socket option constants, validation, and runtime option
+  conversion.
+- `Native/`: P/Invoke declarations, platform loading, native type mirrors, and
+  marshalling helpers.
+
+Runtime code may depend on public contract types. Contract files may internally
+delegate to runtime code for public factory/static facade wiring, but their
+public signatures must not expose runtime implementation details.
+
 ## Construction Entry Points
 
 Interfaces define behavior; construction is provided by public factories.
 
-- `Zlink.CreateContext()` creates the default context implementation.
+- `Zlink.CreateContext()` creates the runtime context implementation.
+- `Zlink.CreateAtomicCounter()`, `CreateStopwatch()`, and
+  `CreateThread(...)` create utility resources through public contracts.
 - `IContext.CreatePairSocket()`, `CreateDealerSocket()`,
   `CreateRouterSocket()`, `CreatePubSocket()`, `CreateSubSocket()`,
   `CreateXPubSocket()`, `CreateXSubSocket()`, and `CreateStreamSocket()`
-  create default socket implementations.
-- `IContext.CreateRegistry()`, `CreateDiscovery(...)`, and
-  `CreateSpotNode(...)` create service-layer implementations.
+  create runtime socket implementations.
+- `IContext.CreateRegistry()`, `CreateRegistryQueryClient()`,
+  `CreateDiscovery(...)`, `CreateSpotNode()`, and
+  `CreateSpotNode(SpotNodeMode)` create service-layer implementations.
 - `Spot` handles are obtained through `ISpotNode.CreateSpot()`,
   `ISpotNode.EntrySpot()`, `ISpotNode.GetOrCreateSpot(...)`, or
   `ISpotNode.SpotLookup(...)`; direct `Spot` construction is not public.
@@ -393,6 +518,28 @@ Before declaring the .NET binding aligned:
   from data-plane caller-provided storage.
 - Perf semantics match `bindings/c/perf`; private runtime shortcuts are not
   used to change measurement meaning.
+- `Contracts/` public signatures do not expose `Runtime/Native/`, raw handles,
+  native struct mirrors, request progress types, or runtime implementation
+  classes. Internal delegation from static facades to runtime code is allowed.
+- Runtime classes do not become a second contract surface.
+- Framework adapters call public binding APIs directly.
+- No old aliases, duplicate operation-start names, or deprecated wrappers are
+  kept only for compatibility.
+
+Required verification after .NET binding changes. Run these commands from
+`bindings/dotnet/`:
+
+- Run `dotnet test Zlink.sln` or the repository's current .NET binding test
+  solution.
+- Run `./tests/run_tests.sh`.
+- Run `./samples/run_samples.sh` when public examples or construction paths
+  changed.
+- Run `./perf/run_benchmarks.sh` and `./perf/run_benchmarks_multi.sh` as smoke
+  gates when hot path, receive, send, request, poller, timer, or service
+  behavior changed.
+- Search framework adapters, samples, perf, and tests for reflection,
+  `NonPublic`, `InternalsVisibleTo`, `Runtime.Native`, raw handle usage, or
+  direct request pump access.
 
 ## Actor And Spot Route Results
 
@@ -418,6 +565,7 @@ routed send/request APIs.
 `DisconnectRouterChannelPeer(string channelName, string endpoint)`,
 `DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid)`, and
 `AttachSpotRouteChannelDiscovery(string channelName, IDiscovery discovery)`.
-The default runtime maps these methods directly to the core C APIs. Framework
-code must call these public methods only; reflection, `NonPublic` lookup, and
-extra `InternalsVisibleTo` access are not allowed for this integration.
+The runtime implementation maps these methods directly to the core C APIs.
+Framework code must call these public methods only; reflection, `NonPublic`
+lookup, and extra `InternalsVisibleTo` access are not allowed for this
+integration.

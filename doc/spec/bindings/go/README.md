@@ -11,26 +11,40 @@ owner files, tests, samples, perf runners, and runtime behavior follow this
 blueprint and map the stable capabilities of `core/include/zlink.h` into
 Go-idiomatic APIs.
 
-This README is the target blueprint for aligning the Go binding to the shared
-policy in `../README.md`. Existing exported identifiers or root implementation
-files may lag this target until the Go alignment work lands; treat those
-differences as cleanup targets. When the binding is aligned to this README, the
-target contract becomes the acceptance standard for that work.
+This README describes the completed Go binding shape after it is aligned to the
+shared policy in `../README.md`, and it is also the guide for Go refactoring
+work. During the refactor, use this document to decide where each public
+contract, implementation owner, cgo/native bridge helper, test, sample, and
+perf import belongs. Once the Go binding is declared aligned, exported
+identifiers, GoDoc, tests, samples, perf, and runtime behavior must match this
+document.
+
+The Go refactor is a breaking cleanup. Do not keep compatibility shims,
+deprecated wrappers, duplicate construction paths, or old exported aliases only
+to preserve the pre-refactor public surface.
 
 This binding follows the shared bindings architecture map with Go naming:
 the public `contracts` package is the consumer projection, while runtime
-implementation remains in root unexported files or future `internal/` packages.
+implementation stays under `internal/`.
 Do not force a Java/.NET-style deep package tree when it would create public
 import paths that Go users should not depend on.
+
+Go is the public-package exception to the shared physical layout. The public
+contract package remains flat because Go import paths are API, but its file
+names still mirror the .NET categories: `core.go`, `messaging.go`,
+`sockets.go`, `eventing.go`, service files, and `errors.go`. Private
+implementation code under `internal/` should keep directory categories close to
+the .NET runtime map, including `handles`, `buffers`, `options`, and `native`.
 
 ## Public Contract Source
 
 - Public contract source: the public package under `bindings/go/contracts/`.
 - Module projection: `bindings/go/go.mod`, the public
   `zlink.systems/zlink/contracts` package, and GoDoc for exported identifiers.
-- Runtime implementation: root implementation files in `bindings/go/`, plus
-  unexported helpers where a separate package would add more complexity than it
-  removes.
+- Runtime implementation: private packages under `bindings/go/internal/`.
+  Existing root implementation files are migration input, not the completed
+  shape, because exported root-package names would become a second public
+  surface.
 - Native bridge: cgo bridge code, callback trampolines, request progress
   helpers, `bindings/go/include/`, and platform native artifacts under
   `bindings/go/native/`.
@@ -38,17 +52,22 @@ import paths that Go users should not depend on.
   Exported Go identifiers own the exact public member list. Each public
   identifier must still map to one of the shared contract categories.
 
-Perf, samples, and tests must import the public `contracts` package and must not
-reach into implementation-only helpers or native bridge details.
+Perf, samples, and external public-surface tests must import the public
+`contracts` package and must not reach into implementation-only helpers or
+native bridge details. Implementation tests may live beside private
+implementation packages, but consumer tests must verify the public
+`contracts` projection.
 
 ## Repository Layout
 
-Use these target paths consistently when changing the Go binding.
+Use these paths consistently when changing the Go binding.
 
 - Public contract: `bindings/go/contracts/`.
-- Runtime implementation: root implementation files in `bindings/go/`.
-- Native bridge/artifacts: root cgo bridge files, `bindings/go/native/`, and
-  `bindings/go/include/`.
+- Runtime implementation: `bindings/go/internal/` for private implementation
+  packages. Existing root implementation files must either move there or stop
+  exporting implementation-only names before the binding is declared aligned.
+- Native bridge/artifacts: `bindings/go/internal/native/`,
+  `bindings/go/native/`, and `bindings/go/include/`.
 - Codec extensions: `bindings/go/codec/`.
 - Tests: `bindings/go/tests/` and `bindings/go/*_test.go`.
 - Samples: `bindings/go/samples/`.
@@ -57,18 +76,19 @@ Use these target paths consistently when changing the Go binding.
 Go import paths are part of the public API. The current public consumer
 projection is the aggregate `zlink.systems/zlink/contracts` package. Do not
 create a top-level `runtime/` package, because that would expose runtime
-implementation as `zlink.systems/zlink/runtime`. If the root implementation is
-later moved into `internal/`, update the `contracts` projection, samples, perf,
-tests, and this README in the same change.
+implementation as `zlink.systems/zlink/runtime`. Do not leave exported
+implementation names in the module root as a parallel API. If the module root
+is kept as an import path, it must be an intentional projection of the same
+public contract, not the implementation owner.
 
-The following tree is the target implementation structure. Exported types,
+The following tree is the aligned implementation structure. Exported types,
 functions, errors, enums, and builder contracts belong in the public
 `contracts` package. Do not create `contracts/core` or `contracts/sockets`
 packages unless the public Go import policy is changed, because those paths
-would become user-facing API. Root implementation files own the current cgo
-bridge and runtime details. cgo declarations, raw pointers, native struct
-mirrors, callback trampolines, request progress helpers, and marshalling must
-not become the consumer-facing entrypoint.
+would become user-facing API. Private `internal/` packages own the cgo bridge
+and runtime details. cgo declarations, raw pointers, native struct mirrors,
+callback trampolines, request progress helpers, and marshalling must not become
+the consumer-facing entrypoint.
 
 File granularity follows the common policy in `../README.md`: keep one file
 per independent public concept or tight operation/model group. Very small
@@ -79,9 +99,26 @@ nearby contract file when that makes the public shape easier to read.
 bindings/go/
 +-- go.mod
 +-- doc.go
-+-- *.go
 +-- contracts/
-|   +-- contracts.go
+|   +-- core.go
+|   +-- messaging.go
+|   +-- sockets.go
+|   +-- eventing.go
+|   +-- service_registry.go
+|   +-- service_discovery.go
+|   +-- service_spot.go
+|   +-- errors.go
++-- internal/
+|   +-- core/
+|   +-- handles/
+|   +-- messaging/
+|   +-- buffers/
+|   +-- sockets/
+|   +-- eventing/
+|   +-- service/
+|   +-- options/
+|   +-- errors/
+|   +-- native/
 +-- include/
 +-- native/
 +-- codec/
@@ -90,12 +127,11 @@ bindings/go/
 +-- perf/
 ```
 
-The public consumer projection is the `contracts` package. Tests, samples, and
-perf must import that public package only. If an exported symbol is added,
-reviewers must be able to point to its contract category owner. If code only
-exists to call cgo or manage native lifetime, keep it unexported in the
-implementation owner files. If that code is split into another package later,
-place it under `internal/`.
+The public consumer projection is the `contracts` package. Samples, perf, and
+public-surface tests must import that public package only. If an exported symbol
+is added, reviewers must be able to point to its contract category owner. If
+code only exists to call cgo or manage native lifetime, keep it unexported in
+the implementation owner files under `internal/`.
 
 ## API Change Workflow
 
@@ -111,6 +147,32 @@ When mapping a new core capability:
 6. Add public package tests and update samples/perf only through exported APIs.
 7. Run `go vet` style checks where available and keep cgo pointer ownership
    explicit.
+
+When refactoring existing code to this shape:
+
+1. Move public behavior declarations to the `contracts` package.
+2. Move cgo-backed runtime implementations to `internal/<category>/` packages.
+3. Keep cgo declarations, native loading, and raw handles in private files or
+   `internal/native/`.
+4. Replace direct construction of implementation owners in user-facing code
+   with public constructors or methods typed as contract concepts.
+5. Remove compatibility exports that expose implementation helpers as public
+   API.
+6. Remove deprecated wrappers, duplicate operation-start names, and old naming
+   aliases instead of preserving them as shims.
+7. Update samples, perf, and public-surface tests to import only the public
+   `contracts` package.
+
+The refactor is complete only when Go-specific shortcuts below are removed.
+
+- cgo handle owners, native bridge helpers, request progress helpers, and raw
+  part-loop helpers are not exported.
+- Samples, perf, and public-surface tests do not import implementation-only
+  packages or use root-package shortcuts that bypass `contracts`.
+- Public constructors and helper functions return contract-facing concrete
+  types or narrow interfaces, not cgo/native implementation details.
+- No public `runtime` package is introduced. Private implementation packages
+  use `internal/`.
 
 ## Library Shape
 
@@ -136,15 +198,76 @@ result values, snapshots, and option structs stay concrete.
 - Exported public types, method contracts, enums, errors, and builder contracts
   belong in the public `contracts` package.
 - Exported package functions, helper methods, and builder convenience helpers
-  belong in the public package when callers can use them directly.
+  belong in `contracts` when callers can use them directly.
 - cgo handle owners, request pumps, callback adapters, and part-loop helpers
-  stay unexported in implementation files or under `internal/` if split later.
+  stay unexported under `internal/`.
 - cgo declarations, raw pointers, C struct mirrors, marshalling helpers, and
-  platform loading code stay in unexported files or private native helpers.
+  platform loading code stay in `internal/native` or private native helpers.
 - The exported contract package must project the contract categories, not expose
   runtime packages as import paths.
-- If a runtime concrete type is exported for construction, its public behavior
-  must still be described by the shared contract category.
+- Public constructors may call private runtime implementations, but
+  public signatures must not expose implementation-only types.
+
+## Contract File Layout
+
+Go keeps one public aggregate `contracts` package because import paths are
+public API. Use source files inside that package to mirror the .NET
+`Contracts/` category map without creating public subpackages.
+
+- `core.go`: context, options, version/capability helpers, routing id, and
+  package-level utility contracts.
+- `messaging.go`: message, received metadata, topic messages, subscription
+  events, and common payload helpers.
+- `sockets.go`: socket families, typed options, callbacks, request/reply,
+  publish/subscribe, stream packet APIs, and operation builders.
+- `eventing.go`: monitor, poller, poll events, timer, and handler contracts.
+- `service_registry.go`, `service_discovery.go`, and `service_spot.go`:
+  service-layer contracts and domain models.
+- `errors.go`: exported error values, error types, and result domains.
+
+Small callback types, enum values, and result helpers may live in the nearby
+contract file that gives them meaning. Avoid `types.go`, `models.go`,
+`common.go`, or `utils.go` when the name hides the actual domain.
+
+## Runtime File Layout
+
+Runtime source mirrors the runtime classification in the
+[.NET binding blueprint](../dotnet/README.md) but stays private.
+
+- `internal/core`, `internal/messaging`, `internal/sockets`,
+  `internal/eventing`, `internal/service`, and `internal/errors` own private
+  runtime implementations.
+- `internal/handles` owns native handle ownership, close state, lifetime
+  checks, and reference tracking.
+- `internal/buffers` owns byte slice/native buffer conversion, copy/borrow
+  policy, and any pooled or pinned storage helpers.
+- `internal/options` owns option validation and native option id/value mapping.
+- `internal/native` owns cgo declarations, native loading, raw handles,
+  marshalling, callback trampolines, and request progress helpers.
+
+Private runtime code may depend on public contract types. Public contract code
+must not depend on private implementation details.
+
+## Construction Entry Points
+
+Go construction is exposed through public constructors and resource methods.
+
+- `NewContext(...)` creates the runtime context implementation.
+- `Context.PairSocket()`, `DealerSocket()`, `RouterSocket()`, `PubSocket()`,
+  `SubSocket()`, `XPubSocket()`, `XSubSocket()`, and `StreamSocket()` create
+  runtime socket implementations.
+- `Context.Registry()`, `Discovery(...)`, `RegistryQueryClient()`,
+  `SpotNode()`, and `SpotNodeWithOptions(...)` create service-layer
+  implementations.
+- `Spot` handles are obtained through `SpotNode.Spot()`,
+  `EntrySpot()`, `GetOrCreateSpot(...)`, or `SpotLookup(...)`; direct `Spot`
+  construction is not public.
+- Actor handles are created through `SpotNode.Actor(...)`; direct Actor
+  construction is not public.
+- `NewPoller()`, `NewTimer()`, and `NewTimerFromSpot(...)` create eventing
+  resources.
+- Version, capability, strerror, proxy, sleep, and multipart cleanup helpers
+  are public contract functions. cgo calls behind those functions stay private.
 
 ## Contract Category Map
 
@@ -176,10 +299,11 @@ subpackage names.
   `Spot.RecvRoutedPart` are not public contract members. The runtime may use
   `*_part` C substrate internally, but callers receive aggregate
   `Received`/`TopicMessage` values.
-- `Spot.receive/send(...)` consumes one routed Spot message and forwards it
-  back to the source Spot route without exposing the payload to the caller.
-  It is for relay paths that do not inspect or modify payload data. Callers
-  that need payload access use `RecvRouted(...)` and `SendToSpot(...)`.
+- A Spot relay helper, if exposed, consumes one routed Spot message and
+  forwards it back to the source Spot route without exposing the payload to the
+  caller. It is for relay paths that do not inspect or modify payload data.
+  Callers that need payload access use `RecvRouted(...)` and
+  `SendToSpot(...)`.
 - Send, routed send, publish, request, reply, SPOT operations, and Actor
   location/session operations return fluent builders.
 - Builder start methods take only the target identity, topic, channel, routing
@@ -192,9 +316,10 @@ subpackage names.
   `Publish(topic, message)`, `SendToChannel(channel, message)`, and
   `SendToSpot(..., message)` are not public contract members; callers use
   `Send(...).Message(message).Submit(...)`.
-- Multipart payload is accumulated by repeated `Message(...)`, `MoveMessage(...)`,
-  or `Bytes(...)` calls. `Bytes(...)` reads the caller-owned slice during
-  `Submit(...)` and does not retain it after `Submit(...)` returns.
+- Multipart payload is accumulated by repeated `Message(...)`,
+  `MoveMessage(...)`, or `Bytes(...)` calls. `Bytes(...)` reads the
+  caller-owned slice during `Submit(...)` and does not retain it after
+  `Submit(...)` returns.
   `Messages(...)` convenience is allowed when it delegates to the same builder
   contract and is declared in the public package category.
 - Dealer sockets must not expose protocol envelope helpers such as
@@ -235,10 +360,10 @@ Keep the public `contracts` package tree easy to scan.
 If a helper exists only to call cgo, manage native memory, or advance request
 progress, it is not exported.
 
-## Target Capability Coverage
+## Required Capability Coverage
 
 The Go package must cover these stable user-facing capabilities when the
-binding is aligned to the shared .NET-standard target policy.
+binding is aligned to the shared .NET-standard policy.
 
 - Context lifecycle, context options, shutdown, auto-HWM recalculation,
   version, capability, and strerror.
@@ -256,7 +381,7 @@ change the meaning of core operations.
 
 Go exposes `SpotNode.GetOrCreateSpot(spotRID RoutingID) (*Spot, bool, error)`.
 It maps directly to `zlink_spot_node_spot_get_or_new(...)`; it must not be
-implemented by composing `SpotLookup` and `CreateSpot`.
+implemented by composing a lookup path with a separate create path.
 
 The returned `*Spot` is caller-owned and must be closed normally. The boolean
 is `true` only for the call that created the logical spot.
@@ -305,7 +430,27 @@ is `true` only for the call that created the logical spot.
 - Receive/subscription semantics match the shared binding policy.
 - Service control/admission receive exceptions are documented where they differ
   from data-plane caller-provided storage.
-- Perf, samples, and tests use only exported package APIs.
+- Perf, samples, and public-surface tests use only exported package APIs.
+- Implementation-only files or `internal/` packages do not leak through public
+  signatures.
+- No old aliases, duplicate operation-start names, or deprecated wrappers are
+  kept only for compatibility.
+
+Required verification after the Go refactor. Run these commands from
+`bindings/go/`:
+
+- Run `go test ./...`.
+- Run `./tests/run_tests.sh`.
+- Run `./samples/run_samples.sh` when public examples or construction paths
+  changed.
+- Run `./perf/run_benchmarks.sh` and `./perf/run_benchmarks_multi.sh` as smoke
+  gates when hot path, receive, send, request, poller, timer, or service
+  behavior changed.
+- Run `go vet ./...` when available for the changed packages.
+- Search samples, perf, public-surface tests, and `contracts` for imports or
+  references to implementation-only packages, cgo bridge helpers, raw handles,
+  or native bridge symbols. Implementation tests must stay scoped to private
+  packages and must not become examples of consumer imports.
 
 ## Actor And Spot Route Results
 
@@ -329,6 +474,7 @@ Go exposes router channel peer wiring as public `SpotNode` methods:
 `ConnectRouterChannelPeer(channelName string, endpoint string) error`,
 `DisconnectRouterChannelPeer(channelName string, endpoint string) error`,
 `DisconnectRouterChannelPeerRID(channelName string, peerRID RoutingID) error`,
-and `AttachSpotRouteChannelDiscovery(channelName string, discovery *Discovery) error`.
+and `AttachSpotRouteChannelDiscovery(channelName string, discovery *Discovery)
+error`.
 These methods call the matching core C APIs and use the established Go error
 mapping.

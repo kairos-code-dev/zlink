@@ -10,67 +10,304 @@ contract is
 In the completed structure, `Contracts/`, installed header projections, tests,
 samples, perf runners, and runtime behavior all map the stable capabilities of
 `core/include/zlink.h` into C++-idiomatic types.
+`core/include/zlink.h` is the semantic source for supported native capability,
+but it is not the public C++ header shape. The completed C++ public contract
+does not expose C API identifiers, C structs, C callbacks, native handles, or
+`ZLINK_*` macros as the user-facing contract.
 
 This README is the C++ binding's final-state interpretation of the shared
 policy in `../README.md`. The completed C++ binding does not keep old include
 paths, alias methods, alternate projections, or wrapper layers only to preserve
 the previous surface. This document is the acceptance standard for the
 refactored C++ binding.
+Do not weaken this document to match a partial implementation. If the code and
+this document disagree, the code is incomplete unless the user explicitly asks
+to change the target design.
 
 This binding follows the shared bindings architecture map with C++ naming:
-`Contracts/` owns the public contract categories and `Runtime/` owns
-implementation helpers. The folder names are C++ header organization, not
+`Contracts/` owns the installed public headers and `Runtime/` owns the private
+implementation under `src/`. The folder names are repository organization, not
 namespace segments that users should depend on.
 
 ## Public Contract Source
 
 - Public contract: `bindings/cpp/include/zlink/Contracts/`.
-- Runtime implementation: `bindings/cpp/include/zlink/Runtime/`.
+- Runtime implementation: `bindings/cpp/src/Runtime/`.
 - Public entrypoint projection: `bindings/cpp/include/zlink.hpp`.
-- Installed projection: `bindings/cpp/include/zlink/Contracts/...` and
-  deliberate installed helper headers under `bindings/cpp/include/zlink/...`.
+- Installed projection: `bindings/cpp/include/zlink.hpp` and
+  `bindings/cpp/include/zlink/Contracts/...`.
+- Compiled library: the C++ binding builds and installs a C++ library target
+  such as `zlink_cpp` in addition to the core native `zlink` library.
+- Language baseline: C++20.
 - Namespace: all public types live under `zlink`; service types live under
   `zlink::service`.
 - Internal implementation: native bridge helpers, callback trampolines, request
-  progress helpers, non-public `detail` helpers, and runtime headers under
-  `bindings/cpp/include/zlink/Runtime/`.
+  progress helpers, non-public `detail` helpers, private implementation
+  headers, and `.cpp` files under `bindings/cpp/src/Runtime/`.
 - Documentation role: this README defines the shape, boundaries, and required
   semantic coverage. `Contracts/` owns the exact member list; installed headers
   must project it intentionally.
 
-C++ is a header-only binding in this repository. Do not create a second
-`bindings/cpp/src/zlink/Contracts/` tree. The installed include tree is both
-the build input and the public projection. Do not copy a Java or .NET
-interface-heavy layout into C++; C++ uses installed headers, RAII classes,
-concrete values, and private/detail helper placement as its natural boundary.
+## Non-Negotiable Acceptance Criteria
+
+The refactor is not complete until every item below is true. Build success or
+CTest success alone is not enough.
+
+1. The repository layout matches the `Repository Layout` section in this
+   document. The public file list is an acceptance inventory, not an example.
+   Extra public files require an explicit contract purpose in this document
+   before implementation. Extra runtime files are allowed only under
+   `src/Runtime/`.
+2. `bindings/cpp/include/zlink/Contracts/` contains public C++ contract
+   headers only. It does not contain implementation headers, native marshalling
+   helpers, private state structs, or old compatibility folders.
+3. No file under `bindings/cpp/include/zlink/Contracts/` includes a private
+   runtime header or a private runtime include path.
+4. No file under `bindings/cpp/include/zlink/Contracts/` includes `<zlink.h>`
+   directly or indirectly as part of the C++ public contract design. If a
+   generated or transitional native constant bridge is ever needed, it must be
+   explicitly documented here before use.
+5. No public C++ contract header exposes C API names as public types or member
+   signatures. Public headers must not expose names such as `zlink_msg_t`,
+   `zlink_routing_id_t`, `zlink_actor_ref_t`, `zlink_*_fn`,
+   `zlink_*_option_t`, or raw `void *` native handles.
+6. No public C++ contract header uses `ZLINK_*` macros as its public contract
+   surface. Public C++ enums and constants must be C++ names. Their native
+   values are verified in runtime/tests against `core/include/zlink.h`.
+7. Every public contract header is self-contained. Including any single
+   `bindings/cpp/include/zlink/Contracts/**/*.hpp` header in a C++20
+   translation unit must compile without relying on prior includes.
+8. Public samples, public tests, perf runners, and codec packages include only
+   `<zlink.hpp>` or public `Contracts/...` headers. They do not include
+   `src/Runtime/...` or any runtime helper path.
+9. Samples, tests, perf runners, codec packages, and external applications link
+   the compiled `zlink_cpp` target. They do not compile private runtime source
+   files directly and do not link the core native library as a substitute for
+   the C++ binding.
+10. CMake install/export metadata exists for the public headers and compiled
+    `zlink_cpp` target before the binding is considered package-complete.
+11. The final review compares this document to the filesystem, CMake graph,
+    public include graph, public C API leakage scan, build output, CTest output,
+    samples, and perf smoke results. Any mismatch is a remaining issue, not a
+    documentation adjustment opportunity.
+12. The work is not complete while public headers still contain native C API
+    storage, native conversion helpers, inline native calls, native callback
+    signatures, or runtime implementation logic. Passing tests do not override
+    this boundary.
+13. The work is not complete while samples, tests, perf runners, or codec
+    packages depend on private runtime paths or direct C API calls that a normal
+    C++ binding user cannot call through the public C++ contract.
+14. The work is not complete while the public layout has extra legacy
+    categories, wrapper include paths, or compatibility aliases that are not
+    deliberately listed in this document.
+15. The work is not complete while any public header exists only because it was
+    present before the refactor. Each public header must either be listed in
+    `Repository Layout` or be added to this README with a short reason that
+    explains the public concept it owns.
+16. The work is not complete while `zlink_cpp` is only a convenience target for
+    tests. It must be the application-facing C++ binding target used by
+    samples, tests, perf runners, codecs, and install/export metadata.
+
+Do not mark an implementation goal complete until the audit commands below, the
+build, CTest, sample smoke, and relevant perf smoke all pass after the final
+code change. A previous passing result is stale once any public header, runtime
+source, CMake file, sample, test, perf runner, or codec package changes.
+
+Recommended audit commands:
+
+```sh
+find bindings/cpp/include/zlink/Contracts -type f | sort
+find bindings/cpp/src/Runtime -type f | sort
+rg -n 'Runtime/|<Runtime/|zlink/Runtime' bindings/cpp/include/zlink/Contracts
+rg -n '#include\\s*[<"]zlink\\.h|\\bzlink_[A-Za-z0-9_]+\\b|\\bZLINK_[A-Z0-9_]+\\b' \
+  bindings/cpp/include/zlink/Contracts
+rg -n 'src/Runtime|Runtime/Native|<zlink\\.h>|\\bzlink_[A-Za-z0-9_]+\\b|\\bZLINK_[A-Z0-9_]+\\b' \
+  bindings/cpp/samples bindings/cpp/tests bindings/cpp/perf bindings/cpp/codecs
+git diff --check -- bindings/cpp doc/spec/bindings/cpp/README.md
+```
+
+The C API leakage scan above should return no public contract usage except
+items explicitly documented in this README. If the scan returns many hits, the
+implementation has not reached the target architecture.
+
+Every public contract header must also pass a standalone include check:
+
+```sh
+tmpdir=$(mktemp -d)
+while IFS= read -r header; do
+  rel=${header#bindings/cpp/include/}
+  printf '#include <%s>\nint main(){return 0;}\n' "$rel" > "$tmpdir/test.cpp"
+  c++ -std=c++20 -Icore/include -Icore/external/boost \
+    -Ibindings/cpp/include -fsyntax-only "$tmpdir/test.cpp" || exit 1
+done < <(find bindings/cpp/include/zlink/Contracts -type f -name '*.hpp' | sort)
+rm -rf "$tmpdir"
+```
+
+The final implementation review must use a loop, not a single pass:
+
+1. Run the layout and leakage scans.
+2. Fix every mismatch against this document.
+3. Rebuild `zlink_cpp`, tests, samples, perf targets, and codec targets that are
+   affected by the change.
+4. Run CTest and the sample smoke set.
+5. Run relevant perf smoke for changed hot paths and compare meaning against
+   `bindings/c/perf`.
+6. Repeat from step 1 until there are no document/layout/API/build/test/sample
+   or perf-smoke mismatches.
+
+If any item remains, report it as remaining work. Do not call the goal complete
+and do not commit/push the partial state as a finished refactor.
+
+The review must report the concrete evidence. A final status that only says
+"build passed" or "tests passed" is insufficient. The report must include the
+layout mismatch count, public C API leakage result, runtime include leakage
+result, build command, CTest command, sample smoke command, and perf smoke
+command used after the last source change.
+
+C++ is no longer modeled as a header-only binding. Do not create a second
+`bindings/cpp/src/zlink/Contracts/` tree. Public contracts stay in installed
+headers, and implementation moves behind `.cpp` files and private runtime
+headers. The contract/runtime split remains: `Contracts/` declares the user
+surface, while `src/Runtime/` contains implementation support for that surface.
+Do not copy a Java or .NET interface-heavy layout into C++; C++ uses installed
+headers, RAII classes, concrete values, and opaque implementation state as its
+natural boundary.
 
 ## Repository Layout
 
-The completed C++ binding uses these paths consistently.
+The completed C++ binding uses these paths consistently. The file names below
+are the target ownership map and acceptance inventory. A category can split
+further only when a public concept or runtime responsibility has an independent
+reason to change, and that reason must be added to this section before the
+implementation is accepted.
 
-- Public contract: `bindings/cpp/include/zlink/Contracts/`.
-- Runtime implementation: `bindings/cpp/include/zlink/Runtime/`.
-- Native bridge/artifacts: `bindings/cpp/include/zlink/Runtime/Native/` when
-  C++ native bridge declarations are needed, and `bindings/cpp/native/` for
-  packaged native binaries.
-- Public entrypoint: `bindings/cpp/include/zlink.hpp`.
-- Codec extensions: `bindings/cpp/codecs/`.
-- Tests: `bindings/cpp/tests/`.
-- Samples: `bindings/cpp/samples/`.
-- Perf: `bindings/cpp/perf/`.
+```text
+bindings/cpp/
++-- CMakeLists.txt
++-- include/
+|   +-- zlink.hpp
+|   +-- zlink/
+|       +-- Contracts/
+|       |   +-- Core/
+|       |   |   +-- context.hpp
+|       |   |   +-- context_options.hpp
+|       |   |   +-- routing_id.hpp
+|       |   |   +-- zlink.hpp
+|       |   |   +-- capability.hpp
+|       |   +-- Messaging/
+|       |   |   +-- message.hpp
+|       |   |   +-- received.hpp
+|       |   |   +-- topic_message.hpp
+|       |   |   +-- subscription_event.hpp
+|       |   |   +-- operation_contracts.hpp
+|       |   |   +-- request_result.hpp
+|       |   +-- Sockets/
+|       |   |   +-- socket_contracts.hpp
+|       |   |   +-- message_socket_contracts.hpp
+|       |   |   +-- routed_socket_contracts.hpp
+|       |   |   +-- pubsub_socket_contracts.hpp
+|       |   |   +-- stream_socket.hpp
+|       |   |   +-- socket_options.hpp
+|       |   |   +-- results.hpp
+|       |   +-- Eventing/
+|       |   |   +-- monitor.hpp
+|       |   |   +-- poller.hpp
+|       |   |   +-- poll_event.hpp
+|       |   |   +-- timers.hpp
+|       |   |   +-- zlink_poll.hpp
+|       |   |   +-- events.hpp
+|       |   |   +-- status.hpp
+|       |   +-- Service/
+|       |   |   +-- registry.hpp
+|       |   |   +-- discovery.hpp
+|       |   |   +-- spot_node.hpp
+|       |   |   +-- spot.hpp
+|       |   |   +-- actor.hpp
+|       |   |   +-- registry_models.hpp
+|       |   |   +-- spot_node_models.hpp
+|       |   |   +-- actor_models.hpp
+|       |   |   +-- operation_contracts.hpp
+|       |   |   +-- models.hpp
+|       |   +-- Errors/
+|       |       +-- errors.hpp
+|       |       +-- results.hpp
++-- src/
+|   +-- Runtime/
+|       +-- zlink_cpp.cpp
+|       +-- Core/
+|       |   +-- capability.cpp
+|       |   +-- context.cpp
+|       |   +-- operation_detail.hpp
+|       |   +-- runtime_helpers.hpp
+|       |   +-- types_impl.hpp
+|       +-- Messaging/
+|       |   +-- message.cpp
+|       +-- Errors/
+|       |   +-- error.cpp
+|       +-- Eventing/
+|       |   +-- monitor.cpp
+|       |   +-- poller.cpp
+|       |   +-- timers.cpp
+|       +-- Sockets/
+|       |   +-- base_socket.cpp
+|       |   +-- pair.cpp
+|       |   +-- dealer.cpp
+|       |   +-- pubsub.cpp
+|       |   +-- router.cpp
+|       |   +-- stream.cpp
+|       |   +-- detail.hpp
+|       +-- Options/
+|       |   +-- socket_options.cpp
+|       +-- Service/
+|       |   +-- actor.cpp
+|       |   +-- actor_ops.cpp
+|       |   +-- discovery.cpp
+|       |   +-- detail.hpp
+|       |   +-- registry.cpp
+|       |   +-- request_reply.cpp
+|       |   +-- spot.cpp
+|       |   +-- spot_node.cpp
+|       |   +-- actor_detail.hpp
+|       |   +-- spot_state.hpp
+|       |   +-- spot_submit.hpp
+|       +-- Native/
+|           +-- socket_handle.hpp
+|           +-- native_message_parts.hpp
+|           +-- native_parts.hpp
+|           +-- native_options.hpp
+|           +-- native_send_result.hpp
++-- codecs/
++-- native/
++-- samples/
++-- tests/
++-- perf/
+```
 
-`Contracts/` and `Runtime/` are fixed repository folders under
-`bindings/cpp/include/zlink/`. The `zlink` namespace and `zlink.hpp` are the
-C++ projection of that contract. Do not expose `Contracts` or `Runtime` as
+`CMakeLists.txt` defines the compiled C++ binding target, for example
+`zlink_cpp`, and links it to the core native `zlink` library. Samples, tests,
+perf binaries, and applications link that target instead of compiling private
+runtime source files directly.
+
+`Contracts/` is the installed public contract surface under
+`bindings/cpp/include/zlink/`. `Runtime/` is private implementation support
+under `bindings/cpp/src/Runtime/`. The `zlink` namespace and `zlink.hpp` are
+the C++ projection of the contract. Do not expose `Contracts` or `Runtime` as
 namespace segments.
 
-Because the binding is header-only, runtime helper headers are physically
-installed, but they are not public API. Public samples, perf, and tests include
-`<zlink.hpp>` and use the projected `zlink` API, not runtime helper paths.
+Runtime helper headers are not public contract API. Public samples, perf, and
+tests include `<zlink.hpp>` and link the C++ binding library; they do not include
+runtime helper paths.
 Wrapper headers such as `include/zlink/message.hpp`,
 `include/zlink/services/spot.hpp`, or `include/zlink/sockets/dealer.hpp` are
 not part of the completed layout. The completed tree does not replace them with
 forwarding headers.
+
+Public headers such as `base_socket.hpp`, `dealer.hpp`, `router.hpp`,
+`publisher_socket.hpp`, `subscriber_socket.hpp`, `spot_common.hpp`,
+`spot_node_ops.hpp`, or `spot_socket_ops.hpp` are not accepted as leftover
+implementation buckets. If one of these names remains public, this README must
+first explain the independent contract concept it owns. Otherwise it must be
+merged into the category contract header or moved behind `src/Runtime/`.
 
 Monitor, poller, and timer contracts live under the shared `Eventing/`
 category. `Contracts/Monitoring/` is not part of the completed public contract,
@@ -81,20 +318,55 @@ per independent public concept or tight operation/model group. Very small
 marker, delegate, enum, or pass-through helper files should be merged into the
 nearby contract file when that makes the public shape easier to read.
 
+## .NET Contract Category Projection
+
+The C++ binding uses the `.NET` public contract category layout as the
+classification standard. This is a category and responsibility projection, not
+a C# shape copy. C++ keeps C++20 naming, headers, RAII facades, move semantics,
+and concrete values.
+
+The `Repository Layout` section intentionally follows the .NET contract
+classification: Core, Messaging, Sockets, Eventing, Service, and Errors. The
+.NET source of truth is the [.NET binding blueprint](../dotnet/README.md),
+especially its Contract Folder Layout and Runtime Folder Layout sections. This
+C++ README defines the C++20 projection of those categories, so file names and
+types may differ when C++ ownership, RAII, move-only resources, or performance
+require a different shape.
+
+The category ownership is strict. A public C++ type should not move to a
+different category just because the runtime implementation is easier to place
+elsewhere. Runtime helper code can split further under `src/Runtime/`, but the
+public contract owner remains the corresponding category.
+
+This projection is not strict for C# interface style. .NET socket role
+interfaces identify socket roles in the public contract. They do not require
+C++ to expose `isocket_t`, `istream_socket_t`, `ISocket`, or `IStreamSocket` by
+default. Use concrete RAII facades unless users need true substitutable
+behavior. If a substitutable role is required, keep the interface narrow and
+keep send, receive, poll, and dispatch hot paths free of avoidable virtual
+dispatch.
+
 ## Public Contract At A Glance
 
 The completed C++ binding makes the public contract visible without adding
 interface-only layers. A user can start at `<zlink.hpp>`, then follow this map
 to the owning contract header.
 
-| Area | Public objects and roles | Owning contract header |
-|------|--------------------------|------------------------|
-| Core | `context_t`, context options, routing id, version/capability helpers | `Contracts/Core/` |
-| Messaging | `message_t`, `received_t`, `topic_message_t`, `subscription_event_t`, multipart helpers | `Contracts/Messaging/` |
-| Sockets | `pair_socket_t`, `dealer_socket_t`, `router_socket_t`, `pub_socket_t`, `sub_socket_t`, `xpub_socket_t`, `xsub_socket_t`, `stream_socket_t`, send/recv/request/reply builders | `Contracts/Sockets/` |
-| Eventing | `monitor_handle_t`, monitor events, poller, poll event, timer, readiness helpers | `Contracts/Eventing/` |
-| Service | `registry_t`, `discovery_t`, `spot_node_t`, `spot_t`, `actor_ref_t`, actor lifecycle models, service operation builders | `Contracts/Service/` |
-| Errors | public exception and result-domain types | `Contracts/Errors/` |
+- Core: `context_t`, context options, routing id, and version/capability helpers
+  live in `Contracts/Core/`.
+- Messaging: `message_t`, `received_t`, `topic_message_t`,
+  `subscription_event_t`, and multipart helpers live in
+  `Contracts/Messaging/`.
+- Sockets: `pair_socket_t`, `dealer_socket_t`, `router_socket_t`,
+  `pub_socket_t`, `sub_socket_t`, `xpub_socket_t`, `xsub_socket_t`,
+  `stream_socket_t`, and send/recv/request/reply builders live in
+  `Contracts/Sockets/`.
+- Eventing: `monitor_handle_t`, monitor events, poller, poll event, timer, and
+  readiness helpers live in `Contracts/Eventing/`.
+- Service: `registry_t`, `discovery_t`, `spot_node_t`, `spot_t`,
+  `actor_ref_t`, actor lifecycle models, and service operation builders live in
+  `Contracts/Service/`.
+- Errors: public exception and result-domain types live in `Contracts/Errors/`.
 
 The map above is the public API index. It is the C++ equivalent of a contract
 surface overview; it does not imply `IContext`, `ISpot`, `IActor`, or similar
@@ -135,61 +407,74 @@ public:
 
 ```cpp
 #include "zlink/Contracts/Core/context.hpp"
+#include "zlink/Contracts/Core/context_options.hpp"
+#include "zlink/Contracts/Core/routing_id.hpp"
 #include "zlink/Contracts/Messaging/message.hpp"
 #include "zlink/Contracts/Messaging/received.hpp"
-#include "zlink/Contracts/Sockets/dealer.hpp"
-#include "zlink/Contracts/Sockets/router.hpp"
+#include "zlink/Contracts/Messaging/operation_contracts.hpp"
+#include "zlink/Contracts/Sockets/message_socket_contracts.hpp"
+#include "zlink/Contracts/Sockets/routed_socket_contracts.hpp"
+#include "zlink/Contracts/Sockets/pubsub_socket_contracts.hpp"
 #include "zlink/Contracts/Eventing/poller.hpp"
+#include "zlink/Contracts/Eventing/zlink_poll.hpp"
 #include "zlink/Contracts/Service/spot_node.hpp"
 #include "zlink/Contracts/Service/spot.hpp"
 #include "zlink/Contracts/Service/actor.hpp"
-#include "zlink/Contracts/Errors/error.hpp"
+#include "zlink/Contracts/Errors/errors.hpp"
 ```
 
-Runtime details stay behind the facade. A contract header may use a detail helper
-because this binding is header-only, but users should not learn or include that
-helper directly:
+Runtime details stay behind the facade. Public headers may name opaque
+implementation state, but they must not expose native handles, callback
+trampolines, part loops, request pumps, or marshalling helpers:
 
 ```cpp
-namespace zlink::detail {
+namespace zlink::service {
 
-class spot_submit_state_t {
-    // Owns native submit state, part loops, callback userdata, and errno mapping.
+class spot_t {
+public:
+    spot_t(spot_t&&) noexcept;
+    spot_t(const spot_t&) = delete;
+    ~spot_t();
+
+    send_op_t send();
+    reply_op_t reply();
+    void close();
+
+private:
+    struct impl;
+    std::unique_ptr<impl> impl_;
 };
 
-} // namespace zlink::detail
+} // namespace zlink::service
 ```
 
 This structure keeps the public surface easy to scan while preserving C++
 ownership semantics. `spot_t`, `spot_node_t`, and `actor_ref_t` are the contract;
-`Runtime/...` and `zlink::detail` are implementation support.
+`src/Runtime/...` and private `zlink::detail` helpers are implementation
+support.
 
-```text
-bindings/cpp/
-+-- include/
-|   +-- zlink.hpp
-|   +-- zlink/
-|   |   +-- Contracts/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Eventing/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   +-- Runtime/
-|   |   |   +-- Core/
-|   |   |   +-- Messaging/
-|   |   |   +-- Sockets/
-|   |   |   +-- Eventing/
-|   |   |   +-- Service/
-|   |   |   +-- Errors/
-|   |   |   +-- Native/
-+-- native/
-+-- codecs/
-+-- tests/
-+-- samples/
-+-- perf/
-```
+## Refactor Recovery Rules
+
+If a previous implementation attempt partially moved files, the next attempt
+starts by measuring the current tree against this README. Do not assume the
+current `bindings/cpp` tree is closer to completion just because it builds.
+
+Use this order:
+
+1. Capture `git status --short` and scope the work to `bindings/cpp` plus this
+   README unless the user explicitly expands the scope.
+2. List public contract files and compare them to `Repository Layout`.
+3. List runtime files and confirm every implementation helper lives under
+   `src/Runtime/`.
+4. Run the C API leakage scan on `Contracts/` before editing. The scan result
+   is the initial defect list, not a warning to ignore.
+5. Remove or relocate public headers that are only old implementation buckets.
+6. Move native calls, callback trampolines, native storage, and native
+   conversion helpers into `.cpp` files or private runtime headers.
+7. Rebuild and rerun the audit loop after every batch.
+
+Partial states are acceptable only as intermediate working states. They are not
+acceptable as a committed or pushed completed refactor.
 
 ## Core Capability Ownership
 
@@ -202,7 +487,8 @@ Every stable core capability exposed by C++ follows these ownership rules:
 3. Decide the C++ domain owner: context, message, socket, monitor, timer,
    service, SPOT, actor, error, or option.
 4. Keep raw C handle access, `*_part` loops, callback userdata, trampoline
-   state, and native marshalling helpers in `Runtime/` headers.
+   state, and native marshalling helpers in `src/Runtime/` headers and `.cpp`
+   files.
 5. Add public-header tests and at least one sample/perf update when the new
    capability affects user workflows or measurement.
 6. Check that the new public API is not just a shallow C wrapper. If it only
@@ -226,10 +512,16 @@ contract.
 - Public resource objects are RAII classes that own or borrow native handles
   according to their documented lifetime.
 - Destructors release resources without requiring callers to know native close
-  sequencing.
+  sequencing. Resource destructors and other non-trivial methods are defined
+  out-of-line in `.cpp` files.
+- Small value-type operations may remain inline when they do not expose native
+  ownership, callback state, request state, or marshalling details.
 - Public methods use `snake_case`.
 - Public value types such as message, routing id, received metadata, topic
   message, result, error, enum, and option types stay concrete.
+- Public resource headers use opaque implementation state, such as Pimpl, when
+  native handle layout, callback state, request state, or ABI-sensitive storage
+  would otherwise leak into the contract.
 - Use templates, overloads, and move semantics only when they simplify caller
   ownership or avoid copies. Do not expose template machinery as a substitute
   for a clear domain type.
@@ -245,17 +537,105 @@ contract.
 - Public free functions, static helpers, extension-style helpers, and builder
   convenience helpers belong in `Contracts/` when users can call them directly.
 - Runtime handle owners, socket kernels, request pumps, callback trampolines,
-  and part-loop helpers belong in `Runtime/`.
+  and part-loop helpers belong in `src/Runtime/`.
 - FFI declarations, raw C handles, native struct mirrors, marshalling helpers,
-  and platform loading code belong in `Runtime/Native/`.
+  and platform loading code belong in `src/Runtime/Native/`.
 - `zlink.hpp` must project `Contracts/`, not make `Runtime/` helper paths the
   public include style.
-- If a runtime concrete class is directly constructible, its public behavior
-  must still be described by `Contracts/`.
-- Contract headers may include implementation helpers only when header-only C++
-  mechanics require it. Those helpers must stay under `zlink::detail` or another
-  non-public implementation boundary and must not become documented user entry
-  points.
+- Contract headers must not include private runtime headers. If a public class
+  needs implementation state, expose only an incomplete `impl` type or another
+  opaque private member and define the behavior in `.cpp`.
+- Runtime concrete classes are not user entry points. If behavior is public, it
+  is declared by `Contracts/` and implemented through `src/Runtime/`.
+
+## C API Boundary Rules
+
+The C++ binding is a C++ projection of the native C contract. It is not a C
+header re-export with C++ method names.
+
+- `core/include/zlink.h` remains the semantic source for native capability,
+  result values, and supported operations.
+- `Contracts/` must expose C++ names, C++ value types, C++ resource facades,
+  and C++ operation builders.
+- `Contracts/` must not expose C native storage or C callback machinery in
+  public signatures, fields, base classes, or template parameters.
+- `Contracts/` must not require users to include or understand `<zlink.h>`.
+  A user including `<zlink.hpp>` or any single `Contracts/...` header should
+  see a C++ API, not native C ABI details.
+- Native conversions such as `zlink_msg_t`, `zlink_routing_id_t`,
+  `zlink_actor_ref_t`, `zlink_monitor_event_t`, and `zlink_*_result_t`
+  construction belong in `src/Runtime/` or in private helper functions.
+- Public C++ enums may preserve native numeric values, but the public header
+  should not use `ZLINK_*` macros as the visible contract. Use tests or runtime
+  static assertions to verify that C++ values remain aligned with
+  `core/include/zlink.h`.
+- Public resource classes must not store raw native handles in their public
+  layout. Use opaque implementation state and define non-trivial behavior
+  out-of-line.
+- Public contract tests must include a C API leakage scan. If a C API
+  identifier appears in `Contracts/`, either remove it or document a precise
+  exception in this section before accepting it.
+
+The C++ folders mirror the .NET standard classification with C++ naming and
+RAII/Pimpl idioms.
+
+- `Contracts/Core`: context, routing id, version/capability helpers, and
+  package-level facade declarations.
+- `Contracts/Messaging`: message, received metadata, topic/subscription
+  payloads, and operation payload contracts.
+- `Contracts/Sockets`: socket resource facades, socket operation builders,
+  socket options, send/recv/request/reply/publish surfaces.
+- `Contracts/Eventing`: monitor, poller, poll events, timer, and event handler
+  contracts.
+- `Contracts/Service`: registry, discovery, SpotNode, Spot, Actor, topology,
+  and service operation builders.
+- `Contracts/Errors`: public error/result domains.
+- `src/Runtime/Core`: context implementation and runtime facade support.
+- `src/Runtime/Handles`: native handle ownership, close state, lifetime
+  checks, and reference tracking.
+- `src/Runtime/Messaging`: message materialization, multipart progress, and
+  request progress.
+- `src/Runtime/Buffers`: byte buffer ownership, copy/borrow policy, pooled or
+  pinned storage, and routing-id codecs.
+- `src/Runtime/Sockets`: socket kernels and socket family implementations.
+- `src/Runtime/Eventing`: monitor, poller, poll event, timer, and dispatch
+  loop implementations.
+- `src/Runtime/Service`: registry, discovery, SpotNode, Spot, Actor, topology,
+  and service operation implementations.
+- `src/Runtime/Options`: option validation and native option id/value mapping.
+- `src/Runtime/Errors`: native errno/result conversion into public error
+  domains.
+- `src/Runtime/Native`: C ABI declarations, native type mirrors, symbol
+  loading, and marshalling helpers.
+
+## Build And Packaging Policy
+
+Moving C++ off header-only means the binding has an additional compiled
+artifact. The completed binding therefore maintains these build rules:
+
+- The C++ binding builds a library target such as `zlink_cpp`.
+- The C++ binding is built as C++20. Do not add C++17-era compatibility
+  wrappers, alternate headers, or macro paths to preserve old compiler support.
+- `zlink_cpp` links against the core native `zlink` library and has a version
+  compatibility rule with that core library.
+- Linux, macOS, and Windows packages build the C++ library for each supported
+  architecture and runtime toolchain.
+- CMake install/export metadata must let applications consume both public
+  headers and the compiled C++ binding target.
+- Samples, tests, and perf runners link the same installed-style C++ target
+  that applications use. They must not depend on private runtime source paths.
+- Runtime search paths, DLL lookup rules, and packaged native artifacts must be
+  tested because applications now load both the core native library and the C++
+  binding library.
+- Public headers avoid exposing ABI-sensitive implementation storage. Public
+  method signatures may remain C++-idiomatic, but native handle layout, callback
+  state, request state, and marshalling buffers stay out of installed headers.
+- `zlink_cpp` packages are scoped to a supported compiler, standard library,
+  runtime, platform, and architecture combination. A package built with one C++
+  runtime ABI is not assumed compatible with another.
+- Pimpl hides object layout and private native state. It does not make every
+  public C++ signature ABI-neutral; STL types, exceptions, allocators, and
+  inline public functions still follow the package's supported C++ ABI.
 
 ## Contract Folder Layout
 
@@ -320,7 +700,7 @@ contract.
 
 The public headers cover these groups in the completed C++ binding.
 
-- Core runtime: context, version/capability helpers, context options, shutdown,
+- Core: context, version/capability helpers, context options, shutdown,
   and auto-HWM recalculation.
 - Messaging: message ownership, builder multipart input, received metadata, topic
   messages, subscription events, routing ids, and callback types.
@@ -370,25 +750,54 @@ must preserve core semantics.
 ## Performance Policy
 
 - Build multipart values directly from the core part substrate.
-- Avoid unnecessary heap allocation, avoidable copies, reflection-like dynamic
-  dispatch, hidden waits, sleeps, busy waits, broad locks, and joins in hot
-  paths.
+- Use opaque implementation state, such as Pimpl, for resource and control
+  objects. Do not add Pimpl to every small value. Message values, routing ids,
+  flags, result enums, option values, and small snapshots should remain concrete
+  and cheap to move or inspect.
+- Trivial value operations may remain inline or `constexpr` in public contract
+  headers when they do not expose native ownership, callback state, request
+  state, or marshalling details.
+- Moving behavior from headers into `.cpp` files must not add per-message
+  virtual dispatch, avoidable `std::function` construction or copying,
+  unnecessary heap allocation, or avoidable copies in send, receive, poll,
+  timer, and dispatch loops.
+- Operation builders may own runtime state, but builder steps should be
+  move-only and reuse existing capacity when possible. Adding a payload part
+  must not allocate solely because contract and runtime code are split.
+- Native multipart conversion should prefer stack-backed small buffers and fall
+  back to heap storage only when the part count or payload shape requires it.
+- Callback registration may allocate or wrap user callables at registration
+  time. Dispatch hot paths must reuse that stored state instead of rebuilding
+  wrappers for every event or message.
+- Avoid hidden waits, sleeps, busy waits, broad locks, and joins in hot paths.
 - Perf and samples must include installed public headers only.
+- Perf and samples must link the public C++ binding target, not private runtime
+  object files or helper source directories.
 - The C++ perf meaning must match `bindings/c/perf`: same pattern semantics,
   same transport meaning, same client-count policy, and no private fast path.
+- After moving hot-path code into `.cpp` files, validation must include public
+  header compilation, link/run against `zlink_cpp`, sample smoke, and relevant
+  C++ perf smoke. Compare changed hot-path measurements with the C perf baseline
+  before treating the refactor as complete.
+- Perf runners should print or otherwise verify both the loaded `zlink_cpp`
+  path and the loaded core `libzlink` path, so stale library artifacts do not
+  pollute the result.
 
 ## Completed Structure Requirements
 
 The completed C++ binding satisfies these requirements:
 
 - Installed headers expose all stable user-facing core capabilities.
+- The C++ binding builds and installs a compiled C++ library target in addition
+  to public headers.
 - `Contracts/Eventing/` is the only public eventing category. `Contracts/Monitoring/`
   is gone, and `zlink.hpp` includes the Eventing headers.
 - Old wrapper include paths are gone. Applications, samples, perf, and tests
   include `<zlink.hpp>` or deliberate `Contracts/...` headers only.
-- Public headers are enough for applications, perf, samples, and framework
-  adapters.
-- Private helper headers are not needed by users.
+- Public headers plus the compiled C++ binding target are enough for
+  applications, perf, samples, and framework adapters.
+- Private helper headers and private runtime source paths are not needed by
+  users.
 - Value types remain concrete unless abstraction removes real complexity.
 - Public APIs hide native part loops, raw handles, and callback userdata.
 - Handler registration uses `set_..._handler` names, with no public `on_...`

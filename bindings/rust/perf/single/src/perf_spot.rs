@@ -6,7 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use zlink::{
-    Message, RecvFlags, RoutingId, SendFlags, Spot, SpotNode, SubmitResult,
+    Message, RecvFlags, RoutingId, SendFlags, Spot, SpotNode, SubmitResult, TopicMessage,
 };
 
 const TOPIC: &str = "bench";
@@ -19,13 +19,11 @@ fn drain_spot_readable(
     active_deadline: Option<Instant>,
 ) -> bool {
     let mut processed = false;
+    let mut received = TopicMessage::empty();
     loop {
-        match subscriber.subscribe_part(RecvFlags::DONT_WAIT) {
-            Ok(Some(received)) => {
-                if received.has_more {
-                    panic!("spot subscribe drain received multipart payload");
-                }
-                let data = received.part.as_bytes();
+        match subscriber.subscribe(&mut received, RecvFlags::DONT_WAIT) {
+            Ok(true) => {
+                let data = received.first_part().expect("spot message part").as_bytes();
                 if collect_active {
                     if let Some(stats) = stats {
                         if let Some(active_deadline) = active_deadline {
@@ -35,7 +33,7 @@ fn drain_spot_readable(
                 }
                 processed = true;
             }
-            Ok(None) => break,
+            Ok(false) => break,
             Err(err) => panic!("spot subscribe drain failed: {err}"),
         }
     }
@@ -47,11 +45,11 @@ fn wait_for_spot_ready(publisher: &Spot, subscriber: &Spot, config: &common::Per
     let mut probe = vec![0u8; common::HEADER_SIZE];
     common::encode_header(&mut probe, common::PHASE_WARMUP, config.size as u32, 0);
     while Instant::now() < deadline {
-        match publisher.publish_part(
-            TOPIC,
-            Message::try_from(&probe).expect("probe message"),
-            SendFlags::NONE,
-        ) {
+        match publisher
+            .publish(TOPIC)
+            .message(Message::try_from(&probe).expect("probe message"))
+            .submit()
+        {
             Ok(_) => {}
             Err(err)
                 if matches!(
@@ -151,11 +149,12 @@ fn main() {
             // send-gap sleep.
             while Instant::now() < active_deadline {
                 common::encode_header(&mut payload, common::PHASE_ACTIVE, config.size as u32, seq);
-                match publisher.publish_part(
-                    TOPIC,
-                    Message::try_from(&payload).expect("active message"),
-                    SendFlags::DONT_WAIT,
-                ) {
+                match publisher
+                    .publish(TOPIC)
+                    .message(Message::try_from(&payload).expect("active message"))
+                    .flags(SendFlags::DONT_WAIT)
+                    .submit()
+                {
                     Ok(true) => {
                         seq += 1;
                     }
@@ -177,28 +176,35 @@ fn main() {
             }
 
             common::send_stop_token(|msg| {
-                stop_publisher.publish_part(TOPIC, msg, zlink::SendFlags::DONT_WAIT)
+                match stop_publisher
+                    .publish(TOPIC)
+                    .message(msg)
+                    .flags(zlink::SendFlags::DONT_WAIT)
+                    .submit()
+                {
+                    Ok(sent) => Ok(sent),
+                    Err(err) if common::is_single_send_retry_error(&err) => Ok(false),
+                    Err(err) => Err(err),
+                }
             });
         }
     });
 
     let stop_wait_deadline = active_deadline + common::resolve_single_stop_wait();
+    let mut received = TopicMessage::empty();
     loop {
         if Instant::now() >= stop_wait_deadline {
             break;
         }
-        match subscriber.subscribe_part(RecvFlags::DONT_WAIT) {
-            Ok(Some(received)) => {
-                if received.has_more {
-                    panic!("spot subscriber received multipart payload");
-                }
-                let data = received.part.as_bytes();
+        match subscriber.subscribe(&mut received, RecvFlags::DONT_WAIT) {
+            Ok(true) => {
+                let data = received.first_part().expect("spot message part").as_bytes();
                 if common::is_stop_token(data) {
                     break;
                 }
                 common::handle_recv(data, config.size, &stats, active_deadline);
             }
-            Ok(None) => common::poll_idle(Duration::from_millis(1)),
+            Ok(false) => common::poll_idle(Duration::from_millis(1)),
             Err(err) => panic!("spot subscriber recv failed: {err}"),
         }
     }

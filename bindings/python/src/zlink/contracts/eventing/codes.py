@@ -21,11 +21,6 @@ class MonitorEventMask(IntFlag):
     PEER_WEIGHT_CHANGED = 0x8000
     ALL = 0xFFFF
 
-
-# Legacy alias. Public surface should prefer MonitorEventMask for masks and
-# zlink.MonitorEvent for the decoded monitor event object.
-MonitorEvent = MonitorEventMask
-
 class PollEventFlag(IntFlag):
     """Mirrors ``zlink_poller_event_flag_e`` in the C ABI. ``POLLCOMPLETION``
     is reserved for binding runtime workers that drive request completion;
@@ -45,7 +40,6 @@ class PollSourceKind(IntEnum):
 
 __all__ = [
     "MonitorEventMask",
-    "MonitorEvent",
     "PollEventFlag",
     "PollSourceKind",
 ]

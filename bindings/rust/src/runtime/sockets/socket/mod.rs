@@ -2,38 +2,40 @@ mod dealer;
 mod pair;
 mod pub_socket;
 mod router;
-mod send_handle;
 mod stream;
 mod sub;
 mod xpub;
 mod xsub;
 
-pub use dealer::DealerSocket;
-pub use pair::PairSocket;
-pub use pub_socket::PubSocket;
-pub use router::RouterSocket;
-pub use send_handle::SendHandle;
-pub use stream::StreamSocket;
-pub use sub::SubSocket;
-pub use xpub::XPubSocket;
-pub use xsub::XSubSocket;
+pub(crate) use dealer::dealer_inner;
+pub(crate) use pair::pair_handle;
+pub(crate) use pub_socket::pub_inner;
+pub(crate) use router::router_inner;
+pub(crate) use stream::stream_inner;
+pub(crate) use sub::sub_inner;
+pub(crate) use xpub::xpub_inner;
+pub(crate) use xsub::xsub_inner;
 
 use std::ffi::{CStr, CString, c_void};
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::time::Duration;
 
-use crate::ctx::duration_to_millis;
-use crate::domain::{Received, SubscriptionEvent, TopicMessage};
+use crate::ctx::{context_handle, duration_to_millis};
+use crate::discovery_resource::Discovery;
+use crate::domain::{Received, TopicMessage};
 use crate::error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RecvResult,
-    SubmitError, check_bind_rc, check_close_rc, check_config_rc, check_connect_rc,
-    check_handler_rc, check_recv_rc, config_validation_error, last_errno, submit_validation_error,
+    SubmitError,
 };
 use crate::ffi;
 use crate::flags::RecvFlags;
 use crate::message::{Message, RoutingId};
-use crate::service::Discovery;
+use crate::messaging_subscription_event::SubscriptionEvent;
+use crate::native_errors::{
+    check_bind_rc, check_close_rc, check_config_rc, check_connect_rc, check_handler_rc,
+    check_recv_rc, config_validation_error, last_errno, submit_validation_error,
+};
 
 // ---------------------------------------------------------------------------
 // CallbackBox – type-erased, owned callback pointer
@@ -47,7 +49,7 @@ pub(crate) struct CallbackBox {
 unsafe impl Send for CallbackBox {}
 
 impl CallbackBox {
-    pub fn new<F: 'static>(f: F) -> (Self, *mut c_void) {
+    pub(crate) fn new<F: 'static>(f: F) -> (Self, *mut c_void) {
         let ptr = Box::into_raw(Box::new(f));
         let cb = Self {
             data: ptr as *mut c_void,
@@ -75,7 +77,7 @@ unsafe fn drop_erased<F>(ptr: *mut c_void) {
 
 #[allow(dead_code)]
 pub(crate) struct SocketInner {
-    pub handle: *mut c_void,
+    pub(crate) handle: *mut c_void,
     send_ready_cb: Option<CallbackBox>,
     packet_cb: Option<CallbackBox>,
 }
@@ -85,10 +87,10 @@ unsafe impl Send for SocketInner {}
 #[allow(dead_code)]
 impl SocketInner {
     pub fn create(
-        ctx: &crate::ctx::Context,
+        ctx: &crate::core_context::Context,
         typ: ffi::zlink_socket_type_t,
     ) -> Result<Self, ConfigError> {
-        let handle = unsafe { ffi::zlink_socket(ctx.raw(), typ) };
+        let handle = unsafe { ffi::zlink_socket(context_handle(ctx), typ) };
         if handle.is_null() {
             return Err(ConfigError::new(
                 crate::error::ConfigResult::InvalidHandle,
@@ -159,7 +161,7 @@ impl SocketInner {
     /// [`Received`] and the binding refills its internal state in place
     /// each successful call.
     ///
-    /// Returns `Ok(true)` on success, `Ok(false)` when [`RecvFlags::DONTWAIT`]
+    /// Returns `Ok(true)` on success, `Ok(false)` when [`RecvFlags::DONT_WAIT`]
     /// finds no data, `Err(_)` on hard error. See
     /// `doc/spec/bindings/README.md` "Canonical Recv: Caller-Provided Storage".
     pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
@@ -710,7 +712,7 @@ impl SocketInner {
             ffi::zlink_get_pub_option(self.handle, opt, std::ptr::null_mut(), &mut len)
         })?;
         if len == 0 {
-            return crate::message::Message::try_from(&[]);
+            return crate::message::Message::try_from([]);
         }
         let mut buf = vec![0u8; len];
         let mut filled = len;
@@ -963,7 +965,7 @@ pub(crate) fn prepare_send_parts(
         for part in parts.iter_mut() {
             let mut dest = MaybeUninit::<ffi::zlink_msg_t>::uninit();
             ffi::zlink_msg_init(dest.as_mut_ptr());
-            ffi::zlink_msg_move(dest.as_mut_ptr(), &mut part.inner);
+            ffi::zlink_msg_move(dest.as_mut_ptr(), part.raw_mut());
             native.push(dest.assume_init());
         }
     }
@@ -1252,6 +1254,63 @@ fn get_i64_opt(handle: *mut c_void, opt: ffi::zlink_option_t) -> Result<i64, Con
 /// Bind, unbind, last_endpoint, TLS, linger, and transport-level options.
 /// Applied to all socket types.
 macro_rules! impl_base_socket {
+    ($ty:ident, $inner:path, $inner_mut:path) => {
+        #[allow(dead_code)]
+        impl $ty {
+            pub fn close(&mut self) -> Result<(), crate::error::CloseError> {
+                $inner_mut(self).close()
+            }
+            pub fn bind(&self, addr: &str) -> Result<(), crate::error::BindError> {
+                $inner(self).bind(addr)
+            }
+            pub fn unbind(&self, addr: &str) -> Result<(), crate::error::ConnectError> {
+                $inner(self).unbind(addr)
+            }
+            pub fn last_endpoint(&self) -> Result<String, crate::error::ConfigError> {
+                $inner(self).last_endpoint()
+            }
+            pub fn set_tls_cert(&self, cert: &str) -> Result<(), crate::error::ConfigError> {
+                $inner(self).set_tls_cert(cert)
+            }
+            pub fn set_tls_key(&self, key: &str) -> Result<(), crate::error::ConfigError> {
+                $inner(self).set_tls_key(key)
+            }
+            pub fn set_tls_ca(&self, ca_cert: &str) -> Result<(), crate::error::ConfigError> {
+                $inner(self).set_tls_ca(ca_cert)
+            }
+            pub fn set_tls_hostname(
+                &self,
+                hostname: &str,
+            ) -> Result<(), crate::error::ConfigError> {
+                $inner(self).set_tls_hostname(hostname)
+            }
+            pub fn set_tls_trust_system(
+                &self,
+                trust_system: bool,
+            ) -> Result<(), crate::error::ConfigError> {
+                $inner(self).set_tls_trust_system(trust_system)
+            }
+            pub fn set_tls_server(
+                &self,
+                cert: &str,
+                key: &str,
+                require_client_cert: bool,
+            ) -> Result<(), crate::error::ConfigError> {
+                $inner(self).set_tls_server(cert, key, require_client_cert)
+            }
+            pub fn set_tls_client(
+                &self,
+                ca_cert: &str,
+                hostname: &str,
+                trust_system: bool,
+            ) -> Result<(), crate::error::ConfigError> {
+                $inner(self).set_tls_client(ca_cert, hostname, trust_system)
+            }
+            pub(crate) fn handle(&self) -> *mut std::ffi::c_void {
+                $inner(self).handle
+            }
+        }
+    };
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
@@ -1313,6 +1372,17 @@ macro_rules! impl_base_socket {
 
 /// Routing-id get/set – only for DEALER and ROUTER sockets.
 macro_rules! impl_routing_id_options {
+    ($ty:ident, $inner:path) => {
+        #[allow(dead_code)]
+        impl $ty {
+            pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), crate::error::ConfigError> {
+                $inner(self).set_routing_id(id)
+            }
+            pub fn routing_id(&self) -> Result<RoutingId, crate::error::ConfigError> {
+                $inner(self).routing_id()
+            }
+        }
+    };
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
@@ -1328,6 +1398,23 @@ macro_rules! impl_routing_id_options {
 
 /// Connect and disconnect – for non-STREAM sockets.
 macro_rules! impl_connect {
+    ($ty:ident, $inner:path) => {
+        #[allow(dead_code)]
+        impl $ty {
+            pub fn connect(&self, addr: &str) -> Result<(), crate::error::ConnectError> {
+                $inner(self).connect(addr)
+            }
+            pub fn disconnect(&self, addr: &str) -> Result<(), crate::error::ConnectError> {
+                $inner(self).disconnect(addr)
+            }
+            pub fn disconnect_rid(
+                &self,
+                peer_rid: &crate::message::RoutingId,
+            ) -> Result<(), crate::error::ConnectError> {
+                $inner(self).disconnect_rid(peer_rid)
+            }
+        }
+    };
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
@@ -1349,12 +1436,23 @@ macro_rules! impl_connect {
 
 /// Attach a socket to a discovery-owned lifecycle.
 macro_rules! impl_attach_discovery {
+    ($ty:ident, $inner:path) => {
+        #[allow(dead_code)]
+        impl $ty {
+            pub fn attach_discovery(
+                &self,
+                discovery: &crate::Discovery,
+            ) -> Result<(), crate::error::ConfigError> {
+                $inner(self).attach_discovery(discovery)
+            }
+        }
+    };
     ($ty:ident) => {
         #[allow(dead_code)]
         impl $ty {
             pub fn attach_discovery(
                 &self,
-                discovery: &crate::service::Discovery,
+                discovery: &crate::Discovery,
             ) -> Result<(), crate::error::ConfigError> {
                 self.inner.attach_discovery(discovery)
             }

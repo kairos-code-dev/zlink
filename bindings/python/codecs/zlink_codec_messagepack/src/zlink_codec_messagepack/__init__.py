@@ -55,7 +55,4 @@ def _normalize_encoded(value: Any) -> Any:
 
 
 def _new_message(data: bytes) -> Message:
-    try:
-        return Message(data)  # type: ignore[arg-type]
-    except TypeError:
-        return Message.from_(data)
+    return Message.from_(data)

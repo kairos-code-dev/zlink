@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 )
 
 func TestSendConsumesMessageOwnership(t *testing.T) {

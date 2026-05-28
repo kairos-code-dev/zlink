@@ -4,7 +4,6 @@ _MONITOR_NAMES = {
     "MonitorEvent",
     "MonitorStatus",
     "MonitorSocket",
-    "SocketMonitorEvent",
 }
 _POLLER_NAMES = {"Poller", "PollEvent", "PollEvents"}
 _TIMER_NAMES = {"Timer"}

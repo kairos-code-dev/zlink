@@ -3,9 +3,7 @@
 mod common;
 
 use std::time::Duration;
-use zlink::{
-    Message, RoutingId, SocketMonitor, SubmitResult,
-};
+use zlink::{Message, Received, RoutingId, SocketMonitor, SubmitResult};
 
 fn main() {
     let config = common::PerfConfig::from_env_and_args();
@@ -120,9 +118,9 @@ fn main() {
         common::send_stop_token(|msg| sender.send(&send_target).message(msg).submit());
     });
 
-    let mut stop_seen = false;
+    let mut received = Received::empty();
     let stop_wait_deadline = active_deadline + common::resolve_single_stop_wait();
-    while !stop_seen {
+    'recv: loop {
         if std::time::Instant::now() >= stop_wait_deadline {
             break;
         }
@@ -131,24 +129,27 @@ fn main() {
         } else {
             zlink::RecvFlags::DONT_WAIT
         };
-        match receiver.recv_part(flags) {
-            Ok(Some(mut part)) => loop {
-                debug_assert!(!part.has_more());
-                let data = part.message().as_bytes();
+        match receiver.recv(&mut received, flags) {
+            Ok(true) => {
+                debug_assert_eq!(received.parts().len(), 1);
+                let data = received.first_part().expect("router payload").as_bytes();
                 if common::is_stop_token(data) {
-                    stop_seen = true;
                     break;
                 }
                 common::handle_recv(data, config.size, &stats, active_deadline);
-                match receiver.recv_part(zlink::RecvFlags::DONT_WAIT) {
-                    Ok(Some(next_part)) => {
-                        part = next_part;
+                while receiver
+                    .recv(&mut received, zlink::RecvFlags::DONT_WAIT)
+                    .expect("router-router receiver recv failed")
+                {
+                    debug_assert_eq!(received.parts().len(), 1);
+                    let data = received.first_part().expect("router payload").as_bytes();
+                    if common::is_stop_token(data) {
+                        break 'recv;
                     }
-                    Ok(None) => break,
-                    Err(err) => panic!("router-router receiver recv failed: {err}"),
+                    common::handle_recv(data, config.size, &stats, active_deadline);
                 }
-            },
-            Ok(None) => common::poll_idle(Duration::from_millis(1)),
+            }
+            Ok(false) => common::poll_idle(Duration::from_millis(1)),
             Err(err) => panic!("router-router receiver recv failed: {err}"),
         }
     }

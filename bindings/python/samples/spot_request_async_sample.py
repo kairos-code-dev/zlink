@@ -41,7 +41,7 @@ async def main():
 
                         responder_task = asyncio.create_task(respond())
                         reply = await (
-                            requester.request_channel(CHANNEL_NAME)
+                            requester.request_to_channel(CHANNEL_NAME)
                             .message(REQUEST_PAYLOAD)
                             .timeout(2.0)
                             .submit_async()

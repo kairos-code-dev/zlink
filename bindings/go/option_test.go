@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 )
 
 func TestCommonTypedOptions(t *testing.T) {
@@ -86,7 +86,7 @@ func TestSocketSpecificOptions(t *testing.T) {
 	if err := router.SetMandatory(true); err != nil {
 		t.Fatalf("SetMandatory() error = %v", err)
 	}
-	if err := router.SetRidDuplicatePolicy(int(zlink.RidDuplicateHandover)); err != nil {
+	if err := router.SetRidDuplicatePolicy(int(zlink.RIDDuplicateHandover)); err != nil {
 		t.Fatalf("SetRidDuplicatePolicy() error = %v", err)
 	}
 	if err := router.SetProbe(true); err != nil {

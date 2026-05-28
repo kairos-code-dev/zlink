@@ -23,8 +23,10 @@ struct ProgressWorker {
     wake: Condvar,
 }
 
-static WORKERS: OnceLock<Mutex<HashMap<(ProgressKind, usize), Weak<ProgressWorker>>>> =
-    OnceLock::new();
+type ProgressKey = (ProgressKind, usize);
+type ProgressWorkerMap = HashMap<ProgressKey, Weak<ProgressWorker>>;
+
+static WORKERS: OnceLock<Mutex<ProgressWorkerMap>> = OnceLock::new();
 static EXTERNAL_PROGRESS: OnceLock<Mutex<HashMap<usize, usize>>> = OnceLock::new();
 
 pub(crate) struct RequestProgressGuard {

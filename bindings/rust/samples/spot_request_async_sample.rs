@@ -1,4 +1,4 @@
-//! SPOT request async sample – demonstrates Spot.request_channel async completion.
+//! SPOT request async sample – demonstrates Spot.request_to_channel async completion.
 
 #[path = "sample_support.rs"]
 mod sample_support;
@@ -73,7 +73,7 @@ fn main() {
 
     let reply = block_on(
         requester
-            .request_channel(channel_name)
+            .request_to_channel(channel_name)
             .message(Message::try_from(b"spot-ping").expect("request message failed"))
             .timeout(Duration::from_secs(5))
             .submit_async(),

@@ -2,8 +2,6 @@
 
 import uuid
 
-from ..._runtime.handles.native_support import _validated_routing_id_bytes
-
 
 class RoutingId:
     def __init__(self, data):
@@ -83,3 +81,10 @@ class RoutingId:
         if len(self._raw) == 16:
             return str(uuid.UUID(bytes=self._raw))
         return "hex:" + self.to_hex()
+
+
+def _validated_routing_id_bytes(data):
+    raw = bytes(data)
+    if len(raw) == 0 or len(raw) > 255:
+        raise ValueError("routing_id length must be between 1 and 255")
+    return raw

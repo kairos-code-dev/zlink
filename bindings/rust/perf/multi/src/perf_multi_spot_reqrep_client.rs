@@ -7,7 +7,7 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use zlink::poller::POLLCOMPLETION;
+use zlink::POLLCOMPLETION;
 use zlink::{
     Message, PollEvent, Poller, RecvFlags, RecvResult, RoutingId, SendFlags, Spot, SpotNode,
     SubmitResult, TopicMessage,

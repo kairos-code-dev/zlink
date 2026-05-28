@@ -71,8 +71,8 @@ Examples of policy-enforced capability boundaries:
   `attach_channel_dealer`, `attach_channel_dealer_manual`, and
   `attach_pub_ingress` on top of discovery and topology management.
 - `Spot` is a service-aware pub/sub and routed facade on top of `SpotNode`;
-  it exposes `publish(channel_name, topic, ...)`, `send_channel`,
-  `request_channel`, `subscribe_into`, `receive_subscription_event_into`,
+  it exposes `publish(channel_name, topic, ...)`, `send_to_channel`,
+  `request_to_channel`, `subscribe_into`, `receive_subscription_event_into`,
   `set_subscription`, `unset_subscription`, `on_send_ready`,
   `reply_to_spot`, `reply_to_router`, `recv_routed_into`,
   `recv_actor_lifecycle`, and `on_dispatch_event`, but not direct `recv` / `send`

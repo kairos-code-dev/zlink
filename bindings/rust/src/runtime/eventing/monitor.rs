@@ -1,116 +1,21 @@
 use std::ffi::{CStr, c_void};
-use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use std::ops::{BitOr, BitOrAssign};
 
-/// Typed bitmask for socket monitor subscriptions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SocketMonitorEventMask(u32);
-
-impl SocketMonitorEventMask {
-    pub const ALL: Self = Self(ffi::ZLINK_SOCKET_MONITOR_EVENT_ALL);
-    pub const CONNECTION_READY: Self = Self(ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
-
-    pub const fn bits(self) -> u32 {
-        self.0
-    }
-}
-
-impl Default for SocketMonitorEventMask {
-    fn default() -> Self {
-        Self::ALL
-    }
-}
-
-impl BitOr for SocketMonitorEventMask {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self(self.0 | rhs.0)
-    }
-}
-
-impl BitOrAssign for SocketMonitorEventMask {
-    fn bitor_assign(&mut self, rhs: Self) {
-        self.0 |= rhs.0;
-    }
-}
-
-pub const MONITOR_EVENT_ALL: SocketMonitorEventMask = SocketMonitorEventMask::ALL;
-pub const MONITOR_EVENT_CONNECTION_READY: SocketMonitorEventMask =
-    SocketMonitorEventMask::CONNECTION_READY;
-
-use crate::ctx::AutoHwmRecalcReason;
-use crate::error::{
-    CloseError, ConfigError, HandlerError, RecvError, check_close_rc, check_config_rc,
-    check_handler_rc, check_recv_rc,
-};
+use crate::core_context::AutoHwmRecalcReason;
+use crate::error::{CloseError, ConfigError, HandlerError, RecvError};
 use crate::ffi;
 use crate::message::RoutingId;
-use crate::socket::{
-    DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
-    XSubSocket,
+use crate::monitor_contracts::{
+    MonitorEvent, MonitorEventType, MonitorSourceKind, MonitorStatus, Monitorable, SocketMonitor,
+    SocketMonitorEventMask, SocketMonitorRuntime,
 };
-
-fn ignore_monitor_event(_: &MonitorEvent) {}
-
-/// Typed monitor target for socket monitor observation.
-pub struct MonitorTarget<'a> {
-    handle: *mut c_void,
-    _marker: PhantomData<&'a ()>,
-}
-
-impl MonitorTarget<'_> {
-    fn raw(&self) -> *mut c_void {
-        self.handle
-    }
-}
-
-macro_rules! impl_monitor_target_from_ref {
-    ($ty:ident) => {
-        impl<'a> From<&'a $ty> for MonitorTarget<'a> {
-            fn from(socket: &'a $ty) -> Self {
-                Self {
-                    handle: socket.inner.handle,
-                    _marker: PhantomData,
-                }
-            }
-        }
-    };
-}
-
-impl_monitor_target_from_ref!(PairSocket);
-impl_monitor_target_from_ref!(PubSocket);
-impl_monitor_target_from_ref!(SubSocket);
-impl_monitor_target_from_ref!(DealerSocket);
-impl_monitor_target_from_ref!(RouterSocket);
-impl_monitor_target_from_ref!(XPubSocket);
-impl_monitor_target_from_ref!(XSubSocket);
-impl_monitor_target_from_ref!(StreamSocket);
+use crate::native_errors::{
+    check_close_rc, check_config_rc, check_handler_rc, check_recv_rc, last_errno,
+};
 
 // ---------------------------------------------------------------------------
 // MonitorEvent – typed socket monitor event
 // ---------------------------------------------------------------------------
-
-/// A typed socket monitor event.
-#[derive(Debug, Clone)]
-pub struct MonitorEvent {
-    pub event: MonitorEventType,
-    pub value: u32,
-    pub routing_id: Option<RoutingId>,
-    pub local_addr: String,
-    pub remote_addr: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MonitorEventType(pub u64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MonitorSourceKind {
-    Socket,
-    SpotPub,
-    SpotSub,
-}
 
 impl MonitorEvent {
     fn from_raw(raw: &ffi::zlink_monitor_event_t) -> Self {
@@ -122,61 +27,6 @@ impl MonitorEvent {
             remote_addr: cstr_array_to_string(&raw.remote_addr),
         }
     }
-
-    pub fn is_connected(&self) -> bool {
-        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTED as u64 != 0
-    }
-
-    pub fn is_disconnected(&self) -> bool {
-        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_DISCONNECTED as u64 != 0
-    }
-
-    pub fn is_listening(&self) -> bool {
-        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_LISTENING as u64 != 0
-    }
-
-    pub fn is_accepted(&self) -> bool {
-        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED as u64 != 0
-    }
-
-    pub fn is_closed(&self) -> bool {
-        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_CLOSED as u64 != 0
-    }
-
-    pub fn is_connection_ready(&self) -> bool {
-        self.event.0 & ffi::ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY as u64 != 0
-    }
-}
-
-// ---------------------------------------------------------------------------
-// MonitorStatus
-// ---------------------------------------------------------------------------
-
-/// A point-in-time snapshot of a monitored entity's state.
-#[derive(Debug, Clone)]
-pub struct MonitorStatus {
-    pub source_kind: MonitorSourceKind,
-    pub state_flags: u32,
-    pub detail_flags: u32,
-    pub snd_pending_msgs: u64,
-    pub rcv_pending_msgs: u64,
-    pub auto_hwm_enabled: bool,
-    pub auto_hwm_profile: u32,
-    pub auto_hwm_role: u32,
-    pub auto_hwm_policy_class: u32,
-    pub auto_hwm_unit_budget_bytes: u64,
-    pub auto_hwm_size_cap: u32,
-    pub auto_hwm_socket_message_slots: u64,
-    pub auto_hwm_effective_message_bytes: u64,
-    pub auto_hwm_applied_sndhwm: i32,
-    pub auto_hwm_applied_rcvhwm: i32,
-    pub auto_hwm_effective_sndbuf: i32,
-    pub auto_hwm_effective_rcvbuf: i32,
-    pub auto_hwm_last_recalc_ms: u64,
-    pub auto_hwm_last_recalc_reason: AutoHwmRecalcReason,
-    pub auto_hwm_send_blocked_ratio_ppm: u32,
-    pub auto_hwm_deferred_sndhwm: i32,
-    pub auto_hwm_deferred_rcvhwm: i32,
 }
 
 impl MonitorStatus {
@@ -232,45 +82,44 @@ impl MonitorStatus {
 // SocketMonitor
 // ---------------------------------------------------------------------------
 
-/// Monitor handle for observing socket lifecycle and connection events.
-///
-/// The monitor is an independent observation plane that does not interfere
-/// with the data plane. It uses `recv_with_flags(RecvFlags::DONT_WAIT)` for
-/// non-blocking polling.
-pub struct SocketMonitor {
+struct NativeSocketMonitor {
     handle: *mut c_void,
     _cb: Option<super::socket::CallbackBox>,
 }
 
-unsafe impl Send for SocketMonitor {}
+unsafe impl Send for NativeSocketMonitor {}
 
 impl SocketMonitor {
     /// Open a socket monitor for all events.
-    pub fn open<'a>(socket: impl Into<MonitorTarget<'a>>) -> Result<Self, ConfigError> {
+    pub fn open(socket: &dyn Monitorable) -> Result<Self, ConfigError> {
         Self::open_with_events(socket, SocketMonitorEventMask::ALL)
     }
 
     /// Open a socket monitor with an explicit typed event mask.
-    pub(crate) fn open_with_events<'a>(
-        socket: impl Into<MonitorTarget<'a>>,
+    pub(crate) fn open_with_events(
+        socket: &dyn Monitorable,
         events: SocketMonitorEventMask,
     ) -> Result<Self, ConfigError> {
-        let target = socket.into();
+        let target = monitorable_handle(socket)?;
         let opts = ffi::zlink_socket_monitor_open_options_t {
             events: events.bits(),
         };
-        let handle = unsafe { ffi::zlink_socket_monitor_open(target.raw(), &opts) };
+        let handle = unsafe { ffi::zlink_socket_monitor_open(target, &opts) };
         if handle.is_null() {
             return Err(crate::error::ConfigError::new(
                 crate::error::ConfigResult::InvalidArgument,
-                crate::error::last_errno(),
+                last_errno(),
             ));
         }
-        Ok(Self { handle, _cb: None })
+        Ok(Self {
+            inner: Box::new(NativeSocketMonitor { handle, _cb: None }),
+        })
     }
+}
 
+impl SocketMonitorRuntime for NativeSocketMonitor {
     /// Blocking receive of a monitor event.
-    pub fn recv(&self) -> Result<MonitorEvent, RecvError> {
+    fn recv(&self) -> Result<MonitorEvent, RecvError> {
         self.recv_with_flags(crate::flags::RecvFlags::NONE)
             .and_then(|opt| {
                 opt.ok_or_else(|| RecvError::new(crate::error::RecvResult::NoData, libc::EAGAIN))
@@ -278,7 +127,7 @@ impl SocketMonitor {
     }
 
     /// Non-blocking receive of a monitor event. Returns `Ok(None)` when no event is available.
-    pub fn recv_with_flags(
+    fn recv_with_flags(
         &self,
         flags: crate::flags::RecvFlags,
     ) -> Result<Option<MonitorEvent>, RecvError> {
@@ -295,7 +144,7 @@ impl SocketMonitor {
     }
 
     /// Read the current monitor status.
-    pub fn status(&self) -> Result<MonitorStatus, ConfigError> {
+    fn status(&self) -> Result<MonitorStatus, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_monitor_status_t>::uninit();
         check_config_rc(unsafe { ffi::zlink_monitor_status(self.handle, raw.as_mut_ptr()) })?;
         let val = unsafe { raw.assume_init() };
@@ -303,23 +152,19 @@ impl SocketMonitor {
     }
 
     /// Install a callback handler for monitor events.
-    pub fn on_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn(&MonitorEvent) + Send + 'static,
-    {
+    fn on_event(&mut self, handler: Box<dyn Fn(&MonitorEvent) + Send>) -> Result<(), HandlerError> {
         let (cb, userdata) = super::socket::CallbackBox::new(handler);
 
-        unsafe extern "C" fn trampoline<F: Fn(&MonitorEvent) + Send + 'static>(
+        unsafe extern "C" fn trampoline(
             event: *const ffi::zlink_monitor_event_t,
             userdata: *mut c_void,
         ) {
-            let handler = unsafe { &*(userdata as *const F) };
+            let handler = unsafe { &*(userdata as *const Box<dyn Fn(&MonitorEvent) + Send>) };
             let ev = MonitorEvent::from_raw(unsafe { &*event });
             handler(&ev);
         }
 
-        let rc =
-            unsafe { ffi::zlink_socket_monitor_handler(self.handle, trampoline::<F>, userdata) };
+        let rc = unsafe { ffi::zlink_socket_monitor_handler(self.handle, trampoline, userdata) };
         if rc != 0 {
             drop(cb);
             return Err(check_handler_rc(rc).unwrap_err());
@@ -328,16 +173,7 @@ impl SocketMonitor {
         Ok(())
     }
 
-    pub fn ignore_handler() -> fn(&MonitorEvent) {
-        ignore_monitor_event
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn raw(&self) -> *mut c_void {
-        self.handle
-    }
-
-    pub fn close(&mut self) -> Result<(), CloseError> {
+    fn close(&mut self) -> Result<(), CloseError> {
         if self.handle.is_null() {
             return Ok(());
         }
@@ -349,7 +185,7 @@ impl SocketMonitor {
     }
 }
 
-impl Drop for SocketMonitor {
+impl Drop for NativeSocketMonitor {
     fn drop(&mut self) {
         if !self.handle.is_null() {
             unsafe {
@@ -357,6 +193,55 @@ impl Drop for SocketMonitor {
                 ffi::zlink_monitor_close(&mut h);
             }
         }
+    }
+}
+
+fn monitorable_handle(source: &dyn Monitorable) -> Result<*mut c_void, ConfigError> {
+    let any = source.as_any();
+    if let Some(socket) = any.downcast_ref::<crate::PairSocket>() {
+        return Ok(crate::socket::pair_handle(socket));
+    }
+    macro_rules! downcast_socket {
+        ($ty:ident, $inner:path) => {
+            if let Some(socket) = any.downcast_ref::<crate::$ty>() {
+                return Ok($inner(socket).handle);
+            }
+        };
+    }
+    downcast_socket!(PubSocket, crate::socket::pub_inner);
+    downcast_socket!(SubSocket, crate::socket::sub_inner);
+    downcast_socket!(DealerSocket, crate::socket::dealer_inner);
+    downcast_socket!(RouterSocket, crate::socket::router_inner);
+    downcast_socket!(XPubSocket, crate::socket::xpub_inner);
+    downcast_socket!(XSubSocket, crate::socket::xsub_inner);
+    downcast_socket!(StreamSocket, crate::socket::stream_inner);
+    Err(ConfigError::new(
+        crate::error::ConfigResult::InvalidArgument,
+        libc::EINVAL,
+    ))
+}
+
+macro_rules! impl_monitorable {
+    ($ty:ident) => {
+        impl Monitorable for crate::$ty {
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+    };
+}
+
+impl_monitorable!(PubSocket);
+impl_monitorable!(SubSocket);
+impl_monitorable!(DealerSocket);
+impl_monitorable!(RouterSocket);
+impl_monitorable!(XPubSocket);
+impl_monitorable!(XSubSocket);
+impl_monitorable!(StreamSocket);
+
+impl Monitorable for crate::PairSocket {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

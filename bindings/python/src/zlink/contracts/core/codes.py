@@ -30,7 +30,6 @@ from ..eventing.codes import (
     MonitorEventMask,
     PollEventFlag,
     PollSourceKind,
-    MonitorEvent,
 )
 from ..service.codes import (
     AutoConnectType,
@@ -80,7 +79,6 @@ __all__ = [
     "ProtocolError",
     "DisconnectReason",
     "MonitorEventMask",
-    "MonitorEvent",
     "PollEventFlag",
     "PollSourceKind",
     "AutoConnectType",

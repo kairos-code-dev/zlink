@@ -76,7 +76,7 @@ class CallbackSendTests(unittest.TestCase):
         try:
             def on_message(_spot, _event):
                 try:
-                    spot.send_channel(CHANNEL_NAME).message(b"reply").submit()
+                    spot.send_to_channel(CHANNEL_NAME).message(b"reply").submit()
                 except Exception as exc:
                     callback_error.append(exc)
                 finally:

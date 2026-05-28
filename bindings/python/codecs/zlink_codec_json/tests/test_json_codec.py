@@ -4,10 +4,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
 
-import pytest
-
-from zlink import Message as ZlinkMessage
-import zlink_codec_json as json_codec
 from zlink_codec_json import decode, encode
 
 
@@ -30,22 +26,6 @@ def managed_message(msg: object) -> Iterator[object]:
 class SampleData:
     name: str
     count: int
-
-
-@pytest.fixture(autouse=True)
-def message_constructor_compat(monkeypatch: pytest.MonkeyPatch) -> None:
-    try:
-        msg = ZlinkMessage(b"probe")
-    except Exception:
-        class MessageCompat:
-            from_ = staticmethod(ZlinkMessage.from_)
-
-            def __new__(cls, data: bytes) -> ZlinkMessage:
-                raise TypeError("Message(bytes) is not supported in this build")
-
-        monkeypatch.setattr(json_codec, "Message", MessageCompat)
-    else:
-        msg.close()
 
 
 def test_json_codec_roundtrip_dict() -> None:

@@ -101,7 +101,7 @@ fn dealer_router_roundtrip() {
 }
 
 #[test]
-fn router_recv_part_preserves_routing_id_and_more_flag() {
+fn router_recv_preserves_routing_id_and_multipart_payload() {
     let ctx = Context::new().unwrap();
     let router = ctx.router_socket().unwrap();
     router.bind("inproc://beh-router-part").unwrap();
@@ -119,24 +119,14 @@ fn router_recv_part_preserves_routing_id_and_more_flag() {
         .submit()
         .unwrap();
 
-    let part = router
-        .recv_part(RecvFlags::NONE)
-        .unwrap()
-        .expect("router part");
-    assert_eq!(part.routing_id().as_bytes(), rid.as_bytes());
-    assert_eq!(part.message().as_bytes(), b"part-1");
-    assert!(part.has_more());
-    assert!(part.spot_rid().is_none());
-    assert_eq!(part.request_seq(), None);
-
-    let part = router
-        .recv_part(RecvFlags::DONT_WAIT)
-        .unwrap()
-        .expect("second router part");
-    assert_eq!(part.routing_id().as_bytes(), rid.as_bytes());
-    assert_eq!(part.message().as_bytes(), b"part-2");
-    assert!(!part.has_more());
-    assert!(router.recv_part(RecvFlags::DONT_WAIT).unwrap().is_none());
+    let mut received = Received::empty();
+    assert!(router.recv(&mut received, RecvFlags::NONE).unwrap());
+    assert_eq!(received.routing_id().unwrap().as_bytes(), rid.as_bytes());
+    assert_eq!(received.parts().len(), 2);
+    assert_eq!(received.parts()[0].as_bytes(), b"part-1");
+    assert_eq!(received.parts()[1].as_bytes(), b"part-2");
+    assert_eq!(received.request_seq(), None);
+    assert!(!router.recv(&mut received, RecvFlags::DONT_WAIT).unwrap());
 }
 
 #[test]
@@ -247,9 +237,6 @@ fn dealer_router_send_from_callback() {
     drop(router_mon);
     drop(dealer_mon);
 
-    // Use direct recv and reply with SendHandle.
-    let handle = router.send_handle();
-
     // Dealer sends request.
     dealer
         .send()
@@ -261,8 +248,8 @@ fn dealer_router_send_from_callback() {
     router.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"request-42");
     let reply = Message::try_from(b"reply-42").unwrap();
-    handle
-        .send_to(received.routing_id().expect("missing routing id"))
+    router
+        .send(received.routing_id().expect("missing routing id"))
         .message(reply)
         .submit()
         .unwrap();
@@ -294,9 +281,6 @@ fn pair_send_from_callback() {
     drop(server_mon);
     drop(client_mon);
 
-    // Use direct recv and echo a reply via SendHandle.
-    let handle = server.send_handle();
-
     // Client sends and receives.
     client
         .send()
@@ -307,7 +291,7 @@ fn pair_send_from_callback() {
     server.recv(&mut received, RecvFlags::NONE).unwrap();
     assert_eq!(received.parts()[0].as_bytes(), b"ping-pair");
     let reply = Message::try_from(b"pong-pair").unwrap();
-    handle.send().message(reply).submit().unwrap();
+    server.send().message(reply).submit().unwrap();
     client
         .common_options()
         .set_recv_timeout(Duration::from_secs(5))

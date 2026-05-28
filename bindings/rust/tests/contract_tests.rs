@@ -253,7 +253,7 @@ fn spot_reply_with_non_empty_flags_fails_explicitly() {
     let rid = RoutingId::from_bytes(b"peer-42");
 
     let router_err = spot
-        .reply_to_router(rid.clone(), 1)
+        .reply_to_router(rid, 1)
         .message(Message::try_from(b"pong").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()
@@ -261,7 +261,7 @@ fn spot_reply_with_non_empty_flags_fails_explicitly() {
     assert_eq!(router_err.code(), SubmitResult::NotSupported);
 
     let spot_err = spot
-        .reply_to_spot(rid.clone(), rid, 1)
+        .reply_to_spot(rid, rid, 1)
         .message(Message::try_from(b"pong").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit()

@@ -81,13 +81,5 @@ class EnumTypeTests(unittest.TestCase):
         self.assertEqual(int(combined), 0x0201)
 
 
-class BackwardCompatTests(unittest.TestCase):
-    def test_auto_connect_type_aliases(self):
-        self.assertEqual(zlink.AUTO_CONNECT_SPOT_MESH, 5)
-        self.assertEqual(
-            zlink.AUTO_CONNECT_SPOT_MESH, zlink.AutoConnectType.SPOT_MESH
-        )
-
-
 if __name__ == "__main__":
     unittest.main()

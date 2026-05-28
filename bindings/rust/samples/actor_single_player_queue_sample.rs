@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use zlink::{
-    Context, Message, RecvFlags, RecvResult, SendFlags, Spot, SpotDispatchEvent,
-    SpotDispatchSubject, SpotNode,
+    ActorReceived, Context, Message, RecvFlags, RecvResult, SendFlags, Spot, SpotDispatchEvent,
+    SpotNode,
 };
 
 #[path = "sample_support.rs"]
@@ -91,21 +91,25 @@ fn main() {
 
     let payloads = Arc::new(Mutex::new(Vec::<String>::new()));
     let payloads_cb = Arc::clone(&payloads);
+    let actor_received = Arc::new(Mutex::new(ActorReceived::empty()));
+    let actor_received_cb = Arc::clone(&actor_received);
     second_spot
         .on_dispatch_event(move |info| {
             if info.event != SpotDispatchEvent::ActorReadable {
                 return;
             }
-            if !matches!(info.subject, SpotDispatchSubject::Actor(_)) {
-                return;
-            }
+            let mut actor_received = actor_received_cb.lock().unwrap();
             loop {
-                match info.recv_actor_part_with_flags(RecvFlags::DONT_WAIT) {
-                    Ok(Some(part)) => payloads_cb
-                        .lock()
-                        .unwrap()
-                        .push(part.message.as_str().unwrap().to_owned()),
-                    Ok(None) => break,
+                match info.recv_actor(&mut actor_received, RecvFlags::DONT_WAIT) {
+                    Ok(true) => payloads_cb.lock().unwrap().push(
+                        actor_received
+                            .first_part()
+                            .unwrap()
+                            .as_str()
+                            .unwrap()
+                            .to_owned(),
+                    ),
+                    Ok(false) => break,
                     Err(_) => break,
                 }
             }
@@ -121,7 +125,7 @@ fn main() {
         .submit(move |result, parts| second_tx.send((result, parts)).unwrap())
         .expect("second join submit failed");
     accept_join(&second_spot, b"join-second");
-    second_rx.recv_timeout(Duration::from_secs(2)).unwrap().0;
+    second_rx.recv_timeout(Duration::from_secs(2)).unwrap();
 
     sample_support::wait_until(
         || payloads.lock().unwrap().len() >= 2,

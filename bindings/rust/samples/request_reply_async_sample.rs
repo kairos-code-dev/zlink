@@ -56,7 +56,7 @@ fn main() {
     drop(dealer_monitor);
 
     let (request_done_tx, request_done_rx) = mpsc::channel();
-    let expected_routing_id = routing_id.clone();
+    let expected_routing_id = routing_id;
     let router_thread = router_socket;
     thread::spawn(move || {
         let mut received = zlink::Received::empty();

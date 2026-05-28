@@ -5,9 +5,10 @@ use std::pin::pin;
 use std::task::{Context as TaskContext, Poll, Waker};
 
 use zlink::{
-    AutoConnectType, Context, Discovery, Message, POLLIN, POLLOUT, PairSocket, PollEvent,
-    PollSourceKind, Poller, Received, RecvFlags, Registry, RegistryQueryClient, RoutingId,
-    SendFlags, SocketMonitor, Spot, SpotDispatchInfo, SpotNode, SubscriptionEvent, Timer,
+    ActorReceived, AutoConnectType, Context, Discovery, Message, POLLIN, POLLOUT, PairSocket,
+    PollEvent, PollSourceKind, Poller, Received, RecvFlags, Registry, RegistryQueryClient,
+    RoutingId, SendFlags, SocketMonitor, Spot, SpotDispatchInfo, SpotNode, SubscriptionEvent,
+    Timer,
 };
 
 fn reserve_tcp_port() -> u16 {
@@ -67,25 +68,19 @@ fn spot_callback_surfaces_exist() {
         .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit();
-    let _ = spot.publish_part(
-        "topic",
-        Message::try_from(b"payload").unwrap(),
-        SendFlags::DONT_WAIT,
-    );
-    let _ = spot.subscribe_part(RecvFlags::DONT_WAIT);
     let _ = spot
-        .send_channel("svc-surface")
+        .send_to_channel("svc-surface")
         .message(Message::try_from(b"payload").unwrap())
         .submit();
     let _ = spot
-        .send_channel("svc-surface")
+        .send_to_channel("svc-surface")
         .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit();
     let rid = RoutingId::from_bytes(b"rid-surface");
     let spot_rid = RoutingId::from_bytes(b"spot-surface");
     let _ = spot
-        .send_to_spot(rid.clone(), spot_rid.clone())
+        .send_to_spot(rid, spot_rid)
         .message(Message::try_from(b"payload").unwrap())
         .submit();
     let _ = spot
@@ -94,13 +89,13 @@ fn spot_callback_surfaces_exist() {
         .flags(SendFlags::DONT_WAIT)
         .submit();
     let _ = block_on_ready(
-        spot.request_channel("svc-surface")
+        spot.request_to_channel("svc-surface")
             .message(Message::try_from(b"payload").unwrap())
             .timeout(std::time::Duration::from_millis(1))
             .submit_async(),
     );
     let _ = spot
-        .request_channel("svc-surface")
+        .request_to_channel("svc-surface")
         .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit(|_result| {});
@@ -221,7 +216,8 @@ fn actor_surfaces_exist() {
     let _ = node.spots().unwrap();
     let _ = node.actors().unwrap();
     let _ = spot.actors().unwrap();
-    let _ = actor.recv_part_with_flags(RecvFlags::DONT_WAIT);
+    let mut actor_received = ActorReceived::empty();
+    let _ = actor.recv(&mut actor_received, RecvFlags::DONT_WAIT);
     let _ = actor
         .send_bound_session_msg()
         .message(Message::try_from(b"payload").unwrap())

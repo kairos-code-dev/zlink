@@ -3,8 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use zlink::{
-    Context, Message, RecvFlags, RecvResult, SendFlags, SpotDispatchEvent, SpotDispatchSubject,
-    SpotNode,
+    ActorReceived, Context, Message, RecvFlags, RecvResult, SendFlags, SpotDispatchEvent, SpotNode,
 };
 
 #[path = "sample_support.rs"]
@@ -70,18 +69,25 @@ fn main() {
 
     let payload = Arc::new(Mutex::new(None::<String>));
     let payload_cb = Arc::clone(&payload);
+    let actor_received = Arc::new(Mutex::new(ActorReceived::empty()));
+    let actor_received_cb = Arc::clone(&actor_received);
     spot.on_dispatch_event(move |info| {
         if info.event != SpotDispatchEvent::ActorReadable {
             return;
         }
-        if !matches!(info.subject, SpotDispatchSubject::Actor(_)) {
-            return;
-        }
-        if let Some(part) = info
-            .recv_actor_part_with_flags(RecvFlags::DONT_WAIT)
+        let mut actor_received = actor_received_cb.lock().unwrap();
+        if info
+            .recv_actor(&mut actor_received, RecvFlags::DONT_WAIT)
             .expect("actor dispatch recv failed")
         {
-            *payload_cb.lock().unwrap() = Some(part.message.as_str().unwrap().to_owned());
+            *payload_cb.lock().unwrap() = Some(
+                actor_received
+                    .first_part()
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+            );
         }
     })
     .expect("dispatch handler failed");

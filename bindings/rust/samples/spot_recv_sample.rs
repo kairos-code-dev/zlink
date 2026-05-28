@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant};
 
 use zlink::{
-    AutoConnectType, Context, Discovery, Message, RecvFlags, RecvResult, Registry,
+    AutoConnectType, ConfigError, Context, Discovery, Message, RecvFlags, RecvResult, Registry,
     RegistryQueryClient, SpotNode, SubmitResult, TopicMessage,
 };
 
@@ -25,8 +25,6 @@ fn main() {
     let subscriber_node = SpotNode::new(&ctx).expect("subscriber node failed");
     let registry_pub = sample_support::tcp_endpoint();
     let registry_router = sample_support::tcp_endpoint();
-    let publisher_endpoint = sample_support::tcp_endpoint();
-    let subscriber_endpoint = sample_support::tcp_endpoint();
     registry
         .bind(&registry_pub, &registry_router)
         .expect("registry bind failed");
@@ -54,12 +52,8 @@ fn main() {
             b"a-rust-spot-recv-subscriber",
         ))
         .expect("subscriber routing id failed");
-    publisher_node
-        .set_pub_bind(&publisher_endpoint)
-        .expect("publisher bind failed");
-    subscriber_node
-        .set_pub_bind(&subscriber_endpoint)
-        .expect("subscriber bind failed");
+    bind_spot_pub_endpoint(&publisher_node).expect("publisher bind failed");
+    bind_spot_pub_endpoint(&subscriber_node).expect("subscriber bind failed");
     let publisher = publisher_node.create_spot().expect("publisher spot failed");
     let subscriber = subscriber_node
         .create_spot()
@@ -137,4 +131,19 @@ fn main() {
     }
 
     panic!("spot recv did not deliver within 5s");
+}
+
+fn bind_spot_pub_endpoint(node: &SpotNode) -> Result<(), ConfigError> {
+    let mut last_error = None;
+    for _ in 0..16 {
+        let endpoint = sample_support::tcp_endpoint();
+        match node.set_pub_bind(&endpoint) {
+            Ok(()) => return Ok(()),
+            Err(err) if err.internal_errno() == libc::EADDRINUSE => {
+                last_error = Some(err);
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    Err(last_error.expect("bind retry should record the last EADDRINUSE error"))
 }

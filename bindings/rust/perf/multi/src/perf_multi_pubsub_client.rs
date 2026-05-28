@@ -4,7 +4,7 @@ mod common;
 use std::io::{self, BufRead, Write};
 use std::time::{Duration, Instant};
 use zlink::{
-    POLLIN, PollEvent, Poller, RecvFlags, RecvResult, SocketMonitor, TopicMessage,
+    POLLIN, PollEvent, Poller, RecvFlags, RecvResult, SocketMonitor, SubSocket, TopicMessage,
 };
 
 const STOP_DRAIN_GRACE: Duration = Duration::from_millis(500);

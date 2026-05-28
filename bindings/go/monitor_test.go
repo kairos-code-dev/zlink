@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"zlink.systems/zlink"
+	zlink "zlink.systems/zlink/contracts"
 )
 
 func TestMonitorRecv(t *testing.T) {

@@ -1,47 +1,73 @@
 use super::{SocketInner, impl_base_socket, impl_connect};
-use crate::ctx::Context;
+use crate::core_context::Context;
 use crate::domain::TopicMessage;
 use crate::error::{ConfigError, RecvError};
 use crate::ffi;
 use crate::flags::RecvFlags;
-use crate::options::{CommonSocketOptions, SubSocketOptions};
+use crate::flags::{CommonSocketOptions, SubSocketOptions};
+use crate::socket_contracts::{SocketRuntime, XSubSocket};
 
-/// XSUB socket – extended subscribe, pairs with XPUB.
-///
-/// Capabilities: `subscribe` (blocking recv), `set_subscription`,
-/// `unset_subscription`.
-/// No send capabilities – no send options exposed.
-pub struct XSubSocket {
-    pub(crate) inner: SocketInner,
+struct NativeXSubSocket {
+    inner: SocketInner,
+}
+
+impl SocketRuntime for NativeXSubSocket {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 impl XSubSocket {
     pub(crate) fn new(ctx: &Context) -> Result<Self, ConfigError> {
         Ok(Self {
-            inner: SocketInner::create(ctx, ffi::zlink_socket_type_t::ZLINK_SOCKET_XSUB)?,
+            inner: Box::new(NativeXSubSocket {
+                inner: SocketInner::create(ctx, ffi::zlink_socket_type_t::ZLINK_SOCKET_XSUB)?,
+            }),
         })
     }
 
     pub fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError> {
-        self.inner.subscribe_recv(out, flags)
+        xsub_inner(self).subscribe_recv(out, flags)
     }
 
     pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError> {
-        self.inner.set_subscription(filter)
+        xsub_inner(self).set_subscription(filter)
     }
 
     pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError> {
-        self.inner.unset_subscription(filter)
+        xsub_inner(self).unset_subscription(filter)
     }
 
     pub fn common_options(&self) -> CommonSocketOptions<'_> {
-        CommonSocketOptions::new(&self.inner)
+        CommonSocketOptions::new(xsub_inner(self))
     }
 
     pub fn sub_options(&self) -> SubSocketOptions<'_> {
-        SubSocketOptions::new(&self.inner)
+        SubSocketOptions::new(xsub_inner(self))
     }
 }
 
-impl_base_socket!(XSubSocket);
-impl_connect!(XSubSocket);
+impl_base_socket!(XSubSocket, xsub_inner, xsub_inner_mut);
+impl_connect!(XSubSocket, xsub_inner);
+
+pub(crate) fn xsub_inner(socket: &XSubSocket) -> &SocketInner {
+    &socket
+        .inner
+        .as_any()
+        .downcast_ref::<NativeXSubSocket>()
+        .expect("zlink native xsub socket")
+        .inner
+}
+
+pub(crate) fn xsub_inner_mut(socket: &mut XSubSocket) -> &mut SocketInner {
+    &mut socket
+        .inner
+        .as_any_mut()
+        .downcast_mut::<NativeXSubSocket>()
+        .expect("zlink native xsub socket")
+        .inner
+}

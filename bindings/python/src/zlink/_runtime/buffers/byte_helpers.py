@@ -41,7 +41,7 @@ def _validated_int32(value, *, field="value"):
     if not isinstance(value, int):
         raise TypeError(f"{field} must be int")
     if value < -(2**31) or value > 2**31 - 1:
-        raise ValueError(f"{field} must fit int32")
+        raise OverflowError(f"{field} must fit in signed 32-bit range")
     return int(value)
 
 
@@ -49,5 +49,5 @@ def _validated_int64(value, *, field="value"):
     if not isinstance(value, int):
         raise TypeError(f"{field} must be int")
     if value < -(2**63) or value > 2**63 - 1:
-        raise ValueError(f"{field} must fit int64")
+        raise OverflowError(f"{field} must fit in signed 64-bit range")
     return int(value)

@@ -1,191 +1,84 @@
 # SPDX-License-Identifier: MPL-2.0
 
-import ctypes
-import sys
-import types
-
-from ..errors.codes import CloseResult, ConfigResult
-from ..errors.errors import CloseError, ConfigError
-from ..._native.ffi import lib
-from ..._runtime.handles.native_support import _raise_result_error, _validated_int32
+_utility_implementation = None
+_stopwatch_factory = None
+_thread_factory = None
+_atomic_counter_factory = None
 
 
-_THREAD_FN = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
+def register_core_implementation(
+    runtime,
+    *,
+    stopwatch_factory,
+    thread_factory,
+    atomic_counter_factory,
+):
+    global _utility_implementation
+    global _stopwatch_factory
+    global _thread_factory
+    global _atomic_counter_factory
+    _utility_implementation = runtime
+    _stopwatch_factory = stopwatch_factory
+    _thread_factory = thread_factory
+    _atomic_counter_factory = atomic_counter_factory
 
 
-def _report_unhandled_exception(handler):
-    exc_type, exc_value, exc_traceback = sys.exc_info()
-    if exc_type is None:
-        return
-    sys.unraisablehook(
-        types.SimpleNamespace(
-            exc_type=exc_type,
-            exc_value=exc_value,
-            exc_traceback=exc_traceback,
-            err_msg="Unhandled zlink callback exception",
-            object=handler,
-        )
-    )
-
-
-def _as_handle(value):
-    return getattr(value, "_handle", value)
+def _implementation():
+    if _utility_implementation is None:
+        raise RuntimeError("zlink core runtime is not registered")
+    return _utility_implementation
 
 
 def version():
-    major = ctypes.c_int()
-    minor = ctypes.c_int()
-    patch = ctypes.c_int()
-    lib().zlink_version(ctypes.byref(major), ctypes.byref(minor), ctypes.byref(patch))
-    return major.value, minor.value, patch.value
+    return _implementation().version()
 
 
 def strerror(code):
-    value = lib().zlink_strerror(int(code))
-    if not value:
-        return ""
-    return value.decode("utf-8", errors="replace")
+    return _implementation().strerror(code)
 
 
 def has(capability):
-    return bool(lib().zlink_has(str(capability).encode("utf-8")))
+    return _implementation().has(capability)
 
 
 def proxy(frontend, backend, capture=None):
-    rc = lib().zlink_proxy(
-        _as_handle(frontend),
-        _as_handle(backend),
-        None if capture is None else _as_handle(capture),
-    )
-    if rc != 0:
-        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+    return _implementation().proxy(frontend, backend, capture)
 
 
 def proxy_steerable(frontend, backend, capture, control):
-    rc = lib().zlink_proxy_steerable(
-        _as_handle(frontend),
-        _as_handle(backend),
-        _as_handle(capture),
-        _as_handle(control),
-    )
-    if rc != 0:
-        _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+    return _implementation().proxy_steerable(frontend, backend, capture, control)
 
 
 def sleep(seconds):
-    lib().zlink_sleep(_validated_int32(seconds, field="seconds"))
+    return _implementation().sleep(seconds)
 
 
 def multipart_close(parts):
-    for part in parts:
-        part.close()
+    return _implementation().multipart_close(parts)
 
 
 class Stopwatch:
-    def __init__(self) -> None:
-        self._handle = lib().zlink_stopwatch_start()
-        if not self._handle:
-            _raise_result_error(ConfigError, ConfigResult, 701, lib().zlink_errno())
-
-    def intermediate(self) -> int:
-        if not self._handle:
-            raise ConfigError(ConfigResult.INVALID_HANDLE, lib().zlink_errno())
-        return int(lib().zlink_stopwatch_intermediate(self._handle))
-
-    def stop(self) -> int:
-        if not self._handle:
-            raise ConfigError(ConfigResult.INVALID_HANDLE, lib().zlink_errno())
-        handle = self._handle
-        self._handle = None
-        return int(lib().zlink_stopwatch_stop(handle))
-
-    def close(self) -> None:
-        if self._handle:
-            self.stop()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.close()
+    def __new__(cls):
+        if cls is Stopwatch:
+            if _stopwatch_factory is None:
+                raise RuntimeError("zlink stopwatch runtime is not registered")
+            return _stopwatch_factory()
+        return super().__new__(cls)
 
 
 class Thread:
-    def __init__(self, target) -> None:
-        if target is None:
-            raise ValueError("target must not be None")
-        self._target = target
-        self._callback = None
-
-        def _invoke(_userdata):
-            try:
-                target()
-            except Exception:
-                _report_unhandled_exception(target)
-
-        callback = _THREAD_FN(_invoke)
-        self._callback = callback
-        self._handle = lib().zlink_thread_start(ctypes.cast(callback, ctypes.c_void_p), None)
-        if not self._handle:
-            _raise_result_error(ConfigError, ConfigResult, 701, lib().zlink_errno())
-
-    def join(self) -> None:
-        if not self._handle:
-            raise CloseError(CloseResult.INVALID_HANDLE, lib().zlink_errno())
-        handle = self._handle
-        self._handle = None
-        lib().zlink_thread_join(handle)
-        self._callback = None
+    def __new__(cls, target):
+        if cls is Thread:
+            if _thread_factory is None:
+                raise RuntimeError("zlink thread runtime is not registered")
+            return _thread_factory(target)
+        return super().__new__(cls)
 
 
 class AtomicCounter:
-    def __init__(self) -> None:
-        self._handle = lib().zlink_atomic_counter_new()
-        if not self._handle:
-            _raise_result_error(ConfigError, ConfigResult, 701, lib().zlink_errno())
-
-    def set(self, value: int) -> None:
-        if not self._handle:
-            raise ConfigError(ConfigResult.INVALID_HANDLE, lib().zlink_errno())
-        lib().zlink_atomic_counter_set(self._handle, _validated_int32(value, field="value"))
-
-    def increment(self) -> int:
-        if not self._handle:
-            raise ConfigError(ConfigResult.INVALID_HANDLE, lib().zlink_errno())
-        return int(lib().zlink_atomic_counter_inc(self._handle))
-
-    def decrement(self) -> int:
-        if not self._handle:
-            raise ConfigError(ConfigResult.INVALID_HANDLE, lib().zlink_errno())
-        return int(lib().zlink_atomic_counter_dec(self._handle))
-
-    @property
-    def value(self) -> int:
-        if not self._handle:
-            raise ConfigError(ConfigResult.INVALID_HANDLE, lib().zlink_errno())
-        return int(lib().zlink_atomic_counter_value(self._handle))
-
-    def close(self) -> None:
-        if not self._handle:
-            return
-        handle = ctypes.c_void_p(self._handle)
-        self._handle = None
-        lib().zlink_atomic_counter_destroy(ctypes.byref(handle))
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.close()
+    def __new__(cls):
+        if cls is AtomicCounter:
+            if _atomic_counter_factory is None:
+                raise RuntimeError("zlink atomic counter runtime is not registered")
+            return _atomic_counter_factory()
+        return super().__new__(cls)

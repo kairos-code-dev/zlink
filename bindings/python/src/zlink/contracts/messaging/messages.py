@@ -1,112 +1,102 @@
 # SPDX-License-Identifier: MPL-2.0
 
-import ctypes
-
-from ..errors.codes import CloseResult, ConfigResult
+from ..errors.errors import RecvError, SubmitError
 from ..sockets.codes import RecvResult, SubmitResult
-from ..errors.errors import CloseError, ConfigError, RecvError, SubmitError
-from ..._native.ffi import ZlinkMsg, lib
-from ..._runtime.handles.native_support import (
-    _init_msg_from_buffer,
-    _msg_data_ptr,
-    _msg_gets,
-    _msg_refcnt,
-    _msg_size,
-    _msg_to_bytes,
-    _raise_result_error,
-)
 
 
-# Per-message metadata key range.
 METADATA_KEY_USER_MIN = 0x0100
 METADATA_VALUE_MAX = 65535
 
+_message_factory = None
+_message_from_factory = None
+_message_allocate_factory = None
+_message_wrap_buffer_factory = None
+_received_message_factory = None
+_received_message_from_owner_factory = None
+_received_multipart_factory = None
+_received_factory = None
+_topic_message_factory = None
+_subscription_event_factory = None
+
+
+def register_messaging_factories(
+    *,
+    message_factory,
+    message_from_factory,
+    message_allocate_factory,
+    message_wrap_buffer_factory,
+    received_message_factory,
+    received_message_from_owner_factory,
+    received_multipart_factory,
+    received_factory,
+    topic_message_factory,
+    subscription_event_factory,
+):
+    global _message_factory
+    global _message_from_factory
+    global _message_allocate_factory
+    global _message_wrap_buffer_factory
+    global _received_message_factory
+    global _received_message_from_owner_factory
+    global _received_multipart_factory
+    global _received_factory
+    global _topic_message_factory
+    global _subscription_event_factory
+    _message_factory = message_factory
+    _message_from_factory = message_from_factory
+    _message_allocate_factory = message_allocate_factory
+    _message_wrap_buffer_factory = message_wrap_buffer_factory
+    _received_message_factory = received_message_factory
+    _received_message_from_owner_factory = received_message_from_owner_factory
+    _received_multipart_factory = received_multipart_factory
+    _received_factory = received_factory
+    _topic_message_factory = topic_message_factory
+    _subscription_event_factory = subscription_event_factory
+
+
+def _require(factory, name):
+    if factory is None:
+        raise RuntimeError(f"zlink {name} runtime is not registered")
+    return factory
+
 
 class ReceivedMessage:
-    def __init__(self, msg=None, routing_id=None, *, owner=None, index=None):
-        self._msg = msg
-        self._owner = owner
-        self._index = index
-        self._closed = False
-        self.routing_id = routing_id
+    def __new__(cls, *args, **kwargs):
+        if cls is ReceivedMessage:
+            return _require(_received_message_factory, "received message")(
+                *args, **kwargs
+            )
+        return super().__new__(cls)
 
     @classmethod
     def _from_owner(cls, owner, index, routing_id=None):
+        if cls is ReceivedMessage:
+            return _require(
+                _received_message_from_owner_factory, "received message"
+            )(owner, index, routing_id)
         return cls(routing_id=routing_id, owner=owner, index=index)
 
-    def _native_msg(self):
-        if self._owner is not None:
-            return self._owner.msg(self._index)
-        if self._closed:
-            raise RuntimeError("received message is closed")
-        return self._msg
-
-    def __len__(self):
-        return _msg_size(self._native_msg())
+    def __len__(self): ...
 
     @property
-    def data(self):
-        """Zero-copy ``memoryview`` over this received part's native buffer.
+    def data(self): ...
 
-        Mirrors :pyattr:`Message.data` (which wraps the same C
-        ``zlink_msg_data`` contract) so callers can inspect a received
-        payload — e.g. decode a fixed header — without copying it via
-        :meth:`to_bytes`. The view borrows the native buffer and is only
-        valid until the owning message is closed.
-        """
-        native = self._native_msg()
-        ptr = _msg_data_ptr(native)
-        size = _msg_size(native)
-        if not ptr or size <= 0:
-            return memoryview(b"")
-        return memoryview((ctypes.c_ubyte * size).from_address(ptr)).cast("B")
+    def to_bytes(self): ...
 
-    def to_bytes(self):
-        return _msg_to_bytes(self._native_msg())
+    def close(self): ...
 
-    def close(self):
-        if self._closed:
-            return
-        self._closed = True
-        if self._owner is not None:
-            self._owner.close_part(self._index)
-            return
-        rc = lib().zlink_msg_close(ctypes.byref(self._msg))
-        if rc != 0:
-            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
+    def __enter__(self): ...
 
-    def __enter__(self):
-        return self
+    def __exit__(self, exc_type, exc, tb): ...
 
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
+    async def __aenter__(self): ...
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        self.close()
+    async def __aexit__(self, exc_type, exc, tb): ...
 
 
 class _BaseReceived:
-    """Shared parts/lifecycle for received-message containers.
-
-    ReceivedMultipart and TopicMessage previously carried byte-identical
-    copies of the iterator, length, byte-extraction, single-part, and
-    context-manager methods; they only diverge in which routing fields
-    their __init__/_adopt_from manage. The common surface lives here so
-    the two stay in lockstep.
-    """
-
     _owner = None
     parts = ()
-
-    @staticmethod
-    def _build_parts(owner):
-        return tuple(
-            ReceivedMessage._from_owner(owner, index)
-            for index in range(owner._part_count)
-        )
 
     def __iter__(self):
         return iter(self.parts)
@@ -115,11 +105,6 @@ class _BaseReceived:
         return len(self.parts)
 
     def to_bytes_list(self):
-        if self._owner is not None:
-            return [
-                _msg_to_bytes(self._owner.msg(index))
-                for index in range(self._owner._part_count)
-            ]
         return [message.to_bytes() for message in self.parts]
 
     def is_single_part(self):
@@ -136,10 +121,9 @@ class _BaseReceived:
         return self.parts[0]
 
     def close(self):
-        if self._owner is None:
-            return
-        self._owner.close()
-        self._owner = None
+        if self._owner is not None:
+            self._owner.close()
+            self._owner = None
         self.parts = ()
 
     def __enter__(self):
@@ -156,342 +140,120 @@ class _BaseReceived:
 
 
 class ReceivedMultipart(_BaseReceived):
-    def __init__(
-        self,
-        owner=None,
-        routing_id=None,
-        request_seq=None,
-        *,
-        spot_rid=None,
-        reply_sender=None,
-        send_sender=None,
-    ):
-        # Caller-provided storage path: ReceivedMultipart() / Received()
-        # constructs an empty placeholder for reuse across recv_into calls.
-        # See doc/spec/bindings/README.md "Canonical Recv: Caller-Provided
-        # Storage". Populated state is installed via _adopt_from().
-        if owner is None:
-            self._owner = None
-            self.parts = ()
-            self.routing_id = None
-            self.spot_rid = None
-            self.request_seq = None
-            self._reply_sender = None
-            self._send_sender = None
-            return
-        self._owner = owner
-        self.parts = self._build_parts(owner)
-        self.routing_id = routing_id
-        self.spot_rid = spot_rid
-        self.request_seq = request_seq
-        self._reply_sender = reply_sender
-        self._send_sender = send_sender
+    def __new__(cls, *args, **kwargs):
+        if cls is ReceivedMultipart:
+            return _require(_received_multipart_factory, "received multipart")(
+                *args, **kwargs
+            )
+        return super().__new__(cls)
 
-    def _adopt_from(self, source):
-        """Replace this Received's internal state with the contents of
-        ``source``. Closes any state currently held first; ``source`` is
-        left detached after the call."""
-        if source is self:
-            return
-        if self._owner is not None:
-            try:
-                self._owner.close()
-            except Exception:  # noqa: BLE001
-                pass
-        self._owner = source._owner
-        self.parts = source.parts
-        self.routing_id = source.routing_id
-        self.spot_rid = source.spot_rid
-        self.request_seq = source.request_seq
-        self._reply_sender = source._reply_sender
-        self._send_sender = source._send_sender
-        source._owner = None
-        source.parts = ()
-        source.routing_id = None
-        source.spot_rid = None
-        source.request_seq = None
-        source._reply_sender = None
-        source._send_sender = None
+    def _adopt_from(self, source): ...
 
-    def _replace(
-        self,
-        owner,
-        routing_id=None,
-        request_seq=None,
-        *,
-        spot_rid=None,
-        reply_sender=None,
-        send_sender=None,
-    ):
-        if self._owner is not None:
-            try:
-                self._owner.close()
-            except Exception:  # noqa: BLE001
-                pass
-        self._owner = owner
-        self.parts = self._build_parts(owner)
-        self.routing_id = routing_id
-        self.spot_rid = spot_rid
-        self.request_seq = request_seq
-        self._reply_sender = reply_sender
-        self._send_sender = send_sender
+    def _replace(self, owner, routing_id=None, request_seq=None, **kwargs): ...
 
 
 class TopicMessage(_BaseReceived):
-    def __init__(
-        self,
-        topic=None,
-        owner=None,
-        routing_id=None,
-        request_seq=None,
-    ):
-        if owner is None:
-            self._topic = ""
-            self._topic_raw = None
-            self._owner = None
-            self.parts = ()
-            self.routing_id = None
-            self.request_seq = None
-            return
-        self._topic = topic
-        self._topic_raw = None
-        self._owner = owner
-        self.parts = self._build_parts(owner)
-        self.routing_id = routing_id
-        self.request_seq = request_seq
+    def __new__(cls, *args, **kwargs):
+        if cls is TopicMessage:
+            return _require(_topic_message_factory, "topic message")(
+                *args, **kwargs
+            )
+        return super().__new__(cls)
 
     @property
-    def topic(self):
-        raw = self._topic_raw
-        if raw is not None:
-            self._topic = raw.decode("utf-8", errors="replace")
-            self._topic_raw = None
-        return self._topic
+    def topic(self): ...
 
     @topic.setter
-    def topic(self, value):
-        self._topic = value
-        self._topic_raw = None
+    def topic(self, value): ...
 
-    def _adopt_from(self, source):
-        if source is self:
-            return
-        if self._owner is not None:
-            try:
-                self._owner.close()
-            except Exception:  # noqa: BLE001
-                pass
-        self._topic = source._topic
-        self._topic_raw = source._topic_raw
-        self._owner = source._owner
-        self.parts = source.parts
-        self.routing_id = source.routing_id
-        self.request_seq = source.request_seq
-        source._topic = ""
-        source._topic_raw = None
-        source._owner = None
-        source.parts = ()
-        source.routing_id = None
-        source.request_seq = None
+    def _adopt_from(self, source): ...
 
-    def _replace(
-        self,
-        owner,
-        *,
-        topic="",
-        topic_raw=None,
-        routing_id=None,
-        request_seq=None,
-    ):
-        if self._owner is not None:
-            try:
-                self._owner.close()
-            except Exception:  # noqa: BLE001
-                pass
-        self._topic = topic
-        self._topic_raw = topic_raw
-        self._owner = owner
-        self.parts = self._build_parts(owner)
-        self.routing_id = routing_id
-        self.request_seq = request_seq
+    def _replace(self, owner, **kwargs): ...
 
 
 class Received(ReceivedMultipart):
-    def send(self):
-        """Return a SendOp routed back to the source of this Received.
+    def __new__(cls, *args, **kwargs):
+        if cls is Received:
+            return _require(_received_factory, "received")(*args, **kwargs)
+        return super().__new__(cls)
 
-        Source rid / spot rid are encapsulated; accumulate payload via
-        ``.message(...)`` before calling ``.submit()``.
-        """
+    def send(self):
         if self._send_sender is None:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
         return self._send_sender()
 
     def reply(self):
-        """Return a ReplyOp for this received request. Valid only when
-        ``request_seq`` is present."""
         if self.request_seq is None or self._reply_sender is None:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
         return self._reply_sender()
 
 
 class SubscriptionEvent:
-    def __init__(self, topic="", subscribed=False, routing_id=None):
-        self.routing_id = routing_id
-        self.topic = topic
-        self.subscribed = subscribed
+    def __new__(cls, *args, **kwargs):
+        if cls is SubscriptionEvent:
+            return _require(_subscription_event_factory, "subscription event")(
+                *args, **kwargs
+            )
+        return super().__new__(cls)
 
-    def _adopt_from(self, source):
-        if source is self:
-            return
-        self.routing_id = source.routing_id
-        self.topic = source.topic
-        self.subscribed = source.subscribed
-        source.routing_id = None
-        source.topic = ""
-        source.subscribed = False
+    def _adopt_from(self, source): ...
 
 
 class Message:
-    def __init__(self, size: int | None = None):
-        self._msg = ZlinkMsg()
-        self._valid = False
-        self._keepalive = None
-        if size is None:
-            rc = lib().zlink_msg_init(ctypes.byref(self._msg))
-        else:
-            if size < 0:
-                raise ValueError("size must be >= 0")
-            rc = lib().zlink_msg_init_size(ctypes.byref(self._msg), size)
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._valid = True
+    def __new__(cls, size: int | None = None):
+        if cls is Message:
+            return _require(_message_factory, "message")(size)
+        return super().__new__(cls)
 
     @classmethod
     def allocate(cls, size: int):
+        if cls is Message:
+            return _require(_message_allocate_factory, "message allocate")(size)
         return cls(size)
 
     @classmethod
     def from_(cls, data):
-        if isinstance(data, str):
-            data = data.encode("utf-8")
-        elif isinstance(data, Message):
-            data = data.to_bytes()
-        msg = cls.__new__(cls)
-        msg._msg = ZlinkMsg()
-        msg._valid = False
-        msg._keepalive = _init_msg_from_buffer(msg._msg, data, borrow=False)
-        msg._valid = True
-        return msg
-
-    def copy(self):
-        return type(self).from_(self)
+        if cls is Message:
+            return _require(_message_from_factory, "message from")(data)
+        raise NotImplementedError
 
     @classmethod
     def _wrap_buffer(cls, data):
-        msg = cls.__new__(cls)
-        msg._msg = ZlinkMsg()
-        msg._valid = False
-        msg._keepalive = _init_msg_from_buffer(msg._msg, data, borrow=True)
-        msg._valid = True
-        return msg
+        if cls is Message:
+            return _require(_message_wrap_buffer_factory, "message buffer")(data)
+        raise NotImplementedError
 
-    def size(self):
-        return _msg_size(self._msg) if self._valid else 0
+    def copy(self): ...
 
-    def is_empty(self):
-        return self.size() == 0
+    def size(self): ...
+
+    def is_empty(self): ...
 
     @property
-    def data(self):
-        if not self._valid:
-            return memoryview(b"")
-        # Cache the memoryview keyed by (ptr, size). The underlying msg can
-        # only be mutated by close()/_adopt_from()-style transitions, both of
-        # which clear `_valid` and therefore invalidate this cache via the
-        # ``not self._valid`` short-circuit above. Reading `.data` repeatedly
-        # — common when forwarding a payload between parts of a pipeline —
-        # would otherwise allocate a fresh `from_address` view every call.
-        ptr = _msg_data_ptr(self._msg)
-        size = self.size()
-        if not ptr or size <= 0:
-            return memoryview(b"")
-        cache = getattr(self, "_data_view_cache", None)
-        if cache is not None and cache[0] == ptr and cache[1] == size:
-            return cache[2]
-        view = memoryview((ctypes.c_ubyte * size).from_address(ptr)).cast("B")
-        self._data_view_cache = (ptr, size, view)
-        return view
+    def data(self): ...
 
-    def to_bytes(self):
-        return _msg_to_bytes(self._msg) if self._valid else b""
+    def to_bytes(self): ...
 
-    def copy_to(self, destination, source_offset=0, destination_offset=0, length=None):
-        payload = self.to_bytes()
-        if length is None:
-            length = len(payload) - source_offset
-        if (
-            source_offset < 0
-            or destination_offset < 0
-            or length < 0
-            or source_offset + length > len(payload)
-        ):
-            raise ValueError("copy range is out of bounds")
-        view = memoryview(destination)
-        if view.readonly:
-            raise TypeError("destination must be writable")
-        if view.ndim != 1 or view.format != "B":
-            try:
-                view = view.cast("B")
-            except TypeError as exc:
-                raise TypeError("destination must be a writable byte buffer") from exc
-        if destination_offset + length > view.nbytes:
-            raise ValueError("destination buffer is too small")
-        view[destination_offset : destination_offset + length] = payload[
-            source_offset : source_offset + length
-        ]
-        return length
+    def copy_to(self, destination, source_offset=0, destination_offset=0, length=None): ...
 
-    def try_copy_to(self, destination):
-        try:
-            self.copy_to(destination)
-            return True
-        except ValueError:
-            return False
+    def try_copy_to(self, destination): ...
 
-    def to_string(self, encoding="utf-8"):
-        return self.to_bytes().decode(encoding)
+    def to_string(self, encoding="utf-8"): ...
 
-    def get_property(self, name):
-        return _msg_gets(self._msg, name) if self._valid else None
+    def get_property(self, name): ...
 
-    def getProperty(self, name):
-        return self.get_property(name)
+    def getProperty(self, name): ...
 
-    def ref_count(self):
-        return _msg_refcnt(self._msg) if self._valid else -1
+    def ref_count(self): ...
 
-    def refCount(self):
-        return self.ref_count()
+    def refCount(self): ...
 
-    def close(self):
-        if not self._valid:
-            return
-        rc = lib().zlink_msg_close(ctypes.byref(self._msg))
-        self._valid = False
-        self._keepalive = None
-        self._data_view_cache = None
-        if rc != 0:
-            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
+    def close(self): ...
 
-    def __enter__(self):
-        return self
+    def __enter__(self): ...
 
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
+    def __exit__(self, exc_type, exc, tb): ...
 
-    async def __aenter__(self):
-        return self
+    async def __aenter__(self): ...
 
-    async def __aexit__(self, exc_type, exc, tb):
-        self.close()
+    async def __aexit__(self, exc_type, exc, tb): ...

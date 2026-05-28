@@ -10,6 +10,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use zlink::{
     Context, DealerSocket, Message, PairSocket, PubSocket, RouterSocket, SocketMonitor,
+    SubSocket, SubmitError, ZlinkError,
 };
 
 // -- Metric header (29 bytes) ------------------------------------------------

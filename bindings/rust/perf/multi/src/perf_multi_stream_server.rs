@@ -4,9 +4,7 @@ mod common;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use zlink::{
-    Message, SubmitResult,
-};
+use zlink::{Message, SubmitResult};
 
 fn build_packet_frame(header: &[u8], body: &[u8]) -> Message {
     let mut packet = Message::with_size(6 + header.len() + body.len()).expect("packet");
@@ -38,12 +36,13 @@ fn main() {
         .common_options()
         .set_tcp_nodelay(true)
         .expect("tcp_nodelay");
-    let send_handle = stream.send_handle();
+    let (echo_tx, echo_rx) = mpsc::channel::<(zlink::RoutingId, Vec<u8>, Vec<u8>)>();
     // C perf_multi_stream_session.hpp handle_packet_message(): the wire stop
     // token in the body ends the run; the echo send result is NOT discarded —
     // a real send failure stops the server (it is not silently swallowed).
     let stop_flag = Arc::new(AtomicBool::new(false));
     let cb_stop = stop_flag.clone();
+    let cb_echo_tx = echo_tx.clone();
     stream
         .on_packet(move |routing_id, header, body| {
             let body_bytes = body.as_bytes();
@@ -51,19 +50,11 @@ fn main() {
                 cb_stop.store(true, Ordering::Release);
                 return;
             }
-            let msg = build_packet_frame(header.as_bytes(), body_bytes);
-            match send_handle.send_to(&routing_id).message(msg).submit() {
-                Ok(_) => {}
-                Err(err) if err.code() == SubmitResult::Backpressured => {
-                    // Binding's send handle queues under backpressure; nothing
-                    // more to do here (mirrors C enqueue-on-pending).
-                }
-                Err(err) => {
-                    if std::env::var("PERF_DEBUG").is_ok() {
-                        eprintln!("[multi-stream-server] echo send failed: {err}");
-                    }
-                    cb_stop.store(true, Ordering::Release);
-                }
+            if cb_echo_tx
+                .send((routing_id, header.as_bytes().to_vec(), body_bytes.to_vec()))
+                .is_err()
+            {
+                cb_stop.store(true, Ordering::Release);
             }
         })
         .expect("on_packet");
@@ -94,7 +85,24 @@ fn main() {
         if stop_flag.load(Ordering::Acquire) {
             break;
         }
-        match stop_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+        while let Ok((routing_id, header, body)) = echo_rx.try_recv() {
+            let msg = build_packet_frame(&header, &body);
+            match stream.send(&routing_id).message(msg).submit() {
+                Ok(_) => {}
+                Err(err) if err.code() == SubmitResult::Backpressured => {
+                    let _ = echo_tx.send((routing_id, header, body));
+                    break;
+                }
+                Err(err) => {
+                    if std::env::var("PERF_DEBUG").is_ok() {
+                        eprintln!("[multi-stream-server] echo send failed: {err}");
+                    }
+                    stop_flag.store(true, Ordering::Release);
+                    break;
+                }
+            }
+        }
+        match stop_rx.recv_timeout(std::time::Duration::from_millis(10)) {
             Ok(()) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,

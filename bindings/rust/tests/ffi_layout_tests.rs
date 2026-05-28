@@ -44,6 +44,7 @@ mod zlink_ffi_check {
     use std::os::raw::c_void;
 
     #[repr(C)]
+    #[allow(dead_code)]
     pub enum ZlinkPollerSourceKind {
         Socket = 1,
         Fd = 2,

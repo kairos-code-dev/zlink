@@ -16,7 +16,8 @@ import { RecvFlags, SendFlags } from '../../../contracts/sockets/socket_constant
 import { SubmitResult } from '../../../contracts/errors/errors';
 import { SpotDispatchEvent, SpotDispatchSubjectKind, type ActorJoinRequest, type ActorJoinReplyOperation, type ActorPart, type ActorRef, type ReplyOperation, type RequestCallback, type RequestOperation, type SendOperation, type SpotActorLifecycleEvent, type SpotDispatchEventHandler, type SpotSendReadyHandler, type SubscriptionEntry } from '../../../contracts/service';
 import { SpotOption } from './spot_options';
-import { RuntimeActorJoinReplyOperation, actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFromRaw, spotActorLifecycleInfoFromRaw } from './spot_operations';
+import { actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFromRaw, spotActorLifecycleInfoFromRaw } from './actor_models';
+import { RuntimeActorJoinReplyOperation } from './actor_operations';
 import type { ActorRefRaw, SpotActorJoinRecvRaw, SpotActorLifecycleRaw, SpotDispatchRaw, SpotRoutedRaw } from './spot_raw_models';
 
 type OwnerSpotNode = { nativeHandle(): unknown; readonly routingId: RoutingId; unregisterSpot(spot: Spot): void };

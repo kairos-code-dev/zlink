@@ -35,12 +35,16 @@ import {
 import {
   RuntimeActorBindOperation,
   RuntimeActorUnbindOperation,
+} from '../service/spot/actor_operations';
+import {
   actorRefFromRaw,
   actorRefToRaw,
+} from '../service/spot/actor_models';
+import {
   invokeStreamBindActor,
   invokeStreamSendBoundActor,
   invokeStreamUnbindActor,
-} from '../service/spot/spot_operations';
+} from '../service/spot/actor_invokers';
 
 type SpotNodeHandle = { nativeHandle(): unknown };
 

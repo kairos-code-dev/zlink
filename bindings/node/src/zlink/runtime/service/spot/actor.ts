@@ -6,9 +6,10 @@ import { closeCall, configCall, recvNativeError } from '../../errors/native_erro
 import { RecvFlags } from '../../../contracts/sockets/socket_constants';
 import type { ActorJoinOperation, ActorLeaveOperation, ActorPart, ActorRef, SendOperation } from '../../../contracts/service';
 import { RuntimeSendOperation } from '../../sockets/socket_operations';
-import { RuntimeActorJoinOperation, RuntimeActorLeaveOperation } from './spot_operations';
 import { Spot } from './spot';
-import { actorPartFromRaw, actorRefToRaw, invokeActorJoin, invokeActorLeave, invokeActorSendBoundSession, type ActorPartRaw } from './spot_operations';
+import { actorPartFromRaw, actorRefToRaw, type ActorPartRaw } from './actor_models';
+import { invokeActorJoin, invokeActorLeave, invokeActorSendBoundSession } from './actor_invokers';
+import { RuntimeActorJoinOperation, RuntimeActorLeaveOperation } from './actor_operations';
 
 export class Actor extends NativeHandle {
   private static readonly CREATE_TOKEN = Symbol('Actor.create');

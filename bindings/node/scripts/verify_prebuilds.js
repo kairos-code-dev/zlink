@@ -9,6 +9,9 @@ const { execFileSync } = require('node:child_process');
 
 const packageRoot = path.resolve(__dirname, '..');
 const prebuildRoot = path.join(packageRoot, 'prebuilds');
+const packageVersion = JSON.parse(
+  fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8')
+).version;
 
 function fail(message) {
   throw new Error(message);
@@ -38,8 +41,9 @@ function validateLinux(dir, arch) {
   if (!dynamic.includes('Library runpath: [$ORIGIN]')) {
     fail(`${addon} must use $ORIGIN runpath`);
   }
-  if (!fs.existsSync(path.join(dir, 'libzlink.so.6.0.3'))) {
-    fail(`${dir} is missing libzlink.so.6.0.3`);
+  const linuxCoreLib = `libzlink.so.${packageVersion}`;
+  if (!fs.existsSync(path.join(dir, linuxCoreLib))) {
+    fail(`${dir} is missing ${linuxCoreLib}`);
   }
   for (const stale of [
     'libzlink.so.6.0.0',

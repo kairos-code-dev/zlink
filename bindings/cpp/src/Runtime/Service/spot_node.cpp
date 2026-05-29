@@ -86,6 +86,11 @@ void throw_connect_result (zlink_connect_result_t result_)
       static_cast<connect_result_t> (result_));
 }
 
+int spot_node_option (zlink::detail::spot_node_option_id option_) noexcept
+{
+    return static_cast<int> (option_);
+}
+
 } // namespace
 
 spot_node_t::spot_node_t (context_t &ctx_) :
@@ -334,14 +339,14 @@ void spot_node_t::set_tls_client (const std::string &ca_cert_,
 auto_hwm_profile spot_node_t::router_admission_hwm_profile () const
 {
     return static_cast<auto_hwm_profile> (get_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::router_admission_hwm_profile)));
 }
 
 void spot_node_t::router_admission_hwm_profile (auto_hwm_profile profile_)
 {
     set_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::router_admission_hwm_profile),
       static_cast<int> (profile_));
 }
@@ -349,14 +354,14 @@ void spot_node_t::router_admission_hwm_profile (auto_hwm_profile profile_)
 message_count_t spot_node_t::router_admission_hwm () const
 {
     return message_count_t::value (get_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::router_admission_hwm)));
 }
 
 void spot_node_t::router_admission_hwm (message_count_t value_)
 {
     set_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::router_admission_hwm),
       value_.value ());
 }
@@ -364,14 +369,14 @@ void spot_node_t::router_admission_hwm (message_count_t value_)
 auto_hwm_profile spot_node_t::pubsub_admission_hwm_profile () const
 {
     return static_cast<auto_hwm_profile> (get_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::pubsub_admission_hwm_profile)));
 }
 
 void spot_node_t::pubsub_admission_hwm_profile (auto_hwm_profile profile_)
 {
     set_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::pubsub_admission_hwm_profile),
       static_cast<int> (profile_));
 }
@@ -379,14 +384,14 @@ void spot_node_t::pubsub_admission_hwm_profile (auto_hwm_profile profile_)
 message_count_t spot_node_t::pubsub_admission_hwm () const
 {
     return message_count_t::value (get_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::pubsub_admission_hwm)));
 }
 
 void spot_node_t::pubsub_admission_hwm (message_count_t value_)
 {
     set_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::pubsub_admission_hwm),
       value_.value ());
 }
@@ -394,14 +399,14 @@ void spot_node_t::pubsub_admission_hwm (message_count_t value_)
 worker_count_t spot_node_t::dispatch_workers_min () const
 {
     return worker_count_t::value (get_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::dispatch_workers_min)));
 }
 
 void spot_node_t::dispatch_workers_min (worker_count_t value_)
 {
     set_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::dispatch_workers_min),
       value_.value ());
 }
@@ -409,14 +414,14 @@ void spot_node_t::dispatch_workers_min (worker_count_t value_)
 worker_count_t spot_node_t::dispatch_workers_max () const
 {
     return worker_count_t::value (get_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::dispatch_workers_max)));
 }
 
 void spot_node_t::dispatch_workers_max (worker_count_t value_)
 {
     set_spot_node_option_int (
-      static_cast<int> (
+      spot_node_option (
         zlink::detail::spot_node_option_id::dispatch_workers_max),
       value_.value ());
 }

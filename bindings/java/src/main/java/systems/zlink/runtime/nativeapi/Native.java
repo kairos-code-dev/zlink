@@ -1,6 +1,6 @@
 package systems.zlink.runtime.nativeapi;
 
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEvent;
@@ -703,6 +703,23 @@ public final class Native {
             "zlink_discovery_resolve_actor",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_DISC_BIND_ROUTE = downcall(
+            "zlink_discovery_bind_route",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_DISC_UNBIND_ROUTE = downcall(
+            "zlink_discovery_unbind_route",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_DISC_RESOLVE_ROUTE = downcall(
+            "zlink_discovery_resolve_route",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_SET_VALUE = downcall(
             "zlink_discovery_set_value",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -828,6 +845,11 @@ public final class Native {
             "zlink_spot_node_connect_router_channel_peer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_CONN_ROUTER_CHANNEL_PEER_RID = downcall(
+            "zlink_spot_node_connect_router_channel_peer_rid",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_DISC_ROUTER_CHANNEL_PEER = downcall(
             "zlink_spot_node_disconnect_router_channel_peer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -1006,7 +1028,7 @@ public final class Native {
             return this;
         }
 
-        public byte[] routingId() {
+        public byte[] getRoutingId() {
             return routingId;
         }
 
@@ -1396,7 +1418,7 @@ public final class Native {
         }
     }
 
-    public static int recvPart(MemorySegment socket, MemorySegment sourceRidOut,
+    public static int recv(MemorySegment socket, MemorySegment sourceRidOut,
                                MemorySegment partOut,
                                MemorySegment hasMoreOut,
                                int flags) {
@@ -1438,7 +1460,7 @@ public final class Native {
                         Message part = new Message();
                         boolean success = false;
                         try {
-                            int rc = recvPart(socket, routingIdOut,
+                            int rc = recv(socket, routingIdOut,
                                 InternalAccess.messageNativeHandle(part),
                                 hasMoreOut, flags);
                             if (rc != 0) {
@@ -1581,7 +1603,7 @@ public final class Native {
         }
     }
 
-    public static int streamSendBoundActorPart(MemorySegment stream,
+    public static int streamSendBoundActorReceived(MemorySegment stream,
                                                MemorySegment sessionRid,
                                                MemorySegment actorId,
                                                MemorySegment msg,
@@ -2568,7 +2590,7 @@ public final class Native {
             if (rc < 0) {
                 int error = errorOut.get(ValueLayout.JAVA_INT, 0);
                 if (error != 0) {
-                    throw new systems.zlink.contracts.errors.ConfigException(
+                    throw new systems.zlink.contracts.errors.ZlinkConfigException(
                         systems.zlink.contracts.errors.ConfigResult.fromValue(error),
                         errno());
                 }
@@ -2663,7 +2685,7 @@ public final class Native {
         }
     }
 
-    public static int pollerAddTimer(MemorySegment poller, MemorySegment timer,
+    public static int pollerAddZlinkTimer(MemorySegment poller, MemorySegment timer,
                                      MemorySegment userData) {
         try {
             return (int) MH_POLLER_ADD_TIMER.invokeExact(poller, timer,
@@ -2775,7 +2797,7 @@ public final class Native {
         }
     }
 
-    public static int pollerRemoveTimer(MemorySegment poller,
+    public static int pollerRemoveZlinkTimer(MemorySegment poller,
                                         MemorySegment timer) {
         try {
             return (int) MH_POLLER_REMOVE_TIMER.invokeExact(poller, timer);
@@ -2796,7 +2818,7 @@ public final class Native {
             if (rc < 0) {
                 int error = errorOut.get(ValueLayout.JAVA_INT, 0);
                 if (error != 0) {
-                    throw new systems.zlink.contracts.errors.ConfigException(
+                    throw new systems.zlink.contracts.errors.ZlinkConfigException(
                         systems.zlink.contracts.errors.ConfigResult.fromValue(error),
                         errno());
                 }
@@ -3010,6 +3032,42 @@ public final class Native {
               routeOut);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_resolve_actor failed",
+              t);
+        }
+    }
+
+    public static int discoveryBindRoute(MemorySegment discovery, int kind,
+                                         MemorySegment key, long keySize,
+                                         MemorySegment value,
+                                         long valueSize) {
+        try {
+            return (int) MH_DISC_BIND_ROUTE.invokeExact(discovery, kind, key,
+              keySize, value, valueSize);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_discovery_bind_route failed", t);
+        }
+    }
+
+    public static int discoveryUnbindRoute(MemorySegment discovery, int kind,
+                                           MemorySegment key, long keySize) {
+        try {
+            return (int) MH_DISC_UNBIND_ROUTE.invokeExact(discovery, kind, key,
+              keySize);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_discovery_unbind_route failed",
+              t);
+        }
+    }
+
+    public static int discoveryResolveRoute(MemorySegment discovery, int kind,
+                                            MemorySegment key, long keySize,
+                                            MemorySegment ownerRoutingIdOut,
+                                            MemorySegment valueOut) {
+        try {
+            return (int) MH_DISC_RESOLVE_ROUTE.invokeExact(discovery, kind, key,
+              keySize, ownerRoutingIdOut, valueOut);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_discovery_resolve_route failed",
               t);
         }
     }
@@ -3324,6 +3382,19 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_node_connect_router_channel_peer failed", t);
+        }
+    }
+
+    public static int spotNodeConnectRouterChannelPeerRid(MemorySegment node,
+                                                          MemorySegment channelName,
+                                                          MemorySegment rid,
+                                                          MemorySegment endpoint) {
+        try {
+            return (int) MH_SPOT_NODE_CONN_ROUTER_CHANNEL_PEER_RID.invokeExact(
+              node, channelName, rid, endpoint);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_connect_router_channel_peer_rid failed", t);
         }
     }
 

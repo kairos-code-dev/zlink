@@ -7,10 +7,10 @@ import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.service.registry.Registry;
@@ -240,7 +240,7 @@ public final class PerfUtil {
     }
 
     public static void printSingleMonitorAutoHwm(Config config,
-                                                 MonitorSocket monitor,
+                                                 SocketMonitor monitor,
                                                  String component,
                                                  SocketType socketType) {
         PerfAutoHwm.printSingleMonitor(config, monitor, component, socketType);
@@ -259,7 +259,7 @@ public final class PerfUtil {
     }
 
     public static void printMultiMonitorAutoHwm(Config config,
-                                                MonitorSocket monitor,
+                                                SocketMonitor monitor,
                                                 String component, String label,
                                                 SocketType socketType) {
         PerfAutoHwm.printMultiMonitor(config, monitor, component, label,
@@ -279,7 +279,7 @@ public final class PerfUtil {
         PerfTransport.join(thread, label, timeout);
     }
 
-    public static void waitForMonitorEvent(MonitorSocket monitor,
+    public static void waitForMonitorEvent(SocketMonitor monitor,
                                            systems.zlink.contracts.eventing.MonitorEventType expectedEvent,
                                            int expectedCount, Duration timeout,
                                            String label) {
@@ -291,7 +291,7 @@ public final class PerfUtil {
         try {
             systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received();
             return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             return recvExceptionToNull(ex);
         }
     }
@@ -300,7 +300,7 @@ public final class PerfUtil {
         try {
             systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received();
             return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             return recvExceptionToNull(ex);
         }
     }
@@ -309,12 +309,12 @@ public final class PerfUtil {
         try {
             systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received();
             return socket.recv(received, RecvFlags.DONT_WAIT) ? received : null;
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             return recvExceptionToNull(ex);
         }
     }
 
-    private static systems.zlink.contracts.messaging.Received recvExceptionToNull(RecvException ex) {
+    private static systems.zlink.contracts.messaging.Received recvExceptionToNull(ZlinkRecvException ex) {
         if (ex.getResult() == RecvResult.NO_DATA
             || ex.getResult() == RecvResult.BUSY) {
             return null;
@@ -336,7 +336,7 @@ public final class PerfUtil {
             : Optional.empty();
     }
 
-    public static void applyMonitorOptions(MonitorSocket monitor, Config config) {
+    public static void applyMonitorOptions(SocketMonitor monitor, Config config) {
         PerfTransport.applyMonitorOptions(monitor, config);
     }
 
@@ -347,7 +347,7 @@ public final class PerfUtil {
     private static <T> Optional<T> tryOptional(CheckedSupplier<T> supplier) {
         try {
             return Optional.ofNullable(supplier.get());
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA
                 || ex.getResult() == RecvResult.BUSY) {
                 return Optional.empty();

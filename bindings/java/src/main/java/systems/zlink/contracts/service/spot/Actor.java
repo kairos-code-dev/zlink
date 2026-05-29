@@ -8,31 +8,31 @@ import java.time.Duration;
 /** Local Actor resource owned by a {@link SpotNode}. */
 public interface Actor extends AutoCloseable {
 
-    public abstract ActorRef ref();
+    ActorRef ref();
 
     /**
      * Async user-Spot join operation builder. Completion delivers an
      * {@link ActorJoinResult} plus reply parts. {@code spot} must be a user
      * Spot.
      */
-    public abstract ActorJoinOp join(Spot spot);
+    ActorJoinOperation join(Spot spot);
 
     /** Async leave operation builder for the supplied Spot. */
-    public abstract ActorLeaveOp leave(Spot spot);
+    ActorLeaveOperation leave(Spot spot);
 
-    public abstract ActorPart recvPart(RecvFlags flags);
+    ActorReceived recv(RecvFlags flags);
 
-    public abstract ActorPart recvPart();
+    ActorReceived recv();
 
     /** Actor-to-session relay operation builder. */
-    public abstract SendOp sendBoundSession();
+    SendOperation sendBoundSession();
 
-    public abstract void closeBoundSession(Duration timeout);
+    void closeBoundSession(Duration timeout);
 
-    public abstract void closeBoundSession();
+    void closeBoundSession();
 
-    public abstract void close(Duration timeout);
+    void close(Duration timeout);
 
     @Override
-    public abstract void close();
+    void close();
 }

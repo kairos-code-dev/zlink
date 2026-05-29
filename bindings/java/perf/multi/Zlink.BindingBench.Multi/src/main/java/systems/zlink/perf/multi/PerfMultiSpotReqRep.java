@@ -5,11 +5,11 @@ package systems.zlink.perf.multi;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RequestCallback;
@@ -19,9 +19,9 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfUtil;
 import java.io.BufferedReader;
@@ -64,7 +64,7 @@ final class PerfMultiSpotReqRep {
             node.setPubBind(config.endpoint());
             PerfControl.emitReady(config.endpoint());
             PerfControl.emitControlReady(controlEndpoint);
-            replier.onDispatchEvent(info -> {
+            replier.setDispatchHandler(info -> {
                 if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
                     return;
                 }
@@ -175,7 +175,7 @@ final class PerfMultiSpotReqRep {
                     try (Message reply = received.firstPart().move()) {
                         try {
                             received.reply().message(reply).submit();
-                        } catch (SubmitException ex) {
+                        } catch (ZlinkSubmitException ex) {
                             if (!isTransientSubmit(ex)) {
                                 throw ex;
                             }
@@ -202,17 +202,17 @@ final class PerfMultiSpotReqRep {
             waitingReply[i] = new AtomicBoolean();
         }
         try (Poller completionPoller = Zlink.createPoller();
-             Timer activeTimer = Zlink.createTimer()) {
+             ZlinkTimer activeZlinkTimer = Zlink.createTimer()) {
             PollEvents completionEvents = new PollEvents(
                 Math.max(1, activeClients + 1));
             for (int i = 0; i < activeClients; i++) {
                 completionPoller.add(requesters.get(i), i,
-                    PollEventFlag.POLLCOMPLETION);
+                    PollEventFlags.POLLCOMPLETION);
             }
-            completionPoller.add(activeTimer, ACTIVE_DEADLINE_SLOT);
+            completionPoller.add(activeZlinkTimer, ACTIVE_DEADLINE_SLOT);
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
-            activeTimer.start(Duration.ofSeconds(
+            activeZlinkTimer.start(Duration.ofSeconds(
                 Math.max(1, config.durationSeconds())), 1);
             Duration requestTimeout = Duration.ofMillis(
                 Math.max(1, config.recvTimeoutMs()));
@@ -247,29 +247,29 @@ final class PerfMultiSpotReqRep {
                 }
                 if (!sendProgress && hasWaitingReply) {
                     if (!waitForCompletion(completionPoller, completionEvents,
-                            activeTimer, true)) {
+                            activeZlinkTimer, true)) {
                         break;
                     }
                 } else if (sendProgress) {
                     waitForCompletion(completionPoller, completionEvents,
-                        activeTimer, false);
+                        activeZlinkTimer, false);
                 }
             }
             waitForOutstandingCallbacks(waitingReply, failure,
-                completionPoller, completionEvents, activeTimer);
+                completionPoller, completionEvents, activeZlinkTimer);
         } finally {
             Message.closeAll(List.of(payloads));
         }
     }
 
     private static boolean waitForCompletion(Poller poller, PollEvents events,
-                                             Timer activeTimer,
+                                             ZlinkTimer activeZlinkTimer,
                                              boolean block) {
         int count = poller.wait(events,
             block ? Duration.ofMillis(-1) : Duration.ZERO);
         for (int i = 0; i < count; i++) {
             if (events.slot(i) == ACTIVE_DEADLINE_SLOT) {
-                activeTimer.recv();
+                activeZlinkTimer.recv();
                 return false;
             }
         }
@@ -286,7 +286,7 @@ final class PerfMultiSpotReqRep {
                 .flags(SendFlags.DONT_WAIT)
                 .timeout(requestTimeout)
                 .submit(callback);
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (isTransientSubmit(ex)) {
                 return false;
             }
@@ -350,9 +350,9 @@ final class PerfMultiSpotReqRep {
                                                     AtomicReference<Throwable> failure,
                                                     Poller completionPoller,
                                                     PollEvents completionEvents,
-                                                    Timer activeTimer) {
+                                                    ZlinkTimer activeZlinkTimer) {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500);
-        activeTimer.start(Duration.ofMillis(500), 1);
+        activeZlinkTimer.start(Duration.ofMillis(500), 1);
         while (System.nanoTime() < deadline) {
             Throwable error = failure.get();
             if (error != null) {
@@ -370,7 +370,7 @@ final class PerfMultiSpotReqRep {
                 return;
             }
             if (!waitForCompletion(completionPoller, completionEvents,
-                    activeTimer, true)) {
+                    activeZlinkTimer, true)) {
                 return;
             }
         }
@@ -384,7 +384,7 @@ final class PerfMultiSpotReqRep {
         return clients;
     }
 
-    private static boolean isTransientSubmit(SubmitException ex) {
+    private static boolean isTransientSubmit(ZlinkSubmitException ex) {
         SubmitResult result = ex.getResult();
         return result == SubmitResult.BACKPRESSURED
             || result == SubmitResult.NOT_CONNECTED;
@@ -393,7 +393,7 @@ final class PerfMultiSpotReqRep {
     private static boolean recvRoutedNoWait(Spot spot, Received received) {
         try {
             return spot.recvRouted(received, RecvFlags.DONT_WAIT);
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA
                 || ex.getResult() == RecvResult.BUSY) {
                 return false;

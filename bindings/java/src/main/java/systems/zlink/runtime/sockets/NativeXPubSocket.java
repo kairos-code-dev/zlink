@@ -6,7 +6,7 @@ import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
 public final class NativeXPubSocket extends NativeSocketBase implements XPubSocket {
     private final PubSocketOptions options = new PubSocketOptions(this);
@@ -20,11 +20,11 @@ public final class NativeXPubSocket extends NativeSocketBase implements XPubSock
     public void unbind(String endpoint) { super.unbind(endpoint); }
     public void disconnect(String endpoint) { super.disconnect(endpoint); }
     public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
-    public SendOp publish(String topicId) {
+    public SendOperation publish(String topicId) {
         return SocketOperations.send((parts, flags) ->
             super.publish(topicId, parts, SendFlag.fromValue(flags.value())));
     }
     public boolean receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags) { return super.receiveSubscriptionEvent(result, ReceiveFlag.fromValue(flags.value())); }
-    public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
+    public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
     @Override public PubSocketOptions options() { return options; }
 }

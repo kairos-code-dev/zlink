@@ -3,14 +3,14 @@
 package systems.zlink.contracts.errors;
 
 
-public final class CloseException extends ZlinkException {
+public final class ZlinkCloseException extends ZlinkException {
     private final CloseResult result;
 
-    public CloseException(CloseResult result) {
+    public ZlinkCloseException(CloseResult result) {
         this(result, 0);
     }
 
-    public CloseException(CloseResult result, int internalErrno) {
+    public ZlinkCloseException(CloseResult result, int internalErrno) {
         super(result.value(), internalErrno);
         this.result = result;
     }

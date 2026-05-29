@@ -46,7 +46,7 @@ public final class SpotRequestAsyncSample {
             final List<Message>[] replyHolder = new List[] { List.of() };
             final RequestResult[] resultHolder = new RequestResult[] { RequestResult.TIMED_OUT };
             try (Message request = Message.from("spot-ping")) {
-                requester.requestChannel(channelName)
+                requester.requestToChannel(channelName)
                     .message(request)
                     .timeout(Duration.ofSeconds(5))
                     .submit((requestResult, replyParts) -> {

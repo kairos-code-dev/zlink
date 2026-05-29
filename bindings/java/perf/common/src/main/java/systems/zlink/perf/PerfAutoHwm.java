@@ -5,7 +5,7 @@ package systems.zlink.perf;
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.sockets.AutoHwmRecalcReason;
 import systems.zlink.contracts.eventing.MonitorStatus;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.service.spot.SpotNode;
@@ -18,7 +18,7 @@ final class PerfAutoHwm {
     }
 
     static void printSingleMonitor(PerfUtil.Config config,
-                                   MonitorSocket monitor, String component,
+                                   SocketMonitor monitor, String component,
                                    SocketType socketType) {
         MonitorStatus monitorStatus = monitor.status();
         if (!visible(monitorStatus)) {
@@ -79,12 +79,12 @@ final class PerfAutoHwm {
     static void printMultiSocket(PerfUtil.Config config, Socket socket,
                                  String component, String label,
                                  SocketType socketType) {
-        try (MonitorSocket monitor = socket.monitorOpen()) {
+        try (SocketMonitor monitor = socket.monitorOpen()) {
             printMultiMonitor(config, monitor, component, label, socketType);
         }
     }
 
-    static void printMultiMonitor(PerfUtil.Config config, MonitorSocket monitor,
+    static void printMultiMonitor(PerfUtil.Config config, SocketMonitor monitor,
                                   String component, String label,
                                   SocketType socketType) {
         MonitorStatus monitorStatus = monitor.status();

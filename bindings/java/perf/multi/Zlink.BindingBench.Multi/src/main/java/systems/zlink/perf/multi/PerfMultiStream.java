@@ -8,7 +8,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.sockets.StreamSocket;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
@@ -132,7 +132,7 @@ final class PerfMultiStream {
                 .message(packet)
                 .flags(SendFlags.DONT_WAIT)
                 .submit()) {
-                throw new SubmitException(SubmitResult.BACKPRESSURED);
+                throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED);
             }
         }
     }

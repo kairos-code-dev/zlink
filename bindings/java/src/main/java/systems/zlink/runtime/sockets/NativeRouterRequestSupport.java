@@ -3,7 +3,7 @@
 package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
@@ -60,7 +60,7 @@ final class NativeRouterRequestSupport {
                         : RequestReplySupport.requestResult(error), payload);
                 });
             return true;
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -146,7 +146,7 @@ final class NativeRouterRequestSupport {
                     i + 1 < payload.size() ? MemorySegment.NULL : handler,
                     i + 1 < payload.size() ? MemorySegment.NULL : userData);
                 if (rc != SubmitResult.OK.value()) {
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
         }
@@ -191,9 +191,9 @@ final class NativeRouterRequestSupport {
         return nativeRid;
     }
 
-    private static SubmitException submitFailure(String apiName) {
+    private static ZlinkSubmitException submitFailure(String apiName) {
         int errno = Native.errno();
-        SubmitException submit =
+        ZlinkSubmitException submit =
             NativeSubmitErrors.submitExceptionOrNull(errno);
         if (submit != null) {
             return submit;

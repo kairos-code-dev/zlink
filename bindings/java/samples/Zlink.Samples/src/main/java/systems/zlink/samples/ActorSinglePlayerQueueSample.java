@@ -2,7 +2,7 @@ package systems.zlink.samples;
 
 import systems.zlink.contracts.service.spot.Actor;
 import systems.zlink.contracts.service.spot.ActorJoinRequest;
-import systems.zlink.contracts.service.spot.ActorPart;
+import systems.zlink.contracts.service.spot.ActorReceived;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
@@ -36,7 +36,7 @@ public final class ActorSinglePlayerQueueSample {
             List<String> payloads = new ArrayList<>();
             List<RequestResult> replies = new ArrayList<>();
 
-            spot.onDispatchEvent(info -> {
+            spot.setDispatchHandler(info -> {
                 if (info.event() == SpotDispatchEvent.ACTOR_JOIN_READABLE) {
                     try (ActorJoinRequest request =
                              spot.recvActorJoin(RecvFlags.DONT_WAIT)) {
@@ -51,7 +51,7 @@ public final class ActorSinglePlayerQueueSample {
                     return;
                 }
                 if (info.event() == SpotDispatchEvent.ACTOR_READABLE) {
-                    for (ActorPart part : info.actorParts()) {
+                    for (ActorReceived part : info.actorMessages()) {
                         try (part) {
                             payloads.add(part.message().toUtf8String());
                         }
@@ -67,7 +67,7 @@ public final class ActorSinglePlayerQueueSample {
                 RoutingId sessionRid;
                 try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
                     stream.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
-                    sessionRid = received.routingId().orElseThrow();
+                    sessionRid = received.getRoutingId().orElseThrow();
                 }
                 stream.bindActor(sessionRid, actorRef)
                   .timeout(Duration.ofSeconds(2))

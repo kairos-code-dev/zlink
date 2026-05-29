@@ -107,7 +107,7 @@ class ServiceContractsIntegrationTest {
              Spot subscriber = node.createSpot()) {
             subscriber.setSubscription("spot-callback-topic");
 
-            subscriber.onDispatchEvent(info -> {
+            subscriber.setDispatchHandler(info -> {
                 try {
                     callbackThread.set(Thread.currentThread());
                 } catch (Throwable t) {

@@ -2,7 +2,7 @@ package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.AtomicCounter;
-import systems.zlink.contracts.core.Stopwatch;
+import systems.zlink.contracts.core.ZlinkStopwatch;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.ZlinkThread;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -18,10 +18,10 @@ public class CoreResourceContractTest {
         TestSupport.assumeNative();
 
         assertTrue(AtomicCounter.class.isInterface());
-        assertTrue(Stopwatch.class.isInterface());
+        assertTrue(ZlinkStopwatch.class.isInterface());
         assertTrue(ZlinkThread.class.isInterface());
         assertEquals(0, AtomicCounter.class.getConstructors().length);
-        assertEquals(0, Stopwatch.class.getConstructors().length);
+        assertEquals(0, ZlinkStopwatch.class.getConstructors().length);
         assertEquals(0, ZlinkThread.class.getConstructors().length);
 
         try (AtomicCounter counter = Zlink.createAtomicCounter()) {
@@ -33,7 +33,7 @@ public class CoreResourceContractTest {
             assertEquals(7, counter.value());
         }
 
-        try (Stopwatch stopwatch = Zlink.createStopwatch()) {
+        try (ZlinkStopwatch stopwatch = Zlink.createStopwatch()) {
             assertFalse(stopwatch.intermediate().isNegative());
             assertFalse(stopwatch.stop().isNegative());
         }
@@ -45,9 +45,9 @@ public class CoreResourceContractTest {
         assertEquals(1, ran.get());
 
         try (AtomicCounter counter = Zlink.createAtomicCounter();
-             Stopwatch stopwatch = Zlink.createStopwatch()) {
+             ZlinkStopwatch stopwatch = Zlink.createStopwatch()) {
             assertTrue(AtomicCounter.class.isInstance(counter));
-            assertTrue(Stopwatch.class.isInstance(stopwatch));
+            assertTrue(ZlinkStopwatch.class.isInstance(stopwatch));
         }
     }
 }

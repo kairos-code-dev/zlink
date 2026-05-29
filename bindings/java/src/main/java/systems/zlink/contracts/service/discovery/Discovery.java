@@ -15,30 +15,37 @@ import java.util.List;
  * exposes spot owner resolution plus member peer snapshots for that view.
  */
 public interface Discovery extends AutoCloseable {
+    int routeValueMaxSize();
 
-    public abstract void connectRegistry(String registryEndpoint);
+    void connectRegistry(String registryEndpoint);
 
-    public abstract SpotRoute resolveSpot(RoutingId spotRid);
+    SpotRoute resolveSpot(RoutingId spotRid);
 
-    public abstract ActorRoute resolveActor(String actorId);
+    ActorRoute resolveActor(String actorId);
 
-    public abstract void setValue(long value);
+    void bindRoute(int kind, byte[] key, byte[] value);
 
-    public abstract long getValue();
+    void unbindRoute(int kind, byte[] key);
 
-    public abstract void setSpotOwnerSyncEnabled(boolean enabled);
+    DiscoveryRoute resolveRoute(int kind, byte[] key);
 
-    public abstract boolean isSpotOwnerSyncEnabled();
+    void setValue(long value);
 
-    public abstract void setActorRouteSyncEnabled(boolean enabled);
+    long getValue();
 
-    public abstract boolean isActorRouteSyncEnabled();
+    void setSpotOwnerSyncEnabled(boolean enabled);
 
-    public abstract void setTlsClient(String caCertPem, String hostname,
+    boolean isSpotOwnerSyncEnabled();
+
+    void setActorRouteSyncEnabled(boolean enabled);
+
+    boolean isActorRouteSyncEnabled();
+
+    void setTlsClient(String caCertPem, String hostname,
                                       boolean trustSystem);
 
-    public abstract List<MemberPeerEntry> memberPeers();
+    List<MemberPeerEntry> memberPeers();
 
     @Override
-    public abstract void close();
+    void close();
 }

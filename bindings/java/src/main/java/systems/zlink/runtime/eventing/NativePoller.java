@@ -2,11 +2,11 @@
 
 package systems.zlink.runtime.eventing;
 
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.PollSourceKind;
 import systems.zlink.contracts.eventing.Poller;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.internal.ContractAccess;
 
 import systems.zlink.contracts.sockets.Socket;
@@ -24,8 +24,8 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 
 public final class NativePoller implements Poller {
-    private static final int MASK_POLLIN = PollEventFlag.POLLIN.mask();
-    private static final int MASK_POLLOUT = PollEventFlag.POLLOUT.mask();
+    private static final int MASK_POLLIN = PollEventFlags.POLLIN.mask();
+    private static final int MASK_POLLOUT = PollEventFlags.POLLOUT.mask();
     private static final int MASK_POLLCOMPLETION = 32;
     private final List<PollItem> items = new ArrayList<>();
     private final Map<Long, Integer> socketIndexes = new HashMap<>();
@@ -42,15 +42,15 @@ public final class NativePoller implements Poller {
             throw ZlinkException.fromLastError("zlink_poller_new");
     }
 
-    public void add(Socket socket, long slot, PollEventFlag... events) {
+    public void add(Socket socket, long slot, PollEventFlags... events) {
         addSocket(socket, combine(events), slot);
     }
 
-    public void add(Spot spot, long slot, PollEventFlag... events) {
+    public void add(Spot spot, long slot, PollEventFlags... events) {
         addSpot(spot, combine(events), slot);
     }
 
-    public void addFd(int fd, long slot, PollEventFlag... events) {
+    public void addFd(int fd, long slot, PollEventFlags... events) {
         ensureOpen();
         validateSlot(slot);
         PollItem item = PollItem.fd(fd, combine(events), slot);
@@ -60,18 +60,18 @@ public final class NativePoller implements Poller {
         items.add(item);
     }
 
-    public void add(Timer timer, long slot) {
+    public void add(ZlinkTimer timer, long slot) {
         ensureOpen();
         Objects.requireNonNull(timer, "timer");
         validateSlot(slot);
         PollItem item = PollItem.timer(InternalAccess.timerHandle(timer), slot);
-        int rc = Native.pollerAddTimer(handle, InternalAccess.timerHandle(timer), item.userData());
+        int rc = Native.pollerAddZlinkTimer(handle, InternalAccess.timerHandle(timer), item.userData());
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_poller_add_timer");
         items.add(item);
     }
 
-    public void modify(Socket socket, PollEventFlag... events) {
+    public void modify(Socket socket, PollEventFlags... events) {
         ensureOpen();
         Objects.requireNonNull(socket, "socket");
         int index = findSocket(InternalAccess.socketHandle(socket));
@@ -84,7 +84,7 @@ public final class NativePoller implements Poller {
         items.get(index).events = mask;
     }
 
-    public void modify(Spot spot, PollEventFlag... events) {
+    public void modify(Spot spot, PollEventFlags... events) {
         ensureOpen();
         Objects.requireNonNull(spot, "spot");
         int index = findSpot(InternalAccess.spotHandle(spot));
@@ -120,7 +120,7 @@ public final class NativePoller implements Poller {
         registerExternalProgress(item);
     }
 
-    public void modifyFd(int fd, PollEventFlag... events) {
+    public void modifyFd(int fd, PollEventFlags... events) {
         ensureOpen();
         int index = findFd(fd);
         if (index < 0)
@@ -167,7 +167,7 @@ public final class NativePoller implements Poller {
         return true;
     }
 
-    public boolean removeFd(int fd) {
+    public boolean remove(int fd) {
         ensureOpen();
         int index = findFd(fd);
         if (index < 0)
@@ -179,13 +179,13 @@ public final class NativePoller implements Poller {
         return true;
     }
 
-    public boolean remove(Timer timer) {
+    public boolean remove(ZlinkTimer timer) {
         ensureOpen();
         Objects.requireNonNull(timer, "timer");
-        int index = findTimer(InternalAccess.timerHandle(timer));
+        int index = findZlinkTimer(InternalAccess.timerHandle(timer));
         if (index < 0)
             return false;
-        int rc = Native.pollerRemoveTimer(handle, InternalAccess.timerHandle(timer));
+        int rc = Native.pollerRemoveZlinkTimer(handle, InternalAccess.timerHandle(timer));
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_poller_remove_timer");
         unregisterExternalProgress(items.remove(index));
@@ -321,10 +321,10 @@ public final class NativePoller implements Poller {
         return (int) millis;
     }
 
-    private static int combine(PollEventFlag... flags) {
+    private static int combine(PollEventFlags... flags) {
         int mask = 0;
         if (flags != null) {
-            for (PollEventFlag flag : flags) {
+            for (PollEventFlags flag : flags) {
                 if (flag != null) {
                     mask |= flag.mask();
                 }
@@ -362,7 +362,7 @@ public final class NativePoller implements Poller {
         }
     }
 
-    private int findTimer(MemorySegment timerHandle) {
+    private int findZlinkTimer(MemorySegment timerHandle) {
         for (int i = 0; i < items.size(); i++) {
             PollItem item = items.get(i);
             if (item.kind == PollSourceKind.TIMER

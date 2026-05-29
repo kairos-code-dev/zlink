@@ -5,7 +5,7 @@ package systems.zlink.perf.single;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -144,7 +144,7 @@ final class PerfPubSub {
             recvThread.start();
             try (Message active = PerfUtil.payloadTemplate(config.size())) {
                 try (PerfSocketPollSet writable = PerfSocketPollSet.fromSockets(
-                    List.of(pub), PollEventFlag.POLLOUT)) {
+                    List.of(pub), PollEventFlags.POLLOUT)) {
                     while (System.nanoTime() < activeEnd) {
                         PerfUtil.resetAndWritePayload(active, config.size(),
                             (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
@@ -159,7 +159,7 @@ final class PerfPubSub {
             try (Message stop = PerfStopToken.newMessage()) {
                 long stopDeadline = System.nanoTime() + 2_000_000_000L;
                 try (PerfSocketPollSet writable = PerfSocketPollSet.fromSockets(
-                    List.of(pub), PollEventFlag.POLLOUT)) {
+                    List.of(pub), PollEventFlags.POLLOUT)) {
                     publishWhenWritable(pub, writable, stop, stopDeadline);
                 }
             }

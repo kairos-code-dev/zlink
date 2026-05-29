@@ -65,15 +65,15 @@ public final class ContextOptions {
         threadNamePrefix = prefix;
     }
 
-    public int maxMsgSize() {
+    public int maxMessageSize() {
         return ContractAccess.contextGetOption(context, ContextOption.MAX_MSGSZ);
     }
 
-    public void maxMsgSize(int bytes) {
+    public void maxMessageSize(int bytes) {
         ContractAccess.contextSetOption(context, ContextOption.MAX_MSGSZ, bytes);
     }
 
-    public int msgTSize() {
+    public int messageThreadSize() {
         return ContractAccess.contextGetOption(context, ContextOption.MSG_T_SIZE);
     }
 
@@ -132,12 +132,12 @@ public final class ContextOptions {
             ContextOption.AUTO_HWM_MSG_UNIT_BYTES, value);
     }
 
-    public void addThreadAffinity(int cpu) {
+    public void addThreadAffinityCpu(int cpu) {
         ContractAccess.contextSetOption(context,
             ContextOption.THREAD_AFFINITY_CPU_ADD, cpu);
     }
 
-    public void removeThreadAffinity(int cpu) {
+    public void removeThreadAffinityCpu(int cpu) {
         ContractAccess.contextSetOption(context,
             ContextOption.THREAD_AFFINITY_CPU_REMOVE, cpu);
     }

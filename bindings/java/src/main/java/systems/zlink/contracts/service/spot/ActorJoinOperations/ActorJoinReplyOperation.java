@@ -7,7 +7,7 @@ import systems.zlink.contracts.messaging.Message;
  * Reply builder for {@link Spot#replyActorJoin(ActorJoinRequest, int)}.
  * Multipart reply payload is optional; a zero-message submit is allowed.
  */
-public interface ActorJoinReplyOp {
-    ActorJoinReplyOp message(Message part);
+public interface ActorJoinReplyOperation {
+    ActorJoinReplyOperation message(Message part);
     void submit();
 }

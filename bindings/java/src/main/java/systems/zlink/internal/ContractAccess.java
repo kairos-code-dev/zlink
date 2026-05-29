@@ -6,17 +6,17 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.ContextOption;
 import systems.zlink.contracts.core.AtomicCounter;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.core.Stopwatch;
+import systems.zlink.contracts.core.ZlinkStopwatch;
 import systems.zlink.contracts.core.ZlinkThread;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.Poller;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.service.spot.ActorJoinInfo;
 import systems.zlink.contracts.service.spot.ActorJoinRequest;
-import systems.zlink.contracts.service.spot.ActorPart;
+import systems.zlink.contracts.service.spot.ActorReceived;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.SpotActorLifecycleEventKind;
 import systems.zlink.contracts.service.spot.Spot;
@@ -95,14 +95,14 @@ public final class ContractAccess {
         SpotDispatchInfo create(SpotDispatchEvent event,
                                 SpotDispatchSubjectKind subjectKind,
                                 Object subject,
-                                List<ActorPart> actorParts);
+                                List<ActorReceived> actorMessages);
 
         SpotDispatchInfo create(SpotDispatchEvent event,
                                 SpotDispatchSubjectKind subjectKind,
                                 Object subject,
-                                Timer timer,
+                                ZlinkTimer timer,
                                 String channelName,
-                                List<ActorPart> actorParts);
+                                List<ActorReceived> actorMessages);
     }
 
     public interface RoutingIdAccess {
@@ -224,15 +224,15 @@ public final class ContractAccess {
 
         AtomicCounter createAtomicCounter();
 
-        Stopwatch createStopwatch();
+        ZlinkStopwatch createStopwatch();
 
         ZlinkThread createThread(Runnable task);
 
         Poller createPoller();
 
-        Timer createTimer();
+        ZlinkTimer createTimer();
 
-        Timer createTimer(Spot spot);
+        ZlinkTimer createTimer(Spot spot);
 
         int errno();
 
@@ -474,20 +474,20 @@ public final class ContractAccess {
       SpotDispatchEvent event,
       SpotDispatchSubjectKind subjectKind,
       Object subject,
-      List<ActorPart> actorParts) {
+      List<ActorReceived> actorMessages) {
         return spotDispatchInfoAccess().create(event, subjectKind, subject,
-            actorParts);
+            actorMessages);
     }
 
     public static SpotDispatchInfo spotDispatchInfo(
       SpotDispatchEvent event,
       SpotDispatchSubjectKind subjectKind,
       Object subject,
-      Timer timer,
+      ZlinkTimer timer,
       String channelName,
-      List<ActorPart> actorParts) {
+      List<ActorReceived> actorMessages) {
         return spotDispatchInfoAccess().create(event, subjectKind, subject,
-            timer, channelName, actorParts);
+            timer, channelName, actorMessages);
     }
 
     public static RoutingId routingIdFromTrusted(byte[] value) {
@@ -693,7 +693,7 @@ public final class ContractAccess {
         return runtimeFactoryAccess().createAtomicCounter();
     }
 
-    public static Stopwatch createStopwatch() {
+    public static ZlinkStopwatch createStopwatch() {
         return runtimeFactoryAccess().createStopwatch();
     }
 
@@ -705,11 +705,11 @@ public final class ContractAccess {
         return runtimeFactoryAccess().createPoller();
     }
 
-    public static Timer createTimer() {
+    public static ZlinkTimer createTimer() {
         return runtimeFactoryAccess().createTimer();
     }
 
-    public static Timer createTimer(Spot spot) {
+    public static ZlinkTimer createTimer(Spot spot) {
         return runtimeFactoryAccess().createTimer(spot);
     }
 

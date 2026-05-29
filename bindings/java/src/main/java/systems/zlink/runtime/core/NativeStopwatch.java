@@ -2,22 +2,22 @@
 
 package systems.zlink.runtime.core;
 
-import systems.zlink.contracts.core.Stopwatch;
+import systems.zlink.contracts.core.ZlinkStopwatch;
 
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.runtime.nativeapi.Native;
 import java.lang.foreign.MemorySegment;
 import java.time.Duration;
 
-final class NativeStopwatch implements Stopwatch {
+final class NativeStopwatch implements ZlinkStopwatch {
     private MemorySegment handle;
     private boolean stopped;
 
     NativeStopwatch() {
         this.handle = Native.stopwatchStart();
         if (handle == null || handle.address() == 0) {
-            throw new ConfigException(ConfigResult.INVALID_HANDLE);
+            throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
         }
     }
 

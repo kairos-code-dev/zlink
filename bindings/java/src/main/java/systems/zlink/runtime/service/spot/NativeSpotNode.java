@@ -3,37 +3,37 @@
 package systems.zlink.runtime.service.spot;
 
 import systems.zlink.contracts.sockets.AutoHwmProfile;
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PubSocket;
-import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.service.spot.Actor;
-import systems.zlink.contracts.service.spot.ActorDestroyOp;
-import systems.zlink.contracts.service.spot.ActorJoinCallbackSubmitOp;
+import systems.zlink.contracts.service.spot.ActorDestroyOperation;
+import systems.zlink.contracts.service.spot.ActorJoinCallbackSubmitOperation;
 import systems.zlink.contracts.service.spot.ActorJoinCompletion;
 import systems.zlink.contracts.service.spot.ActorJoinEntrySpotCompletion;
 import systems.zlink.contracts.service.spot.ActorJoinEntrySpotHandler;
-import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOp;
+import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOperation;
 import systems.zlink.contracts.service.spot.ActorJoinHandler;
-import systems.zlink.contracts.service.spot.ActorJoinOp;
-import systems.zlink.contracts.service.spot.ActorJoinSubmitOp;
-import systems.zlink.contracts.service.spot.ActorLeaveOp;
+import systems.zlink.contracts.service.spot.ActorJoinOperation;
+import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;
+import systems.zlink.contracts.service.spot.ActorLeaveOperation;
 import systems.zlink.contracts.service.spot.ActorLookupHandler;
-import systems.zlink.contracts.service.spot.ActorLookupOp;
+import systems.zlink.contracts.service.spot.ActorLookupOperation;
 import systems.zlink.contracts.service.spot.ActorLookupResult;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ReplyHandler;
-import systems.zlink.contracts.service.spot.SendOp;
-import systems.zlink.contracts.service.spot.SendSubmitOp;
+import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.service.spot.SendSubmitOperation;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeActorEntry;
@@ -218,6 +218,23 @@ public final class NativeSpotNode implements SpotNode {
         }
     }
 
+    public void connectRouterChannelPeerRid(String channelName,
+                                            RoutingId peerRid,
+                                            String endpoint) {
+        Objects.requireNonNull(peerRid, "peerRid");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = nativeRoutingId(arena, peerRid);
+            int rc = Native.spotNodeConnectRouterChannelPeerRid(handle,
+              NativeHelpers.toCString(arena, requireChannelName(channelName)),
+              nativeRid,
+              NativeHelpers.toCString(arena, endpoint));
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_spot_node_connect_router_channel_peer_rid");
+            }
+        }
+    }
+
     /** Disconnects one manually connected router-capable channel peer. */
     public void disconnectRouterChannelPeer(String channelName,
                                             String endpoint) {
@@ -361,7 +378,7 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     /** Returns the current logical routing id for this spot node. */
-    public RoutingId routingId() {
+    public RoutingId getRoutingId() {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
@@ -398,7 +415,7 @@ public final class NativeSpotNode implements SpotNode {
         synchronized (lifecycleLock) {
             if (isClosed()) {
                 spot.close();
-                throw new ConfigException(ConfigResult.INVALID_HANDLE);
+                throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
             }
             registerSpot(spot);
         }
@@ -412,7 +429,7 @@ public final class NativeSpotNode implements SpotNode {
             MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
             int rc = Native.spotNodeEntrySpot(handle, out);
             if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             return adoptSpot(out.get(ValueLayout.ADDRESS, 0));
         }
     }
@@ -428,7 +445,7 @@ public final class NativeSpotNode implements SpotNode {
             if (rc == ConfigResult.NOT_FOUND.value())
                 return Optional.empty();
             if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             return Optional.of(adoptSpot(out.get(ValueLayout.ADDRESS, 0)));
         }
     }
@@ -446,7 +463,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.spotNodeSpotGetOrNew(handle,
               ActorInterop.nativeRoutingId(arena, spotRid), out, created);
             if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             return new SpotGetOrCreateResult(
               adoptSpot(out.get(ValueLayout.ADDRESS, 0)),
               created.get(ValueLayout.JAVA_INT, 0) != 0);
@@ -466,7 +483,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.spotNodeActorNew(handle,
               NativeHelpers.toCString(arena, actorId), out);
             if (rc != 0) {
-                throw new systems.zlink.contracts.errors.ConfigException(
+                throw new systems.zlink.contracts.errors.ZlinkConfigException(
                   systems.zlink.contracts.errors.ConfigResult.fromValue(rc));
             }
             return new NativeActor(this, ActorInterop.actorRefFromNative(out));
@@ -482,7 +499,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.spotNodeActorLookup(handle,
               NativeHelpers.toCString(arena, actorId), out);
             if (rc != 0) {
-                throw new systems.zlink.contracts.errors.ConfigException(
+                throw new systems.zlink.contracts.errors.ZlinkConfigException(
                   systems.zlink.contracts.errors.ConfigResult.fromValue(rc));
             }
             return ActorInterop.actorRefFromNative(out);
@@ -495,7 +512,7 @@ public final class NativeSpotNode implements SpotNode {
      * configure {@code timeout(...)} then submit via {@code submitAsync()} or
      * {@code submit(callback)}.
      */
-    public ActorLookupOp remoteActorGetRef(RoutingId targetNodeRid,
+    public ActorLookupOperation remoteActorGetRef(RoutingId targetNodeRid,
                                            String actorId) {
         Objects.requireNonNull(targetNodeRid, "targetNodeRid");
         Objects.requireNonNull(actorId, "actorId");
@@ -506,7 +523,7 @@ public final class NativeSpotNode implements SpotNode {
     /**
      * Async destroy. Succeeds only when the Actor is in the Entry Spot.
      */
-    public ActorDestroyOp destroyActor(ActorRef actor) {
+    public ActorDestroyOperation destroyActor(ActorRef actor) {
         Objects.requireNonNull(actor, "actor");
         ensureOpen();
         return new ActorDestroyBuilder(actor);
@@ -517,7 +534,7 @@ public final class NativeSpotNode implements SpotNode {
      * joined Spot rid, join epoch, and reply parts. {@code destSpotRid} must
      * be a user Spot; the Entry Spot is not a valid target.
      */
-    public ActorJoinOp joinActor(ActorRef actor, RoutingId destNodeRid,
+    public ActorJoinOperation joinActor(ActorRef actor, RoutingId destNodeRid,
                                  RoutingId destSpotRid) {
         Objects.requireNonNull(actor, "actor");
         Objects.requireNonNull(destNodeRid, "destNodeRid");
@@ -530,7 +547,7 @@ public final class NativeSpotNode implements SpotNode {
      * Message-less Entry Spot join builder. Completion delivers the final
      * ActorRef after the Actor is in {@code destNodeRid}'s Entry Spot.
      */
-    public ActorJoinEntrySpotOp joinActorEntrySpot(ActorRef actor,
+    public ActorJoinEntrySpotOperation joinActorEntrySpot(ActorRef actor,
                                                    RoutingId destNodeRid) {
         Objects.requireNonNull(actor, "actor");
         Objects.requireNonNull(destNodeRid, "destNodeRid");
@@ -539,7 +556,7 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     /** Async leave to the same node's Entry Spot. */
-    public ActorLeaveOp leaveActor(ActorRef actor, RoutingId currentSpotRid) {
+    public ActorLeaveOperation leaveActor(ActorRef actor, RoutingId currentSpotRid) {
         Objects.requireNonNull(actor, "actor");
         Objects.requireNonNull(currentSpotRid, "currentSpotRid");
         ensureOpen();
@@ -550,10 +567,24 @@ public final class NativeSpotNode implements SpotNode {
      * Actor-to-session relay builder. Fire-and-forget reverse send through the
      * Actor's bound STREAM session.
      */
-    public SendOp sendBoundSessionMsg(ActorRef actor) {
+    public SendOperation sendActorBoundSession(ActorRef actor) {
         Objects.requireNonNull(actor, "actor");
         ensureOpen();
         return new SendBoundSessionBuilder(actor);
+    }
+
+    public void closeActorBoundSession(ActorRef actor, Duration timeout) {
+        Objects.requireNonNull(actor, "actor");
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.spotNodeActorCloseBoundSession(handle,
+              ActorInterop.actorRefToNative(arena, actor),
+              timeoutMillis(timeout));
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_spot_node_actor_close_bound_session");
+            }
+        }
     }
 
     void sendHwm(int value) {
@@ -575,30 +606,30 @@ public final class NativeSpotNode implements SpotNode {
           EnumCodecs.autoHwmProfileValue(profile));
     }
 
-    public int routerHwm() {
+    public int routerHighWaterMark() {
         return getIntOption(OPT_ROUTER_HWM);
     }
 
-    public void routerHwm(int value) {
+    public void routerHighWaterMark(int value) {
         setIntOption(OPT_ROUTER_HWM, value);
     }
 
-    public AutoHwmProfile pubsubHwmProfile() {
+    public AutoHwmProfile pubSubHwmProfile() {
         return EnumCodecs.autoHwmProfileFromValue(
           getIntOption(OPT_PUBSUB_HWM_PROFILE));
     }
 
-    public void pubsubHwmProfile(AutoHwmProfile profile) {
+    public void pubSubHwmProfile(AutoHwmProfile profile) {
         Objects.requireNonNull(profile, "profile");
         setIntOption(OPT_PUBSUB_HWM_PROFILE,
           EnumCodecs.autoHwmProfileValue(profile));
     }
 
-    public int pubsubHwm() {
+    public int pubSubHighWaterMark() {
         return getIntOption(OPT_PUBSUB_HWM);
     }
 
-    public void pubsubHwm(int value) {
+    public void pubSubHighWaterMark(int value) {
         setIntOption(OPT_PUBSUB_HWM, value);
     }
 
@@ -842,7 +873,7 @@ public final class NativeSpotNode implements SpotNode {
 
     private Spot adoptSpot(MemorySegment spotHandle) {
         if (spotHandle == null || spotHandle.address() == 0)
-            throw new ConfigException(ConfigResult.INVALID_HANDLE);
+            throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
         synchronized (lifecycleLock) {
             Spot existing = liveSpotsByHandle.get(spotHandle.address());
             if (existing != null)
@@ -852,7 +883,7 @@ public final class NativeSpotNode implements SpotNode {
         synchronized (lifecycleLock) {
             if (isClosed()) {
                 spot.close();
-                throw new ConfigException(ConfigResult.INVALID_HANDLE);
+                throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
             }
             registerSpot(spot);
         }
@@ -875,7 +906,7 @@ public final class NativeSpotNode implements SpotNode {
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
             int rc = Native.getSpotNodeOption(handle, option, nativeValue, len);
             if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             return nativeValue.get(ValueLayout.JAVA_INT, 0);
         }
     }
@@ -888,7 +919,7 @@ public final class NativeSpotNode implements SpotNode {
             int rc = Native.setSpotNodeOption(handle, option, nativeValue,
               ValueLayout.JAVA_INT.byteSize());
             if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
         }
     }
 
@@ -1086,7 +1117,7 @@ public final class NativeSpotNode implements SpotNode {
         return millis >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) millis;
     }
 
-    private final class ActorLookupBuilder implements ActorLookupOp {
+    private final class ActorLookupBuilder implements ActorLookupOperation {
         private final RoutingId targetNodeRid;
         private final String actorId;
         private Duration timeout = Duration.ofMillis(5_000L);
@@ -1098,7 +1129,7 @@ public final class NativeSpotNode implements SpotNode {
         }
 
         @Override
-        public ActorLookupOp timeout(Duration value) {
+        public ActorLookupOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
@@ -1111,7 +1142,7 @@ public final class NativeSpotNode implements SpotNode {
                 if (result.result() == RequestResult.OK) {
                     future.complete(result);
                 } else {
-                    future.completeExceptionally(new RequestException(result.result()));
+                    future.completeExceptionally(new ZlinkRequestException(result.result()));
                 }
             });
             return future;
@@ -1131,7 +1162,7 @@ public final class NativeSpotNode implements SpotNode {
                   MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
             return true;
@@ -1148,7 +1179,7 @@ public final class NativeSpotNode implements SpotNode {
         }
     }
 
-    private final class ActorDestroyBuilder implements ActorDestroyOp {
+    private final class ActorDestroyBuilder implements ActorDestroyOperation {
         private final ActorRef actor;
         private Duration timeout = Duration.ofMillis(5_000L);
         private boolean submitted;
@@ -1158,7 +1189,7 @@ public final class NativeSpotNode implements SpotNode {
         }
 
         @Override
-        public ActorDestroyOp timeout(Duration value) {
+        public ActorDestroyOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
@@ -1171,7 +1202,7 @@ public final class NativeSpotNode implements SpotNode {
                 if (result == RequestResult.OK) {
                     future.complete(parts);
                 } else {
-                    future.completeExceptionally(new RequestException(result));
+                    future.completeExceptionally(new ZlinkRequestException(result));
                 }
             });
             return future;
@@ -1191,7 +1222,7 @@ public final class NativeSpotNode implements SpotNode {
                   timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
             return true;
@@ -1208,7 +1239,7 @@ public final class NativeSpotNode implements SpotNode {
         }
     }
 
-    private final class ActorLeaveBuilder implements ActorLeaveOp {
+    private final class ActorLeaveBuilder implements ActorLeaveOperation {
         private final ActorRef actor;
         private final RoutingId currentSpotRid;
         private Duration timeout = Duration.ofMillis(5_000L);
@@ -1220,7 +1251,7 @@ public final class NativeSpotNode implements SpotNode {
         }
 
         @Override
-        public ActorLeaveOp timeout(Duration value) {
+        public ActorLeaveOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
@@ -1233,7 +1264,7 @@ public final class NativeSpotNode implements SpotNode {
                 if (result == RequestResult.OK) {
                     future.complete(parts);
                 } else {
-                    future.completeExceptionally(new RequestException(result));
+                    future.completeExceptionally(new ZlinkRequestException(result));
                 }
             });
             return future;
@@ -1254,7 +1285,7 @@ public final class NativeSpotNode implements SpotNode {
                   timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
             return true;
@@ -1272,7 +1303,7 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     private final class ActorJoinBuilder
-      implements ActorJoinOp, ActorJoinSubmitOp {
+      implements ActorJoinOperation, ActorJoinSubmitOperation {
         private final ActorRef actor;
         private final RoutingId destNodeRid;
         private final RoutingId destSpotRid;
@@ -1289,21 +1320,21 @@ public final class NativeSpotNode implements SpotNode {
         }
 
         @Override
-        public ActorJoinSubmitOp message(Message part) {
+        public ActorJoinSubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(Objects.requireNonNull(part, "part"));
             return this;
         }
 
         @Override
-        public ActorJoinSubmitOp timeout(Duration value) {
+        public ActorJoinSubmitOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
         }
 
         @Override
-        public ActorJoinCallbackSubmitOp flags(SendFlags value) {
+        public ActorJoinCallbackSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return new ActorJoinCallbackStage(this);
@@ -1316,7 +1347,7 @@ public final class NativeSpotNode implements SpotNode {
                 if (result.result() == RequestResult.OK) {
                     future.complete(new ActorJoinCompletion(result, replyParts));
                 } else {
-                    future.completeExceptionally(new RequestException(result.result()));
+                    future.completeExceptionally(new ZlinkRequestException(result.result()));
                 }
             });
             return future;
@@ -1343,7 +1374,7 @@ public final class NativeSpotNode implements SpotNode {
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
                     MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
             return true;
@@ -1361,7 +1392,7 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     private final class ActorJoinCallbackStage
-      implements ActorJoinCallbackSubmitOp {
+      implements ActorJoinCallbackSubmitOperation {
         private final ActorJoinBuilder builder;
 
         ActorJoinCallbackStage(ActorJoinBuilder builder) {
@@ -1369,19 +1400,19 @@ public final class NativeSpotNode implements SpotNode {
         }
 
         @Override
-        public ActorJoinCallbackSubmitOp message(Message part) {
+        public ActorJoinCallbackSubmitOperation message(Message part) {
             builder.message(part);
             return this;
         }
 
         @Override
-        public ActorJoinCallbackSubmitOp timeout(Duration timeout) {
+        public ActorJoinCallbackSubmitOperation timeout(Duration timeout) {
             builder.timeout(timeout);
             return this;
         }
 
         @Override
-        public ActorJoinCallbackSubmitOp flags(SendFlags flags) {
+        public ActorJoinCallbackSubmitOperation flags(SendFlags flags) {
             builder.flags(flags);
             return this;
         }
@@ -1393,7 +1424,7 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     private final class ActorJoinEntrySpotBuilder
-      implements ActorJoinEntrySpotOp {
+      implements ActorJoinEntrySpotOperation {
         private final ActorRef actor;
         private final RoutingId destNodeRid;
         private Duration timeout = Duration.ofMillis(5_000L);
@@ -1405,7 +1436,7 @@ public final class NativeSpotNode implements SpotNode {
         }
 
         @Override
-        public ActorJoinEntrySpotOp timeout(Duration value) {
+        public ActorJoinEntrySpotOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
@@ -1420,7 +1451,7 @@ public final class NativeSpotNode implements SpotNode {
                     future.complete(new ActorJoinEntrySpotCompletion(result));
                 } else {
                     future.completeExceptionally(
-                      new RequestException(result.result()));
+                      new ZlinkRequestException(result.result()));
                 }
             });
             return future;
@@ -1440,7 +1471,7 @@ public final class NativeSpotNode implements SpotNode {
                   MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
             return true;
@@ -1458,7 +1489,7 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     private final class SendBoundSessionBuilder
-      implements SendOp, SendSubmitOp {
+      implements SendOperation, SendSubmitOperation {
         private final ActorRef actor;
         private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
@@ -1469,14 +1500,14 @@ public final class NativeSpotNode implements SpotNode {
         }
 
         @Override
-        public SendSubmitOp message(Message part) {
+        public SendSubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(Objects.requireNonNull(part, "part"));
             return this;
         }
 
         @Override
-        public SendSubmitOp flags(SendFlags value) {
+        public SendSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -1504,7 +1535,7 @@ public final class NativeSpotNode implements SpotNode {
                             && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
                             return false;
                         }
-                        throw new SubmitException(SubmitResult.fromValue(rc));
+                        throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                     }
                 }
             }

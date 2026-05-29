@@ -8,10 +8,10 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.RequestOp;
+import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SendOp;
-import systems.zlink.contracts.service.spot.SendSubmitOp;
+import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.service.spot.SendSubmitOperation;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -39,8 +39,8 @@ public final class NativeDealerSocket extends NativeSocketBase implements Dealer
     public void setChannelName(String channelName) { super.setChannelName(channelName); }
     public String getChannelName() { return super.getChannelName(); }
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
-    public RoutingId routingId() { return super.routingId(); }
-    public SendOp send() {
+    public RoutingId getRoutingId() { return super.getRoutingId(); }
+    public SendOperation send() {
         return new DealerSendBuilder();
     }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
@@ -58,8 +58,8 @@ public final class NativeDealerSocket extends NativeSocketBase implements Dealer
         java.util.Objects.requireNonNull(flags, "flags");
         return super.recvInto(result, ReceiveFlag.fromValue(flags.value()));
     }
-    public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
-    public RequestOp request() {
+    public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
+    public RequestOperation request() {
         return SocketOperations.request(this::requestAsync, this::requestCallback);
     }
 
@@ -98,7 +98,7 @@ public final class NativeDealerSocket extends NativeSocketBase implements Dealer
         }
     }
 
-    private final class DealerSendBuilder implements SendOp, SendSubmitOp {
+    private final class DealerSendBuilder implements SendOperation, SendSubmitOperation {
         private Message singlePart;
         private MessageParts parts;
         private int partCount;
@@ -106,7 +106,7 @@ public final class NativeDealerSocket extends NativeSocketBase implements Dealer
         private boolean submitted;
 
         @Override
-        public SendSubmitOp message(Message part) {
+        public SendSubmitOperation message(Message part) {
             ensureNotSubmitted();
             Objects.requireNonNull(part, "part");
             if (partCount == 0) {
@@ -124,7 +124,7 @@ public final class NativeDealerSocket extends NativeSocketBase implements Dealer
         }
 
         @Override
-        public SendSubmitOp flags(SendFlags value) {
+        public SendSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;

@@ -24,13 +24,13 @@ class SpotNodeLifecycleTest {
             Spot first = node.createSpot();
             Spot second = node.createSpot();
 
-            assertDoesNotThrow(first::routingId);
-            assertDoesNotThrow(second::routingId);
+            assertDoesNotThrow(first::getRoutingId);
+            assertDoesNotThrow(second::getRoutingId);
 
             node.close();
 
-            assertThrows(IllegalStateException.class, first::routingId);
-            assertThrows(IllegalStateException.class, second::routingId);
+            assertThrows(IllegalStateException.class, first::getRoutingId);
+            assertThrows(IllegalStateException.class, second::getRoutingId);
             assertDoesNotThrow(first::close);
             assertDoesNotThrow(second::close);
         }
@@ -55,12 +55,12 @@ class SpotNodeLifecycleTest {
 
             node.routerHwmProfile(AutoHwmProfile.BALANCED);
             assertEquals(AutoHwmProfile.BALANCED, node.routerHwmProfile());
-            node.routerHwm(128);
-            assertEquals(128, node.routerHwm());
-            node.pubsubHwmProfile(AutoHwmProfile.LOW_LATENCY);
-            assertEquals(AutoHwmProfile.LOW_LATENCY, node.pubsubHwmProfile());
-            node.pubsubHwm(64);
-            assertEquals(64, node.pubsubHwm());
+            node.routerHighWaterMark(128);
+            assertEquals(128, node.routerHighWaterMark());
+            node.pubSubHwmProfile(AutoHwmProfile.LOW_LATENCY);
+            assertEquals(AutoHwmProfile.LOW_LATENCY, node.pubSubHwmProfile());
+            node.pubSubHighWaterMark(64);
+            assertEquals(64, node.pubSubHighWaterMark());
 
             spot.requestTimeout(Duration.ofMillis(123));
             assertEquals(Duration.ofMillis(123), spot.requestTimeout());

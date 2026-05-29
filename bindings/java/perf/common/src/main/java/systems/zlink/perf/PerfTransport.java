@@ -7,7 +7,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.service.spot.SpotNode;
@@ -158,8 +158,8 @@ final class PerfTransport {
         ctx.recalculateAutoHwm();
     }
 
-    static void applyMonitorOptions(MonitorSocket monitor, PerfUtil.Config config) {
-        // The aligned MonitorSocket surface does not accept generic HWM tuning.
+    static void applyMonitorOptions(SocketMonitor monitor, PerfUtil.Config config) {
+        // The aligned SocketMonitor surface does not accept generic HWM tuning.
         // Perf runners keep the hook for parity, but unsupported monitor options
         // must degrade to a no-op instead of failing startup.
     }
@@ -187,7 +187,7 @@ final class PerfTransport {
         }
     }
 
-    static void waitForMonitorEvent(MonitorSocket monitor,
+    static void waitForMonitorEvent(SocketMonitor monitor,
                                     MonitorEventType expectedEvent,
                                     int expectedCount, Duration timeout,
                                     String label) {

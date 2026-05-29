@@ -49,7 +49,7 @@ public final class RouterSocketOptions extends CommonSocketOptions {
             : Optional.of(RoutingId.from(value));
     }
 
-    public void connectRoutingId(RoutingId routingId) {
+    public void setConnectRoutingId(RoutingId routingId) {
         ContractAccess.socketSetOption(socket, SocketOptions.CONNECT_ROUTING_ID_BYTES,
             routingId == null ? new byte[0] : routingId.toBytes());
     }

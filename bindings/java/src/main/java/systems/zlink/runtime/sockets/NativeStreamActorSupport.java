@@ -3,9 +3,9 @@
 package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ReplyHandler;
@@ -38,7 +38,7 @@ final class NativeStreamActorSupport {
         int rc = Native.streamAttachActorGateway(
             InternalAccess.socketHandle(socket), InternalAccess.spotNodeHandle(node));
         if (rc != 0) {
-            throw new ConfigException(ConfigResult.fromValue(rc));
+            throw new ZlinkConfigException(ConfigResult.fromValue(rc));
         }
     }
 
@@ -57,7 +57,7 @@ final class NativeStreamActorSupport {
               InternalAccess.socketHandle(socket),
               ActorInterop.nativeRoutingId(arena, sessionRid), entries, count);
             if (rc != 0) {
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             }
             long actual = count.get(java.lang.foreign.ValueLayout.JAVA_LONG, 0);
             ArrayList<ActorRef> refs = new ArrayList<>((int) actual);
@@ -89,7 +89,7 @@ final class NativeStreamActorSupport {
               MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(token.id());
-                throw new SubmitException(SubmitResult.fromValue(rc));
+                throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
             }
             RequestProgressPump.trackSocketRequest(token.future(),
               InternalAccess.socketHandle(socket),
@@ -118,7 +118,7 @@ final class NativeStreamActorSupport {
               MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(token.id());
-                throw new SubmitException(SubmitResult.fromValue(rc));
+                throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
             }
             RequestProgressPump.trackSocketRequest(token.future(),
               InternalAccess.socketHandle(socket),
@@ -127,7 +127,7 @@ final class NativeStreamActorSupport {
         }
     }
 
-    public static boolean sendBoundActorParts(StreamSocket socket,
+    public static boolean sendBoundActorReceiveds(StreamSocket socket,
                                               RoutingId sessionRid,
                                               String actorId,
                                               List<Message> parts,
@@ -156,7 +156,7 @@ final class NativeStreamActorSupport {
                 int more = i + 1 < parts.size()
                   ? Native.PART_MORE
                   : Native.PART_FINAL;
-                int rc = Native.streamSendBoundActorPart(socketHandle,
+                int rc = Native.streamSendBoundActorReceived(socketHandle,
                   nativeSessionRid, nativeActorId, nativeMsg, flags.value(),
                   more);
                 if (rc != 0) {
@@ -165,7 +165,7 @@ final class NativeStreamActorSupport {
                         && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
                         return false;
                     }
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
             return true;

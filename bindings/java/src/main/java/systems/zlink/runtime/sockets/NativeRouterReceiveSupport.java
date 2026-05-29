@@ -3,7 +3,7 @@
 package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
@@ -113,7 +113,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         if (flags == RecvFlags.DONT_WAIT) {
             Received received = recvNoWaitOrNull();
             if (received == null) {
-                throw new RecvException(RecvResult.NO_DATA,
+                throw new ZlinkRecvException(RecvResult.NO_DATA,
                     ERRNO_EAGAIN);
             }
             return received;
@@ -334,7 +334,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                     || result == RecvResult.BUSY)) {
                     return false;
                 }
-                throw new RecvException(result, errno);
+                throw new ZlinkRecvException(result, errno);
             }
             boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
             InternalAccess.messageFinishReceive(firstPart, hasMore);
@@ -407,7 +407,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                         flags.value());
                     if (rc != 0) {
                         if (Native.errno() == 4) continue;
-                        throw new RecvException(RecvResult.fromValue(rc),
+                        throw new ZlinkRecvException(RecvResult.fromValue(rc),
                             Native.errno());
                     }
                     stillMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
@@ -488,7 +488,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                     || result == RecvResult.BUSY)) {
                     return null;
                 }
-                throw new RecvException(result, errno);
+                throw new ZlinkRecvException(result, errno);
             }
             boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
             InternalAccess.messageFinishReceive(firstPart, hasMore);
@@ -531,7 +531,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                         flags.value());
                     if (rc2 != 0) {
                         if (Native.errno() == 4) continue;
-                        throw new RecvException(RecvResult.fromValue(rc2),
+                        throw new ZlinkRecvException(RecvResult.fromValue(rc2),
                             Native.errno());
                     }
                     hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;

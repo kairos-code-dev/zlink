@@ -4,8 +4,8 @@ package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-public interface ReplySubmitOp {
-    ReplySubmitOp message(Message part);
-    ReplySubmitOp flags(SendFlags flags);
-    void submit();
+public interface SendSubmitOperation {
+    SendSubmitOperation message(Message part);
+    SendSubmitOperation flags(SendFlags flags);
+    boolean submit();
 }

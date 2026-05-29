@@ -5,9 +5,9 @@ package systems.zlink.contracts.service.spot;
 import systems.zlink.contracts.messaging.Message;
 import java.util.Objects;
 
-public record ActorPart(ActorRecvInfo info, Message message,
+public record ActorReceived(ActorRecvInfo info, Message message,
                         boolean hasMore) implements AutoCloseable {
-    public ActorPart {
+    public ActorReceived {
         Objects.requireNonNull(info, "info");
         Objects.requireNonNull(message, "message");
     }

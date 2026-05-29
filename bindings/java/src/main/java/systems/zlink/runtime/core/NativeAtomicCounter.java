@@ -4,7 +4,7 @@ package systems.zlink.runtime.core;
 
 import systems.zlink.contracts.core.AtomicCounter;
 
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.runtime.nativeapi.Native;
 import java.lang.foreign.MemorySegment;
@@ -15,7 +15,7 @@ final class NativeAtomicCounter implements AtomicCounter {
     NativeAtomicCounter() {
         this.handle = Native.atomicCounterNew();
         if (handle == null || handle.address() == 0) {
-            throw new ConfigException(ConfigResult.INVALID_HANDLE);
+            throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
         }
     }
 

@@ -4,17 +4,17 @@ package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.sockets.*;
 
-import systems.zlink.contracts.service.spot.ActorBindOp;
+import systems.zlink.contracts.service.spot.ActorBindOperation;
 import systems.zlink.contracts.service.spot.ActorRef;
-import systems.zlink.contracts.service.spot.ActorUnbindOp;
+import systems.zlink.contracts.service.spot.ActorUnbindOperation;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.service.spot.ReplyHandler;
-import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SendOp;
-import systems.zlink.contracts.service.spot.SendSubmitOp;
+import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.service.spot.SendSubmitOperation;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.sockets.StreamUInt32FramedNativeHandler;
@@ -35,7 +35,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
     public void bind(String endpoint) { super.bind(endpoint); }
     public void unbind(String endpoint) { super.unbind(endpoint); }
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
-    public RoutingId routingId() { return super.routingId(); }
+    public RoutingId getRoutingId() { return super.getRoutingId(); }
     boolean send(int rid, Message part) {
         return super.send(RoutingId.from(Integer.toUnsignedLong(rid)), part,
             SendFlag.NONE);
@@ -61,7 +61,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
     SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
         return super.sendNoWaitResult(rid, parts);
     }
-    public SendOp send(RoutingId rid) {
+    public SendOperation send(RoutingId rid) {
         Objects.requireNonNull(rid, "rid");
         return new RoutedSendBuilder(rid);
     }
@@ -72,12 +72,12 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         Received fresh = super.recv(ReceiveFlag.fromValue(flags.value()));
         if (fresh == null) return false;
         result.adoptFrom(fresh);
-        result.routingId().ifPresent(rid ->
+        result.getRoutingId().ifPresent(rid ->
             InternalAccess.receivedSetSendSender(result, (parts, sendFlags) -> super.send(rid, parts,
                 SendFlag.fromValue(sendFlags.value()))));
         return true;
     }
-    public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
+    public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
     public void onPacket(StreamPacketHandler handler) {
         Objects.requireNonNull(handler, "handler");
         super.attachStreamPacket((StreamFramedPacketHandler)
@@ -102,19 +102,19 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         InternalAccess.streamAttachActorGateway(this, node);
     }
 
-    public ActorBindOp bindActor(RoutingId sessionRid, ActorRef actor) {
+    public ActorBindOperation bindActor(RoutingId sessionRid, ActorRef actor) {
         Objects.requireNonNull(sessionRid, "sessionRid");
         Objects.requireNonNull(actor, "actor");
         return new ActorBindBuilder(sessionRid, actor);
     }
 
-    public ActorUnbindOp unbindActor(RoutingId sessionRid, String actorId) {
+    public ActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) {
         Objects.requireNonNull(sessionRid, "sessionRid");
         Objects.requireNonNull(actorId, "actorId");
         return new ActorUnbindBuilder(sessionRid, actorId);
     }
 
-    public SendOp sendBoundActor(RoutingId sessionRid, String actorId) {
+    public SendOperation sendBoundActor(RoutingId sessionRid, String actorId) {
         Objects.requireNonNull(sessionRid, "sessionRid");
         Objects.requireNonNull(actorId, "actorId");
         return new BoundActorSendBuilder(sessionRid, actorId);
@@ -134,7 +134,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
             if (result == RequestResult.OK) {
                 future.complete(parts);
             } else {
-                future.completeExceptionally(new RequestException(result));
+                future.completeExceptionally(new ZlinkRequestException(result));
                 parts.forEach(Message::close);
             }
         });
@@ -154,7 +154,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
             if (result == RequestResult.OK) {
                 future.complete(parts);
             } else {
-                future.completeExceptionally(new RequestException(result));
+                future.completeExceptionally(new ZlinkRequestException(result));
                 parts.forEach(Message::close);
             }
         });
@@ -167,13 +167,13 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
             timeout, callback);
     }
 
-    private boolean sendBoundActorParts(RoutingId sessionRid, String actorId,
+    private boolean sendBoundActorReceiveds(RoutingId sessionRid, String actorId,
                                         List<Message> parts, SendFlags flags) {
-        return InternalAccess.streamSendBoundActorParts(this, sessionRid,
+        return InternalAccess.streamSendBoundActorReceiveds(this, sessionRid,
             actorId, parts, flags);
     }
 
-    private final class RoutedSendBuilder implements SendOp, SendSubmitOp {
+    private final class RoutedSendBuilder implements SendOperation, SendSubmitOperation {
         private final RoutingId rid;
         private final MessageParts parts = new MessageParts();
         private SendFlags flags = SendFlags.NONE;
@@ -184,14 +184,14 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         }
 
         @Override
-        public SendSubmitOp message(Message part) {
+        public SendSubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(Objects.requireNonNull(part, "part"));
             return this;
         }
 
         @Override
-        public SendSubmitOp flags(SendFlags value) {
+        public SendSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -213,7 +213,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         }
     }
 
-    private final class BoundActorSendBuilder implements SendOp, SendSubmitOp {
+    private final class BoundActorSendBuilder implements SendOperation, SendSubmitOperation {
         private final RoutingId sessionRid;
         private final String actorId;
         private final MessageParts parts = new MessageParts();
@@ -226,14 +226,14 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         }
 
         @Override
-        public SendSubmitOp message(Message part) {
+        public SendSubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(Objects.requireNonNull(part, "part"));
             return this;
         }
 
         @Override
-        public SendSubmitOp flags(SendFlags value) {
+        public SendSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -243,7 +243,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         public boolean submit() {
             ensureNotSubmitted();
             submitted = true;
-            return sendBoundActorParts(sessionRid, actorId, parts.asList(),
+            return sendBoundActorReceiveds(sessionRid, actorId, parts.asList(),
                 flags);
         }
 
@@ -253,7 +253,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         }
     }
 
-    private final class ActorBindBuilder implements ActorBindOp {
+    private final class ActorBindBuilder implements ActorBindOperation {
         private final RoutingId sessionRid;
         private final ActorRef actor;
         private Duration timeout = Duration.ofMillis(5_000L);
@@ -265,7 +265,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         }
 
         @Override
-        public ActorBindOp timeout(Duration value) {
+        public ActorBindOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
@@ -294,7 +294,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         }
     }
 
-    private final class ActorUnbindBuilder implements ActorUnbindOp {
+    private final class ActorUnbindBuilder implements ActorUnbindOperation {
         private final RoutingId sessionRid;
         private final String actorId;
         private Duration timeout = Duration.ofMillis(5_000L);
@@ -306,7 +306,7 @@ public final class NativeStreamSocket extends NativeSocketBase implements Stream
         }
 
         @Override
-        public ActorUnbindOp timeout(Duration value) {
+        public ActorUnbindOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;

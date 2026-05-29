@@ -4,14 +4,14 @@ package systems.zlink.runtime.service.spot;
 
 import systems.zlink.contracts.service.spot.*;
 
-import systems.zlink.contracts.errors.HandlerException;
+import systems.zlink.contracts.errors.ZlinkHandlerException;
 import systems.zlink.contracts.errors.HandlerResult;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
-import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -19,7 +19,7 @@ import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
 import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.internal.ContractAccess;
 import systems.zlink.runtime.nativeapi.ActorInterop;
@@ -133,7 +133,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                   return 0;
               });
             return true;
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -169,7 +169,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                   return 0;
               });
             return true;
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -213,7 +213,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                     requestSeqOut, InternalAccess.messageNativeHandle(firstPart),
                     hasMoreOut, flags.value());
                 if (rc != 0) {
-                    throw new RecvException(RecvResult.fromValue(rc));
+                    throw new ZlinkRecvException(RecvResult.fromValue(rc));
                 }
                 success = true;
                 boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
@@ -326,7 +326,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
             && subjectKind == SpotDispatchSubjectKind.ACTOR
             && subject != null && subject.address() != 0) {
             return ContractAccess.spotDispatchInfo(event, subjectKind, subject,
-              drainActorParts(subject));
+              drainActorReceiveds(subject));
         }
         if (event == SpotDispatchEvent.TIMER_READABLE
             && subjectKind == SpotDispatchSubjectKind.TIMER
@@ -337,12 +337,12 @@ public final class SpotRoutedSupport implements AutoCloseable {
         return ContractAccess.spotDispatchInfo(event, subjectKind, subject);
     }
 
-    private List<ActorPart> drainActorParts(MemorySegment actor) {
+    private List<ActorReceived> drainActorReceiveds(MemorySegment actor) {
         MemorySegment node = InternalAccess.spotOwnerNodeHandle(spot);
         if (node == null || node.address() == 0) {
             return List.of();
         }
-        ArrayList<ActorPart> parts = new ArrayList<>();
+        ArrayList<ActorReceived> parts = new ArrayList<>();
         try (Arena arena = Arena.ofConfined()) {
             while (true) {
                 MemorySegment infoOut = arena.allocate(
@@ -359,13 +359,13 @@ public final class SpotRoutedSupport implements AutoCloseable {
                         if (rc == RecvResult.NO_DATA.value()) {
                             break;
                         }
-                        throw new RecvException(RecvResult.fromValue(rc));
+                        throw new ZlinkRecvException(RecvResult.fromValue(rc));
                     }
                     boolean hasMore =
                       hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
                     InternalAccess.messageFinishReceive(message, hasMore);
                     success = true;
-                    parts.add(new ActorPart(
+                    parts.add(new ActorReceived(
                       ActorInterop.actorRecvInfoFromNative(infoOut), message,
                       hasMore));
                 } finally {
@@ -381,7 +381,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
         return List.copyOf(parts);
     }
 
-    public void onDispatchEvent(SpotDispatchEventHandler handler) {
+    public void setDispatchHandler(SpotDispatchEventHandler handler) {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         releaseDispatchEventHandlerSlot();
@@ -396,7 +396,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
           MemorySegment.ofAddress(callbackId));
         if (rc != 0) {
             closeArena(arena);
-            throw new HandlerException(HandlerResult.fromValue(rc),
+            throw new ZlinkHandlerException(HandlerResult.fromValue(rc),
               Native.errno());
         }
         dispatchEventHandler = handler;
@@ -428,7 +428,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
             int rc = request.invoke(arena, parts, requestId, timeoutMs);
             if (rc != 0) {
                 future.cancel(false);
-                throw new SubmitException(SubmitResult.fromValue(rc));
+                throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
             }
         } catch (RuntimeException ex) {
             PENDING.remove(requestId);
@@ -453,7 +453,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
             if (rc != 0) {
                 PENDING_CALLBACKS.remove(requestId, pending);
                 pending.cancel();
-                throw new SubmitException(SubmitResult.fromValue(rc));
+                throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
             }
         } catch (RuntimeException ex) {
             PENDING_CALLBACKS.remove(requestId, pending);
@@ -466,7 +466,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             int rc = submitter.invoke(arena, parts);
             if (rc != 0) {
-                throw new SubmitException(SubmitResult.fromValue(rc));
+                throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
             }
         }
     }
@@ -738,9 +738,9 @@ public final class SpotRoutedSupport implements AutoCloseable {
             requestSeq, nativeMsg, partFlag);
     }
 
-    private SubmitException submitFailure(String apiName) {
+    private ZlinkSubmitException submitFailure(String apiName) {
         int errno = Native.errno();
-        SubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
+        ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
         if (submit != null)
             return submit;
         throw InternalAccess.zlinkExceptionFromLastError(apiName);
@@ -908,7 +908,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
         try {
             if (result != RequestResult.OK.value()) {
                 if (future != null) {
-                    future.completeExceptionally(new RequestException(
+                    future.completeExceptionally(new ZlinkRequestException(
                         RequestResult.fromValue(result), result));
                 }
                 if (pending != null) {
@@ -987,7 +987,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
     private static void requireReplyFlagsSupported(SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         if (flags != SendFlags.NONE) {
-            throw new SubmitException(SubmitResult.NOT_SUPPORTED);
+            throw new ZlinkSubmitException(SubmitResult.NOT_SUPPORTED);
         }
     }
 
@@ -1039,7 +1039,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
 
     private static RequestResult requestResult(Throwable error) {
         Throwable cause = unwrap(error);
-        if (cause instanceof RequestException requestException) {
+        if (cause instanceof ZlinkRequestException requestException) {
             return requestException.getResult();
         }
         if (cause instanceof TimeoutException) {

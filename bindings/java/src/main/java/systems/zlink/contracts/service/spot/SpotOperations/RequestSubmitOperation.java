@@ -9,10 +9,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public interface RequestSubmitOp {
-    RequestSubmitOp message(Message part);
-    RequestSubmitOp timeout(Duration timeout);
-    RequestCallbackSubmitOp flags(SendFlags flags);
+public interface RequestSubmitOperation {
+    RequestSubmitOperation message(Message part);
+    RequestSubmitOperation timeout(Duration timeout);
+    RequestCallbackSubmitOperation flags(SendFlags flags);
     CompletableFuture<List<Message>> submitAsync();
     boolean submit(RequestCallback callback);
 }

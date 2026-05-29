@@ -7,10 +7,10 @@ import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.sockets.AutoHwmRecalcReason;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.MonitorSourceKind;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.service.registry.RegistryState;
 import systems.zlink.contracts.sockets.RidDuplicatePolicy;
-import systems.zlink.contracts.service.registry.ServiceEventSubjectKind;
+import systems.zlink.contracts.service.registry.SubjectKind;
 import systems.zlink.contracts.service.registry.ServiceKind;
 import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.sockets.SocketType;
@@ -147,7 +147,7 @@ public final class EnumCodecs {
         };
     }
 
-    public static int pollEventFlagValue(PollEventFlag value) {
+    public static int pollEventFlagValue(PollEventFlags value) {
         return switch (value) {
             case POLLIN -> 1;
             case POLLOUT -> 2;
@@ -157,17 +157,17 @@ public final class EnumCodecs {
         };
     }
 
-    public static int pollEventMask(PollEventFlag... values) {
+    public static int pollEventMask(PollEventFlags... values) {
         int mask = 0;
-        for (PollEventFlag value : values) {
+        for (PollEventFlags value : values) {
             mask |= pollEventFlagValue(value);
         }
         return mask;
     }
 
-    public static EnumSet<PollEventFlag> pollEventFlagsFromMask(int mask) {
-        EnumSet<PollEventFlag> out = EnumSet.noneOf(PollEventFlag.class);
-        for (PollEventFlag value : PollEventFlag.values()) {
+    public static EnumSet<PollEventFlags> pollEventFlagsFromMask(int mask) {
+        EnumSet<PollEventFlags> out = EnumSet.noneOf(PollEventFlags.class);
+        for (PollEventFlags value : PollEventFlags.values()) {
             if ((mask & pollEventFlagValue(value)) != 0) {
                 out.add(value);
             }
@@ -312,7 +312,7 @@ public final class EnumCodecs {
     }
 
     public static int serviceEventSubjectKindValue(
-      ServiceEventSubjectKind value) {
+      SubjectKind value) {
         return switch (value) {
             case NONE -> 0;
             case TOPIC -> 1;
@@ -320,13 +320,13 @@ public final class EnumCodecs {
         };
     }
 
-    public static ServiceEventSubjectKind serviceEventSubjectKindFromValue(
+    public static SubjectKind serviceEventSubjectKindFromValue(
       int value) {
         return switch (value) {
-            case 0 -> ServiceEventSubjectKind.NONE;
-            case 1 -> ServiceEventSubjectKind.TOPIC;
-            case 2 -> ServiceEventSubjectKind.PATTERN;
-            default -> throw invalid("ServiceEventSubjectKind", value);
+            case 0 -> SubjectKind.NONE;
+            case 1 -> SubjectKind.TOPIC;
+            case 2 -> SubjectKind.PATTERN;
+            default -> throw invalid("SubjectKind", value);
         };
     }
 

@@ -92,7 +92,7 @@ public class CallbackModeContractTest {
             awaitCondition(() -> subscriberNode.status()
                 .connectedPeerCount() > 0, "spot peer connection");
 
-            subscriber.onDispatchEvent(info -> {
+            subscriber.setDispatchHandler(info -> {
                 if (info.event() != SpotDispatchEvent.SUBSCRIBE_READABLE) {
                     return;
                 }
@@ -141,7 +141,7 @@ public class CallbackModeContractTest {
             awaitCondition(() -> subscriberNode.status()
                 .connectedPeerCount() > 0, "spot peer connection");
 
-            subscriber.onDispatchEvent(info -> {
+            subscriber.setDispatchHandler(info -> {
                 if (info.event() == SpotDispatchEvent.SUBSCRIBE_READABLE) {
                     delivered.countDown();
                 }
@@ -179,7 +179,7 @@ public class CallbackModeContractTest {
             subscriber.setSubscription("drain");
             awaitCondition(() -> subscriberNode.status()
                 .connectedPeerCount() > 0, "spot peer connection");
-            subscriber.onDispatchEvent(info -> {
+            subscriber.setDispatchHandler(info -> {
                 if (info.event() != SpotDispatchEvent.SUBSCRIBE_READABLE) {
                     return;
                 }
@@ -226,7 +226,7 @@ public class CallbackModeContractTest {
              Spot requester = clientNode.createSpot()) {
             serverNode.setRoutingId(serverNodeRid);
             replier.setRoutingId(serverSpotRid);
-            replier.onDispatchEvent(info -> {
+            replier.setDispatchHandler(info -> {
             });
             serverNode.setPubBind(TestSupport.tcpEndpoint());
             clientNode.connectPeer(serverNode.status()
@@ -272,8 +272,8 @@ public class CallbackModeContractTest {
             left.bind(endpoint);
             right.connect(endpoint);
 
-            left.onSendReady(() -> installs.addAndGet(100));
-            left.onSendReady(installs::incrementAndGet);
+            left.setSendReadyHandler(() -> installs.addAndGet(100));
+            left.setSendReadyHandler(installs::incrementAndGet);
             assertEquals(0, installs.get());
         }
     }

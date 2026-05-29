@@ -7,7 +7,7 @@ import systems.zlink.contracts.sockets.*;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
@@ -207,8 +207,8 @@ abstract class NativeSocketBase implements Socket {
     <T> T getOption(SocketOptionKey<T> option) { return runtime.getOption(option); }
 
     public CommonSocketOptions options() { return options; }
-    public MonitorSocket monitorOpen() { return runtime.monitorOpen(); }
-    public MonitorSocket monitorOpen(MonitorEventType... events) { return runtime.monitorOpen(events); }
+    public SocketMonitor monitorOpen() { return runtime.monitorOpen(); }
+    public SocketMonitor monitorOpen(MonitorEventType... events) { return runtime.monitorOpen(events); }
     public final void setTlsServer(String certPem, String keyPem,
                                    boolean requireClientCert) { runtime.setTlsServer(certPem, keyPem, requireClientCert); }
     public final void setTlsClient(String caCertPem, String hostname,
@@ -249,7 +249,7 @@ abstract class NativeSocketBase implements Socket {
     boolean receiveSubscriptionEvent(SubscriptionEvent result, ReceiveFlag flags) { return runtime.receiveSubscriptionEvent(result, flags); }
     Optional<SubscriptionEvent> tryReceiveSubscriptionEvent() { return runtime.tryReceiveSubscriptionEvent(); }
     void setRoutingId(RoutingId rid) { runtime.setRoutingId(rid); }
-    RoutingId routingId() { return runtime.routingId(); }
+    RoutingId getRoutingId() { return runtime.getRoutingId(); }
     void setSubscription(String filter) { runtime.setSubscription(filter); }
     void setSubscription(byte[] filter) { runtime.setSubscription(filter); }
     void unsetSubscription(String filter) { runtime.unsetSubscription(filter); }
@@ -257,7 +257,7 @@ abstract class NativeSocketBase implements Socket {
     List<SubscriptionEntry> subscriptions() { return runtime.subscriptions(); }
     void onReceive(SocketMessageHandler handler) { runtime.onReceive(handler); }
     void onSubscribe(SubscribeHandler handler) { runtime.onSubscribe(handler); }
-    public void onSendReady(SendReadyHandler handler) { runtime.onSendReady(handler); }
+    public void setSendReadyHandler(SendReadyHandler handler) { runtime.setSendReadyHandler(handler); }
     int send(byte[] data, int offset, int length, int sendFlags) { return runtime.send(data, offset, length, sendFlags); }
     boolean sendNoWaitResult(byte[] data, int offset, int length, int sendFlags) { return runtime.sendNoWaitResult(data, offset, length, sendFlags); }
     int send(MemorySegment segment, long offset, long length, int sendFlags) { return runtime.send(segment, offset, length, sendFlags); }

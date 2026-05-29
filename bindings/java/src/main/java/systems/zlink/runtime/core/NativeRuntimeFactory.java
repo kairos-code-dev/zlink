@@ -4,10 +4,10 @@ package systems.zlink.runtime.core;
 
 import systems.zlink.contracts.core.AtomicCounter;
 import systems.zlink.contracts.core.Context;
-import systems.zlink.contracts.core.Stopwatch;
+import systems.zlink.contracts.core.ZlinkStopwatch;
 import systems.zlink.contracts.core.ZlinkThread;
 import systems.zlink.contracts.eventing.Poller;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.Spot;
@@ -30,7 +30,7 @@ final class NativeRuntimeFactory {
             }
 
             @Override
-            public Stopwatch createStopwatch() {
+            public ZlinkStopwatch createStopwatch() {
                 return NativeCoreResources.createStopwatch();
             }
 
@@ -45,12 +45,12 @@ final class NativeRuntimeFactory {
             }
 
             @Override
-            public Timer createTimer() {
+            public ZlinkTimer createTimer() {
                 return NativeTimer.create();
             }
 
             @Override
-            public Timer createTimer(Spot spot) {
+            public ZlinkTimer createTimer(Spot spot) {
                 return NativeTimer.fromSpot(spot);
             }
 

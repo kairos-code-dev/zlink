@@ -2,7 +2,7 @@ package systems.zlink;
 
 import systems.zlink.contracts.eventing.MonitorEvent;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.core.Zlink;
 import org.junit.jupiter.api.Assertions;
 
@@ -33,7 +33,7 @@ public final class TestSupport {
         return "tcp://127.0.0.1:" + randomPort();
     }
 
-    public static MonitorEvent awaitMonitorEvent(MonitorSocket monitor,
+    public static MonitorEvent awaitMonitorEvent(SocketMonitor monitor,
                                                  MonitorEventType eventType) {
         while (true) {
             MonitorEvent event = monitor.recv();

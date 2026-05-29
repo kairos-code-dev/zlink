@@ -6,13 +6,13 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.SocketMonitor;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SocketType;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfControl;
@@ -33,7 +33,7 @@ final class PerfMultiDealerDealer {
         try (Context ctx = PerfUtil.newContext(config);
              DealerSocket server = ctx.createDealerSocket();
              PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                 List.of(server), PollEventFlag.POLLIN)) {
+                 List.of(server), PollEventFlags.POLLIN)) {
             PerfUtil.applySocketOptions(server, config);
             PerfUtil.configureServerTls(server, config.transport());
             server.bind(config.endpoint());
@@ -77,11 +77,11 @@ final class PerfMultiDealerDealer {
                 }
                 long remainingMs = Math.max(1L,
                     remainingNanos / 1_000_000L);
-                pollSet.setEvents(0, PollEventFlag.POLLIN);
+                pollSet.setEvents(0, PollEventFlags.POLLIN);
                 int readyCount = pollSet.poll((int) Math.min(remainingMs,
                     (long) Integer.MAX_VALUE));
                 if (readyCount <= 0
-                    || !pollSet.readyHasEventAt(0, PollEventFlag.POLLIN)) {
+                    || !pollSet.readyHasEventAt(0, PollEventFlags.POLLIN)) {
                     continue;
                 }
                 drainCounted(server, config, metrics);
@@ -145,19 +145,19 @@ final class PerfMultiDealerDealer {
                 idleDeadline = System.nanoTime() + 50_000_000L;
                 continue;
             }
-            pollSet.setEvents(0, PollEventFlag.POLLIN);
+            pollSet.setEvents(0, PollEventFlags.POLLIN);
             pollSet.poll(50);
         }
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        List<MonitorSocket> monitors = new ArrayList<>(config.clients());
+        List<SocketMonitor> monitors = new ArrayList<>(config.clients());
         List<DealerSocket> clients = new ArrayList<>(config.clients());
         Context ctx = PerfUtil.newContext(config);
         try {
             for (int i = 0; i < config.clients(); i++) {
                 DealerSocket client = ctx.createDealerSocket();
-                MonitorSocket monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
+                SocketMonitor monitor = client.monitorOpen(MonitorEventType.CONNECTION_READY);
                 PerfUtil.applyMonitorOptions(monitor, config);
                 PerfUtil.applySocketOptions(client, config);
                 PerfUtil.configureClientTls(client, config.transport());
@@ -186,7 +186,7 @@ final class PerfMultiDealerDealer {
                 payloads[i] = PerfUtil.payloadTemplate(config.size());
             }
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                     pollSockets, PollEventFlag.POLLOUT)) {
+                     pollSockets, PollEventFlags.POLLOUT)) {
                 for (int i = 0; i < clients.size(); i++) {
                     pollSet.setEvents(i);
                 }
@@ -219,7 +219,7 @@ final class PerfMultiDealerDealer {
                                 continue;
                             }
                             pending[index] = true;
-                            pollSet.setEvents(index, PollEventFlag.POLLOUT);
+                            pollSet.setEvents(index, PollEventFlags.POLLOUT);
                             hasPending = true;
                             break;
                         }
@@ -242,7 +242,7 @@ final class PerfMultiDealerDealer {
             PerfControl.emitClientDone(config.size());
             return PerfUtil.Result.silent(config);
         } finally {
-            for (MonitorSocket monitor : monitors) {
+            for (SocketMonitor monitor : monitors) {
                 try {
                     monitor.close();
                 } catch (Exception e) {
@@ -280,7 +280,7 @@ final class PerfMultiDealerDealer {
         try (Message outbound = Message.from(payload)) {
             return socket.send().message(outbound)
                 .flags(SendFlags.DONT_WAIT).submit();
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (isTransient(ex)) {
                 return false;
             }
@@ -296,14 +296,14 @@ final class PerfMultiDealerDealer {
     private static void sendStopTokenBlocking(DealerSocket socket) {
         try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
                  List.of((systems.zlink.contracts.sockets.Socket) socket),
-                 PollEventFlag.POLLOUT)) {
+                 PollEventFlags.POLLOUT)) {
             pollSet.setEvents(0);
             while (true) {
                 try (Message stop = PerfStopToken.newMessage()) {
                     if (socket.send().message(stop).flags(SendFlags.DONT_WAIT).submit()) {
                         return;
                     }
-                } catch (SubmitException ex) {
+                } catch (ZlinkSubmitException ex) {
                     if (!isTransient(ex)) {
                         throw ex;
                     }
@@ -312,7 +312,7 @@ final class PerfMultiDealerDealer {
                         throw ex;
                     }
                 }
-                pollSet.setEvents(0, PollEventFlag.POLLOUT);
+                pollSet.setEvents(0, PollEventFlags.POLLOUT);
                 pollSet.poll(-1);
             }
         }
@@ -329,7 +329,7 @@ final class PerfMultiDealerDealer {
             if (!pending[i]) {
                 continue;
             }
-            if (!pollSet.readyHasEventAt(readyOffset, PollEventFlag.POLLOUT)) {
+            if (!pollSet.readyHasEventAt(readyOffset, PollEventFlags.POLLOUT)) {
                 continue;
             }
             pending[i] = false;
@@ -338,7 +338,7 @@ final class PerfMultiDealerDealer {
     }
 
     private static boolean isTransient(ZlinkException ex) {
-        if (ex instanceof SubmitException submit) {
+        if (ex instanceof ZlinkSubmitException submit) {
             return submit.getResult() == SubmitResult.BACKPRESSURED;
         }
         return ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4;

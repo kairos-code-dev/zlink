@@ -5,8 +5,8 @@ package systems.zlink.contracts.sockets;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.service.spot.RequestOp;
-import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.RequestOperation;
+import systems.zlink.contracts.service.spot.SendOperation;
 
 public interface DealerSocket extends Socket {
     void bind(String endpoint);
@@ -18,9 +18,9 @@ public interface DealerSocket extends Socket {
     void setChannelName(String channelName);
     String getChannelName();
     void setRoutingId(RoutingId rid);
-    RoutingId routingId();
-    SendOp send();
+    RoutingId getRoutingId();
+    SendOperation send();
     boolean recv(Received result, RecvFlags flags);
-    RequestOp request();
+    RequestOperation request();
     @Override DealerSocketOptions options();
 }

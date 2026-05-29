@@ -3,18 +3,18 @@
 package systems.zlink.contracts.errors;
 
 
-public final class ConfigException extends ZlinkException {
+public final class ZlinkConfigException extends ZlinkException {
     private final ConfigResult result;
 
-    public ConfigException(ConfigResult result) {
+    public ZlinkConfigException(ConfigResult result) {
         this(result, 0);
     }
 
-    public ConfigException(ConfigResult result, int internalErrno) {
+    public ZlinkConfigException(ConfigResult result, int internalErrno) {
         this(result, internalErrno, result.name());
     }
 
-    ConfigException(ConfigResult result, int internalErrno, String message) {
+    ZlinkConfigException(ConfigResult result, int internalErrno, String message) {
         super(message, result.value(), internalErrno);
         this.result = result;
     }

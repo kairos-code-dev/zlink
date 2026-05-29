@@ -34,7 +34,7 @@ public final class ActorRoomServerSample {
             List<String> joins = new ArrayList<>();
             List<RequestResult> replies = new ArrayList<>();
 
-            spot.onDispatchEvent(info -> {
+            spot.setDispatchHandler(info -> {
                 if (info.event() != SpotDispatchEvent.ACTOR_JOIN_READABLE) {
                     return;
                 }
@@ -60,7 +60,7 @@ public final class ActorRoomServerSample {
                 RoutingId sessionRid;
                 try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
                     stream.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
-                    sessionRid = received.routingId().orElseThrow();
+                    sessionRid = received.getRoutingId().orElseThrow();
                 }
                 stream.bindActor(sessionRid, actorRef)
                   .timeout(Duration.ofSeconds(2))

@@ -2,14 +2,14 @@
 
 package systems.zlink.runtime.eventing;
 
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.eventing.TimerHandler;
 
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.contracts.errors.HandlerException;
+import systems.zlink.contracts.errors.ZlinkHandlerException;
 import systems.zlink.contracts.errors.HandlerResult;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.runtime.nativeapi.InternalAccess;
@@ -26,7 +26,7 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class NativeTimer implements Timer {
+public final class NativeTimer implements ZlinkTimer {
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FIRE_HANDLER =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
@@ -48,18 +48,18 @@ public final class NativeTimer implements Timer {
         InternalAccess.register((InternalAccess.TimerAccess)
             new InternalAccess.TimerAccess() {
                 @Override
-                public MemorySegment handle(Timer timer) {
+                public MemorySegment handle(ZlinkTimer timer) {
                     return ((NativeTimer) timer).handle();
                 }
 
                 @Override
-                public Timer fromBorrowedHandle(MemorySegment handle) {
+                public ZlinkTimer fromBorrowedHandle(MemorySegment handle) {
                     return NativeTimer.fromBorrowedHandle(handle);
                 }
             });
     }
 
-    public static Timer create() {
+    public static ZlinkTimer create() {
         return new NativeTimer();
     }
 
@@ -71,18 +71,18 @@ public final class NativeTimer implements Timer {
         this.handle = handle;
         this.ownsHandle = ownsHandle;
         if (handle == null || handle.address() == 0) {
-            throw new ConfigException(ConfigResult.INVALID_HANDLE);
+            throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
         }
         TIMERS.put(handle.address(), this);
     }
 
-    public static Timer fromSpot(Spot spot) {
+    public static ZlinkTimer fromSpot(Spot spot) {
         Objects.requireNonNull(spot, "spot");
         MemorySegment handle = Native.spotTimerNew(InternalAccess.spotHandle(spot));
         return new NativeTimer(handle, true);
     }
 
-    static Timer fromBorrowedHandle(MemorySegment handle) {
+    static ZlinkTimer fromBorrowedHandle(MemorySegment handle) {
         return new NativeTimer(handle, false);
     }
 
@@ -99,7 +99,7 @@ public final class NativeTimer implements Timer {
         ensureOpen();
         int rc = Native.timerStart(handle, intervalNs, repeatCount);
         if (rc != 0) {
-            throw new ConfigException(ConfigResult.INVALID_ARGUMENT);
+            throw new ZlinkConfigException(ConfigResult.INVALID_ARGUMENT);
         }
     }
 
@@ -107,7 +107,7 @@ public final class NativeTimer implements Timer {
         ensureOpen();
         int rc = Native.timerStop(handle);
         if (rc != 0) {
-            throw new ConfigException(ConfigResult.INVALID_HANDLE);
+            throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
         }
     }
 
@@ -119,7 +119,7 @@ public final class NativeTimer implements Timer {
             if (rc == 0) {
                 return fireCount.get(ValueLayout.JAVA_LONG, 0);
             }
-            throw new RecvException(RecvResult.NO_DATA);
+            throw new ZlinkRecvException(RecvResult.NO_DATA);
         }
     }
 
@@ -140,7 +140,7 @@ public final class NativeTimer implements Timer {
         handlerArena = Arena.ofShared();
         int rc = Native.timerHandler(handle, FIRE_STUB, MemorySegment.NULL);
         if (rc != 0) {
-            throw new HandlerException(HandlerResult.INVALID_HANDLE);
+            throw new ZlinkHandlerException(HandlerResult.INVALID_HANDLE);
         }
     }
 

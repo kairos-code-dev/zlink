@@ -3,14 +3,14 @@
 package systems.zlink.contracts.errors;
 
 
-public final class BindException extends ZlinkException {
+public final class ZlinkBindException extends ZlinkException {
     private final BindResult result;
 
-    public BindException(BindResult result) {
+    public ZlinkBindException(BindResult result) {
         this(result, 0);
     }
 
-    public BindException(BindResult result, int internalErrno) {
+    public ZlinkBindException(BindResult result, int internalErrno) {
         super(result.value(), internalErrno);
         this.result = result;
     }

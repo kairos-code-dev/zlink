@@ -5,19 +5,19 @@ package systems.zlink.perf.multi;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.Poller;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
@@ -67,11 +67,11 @@ final class PerfMultiSpot {
             PollEvents publishEvents = new PollEvents(2);
             try (Message active = PerfUtil.payloadTemplate(config.size());
                  Poller publishPoller = Zlink.createPoller();
-                 Timer activeTimer = Zlink.createTimer()) {
+                 ZlinkTimer activeZlinkTimer = Zlink.createTimer()) {
                 publishPoller.add(publisher, PUBLISHER_SLOT,
-                    PollEventFlag.POLLOUT);
-                publishPoller.add(activeTimer, ACTIVE_DEADLINE_SLOT);
-                activeTimer.start(Duration.ofNanos(Math.max(1L,
+                    PollEventFlags.POLLOUT);
+                publishPoller.add(activeZlinkTimer, ACTIVE_DEADLINE_SLOT);
+                activeZlinkTimer.start(Duration.ofNanos(Math.max(1L,
                     activeEnd - System.nanoTime())), 1L);
                 while (System.nanoTime() < activeEnd) {
                     if (latencyOnly) {
@@ -84,7 +84,7 @@ final class PerfMultiSpot {
                     PerfUtil.resetAndWritePayload(active, config.size(),
                         (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
                     if (!publishWhenWritableUntil(publisher, active,
-                            publishPoller, publishEvents, activeTimer)) {
+                            publishPoller, publishEvents, activeZlinkTimer)) {
                         break;
                     }
                     if (latencyOnly) {
@@ -107,7 +107,7 @@ final class PerfMultiSpot {
                             .submit()) {
                         break;
                     }
-                } catch (SubmitException ex) {
+                } catch (ZlinkSubmitException ex) {
                     if (!isTransientSpotSubmit(ex)) {
                         throw ex;
                     }
@@ -171,13 +171,13 @@ final class PerfMultiSpot {
     // C parity: perf_multi_spot_server.cpp try_publish_locked +
     // wait_for_spot_send_progress. The active publisher keeps the same
     // one-message-at-a-time, no-drop meaning, but uses the binding public
-    // Poller on the Spot POLLOUT plane plus an active-deadline Timer instead
+    // Poller on the Spot POLLOUT plane plus an active-deadline ZlinkTimer instead
     // of timed sleep/backoff.
     private static boolean publishWhenWritableUntil(Spot publisher,
                                                     Message message,
                                                     Poller poller,
                                                     PollEvents events,
-                                                    Timer activeTimer) {
+                                                    ZlinkTimer activeZlinkTimer) {
         while (true) {
             if (tryPublish(publisher, message, SendFlags.DONT_WAIT)) {
                 return true;
@@ -186,7 +186,7 @@ final class PerfMultiSpot {
             for (int i = 0; i < count; i++) {
                 long slot = events.slot(i);
                 if (slot == ACTIVE_DEADLINE_SLOT) {
-                    activeTimer.recv();
+                    activeZlinkTimer.recv();
                     return false;
                 }
             }
@@ -200,7 +200,7 @@ final class PerfMultiSpot {
                 .message(message)
                 .flags(flags)
                 .submit();
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (isTransientSpotSubmit(ex)) {
                 return false;
             }
@@ -208,7 +208,7 @@ final class PerfMultiSpot {
         }
     }
 
-    private static boolean isTransientSpotSubmit(SubmitException ex) {
+    private static boolean isTransientSpotSubmit(ZlinkSubmitException ex) {
         return ex.getResult() == SubmitResult.BACKPRESSURED
             || ex.getResult() == SubmitResult.NOT_CONNECTED;
     }
@@ -372,7 +372,7 @@ final class PerfMultiSpot {
                                            TopicMessage received) {
         try {
             return subscriber.subscribe(received, RecvFlags.DONT_WAIT);
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             RecvResult result = ex.getResult();
             if (result == RecvResult.NO_DATA
                 || result == RecvResult.BUSY

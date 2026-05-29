@@ -11,7 +11,7 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.SubSocket;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
 import systems.zlink.contracts.messaging.TopicMessage;
@@ -67,7 +67,7 @@ public class SendResultContractTest {
             router.options().mandatory(true);
             RoutingId missingRid = RoutingId.from(
                 "router-missing-peer".getBytes(StandardCharsets.UTF_8));
-            SubmitException ex = assertThrows(SubmitException.class,
+            ZlinkSubmitException ex = assertThrows(ZlinkSubmitException.class,
                 () -> router.send(missingRid)
                     .message(payload)
                     .flags(SendFlags.DONT_WAIT)

@@ -55,31 +55,31 @@ public abstract class ZlinkException extends RuntimeException {
     public static ZlinkException fromErrno(String operation, int errno) {
         String op = operation == null ? "" : operation.toLowerCase(Locale.ROOT);
         if (containsAny(op, "handler")) {
-            return new HandlerException(mapHandlerResult(errno), errno);
+            return new ZlinkHandlerException(mapHandlerResult(errno), errno);
         }
         if (containsAny(op, "recv", "receive", "subscription_event",
                 "socket_monitor_recv", "monitor_recv")
             || (op.contains("subscribe")
                 && !containsAny(op, "set_subscription", "unset_subscription",
                     "subscribe_handler"))) {
-            return new RecvException(mapRecvResult(errno), errno);
+            return new ZlinkRecvException(mapRecvResult(errno), errno);
         }
         if (containsAny(op, "request")) {
-            return new RequestException(mapRequestResult(errno), errno);
+            return new ZlinkRequestException(mapRequestResult(errno), errno);
         }
         if (containsAny(op, "bind")) {
-            return new BindException(mapBindResult(errno), errno);
+            return new ZlinkBindException(mapBindResult(errno), errno);
         }
         if (containsAny(op, "connect", "disconnect", "unbind")) {
-            return new ConnectException(mapConnectResult(errno), errno);
+            return new ZlinkConnectException(mapConnectResult(errno), errno);
         }
         if (containsAny(op, "close", "destroy")) {
-            return new CloseException(mapCloseResult(errno), errno);
+            return new ZlinkCloseException(mapCloseResult(errno), errno);
         }
         if (containsAny(op, "send", "publish", "reply", "request", "proxy")) {
-            return new SubmitException(mapSubmitResult(errno), errno);
+            return new ZlinkSubmitException(mapSubmitResult(errno), errno);
         }
-        return new ConfigException(mapConfigResult(errno), errno);
+        return new ZlinkConfigException(mapConfigResult(errno), errno);
     }
 
     private static int safeErrno() {

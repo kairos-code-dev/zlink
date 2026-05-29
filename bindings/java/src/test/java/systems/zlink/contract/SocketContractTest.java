@@ -1,14 +1,14 @@
 package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
-import systems.zlink.contracts.service.spot.ActorBindOp;
-import systems.zlink.contracts.service.spot.ActorJoinCallbackSubmitOp;
-import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOp;
-import systems.zlink.contracts.service.spot.ActorJoinOp;
-import systems.zlink.contracts.service.spot.ActorJoinSubmitOp;
+import systems.zlink.contracts.service.spot.ActorBindOperation;
+import systems.zlink.contracts.service.spot.ActorJoinCallbackSubmitOperation;
+import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOperation;
+import systems.zlink.contracts.service.spot.ActorJoinOperation;
+import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ActorRoute;
-import systems.zlink.contracts.service.spot.ActorUnbindOp;
+import systems.zlink.contracts.service.spot.ActorUnbindOperation;
 import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.sockets.CommonSocketOptions;
 import systems.zlink.contracts.core.Context;
@@ -19,9 +19,9 @@ import systems.zlink.contracts.service.registry.MemberPeerEntry;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.MonitorStatus;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.sockets.PairSocket;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.sockets.PubSocket;
@@ -29,15 +29,15 @@ import systems.zlink.contracts.sockets.PubSocketOptions;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.service.registry.Registry;
-import systems.zlink.contracts.service.spot.ReplyOp;
-import systems.zlink.contracts.errors.RequestException;
-import systems.zlink.contracts.service.spot.RequestOp;
+import systems.zlink.contracts.service.spot.ReplyOperation;
+import systems.zlink.contracts.errors.ZlinkRequestException;
+import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlag;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.sockets.SubmitRetryMode;
 import systems.zlink.contracts.service.spot.Spot;
@@ -51,10 +51,10 @@ import systems.zlink.contracts.sockets.StreamPacketHandler;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubSocket;
 import systems.zlink.contracts.sockets.SubSocketOptions;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.sockets.XPubSocket;
 import systems.zlink.contracts.sockets.XSubSocket;
@@ -134,7 +134,7 @@ public class SocketContractTest {
                     routerSocket.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
                     assertArrayEquals("ping".getBytes(StandardCharsets.UTF_8),
                         received.singlePartOrThrow().toByteArray());
-                    assertTrue(received.routingId().isPresent());
+                    assertTrue(received.getRoutingId().isPresent());
                     assertTrue(received.requestSeq().isPresent());
                     assertTrue(received.requestSeq().orElseThrow() != 0L);
                     received.reply()
@@ -279,7 +279,7 @@ public class SocketContractTest {
              RouterSocket router = ctx.createRouterSocket()) {
             RoutingId routerRid = RoutingId.from("router-self".getBytes(StandardCharsets.UTF_8));
             router.setRoutingId(routerRid);
-            assertArrayEquals(routerRid.toBytes(), router.routingId().toBytes());
+            assertArrayEquals(routerRid.toBytes(), router.getRoutingId().toBytes());
 
             String cert = Path.of("tests/certs/server.crt").toAbsolutePath().toString();
             String key = Path.of("tests/certs/server.key").toAbsolutePath().toString();
@@ -355,19 +355,19 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(Spot.class, "sendToSpot",
             RoutingId.class, RoutingId.class)
             && Spot.class.getMethod("sendToSpot", RoutingId.class,
-                RoutingId.class).getReturnType() == SendOp.class);
+                RoutingId.class).getReturnType() == SendOperation.class);
         assertTrue(hasPublicMethod(Spot.class, "requestToSpot",
             RoutingId.class, RoutingId.class)
             && Spot.class.getMethod("requestToSpot", RoutingId.class,
-                RoutingId.class).getReturnType() == RequestOp.class);
+                RoutingId.class).getReturnType() == RequestOperation.class);
         assertTrue(hasPublicMethod(Spot.class, "replyToSpot",
             RoutingId.class, RoutingId.class, long.class)
             && Spot.class.getMethod("replyToSpot", RoutingId.class,
-                RoutingId.class, long.class).getReturnType() == ReplyOp.class);
+                RoutingId.class, long.class).getReturnType() == ReplyOperation.class);
         assertTrue(hasPublicMethod(Spot.class, "replyToRouter",
             RoutingId.class, long.class)
             && Spot.class.getMethod("replyToRouter", RoutingId.class,
-                long.class).getReturnType() == ReplyOp.class);
+                long.class).getReturnType() == ReplyOperation.class);
         assertFalse(hasPublicMethod(Spot.class, "sendToSpot",
             RoutingId.class, RoutingId.class, Message.class));
         assertFalse(hasPublicMethod(Spot.class, "replyToSpot",
@@ -378,7 +378,7 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(Spot.class, "onRoutedReceive"));
         assertTrue(hasPublicMethod(Spot.class, "recvActorLifecycle",
             systems.zlink.contracts.sockets.RecvFlags.class));
-        assertTrue(hasPublicMethod(Spot.class, "onDispatchEvent",
+        assertTrue(hasPublicMethod(Spot.class, "setDispatchHandler",
             systems.zlink.contracts.sockets.SpotDispatchEventHandler.class));
         assertFalse(hasPublicMethod(Spot.class, "drainChannelReply",
             systems.zlink.contracts.sockets.SpotDispatchInfo.class));
@@ -386,7 +386,7 @@ public class SocketContractTest {
             MEMORY_SEGMENT_CLASS));
         assertTrue(hasPublicMethod(Spot.class, "setRoutingId",
             RoutingId.class));
-        assertTrue(hasPublicMethod(Spot.class, "routingId"));
+        assertTrue(hasPublicMethod(Spot.class, "getRoutingId"));
         assertTrue(hasPublicMethod(DealerSocket.class, "setChannelName",
             String.class));
         assertTrue(hasPublicMethod(DealerSocket.class, "getChannelName"));
@@ -396,7 +396,7 @@ public class SocketContractTest {
             String.class));
         assertTrue(hasPublicMethod(SpotNode.class, "setRouterBind",
             String.class));
-        assertTrue(hasPublicMethod(SpotNode.class, "routingId"));
+        assertTrue(hasPublicMethod(SpotNode.class, "getRoutingId"));
         assertTrue(hasPublicMethod(SpotNode.class, "entrySpot"));
         assertTrue(hasPublicMethod(SpotNode.class, "spotLookup",
             RoutingId.class));
@@ -417,14 +417,17 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(SpotNode.class, "internalSockets",
             systems.zlink.contracts.service.spot.SpotNodeSocketFilter.class));
         assertTrue(hasPublicMethod(SpotNode.class, "routerHwmProfile"));
-        assertTrue(hasPublicMethod(SpotNode.class, "routerHwm", int.class));
-        assertTrue(hasPublicMethod(SpotNode.class, "pubsubHwmProfile"));
-        assertTrue(hasPublicMethod(SpotNode.class, "pubsubHwm", int.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "routerHighWaterMark", int.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "pubSubHwmProfile"));
+        assertTrue(hasPublicMethod(SpotNode.class, "pubSubHighWaterMark", int.class));
         assertTrue(hasPublicMethod(Discovery.class, "resolveSpot",
             RoutingId.class));
-        assertFalse(hasPublicMethod(Discovery.class, "bindRoute",
+        assertTrue(hasPublicMethod(Discovery.class, "routeValueMaxSize"));
+        assertTrue(hasPublicMethod(Discovery.class, "bindRoute",
             int.class, byte[].class, byte[].class));
-        assertFalse(hasPublicMethod(Discovery.class, "resolveRoute",
+        assertTrue(hasPublicMethod(Discovery.class, "unbindRoute",
+            int.class, byte[].class));
+        assertTrue(hasPublicMethod(Discovery.class, "resolveRoute",
             int.class, byte[].class));
         assertTrue(hasPublicMethod(Discovery.class, "setActorRouteSyncEnabled",
             boolean.class));
@@ -460,18 +463,18 @@ public class SocketContractTest {
         assertTrue(hasPublicMethod(SubSocket.class, "subscriptionAt",
             int.class));
         assertFalse(hasPublicMethod(Spot.class, "options"));
-        assertFalse(hasPublicMethod(Poller.class, "add", Timer.class));
-        assertTrue(hasPublicMethod(Poller.class, "add", Timer.class,
+        assertFalse(hasPublicMethod(Poller.class, "add", ZlinkTimer.class));
+        assertTrue(hasPublicMethod(Poller.class, "add", ZlinkTimer.class,
             long.class));
-        assertFalse(hasPublicMethod(Poller.class, "add", Timer.class,
+        assertFalse(hasPublicMethod(Poller.class, "add", ZlinkTimer.class,
             Object.class));
-        assertTrue(hasPublicMethod(Poller.class, "remove", Timer.class));
+        assertTrue(hasPublicMethod(Poller.class, "remove", ZlinkTimer.class));
         assertTrue(hasPublicMethod(Poller.class, "add", Spot.class,
-            long.class, PollEventFlag[].class));
+            long.class, PollEventFlags[].class));
         assertFalse(hasPublicMethod(Poller.class, "add", Spot.class,
-            PollEventFlag[].class));
+            PollEventFlags[].class));
         assertFalse(hasPublicMethod(Poller.class, "add", Spot.class,
-            Object.class, PollEventFlag[].class));
+            Object.class, PollEventFlags[].class));
         assertTrue(hasPublicMethod(Poller.class, "wait", PollEvents.class,
             Duration.class));
         assertFalse(hasPublicMethod(Poller.class, "wait", Duration.class));
@@ -480,10 +483,10 @@ public class SocketContractTest {
         assertFalse(hasPublicMethod(Poller.class, "wait", List.class,
             Duration.class));
         assertTrue(hasPublicMethod(Poller.class, "modify", Spot.class,
-            PollEventFlag[].class));
+            PollEventFlags[].class));
         assertTrue(hasPublicMethod(Poller.class, "remove", Spot.class));
-        assertFalse(hasPublicMethod(Poller.class, "readyTimer", int.class));
-        assertTrue(hasPublicMethod(systems.zlink.contracts.eventing.MonitorSocket.class,
+        assertFalse(hasPublicMethod(Poller.class, "readyZlinkTimer", int.class));
+        assertTrue(hasPublicMethod(systems.zlink.contracts.eventing.SocketMonitor.class,
             "recv", RecvFlags.class));
     }
 
@@ -506,34 +509,34 @@ public class SocketContractTest {
 
     @Test
     public void actorJoinBuilderSurfaceMatchesJavaSpec() throws Exception {
-        assertEquals(ActorJoinSubmitOp.class,
-            ActorJoinOp.class.getMethod("message", Message.class)
+        assertEquals(ActorJoinSubmitOperation.class,
+            ActorJoinOperation.class.getMethod("message", Message.class)
                 .getReturnType());
-        assertEquals(ActorJoinSubmitOp.class,
-            ActorJoinSubmitOp.class.getMethod("message", Message.class)
+        assertEquals(ActorJoinSubmitOperation.class,
+            ActorJoinSubmitOperation.class.getMethod("message", Message.class)
                 .getReturnType());
-        assertEquals(ActorJoinSubmitOp.class,
-            ActorJoinSubmitOp.class.getMethod("timeout", Duration.class)
+        assertEquals(ActorJoinSubmitOperation.class,
+            ActorJoinSubmitOperation.class.getMethod("timeout", Duration.class)
                 .getReturnType());
-        assertEquals(ActorJoinCallbackSubmitOp.class,
-            ActorJoinSubmitOp.class.getMethod("flags", SendFlags.class)
+        assertEquals(ActorJoinCallbackSubmitOperation.class,
+            ActorJoinSubmitOperation.class.getMethod("flags", SendFlags.class)
                 .getReturnType());
-        assertEquals(ActorJoinCallbackSubmitOp.class,
-            ActorJoinCallbackSubmitOp.class.getMethod("message", Message.class)
+        assertEquals(ActorJoinCallbackSubmitOperation.class,
+            ActorJoinCallbackSubmitOperation.class.getMethod("message", Message.class)
                 .getReturnType());
-        assertEquals(ActorJoinCallbackSubmitOp.class,
-            ActorJoinCallbackSubmitOp.class.getMethod("timeout", Duration.class)
+        assertEquals(ActorJoinCallbackSubmitOperation.class,
+            ActorJoinCallbackSubmitOperation.class.getMethod("timeout", Duration.class)
                 .getReturnType());
-        assertEquals(ActorJoinCallbackSubmitOp.class,
-            ActorJoinCallbackSubmitOp.class.getMethod("flags", SendFlags.class)
+        assertEquals(ActorJoinCallbackSubmitOperation.class,
+            ActorJoinCallbackSubmitOperation.class.getMethod("flags", SendFlags.class)
                 .getReturnType());
-        assertFalse(hasPublicMethod(ActorJoinCallbackSubmitOp.class,
+        assertFalse(hasPublicMethod(ActorJoinCallbackSubmitOperation.class,
             "submitAsync"));
 
-        assertEquals(ActorJoinEntrySpotOp.class,
-            ActorJoinEntrySpotOp.class.getMethod("timeout", Duration.class)
+        assertEquals(ActorJoinEntrySpotOperation.class,
+            ActorJoinEntrySpotOperation.class.getMethod("timeout", Duration.class)
                 .getReturnType());
-        assertEquals(ActorJoinEntrySpotOp.class,
+        assertEquals(ActorJoinEntrySpotOperation.class,
             SpotNode.class.getMethod("joinActorEntrySpot", ActorRef.class,
                 RoutingId.class).getReturnType());
     }
@@ -563,8 +566,8 @@ public class SocketContractTest {
 
 
                 routerSocket.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
-                SubmitException submitException = assertThrows(
-                    SubmitException.class,
+                ZlinkSubmitException submitException = assertThrows(
+                    ZlinkSubmitException.class,
                     () -> received.reply()
                         .message(Message.from("pong"))
                         .flags(SendFlags.DONT_WAIT)
@@ -575,7 +578,7 @@ public class SocketContractTest {
 
             ExecutionException completion = assertThrows(ExecutionException.class,
                 () -> future.get(1, TimeUnit.SECONDS));
-            assertTrue(completion.getCause() instanceof systems.zlink.contracts.errors.RequestException);
+            assertTrue(completion.getCause() instanceof systems.zlink.contracts.errors.ZlinkRequestException);
         } finally {
             try {
                 dealerSocket.close();
@@ -624,15 +627,15 @@ public class SocketContractTest {
         assertEquals(void.class, StreamSocket.class
             .getMethod("attachActorGateway", SpotNode.class)
             .getReturnType());
-        assertEquals(SendOp.class, StreamSocket.class
+        assertEquals(SendOperation.class, StreamSocket.class
             .getMethod("send", RoutingId.class).getReturnType());
-        assertEquals(ActorBindOp.class, StreamSocket.class
+        assertEquals(ActorBindOperation.class, StreamSocket.class
             .getMethod("bindActor", RoutingId.class, ActorRef.class)
             .getReturnType());
-        assertEquals(ActorUnbindOp.class, StreamSocket.class
+        assertEquals(ActorUnbindOperation.class, StreamSocket.class
             .getMethod("unbindActor", RoutingId.class, String.class)
             .getReturnType());
-        assertEquals(SendOp.class, StreamSocket.class
+        assertEquals(SendOperation.class, StreamSocket.class
             .getMethod("sendBoundActor", RoutingId.class, String.class)
             .getReturnType());
     }
@@ -663,13 +666,13 @@ public class SocketContractTest {
             RoutingId nodeRid = RoutingId.from(
               "spot-node".getBytes(StandardCharsets.UTF_8));
             node.setRoutingId(nodeRid);
-            assertArrayEquals(nodeRid.toBytes(), node.routingId().toBytes());
+            assertArrayEquals(nodeRid.toBytes(), node.getRoutingId().toBytes());
 
             try (Spot spot = node.createSpot()) {
                 RoutingId spotRid = RoutingId.from(
                   "spot-self".getBytes(StandardCharsets.UTF_8));
                 spot.setRoutingId(spotRid);
-                assertArrayEquals(spotRid.toBytes(), spot.routingId().toBytes());
+                assertArrayEquals(spotRid.toBytes(), spot.getRoutingId().toBytes());
             }
 
             RoutingId roomRid = RoutingId.from(
@@ -679,8 +682,8 @@ public class SocketContractTest {
             try (Spot firstSpot = first.spot(); Spot secondSpot = second.spot()) {
                 assertTrue(first.created());
                 assertFalse(second.created());
-                assertArrayEquals(roomRid.toBytes(), firstSpot.routingId().toBytes());
-                assertArrayEquals(roomRid.toBytes(), secondSpot.routingId().toBytes());
+                assertArrayEquals(roomRid.toBytes(), firstSpot.getRoutingId().toBytes());
+                assertArrayEquals(roomRid.toBytes(), secondSpot.getRoutingId().toBytes());
             }
         }
     }
@@ -700,9 +703,9 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(PairSocket.class, "getOption"));
             assertFalse(hasPublicMethod(PairSocket.class, "setSockOpt"));
             assertFalse(hasPublicMethod(PairSocket.class, "getSockOptInt"));
-            assertFalse(hasPublicMethod(MonitorSocket.class, "setOption"));
-            assertFalse(hasPublicMethod(MonitorSocket.class, "sendHighWaterMark"));
-            assertFalse(hasPublicMethod(MonitorSocket.class, "receiveHighWaterMark"));
+            assertFalse(hasPublicMethod(SocketMonitor.class, "setOption"));
+            assertFalse(hasPublicMethod(SocketMonitor.class, "sendHighWaterMark"));
+            assertFalse(hasPublicMethod(SocketMonitor.class, "receiveHighWaterMark"));
             assertFalse(hasPublicMethod(Context.class, "handle"));
             assertFalse(hasPublicMethod(Discovery.class, "handle"));
             assertFalse(hasPublicMethod(Discovery.class, "setTlsServer",
@@ -711,7 +714,7 @@ public class SocketContractTest {
             assertFalse(hasPublicMethod(Spot.class, "monitorOpen", int.class));
             assertFalse(hasPublicMethod(systems.zlink.contracts.service.spot.SpotNode.class,
                 "monitorOpen", int.class));
-            assertTrue(hasPublicMethod(MonitorSocket.class, "recv",
+            assertTrue(hasPublicMethod(SocketMonitor.class, "recv",
                 RecvFlags.class));
             assertTrue(hasPublicMethod(PairSocket.class, "send"));
             assertFalse(hasPublicMethod(PairSocket.class, "recv",
@@ -752,7 +755,7 @@ public class SocketContractTest {
                 "sendToSpotInternal", RoutingId.class, RoutingId.class,
                 List.class, SendFlags.class));
             assertFalse(hasPublicMethod(PairSocket.class, "recvNoWait"));
-            assertFalse(hasPublicMethod(MonitorSocket.class, "recvNoWait"));
+            assertFalse(hasPublicMethod(SocketMonitor.class, "recvNoWait"));
             assertFalse(hasPublicMethod(PairSocket.class, "trySend", Message.class));
             assertFalse(hasPublicMethod(PairSocket.class, "trySend", List.class));
             assertFalse(hasPublicMethod(PairSocket.class, "tryRecv"));

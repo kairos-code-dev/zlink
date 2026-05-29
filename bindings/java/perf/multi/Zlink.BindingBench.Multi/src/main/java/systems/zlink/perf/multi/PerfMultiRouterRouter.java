@@ -5,10 +5,10 @@ package systems.zlink.perf.multi;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.SocketMonitor;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RouterSocket;
@@ -16,7 +16,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SocketType;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfControl;
@@ -63,20 +63,20 @@ final class PerfMultiRouterRouter {
             // C++/.NET canonical caller-provided storage pattern.
             systems.zlink.contracts.messaging.Received receivedBuffer = new systems.zlink.contracts.messaging.Received();
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                List.of(server), PollEventFlag.POLLIN)) {
+                List.of(server), PollEventFlags.POLLIN)) {
                 int stops = 0;
                 while (stops < config.clients()) {
                     if (pendingReplies.isEmpty()) {
-                        pollSet.setEvents(0, PollEventFlag.POLLIN);
+                        pollSet.setEvents(0, PollEventFlags.POLLIN);
                     } else {
                         pollSet.setEvents(0,
-                            PollEventFlag.POLLIN, PollEventFlag.POLLOUT);
+                            PollEventFlags.POLLIN, PollEventFlags.POLLOUT);
                     }
                     int readyCount = pollSet.poll(-1);
                     boolean writable = readyCount > 0
-                        && pollSet.readyHasEventAt(0, PollEventFlag.POLLOUT);
+                        && pollSet.readyHasEventAt(0, PollEventFlags.POLLOUT);
                     boolean readable = readyCount > 0
-                        && pollSet.readyHasEventAt(0, PollEventFlag.POLLIN);
+                        && pollSet.readyHasEventAt(0, PollEventFlags.POLLIN);
                     if (writable) {
                         flushPending(server, pendingReplies);
                     }
@@ -87,7 +87,7 @@ final class PerfMultiRouterRouter {
                         boolean ok;
                         try {
                             ok = server.recv(receivedBuffer, RecvFlags.DONT_WAIT);
-                        } catch (RecvException ex) {
+                        } catch (ZlinkRecvException ex) {
                             if (ex.getResult() == RecvResult.NO_DATA
                                 || ex.getResult() == RecvResult.BUSY) {
                                 break;
@@ -110,7 +110,7 @@ final class PerfMultiRouterRouter {
                                 .submit()) {
                             continue;
                         }
-                        RoutingId rid = receivedBuffer.routingId().orElseThrow();
+                        RoutingId rid = receivedBuffer.getRoutingId().orElseThrow();
                         // Slow path: take ownership of the part to outlive
                         // the Received scope and enqueue / send.
                         Message ownedReply = receivedBuffer.firstPart().move();
@@ -147,14 +147,14 @@ final class PerfMultiRouterRouter {
 
         try (Context ctx = PerfUtil.newContext(config)) {
             List<RouterSocket> clients = new ArrayList<>(clientCount);
-            List<systems.zlink.contracts.eventing.MonitorSocket> monitors =
+            List<systems.zlink.contracts.eventing.SocketMonitor> monitors =
                 new ArrayList<>(clientCount);
             try {
                 for (int i = 0; i < clientCount; i++) {
                     RouterSocket client = ctx.createRouterSocket();
                     client.setRoutingId(RoutingId.from(
                         ("PERF_CLIENT_" + i).getBytes(StandardCharsets.UTF_8)));
-                    client.options().connectRoutingId(SERVER_ID);
+                    client.options().setConnectRoutingId(SERVER_ID);
                     var monitor = client.monitorOpen(
                         MonitorEventType.CONNECTION_READY);
                     PerfUtil.applyMonitorOptions(monitor, config);
@@ -225,7 +225,7 @@ final class PerfMultiRouterRouter {
         // avoiding the per-recv Received + ArrayList allocation.
         systems.zlink.contracts.messaging.Received replyBuffer = new systems.zlink.contracts.messaging.Received();
         try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                socketsAsBase, PollEventFlag.POLLIN)) {
+                socketsAsBase, PollEventFlags.POLLIN)) {
             long activeEnd = System.nanoTime()
                 + (long) durationSeconds * 1_000_000_000L;
             while (System.nanoTime() < activeEnd) {
@@ -256,7 +256,7 @@ final class PerfMultiRouterRouter {
                     int idx = pollSet.readyIndexAt(readyOffset);
                     boolean writable =
                         pollSet.readyHasEventAt(readyOffset,
-                            PollEventFlag.POLLOUT);
+                            PollEventFlags.POLLOUT);
                     if (writable && waitingWritable[idx] && !waitingReply[idx]) {
                         if (trySendPayload(clients.get(idx), payloads[idx])) {
                             waitingWritable[idx] = false;
@@ -266,7 +266,7 @@ final class PerfMultiRouterRouter {
                     }
                     boolean readable =
                         pollSet.readyHasEventAt(readyOffset,
-                            PollEventFlag.POLLIN);
+                            PollEventFlags.POLLIN);
                     if (!readable) continue;
                     drainReplies(clients.get(idx), idx, waitingReply,
                         waitingWritable, msgSize, metrics, pollSet, replyBuffer);
@@ -277,7 +277,7 @@ final class PerfMultiRouterRouter {
             for (int i = 0; i < n; i++) {
                 try (Message stop = PerfStopToken.newMessage();
                      PerfSocketPollSet stopPoll = PerfSocketPollSet.fromSockets(
-                         List.of(clients.get(i)), PollEventFlag.POLLOUT)) {
+                         List.of(clients.get(i)), PollEventFlags.POLLOUT)) {
                     stopPoll.setEvents(0);
                     sendStopToken(clients.get(i), stopPoll, stop);
                 }
@@ -300,7 +300,7 @@ final class PerfMultiRouterRouter {
             boolean ok;
             try {
                 ok = client.recv(replyBuffer, RecvFlags.DONT_WAIT);
-            } catch (RecvException ex) {
+            } catch (ZlinkRecvException ex) {
                 if (ex.getResult() == RecvResult.NO_DATA
                     || ex.getResult() == RecvResult.BUSY) {
                     break;
@@ -338,7 +338,7 @@ final class PerfMultiRouterRouter {
                     .submit()) {
                     return;
                 }
-            } catch (SubmitException ex) {
+            } catch (ZlinkSubmitException ex) {
                 if (!isTransient(ex)) {
                     throw ex;
                 }
@@ -347,7 +347,7 @@ final class PerfMultiRouterRouter {
                     throw ex;
                 }
             }
-            pollSet.setEvents(0, PollEventFlag.POLLOUT);
+            pollSet.setEvents(0, PollEventFlags.POLLOUT);
             pollSet.poll(-1);
         }
     }
@@ -356,10 +356,10 @@ final class PerfMultiRouterRouter {
                                        boolean waitingReply,
                                        boolean waitingWritable) {
         if (waitingWritable && !waitingReply) {
-            pollSet.setEvents(idx, PollEventFlag.POLLIN,
-                PollEventFlag.POLLOUT);
+            pollSet.setEvents(idx, PollEventFlags.POLLIN,
+                PollEventFlags.POLLOUT);
         } else {
-            pollSet.setEvents(idx, PollEventFlag.POLLIN);
+            pollSet.setEvents(idx, PollEventFlags.POLLIN);
         }
     }
 
@@ -388,7 +388,7 @@ final class PerfMultiRouterRouter {
     }
 
     private static boolean isTransient(ZlinkException ex) {
-        if (ex instanceof SubmitException submit) {
+        if (ex instanceof ZlinkSubmitException submit) {
             return submit.getResult() == SubmitResult.BACKPRESSURED;
         }
         return ex.getInternalErrno() == 11 || ex.getInternalErrno() == 4;

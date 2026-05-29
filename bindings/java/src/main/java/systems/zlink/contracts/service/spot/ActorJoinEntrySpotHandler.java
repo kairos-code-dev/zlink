@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.service.spot;
 
-/** Callback for {@link ActorJoinEntrySpotOp#submit(ActorJoinEntrySpotHandler)}. */
+/** Callback for {@link ActorJoinEntrySpotOperation#submit(ActorJoinEntrySpotHandler)}. */
 @FunctionalInterface
 public interface ActorJoinEntrySpotHandler {
     void onJoinEntrySpotResult(ActorJoinEntrySpotResult result);

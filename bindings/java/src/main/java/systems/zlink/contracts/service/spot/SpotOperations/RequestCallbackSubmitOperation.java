@@ -7,9 +7,9 @@ import systems.zlink.contracts.sockets.RequestCallback;
 import systems.zlink.contracts.sockets.SendFlags;
 import java.time.Duration;
 
-public interface RequestCallbackSubmitOp {
-    RequestCallbackSubmitOp message(Message part);
-    RequestCallbackSubmitOp timeout(Duration timeout);
-    RequestCallbackSubmitOp flags(SendFlags flags);
+public interface RequestCallbackSubmitOperation {
+    RequestCallbackSubmitOperation message(Message part);
+    RequestCallbackSubmitOperation timeout(Duration timeout);
+    RequestCallbackSubmitOperation flags(SendFlags flags);
     boolean submit(RequestCallback callback);
 }

@@ -5,11 +5,11 @@ package systems.zlink.perf.multi;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.core.RoutingId;
@@ -17,7 +17,7 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.perf.PerfControl;
 import systems.zlink.perf.PerfStopToken;
@@ -65,7 +65,7 @@ final class PerfMultiSpotSendSend {
             PerfControl.emitControlReady(controlEndpoint);
             int expectedStops = activeSpotSlotLimit(config.clients(),
                 config.size());
-            spot.onDispatchEvent(info -> {
+            spot.setDispatchHandler(info -> {
                 if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
                     return;
                 }
@@ -189,7 +189,7 @@ final class PerfMultiSpotSendSend {
                             .message(reply)
                             .flags(SendFlags.DONT_WAIT)
                             .submit();
-                    } catch (SubmitException ex) {
+                    } catch (ZlinkSubmitException ex) {
                         if (!isTransientSubmit(ex)) {
                             throw ex;
                         }
@@ -233,7 +233,7 @@ final class PerfMultiSpotSendSend {
         }
         try (Poller poller = Zlink.createPoller()) {
             for (int i = 0; i < n; i++) {
-                poller.add(spots.get(i), i, PollEventFlag.POLLIN);
+                poller.add(spots.get(i), i, PollEventFlags.POLLIN);
             }
             long activeEnd = System.nanoTime()
                 + config.durationSeconds() * 1_000_000_000L;
@@ -266,7 +266,7 @@ final class PerfMultiSpotSendSend {
                     Math.max(1L, remainingNs));
                 int count = poller.wait(events, waitDuration);
                 for (int i = 0; i < count; i++) {
-                    if (!events.hasEvent(i, PollEventFlag.POLLIN)) {
+                    if (!events.hasEvent(i, PollEventFlags.POLLIN)) {
                         continue;
                     }
                     int index = (int) events.slot(i);
@@ -297,7 +297,7 @@ final class PerfMultiSpotSendSend {
         try {
             sendToServer(spot, message, flags);
             return true;
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (isTransientSubmit(ex)) {
                 return false;
             }
@@ -308,14 +308,14 @@ final class PerfMultiSpotSendSend {
     private static void sendStopToServer(Spot spot) {
         try (Message stop = PerfStopToken.newMessage()) {
             sendToServer(spot, stop, SendFlags.DONT_WAIT);
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (!isTransientSubmit(ex)) {
                 throw ex;
             }
         }
     }
 
-    private static boolean isTransientSubmit(SubmitException ex) {
+    private static boolean isTransientSubmit(ZlinkSubmitException ex) {
         SubmitResult result = ex.getResult();
         return result == SubmitResult.BACKPRESSURED
             || result == SubmitResult.NOT_CONNECTED;
@@ -357,7 +357,7 @@ final class PerfMultiSpotSendSend {
         try {
             Received received = new Received();
             return spot.recvRouted(received, RecvFlags.DONT_WAIT) ? received : null;
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA
                 || ex.getResult() == RecvResult.BUSY) {
                 return null;

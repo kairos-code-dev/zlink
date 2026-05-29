@@ -4,7 +4,7 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
-import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.SendOperation;
 
 public interface XPubSocket extends Socket {
     void bind(String endpoint);
@@ -12,7 +12,7 @@ public interface XPubSocket extends Socket {
     void unbind(String endpoint);
     void disconnect(String endpoint);
     void disconnectRid(RoutingId routingId);
-    SendOp publish(String topicId);
+    SendOperation publish(String topicId);
     boolean receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags);
     @Override PubSocketOptions options();
 }

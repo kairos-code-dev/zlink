@@ -2,15 +2,15 @@
 
 package systems.zlink.runtime.service.spot;
 
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RequestCallback;
-import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -20,7 +20,7 @@ import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
 import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
@@ -280,7 +280,7 @@ public final class NativeSpot implements Spot {
     }
 
     /** Returns the current logical routing id for this spot. */
-    public RoutingId routingId() {
+    public RoutingId getRoutingId() {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
@@ -300,33 +300,33 @@ public final class NativeSpot implements Spot {
         options.requestTimeout(value);
     }
 
-    public SendOp publish(String topicId) {
+    public SendOperation publish(String topicId) {
         return new SendBuilder(
           (part, flags) -> publish(topicId, part, flags),
           (parts, flags) -> publish(topicId, parts, flags));
     }
 
-    public SendOp sendChannel(String channelName) {
+    public SendOperation sendToChannel(String channelName) {
         return new SendBuilder(
-          (part, flags) -> sendChannel(channelName, part, flags),
-          (parts, flags) -> sendChannel(channelName, parts, flags));
+          (part, flags) -> sendToChannel(channelName, part, flags),
+          (parts, flags) -> sendToChannel(channelName, parts, flags));
     }
 
-    public SendOp sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
+    public SendOperation sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
         return new SendBuilder(
           (part, flags) -> sendToSpot(destNodeRid, destSpotRid, part, flags),
           (parts, flags) -> sendToSpot(destNodeRid, destSpotRid, parts, flags));
     }
 
-    public RequestOp requestChannel(String channelName) {
+    public RequestOperation requestToChannel(String channelName) {
         return new RequestBuilder((parts, timeout, flags) ->
-            requestChannel(channelName, parts, timeout),
+            requestToChannel(channelName, parts, timeout),
           (parts, callback, flags, timeout) ->
-            requestChannel(channelName, parts, callback::onComplete, flags,
+            requestToChannel(channelName, parts, callback::onComplete, flags,
               timeout));
     }
 
-    public RequestOp requestToSpot(RoutingId destNodeRid,
+    public RequestOperation requestToSpot(RoutingId destNodeRid,
                                    RoutingId destSpotRid) {
         return new RequestBuilder((parts, timeout, flags) ->
             routedSupport.requestToSpot(destNodeRid, destSpotRid, parts,
@@ -349,7 +349,7 @@ public final class NativeSpot implements Spot {
           Objects.requireNonNull(timeout, "timeout"));
     }
 
-    public RequestOp requestToRouter(RoutingId peerRid) {
+    public RequestOperation requestToRouter(RoutingId peerRid) {
         return new RequestBuilder((parts, timeout, flags) ->
             routedSupport.requestToRouter(peerRid, parts, timeout, flags),
           (parts, callback, flags, timeout) ->
@@ -357,13 +357,13 @@ public final class NativeSpot implements Spot {
               callback::onComplete, flags, timeout));
     }
 
-    public ReplyOp replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    public ReplyOperation replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                                long requestSeq) {
         return new ReplyBuilder((parts, flags) ->
             replyToSpot(destNodeRid, destSpotRid, requestSeq, parts, flags));
     }
 
-    public ReplyOp replyToRouter(RoutingId peerRid, long requestSeq) {
+    public ReplyOperation replyToRouter(RoutingId peerRid, long requestSeq) {
         return new ReplyBuilder((parts, flags) ->
             replyToRouter(peerRid, requestSeq, parts, flags));
     }
@@ -379,7 +379,7 @@ public final class NativeSpot implements Spot {
         try {
             return publishInternal(topicId, part,
               flags == SendFlags.DONT_WAIT);
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -398,7 +398,7 @@ public final class NativeSpot implements Spot {
         try {
             return publishInternal(topicId, parts,
               flags == SendFlags.DONT_WAIT);
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -407,26 +407,26 @@ public final class NativeSpot implements Spot {
         }
     }
 
-    boolean sendChannel(String channelName, Message part) {
-        return sendChannel(channelName, part, SendFlags.NONE);
+    boolean sendToChannel(String channelName, Message part) {
+        return sendToChannel(channelName, part, SendFlags.NONE);
     }
 
-    boolean sendChannel(String channelName, Message part, SendFlags flags) {
+    boolean sendToChannel(String channelName, Message part, SendFlags flags) {
         Objects.requireNonNull(part, "part");
-        return sendChannel(channelName, List.of(part), flags);
+        return sendToChannel(channelName, List.of(part), flags);
     }
 
-    boolean sendChannel(String channelName, List<Message> parts) {
-        return sendChannel(channelName, parts, SendFlags.NONE);
+    boolean sendToChannel(String channelName, List<Message> parts) {
+        return sendToChannel(channelName, parts, SendFlags.NONE);
     }
 
-    boolean sendChannel(String channelName, List<Message> parts,
+    boolean sendToChannel(String channelName, List<Message> parts,
                             SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         try {
             return sendChannelInternal(channelName, parts,
               flags == SendFlags.DONT_WAIT);
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -458,7 +458,7 @@ public final class NativeSpot implements Spot {
         try {
             return routedSupport.sendToSpot(destNodeRid, destSpotRid, parts,
               flags);
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -467,49 +467,49 @@ public final class NativeSpot implements Spot {
         }
     }
 
-    CompletableFuture<List<Message>> requestChannel(String channelName,
+    CompletableFuture<List<Message>> requestToChannel(String channelName,
                                                            Message part) {
-        return requestChannel(channelName, List.of(part));
+        return requestToChannel(channelName, List.of(part));
     }
 
-    private CompletableFuture<List<Message>> requestChannel(String channelName,
+    private CompletableFuture<List<Message>> requestToChannel(String channelName,
                                                             Message part,
                                                             SendFlags flags) {
-        return requestChannel(channelName, List.of(part), flags);
+        return requestToChannel(channelName, List.of(part), flags);
     }
 
-    CompletableFuture<List<Message>> requestChannel(String channelName,
+    CompletableFuture<List<Message>> requestToChannel(String channelName,
                                                            Message part,
                                                            Duration timeout) {
-        return requestChannel(channelName, List.of(part), timeout);
+        return requestToChannel(channelName, List.of(part), timeout);
     }
 
-    private CompletableFuture<List<Message>> requestChannel(String channelName,
+    private CompletableFuture<List<Message>> requestToChannel(String channelName,
                                                             Message part,
                                                             SendFlags flags,
                                                             Duration timeout) {
-        return requestChannel(channelName, List.of(part), flags, timeout);
+        return requestToChannel(channelName, List.of(part), flags, timeout);
     }
 
-    CompletableFuture<List<Message>> requestChannel(String channelName,
+    CompletableFuture<List<Message>> requestToChannel(String channelName,
                                                            List<Message> parts) {
-        return requestChannel(channelName, parts, SendFlags.NONE);
+        return requestToChannel(channelName, parts, SendFlags.NONE);
     }
 
-    private CompletableFuture<List<Message>> requestChannel(String channelName,
+    private CompletableFuture<List<Message>> requestToChannel(String channelName,
                                                             List<Message> parts,
                                                             SendFlags flags) {
-        return requestChannel(channelName, parts, flags,
+        return requestToChannel(channelName, parts, flags,
           Duration.ofMillis(5_000L));
     }
 
-    CompletableFuture<List<Message>> requestChannel(String channelName,
+    CompletableFuture<List<Message>> requestToChannel(String channelName,
                                                            List<Message> parts,
                                                            Duration timeout) {
-        return requestChannel(channelName, parts, SendFlags.NONE, timeout);
+        return requestToChannel(channelName, parts, SendFlags.NONE, timeout);
     }
 
-    private CompletableFuture<List<Message>> requestChannel(String channelName,
+    private CompletableFuture<List<Message>> requestToChannel(String channelName,
                                                             List<Message> parts,
                                                             SendFlags flags,
                                                             Duration timeout) {
@@ -517,53 +517,53 @@ public final class NativeSpot implements Spot {
         return requestChannelInternal(channelName, parts, timeout, flags);
     }
 
-    boolean requestChannel(String channelName, Message part,
+    boolean requestToChannel(String channelName, Message part,
                                   BiConsumer<RequestResult, List<Message>> callback) {
-        return requestChannel(channelName, List.of(part), callback,
+        return requestToChannel(channelName, List.of(part), callback,
           SendFlags.NONE, Duration.ofMillis(5_000L));
     }
 
-    boolean requestChannel(String channelName, Message part,
+    boolean requestToChannel(String channelName, Message part,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   SendFlags flags) {
-        return requestChannel(channelName, List.of(part), callback, flags,
+        return requestToChannel(channelName, List.of(part), callback, flags,
           Duration.ofMillis(5_000L));
     }
 
-    boolean requestChannel(String channelName, Message part,
+    boolean requestToChannel(String channelName, Message part,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   Duration timeout) {
-        return requestChannel(channelName, List.of(part), callback,
+        return requestToChannel(channelName, List.of(part), callback,
           SendFlags.NONE, timeout);
     }
 
-    boolean requestChannel(String channelName, Message part,
+    boolean requestToChannel(String channelName, Message part,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   SendFlags flags, Duration timeout) {
-        return requestChannel(channelName, List.of(part), callback, flags, timeout);
+        return requestToChannel(channelName, List.of(part), callback, flags, timeout);
     }
 
-    boolean requestChannel(String channelName, List<Message> parts,
+    boolean requestToChannel(String channelName, List<Message> parts,
                                   BiConsumer<RequestResult, List<Message>> callback) {
-        return requestChannel(channelName, parts, callback, SendFlags.NONE,
+        return requestToChannel(channelName, parts, callback, SendFlags.NONE,
           Duration.ofMillis(5_000L));
     }
 
-    boolean requestChannel(String channelName, List<Message> parts,
+    boolean requestToChannel(String channelName, List<Message> parts,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   SendFlags flags) {
-        return requestChannel(channelName, parts, callback, flags,
+        return requestToChannel(channelName, parts, callback, flags,
           Duration.ofMillis(5_000L));
     }
 
-    boolean requestChannel(String channelName, List<Message> parts,
+    boolean requestToChannel(String channelName, List<Message> parts,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   Duration timeout) {
-        return requestChannel(channelName, parts, callback, SendFlags.NONE,
+        return requestToChannel(channelName, parts, callback, SendFlags.NONE,
           timeout);
     }
 
-    boolean requestChannel(String channelName, List<Message> parts,
+    boolean requestToChannel(String channelName, List<Message> parts,
                                   BiConsumer<RequestResult, List<Message>> callback,
                                   SendFlags flags, Duration timeout) {
         Objects.requireNonNull(callback, "callback");
@@ -578,7 +578,7 @@ public final class NativeSpot implements Spot {
                       : requestResult(error), response);
               });
             return true;
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -640,7 +640,7 @@ public final class NativeSpot implements Spot {
         validateMessages(parts, "parts");
         if (!nonBlocking && InternalAccess.inCallback()) {
             throw new IllegalStateException(
-                "blocking sendChannel is not supported from callback context; use non-blocking send");
+                "blocking sendToChannel is not supported from callback context; use non-blocking send");
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment service = NativeHelpers.toCString(arena,
@@ -699,18 +699,18 @@ public final class NativeSpot implements Spot {
         Objects.requireNonNull(info, "info");
         if (info.event() != SpotDispatchEvent.CHANNEL_REPLY_READABLE
             || info.subjectKind() != SpotDispatchSubjectKind.CHANNEL_DEALER) {
-            throw new ConfigException(ConfigResult.INVALID_ARGUMENT);
+            throw new ZlinkConfigException(ConfigResult.INVALID_ARGUMENT);
         }
         MemorySegment subject = spotDispatchSubject(info);
         if (subject == null || subject.address() == 0) {
-            throw new ConfigException(ConfigResult.INVALID_HANDLE);
+            throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
         }
         drainChannelReplyFrom(subject);
     }
 
-    private SubmitException submitFailure(String apiName) {
+    private ZlinkSubmitException submitFailure(String apiName) {
         int errno = Native.errno();
-        SubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
+        ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
         if (submit != null)
             return submit;
         throw InternalAccess.zlinkExceptionFromLastError(apiName);
@@ -778,7 +778,7 @@ public final class NativeSpot implements Spot {
     }
 
     /** Installs the send-ready callback. */
-    public void onSendReady(SendReadyHandler handler) {
+    public void setSendReadyHandler(SendReadyHandler handler) {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         ensureNoCallbackFailure();
@@ -1075,8 +1075,8 @@ public final class NativeSpot implements Spot {
         return true;
     }
 
-    public void onDispatchEvent(SpotDispatchEventHandler handler) {
-        routedSupport.onDispatchEvent(handler);
+    public void setDispatchHandler(SpotDispatchEventHandler handler) {
+        routedSupport.setDispatchHandler(handler);
     }
 
     public ActorJoinRequest recvActorJoin(RecvFlags flags) {
@@ -1097,7 +1097,7 @@ public final class NativeSpot implements Spot {
                         && rc == RecvResult.NO_DATA.value()) {
                         return null;
                     }
-                    throw new RecvException(RecvResult.fromValue(rc));
+                    throw new ZlinkRecvException(RecvResult.fromValue(rc));
                 }
                 MemorySegment parts = partsOut.get(ValueLayout.ADDRESS, 0);
                 long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
@@ -1130,7 +1130,7 @@ public final class NativeSpot implements Spot {
      * accepts the join, and non-zero values reject it with an
      * application-defined code.
      */
-    public ActorJoinReplyOp replyActorJoin(ActorJoinRequest request,
+    public ActorJoinReplyOperation replyActorJoin(ActorJoinRequest request,
                                            int joinResultCode) {
         Objects.requireNonNull(request, "request");
         ensureOpen();
@@ -1150,7 +1150,7 @@ public final class NativeSpot implements Spot {
                     && rc == RecvResult.NO_DATA.value()) {
                     return null;
                 }
-                throw new RecvException(RecvResult.fromValue(rc));
+                throw new ZlinkRecvException(RecvResult.fromValue(rc));
             }
             return new SpotActorLifecycleEvent(
               ContractAccess.actorLifecycleKindFromValue(eventOut.get(
@@ -1166,7 +1166,7 @@ public final class NativeSpot implements Spot {
         return recvActorLifecycle(RecvFlags.NONE);
     }
 
-    private final class ActorJoinReplyBuilder implements ActorJoinReplyOp {
+    private final class ActorJoinReplyBuilder implements ActorJoinReplyOperation {
         private final ActorJoinRequest request;
         private final int joinResultCode;
         private final MessagePartsBuffer parts = new MessagePartsBuffer();
@@ -1178,7 +1178,7 @@ public final class NativeSpot implements Spot {
         }
 
         @Override
-        public ActorJoinReplyOp message(Message part) {
+        public ActorJoinReplyOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(Objects.requireNonNull(part, "part"));
             return this;
@@ -1198,7 +1198,7 @@ public final class NativeSpot implements Spot {
                   joinResultCode, partsArr, parts.size());
                 if (rc != 0) {
                     MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
         }
@@ -1321,7 +1321,7 @@ public final class NativeSpot implements Spot {
         }
     }
 
-    private final class SendBuilder implements SendOp, SendSubmitOp {
+    private final class SendBuilder implements SendOperation, SendSubmitOperation {
         private final SingleSendInvoker singleInvoker;
         private final SendInvoker invoker;
         private Message singlePart;
@@ -1338,7 +1338,7 @@ public final class NativeSpot implements Spot {
         }
 
         @Override
-        public SendSubmitOp message(Message part) {
+        public SendSubmitOperation message(Message part) {
             ensureNotSubmitted();
             Objects.requireNonNull(part, "part");
             if (partCount == 0) {
@@ -1356,7 +1356,7 @@ public final class NativeSpot implements Spot {
         }
 
         @Override
-        public SendSubmitOp flags(SendFlags value) {
+        public SendSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -1384,7 +1384,7 @@ public final class NativeSpot implements Spot {
         }
     }
 
-    private final class RequestBuilder implements RequestOp, RequestSubmitOp {
+    private final class RequestBuilder implements RequestOperation, RequestSubmitOperation {
         private final RequestAsyncInvoker asyncInvoker;
         private final RequestCallbackInvoker callbackInvoker;
         private final MessagePartsBuffer parts = new MessagePartsBuffer();
@@ -1399,20 +1399,20 @@ public final class NativeSpot implements Spot {
         }
 
         @Override
-        public RequestSubmitOp message(Message part) {
+        public RequestSubmitOperation message(Message part) {
             addMessage(part);
             return this;
         }
 
         @Override
-        public RequestSubmitOp timeout(Duration value) {
+        public RequestSubmitOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
         }
 
         @Override
-        public RequestCallbackSubmitOp flags(SendFlags value) {
+        public RequestCallbackSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             return new CallbackRequestBuilder(this,
               Objects.requireNonNull(value, "flags"));
@@ -1450,7 +1450,7 @@ public final class NativeSpot implements Spot {
     }
 
     private final class CallbackRequestBuilder
-      implements RequestCallbackSubmitOp {
+      implements RequestCallbackSubmitOperation {
         private final RequestBuilder source;
         private SendFlags flags;
 
@@ -1461,19 +1461,19 @@ public final class NativeSpot implements Spot {
         }
 
         @Override
-        public RequestCallbackSubmitOp message(Message part) {
+        public RequestCallbackSubmitOperation message(Message part) {
             source.addMessage(part);
             return this;
         }
 
         @Override
-        public RequestCallbackSubmitOp timeout(Duration timeout) {
+        public RequestCallbackSubmitOperation timeout(Duration timeout) {
             source.timeout(timeout);
             return this;
         }
 
         @Override
-        public RequestCallbackSubmitOp flags(SendFlags value) {
+        public RequestCallbackSubmitOperation flags(SendFlags value) {
             source.ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -1488,7 +1488,7 @@ public final class NativeSpot implements Spot {
         }
     }
 
-    private final class ReplyBuilder implements ReplyOp, ReplySubmitOp {
+    private final class ReplyBuilder implements ReplyOperation, ReplySubmitOperation {
         private final ReplyInvoker invoker;
         private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
@@ -1499,14 +1499,14 @@ public final class NativeSpot implements Spot {
         }
 
         @Override
-        public ReplySubmitOp message(Message part) {
+        public ReplySubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(Objects.requireNonNull(part, "part"));
             return this;
         }
 
         @Override
-        public ReplySubmitOp flags(SendFlags value) {
+        public ReplySubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -1841,7 +1841,7 @@ public final class NativeSpot implements Spot {
                         || result == RecvResult.BUSY)) {
                         return Optional.empty();
                     }
-                    throw new RecvException(result, Native.errno());
+                    throw new ZlinkRecvException(result, Native.errno());
                 }
             }
         }
@@ -1884,12 +1884,12 @@ public final class NativeSpot implements Spot {
                     return Optional.empty();
                 }
                 if (result == RecvResult.NO_DATA) {
-                    throw new RecvException(result, Native.errno());
+                    throw new ZlinkRecvException(result, Native.errno());
                 }
                 if (result == RecvResult.BUSY && nonBlocking) {
                     return Optional.empty();
                 }
-                throw new RecvException(result, Native.errno());
+                throw new ZlinkRecvException(result, Native.errno());
             }
         }
     }
@@ -1937,7 +1937,7 @@ public final class NativeSpot implements Spot {
         try {
             if (result != RequestResult.OK.value()) {
                 if (future != null) {
-                    future.completeExceptionally(new RequestException(
+                    future.completeExceptionally(new ZlinkRequestException(
                         RequestResult.fromValue(result), result));
                 }
                 return;
@@ -2101,7 +2101,7 @@ public final class NativeSpot implements Spot {
 
     private static RequestResult requestResult(Throwable error) {
         Throwable cause = unwrap(error);
-        if (cause instanceof RequestException requestException) {
+        if (cause instanceof ZlinkRequestException requestException) {
             return requestException.getResult();
         }
         if (cause instanceof TimeoutException) {

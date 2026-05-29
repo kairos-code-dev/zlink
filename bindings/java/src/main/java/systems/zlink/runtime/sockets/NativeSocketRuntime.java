@@ -7,18 +7,18 @@ import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.runtime.nativeapi.RecvScratch;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ReplyHandler;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.runtime.nativeapi.SendScratch;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.*;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
@@ -267,7 +267,7 @@ final class NativeSocketRuntime implements AutoCloseable {
             int rc = Native.setDealerOption(handle, option, nativeValue,
               ValueLayout.JAVA_INT.byteSize());
             if (rc != 0) {
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             }
         }
     }
@@ -280,7 +280,7 @@ final class NativeSocketRuntime implements AutoCloseable {
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
             int rc = Native.getRouterOption(handle, option, nativeValue, len);
             if (rc != 0) {
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             }
             return nativeValue.get(ValueLayout.JAVA_INT, 0);
         }
@@ -294,7 +294,7 @@ final class NativeSocketRuntime implements AutoCloseable {
             int rc = Native.setRouterOption(handle, option, nativeValue,
               ValueLayout.JAVA_INT.byteSize());
             if (rc != 0) {
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             }
         }
     }
@@ -305,12 +305,12 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     /** Opens a socket monitor for all events. */
-    public MonitorSocket monitorOpen() {
+    public SocketMonitor monitorOpen() {
         return monitorOpen(MonitorEventType.ALL);
     }
 
     /** Opens a socket monitor for the requested event types. */
-    public MonitorSocket monitorOpen(MonitorEventType... events) {
+    public SocketMonitor monitorOpen(MonitorEventType... events) {
         return socketCore.monitorOpen(resolveMonitorEvents(events));
     }
 
@@ -692,7 +692,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     public Received recvLazy(ReceiveFlag flags) {
         Received received = recvLazyOrNull(flags, false);
         if (received == null) {
-            throw new RecvException(RecvResult.NO_DATA, ERRNO_EAGAIN);
+            throw new ZlinkRecvException(RecvResult.NO_DATA, ERRNO_EAGAIN);
         }
         return received;
     }
@@ -711,7 +711,7 @@ final class NativeSocketRuntime implements AutoCloseable {
                 Message firstPart = new Message();
                 boolean success = false;
                 try {
-                    int rc = Native.recvPart(handle, sourceRidOut,
+                    int rc = Native.recv(handle, sourceRidOut,
                         InternalAccess.messageNativeHandle(firstPart), hasMoreOut, flags.getValue());
                     if (rc == 0) {
                         success = true;
@@ -948,7 +948,7 @@ final class NativeSocketRuntime implements AutoCloseable {
         SubscriptionEvent fresh;
         try {
             fresh = receiveSubscriptionEvent(flags);
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             if (flags == ReceiveFlag.DONTWAIT
                 && ex.getResult() == RecvResult.NO_DATA) {
                 return false;
@@ -973,8 +973,8 @@ final class NativeSocketRuntime implements AutoCloseable {
         topicPlane.setRoutingId(rid);
     }
 
-    public RoutingId routingId() {
-        return topicPlane.routingId();
+    public RoutingId getRoutingId() {
+        return topicPlane.getRoutingId();
     }
 
     public void setSubscription(String filter) {
@@ -1005,8 +1005,8 @@ final class NativeSocketRuntime implements AutoCloseable {
         socketCore.onSubscribe(handler);
     }
 
-    public void onSendReady(SendReadyHandler handler) {
-        socketCore.onSendReady(handler);
+    public void setSendReadyHandler(SendReadyHandler handler) {
+        socketCore.setSendReadyHandler(handler);
     }
 
     private final class BasicReceiveCursor implements ReceivedPartCursor {
@@ -1031,7 +1031,7 @@ final class NativeSocketRuntime implements AutoCloseable {
                 Message next = new Message();
                 boolean success = false;
                 try {
-                    int rc = Native.recvPart(handle, sourceRidOut,
+                    int rc = Native.recv(handle, sourceRidOut,
                         InternalAccess.messageNativeHandle(next), hasMoreOut, flags);
                     if (rc == 0) {
                         success = true;
@@ -1720,7 +1720,7 @@ final class NativeSocketRuntime implements AutoCloseable {
                 Message firstPart = new Message();
                 boolean success = false;
                 try {
-                    int rc = Native.recvPart(handle, sourceRidOut,
+                    int rc = Native.recv(handle, sourceRidOut,
                         InternalAccess.messageNativeHandle(firstPart), hasMoreOut, flags.getValue());
                     if (rc == 0) {
                         success = true;
@@ -1784,7 +1784,7 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if ((nonBlocking || explicitNonBlocking)
                     && (errno == ERRNO_EAGAIN
                         || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                    throw new SubmitException(SubmitResult.BACKPRESSURED,
+                    throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED,
                         errno);
                 }
                 throwPartSubmitFailure(
@@ -1838,7 +1838,7 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if ((nonBlocking || explicitNonBlocking)
                     && (errno == ERRNO_EAGAIN
                         || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                    throw new SubmitException(SubmitResult.BACKPRESSURED,
+                    throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED,
                         errno);
                 }
                 throwPartSubmitFailure("zlink_publish_part");
@@ -1874,25 +1874,25 @@ final class NativeSocketRuntime implements AutoCloseable {
         if (NativeSubmitErrors.isNotConnected(errno))
             return SendResult.NOT_READY;
         if (NativeSubmitErrors.isNotAdmitted(errno)) {
-            throw new SubmitException(SubmitResult.NOT_ADMITTED, errno);
+            throw new ZlinkSubmitException(SubmitResult.NOT_ADMITTED, errno);
         }
         throw ZlinkException.fromLastError(apiName);
     }
 
-    static SubmitException submitExceptionFromSendResult(int rc) {
+    static ZlinkSubmitException submitExceptionFromSendResult(int rc) {
         return switch (rc) {
-            case 1 -> new SubmitException(SubmitResult.BACKPRESSURED, 0);
-            case 2 -> new SubmitException(SubmitResult.NOT_CONNECTED, 0);
+            case 1 -> new ZlinkSubmitException(SubmitResult.BACKPRESSURED, 0);
+            case 2 -> new ZlinkSubmitException(SubmitResult.NOT_CONNECTED, 0);
             case 0 -> throw new IllegalArgumentException("send result indicates success");
             default -> throw new IllegalArgumentException(
                 "invalid send result value: " + rc);
         };
     }
 
-    static SubmitException submitExceptionFromSendResult(SendResult result) {
+    static ZlinkSubmitException submitExceptionFromSendResult(SendResult result) {
         return switch (result) {
-            case BACKPRESSURED -> new SubmitException(SubmitResult.BACKPRESSURED, 0);
-            case NOT_READY -> new SubmitException(SubmitResult.NOT_CONNECTED, 0);
+            case BACKPRESSURED -> new ZlinkSubmitException(SubmitResult.BACKPRESSURED, 0);
+            case NOT_READY -> new ZlinkSubmitException(SubmitResult.NOT_CONNECTED, 0);
             case SENT -> throw new IllegalArgumentException("send result indicates success");
         };
     }
@@ -1907,7 +1907,7 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     private void throwPartSubmitFailure(String apiName) {
         int errno = Native.errno();
-        SubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
+        ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
         if (submit != null)
             throw submit;
         throw ZlinkException.fromLastError(apiName);
@@ -2626,7 +2626,7 @@ final class NativeSocketRuntime implements AutoCloseable {
             return socket.readOption(option);
         }
 
-        MonitorSocket monitorOpen(int events) {
+        SocketMonitor monitorOpen(int events) {
             NativeMonitorSocket.ensureRegistered();
             MemorySegment sock = Native.monitorOpen(socket.handle(), events);
             if (sock == null || sock.address() == 0)
@@ -2707,7 +2707,7 @@ final class NativeSocketRuntime implements AutoCloseable {
             }
         }
 
-        void onSendReady(SendReadyHandler handler) {
+        void setSendReadyHandler(SendReadyHandler handler) {
             Objects.requireNonNull(handler, "handler");
             ensureOpen();
             ensureNoCallbackFailure();
@@ -3605,7 +3605,7 @@ final class NativeSocketRuntime implements AutoCloseable {
             Objects.requireNonNull(flags, "flags");
             TopicMessage message = subscribeInternal(flags, flags == ReceiveFlag.DONTWAIT);
             if (message == null) {
-                throw new RecvException(RecvResult.NO_DATA, Native.errno());
+                throw new ZlinkRecvException(RecvResult.NO_DATA, Native.errno());
             }
             return message;
         }
@@ -3637,7 +3637,7 @@ final class NativeSocketRuntime implements AutoCloseable {
                     if (flags == ReceiveFlag.DONTWAIT
                         && (errno == NativeSocketRuntime.ERRNO_EAGAIN
                             || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN)) {
-                        throw new RecvException(RecvResult.NO_DATA, errno);
+                        throw new ZlinkRecvException(RecvResult.NO_DATA, errno);
                     }
                     throw ZlinkException.fromErrno("zlink_xpub_recv_part", errno);
                 }
@@ -3767,7 +3767,7 @@ final class NativeSocketRuntime implements AutoCloseable {
             socket.setRoutingIdBytes(value, 0, value.length);
         }
 
-        RoutingId routingId() {
+        RoutingId getRoutingId() {
             return RoutingId.from(socket.getRoutingIdBytes());
         }
 

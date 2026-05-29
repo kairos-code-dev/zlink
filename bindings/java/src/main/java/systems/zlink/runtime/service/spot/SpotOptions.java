@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.service.spot;
 
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.runtime.nativeapi.InternalAccess;
@@ -39,7 +39,7 @@ public final class SpotOptions {
             int rc = Native.getSpotOption(InternalAccess.spotHandle(spot), option, nativeValue,
               len);
             if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             return nativeValue.get(ValueLayout.JAVA_INT, 0);
         }
     }
@@ -51,7 +51,7 @@ public final class SpotOptions {
             int rc = Native.setSpotOption(InternalAccess.spotHandle(spot), option, nativeValue,
               ValueLayout.JAVA_INT.byteSize());
             if (rc != 0)
-                throw new ConfigException(ConfigResult.fromValue(rc));
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
         }
     }
 

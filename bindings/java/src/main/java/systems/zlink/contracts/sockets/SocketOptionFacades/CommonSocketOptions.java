@@ -282,11 +282,11 @@ public class CommonSocketOptions {
         ContractAccess.socketSetOption(socket, SocketOptions.INVERT_MATCHING, enabled ? 1 : 0);
     }
 
-    public long maxMsgSize() {
+    public long maxMessageSize() {
         return ContractAccess.socketGetOption(socket, SocketOptions.MAXMSGSIZE);
     }
 
-    public void maxMsgSize(long value) {
+    public void maxMessageSize(long value) {
         ContractAccess.socketSetOption(socket, SocketOptions.MAXMSGSIZE, value);
     }
 

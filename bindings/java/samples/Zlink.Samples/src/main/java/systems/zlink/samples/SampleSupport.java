@@ -3,7 +3,7 @@
 package systems.zlink.samples;
 
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.service.spot.SpotNode;
@@ -74,13 +74,13 @@ final class SampleSupport {
         return received.singlePartOrThrow().toUtf8String();
     }
 
-    static void waitConnected(MonitorSocket... monitors) {
-        for (MonitorSocket monitor : monitors) {
+    static void waitConnected(SocketMonitor... monitors) {
+        for (SocketMonitor monitor : monitors) {
             monitor.recv();
         }
     }
 
-    static void waitStreamConnected(MonitorSocket monitor) {
+    static void waitStreamConnected(SocketMonitor monitor) {
         while (true) {
             var event = monitor.recv();
             if (event.event() == MonitorEventType.ACCEPTED
@@ -90,8 +90,8 @@ final class SampleSupport {
         }
     }
 
-    static void waitPubSubReady(MonitorSocket pubMonitor,
-                                MonitorSocket subMonitor) {
+    static void waitPubSubReady(SocketMonitor pubMonitor,
+                                SocketMonitor subMonitor) {
         waitMonitorEvent(subMonitor, MonitorEventType.CONNECTION_READY);
         waitMonitorEvent(pubMonitor, MonitorEventType.CONNECTION_READY);
     }
@@ -171,7 +171,7 @@ final class SampleSupport {
         return data;
     }
 
-    private static void waitMonitorEvent(MonitorSocket monitor,
+    private static void waitMonitorEvent(SocketMonitor monitor,
                                          MonitorEventType eventType) {
         while (true) {
             var event = monitor.recv();

@@ -4,7 +4,7 @@ package systems.zlink.contracts.core;
 
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.Poller;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.service.spot.Spot;
@@ -21,7 +21,7 @@ public final class Zlink {
         return ContractAccess.createAtomicCounter();
     }
 
-    public static Stopwatch createStopwatch() {
+    public static ZlinkStopwatch createStopwatch() {
         return ContractAccess.createStopwatch();
     }
 
@@ -33,11 +33,11 @@ public final class Zlink {
         return ContractAccess.createPoller();
     }
 
-    public static Timer createTimer() {
+    public static ZlinkTimer createTimer() {
         return ContractAccess.createTimer();
     }
 
-    public static Timer createTimer(Spot spot) {
+    public static ZlinkTimer createTimer(Spot spot) {
         return ContractAccess.createTimer(spot);
     }
 

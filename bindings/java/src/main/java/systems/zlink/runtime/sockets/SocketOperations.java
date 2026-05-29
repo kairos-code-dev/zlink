@@ -5,13 +5,13 @@ package systems.zlink.runtime.sockets;
 import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.ReplyOp;
-import systems.zlink.contracts.service.spot.ReplySubmitOp;
-import systems.zlink.contracts.service.spot.RequestCallbackSubmitOp;
-import systems.zlink.contracts.service.spot.RequestOp;
-import systems.zlink.contracts.service.spot.RequestSubmitOp;
-import systems.zlink.contracts.service.spot.SendOp;
-import systems.zlink.contracts.service.spot.SendSubmitOp;
+import systems.zlink.contracts.service.spot.ReplyOperation;
+import systems.zlink.contracts.service.spot.ReplySubmitOperation;
+import systems.zlink.contracts.service.spot.RequestCallbackSubmitOperation;
+import systems.zlink.contracts.service.spot.RequestOperation;
+import systems.zlink.contracts.service.spot.RequestSubmitOperation;
+import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.service.spot.SendSubmitOperation;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -23,23 +23,23 @@ final class SocketOperations {
     private SocketOperations() {
     }
 
-    public static SendOp send(SendInvoker invoker) {
+    public static SendOperation send(SendInvoker invoker) {
         return new SendBuilder(null, invoker);
     }
 
-    public static SendOp send(SingleSendInvoker singleInvoker,
+    public static SendOperation send(SingleSendInvoker singleInvoker,
                               SendInvoker invoker) {
         return new SendBuilder(
             Objects.requireNonNull(singleInvoker, "singleInvoker"),
             Objects.requireNonNull(invoker, "invoker"));
     }
 
-    public static RequestOp request(RequestAsyncInvoker asyncInvoker,
+    public static RequestOperation request(RequestAsyncInvoker asyncInvoker,
                                     RequestCallbackInvoker callbackInvoker) {
         return new RequestBuilder(asyncInvoker, callbackInvoker);
     }
 
-    public static ReplyOp reply(ReplyInvoker invoker) {
+    public static ReplyOperation reply(ReplyInvoker invoker) {
         return new ReplyBuilder(invoker);
     }
 
@@ -71,7 +71,7 @@ final class SocketOperations {
         void submit(List<Message> parts, SendFlags flags);
     }
 
-    private static final class SendBuilder implements SendOp, SendSubmitOp {
+    private static final class SendBuilder implements SendOperation, SendSubmitOperation {
         private final SingleSendInvoker singleInvoker;
         private final SendInvoker invoker;
         private Message singlePart;
@@ -87,7 +87,7 @@ final class SocketOperations {
         }
 
         @Override
-        public SendSubmitOp message(Message part) {
+        public SendSubmitOperation message(Message part) {
             ensureNotSubmitted();
             Objects.requireNonNull(part, "part");
             if (partCount == 0) {
@@ -105,7 +105,7 @@ final class SocketOperations {
         }
 
         @Override
-        public SendSubmitOp flags(SendFlags value) {
+        public SendSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -137,7 +137,7 @@ final class SocketOperations {
     }
 
     private static final class RequestBuilder
-      implements RequestOp, RequestSubmitOp {
+      implements RequestOperation, RequestSubmitOperation {
         private final RequestAsyncInvoker asyncInvoker;
         private final RequestCallbackInvoker callbackInvoker;
         private final MessageParts parts = new MessageParts();
@@ -155,20 +155,20 @@ final class SocketOperations {
         }
 
         @Override
-        public RequestSubmitOp message(Message part) {
+        public RequestSubmitOperation message(Message part) {
             addMessage(part);
             return this;
         }
 
         @Override
-        public RequestSubmitOp timeout(Duration value) {
+        public RequestSubmitOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
         }
 
         @Override
-        public RequestCallbackSubmitOp flags(SendFlags value) {
+        public RequestCallbackSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             return new CallbackRequestBuilder(this,
               Objects.requireNonNull(value, "flags"));
@@ -206,7 +206,7 @@ final class SocketOperations {
     }
 
     private static final class CallbackRequestBuilder
-      implements RequestCallbackSubmitOp {
+      implements RequestCallbackSubmitOperation {
         private final RequestBuilder source;
         private SendFlags flags;
 
@@ -217,19 +217,19 @@ final class SocketOperations {
         }
 
         @Override
-        public RequestCallbackSubmitOp message(Message part) {
+        public RequestCallbackSubmitOperation message(Message part) {
             source.addMessage(part);
             return this;
         }
 
         @Override
-        public RequestCallbackSubmitOp timeout(Duration value) {
+        public RequestCallbackSubmitOperation timeout(Duration value) {
             source.timeout(value);
             return this;
         }
 
         @Override
-        public RequestCallbackSubmitOp flags(SendFlags value) {
+        public RequestCallbackSubmitOperation flags(SendFlags value) {
             source.ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -244,7 +244,7 @@ final class SocketOperations {
         }
     }
 
-    private static final class ReplyBuilder implements ReplyOp, ReplySubmitOp {
+    private static final class ReplyBuilder implements ReplyOperation, ReplySubmitOperation {
         private final ReplyInvoker invoker;
         private final MessageParts parts = new MessageParts();
         private SendFlags flags = SendFlags.NONE;
@@ -255,14 +255,14 @@ final class SocketOperations {
         }
 
         @Override
-        public ReplySubmitOp message(Message part) {
+        public ReplySubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(Objects.requireNonNull(part, "part"));
             return this;
         }
 
         @Override
-        public ReplySubmitOp flags(SendFlags value) {
+        public ReplySubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;

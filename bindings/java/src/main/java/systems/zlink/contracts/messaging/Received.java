@@ -2,15 +2,15 @@
 
 package systems.zlink.contracts.messaging;
 
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
-import systems.zlink.contracts.service.spot.ReplyOp;
-import systems.zlink.contracts.service.spot.ReplySubmitOp;
+import systems.zlink.contracts.service.spot.ReplyOperation;
+import systems.zlink.contracts.service.spot.ReplySubmitOperation;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.service.spot.SendOp;
-import systems.zlink.contracts.service.spot.SendSubmitOp;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.service.spot.SendSubmitOperation;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.internal.ContractAccess;
 import java.util.ArrayList;
@@ -454,7 +454,7 @@ public final class Received implements AutoCloseable {
     }
 
     /** Returns the routing id when the transport delivered one. */
-    public Optional<RoutingId> routingId() {
+    public Optional<RoutingId> getRoutingId() {
         return Optional.ofNullable(routingIdOrNull());
     }
 
@@ -468,7 +468,7 @@ public final class Received implements AutoCloseable {
     RoutingId routingIdOrThrow() {
         RoutingId resolved = routingIdOrNull();
         if (resolved == null)
-            throw new RecvException(RecvResult.NO_DATA);
+            throw new ZlinkRecvException(RecvResult.NO_DATA);
         return resolved;
     }
 
@@ -523,7 +523,7 @@ public final class Received implements AutoCloseable {
             ensureOpen();
             ensureRealizedThroughLocked(0);
             if (realizedParts.isEmpty())
-                throw new RecvException(RecvResult.NO_DATA);
+                throw new ZlinkRecvException(RecvResult.NO_DATA);
             return realizedParts.get(0);
         }
     }
@@ -538,28 +538,28 @@ public final class Received implements AutoCloseable {
             ensureOpen();
             ensureRealizedThroughLocked(1);
             if (realizedParts.size() != 1 || cursor != null)
-                throw new RecvException(RecvResult.NOT_SUPPORTED);
+                throw new ZlinkRecvException(RecvResult.NOT_SUPPORTED);
             return realizedParts.get(0);
         }
     }
 
-    public ReplyOp reply() {
+    public ReplyOperation reply() {
         return new ReplyBuilder();
     }
 
     private void submitReply(List<Message> parts, SendFlags flags) {
         if (!hasRequestSequence || replySender == null) {
-            throw new SubmitException(SubmitResult.INVALID_STATE);
+            throw new ZlinkSubmitException(SubmitResult.INVALID_STATE);
         }
         try {
             replySender.accept(Objects.requireNonNull(parts, "parts"),
                 Objects.requireNonNull(flags, "flags"));
         } catch (IllegalStateException ex) {
-            throw new SubmitException(SubmitResult.TERMINATED);
+            throw new ZlinkSubmitException(SubmitResult.TERMINATED);
         }
     }
 
-    public SendOp send() {
+    public SendOperation send() {
         return new SendBuilder();
     }
 
@@ -567,12 +567,12 @@ public final class Received implements AutoCloseable {
         Objects.requireNonNull(parts, "parts");
         Objects.requireNonNull(flags, "flags");
         if (sendSender == null) {
-            throw new SubmitException(SubmitResult.INVALID_STATE);
+            throw new ZlinkSubmitException(SubmitResult.INVALID_STATE);
         }
         try {
             return sendSender.apply(parts, flags);
         } catch (IllegalStateException ex) {
-            throw new SubmitException(SubmitResult.TERMINATED);
+            throw new ZlinkSubmitException(SubmitResult.TERMINATED);
         }
     }
 
@@ -580,20 +580,20 @@ public final class Received implements AutoCloseable {
         this.sendSender = sendSender;
     }
 
-    private final class SendBuilder implements SendOp, SendSubmitOp {
+    private final class SendBuilder implements SendOperation, SendSubmitOperation {
         private final BuilderParts parts = new BuilderParts();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
         @Override
-        public SendSubmitOp message(Message part) {
+        public SendSubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(part);
             return this;
         }
 
         @Override
-        public SendSubmitOp flags(SendFlags value) {
+        public SendSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -614,20 +614,20 @@ public final class Received implements AutoCloseable {
         }
     }
 
-    private final class ReplyBuilder implements ReplyOp, ReplySubmitOp {
+    private final class ReplyBuilder implements ReplyOperation, ReplySubmitOperation {
         private final BuilderParts parts = new BuilderParts();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
         @Override
-        public ReplySubmitOp message(Message part) {
+        public ReplySubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(part);
             return this;
         }
 
         @Override
-        public ReplySubmitOp flags(SendFlags value) {
+        public ReplySubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;

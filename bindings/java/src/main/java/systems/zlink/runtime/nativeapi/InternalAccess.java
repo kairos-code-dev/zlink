@@ -7,13 +7,13 @@ import systems.zlink.contracts.core.ContextOption;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.errors.ZlinkException;
-import systems.zlink.contracts.eventing.MonitorSocket;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.SocketMonitor;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.service.spot.ActorPart;
+import systems.zlink.contracts.service.spot.ActorReceived;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ReplyHandler;
 import systems.zlink.contracts.service.spot.Spot;
@@ -134,7 +134,7 @@ public final class InternalAccess {
         boolean streamSubmitUnbind(StreamSocket socket, RoutingId sessionRid,
                                    String actorId, Duration timeout,
                                    ReplyHandler callback);
-        boolean streamSendBoundActorParts(StreamSocket socket,
+        boolean streamSendBoundActorReceiveds(StreamSocket socket,
                                           RoutingId sessionRid,
                                           String actorId,
                                           List<Message> parts,
@@ -163,13 +163,13 @@ public final class InternalAccess {
     }
 
     public interface TimerAccess {
-        MemorySegment handle(Timer timer);
+        MemorySegment handle(ZlinkTimer timer);
 
-        Timer fromBorrowedHandle(MemorySegment handle);
+        ZlinkTimer fromBorrowedHandle(MemorySegment handle);
     }
 
     public interface MonitorAccess {
-        MonitorSocket create(MemorySegment handle, boolean own);
+        SocketMonitor create(MemorySegment handle, boolean own);
     }
 
     public static void register(ContextAccess access) {
@@ -208,7 +208,7 @@ public final class InternalAccess {
         return contextAccess().handle(context);
     }
 
-    public static MonitorSocket monitorSocket(MemorySegment handle,
+    public static SocketMonitor monitorSocket(MemorySegment handle,
                                               boolean own) {
         return monitorAccess().create(handle, own);
     }
@@ -314,11 +314,11 @@ public final class InternalAccess {
             part, callback, flags, timeout);
     }
 
-    public static Timer timerFromBorrowedHandle(MemorySegment handle) {
+    public static ZlinkTimer timerFromBorrowedHandle(MemorySegment handle) {
         return timerAccess().fromBorrowedHandle(handle);
     }
 
-    public static MemorySegment timerHandle(Timer timer) {
+    public static MemorySegment timerHandle(ZlinkTimer timer) {
         return timerAccess().handle(timer);
     }
 
@@ -653,12 +653,12 @@ public final class InternalAccess {
             actorId, timeout, callback);
     }
 
-    public static boolean streamSendBoundActorParts(StreamSocket socket,
+    public static boolean streamSendBoundActorReceiveds(StreamSocket socket,
                                                     RoutingId sessionRid,
                                                     String actorId,
                                                     List<Message> parts,
                                                     SendFlags flags) {
-        return runtimeSocketAccess().streamSendBoundActorParts(socket, sessionRid,
+        return runtimeSocketAccess().streamSendBoundActorReceiveds(socket, sessionRid,
             actorId, parts, flags);
     }
 
@@ -717,7 +717,7 @@ public final class InternalAccess {
     private static MonitorAccess monitorAccess() {
         if (monitorAccess == null)
             load("systems.zlink.runtime.eventing.NativeMonitorSocket");
-        return require(monitorAccess, MonitorSocket.class);
+        return require(monitorAccess, SocketMonitor.class);
     }
 
     private static <T> T require(T access, Class<?> ownerType) {

@@ -4,12 +4,12 @@ package systems.zlink.runtime.nativeapi;
 
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
-import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import java.lang.foreign.MemorySegment;
@@ -50,7 +50,7 @@ public final class RequestReplySupport {
                                       long timeoutMs) {
         ScheduledFuture<?> timeout = REQUEST_TIMEOUTS.schedule(() -> {
             if (pending.remove(requestId, future)) {
-                future.completeExceptionally(new RequestException(
+                future.completeExceptionally(new ZlinkRequestException(
                     RequestResult.TIMED_OUT));
             }
         }, timeoutMs, TimeUnit.MILLISECONDS);
@@ -74,7 +74,7 @@ public final class RequestReplySupport {
 
     public static RequestResult requestResult(Throwable error) {
         Throwable cause = unwrap(error);
-        if (cause instanceof RequestException requestException) {
+        if (cause instanceof ZlinkRequestException requestException) {
             return requestException.getResult();
         }
         if (cause instanceof java.util.concurrent.TimeoutException) {
@@ -85,7 +85,7 @@ public final class RequestReplySupport {
 
     public static SubmitResult submitResult(Throwable error) {
         Throwable cause = unwrap(error);
-        if (cause instanceof SubmitException submitException) {
+        if (cause instanceof ZlinkSubmitException submitException) {
             return submitException.getResult();
         }
         return SubmitResult.INTERNAL_ERROR;
@@ -93,38 +93,38 @@ public final class RequestReplySupport {
 
     public static Throwable normalizeRequestFailure(Throwable error) {
         Throwable cause = unwrap(error);
-        if (cause instanceof RequestException
-            || cause instanceof SubmitException
+        if (cause instanceof ZlinkRequestException
+            || cause instanceof ZlinkSubmitException
             || cause instanceof RuntimeException) {
             return cause;
         }
-        return new RequestException(RequestResult.PROTOCOL_ERROR);
+        return new ZlinkRequestException(RequestResult.PROTOCOL_ERROR);
     }
 
-    public static RequestException requestFailure(Throwable error) {
+    public static ZlinkRequestException requestFailure(Throwable error) {
         Throwable cause = unwrap(error);
-        if (cause instanceof RequestException requestException) {
+        if (cause instanceof ZlinkRequestException requestException) {
             return requestException;
         }
-        if (cause instanceof RecvException recvException) {
+        if (cause instanceof ZlinkRecvException recvException) {
             if (recvException.getResult() == RecvResult.TERMINATED) {
-                return new RequestException(RequestResult.TERMINATED,
+                return new ZlinkRequestException(RequestResult.TERMINATED,
                     recvException.getInternalErrno());
             }
-            return new RequestException(RequestResult.PROTOCOL_ERROR,
+            return new ZlinkRequestException(RequestResult.PROTOCOL_ERROR,
                 recvException.getInternalErrno());
         }
         if (cause instanceof ZlinkException zlinkException) {
-            return new RequestException(RequestResult.PROTOCOL_ERROR,
+            return new ZlinkRequestException(RequestResult.PROTOCOL_ERROR,
                 zlinkException.getInternalErrno());
         }
-        return new RequestException(RequestResult.PROTOCOL_ERROR);
+        return new ZlinkRequestException(RequestResult.PROTOCOL_ERROR);
     }
 
     public static void requireReplyFlagsSupported(SendFlags flags) {
         Objects.requireNonNull(flags, "flags");
         if (flags != SendFlags.NONE) {
-            throw new SubmitException(SubmitResult.NOT_SUPPORTED);
+            throw new ZlinkSubmitException(SubmitResult.NOT_SUPPORTED);
         }
     }
 

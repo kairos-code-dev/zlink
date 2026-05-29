@@ -31,8 +31,8 @@ public class ContextContractTest {
             assertFalse(hasPublicMethod(Context.class, "messageStructSize"));
             assertFalse(hasPublicMethod(ContextOptions.class, "addThreadAffinityCpu"));
             assertFalse(hasPublicMethod(ContextOptions.class, "removeThreadAffinityCpu"));
-            assertTrue(hasPublicMethod(ContextOptions.class, "addThreadAffinity", int.class));
-            assertTrue(hasPublicMethod(ContextOptions.class, "removeThreadAffinity", int.class));
+            assertTrue(hasPublicMethod(ContextOptions.class, "addThreadAffinityCpu", int.class));
+            assertTrue(hasPublicMethod(ContextOptions.class, "removeThreadAffinityCpu", int.class));
             assertDoesNotThrow(() -> options.ioThreads(2));
             assertEquals(2, options.ioThreads());
             assertTrue(options.socketLimit() >= options.maxSockets());
@@ -50,7 +50,7 @@ public class ContextContractTest {
             assertEquals(0, options.autoHwmMessageUnitBytes());
             assertThrows(IllegalArgumentException.class,
                 () -> options.autoHwmMessageUnitBytes(-1));
-            assertTrue(options.msgTSize() > 0);
+            assertTrue(options.messageThreadSize() > 0);
         }
     }
 

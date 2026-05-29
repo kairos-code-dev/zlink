@@ -1,7 +1,7 @@
 package systems.zlink.contract;
 
 import systems.zlink.TestSupport;
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
@@ -31,7 +31,7 @@ public class BoundaryValidationContractTest {
         try (Context ctx = Zlink.createContext();
              StreamSocket stream = ctx.createStreamSocket();
              SpotNode node = ctx.createSpotNode(SpotNodeMode.PUBSUB)) {
-            ConfigException error = assertThrows(ConfigException.class,
+            ZlinkConfigException error = assertThrows(ZlinkConfigException.class,
                 () -> stream.attachActorGateway(node));
             assertEquals(ConfigResult.NOT_SUPPORTED, error.getResult());
         }

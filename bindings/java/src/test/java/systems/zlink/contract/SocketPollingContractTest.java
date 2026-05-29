@@ -5,7 +5,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PairSocket;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.PollSourceKind;
 import systems.zlink.contracts.eventing.Poller;
@@ -14,7 +14,7 @@ import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -36,7 +36,7 @@ public class SocketPollingContractTest {
             String endpoint = TestSupport.inprocEndpoint("poller-contract");
             server.bind(endpoint);
             client.connect(endpoint);
-            poller.add(server, 7L, PollEventFlag.POLLIN);
+            poller.add(server, 7L, PollEventFlags.POLLIN);
 
             try (Message outbound = Message.from("poller")) {
                 client.send().message(outbound).submit();
@@ -50,7 +50,7 @@ public class SocketPollingContractTest {
             assertEquals(1, poller.size());
             assertEquals(PollSourceKind.SOCKET, events.sourceKind(0));
             assertEquals(7L, events.slot(0));
-            assertTrue(events.hasEvent(0, PollEventFlag.POLLIN));
+            assertTrue(events.hasEvent(0, PollEventFlags.POLLIN));
         }
     }
 
@@ -58,7 +58,7 @@ public class SocketPollingContractTest {
     public void pollerTracksTimersThroughCoreTimerRegistration() {
         TestSupport.assumeNative();
 
-        try (Timer timer = Zlink.createTimer();
+        try (ZlinkTimer timer = Zlink.createTimer();
              Poller poller = Zlink.createPoller()) {
             poller.add(timer, 11L);
             timer.start(Duration.ofMillis(1), 1L);
@@ -95,8 +95,8 @@ public class SocketPollingContractTest {
             receiver1.connect(endpoint1);
             sender2.bind(endpoint2);
             receiver2.connect(endpoint2);
-            poller.add(receiver1, 101L, PollEventFlag.POLLIN);
-            poller.add(receiver2, 102L, PollEventFlag.POLLIN);
+            poller.add(receiver1, 101L, PollEventFlags.POLLIN);
+            poller.add(receiver2, 102L, PollEventFlags.POLLIN);
 
             try (Message a = Message.from("a");
                  Message b = Message.from("b")) {
@@ -138,7 +138,7 @@ public class SocketPollingContractTest {
             String endpoint = TestSupport.inprocEndpoint("poller-modify-remove");
             sender.bind(endpoint);
             receiver.connect(endpoint);
-            poller.add(receiver, 31L, PollEventFlag.POLLIN);
+            poller.add(receiver, 31L, PollEventFlags.POLLIN);
             poller.modify(receiver);
 
             try (Message hidden = Message.from("hidden")) {
@@ -148,7 +148,7 @@ public class SocketPollingContractTest {
             PollEvents events = new PollEvents(1);
             assertEquals(0, poller.wait(events, Duration.ofMillis(20)));
 
-            poller.modify(receiver, PollEventFlag.POLLIN);
+            poller.modify(receiver, PollEventFlags.POLLIN);
             assertEquals(1, poller.wait(events,
                 Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS)));
             assertEquals(31L, events.slot(0));
@@ -169,12 +169,12 @@ public class SocketPollingContractTest {
         try (Context ctx = Zlink.createContext();
              PairSocket sender = ctx.createPairSocket();
              PairSocket receiver = ctx.createPairSocket();
-             Timer timer = Zlink.createTimer();
+             ZlinkTimer timer = Zlink.createTimer();
              Poller poller = Zlink.createPoller()) {
             String endpoint = TestSupport.inprocEndpoint("poller-timer-socket");
             sender.bind(endpoint);
             receiver.connect(endpoint);
-            poller.add(receiver, 41L, PollEventFlag.POLLIN);
+            poller.add(receiver, 41L, PollEventFlags.POLLIN);
             poller.add(timer, 42L);
 
             try (Message socket = Message.from("socket")) {
@@ -184,9 +184,9 @@ public class SocketPollingContractTest {
 
             PollEvents events = new PollEvents(2);
             boolean sawSocket = false;
-            boolean sawTimer = false;
+            boolean sawZlinkTimer = false;
             long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
-            while ((!sawSocket || !sawTimer) && System.nanoTime() < deadline) {
+            while ((!sawSocket || !sawZlinkTimer) && System.nanoTime() < deadline) {
                 int count = poller.wait(events, Duration.ofMillis(200));
                 for (int i = 0; i < count; i++) {
                     if (events.sourceKind(i) == PollSourceKind.SOCKET) {
@@ -196,13 +196,13 @@ public class SocketPollingContractTest {
                     } else if (events.sourceKind(i) == PollSourceKind.TIMER) {
                         assertEquals(42L, events.slot(i));
                         assertEquals(1L, timer.recv());
-                        sawTimer = true;
+                        sawZlinkTimer = true;
                     }
                 }
             }
 
             assertTrue(sawSocket);
-            assertTrue(sawTimer);
+            assertTrue(sawZlinkTimer);
         }
     }
 
@@ -223,14 +223,14 @@ public class SocketPollingContractTest {
             TestSupport.awaitCondition(() -> subscriberNode.status()
                 .connectedPeerCount() > 0);
 
-            poller.add(publisher, 51L, PollEventFlag.POLLOUT);
+            poller.add(publisher, 51L, PollEventFlags.POLLOUT);
 
             PollEvents events = new PollEvents(1);
             int count = poller.wait(events,
                 Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS));
             assertEquals(1, count);
             assertEquals(51L, events.slot(0));
-            assertTrue(events.hasEvent(0, PollEventFlag.POLLOUT));
+            assertTrue(events.hasEvent(0, PollEventFlags.POLLOUT));
         }
     }
 
@@ -242,10 +242,10 @@ public class SocketPollingContractTest {
             Duration.class));
         assertFalse(hasPublicMethod(Poller.class, "wait", List.class,
             Duration.class));
-        assertFalse(hasPublicMethod(Poller.class, "add", Timer.class,
+        assertFalse(hasPublicMethod(Poller.class, "add", ZlinkTimer.class,
             Object.class));
         assertFalse(hasPublicMethod(Poller.class, "add", Socket.class,
-            Object.class, PollEventFlag[].class));
+            Object.class, PollEventFlags[].class));
     }
 
     @Test

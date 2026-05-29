@@ -3,7 +3,7 @@
 package systems.zlink.runtime.core;
 
 import systems.zlink.contracts.core.AtomicCounter;
-import systems.zlink.contracts.core.Stopwatch;
+import systems.zlink.contracts.core.ZlinkStopwatch;
 import systems.zlink.contracts.core.ZlinkThread;
 
 final class NativeCoreResources {
@@ -14,7 +14,7 @@ final class NativeCoreResources {
         return new NativeAtomicCounter();
     }
 
-    static Stopwatch createStopwatch() {
+    static ZlinkStopwatch createStopwatch() {
         return new NativeStopwatch();
     }
 

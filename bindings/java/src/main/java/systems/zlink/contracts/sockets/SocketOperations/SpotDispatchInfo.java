@@ -2,8 +2,8 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.contracts.service.spot.ActorPart;
-import systems.zlink.contracts.eventing.Timer;
+import systems.zlink.contracts.service.spot.ActorReceived;
+import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.internal.ContractAccess;
 import java.util.List;
 import java.util.Objects;
@@ -13,9 +13,9 @@ public final class SpotDispatchInfo {
     private final SpotDispatchEvent event;
     private final SpotDispatchSubjectKind subjectKind;
     private final Object subjectState;
-    private final Timer timer;
+    private final ZlinkTimer timer;
     private final String channelName;
-    private final List<ActorPart> actorParts;
+    private final List<ActorReceived> actorMessages;
 
     static {
         ContractAccess.register(new ContractAccess.SpotDispatchInfoAccess() {
@@ -35,20 +35,20 @@ public final class SpotDispatchInfo {
             public SpotDispatchInfo create(SpotDispatchEvent event,
                                            SpotDispatchSubjectKind subjectKind,
                                            Object subject,
-                                           List<ActorPart> actorParts) {
+                                           List<ActorReceived> actorMessages) {
                 return new SpotDispatchInfo(event, subjectKind, subject,
-                    actorParts);
+                    actorMessages);
             }
 
             @Override
             public SpotDispatchInfo create(SpotDispatchEvent event,
                                            SpotDispatchSubjectKind subjectKind,
                                            Object subject,
-                                           Timer timer,
+                                           ZlinkTimer timer,
                                            String channelName,
-                                           List<ActorPart> actorParts) {
+                                           List<ActorReceived> actorMessages) {
                 return new SpotDispatchInfo(event, subjectKind, subject, timer,
-                    channelName, actorParts);
+                    channelName, actorMessages);
             }
         });
     }
@@ -62,23 +62,23 @@ public final class SpotDispatchInfo {
     SpotDispatchInfo(SpotDispatchEvent event,
                      SpotDispatchSubjectKind subjectKind,
                      Object subject,
-                     List<ActorPart> actorParts) {
-        this(event, subjectKind, subject, null, null, actorParts);
+                     List<ActorReceived> actorMessages) {
+        this(event, subjectKind, subject, null, null, actorMessages);
     }
 
     SpotDispatchInfo(SpotDispatchEvent event,
                      SpotDispatchSubjectKind subjectKind,
                      Object subject,
-                     Timer timer,
+                     ZlinkTimer timer,
                      String channelName,
-                     List<ActorPart> actorParts) {
+                     List<ActorReceived> actorMessages) {
         this.event = Objects.requireNonNull(event, "event");
         this.subjectKind = Objects.requireNonNull(subjectKind, "subjectKind");
         this.subjectState = subject;
         this.timer = timer;
         this.channelName = channelName;
-        this.actorParts = List.copyOf(
-          Objects.requireNonNull(actorParts, "actorParts"));
+        this.actorMessages = List.copyOf(
+          Objects.requireNonNull(actorMessages, "actorMessages"));
     }
 
     public SpotDispatchEvent event() {
@@ -89,7 +89,7 @@ public final class SpotDispatchInfo {
         return subjectKind;
     }
 
-    public Optional<Timer> timer() {
+    public Optional<ZlinkTimer> timer() {
         return Optional.ofNullable(timer);
     }
 
@@ -97,8 +97,8 @@ public final class SpotDispatchInfo {
         return Optional.ofNullable(channelName);
     }
 
-    public List<ActorPart> actorParts() {
-        return actorParts;
+    public List<ActorReceived> actorMessages() {
+        return actorMessages;
     }
 
     Object subjectState() {

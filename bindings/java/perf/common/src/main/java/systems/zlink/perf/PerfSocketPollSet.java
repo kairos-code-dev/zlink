@@ -3,7 +3,7 @@
 package systems.zlink.perf;
 
 import systems.zlink.contracts.core.Zlink;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.sockets.Socket;
@@ -31,7 +31,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
     private int readyCount;
 
     private PerfSocketPollSet(List<Socket> sockets,
-                              PollEventFlag... initialEvents) {
+                              PollEventFlags... initialEvents) {
         this.sockets = sockets.toArray(Socket[]::new);
         this.readyIndexes = new int[this.sockets.length];
         this.readyMasks = new int[this.sockets.length];
@@ -48,12 +48,12 @@ public final class PerfSocketPollSet implements AutoCloseable {
     }
 
     public static PerfSocketPollSet fromSockets(List<Socket> sockets,
-                                                PollEventFlag... initialEvents) {
+                                                PollEventFlags... initialEvents) {
         Objects.requireNonNull(sockets, "sockets");
         return new PerfSocketPollSet(sockets, initialEvents);
     }
 
-    public void setEvents(int index, PollEventFlag... newEvents) {
+    public void setEvents(int index, PollEventFlags... newEvents) {
         checkIndex(index);
         int newMask = mask(newEvents);
         if (currentMasks[index] == newMask) {
@@ -81,7 +81,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
         return readyMasks[offset];
     }
 
-    public boolean readyHasEventAt(int offset, PollEventFlag event) {
+    public boolean readyHasEventAt(int offset, PollEventFlags event) {
         return (readyMaskAt(offset) & maskOne(event)) != 0;
     }
 
@@ -125,12 +125,12 @@ public final class PerfSocketPollSet implements AutoCloseable {
         }
     }
 
-    private static int mask(PollEventFlag... events) {
+    private static int mask(PollEventFlags... events) {
         int mask = 0;
         if (events == null) {
             return mask;
         }
-        for (PollEventFlag event : events) {
+        for (PollEventFlags event : events) {
             mask |= switch (event) {
                 case POLLIN -> 1;
                 case POLLOUT -> MASK_POLLOUT;
@@ -142,7 +142,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
         return mask;
     }
 
-    private static int maskOne(PollEventFlag event) {
+    private static int maskOne(PollEventFlags event) {
         return switch (event) {
             case POLLIN -> MASK_POLLIN;
             case POLLOUT -> MASK_POLLOUT;

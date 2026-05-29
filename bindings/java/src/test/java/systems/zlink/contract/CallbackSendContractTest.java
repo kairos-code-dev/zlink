@@ -69,7 +69,7 @@ public class CallbackSendContractTest {
                 try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
 
                     router.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
-                    RoutingId rid = received.routingId().orElseThrow();
+                    RoutingId rid = received.getRoutingId().orElseThrow();
                     assertNotNull(rid,
                         "router must receive routing id from dealer");
                     try (Message reply = Message.from("pong")) {
@@ -210,7 +210,7 @@ public class CallbackSendContractTest {
                         try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
 
                             router.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
-                            RoutingId rid = received.routingId().orElseThrow();
+                            RoutingId rid = received.getRoutingId().orElseThrow();
                             byte[] data = received.singlePartOrThrow()
                                 .toByteArray();
                             String payload = new String(data,

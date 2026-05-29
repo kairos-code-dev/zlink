@@ -4,11 +4,11 @@ package systems.zlink.runtime.eventing;
 
 import systems.zlink.contracts.eventing.MonitorEvent;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.eventing.MonitorStatus;
 import systems.zlink.contracts.eventing.SocketMonitorHandler;
 
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.errors.ZlinkException;
@@ -31,7 +31,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
-public final class NativeMonitorSocket implements MonitorSocket {
+public final class NativeMonitorSocket implements SocketMonitor {
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_MONITOR_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -99,7 +99,7 @@ public final class NativeMonitorSocket implements MonitorSocket {
         ensureOpen();
         try {
             return Native.monitorRecv(handle, flags.value());
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             if (flags == RecvFlags.DONT_WAIT
                 && ex.getResult() == RecvResult.NO_DATA) {
                 return null;

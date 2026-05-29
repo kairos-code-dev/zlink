@@ -3,14 +3,14 @@
 package systems.zlink.contracts.errors;
 
 
-public final class HandlerException extends ZlinkException {
+public final class ZlinkHandlerException extends ZlinkException {
     private final HandlerResult result;
 
-    public HandlerException(HandlerResult result) {
+    public ZlinkHandlerException(HandlerResult result) {
         this(result, 0);
     }
 
-    public HandlerException(HandlerResult result, int internalErrno) {
+    public ZlinkHandlerException(HandlerResult result, int internalErrno) {
         super(result.value(), internalErrno);
         this.result = result;
     }

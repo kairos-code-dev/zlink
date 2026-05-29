@@ -6,6 +6,7 @@ import systems.zlink.contracts.service.discovery.*;
 
 import systems.zlink.contracts.service.spot.Actor;
 import systems.zlink.contracts.service.spot.ActorRoute;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.registry.MemberPeerEntry;
@@ -24,6 +25,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -36,6 +38,7 @@ import java.util.Objects;
 public final class NativeDiscovery implements Discovery {
     private static final int OPT_DISCOVERY_SPOT_OWNER_SYNC = 0x3035;
     private static final int OPT_DISCOVERY_ACTOR_ROUTE_SYNC = 0x3036;
+    private static final int OPT_ROUTE_VALUE_MAX_SIZE = 0x3032;
 
     private MemorySegment handle;
 
@@ -67,6 +70,26 @@ public final class NativeDiscovery implements Discovery {
     /** Returns the native discovery handle. */
     MemorySegment handle() {
         return handle;
+    }
+
+    public int routeValueMaxSize() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
+            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_LONG.byteSize());
+            int rc = Native.getSockOpt(handle, OPT_ROUTE_VALUE_MAX_SIZE,
+              value, len);
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_get_option");
+            }
+            long result = value.get(ValueLayout.JAVA_LONG, 0);
+            if (result > Integer.MAX_VALUE) {
+                throw new IllegalStateException(
+                  "routeValueMaxSize exceeds int range: " + result);
+            }
+            return (int) result;
+        }
     }
 
     /** Connects the discovery view to a registry router endpoint. */
@@ -118,6 +141,55 @@ public final class NativeDiscovery implements Discovery {
                   "zlink_discovery_resolve_actor");
             }
             return ActorInterop.actorRouteFromNative(out);
+        }
+    }
+
+    public void bindRoute(int kind, byte[] key, byte[] value) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(value, "value");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeKey = copyBytes(arena, key);
+            MemorySegment nativeValue = copyBytes(arena, value);
+            int rc = Native.discoveryBindRoute(handle, kind, nativeKey,
+              key.length, nativeValue, value.length);
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_discovery_bind_route");
+            }
+        }
+    }
+
+    public void unbindRoute(int kind, byte[] key) {
+        Objects.requireNonNull(key, "key");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeKey = copyBytes(arena, key);
+            int rc = Native.discoveryUnbindRoute(handle, kind, nativeKey,
+              key.length);
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_discovery_unbind_route");
+            }
+        }
+    }
+
+    public DiscoveryRoute resolveRoute(int kind, byte[] key) {
+        Objects.requireNonNull(key, "key");
+        Message value = new Message();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeKey = copyBytes(arena, key);
+            MemorySegment ownerRidOut = arena.allocate(
+              NativeLayouts.ROUTING_ID_LAYOUT);
+            int rc = Native.discoveryResolveRoute(handle, kind, nativeKey,
+              key.length, ownerRidOut, InternalAccess.messageNativeHandle(value));
+            if (rc != 0) {
+                value.close();
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_discovery_resolve_route");
+            }
+            return new DiscoveryRoute(readRoutingId(ownerRidOut), value);
+        } catch (RuntimeException ex) {
+            value.close();
+            throw ex;
         }
     }
 
@@ -290,6 +362,15 @@ public final class NativeDiscovery implements Discovery {
               MemorySegment.ofArray(value), 0, size);
         }
         return InternalAccess.routingIdFromTrusted(value);
+    }
+
+    private static MemorySegment copyBytes(Arena arena, byte[] bytes) {
+        MemorySegment out = arena.allocate(bytes.length);
+        if (bytes.length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(Arrays.copyOf(bytes,
+              bytes.length)), 0, out, 0, bytes.length);
+        }
+        return out;
     }
 
 }

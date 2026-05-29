@@ -5,9 +5,9 @@ package systems.zlink.contracts.sockets;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.service.spot.ReplyOp;
-import systems.zlink.contracts.service.spot.RequestOp;
-import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.ReplyOperation;
+import systems.zlink.contracts.service.spot.RequestOperation;
+import systems.zlink.contracts.service.spot.SendOperation;
 
 public interface RouterSocket extends Socket {
     void bind(String endpoint);
@@ -17,14 +17,14 @@ public interface RouterSocket extends Socket {
     void disconnectRid(RoutingId routingId);
     void attachDiscovery(Discovery discovery);
     void setRoutingId(RoutingId rid);
-    RoutingId routingId();
-    SendOp send(RoutingId rid);
+    RoutingId getRoutingId();
+    SendOperation send(RoutingId rid);
     boolean recv(Received result, RecvFlags flags);
-    RequestOp request(RoutingId rid);
-    ReplyOp reply(RoutingId rid, long requestSequence);
-    SendOp sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
-    RequestOp requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
-    ReplyOp replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    RequestOperation request(RoutingId rid);
+    ReplyOperation reply(RoutingId rid, long requestSequence);
+    SendOperation sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
+    RequestOperation requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
+    ReplyOperation replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                         long requestSeq);
     @Override RouterSocketOptions options();
 }

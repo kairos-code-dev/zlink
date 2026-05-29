@@ -4,7 +4,7 @@ package systems.zlink.runtime.core;
 
 import systems.zlink.contracts.core.ZlinkThread;
 
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
@@ -45,7 +45,7 @@ final class NativeZlinkThread implements ZlinkThread {
         this.handle = Native.threadStart(ENTRY_STUB, MemorySegment.ofAddress(token));
         if (handle == null || handle.address() == 0) {
             THREADS.remove(token);
-            throw new ConfigException(ConfigResult.INVALID_HANDLE);
+            throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
         }
     }
 

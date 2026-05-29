@@ -31,7 +31,7 @@ public final class StreamRecvSample {
                     server.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
                     String value = SampleSupport.singleUtf8(received);
                     if (!SampleSupport.STREAM_PAYLOAD.equals(value)
-                        || received.routingId().isEmpty()) {
+                        || received.getRoutingId().isEmpty()) {
                         throw new IllegalStateException("unexpected stream delivery");
                     }
 

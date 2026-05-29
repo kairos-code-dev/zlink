@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.nativeapi;
 
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 public final class NativeSubmitErrors {
     public static final int EAGAIN = 11;
@@ -30,15 +30,15 @@ public final class NativeSubmitErrors {
         return errno == ECONNREFUSED || errno == ECONNREFUSED_WIN;
     }
 
-    public static SubmitException submitExceptionOrNull(int errno) {
+    public static ZlinkSubmitException submitExceptionOrNull(int errno) {
         if (isBackpressured(errno)) {
-            return new SubmitException(SubmitResult.BACKPRESSURED, errno);
+            return new ZlinkSubmitException(SubmitResult.BACKPRESSURED, errno);
         }
         if (isNotConnected(errno)) {
-            return new SubmitException(SubmitResult.NOT_CONNECTED, errno);
+            return new ZlinkSubmitException(SubmitResult.NOT_CONNECTED, errno);
         }
         if (isNotAdmitted(errno)) {
-            return new SubmitException(SubmitResult.NOT_ADMITTED, errno);
+            return new ZlinkSubmitException(SubmitResult.NOT_ADMITTED, errno);
         }
         return null;
     }

@@ -3,28 +3,28 @@
 package systems.zlink.runtime.service.spot;
 
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.service.spot.Actor;
-import systems.zlink.contracts.service.spot.ActorJoinCallbackSubmitOp;
+import systems.zlink.contracts.service.spot.ActorJoinCallbackSubmitOperation;
 import systems.zlink.contracts.service.spot.ActorJoinCompletion;
 import systems.zlink.contracts.service.spot.ActorJoinHandler;
-import systems.zlink.contracts.service.spot.ActorJoinOp;
+import systems.zlink.contracts.service.spot.ActorJoinOperation;
 import systems.zlink.contracts.service.spot.ActorJoinResult;
-import systems.zlink.contracts.service.spot.ActorJoinSubmitOp;
-import systems.zlink.contracts.service.spot.ActorLeaveOp;
-import systems.zlink.contracts.service.spot.ActorPart;
+import systems.zlink.contracts.service.spot.ActorJoinSubmitOperation;
+import systems.zlink.contracts.service.spot.ActorLeaveOperation;
+import systems.zlink.contracts.service.spot.ActorReceived;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ReplyHandler;
-import systems.zlink.contracts.service.spot.SendOp;
-import systems.zlink.contracts.service.spot.SendSubmitOp;
+import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.service.spot.SendSubmitOperation;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
-import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.ActorRequestCallbacks;
@@ -63,7 +63,7 @@ public final class NativeActor implements Actor {
      * Spot.
      */
     @Override
-    public ActorJoinOp join(Spot spot) {
+    public ActorJoinOperation join(Spot spot) {
         Objects.requireNonNull(spot, "spot");
         ensureOpen();
         return new ActorJoinBuilder(spot);
@@ -71,14 +71,14 @@ public final class NativeActor implements Actor {
 
     /** Async leave operation builder for the supplied Spot. */
     @Override
-    public ActorLeaveOp leave(Spot spot) {
+    public ActorLeaveOperation leave(Spot spot) {
         Objects.requireNonNull(spot, "spot");
         ensureOpen();
         return new ActorLeaveBuilder(spot);
     }
 
     @Override
-    public ActorPart recvPart(RecvFlags flags) {
+    public ActorReceived recv(RecvFlags flags) {
         Objects.requireNonNull(flags, "flags");
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
@@ -97,12 +97,12 @@ public final class NativeActor implements Actor {
                         && rc == RecvResult.NO_DATA.value()) {
                         return null;
                     }
-                    throw new RecvException(RecvResult.fromValue(rc));
+                    throw new ZlinkRecvException(RecvResult.fromValue(rc));
                 }
                 boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
                 InternalAccess.messageFinishReceive(message, hasMore);
                 success = true;
-                return new ActorPart(ActorInterop.actorRecvInfoFromNative(
+                return new ActorReceived(ActorInterop.actorRecvInfoFromNative(
                   infoOut), message, hasMore);
             } finally {
                 if (!success) {
@@ -113,13 +113,13 @@ public final class NativeActor implements Actor {
     }
 
     @Override
-    public ActorPart recvPart() {
-        return recvPart(RecvFlags.NONE);
+    public ActorReceived recv() {
+        return recv(RecvFlags.NONE);
     }
 
     /** Actor-to-session relay operation builder. */
     @Override
-    public SendOp sendBoundSession() {
+    public SendOperation sendBoundSession() {
         ensureOpen();
         return new SendBoundSessionBuilder();
     }
@@ -131,7 +131,7 @@ public final class NativeActor implements Actor {
             int rc = Native.spotNodeActorCloseBoundSession(nodeHandle(),
               ActorInterop.actorRefToNative(arena, ref), timeoutMillis(timeout));
             if (rc != 0) {
-                throw new RequestException(RequestResult.fromValue(rc));
+                throw new ZlinkRequestException(RequestResult.fromValue(rc));
             }
         }
     }
@@ -155,7 +155,7 @@ public final class NativeActor implements Actor {
           ActorRequestCallbacks.register((result, reply) -> {
               try {
                   if (result != RequestResult.OK) {
-                      throw new RequestException(result);
+                      throw new ZlinkRequestException(result);
                   }
               } finally {
                   reply.forEach(Message::close);
@@ -168,7 +168,7 @@ public final class NativeActor implements Actor {
               MemorySegment.ofAddress(pending.id()), timeoutMillis(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(pending.id());
-                throw new RequestException(RequestResult.fromValue(rc));
+                throw new ZlinkRequestException(RequestResult.fromValue(rc));
             }
             ActorRequestCallbacks.await(pending);
         }
@@ -195,7 +195,7 @@ public final class NativeActor implements Actor {
     }
 
     private final class ActorJoinBuilder
-      implements ActorJoinOp, ActorJoinSubmitOp {
+      implements ActorJoinOperation, ActorJoinSubmitOperation {
         private final Spot spot;
         private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private Duration timeout = Duration.ofMillis(5_000L);
@@ -207,21 +207,21 @@ public final class NativeActor implements Actor {
         }
 
         @Override
-        public ActorJoinSubmitOp message(Message part) {
+        public ActorJoinSubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(Objects.requireNonNull(part, "part"));
             return this;
         }
 
         @Override
-        public ActorJoinSubmitOp timeout(Duration value) {
+        public ActorJoinSubmitOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
         }
 
         @Override
-        public ActorJoinCallbackSubmitOp flags(SendFlags value) {
+        public ActorJoinCallbackSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return new ActorJoinCallbackStage(this);
@@ -234,7 +234,7 @@ public final class NativeActor implements Actor {
                 if (result.result() == RequestResult.OK) {
                     future.complete(new ActorJoinCompletion(result, replyParts));
                 } else {
-                    future.completeExceptionally(new RequestException(result.result()));
+                    future.completeExceptionally(new ZlinkRequestException(result.result()));
                 }
             });
             return future;
@@ -253,8 +253,8 @@ public final class NativeActor implements Actor {
                 MemorySegment partsArr = parts.copyToNativeArray(arena);
                 int rc = Native.spotNodeActorJoinSpot(nodeHandle(),
                   ActorInterop.actorRefToNative(arena, ref),
-                  ActorInterop.nativeRoutingId(arena, node.routingId()),
-                  ActorInterop.nativeRoutingId(arena, spot.routingId()),
+                  ActorInterop.nativeRoutingId(arena, node.getRoutingId()),
+                  ActorInterop.nativeRoutingId(arena, spot.getRoutingId()),
                   partsArr, parts.size(),
                   ActorRequestCallbacks.ACTOR_JOIN_CALLBACK,
                   MemorySegment.ofAddress(token.id()), flags.value(),
@@ -262,7 +262,7 @@ public final class NativeActor implements Actor {
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
                     MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
                 RequestProgressPump.trackSpotRequest(token.future(),
                   InternalAccess.spotHandle(spot), "zlink-actor-join-progress");
@@ -277,7 +277,7 @@ public final class NativeActor implements Actor {
     }
 
     private final class ActorJoinCallbackStage
-      implements ActorJoinCallbackSubmitOp {
+      implements ActorJoinCallbackSubmitOperation {
         private final ActorJoinBuilder builder;
 
         ActorJoinCallbackStage(ActorJoinBuilder builder) {
@@ -285,19 +285,19 @@ public final class NativeActor implements Actor {
         }
 
         @Override
-        public ActorJoinCallbackSubmitOp message(Message part) {
+        public ActorJoinCallbackSubmitOperation message(Message part) {
             builder.message(part);
             return this;
         }
 
         @Override
-        public ActorJoinCallbackSubmitOp timeout(Duration timeout) {
+        public ActorJoinCallbackSubmitOperation timeout(Duration timeout) {
             builder.timeout(timeout);
             return this;
         }
 
         @Override
-        public ActorJoinCallbackSubmitOp flags(SendFlags flags) {
+        public ActorJoinCallbackSubmitOperation flags(SendFlags flags) {
             builder.flags(flags);
             return this;
         }
@@ -308,7 +308,7 @@ public final class NativeActor implements Actor {
         }
     }
 
-    private final class ActorLeaveBuilder implements ActorLeaveOp {
+    private final class ActorLeaveBuilder implements ActorLeaveOperation {
         private final Spot spot;
         private Duration timeout = Duration.ofMillis(5_000L);
         private boolean submitted;
@@ -318,7 +318,7 @@ public final class NativeActor implements Actor {
         }
 
         @Override
-        public ActorLeaveOp timeout(Duration value) {
+        public ActorLeaveOperation timeout(Duration value) {
             ensureNotSubmitted();
             timeout = Objects.requireNonNull(value, "timeout");
             return this;
@@ -331,7 +331,7 @@ public final class NativeActor implements Actor {
                 if (result == RequestResult.OK) {
                     future.complete(parts);
                 } else {
-                    future.completeExceptionally(new RequestException(result));
+                    future.completeExceptionally(new ZlinkRequestException(result));
                 }
             });
             return future;
@@ -347,13 +347,13 @@ public final class NativeActor implements Actor {
             try (Arena arena = Arena.ofConfined()) {
                 int rc = Native.spotNodeActorLeaveSpot(nodeHandle(),
                   ActorInterop.actorRefToNative(arena, ref),
-                  ActorInterop.nativeRoutingId(arena, spot.routingId()),
+                  ActorInterop.nativeRoutingId(arena, spot.getRoutingId()),
                   ActorRequestCallbacks.REPLY_CALLBACK,
                   MemorySegment.ofAddress(token.id()),
                   timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
             return true;
@@ -366,20 +366,20 @@ public final class NativeActor implements Actor {
     }
 
     private final class SendBoundSessionBuilder
-      implements SendOp, SendSubmitOp {
+      implements SendOperation, SendSubmitOperation {
         private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
         @Override
-        public SendSubmitOp message(Message part) {
+        public SendSubmitOperation message(Message part) {
             ensureNotSubmitted();
             parts.add(Objects.requireNonNull(part, "part"));
             return this;
         }
 
         @Override
-        public SendSubmitOp flags(SendFlags value) {
+        public SendSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             flags = Objects.requireNonNull(value, "flags");
             return this;
@@ -405,7 +405,7 @@ public final class NativeActor implements Actor {
                             && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
                             return false;
                         }
-                        throw new SubmitException(SubmitResult.fromValue(rc));
+                        throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                     }
                 }
             }

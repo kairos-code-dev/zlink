@@ -4,7 +4,7 @@ package systems.zlink.contracts.eventing;
 
 import java.util.EnumSet;
 
-public enum PollEventFlag {
+public enum PollEventFlags {
     POLLIN(1),
     POLLOUT(2),
     POLLERR(4),
@@ -13,7 +13,7 @@ public enum PollEventFlag {
 
     private final int mask;
 
-    PollEventFlag(int mask) {
+    PollEventFlags(int mask) {
         this.mask = mask;
     }
 
@@ -25,17 +25,17 @@ public enum PollEventFlag {
         return mask();
     }
 
-    static int combine(PollEventFlag... flags) {
+    static int combine(PollEventFlags... flags) {
         int out = 0;
-        for (PollEventFlag flag : flags) {
+        for (PollEventFlags flag : flags) {
             out |= flag.mask;
         }
         return out;
     }
 
-    static EnumSet<PollEventFlag> fromMask(int mask) {
-        EnumSet<PollEventFlag> out = EnumSet.noneOf(PollEventFlag.class);
-        for (PollEventFlag flag : values()) {
+    static EnumSet<PollEventFlags> fromMask(int mask) {
+        EnumSet<PollEventFlags> out = EnumSet.noneOf(PollEventFlags.class);
+        for (PollEventFlags flag : values()) {
             if ((mask & flag.mask) != 0) {
                 out.add(flag);
             }

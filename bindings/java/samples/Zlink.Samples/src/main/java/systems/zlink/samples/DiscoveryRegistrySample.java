@@ -1,7 +1,7 @@
 package systems.zlink.samples;
 
 import systems.zlink.contracts.service.registry.AutoConnectType;
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.service.discovery.Discovery;
@@ -56,7 +56,7 @@ public final class DiscoveryRegistrySample {
                                 return queryView.topology().stream().anyMatch(
                                     entry -> channelName.equals(
                                         entry.channelName()));
-                            } catch (ConfigException transientNotReady) {
+                            } catch (ZlinkConfigException transientNotReady) {
                                 return false;
                             }
                         });

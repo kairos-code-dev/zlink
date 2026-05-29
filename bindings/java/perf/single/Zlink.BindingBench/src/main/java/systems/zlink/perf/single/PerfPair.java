@@ -6,11 +6,11 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.sockets.PairSocket;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SocketType;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfSocketPollSet;
@@ -59,7 +59,7 @@ final class PerfPair {
                 + config.durationSeconds() * 1_000_000_000L;
             Thread receiverThread = new Thread(() -> {
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(receiver), PollEventFlag.POLLIN)) {
+                    List.of(receiver), PollEventFlags.POLLIN)) {
                     while (true) {
                         pollSet.poll(-1);
                         boolean stop = false;
@@ -172,7 +172,7 @@ final class PerfPair {
                 .message(outbound)
                 .flags(SendFlags.DONT_WAIT)
                 .submit();
-        } catch (systems.zlink.contracts.errors.SubmitException ex) {
+        } catch (systems.zlink.contracts.errors.ZlinkSubmitException ex) {
             if (ex.getResult()
                 == systems.zlink.contracts.sockets.SubmitResult.BACKPRESSURED) {
                 return false;

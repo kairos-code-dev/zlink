@@ -5,15 +5,15 @@ package systems.zlink.perf.multi;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.SocketMonitor;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SocketType;
 import systems.zlink.contracts.sockets.SubSocket;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.perf.PerfControl;
@@ -79,12 +79,12 @@ final class PerfMultiPubSub {
     static PerfUtil.Result runClient(PerfUtil.Config config) {
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
         List<SubSocket> subscribers = new ArrayList<>(config.clients());
-        List<MonitorSocket> monitors = new ArrayList<>(config.clients());
+        List<SocketMonitor> monitors = new ArrayList<>(config.clients());
         Context ctx = PerfUtil.newContext(config);
         try {
             for (int i = 0; i < config.clients(); i++) {
                 SubSocket sub = ctx.createSubSocket();
-                MonitorSocket monitor = sub.monitorOpen(READY_EVENT);
+                SocketMonitor monitor = sub.monitorOpen(READY_EVENT);
                 PerfUtil.applyMonitorOptions(monitor, config);
                 PerfUtil.applySocketOptions(sub, config);
                 PerfUtil.configureClientTls(sub, config.transport());
@@ -129,7 +129,7 @@ final class PerfMultiPubSub {
             List<Socket> pollSockets = new ArrayList<>(subscribers.size());
             pollSockets.addAll(subscribers);
             try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                pollSockets, PollEventFlag.POLLIN)) {
+                pollSockets, PollEventFlags.POLLIN)) {
                 long activeEnd = System.nanoTime()
                     + config.durationSeconds() * 1_000_000_000L;
                 // The active deadline is authoritative for measurement. After
@@ -155,7 +155,7 @@ final class PerfMultiPubSub {
                     for (int readyOffset = 0; readyOffset < readyCount; readyOffset++) {
                         int index = pollSet.readyIndexAt(readyOffset);
                         if (!pollSet.readyHasEventAt(readyOffset,
-                            PollEventFlag.POLLIN)) {
+                            PollEventFlags.POLLIN)) {
                             continue;
                         }
                         if (drainSubscriber(subscribers.get(index), config,
@@ -167,7 +167,7 @@ final class PerfMultiPubSub {
             }
             return metrics.finishMulti(config);
         } finally {
-            for (MonitorSocket monitor : monitors) {
+            for (SocketMonitor monitor : monitors) {
                 try {
                     monitor.close();
                 } catch (RuntimeException ignored) {
@@ -200,7 +200,7 @@ final class PerfMultiPubSub {
                 .message(outbound)
                 .flags(SendFlags.DONT_WAIT)
                 .submit();
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (!isTransientSubmit(ex)) {
                 throw ex;
             }
@@ -209,7 +209,7 @@ final class PerfMultiPubSub {
         }
     }
 
-    private static boolean isTransientSubmit(SubmitException ex) {
+    private static boolean isTransientSubmit(ZlinkSubmitException ex) {
         return ex.getResult() == SubmitResult.BACKPRESSURED
             || ex.getResult() == SubmitResult.NOT_CONNECTED;
     }
@@ -262,7 +262,7 @@ final class PerfMultiPubSub {
                         .submit()) {
                     return;
                 }
-            } catch (SubmitException ex) {
+            } catch (ZlinkSubmitException ex) {
                 if (!isTransientSubmit(ex)) {
                     throw ex;
                 }

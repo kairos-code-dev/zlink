@@ -3,7 +3,7 @@
 package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
@@ -45,7 +45,7 @@ final class NativeRouterSpotSupport {
             submitRouterSendSpot(socket, destNodeRid, destSpotRid, parts,
                 flags.value());
             return true;
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -107,7 +107,7 @@ final class NativeRouterSpotSupport {
         } catch (RuntimeException ex) {
             RoutedRequestSupport.removePending(requestId);
             future.cancel(false);
-            if (ex instanceof SubmitException submitException
+            if (ex instanceof ZlinkSubmitException submitException
                 && flags == SendFlags.DONT_WAIT
                 && submitException.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -259,9 +259,9 @@ final class NativeRouterSpotSupport {
         }
     }
 
-    private static SubmitException submitFailure(String apiName) {
+    private static ZlinkSubmitException submitFailure(String apiName) {
         int errno = Native.errno();
-        SubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
+        ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
         if (submit != null)
             return submit;
         throw ZlinkException.fromLastError(apiName);

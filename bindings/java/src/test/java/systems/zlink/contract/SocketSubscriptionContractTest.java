@@ -137,7 +137,7 @@ public class SocketSubscriptionContractTest {
     @Test
     public void subscriptionEventRecordShapeMatchesSpec() {
         assertNull(SubscriptionEvent.class.getRecordComponents());
-        assertTrue(hasPublicMethod(SubscriptionEvent.class, "routingId"));
+        assertTrue(hasPublicMethod(SubscriptionEvent.class, "getRoutingId"));
         assertTrue(hasPublicMethod(SubscriptionEvent.class, "topic"));
         assertTrue(hasPublicMethod(SubscriptionEvent.class, "subscribed"));
     }

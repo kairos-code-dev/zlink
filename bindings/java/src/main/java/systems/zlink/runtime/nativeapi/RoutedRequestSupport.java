@@ -4,7 +4,7 @@ package systems.zlink.runtime.nativeapi;
 
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
 import java.lang.foreign.Arena;
@@ -113,7 +113,7 @@ public final class RoutedRequestSupport {
             if (result != RequestResult.OK.value()) {
                 if (future != null) {
                     RequestReplySupport.completeExceptionallyAsync(future,
-                        new RequestException(RequestResult.fromValue(result),
+                        new ZlinkRequestException(RequestResult.fromValue(result),
                             result));
                 }
                 return;

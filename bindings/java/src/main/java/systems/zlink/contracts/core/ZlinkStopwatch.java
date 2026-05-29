@@ -4,7 +4,7 @@ package systems.zlink.contracts.core;
 
 import java.time.Duration;
 
-public interface Stopwatch extends AutoCloseable {
+public interface ZlinkStopwatch extends AutoCloseable {
     Duration intermediate();
 
     Duration stop();

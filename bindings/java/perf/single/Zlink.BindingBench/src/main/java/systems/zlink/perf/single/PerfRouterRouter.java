@@ -5,16 +5,16 @@ package systems.zlink.perf.single;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.PollEventFlag;
+import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SocketType;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfSocketPollSet;
@@ -66,7 +66,7 @@ final class PerfRouterRouter {
             sender.setRoutingId(ROUTER2);
             receiver.options().mandatory(true);
             sender.options().mandatory(true);
-            sender.options().connectRoutingId(ROUTER1);
+            sender.options().setConnectRoutingId(ROUTER1);
             receiver.bind(PerfUtil.bindEndpoint(endpoint, config.transport()));
             sender.connect(PerfUtil.connectedEndpoint(receiver, endpoint,
                 config.transport()));
@@ -85,7 +85,7 @@ final class PerfRouterRouter {
                 + config.durationSeconds() * 1_000_000_000L;
             Thread receiverThread = new Thread(() -> {
                 try (PerfSocketPollSet pollSet = PerfSocketPollSet.fromSockets(
-                    List.of(receiver), PollEventFlag.POLLIN)) {
+                    List.of(receiver), PollEventFlags.POLLIN)) {
                     while (true) {
                         pollSet.poll(-1);
                         boolean stop = false;
@@ -213,7 +213,7 @@ final class PerfRouterRouter {
                 while (recvIntoNoWait(receiver, received)) {
                     try {
                         if (Arrays.equals(received.firstPart().data(), PING)) {
-                            senderRoute = received.routingId().orElse(ROUTER2);
+                            senderRoute = received.getRoutingId().orElse(ROUTER2);
                             break;
                         }
                     } finally {
@@ -243,11 +243,11 @@ final class PerfRouterRouter {
                             throw new IllegalStateException(
                                 "router/router handshake received unexpected payload");
                         }
-                        return received.routingId().orElse(ROUTER1);
+                        return received.getRoutingId().orElse(ROUTER1);
                     } finally {
                         received.close();
                     }
-                } catch (RecvException ex) {
+                } catch (ZlinkRecvException ex) {
                     if (ex.getResult() == RecvResult.NO_DATA
                         || ex.getResult() == RecvResult.BUSY) {
                         continue;
@@ -276,7 +276,7 @@ final class PerfRouterRouter {
                                           systems.zlink.contracts.messaging.Received received) {
         try {
             return socket.recv(received, RecvFlags.DONT_WAIT);
-        } catch (RecvException ex) {
+        } catch (ZlinkRecvException ex) {
             if (ex.getResult() == RecvResult.NO_DATA
                 || ex.getResult() == RecvResult.BUSY) {
                 return false;
@@ -315,7 +315,7 @@ final class PerfRouterRouter {
                 .message(outbound)
                 .flags(SendFlags.DONT_WAIT)
                 .submit();
-        } catch (systems.zlink.contracts.errors.SubmitException ex) {
+        } catch (systems.zlink.contracts.errors.ZlinkSubmitException ex) {
             if (ex.getResult()
                 == systems.zlink.contracts.sockets.SubmitResult.BACKPRESSURED) {
                 return false;
@@ -337,7 +337,7 @@ final class PerfRouterRouter {
                 .message(outbound)
                 .flags(SendFlags.NONE)
                 .submit();
-        } catch (systems.zlink.contracts.errors.SubmitException ex) {
+        } catch (systems.zlink.contracts.errors.ZlinkSubmitException ex) {
             if (ex.getResult()
                 == systems.zlink.contracts.sockets.SubmitResult.BACKPRESSURED) {
                 return false;

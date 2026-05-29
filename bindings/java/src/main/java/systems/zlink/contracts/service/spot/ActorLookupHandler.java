@@ -3,7 +3,7 @@
 package systems.zlink.contracts.service.spot;
 
 
-/** Callback for {@link ActorLookupOp#submit(ActorLookupHandler)}. */
+/** Callback for {@link ActorLookupOperation#submit(ActorLookupHandler)}. */
 @FunctionalInterface
 public interface ActorLookupHandler {
     void onLookupResult(ActorLookupResult result);

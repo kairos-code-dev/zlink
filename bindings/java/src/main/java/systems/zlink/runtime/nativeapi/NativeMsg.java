@@ -1,6 +1,6 @@
 package systems.zlink.runtime.nativeapi;
 
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -172,10 +172,10 @@ public final class NativeMsg {
             int refCount = (int) MH_MSG_REFCNT.invokeExact(msg, errorOut);
             int configResult = errorOut.get(ValueLayout.JAVA_INT, 0);
             if (refCount < 0 || configResult != 0) {
-                throw new ConfigException(ConfigResult.fromValue(configResult));
+                throw new ZlinkConfigException(ConfigResult.fromValue(configResult));
             }
             return refCount;
-        } catch (ConfigException ex) {
+        } catch (ZlinkConfigException ex) {
             throw ex;
         } catch (Throwable t) {
             throw new RuntimeException("zlink_msg_refcnt failed", t);

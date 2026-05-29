@@ -8,7 +8,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.SendOperation;
 import java.util.List;
 public final class NativePairSocket extends NativeSocketBase implements PairSocket {
     NativePairSocket(Context ctx) {
@@ -20,7 +20,7 @@ public final class NativePairSocket extends NativeSocketBase implements PairSock
     public void unbind(String endpoint) { super.unbind(endpoint); }
     public void disconnect(String endpoint) { super.disconnect(endpoint); }
     public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
-    public SendOp send() {
+    public SendOperation send() {
         return SocketOperations.send((parts, flags) ->
             super.send(parts, SendFlag.fromValue(flags.value())));
     }
@@ -36,5 +36,5 @@ public final class NativePairSocket extends NativeSocketBase implements PairSock
         result.adoptFrom(fresh);
         return true;
     }
-    public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
+    public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
 }

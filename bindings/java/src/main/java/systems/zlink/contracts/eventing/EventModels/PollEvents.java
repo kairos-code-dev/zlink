@@ -62,7 +62,7 @@ public final class PollEvents {
         return revents[index];
     }
 
-    public boolean hasEvent(int index, PollEventFlag event) {
+    public boolean hasEvent(int index, PollEventFlags event) {
         Objects.requireNonNull(event, "event");
         return (revents(index) & event.mask()) != 0;
     }

@@ -3,7 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 
 /**
  * Common public contract for zlink socket resources.
@@ -11,15 +11,15 @@ import systems.zlink.contracts.eventing.MonitorSocket;
 public interface Socket extends AutoCloseable {
     CommonSocketOptions options();
 
-    MonitorSocket monitorOpen();
+    SocketMonitor monitorOpen();
 
-    MonitorSocket monitorOpen(MonitorEventType... events);
+    SocketMonitor monitorOpen(MonitorEventType... events);
 
     void setTlsServer(String certPem, String keyPem, boolean requireClientCert);
 
     void setTlsClient(String caCertPem, String hostname, boolean trustSystem);
 
-    void onSendReady(SendReadyHandler handler);
+    void setSendReadyHandler(SendReadyHandler handler);
 
     @Override
     void close();

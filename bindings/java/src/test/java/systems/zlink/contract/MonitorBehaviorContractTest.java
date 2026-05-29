@@ -6,7 +6,7 @@ import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEvent;
 import systems.zlink.contracts.eventing.MonitorEventType;
-import systems.zlink.contracts.eventing.MonitorSocket;
+import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import java.lang.reflect.Modifier;
@@ -50,11 +50,11 @@ public class MonitorBehaviorContractTest {
 
     @Test
     public void monitorSocketExposesDocumentedRecvSurface() {
-        assertTrue(hasPublicMethod(systems.zlink.contracts.eventing.MonitorSocket.class, "recv"));
-        assertTrue(hasPublicMethod(systems.zlink.contracts.eventing.MonitorSocket.class, "recv",
+        assertTrue(hasPublicMethod(systems.zlink.contracts.eventing.SocketMonitor.class, "recv"));
+        assertTrue(hasPublicMethod(systems.zlink.contracts.eventing.SocketMonitor.class, "recv",
             systems.zlink.contracts.sockets.RecvFlags.class));
-        assertTrue(Modifier.isPublic(MonitorSocket.class.getModifiers()));
-        assertNotNull(MonitorSocket.IGNORE_HANDLER);
+        assertTrue(Modifier.isPublic(SocketMonitor.class.getModifiers()));
+        assertNotNull(SocketMonitor.IGNORE_HANDLER);
     }
 
     private static boolean hasPublicMethod(Class<?> type, String name,

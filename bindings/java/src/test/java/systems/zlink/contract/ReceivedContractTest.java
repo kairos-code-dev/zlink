@@ -9,7 +9,7 @@ import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -44,9 +44,9 @@ public class ReceivedContractTest {
 
 
                 router.recv(inbound, systems.zlink.contracts.sockets.RecvFlags.NONE);
-                assertTrue(inbound.routingId().isPresent());
+                assertTrue(inbound.getRoutingId().isPresent());
                 assertArrayEquals(dealerRid.toBytes(),
-                    inbound.routingId().orElseThrow().toBytes());
+                    inbound.getRoutingId().orElseThrow().toBytes());
                 assertEquals(2, inbound.parts().size());
                 assertFalse(inbound.isSinglePart());
                 assertThrows(UnsupportedOperationException.class,
@@ -54,7 +54,7 @@ public class ReceivedContractTest {
                 assertArrayEquals("part-1".getBytes(StandardCharsets.UTF_8),
                     inbound.firstPart().toByteArray());
                 assertTrue(inbound.requestSeq().isEmpty());
-                SubmitException ex = assertThrows(SubmitException.class,
+                ZlinkSubmitException ex = assertThrows(ZlinkSubmitException.class,
                     () -> inbound.reply()
                         .message(Message.from("ack"))
                         .submit());

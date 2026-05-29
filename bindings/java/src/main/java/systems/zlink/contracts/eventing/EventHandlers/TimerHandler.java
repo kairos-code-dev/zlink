@@ -5,5 +5,5 @@ package systems.zlink.contracts.eventing;
 
 @FunctionalInterface
 public interface TimerHandler {
-    void onFire(Timer timer, long fireCount);
+    void onFire(ZlinkTimer timer, long fireCount);
 }

@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+package systems.zlink.contracts.eventing;
+
+import java.time.Duration;
+
+public interface ZlinkTimer extends AutoCloseable {
+
+    void start(Duration interval, long repeatCount);
+
+    void stop();
+
+    long recv();
+
+    void onFire(TimerHandler handler);
+
+    @Override
+    void close();
+}

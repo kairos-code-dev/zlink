@@ -3,7 +3,7 @@
 package systems.zlink.runtime.nativeapi;
 
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.errors.RequestException;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.service.spot.ActorJoinEntrySpotHandler;
 import systems.zlink.contracts.service.spot.ActorJoinEntrySpotResult;
@@ -177,7 +177,7 @@ public final class ActorRequestCallbacks {
         try {
             token.future().join();
         } catch (CompletionException ex) {
-            if (ex.getCause() instanceof systems.zlink.contracts.errors.RequestException request) {
+            if (ex.getCause() instanceof systems.zlink.contracts.errors.ZlinkRequestException request) {
                 throw request;
             }
             throw ex;

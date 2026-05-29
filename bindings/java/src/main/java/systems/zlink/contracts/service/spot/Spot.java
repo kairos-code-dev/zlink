@@ -20,65 +20,65 @@ import java.util.Optional;
  */
 public interface Spot extends AutoCloseable {
 
-    public abstract void setRoutingId(RoutingId rid);
+    void setRoutingId(RoutingId rid);
 
-    public abstract RoutingId routingId();
+    RoutingId getRoutingId();
 
-    public abstract Duration requestTimeout();
+    Duration requestTimeout();
 
-    public abstract void requestTimeout(Duration value);
+    void requestTimeout(Duration value);
 
-    public abstract SendOp publish(String topicId);
+    SendOperation publish(String topicId);
 
-    public abstract SendOp sendChannel(String channelName);
+    SendOperation sendToChannel(String channelName);
 
-    public abstract SendOp sendToSpot(RoutingId destNodeRid,
+    SendOperation sendToSpot(RoutingId destNodeRid,
                                       RoutingId destSpotRid);
 
-    public abstract RequestOp requestChannel(String channelName);
+    RequestOperation requestToChannel(String channelName);
 
-    public abstract RequestOp requestToSpot(RoutingId destNodeRid,
+    RequestOperation requestToSpot(RoutingId destNodeRid,
                                             RoutingId destSpotRid);
 
-    public abstract RequestOp requestToRouter(RoutingId peerRid);
+    RequestOperation requestToRouter(RoutingId peerRid);
 
-    public abstract ReplyOp replyToSpot(RoutingId destNodeRid,
+    ReplyOperation replyToSpot(RoutingId destNodeRid,
                                         RoutingId destSpotRid,
                                         long requestSeq);
 
-    public abstract ReplyOp replyToRouter(RoutingId peerRid, long requestSeq);
+    ReplyOperation replyToRouter(RoutingId peerRid, long requestSeq);
 
-    public abstract void setSubscription(String topicId);
+    void setSubscription(String topicId);
 
-    public abstract void unsetSubscription(String topicIdOrPattern);
+    void unsetSubscription(String topicIdOrPattern);
 
-    public abstract Optional<SubscriptionEntry> subscriptionAt(int index);
+    Optional<SubscriptionEntry> subscriptionAt(int index);
 
-    public abstract void onSendReady(SendReadyHandler handler);
+    void setSendReadyHandler(SendReadyHandler handler);
 
-    public abstract boolean subscribe(TopicMessage result, RecvFlags flags);
+    boolean subscribe(TopicMessage result, RecvFlags flags);
 
-    public abstract boolean receiveSubscriptionEvent(SubscriptionEvent result,
+    boolean receiveSubscriptionEvent(SubscriptionEvent result,
                                                      RecvFlags flags);
 
-    public abstract boolean recvRouted(Received result, RecvFlags flags);
+    boolean recvRouted(Received result, RecvFlags flags);
 
-    public abstract void onDispatchEvent(SpotDispatchEventHandler handler);
+    void setDispatchHandler(SpotDispatchEventHandler handler);
 
-    public abstract ActorJoinRequest recvActorJoin(RecvFlags flags);
+    ActorJoinRequest recvActorJoin(RecvFlags flags);
 
-    public abstract ActorJoinRequest recvActorJoin();
+    ActorJoinRequest recvActorJoin();
 
-    public abstract ActorJoinReplyOp replyActorJoin(ActorJoinRequest request,
+    ActorJoinReplyOperation replyActorJoin(ActorJoinRequest request,
                                                     int joinResultCode);
 
-    public abstract SpotActorLifecycleEvent recvActorLifecycle(
+    SpotActorLifecycleEvent recvActorLifecycle(
       RecvFlags flags);
 
-    public abstract SpotActorLifecycleEvent recvActorLifecycle();
+    SpotActorLifecycleEvent recvActorLifecycle();
 
-    public abstract List<ActorRef> actors();
+    List<ActorRef> actors();
 
     @Override
-    public abstract void close();
+    void close();
 }

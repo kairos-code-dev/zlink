@@ -3,6 +3,6 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.messaging.Message;
-public interface RequestOp {
-    RequestSubmitOp message(Message part);
+public interface SendOperation {
+    SendSubmitOperation message(Message part);
 }

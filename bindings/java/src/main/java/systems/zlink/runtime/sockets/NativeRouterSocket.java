@@ -8,10 +8,10 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.ReplyOp;
-import systems.zlink.contracts.service.spot.RequestOp;
+import systems.zlink.contracts.service.spot.ReplyOperation;
+import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.internal.ContractAccess;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.nio.file.Files;
@@ -39,8 +39,8 @@ public final class NativeRouterSocket extends NativeSocketBase implements Router
     public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
     public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
     public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
-    public RoutingId routingId() { return super.routingId(); }
-    public SendOp send(RoutingId rid) {
+    public RoutingId getRoutingId() { return super.getRoutingId(); }
+    public SendOperation send(RoutingId rid) {
         return SocketOperations.send(
             (part, flags) -> sendInternal(rid, part, flags),
             (parts, flags) -> sendInternal(rid, parts, flags));
@@ -70,13 +70,13 @@ public final class NativeRouterSocket extends NativeSocketBase implements Router
     }
 
     private void attachSendRouter(Received result) {
-        if (result.routingId().isPresent()) {
+        if (result.getRoutingId().isPresent()) {
             attachSendSender(result);
         }
     }
 
     void attachSendSender(Received result) {
-        RoutingId nodeRid = result.routingId().orElse(null);
+        RoutingId nodeRid = result.getRoutingId().orElse(null);
         if (nodeRid == null) return;
         RoutingId spotRid = result.spotRid().orElse(null);
         ContractAccess.receivedSetSendSender(result, (parts, flags) ->
@@ -84,9 +84,9 @@ public final class NativeRouterSocket extends NativeSocketBase implements Router
                 ? sendInternal(nodeRid, parts, flags)
                 : sendToSpotInternal(nodeRid, spotRid, parts, flags));
     }
-    public void onSendReady(SendReadyHandler handler) { super.onSendReady(handler); }
+    public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
 
-    public RequestOp request(RoutingId rid) {
+    public RequestOperation request(RoutingId rid) {
         return SocketOperations.request(
             (parts, flags, timeout) -> requestAsync(rid, parts, flags, timeout),
             (parts, callback, flags, timeout) ->
@@ -110,13 +110,13 @@ public final class NativeRouterSocket extends NativeSocketBase implements Router
             flags, timeout);
     }
 
-    public ReplyOp reply(RoutingId rid, long requestSequence) {
+    public ReplyOperation reply(RoutingId rid, long requestSequence) {
         return SocketOperations.reply((parts, flags) ->
             InternalAccess.routerReply(this, rid, requestSequence, parts,
                 flags));
     }
 
-    public SendOp sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
+    public SendOperation sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
         return SocketOperations.send((parts, flags) ->
             sendToSpotInternal(destNodeRid, destSpotRid, parts, flags));
     }
@@ -127,7 +127,7 @@ public final class NativeRouterSocket extends NativeSocketBase implements Router
             parts, flags);
     }
 
-    public RequestOp requestToSpot(RoutingId destNodeRid,
+    public RequestOperation requestToSpot(RoutingId destNodeRid,
                                    RoutingId destSpotRid) {
         return SocketOperations.request(
             (parts, flags, timeout) ->
@@ -158,7 +158,7 @@ public final class NativeRouterSocket extends NativeSocketBase implements Router
           destSpotRid, parts, callback::onComplete, flags, timeout);
     }
 
-    public ReplyOp replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
+    public ReplyOperation replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                                long requestSeq) {
         return SocketOperations.reply((parts, flags) ->
             InternalAccess.routerReplyToSpot(this, destNodeRid, destSpotRid,

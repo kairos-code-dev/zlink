@@ -8,34 +8,34 @@ import java.time.Duration;
 
 public interface Poller extends AutoCloseable {
 
-    public abstract void add(Socket socket, long slot, PollEventFlag... events);
+    void add(Socket socket, long slot, PollEventFlags... events);
 
-    public abstract void add(Spot spot, long slot, PollEventFlag... events);
+    void add(Spot spot, long slot, PollEventFlags... events);
 
-    public abstract void addFd(int fd, long slot, PollEventFlag... events);
+    void addFd(int fd, long slot, PollEventFlags... events);
 
-    public abstract void add(Timer timer, long slot);
+    void add(ZlinkTimer timer, long slot);
 
-    public abstract void modify(Socket socket, PollEventFlag... events);
+    void modify(Socket socket, PollEventFlags... events);
 
-    public abstract void modify(Spot spot, PollEventFlag... events);
+    void modify(Spot spot, PollEventFlags... events);
 
-    public abstract void modifyFd(int fd, PollEventFlag... events);
+    void modifyFd(int fd, PollEventFlags... events);
 
-    public abstract boolean remove(Socket socket);
+    boolean remove(Socket socket);
 
-    public abstract boolean remove(Spot spot);
+    boolean remove(Spot spot);
 
-    public abstract boolean removeFd(int fd);
+    boolean remove(int fd);
 
-    public abstract boolean remove(Timer timer);
+    boolean remove(ZlinkTimer timer);
 
-    public abstract void clear();
+    void clear();
 
-    public abstract int size();
+    int size();
 
-    public abstract int wait(PollEvents events, Duration timeout);
+    int wait(PollEvents events, Duration timeout);
 
     @Override
-    public abstract void close();
+    void close();
 }

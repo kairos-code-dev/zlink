@@ -2,8 +2,8 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.service.registry.ServiceEventSubjectKind;
+import systems.zlink.contracts.service.registry.SubjectKind;
 
 public record SpotNodeSubjectFilter(SpotRole role, String subject,
-                                    ServiceEventSubjectKind subjectKind) {
+                                    SubjectKind subjectKind) {
 }

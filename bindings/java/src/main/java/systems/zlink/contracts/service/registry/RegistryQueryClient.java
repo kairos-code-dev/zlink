@@ -6,13 +6,13 @@ import java.util.List;
 
 public interface RegistryQueryClient extends AutoCloseable {
 
-    public abstract void connect(String endpoint);
+    void connect(String endpoint);
 
-    public abstract List<RegistryTopologyEntry> topology();
+    List<RegistryTopologyEntry> topology();
 
-    public abstract List<RegistryTopologyEntry> topology(
+    List<RegistryTopologyEntry> topology(
       RegistryTopologyFilter filter);
 
     @Override
-    public abstract void close();
+    void close();
 }

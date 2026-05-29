@@ -7,8 +7,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public interface ActorUnbindOp {
-    ActorUnbindOp timeout(Duration timeout);
+public interface ActorUnbindOperation {
+    ActorUnbindOperation timeout(Duration timeout);
     CompletableFuture<List<Message>> submitAsync();
     boolean submit(ReplyHandler callback);
 }

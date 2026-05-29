@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.messaging;
 
-import systems.zlink.contracts.errors.RecvException;
+import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.Spot;
@@ -111,7 +111,7 @@ public final class TopicMessage implements AutoCloseable {
         source.closed = true;
     }
 
-    public Optional<RoutingId> routingId() {
+    public Optional<RoutingId> getRoutingId() {
         return Optional.ofNullable(routingId);
     }
 
@@ -132,14 +132,14 @@ public final class TopicMessage implements AutoCloseable {
     /** Returns the first payload part. */
     public Message firstPart() {
         if (parts.isEmpty())
-            throw new RecvException(RecvResult.NO_DATA);
+            throw new ZlinkRecvException(RecvResult.NO_DATA);
         return parts.get(0);
     }
 
     /** Returns the single payload part, or throws when the payload is multipart. */
     public Message singlePartOrThrow() {
         if (!isSinglePart()) {
-            throw new RecvException(RecvResult.NOT_SUPPORTED);
+            throw new ZlinkRecvException(RecvResult.NOT_SUPPORTED);
         }
         return parts.get(0);
     }

@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.contracts.errors.SubmitException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
@@ -177,10 +177,10 @@ public final class NativeDealerRequestSupport {
             }
 
             @Override
-            public boolean streamSendBoundActorParts(
+            public boolean streamSendBoundActorReceiveds(
                     StreamSocket socket, RoutingId sessionRid, String actorId,
                     List<Message> parts, SendFlags flags) {
-                return NativeStreamActorSupport.sendBoundActorParts(socket,
+                return NativeStreamActorSupport.sendBoundActorReceiveds(socket,
                     sessionRid, actorId, parts, flags);
             }
         });
@@ -214,7 +214,7 @@ public final class NativeDealerRequestSupport {
                     : RequestReplySupport.requestResult(error), payload);
             });
             return true;
-        } catch (SubmitException ex) {
+        } catch (ZlinkSubmitException ex) {
             if (flags == SendFlags.DONT_WAIT
                 && ex.getResult() == SubmitResult.BACKPRESSURED) {
                 return false;
@@ -269,7 +269,7 @@ public final class NativeDealerRequestSupport {
                     i + 1 < payload.size() ? MemorySegment.NULL : handler,
                     i + 1 < payload.size() ? MemorySegment.NULL : userData);
                 if (rc != SubmitResult.OK.value()) {
-                    throw new SubmitException(SubmitResult.fromValue(rc));
+                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }
         }

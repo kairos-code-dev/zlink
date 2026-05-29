@@ -3,14 +3,14 @@
 package systems.zlink.contracts.errors;
 
 import systems.zlink.contracts.sockets.RequestResult;
-public final class RequestException extends ZlinkException {
+public final class ZlinkRequestException extends ZlinkException {
     private final RequestResult result;
 
-    public RequestException(RequestResult result) {
+    public ZlinkRequestException(RequestResult result) {
         this(result, 0);
     }
 
-    public RequestException(RequestResult result, int internalErrno) {
+    public ZlinkRequestException(RequestResult result, int internalErrno) {
         super(result.value(), internalErrno);
         this.result = result;
     }

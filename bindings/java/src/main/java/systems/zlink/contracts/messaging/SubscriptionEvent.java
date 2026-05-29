@@ -28,7 +28,7 @@ public final class SubscriptionEvent {
         this.subscribed = source.subscribed;
     }
 
-    public Optional<RoutingId> routingId() {
+    public Optional<RoutingId> getRoutingId() {
         return Optional.ofNullable(routingId);
     }
 

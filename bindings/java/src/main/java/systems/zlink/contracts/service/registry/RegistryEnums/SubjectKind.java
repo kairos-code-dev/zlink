@@ -2,14 +2,14 @@
 
 package systems.zlink.contracts.service.registry;
 
-public enum ServiceEventSubjectKind {
+public enum SubjectKind {
     NONE(0),
     TOPIC(1),
     PATTERN(2);
 
     private final int value;
 
-    ServiceEventSubjectKind(int value) {
+    SubjectKind(int value) {
         this.value = value;
     }
 
@@ -17,12 +17,12 @@ public enum ServiceEventSubjectKind {
         return value;
     }
 
-    static ServiceEventSubjectKind fromValue(int value) {
+    static SubjectKind fromValue(int value) {
         return switch (value) {
             case 0 -> NONE;
             case 1 -> TOPIC;
             case 2 -> PATTERN;
-            default -> throw invalid("ServiceEventSubjectKind", value);
+            default -> throw invalid("SubjectKind", value);
         };
     }
 

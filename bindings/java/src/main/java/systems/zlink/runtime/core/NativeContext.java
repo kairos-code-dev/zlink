@@ -6,7 +6,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.ContextOption;
 import systems.zlink.contracts.core.ContextOptions;
 import systems.zlink.internal.ContractAccess;
-import systems.zlink.contracts.errors.ConfigException;
+import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.service.discovery.Discovery;
@@ -191,7 +191,7 @@ public final class NativeContext implements Context {
         ensureOpen();
         int rc = Native.ctxAutoHwmRecalculate(handle);
         if (rc != 0) {
-            throw new ConfigException(ConfigResult.fromValue(rc));
+            throw new ZlinkConfigException(ConfigResult.fromValue(rc));
         }
     }
 

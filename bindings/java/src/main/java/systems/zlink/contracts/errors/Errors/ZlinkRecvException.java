@@ -3,14 +3,14 @@
 package systems.zlink.contracts.errors;
 
 import systems.zlink.contracts.sockets.RecvResult;
-public final class RecvException extends ZlinkException {
+public final class ZlinkRecvException extends ZlinkException {
     private final RecvResult result;
 
-    public RecvException(RecvResult result) {
+    public ZlinkRecvException(RecvResult result) {
         this(result, 0);
     }
 
-    public RecvException(RecvResult result, int internalErrno) {
+    public ZlinkRecvException(RecvResult result, int internalErrno) {
         super(result.value(), internalErrno);
         this.result = result;
     }

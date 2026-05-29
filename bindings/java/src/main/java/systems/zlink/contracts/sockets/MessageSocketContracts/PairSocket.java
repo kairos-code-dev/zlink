@@ -4,7 +4,7 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.SendOp;
+import systems.zlink.contracts.service.spot.SendOperation;
 
 public interface PairSocket extends Socket {
     void bind(String endpoint);
@@ -12,6 +12,6 @@ public interface PairSocket extends Socket {
     void unbind(String endpoint);
     void disconnect(String endpoint);
     void disconnectRid(RoutingId routingId);
-    SendOp send();
+    SendOperation send();
     boolean recv(Received result, RecvFlags flags);
 }

@@ -3607,7 +3607,7 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
 
 | Facade | 내용 | 적용 소켓 |
 |---|---|---|
-| `CommonSocketOptions` | linger, sendHwm, recvHwm, sendTimeout, recvTimeout, immediate, connectTimeout, ipv6, tcpNoDelay, tcpKeepalive, heartbeatInterval/Ttl/Timeout, maxMsgSize, backlog, reconnectInterval/Max, submitRetryMode, submitRetryTimeout, submitRetryAttempts | 전체 |
+| `CommonSocketOptions` | linger, sendHighWaterMark, receiveHighWaterMark, sendTimeout, receiveTimeout, immediate, connectTimeout, ipv6, tcpNoDelay, tcpKeepAlive, heartbeatInterval/Ttl/Timeout, maxMessageSize, backlog, reconnectInterval/Max, submitRetryMode, submitRetryTimeout, submitRetryAttempts | 전체 |
 | `RouterSocketOptions` | mandatory (bool), handover (bool), probe (bool), connectRoutingId (RoutingId) | Router |
 | `DealerSocketOptions` | probe (bool) | Dealer |
 | `StreamSocketOptions` | notify (bool) | Stream |

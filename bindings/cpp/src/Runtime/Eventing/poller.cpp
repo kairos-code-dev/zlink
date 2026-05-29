@@ -47,13 +47,16 @@ struct poller_t::impl
     socket_poll_cache_t socket_poll_cache;
     std::unordered_map<const void *, size_t> socket_item_indexes;
     bool socket_native_events_dirty = false;
-    size_t non_socket_item_count = 0;
+    size_t native_poller_item_count = 0;
 
     impl () : poller (zlink_poller_new ()) {}
 
     ~impl () { destroy_noexcept (); }
 
-    bool is_socket_only () const noexcept { return non_socket_item_count == 0; }
+    bool can_use_socket_fast_path () const noexcept
+    {
+        return native_poller_item_count == 0;
+    }
 
     void ensure_open () const
     {
@@ -76,7 +79,7 @@ struct poller_t::impl
         native_events.clear ();
         socket_poll_cache.clear ();
         socket_native_events_dirty = false;
-        non_socket_item_count = 0;
+        native_poller_item_count = 0;
     }
 
     void destroy_noexcept () noexcept
@@ -121,12 +124,12 @@ struct poller_t::impl
         zlink::rebuild_socket_item_indexes (items, socket_item_indexes);
     }
 
-    void erase_item_at (int index_, bool non_socket_item_)
+    void erase_item_at (int index_, bool native_poller_item_)
     {
         items.erase (items.begin () + index_);
         rebuild_socket_item_indexes ();
-        if (non_socket_item_)
-            --non_socket_item_count;
+        if (native_poller_item_)
+            --native_poller_item_count;
         socket_poll_cache.mark_dirty ();
     }
 
@@ -169,7 +172,7 @@ struct poller_t::impl
             poller, socket_handle_, raw_item, static_cast<short> (events_)));
         commit_added_item (std::move (item), rc);
         if (native_poller_only_)
-            ++non_socket_item_count;
+            ++native_poller_item_count;
     }
 
     void add_fd (int fd_, poll_event_flag_t events_, std::uintptr_t slot_)
@@ -191,7 +194,7 @@ struct poller_t::impl
           static_cast<config_result_t> (zlink_poller_add_fd (
             poller, fd_, raw_item, static_cast<short> (events_)));
         commit_added_item (std::move (item), rc);
-        ++non_socket_item_count;
+        ++native_poller_item_count;
     }
 
     void add_timer (timer_t &timer_, std::uintptr_t slot_)
@@ -214,7 +217,7 @@ struct poller_t::impl
         const config_result_t rc = static_cast<config_result_t> (
           zlink_poller_add_timer (poller, timer_handle, raw_item));
         commit_added_item (std::move (item), rc);
-        ++non_socket_item_count;
+        ++native_poller_item_count;
     }
 
     void modify_socket (void *socket_handle_, poll_event_flag_t events_)
@@ -225,7 +228,7 @@ struct poller_t::impl
             throw config_error_t (config_result_t::invalid_argument,
                                   detail::current_errno ());
 
-        if (is_socket_only ()) {
+        if (can_use_socket_fast_path ()) {
             socket_native_events_dirty = true;
             socket_poll_cache.update_if_clean (
               items, static_cast<size_t> (index), events_);
@@ -335,7 +338,7 @@ struct poller_t::impl
             throw config_error_t (config_result_t::invalid_argument, EINVAL);
         if (items.empty ())
             return 0;
-        if (is_socket_only ())
+        if (can_use_socket_fast_path ())
             return wait_socket_items (events_, capacity_, timeout_);
 
         sync_socket_native_events_if_needed ();

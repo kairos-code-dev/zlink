@@ -265,7 +265,6 @@ class send_operation_t
     friend class spot_t;
     friend class spot_node_t;
     friend class zlink::received_t;
-    friend class zlink::stream_socket_t;
 };
 
 class request_callback_submit_operation_t;

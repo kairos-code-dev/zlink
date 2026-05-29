@@ -7,6 +7,7 @@
 #include <Runtime/Service/discovery_access.hpp>
 #include <Runtime/Service/service_model_access.hpp>
 #include <Runtime/Service/spot_access.hpp>
+#include <Runtime/Options/option_ids.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
 
 #include <zlink.h>
@@ -328,6 +329,96 @@ void spot_node_t::set_tls_client (const std::string &ca_cert_,
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (zlink_set_tls_client (
         _impl->handle, ca, hostname, trust_system_ ? 1 : 0)));
+}
+
+auto_hwm_profile spot_node_t::router_admission_hwm_profile () const
+{
+    return static_cast<auto_hwm_profile> (get_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::router_admission_hwm_profile)));
+}
+
+void spot_node_t::router_admission_hwm_profile (auto_hwm_profile profile_)
+{
+    set_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::router_admission_hwm_profile),
+      static_cast<int> (profile_));
+}
+
+message_count_t spot_node_t::router_admission_hwm () const
+{
+    return message_count_t::value (get_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::router_admission_hwm)));
+}
+
+void spot_node_t::router_admission_hwm (message_count_t value_)
+{
+    set_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::router_admission_hwm),
+      value_.value ());
+}
+
+auto_hwm_profile spot_node_t::pubsub_admission_hwm_profile () const
+{
+    return static_cast<auto_hwm_profile> (get_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::pubsub_admission_hwm_profile)));
+}
+
+void spot_node_t::pubsub_admission_hwm_profile (auto_hwm_profile profile_)
+{
+    set_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::pubsub_admission_hwm_profile),
+      static_cast<int> (profile_));
+}
+
+message_count_t spot_node_t::pubsub_admission_hwm () const
+{
+    return message_count_t::value (get_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::pubsub_admission_hwm)));
+}
+
+void spot_node_t::pubsub_admission_hwm (message_count_t value_)
+{
+    set_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::pubsub_admission_hwm),
+      value_.value ());
+}
+
+worker_count_t spot_node_t::dispatch_workers_min () const
+{
+    return worker_count_t::value (get_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::dispatch_workers_min)));
+}
+
+void spot_node_t::dispatch_workers_min (worker_count_t value_)
+{
+    set_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::dispatch_workers_min),
+      value_.value ());
+}
+
+worker_count_t spot_node_t::dispatch_workers_max () const
+{
+    return worker_count_t::value (get_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::dispatch_workers_max)));
+}
+
+void spot_node_t::dispatch_workers_max (worker_count_t value_)
+{
+    set_spot_node_option_int (
+      static_cast<int> (
+        zlink::detail::spot_node_option_id::dispatch_workers_max),
+      value_.value ());
 }
 
 spot_node_status_t spot_node_t::status () const

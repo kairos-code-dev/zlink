@@ -187,6 +187,20 @@ restore_single_send_part_to_source (spot_operation_state_t &state_,
     *state_.single_part_source = std::move (parts_[0]);
     state_.single_part_source = nullptr;
 }
+
+inline void restore_send_parts_to_state (spot_operation_state_t &state_,
+                                         std::vector<message_t> &parts_) noexcept
+{
+    const bool had_single_part_source = state_.single_part_source != nullptr;
+    restore_single_send_part_to_source (state_, parts_);
+    if (had_single_part_source || parts_.empty ())
+        return;
+    if (parts_.size () == 1u && state_.single_part.has_value ()) {
+        state_.single_part = std::move (parts_[0]);
+        return;
+    }
+    state_.parts = std::move (parts_);
+}
 } // namespace detail
 
 

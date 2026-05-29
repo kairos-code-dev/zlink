@@ -128,6 +128,8 @@ inline int drain_router_remaining_parts (void *router_, recv_flags_t flags_)
 
 inline bool socket_uses_router_recv (void *socket_)
 {
+    constexpr int legacy_core_router_socket_type = 6;
+
     if (!socket_)
         return false;
 
@@ -136,7 +138,7 @@ inline bool socket_uses_router_recv (void *socket_)
     if (zlink_get_option (socket_, ZLINK_OPT_TYPE, &type, &size) != 0)
         return false;
 
-    return type == ZLINK_SOCKET_ROUTER || type == 6;
+    return type == ZLINK_SOCKET_ROUTER || type == legacy_core_router_socket_type;
 }
 
 inline int

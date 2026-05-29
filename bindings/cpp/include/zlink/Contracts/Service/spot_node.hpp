@@ -3,7 +3,6 @@
 
 #include "../Core/context.hpp"
 #include "../Core/routing_id.hpp"
-#include "../Core/routing_id.hpp"
 #include "../Messaging/message.hpp"
 #include "../Messaging/request_result.hpp"
 #include "../Sockets/socket_contracts.hpp"
@@ -149,81 +148,18 @@ class spot_node_t
                          const std::string &hostname_ = std::string (),
                          bool trust_system_ = false);
 
-    auto_hwm_profile router_admission_hwm_profile () const
-    {
-        return static_cast<auto_hwm_profile> (
-          get_spot_node_option_int (13838));
-    }
-
-    void router_admission_hwm_profile (auto_hwm_profile profile_)
-    {
-        set_spot_node_option_int (
-          13838,
-          static_cast<int> (profile_));
-    }
-
-    message_count_t router_admission_hwm () const
-    {
-        return message_count_t::value (
-          get_spot_node_option_int (13839));
-    }
-
-    void router_admission_hwm (message_count_t value_)
-    {
-        set_spot_node_option_int (
-          13839, value_.value ());
-    }
-
-    auto_hwm_profile pubsub_admission_hwm_profile () const
-    {
-        return static_cast<auto_hwm_profile> (
-          get_spot_node_option_int (13840));
-    }
-
-    void pubsub_admission_hwm_profile (auto_hwm_profile profile_)
-    {
-        set_spot_node_option_int (
-          13840,
-          static_cast<int> (profile_));
-    }
-
-    message_count_t pubsub_admission_hwm () const
-    {
-        return message_count_t::value (
-          get_spot_node_option_int (13841));
-    }
-
-    void pubsub_admission_hwm (message_count_t value_)
-    {
-        set_spot_node_option_int (
-          13841, value_.value ());
-    }
-
-    worker_count_t dispatch_workers_min () const
-    {
-        return worker_count_t::value (
-          get_spot_node_option_int (
-            13842));
-    }
-
-    void dispatch_workers_min (worker_count_t value_)
-    {
-        set_spot_node_option_int (
-          13842, value_.value ());
-    }
-
-    worker_count_t dispatch_workers_max () const
-    {
-        return worker_count_t::value (
-          get_spot_node_option_int (
-            13843));
-    }
-
-    void dispatch_workers_max (worker_count_t value_)
-    {
-        set_spot_node_option_int (
-          13843, value_.value ());
-    }
+    auto_hwm_profile router_admission_hwm_profile () const;
+    void router_admission_hwm_profile (auto_hwm_profile profile_);
+    message_count_t router_admission_hwm () const;
+    void router_admission_hwm (message_count_t value_);
+    auto_hwm_profile pubsub_admission_hwm_profile () const;
+    void pubsub_admission_hwm_profile (auto_hwm_profile profile_);
+    message_count_t pubsub_admission_hwm () const;
+    void pubsub_admission_hwm (message_count_t value_);
+    worker_count_t dispatch_workers_min () const;
+    void dispatch_workers_min (worker_count_t value_);
+    worker_count_t dispatch_workers_max () const;
+    void dispatch_workers_max (worker_count_t value_);
 
     spot_node_status_t status () const;
 
@@ -258,13 +194,6 @@ class spot_node_t
 
     static actor_ref_t remote_actor_ref (const routing_id_t &target_node_rid_,
                                          const std::string &actor_id_);
-
-    static actor_ref_t remote_actor_ref (const routing_id_t &target_node_rid_,
-                                         const std::string &actor_id_,
-                                         uint64_t)
-    {
-        return remote_actor_ref (target_node_rid_, actor_id_);
-    }
 
     actor_destroy_operation_t destroy_actor (const actor_ref_t &actor_);
 

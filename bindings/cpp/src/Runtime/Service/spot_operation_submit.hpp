@@ -22,7 +22,6 @@ inline std::vector<message_t> take_send_parts (spot_operation_state_t &state_)
         state_.single_part_source = nullptr;
     } else if (state_.single_part_source) {
         parts.push_back (std::move (*state_.single_part_source));
-        state_.single_part_source = nullptr;
     } else {
         parts = std::move (state_.parts);
     }
@@ -142,10 +141,10 @@ inline bool submit_raw_send_state (spot_operation_state_t &state_)
             }
         }));
     if (rc != submit_result_t::ok) {
-        zlink::detail::close_native_parts (native, failed_index);
+        zlink::detail::restore_parts_from_native (parts, native, failed_index);
+        restore_send_parts_to_state (state_, parts);
         if (state_.flags == send_flags_t::dontwait
             && rc == submit_result_t::backpressured) {
-            restore_single_send_part_to_source (state_, parts);
             return false;
         }
         throw submit_error_t (rc, zlink_errno ());
@@ -173,9 +172,10 @@ inline bool submit_bound_session_send_state (spot_operation_state_t &state_)
                                    &native);
             if (state_.flags == send_flags_t::dontwait
                 && rc == submit_result_t::backpressured) {
-                restore_single_send_part_to_source (state_, parts);
+                restore_send_parts_to_state (state_, parts);
                 return false;
             }
+            restore_send_parts_to_state (state_, parts);
             throw submit_error_t (rc, zlink_errno ());
         }
     }
@@ -205,10 +205,10 @@ submit_stream_bound_actor_send_state (spot_operation_state_t &state_)
               part_flag_);
         }));
     if (rc != submit_result_t::ok) {
-        zlink::detail::close_native_parts (native, failed_index);
+        zlink::detail::restore_parts_from_native (parts, native, failed_index);
+        restore_send_parts_to_state (state_, parts);
         if (state_.flags == send_flags_t::dontwait
             && rc == submit_result_t::backpressured) {
-            restore_single_send_part_to_source (state_, parts);
             return false;
         }
         throw submit_error_t (rc, zlink_errno ());

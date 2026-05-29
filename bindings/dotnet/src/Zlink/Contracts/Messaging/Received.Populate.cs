@@ -1,0 +1,110 @@
+// SPDX-License-Identifier: MPL-2.0
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using Systems.Zlink.Sockets.Internal;
+
+namespace Systems.Zlink;
+
+public sealed partial class Received : IDisposable
+{
+    internal void ResetForReuse()
+    {
+        if (_singlePart != null)
+        {
+            _singlePart.DisposeNativeOwned();
+            _singlePart = null;
+        }
+        if (_parts != null)
+        {
+            _parts.Dispose();
+            _parts = null;
+        }
+        _routingId = null;
+        _routingIdSnapshot = default;
+        _metadata = null;
+        _sendSingleHandler = null;
+        _sendHandler = null;
+        _sendKernel = null;
+        _sendRoutingIdSnapshot = default;
+        _sendSpotRidSnapshot = default;
+        MessageType = ReceivedMessageType.Raw;
+        _closed = false;
+    }
+
+    internal void PopulateSinglePart(Message singlePart)
+    {
+        ResetForReuse();
+        _singlePart = singlePart;
+    }
+
+    internal void PopulateMultipart(MultipartMessageCollection parts)
+    {
+        ResetForReuse();
+        _parts = parts;
+    }
+
+    internal void PopulateMessageEnvelope(Message[] parts,
+        ReceivedMessageType messageType, ulong? requestSeq,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        ResetForReuse();
+        _parts = MultipartMessageCollection.FromMessages(parts);
+        MessageType = messageType;
+        _metadata = ReceivedMetadata.Create(default(RoutingId?), requestSeq,
+            replyHandler);
+    }
+
+    internal void PopulateRoutedSinglePart(Message singlePart,
+        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
+        ulong? requestSeq, ReceivedReplyHandler? replyHandler,
+        ReceivedSendHandler? sendHandler = null,
+        ReceivedSendSingleHandler? sendSingleHandler = null,
+        SocketKernel? sendKernel = null)
+    {
+        ResetForReuse();
+        _singlePart = singlePart;
+        _routingIdSnapshot = routingId;
+        MessageType = ReceivedMessageType.Raw;
+        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _sendSingleHandler = sendSingleHandler;
+        _sendHandler = sendHandler;
+        SetSendContext(sendKernel, routingId, spotRid);
+    }
+
+    internal void PopulateRoutedMultipart(MultipartMessageCollection parts,
+        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
+        ulong? requestSeq, ReceivedReplyHandler? replyHandler,
+        ReceivedSendHandler? sendHandler = null,
+        ReceivedSendSingleHandler? sendSingleHandler = null,
+        SocketKernel? sendKernel = null)
+    {
+        ResetForReuse();
+        _parts = parts;
+        _routingIdSnapshot = routingId;
+        MessageType = ReceivedMessageType.Raw;
+        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _sendSingleHandler = sendSingleHandler;
+        _sendHandler = sendHandler;
+        SetSendContext(sendKernel, routingId, spotRid);
+    }
+
+    internal void SetSendHandler(ReceivedSendHandler? sendHandler,
+        ReceivedSendSingleHandler? sendSingleHandler = null)
+    {
+        _sendKernel = null;
+        _sendRoutingIdSnapshot = default;
+        _sendSpotRidSnapshot = default;
+        _sendSingleHandler = sendSingleHandler;
+        _sendHandler = sendHandler;
+    }
+
+    internal void SetSendContext(SocketKernel? sendKernel,
+        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid)
+    {
+        _sendKernel = sendKernel;
+        _sendRoutingIdSnapshot = routingId;
+        _sendSpotRidSnapshot = spotRid;
+    }
+}

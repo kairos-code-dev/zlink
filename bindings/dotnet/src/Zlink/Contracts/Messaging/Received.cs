@@ -16,7 +16,7 @@ public enum ReceivedMessageType
     ErrorReply = 3
 }
 
-public sealed class Received : IDisposable
+public sealed partial class Received : IDisposable
 {
     private ReceivedMetadata? _metadata;
     private RoutingIdSnapshot _routingIdSnapshot;
@@ -269,56 +269,6 @@ public sealed class Received : IDisposable
         return PartsCollection.TakeMessages();
     }
 
-    internal void ReplyCore(IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
-    {
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        if (_metadata is not { RequestSeq: { } requestSeq,
-                ReplyHandler: { } replyHandler })
-        {
-            throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
-                (int)ErrorCode.EInval);
-        }
-
-        replyHandler(parts, flags);
-    }
-
-    internal bool SendCore(Message part, SendFlags flags = SendFlags.None)
-    {
-        if (part == null)
-            throw new ArgumentNullException(nameof(part));
-        if (_sendKernel != null)
-        {
-            return _sendKernel.SendReceivedSingle(_sendRoutingIdSnapshot,
-                _sendSpotRidSnapshot, part, flags);
-        }
-        if (_sendSingleHandler != null)
-            return _sendSingleHandler(part, flags);
-        return SendCore(new SingleMessageList(part), flags);
-    }
-
-    internal bool SendCore(IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None)
-    {
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        if (parts.Count == 1)
-            return SendCore(parts[0], flags);
-        if (_sendKernel != null)
-        {
-            return _sendKernel.SendReceivedParts(_sendRoutingIdSnapshot,
-                _sendSpotRidSnapshot, parts, flags);
-        }
-        if (_sendHandler == null)
-        {
-            throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
-                (int)ErrorCode.EInval);
-        }
-
-        return _sendHandler(parts, flags);
-    }
-
     internal IEnumerator<Message> GetEnumerator()
     {
         return PartsCollection.GetEnumerator();
@@ -328,105 +278,6 @@ public sealed class Received : IDisposable
     /// Reset internal state so the same Received can be reused for the next
     /// Recv call. Owned messages from the previous receive are disposed.
     /// </summary>
-    internal void ResetForReuse()
-    {
-        if (_singlePart != null)
-        {
-            _singlePart.DisposeNativeOwned();
-            _singlePart = null;
-        }
-        if (_parts != null)
-        {
-            _parts.Dispose();
-            _parts = null;
-        }
-        _routingId = null;
-        _routingIdSnapshot = default;
-        _metadata = null;
-        _sendSingleHandler = null;
-        _sendHandler = null;
-        _sendKernel = null;
-        _sendRoutingIdSnapshot = default;
-        _sendSpotRidSnapshot = default;
-        MessageType = ReceivedMessageType.Raw;
-        _closed = false;
-    }
-
-    internal void PopulateSinglePart(Message singlePart)
-    {
-        ResetForReuse();
-        _singlePart = singlePart;
-    }
-
-    internal void PopulateMultipart(MultipartMessageCollection parts)
-    {
-        ResetForReuse();
-        _parts = parts;
-    }
-
-    internal void PopulateMessageEnvelope(Message[] parts,
-        ReceivedMessageType messageType, ulong? requestSeq,
-        ReceivedReplyHandler? replyHandler = null)
-    {
-        ResetForReuse();
-        _parts = MultipartMessageCollection.FromMessages(parts);
-        MessageType = messageType;
-        _metadata = ReceivedMetadata.Create(default(RoutingId?), requestSeq,
-            replyHandler);
-    }
-
-    internal void PopulateRoutedSinglePart(Message singlePart,
-        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
-        ulong? requestSeq, ReceivedReplyHandler? replyHandler,
-        ReceivedSendHandler? sendHandler = null,
-        ReceivedSendSingleHandler? sendSingleHandler = null,
-        SocketKernel? sendKernel = null)
-    {
-        ResetForReuse();
-        _singlePart = singlePart;
-        _routingIdSnapshot = routingId;
-        MessageType = ReceivedMessageType.Raw;
-        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
-        _sendSingleHandler = sendSingleHandler;
-        _sendHandler = sendHandler;
-        SetSendContext(sendKernel, routingId, spotRid);
-    }
-
-    internal void PopulateRoutedMultipart(MultipartMessageCollection parts,
-        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
-        ulong? requestSeq, ReceivedReplyHandler? replyHandler,
-        ReceivedSendHandler? sendHandler = null,
-        ReceivedSendSingleHandler? sendSingleHandler = null,
-        SocketKernel? sendKernel = null)
-    {
-        ResetForReuse();
-        _parts = parts;
-        _routingIdSnapshot = routingId;
-        MessageType = ReceivedMessageType.Raw;
-        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
-        _sendSingleHandler = sendSingleHandler;
-        _sendHandler = sendHandler;
-        SetSendContext(sendKernel, routingId, spotRid);
-    }
-
-    internal void SetSendHandler(ReceivedSendHandler? sendHandler,
-        ReceivedSendSingleHandler? sendSingleHandler = null)
-    {
-        _sendKernel = null;
-        _sendRoutingIdSnapshot = default;
-        _sendSpotRidSnapshot = default;
-        _sendSingleHandler = sendSingleHandler;
-        _sendHandler = sendHandler;
-    }
-
-    internal void SetSendContext(SocketKernel? sendKernel,
-        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid)
-    {
-        _sendKernel = sendKernel;
-        _sendRoutingIdSnapshot = routingId;
-        _sendSpotRidSnapshot = spotRid;
-    }
-
     private MultipartMessageCollection PartsCollection
     {
         get

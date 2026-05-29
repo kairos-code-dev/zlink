@@ -1,3 +1,5 @@
+use super::*;
+
 struct NativeRegistryQueryClient {
     handle: *mut c_void,
 }
@@ -153,7 +155,7 @@ impl Registry {
 }
 
 impl SpotNode {
-    fn subjects_query_opt(
+    pub(super) fn subjects_query_opt(
         &self,
         filter: Option<&SpotNodeSubjectFilter>,
     ) -> Result<Vec<SpotNodeSubjectEntry>, ConfigError> {
@@ -196,7 +198,7 @@ impl SpotNode {
         }
     }
 
-    fn internal_sockets_opt(
+    pub(super) fn internal_sockets_opt(
         &self,
         filter: Option<&SpotNodeSocketFilter>,
     ) -> Result<Vec<SpotNodeSocketEntry>, ConfigError> {

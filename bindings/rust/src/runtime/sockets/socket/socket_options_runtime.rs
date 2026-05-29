@@ -1,4 +1,6 @@
-fn set_int_opt(
+use super::*;
+
+pub(super) fn set_int_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
     value: i32,
@@ -13,7 +15,7 @@ fn set_int_opt(
     })
 }
 
-fn set_bool_opt(
+pub(super) fn set_bool_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
     enabled: bool,
@@ -21,7 +23,7 @@ fn set_bool_opt(
     set_int_opt(handle, opt, if enabled { 1 } else { 0 })
 }
 
-fn set_duration_opt(
+pub(super) fn set_duration_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
     duration: Duration,
@@ -29,7 +31,7 @@ fn set_duration_opt(
     set_int_opt(handle, opt, duration_to_millis(duration)?)
 }
 
-fn get_duration_opt(
+pub(super) fn get_duration_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
 ) -> Result<Duration, ConfigError> {
@@ -37,7 +39,7 @@ fn get_duration_opt(
     Ok(Duration::from_millis(millis as u64))
 }
 
-fn set_string_opt(
+pub(super) fn set_string_opt(
     handle: *mut c_void,
     opt: ffi::zlink_option_t,
     value: &str,
@@ -53,7 +55,10 @@ fn set_string_opt(
     })
 }
 
-fn get_int_opt(handle: *mut c_void, opt: ffi::zlink_option_t) -> Result<i32, ConfigError> {
+pub(super) fn get_int_opt(
+    handle: *mut c_void,
+    opt: ffi::zlink_option_t,
+) -> Result<i32, ConfigError> {
     let mut value: i32 = 0;
     let mut len = std::mem::size_of::<i32>();
     check_config_rc(unsafe {
@@ -62,11 +67,17 @@ fn get_int_opt(handle: *mut c_void, opt: ffi::zlink_option_t) -> Result<i32, Con
     Ok(value)
 }
 
-fn get_bool_opt(handle: *mut c_void, opt: ffi::zlink_option_t) -> Result<bool, ConfigError> {
+pub(super) fn get_bool_opt(
+    handle: *mut c_void,
+    opt: ffi::zlink_option_t,
+) -> Result<bool, ConfigError> {
     Ok(get_int_opt(handle, opt)? != 0)
 }
 
-fn get_i64_opt(handle: *mut c_void, opt: ffi::zlink_option_t) -> Result<i64, ConfigError> {
+pub(super) fn get_i64_opt(
+    handle: *mut c_void,
+    opt: ffi::zlink_option_t,
+) -> Result<i64, ConfigError> {
     let mut value: i64 = 0;
     let mut len = std::mem::size_of::<i64>();
     check_config_rc(unsafe {

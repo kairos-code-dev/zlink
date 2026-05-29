@@ -1,3 +1,5 @@
+use super::*;
+
 // ---------------------------------------------------------------------------
 // Actor values
 // ---------------------------------------------------------------------------
@@ -41,7 +43,7 @@ fn routing_id_option_to_raw(value: Option<RoutingId>) -> ffi::zlink_routing_id_t
         })
 }
 
-fn actor_join_info_to_raw(info: &ActorJoinInfo) -> ffi::zlink_actor_join_info_t {
+pub(super) fn actor_join_info_to_raw(info: &ActorJoinInfo) -> ffi::zlink_actor_join_info_t {
     ffi::zlink_actor_join_info_t {
         source_actor: info
             .source_actor
@@ -61,14 +63,14 @@ fn actor_join_info_to_raw(info: &ActorJoinInfo) -> ffi::zlink_actor_join_info_t 
     }
 }
 
-fn routing_id_from_handle(handle: *mut c_void) -> Result<RoutingId, ConfigError> {
+pub(super) fn routing_id_from_handle(handle: *mut c_void) -> Result<RoutingId, ConfigError> {
     let mut raw = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
     check_config_rc(unsafe { ffi::zlink_get_routing_id(handle, raw.as_mut_ptr()) })?;
     Ok(RoutingId::from_raw(unsafe { raw.assume_init() }))
 }
 
 impl ActorRoute {
-    fn from_raw(raw: &ffi::zlink_actor_route_t) -> Self {
+    pub(super) fn from_raw(raw: &ffi::zlink_actor_route_t) -> Self {
         Self {
             actor: ActorRef::from_raw(&raw.actor),
             current_spot_rid: RoutingId::from_raw(raw.current_spot_rid),
@@ -78,7 +80,7 @@ impl ActorRoute {
 }
 
 impl SpotRoute {
-    fn from_raw(raw: &ffi::zlink_spot_route_t) -> Self {
+    pub(super) fn from_raw(raw: &ffi::zlink_spot_route_t) -> Self {
         Self {
             spot_rid: RoutingId::from_raw(raw.spot_rid),
             owner_node_rid: RoutingId::from_raw(raw.owner_node_rid),
@@ -88,7 +90,7 @@ impl SpotRoute {
 }
 
 impl ActorRecvInfo {
-    fn from_raw(raw: &ffi::zlink_actor_recv_info_t) -> Self {
+    pub(super) fn from_raw(raw: &ffi::zlink_actor_recv_info_t) -> Self {
         Self {
             actor: ActorRef::from_raw(&raw.actor),
             source_node_rid: RoutingId::from_raw(raw.source_node_rid),
@@ -99,7 +101,7 @@ impl ActorRecvInfo {
 }
 
 impl ActorJoinInfo {
-    fn from_raw(raw: ffi::zlink_actor_join_info_t) -> Self {
+    pub(super) fn from_raw(raw: ffi::zlink_actor_join_info_t) -> Self {
         let source_actor = ActorRef::from_raw(&raw.source_actor);
         let target_actor = ActorRef::from_raw(&raw.target_actor);
         Self {
@@ -118,7 +120,7 @@ impl ActorJoinInfo {
 }
 
 impl SpotActorLifecycleInfo {
-    fn from_raw(raw: ffi::zlink_spot_actor_lifecycle_info_t) -> Self {
+    pub(super) fn from_raw(raw: ffi::zlink_spot_actor_lifecycle_info_t) -> Self {
         Self {
             previous_actor: ActorRef::from_raw(&raw.previous_actor),
             current_actor: ActorRef::from_raw(&raw.current_actor),
@@ -131,7 +133,7 @@ impl SpotActorLifecycleInfo {
 }
 
 impl SpotActorLifecycleEventKind {
-    fn from_raw(raw: ffi::zlink_spot_actor_lifecycle_event_kind_t) -> Self {
+    pub(super) fn from_raw(raw: ffi::zlink_spot_actor_lifecycle_event_kind_t) -> Self {
         match raw {
             ffi::zlink_spot_actor_lifecycle_event_kind_t::ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT => {
                 Self::Left
@@ -142,7 +144,7 @@ impl SpotActorLifecycleEventKind {
 }
 
 impl SpotNodeSpotEntry {
-    fn from_raw(raw: &ffi::zlink_spot_node_spot_entry_t) -> Self {
+    pub(super) fn from_raw(raw: &ffi::zlink_spot_node_spot_entry_t) -> Self {
         Self {
             spot_rid: RoutingId::from_raw(raw.spot_rid),
             spot_kind: SpotKind::from_raw(raw.spot_kind),
@@ -156,7 +158,7 @@ impl SpotNodeSpotEntry {
 }
 
 impl SpotNodeActorEntry {
-    fn from_raw(raw: &ffi::zlink_spot_node_actor_entry_t) -> Self {
+    pub(super) fn from_raw(raw: &ffi::zlink_spot_node_actor_entry_t) -> Self {
         Self {
             actor: ActorRef::from_raw(&raw.actor),
             current_spot_rid: RoutingId::from_raw(raw.current_spot_rid),
@@ -168,9 +170,9 @@ impl SpotNodeActorEntry {
     }
 }
 
-struct NativeActor {
-    node_handle: *mut c_void,
-    actor_ref: Option<ActorRef>,
+pub(super) struct NativeActor {
+    pub(super) node_handle: *mut c_void,
+    pub(super) actor_ref: Option<ActorRef>,
 }
 
 unsafe impl Send for NativeActor {}
@@ -185,7 +187,7 @@ impl ActorRuntime for NativeActor {
     }
 }
 
-fn actor_native(actor: &Actor) -> &NativeActor {
+pub(super) fn actor_native(actor: &Actor) -> &NativeActor {
     actor
         .inner
         .as_any()
@@ -193,7 +195,7 @@ fn actor_native(actor: &Actor) -> &NativeActor {
         .expect("zlink native actor")
 }
 
-fn actor_native_mut(actor: &mut Actor) -> &mut NativeActor {
+pub(super) fn actor_native_mut(actor: &mut Actor) -> &mut NativeActor {
     actor
         .inner
         .as_any_mut()

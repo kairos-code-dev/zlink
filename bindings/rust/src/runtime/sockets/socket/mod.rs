@@ -42,6 +42,9 @@ use crate::native_errors::{
 };
 use crate::topic_message_contract::TopicMessage;
 
-include!("socket_inner_runtime.rs");
-include!("socket_parts_runtime.rs");
-include!("socket_options_runtime.rs");
+mod socket_inner_runtime;
+pub(crate) use socket_inner_runtime::*;
+mod socket_parts_runtime;
+pub(crate) use socket_parts_runtime::*;
+mod socket_options_runtime;
+use socket_options_runtime::*;

@@ -1,3 +1,5 @@
+use super::*;
+
 impl Actor {
     pub fn actor_ref(&self) -> Result<ActorRef, ConfigError> {
         actor_native(self)

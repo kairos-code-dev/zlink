@@ -76,11 +76,15 @@ use spot_receive::{
     borrowed_parts_to_messages, recv_spot_routed_parts, recv_spot_subscribed_parts,
 };
 
-include!("registry_runtime.rs");
-include!("discovery_runtime.rs");
-include!("actor_model_runtime.rs");
-include!("spot_node_runtime.rs");
-include!("actor_runtime.rs");
-include!("actor_ops_runtime.rs");
-include!("spot_runtime.rs");
-include!("registry_query_runtime.rs");
+mod actor_model_runtime;
+mod discovery_runtime;
+mod registry_runtime;
+use actor_model_runtime::*;
+mod spot_node_runtime;
+pub(crate) use spot_node_runtime::*;
+mod actor_ops_runtime;
+mod actor_runtime;
+pub(crate) use actor_ops_runtime::*;
+mod spot_runtime;
+pub(crate) use spot_runtime::*;
+mod registry_query_runtime;

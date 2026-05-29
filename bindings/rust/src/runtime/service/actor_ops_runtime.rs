@@ -1,3 +1,5 @@
+use super::*;
+
 // ---------------------------------------------------------------------------
 // Actor value structs
 // ---------------------------------------------------------------------------
@@ -8,26 +10,26 @@
 
 /// Async Actor join builder. Payload accumulates via `.message(...)`.
 pub struct ActorJoinOp<State> {
-    node_handle: *mut c_void,
-    spot_handle: *mut c_void,
-    actor: ffi::zlink_actor_ref_t,
-    dest_node_rid: RoutingId,
-    dest_spot_rid: RoutingId,
-    parts: Vec<Message>,
-    flags: SendFlags,
-    timeout: Duration,
-    _state: std::marker::PhantomData<State>,
+    pub(super) node_handle: *mut c_void,
+    pub(super) spot_handle: *mut c_void,
+    pub(super) actor: ffi::zlink_actor_ref_t,
+    pub(super) dest_node_rid: RoutingId,
+    pub(super) dest_spot_rid: RoutingId,
+    pub(super) parts: Vec<Message>,
+    pub(super) flags: SendFlags,
+    pub(super) timeout: Duration,
+    pub(super) _state: std::marker::PhantomData<State>,
 }
 
 unsafe impl<S> Send for ActorJoinOp<S> {}
 
 /// Async Actor Entry Spot join builder.
 pub struct ActorJoinEntrySpotOp<State> {
-    node_handle: *mut c_void,
-    actor: ffi::zlink_actor_ref_t,
-    dest_node_rid: RoutingId,
-    timeout: Duration,
-    _state: std::marker::PhantomData<State>,
+    pub(super) node_handle: *mut c_void,
+    pub(super) actor: ffi::zlink_actor_ref_t,
+    pub(super) dest_node_rid: RoutingId,
+    pub(super) timeout: Duration,
+    pub(super) _state: std::marker::PhantomData<State>,
 }
 
 unsafe impl<S> Send for ActorJoinEntrySpotOp<S> {}
@@ -179,11 +181,11 @@ impl ActorJoinOp<Ready> {
 
 /// Builder for replying to an Actor join admission request. 0-part submit is allowed.
 pub struct ActorJoinReplyOp<State> {
-    spot_handle: *mut c_void,
-    info: ffi::zlink_actor_join_info_t,
-    join_result_code: i32,
-    parts: Vec<Message>,
-    _state: std::marker::PhantomData<State>,
+    pub(super) spot_handle: *mut c_void,
+    pub(super) info: ffi::zlink_actor_join_info_t,
+    pub(super) join_result_code: i32,
+    pub(super) parts: Vec<Message>,
+    pub(super) _state: std::marker::PhantomData<State>,
 }
 
 unsafe impl<S> Send for ActorJoinReplyOp<S> {}
@@ -231,13 +233,13 @@ impl ActorJoinReplyOp<Empty> {
 }
 
 /// Payload-less builder shared by leave / destroy / bind / unbind.
-struct ActorReplyOpInner {
-    handle: *mut c_void,
-    kind: ActorReplyOpKind,
-    timeout: Duration,
+pub(super) struct ActorReplyOpInner {
+    pub(super) handle: *mut c_void,
+    pub(super) kind: ActorReplyOpKind,
+    pub(super) timeout: Duration,
 }
 
-enum ActorReplyOpKind {
+pub(super) enum ActorReplyOpKind {
     Leave {
         actor: ffi::zlink_actor_ref_t,
         current_spot_rid: RoutingId,
@@ -323,8 +325,8 @@ impl ActorReplyOpInner {
 
 /// Async Actor leave builder (payload-less).
 pub struct ActorLeaveOp<State> {
-    inner: ActorReplyOpInner,
-    _state: std::marker::PhantomData<State>,
+    pub(super) inner: ActorReplyOpInner,
+    pub(super) _state: std::marker::PhantomData<State>,
 }
 
 unsafe impl<S> Send for ActorLeaveOp<S> {}
@@ -351,8 +353,8 @@ impl ActorLeaveOp<Empty> {
 
 /// Async Actor destroy builder (payload-less).
 pub struct ActorDestroyOp<State> {
-    inner: ActorReplyOpInner,
-    _state: std::marker::PhantomData<State>,
+    pub(super) inner: ActorReplyOpInner,
+    pub(super) _state: std::marker::PhantomData<State>,
 }
 
 unsafe impl<S> Send for ActorDestroyOp<S> {}
@@ -379,8 +381,8 @@ impl ActorDestroyOp<Empty> {
 
 /// Async Actor bind builder (payload-less).
 pub struct ActorBindOp<State> {
-    inner: ActorReplyOpInner,
-    _state: std::marker::PhantomData<State>,
+    pub(super) inner: ActorReplyOpInner,
+    pub(super) _state: std::marker::PhantomData<State>,
 }
 
 unsafe impl<S> Send for ActorBindOp<S> {}
@@ -407,8 +409,8 @@ impl ActorBindOp<Empty> {
 
 /// Async Actor unbind builder (payload-less).
 pub struct ActorUnbindOp<State> {
-    inner: ActorReplyOpInner,
-    _state: std::marker::PhantomData<State>,
+    pub(super) inner: ActorReplyOpInner,
+    pub(super) _state: std::marker::PhantomData<State>,
 }
 
 unsafe impl<S> Send for ActorUnbindOp<S> {}
@@ -452,11 +454,11 @@ async fn actor_reply_op_submit_async(inner: ActorReplyOpInner) -> Result<Vec<Mes
 
 /// Async remote Actor lookup builder (payload-less).
 pub struct ActorLookupOp<State> {
-    node_handle: *mut c_void,
-    target_node_rid: RoutingId,
-    actor_id: std::ffi::CString,
-    timeout: Duration,
-    _state: std::marker::PhantomData<State>,
+    pub(super) node_handle: *mut c_void,
+    pub(super) target_node_rid: RoutingId,
+    pub(super) actor_id: std::ffi::CString,
+    pub(super) timeout: Duration,
+    pub(super) _state: std::marker::PhantomData<State>,
 }
 
 unsafe impl<S> Send for ActorLookupOp<S> {}

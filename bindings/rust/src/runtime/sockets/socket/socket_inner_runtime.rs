@@ -1,3 +1,5 @@
+use super::*;
+
 // ---------------------------------------------------------------------------
 // CallbackBox – type-erased, owned callback pointer
 // ---------------------------------------------------------------------------
@@ -38,8 +40,8 @@ unsafe fn drop_erased<F>(ptr: *mut c_void) {
 
 pub(crate) struct SocketInner {
     pub(crate) handle: *mut c_void,
-    send_ready_cb: Option<CallbackBox>,
-    packet_cb: Option<CallbackBox>,
+    pub(crate) send_ready_cb: Option<CallbackBox>,
+    pub(crate) packet_cb: Option<CallbackBox>,
 }
 
 unsafe impl Send for SocketInner {}

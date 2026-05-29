@@ -1,3 +1,5 @@
+use super::*;
+
 // ---------------------------------------------------------------------------
 // Spot
 // ---------------------------------------------------------------------------
@@ -6,8 +8,8 @@
 ///
 /// The Spot handle borrows a `SpotNode`, lazily creates side sockets, and
 /// exposes the canonical data-plane API (publish, subscribe, etc.).
-struct NativeSpot {
-    handle: *mut c_void,
+pub(super) struct NativeSpot {
+    pub(super) handle: *mut c_void,
     node_handle: *mut c_void,
     send_ready_cb: Option<CallbackBox>,
     dispatch_cb: Option<CallbackBox>,
@@ -33,7 +35,7 @@ pub(crate) fn spot_handle(spot: &Spot) -> *mut c_void {
         .handle
 }
 
-fn spot_node_raw(spot: &Spot) -> *mut c_void {
+pub(super) fn spot_node_raw(spot: &Spot) -> *mut c_void {
     spot.inner
         .as_any()
         .downcast_ref::<NativeSpot>()
@@ -41,14 +43,14 @@ fn spot_node_raw(spot: &Spot) -> *mut c_void {
         .node_handle
 }
 
-fn spot_native_mut(spot: &mut Spot) -> &mut NativeSpot {
+pub(super) fn spot_native_mut(spot: &mut Spot) -> &mut NativeSpot {
     spot.inner
         .as_any_mut()
         .downcast_mut::<NativeSpot>()
         .expect("zlink native spot")
 }
 
-fn wrap_spot(handle: *mut c_void, node_handle: *mut c_void) -> Spot {
+pub(super) fn wrap_spot(handle: *mut c_void, node_handle: *mut c_void) -> Spot {
     Spot {
         inner: Box::new(NativeSpot {
             handle,
@@ -392,9 +394,9 @@ impl Spot {
 type SpotReplyCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
 type SpotDispatchHandler<F> = (*mut c_void, F);
 
-struct SpotReplyCallbackState {
-    callback: Option<SpotReplyCallback>,
-    _progress: Option<RequestProgressGuard>,
+pub(super) struct SpotReplyCallbackState {
+    pub(super) callback: Option<SpotReplyCallback>,
+    pub(super) _progress: Option<RequestProgressGuard>,
 }
 
 impl SpotDispatchInfo<'_> {
@@ -469,7 +471,7 @@ impl SpotDispatchEvent {
     }
 }
 
-fn timeout_to_timeout_ms(timeout: Duration) -> u32 {
+pub(super) fn timeout_to_timeout_ms(timeout: Duration) -> u32 {
     let millis = timeout.as_millis();
     if millis == 0 {
         0
@@ -548,7 +550,7 @@ where
     check_request_result(result)
 }
 
-fn recv_error_from_config(err: ConfigError) -> RecvError {
+pub(super) fn recv_error_from_config(err: ConfigError) -> RecvError {
     RecvError::new(RecvResult::InvalidHandle, err.internal_errno())
 }
 
@@ -558,7 +560,7 @@ struct ActorPart {
     more: bool,
 }
 
-fn recv_actor_once(
+pub(super) fn recv_actor_once(
     node: *mut c_void,
     actor: &ActorRef,
     flags: RecvFlags,
@@ -622,7 +624,7 @@ fn recv_actor_part_from_ref(
     }))
 }
 
-fn take_message_raw(message: &mut Message) -> ffi::zlink_msg_t {
+pub(super) fn take_message_raw(message: &mut Message) -> ffi::zlink_msg_t {
     unsafe {
         let mut native = MaybeUninit::<ffi::zlink_msg_t>::uninit();
         ffi::zlink_msg_init(native.as_mut_ptr());
@@ -671,7 +673,7 @@ fn spot_received_from_raw(
     }
 }
 
-unsafe extern "C" fn spot_reply_callback(
+pub(super) unsafe extern "C" fn spot_reply_callback(
     result_: ffi::zlink_request_result_t,
     parts: *mut ffi::zlink_msg_t,
     part_count: usize,

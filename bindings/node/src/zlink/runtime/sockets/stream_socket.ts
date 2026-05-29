@@ -63,7 +63,7 @@ export class StreamSocket extends SocketBase {
   send(routingId: RoutingId): SendOperation {
     return new RuntimeSendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
   }
-  private sendDirect(routingId: RoutingId, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+  private sendDirect(routingId: RoutingId, payload: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalized = normalizeMessageLikePayload(payload);
     const normalizedRoutingId = normalizeRoutingId(routingId);
     if ((flags | 0) & (SendFlags.DontWait | 0)) {

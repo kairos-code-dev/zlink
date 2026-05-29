@@ -53,7 +53,7 @@ export class RouterSocket extends RoutedMessageSocket {
   }
   private requestDirect(
     peerRid: RoutingId,
-    payloadOrParts: readonly MessageLike[],
+    payloadOrParts: MessageLike | readonly MessageLike[],
     callbackOrTimeout?: RequestCallback | number,
     flagsOrTimeout?: SendFlags | number,
     maybeTimeout?: number,
@@ -84,7 +84,7 @@ export class RouterSocket extends RoutedMessageSocket {
     return new RuntimeSendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
   }
   /** @internal */
-  sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
+  sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     try {
       requireNative().routerSpotSend(
         this.nativeHandle(),
@@ -110,7 +110,7 @@ export class RouterSocket extends RoutedMessageSocket {
       this.requestToSpotDirect(destNodeRid, destSpotRid, parts, cbOrTimeout, opFlags, opTimeout)
     );
   }
-  private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
+  private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
     const parts = normalizeOperationPayload(payloadOrParts);
     const nodeRid = normalizeRoutingId(destNodeRid);
     const spotRid = normalizeRoutingId(destSpotRid);
@@ -139,7 +139,7 @@ export class RouterSocket extends RoutedMessageSocket {
   replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOperation {
     return new RuntimeReplyOperation((parts, opFlags) => this.replyToSpotDirect(destNodeRid, destSpotRid, requestSeq, parts, opFlags));
   }
-  private replyToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  private replyToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     normalizeReplyFlags(flags);
     const normalizedDestNodeRid = normalizeRoutingId(destNodeRid);
     const normalizedDestSpotRid = normalizeRoutingId(destSpotRid);
@@ -159,7 +159,7 @@ export class RouterSocket extends RoutedMessageSocket {
   reply(peerRid: RoutingId, requestSeq: bigint): ReplyOperation {
     return new RuntimeReplyOperation((parts, opFlags) => this.replyDirect(peerRid, requestSeq, parts, opFlags));
   }
-  private replyDirect(peerRid: RoutingId, requestSeq: bigint, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
+  private replyDirect(peerRid: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     normalizeReplyFlags(flags);
     const normalizedPeerRid = normalizeRoutingId(peerRid, 'peerRid');
     const parts = normalizeOperationPayload(payloadOrParts);

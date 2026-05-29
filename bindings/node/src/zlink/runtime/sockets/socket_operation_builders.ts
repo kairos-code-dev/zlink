@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { Message, type MessageLike } from '../../contracts';
-import { OperationPayload } from '../../contracts/messaging/operation_payload';
+import { OperationPayload, type OperationPayloadValue } from '../../contracts/messaging/operation_payload';
 import { SendFlags } from '../../contracts/sockets/socket_constants';
 import type {
   RequestCallback,
@@ -14,19 +14,19 @@ import type {
   SendSubmitOperation,
 } from '../../contracts/service';
 
-export type SendInvoker = (parts: readonly MessageLike[], flags: SendFlags) => boolean;
+export type SendInvoker = (parts: OperationPayloadValue<MessageLike>, flags: SendFlags) => boolean;
 export type PublishInvoker = (
   topic: string,
   payload: MessageLike | readonly MessageLike[],
   flags: SendFlags
 ) => boolean;
 export type RequestInvoker = (
-  parts: readonly MessageLike[],
+  parts: OperationPayloadValue<MessageLike>,
   callbackOrTimeout?: RequestCallback | number,
   flagsOrTimeout?: SendFlags | number,
   maybeTimeout?: number
 ) => Promise<Message[]> | boolean;
-export type ReplyInvoker = (parts: readonly MessageLike[], flags: SendFlags) => void;
+export type ReplyInvoker = (parts: OperationPayloadValue<MessageLike>, flags: SendFlags) => void;
 
 export class RuntimeSendOperation implements SendOperation, SendSubmitOperation {
   private readonly _invoke: SendInvoker;
@@ -56,9 +56,7 @@ export class RuntimeSendOperation implements SendOperation, SendSubmitOperation 
 export class PublishOperation implements SendOperation, SendSubmitOperation {
   private readonly _invoke: PublishInvoker;
   private readonly _topic: string;
-  private _single: MessageLike | null = null;
-  private _parts: MessageLike[] | null = null;
-  private _submitted = false;
+  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
   private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: PublishInvoker, topic: string) {
@@ -67,38 +65,18 @@ export class PublishOperation implements SendOperation, SendSubmitOperation {
   }
 
   message(message: MessageLike): SendSubmitOperation {
-    this.ensureOpen();
-    if (this._parts) {
-      this._parts.push(message);
-    } else if (this._single) {
-      this._parts = [this._single, message];
-      this._single = null;
-    } else {
-      this._single = message;
-    }
+    this._payload.append(message);
     return this;
   }
 
   flags(flags: SendFlags): SendSubmitOperation {
-    this.ensureOpen();
+    this._payload.ensureOpen();
     this._flags = flags;
     return this;
   }
 
   submit(): boolean {
-    this.ensureOpen();
-    const payload = this._parts ?? this._single;
-    if (!payload) {
-      throw new TypeError('operation requires at least one message');
-    }
-    this._submitted = true;
-    return this._invoke(this._topic, payload, this._flags);
-  }
-
-  private ensureOpen(): void {
-    if (this._submitted) {
-      throw new TypeError('operation has already been submitted');
-    }
+    return this._invoke(this._topic, this._payload.consume(), this._flags);
   }
 }
 

@@ -7,7 +7,6 @@ import { Message } from './message';
 import { RoutingId } from '../core/routing_id';
 import {
   MultipartEnvelope,
-  freezeMessageParts,
   freezeOwnedMessageParts,
 } from './envelope';
 import { OperationPayload } from './operation_payload';
@@ -62,7 +61,7 @@ class ReceivedSendOperation implements ReceivedSendOperation, ReceivedSendSubmit
   }
 
   submit(): boolean {
-    return this._invoke(this._payload.consume(), this._flags);
+    return this._invoke(this._payload.consumeParts(), this._flags);
   }
 }
 
@@ -89,7 +88,7 @@ class ReceivedReplyOperation implements ReceivedReplyOperation, ReceivedReplySub
   }
 
   submit(): void {
-    this._invoke(this._payload.consume(), this._flags);
+    this._invoke(this._payload.consumeParts(), this._flags);
   }
 }
 
@@ -153,26 +152,6 @@ export class Received extends MultipartEnvelope {
     this.requestSeq = requestSeq;
     this._replyContext = replyContext;
     this._sendContext = sendContext;
-  }
-
-  /** @internal */
-  _adoptFrom(source: Received): void {
-    if (source === this) return;
-    for (const p of this.parts) {
-      try { p.close(); } catch { /* swallow */ }
-    }
-    this.parts = source.parts;
-    this.routingId = source.routingId;
-    this.spotRid = source.spotRid;
-    this.requestSeq = source.requestSeq;
-    this._replyContext = source._replyContext;
-    this._sendContext = source._sendContext;
-    source.parts = freezeMessageParts([]);
-    source.routingId = null;
-    source.spotRid = null;
-    source.requestSeq = null;
-    source._replyContext = null;
-    source._sendContext = null;
   }
 
   /** @internal */

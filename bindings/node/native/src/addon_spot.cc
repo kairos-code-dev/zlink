@@ -408,14 +408,19 @@ struct request_result_js_payload_t
     request_result_js_payload_t ()
       : errnum (0), has_actor_join (false), has_actor_lookup (false),
         has_actor_join_entry_spot (false),
-        join_result_code (0), join_epoch (0), flags (0)
+        join_result_code (0), join_epoch (0), flags (0), part_count (0)
     {
         memset(&actor, 0, sizeof(actor));
         memset(&joined_spot_rid, 0, sizeof(joined_spot_rid));
         memset(&target_node_rid, 0, sizeof(target_node_rid));
     }
+    ~request_result_js_payload_t()
+    {
+        if (part_count > 0)
+            close_recv_parts(parts.data(), part_count);
+    }
     int errnum;
-    std::vector<std::vector<unsigned char> > parts;
+    std::vector<zlink_msg_t> parts;
     // Optional rich-result payload for ActorJoin/ActorLookup callbacks.
     bool has_actor_join;
     bool has_actor_lookup;
@@ -426,6 +431,7 @@ struct request_result_js_payload_t
     zlink_routing_id_t target_node_rid;
     uint64_t join_epoch;
     uint32_t flags;
+    size_t part_count;
 };
 
 struct request_js_state_t
@@ -842,24 +848,22 @@ static int spot_subscribe_recv_parts(void *spot,
     return collect_recv_parts(spot, &first_part, has_more, parts);
 }
 
-static void copy_recv_parts_to_vectors(
+static bool move_recv_parts_to_payload(
   zlink_msg_t *parts,
   size_t part_count,
-  std::vector<std::vector<unsigned char> > *out)
+  request_result_js_payload_t *payload)
 {
-    if (!out)
-        return;
-    out->clear();
-    out->reserve(part_count);
+    if (!payload)
+        return false;
+    payload->parts.resize(part_count);
     for (size_t i = 0; i < part_count; ++i) {
-        const unsigned char *part_data =
-          static_cast<const unsigned char *>(zlink_msg_data(&parts[i]));
-        const size_t part_size = zlink_msg_size(&parts[i]);
-        std::vector<unsigned char> copy;
-        if (part_data && part_size > 0)
-            copy.assign(part_data, part_data + part_size);
-        out->push_back(copy);
+        if (zlink_msg_init(&payload->parts[i]) != 0)
+            return false;
+        payload->part_count = i + 1;
+        if (zlink_msg_move(&payload->parts[i], &parts[i]) != 0)
+            return false;
     }
+    return true;
 }
 
 static napi_value create_spot_routed_value(napi_env env,
@@ -1280,9 +1284,10 @@ static void request_tsfn_call_js(napi_env env,
             napi_value parts_array;
             napi_create_array_with_length(env, payload->parts.size(), &parts_array);
             for (size_t i = 0; i < payload->parts.size(); ++i) {
-                const std::vector<unsigned char> &part = payload->parts[i];
-                napi_value part_buf = create_buffer_copy_or_empty(
-                  env, part.empty() ? NULL : part.data(), part.size());
+                napi_value part_buf =
+                  create_message_data_buffer(env, &payload->parts[i]);
+                if (!part_buf)
+                    return;
                 napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_buf);
             }
             argv[1] = parts_array;
@@ -1313,9 +1318,10 @@ static void request_tsfn_call_js(napi_env env,
             napi_value parts_array;
             napi_create_array_with_length(env, payload->parts.size(), &parts_array);
             for (size_t i = 0; i < payload->parts.size(); ++i) {
-                const std::vector<unsigned char> &part = payload->parts[i];
-                napi_value part_buf = create_buffer_copy_or_empty(
-                  env, part.empty() ? NULL : part.data(), part.size());
+                napi_value part_buf =
+                  create_message_data_buffer(env, &payload->parts[i]);
+                if (!part_buf)
+                    return;
                 napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_buf);
             }
             argv[1] = parts_array;
@@ -1364,8 +1370,10 @@ static void request_reply_callback_trampoline(zlink_request_result_t errnum_,
     std::unique_ptr<request_result_js_payload_t> payload(
       new request_result_js_payload_t());
     payload->errnum = errnum_;
-    if (errnum_ == 0)
-        copy_recv_parts_to_vectors(parts_, part_count_, &payload->parts);
+    if (errnum_ == 0 && !move_recv_parts_to_payload(parts_, part_count_, payload.get())) {
+        close_recv_parts(parts_, part_count_);
+        return;
+    }
     close_recv_parts(parts_, part_count_);
 
     if (napi_call_threadsafe_function(
@@ -1399,8 +1407,11 @@ static void actor_join_callback_trampoline(
         payload->join_epoch = result_->join_epoch;
         payload->flags = result_->flags;
     }
-    if (payload->errnum == 0)
-        copy_recv_parts_to_vectors(parts_, part_count_, &payload->parts);
+    if (payload->errnum == 0
+        && !move_recv_parts_to_payload(parts_, part_count_, payload.get())) {
+        close_recv_parts(parts_, part_count_);
+        return;
+    }
     close_recv_parts(parts_, part_count_);
 
     if (napi_call_threadsafe_function(

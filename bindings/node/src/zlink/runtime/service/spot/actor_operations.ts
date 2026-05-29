@@ -23,10 +23,11 @@ import type {
   ReplyHandler
 } from '../../../contracts/service';
 import { OperationPayload } from '../../../contracts/messaging/operation_payload';
+import type { OperationPayloadValue } from '../../../contracts/messaging/operation_payload';
 import { requestErrorFromResult } from '../../messaging/request_executor';
 
 type ActorJoinInvoker = (
-  parts: readonly MessageLike[],
+  parts: OperationPayloadValue<MessageLike>,
   callback: ActorJoinHandler,
   flags: SendFlags,
   timeoutMs: number,
@@ -86,10 +87,10 @@ type ActorJoinEntrySpotInvoker = (
 ) => boolean;
 
 export class RuntimeActorJoinReplyOperation implements ActorJoinReplyOperation {
-  private readonly _invoke: (parts: readonly MessageLike[]) => void;
+  private readonly _invoke: (parts: OperationPayloadValue<MessageLike>) => void;
   private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
 
-  constructor(invoke: (parts: readonly MessageLike[]) => void) {
+  constructor(invoke: (parts: OperationPayloadValue<MessageLike>) => void) {
     this._invoke = invoke;
   }
 

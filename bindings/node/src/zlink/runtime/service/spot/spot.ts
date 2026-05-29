@@ -7,7 +7,7 @@ import { validateCString } from '../../options/validation';
 import { executeNativeRequest } from '../../messaging/request_executor';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { startRequestProgress } from '../../messaging/request_progress';
-import { adoptTopicMessage, materializeReceived, materializeTopicMessage, type NativeTopicMessageRaw } from '../../messaging/message_materializer';
+import { adoptTopicMessage, materializeReceivedInto, materializeTopicMessage, type NativeTopicMessageRaw } from '../../messaging/message_materializer';
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
 import { RuntimeReplyOperation, RuntimeRequestOperation, RuntimeSendOperation } from '../../sockets/socket_operation_builders';
 import {
@@ -86,7 +86,7 @@ export class Spot extends NativeHandle {
       throw submitError;
     }
   }
-  private publishDirect(topic: string, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
+  private publishDirect(topic: string, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
     return this.submitSpotSend(flags, 'spot publish failed', () => {
       requireNative().spotPublish(
         this._native,
@@ -143,7 +143,7 @@ export class Spot extends NativeHandle {
   sendToChannel(channelName: string): SendOperation {
     return new RuntimeSendOperation((parts, opFlags) => this.sendChannelDirect(channelName, parts, opFlags));
   }
-  private sendChannelDirect(channelName: string, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
+  private sendChannelDirect(channelName: string, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
     return this.submitSpotSend(flags, 'spot sendToChannel failed', () => {
       requireNative().spotSendChannel(
         this._native,
@@ -156,7 +156,7 @@ export class Spot extends NativeHandle {
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOperation {
     return new RuntimeSendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
   }
-  private sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
+  private sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadParts: MessageLike | readonly MessageLike[], flags: SendFlags): boolean {
     return this.submitSpotSend(flags, 'spot sendToSpot failed', () => {
       requireNative().spotSendToSpot(
         this._native,
@@ -172,7 +172,7 @@ export class Spot extends NativeHandle {
       this.requestChannelDirect(channelName, parts, cbOrTimeout, opFlags, opTimeout)
     );
   }
-  private requestChannelDirect(channelName: string, partsInput: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
+  private requestChannelDirect(channelName: string, partsInput: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
     const normalizedChannelName = validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER);
     return this.executeSpotRequest(
       partsInput,
@@ -202,7 +202,7 @@ export class Spot extends NativeHandle {
       this.requestToRouterDirect(peerRid, parts, cbOrTimeout, opFlags, opTimeout)
     );
   }
-  private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, partsInput: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
+  private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, partsInput: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
     const nodeRid = normalizeRoutingId(destNodeRid, 'destNodeRid');
     const spotRid = normalizeRoutingId(destSpotRid, 'destSpotRid');
     return this.executeSpotRequest(
@@ -224,7 +224,7 @@ export class Spot extends NativeHandle {
       }
     );
   }
-  private requestToRouterDirect(peerRid: RoutingId, partsInput: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
+  private requestToRouterDirect(peerRid: RoutingId, partsInput: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
     const peer = normalizeRoutingId(peerRid, 'peerRid');
     return this.executeSpotRequest(
       partsInput,
@@ -245,7 +245,7 @@ export class Spot extends NativeHandle {
     );
   }
   private executeSpotRequest(
-    partsInput: readonly MessageLike[],
+    partsInput: MessageLike | readonly MessageLike[],
     callbackOrTimeout: RequestCallback | number | undefined,
     flagsOrTimeout: SendFlags | number | undefined,
     maybeTimeout: number | undefined,
@@ -279,7 +279,7 @@ export class Spot extends NativeHandle {
   replyToRouter(peerRid: RoutingId, requestSeq: bigint): ReplyOperation {
     return new RuntimeReplyOperation((parts, opFlags) => this.replyToRouterInternal(peerRid, requestSeq, parts, opFlags));
   }
-  private replyToSpotInternal(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags: SendFlags): void {
+  private replyToSpotInternal(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: MessageLike | readonly MessageLike[], flags: SendFlags): void {
     normalizeReplyFlags(flags);
     const normalizedDestNodeRid = normalizeRoutingId(destNodeRid);
     const normalizedDestSpotRid = normalizeRoutingId(destSpotRid);
@@ -295,7 +295,7 @@ export class Spot extends NativeHandle {
       throw submitNativeError(error, flags, 'spot replyToSpot failed');
     }
   }
-  private replyToRouterInternal(peerRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags: SendFlags): void {
+  private replyToRouterInternal(peerRid: RoutingId, requestSeq: bigint, parts: MessageLike | readonly MessageLike[], flags: SendFlags): void {
     normalizeReplyFlags(flags);
     const normalizedPeerRid = normalizeRoutingId(peerRid);
     try {
@@ -318,7 +318,8 @@ export class Spot extends NativeHandle {
       throw recvNativeError(error, flags, 'recvRouted failed');
     }
     if (!raw) return false;
-    const received = materializeReceived(
+    materializeReceivedInto(
+      result,
       {
         parts: raw.parts,
         routingId: raw.sourceRid ?? null,
@@ -348,7 +349,6 @@ export class Spot extends NativeHandle {
         );
       }
     );
-    result._adoptFrom(received);
     return true;
   }
   setDispatchHandler(handler: SpotDispatchEventHandler): void {

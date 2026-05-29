@@ -31,7 +31,7 @@ export function invokeActorJoin(
   destNodeRid: RoutingId,
   destSpotRid: RoutingId,
   spotHandle: unknown | null,
-  parts: readonly MessageLike[],
+  parts: MessageLike | readonly MessageLike[],
   callback: ActorJoinHandler,
   flags: SendFlags,
   timeoutMs: number,
@@ -151,7 +151,7 @@ export function invokeRemoteActorGetRef(
 export function invokeActorSendBoundSession(
   nodeHandle: unknown,
   actor: ActorRef,
-  parts: readonly MessageLike[],
+  parts: MessageLike | readonly MessageLike[],
   flags: SendFlags,
 ): boolean {
   try {
@@ -221,7 +221,7 @@ export function invokeStreamSendBoundActor(
   streamHandle: unknown,
   sessionRid: Buffer,
   actorId: string,
-  parts: readonly MessageLike[],
+  parts: MessageLike | readonly MessageLike[],
   flags: SendFlags,
 ): boolean {
   try {

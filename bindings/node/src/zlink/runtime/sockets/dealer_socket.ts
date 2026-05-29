@@ -58,7 +58,7 @@ export class DealerSocket extends MessageSocket {
     );
   }
   private requestDirect(
-    payloadOrParts: readonly MessageLike[],
+    payloadOrParts: MessageLike | readonly MessageLike[],
     callbackOrTimeout?: RequestCallback | number,
     flagsOrTimeout?: SendFlags | number,
     maybeTimeout?: number,

@@ -75,9 +75,10 @@ void registry_t::remove_channel_providers_locked (
     _projection_state.services.erase (key);
 }
 
-void registry_t::handle_peer (void *sub_)
+bool registry_t::read_peer_frames (void *sub_, scoped_msg_frames_t *frames_) const
 {
-    scoped_msg_frames_t frames;
+    if (!frames_)
+        return false;
     while (true) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
@@ -85,188 +86,213 @@ void registry_t::handle_peer (void *sub_)
             zlink_msg_close (&frame);
             break;
         }
-        frames.push_back (frame);
+        frames_->push_back (frame);
         if (!msg_frame_has_more (frame))
             break;
     }
+    return !frames_->empty ();
+}
 
-    if (frames.empty ())
-        return;
+bool registry_t::decode_peer_header (const scoped_msg_frames_t &frames_,
+                                     uint16_t *msg_id_out_,
+                                     uint32_t *peer_registry_id_out_,
+                                     uint64_t *list_seq_out_) const
+{
+    if (!msg_id_out_ || !peer_registry_id_out_ || !list_seq_out_
+        || frames_.size () < 4)
+        return false;
 
     uint16_t msg_id = 0;
-    if (zlink_msg_size (&frames[0])
+    if (zlink_msg_size (&frames_[0])
           == sizeof (discovery_protocol::bootstrap_req_t)) {
         discovery_protocol::bootstrap_req_t req;
-        memcpy (&req, zlink_msg_data (&frames[0]), sizeof (req));
+        memcpy (&req, zlink_msg_data (
+                        const_cast<zlink_msg_t *> (&frames_[0])),
+                sizeof (req));
         msg_id = req.msg_id;
-    } else if (!discovery_protocol::read_u16 (frames[0], &msg_id)) {
-        return;
+    } else if (!discovery_protocol::read_u16 (frames_[0], &msg_id)) {
+        return false;
     }
 
     if (msg_id != discovery_protocol::msg_service_list
-        && msg_id != discovery_protocol::msg_registry_sync) {
-        return;
-    }
-
-    if (frames.size () < 4) {
-        return;
-    }
+        && msg_id != discovery_protocol::msg_registry_sync)
+        return false;
 
     uint32_t peer_registry_id = 0;
     uint64_t list_seq = 0;
     uint32_t service_count = 0;
-    if (!discovery_protocol::read_u32 (frames[1], &peer_registry_id)
-        || !discovery_protocol::read_u64 (frames[2], &list_seq)
+    if (!discovery_protocol::read_u32 (frames_[1], &peer_registry_id)
+        || !discovery_protocol::read_u64 (frames_[2], &list_seq)
         || (msg_id == discovery_protocol::msg_service_list
-            && !discovery_protocol::read_u32 (frames[3], &service_count))) {
+            && !discovery_protocol::read_u32 (frames_[3], &service_count)))
+        return false;
+
+    *msg_id_out_ = msg_id;
+    *peer_registry_id_out_ = peer_registry_id;
+    *list_seq_out_ = list_seq;
+    return true;
+}
+
+bool registry_t::accept_peer_message_locked (
+  uint16_t msg_id_,
+  uint32_t peer_registry_id_,
+  uint64_t list_seq_,
+  uint64_t now_ms_,
+  uint32_t *local_registry_id_out_)
+{
+    uint32_t local_registry_id = _coordination_state.registry_id;
+    if (local_registry_id == 0)
+        local_registry_id = 1;
+    if (local_registry_id_out_)
+        *local_registry_id_out_ = local_registry_id;
+
+    if (peer_registry_id_ == local_registry_id)
+        return false;
+
+    _projection_state.peer_last_seen[peer_registry_id_] = now_ms_;
+    std::map<uint32_t, uint64_t>::iterator it =
+      _projection_state.peer_seq.find (peer_registry_id_);
+    std::map<uint32_t, uint64_t>::iterator route_it =
+      _projection_state.peer_route_seq.find (peer_registry_id_);
+    if (msg_id_ == discovery_protocol::msg_service_list
+        && it != _projection_state.peer_seq.end () && list_seq_ <= it->second)
+        return false;
+    if (msg_id_ == discovery_protocol::msg_registry_sync
+        && route_it != _projection_state.peer_route_seq.end ()
+        && list_seq_ <= route_it->second)
+        return false;
+    return true;
+}
+
+void registry_t::handle_peer_route_sync (
+  const scoped_msg_frames_t &frames_,
+  uint32_t peer_registry_id,
+  uint64_t list_seq,
+  uint64_t now,
+  uint32_t local_registry_id)
+{
+    discovery_protocol::route_list_t route_list;
+    if (!discovery_protocol::decode_route_list (frames_, &route_list)) {
         return;
     }
 
-    service_map_t incoming;
-    std::map<std::string, channel_contract_t> incoming_contracts;
-    const uint64_t now = zlink::clock_t ().now_ms ();
+    std::vector<route_entry_t> incoming_routes;
+    size_t incoming_memory = 0;
+    for (size_t i = 0; i < route_list.routes.size (); ++i) {
+        const discovery_protocol::route_record_t &record =
+          route_list.routes[i];
+        route_key_t route_key;
+        route_key.channel_name = record.channel_name;
+        route_key.kind = static_cast<zlink_route_kind_t> (record.raw_kind);
+        if (route_key.channel_name.empty ()
+            || route_key.kind == ZLINK_ROUTE_KIND_INVALID
+            || record.key.empty () || record.key.size () > ZLINK_ROUTE_KEY_MAX) {
+            return;
+        }
+        route_key.key.assign (
+          reinterpret_cast<const char *> (&record.key[0]),
+          record.key.size ());
 
-    uint32_t local_registry_id = 0;
+        route_entry_t route;
+        route.key = route_key;
+        route.value = record.value;
+        route.owner.channel_name = record.owner_channel_name;
+        route.owner.service_role = record.owner_service_role;
+        if (!record.owner_routing_id_key.empty ()) {
+            route.owner.routing_id_key.assign (
+              reinterpret_cast<const char *> (
+                &record.owner_routing_id_key[0]),
+              record.owner_routing_id_key.size ());
+        }
+        route.owner.source_registry = record.owner_source_registry;
+        route.owner.registration_id = record.owner_registration_id;
+        route.updated_at_ms = record.updated_at_ms;
+        if (route.updated_at_ms == 0)
+            route.updated_at_ms = now;
+        route.advertising_registry = peer_registry_id;
+        incoming_memory += route_entry_memory_bytes (route);
+        incoming_routes.push_back (route);
+    }
+
     {
         scoped_lock_t lock (_sync);
-        local_registry_id = _coordination_state.registry_id;
-        if (local_registry_id == 0)
-            local_registry_id = 1;
-
-        if (peer_registry_id == local_registry_id) {
-            return;
-        }
-
-        _projection_state.peer_last_seen[peer_registry_id] = now;
-        std::map<uint32_t, uint64_t>::iterator it =
-          _projection_state.peer_seq.find (peer_registry_id);
         std::map<uint32_t, uint64_t>::iterator route_it =
           _projection_state.peer_route_seq.find (peer_registry_id);
-        if (msg_id == discovery_protocol::msg_service_list
-            && it != _projection_state.peer_seq.end () && list_seq <= it->second) {
-            return;
-        }
-        if (msg_id == discovery_protocol::msg_registry_sync
-            && route_it != _projection_state.peer_route_seq.end ()
-            && list_seq <= route_it->second) {
-            return;
-        }
-    }
-
-    if (msg_id == discovery_protocol::msg_registry_sync) {
-        discovery_protocol::route_list_t route_list;
-        if (!discovery_protocol::decode_route_list (frames, &route_list)) {
+        if (peer_registry_id == local_registry_id
+            || (route_it != _projection_state.peer_route_seq.end ()
+                && list_seq <= route_it->second)) {
             return;
         }
 
-        std::vector<route_entry_t> incoming_routes;
-        size_t incoming_memory = 0;
-        for (size_t i = 0; i < route_list.routes.size (); ++i) {
-            const discovery_protocol::route_record_t &record =
-              route_list.routes[i];
-            route_key_t route_key;
-            route_key.channel_name = record.channel_name;
-            route_key.kind = static_cast<zlink_route_kind_t> (record.raw_kind);
-            if (route_key.channel_name.empty ()
-                || route_key.kind == ZLINK_ROUTE_KIND_INVALID
-                || record.key.empty () || record.key.size () > ZLINK_ROUTE_KEY_MAX) {
-                return;
-            }
-            route_key.key.assign (
-              reinterpret_cast<const char *> (&record.key[0]),
-              record.key.size ());
-
-            route_entry_t route;
-            route.key = route_key;
-            route.value = record.value;
-            route.owner.channel_name = record.owner_channel_name;
-            route.owner.service_role = record.owner_service_role;
-            if (!record.owner_routing_id_key.empty ()) {
-                route.owner.routing_id_key.assign (
-                  reinterpret_cast<const char *> (
-                    &record.owner_routing_id_key[0]),
-                  record.owner_routing_id_key.size ());
-            }
-            route.owner.source_registry = record.owner_source_registry;
-            route.owner.registration_id = record.owner_registration_id;
-            route.updated_at_ms = record.updated_at_ms;
-            if (route.updated_at_ms == 0)
-                route.updated_at_ms = now;
-            route.advertising_registry = peer_registry_id;
-            incoming_memory += route_entry_memory_bytes (route);
-            incoming_routes.push_back (route);
+        route_snapshot_staging_t &staging =
+          _projection_state.route_snapshot_staging[peer_registry_id];
+        const bool starts_snapshot = route_list.chunk_index == 0;
+        if (starts_snapshot) {
+            staging = route_snapshot_staging_t ();
+            staging.seq = list_seq;
+            staging.chunk_count = route_list.chunk_count;
+            staging.active = true;
+        }
+        if (!staging.active || staging.seq != list_seq
+            || staging.chunk_count != route_list.chunk_count
+            || staging.next_chunk_index != route_list.chunk_index
+            || staging.memory_bytes + incoming_memory
+                 > _projection_state.route_limits.staging_memory_budget_bytes) {
+            _projection_state.route_snapshot_staging.erase (peer_registry_id);
+            _projection_state.route_stats.snapshot_staging_abort_count++;
+            return;
         }
 
-        {
-            scoped_lock_t lock (_sync);
-            std::map<uint32_t, uint64_t>::iterator route_it =
-              _projection_state.peer_route_seq.find (peer_registry_id);
-            if (peer_registry_id == local_registry_id
-                || (route_it != _projection_state.peer_route_seq.end ()
-                    && list_seq <= route_it->second)) {
-                return;
-            }
+        for (std::vector<route_entry_t>::const_iterator it =
+               incoming_routes.begin ();
+             it != incoming_routes.end (); ++it) {
+            route_observation_key_t obs_key;
+            obs_key.route_key = it->key;
+            obs_key.owner = it->owner;
+            obs_key.advertising_registry = it->advertising_registry;
+            staging.observations[obs_key] = *it;
+        }
+        staging.memory_bytes += incoming_memory;
+        staging.next_chunk_index++;
 
-            route_snapshot_staging_t &staging =
-              _projection_state.route_snapshot_staging[peer_registry_id];
-            const bool starts_snapshot = route_list.chunk_index == 0;
-            if (starts_snapshot) {
-                staging = route_snapshot_staging_t ();
-                staging.seq = list_seq;
-                staging.chunk_count = route_list.chunk_count;
-                staging.active = true;
-            }
-            if (!staging.active || staging.seq != list_seq
-                || staging.chunk_count != route_list.chunk_count
-                || staging.next_chunk_index != route_list.chunk_index
-                || staging.memory_bytes + incoming_memory
-                     > _projection_state.route_limits.staging_memory_budget_bytes) {
-                _projection_state.route_snapshot_staging.erase (peer_registry_id);
-                _projection_state.route_stats.snapshot_staging_abort_count++;
-                return;
-            }
-
-            for (std::vector<route_entry_t>::const_iterator it =
-                   incoming_routes.begin ();
-                 it != incoming_routes.end (); ++it) {
-                route_observation_key_t obs_key;
-                obs_key.route_key = it->key;
-                obs_key.owner = it->owner;
-                obs_key.advertising_registry = it->advertising_registry;
-                staging.observations[obs_key] = *it;
-            }
-            staging.memory_bytes += incoming_memory;
-            staging.next_chunk_index++;
-
-            if (route_list.chunk_index + 1 == route_list.chunk_count) {
-                route_key_set_t dirty_routes;
-                cleanup_advertised_route_records_locked (peer_registry_id);
-                for (route_observation_map_t::const_iterator it =
-                       staging.observations.begin ();
-                     it != staging.observations.end (); ++it) {
-                    int route_error = 0;
-                    if (!route_store_can_fit_locked (it->second, 0,
-                                                     &route_error)) {
-                        _projection_state.route_snapshot_staging.erase (peer_registry_id);
-                        _projection_state.route_stats.snapshot_staging_abort_count++;
-                        return;
-                    }
-                    upsert_route_observation_locked (it->second,
-                                                     &dirty_routes);
+        if (route_list.chunk_index + 1 == route_list.chunk_count) {
+            route_key_set_t dirty_routes;
+            cleanup_advertised_route_records_locked (peer_registry_id);
+            for (route_observation_map_t::const_iterator it =
+                   staging.observations.begin ();
+                 it != staging.observations.end (); ++it) {
+                int route_error = 0;
+                if (!route_store_can_fit_locked (it->second, 0,
+                                                 &route_error)) {
+                    _projection_state.route_snapshot_staging.erase (peer_registry_id);
+                    _projection_state.route_stats.snapshot_staging_abort_count++;
+                    return;
                 }
-                materialize_dirty_routes_locked (dirty_routes);
-                _projection_state.peer_route_seq[peer_registry_id] = list_seq;
-                _projection_state.route_snapshot_staging.erase (peer_registry_id);
-                _coordination_state.list_seq++;
+                upsert_route_observation_locked (it->second,
+                                                 &dirty_routes);
             }
+            materialize_dirty_routes_locked (dirty_routes);
+            _projection_state.peer_route_seq[peer_registry_id] = list_seq;
+            _projection_state.route_snapshot_staging.erase (peer_registry_id);
+            _coordination_state.list_seq++;
         }
-        return;
     }
+    return;
+}
 
+void registry_t::handle_peer_service_list (
+  const scoped_msg_frames_t &frames_,
+  uint32_t peer_registry_id,
+  uint64_t list_seq,
+  uint64_t now,
+  uint32_t local_registry_id)
+{
     discovery_protocol::service_list_t service_list;
-    if (!discovery_protocol::decode_service_list (frames, &service_list)) {
+    if (!discovery_protocol::decode_service_list (frames_, &service_list)) {
         return;
     }
+    service_map_t incoming;
+    std::map<std::string, channel_contract_t> incoming_contracts;
     for (size_t i = 0; i < service_list.services.size (); ++i) {
         const discovery_protocol::service_record_t &record =
           service_list.services[i];
@@ -464,6 +490,37 @@ void registry_t::handle_peer (void *sub_)
         _projection_state.peer_seq[peer_registry_id] = list_seq;
         _coordination_state.list_seq++;
     }
+}
+
+void registry_t::handle_peer (void *sub_)
+{
+    scoped_msg_frames_t frames;
+    if (!read_peer_frames (sub_, &frames))
+        return;
+
+    uint16_t msg_id = 0;
+    uint32_t peer_registry_id = 0;
+    uint64_t list_seq = 0;
+    if (!decode_peer_header (frames, &msg_id, &peer_registry_id, &list_seq))
+        return;
+
+    const uint64_t now = zlink::clock_t ().now_ms ();
+    uint32_t local_registry_id = 0;
+    {
+        scoped_lock_t lock (_sync);
+        if (!accept_peer_message_locked (msg_id, peer_registry_id, list_seq,
+                                         now, &local_registry_id))
+            return;
+    }
+
+    if (msg_id == discovery_protocol::msg_registry_sync) {
+        handle_peer_route_sync (frames, peer_registry_id, list_seq, now,
+                                local_registry_id);
+        return;
+    }
+
+    handle_peer_service_list (frames, peer_registry_id, list_seq, now,
+                              local_registry_id);
 }
 
 void registry_t::handle_register (void *router_,

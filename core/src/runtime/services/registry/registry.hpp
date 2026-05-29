@@ -23,6 +23,8 @@
 
 namespace zlink
 {
+struct scoped_msg_frames_t;
+
 class registry_t
 {
   public:
@@ -392,6 +394,26 @@ class registry_t
     void close_sockets ();
     void handle_router (void *router_);
     void handle_peer (void *sub_);
+    bool read_peer_frames (void *sub_, scoped_msg_frames_t *frames_) const;
+    bool decode_peer_header (const scoped_msg_frames_t &frames_,
+                             uint16_t *msg_id_out_,
+                             uint32_t *peer_registry_id_out_,
+                             uint64_t *list_seq_out_) const;
+    bool accept_peer_message_locked (uint16_t msg_id_,
+                                     uint32_t peer_registry_id_,
+                                     uint64_t list_seq_,
+                                     uint64_t now_ms_,
+                                     uint32_t *local_registry_id_out_);
+    void handle_peer_route_sync (const scoped_msg_frames_t &frames_,
+                                 uint32_t peer_registry_id_,
+                                 uint64_t list_seq_,
+                                 uint64_t now_ms_,
+                                 uint32_t local_registry_id_);
+    void handle_peer_service_list (const scoped_msg_frames_t &frames_,
+                                   uint32_t peer_registry_id_,
+                                   uint64_t list_seq_,
+                                   uint64_t now_ms_,
+                                   uint32_t local_registry_id_);
     void handle_register (void *router_,
                           const zlink_msg_t *frames_,
                           size_t frame_count_,

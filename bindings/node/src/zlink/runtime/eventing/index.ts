@@ -2,18 +2,18 @@
 
 export {
   AtomicCounter,
-  AtomicCounter as DefaultAtomicCounter,
+  AtomicCounter as RuntimeAtomicCounter,
   Stopwatch,
-  Stopwatch as DefaultStopwatch,
+  Stopwatch as RuntimeStopwatch,
   sleep,
 } from './counters';
-export { Thread as DefaultThread } from './thread';
+export { Thread as RuntimeThread } from './thread';
 export {
   Poller,
-  Poller as DefaultPoller,
+  Poller as RuntimePoller,
 } from './poller';
 export {
   PollEvents,
-  PollEvents as DefaultPollEvents,
+  PollEvents as RuntimePollEvents,
 } from './poll_events';
-export { Timer, Timer as DefaultTimer } from './timer';
+export { Timer, Timer as RuntimeTimer } from './timer';

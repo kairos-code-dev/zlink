@@ -21,8 +21,8 @@ import { requireNative } from '../native/native';
 import { flagsToMask } from '../sockets/socket_options';
 import { PollEvents } from './poll_events';
 import { Timer } from './timer';
-import type { DefaultSpot as Spot } from '../service';
-import type { DefaultBaseSocket as BaseSocket } from '../sockets';
+import type { RuntimeSpot as Spot } from '../service';
+import type { RuntimeBaseSocket as BaseSocket } from '../sockets';
 
 type BasePollable = BaseSocket | Spot;
 
@@ -188,4 +188,4 @@ export class Poller {
   }
 }
 
-export { Poller as DefaultPoller };
+export { Poller as RuntimePoller };

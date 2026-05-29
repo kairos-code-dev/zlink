@@ -17,10 +17,10 @@ import {
   PublisherSocket,
   RecvFlags,
   Received,
-  DefaultRequestOperation,
+  RuntimeRequestOperation,
   RoutedMessageSocket,
   SendFlags,
-  DefaultSendOperation,
+  RuntimeSendOperation,
   SocketOption,
   SubscriberSocket,
   SubscriptionEvent,
@@ -43,7 +43,7 @@ import {
   adoptTopicMessage,
   executeNativeRequest,
   startRequestProgress,
-  DefaultReplyOperation,
+  RuntimeReplyOperation,
   RecvResult,
   requestErrorFromResult,
   type ActorBindOperation,
@@ -102,7 +102,7 @@ export class DealerSocket extends MessageSocket {
     });
   }
   request(): RequestOperation {
-    return new DefaultRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+    return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
       this.requestDirect(parts, cbOrTimeout as any, opFlags as any, opTimeout)
     );
   }

@@ -80,4 +80,4 @@ export class PollEvents {
   }
 }
 
-export { PollEvents as DefaultPollEvents };
+export { PollEvents as RuntimePollEvents };

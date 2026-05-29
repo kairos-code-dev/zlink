@@ -17,10 +17,10 @@ import {
   PublisherSocket,
   RecvFlags,
   Received,
-  DefaultRequestOperation,
+  RuntimeRequestOperation,
   RoutedMessageSocket,
   SendFlags,
-  DefaultSendOperation,
+  RuntimeSendOperation,
   SocketOption,
   SubscriberSocket,
   SubscriptionEvent,
@@ -43,7 +43,7 @@ import {
   adoptTopicMessage,
   executeNativeRequest,
   startRequestProgress,
-  DefaultReplyOperation,
+  RuntimeReplyOperation,
   RecvResult,
   requestErrorFromResult,
   type ActorBindOperation,
@@ -62,8 +62,8 @@ import {
   type StreamPacketHandler,
 } from './socket_operations';
 import {
-  DefaultActorBindOperation,
-  DefaultActorUnbindOperation,
+  RuntimeActorBindOperation,
+  RuntimeActorUnbindOperation,
   actorRefFromRaw,
   actorRefToRaw,
   invokeStreamBindActor,
@@ -80,7 +80,7 @@ export class StreamSocket extends SocketBase {
     this.options = StreamSocketOptions.create(this);
   }
   send(routingId: RoutingId): SendOperation {
-    return new DefaultSendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
+    return new RuntimeSendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
   }
   private sendDirect(routingId: RoutingId, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalized = normalizeMessageLikePayload(payload);
@@ -187,7 +187,7 @@ export class StreamSocket extends SocketBase {
     const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const actorRaw = actorRefToRaw(actor);
-    return new DefaultActorBindOperation((callback, timeoutMs) =>
+    return new RuntimeActorBindOperation((callback, timeoutMs) =>
       invokeStreamBindActor(handle, normalizedSessionRid, actorRaw, callback, timeoutMs),
     );
   }
@@ -195,7 +195,7 @@ export class StreamSocket extends SocketBase {
     const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    return new DefaultActorUnbindOperation((callback, timeoutMs) =>
+    return new RuntimeActorUnbindOperation((callback, timeoutMs) =>
       invokeStreamUnbindActor(handle, normalizedSessionRid, normalizedActorId, callback, timeoutMs),
     );
   }
@@ -203,7 +203,7 @@ export class StreamSocket extends SocketBase {
     const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    return new DefaultSendOperation((parts, flags) =>
+    return new RuntimeSendOperation((parts, flags) =>
       invokeStreamSendBoundActor(handle, normalizedSessionRid, normalizedActorId, parts, flags),
     );
   }

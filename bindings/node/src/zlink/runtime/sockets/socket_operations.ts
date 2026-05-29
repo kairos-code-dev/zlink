@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { DefaultContext as Context } from '../core/context';
+import { RuntimeContext as Context } from '../core/context';
 
 // SPDX-License-Identifier: MPL-2.0
 
@@ -366,7 +366,7 @@ export class OperationPayload {
   }
 }
 
-export class DefaultSendOperation implements SendOperation, SendSubmitOperation {
+export class RuntimeSendOperation implements SendOperation, SendSubmitOperation {
   private readonly _invoke: SendInvoker;
   private readonly _payload = new OperationPayload();
   private _flags: SendFlags = SendFlags.None;
@@ -440,7 +440,7 @@ export class PublishOperation implements SendOperation, SendSubmitOperation {
   }
 }
 
-export class DefaultRequestOperation implements RequestOperation, RequestSubmitOperation, RequestCallbackSubmitOperation {
+export class RuntimeRequestOperation implements RequestOperation, RequestSubmitOperation, RequestCallbackSubmitOperation {
   private readonly _invoke: RequestInvoker;
   private readonly _payload = new OperationPayload();
   private _timeoutMs = 0;
@@ -479,7 +479,7 @@ export class DefaultRequestOperation implements RequestOperation, RequestSubmitO
   }
 }
 
-export class DefaultReplyOperation implements ReplyOperation, ReplySubmitOperation {
+export class RuntimeReplyOperation implements ReplyOperation, ReplySubmitOperation {
   private readonly _invoke: ReplyInvoker;
   private readonly _payload = new OperationPayload();
   private _flags: SendFlags = SendFlags.None;
@@ -506,7 +506,7 @@ export class DefaultReplyOperation implements ReplyOperation, ReplySubmitOperati
 
 export class SendSocket extends ConnectableSocket {
   send(): SendOperation {
-    return new DefaultSendOperation((parts, flags) => this.sendDirect(parts, flags));
+    return new RuntimeSendOperation((parts, flags) => this.sendDirect(parts, flags));
   }
   protected sendDirect(payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const payload = normalizeMessageLikePayload(payloadOrParts);
@@ -654,7 +654,7 @@ export class SubscriberSocket extends ConnectableSocket {
 export type RouterSocket = { sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], flags?: SendFlags): boolean };
 export class RoutedMessageSocket extends ConnectableSocket {
   send(routingId: RoutingId): SendOperation {
-    return new DefaultSendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
+    return new RuntimeSendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
   }
   protected sendDirect(routingId: RoutingId, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalizedRoutingId = normalizeRoutingId(routingId);

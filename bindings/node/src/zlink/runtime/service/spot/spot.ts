@@ -9,7 +9,7 @@ import { normalizeRoutingId } from '../../core/routing_id';
 import { startRequestProgress } from '../../messaging/request_progress';
 import { adoptTopicMessage, materializeReceived, materializeTopicMessage } from '../../messaging/message_materializer';
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
-import { DefaultReplyOperation, DefaultRequestOperation, DefaultSendOperation, normalizeReplyFlags, submitErrorFromResult } from '../../sockets/socket_operations';
+import { RuntimeReplyOperation, RuntimeRequestOperation, RuntimeSendOperation, normalizeReplyFlags, submitErrorFromResult } from '../../sockets/socket_operations';
 import { toMessageParts, toOwnedMessage } from '../../buffers/message_conversion';
 import { Message, Received, RoutingId, SubscriptionEvent, TopicMessage, type MessageLike, type MessageSnapshot } from '../../../contracts';
 import { RecvFlags, SendFlags } from '../../../contracts/sockets/socket_constants';
@@ -17,7 +17,7 @@ import { SubmitResult } from '../../../contracts/errors/errors';
 import { SpotDispatchEvent, SpotDispatchSubjectKind, type ActorJoinRequest, type ActorJoinReplyOperation, type ActorPart, type ActorRef, type ReplyOperation, type RequestCallback, type RequestOperation, type SendOperation, type SpotActorLifecycleEvent, type SpotDispatchEventHandler, type SpotDispatchEvent as SpotDispatchEventValue, type SpotDispatchSubjectKind as SpotDispatchSubjectKindValue, type SpotSendReadyHandler, type SubscriptionEntry } from '../../../contracts/service';
 import { wrapRoutingId } from '../../../contracts/service/spot/spot_models';
 import { SpotOption } from './spot_options';
-import { DefaultActorJoinReplyOperation, actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFromRaw, spotActorLifecycleInfoFromRaw, type SpotActorLifecycleInfoRaw } from './spot_operations';
+import { RuntimeActorJoinReplyOperation, actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFromRaw, spotActorLifecycleInfoFromRaw, type SpotActorLifecycleInfoRaw } from './spot_operations';
 
 type OwnerSpotNode = { nativeHandle(): unknown; readonly routingId: RoutingId; unregisterSpot(spot: Spot): void };
 
@@ -67,7 +67,7 @@ export class Spot extends NativeHandle {
     });
   }
   publish(topic: string): SendOperation {
-    return new DefaultSendOperation((parts, opFlags) => this.publishDirect(topic, parts, opFlags));
+    return new RuntimeSendOperation((parts, opFlags) => this.publishDirect(topic, parts, opFlags));
   }
   private publishDirect(topic: string, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
     try {
@@ -166,7 +166,7 @@ export class Spot extends NativeHandle {
     });
   }
   sendToChannel(channelName: string): SendOperation {
-    return new DefaultSendOperation((parts, opFlags) => this.sendChannelDirect(channelName, parts, opFlags));
+    return new RuntimeSendOperation((parts, opFlags) => this.sendChannelDirect(channelName, parts, opFlags));
   }
   private sendChannelDirect(channelName: string, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
     try {
@@ -186,7 +186,7 @@ export class Spot extends NativeHandle {
     }
   }
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOperation {
-    return new DefaultSendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
+    return new RuntimeSendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
   }
   private sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
     try {
@@ -207,7 +207,7 @@ export class Spot extends NativeHandle {
     }
   }
   requestToChannel(channelName: string): RequestOperation {
-    return new DefaultRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+    return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
       this.requestChannelDirect(channelName, parts, cbOrTimeout as any, opFlags as any, opTimeout)
     );
   }
@@ -237,12 +237,12 @@ export class Spot extends NativeHandle {
     });
   }
   requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOperation {
-    return new DefaultRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+    return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
       this.requestToSpotDirect(destNodeRid, destSpotRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
     );
   }
   requestToRouter(peerRid: RoutingId): RequestOperation {
-    return new DefaultRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+    return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
       this.requestToRouterDirect(peerRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
     );
   }
@@ -297,10 +297,10 @@ export class Spot extends NativeHandle {
     });
   }
   replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOperation {
-    return new DefaultReplyOperation((parts, opFlags) => this.replyToSpotInternal(destNodeRid, destSpotRid, requestSeq, parts.map(toOwnedMessage), opFlags));
+    return new RuntimeReplyOperation((parts, opFlags) => this.replyToSpotInternal(destNodeRid, destSpotRid, requestSeq, parts.map(toOwnedMessage), opFlags));
   }
   replyToRouter(peerRid: RoutingId, requestSeq: bigint): ReplyOperation {
-    return new DefaultReplyOperation((parts, opFlags) => this.replyToRouterInternal(peerRid, requestSeq, parts.map(toOwnedMessage), opFlags));
+    return new RuntimeReplyOperation((parts, opFlags) => this.replyToRouterInternal(peerRid, requestSeq, parts.map(toOwnedMessage), opFlags));
   }
   private replyToSpotInternal(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: readonly Message[], flags: SendFlags): void {
     normalizeReplyFlags(flags);
@@ -443,7 +443,7 @@ export class Spot extends NativeHandle {
     const spotHandle = this._native;
     const rawInfo = actorJoinInfoToRaw(request.info);
     const code = joinResultCode | 0;
-    return new DefaultActorJoinReplyOperation((partsInput) => {
+    return new RuntimeActorJoinReplyOperation((partsInput) => {
       const parts = toMessageParts(partsInput);
       try {
         requireNative().spotActorJoinReply(spotHandle, rawInfo, code, parts);

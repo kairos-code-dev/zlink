@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import {
-  DefaultContext,
+  RuntimeContext,
 } from './core/context';
 import {
   has,
@@ -12,29 +12,29 @@ import {
   version,
 } from './core/runtime_info';
 import {
-  DefaultAtomicCounter,
-  DefaultPoller,
-  DefaultPollEvents,
-  DefaultStopwatch,
-  DefaultThread,
-  DefaultTimer,
+  RuntimeAtomicCounter,
+  RuntimePoller,
+  RuntimePollEvents,
+  RuntimeStopwatch,
+  RuntimeThread,
+  RuntimeTimer,
   sleep,
 } from './eventing';
 import {
-  DefaultDealerSocket,
-  DefaultPairSocket,
-  DefaultPubSocket,
-  DefaultRouterSocket,
-  DefaultStreamSocket,
-  DefaultSubSocket,
-  DefaultXPubSocket,
-  DefaultXSubSocket,
+  RuntimeDealerSocket,
+  RuntimePairSocket,
+  RuntimePubSocket,
+  RuntimeRouterSocket,
+  RuntimeStreamSocket,
+  RuntimeSubSocket,
+  RuntimeXPubSocket,
+  RuntimeXSubSocket,
 } from './sockets';
 import {
-  DefaultDiscovery,
-  DefaultRegistry,
-  DefaultRegistryQueryClient,
-  DefaultSpotNode,
+  RuntimeDiscovery,
+  RuntimeRegistry,
+  RuntimeRegistryQueryClient,
+  RuntimeSpotNode,
 } from './service';
 
 export {
@@ -47,85 +47,85 @@ export {
   version,
 };
 
-export function createDefaultContext(): DefaultContext {
-  return new DefaultContext();
+export function createRuntimeContext(): RuntimeContext {
+  return new RuntimeContext();
 }
 
-export function createDefaultPairSocket(ctx: DefaultContext): DefaultPairSocket {
-  return new DefaultPairSocket(ctx);
+export function createRuntimePairSocket(ctx: RuntimeContext): RuntimePairSocket {
+  return new RuntimePairSocket(ctx);
 }
 
-export function createDefaultPubSocket(ctx: DefaultContext): DefaultPubSocket {
-  return new DefaultPubSocket(ctx);
+export function createRuntimePubSocket(ctx: RuntimeContext): RuntimePubSocket {
+  return new RuntimePubSocket(ctx);
 }
 
-export function createDefaultSubSocket(ctx: DefaultContext): DefaultSubSocket {
-  return new DefaultSubSocket(ctx);
+export function createRuntimeSubSocket(ctx: RuntimeContext): RuntimeSubSocket {
+  return new RuntimeSubSocket(ctx);
 }
 
-export function createDefaultXPubSocket(ctx: DefaultContext): DefaultXPubSocket {
-  return new DefaultXPubSocket(ctx);
+export function createRuntimeXPubSocket(ctx: RuntimeContext): RuntimeXPubSocket {
+  return new RuntimeXPubSocket(ctx);
 }
 
-export function createDefaultXSubSocket(ctx: DefaultContext): DefaultXSubSocket {
-  return new DefaultXSubSocket(ctx);
+export function createRuntimeXSubSocket(ctx: RuntimeContext): RuntimeXSubSocket {
+  return new RuntimeXSubSocket(ctx);
 }
 
-export function createDefaultDealerSocket(ctx: DefaultContext): DefaultDealerSocket {
-  return new DefaultDealerSocket(ctx);
+export function createRuntimeDealerSocket(ctx: RuntimeContext): RuntimeDealerSocket {
+  return new RuntimeDealerSocket(ctx);
 }
 
-export function createDefaultRouterSocket(ctx: DefaultContext): DefaultRouterSocket {
-  return new DefaultRouterSocket(ctx);
+export function createRuntimeRouterSocket(ctx: RuntimeContext): RuntimeRouterSocket {
+  return new RuntimeRouterSocket(ctx);
 }
 
-export function createDefaultStreamSocket(ctx: DefaultContext): DefaultStreamSocket {
-  return new DefaultStreamSocket(ctx);
+export function createRuntimeStreamSocket(ctx: RuntimeContext): RuntimeStreamSocket {
+  return new RuntimeStreamSocket(ctx);
 }
 
-export function createDefaultRegistry(ctx: DefaultContext): DefaultRegistry {
-  return new DefaultRegistry(ctx);
+export function createRuntimeRegistry(ctx: RuntimeContext): RuntimeRegistry {
+  return new RuntimeRegistry(ctx);
 }
 
-export function createDefaultRegistryQueryClient(ctx: DefaultContext): DefaultRegistryQueryClient {
-  return new DefaultRegistryQueryClient(ctx);
+export function createRuntimeRegistryQueryClient(ctx: RuntimeContext): RuntimeRegistryQueryClient {
+  return new RuntimeRegistryQueryClient(ctx);
 }
 
-export function createDefaultDiscovery(
-  ctx: DefaultContext,
-  autoConnectType: ConstructorParameters<typeof DefaultDiscovery>[1],
+export function createRuntimeDiscovery(
+  ctx: RuntimeContext,
+  autoConnectType: ConstructorParameters<typeof RuntimeDiscovery>[1],
   channelName: string
-): DefaultDiscovery {
-  return new DefaultDiscovery(ctx, autoConnectType, channelName);
+): RuntimeDiscovery {
+  return new RuntimeDiscovery(ctx, autoConnectType, channelName);
 }
 
-export function createDefaultSpotNode(
-  ctx: DefaultContext,
-  mode?: ConstructorParameters<typeof DefaultSpotNode>[1]
-): DefaultSpotNode {
-  return new DefaultSpotNode(ctx, mode);
+export function createRuntimeSpotNode(
+  ctx: RuntimeContext,
+  mode?: ConstructorParameters<typeof RuntimeSpotNode>[1]
+): RuntimeSpotNode {
+  return new RuntimeSpotNode(ctx, mode);
 }
 
-export function createDefaultPoller(): DefaultPoller {
-  return new DefaultPoller();
+export function createRuntimePoller(): RuntimePoller {
+  return new RuntimePoller();
 }
 
-export function createDefaultPollEvents(capacity: number): DefaultPollEvents {
-  return new DefaultPollEvents(capacity);
+export function createRuntimePollEvents(capacity: number): RuntimePollEvents {
+  return new RuntimePollEvents(capacity);
 }
 
-export function createDefaultTimer(): DefaultTimer {
-  return new DefaultTimer();
+export function createRuntimeTimer(): RuntimeTimer {
+  return new RuntimeTimer();
 }
 
-export function createDefaultThread(handler: () => void): DefaultThread {
-  return new DefaultThread(handler);
+export function createRuntimeThread(handler: () => void): RuntimeThread {
+  return new RuntimeThread(handler);
 }
 
-export function createDefaultStopwatch(): DefaultStopwatch {
-  return new DefaultStopwatch();
+export function createRuntimeStopwatch(): RuntimeStopwatch {
+  return new RuntimeStopwatch();
 }
 
-export function createDefaultAtomicCounter(initialValue = 0): DefaultAtomicCounter {
-  return new DefaultAtomicCounter(initialValue);
+export function createRuntimeAtomicCounter(initialValue = 0): RuntimeAtomicCounter {
+  return new RuntimeAtomicCounter(initialValue);
 }

@@ -10,22 +10,22 @@ import type { RouterSocket } from './router_socket';
 import type { StreamSocket } from './stream_socket';
 
 export {
-  CommonSocketOptions as DefaultCommonSocketOptions,
-  DealerSocketOptions as DefaultDealerSocketOptions,
-  PubSocketOptions as DefaultPubSocketOptions,
-  RouterSocketOptions as DefaultRouterSocketOptions,
-  StreamSocketOptions as DefaultStreamSocketOptions,
-  SubSocketOptions as DefaultSubSocketOptions,
+  CommonSocketOptions as RuntimeCommonSocketOptions,
+  DealerSocketOptions as RuntimeDealerSocketOptions,
+  PubSocketOptions as RuntimePubSocketOptions,
+  RouterSocketOptions as RuntimeRouterSocketOptions,
+  StreamSocketOptions as RuntimeStreamSocketOptions,
+  SubSocketOptions as RuntimeSubSocketOptions,
 } from './socket_options';
-export { MonitorSocket as DefaultMonitorSocket } from '../eventing/monitor_socket';
-export { PairSocket as DefaultPairSocket } from './pair_socket';
-export { PubSocket as DefaultPubSocket } from './pub_socket';
-export { XPubSocket as DefaultXPubSocket } from './xpub_socket';
-export { SubSocket as DefaultSubSocket } from './sub_socket';
-export { XSubSocket as DefaultXSubSocket } from './xsub_socket';
-export { DealerSocket as DefaultDealerSocket } from './dealer_socket';
-export { RouterSocket as DefaultRouterSocket } from './router_socket';
-export { StreamSocket as DefaultStreamSocket } from './stream_socket';
+export { MonitorSocket as RuntimeMonitorSocket } from '../eventing/monitor_socket';
+export { PairSocket as RuntimePairSocket } from './pair_socket';
+export { PubSocket as RuntimePubSocket } from './pub_socket';
+export { XPubSocket as RuntimeXPubSocket } from './xpub_socket';
+export { SubSocket as RuntimeSubSocket } from './sub_socket';
+export { XSubSocket as RuntimeXSubSocket } from './xsub_socket';
+export { DealerSocket as RuntimeDealerSocket } from './dealer_socket';
+export { RouterSocket as RuntimeRouterSocket } from './router_socket';
+export { StreamSocket as RuntimeStreamSocket } from './stream_socket';
 
 export type BaseSocket =
   | PairSocket
@@ -36,4 +36,4 @@ export type BaseSocket =
   | DealerSocket
   | RouterSocket
   | StreamSocket;
-export type { BaseSocket as DefaultBaseSocket };
+export type { BaseSocket as RuntimeBaseSocket };

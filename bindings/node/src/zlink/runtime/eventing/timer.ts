@@ -11,7 +11,7 @@ import {
 } from '../errors/native_errors';
 import { requireNative } from '../native/native';
 import { NativeHandle } from '../handles/native_handle';
-import { DefaultSpot as Spot } from '../service';
+import { RuntimeSpot as Spot } from '../service';
 
 export class Timer extends NativeHandle {
   private static readonly CREATE_TOKEN = Symbol('Timer.fromNative');

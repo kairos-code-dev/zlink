@@ -4,7 +4,7 @@ import type { Message } from '../../contracts';
 import { validateCString } from '../options/validation';
 import { configCall } from '../errors/native_errors';
 import { requireNative } from '../native/native';
-import type { DefaultBaseSocket as BaseSocket } from '../sockets';
+import type { RuntimeBaseSocket as BaseSocket } from '../sockets';
 
 export function version(): [number, number, number] {
   return requireNative().version() as [number, number, number];

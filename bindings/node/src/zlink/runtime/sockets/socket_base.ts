@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { DefaultContext as Context } from '../core/context';
+import { RuntimeContext as Context } from '../core/context';
 import { NativeHandle } from '../handles/native_handle';
 import { requireNative } from '../native/native';
 import {

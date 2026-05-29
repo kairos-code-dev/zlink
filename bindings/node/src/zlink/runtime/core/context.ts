@@ -157,6 +157,6 @@ export class Context extends NativeHandle {
 }
 
 export {
-  Context as DefaultContext,
-  ContextOptions as DefaultContextOptions,
+  Context as RuntimeContext,
+  ContextOptions as RuntimeContextOptions,
 };

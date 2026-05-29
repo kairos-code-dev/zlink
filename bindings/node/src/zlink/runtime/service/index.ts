@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 
 export {
-  Actor as DefaultActor,
+  Actor as RuntimeActor,
 } from './spot/actor';
 export {
-  Discovery as DefaultDiscovery,
+  Discovery as RuntimeDiscovery,
 } from './discovery/discovery';
 export {
-  Registry as DefaultRegistry,
+  Registry as RuntimeRegistry,
 } from './registry/registry';
 export {
-  RegistryQueryClient as DefaultRegistryQueryClient,
+  RegistryQueryClient as RuntimeRegistryQueryClient,
 } from './registry/registry_query_client';
 export {
-  Spot as DefaultSpot,
+  Spot as RuntimeSpot,
 } from './spot/spot';
 export {
-  SpotNode as DefaultSpotNode,
+  SpotNode as RuntimeSpotNode,
 } from './spot/spot_node';

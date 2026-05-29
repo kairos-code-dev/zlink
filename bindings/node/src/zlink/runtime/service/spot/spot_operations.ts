@@ -476,7 +476,7 @@ type ActorJoinInvoker = (
   timeoutMs: number,
 ) => boolean;
 
-export class DefaultActorJoinOperation implements ActorJoinOperation, ActorJoinSubmitOperation, ActorJoinCallbackSubmitOperation {
+export class RuntimeActorJoinOperation implements ActorJoinOperation, ActorJoinSubmitOperation, ActorJoinCallbackSubmitOperation {
   private readonly _invoke: ActorJoinInvoker;
   private readonly _payload = new OperationPayload();
   private _flags: SendFlags = SendFlags.None;
@@ -529,7 +529,7 @@ type ActorJoinEntrySpotInvoker = (
   timeoutMs: number,
 ) => boolean;
 
-export class DefaultActorJoinEntrySpotOperation implements ActorJoinEntrySpotOperation {
+export class RuntimeActorJoinEntrySpotOperation implements ActorJoinEntrySpotOperation {
   private readonly _invoke: ActorJoinEntrySpotInvoker;
   private _timeoutMs = 0;
   private _submitted = false;
@@ -571,7 +571,7 @@ export class DefaultActorJoinEntrySpotOperation implements ActorJoinEntrySpotOpe
   }
 }
 
-export class DefaultActorJoinReplyOperation implements ActorJoinReplyOperation {
+export class RuntimeActorJoinReplyOperation implements ActorJoinReplyOperation {
   private readonly _invoke: (parts: readonly MessageLike[]) => void;
   private readonly _payload = new OperationPayload();
 
@@ -637,14 +637,14 @@ export class ReplyHandlerOperation {
   }
 }
 
-export class DefaultActorLeaveOperation extends ReplyHandlerOperation implements ActorLeaveOperation {}
-export class DefaultActorDestroyOperation extends ReplyHandlerOperation implements ActorDestroyOperation {}
-export class DefaultActorBindOperation extends ReplyHandlerOperation implements ActorBindOperation {}
-export class DefaultActorUnbindOperation extends ReplyHandlerOperation implements ActorUnbindOperation {}
+export class RuntimeActorLeaveOperation extends ReplyHandlerOperation implements ActorLeaveOperation {}
+export class RuntimeActorDestroyOperation extends ReplyHandlerOperation implements ActorDestroyOperation {}
+export class RuntimeActorBindOperation extends ReplyHandlerOperation implements ActorBindOperation {}
+export class RuntimeActorUnbindOperation extends ReplyHandlerOperation implements ActorUnbindOperation {}
 
 type ActorLookupInvoker = (callback: ActorLookupHandler, timeoutMs: number) => boolean;
 
-export class DefaultActorLookupOperation implements ActorLookupOperation {
+export class RuntimeActorLookupOperation implements ActorLookupOperation {
   private readonly _invoke: ActorLookupInvoker;
   private _timeoutMs = 0;
   private _submitted = false;

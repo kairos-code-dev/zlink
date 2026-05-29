@@ -5,8 +5,8 @@ import { requireNative } from '../../native/native';
 import { closeCall, configCall, recvNativeError } from '../../errors/native_errors';
 import { RecvFlags } from '../../../contracts/sockets/socket_constants';
 import type { ActorJoinOperation, ActorLeaveOperation, ActorPart, ActorRef, SendOperation } from '../../../contracts/service';
-import { DefaultSendOperation } from '../../sockets/socket_operations';
-import { DefaultActorJoinOperation, DefaultActorLeaveOperation } from './spot_operations';
+import { RuntimeSendOperation } from '../../sockets/socket_operations';
+import { RuntimeActorJoinOperation, RuntimeActorLeaveOperation } from './spot_operations';
 import { Spot } from './spot';
 import { actorPartFromRaw, actorRefToRaw, invokeActorJoin, invokeActorLeave, invokeActorSendBoundSession } from './spot_operations';
 
@@ -39,7 +39,7 @@ export class Actor extends NativeHandle {
     if (!(spot instanceof Spot)) {
       throw new TypeError('spot must be a Spot');
     }
-    return new DefaultActorJoinOperation((parts, callback, flags, timeoutMs) =>
+    return new RuntimeActorJoinOperation((parts, callback, flags, timeoutMs) =>
       invokeActorJoin(
         this._native,
         this.ref(),
@@ -59,7 +59,7 @@ export class Actor extends NativeHandle {
     }
     const actorRef = this.ref();
     const spotRid = spot.routingId;
-    return new DefaultActorLeaveOperation((callback, timeoutMs) =>
+    return new RuntimeActorLeaveOperation((callback, timeoutMs) =>
       invokeActorLeave(this._native, actorRef, spotRid, callback, timeoutMs),
     );
   }
@@ -79,7 +79,7 @@ export class Actor extends NativeHandle {
   sendBoundSession(): SendOperation {
     const node = this._native;
     const ref = this.ref();
-    return new DefaultSendOperation((parts, flags) => invokeActorSendBoundSession(node, ref, parts, flags));
+    return new RuntimeSendOperation((parts, flags) => invokeActorSendBoundSession(node, ref, parts, flags));
   }
   closeBoundSession(timeoutMs = 0): void {
     const actorRaw = actorRefToRaw(this.ref());

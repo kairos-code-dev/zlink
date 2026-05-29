@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { randomBytes } from 'node:crypto';
-import { DefaultContext as Context } from '../../core/context';
-import { DefaultDealerSocket as DealerSocket, DefaultPubSocket as PubSocket } from '../../sockets';
+import { RuntimeContext as Context } from '../../core/context';
+import { RuntimeDealerSocket as DealerSocket, RuntimePubSocket as PubSocket } from '../../sockets';
 import { Discovery } from '../discovery/discovery';
 import { Actor } from './actor';
 import { Spot } from './spot';
@@ -11,7 +11,7 @@ import { materializeMonitorStatus } from '../../eventing/monitor_status';
 import { closeCall, configCall, connectCall } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
-import { DefaultSendOperation } from '../../sockets/socket_operations';
+import { RuntimeSendOperation } from '../../sockets/socket_operations';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { requireNative } from '../../native/native';
 import { RoutingId } from '../../../contracts';
@@ -20,7 +20,7 @@ import { AutoHwmProfile, type AutoHwmProfileValue } from '../../../contracts/cor
 import { SpotNodeMode, SpotNodeSocketOwner, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRef, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSocketOwnerValue, type SpotNodeSpotEntry, type SpotNodeStateValue, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter, type SpotPeerKindValue, type SpotPeerSourceValue, type SpotPeerStateValue, type SpotRoleValue } from '../../../contracts/service';
 import type { SocketTypeValue } from '../../../contracts/sockets/socket_constants';
 import { SpotNodeOption } from './spot_options';
-import { DefaultActorDestroyOperation, DefaultActorJoinEntrySpotOperation, DefaultActorJoinOperation, DefaultActorLeaveOperation, DefaultActorLookupOperation, actorRefFromRaw, actorRefToRaw, invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorSendBoundSession, invokeRemoteActorGetRef, spotNodeActorEntryFromRaw, spotNodeSpotEntryFromRaw } from './spot_operations';
+import { RuntimeActorDestroyOperation, RuntimeActorJoinEntrySpotOperation, RuntimeActorJoinOperation, RuntimeActorLeaveOperation, RuntimeActorLookupOperation, actorRefFromRaw, actorRefToRaw, invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorSendBoundSession, invokeRemoteActorGetRef, spotNodeActorEntryFromRaw, spotNodeSpotEntryFromRaw } from './spot_operations';
 
 function mapSpotNodeStatus(entry: {
   channelName: string;
@@ -334,38 +334,38 @@ export class SpotNode extends NativeHandle {
     const node = this._native;
     const normalizedNodeRid = normalizeRoutingId(targetNodeRid, 'targetNodeRid');
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    return new DefaultActorLookupOperation((callback, timeoutMs) =>
+    return new RuntimeActorLookupOperation((callback, timeoutMs) =>
       invokeRemoteActorGetRef(node, normalizedNodeRid, normalizedActorId, callback, timeoutMs),
     );
   }
   destroyActor(actor: ActorRef): ActorDestroyOperation {
     const node = this._native;
     const actorRaw = actorRefToRaw(actor);
-    return new DefaultActorDestroyOperation((callback, timeoutMs) =>
+    return new RuntimeActorDestroyOperation((callback, timeoutMs) =>
       invokeActorDestroy(node, actorRaw, callback, timeoutMs),
     );
   }
   joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId): ActorJoinOperation {
     const node = this._native;
-    return new DefaultActorJoinOperation((parts, callback, flags, timeoutMs) =>
+    return new RuntimeActorJoinOperation((parts, callback, flags, timeoutMs) =>
       invokeActorJoin(node, actor, destNodeRid, destSpotRid, null, parts, callback, flags, timeoutMs),
     );
   }
   joinActorEntrySpot(actor: ActorRef, destNodeRid: RoutingId): ActorJoinEntrySpotOperation {
     const node = this._native;
-    return new DefaultActorJoinEntrySpotOperation((callback, timeoutMs) =>
+    return new RuntimeActorJoinEntrySpotOperation((callback, timeoutMs) =>
       invokeActorJoinEntrySpot(node, actor, destNodeRid, callback, timeoutMs),
     );
   }
   leaveActor(actor: ActorRef, currentSpotRid: RoutingId): ActorLeaveOperation {
     const node = this._native;
-    return new DefaultActorLeaveOperation((callback, timeoutMs) =>
+    return new RuntimeActorLeaveOperation((callback, timeoutMs) =>
       invokeActorLeave(node, actor, currentSpotRid, callback, timeoutMs),
     );
   }
   sendActorBoundSession(actor: ActorRef): SendOperation {
     const node = this._native;
-    return new DefaultSendOperation((parts, flags) => invokeActorSendBoundSession(node, actor, parts, flags));
+    return new RuntimeSendOperation((parts, flags) => invokeActorSendBoundSession(node, actor, parts, flags));
   }
   /** @internal */
   unregisterSpot(spot: Spot): void {

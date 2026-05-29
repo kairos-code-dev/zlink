@@ -17,10 +17,10 @@ import {
   PublisherSocket,
   RecvFlags,
   Received,
-  DefaultRequestOperation,
+  RuntimeRequestOperation,
   RoutedMessageSocket,
   SendFlags,
-  DefaultSendOperation,
+  RuntimeSendOperation,
   SocketOption,
   SubscriberSocket,
   SubscriptionEvent,
@@ -43,7 +43,7 @@ import {
   adoptTopicMessage,
   executeNativeRequest,
   startRequestProgress,
-  DefaultReplyOperation,
+  RuntimeReplyOperation,
   RecvResult,
   requestErrorFromResult,
   type ActorBindOperation,
@@ -88,7 +88,7 @@ export class RouterSocket extends RoutedMessageSocket {
     });
   }
   request(peerRid: RoutingId): RequestOperation {
-    return new DefaultRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+    return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
       this.requestDirect(peerRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
     );
   }
@@ -125,7 +125,7 @@ export class RouterSocket extends RoutedMessageSocket {
     });
   }
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOperation {
-    return new DefaultSendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
+    return new RuntimeSendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
   }
   /** @internal */
   sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
@@ -147,7 +147,7 @@ export class RouterSocket extends RoutedMessageSocket {
     }
   }
   requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOperation {
-    return new DefaultRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+    return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
       this.requestToSpotDirect(destNodeRid, destSpotRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
     );
   }
@@ -181,7 +181,7 @@ export class RouterSocket extends RoutedMessageSocket {
     });
   }
   replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOperation {
-    return new DefaultReplyOperation((parts, opFlags) => this.replyToSpotDirect(destNodeRid, destSpotRid, requestSeq, parts, opFlags));
+    return new RuntimeReplyOperation((parts, opFlags) => this.replyToSpotDirect(destNodeRid, destSpotRid, requestSeq, parts, opFlags));
   }
   private replyToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     normalizeReplyFlags(flags);
@@ -201,7 +201,7 @@ export class RouterSocket extends RoutedMessageSocket {
     }
   }
   reply(peerRid: RoutingId, requestSeq: bigint): ReplyOperation {
-    return new DefaultReplyOperation((parts, opFlags) => this.replyDirect(peerRid, requestSeq, parts, opFlags));
+    return new RuntimeReplyOperation((parts, opFlags) => this.replyDirect(peerRid, requestSeq, parts, opFlags));
   }
   private replyDirect(peerRid: RoutingId, requestSeq: bigint, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     normalizeReplyFlags(flags);

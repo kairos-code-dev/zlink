@@ -4,7 +4,7 @@
 #define ZLINK_SERVICE_COMMON_H_INCLUDED
 
 #include <zlink/common.h>
-#include <zlink/message.h>
+#include <zlink/message/api.h>
 
 #ifdef __cplusplus
 extern "C" {

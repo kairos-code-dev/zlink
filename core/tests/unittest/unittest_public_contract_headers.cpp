@@ -7,13 +7,10 @@
 #include <zlink/eventing/api.h>
 #include <zlink/message/api.h>
 #include <zlink/service/actor.h>
-#include <zlink/service/api.h>
 #include <zlink/service/discovery.h>
 #include <zlink/service/registry.h>
 #include <zlink/service/spot.h>
 #include <zlink/socket/api.h>
-#include <zlink/socket/options.h>
-#include <zlink/socket/parts.h>
 
 #include <unity.h>
 

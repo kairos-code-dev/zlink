@@ -181,6 +181,8 @@ int main (void)
     responder_capture_t responder_capture;
     init_responder_capture (&responder_capture, responder);
 
+    (void) drain_spot_request (&responder_capture);
+
     reply_capture_t capture;
     init_capture (&capture);
 

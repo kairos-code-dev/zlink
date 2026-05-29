@@ -1266,28 +1266,16 @@ endif()
 set(public_headers include/zlink.h include/zlink_enum.h include/zlink_errno.h)
 set(public_contract_subheaders
     include/zlink/common.h
-    include/zlink/core.h
-    include/zlink/message.h
-    include/zlink/actor.h
-    include/zlink/socket.h
-    include/zlink/monitoring.h
-    include/zlink/spot.h
-    include/zlink/service_common.h
-    include/zlink/registry.h
-    include/zlink/discovery.h
-    include/zlink/service.h)
+    include/zlink/service_common.h)
 set(public_contract_group_headers
     include/zlink/core/api.h
     include/zlink/eventing/api.h
     include/zlink/message/api.h
     include/zlink/service/actor.h
-    include/zlink/service/api.h
     include/zlink/service/discovery.h
     include/zlink/service/registry.h
     include/zlink/service/spot.h
-    include/zlink/socket/api.h
-    include/zlink/socket/options.h
-    include/zlink/socket/parts.h)
+    include/zlink/socket/api.h)
 
 set(readme-docs
     ${ZLINK_REPO_ROOT}/LICENSE)

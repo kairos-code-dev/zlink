@@ -15,16 +15,15 @@
     ZLINK_MAKE_VERSION (ZLINK_VERSION_MAJOR, ZLINK_VERSION_MINOR, ZLINK_VERSION_PATCH)
 
 #include <zlink/common.h>
-#include <zlink/core.h>
-#include <zlink/message.h>
-#include <zlink/actor.h>
-#include <zlink/socket.h>
-#include <zlink/monitoring.h>
-#include <zlink/spot.h>
+#include <zlink/core/api.h>
+#include <zlink/message/api.h>
+#include <zlink/service/actor.h>
+#include <zlink/socket/api.h>
+#include <zlink/eventing/api.h>
+#include <zlink/service/spot.h>
 #include <zlink/service_common.h>
-#include <zlink/registry.h>
-#include <zlink/discovery.h>
-#include <zlink/service.h>
+#include <zlink/service/registry.h>
+#include <zlink/service/discovery.h>
 
 #undef ZLINK_EXPORT
 

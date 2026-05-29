@@ -40,6 +40,7 @@ internal static partial class NativeMethods
         "zlink_multipart_close",
         "zlink_dealer_request_part",
         "zlink_dealer_recv_part",
+        "zlink_dealer_reply_part",
         "zlink_router_request_part",
         "zlink_socket_set_channel_name",
         "zlink_socket_get_channel_name",
@@ -241,6 +242,10 @@ internal static partial class NativeMethods
     internal static extern int zlink_dealer_recv_part(IntPtr dealer,
         out byte messageType, out ulong requestSeq, ref ZlinkMsg part,
         out ZlinkPartFlag hasMore, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_dealer_reply_part(IntPtr dealer,
+        ulong requestSeq, ref ZlinkMsg part, ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_router_request_part(IntPtr router,

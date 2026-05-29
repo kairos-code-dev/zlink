@@ -241,6 +241,9 @@ internal sealed class SocketOptionAccessor
         if ((code & 0xFF00) == 0x3100)
             return NativeMethods.zlink_get_router_option(handle, code, value,
                 ref length);
+        if ((code & 0xFF00) == 0x3200)
+            return NativeMethods.zlink_get_dealer_option(handle, code, value,
+                ref length);
         if ((code & 0xFF00) == 0x3300)
             return NativeMethods.zlink_get_pub_option(handle, code, value,
                 ref length);

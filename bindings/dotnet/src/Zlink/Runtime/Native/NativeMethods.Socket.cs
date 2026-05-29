@@ -166,6 +166,10 @@ internal static partial class NativeMethods
         int option, IntPtr value, nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_get_dealer_option(IntPtr handle,
+        int option, IntPtr value, ref nuint length);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_set_pub_option(IntPtr handle, int option,
         IntPtr value, nuint length);
 

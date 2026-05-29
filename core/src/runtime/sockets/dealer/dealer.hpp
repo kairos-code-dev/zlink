@@ -37,6 +37,9 @@ class dealer_t : public socket_base_t
     int xsetsockopt (int option_,
                      const void *optval_,
                      size_t optvallen_) ZLINK_OVERRIDE;
+    int xgetsockopt (int option_,
+                     void *optval_,
+                     size_t *optvallen_) ZLINK_OVERRIDE;
     int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     int xrecv_pipe (zlink::msg_t *msg_,

@@ -114,6 +114,22 @@ int zlink::dealer_t::xsetsockopt (int option_,
     return -1;
 }
 
+int zlink::dealer_t::xgetsockopt (int option_,
+                                  void *optval_,
+                                  size_t *optvallen_)
+{
+    if (option_ == ZLINK_INTERNAL_OPT_PROBE_ROUTER) {
+        if (!optval_ || !optvallen_ || *optvallen_ != sizeof (int)) {
+            errno = EINVAL;
+            return -1;
+        }
+        *static_cast<int *> (optval_) = _probe_router ? 1 : 0;
+        return 0;
+    }
+
+    return socket_base_t::xgetsockopt (option_, optval_, optvallen_);
+}
+
 int zlink::dealer_t::xsend (msg_t *msg_)
 {
     return sendpipe (msg_, NULL);

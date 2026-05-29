@@ -258,14 +258,29 @@ void test_typed_raw_socket_options ()
     value = 1;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
       dealer, ZLINK_DEALER_OPT_PROBE, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_dealer_option (
+      dealer, ZLINK_DEALER_OPT_PROBE, &value, &size));
+    TEST_ASSERT_EQUAL_INT (1, value);
 
     value = 3210;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
       dealer, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_dealer_option (
+      dealer, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, &value, &size));
+    TEST_ASSERT_EQUAL_INT (3210, value);
 
     value = 25;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
       dealer, ZLINK_DEALER_OPT_WEIGHT, &value, sizeof (value)));
+    value = 0;
+    size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_dealer_option (
+      dealer, ZLINK_DEALER_OPT_WEIGHT, &value, &size));
+    TEST_ASSERT_EQUAL_INT (25, value);
 
     value = 1;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_stream_option (

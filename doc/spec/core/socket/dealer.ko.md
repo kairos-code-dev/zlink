@@ -10,7 +10,7 @@ DEALER는 request-reply 패턴에서 요청 측입니다.
 
 ## Dealer 옵션 (`zlink_dealer_option_t`)
 
-`zlink_set_dealer_option()`과 함께 사용합니다.
+`zlink_set_dealer_option()` 및 `zlink_get_dealer_option()`과 함께 사용합니다.
 
 | 상수 | 설명 |
 |---|---|
@@ -64,6 +64,27 @@ DEALER 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 �
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_option`
+
+---
+
+### zlink_get_dealer_option
+
+DEALER 소켓 전용 옵션을 읽습니다.
+
+```c
+zlink_config_result_t zlink_get_dealer_option (void *handle_,
+                              zlink_dealer_option_t option_,
+                              void *optval_,
+                              size_t *optvallen_);
+```
+
+DEALER 소켓 옵션 값을 `optval_`에 씁니다. `optvallen_`은 입력 시 버퍼
+용량이고, 반환 시 실제로 쓴 바이트 수입니다. 모든 소켓 타입에 공유되는
+공통 옵션은 `zlink_get_option()`을 사용하세요.
+
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
+
+**참고:** `zlink_get_option`
 
 ---
 
@@ -138,6 +159,29 @@ DEALER 소켓에서 멀티파트 요청을 송신하고, 응답이 도착하거�
 별도로 `zlink_reply_handler_fn`을 통해 전달됩니다.
 
 **참고:** `zlink_send`, `zlink_reply_handler_fn`
+
+---
+
+### zlink_dealer_reply_part
+
+`zlink_dealer_recv_part()`로 받은 DEALER request에 대한 reply 파트 하나를
+보냅니다.
+
+```c
+zlink_submit_result_t zlink_dealer_reply_part (void *dealer_,
+                              uint64_t request_seq_,
+                              zlink_msg_t *part_,
+                              zlink_part_flag_t part_flag_);
+```
+
+`request_seq_`는 `zlink_dealer_recv_part()`가 반환한 0이 아닌 sequence여야
+합니다. 성공하면 `part_`의 소유권은 라이브러리로 이전됩니다. 실패하면
+호출자에게 소유권이 남습니다. 다만 잘못된 인자처럼 다른 `*_part` helper와
+같은 규칙을 따르는 경로에서는 유효하지 않은 send part를 소비할 수 있습니다.
+
+**반환값:** 성공 시 `ZLINK_SUBMIT_OK`, 실패 시 실패 이유를 나타내는 `zlink_submit_result_t` 값. [errno-map.ko.md](../errno-map.ko.md) 참조.
+
+**참고:** `zlink_dealer_recv_part`, `zlink_dealer_request_part`
 
 ---
 

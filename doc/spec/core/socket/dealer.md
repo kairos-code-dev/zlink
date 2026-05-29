@@ -7,7 +7,7 @@ DEALER is the request side in request-reply patterns.
 
 ## Dealer Options (`zlink_dealer_option_t`)
 
-Used with `zlink_set_dealer_option()`.
+Used with `zlink_set_dealer_option()` and `zlink_get_dealer_option()`.
 
 | Constant | Description |
 |---|---|
@@ -65,6 +65,27 @@ options shared across all socket types.
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_set_option`
+
+---
+
+### zlink_get_dealer_option
+
+Read a dealer-specific option.
+
+```c
+zlink_config_result_t zlink_get_dealer_option (void *handle_,
+                              zlink_dealer_option_t option_,
+                              void *optval_,
+                              size_t *optvallen_);
+```
+
+Reads a DEALER socket option into `optval_`. `optvallen_` is the input
+capacity and is updated with the number of bytes written. Use
+`zlink_get_option()` for common options shared across all socket types.
+
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+
+**See also:** `zlink_get_option`
 
 ---
 
@@ -140,6 +161,30 @@ failure, returns a `zlink_submit_result_t` value. Reply completion is
 delivered separately through `zlink_reply_handler_fn`.
 
 **See also:** `zlink_send`, `zlink_reply_handler_fn`
+
+---
+
+### zlink_dealer_reply_part
+
+Send one reply part for a DEALER request received through
+`zlink_dealer_recv_part()`.
+
+```c
+zlink_submit_result_t zlink_dealer_reply_part (void *dealer_,
+                              uint64_t request_seq_,
+                              zlink_msg_t *part_,
+                              zlink_part_flag_t part_flag_);
+```
+
+`request_seq_` must be the non-zero sequence returned by
+`zlink_dealer_recv_part()`. On success, ownership of `part_` is transferred to
+the library. On failure, ownership remains with the caller except for invalid
+argument paths that consume invalid send parts consistently with the other
+`*_part` helper APIs.
+
+**Returns:** `ZLINK_SUBMIT_OK` on success, or a `zlink_submit_result_t` value indicating the failure reason. See [errno-map.md](../errno-map.md).
+
+**See also:** `zlink_dealer_recv_part`, `zlink_dealer_request_part`
 
 ---
 

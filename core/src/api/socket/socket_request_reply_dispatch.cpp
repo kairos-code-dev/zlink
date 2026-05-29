@@ -256,6 +256,7 @@ int drain_close_request_reply_socket (socket_handle_t handle_)
         state->pending_requests.clear ();
         state->pending_request_keys_by_seq.clear ();
         state->pending_sequences.clear ();
+        state->dealer_reply_targets.clear ();
     }
 
     for (size_t i = 0; i < pending.size (); ++i) {
@@ -296,6 +297,7 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
         state->pending_requests.clear ();
         state->pending_request_keys_by_seq.clear ();
         state->pending_sequences.clear ();
+        state->dealer_reply_targets.clear ();
         close_recv_queue = true;
         zlink::request_completion::close (&state->completion);
     }

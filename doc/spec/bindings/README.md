@@ -2996,6 +2996,10 @@ zlink_submit_result_t zlink_dealer_request_part(void *dealer,
     zlink_part_flag_t part_flag, uint32_t timeout_ms,
     zlink_reply_handler_fn handler, void *userdata);
 
+zlink_submit_result_t zlink_dealer_reply_part(void *dealer,
+    uint64_t request_seq, zlink_msg_t *part,
+    zlink_part_flag_t part_flag);
+
 zlink_submit_result_t zlink_router_request_part(void *router,
     const zlink_routing_id_t *peer_rid, zlink_msg_t *part,
     zlink_send_flags_t flags, zlink_part_flag_t part_flag,

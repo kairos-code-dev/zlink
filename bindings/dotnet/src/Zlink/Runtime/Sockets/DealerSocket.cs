@@ -118,8 +118,12 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
                 }
             }
 
+            ReceivedReplyHandler? replyHandler =
+                messageType == ReceivedMessageType.Request && requestSeq != 0
+                    ? CreateReplyHandler(requestSeq)
+                    : null;
             result.PopulateMessageEnvelope(parts.ToArray(), messageType,
-                requestSeq == 0 ? null : requestSeq, replyHandler: null);
+                requestSeq == 0 ? null : requestSeq, replyHandler);
             transferred = true;
             return true;
         }
@@ -230,6 +234,35 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
             : timeout;
         return BoundaryValidation.EncodeTimeoutMilliseconds(effective,
             nameof(timeout));
+    }
+
+    private ReceivedReplyHandler CreateReplyHandler(ulong requestSeq)
+    {
+        return (replyParts, sendFlags) => ReplyCore(
+            requestSeq, replyParts, sendFlags);
+    }
+
+    private unsafe void ReplyCore(ulong requestSeq,
+        IReadOnlyList<Message> parts, SendFlags flags)
+    {
+        _ = flags;
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        try
+        {
+            RequestReplySupport.SubmitClonedParts(cloned,
+                (ref ZlinkMsg nativePart,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_dealer_reply_part(Handle, requestSeq,
+                        ref nativePart, partFlag));
+        }
+        catch
+        {
+            RequestReplySupport.DisposeParts(cloned);
+            throw;
+        }
     }
 
     private static void OnRequestReply(int result, IntPtr parts, nuint partCount,

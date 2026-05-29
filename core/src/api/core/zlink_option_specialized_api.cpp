@@ -137,6 +137,34 @@ zlink_config_result_t zlink_set_dealer_option (void *handle_,
       ZLINK_CORE_SOCKET_DEALER, socket_option, optval_, optvallen_));
 }
 
+zlink_config_result_t zlink_get_dealer_option (void *handle_,
+                                              zlink_dealer_option_t option_,
+                                              void *optval_,
+                                              size_t *optvallen_)
+{
+    if (option_ == ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS) {
+        zlink::socket_base_t *socket = as_socket (handle_);
+        if (!socket || socket_type_of (socket) != ZLINK_CORE_SOCKET_DEALER) {
+            errno = EINVAL;
+            return ZLINK_CONFIG_INVALID_ARGUMENT;
+        }
+        return zlink::config_result_internal::from_rc (
+          zlink_socket_request_reply_get_default_timeout (handle_, optval_,
+                                                          optvallen_));
+    }
+
+    const int socket_option = map_dealer_option (option_);
+    if (socket_option < 0)
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+
+    zlink::socket_base_t *socket = as_socket (handle_);
+    if (!socket)
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    return zlink::config_result_internal::from_rc (get_socket_option_checked (
+      socket, socket_type_of (socket), ZLINK_CORE_SOCKET_DEALER,
+      ZLINK_CORE_SOCKET_DEALER, socket_option, optval_, optvallen_));
+}
+
 zlink_config_result_t zlink_set_stream_option (void *handle_,
                                               zlink_stream_option_t option_,
                                               const void *optval_,

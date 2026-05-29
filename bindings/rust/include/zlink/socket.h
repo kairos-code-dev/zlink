@@ -229,6 +229,11 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_dealer_option (
   zlink_dealer_option_t option_,
   const void *optval_,
   size_t optvallen_);
+ZLINK_EXPORT zlink_config_result_t zlink_get_dealer_option (
+  void *handle_,
+  zlink_dealer_option_t option_,
+  void *optval_,
+  size_t *optvallen_);
 ZLINK_EXPORT zlink_config_result_t zlink_set_stream_option (
   void *handle_,
   zlink_stream_option_t option_,
@@ -361,6 +366,12 @@ ZLINK_EXPORT zlink_recv_result_t zlink_dealer_recv_part (
   zlink_msg_t *part_out_,
   zlink_part_flag_t *has_more_out_,
   zlink_recv_flags_t flags_);
+
+ZLINK_EXPORT zlink_submit_result_t zlink_dealer_reply_part (
+  void *dealer_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
 
 /* ========== Helper substrate layer (*_part) ========== */
 ZLINK_EXPORT zlink_submit_result_t zlink_router_request_part (

@@ -1044,6 +1044,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/node/spot_node_control_task.cpp
     src/runtime/services/spot/node/spot_node_control_policy.cpp
     src/runtime/services/spot/node/spot_node_defaults.cpp
+    src/runtime/services/spot/node/spot_node_get_or_new.cpp
     src/runtime/services/spot/node/spot_node_handles.cpp
     src/runtime/services/spot/node/spot_node_lifecycle.cpp
     src/runtime/services/spot/node/spot_node_shutdown.cpp

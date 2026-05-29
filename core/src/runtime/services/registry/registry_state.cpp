@@ -333,7 +333,6 @@ void registry_t::handle_peer_service_list (
         }
     }
 
-    bool changed = false;
     {
         scoped_lock_t lock (_sync);
         std::map<uint32_t, uint64_t>::iterator it =
@@ -357,138 +356,138 @@ void registry_t::handle_peer_service_list (
             }
         }
 
-        for (service_map_t::const_iterator sit = incoming.begin ();
-             sit != incoming.end (); ++sit) {
-            const service_key_t &service_key = sit->first;
-            const provider_map_t &providers = sit->second.providers;
-            service_map_t::const_iterator existing_service =
-              _projection_state.services.find (service_key);
-            for (provider_map_t::const_iterator pit = providers.begin ();
-                 pit != providers.end (); ++pit) {
-                bool match = false;
-                if (existing_service != _projection_state.services.end ()) {
-                    provider_map_t::const_iterator ep =
-                      existing_service->second.providers.find (pit->first);
-                    if (ep != existing_service->second.providers.end ()
-                        && ep->second.source_registry == peer_registry_id) {
-                        const provider_entry_t &cur = ep->second;
-                        const provider_entry_t &incoming_entry = pit->second;
-                        match =
-                          cur.service_role == incoming_entry.service_role
-                          && cur.weight
-                               == incoming_entry.weight
-                          && cur.value == incoming_entry.value
-                          && cur.metadata == incoming_entry.metadata
-                          && cur.source_registry
-                               == incoming_entry.source_registry
-                          && cur.registration_id
-                               == incoming_entry.registration_id
-                          && cur.provider_update_seq
-                               == incoming_entry.provider_update_seq
-                          && cur.routing_id.size
-                               == incoming_entry.routing_id.size
-                          && (cur.routing_id.size == 0
-                              || memcmp (cur.routing_id.data,
-                                         incoming_entry.routing_id.data,
-                                         cur.routing_id.size)
-                                   == 0);
-                    } else if (ep != existing_service->second.providers.end ()
-                               && ep->second.source_registry
-                                    != peer_registry_id) {
-                        match = true;
-                    }
-                }
-                if (!match) {
-                    changed = true;
-                    break;
-                }
-            }
-            if (changed)
-                break;
-        }
-
-        if (!changed) {
-            for (service_map_t::const_iterator sit = _projection_state.services.begin ();
-                 sit != _projection_state.services.end (); ++sit) {
-                const provider_map_t &providers = sit->second.providers;
-                for (provider_map_t::const_iterator pit = providers.begin ();
-                     pit != providers.end (); ++pit) {
-                    if (pit->second.source_registry != peer_registry_id)
-                        continue;
-                    service_map_t::const_iterator incoming_service =
-                      incoming.find (sit->first);
-                    if (incoming_service == incoming.end ()
-                        || incoming_service->second.providers.find (pit->first)
-                             == incoming_service->second.providers.end ()) {
-                        changed = true;
-                        break;
-                    }
-                }
-                if (changed)
-                    break;
-            }
-        }
-
-        if (!changed) {
+        if (!peer_service_snapshot_changed_locked (incoming,
+                                                   peer_registry_id)) {
             _projection_state.peer_seq[peer_registry_id] = list_seq;
             return;
         }
 
-        for (service_map_t::iterator sit = _projection_state.services.begin ();
-             sit != _projection_state.services.end ();) {
-            provider_map_t &providers = sit->second.providers;
-            for (provider_map_t::iterator pit = providers.begin ();
-                 pit != providers.end ();) {
-                if (pit->second.source_registry == peer_registry_id) {
-                    owner_identity_t removed_owner;
-                    removed_owner.channel_name = sit->first.channel_name;
-                    removed_owner.service_role = pit->second.service_role;
-                    removed_owner.routing_id_key =
-                      zlink::routing_id_key (pit->second.routing_id);
-                    removed_owner.source_registry = pit->second.source_registry;
-                    removed_owner.registration_id = pit->second.registration_id;
-                    cleanup_owner_records_locked (removed_owner,
-                                                  zlink::clock_t ().now_ms ());
-                    pit = providers.erase (pit);
-                    continue;
-                }
-                ++pit;
-            }
-            if (providers.empty ()) {
-                sit = _projection_state.services.erase (sit);
-                continue;
-            }
-            ++sit;
-        }
-
-        for (service_map_t::const_iterator sit = incoming.begin ();
-             sit != incoming.end (); ++sit) {
-            const service_key_t &service_key = sit->first;
-            const provider_map_t &providers = sit->second.providers;
-            service_entry_t &service = _projection_state.services[service_key];
-            service.auto_connect_type = sit->second.auto_connect_type;
-            for (provider_map_t::const_iterator pit = providers.begin ();
-                 pit != providers.end (); ++pit) {
-                provider_map_t::iterator existing =
-                  service.providers.find (pit->first);
-                if (existing != service.providers.end ()
-                    && existing->second.source_registry != peer_registry_id) {
-                    continue;
-                }
-                service.providers[pit->first] = pit->second;
-                owner_identity_t owner;
-                owner.channel_name = service_key.channel_name;
-                owner.service_role = pit->second.service_role;
-                owner.routing_id_key =
-                  zlink::routing_id_key (pit->second.routing_id);
-                owner.source_registry = pit->second.source_registry;
-                owner.registration_id = pit->second.registration_id;
-                promote_owner_route_records_locked (owner);
-            }
-        }
+        remove_peer_service_providers_locked (peer_registry_id, now);
+        apply_peer_service_snapshot_locked (incoming, peer_registry_id);
 
         _projection_state.peer_seq[peer_registry_id] = list_seq;
         _coordination_state.list_seq++;
+    }
+}
+
+bool registry_t::peer_provider_matches_locked (
+  const provider_entry_t &current_,
+  const provider_entry_t &incoming_,
+  uint32_t peer_registry_id_) const
+{
+    if (current_.source_registry != peer_registry_id_)
+        return true;
+    return current_.service_role == incoming_.service_role
+           && current_.weight == incoming_.weight
+           && current_.value == incoming_.value
+           && current_.metadata == incoming_.metadata
+           && current_.source_registry == incoming_.source_registry
+           && current_.registration_id == incoming_.registration_id
+           && current_.provider_update_seq == incoming_.provider_update_seq
+           && current_.routing_id.size == incoming_.routing_id.size
+           && (current_.routing_id.size == 0
+               || memcmp (current_.routing_id.data, incoming_.routing_id.data,
+                          current_.routing_id.size)
+                    == 0);
+}
+
+bool registry_t::peer_service_snapshot_changed_locked (
+  const service_map_t &incoming_, uint32_t peer_registry_id_) const
+{
+    for (service_map_t::const_iterator sit = incoming_.begin ();
+         sit != incoming_.end (); ++sit) {
+        service_map_t::const_iterator existing_service =
+          _projection_state.services.find (sit->first);
+        const provider_map_t &providers = sit->second.providers;
+        for (provider_map_t::const_iterator pit = providers.begin ();
+             pit != providers.end (); ++pit) {
+            if (existing_service == _projection_state.services.end ())
+                return true;
+            provider_map_t::const_iterator existing_provider =
+              existing_service->second.providers.find (pit->first);
+            if (existing_provider == existing_service->second.providers.end ())
+                return true;
+            if (!peer_provider_matches_locked (
+                  existing_provider->second, pit->second, peer_registry_id_))
+                return true;
+        }
+    }
+
+    for (service_map_t::const_iterator sit = _projection_state.services.begin ();
+         sit != _projection_state.services.end (); ++sit) {
+        const provider_map_t &providers = sit->second.providers;
+        for (provider_map_t::const_iterator pit = providers.begin ();
+             pit != providers.end (); ++pit) {
+            if (pit->second.source_registry != peer_registry_id_)
+                continue;
+            service_map_t::const_iterator incoming_service =
+              incoming_.find (sit->first);
+            if (incoming_service == incoming_.end ()
+                || incoming_service->second.providers.find (pit->first)
+                     == incoming_service->second.providers.end ())
+                return true;
+        }
+    }
+
+    return false;
+}
+
+void registry_t::remove_peer_service_providers_locked (
+  uint32_t peer_registry_id_, uint64_t now_ms_)
+{
+    for (service_map_t::iterator sit = _projection_state.services.begin ();
+         sit != _projection_state.services.end ();) {
+        provider_map_t &providers = sit->second.providers;
+        for (provider_map_t::iterator pit = providers.begin ();
+             pit != providers.end ();) {
+            if (pit->second.source_registry == peer_registry_id_) {
+                owner_identity_t removed_owner;
+                removed_owner.channel_name = sit->first.channel_name;
+                removed_owner.service_role = pit->second.service_role;
+                removed_owner.routing_id_key =
+                  zlink::routing_id_key (pit->second.routing_id);
+                removed_owner.source_registry = pit->second.source_registry;
+                removed_owner.registration_id = pit->second.registration_id;
+                cleanup_owner_records_locked (removed_owner, now_ms_);
+                pit = providers.erase (pit);
+                continue;
+            }
+            ++pit;
+        }
+        if (providers.empty ()) {
+            sit = _projection_state.services.erase (sit);
+            continue;
+        }
+        ++sit;
+    }
+}
+
+void registry_t::apply_peer_service_snapshot_locked (
+  const service_map_t &incoming_, uint32_t peer_registry_id_)
+{
+    for (service_map_t::const_iterator sit = incoming_.begin ();
+         sit != incoming_.end (); ++sit) {
+        const service_key_t &service_key = sit->first;
+        const provider_map_t &providers = sit->second.providers;
+        service_entry_t &service = _projection_state.services[service_key];
+        service.auto_connect_type = sit->second.auto_connect_type;
+        for (provider_map_t::const_iterator pit = providers.begin ();
+             pit != providers.end (); ++pit) {
+            provider_map_t::iterator existing =
+              service.providers.find (pit->first);
+            if (existing != service.providers.end ()
+                && existing->second.source_registry != peer_registry_id_)
+                continue;
+            service.providers[pit->first] = pit->second;
+            owner_identity_t owner;
+            owner.channel_name = service_key.channel_name;
+            owner.service_role = pit->second.service_role;
+            owner.routing_id_key =
+              zlink::routing_id_key (pit->second.routing_id);
+            owner.source_registry = pit->second.source_registry;
+            owner.registration_id = pit->second.registration_id;
+            promote_owner_route_records_locked (owner);
+        }
     }
 }
 

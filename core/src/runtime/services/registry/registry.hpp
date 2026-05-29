@@ -414,6 +414,17 @@ class registry_t
                                    uint64_t list_seq_,
                                    uint64_t now_ms_,
                                    uint32_t local_registry_id_);
+    bool peer_provider_matches_locked (
+      const provider_entry_t &current_,
+      const provider_entry_t &incoming_,
+      uint32_t peer_registry_id_) const;
+    bool peer_service_snapshot_changed_locked (
+      const service_map_t &incoming_,
+      uint32_t peer_registry_id_) const;
+    void remove_peer_service_providers_locked (uint32_t peer_registry_id_,
+                                               uint64_t now_ms_);
+    void apply_peer_service_snapshot_locked (const service_map_t &incoming_,
+                                             uint32_t peer_registry_id_);
     void handle_register (void *router_,
                           const zlink_msg_t *frames_,
                           size_t frame_count_,

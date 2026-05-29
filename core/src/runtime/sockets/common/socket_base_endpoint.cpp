@@ -85,15 +85,6 @@ int zlink::socket_base_t::check_protocol (const std::string &protocol_) const
         return -1;
     }
 
-#ifdef ZLINK_HAVE_OPENPGM
-    //  PGM/EPGM is temporarily disabled until the transport behavior is
-    //  reworked and reintroduced.
-    if (protocol_ == protocol_name::pgm || protocol_ == protocol_name::epgm) {
-        errno = EPROTONOSUPPORT;
-        return -1;
-    }
-#endif
-
     return 0;
 }
 

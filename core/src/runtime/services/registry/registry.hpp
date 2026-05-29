@@ -293,7 +293,7 @@ class registry_t
         }
     };
 
-#include "services/registry/registry_route_materialized_table.inc"
+#include "services/registry/registry_route_materialized_table_internal.hpp"
 
     typedef route_materialized_table_t route_map_t;
     typedef std::

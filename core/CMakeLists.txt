@@ -198,7 +198,16 @@ set(pkg_config_defines "")
 # ASIO backend is mandatory in zlink - no option needed
 # WebSocket is always enabled - no option needed
 option(WITH_TLS "Build with TLS support (requires OpenSSL)" ON)
-option(WITH_OPENPGM "Build with OpenPGM support (PGM/EPGM transports)" OFF)
+set(WITH_OPENPGM
+    "AUTO"
+    CACHE STRING "Build with OpenPGM support for PGM/EPGM transports (AUTO, ON, OFF)")
+set_property(CACHE WITH_OPENPGM PROPERTY STRINGS AUTO ON OFF)
+string(TOUPPER "${WITH_OPENPGM}" WITH_OPENPGM_MODE)
+if(NOT WITH_OPENPGM_MODE STREQUAL "AUTO"
+   AND NOT WITH_OPENPGM_MODE STREQUAL "ON"
+   AND NOT WITH_OPENPGM_MODE STREQUAL "OFF")
+  message(FATAL_ERROR "WITH_OPENPGM must be AUTO, ON, or OFF")
+endif()
 
 # ASIO backend is mandatory in zlink
 set(ZLINK_BOOST_INCLUDE_DIR "" CACHE PATH "Boost include directory (override bundled Boost)")
@@ -265,44 +274,50 @@ if(ZLINK_HAVE_ASIO_WS)
 endif()
 
 # OpenPGM (optional, required for pgm/epgm transports)
-if(WITH_OPENPGM)
+if(NOT WITH_OPENPGM_MODE STREQUAL "OFF")
   if(NOT PKG_CONFIG_FOUND)
-    message(FATAL_ERROR "PkgConfig is required to locate OpenPGM")
-  endif()
-  if(NOT OPENPGM_PKGCONFIG_NAME)
-    set(_openpgm_candidates "openpgm-5.3" "openpgm-5.2")
-    foreach(_openpgm_name IN LISTS _openpgm_candidates)
-      pkg_check_modules(OPENPGM QUIET ${_openpgm_name})
-      if(OPENPGM_FOUND)
-        set(OPENPGM_PKGCONFIG_NAME ${_openpgm_name})
-        break()
-      endif()
-    endforeach()
-  endif()
-  if(NOT OPENPGM_FOUND)
-    if(NOT OPENPGM_PKGCONFIG_NAME)
-      set(OPENPGM_PKGCONFIG_NAME "openpgm-5.3")
+    if(WITH_OPENPGM_MODE STREQUAL "ON")
+      message(FATAL_ERROR "PkgConfig is required to locate OpenPGM")
     endif()
-    pkg_check_modules(OPENPGM ${OPENPGM_PKGCONFIG_NAME})
-  endif()
-  if(OPENPGM_PKGCONFIG_NAME)
-    set(OPENPGM_PKGCONFIG_NAME
-        ${OPENPGM_PKGCONFIG_NAME}
-        CACHE STRING "Name pkg-config shall use to find openpgm libraries and include paths"
-        FORCE)
-  endif()
-  if(OPENPGM_FOUND)
-    message(STATUS "${OPENPGM_PKGCONFIG_NAME} found")
-    set(ZLINK_HAVE_OPENPGM 1)
-    include_directories(${OPENPGM_INCLUDE_DIRS})
-    link_directories(${OPENPGM_LIBRARY_DIRS})
-    set(pkg_config_names_private "${pkg_config_names_private} ${OPENPGM_PKGCONFIG_NAME}")
+    message(STATUS "PkgConfig not found; PGM/EPGM transports disabled")
   else()
-    message(FATAL_ERROR
-      "${OPENPGM_PKGCONFIG_NAME} not found. openpgm is searched via "
-      "`pkg-config ${OPENPGM_PKGCONFIG_NAME}`. Set OPENPGM_PKGCONFIG_NAME "
-      "or disable WITH_OPENPGM.")
+    if(OPENPGM_PKGCONFIG_NAME)
+      pkg_check_modules(OPENPGM QUIET ${OPENPGM_PKGCONFIG_NAME})
+    else()
+      set(_openpgm_candidates "openpgm-5.3" "openpgm-5.2")
+      foreach(_openpgm_name IN LISTS _openpgm_candidates)
+        pkg_check_modules(OPENPGM QUIET ${_openpgm_name})
+        if(OPENPGM_FOUND)
+          set(OPENPGM_PKGCONFIG_NAME ${_openpgm_name})
+          break()
+        endif()
+      endforeach()
+    endif()
+
+    if(OPENPGM_FOUND)
+      set(OPENPGM_PKGCONFIG_NAME
+          ${OPENPGM_PKGCONFIG_NAME}
+          CACHE STRING "Name pkg-config shall use to find openpgm libraries and include paths"
+          FORCE)
+      message(STATUS "${OPENPGM_PKGCONFIG_NAME} found - PGM/EPGM transports enabled")
+      set(ZLINK_HAVE_OPENPGM 1)
+      include_directories(${OPENPGM_INCLUDE_DIRS})
+      link_directories(${OPENPGM_LIBRARY_DIRS})
+      set(pkg_config_names_private "${pkg_config_names_private} ${OPENPGM_PKGCONFIG_NAME}")
+    elseif(WITH_OPENPGM_MODE STREQUAL "ON")
+      if(NOT OPENPGM_PKGCONFIG_NAME)
+        set(OPENPGM_PKGCONFIG_NAME "openpgm-5.3")
+      endif()
+      message(FATAL_ERROR
+        "${OPENPGM_PKGCONFIG_NAME} not found. openpgm is searched via "
+        "`pkg-config ${OPENPGM_PKGCONFIG_NAME}`. Set OPENPGM_PKGCONFIG_NAME "
+        "or use -DWITH_OPENPGM=AUTO/OFF.")
+    else()
+      message(STATUS "OpenPGM not found; PGM/EPGM transports disabled")
+    endif()
   endif()
+else()
+  message(STATUS "PGM/EPGM transports disabled by WITH_OPENPGM=OFF")
 endif()
 
 
@@ -731,7 +746,7 @@ find_package(AsciiDoc QUIET)
 cmake_dependent_option(WITH_DOC "Build Reference Guide documentation(requires DocBook)" ON "ASCIIDOC_FOUND;NOT WIN32"
                        OFF) # Do not build docs on Windows due to issues with symlinks
 
-# OpenPGM, NORM, and VMCI support removed (not needed with ASIO)
+# NORM and VMCI support removed. OpenPGM is optional for PGM/EPGM transports.
 
 # -----------------------------------------------------------------------------
 # force off-tree build
@@ -1267,7 +1282,7 @@ set(readme-docs
 # -----------------------------------------------------------------------------
 # optional modules
 
-# OpenPGM, NORM, VMCI, and TIPC support removed
+# NORM, VMCI, and TIPC support removed. OpenPGM remains optional.
 
 # -----------------------------------------------------------------------------
 # source generators

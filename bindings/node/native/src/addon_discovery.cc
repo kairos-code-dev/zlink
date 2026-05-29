@@ -98,6 +98,45 @@ napi_value create_registry_topology_array(napi_env env,
     return arr;
 }
 
+// Reads an optional uint32 property (used for enum-valued filter fields).
+// Leaves *out untouched and returns false when the property is absent, so the
+// caller's zero-initialized field is preserved.
+static bool read_optional_uint32_property(napi_env env,
+                                          napi_value value,
+                                          const char *name,
+                                          uint32_t *out)
+{
+    bool has_prop = false;
+    napi_value prop;
+    if (napi_has_named_property(env, value, name, &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, name, &prop) == napi_ok) {
+        *out = 0;
+        napi_get_value_uint32(env, prop, out);
+        return true;
+    }
+    return false;
+}
+
+// Copies an optional string property into a fixed-size buffer. Does nothing
+// when the property is absent; relies on the caller having zeroed the buffer
+// (which also guarantees null termination).
+static void read_optional_cstring_property(napi_env env,
+                                           napi_value value,
+                                           const char *name,
+                                           char *buf,
+                                           size_t cap)
+{
+    bool has_prop = false;
+    napi_value prop;
+    if (napi_has_named_property(env, value, name, &has_prop) == napi_ok
+        && has_prop
+        && napi_get_named_property(env, value, name, &prop) == napi_ok) {
+        std::string text = get_string(env, prop);
+        strncpy(buf, text.c_str(), cap - 1);
+    }
+}
+
 bool build_topology_filter(napi_env env,
                            napi_value value,
                            zlink_registry_topology_filter_t *out)
@@ -111,50 +150,19 @@ bool build_topology_filter(napi_env env,
         return false;
     }
 
-    napi_value prop;
-    bool has_prop = false;
-    if (napi_has_named_property(env, value, "autoConnectType", &has_prop) == napi_ok
-        && has_prop
-        && napi_get_named_property(env, value, "autoConnectType", &prop) == napi_ok) {
-        uint32_t raw = 0;
-        napi_get_value_uint32(env, prop, &raw);
+    uint32_t raw = 0;
+    if (read_optional_uint32_property(env, value, "autoConnectType", &raw))
         out->auto_connect_type = static_cast<zlink_auto_connect_type_t>(raw);
-    }
-    if (napi_has_named_property(env, value, "serviceKind", &has_prop) == napi_ok
-        && has_prop
-        && napi_get_named_property(env, value, "serviceKind", &prop) == napi_ok) {
-        uint32_t raw = 0;
-        napi_get_value_uint32(env, prop, &raw);
+    if (read_optional_uint32_property(env, value, "serviceKind", &raw))
         out->service_kind = static_cast<zlink_service_kind_t>(raw);
-    }
-    if (napi_has_named_property(env, value, "serviceRole", &has_prop) == napi_ok
-        && has_prop
-        && napi_get_named_property(env, value, "serviceRole", &prop) == napi_ok) {
-        uint32_t raw = 0;
-        napi_get_value_uint32(env, prop, &raw);
+    if (read_optional_uint32_property(env, value, "serviceRole", &raw))
         out->service_role = static_cast<zlink_service_role_t>(raw);
-    }
-    if (napi_has_named_property(env, value, "channelName", &has_prop) == napi_ok
-        && has_prop
-        && napi_get_named_property(env, value, "channelName", &prop) == napi_ok) {
-        std::string channel_name = get_string(env, prop);
-        strncpy(out->channel_name, channel_name.c_str(),
-                sizeof(out->channel_name) - 1);
-    }
-    if (napi_has_named_property(env, value, "state", &has_prop) == napi_ok
-        && has_prop
-        && napi_get_named_property(env, value, "state", &prop) == napi_ok) {
-        uint32_t raw = 0;
-        napi_get_value_uint32(env, prop, &raw);
+    read_optional_cstring_property(env, value, "channelName",
+                                   out->channel_name, sizeof(out->channel_name));
+    if (read_optional_uint32_property(env, value, "state", &raw))
         out->state = static_cast<zlink_topology_state_t>(raw);
-    }
-    if (napi_has_named_property(env, value, "source", &has_prop) == napi_ok
-        && has_prop
-        && napi_get_named_property(env, value, "source", &prop) == napi_ok) {
-        uint32_t raw = 0;
-        napi_get_value_uint32(env, prop, &raw);
+    if (read_optional_uint32_property(env, value, "source", &raw))
         out->source = static_cast<zlink_topology_source_t>(raw);
-    }
     return true;
 }
 
@@ -171,29 +179,13 @@ bool build_registry_service_summary_filter(napi_env env,
         return false;
     }
 
-    napi_value prop;
-    bool has_prop = false;
-    if (napi_has_named_property(env, value, "autoConnectType", &has_prop) == napi_ok
-        && has_prop
-        && napi_get_named_property(env, value, "autoConnectType", &prop) == napi_ok) {
-        uint32_t raw = 0;
-        napi_get_value_uint32(env, prop, &raw);
+    uint32_t raw = 0;
+    if (read_optional_uint32_property(env, value, "autoConnectType", &raw))
         out->auto_connect_type = static_cast<zlink_auto_connect_type_t>(raw);
-    }
-    if (napi_has_named_property(env, value, "serviceRole", &has_prop) == napi_ok
-        && has_prop
-        && napi_get_named_property(env, value, "serviceRole", &prop) == napi_ok) {
-        uint32_t raw = 0;
-        napi_get_value_uint32(env, prop, &raw);
+    if (read_optional_uint32_property(env, value, "serviceRole", &raw))
         out->service_role = static_cast<zlink_service_role_t>(raw);
-    }
-    if (napi_has_named_property(env, value, "channelName", &has_prop) == napi_ok
-        && has_prop
-        && napi_get_named_property(env, value, "channelName", &prop) == napi_ok) {
-        std::string channel_name = get_string(env, prop);
-        strncpy(out->channel_name, channel_name.c_str(),
-                sizeof(out->channel_name) - 1);
-    }
+    read_optional_cstring_property(env, value, "channelName",
+                                   out->channel_name, sizeof(out->channel_name));
     return true;
 }
 

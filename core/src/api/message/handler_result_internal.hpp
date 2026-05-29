@@ -11,6 +11,9 @@ namespace handler_result_internal
 {
 inline zlink_handler_result_t from_errno (int err_)
 {
+    if (zlink::result_errno_internal::is_not_supported (err_))
+        return ZLINK_HANDLER_NOT_SUPPORTED;
+
     switch (err_) {
         case 0:
             return ZLINK_HANDLER_OK;
@@ -18,11 +21,6 @@ inline zlink_handler_result_t from_errno (int err_)
             return ZLINK_HANDLER_INVALID_ARGUMENT;
         case EBUSY:
             return ZLINK_HANDLER_BUSY;
-        case ENOTSUP:
-#if !defined(EOPNOTSUPP) || EOPNOTSUPP != ENOTSUP
-        case EOPNOTSUPP:
-#endif
-            return ZLINK_HANDLER_NOT_SUPPORTED;
         case EDEADLK:
             return ZLINK_HANDLER_DEADLOCK;
         case EFAULT:

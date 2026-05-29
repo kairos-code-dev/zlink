@@ -73,16 +73,6 @@ int zlink_service_set_tls_client (void *handle_,
                                   const char *ca_cert_,
                                   const char *hostname_,
                                   int trust_system_);
-int zlink_service_set_router_option (void *handle_,
-                                     zlink_router_option_t option_,
-                                     int socket_option_,
-                                     const void *optval_,
-                                     size_t optvallen_);
-int zlink_service_get_router_option (void *handle_,
-                                     zlink_router_option_t option_,
-                                     int socket_option_,
-                                     void *optval_,
-                                     size_t *optvallen_);
 int zlink_service_set_pub_option (void *handle_,
                                   zlink_pub_option_t option_,
                                   int socket_option_,

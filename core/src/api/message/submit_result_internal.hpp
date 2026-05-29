@@ -11,6 +11,9 @@ namespace submit_result_internal
 {
 inline zlink_submit_result_t from_errno (int err_)
 {
+    if (zlink::result_errno_internal::is_not_supported (err_))
+        return ZLINK_SUBMIT_NOT_SUPPORTED;
+
     switch (zlink::internal_errno::classify_submit (err_)) {
         case zlink::internal_errno::submit_error_class::none:
             return ZLINK_SUBMIT_OK;
@@ -36,11 +39,6 @@ inline zlink_submit_result_t from_errno (int err_)
                     return ZLINK_SUBMIT_INVALID_HANDLE;
                 case EINVAL:
                     return ZLINK_SUBMIT_INVALID_ARGUMENT;
-                case ENOTSUP:
-#if !defined(EOPNOTSUPP) || EOPNOTSUPP != ENOTSUP
-                case EOPNOTSUPP:
-#endif
-                    return ZLINK_SUBMIT_NOT_SUPPORTED;
                 case EFSM:
                 case EBUSY:
                     return ZLINK_SUBMIT_INVALID_STATE;

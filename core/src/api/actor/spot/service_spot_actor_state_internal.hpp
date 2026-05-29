@@ -202,6 +202,24 @@ struct session_binding_t
     }
 };
 
+struct actor_bound_session_transfer_t
+{
+    actor_bound_session_transfer_t () :
+        valid (false),
+        session_node (NULL),
+        stream (NULL)
+    {
+        memset (&session_node_rid, 0, sizeof (session_node_rid));
+        memset (&session_rid, 0, sizeof (session_rid));
+    }
+
+    bool valid;
+    zlink::spot_node_t *session_node;
+    zlink_routing_id_t session_node_rid;
+    void *stream;
+    zlink_routing_id_t session_rid;
+};
+
 struct lifecycle_event_t
 {
     lifecycle_event_t () : kind (ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED)
@@ -262,6 +280,10 @@ struct actor_session_state_t
                                           const zlink_routing_id_t *session_rid_);
     binding_map_t::const_iterator find_binding (
       const void *stream_, const zlink_routing_id_t *session_rid_) const;
+    binding_map_t::iterator find_remote_binding (
+      const zlink_routing_id_t &session_rid_,
+      const char *actor_id_,
+      uint64_t generation_);
     binding_map_t::iterator bindings_end ();
     binding_map_t::const_iterator bindings_end () const;
     session_binding_t &ensure_binding (void *stream_,
@@ -276,6 +298,11 @@ struct actor_session_state_t
     void bind_actor_ref (void *stream_,
                          const zlink_routing_id_t &session_rid_,
                          const zlink_actor_ref_t &actor_ref_);
+    actor_bound_session_transfer_t capture_bound_session (
+      const actor_handle_t *source_) const;
+    bool transfer_bound_session (const actor_bound_session_transfer_t &transfer_,
+                                 actor_handle_t *target_,
+                                 uint64_t changed_ms_);
     bool detach_actor (actor_handle_t *actor_,
                        bool erase_entry_,
                        bool erase_owner_if_unused_);

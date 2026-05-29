@@ -11,16 +11,14 @@ namespace connect_result_internal
 {
 inline zlink_connect_result_t from_errno (int err_)
 {
+    if (zlink::result_errno_internal::is_not_supported (err_))
+        return ZLINK_CONNECT_NOT_SUPPORTED;
+
     switch (err_) {
         case 0:
             return ZLINK_CONNECT_OK;
         case EINVAL:
             return ZLINK_CONNECT_INVALID_ARGUMENT;
-        case ENOTSUP:
-#if !defined(EOPNOTSUPP) || EOPNOTSUPP != ENOTSUP
-        case EOPNOTSUPP:
-#endif
-            return ZLINK_CONNECT_NOT_SUPPORTED;
         case EFAULT:
             return ZLINK_CONNECT_INVALID_HANDLE;
         case ENOENT:

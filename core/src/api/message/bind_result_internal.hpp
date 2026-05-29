@@ -11,6 +11,9 @@ namespace bind_result_internal
 {
 inline zlink_bind_result_t from_errno (int err_)
 {
+    if (zlink::result_errno_internal::is_not_supported (err_))
+        return ZLINK_BIND_NOT_SUPPORTED;
+
     switch (err_) {
         case 0:
             return ZLINK_BIND_OK;
@@ -18,11 +21,6 @@ inline zlink_bind_result_t from_errno (int err_)
             return ZLINK_BIND_INVALID_ARGUMENT;
         case EADDRINUSE:
             return ZLINK_BIND_ADDR_IN_USE;
-        case ENOTSUP:
-#if !defined(EOPNOTSUPP) || EOPNOTSUPP != ENOTSUP
-        case EOPNOTSUPP:
-#endif
-            return ZLINK_BIND_NOT_SUPPORTED;
         case EFAULT:
             return ZLINK_BIND_INVALID_HANDLE;
         default:

@@ -126,11 +126,8 @@ zlink_config_result_t zlink_set_router_option (void *handle_,
         return zlink::config_result_internal::from_rc (
           socket->setsockopt (socket_option, optval_, optvallen_));
     }
-    errno = 0;
-
-    return zlink::config_result_internal::from_rc (
-      zlink_service_set_router_option (handle_, option_, socket_option,
-                                       optval_, optvallen_));
+    errno = EINVAL;
+    return ZLINK_CONFIG_INVALID_ARGUMENT;
 }
 
 zlink_config_result_t zlink_get_router_option (void *handle_,
@@ -162,11 +159,8 @@ zlink_config_result_t zlink_get_router_option (void *handle_,
         return zlink::config_result_internal::from_rc (
           socket->getsockopt (socket_option, optval_, optvallen_));
     }
-    errno = 0;
-
-    return zlink::config_result_internal::from_rc (
-      zlink_service_get_router_option (handle_, option_, socket_option, optval_,
-                                       optvallen_));
+    errno = EINVAL;
+    return ZLINK_CONFIG_INVALID_ARGUMENT;
 }
 
 zlink_config_result_t zlink_set_dealer_option (void *handle_,

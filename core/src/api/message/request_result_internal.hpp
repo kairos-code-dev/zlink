@@ -11,6 +11,9 @@ namespace request_result_internal
 {
 inline zlink_request_result_t from_errno (int err_)
 {
+    if (zlink::result_errno_internal::is_not_supported (err_))
+        return ZLINK_REQUEST_NOT_SUPPORTED;
+
     switch (err_) {
         case EACCES:
         case ECONNREFUSED:
@@ -27,11 +30,6 @@ inline zlink_request_result_t from_errno (int err_)
             return ZLINK_REQUEST_INVALID_ARGUMENT;
         case EFSM:
             return ZLINK_REQUEST_INVALID_STATE;
-        case ENOTSUP:
-#if !defined(EOPNOTSUPP) || EOPNOTSUPP != ENOTSUP
-        case EOPNOTSUPP:
-#endif
-            return ZLINK_REQUEST_NOT_SUPPORTED;
         default:
             break;
     }

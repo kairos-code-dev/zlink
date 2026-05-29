@@ -11,6 +11,9 @@ namespace recv_result_internal
 {
 inline zlink_recv_result_t from_errno (int err_)
 {
+    if (zlink::result_errno_internal::is_not_supported (err_))
+        return ZLINK_RECV_NOT_SUPPORTED;
+
     switch (err_) {
         case 0:
             return ZLINK_RECV_OK;
@@ -22,11 +25,6 @@ inline zlink_recv_result_t from_errno (int err_)
             return ZLINK_RECV_TERMINATED;
         case EFAULT:
             return ZLINK_RECV_INVALID_HANDLE;
-        case ENOTSUP:
-#if !defined(EOPNOTSUPP) || EOPNOTSUPP != ENOTSUP
-        case EOPNOTSUPP:
-#endif
-            return ZLINK_RECV_NOT_SUPPORTED;
         default:
             return ZLINK_RECV_INTERNAL_ERROR;
     }

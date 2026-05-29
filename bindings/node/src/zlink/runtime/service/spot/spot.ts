@@ -9,7 +9,11 @@ import { normalizeRoutingId } from '../../core/routing_id';
 import { startRequestProgress } from '../../messaging/request_progress';
 import { adoptTopicMessage, materializeReceived, materializeTopicMessage, type NativeTopicMessageRaw } from '../../messaging/message_materializer';
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
-import { RuntimeReplyOperation, RuntimeRequestOperation, RuntimeSendOperation, normalizeReplyFlags, submitErrorFromResult } from '../../sockets/socket_operations';
+import { RuntimeReplyOperation, RuntimeRequestOperation, RuntimeSendOperation } from '../../sockets/socket_operation_builders';
+import {
+  normalizeReplyFlags,
+  submitErrorFromResult,
+} from '../../sockets/socket_submit_errors';
 import { toMessageParts, toOwnedMessage } from '../../buffers/message_conversion';
 import { Message, Received, RoutingId, TopicMessage, type MessageLike } from '../../../contracts';
 import { RecvFlags, SendFlags } from '../../../contracts/sockets/socket_constants';

@@ -2,9 +2,9 @@
 
 import type { RoutingId } from '../core';
 import type { Received } from '../messaging';
+import type { ReplyOperation, RequestOperation, SendOperation } from '../messaging';
 import type { Discovery } from '../service';
 import type { RecvFlags } from './socket_constants';
-import type { ReplyOperation, RequestOperation, SendOperation } from './socket_operations';
 import type { RouterSocketOptions } from './socket_options';
 import type { ConnectableSocket } from './socket';
 

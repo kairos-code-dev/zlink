@@ -5,7 +5,7 @@ import { requireNative } from '../../native/native';
 import { closeCall, configCall, recvNativeError } from '../../errors/native_errors';
 import { RecvFlags } from '../../../contracts/sockets/socket_constants';
 import type { ActorJoinOperation, ActorLeaveOperation, ActorPart, ActorRef, SendOperation } from '../../../contracts/service';
-import { RuntimeSendOperation } from '../../sockets/socket_operations';
+import { RuntimeSendOperation } from '../../sockets/socket_operation_builders';
 import { Spot } from './spot';
 import { actorPartFromRaw, actorRefToRaw, type ActorPartRaw } from './actor_models';
 import { invokeActorJoin, invokeActorLeave, invokeActorSendBoundSession } from './actor_invokers';

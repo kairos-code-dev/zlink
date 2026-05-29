@@ -3,6 +3,7 @@
 #include "addon_core_api.h"
 #include "addon_core_options.h"
 #include "addon_core_perf.h"
+#include "addon_message_values.h"
 #include "addon_message_parts.h"
 #include <algorithm>
 #include <errno.h>
@@ -528,72 +529,6 @@ int router_reply_parts(void *router,
     }
 
     return ZLINK_SUBMIT_OK;
-}
-
-napi_value create_buffer_copy_or_empty(napi_env env, const void *data, size_t len)
-{
-    napi_value out;
-    napi_create_buffer_copy(env, len, len == 0 ? NULL : data, NULL, &out);
-    return out;
-}
-
-void finalize_external_msg_buffer(napi_env env, void *data, void *hint)
-{
-    (void) env;
-    (void) data;
-    zlink_msg_t *msg = static_cast<zlink_msg_t *>(hint);
-    if (!msg)
-        return;
-    zlink_msg_close(msg);
-    delete msg;
-}
-
-napi_value create_message_data_buffer(napi_env env, zlink_msg_t *msg)
-{
-    const size_t size = zlink_msg_size(msg);
-    if (size == 0)
-        return create_buffer_copy_or_empty(env, NULL, 0);
-
-    zlink_msg_t *owned = new (std::nothrow) zlink_msg_t;
-    if (!owned) {
-        napi_throw_error(env, NULL, "message buffer allocation failed");
-        return NULL;
-    }
-    if (zlink_msg_init(owned) != 0) {
-        delete owned;
-        return throw_last_error(env, "message buffer init failed");
-    }
-    if (zlink_msg_move(owned, msg) != 0) {
-        zlink_msg_close(owned);
-        delete owned;
-        return throw_last_error(env, "message buffer move failed");
-    }
-
-    napi_value data;
-    napi_status status = napi_create_external_buffer(
-      env,
-      size,
-      zlink_msg_data(owned),
-      finalize_external_msg_buffer,
-      owned,
-      &data);
-    if (status != napi_ok) {
-        zlink_msg_close(owned);
-        delete owned;
-        napi_throw_error(env, NULL, "message buffer creation failed");
-        return NULL;
-    }
-    return data;
-}
-
-napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid)
-{
-    if (rid.size == 0) {
-        napi_value none;
-        napi_get_null(env, &none);
-        return none;
-    }
-    return create_buffer_copy_or_empty(env, rid.data, rid.size);
 }
 
 napi_value create_message_properties_snapshot(napi_env env,

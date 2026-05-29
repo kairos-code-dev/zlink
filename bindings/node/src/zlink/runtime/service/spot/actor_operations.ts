@@ -23,7 +23,7 @@ import type {
   ReplyHandler
 } from '../../../contracts/service';
 import { requestErrorFromResult } from '../../messaging/request_executor';
-import { OperationPayload } from '../../sockets/socket_operations';
+import { OperationPayload } from '../../sockets/socket_operation_builders';
 
 type ActorJoinInvoker = (
   parts: readonly MessageLike[],

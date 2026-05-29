@@ -5,21 +5,23 @@ import { normalizeMessageLikePayload, toMessageParts } from '../buffers/message_
 import { normalizeRoutingId } from '../core/routing_id';
 import {
   MessageSocket,
-  NativeSocketType,
   RuntimeRequestOperation,
-  SendFlags,
+} from './socket_operations';
+import {
+  NativeSocketType,
   RoutingId,
-  validateCString,
-  requireNative,
+  SendFlags,
   configCall,
   executeNativeRequest,
+  requireNative,
   startRequestProgress,
+  validateCString,
   type Context,
   type Message,
   type MessageLike,
   type RequestCallback,
   type RequestOperation,
-} from './socket_operations';
+} from './socket_runtime_support';
 
 export class DealerSocket extends MessageSocket {
   readonly options: DealerSocketOptions;

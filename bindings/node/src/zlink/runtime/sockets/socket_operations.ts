@@ -7,54 +7,31 @@ import {
   recvNativeError,
   submitNativeError
 } from '../errors/native_errors';
-import { executeNativeRequest } from '../messaging/request_executor';
-import { startRequestProgress } from '../messaging/request_progress';
 import {
   adoptTopicMessage,
   materializeReceivedInto,
   materializeTopicMessage
 } from '../messaging/message_materializer';
-export { materializeReceived } from '../messaging/message_materializer';
 import {
   normalizeMessageLikePayload,
   normalizeOperationPayload,
 } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
 import { ConnectableSocket } from './socket_base';
-export { Thread } from '../eventing/thread';
-import { normalizeBufferLike } from '../../contracts/core/buffer_like';
 import {
   Message,
   Received,
   RoutingId,
   TopicMessage,
-  SubscriptionEvent,
   type MessageLike,
 } from '../../contracts';
 import { validateCString } from '../options/validation';
 import {
-  SocketType as NativeSocketType, SendFlags, RecvFlags, RidDuplicatePolicy,
-  PollEventFlag
+  SendFlags,
+  RecvFlags,
 } from '../../contracts/sockets/socket_constants';
-import { SocketOption } from '../options/option_mapping';
 import {
-  BindError,
-  BindResult,
-  CloseError,
-  CloseResult,
-  ConfigError,
-  ConfigResult,
-  ConnectError,
-  ConnectResult,
-  HandlerError,
-  HandlerResult,
-  RecvError,
-  RecvResult,
-  RequestError,
-  RequestResult,
-  SubmitError,
   SubmitResult,
-  ZlinkError,
 } from '../../contracts/errors/errors';
 
 const PREBUILD_SUBSCRIBE_OPTION = 6;
@@ -78,66 +55,7 @@ export {
   RuntimeRequestOperation,
   RuntimeSendOperation,
 } from './socket_operation_builders';
-import { wrapRoutingId } from '../../contracts/service/spot/spot_models';
-export type { RuntimeContext as Context } from '../core/context';
-export type { BufferLike } from '../../contracts/core/buffer_like';
-export type { MessageLike };
-export type {
-  RequestCallback,
-  RequestOperation,
-  ReplyOperation,
-  SendOperation,
-  SocketSendReadyHandler,
-  StreamPacketHandler,
-  ActorBindOperation,
-  ActorRef,
-  ActorUnbindOperation,
-} from '../../contracts/service';
-export type { MessageSnapshot } from '../../contracts';
-export { NativeSocketType as SocketType };
-export {
-  Message,
-  Received,
-  RoutingId,
-  TopicMessage,
-  SubscriptionEvent,
-  SendFlags,
-  RecvFlags,
-  PollEventFlag,
-  RidDuplicatePolicy,
-  SubmitResult,
-  RequestResult,
-  RecvResult,
-  HandlerResult,
-  CloseResult,
-  BindResult,
-  ConnectResult,
-  ConfigResult,
-  ZlinkError,
-  SubmitError,
-  RequestError,
-  RecvError,
-  HandlerError,
-  CloseError,
-  BindError,
-  ConnectError,
-  ConfigError
-};
-
-export function submitErrorFromResult(result: SubmitResult, message: string): SubmitError {
-  return new SubmitError(result, 0, message);
-}
-
-export function normalizeReplyFlags(flags: SendFlags = SendFlags.None): SendFlags {
-  const normalized = flags | 0;
-  if (normalized !== SendFlags.None) {
-    throw submitErrorFromResult(
-      SubmitResult.NotSupported,
-      'reply flags are not supported by the current core library'
-    );
-  }
-  return normalized as SendFlags;
-}
+import { submitErrorFromResult } from './socket_submit_errors';
 
 export class SendSocket extends ConnectableSocket {
   send(): SendOperation {
@@ -375,21 +293,3 @@ export class RoutedMessageSocket extends ConnectableSocket {
     });
   }
 }
-
-export {
-  NativeSocketType,
-  SocketOption,
-  requireNative,
-  validateCString,
-  configCall,
-  handlerCall,
-  recvNativeError,
-  submitNativeError,
-  executeNativeRequest,
-  startRequestProgress,
-  adoptTopicMessage,
-  materializeReceivedInto,
-  materializeTopicMessage,
-  normalizeBufferLike,
-  wrapRoutingId,
-};

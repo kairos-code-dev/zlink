@@ -2,17 +2,19 @@
 
 import { PubSocketOptions } from './socket_options';
 import {
-  NativeSocketType,
   PublisherSocket,
+} from './socket_operations';
+import {
+  NativeSocketType,
   RecvFlags,
   SubscriptionEvent,
-  wrapRoutingId,
-  requireNative,
   handlerCall,
+  requireNative,
   recvNativeError,
+  wrapRoutingId,
   type Context,
   type SocketSendReadyHandler,
-} from './socket_operations';
+} from './socket_runtime_support';
 
 export class XPubSocket extends PublisherSocket {
   readonly options: PubSocketOptions;

@@ -10,7 +10,7 @@ import { NativeHandle } from '../../handles/native_handle';
 import { closeCall, configCall, connectCall } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
-import { RuntimeSendOperation } from '../../sockets/socket_operations';
+import { RuntimeSendOperation } from '../../sockets/socket_operation_builders';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { requireNative } from '../../native/native';
 import { RoutingId } from '../../../contracts';

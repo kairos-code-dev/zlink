@@ -5,23 +5,25 @@ import { SocketBase } from './socket_base';
 import { messageFromNativeBuffer, normalizeMessageLikePayload } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
 import {
-  NativeSocketType,
-  RecvFlags,
-  Received,
-  SendFlags,
   RuntimeSendOperation,
-  SubmitResult,
+} from './socket_operations';
+import { submitErrorFromResult } from './socket_submit_errors';
+import {
+  NativeSocketType,
+  Received,
+  RecvFlags,
   RoutingId,
-  wrapRoutingId,
-  validateCString,
-  requireNative,
+  SendFlags,
+  SubmitResult,
   configCall,
   handlerCall,
-  recvNativeError,
-  submitNativeError,
-  submitErrorFromResult,
   materializeReceived,
   materializeReceivedInto,
+  requireNative,
+  recvNativeError,
+  submitNativeError,
+  validateCString,
+  wrapRoutingId,
   type ActorBindOperation,
   type ActorRef,
   type ActorUnbindOperation,
@@ -31,7 +33,7 @@ import {
   type SendOperation,
   type SocketSendReadyHandler,
   type StreamPacketHandler,
-} from './socket_operations';
+} from './socket_runtime_support';
 import {
   RuntimeActorBindOperation,
   RuntimeActorUnbindOperation,

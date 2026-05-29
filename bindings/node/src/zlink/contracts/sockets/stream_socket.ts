@@ -2,9 +2,9 @@
 
 import type { RoutingId } from '../core';
 import type { Received } from '../messaging';
+import type { SendOperation } from '../messaging';
 import type { ActorBindOperation, ActorRef, ActorUnbindOperation, SpotNode, StreamPacketHandler } from '../service';
 import type { RecvFlags } from './socket_constants';
-import type { SendOperation } from './socket_operations';
 import type { StreamSocketOptions } from './socket_options';
 import type { Socket } from './socket';
 

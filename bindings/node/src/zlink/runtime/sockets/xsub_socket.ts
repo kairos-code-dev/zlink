@@ -2,10 +2,12 @@
 
 import { SubSocketOptions } from './socket_options';
 import {
-  NativeSocketType,
   SubscriberSocket,
-  type Context,
 } from './socket_operations';
+import {
+  NativeSocketType,
+  type Context,
+} from './socket_runtime_support';
 
 export class XSubSocket extends SubscriberSocket {
   readonly options: SubSocketOptions;

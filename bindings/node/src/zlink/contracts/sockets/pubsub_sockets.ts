@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import type { SubscriptionEvent, TopicMessage } from '../messaging';
+import type { SendOperation } from '../messaging';
 import type { SubscriptionEntry } from '../service';
 import type { Discovery } from '../service';
 import type { RecvFlags } from './socket_constants';
-import type { SendOperation } from './socket_operations';
 import type { PubSocketOptions, SubSocketOptions } from './socket_options';
 import type { ConnectableSocket } from './socket';
 

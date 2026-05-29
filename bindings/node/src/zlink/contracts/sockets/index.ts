@@ -18,11 +18,37 @@ export type {
   SubmitRetryMode as SubmitRetryModeValue,
   PollEventFlagValue,
 } from './socket_constants';
-export * from './socket';
-export * from './socket_options';
-export * from './socket_operations';
-export * from './pair_socket';
-export * from './dealer_socket';
-export * from './router_socket';
-export * from './pubsub_sockets';
-export * from './stream_socket';
+export type {
+  BaseSocket,
+  ConnectableSocket,
+  Socket,
+} from './socket';
+export type {
+  CommonSocketOptions,
+  DealerSocketOptions,
+  PubSocketOptions,
+  RouterSocketOptions,
+  StreamSocketOptions,
+  SubSocketOptions,
+} from './socket_options';
+export type {
+  ReplyHandler,
+  ReplyOperation,
+  ReplySubmitOperation,
+  RequestCallback,
+  RequestCallbackSubmitOperation,
+  RequestOperation,
+  RequestSubmitOperation,
+  SendOperation,
+  SendSubmitOperation,
+} from './socket_operations';
+export type { PairSocket } from './pair_socket';
+export type { DealerSocket } from './dealer_socket';
+export type { RouterSocket } from './router_socket';
+export type {
+  PubSocket,
+  SubSocket,
+  XPubSocket,
+  XSubSocket,
+} from './pubsub_sockets';
+export type { StreamSocket } from './stream_socket';

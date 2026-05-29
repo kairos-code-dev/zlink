@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import type { Received } from '../messaging';
+import type { SendOperation } from '../messaging';
 import type { RecvFlags } from './socket_constants';
-import type { SendOperation } from './socket_operations';
 import type { CommonSocketOptions } from './socket_options';
 import type { ConnectableSocket } from './socket';
 

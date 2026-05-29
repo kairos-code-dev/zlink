@@ -3,9 +3,11 @@
 import { CommonSocketOptions } from './socket_options';
 import {
   MessageSocket,
+} from './socket_operations';
+import {
   NativeSocketType,
   type Context,
-} from './socket_operations';
+} from './socket_runtime_support';
 
 export class PairSocket extends MessageSocket {
   readonly options: CommonSocketOptions;

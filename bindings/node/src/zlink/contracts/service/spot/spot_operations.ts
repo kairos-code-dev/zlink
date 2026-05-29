@@ -2,7 +2,7 @@
 
 import type { Message, MessageLike } from '../../messaging';
 import type { SendFlags } from '../../sockets/socket_constants';
-import type { ReplyHandler } from '../../sockets/socket_operations';
+import type { ReplyHandler } from '../../messaging/operations';
 export type {
   ReplyHandler,
   ReplyOperation,
@@ -13,7 +13,7 @@ export type {
   RequestSubmitOperation,
   SendOperation,
   SendSubmitOperation,
-} from '../../sockets/socket_operations';
+} from '../../messaging/operations';
 import type {
   ActorJoinEntrySpotResult,
   ActorJoinResult,

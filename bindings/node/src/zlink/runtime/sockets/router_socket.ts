@@ -4,20 +4,22 @@ import { RouterSocketOptions } from './socket_options';
 import { normalizeMessageLikePayload, toMessageParts } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
 import {
-  NativeSocketType,
-  RuntimeRequestOperation,
-  RoutedMessageSocket,
-  SendFlags,
-  RuntimeSendOperation,
-  SubmitResult,
-  RoutingId,
-  requireNative,
-  configCall,
-  submitNativeError,
-  normalizeReplyFlags,
-  executeNativeRequest,
-  startRequestProgress,
   RuntimeReplyOperation,
+  RuntimeRequestOperation,
+  RuntimeSendOperation,
+  RoutedMessageSocket,
+} from './socket_operations';
+import { normalizeReplyFlags } from './socket_submit_errors';
+import {
+  NativeSocketType,
+  RoutingId,
+  SendFlags,
+  SubmitResult,
+  configCall,
+  executeNativeRequest,
+  requireNative,
+  startRequestProgress,
+  submitNativeError,
   type Context,
   type Message,
   type MessageLike,
@@ -25,7 +27,7 @@ import {
   type RequestOperation,
   type ReplyOperation,
   type SendOperation,
-} from './socket_operations';
+} from './socket_runtime_support';
 
 export class RouterSocket extends RoutedMessageSocket {
   readonly options: RouterSocketOptions;

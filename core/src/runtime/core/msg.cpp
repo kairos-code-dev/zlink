@@ -13,6 +13,7 @@
 #include "utils/likely.hpp"
 #include "utils/err.hpp"
 #include "utils/env.hpp"
+#include "utils/allocator.hpp"
 
 //  Check whether the sizes of public representation of the message (zlink_msg_t)
 //  and private representation of the message (zlink::msg_t) match.
@@ -135,8 +136,8 @@ int zlink::msg_t::init_size (size_t size_)
         _u.lmsg.routing_id = 0;
         _u.lmsg.content = NULL;
         if (sizeof (content_t) + size_ > size_)
-            _u.lmsg.content =
-              static_cast<content_t *> (malloc (sizeof (content_t) + size_));
+            _u.lmsg.content = static_cast<content_t *> (
+              zlink::alloc_tl (sizeof (content_t) + size_));
         if (unlikely (!_u.lmsg.content)) {
             errno = ENOMEM;
             return -1;
@@ -420,10 +421,22 @@ int zlink::msg_t::close ()
             //  counter so we call the destructor explicitly now.
             _u.lmsg.content->refcnt.~atomic_counter_t ();
 
+            //  init_size pools the header-plus-payload block through the
+            //  thread-local allocator; init_data only allocates the header
+            //  and the payload lifetime is managed by the user-supplied ffn.
+            const bool inline_payload = _u.lmsg.content->ffn == NULL;
+            const size_t alloc_size =
+              inline_payload
+                ? sizeof (content_t) + _u.lmsg.content->size
+                : sizeof (content_t);
+
             if (_u.lmsg.content->ffn)
                 _u.lmsg.content->ffn (_u.lmsg.content->data,
                                       _u.lmsg.content->hint);
-            free (_u.lmsg.content);
+            if (inline_payload)
+                zlink::dealloc_tl (_u.lmsg.content, alloc_size);
+            else
+                free (_u.lmsg.content);
         }
     }
 
@@ -715,9 +728,17 @@ bool zlink::msg_t::rm_refs (int refs_)
         //  counter so we call the destructor explicitly now.
         _u.lmsg.content->refcnt.~atomic_counter_t ();
 
+        const bool inline_payload = _u.lmsg.content->ffn == NULL;
+        const size_t alloc_size =
+          inline_payload ? sizeof (content_t) + _u.lmsg.content->size
+                         : sizeof (content_t);
+
         if (_u.lmsg.content->ffn)
             _u.lmsg.content->ffn (_u.lmsg.content->data, _u.lmsg.content->hint);
-        free (_u.lmsg.content);
+        if (inline_payload)
+            zlink::dealloc_tl (_u.lmsg.content, alloc_size);
+        else
+            free (_u.lmsg.content);
 
         return false;
     }

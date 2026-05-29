@@ -112,22 +112,31 @@ enum message_snapshot_flags_t
     MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES = 1 << 1
 };
 
-inline bool message_has_snapshot_properties(const zlink_routing_id_t *routing_id,
-                                            zlink_msg_t *msg)
-{
-    return zlink_msg_gets(msg, "Socket-Type")
-        || zlink_msg_gets(msg, "User-Id")
-        || zlink_msg_gets(msg, "Peer-Address")
-        || zlink_msg_gets(msg, "Routing-Id")
-        || zlink_msg_gets(msg, "Identity")
-        || (routing_id && routing_id->size > 0);
-}
-
+// Builds the message "properties" snapshot object in a single metadata pass.
+// Each ZMTP property is probed with zlink_msg_gets exactly once; a separate
+// predicate pass to decide whether any property exists would re-run the same
+// library lookups. Returns NULL when the message carries no snapshot
+// properties and `force` is false, so the common data-only receive path never
+// allocates an empty object.
 inline napi_value create_message_properties_snapshot(
   napi_env env,
   const zlink_routing_id_t *routing_id,
-  zlink_msg_t *msg)
+  zlink_msg_t *msg,
+  bool force)
 {
+    const char *socket_type = zlink_msg_gets(msg, "Socket-Type");
+    const char *user_id = zlink_msg_gets(msg, "User-Id");
+    const char *peer_address = zlink_msg_gets(msg, "Peer-Address");
+    const char *routing_id_value = zlink_msg_gets(msg, "Routing-Id");
+    const char *identity =
+      routing_id_value ? NULL : zlink_msg_gets(msg, "Identity");
+    const bool has_routing_id_bytes = routing_id && routing_id->size > 0;
+
+    const bool has_any = socket_type || user_id || peer_address
+        || routing_id_value || identity || has_routing_id_bytes;
+    if (!has_any && !force)
+        return NULL;
+
     napi_value props;
     napi_create_object(env, &props);
 
@@ -139,12 +148,11 @@ inline napi_value create_message_properties_snapshot(
         napi_set_named_property(env, props, name, out);
     };
 
-    set_property("Socket-Type", zlink_msg_gets(msg, "Socket-Type"));
-    set_property("User-Id", zlink_msg_gets(msg, "User-Id"));
-    set_property("Peer-Address", zlink_msg_gets(msg, "Peer-Address"));
+    set_property("Socket-Type", socket_type);
+    set_property("User-Id", user_id);
+    set_property("Peer-Address", peer_address);
 
-    const char *routing_id_value = zlink_msg_gets(msg, "Routing-Id");
-    if (!routing_id_value && routing_id && routing_id->size > 0) {
+    if (!routing_id_value && has_routing_id_bytes) {
         napi_value out;
         napi_create_string_utf8(
           env,
@@ -153,14 +161,13 @@ inline napi_value create_message_properties_snapshot(
           &out);
         napi_set_named_property(env, props, "Routing-Id", out);
         napi_set_named_property(env, props, "Identity", out);
-    } else {
+    } else if (routing_id_value) {
         set_property("Routing-Id", routing_id_value);
-        if (routing_id_value)
-            set_property("Identity", routing_id_value);
+        set_property("Identity", routing_id_value);
     }
 
     if (!routing_id_value)
-        set_property("Identity", zlink_msg_gets(msg, "Identity"));
+        set_property("Identity", identity);
 
     return props;
 }
@@ -174,10 +181,17 @@ inline napi_value create_message_snapshot_value(
     napi_value obj;
     napi_create_object(env, &obj);
 
-    zlink_config_result_t refcnt_err = ZLINK_CONFIG_OK;
-    const int refcnt = zlink_msg_refcnt(msg, &refcnt_err);
-    if (refcnt_err != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "message refcnt failed");
+    // A freshly received message is solely owned by the binding, so its
+    // reference count is always 1 on the receive path and the "refCount" field
+    // is omitted. Only query the library when a caller explicitly asks for the
+    // count to be surfaced (e.g. the spot snapshot path).
+    int refcnt = 1;
+    if (flags & MESSAGE_SNAPSHOT_ALWAYS_REF_COUNT) {
+        zlink_config_result_t refcnt_err = ZLINK_CONFIG_OK;
+        refcnt = zlink_msg_refcnt(msg, &refcnt_err);
+        if (refcnt_err != ZLINK_CONFIG_OK)
+            return throw_last_error(env, "message refcnt failed");
+    }
 
     napi_value data = create_message_data_buffer(env, msg);
     if (!data)
@@ -189,10 +203,9 @@ inline napi_value create_message_snapshot_value(
         napi_create_int32(env, refcnt, &ref_count);
         napi_set_named_property(env, obj, "refCount", ref_count);
     }
-    if (message_has_snapshot_properties(routing_id, msg)
-        || (flags & MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES)) {
-        napi_value props = create_message_properties_snapshot(env, routing_id, msg);
+    napi_value props = create_message_properties_snapshot(
+      env, routing_id, msg, (flags & MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES) != 0);
+    if (props)
         napi_set_named_property(env, obj, "properties", props);
-    }
     return obj;
 }

@@ -2,6 +2,7 @@
 #ifndef ZLINK_CPP_RUNTIME_NATIVE_RECEIVE_HPP_INCLUDED
 #define ZLINK_CPP_RUNTIME_NATIVE_RECEIVE_HPP_INCLUDED
 
+#include "native_message_guard.hpp"
 #include "native_message_parts.hpp"
 #include "../Core/routing_id_access.hpp"
 
@@ -54,27 +55,20 @@ inline int recv_router_parts (void *router_,
     parts_.clear ();
 
     for (;;) {
-        zlink_msg_t part;
-        if (zlink_msg_init (&part) != 0)
+        scoped_native_message_t part;
+        if (!part.init ())
             return recv_result_from_errno (errno);
 
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
         const zlink_recv_result_t rc = zlink_router_recv_part (
           router_, source_node_rid_out_, source_spot_rid_out_, request_seq_out_,
-          &part, &has_more,
+          part.get (), &has_more,
           static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
-        if (rc != ZLINK_RECV_OK) {
-            (void) zlink_msg_close (&part);
+        if (rc != ZLINK_RECV_OK)
             return rc;
-        }
 
         message_t message;
-        if (zlink_msg_move (detail::native_handle (message), &part) != 0) {
-            const int saved_errno = errno;
-            (void) zlink_msg_close (&part);
-            errno = saved_errno != 0 ? saved_errno : EFAULT;
-            return recv_result_from_errno (errno);
-        }
+        part.adopt_into (message);
         parts_.push_back (std::move (message));
         if (has_more == ZLINK_PART_FINAL)
             return ZLINK_RECV_OK;
@@ -115,18 +109,17 @@ inline int drain_router_remaining_parts (void *router_, recv_flags_t flags_)
 {
     zlink_part_flag_t has_more = ZLINK_PART_MORE;
     while (has_more != ZLINK_PART_FINAL) {
-        zlink_msg_t ignored_part;
-        if (zlink_msg_init (&ignored_part) != 0)
+        scoped_native_message_t ignored_part;
+        if (!ignored_part.init ())
             return recv_result_from_errno (errno);
 
         const zlink_routing_id_t *ignored_source_rid = nullptr;
         const zlink_routing_id_t *ignored_spot_rid = nullptr;
         uint64_t ignored_request_seq = 0;
         const int rc = zlink_router_recv_part (
-          router_, &ignored_source_rid, &ignored_spot_rid,
-          &ignored_request_seq, &ignored_part, &has_more,
+          router_, &ignored_source_rid, &ignored_spot_rid, &ignored_request_seq,
+          ignored_part.get (), &has_more,
           static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
-        (void) zlink_msg_close (&ignored_part);
         if (rc != ZLINK_RECV_OK)
             return rc;
     }
@@ -208,25 +201,19 @@ recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &envelope_)
         }
     } else {
         const zlink_routing_id_t *source_rid = nullptr;
-        zlink_msg_t first_part;
-        if (zlink_msg_init (&first_part) != 0)
+        scoped_native_message_t first_part;
+        if (!first_part.init ())
             return -1;
 
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
         const int first_rc = zlink_recv_part (
-          socket_, &source_rid, &first_part, &has_more,
+          socket_, &source_rid, first_part.get (), &has_more,
           static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
-        if (first_rc != ZLINK_RECV_OK) {
-            (void) zlink_msg_close (&first_part);
+        if (first_rc != ZLINK_RECV_OK)
             return first_rc;
-        }
 
         message_t first_msg;
-        if (zlink_msg_move (detail::native_handle (first_msg), &first_part)
-            != 0) {
-            (void) zlink_msg_close (&first_part);
-            return -1;
-        }
+        first_part.adopt_into (first_msg);
 
         if (has_more == ZLINK_PART_FINAL) {
             envelope_.single_part.emplace (std::move (first_msg));
@@ -239,24 +226,18 @@ recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &envelope_)
         envelope_.parts.reserve (2);
         envelope_.parts.emplace_back (std::move (first_msg));
         while (has_more != ZLINK_PART_FINAL) {
-            zlink_msg_t next_part;
-            if (zlink_msg_init (&next_part) != 0)
+            scoped_native_message_t next_part;
+            if (!next_part.init ())
                 return -1;
 
             const int rc = zlink_recv_part (
-              socket_, &source_rid, &next_part, &has_more,
+              socket_, &source_rid, next_part.get (), &has_more,
               static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
-            if (rc != ZLINK_RECV_OK) {
-                (void) zlink_msg_close (&next_part);
+            if (rc != ZLINK_RECV_OK)
                 return rc;
-            }
 
             message_t next_msg;
-            if (zlink_msg_move (detail::native_handle (next_msg), &next_part)
-                != 0) {
-                (void) zlink_msg_close (&next_part);
-                return -1;
-            }
+            next_part.adopt_into (next_msg);
             envelope_.parts.emplace_back (std::move (next_msg));
         }
 
@@ -343,21 +324,18 @@ inline int recv_single_part (void *socket_,
     }
 
     const zlink_routing_id_t *source_rid = nullptr;
-    zlink_msg_t part_native;
-    if (zlink_msg_init (&part_native) != 0)
+    scoped_native_message_t part_native;
+    if (!part_native.init ())
         return -1;
 
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     const int rc = zlink_recv_part (
-      socket_, &source_rid, &part_native, &has_more,
+      socket_, &source_rid, part_native.get (), &has_more,
       static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
-    if (rc != 0) {
-        (void) zlink_msg_close (&part_native);
+    if (rc != 0)
         return rc;
-    }
 
     if (has_more != ZLINK_PART_FINAL) {
-        (void) zlink_msg_close (&part_native);
         errno = EMSGSIZE;
         return -1;
     }
@@ -369,10 +347,7 @@ inline int recv_single_part (void *socket_,
             std::memset (source_rid_out_, 0, sizeof (*source_rid_out_));
     }
 
-    if (zlink_msg_move (detail::native_handle (part_), &part_native) != 0) {
-        (void) zlink_msg_close (&part_native);
-        return -1;
-    }
+    part_native.adopt_into (part_);
     return 0;
 }
 

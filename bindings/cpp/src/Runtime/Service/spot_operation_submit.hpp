@@ -5,7 +5,7 @@
 #include "actor_model_access.hpp"
 #include "spot_state.hpp"
 #include "spot_access.hpp"
-#include "../Native/native_parts.hpp"
+#include "../Native/native_message_parts.hpp"
 
 namespace zlink
 {

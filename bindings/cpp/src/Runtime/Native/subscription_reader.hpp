@@ -3,7 +3,7 @@
 #define ZLINK_CPP_RUNTIME_NATIVE_SUBSCRIPTION_READER_HPP_INCLUDED
 
 #include <Runtime/Core/routing_id_access.hpp>
-#include <Runtime/Native/message_access.hpp>
+#include <Runtime/Native/native_message_guard.hpp>
 
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/Contracts/Messaging/message.hpp>
@@ -28,34 +28,6 @@ struct topic_message_access_t
         return topic_message_t (std::move (source_), std::move (topic_),
                                 std::move (part_));
     }
-};
-
-class scoped_native_message_t
-{
-  public:
-    scoped_native_message_t () = default;
-
-    scoped_native_message_t (const scoped_native_message_t &) = delete;
-    scoped_native_message_t &operator= (const scoped_native_message_t &) =
-      delete;
-
-    ~scoped_native_message_t ()
-    {
-        if (_initialized)
-            (void) zlink_msg_close (&_message);
-    }
-
-    [[nodiscard]] bool init () noexcept
-    {
-        _initialized = zlink_msg_init (&_message) == 0;
-        return _initialized;
-    }
-
-    [[nodiscard]] zlink_msg_t *get () noexcept { return &_message; }
-
-  private:
-    zlink_msg_t _message;
-    bool _initialized = false;
 };
 
 inline size_t bounded_topic_size (size_t length_, size_t capacity_) noexcept

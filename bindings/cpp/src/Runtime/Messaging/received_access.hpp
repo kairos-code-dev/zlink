@@ -2,8 +2,8 @@
 #ifndef ZLINK_CPP_RUNTIME_MESSAGING_RECEIVED_ACCESS_HPP_INCLUDED
 #define ZLINK_CPP_RUNTIME_MESSAGING_RECEIVED_ACCESS_HPP_INCLUDED
 
+#include <Runtime/Core/routing_id_access.hpp>
 #include <Runtime/Native/message_access.hpp>
-#include <Runtime/Native/native_parts.hpp>
 
 #include <zlink/Contracts/Messaging/received.hpp>
 

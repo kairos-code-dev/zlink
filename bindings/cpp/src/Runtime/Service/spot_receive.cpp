@@ -329,25 +329,21 @@ spot_t::subscribe_part_impl (std::optional<routing_id_t> *source_rid_out_,
     size_t topic_length = sizeof (topic_buffer);
     const zlink_routing_id_t *source_rid = nullptr;
 
-    zlink_msg_t native_part;
-    if (zlink_msg_init (&native_part) != 0)
+    zlink::detail::scoped_native_message_t native_part;
+    if (!native_part.init ())
         return -1;
 
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     const int rc = zlink_spot_subscribe_part (
       _impl->handle, &source_rid, topic_buffer, sizeof (topic_buffer),
-      &topic_length, &native_part, &has_more,
+      &topic_length, native_part.get (), &has_more,
       static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
-    if (rc != ZLINK_RECV_OK) {
-        const int err = errno;
-        (void) zlink_msg_close (&native_part);
-        errno = err;
+    if (rc != ZLINK_RECV_OK)
         return rc;
-    }
 
     zlink::detail::assign_subscription_part (
       source_rid_out_, topic_out_, part_out_, has_more_out_, source_rid,
-      topic_buffer, topic_length, sizeof (topic_buffer), &native_part,
+      topic_buffer, topic_length, sizeof (topic_buffer), native_part.get (),
       has_more);
     return 0;
 }

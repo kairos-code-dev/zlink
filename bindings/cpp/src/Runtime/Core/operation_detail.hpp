@@ -5,7 +5,8 @@
 #include <zlink/Contracts/Messaging/received.hpp>
 #include "../Messaging/received_access.hpp"
 #include "routing_id_access.hpp"
-#include "../Native/native_parts.hpp"
+#include "../Native/native_message_parts.hpp"
+#include "../Native/request_progress.hpp"
 
 #include <chrono>
 #include <functional>

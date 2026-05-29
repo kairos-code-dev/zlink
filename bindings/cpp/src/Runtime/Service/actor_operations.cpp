@@ -4,7 +4,7 @@
 #include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Service/actor_detail.hpp>
 #include <Runtime/Service/spot_access.hpp>
-#include <Runtime/Native/native_parts.hpp>
+#include <Runtime/Native/native_message_parts.hpp>
 
 namespace zlink
 {
@@ -330,7 +330,7 @@ bool actor_join_entry_spot_operation_t::submit (
   actor_join_entry_spot_callback_t callback_) &&
 {
     return submit_actor_join_entry_spot_callback (state (),
-                                                 std::move (callback_));
+                                                  std::move (callback_));
 }
 
 actor_join_reply_operation_t::~actor_join_reply_operation_t () = default;

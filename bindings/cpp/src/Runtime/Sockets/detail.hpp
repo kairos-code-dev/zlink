@@ -7,6 +7,8 @@
 #include <zlink/Contracts/Errors/errors.hpp>
 #include "../Core/operation_detail.hpp"
 #include "../Messaging/received_access.hpp"
+#include "../Native/native_receive.hpp"
+#include "../Native/native_send.hpp"
 #include "../Service/spot_access.hpp"
 
 #include <memory>
@@ -48,127 +50,13 @@ inline received_t recv_router_received (void *router_handle_,
         : std::nullopt;
 
     if (routing_id) {
-        const routing_id_t send_node_rid = *routing_id;
-        if (spot_rid) {
-            const routing_id_t send_spot_rid = *spot_rid;
-            send_fn = [router_handle_, send_node_rid,
-                       send_spot_rid] (std::vector<message_t> &send_parts_,
-                                       send_flags_t flags_) {
-                std::vector<zlink_msg_t> native;
-                if (detail::move_parts_to_native (send_parts_, native) != 0)
-                    throw last_error ();
-                size_t failed_index = 0;
-                const submit_result_t result =
-                  static_cast<submit_result_t> (detail::submit_native_parts (
-                    native, failed_index,
-                    [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-                         bool) {
-                        return zlink_router_send_spot_part (
-                          router_handle_,
-                          zlink::detail::routing_id_native (send_node_rid),
-                          zlink::detail::routing_id_native (send_spot_rid),
-                          part_out_,
-                          static_cast<zlink_send_flags_t> (
-                            static_cast<int> (flags_)),
-                          part_flag_);
-                    }));
-                if (result == submit_result_t::ok)
-                    return true;
-                detail::restore_parts_from_native (send_parts_, native,
-                                                   failed_index);
-                if (flags_ == send_flags_t::dontwait
-                    && result == submit_result_t::backpressured)
-                    return false;
-                throw submit_error_t (result, zlink_errno ());
-            };
-        } else {
-            send_fn = [router_handle_,
-                       send_node_rid] (std::vector<message_t> &send_parts_,
-                                       send_flags_t flags_) {
-                std::vector<zlink_msg_t> native;
-                if (detail::move_parts_to_native (send_parts_, native) != 0)
-                    throw last_error ();
-                size_t failed_index = 0;
-                const submit_result_t result =
-                  static_cast<submit_result_t> (detail::submit_native_parts (
-                    native, failed_index,
-                    [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-                         bool) {
-                        return zlink_send_part_rid (
-                          router_handle_,
-                          zlink::detail::routing_id_native (send_node_rid),
-                          part_out_,
-                          static_cast<zlink_send_flags_t> (
-                            static_cast<int> (flags_)),
-                          part_flag_);
-                    }));
-                if (result == submit_result_t::ok)
-                    return true;
-                detail::restore_parts_from_native (send_parts_, native,
-                                                   failed_index);
-                if (flags_ == send_flags_t::dontwait
-                    && result == submit_result_t::backpressured)
-                    return false;
-                throw submit_error_t (result, zlink_errno ());
-            };
-        }
+        send_fn =
+          detail::make_router_send_fn (router_handle_, *routing_id, spot_rid);
     }
 
     if (routing_id && request_seq != 0u) {
-        const routing_id_t reply_node_rid = *routing_id;
-        if (spot_rid) {
-            const routing_id_t reply_spot_rid = *spot_rid;
-            reply_fn = [router_handle_, reply_node_rid, reply_spot_rid,
-                        request_seq] (std::vector<message_t> &reply_parts_,
-                                      send_flags_t flags_) {
-                detail::throw_if_reply_flags_unsupported (flags_);
-                std::vector<zlink_msg_t> native;
-                if (detail::move_parts_to_native (reply_parts_, native) != 0)
-                    throw last_error ();
-                size_t failed_index = 0;
-                const submit_result_t result =
-                  static_cast<submit_result_t> (detail::submit_native_parts (
-                    native, failed_index,
-                    [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-                         bool) {
-                        return zlink_router_reply_spot_part (
-                          router_handle_,
-                          zlink::detail::routing_id_native (reply_node_rid),
-                          zlink::detail::routing_id_native (reply_spot_rid),
-                          request_seq, part_out_, part_flag_);
-                    }));
-                if (result != submit_result_t::ok) {
-                    detail::restore_parts_from_native (reply_parts_, native,
-                                                       failed_index);
-                    throw submit_error_t (result, zlink_errno ());
-                }
-            };
-        } else {
-            reply_fn = [router_handle_, reply_node_rid,
-                        request_seq] (std::vector<message_t> &reply_parts_,
-                                      send_flags_t flags_) {
-                detail::throw_if_reply_flags_unsupported (flags_);
-                std::vector<zlink_msg_t> native;
-                if (detail::move_parts_to_native (reply_parts_, native) != 0)
-                    throw last_error ();
-                size_t failed_index = 0;
-                const submit_result_t result =
-                  static_cast<submit_result_t> (detail::submit_native_parts (
-                    native, failed_index,
-                    [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-                         bool) {
-                        return zlink_router_reply_part (
-                          router_handle_,
-                          zlink::detail::routing_id_native (reply_node_rid),
-                          request_seq, part_out_, part_flag_);
-                    }));
-                if (result != submit_result_t::ok) {
-                    detail::restore_parts_from_native (reply_parts_, native,
-                                                       failed_index);
-                    throw submit_error_t (result, zlink_errno ());
-                }
-            };
-        }
+        reply_fn = detail::make_router_reply_fn (router_handle_, *routing_id,
+                                                 spot_rid, request_seq);
     }
     std::optional<uint64_t> maybe_request_seq =
       request_seq != 0u ? std::optional<uint64_t> (request_seq) : std::nullopt;

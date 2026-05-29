@@ -79,7 +79,9 @@ foreach(test ${unittests})
       LABELS "unittest;serial")
   endif()
 
-  # TODO prevent libzlink (non-static) being in the list of link libraries at all
+  # Unit tests link through testutil-static and the static core library only.
+  # Some CMake versions still propagate the shared libzlink target through
+  # legacy link settings, so strip it after all per-test libraries are added.
   get_target_property(LIBS ${test} LINK_LIBRARIES)
   list(REMOVE_ITEM LIBS libzlink)
   set_target_properties(${test} PROPERTIES LINK_LIBRARIES "${LIBS}")

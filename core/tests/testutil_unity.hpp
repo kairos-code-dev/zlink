@@ -1194,9 +1194,9 @@ void *test_context_socket_close_zero_linger (void *socket_);
 // Triggers a Unity test assertion in case of a failure (including the buffer
 // being too small for the resulting endpoint string).
 
-// Binds to an explicitly given (wildcard) address.
-// TODO redesign such that this function is not necessary to be exposed, but
-// the protocol to use is rather specified via an enum value
+// Binds to an explicitly given wildcard address. Protocol-specific helpers such
+// as bind_loopback_ipv4 should be preferred when a test does not need a custom
+// transport URI.
 void test_bind (void *socket_,
                 const char *bind_address_,
                 char *my_endpoint_,
@@ -1223,6 +1223,6 @@ void bind_loopback_ipc (void *socket_, char *my_endpoint_, size_t len_);
 #if defined(ZLINK_HAVE_IPC)
 // utility function to create a random IPC endpoint, similar to what a ipc://*
 // wildcard binding does, but in a way it can be reused for multiple binds
-// TODO also add a len parameter here
+void make_random_ipc_endpoint (char *out_endpoint_, size_t len_);
 void make_random_ipc_endpoint (char *out_endpoint_);
 #endif

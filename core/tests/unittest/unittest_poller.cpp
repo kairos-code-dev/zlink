@@ -41,7 +41,7 @@ struct test_events_t : zlink::i_poll_events
 
     void out_event () ZLINK_OVERRIDE
     {
-        // TODO
+        TEST_FAIL_MESSAGE ("test poller socket is not registered for write events");
     }
 
 

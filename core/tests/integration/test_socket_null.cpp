@@ -24,7 +24,7 @@ void discard_monitor_event (const zlink_monitor_event_t *, void *)
 void test_zlink_socket_null_context ()
 {
     TEST_ASSERT_NULL (zlink_socket (NULL, ZLINK_SOCKET_PAIR));
-    TEST_ASSERT_EQUAL_INT (EFAULT, errno); // TODO use EINVAL instead?
+    TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
 
 void test_zlink_close_null_socket ()

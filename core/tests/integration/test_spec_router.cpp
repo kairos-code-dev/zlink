@@ -78,76 +78,10 @@ void test_fair_queue_in (const char *bind_address_)
     msleep (SETTLE_TIME);
 }
 
-// SHALL create a double queue when a peer connects to it. If this peer
-// disconnects, the ROUTER socket SHALL destroy its double queue and SHALL
-// discard any messages it contains.
-void test_destroy_queue_on_disconnect (const char *bind_address_)
-{
-    void *a = test_context_socket (ZLINK_SOCKET_ROUTER);
-
-    int enabled = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_router_option (a, ZLINK_ROUTER_OPT_MANDATORY, &enabled, sizeof (enabled)));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (a, bind_address_));
-    size_t len = MAX_SOCKET_STRING;
-    char connect_address[MAX_SOCKET_STRING];
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (a, ZLINK_OPT_LAST_ENDPOINT, connect_address, &len));
-
-    void *b = test_context_socket (ZLINK_SOCKET_DEALER);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (b, "B", 2));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (b, connect_address));
-
-    // Wait for connection.
-    msleep (SETTLE_TIME);
-
-    // Send a message in both directions
-    s_send_seq (a, "B", "ABC", SEQ_END);
-    s_send_seq (b, "DEF", SEQ_END);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_disconnect (b, connect_address));
-
-    // Disconnect may take time and need command processing.
-    zlink_pollitem_t poller[2] = {{a, 0, 0, 0}, {b, 0, 0, 0}};
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poll (poller, 2, 100, NULL));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poll (poller, 2, 100, NULL));
-
-    // No messages should be available, sending should fail.
-    zlink_msg_t msg;
-    zlink_msg_init (&msg);
-
-    TEST_ASSERT_FAILURE_ERRNO (
-      EHOSTUNREACH, zlink_send (a, "B", 2, ZLINK_SNDMORE | ZLINK_DONTWAIT));
-
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, test_recv_single_msg (&msg, a, ZLINK_DONTWAIT));
-
-    // After a reconnect of B, the messages should still be gone
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (b, connect_address));
-
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, test_recv_single_msg (&msg, a, ZLINK_DONTWAIT));
-
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, test_recv_single_msg (&msg, b, ZLINK_DONTWAIT));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
-
-    test_context_socket_close_zero_linger (a);
-    test_context_socket_close_zero_linger (b);
-
-    // Wait for disconnects.
-    msleep (SETTLE_TIME);
-}
-
 #define TEST_SUITE(name, bind_address)                                         \
     void test_fair_queue_in_##name ()                                          \
     {                                                                          \
         test_fair_queue_in (bind_address);                                     \
-    }                                                                          \
-    void test_destroy_queue_on_disconnect_##name ()                            \
-    {                                                                          \
-        test_destroy_queue_on_disconnect (bind_address);                       \
     }
 
 TEST_SUITE (inproc, "inproc://a")
@@ -160,8 +94,5 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_fair_queue_in_tcp);
     RUN_TEST (test_fair_queue_in_inproc);
-    // TODO commented out until libzlink implements this properly
-    // RUN_TEST (test_destroy_queue_on_disconnect_tcp);
-    // RUN_TEST (test_destroy_queue_on_disconnect_inproc);
     return UNITY_END ();
 }

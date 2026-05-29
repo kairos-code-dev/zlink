@@ -18,6 +18,7 @@ namespace routed_protocol = zlink::spot_routed_protocol;
 
 using zlink::spot_reqrep_internal::find_router_state_by_rid;
 using zlink::spot_reqrep_internal::find_spot_state_by_identity;
+using zlink::spot_reqrep_internal::init_packed_spot_routed_header;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
 using zlink::spot_reqrep_internal::pending_reply_t;
 using zlink::spot_reqrep_internal::pending_spot_key_t;
@@ -26,63 +27,6 @@ using zlink::spot_reqrep_internal::router_spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 
 const size_t packed_spot_routed_control_part_count = 1;
-
-int init_packed_spot_routed_header (zlink_msg_t *msg_,
-                                    uint8_t source_class_,
-                                    const std::string &source_node_rid_,
-                                    const std::string &source_endpoint_rid_,
-                                    uint8_t destination_class_,
-                                    const std::string &destination_node_rid_,
-                                    const std::string &destination_endpoint_rid_)
-{
-    if (!msg_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    const size_t total_size =
-      20 + source_node_rid_.size () + source_endpoint_rid_.size ()
-      + destination_node_rid_.size () + destination_endpoint_rid_.size ();
-    if (zlink_msg_init_size (msg_, total_size) != 0)
-        return -1;
-
-    unsigned char *data = static_cast<unsigned char *> (zlink_msg_data (msg_));
-    data[0] = routed_protocol::protocol_id;
-    data[1] = routed_protocol::packed_frame_version;
-    data[2] = source_class_;
-    data[3] = destination_class_;
-    zlink::request_reply::encode_u32_be (
-      static_cast<uint32_t> (source_node_rid_.size ()), data + 4);
-    zlink::request_reply::encode_u32_be (
-      static_cast<uint32_t> (source_endpoint_rid_.size ()), data + 8);
-    zlink::request_reply::encode_u32_be (
-      static_cast<uint32_t> (destination_node_rid_.size ()), data + 12);
-    zlink::request_reply::encode_u32_be (
-      static_cast<uint32_t> (destination_endpoint_rid_.size ()), data + 16);
-
-    unsigned char *cursor = data + 20;
-    if (!source_node_rid_.empty ()) {
-        memcpy (cursor, source_node_rid_.data (), source_node_rid_.size ());
-        cursor += source_node_rid_.size ();
-    }
-    if (!source_endpoint_rid_.empty ()) {
-        memcpy (
-          cursor, source_endpoint_rid_.data (), source_endpoint_rid_.size ());
-        cursor += source_endpoint_rid_.size ();
-    }
-    if (!destination_node_rid_.empty ()) {
-        memcpy (
-          cursor, destination_node_rid_.data (), destination_node_rid_.size ());
-        cursor += destination_node_rid_.size ();
-    }
-    if (!destination_endpoint_rid_.empty ()) {
-        memcpy (cursor,
-                destination_endpoint_rid_.data (),
-                destination_endpoint_rid_.size ());
-    }
-
-    return 0;
-}
 
 int dispatch_spot_message_local (spot_request_reply_state_t *state_,
                                  const zlink_routing_id_t *source_rid_,
@@ -570,7 +514,7 @@ int zlink::spot_reqrep_internal::build_spot_request_reply_message (
     unsigned char source_class = source_class_;
     unsigned char destination_class = destination_class_;
     unsigned char rr_protocol_id = zlink::request_reply::protocol_id;
-    unsigned char rr_version = routed_protocol::legacy_frame_version;
+    unsigned char rr_version = zlink::request_reply::version;
     unsigned char rr_type = message_type_;
     unsigned char seq_buf[8];
     zlink::request_reply::encode_u64_be (request_seq_, seq_buf);

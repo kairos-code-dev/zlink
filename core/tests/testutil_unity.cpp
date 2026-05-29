@@ -391,7 +391,7 @@ void bind_loopback_ipc (void *socket_, char *my_endpoint_, size_t len_)
 }
 
 #if defined(ZLINK_HAVE_IPC)
-void make_random_ipc_endpoint (char *out_endpoint_)
+void make_random_ipc_endpoint (char *out_endpoint_, size_t len_)
 {
 #ifdef ZLINK_HAVE_WINDOWS
     char random_file[MAX_PATH];
@@ -401,7 +401,8 @@ void make_random_ipc_endpoint (char *out_endpoint_)
         TEST_ASSERT_EQUAL (0, rc);
     }
 
-    // TODO or use CreateDirectoryA and specify permissions?
+    // _mkdir uses the process default ACL, which is sufficient for a private
+    // test endpoint directory created from tmpnam_s.
     const int rc = _mkdir (random_file);
     TEST_ASSERT_EQUAL (0, rc);
 
@@ -423,7 +424,13 @@ void make_random_ipc_endpoint (char *out_endpoint_)
     unlink (random_file);
 #endif
 
-    strcpy (out_endpoint_, "ipc://");
-    strcat (out_endpoint_, random_file);
+    const int rc = snprintf (out_endpoint_, len_, "ipc://%s", random_file);
+    TEST_ASSERT_TRUE (rc > 0);
+    TEST_ASSERT_LESS_THAN (len_, static_cast<size_t> (rc));
+}
+
+void make_random_ipc_endpoint (char *out_endpoint_)
+{
+    make_random_ipc_endpoint (out_endpoint_, MAX_SOCKET_STRING);
 }
 #endif

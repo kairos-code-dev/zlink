@@ -17,8 +17,8 @@ static void receiver (void *socket_)
 {
     char buffer[16];
     int rc = zlink_recv (socket_, &buffer, sizeof (buffer), 0);
-    // TODO which error is expected here? use TEST_ASSERT_FAILURE_ERRNO instead
     TEST_ASSERT_EQUAL_INT (-1, rc);
+    TEST_ASSERT_EQUAL_INT (ETERM, errno);
 }
 
 void test_ctx_destroy ()

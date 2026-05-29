@@ -78,7 +78,7 @@ void zlink::thread_t::stop ()
 void zlink::thread_t::setSchedulingParameters (
   int priority_, int scheduling_policy_, const std::set<int> &affinity_cpus_)
 {
-    // not implemented
+    // Windows builds currently treat scheduling hints as unsupported.
     LIBZLINK_UNUSED (priority_);
     LIBZLINK_UNUSED (scheduling_policy_);
     LIBZLINK_UNUSED (affinity_cpus_);
@@ -87,7 +87,7 @@ void zlink::thread_t::setSchedulingParameters (
 void zlink::thread_t::
   applySchedulingParameters () // to be called in secondary thread context
 {
-    // not implemented
+    // No-op: Windows scheduling hints are not exposed by this abstraction.
 }
 
 #ifdef _MSC_VER
@@ -138,7 +138,7 @@ void zlink::thread_t::
 
 #else
 
-        // not implemented
+        // No platform-specific thread-name API is available for this compiler.
 
 #endif
 }
@@ -206,7 +206,7 @@ void zlink::thread_t::
 void zlink::thread_t::
   applyThreadName () // to be called in secondary thread context
 {
-    // not implemented
+    // No-op: VxWorks builds do not expose a portable thread-name hook here.
 }
 
 #else

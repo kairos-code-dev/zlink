@@ -34,8 +34,6 @@ void test_endpoint_too_long ()
     }
 
     void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
-    // TODO ENAMETOOLONG is not listed in the errors returned by zlink_bind,
-    // should this be EINVAL?
     TEST_ASSERT_FAILURE_ERRNO (ENAMETOOLONG,
                                zlink_bind (sb, endpoint_too_long.data ()));
 

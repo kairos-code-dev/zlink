@@ -363,6 +363,13 @@ int build_spot_routed_message (uint8_t source_class_,
 bool parse_spot_routed_envelope (zlink_msg_t *parts_,
                                  size_t part_count_,
                                  parsed_spot_envelope_t *out_);
+int init_packed_spot_routed_header (zlink_msg_t *msg_,
+                                    uint8_t source_class_,
+                                    const std::string &source_node_rid_,
+                                    const std::string &source_endpoint_rid_,
+                                    uint8_t destination_class_,
+                                    const std::string &destination_node_rid_,
+                                    const std::string &destination_endpoint_rid_);
 bool resolve_spot_node_routing_id (spot_node_t *node_,
                                    std::string *out_);
 bool should_process_spot_routed_locally (

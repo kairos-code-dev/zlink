@@ -138,11 +138,12 @@ static void test_resolve (zlink::ip_resolver_options_t opts_,
 
     test_ip_resolver_t resolver (opts_);
 
+    errno = 0;
     int rc = resolver.resolve (&addr, name_);
 
     if (expected_addr_ == NULL) {
-        // TODO also check the expected errno
         TEST_ASSERT_EQUAL (-1, rc);
+        TEST_ASSERT_NOT_EQUAL (0, errno);
         return;
     }
     TEST_ASSERT_SUCCESS_ERRNO (rc);

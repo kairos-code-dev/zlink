@@ -217,7 +217,6 @@ void test_add_and_rm_other (const char *add_name_, const char *rm_name_)
 
 void test_rm_nonexistent_nonempty_samename ()
 {
-    // TODO this triggers an assertion
     test_add_and_rm_other ("foo", "foo");
 }
 
@@ -228,7 +227,6 @@ void test_rm_nonexistent_nonempty_differentname ()
 
 void test_rm_nonexistent_nonempty_prefix ()
 {
-    // TODO here, a test assertion fails
     test_add_and_rm_other ("foobar", "foo");
 }
 

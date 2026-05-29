@@ -12,7 +12,6 @@ namespace spot_routed_protocol
 enum : uint8_t
 {
     protocol_id = 0x02,
-    legacy_frame_version = 0x01,
     packed_frame_version = 0x02,
     spot_endpoint_class = 0x01,
     router_endpoint_class = 0x02,

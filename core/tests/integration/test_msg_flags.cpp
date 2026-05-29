@@ -39,6 +39,26 @@ void test_more ()
     test_context_socket_close (sb);
 }
 
+void test_pair_socket_preserves_multipart_more_flag ()
+{
+    void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (sb, "inproc://msg-flags-pair"));
+
+    void *sc = test_context_socket (ZLINK_SOCKET_PAIR);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, "inproc://msg-flags-pair"));
+
+    TEST_ASSERT_EQUAL_INT (
+      3, TEST_ASSERT_SUCCESS_ERRNO (zlink_send (sb, "foo", 3, ZLINK_SNDMORE)));
+    TEST_ASSERT_EQUAL_INT (
+      6, TEST_ASSERT_SUCCESS_ERRNO (zlink_send (sb, "foobar", 6, 0)));
+
+    recv_string_expect_success (sc, "foo", 0);
+    recv_string_expect_success (sc, "foobar", 0);
+
+    test_context_socket_close (sc);
+    test_context_socket_close (sb);
+}
+
 void test_shared_refcounted ()
 {
     // Test shared storage query (case 1, refcounted messages)
@@ -83,6 +103,7 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_more);
+    RUN_TEST (test_pair_socket_preserves_multipart_more_flag);
     RUN_TEST (test_shared_refcounted);
     RUN_TEST (test_shared_const);
     return UNITY_END ();

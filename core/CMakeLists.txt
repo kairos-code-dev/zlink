@@ -390,8 +390,8 @@ if(WIN32)
   get_win32_winnt(ZLINK_WIN32_WINNT_DEFAULT)
   message(STATUS "Detected _WIN32_WINNT from CMAKE_SYSTEM_VERSION: ${ZLINK_WIN32_WINNT_DEFAULT}")
 
-  # TODO limit _WIN32_WINNT to the actual Windows SDK version, which might be different from the default version
-  # installed with Visual Studio
+  # Older Visual Studio toolsets cannot target every Windows SDK version exposed
+  # by CMAKE_SYSTEM_VERSION, so cap _WIN32_WINNT to the highest supported target.
   if(MSVC_VERSION STREQUAL "1500" AND CMAKE_SYSTEM_VERSION VERSION_GREATER "6.0")
     set(ZLINK_WIN32_WINNT_LIMIT "0x0600")
   elseif(MSVC_VERSION STREQUAL "1600" AND CMAKE_SYSTEM_VERSION VERSION_GREATER "6.1")
@@ -458,7 +458,8 @@ message(STATUS "Using ${ZLINK_CACHELINE_SIZE} bytes alignment for lock-free data
 check_cxx_symbol_exists(posix_memalign stdlib.h HAVE_POSIX_MEMALIGN)
 
 if(NOT CYGWIN)
-  # TODO cannot we simply do 'if(WIN32) set(ZLINK_HAVE_WINDOWS ON)' or similar?
+  # Probe the header instead of deriving this from WIN32 so MinGW/Cygwin style
+  # environments keep using the code path their headers actually support.
   check_include_files(windows.h ZLINK_HAVE_WINDOWS)
 endif()
 
@@ -488,7 +489,6 @@ if(NOT ZLINK_CV_IMPL)
     endif()
   endif()
 
-  # TODO a vxworks implementation also exists, but vxworks is not currently supported with cmake at all
   set(ZLINK_CV_IMPL
       "${ZLINK_CV_IMPL_DEFAULT}"
       CACHE STRING "Choose condition_variable_t implementation. Valid values are
@@ -519,7 +519,7 @@ if(NOT MSVC)
 endif()
 
 if(ZLINK_HAVE_WINDOWS)
-  # Cannot use check_library_exists because the symbol is always declared as char(*)(void)
+  # Prefer the canonical ws2_32 library and keep ws2 as the legacy fallback.
   set(CMAKE_REQUIRED_LIBRARIES "ws2_32.lib")
   check_cxx_symbol_exists(WSAStartup "winsock2.h" HAVE_WS2_32)
 
@@ -531,7 +531,6 @@ if(ZLINK_HAVE_WINDOWS)
   check_cxx_symbol_exists(if_nametoindex "iphlpapi.h" HAVE_IF_NAMETOINDEX)
 
   set(CMAKE_REQUIRED_LIBRARIES "")
-  # TODO: This not the symbol we're looking for. What is the symbol?
   check_library_exists(ws2 fopen "" HAVE_WS2)
 else()
   check_cxx_symbol_exists(if_nametoindex net/if.h HAVE_IF_NAMETOINDEX)
@@ -637,7 +636,6 @@ endif()
 option(LIBZLINK_PEDANTIC "" ON)
 option(LIBZLINK_WERROR "" OFF)
 
-# TODO: why is -Wno-long-long defined differently than in configure.ac?
 if(NOT MSVC)
   zlink_check_cxx_flag_prepend("-Wno-long-long")
   zlink_check_cxx_flag_prepend("-Wno-uninitialized")
@@ -716,7 +714,6 @@ if (NOT MSVC)
     zlink_check_tcp_keepidle()
     zlink_check_tcp_keepintvl()
     zlink_check_tcp_keepalive()
-    # zlink_check_tcp_tipc() removed - TIPC not supported
     zlink_check_getrandom()
   endif()
 endif()
@@ -743,10 +740,18 @@ endif()
 
 find_package(AsciiDoc QUIET)
 
-cmake_dependent_option(WITH_DOC "Build Reference Guide documentation(requires DocBook)" ON "ASCIIDOC_FOUND;NOT WIN32"
-                       OFF) # Do not build docs on Windows due to issues with symlinks
-
-# NORM and VMCI support removed. OpenPGM is optional for PGM/EPGM transports.
+if(DEFINED WITH_DOCS AND NOT DEFINED WITH_DOC)
+  set(WITH_DOC
+      "${WITH_DOCS}"
+      CACHE BOOL "Build reference guide documentation (requires AsciiDoc)"
+      FORCE)
+endif()
+cmake_dependent_option(WITH_DOC "Build reference guide documentation (requires AsciiDoc)" ON
+                       "ASCIIDOC_FOUND;NOT WIN32" OFF)
+set(WITH_DOCS
+    "${WITH_DOC}"
+    CACHE BOOL "Deprecated alias for WITH_DOC"
+    FORCE)
 
 # -----------------------------------------------------------------------------
 # force off-tree build
@@ -1289,9 +1294,6 @@ set(readme-docs
 # -----------------------------------------------------------------------------
 # optional modules
 
-# NORM, VMCI, and TIPC support removed. OpenPGM remains optional.
-
-# -----------------------------------------------------------------------------
 # source generators
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
@@ -1327,28 +1329,25 @@ if(MSVC)
     DEPENDS ${nsis-template})
 endif()
 
-option(WITH_DOCS "Build html docs" ON)
-if(WITH_DOCS)
+set(html-docs)
+if(WITH_DOC)
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/doc)
   file(
     GLOB docs
     RELATIVE ${CMAKE_CURRENT_BINARY_DIR}/
     "${CMAKE_CURRENT_SOURCE_DIR}/doc/*.txt")
-  set(html-docs)
   foreach(txt ${docs})
     string(REGEX REPLACE ".*/(.*)\\.txt" "\\1.html" html ${txt})
     set(src ${txt})
     set(dst doc/${html})
-    if(WITH_DOC)
-      add_custom_command(
-        OUTPUT ${dst}
-        COMMAND ${ASCIIDOC_EXECUTABLE} -d manpage -b xhtml11 -f ${CMAKE_CURRENT_SOURCE_DIR}/doc/asciidoc.conf
-                -azlink_version=${ZLINK_VERSION} -o ${dst} ${src}
-        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${src}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Generating ${html}")
-      list(APPEND html-docs ${CMAKE_CURRENT_BINARY_DIR}/${dst})
-    endif()
+    add_custom_command(
+      OUTPUT ${dst}
+      COMMAND ${ASCIIDOC_EXECUTABLE} -d manpage -b xhtml11 -f ${CMAKE_CURRENT_SOURCE_DIR}/doc/asciidoc.conf
+              -azlink_version=${ZLINK_VERSION} -o ${dst} ${src}
+      DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${src}
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      COMMENT "Generating ${html}")
+    list(APPEND html-docs ${CMAKE_CURRENT_BINARY_DIR}/${dst})
   endforeach()
 endif()
 
@@ -1858,7 +1857,7 @@ set(ZLINK_LIBRARY
     libzlink
     CACHE STRING "Zlink library")
 
-# Workaround for MSVS10 to avoid the Dialog Hell FIXME: This could be removed with future version of CMake.
+# Keep Visual Studio 2010 solution regeneration non-interactive when supported.
 if(MSVC_VERSION EQUAL 1600)
   set(ZLINK_SLN_FILENAME "${CMAKE_CURRENT_BINARY_DIR}/Zlink.sln")
   if(EXISTS "${ZLINK_SLN_FILENAME}")
@@ -1872,10 +1871,8 @@ if (ENABLE_CLANG)
   include(ClangFormat)
 endif()
 
-# fixes https://github.com/zlink/libzlink/issues/3776 The problem is, both libzlink-static libzlink try to use/generate
-# precompiled.pch at the same time Add a dependency, so they run in order and so they dont get in each others way TODO
-# still generates warning "build\x64-Debug\ninja : warning : multiple rules generate precompiled.hpp. builds involving
-# this target will not be correct; continuing anyway [-w dupbuild=warn]"
+# Shared and static MSVC builds can both generate the precompiled header. Add an
+# ordering dependency so they do not write the PCH concurrently.
 if(MSVC
    AND ENABLE_PRECOMPILED
    AND BUILD_SHARED

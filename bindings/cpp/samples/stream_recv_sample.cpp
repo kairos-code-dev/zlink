@@ -6,7 +6,7 @@ int main ()
 {
     zlink::context_t ctx;
     zlink::stream_socket_t server (ctx);
-    zlink::monitor_handle_t server_monitor = server.monitor_handle ();
+    zlink::socket_monitor_t server_monitor = server.monitor_open ();
     server.options ().notify (false);
 
     server.bind ("tcp://127.0.0.1:0");

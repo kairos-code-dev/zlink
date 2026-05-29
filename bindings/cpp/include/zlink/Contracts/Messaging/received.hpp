@@ -110,20 +110,20 @@ class received_t
     message_t single_part_or_throw ();
     /// Send context (routing_id / spot_rid) is encapsulated. Returns an
     /// operation builder; accumulate payload via `.message(...)`.
-    service::send_op_t send ();
+    service::send_operation_t send ();
     /// Reply context (routing_id, spot_rid, request_seq) is encapsulated.
     /// Returns an operation builder; accumulate reply payload via
     /// `.message(...)`. Submit throws if there is no valid reply context.
-    service::reply_op_t reply ();
+    service::reply_operation_t reply ();
     void close ();
 
   private:
-    friend class base_socket_t;
+    friend class socket_t;
     friend class router_socket_t;
-    friend class service::send_op_t;
-    friend class service::send_ready_op_t;
-    friend class service::reply_op_t;
-    friend class service::reply_ready_op_t;
+    friend class service::send_operation_t;
+    friend class service::send_submit_operation_t;
+    friend class service::reply_operation_t;
+    friend class service::reply_submit_operation_t;
 
     enum class send_context_kind_t
     {
@@ -203,77 +203,5 @@ class received_t
     mutable std::vector<message_t> _parts;
     std::unique_ptr<runtime_state_t> _runtime;
 };
-
-class topic_message_t
-{
-  public:
-    topic_message_t () = default;
-
-    topic_message_t (std::optional<routing_id_t> routing_id_,
-                     std::string topic_,
-                     std::vector<message_t> parts_)
-        : _routing_id (std::move (routing_id_)),
-          _topic (std::move (topic_)),
-          _parts (std::move (parts_))
-    {
-    }
-
-    const std::optional<routing_id_t> &routing_id () const noexcept
-    {
-        return _routing_id;
-    }
-
-    const std::string &topic () const noexcept { return _topic; }
-    const std::vector<message_t> &parts () const;
-    std::vector<message_t> &parts ();
-
-    bool is_single_part () const noexcept
-    {
-        return _single_part.has_value () || _parts.size () == 1u;
-    }
-    message_t &first_part ();
-    message_t single_part_or_throw ();
-    void close ();
-
-  private:
-    topic_message_t (std::optional<routing_id_t> routing_id_,
-                     std::string topic_,
-                     message_t part_)
-        : _routing_id (std::move (routing_id_)),
-          _topic (std::move (topic_)),
-          _single_part (std::move (part_)),
-          _parts ()
-    {
-    }
-
-    void materialize_parts () const;
-
-    std::optional<routing_id_t> _routing_id;
-    std::string _topic;
-    mutable std::optional<message_t> _single_part;
-    mutable std::vector<message_t> _parts;
-    friend class base_socket_t;
-    friend class service::spot_t;
-};
-
-struct subscription_event_t
-{
-    subscription_event_t ()
-        : routing_id (std::nullopt), topic (), subscribed (false)
-    {
-    }
-
-    std::optional<routing_id_t> routing_id;
-    std::string topic;
-    bool subscribed;
-};
-
-struct subscription_filter_t
-{
-    std::string filter;
-    bool is_pattern = false;
-};
-
-using subscription_entry_t = subscription_filter_t;
 
 } // namespace zlink

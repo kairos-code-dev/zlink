@@ -84,7 +84,7 @@ inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
     return poller.wait (&event, 1, std::chrono::milliseconds (timeout_ms_)) == 1;
 }
 
-inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
+inline bool wait_for_socket_monitor_event (zlink::socket_monitor_t &monitor_,
                                            uint64_t event_type_,
                                            int timeout_ms_,
                                            int64_t value_ = -1)
@@ -115,8 +115,8 @@ inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
     return false;
 }
 
-inline bool wait_connected (zlink::monitor_handle_t &server_monitor_,
-                            zlink::monitor_handle_t &client_monitor_,
+inline bool wait_connected (zlink::socket_monitor_t &server_monitor_,
+                            zlink::socket_monitor_t &client_monitor_,
                             int timeout_ms_ = 2000)
 {
     return wait_for_socket_monitor_event (
@@ -129,7 +129,7 @@ inline bool wait_connected (zlink::monitor_handle_t &server_monitor_,
              timeout_ms_);
 }
 
-inline bool wait_stream_connected (zlink::monitor_handle_t &server_monitor_,
+inline bool wait_stream_connected (zlink::socket_monitor_t &server_monitor_,
                                    int timeout_ms_ = 2000)
 {
     return wait_for_socket_monitor_event (

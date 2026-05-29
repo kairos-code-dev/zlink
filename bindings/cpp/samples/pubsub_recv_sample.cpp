@@ -7,8 +7,8 @@ int main ()
     zlink::context_t ctx;
     zlink::xpub_socket_t publisher (ctx);
     zlink::sub_socket_t subscriber (ctx);
-    zlink::monitor_handle_t pub_monitor = publisher.monitor_handle ();
-    zlink::monitor_handle_t sub_monitor = subscriber.monitor_handle ();
+    zlink::socket_monitor_t pub_monitor = publisher.monitor_open ();
+    zlink::socket_monitor_t sub_monitor = subscriber.monitor_open ();
 
     publisher.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = publisher.options ().last_endpoint ();

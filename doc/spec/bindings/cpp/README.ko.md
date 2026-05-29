@@ -55,99 +55,92 @@ bindings/cpp/
 |   +-- zlink/
 |       +-- Contracts/
 |       |   +-- Core/
-|       |   |   +-- common.hpp
-|       |   |   +-- context.hpp
 |       |   |   +-- capability.hpp
-|       |   |   +-- types.hpp
+|       |   |   +-- context.hpp
+|       |   |   +-- context_options.hpp
+|       |   |   +-- routing_id.hpp
 |       |   +-- Messaging/
 |       |   |   +-- message.hpp
 |       |   |   +-- received.hpp
-|       |   |   +-- request_reply.hpp
+|       |   |   +-- topic_message.hpp
+|       |   |   +-- subscription_event.hpp
+|       |   |   +-- operation_contracts.hpp
 |       |   |   +-- request_result.hpp
 |       |   +-- Sockets/
-|       |   |   +-- base_socket.hpp
-|       |   |   +-- pair.hpp
-|       |   |   +-- dealer.hpp
-|       |   |   +-- router.hpp
-|       |   |   +-- stream.hpp
-|       |   |   +-- pub.hpp
-|       |   |   +-- sub.hpp
-|       |   |   +-- xpub.hpp
-|       |   |   +-- xsub.hpp
-|       |   |   +-- options.hpp
+|       |   |   +-- socket_contracts.hpp
+|       |   |   +-- message_socket_contracts.hpp
+|       |   |   +-- routed_socket_contracts.hpp
+|       |   |   +-- pubsub_socket_contracts.hpp
+|       |   |   +-- stream_socket.hpp
+|       |   |   +-- socket_options.hpp
 |       |   |   +-- results.hpp
 |       |   +-- Eventing/
-|       |   |   +-- events.hpp
-|       |   |   +-- status.hpp
 |       |   |   +-- monitor.hpp
 |       |   |   +-- poller.hpp
+|       |   |   +-- poll_event.hpp
 |       |   |   +-- timers.hpp
+|       |   |   +-- events.hpp
+|       |   |   +-- status.hpp
 |       |   +-- Service/
-|       |   |   +-- models.hpp
-|       |   |   +-- actor_models.hpp
 |       |   |   +-- registry.hpp
-|       |   |   +-- query.hpp
 |       |   |   +-- discovery.hpp
 |       |   |   +-- spot_node.hpp
 |       |   |   +-- spot.hpp
 |       |   |   +-- actor.hpp
-|       |   |   +-- actor_ops.hpp
-|       |   |   +-- spot_node_ops.hpp
-|       |   |   +-- spot_socket_ops.hpp
+|       |   |   +-- discovery_models.hpp
+|       |   |   +-- registry_models.hpp
+|       |   |   +-- spot_node_models.hpp
+|       |   |   +-- actor_models.hpp
+|       |   |   +-- operation_contracts.hpp
 |       |   +-- Errors/
+|       |       +-- errors.hpp
 |       |       +-- results.hpp
-|       |       +-- error.hpp
 +-- src/
 |   +-- Runtime/
+|       +-- zlink_cpp.cpp
 |       +-- Core/
-|       |   +-- context_runtime.hpp
-|       |   +-- context.cpp
 |       |   +-- capability.cpp
+|       |   +-- context.cpp
+|       |   +-- operation_detail.hpp
+|       |   +-- runtime_helpers.hpp
+|       |   +-- types_impl.hpp
 |       +-- Messaging/
-|       |   +-- message_runtime.hpp
 |       |   +-- message.cpp
-|       |   +-- received_runtime.hpp
-|       |   +-- received.cpp
-|       |   +-- request_runtime.hpp
-|       |   +-- request_reply.cpp
+|       +-- Errors/
+|       |   +-- error.cpp
+|       +-- Eventing/
+|       |   +-- monitor.cpp
+|       |   +-- poller.cpp
+|       |   +-- timers.cpp
 |       +-- Sockets/
-|       |   +-- socket_runtime.hpp
 |       |   +-- base_socket.cpp
 |       |   +-- pair.cpp
 |       |   +-- dealer.cpp
+|       |   +-- pubsub.cpp
 |       |   +-- router.cpp
 |       |   +-- stream.cpp
-|       |   +-- pubsub.cpp
-|       +-- Eventing/
-|       |   +-- monitor_runtime.hpp
-|       |   +-- monitor.cpp
-|       |   +-- poller_runtime.hpp
-|       |   +-- poller.cpp
-|       |   +-- timers.cpp
+|       |   +-- detail.hpp
+|       +-- Options/
+|       |   +-- socket_options.cpp
 |       +-- Service/
-|       |   +-- registry_runtime.hpp
+|       |   +-- actor.cpp
+|       |   +-- actor_ops.cpp
+|       |   +-- discovery.cpp
+|       |   +-- detail.hpp
 |       |   +-- registry.cpp
 |       |   +-- query.cpp
-|       |   +-- discovery_runtime.hpp
-|       |   +-- discovery.cpp
-|       |   +-- spot_node_runtime.hpp
-|       |   +-- spot_node.cpp
-|       |   +-- spot_runtime.hpp
+|       |   +-- request_reply.cpp
 |       |   +-- spot.cpp
-|       |   +-- actor_runtime.hpp
-|       |   +-- actor.cpp
-|       |   +-- submit_runtime.hpp
-|       |   +-- actor_ops.cpp
-|       +-- Errors/
-|       |   +-- error_runtime.hpp
-|       |   +-- error.cpp
+|       |   +-- spot_node.cpp
+|       |   +-- actor_detail.hpp
+|       |   +-- spot_state.hpp
+|       |   +-- spot_submit.hpp
 |       +-- Native/
 |           +-- socket_handle.hpp
-|           +-- socket_handle.cpp
+|           +-- native_message_parts.hpp
 |           +-- native_parts.hpp
-|           +-- native_parts.cpp
 |           +-- native_options.hpp
-|           +-- native_options.cpp
+|           +-- native_send_result.hpp
 +-- codecs/
 +-- native/
 +-- samples/
@@ -211,7 +204,7 @@ dispatch가 없도록 한다.
 | Core | `context_t`, context 옵션, routing id, version/capability 헬퍼 | `Contracts/Core/` |
 | Messaging | `message_t`, `received_t`, `topic_message_t`, `subscription_event_t`, multipart 헬퍼 | `Contracts/Messaging/` |
 | Sockets | `pair_socket_t`, `dealer_socket_t`, `router_socket_t`, `pub_socket_t`, `sub_socket_t`, `xpub_socket_t`, `xsub_socket_t`, `stream_socket_t`, send/recv/request/reply 빌더 | `Contracts/Sockets/` |
-| Eventing | `monitor_handle_t`, monitor 이벤트, poller, poll 이벤트, timer, readiness 헬퍼 | `Contracts/Eventing/` |
+| Eventing | `socket_monitor_t`, monitor 이벤트, poller, poll 이벤트, timer, readiness 헬퍼 | `Contracts/Eventing/` |
 | Service | `registry_t`, `discovery_t`, `spot_node_t`, `spot_t`, `actor_ref_t`, actor 생명주기 모델, service operation 빌더 | `Contracts/Service/` |
 | Errors | 공개 예외와 result 도메인 타입 | `Contracts/Errors/` |
 
@@ -235,8 +228,8 @@ public:
     spot_t(spot_t&&) noexcept = default;
     spot_t(const spot_t&) = delete;
 
-    send_op_t send();
-    reply_op_t reply();
+    send_operation_t send();
+    reply_operation_t reply();
     int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);
     void set_send_ready_handler(std::function<void()> handler);
     void close();
@@ -248,16 +241,24 @@ public:
 `zlink.hpp`는 이 파사드들의 공개 목차 역할을 한다.
 
 ```cpp
+#include "zlink/Contracts/Core/capability.hpp"
 #include "zlink/Contracts/Core/context.hpp"
+#include "zlink/Contracts/Core/context_options.hpp"
+#include "zlink/Contracts/Core/routing_id.hpp"
 #include "zlink/Contracts/Messaging/message.hpp"
 #include "zlink/Contracts/Messaging/received.hpp"
-#include "zlink/Contracts/Sockets/dealer.hpp"
-#include "zlink/Contracts/Sockets/router.hpp"
+#include "zlink/Contracts/Messaging/topic_message.hpp"
+#include "zlink/Contracts/Messaging/subscription_event.hpp"
+#include "zlink/Contracts/Messaging/operation_contracts.hpp"
+#include "zlink/Contracts/Sockets/message_socket_contracts.hpp"
+#include "zlink/Contracts/Sockets/routed_socket_contracts.hpp"
+#include "zlink/Contracts/Sockets/pubsub_socket_contracts.hpp"
+#include "zlink/Contracts/Eventing/poll_event.hpp"
 #include "zlink/Contracts/Eventing/poller.hpp"
 #include "zlink/Contracts/Service/spot_node.hpp"
 #include "zlink/Contracts/Service/spot.hpp"
 #include "zlink/Contracts/Service/actor.hpp"
-#include "zlink/Contracts/Errors/error.hpp"
+#include "zlink/Contracts/Errors/errors.hpp"
 ```
 
 런타임 세부사항은 파사드 뒤에 둔다. 공개 헤더는 불투명 구현 상태를 이름지을 수 있으나
@@ -272,8 +273,8 @@ public:
     spot_t(const spot_t&) = delete;
     ~spot_t();
 
-    send_op_t send();
-    reply_op_t reply();
+    send_operation_t send();
+    reply_operation_t reply();
     void close();
 
 private:
@@ -403,7 +404,7 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
   SPOT topic publish는 `publish(topic)`을 그대로 쓴다.
 - handler 등록 메서드는 `set_..._handler` 이름을 쓴다. 예를 들어 send readiness는
   `set_send_ready_handler(...)`, raw STREAM packet 처리는 `set_packet_handler(...)`,
-  monitor 이벤트는 `set_event_handler(...)`, SPOT dispatch는
+  monitor 이벤트는 `on_event(...)`, SPOT dispatch는
   `set_dispatch_handler(...)`를 쓴다.
 - `on_...` 이름은 완성된 C++ API에서 공개 등록 메서드가 아니다. 이는 필요할 때 내부 또는
   protected 훅을 위해 예약한다.

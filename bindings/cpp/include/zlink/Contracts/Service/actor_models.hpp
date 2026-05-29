@@ -105,7 +105,7 @@ struct actor_join_info_t
   private:
     std::uintptr_t _request_token;
     friend class service::spot_t;
-    friend class service::actor_join_reply_op_t;
+    friend class service::actor_join_reply_operation_t;
     friend struct detail::actor_model_access_t;
 };
 
@@ -329,7 +329,7 @@ struct spot_dispatch_info_t
 
     spot_dispatch_event_t event;
     spot_dispatch_subject_kind_t subject_kind;
-    timer_t *timer;
+    zlink_timer_t *timer;
     dealer_socket_t *channel_dealer;
     std::optional<std::string> channel_name;
     std::optional<actor_ref_t> actor;

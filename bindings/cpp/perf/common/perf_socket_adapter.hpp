@@ -257,15 +257,15 @@ class socket_t
         });
     }
 
-    monitor_handle_t monitor_handle (
+    socket_monitor_t monitor_open (
       monitor_event events_ = monitor_event::all) const
     {
-        return visit_const ([&] (const auto &socket_) -> monitor_handle_t {
+        return visit_const ([&] (const auto &socket_) -> socket_monitor_t {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, std::monostate>::value) {
                 throw config_error_t (config_result_t::invalid_handle, ENOTSOCK);
             } else {
-                return socket_.monitor_handle (events_);
+                return socket_.monitor_open (events_);
             }
         });
     }

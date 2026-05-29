@@ -15,17 +15,17 @@ pair_socket_t::pair_socket_t (context_t &ctx_)
 {
 }
 
-service::send_op_t pair_socket_t::send ()
+service::send_operation_t pair_socket_t::send ()
 {
     service::detail::spot_op_state_t state;
     state.kind = service::detail::spot_op_kind_t::raw_send;
     state.raw_socket = detail::native_handle (*this);
-    return service::send_op_t (std::move (state));
+    return service::send_operation_t (std::move (state));
 }
 
 int pair_socket_t::recv (received_t &out_, recv_flags_t flags_)
 {
-    return base_socket_t::receive (out_, flags_);
+    return socket_t::receive (out_, flags_);
 }
 
 int pair_socket_t::recv (message_t &part_out_, recv_flags_t flags_)
@@ -35,7 +35,7 @@ int pair_socket_t::recv (message_t &part_out_, recv_flags_t flags_)
 
 void pair_socket_t::set_send_ready_handler (std::function<void()> handler_)
 {
-    base_socket_t::set_send_ready_handler (std::move (handler_));
+    socket_t::set_send_ready_handler (std::move (handler_));
 }
 
 } // namespace zlink

@@ -99,7 +99,7 @@ inline bool wait_for_monitor_readable (MonitorLike &monitor_, int timeout_ms_)
     return poller.wait (&event, 1, std::chrono::milliseconds (timeout_ms_)) == 1;
 }
 
-inline bool wait_for_socket_monitor_event (zlink::monitor_handle_t &monitor_,
+inline bool wait_for_socket_monitor_event (zlink::socket_monitor_t &monitor_,
                                            uint64_t event_type_,
                                            int timeout_ms_,
                                            int64_t value_ = -1)

@@ -351,10 +351,10 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
     apply_single_hwm (bind_socket_);
     apply_single_hwm (connect_socket_);
 
-    zlink::monitor_handle_t bind_monitor =
-      bind_socket_.monitor_handle (zlink::monitor_event::connection_ready);
-    zlink::monitor_handle_t connect_monitor =
-      connect_socket_.monitor_handle (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t bind_monitor =
+      bind_socket_.monitor_open (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t connect_monitor =
+      connect_socket_.monitor_open (zlink::monitor_event::connection_ready);
     if (!bind_monitor.valid () || !connect_monitor.valid ())
         return false;
 

@@ -11,8 +11,8 @@ int main ()
     zlink::service::spot_t requester = requester_node.create_spot ();
     zlink::router_socket_t responder_router (ctx);
     zlink::dealer_socket_t requester_dealer (ctx);
-    zlink::monitor_handle_t responder_monitor = responder_router.monitor_handle ();
-    zlink::monitor_handle_t requester_monitor = requester_dealer.monitor_handle ();
+    zlink::socket_monitor_t responder_monitor = responder_router.monitor_open ();
+    zlink::socket_monitor_t requester_monitor = requester_dealer.monitor_open ();
     assert (requester_node.valid ());
     assert (requester.valid ());
     assert (responder_router.valid ());

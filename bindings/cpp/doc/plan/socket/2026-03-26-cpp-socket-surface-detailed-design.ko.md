@@ -18,7 +18,7 @@
 
 - socket 타입별 클래스는 "새 구현체"가 아니라 "제한된 facade"다.
 - lifecycle, native handle ownership, option 공통 처리, monitor 연결, callback 등록
-  같은 공통 메커니즘은 전부 `base_socket_t`에 둔다.
+  같은 공통 메커니즘은 전부 `socket_t`에 둔다.
 - raw transport 계층과 topic/service 계층을 public API에서 분리한다.
 - `send/recv`와 `publish/subscribe`는 같은 이름 체계로 섞지 않는다.
 - `message_t`는 payload container이고, payload 변환 책임도 `message_t`가 가진다.
@@ -61,7 +61,7 @@
 socket_handle_t
   ^
   |
-base_socket_t
+socket_t
   ^
   +-- message_socket_t
   |     +-- pair_socket_t
@@ -81,7 +81,7 @@ base_socket_t
 정책:
 
 - `socket_handle_t`는 최소 ownership wrapper다.
-- `base_socket_t`는 공통 동작을 제공하는 실제 깊은 모듈이다.
+- `socket_t`는 공통 동작을 제공하는 실제 깊은 모듈이다.
 - `message_socket_t`는 raw message transport facade다.
 - `publisher_socket_t`, `subscriber_socket_t`는 topic 의미를 분리하는 facade다.
 - concrete type은 public surface 제한과 타입별 option 노출만 담당한다.
@@ -156,7 +156,7 @@ protected:
 };
 ```
 
-### 6.2 `base_socket_t`
+### 6.2 `socket_t`
 
 역할:
 
@@ -169,12 +169,12 @@ protected:
 - routing id / TLS 공통 helper
 - 타입별 option domain의 구현 보관
 
-`base_socket_t`는 직접 생성되지 않는다. protected constructor로만 사용한다.
+`socket_t`는 직접 생성되지 않는다. protected constructor로만 사용한다.
 
 고정 인터페이스:
 
 ```cpp
-class base_socket_t : public socket_handle_t {
+class socket_t : public socket_handle_t {
 public:
     bool valid() const noexcept;
 
@@ -192,8 +192,8 @@ public:
     int send_ready_handler(zlink_send_ready_handler_fn handler,
                            void *userdata = NULL);
 
-    monitor_handle_t monitor_handle(monitor_event events) const;
-    service_monitor_handle_t service_monitor_handle(
+    socket_monitor_t monitor_open(monitor_event events) const;
+    service_socket_monitor_t service_monitor_open(
       service_monitor_event events) const;
 
     int set_option(socket_option option, const void *value, size_t size);
@@ -282,17 +282,17 @@ protected:
     template<typename T>
     int get_stream_option(stream_option_key_t<T> key, T *value) const;
 
-    base_socket_t(context_t &ctx, socket_type type);
-    explicit base_socket_t(void *socket, bool own = true) noexcept;
+    socket_t(context_t &ctx, socket_type type);
+    explicit socket_t(void *socket, bool own = true) noexcept;
 };
 ```
 
 제약:
 
-- `base_socket_t`에는 `send`, `recv`, `publish`, `subscribe`를 직접 public으로
+- `socket_t`에는 `send`, `recv`, `publish`, `subscribe`를 직접 public으로
   두지 않는다.
 - data-plane 동작은 하위 facade가 의미에 맞게 노출한다.
-- 타입별 option domain API는 `base_socket_t`에 구현하되 protected로 둔다.
+- 타입별 option domain API는 `socket_t`에 구현하되 protected로 둔다.
 - 공통 option과 타입별 option 모두 typed key를 기본 public 경로로 사용한다.
 - dealer option은 native get API가 없으므로 set만 제공한다.
 
@@ -313,7 +313,7 @@ protected:
 고정 인터페이스:
 
 ```cpp
-class message_socket_t : public base_socket_t {
+class message_socket_t : public socket_t {
 public:
     int send(message_t &msg, send_flag flags = send_flag::none);
     int send(std::vector<message_t> &parts, send_flag flags = send_flag::none);
@@ -363,7 +363,7 @@ protected:
 고정 인터페이스:
 
 ```cpp
-class publisher_socket_t : public base_socket_t {
+class publisher_socket_t : public socket_t {
 public:
     int publish(const std::string &topic,
                 message_t &msg,
@@ -398,7 +398,7 @@ protected:
 고정 인터페이스:
 
 ```cpp
-class subscriber_socket_t : public base_socket_t {
+class subscriber_socket_t : public socket_t {
 public:
     int set_subscription(const std::string &topic);
     int unset_subscription(const std::string &topic);
@@ -572,7 +572,7 @@ stream.set_option(zlink::stream_options::notify, 1);
 
 ### 9.1 공통 option
 
-`base_socket_t` public API에 둔다.
+`socket_t` public API에 둔다.
 
 예:
 
@@ -675,14 +675,14 @@ stream_socket_t stream(ctx);
 ### Slice 1. ownership/base 분리
 
 - `socket_handle_t` 추출
-- 기존 `socket_t` 공통 lifecycle/option/monitor 코드를 `base_socket_t`로 이동
+- 기존 `socket_t` 공통 lifecycle/option/monitor 코드를 `socket_t`로 이동
 - `message_socket_t`, `publisher_socket_t`, `subscriber_socket_t` 골격 추가
 - 기존 테스트 빌드 유지
 
 완료 조건:
 
 - 기존 contract test가 컴파일/통과
-- `base_socket_t`가 직접 data-plane public API를 노출하지 않음
+- `socket_t`가 직접 data-plane public API를 노출하지 않음
 
 ### Slice 2. concrete facade 추가
 
@@ -717,7 +717,7 @@ stream_socket_t stream(ctx);
 ### Slice 5. POSD 기반 최종 리팩토링
 
 - John Ousterhout POSD 기준으로 전체 socket facade 구조를 다시 리뷰
-- `base_socket_t`, `socket.hpp`, concrete facade 사이에 남은 shallow wrapper,
+- `socket_t`, `socket.hpp`, concrete facade 사이에 남은 shallow wrapper,
   중복 option 위임, 설명 비용이 큰 compat surface를 정리
 - 리팩토링은 한 번으로 끝내지 않고, 더 이상 의미 있는 리팩토링 대상이
   없다고 판단될 때까지 반복
@@ -767,7 +767,7 @@ stream_socket_t stream(ctx);
 
 이번 C++ socket 계층은 아래 방향으로 고정한다.
 
-- 구현은 `base_socket_t`에 집중
+- 구현은 `socket_t`에 집중
 - public surface는 concrete socket facade로 분리
 - `send/recv`와 `publish/subscribe`를 의미 계층 기준으로 구분
 - option도 socket family 기준으로 분리

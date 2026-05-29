@@ -12,33 +12,33 @@
 namespace zlink
 {
 
-class base_socket_t;
-class monitor_handle_t;
+class socket_t;
+class socket_monitor_t;
 namespace detail
 {
 struct monitor_access_t;
 } // namespace detail
 
-class monitor_handle_t
+class socket_monitor_t
 {
   public:
-    monitor_handle_t ();
+    socket_monitor_t ();
 
-    static monitor_handle_t open (
-      const base_socket_t &socket_, monitor_event events_ = monitor_event::all);
+    static socket_monitor_t open (
+      const socket_t &socket_, monitor_event events_ = monitor_event::all);
 
-    ~monitor_handle_t ();
+    ~socket_monitor_t ();
 
-    monitor_handle_t (monitor_handle_t &&other) noexcept;
+    socket_monitor_t (socket_monitor_t &&other) noexcept;
 
-    monitor_handle_t &operator= (monitor_handle_t &&other) noexcept;
+    socket_monitor_t &operator= (socket_monitor_t &&other) noexcept;
 
-    monitor_handle_t (const monitor_handle_t &) = delete;
-    monitor_handle_t &operator= (const monitor_handle_t &) = delete;
+    socket_monitor_t (const socket_monitor_t &) = delete;
+    socket_monitor_t &operator= (const socket_monitor_t &) = delete;
 
     bool valid () const noexcept;
 
-    void set_event_handler (std::function<void(const monitor_event_t &)> handler_);
+    void on_event (std::function<void(const monitor_event_t &)> handler_);
 
     static void ignore_event (const monitor_event_t &) noexcept {}
 
@@ -52,7 +52,7 @@ class monitor_handle_t
   private:
     void close_noexcept () noexcept;
 
-    friend class base_socket_t;
+    friend class socket_t;
     friend struct detail::monitor_access_t;
 
     struct impl;

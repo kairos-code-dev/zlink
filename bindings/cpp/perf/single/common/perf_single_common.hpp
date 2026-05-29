@@ -218,9 +218,9 @@ bool setup_connected_pair (BindSocketLike &bind_socket_,
     apply_single_hwm (bind_socket_);
     apply_single_hwm (connect_socket_);
 
-    zlink::monitor_handle_t bind_monitor = zlink::monitor_handle_t::open (
+    zlink::socket_monitor_t bind_monitor = zlink::socket_monitor_t::open (
       bind_socket_, zlink::monitor_event::connection_ready);
-    zlink::monitor_handle_t connect_monitor = zlink::monitor_handle_t::open (
+    zlink::socket_monitor_t connect_monitor = zlink::socket_monitor_t::open (
       connect_socket_, zlink::monitor_event::connection_ready);
     if (!bind_monitor.valid () || !connect_monitor.valid ())
         return false;
@@ -334,8 +334,8 @@ inline void emit_single_socket_hwm_detail (const SocketLike &socket_,
 
     zlink::monitor_status_t snapshot;
     try {
-        zlink::monitor_handle_t monitor =
-          socket_.monitor_handle (zlink::monitor_event::connection_ready);
+        zlink::socket_monitor_t monitor =
+          socket_.monitor_open (zlink::monitor_event::connection_ready);
         if (!monitor.valid ())
             return;
         snapshot = monitor.status ();

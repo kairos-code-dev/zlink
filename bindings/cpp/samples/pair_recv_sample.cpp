@@ -7,8 +7,8 @@ int main ()
     zlink::context_t ctx;
     zlink::pair_socket_t server (ctx);
     zlink::pair_socket_t client (ctx);
-    zlink::monitor_handle_t server_monitor = server.monitor_handle ();
-    zlink::monitor_handle_t client_monitor = client.monitor_handle ();
+    zlink::socket_monitor_t server_monitor = server.monitor_open ();
+    zlink::socket_monitor_t client_monitor = client.monitor_open ();
 
     server.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = server.options ().last_endpoint ();

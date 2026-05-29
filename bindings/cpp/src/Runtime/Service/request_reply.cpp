@@ -9,33 +9,33 @@ namespace zlink
 namespace service
 {
 
-send_ready_op_t::~send_ready_op_t () = default;
-send_ready_op_t::send_ready_op_t (send_ready_op_t &&) noexcept = default;
-send_ready_op_t &
-send_ready_op_t::operator= (send_ready_op_t &&) noexcept = default;
+send_submit_operation_t::~send_submit_operation_t () = default;
+send_submit_operation_t::send_submit_operation_t (send_submit_operation_t &&) noexcept = default;
+send_submit_operation_t &
+send_submit_operation_t::operator= (send_submit_operation_t &&) noexcept = default;
 
-send_ready_op_t::send_ready_op_t (detail::spot_op_state_t &&state_)
+send_submit_operation_t::send_submit_operation_t (detail::spot_op_state_t &&state_)
     : _state (new detail::spot_op_state_t (std::move (state_)))
 {
 }
 
-detail::spot_op_state_t &send_ready_op_t::state () noexcept
+detail::spot_op_state_t &send_submit_operation_t::state () noexcept
 {
     return *_state;
 }
 
-const detail::spot_op_state_t &send_ready_op_t::state () const noexcept
+const detail::spot_op_state_t &send_submit_operation_t::state () const noexcept
 {
     return *_state;
 }
 
-send_ready_op_t &&send_ready_op_t::message (message_t &part_) &&
+send_submit_operation_t &&send_submit_operation_t::message (message_t &part_) &&
 {
     detail::append_send_part (state (), part_);
     return std::move (*this);
 }
 
-send_ready_op_t &&send_ready_op_t::message (message_t &&part_) &&
+send_submit_operation_t &&send_submit_operation_t::message (message_t &&part_) &&
 {
     state ().single_part.emplace (std::move (part_));
     state ().single_part_source = NULL;
@@ -43,211 +43,211 @@ send_ready_op_t &&send_ready_op_t::message (message_t &&part_) &&
     return std::move (*this);
 }
 
-send_ready_op_t &&send_ready_op_t::flags (int flags_) &&
+send_submit_operation_t &&send_submit_operation_t::flags (int flags_) &&
 {
     state ().flags = send_flags_t (flags_);
     return std::move (*this);
 }
 
-send_op_t::~send_op_t () = default;
-send_op_t::send_op_t (send_op_t &&) noexcept = default;
-send_op_t &send_op_t::operator= (send_op_t &&) noexcept = default;
+send_operation_t::~send_operation_t () = default;
+send_operation_t::send_operation_t (send_operation_t &&) noexcept = default;
+send_operation_t &send_operation_t::operator= (send_operation_t &&) noexcept = default;
 
-send_op_t::send_op_t (detail::spot_op_state_t &&state_)
+send_operation_t::send_operation_t (detail::spot_op_state_t &&state_)
     : _state (new detail::spot_op_state_t (std::move (state_)))
 {
 }
 
-detail::spot_op_state_t &send_op_t::state () noexcept
+detail::spot_op_state_t &send_operation_t::state () noexcept
 {
     return *_state;
 }
 
-const detail::spot_op_state_t &send_op_t::state () const noexcept
+const detail::spot_op_state_t &send_operation_t::state () const noexcept
 {
     return *_state;
 }
 
-send_ready_op_t send_op_t::message (message_t &part_) &&
+send_submit_operation_t send_operation_t::message (message_t &part_) &&
 {
     state ().single_part_source = &part_;
     if (!detail::can_borrow_single_send_part (state ().kind))
         state ().single_part.emplace (std::move (part_));
-    return send_ready_op_t (std::move (state ()));
+    return send_submit_operation_t (std::move (state ()));
 }
 
-send_ready_op_t send_op_t::message (message_t &&part_) &&
+send_submit_operation_t send_operation_t::message (message_t &&part_) &&
 {
     state ().single_part.emplace (std::move (part_));
     state ().single_part_source = NULL;
     state ().discard_single_part_on_backpressure = true;
-    return send_ready_op_t (std::move (state ()));
+    return send_submit_operation_t (std::move (state ()));
 }
 
-request_ready_op_t::~request_ready_op_t () = default;
-request_ready_op_t::request_ready_op_t (request_ready_op_t &&) noexcept =
+request_submit_operation_t::~request_submit_operation_t () = default;
+request_submit_operation_t::request_submit_operation_t (request_submit_operation_t &&) noexcept =
   default;
-request_ready_op_t &
-request_ready_op_t::operator= (request_ready_op_t &&) noexcept = default;
+request_submit_operation_t &
+request_submit_operation_t::operator= (request_submit_operation_t &&) noexcept = default;
 
-request_ready_op_t::request_ready_op_t (detail::spot_op_state_t &&state_)
+request_submit_operation_t::request_submit_operation_t (detail::spot_op_state_t &&state_)
     : _state (new detail::spot_op_state_t (std::move (state_)))
 {
 }
 
-detail::spot_op_state_t &request_ready_op_t::state () noexcept
+detail::spot_op_state_t &request_submit_operation_t::state () noexcept
 {
     return *_state;
 }
 
-const detail::spot_op_state_t &request_ready_op_t::state () const noexcept
+const detail::spot_op_state_t &request_submit_operation_t::state () const noexcept
 {
     return *_state;
 }
 
-request_ready_op_t &&request_ready_op_t::message (message_t &part_) &&
+request_submit_operation_t &&request_submit_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
     return std::move (*this);
 }
 
-request_ready_op_t &&
-request_ready_op_t::timeout (std::chrono::milliseconds timeout_) &&
+request_submit_operation_t &&
+request_submit_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
     state ().timeout = timeout_;
     return std::move (*this);
 }
 
-request_op_t::~request_op_t () = default;
-request_op_t::request_op_t (request_op_t &&) noexcept = default;
-request_op_t &request_op_t::operator= (request_op_t &&) noexcept = default;
+request_operation_t::~request_operation_t () = default;
+request_operation_t::request_operation_t (request_operation_t &&) noexcept = default;
+request_operation_t &request_operation_t::operator= (request_operation_t &&) noexcept = default;
 
-request_op_t::request_op_t (detail::spot_op_state_t &&state_)
+request_operation_t::request_operation_t (detail::spot_op_state_t &&state_)
     : _state (new detail::spot_op_state_t (std::move (state_)))
 {
 }
 
-detail::spot_op_state_t &request_op_t::state () noexcept
+detail::spot_op_state_t &request_operation_t::state () noexcept
 {
     return *_state;
 }
 
-const detail::spot_op_state_t &request_op_t::state () const noexcept
+const detail::spot_op_state_t &request_operation_t::state () const noexcept
 {
     return *_state;
 }
 
-request_ready_op_t request_op_t::message (message_t &part_) &&
+request_submit_operation_t request_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
-    return request_ready_op_t (std::move (state ()));
+    return request_submit_operation_t (std::move (state ()));
 }
 
-request_callback_ready_op_t::~request_callback_ready_op_t () = default;
-request_callback_ready_op_t::request_callback_ready_op_t (
-  request_callback_ready_op_t &&) noexcept = default;
-request_callback_ready_op_t &
-request_callback_ready_op_t::operator= (
-  request_callback_ready_op_t &&) noexcept = default;
+request_callback_submit_operation_t::~request_callback_submit_operation_t () = default;
+request_callback_submit_operation_t::request_callback_submit_operation_t (
+  request_callback_submit_operation_t &&) noexcept = default;
+request_callback_submit_operation_t &
+request_callback_submit_operation_t::operator= (
+  request_callback_submit_operation_t &&) noexcept = default;
 
-request_callback_ready_op_t::request_callback_ready_op_t (
+request_callback_submit_operation_t::request_callback_submit_operation_t (
   detail::spot_op_state_t &&state_)
     : _state (new detail::spot_op_state_t (std::move (state_)))
 {
 }
 
-detail::spot_op_state_t &request_callback_ready_op_t::state () noexcept
+detail::spot_op_state_t &request_callback_submit_operation_t::state () noexcept
 {
     return *_state;
 }
 
 const detail::spot_op_state_t &
-request_callback_ready_op_t::state () const noexcept
+request_callback_submit_operation_t::state () const noexcept
 {
     return *_state;
 }
 
-request_callback_ready_op_t &&
-request_callback_ready_op_t::message (message_t &part_) &&
+request_callback_submit_operation_t &&
+request_callback_submit_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
     return std::move (*this);
 }
 
-request_callback_ready_op_t &&
-request_callback_ready_op_t::timeout (std::chrono::milliseconds timeout_) &&
+request_callback_submit_operation_t &&
+request_callback_submit_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
     state ().timeout = timeout_;
     return std::move (*this);
 }
 
-request_callback_ready_op_t &&
-request_callback_ready_op_t::flags (int flags_) &&
+request_callback_submit_operation_t &&
+request_callback_submit_operation_t::flags (int flags_) &&
 {
     state ().flags = send_flags_t (flags_);
     return std::move (*this);
 }
 
-reply_ready_op_t::~reply_ready_op_t () = default;
-reply_ready_op_t::reply_ready_op_t (reply_ready_op_t &&) noexcept = default;
-reply_ready_op_t &
-reply_ready_op_t::operator= (reply_ready_op_t &&) noexcept = default;
+reply_submit_operation_t::~reply_submit_operation_t () = default;
+reply_submit_operation_t::reply_submit_operation_t (reply_submit_operation_t &&) noexcept = default;
+reply_submit_operation_t &
+reply_submit_operation_t::operator= (reply_submit_operation_t &&) noexcept = default;
 
-reply_ready_op_t::reply_ready_op_t (detail::spot_op_state_t &&state_)
+reply_submit_operation_t::reply_submit_operation_t (detail::spot_op_state_t &&state_)
     : _state (new detail::spot_op_state_t (std::move (state_)))
 {
 }
 
-detail::spot_op_state_t &reply_ready_op_t::state () noexcept
+detail::spot_op_state_t &reply_submit_operation_t::state () noexcept
 {
     return *_state;
 }
 
-const detail::spot_op_state_t &reply_ready_op_t::state () const noexcept
+const detail::spot_op_state_t &reply_submit_operation_t::state () const noexcept
 {
     return *_state;
 }
 
-reply_ready_op_t &&reply_ready_op_t::message (message_t &part_) &&
+reply_submit_operation_t &&reply_submit_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
     return std::move (*this);
 }
 
-reply_ready_op_t &&reply_ready_op_t::flags (int flags_) &&
+reply_submit_operation_t &&reply_submit_operation_t::flags (int flags_) &&
 {
     state ().flags = send_flags_t (flags_);
     return std::move (*this);
 }
 
-reply_op_t::~reply_op_t () = default;
-reply_op_t::reply_op_t (reply_op_t &&) noexcept = default;
-reply_op_t &reply_op_t::operator= (reply_op_t &&) noexcept = default;
+reply_operation_t::~reply_operation_t () = default;
+reply_operation_t::reply_operation_t (reply_operation_t &&) noexcept = default;
+reply_operation_t &reply_operation_t::operator= (reply_operation_t &&) noexcept = default;
 
-reply_op_t::reply_op_t (detail::spot_op_state_t &&state_)
+reply_operation_t::reply_operation_t (detail::spot_op_state_t &&state_)
     : _state (new detail::spot_op_state_t (std::move (state_)))
 {
 }
 
-detail::spot_op_state_t &reply_op_t::state () noexcept
+detail::spot_op_state_t &reply_operation_t::state () noexcept
 {
     return *_state;
 }
 
-const detail::spot_op_state_t &reply_op_t::state () const noexcept
+const detail::spot_op_state_t &reply_operation_t::state () const noexcept
 {
     return *_state;
 }
 
-reply_ready_op_t reply_op_t::message (message_t &part_) &&
+reply_submit_operation_t reply_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
-    return reply_ready_op_t (std::move (state ()));
+    return reply_submit_operation_t (std::move (state ()));
 }
 
 #define _state state ()
 
-bool send_ready_op_t::submit () &&
+bool send_submit_operation_t::submit () &&
 {
     if (!detail::has_send_parts (_state))
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
@@ -364,14 +364,14 @@ bool send_ready_op_t::submit () &&
     }
 }
 
-request_callback_ready_op_t request_ready_op_t::flags (int flags_) &&
+request_callback_submit_operation_t request_submit_operation_t::flags (int flags_) &&
 {
     _state.flags = send_flags_t (flags_);
-    return request_callback_ready_op_t (std::move (_state));
+    return request_callback_submit_operation_t (std::move (_state));
 }
 
 async_result_t<std::vector<message_t>>
-request_ready_op_t::submit_async () &&
+request_submit_operation_t::submit_async () &&
 {
     if (_state.parts.empty ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
@@ -465,13 +465,13 @@ request_ready_op_t::submit_async () &&
     }
 }
 
-bool request_ready_op_t::submit (request_callback_t callback_) &&
+bool request_submit_operation_t::submit (request_callback_t callback_) &&
 {
-    request_callback_ready_op_t ready (std::move (_state));
+    request_callback_submit_operation_t ready (std::move (_state));
     return std::move (ready).submit (std::move (callback_));
 }
 
-bool request_callback_ready_op_t::submit (request_callback_t callback_) &&
+bool request_callback_submit_operation_t::submit (request_callback_t callback_) &&
 {
     if (_state.parts.empty ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
@@ -571,7 +571,7 @@ bool request_callback_ready_op_t::submit (request_callback_t callback_) &&
     }
 }
 
-void reply_ready_op_t::submit () &&
+void reply_submit_operation_t::submit () &&
 {
     if (_state.parts.empty ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);

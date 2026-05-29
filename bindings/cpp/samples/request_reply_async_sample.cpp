@@ -29,8 +29,8 @@ int main ()
     zlink::context_t ctx;
     zlink::router_socket_t router_socket (ctx);
     zlink::dealer_socket_t dealer_socket (ctx);
-    zlink::monitor_handle_t router_monitor = router_socket.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer_socket.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router_socket.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer_socket.monitor_open ();
 
     const std::string routing_id_text = "request-reply-client";
     const zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (

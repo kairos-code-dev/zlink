@@ -12,7 +12,7 @@
 namespace zlink
 {
 
-class timer_t;
+class zlink_timer_t;
 namespace service
 {
 class spot_t;
@@ -22,21 +22,21 @@ namespace detail
 struct timer_access_t;
 } // namespace detail
 
-class timer_t
+class zlink_timer_t
 {
   public:
-    timer_t ();
+    zlink_timer_t ();
 
-    ~timer_t ();
+    ~zlink_timer_t ();
 
-    timer_t (timer_t &&other) noexcept;
+    zlink_timer_t (zlink_timer_t &&other) noexcept;
 
-    timer_t &operator= (timer_t &&other) noexcept;
+    zlink_timer_t &operator= (zlink_timer_t &&other) noexcept;
 
-    timer_t (const timer_t &) = delete;
-    timer_t &operator= (const timer_t &) = delete;
+    zlink_timer_t (const zlink_timer_t &) = delete;
+    zlink_timer_t &operator= (const zlink_timer_t &) = delete;
 
-    static timer_t from_spot (service::spot_t &spot_);
+    static zlink_timer_t from_spot (service::spot_t &spot_);
 
     bool valid () const noexcept;
 
@@ -58,9 +58,9 @@ class timer_t
 
     std::optional<uint64_t> recv ();
 
-    void set_handler (std::function<void(uint64_t)> handler_);
+    void on_fire (std::function<void(uint64_t)> handler_);
 
-    void destroy ();
+    void close ();
 
   private:
     struct impl;

@@ -14,7 +14,7 @@ bool perf_debug_enabled ()
 }
 
 bool wait_dealer_router_monitor_event (
-  zlink::monitor_handle_t &monitor_,
+  zlink::socket_monitor_t &monitor_,
   perf::single::perf_socket_t *activity_socket_,
   uint64_t success_event_,
   int timeout_ms_)
@@ -81,10 +81,10 @@ bool setup_dealer_router_session (perf::single::perf_socket_t &router_,
     if (endpoint.empty ())
         return false;
 
-    zlink::monitor_handle_t router_monitor =
-      router_.monitor_handle (zlink::monitor_event::connection_ready);
-    zlink::monitor_handle_t dealer_monitor =
-      dealer_.monitor_handle (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t router_monitor =
+      router_.monitor_open (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t dealer_monitor =
+      dealer_.monitor_open (zlink::monitor_event::connection_ready);
     if (!router_monitor.valid () || !dealer_monitor.valid ())
         return false;
 

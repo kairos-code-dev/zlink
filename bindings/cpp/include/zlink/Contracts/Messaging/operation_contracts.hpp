@@ -198,40 +198,40 @@ namespace detail
 struct spot_op_state_t;
 } // namespace detail
 
-class send_ready_op_t
+class send_submit_operation_t
 {
   public:
-    ~send_ready_op_t ();
-    send_ready_op_t (send_ready_op_t &&) noexcept;
-    send_ready_op_t &operator= (send_ready_op_t &&) noexcept;
+    ~send_submit_operation_t ();
+    send_submit_operation_t (send_submit_operation_t &&) noexcept;
+    send_submit_operation_t &operator= (send_submit_operation_t &&) noexcept;
 
-    send_ready_op_t &&message (message_t &part_) &&;
-    send_ready_op_t &&message (message_t &&part_) &&;
-    send_ready_op_t &&flags (int flags_) &&;
+    send_submit_operation_t &&message (message_t &part_) &&;
+    send_submit_operation_t &&message (message_t &&part_) &&;
+    send_submit_operation_t &&flags (int flags_) &&;
     bool submit () &&;
 
   private:
-    explicit send_ready_op_t (detail::spot_op_state_t &&state_);
+    explicit send_submit_operation_t (detail::spot_op_state_t &&state_);
 
     detail::spot_op_state_t &state () noexcept;
     const detail::spot_op_state_t &state () const noexcept;
 
     std::unique_ptr<detail::spot_op_state_t> _state;
-    friend class send_op_t;
+    friend class send_operation_t;
 };
 
-class send_op_t
+class send_operation_t
 {
   public:
-    ~send_op_t ();
-    send_op_t (send_op_t &&) noexcept;
-    send_op_t &operator= (send_op_t &&) noexcept;
+    ~send_operation_t ();
+    send_operation_t (send_operation_t &&) noexcept;
+    send_operation_t &operator= (send_operation_t &&) noexcept;
 
-    send_ready_op_t message (message_t &part_) &&;
-    send_ready_op_t message (message_t &&part_) &&;
+    send_submit_operation_t message (message_t &part_) &&;
+    send_submit_operation_t message (message_t &&part_) &&;
 
   private:
-    explicit send_op_t (detail::spot_op_state_t &&state_);
+    explicit send_operation_t (detail::spot_op_state_t &&state_);
 
     detail::spot_op_state_t &state () noexcept;
     const detail::spot_op_state_t &state () const noexcept;
@@ -249,43 +249,43 @@ class send_op_t
     friend class zlink::stream_socket_t;
 };
 
-class request_callback_ready_op_t;
+class request_callback_submit_operation_t;
 
-class request_ready_op_t
+class request_submit_operation_t
 {
   public:
-    ~request_ready_op_t ();
-    request_ready_op_t (request_ready_op_t &&) noexcept;
-    request_ready_op_t &operator= (request_ready_op_t &&) noexcept;
+    ~request_submit_operation_t ();
+    request_submit_operation_t (request_submit_operation_t &&) noexcept;
+    request_submit_operation_t &operator= (request_submit_operation_t &&) noexcept;
 
-    request_ready_op_t &&message (message_t &part_) &&;
-    request_ready_op_t &&timeout (std::chrono::milliseconds timeout_) &&;
-    request_callback_ready_op_t flags (int flags_) &&;
+    request_submit_operation_t &&message (message_t &part_) &&;
+    request_submit_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
+    request_callback_submit_operation_t flags (int flags_) &&;
     async_result_t<std::vector<message_t>> submit_async () &&;
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit request_ready_op_t (detail::spot_op_state_t &&state_);
+    explicit request_submit_operation_t (detail::spot_op_state_t &&state_);
 
     detail::spot_op_state_t &state () noexcept;
     const detail::spot_op_state_t &state () const noexcept;
 
     std::unique_ptr<detail::spot_op_state_t> _state;
-    friend class request_op_t;
-    friend class request_callback_ready_op_t;
+    friend class request_operation_t;
+    friend class request_callback_submit_operation_t;
 };
 
-class request_op_t
+class request_operation_t
 {
   public:
-    ~request_op_t ();
-    request_op_t (request_op_t &&) noexcept;
-    request_op_t &operator= (request_op_t &&) noexcept;
+    ~request_operation_t ();
+    request_operation_t (request_operation_t &&) noexcept;
+    request_operation_t &operator= (request_operation_t &&) noexcept;
 
-    request_ready_op_t message (message_t &part_) &&;
+    request_submit_operation_t message (message_t &part_) &&;
 
   private:
-    explicit request_op_t (detail::spot_op_state_t &&state_);
+    explicit request_operation_t (detail::spot_op_state_t &&state_);
 
     detail::spot_op_state_t &state () noexcept;
     const detail::spot_op_state_t &state () const noexcept;
@@ -296,62 +296,62 @@ class request_op_t
     friend class zlink::router_socket_t;
 };
 
-class request_callback_ready_op_t
+class request_callback_submit_operation_t
 {
   public:
-    ~request_callback_ready_op_t ();
-    request_callback_ready_op_t (request_callback_ready_op_t &&) noexcept;
-    request_callback_ready_op_t &
-    operator= (request_callback_ready_op_t &&) noexcept;
+    ~request_callback_submit_operation_t ();
+    request_callback_submit_operation_t (request_callback_submit_operation_t &&) noexcept;
+    request_callback_submit_operation_t &
+    operator= (request_callback_submit_operation_t &&) noexcept;
 
-    request_callback_ready_op_t &&message (message_t &part_) &&;
-    request_callback_ready_op_t &&
+    request_callback_submit_operation_t &&message (message_t &part_) &&;
+    request_callback_submit_operation_t &&
     timeout (std::chrono::milliseconds timeout_) &&;
-    request_callback_ready_op_t &&flags (int flags_) &&;
+    request_callback_submit_operation_t &&flags (int flags_) &&;
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit request_callback_ready_op_t (detail::spot_op_state_t &&state_);
+    explicit request_callback_submit_operation_t (detail::spot_op_state_t &&state_);
 
     detail::spot_op_state_t &state () noexcept;
     const detail::spot_op_state_t &state () const noexcept;
 
     std::unique_ptr<detail::spot_op_state_t> _state;
-    friend class request_ready_op_t;
+    friend class request_submit_operation_t;
 };
 
-class reply_ready_op_t
+class reply_submit_operation_t
 {
   public:
-    ~reply_ready_op_t ();
-    reply_ready_op_t (reply_ready_op_t &&) noexcept;
-    reply_ready_op_t &operator= (reply_ready_op_t &&) noexcept;
+    ~reply_submit_operation_t ();
+    reply_submit_operation_t (reply_submit_operation_t &&) noexcept;
+    reply_submit_operation_t &operator= (reply_submit_operation_t &&) noexcept;
 
-    reply_ready_op_t &&message (message_t &part_) &&;
-    reply_ready_op_t &&flags (int flags_) &&;
+    reply_submit_operation_t &&message (message_t &part_) &&;
+    reply_submit_operation_t &&flags (int flags_) &&;
     void submit () &&;
 
   private:
-    explicit reply_ready_op_t (detail::spot_op_state_t &&state_);
+    explicit reply_submit_operation_t (detail::spot_op_state_t &&state_);
 
     detail::spot_op_state_t &state () noexcept;
     const detail::spot_op_state_t &state () const noexcept;
 
     std::unique_ptr<detail::spot_op_state_t> _state;
-    friend class reply_op_t;
+    friend class reply_operation_t;
 };
 
-class reply_op_t
+class reply_operation_t
 {
   public:
-    ~reply_op_t ();
-    reply_op_t (reply_op_t &&) noexcept;
-    reply_op_t &operator= (reply_op_t &&) noexcept;
+    ~reply_operation_t ();
+    reply_operation_t (reply_operation_t &&) noexcept;
+    reply_operation_t &operator= (reply_operation_t &&) noexcept;
 
-    reply_ready_op_t message (message_t &part_) &&;
+    reply_submit_operation_t message (message_t &part_) &&;
 
   private:
-    explicit reply_op_t (detail::spot_op_state_t &&state_);
+    explicit reply_operation_t (detail::spot_op_state_t &&state_);
 
     detail::spot_op_state_t &state () noexcept;
     const detail::spot_op_state_t &state () const noexcept;

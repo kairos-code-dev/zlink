@@ -9,7 +9,7 @@
 namespace zlink
 {
 
-void proxy (base_socket_t &frontend_, base_socket_t &backend_)
+void proxy (socket_t &frontend_, socket_t &backend_)
 {
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
@@ -17,9 +17,9 @@ void proxy (base_socket_t &frontend_, base_socket_t &backend_)
                      detail::native_handle (backend_), NULL)));
 }
 
-void proxy (base_socket_t &frontend_,
-            base_socket_t &backend_,
-            base_socket_t &capture_)
+void proxy (socket_t &frontend_,
+            socket_t &backend_,
+            socket_t &capture_)
 {
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
@@ -28,10 +28,10 @@ void proxy (base_socket_t &frontend_,
                      detail::native_handle (capture_))));
 }
 
-void proxy_steerable (base_socket_t &frontend_,
-                      base_socket_t &backend_,
-                      base_socket_t &capture_,
-                      base_socket_t &control_)
+void proxy_steerable (socket_t &frontend_,
+                      socket_t &backend_,
+                      socket_t &capture_,
+                      socket_t &control_)
 {
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (

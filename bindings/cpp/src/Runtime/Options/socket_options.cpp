@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include <zlink/Contracts/Messaging/received.hpp>
+#include <zlink/Contracts/Messaging/topic_message.hpp>
 #include <zlink/Contracts/Errors/errors.hpp>
 #include <zlink/Contracts/Sockets/socket_options.hpp>
 #include <Runtime/Core/routing_id_access.hpp>
@@ -19,7 +20,7 @@ inline void ensure_config_handle (void *handle_)
         throw config_error_t (config_result_t::invalid_handle, EINVAL);
 }
 
-inline void *native_option_handle (base_socket_t *socket_)
+inline void *native_option_handle (socket_t *socket_)
 {
     if (!socket_)
         throw config_error_t (config_result_t::invalid_handle, EINVAL);
@@ -236,7 +237,7 @@ common_socket_options_t::common_socket_options_t () noexcept
 }
 
 common_socket_options_t::common_socket_options_t (
-  base_socket_t &socket_) noexcept
+  socket_t &socket_) noexcept
     : _socket (&socket_)
 {
 }
@@ -244,7 +245,7 @@ common_socket_options_t::common_socket_options_t (
 router_socket_options_t::router_socket_options_t () noexcept = default;
 
 router_socket_options_t::router_socket_options_t (
-  base_socket_t &socket_) noexcept
+  socket_t &socket_) noexcept
     : common_socket_options_t (socket_)
 {
 }
@@ -252,7 +253,7 @@ router_socket_options_t::router_socket_options_t (
 dealer_socket_options_t::dealer_socket_options_t () noexcept = default;
 
 dealer_socket_options_t::dealer_socket_options_t (
-  base_socket_t &socket_) noexcept
+  socket_t &socket_) noexcept
     : common_socket_options_t (socket_)
 {
 }
@@ -260,21 +261,21 @@ dealer_socket_options_t::dealer_socket_options_t (
 stream_socket_options_t::stream_socket_options_t () noexcept = default;
 
 stream_socket_options_t::stream_socket_options_t (
-  base_socket_t &socket_) noexcept
+  socket_t &socket_) noexcept
     : common_socket_options_t (socket_)
 {
 }
 
 pub_socket_options_t::pub_socket_options_t () noexcept = default;
 
-pub_socket_options_t::pub_socket_options_t (base_socket_t &socket_) noexcept
+pub_socket_options_t::pub_socket_options_t (socket_t &socket_) noexcept
     : common_socket_options_t (socket_)
 {
 }
 
 sub_socket_options_t::sub_socket_options_t () noexcept = default;
 
-sub_socket_options_t::sub_socket_options_t (base_socket_t &socket_) noexcept
+sub_socket_options_t::sub_socket_options_t (socket_t &socket_) noexcept
     : common_socket_options_t (socket_)
 {
 }
@@ -917,7 +918,7 @@ message_t received_t::single_part_or_throw ()
 }
 
 // received_t::send() and received_t::reply() are defined in
-// zlink/services/spot.hpp, after send_op_t and reply_op_t are fully defined.
+// zlink/services/spot.hpp, after send_operation_t and reply_operation_t are fully defined.
 
 void received_t::close ()
 {

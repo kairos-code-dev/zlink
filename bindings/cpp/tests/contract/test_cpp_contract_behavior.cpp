@@ -196,7 +196,7 @@ void test_socket_monitor_receive_returns_empty_without_event ()
 {
     zlink::context_t ctx;
     zlink::pair_socket_t socket (ctx);
-    zlink::monitor_handle_t monitor = socket.monitor_handle ();
+    zlink::socket_monitor_t monitor = socket.monitor_open ();
 
     const std::optional<zlink::monitor_event_t> event =
       monitor.recv (zlink::recv_flags_t::dontwait);

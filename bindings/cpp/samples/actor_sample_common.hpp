@@ -56,7 +56,7 @@ struct actor_sample_stream_session_t
     explicit actor_sample_stream_session_t (zlink::context_t &ctx_)
         : stream (ctx_), client (), session (sample_rid ("placeholder"))
     {
-        zlink::monitor_handle_t monitor = stream.monitor_handle ();
+        zlink::socket_monitor_t monitor = stream.monitor_open ();
         stream.options ().notify (false);
         stream.bind ("tcp://127.0.0.1:0");
         const std::string endpoint = stream.options ().last_endpoint ();

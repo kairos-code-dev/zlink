@@ -20,8 +20,8 @@ void test_request_dealer_router_roundtrip ()
     zlink::context_t ctx;
     zlink::dealer_socket_t dealer_socket (ctx);
     zlink::router_socket_t router_socket (ctx);
-    zlink::monitor_handle_t router_monitor = router_socket.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer_socket.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router_socket.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer_socket.monitor_open ();
     const std::string routing_id_text = "request-reply-client";
     zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
       reinterpret_cast<const uint8_t *> (routing_id_text.data ()),
@@ -76,8 +76,8 @@ void test_request_wait_for_zero_pumps_progress ()
     zlink::context_t ctx;
     zlink::dealer_socket_t dealer_socket (ctx);
     zlink::router_socket_t router_socket (ctx);
-    zlink::monitor_handle_t router_monitor = router_socket.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer_socket.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router_socket.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer_socket.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("rr-cpp-wait-zero");
@@ -133,8 +133,8 @@ void test_request_router_preserves_data_recv_surface ()
     zlink::context_t ctx;
     zlink::dealer_socket_t dealer_socket (ctx);
     zlink::router_socket_t router_socket (ctx);
-    zlink::monitor_handle_t router_monitor = router_socket.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer_socket.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router_socket.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer_socket.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("rr-cpp-data");
@@ -163,8 +163,8 @@ void test_received_reply_rejects_non_none_flags ()
     zlink::context_t ctx;
     zlink::dealer_socket_t dealer_socket (ctx);
     zlink::router_socket_t router_socket (ctx);
-    zlink::monitor_handle_t router_monitor = router_socket.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer_socket.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router_socket.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer_socket.monitor_open ();
     const std::string routing_id_text = "request-reply-flags-client";
     zlink::routing_id_t routing_id = zlink::routing_id_t::from_bytes (
       reinterpret_cast<const uint8_t *> (routing_id_text.data ()),

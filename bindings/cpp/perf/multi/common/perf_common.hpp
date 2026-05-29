@@ -316,7 +316,7 @@ struct connect_monitor_t
 {
     connect_monitor_t () : monitor () {}
 
-    std::unique_ptr<zlink::monitor_handle_t> monitor;
+    std::unique_ptr<zlink::socket_monitor_t> monitor;
 };
 
 // Migrated to unified perf::latency_sampler_stats_t / perf::latency_sampler_t.
@@ -493,8 +493,8 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
 
     zlink::monitor_status_t snapshot;
     try {
-        zlink::monitor_handle_t monitor =
-          socket.monitor_handle (zlink::monitor_event::all);
+        zlink::socket_monitor_t monitor =
+          socket.monitor_open (zlink::monitor_event::all);
         if (!monitor.valid ())
             return;
         snapshot = monitor.status ();
@@ -745,11 +745,11 @@ inline bool open_socket_monitor (SocketLike &socket,
                                  zlink::monitor_event events,
                                  connect_monitor_t &out)
 {
-    zlink::monitor_handle_t monitor (socket.monitor_handle (events));
+    zlink::socket_monitor_t monitor (socket.monitor_open (events));
     if (!monitor.valid ())
         return false;
 
-    out.monitor.reset (new zlink::monitor_handle_t (std::move (monitor)));
+    out.monitor.reset (new zlink::socket_monitor_t (std::move (monitor)));
     return true;
 }
 
@@ -761,7 +761,7 @@ inline bool open_connect_monitor (SocketLike &socket, connect_monitor_t &out)
 }
 
 // Migrated to unified perf::wait_socket_monitor_event in
-// common/perf_monitor_wait.hpp (monitor_handle_t overload).
+// common/perf_monitor_wait.hpp (socket_monitor_t overload).
 using ::perf::wait_socket_monitor_event;
 
 inline int poll_connect_ready_count (connect_monitor_t &mon)

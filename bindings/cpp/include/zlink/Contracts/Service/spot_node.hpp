@@ -10,7 +10,7 @@
 #include "../Sockets/results.hpp"
 #include "actor_models.hpp"
 #include "discovery.hpp"
-#include "models.hpp"
+#include "spot_node_models.hpp"
 
 #include <chrono>
 #include <functional>
@@ -28,23 +28,23 @@ namespace service
 class spot_node_t;
 class spot_t;
 class actor_t;
-class send_op_t;
-class send_ready_op_t;
-class request_op_t;
-class request_ready_op_t;
-class request_callback_ready_op_t;
-class reply_op_t;
-class reply_ready_op_t;
-class actor_join_op_t;
-class actor_join_ready_op_t;
-class actor_join_callback_ready_op_t;
-class actor_join_entry_spot_op_t;
-class actor_join_reply_op_t;
-class actor_leave_op_t;
-class actor_destroy_op_t;
-class actor_lookup_op_t;
-class actor_bind_op_t;
-class actor_unbind_op_t;
+class send_operation_t;
+class send_submit_operation_t;
+class request_operation_t;
+class request_submit_operation_t;
+class request_callback_submit_operation_t;
+class reply_operation_t;
+class reply_submit_operation_t;
+class actor_join_operation_t;
+class actor_join_submit_operation_t;
+class actor_join_callback_submit_operation_t;
+class actor_join_entry_spot_operation_t;
+class actor_join_reply_operation_t;
+class actor_leave_operation_t;
+class actor_destroy_operation_t;
+class actor_lookup_operation_t;
+class actor_bind_operation_t;
+class actor_unbind_operation_t;
 
 } // namespace service
 
@@ -110,7 +110,7 @@ class spot_node_t
     void attach_channel_dealer (discovery_t &discovery_, DealerT &dealer_)
     {
         attach_channel_dealer_impl (
-          discovery_, static_cast<zlink::base_socket_t &> (dealer_));
+          discovery_, static_cast<zlink::socket_t &> (dealer_));
     }
 
     template<typename DealerT>
@@ -118,13 +118,13 @@ class spot_node_t
                                        DealerT &dealer_)
     {
         attach_channel_dealer_manual_impl (
-          channel_name_, static_cast<zlink::base_socket_t &> (dealer_));
+          channel_name_, static_cast<zlink::socket_t &> (dealer_));
     }
 
     template<typename PubT>
     void attach_pub_ingress (PubT &pub_)
     {
-        attach_pub_ingress_impl (static_cast<zlink::base_socket_t &> (pub_));
+        attach_pub_ingress_impl (static_cast<zlink::socket_t &> (pub_));
     }
 
     void set_routing_id (const routing_id_t &routing_id_);
@@ -266,23 +266,23 @@ class spot_node_t
         return remote_actor_ref (target_node_rid_, actor_id_);
     }
 
-    actor_destroy_op_t destroy_actor (const actor_ref_t &actor_);
+    actor_destroy_operation_t destroy_actor (const actor_ref_t &actor_);
 
-    actor_join_op_t join_actor (const actor_ref_t &actor_,
+    actor_join_operation_t join_actor (const actor_ref_t &actor_,
                                 const routing_id_t &dest_node_rid_,
                                 const routing_id_t &dest_spot_rid_);
 
-    actor_join_entry_spot_op_t
+    actor_join_entry_spot_operation_t
     join_actor_entry_spot (const actor_ref_t &actor_,
                            const routing_id_t &dest_node_rid_);
 
-    actor_leave_op_t leave_actor (const actor_ref_t &actor_,
+    actor_leave_operation_t leave_actor (const actor_ref_t &actor_,
                                   const routing_id_t &current_spot_rid_);
 
-    actor_lookup_op_t remote_actor_get_ref (
+    actor_lookup_operation_t remote_actor_get_ref (
       const routing_id_t &target_node_rid_, const std::string &actor_id_);
 
-    send_op_t send_bound_session_msg (const actor_ref_t &actor_);
+    send_operation_t send_bound_session_msg (const actor_ref_t &actor_);
 
     std::vector<spot_node_spot_entry_t> spots () const;
 
@@ -302,10 +302,10 @@ class spot_node_t
     spot_node_t (context_t &ctx_, spot_node_mode_t mode_, mode_ctor_tag_t);
 
     void attach_channel_dealer_impl (discovery_t &discovery_,
-                                     zlink::base_socket_t &dealer_);
+                                     zlink::socket_t &dealer_);
     void attach_channel_dealer_manual_impl (const std::string &channel_name_,
-                                            zlink::base_socket_t &dealer_);
-    void attach_pub_ingress_impl (zlink::base_socket_t &pub_);
+                                            zlink::socket_t &dealer_);
+    void attach_pub_ingress_impl (zlink::socket_t &pub_);
     int get_spot_node_option_int (int option_) const;
     void set_spot_node_option_int (int option_, int value_);
 

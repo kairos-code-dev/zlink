@@ -271,11 +271,10 @@ bindings/cpp/
 |   +-- zlink/
 |       +-- Contracts/
 |       |   +-- Core/
+|       |   |   +-- capability.hpp
 |       |   |   +-- context.hpp
 |       |   |   +-- context_options.hpp
 |       |   |   +-- routing_id.hpp
-|       |   |   +-- zlink.hpp
-|       |   |   +-- capability.hpp
 |       |   +-- Messaging/
 |       |   |   +-- message.hpp
 |       |   |   +-- received.hpp
@@ -296,7 +295,6 @@ bindings/cpp/
 |       |   |   +-- poller.hpp
 |       |   |   +-- poll_event.hpp
 |       |   |   +-- timers.hpp
-|       |   |   +-- zlink_poll.hpp
 |       |   |   +-- events.hpp
 |       |   |   +-- status.hpp
 |       |   +-- Service/
@@ -305,11 +303,11 @@ bindings/cpp/
 |       |   |   +-- spot_node.hpp
 |       |   |   +-- spot.hpp
 |       |   |   +-- actor.hpp
+|       |   |   +-- discovery_models.hpp
 |       |   |   +-- registry_models.hpp
 |       |   |   +-- spot_node_models.hpp
 |       |   |   +-- actor_models.hpp
 |       |   |   +-- operation_contracts.hpp
-|       |   |   +-- models.hpp
 |       |   +-- Errors/
 |       |       +-- errors.hpp
 |       |       +-- results.hpp
@@ -450,7 +448,7 @@ to the owning contract header.
   `pub_socket_t`, `sub_socket_t`, `xpub_socket_t`, `xsub_socket_t`,
   `stream_socket_t`, and send/recv/request/reply builders live in
   `Contracts/Sockets/`.
-- Eventing: `monitor_handle_t`, monitor events, poller, poll event, timer, and
+- Eventing: `socket_monitor_t`, monitor events, poller, poll event, timer, and
   readiness helpers live in `Contracts/Eventing/`.
 - Service: `registry_t`, `discovery_t`, `spot_node_t`, `spot_t`,
   `actor_ref_t`, actor lifecycle models, and service operation builders live in
@@ -482,8 +480,8 @@ public:
     spot_t(spot_t&&) noexcept = default;
     spot_t(const spot_t&) = delete;
 
-    send_op_t send();
-    reply_op_t reply();
+    send_operation_t send();
+    reply_operation_t reply();
     int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);
     void set_send_ready_handler(std::function<void()> handler);
     void close();
@@ -498,14 +496,17 @@ public:
 #include "zlink/Contracts/Core/context.hpp"
 #include "zlink/Contracts/Core/context_options.hpp"
 #include "zlink/Contracts/Core/routing_id.hpp"
+#include "zlink/Contracts/Core/capability.hpp"
 #include "zlink/Contracts/Messaging/message.hpp"
 #include "zlink/Contracts/Messaging/received.hpp"
+#include "zlink/Contracts/Messaging/topic_message.hpp"
+#include "zlink/Contracts/Messaging/subscription_event.hpp"
 #include "zlink/Contracts/Messaging/operation_contracts.hpp"
 #include "zlink/Contracts/Sockets/message_socket_contracts.hpp"
 #include "zlink/Contracts/Sockets/routed_socket_contracts.hpp"
 #include "zlink/Contracts/Sockets/pubsub_socket_contracts.hpp"
+#include "zlink/Contracts/Eventing/poll_event.hpp"
 #include "zlink/Contracts/Eventing/poller.hpp"
-#include "zlink/Contracts/Eventing/zlink_poll.hpp"
 #include "zlink/Contracts/Service/spot_node.hpp"
 #include "zlink/Contracts/Service/spot.hpp"
 #include "zlink/Contracts/Service/actor.hpp"
@@ -525,8 +526,8 @@ public:
     spot_t(const spot_t&) = delete;
     ~spot_t();
 
-    send_op_t send();
-    reply_op_t reply();
+    send_operation_t send();
+    reply_operation_t reply();
     void close();
 
 private:
@@ -919,7 +920,7 @@ artifact. The completed binding therefore maintains these build rules:
   `request_to_channel(...)`. SPOT topic publish stays `publish(topic)`.
 - Handler registration methods use `set_..._handler` names. For example, send
   readiness uses `set_send_ready_handler(...)`, raw STREAM packet handling uses
-  `set_packet_handler(...)`, monitor events use `set_event_handler(...)`, and
+  `set_packet_handler(...)`, monitor events use `on_event(...)`, and
   SPOT dispatch uses `set_dispatch_handler(...)`.
 - `on_...` names are not public registration methods in the completed C++ API.
   They are reserved for internal or protected hooks if such hooks are needed.

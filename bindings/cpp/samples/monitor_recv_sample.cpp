@@ -7,10 +7,10 @@ int main ()
     zlink::context_t ctx;
     zlink::pair_socket_t server (ctx);
     zlink::pair_socket_t client (ctx);
-    zlink::monitor_handle_t server_monitor =
-      server.monitor_handle (zlink::monitor_event::connection_ready);
-    zlink::monitor_handle_t client_monitor =
-      client.monitor_handle (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t server_monitor =
+      server.monitor_open (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t client_monitor =
+      client.monitor_open (zlink::monitor_event::connection_ready);
 
     assert (!server_monitor.recv (zlink::recv_flags_t::dontwait));
     assert (!client_monitor.recv (zlink::recv_flags_t::dontwait));

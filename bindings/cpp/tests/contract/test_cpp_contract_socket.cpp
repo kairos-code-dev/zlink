@@ -348,8 +348,8 @@ void test_pair_send_recv_single_part ()
     zlink::context_t ctx;
     zlink::pair_socket_t left (ctx);
     zlink::pair_socket_t right (ctx);
-    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
-    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
+    zlink::socket_monitor_t left_monitor = left.monitor_open ();
+    zlink::socket_monitor_t right_monitor = right.monitor_open ();
 
     const std::string endpoint = zlink_cpp_contract::unique_inproc ("pair");
     left.bind (endpoint);
@@ -375,8 +375,8 @@ void test_pair_send_recv_single_part_direct ()
     zlink::context_t ctx;
     zlink::pair_socket_t left (ctx);
     zlink::pair_socket_t right (ctx);
-    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
-    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
+    zlink::socket_monitor_t left_monitor = left.monitor_open ();
+    zlink::socket_monitor_t right_monitor = right.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("pair-direct");
@@ -427,8 +427,8 @@ void test_dealer_send_no_wait_direct ()
     zlink::context_t ctx;
     zlink::router_socket_t router (ctx);
     zlink::dealer_socket_t dealer (ctx);
-    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("dealer-send-no-wait");
@@ -466,8 +466,8 @@ void test_pair_direct_recv_multipart_failure_preserves_output ()
     zlink::context_t ctx;
     zlink::pair_socket_t left (ctx);
     zlink::pair_socket_t right (ctx);
-    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
-    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
+    zlink::socket_monitor_t left_monitor = left.monitor_open ();
+    zlink::socket_monitor_t right_monitor = right.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("pair-direct-multipart-fail");
@@ -497,8 +497,8 @@ void test_router_recv_single_part_direct ()
     zlink::context_t ctx;
     zlink::router_socket_t router (ctx);
     zlink::dealer_socket_t dealer (ctx);
-    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-direct");
@@ -534,9 +534,9 @@ void test_router_send_builder_owns_target_rid ()
     zlink::router_socket_t router (ctx);
     zlink::dealer_socket_t dealer_a (ctx);
     zlink::dealer_socket_t dealer_b (ctx);
-    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
-    zlink::monitor_handle_t dealer_a_monitor = dealer_a.monitor_handle ();
-    zlink::monitor_handle_t dealer_b_monitor = dealer_b.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router.monitor_open ();
+    zlink::socket_monitor_t dealer_a_monitor = dealer_a.monitor_open ();
+    zlink::socket_monitor_t dealer_b_monitor = dealer_b.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-send-owned-rid");
@@ -605,8 +605,8 @@ void test_router_recv_received_single_part_large ()
     zlink::context_t ctx;
     zlink::router_socket_t router (ctx);
     zlink::dealer_socket_t dealer (ctx);
-    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-received-large");
@@ -656,8 +656,8 @@ void test_router_recv_received_multipart ()
     zlink::context_t ctx;
     zlink::router_socket_t router (ctx);
     zlink::dealer_socket_t dealer (ctx);
-    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-received-multipart");
@@ -727,8 +727,8 @@ void test_router_direct_recv_multipart_failure_preserves_output ()
     zlink::context_t ctx;
     zlink::router_socket_t router (ctx);
     zlink::dealer_socket_t dealer (ctx);
-    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("router-direct-multipart-fail");
@@ -768,8 +768,8 @@ void test_pair_send_recv_multipart ()
     zlink::context_t ctx;
     zlink::pair_socket_t left (ctx);
     zlink::pair_socket_t right (ctx);
-    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
-    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
+    zlink::socket_monitor_t left_monitor = left.monitor_open ();
+    zlink::socket_monitor_t right_monitor = right.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("pair-multipart");
@@ -802,8 +802,8 @@ void test_pair_ipc_large_message_shutdown ()
     zlink::context_t ctx;
     zlink::pair_socket_t left (ctx);
     zlink::pair_socket_t right (ctx);
-    zlink::monitor_handle_t left_monitor = left.monitor_handle ();
-    zlink::monitor_handle_t right_monitor = right.monitor_handle ();
+    zlink::socket_monitor_t left_monitor = left.monitor_open ();
+    zlink::socket_monitor_t right_monitor = right.monitor_open ();
 
     const std::string endpoint =
       zlink_cpp_contract::unique_ipc ("pair-large-shutdown");

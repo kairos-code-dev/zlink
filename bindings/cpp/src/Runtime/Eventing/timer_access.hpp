@@ -11,16 +11,16 @@ namespace detail
 
 struct timer_access_t
 {
-    static void *native_handle (timer_t &timer_) noexcept;
-    static const void *native_handle (const timer_t &timer_) noexcept;
+    static void *native_handle (zlink_timer_t &timer_) noexcept;
+    static const void *native_handle (const zlink_timer_t &timer_) noexcept;
 };
 
-inline void *native_handle (timer_t &timer_) noexcept
+inline void *native_handle (zlink_timer_t &timer_) noexcept
 {
     return timer_access_t::native_handle (timer_);
 }
 
-inline const void *native_handle (const timer_t &timer_) noexcept
+inline const void *native_handle (const zlink_timer_t &timer_) noexcept
 {
     return timer_access_t::native_handle (timer_);
 }

@@ -4,7 +4,7 @@
 #include "../Core/context.hpp"
 #include "../Messaging/message.hpp"
 #include "../Core/routing_id.hpp"
-#include "models.hpp"
+#include "registry_models.hpp"
 
 #include <memory>
 

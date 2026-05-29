@@ -103,7 +103,7 @@ ctest --test-dir core/build --output-on-failure -L sample-smoke -j1
 목표:
 
 - concrete facade 헤더를 정식 public include로 노출
-- 공통 lifecycle/option/monitor helper는 `base_socket_t`에 유지
+- 공통 lifecycle/option/monitor helper는 `socket_t`에 유지
 - 타입별 option 재노출은 concrete facade에서 처리
 
 완료 조건:
@@ -115,7 +115,7 @@ ctest --test-dir core/build --output-on-failure -L sample-smoke -j1
 
 - facade 헤더는 추가됐다.
 - `zlink.hpp` 포함만으로 concrete facade 전체를 사용할 수 있다.
-- 공통 lifecycle/option/monitor helper는 `base_socket_t`에 유지한다.
+- 공통 lifecycle/option/monitor helper는 `socket_t`에 유지한다.
 - `pub/xpub`, `sub/xsub`의 타입별 option 위임 중복은 공통 facade base로 접었다.
 
 ### 5.2 샘플 이행
@@ -269,7 +269,7 @@ ctest --test-dir core/build --output-on-failure -L sample-smoke -j1
 - 공통 facade base로 접어 change amplification과 얕은 중복 wrapper를 줄였다.
 - 그 외 구조는 `socket_t`를 compat 경로로 남기면서 `socket_handle_t` 내부 구현을
   유지하는 편이 churn 대비 복잡도 감소가 작다고 판단했다.
-- 현재 facade 설명은 `base_socket_t`가 공통 lifecycle/option/monitor를 맡고,
+- 현재 facade 설명은 `socket_t`가 공통 lifecycle/option/monitor를 맡고,
   `message/publisher/subscriber` 계층이 data-plane 의미를 나누며, concrete facade가
   타입별 option과 추가 기능만 재노출한다고 요약할 수 있다.
 

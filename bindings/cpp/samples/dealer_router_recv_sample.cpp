@@ -7,8 +7,8 @@ int main ()
     zlink::context_t ctx;
     zlink::router_socket_t router (ctx);
     zlink::dealer_socket_t dealer (ctx);
-    zlink::monitor_handle_t router_monitor = router.monitor_handle ();
-    zlink::monitor_handle_t dealer_monitor = dealer.monitor_handle ();
+    zlink::socket_monitor_t router_monitor = router.monitor_open ();
+    zlink::socket_monitor_t dealer_monitor = dealer.monitor_open ();
 
     router.bind ("tcp://127.0.0.1:0");
     const std::string endpoint = router.options ().last_endpoint ();

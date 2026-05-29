@@ -63,7 +63,7 @@ monitor_status_t make_monitor_status (const zlink_monitor_status_t &native_)
 
 } // namespace
 
-struct monitor_handle_t::impl
+struct socket_monitor_t::impl
 {
     void *handle = NULL;
     std::function<void(const monitor_event_t &)> event_function_handler;
@@ -72,27 +72,27 @@ struct monitor_handle_t::impl
 namespace detail
 {
 
-void *monitor_access_t::native_handle (monitor_handle_t &monitor_) noexcept
+void *monitor_access_t::native_handle (socket_monitor_t &monitor_) noexcept
 {
     return monitor_._impl ? monitor_._impl->handle : NULL;
 }
 
 const void *
-monitor_access_t::native_handle (const monitor_handle_t &monitor_) noexcept
+monitor_access_t::native_handle (const socket_monitor_t &monitor_) noexcept
 {
     return monitor_._impl ? monitor_._impl->handle : NULL;
 }
 
 } // namespace detail
 
-monitor_handle_t::monitor_handle_t () : _impl (new impl) {}
+socket_monitor_t::socket_monitor_t () : _impl (new impl) {}
 
-monitor_handle_t::~monitor_handle_t () { close_noexcept (); }
+socket_monitor_t::~socket_monitor_t () { close_noexcept (); }
 
-monitor_handle_t::monitor_handle_t (monitor_handle_t &&other) noexcept = default;
+socket_monitor_t::socket_monitor_t (socket_monitor_t &&other) noexcept = default;
 
-monitor_handle_t &
-monitor_handle_t::operator= (monitor_handle_t &&other) noexcept
+socket_monitor_t &
+socket_monitor_t::operator= (socket_monitor_t &&other) noexcept
 {
     if (this == &other)
         return *this;
@@ -101,17 +101,17 @@ monitor_handle_t::operator= (monitor_handle_t &&other) noexcept
     return *this;
 }
 
-bool monitor_handle_t::valid () const noexcept
+bool socket_monitor_t::valid () const noexcept
 {
     return _impl && _impl->handle != NULL;
 }
 
-monitor_handle_t monitor_handle_t::open (
-  const base_socket_t &socket_, monitor_event events_)
+socket_monitor_t socket_monitor_t::open (
+  const socket_t &socket_, monitor_event events_)
 {
     zlink_socket_monitor_open_options_t options;
     options.events = static_cast<zlink_socket_monitor_event_mask_t> (events_);
-    monitor_handle_t out;
+    socket_monitor_t out;
     out._impl->handle = zlink_socket_monitor_open (
       const_cast<void *> (detail::native_handle (socket_)), &options);
     if (!out._impl->handle)
@@ -120,7 +120,7 @@ monitor_handle_t monitor_handle_t::open (
     return out;
 }
 
-void monitor_handle_t::set_event_handler (
+void socket_monitor_t::on_event (
   std::function<void(const monitor_event_t &)> handler_)
 {
     _impl->event_function_handler = std::move (handler_);
@@ -129,8 +129,8 @@ void monitor_handle_t::set_event_handler (
         zlink_socket_monitor_handler (
           _impl->handle,
           [] (const zlink_monitor_event_t *event_, void *userdata_) {
-              monitor_handle_t *self =
-                static_cast<monitor_handle_t *> (userdata_);
+              socket_monitor_t *self =
+                static_cast<socket_monitor_t *> (userdata_);
               if (!self || !self->_impl
                   || !self->_impl->event_function_handler || !event_)
                   return;
@@ -140,7 +140,7 @@ void monitor_handle_t::set_event_handler (
           this)));
 }
 
-std::optional<monitor_event_t> monitor_handle_t::recv (recv_flags_t flags_)
+std::optional<monitor_event_t> socket_monitor_t::recv (recv_flags_t flags_)
 {
     zlink_monitor_event_t event;
     const recv_result_t result = static_cast<recv_result_t> (
@@ -154,7 +154,7 @@ std::optional<monitor_event_t> monitor_handle_t::recv (recv_flags_t flags_)
     return std::optional<monitor_event_t> (make_monitor_event (event));
 }
 
-monitor_status_t monitor_handle_t::status () const
+monitor_status_t socket_monitor_t::status () const
 {
     zlink_monitor_status_t snapshot;
     detail::throw_if_failed<config_error_t> (
@@ -163,7 +163,7 @@ monitor_status_t monitor_handle_t::status () const
     return make_monitor_status (snapshot);
 }
 
-void monitor_handle_t::close ()
+void socket_monitor_t::close ()
 {
     if (!_impl || !_impl->handle)
         return;
@@ -176,7 +176,7 @@ void monitor_handle_t::close ()
     _impl->event_function_handler = nullptr;
 }
 
-void monitor_handle_t::close_noexcept () noexcept
+void socket_monitor_t::close_noexcept () noexcept
 {
     if (!_impl || !_impl->handle)
         return;

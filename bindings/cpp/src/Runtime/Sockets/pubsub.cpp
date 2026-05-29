@@ -17,14 +17,14 @@ pub_socket_t::pub_socket_t (context_t &ctx_)
 {
 }
 
-service::send_op_t pub_socket_t::publish (const std::string &topic_id_)
+service::send_operation_t pub_socket_t::publish (const std::string &topic_id_)
 {
     detail::validate_no_embedded_null (topic_id_, "topic");
     service::detail::spot_op_state_t state;
     state.kind = service::detail::spot_op_kind_t::raw_publish;
     state.raw_socket = detail::native_handle (*this);
     state.topic = topic_id_;
-    return service::send_op_t (std::move (state));
+    return service::send_operation_t (std::move (state));
 }
 
 xpub_socket_t::xpub_socket_t (context_t &ctx_)
@@ -32,14 +32,14 @@ xpub_socket_t::xpub_socket_t (context_t &ctx_)
 {
 }
 
-service::send_op_t xpub_socket_t::publish (const std::string &topic_id_)
+service::send_operation_t xpub_socket_t::publish (const std::string &topic_id_)
 {
     detail::validate_no_embedded_null (topic_id_, "topic");
     service::detail::spot_op_state_t state;
     state.kind = service::detail::spot_op_kind_t::raw_publish;
     state.raw_socket = detail::native_handle (*this);
     state.topic = topic_id_;
-    return service::send_op_t (std::move (state));
+    return service::send_operation_t (std::move (state));
 }
 
 int xpub_socket_t::receive_subscription_event (
@@ -83,14 +83,14 @@ sub_socket_t::sub_socket_t (context_t &ctx_)
 
 void sub_socket_t::set_subscription (const std::string &filter_)
 {
-    if (base_socket_t::set_subscription (filter_) != 0)
+    if (socket_t::set_subscription (filter_) != 0)
         throw config_error_t (
           detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
 }
 
 void sub_socket_t::unset_subscription (const std::string &filter_)
 {
-    if (base_socket_t::unset_subscription (filter_) != 0)
+    if (socket_t::unset_subscription (filter_) != 0)
         throw config_error_t (
           detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
 }
@@ -98,7 +98,7 @@ void sub_socket_t::unset_subscription (const std::string &filter_)
 void sub_socket_t::subscription_at (
   size_t index_, std::string &filter_out_, bool *is_pattern_out_)
 {
-    if (base_socket_t::subscription_at (
+    if (socket_t::subscription_at (
           index_, filter_out_, is_pattern_out_)
         != 0)
         throw config_error_t (
@@ -112,14 +112,14 @@ xsub_socket_t::xsub_socket_t (context_t &ctx_)
 
 void xsub_socket_t::set_subscription (const std::string &filter_)
 {
-    if (base_socket_t::set_subscription (filter_) != 0)
+    if (socket_t::set_subscription (filter_) != 0)
         throw config_error_t (
           detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
 }
 
 void xsub_socket_t::unset_subscription (const std::string &filter_)
 {
-    if (base_socket_t::unset_subscription (filter_) != 0)
+    if (socket_t::unset_subscription (filter_) != 0)
         throw config_error_t (
           detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
 }
@@ -127,7 +127,7 @@ void xsub_socket_t::unset_subscription (const std::string &filter_)
 void xsub_socket_t::subscription_at (
   size_t index_, std::string &filter_out_, bool *is_pattern_out_)
 {
-    if (base_socket_t::subscription_at (
+    if (socket_t::subscription_at (
           index_, filter_out_, is_pattern_out_)
         != 0)
         throw config_error_t (

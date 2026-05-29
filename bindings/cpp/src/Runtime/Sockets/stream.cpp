@@ -17,18 +17,18 @@ stream_socket_t::stream_socket_t (context_t &ctx_)
 {
 }
 
-service::send_op_t stream_socket_t::send (const routing_id_t &target_rid_)
+service::send_operation_t stream_socket_t::send (const routing_id_t &target_rid_)
 {
     service::detail::spot_op_state_t state;
     state.kind = service::detail::spot_op_kind_t::raw_routed_send;
     state.raw_socket = detail::native_handle (*this);
     state.first_rid = target_rid_;
-    return service::send_op_t (std::move (state));
+    return service::send_operation_t (std::move (state));
 }
 
 int stream_socket_t::recv (received_t &out_, recv_flags_t flags_)
 {
-    return base_socket_t::receive (out_, flags_);
+    return socket_t::receive (out_, flags_);
 }
 
 void stream_socket_t::set_packet_handler (
@@ -63,7 +63,7 @@ void stream_socket_t::set_packet_handler (
 
 void stream_socket_t::set_routing_id (const routing_id_t &routing_id_)
 {
-    if (base_socket_t::set_routing_id_raw (std::as_bytes (
+    if (socket_t::set_routing_id_raw (std::as_bytes (
           std::span<const uint8_t> (routing_id_.data (), routing_id_.size ())))
         != 0)
         throw config_error_t (
@@ -72,7 +72,7 @@ void stream_socket_t::set_routing_id (const routing_id_t &routing_id_)
 
 void stream_socket_t::get_routing_id (routing_id_t &routing_id_) const
 {
-    if (base_socket_t::get_routing_id_raw (routing_id_) != 0)
+    if (socket_t::get_routing_id_raw (routing_id_) != 0)
         throw config_error_t (
           detail::config_result_from_errno (zlink_errno ()), zlink_errno ());
 }
@@ -85,7 +85,7 @@ void stream_socket_t::attach_actor_gateway (service::spot_node_t &node_)
           detail::native_handle (*this), detail::native_handle (node_))));
 }
 
-service::actor_bind_op_t
+service::actor_bind_operation_t
 stream_socket_t::bind_actor (const routing_id_t &session_rid_,
                              const actor_ref_t &actor_)
 {
@@ -96,7 +96,7 @@ stream_socket_t::bind_actor (const routing_id_t &session_rid_,
     return service::detail_make_actor_bind_op (std::move (state));
 }
 
-service::actor_unbind_op_t
+service::actor_unbind_operation_t
 stream_socket_t::unbind_actor (const routing_id_t &session_rid_,
                                const std::string &actor_id_)
 {
@@ -109,7 +109,7 @@ stream_socket_t::unbind_actor (const routing_id_t &session_rid_,
     return service::detail_make_actor_unbind_op (std::move (state));
 }
 
-service::send_op_t
+service::send_operation_t
 stream_socket_t::send_bound_actor (const routing_id_t &session_rid_,
                                    const std::string &actor_id_)
 {
@@ -120,7 +120,7 @@ stream_socket_t::send_bound_actor (const routing_id_t &session_rid_,
     state.stream = detail::native_handle (*this);
     state.first_rid = session_rid_;
     state.actor_id = actor_id_;
-    return service::send_op_t (std::move (state));
+    return service::send_operation_t (std::move (state));
 }
 
 } // namespace zlink

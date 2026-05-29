@@ -9,7 +9,7 @@
 
 namespace perf {
 
-inline bool wait_socket_monitor_event (zlink::monitor_handle_t &monitor,
+inline bool wait_socket_monitor_event (zlink::socket_monitor_t &monitor,
                                        uint64_t event_type,
                                        int timeout_ms)
 {

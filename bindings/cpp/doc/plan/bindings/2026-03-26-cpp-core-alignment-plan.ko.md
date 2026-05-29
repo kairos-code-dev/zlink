@@ -197,8 +197,8 @@
 - `int socket_t::recv_handler(zlink_socket_msg_handler_fn, void *userdata = NULL)`
 - `int socket_t::subscribe_handler(zlink_subscribe_handler_fn, void *userdata = NULL)`
 - `int socket_t::send_ready_handler(zlink_send_ready_handler_fn, void *userdata = NULL)`
-- `int monitor_handle_t::handler(zlink_socket_monitor_handler_fn, void *userdata = NULL)`
-- `int service_monitor_handle_t::handler(zlink_service_monitor_handler_fn, void *userdata = NULL)`
+- `int socket_monitor_t::on_event(zlink_socket_monitor_handler_fn, void *userdata = NULL)`
+- `int service_socket_monitor_t::on_event(zlink_service_monitor_handler_fn, void *userdata = NULL)`
 
 소유권 규칙:
 
@@ -643,8 +643,8 @@ CTest 등록 방식:
 
 고정 모델:
 
-- `monitor_handle_t`
-- `service_monitor_handle_t`
+- `socket_monitor_t`
+- `service_socket_monitor_t`
 - event struct는 C struct를 그대로 노출하되 string extractor helper 제공
 
 완료 기준:

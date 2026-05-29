@@ -7,7 +7,7 @@
 namespace zlink
 {
 
-class base_socket_t;
+class socket_t;
 
 #if defined(_WIN32)
 #if defined(_WIN64)
@@ -36,7 +36,7 @@ class common_socket_options_t
 {
   public:
     common_socket_options_t () noexcept;
-    explicit common_socket_options_t (base_socket_t &socket_) noexcept;
+    explicit common_socket_options_t (socket_t &socket_) noexcept;
 
     std::chrono::milliseconds linger () const;
     void linger (std::chrono::milliseconds value);
@@ -83,14 +83,14 @@ class common_socket_options_t
     std::string last_endpoint () const;
 
   protected:
-    base_socket_t *_socket;
+    socket_t *_socket;
 };
 
 class router_socket_options_t : public common_socket_options_t
 {
   public:
     router_socket_options_t () noexcept;
-    explicit router_socket_options_t (base_socket_t &socket_) noexcept;
+    explicit router_socket_options_t (socket_t &socket_) noexcept;
 
     bool mandatory () const;
     void mandatory (bool value);
@@ -110,7 +110,7 @@ class dealer_socket_options_t : public common_socket_options_t
 {
   public:
     dealer_socket_options_t () noexcept;
-    explicit dealer_socket_options_t (base_socket_t &socket_) noexcept;
+    explicit dealer_socket_options_t (socket_t &socket_) noexcept;
 
     bool probe () const;
     void probe (bool value);
@@ -124,7 +124,7 @@ class stream_socket_options_t : public common_socket_options_t
 {
   public:
     stream_socket_options_t () noexcept;
-    explicit stream_socket_options_t (base_socket_t &socket_) noexcept;
+    explicit stream_socket_options_t (socket_t &socket_) noexcept;
 
     bool notify () const;
     void notify (bool value);
@@ -134,7 +134,7 @@ class pub_socket_options_t : public common_socket_options_t
 {
   public:
     pub_socket_options_t () noexcept;
-    explicit pub_socket_options_t (base_socket_t &socket_) noexcept;
+    explicit pub_socket_options_t (socket_t &socket_) noexcept;
 
     bool verbose () const;
     void verbose (bool value);
@@ -157,7 +157,7 @@ class sub_socket_options_t : public common_socket_options_t
 {
   public:
     sub_socket_options_t () noexcept;
-    explicit sub_socket_options_t (base_socket_t &socket_) noexcept;
+    explicit sub_socket_options_t (socket_t &socket_) noexcept;
 
     int topics_count () const;
 };

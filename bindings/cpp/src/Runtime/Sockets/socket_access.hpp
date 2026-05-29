@@ -11,16 +11,16 @@ namespace detail
 
 struct base_socket_access_t
 {
-    static void *native_handle (base_socket_t &socket_) noexcept;
-    static const void *native_handle (const base_socket_t &socket_) noexcept;
+    static void *native_handle (socket_t &socket_) noexcept;
+    static const void *native_handle (const socket_t &socket_) noexcept;
 };
 
-inline void *native_handle (base_socket_t &socket_) noexcept
+inline void *native_handle (socket_t &socket_) noexcept
 {
     return base_socket_access_t::native_handle (socket_);
 }
 
-inline const void *native_handle (const base_socket_t &socket_) noexcept
+inline const void *native_handle (const socket_t &socket_) noexcept
 {
     return base_socket_access_t::native_handle (socket_);
 }

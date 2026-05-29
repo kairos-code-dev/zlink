@@ -4,7 +4,8 @@
 
 #include "actor_model_access.hpp"
 #include "../Core/routing_id_access.hpp"
-#include <zlink/Contracts/Service/models.hpp>
+#include <zlink/Contracts/Service/registry_models.hpp>
+#include <zlink/Contracts/Service/spot_node_models.hpp>
 
 #include <zlink.h>
 

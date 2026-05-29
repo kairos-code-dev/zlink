@@ -46,13 +46,13 @@ class spot_t
     std::chrono::milliseconds request_timeout () const;
 
 
-    send_op_t publish (const std::string &topic_);
+    send_operation_t publish (const std::string &topic_);
 
 
-    send_op_t send_channel (const std::string &channel_name_);
+    send_operation_t send_channel (const std::string &channel_name_);
 
 
-    request_op_t request_channel (const std::string &channel_name_);
+    request_operation_t request_channel (const std::string &channel_name_);
 
 
   private:
@@ -93,11 +93,11 @@ class spot_t
 
 
   public:
-    send_op_t send_to_spot (const routing_id_t &dest_node_rid_,
+    send_operation_t send_to_spot (const routing_id_t &dest_node_rid_,
                             const routing_id_t &dest_spot_rid_);
 
 
-    request_op_t request_to_spot (const routing_id_t &dest_node_rid_,
+    request_operation_t request_to_spot (const routing_id_t &dest_node_rid_,
                                   const routing_id_t &dest_spot_rid_);
 
 
@@ -119,7 +119,7 @@ class spot_t
 
 
   public:
-    request_op_t request_to_router (const routing_id_t &peer_rid_);
+    request_operation_t request_to_router (const routing_id_t &peer_rid_);
 
 
   private:
@@ -282,10 +282,10 @@ class spot_t
 
 
     friend class spot_node_t;
-    friend class send_ready_op_t;
-    friend class request_ready_op_t;
-    friend class request_callback_ready_op_t;
-    friend class reply_ready_op_t;
+    friend class send_submit_operation_t;
+    friend class request_submit_operation_t;
+    friend class request_callback_submit_operation_t;
+    friend class reply_submit_operation_t;
     friend struct zlink::detail::spot_access_t;
 
   public:
@@ -307,7 +307,7 @@ class spot_t
 
 
   public:
-    reply_op_t reply_to_spot (const routing_id_t &dest_node_rid_,
+    reply_operation_t reply_to_spot (const routing_id_t &dest_node_rid_,
                               const routing_id_t &dest_spot_rid_,
                               uint64_t request_seq_);
 
@@ -320,7 +320,7 @@ class spot_t
 
 
   public:
-    reply_op_t reply_to_router (const routing_id_t &peer_rid_,
+    reply_operation_t reply_to_router (const routing_id_t &peer_rid_,
                                 uint64_t request_seq_);
 
 
@@ -350,7 +350,7 @@ class spot_t
     recv_actor_join (recv_flags_t flags_ = recv_flags_t::none);
 
 
-    actor_join_reply_op_t reply_actor_join (
+    actor_join_reply_operation_t reply_actor_join (
       const actor_join_request_t &request_, int32_t join_result_code_);
 
 

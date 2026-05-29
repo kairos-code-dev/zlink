@@ -20,7 +20,7 @@ class atomic_counter_t
     /**
      * @brief Release the underlying counter handle.
      */
-    ~atomic_counter_t () { destroy (); }
+    ~atomic_counter_t () { close (); }
 
     atomic_counter_t (atomic_counter_t &&other) noexcept : _counter (other._counter)
     {
@@ -31,7 +31,7 @@ class atomic_counter_t
     {
         if (this == &other)
             return *this;
-        destroy ();
+        close ();
         _counter = other._counter;
         other._counter = NULL;
         return *this;
@@ -64,7 +64,7 @@ class atomic_counter_t
     /**
      * @brief Explicitly destroy the counter handle.
      */
-    void destroy ()
+    void close ()
     {
         if (!_counter)
             return;

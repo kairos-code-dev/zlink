@@ -161,14 +161,14 @@ class dealer_dealer_client_bench_t
                 return false;
             }
             _monitors.push_back (perf::multi::connect_monitor_t ());
-            zlink::monitor_handle_t monitor =
-              sock.monitor_handle (zlink::monitor_event::connection_ready);
+            zlink::socket_monitor_t monitor =
+              sock.monitor_open (zlink::monitor_event::connection_ready);
             if (!monitor.valid ()) {
                 debug_log ("open connect monitor failed");
                 return false;
             }
             _monitors.back ().monitor.reset (
-              new zlink::monitor_handle_t (std::move (monitor)));
+              new zlink::socket_monitor_t (std::move (monitor)));
             sock.connect (_endpoint);
 
             socket_state_t state;

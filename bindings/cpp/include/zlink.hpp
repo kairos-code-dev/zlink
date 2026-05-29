@@ -2,7 +2,10 @@
 #ifndef ZLINK_CPP_HPP_INCLUDED
 #define ZLINK_CPP_HPP_INCLUDED
 
-#include "zlink/Contracts/Core/zlink.hpp"
+#include "zlink/Contracts/Core/capability.hpp"
+#include "zlink/Contracts/Core/context.hpp"
+#include "zlink/Contracts/Core/context_options.hpp"
+#include "zlink/Contracts/Core/routing_id.hpp"
 #include "zlink/Contracts/Errors/errors.hpp"
 #include "zlink/Contracts/Messaging/message.hpp"
 #include "zlink/Contracts/Messaging/received.hpp"
@@ -19,8 +22,6 @@
 #include "zlink/Contracts/Eventing/poller.hpp"
 #include "zlink/Contracts/Eventing/poll_event.hpp"
 #include "zlink/Contracts/Eventing/timers.hpp"
-#include "zlink/Contracts/Eventing/zlink_poll.hpp"
-#include "zlink/Contracts/Service/registry.hpp"
 #include "zlink/Contracts/Service/registry.hpp"
 #include "zlink/Contracts/Service/discovery.hpp"
 #include "zlink/Contracts/Service/spot_node.hpp"

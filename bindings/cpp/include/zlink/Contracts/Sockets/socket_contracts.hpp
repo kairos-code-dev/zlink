@@ -4,6 +4,8 @@
 #include "../Core/context.hpp"
 #include "../Messaging/message.hpp"
 #include "../Messaging/received.hpp"
+#include "../Messaging/subscription_event.hpp"
+#include "../Messaging/topic_message.hpp"
 #include "../Eventing/events.hpp"
 #include "../Eventing/monitor.hpp"
 #include "../Core/routing_id.hpp"
@@ -27,7 +29,7 @@ namespace service
 {
 class discovery_t;
 } // namespace service
-class base_socket_t;
+class socket_t;
 namespace detail
 {
 class socket_handle_t;
@@ -35,14 +37,14 @@ struct base_socket_access_t;
 } // namespace detail
 
 
-class base_socket_t
+class socket_t
 {
   public:
-    ~base_socket_t ();
-    base_socket_t (base_socket_t &&) noexcept;
-    base_socket_t &operator= (base_socket_t &&) noexcept;
-    base_socket_t (const base_socket_t &) = delete;
-    base_socket_t &operator= (const base_socket_t &) = delete;
+    ~socket_t ();
+    socket_t (socket_t &&) noexcept;
+    socket_t &operator= (socket_t &&) noexcept;
+    socket_t (const socket_t &) = delete;
+    socket_t &operator= (const socket_t &) = delete;
 
     bool valid () const noexcept;
 
@@ -54,10 +56,10 @@ class base_socket_t
     void disconnect (const std::string &endpoint_);
     void disconnect_rid (const routing_id_t &peer_rid_);
 
-    monitor_handle_t
-    monitor_handle (monitor_event events_ = monitor_event::all) const
+    socket_monitor_t
+    monitor_open (monitor_event events_ = monitor_event::all) const
     {
-        return monitor_handle_t::open (
+        return socket_monitor_t::open (
           *this, events_);
     }
 
@@ -74,9 +76,9 @@ class base_socket_t
   protected:
     [[nodiscard]] int attach_discovery (service::discovery_t &discovery_);
 
-    base_socket_t () noexcept;
+    socket_t () noexcept;
 
-    base_socket_t (context_t &ctx_, socket_type type_);
+    socket_t (context_t &ctx_, socket_type type_);
 
     [[nodiscard]] int send (
       message_t &part_, send_flags_t flags_ = send_flags_t::none);
@@ -216,13 +218,13 @@ class base_socket_t
 namespace zlink
 {
 
-void proxy (base_socket_t &frontend_, base_socket_t &backend_);
-void proxy (base_socket_t &frontend_,
-            base_socket_t &backend_,
-            base_socket_t &capture_);
-void proxy_steerable (base_socket_t &frontend_,
-                      base_socket_t &backend_,
-                      base_socket_t &capture_,
-                      base_socket_t &control_);
+void proxy (socket_t &frontend_, socket_t &backend_);
+void proxy (socket_t &frontend_,
+            socket_t &backend_,
+            socket_t &capture_);
+void proxy_steerable (socket_t &frontend_,
+                      socket_t &backend_,
+                      socket_t &capture_,
+                      socket_t &control_);
 
 } // namespace zlink

@@ -26,12 +26,12 @@ class actor_t
 
     void close (std::chrono::milliseconds timeout_ = {});
 
-    actor_join_op_t join (spot_t &spot_)
+    actor_join_operation_t join (spot_t &spot_)
     {
         return _node->join_actor (_ref, _node->routing_id (), spot_.routing_id ());
     }
 
-    actor_leave_op_t leave (spot_t &spot_)
+    actor_leave_operation_t leave (spot_t &spot_)
     {
         return _node->leave_actor (_ref, spot_.routing_id ());
     }
@@ -42,7 +42,7 @@ class actor_t
         return _node->recv_actor_part (_ref, flags_);
     }
 
-    send_op_t send_bound_session ()
+    send_operation_t send_bound_session ()
     {
         return _node->send_bound_session_msg (_ref);
     }

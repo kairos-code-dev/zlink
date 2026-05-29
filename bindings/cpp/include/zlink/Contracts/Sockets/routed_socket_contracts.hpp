@@ -11,7 +11,7 @@ class router_socket_t : public routed_message_socket_t
   public:
     explicit router_socket_t (context_t &ctx_);
 
-    service::send_op_t send (const routing_id_t &target_rid_);
+    service::send_operation_t send (const routing_id_t &target_rid_);
 
     // Receive one message into a caller-provided received_t.
     // Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set. The caller may keep a long-lived received_t
@@ -25,27 +25,27 @@ class router_socket_t : public routed_message_socket_t
 
     void set_send_ready_handler (std::function<void()> handler_);
 
-    service::request_op_t request (const routing_id_t &routing_id_);
-    service::reply_op_t reply (const routing_id_t &routing_id_,
+    service::request_operation_t request (const routing_id_t &routing_id_);
+    service::reply_operation_t reply (const routing_id_t &routing_id_,
                                uint64_t request_seq_);
 
     void set_routing_id (const routing_id_t &routing_id_);
 
     void get_routing_id (routing_id_t &routing_id_) const;
 
-    service::send_op_t send_to_spot (const routing_id_t &dest_node_rid_,
+    service::send_operation_t send_to_spot (const routing_id_t &dest_node_rid_,
                                      const routing_id_t &dest_spot_rid_);
-    service::request_op_t request_to_spot (
+    service::request_operation_t request_to_spot (
       const routing_id_t &dest_node_rid_,
       const routing_id_t &dest_spot_rid_);
-    service::reply_op_t reply_to_spot (const routing_id_t &dest_node_rid_,
+    service::reply_operation_t reply_to_spot (const routing_id_t &dest_node_rid_,
                                        const routing_id_t &dest_spot_rid_,
                                        uint64_t request_seq_);
 
     template<typename DiscoveryT>
     void attach_discovery (DiscoveryT &discovery_)
     {
-        if (base_socket_t::attach_discovery (discovery_) != 0)
+        if (socket_t::attach_discovery (discovery_) != 0)
             throw config_error_t (
               detail::config_result_from_errno (detail::current_errno ()),
               detail::current_errno ());

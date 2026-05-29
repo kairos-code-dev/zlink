@@ -42,7 +42,7 @@ struct poller_t::impl
         void *socket_handle = NULL;
         int fd = 0;
         void *timer_handle = NULL;
-        timer_t *timer = NULL;
+        zlink_timer_t *timer = NULL;
         poll_source_kind_t source_kind = poll_source_kind_t::socket;
         poll_event_flag_t events = poll_event_flag_t::none;
         std::uintptr_t slot = 0;
@@ -102,7 +102,7 @@ struct poller_t::impl
         poller = NULL;
     }
 
-    void destroy ()
+    void close ()
     {
         if (!poller) {
             clear_vectors ();
@@ -230,7 +230,7 @@ struct poller_t::impl
         ++non_socket_item_count;
     }
 
-    void add_timer (timer_t &timer_, std::uintptr_t slot_)
+    void add_timer (zlink_timer_t &timer_, std::uintptr_t slot_)
     {
         ensure_addable ();
         sync_socket_native_events_if_needed ();
@@ -317,7 +317,7 @@ struct poller_t::impl
         return true;
     }
 
-    bool remove_timer (timer_t &timer_)
+    bool remove_timer (zlink_timer_t &timer_)
     {
         if (!poller)
             throw config_error_t (
@@ -597,7 +597,7 @@ void poller_t::add_fd (int fd_, poll_event_flag_t events_, std::uintptr_t slot_)
     _impl->add_fd (fd_, events_, slot_);
 }
 
-void poller_t::add (timer_t &timer_, std::uintptr_t slot_)
+void poller_t::add (zlink_timer_t &timer_, std::uintptr_t slot_)
 {
     _impl->add_timer (timer_, slot_);
 }
@@ -609,7 +609,7 @@ void poller_t::add (service::spot_t &spot_,
     _impl->add_socket (zlink::detail::native_handle (spot_), events_, slot_, true);
 }
 
-void poller_t::add (monitor_handle_t &monitor_,
+void poller_t::add (socket_monitor_t &monitor_,
                     poll_event_flag_t events_,
                     std::uintptr_t slot_)
 {
@@ -617,7 +617,7 @@ void poller_t::add (monitor_handle_t &monitor_,
       zlink::detail::native_handle (monitor_), events_, slot_, true);
 }
 
-void poller_t::add (base_socket_t &socket_,
+void poller_t::add (socket_t &socket_,
                     poll_event_flag_t events_,
                     std::uintptr_t slot_)
 {
@@ -634,17 +634,17 @@ void poller_t::modify_fd (int fd_, poll_event_flag_t events_)
     _impl->modify_fd (fd_, events_);
 }
 
-void poller_t::modify (monitor_handle_t &monitor_, poll_event_flag_t events_)
+void poller_t::modify (socket_monitor_t &monitor_, poll_event_flag_t events_)
 {
     _impl->modify_socket (zlink::detail::native_handle (monitor_), events_);
 }
 
-void poller_t::modify (base_socket_t &socket_, poll_event_flag_t events_)
+void poller_t::modify (socket_t &socket_, poll_event_flag_t events_)
 {
     _impl->modify_socket (zlink::detail::native_handle (socket_), events_);
 }
 
-bool poller_t::remove (timer_t &timer_)
+bool poller_t::remove (zlink_timer_t &timer_)
 {
     return _impl->remove_timer (timer_);
 }
@@ -654,12 +654,12 @@ bool poller_t::remove (service::spot_t &spot_)
     return _impl->remove_socket (zlink::detail::native_handle (spot_));
 }
 
-bool poller_t::remove (monitor_handle_t &monitor_)
+bool poller_t::remove (socket_monitor_t &monitor_)
 {
     return _impl->remove_socket (zlink::detail::native_handle (monitor_));
 }
 
-bool poller_t::remove (base_socket_t &socket_)
+bool poller_t::remove (socket_t &socket_)
 {
     return _impl->remove_socket (zlink::detail::native_handle (socket_));
 }
@@ -676,11 +676,11 @@ size_t poller_t::wait (poll_event_t *events_,
     return _impl->wait (events_, capacity_, static_cast<long> (timeout_.count ()));
 }
 
-void poller_t::destroy ()
+void poller_t::close ()
 {
     if (!_impl)
         return;
-    _impl->destroy ();
+    _impl->close ();
 }
 
 } // namespace zlink

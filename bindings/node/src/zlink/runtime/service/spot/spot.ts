@@ -69,22 +69,27 @@ export class Spot extends NativeHandle {
   publish(topic: string): SendOperation {
     return new RuntimeSendOperation((parts, opFlags) => this.publishDirect(topic, parts, opFlags));
   }
-  private publishDirect(topic: string, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
+  private submitSpotSend(flags: SendFlags, errorMessage: string, invoke: () => void): boolean {
     try {
+      invoke();
+      return true;
+    } catch (error) {
+      const submitError = submitNativeError(error, flags, errorMessage);
+      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+        return false;
+      }
+      throw submitError;
+    }
+  }
+  private publishDirect(topic: string, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
+    return this.submitSpotSend(flags, 'spot publish failed', () => {
       requireNative().spotPublish(
         this._native,
         validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER),
         toMessageParts(payloadParts),
         flags | 0
       );
-      return true;
-    } catch (error) {
-      const submitError = submitNativeError(error, flags, 'spot publish failed');
-      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-        return false;
-      }
-      throw submitError;
-    }
+    });
   }
   setSubscription(topicOrPattern: string): void {
     const normalized = validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER);
@@ -169,27 +174,20 @@ export class Spot extends NativeHandle {
     return new RuntimeSendOperation((parts, opFlags) => this.sendChannelDirect(channelName, parts, opFlags));
   }
   private sendChannelDirect(channelName: string, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
-    try {
+    return this.submitSpotSend(flags, 'spot sendToChannel failed', () => {
       requireNative().spotSendChannel(
         this._native,
         validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER),
         toMessageParts(payloadParts),
         flags | 0
       );
-      return true;
-    } catch (error) {
-      const submitError = submitNativeError(error, flags, 'spot sendToChannel failed');
-      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-        return false;
-      }
-      throw submitError;
-    }
+    });
   }
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOperation {
     return new RuntimeSendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
   }
   private sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadParts: readonly MessageLike[], flags: SendFlags): boolean {
-    try {
+    return this.submitSpotSend(flags, 'spot sendToSpot failed', () => {
       requireNative().spotSendToSpot(
         this._native,
         normalizeRoutingId(destNodeRid),
@@ -197,14 +195,7 @@ export class Spot extends NativeHandle {
         toMessageParts(payloadParts),
         flags | 0
       );
-      return true;
-    } catch (error) {
-      const submitError = submitNativeError(error, flags, 'spot sendToSpot failed');
-      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-        return false;
-      }
-      throw submitError;
-    }
+    });
   }
   requestToChannel(channelName: string): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
@@ -212,28 +203,24 @@ export class Spot extends NativeHandle {
     );
   }
   private requestChannelDirect(channelName: string, partsInput: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
-    const parts = toMessageParts(partsInput);
     const normalizedChannelName = validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER);
-    const progressHandle = this._native;
-    return executeNativeRequest({
+    return this.executeSpotRequest(
+      partsInput,
       callbackOrTimeout,
       flagsOrTimeout,
       maybeTimeout,
-      promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(progressHandle),
-      invoke: (callback, flags, timeoutMs) => {
+      'requestToChannel failed',
+      (spotHandle, parts, callback, flags, timeoutMs) => {
         requireNative().spotRequestChannel(
-          this._native,
+          spotHandle,
           normalizedChannelName,
           parts,
           callback,
           flags | 0,
           timeoutMs | 0
         );
-      },
-      submitErrorMessage: 'requestToChannel failed',
-      requestErrorMessage: 'requestToChannel failed'
-    });
+      }
+    );
   }
   requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
@@ -246,17 +233,15 @@ export class Spot extends NativeHandle {
     );
   }
   private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, partsInput: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
-    const parts = toMessageParts(partsInput);
     const nodeRid = normalizeRoutingId(destNodeRid, 'destNodeRid');
     const spotRid = normalizeRoutingId(destSpotRid, 'destSpotRid');
-    const spotHandle = this._native;
-    return executeNativeRequest({
+    return this.executeSpotRequest(
+      partsInput,
       callbackOrTimeout,
       flagsOrTimeout,
       maybeTimeout,
-      promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(spotHandle),
-      invoke: (callback, flags, timeoutMs) => {
+      'requestToSpot failed',
+      (spotHandle, parts, callback, flags, timeoutMs) => {
         requireNative().spotRequestSpot(
           spotHandle,
           nodeRid,
@@ -266,22 +251,18 @@ export class Spot extends NativeHandle {
           flags | 0,
           timeoutMs | 0
         );
-      },
-      submitErrorMessage: 'requestToSpot failed',
-      requestErrorMessage: 'requestToSpot failed'
-    });
+      }
+    );
   }
   private requestToRouterDirect(peerRid: RoutingId, partsInput: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
-    const parts = toMessageParts(partsInput);
     const peer = normalizeRoutingId(peerRid, 'peerRid');
-    const spotHandle = this._native;
-    return executeNativeRequest({
+    return this.executeSpotRequest(
+      partsInput,
       callbackOrTimeout,
       flagsOrTimeout,
       maybeTimeout,
-      promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(spotHandle),
-      invoke: (callback, flags, timeoutMs) => {
+      'requestToRouter failed',
+      (spotHandle, parts, callback, flags, timeoutMs) => {
         requireNative().spotRequestRouter(
           spotHandle,
           peer,
@@ -290,9 +271,36 @@ export class Spot extends NativeHandle {
           flags | 0,
           timeoutMs | 0
         );
+      }
+    );
+  }
+  private executeSpotRequest(
+    partsInput: readonly MessageLike[],
+    callbackOrTimeout: RequestCallback | number | undefined,
+    flagsOrTimeout: SendFlags | number | undefined,
+    maybeTimeout: number | undefined,
+    errorMessage: string,
+    invoke: (
+      spotHandle: unknown,
+      parts: ReturnType<typeof toMessageParts>,
+      callback: (result: number, replyParts: Buffer[] | null) => void,
+      flags: SendFlags,
+      timeoutMs: number
+    ) => void,
+  ): Promise<Message[]> | boolean {
+    const parts = toMessageParts(partsInput);
+    const spotHandle = this._native;
+    return executeNativeRequest({
+      callbackOrTimeout,
+      flagsOrTimeout,
+      maybeTimeout,
+      promiseTimeoutMayUseFlagsOrTimeout: true,
+      startProgress: () => startRequestProgress(spotHandle),
+      invoke: (callback, flags, timeoutMs) => {
+        invoke(spotHandle, parts, callback, flags, timeoutMs);
       },
-      submitErrorMessage: 'requestToRouter failed',
-      requestErrorMessage: 'requestToRouter failed'
+      submitErrorMessage: errorMessage,
+      requestErrorMessage: errorMessage
     });
   }
   replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOperation {

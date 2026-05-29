@@ -549,48 +549,6 @@ type ActorJoinEntrySpotInvoker = (
   timeoutMs: number,
 ) => boolean;
 
-export class RuntimeActorJoinEntrySpotOperation implements ActorJoinEntrySpotOperation {
-  private readonly _invoke: ActorJoinEntrySpotInvoker;
-  private _timeoutMs = 0;
-  private _submitted = false;
-
-  constructor(invoke: ActorJoinEntrySpotInvoker) {
-    this._invoke = invoke;
-  }
-
-  timeout(timeoutMs: number): this {
-    this.ensureOpen();
-    this._timeoutMs = timeoutMs | 0;
-    return this;
-  }
-
-  submitAsync(): Promise<ActorJoinEntrySpotResult> {
-    this.ensureOpen();
-    this._submitted = true;
-    return new Promise((resolve, reject) => {
-      this._invoke((result) => {
-        if (result.result !== RequestResult.Ok) {
-          reject(requestErrorFromResult(result.result, 'actor entry spot join failed'));
-          return;
-        }
-        resolve(result);
-      }, this._timeoutMs);
-    });
-  }
-
-  submit(callback: ActorJoinEntrySpotHandler): boolean {
-    this.ensureOpen();
-    this._submitted = true;
-    return this._invoke(callback, this._timeoutMs);
-  }
-
-  private ensureOpen(): void {
-    if (this._submitted) {
-      throw new Error('operation already submitted');
-    }
-  }
-}
-
 export class RuntimeActorJoinReplyOperation implements ActorJoinReplyOperation {
   private readonly _invoke: (parts: readonly MessageLike[]) => void;
   private readonly _payload = new OperationPayload();
@@ -662,36 +620,41 @@ export class RuntimeActorDestroyOperation extends ReplyHandlerOperation implemen
 export class RuntimeActorBindOperation extends ReplyHandlerOperation implements ActorBindOperation {}
 export class RuntimeActorUnbindOperation extends ReplyHandlerOperation implements ActorUnbindOperation {}
 
-type ActorLookupInvoker = (callback: ActorLookupHandler, timeoutMs: number) => boolean;
+type ResultHandlerInvoker<TResult extends { result: RequestResult }> = (
+  callback: (result: TResult) => void,
+  timeoutMs: number,
+) => boolean;
 
-export class RuntimeActorLookupOperation implements ActorLookupOperation {
-  private readonly _invoke: ActorLookupInvoker;
+class ResultHandlerOperation<TResult extends { result: RequestResult }> {
+  private readonly _invoke: ResultHandlerInvoker<TResult>;
+  private readonly _errorMessage: string;
   private _timeoutMs = 0;
   private _submitted = false;
 
-  constructor(invoke: ActorLookupInvoker) {
+  constructor(invoke: ResultHandlerInvoker<TResult>, errorMessage: string) {
     this._invoke = invoke;
+    this._errorMessage = errorMessage;
   }
 
-  private ensureOpen(): void {
+  protected ensureOpen(): void {
     if (this._submitted) {
       throw new TypeError('operation has already been submitted');
     }
   }
 
-  timeout(timeoutMs: number): ActorLookupOperation {
+  timeout(timeoutMs: number): this {
     this.ensureOpen();
     this._timeoutMs = timeoutMs | 0;
     return this;
   }
 
-  submitAsync(): Promise<ActorLookupResult> {
+  submitAsync(): Promise<TResult> {
     this.ensureOpen();
     this._submitted = true;
     return new Promise((resolve, reject) => {
       this._invoke((result) => {
         if (result.result !== RequestResult.Ok) {
-          reject(requestErrorFromResult(result.result, 'actor lookup failed'));
+          reject(requestErrorFromResult(result.result, this._errorMessage));
           return;
         }
         resolve(result);
@@ -699,9 +662,27 @@ export class RuntimeActorLookupOperation implements ActorLookupOperation {
     });
   }
 
-  submit(callback: ActorLookupHandler): boolean {
+  submit(callback: (result: TResult) => void): boolean {
     this.ensureOpen();
     this._submitted = true;
     return this._invoke(callback, this._timeoutMs);
+  }
+}
+
+export class RuntimeActorJoinEntrySpotOperation
+  extends ResultHandlerOperation<ActorJoinEntrySpotResult>
+  implements ActorJoinEntrySpotOperation {
+  constructor(invoke: ActorJoinEntrySpotInvoker) {
+    super(invoke, 'actor entry spot join failed');
+  }
+}
+
+type ActorLookupInvoker = (callback: ActorLookupHandler, timeoutMs: number) => boolean;
+
+export class RuntimeActorLookupOperation
+  extends ResultHandlerOperation<ActorLookupResult>
+  implements ActorLookupOperation {
+  constructor(invoke: ActorLookupInvoker) {
+    super(invoke, 'actor lookup failed');
   }
 }

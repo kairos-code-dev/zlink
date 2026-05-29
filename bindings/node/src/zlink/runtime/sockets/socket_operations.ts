@@ -14,6 +14,7 @@ import {
   materializeReceivedInto,
   materializeTopicMessage
 } from '../messaging/message_materializer';
+export { materializeReceived } from '../messaging/message_materializer';
 import {
   normalizeMessageLikePayload,
   normalizeOperationPayload,
@@ -70,125 +71,21 @@ import type {
   ReplySubmitOperation,
 } from '../../contracts/service';
 import { wrapRoutingId } from '../../contracts/service/spot/spot_models';
-export { RuntimeContext as Context } from '../core/context';
-export {
-  bindCall,
-  closeCall,
-  connectCall,
-  lastError,
-  nativeErrorMessage,
-  readErrno,
-} from '../errors/native_errors';
-export {
-  messagesFromNativeBuffers,
-  normalizeCallbackFlagsAndTimeout,
-  requestErrorFromResult,
-} from '../messaging/request_executor';
-export { materializeReceived } from '../messaging/message_materializer';
+export type { RuntimeContext as Context } from '../core/context';
 export type { BufferLike } from '../../contracts/core/buffer_like';
 export type { MessageLike };
-export type { PollEventFlagValue, RidDuplicatePolicy as RidDuplicatePolicyValue, SocketTypeValue } from '../../contracts/sockets/socket_constants';
-export {
-  AutoHwmProfile,
-} from '../../contracts/core';
-export {
-  SpotDispatchEvent,
-  SpotDispatchSubjectKind,
-  AutoConnectType,
-  ServiceRole,
-  ServiceKind,
-  SpotRole,
-  SpotPeerSource,
-  SpotPeerKind,
-  SpotPeerState,
-  SpotNodeState,
-  SpotNodeMode,
-  SpotNodeSocketOwner,
-  RegistryState,
-  TopologySource,
-  TopologyState,
-} from '../../contracts/service';
-export { NativeSocketType as SocketType };
-export {
-  MonitorSourceKind,
-  MonitorEventType,
-  MonitorEvent,
-} from '../../contracts/eventing';
 export type {
-  ServiceRoleValue,
-  ServiceKindValue,
-  SpotRoleValue,
-  SpotPeerSourceValue,
-  SpotPeerKindValue,
-  SpotPeerStateValue,
-  SpotKindValue,
-  SpotNodeStateValue,
-  SpotNodeSocketOwnerValue,
-  RegistryStateValue,
-  TopologySourceValue,
-  TopologyStateValue,
-  SpotNodeModeValue,
-  MemberPeerEntry,
-  RegistryTopologyEntry,
-  RegistryServiceSummaryEntry,
-  RegistryStatus,
-  SpotNodeStatus,
-  SpotNodePeerEntry,
-  SpotNodeSubjectEntry,
-  SpotNodeSocketFilter,
-  SpotNodeSocketEntry,
-  RegistryServiceSummaryFilter,
-  RegistryTopologyFilter,
-  SpotNodePeerFilter,
-  SpotNodeSubjectFilter,
-  SubscriptionEntry,
+  RequestCallback,
+  RequestOperation,
+  ReplyOperation,
+  SendOperation,
   SocketSendReadyHandler,
   StreamPacketHandler,
-  SocketMonitorHandler,
-  SpotSendReadyHandler,
-  ActorRef,
-  ActorRoute,
-  SpotRoute,
-  ActorRecvInfo,
-  ActorJoinInfo,
-  ActorPart,
-  ActorJoinRequest,
-  ActorJoinResult,
-  ActorJoinEntrySpotResult,
-  ActorLookupResult,
-  SpotActorLifecycleInfo,
-  SpotActorLifecycleEvent,
-  ActorJoinHandler,
-  ActorJoinEntrySpotHandler,
-  ActorLookupHandler,
-  ReplyHandler,
-  SpotNodeSpotEntry,
-  SpotNodeActorEntry,
-  SpotDispatchInfo,
-  SpotDispatchEventHandler,
-  RequestCallback,
-  SendOperation,
-  SendSubmitOperation,
-  RequestOperation,
-  RequestSubmitOperation,
-  RequestCallbackSubmitOperation,
-  ReplyOperation,
-  ReplySubmitOperation,
-  ActorJoinOperation,
-  ActorJoinSubmitOperation,
-  ActorJoinCallbackSubmitOperation,
-  ActorJoinEntrySpotOperation,
-  ActorJoinReplyOperation,
-  ActorLeaveOperation,
-  ActorDestroyOperation,
-  ActorLookupOperation,
   ActorBindOperation,
+  ActorRef,
   ActorUnbindOperation,
 } from '../../contracts/service';
-export type {
-  MonitorSourceKindValue,
-  TimerHandler,
-} from '../../contracts/eventing';
+export { NativeSocketType as SocketType };
 export {
   Message,
   Received,

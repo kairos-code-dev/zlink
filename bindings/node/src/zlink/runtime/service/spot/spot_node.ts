@@ -99,6 +99,11 @@ function mapSpotNodeSubjectEntry(entry: {
   };
 }
 
+type SpotNodePeerEntryRaw = Parameters<typeof mapSpotNodePeerEntry>[0];
+type SpotNodeSubjectEntryRaw = Parameters<typeof mapSpotNodeSubjectEntry>[0];
+type SpotNodeSpotEntryRaw = Parameters<typeof spotNodeSpotEntryFromRaw>[0];
+type SpotNodeActorEntryRaw = Parameters<typeof spotNodeActorEntryFromRaw>[0];
+type ActorRefRaw = Parameters<typeof actorRefFromRaw>[0];
 
 export class SpotNode extends NativeHandle {
   private readonly _spots = new Set<Spot>();
@@ -315,7 +320,7 @@ export class SpotNode extends NativeHandle {
         requireNative().spotNodeActorNew(
           this._native,
           normalizedActorId
-        ) as any
+        ) as ActorRefRaw
       ))
     );
   }
@@ -326,7 +331,7 @@ export class SpotNode extends NativeHandle {
         requireNative().spotNodeActorLookup(
           this._native,
           normalizedActorId
-        ) as any
+        ) as ActorRefRaw
       )
     );
   }
@@ -393,21 +398,21 @@ export class SpotNode extends NativeHandle {
   }
   peers(): SpotNodePeerEntry[] {
     return (configCall('spot node peers snapshot failed', () =>
-      requireNative().spotNodePeers(this._native) as Array<Record<string, unknown>>
+      requireNative().spotNodePeers(this._native) as SpotNodePeerEntryRaw[]
     ))
-      .map((entry) => mapSpotNodePeerEntry(entry as any));
+      .map((entry) => mapSpotNodePeerEntry(entry));
   }
   peersQuery(filter?: SpotNodePeerFilter): SpotNodePeerEntry[] {
     return (configCall('spot node peers query failed', () =>
-      requireNative().spotNodePeersQuery(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+      requireNative().spotNodePeersQuery(this._native, filter ?? undefined) as SpotNodePeerEntryRaw[]
     ))
-      .map((entry) => mapSpotNodePeerEntry(entry as any));
+      .map((entry) => mapSpotNodePeerEntry(entry));
   }
   subjects(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[] {
     return (configCall('spot node subjects snapshot failed', () =>
-      requireNative().spotNodeSubjects(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+      requireNative().spotNodeSubjects(this._native, filter ?? undefined) as SpotNodeSubjectEntryRaw[]
     ))
-      .map((entry) => mapSpotNodeSubjectEntry(entry as any));
+      .map((entry) => mapSpotNodeSubjectEntry(entry));
   }
   internalSockets(filter?: SpotNodeSocketFilter): SpotNodeSocketEntry[] {
     return (configCall('spot node internal socket snapshot failed', () =>
@@ -425,15 +430,15 @@ export class SpotNode extends NativeHandle {
   }
   spots(): SpotNodeSpotEntry[] {
     return (configCall('spot node spots snapshot failed', () =>
-      requireNative().spotNodeSpots(this._native) as Array<Record<string, unknown>>
+      requireNative().spotNodeSpots(this._native) as SpotNodeSpotEntryRaw[]
     ))
-      .map((entry) => spotNodeSpotEntryFromRaw(entry as any));
+      .map((entry) => spotNodeSpotEntryFromRaw(entry));
   }
   actors(): SpotNodeActorEntry[] {
     return (configCall('spot node actors snapshot failed', () =>
-      requireNative().spotNodeActors(this._native) as Array<Record<string, unknown>>
+      requireNative().spotNodeActors(this._native) as SpotNodeActorEntryRaw[]
     ))
-      .map((entry) => spotNodeActorEntryFromRaw(entry as any));
+      .map((entry) => spotNodeActorEntryFromRaw(entry));
   }
   close(): void {
     if (!this._native) {

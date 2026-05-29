@@ -46,7 +46,6 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -73,24 +72,14 @@ public final class NativeSpot implements Spot {
     private static final int TOPIC_CACHE_LIMIT = 1024;
     private static final int TOPIC_SCRATCH_INITIAL_CAPACITY = 64;
     private static final int ERRNO_EINTR = 4;
-    private static final int ERRNO_ENOENT = 2;
-    private static final int ERRNO_EAGAIN = 11;
-    private static final int ERRNO_EINVAL = 22;
-    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private static final int ERRNO_ENOTCONN = 107;
     private static final int ERRNO_ENOTCONN_WIN = 10057;
     private static final int ERRNO_EHOSTUNREACH = 113;
     private static final int ERRNO_EHOSTUNREACH_WIN = 10065;
     private static final int ERRNO_ETIMEDOUT = 110;
     private static final int ERRNO_ETIMEDOUT_WIN = 10060;
-    private static final int RECV_BLOCKING = 0;
-    private static final int RECV_DONTWAIT = 1;
     private static final int SEND_DONTWAIT = 1;
     private static final Linker LINKER = Linker.nativeLinker();
-    private static final FunctionDescriptor FD_SUBSCRIBE_CALLBACK =
-      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_SEND_READY_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_REPLY_CALLBACK =
@@ -123,51 +112,23 @@ public final class NativeSpot implements Spot {
     private final ThreadLocal<Integer> topicScratchCapacity =
       ThreadLocal.withInitial(() -> TOPIC_SCRATCH_INITIAL_CAPACITY);
 
-    // Subscribe hot path scratch (parity with Socket RecvScratch): persistent
-    // off-heap out-params + a last-topic cache so a steady single-part stream
-    // on one constant topic does not re-allocate an Arena or re-decode a
-    // String per message. The original receiveTopicMessage path allocated an
-    // Arena (5 native segments) + Message[] + new String + new TopicMessage
-    // per delivered message, which capped MULTI_SPOT per-thread throughput.
-    private static final class SpotRecvScratch {
-        final Arena arena = Arena.ofAuto();
-        final MemorySegment ridOut = arena.allocate(ValueLayout.ADDRESS);
-        final MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
-        final MemorySegment topicLenOut =
-          arena.allocate(ValueLayout.JAVA_LONG);
-        final MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-        byte[] cachedTopicBytes;
-        String cachedTopicString = "";
-        byte[] cachedRoutingIdBytes;
-        RoutingId cachedRoutingId;
-    }
-
     private static final class SpotSendScratch {
         final Arena arena = Arena.ofAuto();
         final MemorySegment nativeMsg =
           arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
     }
 
-    private final ThreadLocal<SpotRecvScratch> spotRecvScratch =
-      ThreadLocal.withInitial(SpotRecvScratch::new);
     private final ThreadLocal<SpotSendScratch> spotSendScratch =
       ThreadLocal.withInitial(SpotSendScratch::new);
 
-    @FunctionalInterface
-    private interface SubscribeCallback {
-        void onMessage(RoutingId routingId, String topicId, Received received);
-    }
-
     private MemorySegment handle;
-    private SubscribeCallback subscribeHandler;
     private SendReadyHandler sendReadyHandler;
-    private Arena subscribeCallbackArena;
     private Arena sendReadyCallbackArena;
-    private MemorySegment subscribeCallbackStub = MemorySegment.NULL;
     private MemorySegment sendReadyCallbackStub = MemorySegment.NULL;
     private volatile ExecutorService callbackExecutor;
     private volatile RuntimeException callbackFailure;
     private final SpotRoutedSupport routedSupport;
+    private final SpotSubscriptionSupport subscriptionSupport;
     private final SpotNode ownerNode;
     private final SpotOptions options;
 
@@ -215,6 +176,7 @@ public final class NativeSpot implements Spot {
         this.ownerNode = node;
         this.handle = nativeHandle;
         this.routedSupport = new SpotRoutedSupport(this);
+        this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.options = new SpotOptions(this);
     }
 
@@ -226,6 +188,7 @@ public final class NativeSpot implements Spot {
         this.ownerNode = node;
         this.handle = handle;
         this.routedSupport = new SpotRoutedSupport(this);
+        this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.options = new SpotOptions(this);
     }
 
@@ -236,6 +199,7 @@ public final class NativeSpot implements Spot {
         this.ownerNode = null;
         this.handle = handle;
         this.routedSupport = new SpotRoutedSupport(this);
+        this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.options = new SpotOptions(this);
     }
 
@@ -716,57 +680,16 @@ public final class NativeSpot implements Spot {
 
     /** Subscribes to one topic or pattern string. */
     public void setSubscription(String topicId) {
-        MemorySegment filter = topicCString(topicId);
-        int rc = Native.setSubscription(handle, filter);
-        if (rc != 0)
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_set_subscription");
+        subscriptionSupport.setSubscription(topicId);
     }
 
     /** Removes a topic or pattern subscription. */
     public void unsetSubscription(String topicIdOrPattern) {
-        MemorySegment filter = topicCString(topicIdOrPattern);
-        int rc = Native.unsetSubscription(handle, filter);
-        if (rc != 0)
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_unset_subscription");
+        subscriptionSupport.unsetSubscription(topicIdOrPattern);
     }
 
     public Optional<SubscriptionEntry> subscriptionAt(int index) {
-        if (index < 0)
-            throw new IndexOutOfBoundsException("subscription index " + index);
-        int capacity = TOPIC_SCRATCH_INITIAL_CAPACITY;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment lenInOut = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment isPatternOut = arena.allocate(ValueLayout.JAVA_INT);
-            while (true) {
-                MemorySegment filterOut = capacity == 0 ? MemorySegment.NULL
-                    : arena.allocate(capacity);
-                lenInOut.set(ValueLayout.JAVA_LONG, 0, capacity);
-                isPatternOut.set(ValueLayout.JAVA_INT, 0, 0);
-                int rc = Native.subscriptionAt(handle, index, filterOut,
-                  lenInOut, isPatternOut);
-                if (rc == 0) {
-                    int actual = boundedCount(
-                      lenInOut.get(ValueLayout.JAVA_LONG, 0));
-                    byte[] bytes = new byte[actual];
-                    if (actual > 0) {
-                        MemorySegment.copy(filterOut, 0,
-                          MemorySegment.ofArray(bytes), 0, actual);
-                    }
-                    return Optional.of(new SubscriptionEntry(
-                      new String(bytes, StandardCharsets.UTF_8),
-                      isPatternOut.get(ValueLayout.JAVA_INT, 0) != 0));
-                }
-                int errno = Native.errno();
-                if (errno == ERRNO_ENOENT)
-                    return Optional.empty();
-                if (errno == ERRNO_EINVAL) {
-                    capacity = boundedCount(
-                      lenInOut.get(ValueLayout.JAVA_LONG, 0));
-                    continue;
-                }
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_subscription_at");
-            }
-        }
+        return subscriptionSupport.subscriptionAt(index);
     }
 
     /** Installs the send-ready callback. */
@@ -810,196 +733,11 @@ public final class NativeSpot implements Spot {
     public boolean subscribe(TopicMessage result, RecvFlags flags) {
         Objects.requireNonNull(result, "result");
         Objects.requireNonNull(flags, "flags");
-        if (flags == RecvFlags.DONT_WAIT) {
-            return subscribeIntoFastNoWait(result);
-        }
-        Optional<TopicMessage> fresh = receiveTopicMessage(false);
-        if (fresh.isEmpty())
-            return false;
-        result.adoptFrom(fresh.get());
-        return true;
-    }
-
-    // Non-allocating spot subscribe hot path for the DONT_WAIT single-part
-    // case. Mirrors Socket.subscribeIntoFastNoWait: thread-local scratch (no
-    // per-call Arena), critical downcall, cached topic String, reused result.
-    // Multipart payloads fall back to the general allocating reader.
-    private boolean subscribeIntoFastNoWait(TopicMessage result) {
-        ensureOpen();
-        SpotRecvScratch scratch = spotRecvScratch.get();
-        while (true) {
-            scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-            Message part =
-              InternalAccess.topicMessagePrepareReusableSinglePart(result);
-            boolean success = false;
-            try {
-                int rc = Native.spotSubscribePartNoWaitCritical(handle,
-                  scratch.ridOut, scratch.topicOut, TOPIC_CAPACITY,
-                  scratch.topicLenOut,
-                  InternalAccess.messageNativeHandle(part),
-                  scratch.hasMoreOut, RECV_DONTWAIT);
-                if (rc == 0) {
-                    boolean more =
-                      scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                    InternalAccess.messageFinishReceive(part, more);
-                    if (more) {
-                        Message firstPart = part.move();
-                        success = true;
-                        Optional<TopicMessage> fresh =
-                          assembleRemainder(scratch, firstPart);
-                        if (fresh.isEmpty())
-                            return false;
-                        result.adoptFrom(fresh.get());
-                        return true;
-                    }
-                    RoutingId routingId = cachedSpotRoutingId(scratch,
-                      scratch.ridOut.get(ValueLayout.ADDRESS, 0));
-                    int topicLength = normalizeTopicLength(scratch.topicOut,
-                      TOPIC_CAPACITY,
-                      scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                    String topicId = cachedSpotTopic(scratch, topicLength);
-                    success = true;
-                    InternalAccess.topicMessageAdoptSingle(result, routingId,
-                      topicId, part);
-                    return true;
-                }
-            } finally {
-                if (!success) {
-                    try {
-                        part.close();
-                    } catch (RuntimeException ignored) {
-                    }
-                }
-            }
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return false;
-            }
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_subscribe_part");
-        }
-    }
-
-    private String cachedSpotTopic(SpotRecvScratch scratch, int topicLength) {
-        // The C buffer can include a trailing NUL; normalizeTopicLength has
-        // already trimmed it from topicLength.
-        if (topicLength == 0) {
-            return "";
-        }
-        byte[] cached = scratch.cachedTopicBytes;
-        if (cached != null && cached.length == topicLength) {
-            boolean same = true;
-            for (int i = 0; i < topicLength; i++) {
-                if (cached[i]
-                    != scratch.topicOut.get(ValueLayout.JAVA_BYTE, i)) {
-                    same = false;
-                    break;
-                }
-            }
-            if (same) {
-                return scratch.cachedTopicString;
-            }
-        }
-        byte[] raw = scratch.topicOut.asSlice(0, topicLength)
-          .toArray(ValueLayout.JAVA_BYTE);
-        String decoded = new String(raw, StandardCharsets.UTF_8);
-        scratch.cachedTopicBytes = raw;
-        scratch.cachedTopicString = decoded;
-        return decoded;
-    }
-
-    private static RoutingId cachedSpotRoutingId(SpotRecvScratch scratch,
-                                                 MemorySegment nativeRidPtr) {
-        if (nativeRidPtr == null || nativeRidPtr.address() == 0) {
-            return null;
-        }
-        MemorySegment routingId = nativeRidPtr.reinterpret(
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        int size = routingId.get(ValueLayout.JAVA_BYTE,
-          NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (size == 0) {
-            return null;
-        }
-        byte[] cached = scratch.cachedRoutingIdBytes;
-        if (cached != null && cached.length == size) {
-            boolean same = true;
-            for (int i = 0; i < size; i++) {
-                if (cached[i] != routingId.get(ValueLayout.JAVA_BYTE,
-                        NativeLayouts.ROUTING_ID_DATA_OFFSET + i)) {
-                    same = false;
-                    break;
-                }
-            }
-            if (same) {
-                return scratch.cachedRoutingId;
-            }
-        }
-        byte[] value = new byte[size];
-        MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-          MemorySegment.ofArray(value), 0, size);
-        RoutingId decoded = InternalAccess.routingIdFromTrusted(value);
-        scratch.cachedRoutingIdBytes = value;
-        scratch.cachedRoutingId = decoded;
-        return decoded;
-    }
-
-    private Optional<TopicMessage> assembleRemainder(SpotRecvScratch scratch,
-                                                     Message firstPart) {
-        RoutingId routingId = readRoutingIdPtr(
-          scratch.ridOut.get(ValueLayout.ADDRESS, 0));
-        int topicLength = normalizeTopicLength(scratch.topicOut,
-          TOPIC_CAPACITY,
-          scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-        String topicId = decodeTopic(scratch.topicOut, topicLength);
-        java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
-        parts.add(firstPart);
-        while (true) {
-            Message next = new Message();
-            boolean ok = false;
-            try {
-                int rc = Native.spotSubscribePart(handle, scratch.ridOut,
-                  scratch.topicOut, TOPIC_CAPACITY, scratch.topicLenOut,
-                  InternalAccess.messageNativeHandle(next),
-                  scratch.hasMoreOut, RECV_BLOCKING);
-                if (rc == 0) {
-                    ok = true;
-                    boolean more =
-                      scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                    InternalAccess.messageFinishReceive(next, more);
-                    parts.add(next);
-                    if (!more) {
-                        return Optional.of(InternalAccess.topicMessage(
-                          routingId, topicId,
-                          parts.toArray(Message[]::new)));
-                    }
-                    continue;
-                }
-            } finally {
-                if (!ok) {
-                    try {
-                        next.close();
-                    } catch (RuntimeException ignored) {
-                    }
-                }
-            }
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            for (Message m : parts) {
-                try {
-                    m.close();
-                } catch (RuntimeException ignored) {
-                }
-            }
-            throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_subscribe_part");
-        }
+        return subscriptionSupport.subscribe(result, flags);
     }
 
     Optional<TopicMessage> subscribeNoWait() {
-        return receiveTopicMessage(true);
+        return subscriptionSupport.subscribeNoWait();
     }
 
     /** Receives the next subscription event for this spot. */
@@ -1007,12 +745,7 @@ public final class NativeSpot implements Spot {
                                             RecvFlags flags) {
         Objects.requireNonNull(result, "result");
         Objects.requireNonNull(flags, "flags");
-        Optional<SubscriptionEvent> fresh =
-          receiveSubscriptionEvent(flags == RecvFlags.DONT_WAIT);
-        if (fresh.isEmpty())
-            return false;
-        result.adoptFrom(fresh.get());
-        return true;
+        return subscriptionSupport.receiveSubscriptionEvent(result, flags);
     }
 
     void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -1554,47 +1287,28 @@ public final class NativeSpot implements Spot {
             return;
         }
         ExecutorService executor = callbackExecutor;
-        Arena subscribeArena = subscribeCallbackArena;
         Arena readyArena = sendReadyCallbackArena;
-        subscribeHandler = null;
         sendReadyHandler = null;
         callbackFailure = null;
         callbackExecutor = null;
-        subscribeCallbackArena = null;
         sendReadyCallbackArena = null;
-        MemorySegment subscribeStub = subscribeCallbackStub;
         MemorySegment readyStub = sendReadyCallbackStub;
-        subscribeCallbackStub = MemorySegment.NULL;
         sendReadyCallbackStub = MemorySegment.NULL;
         handle = MemorySegment.NULL;
         Native.spotDestroy(currentHandle);
         routedSupport.close();
+        subscriptionSupport.close();
         if (ownerNode != null) {
             InternalAccess.spotNodeReleaseSpot(ownerNode, this);
         }
         RuntimeResources.shutdownExecutor(executor);
-        RuntimeResources.closeArena(subscribeArena);
         RuntimeResources.closeArena(readyArena);
-        subscribeStub = MemorySegment.NULL;
         readyStub = MemorySegment.NULL;
         topicCache.clear();
         topicScratch.remove();
         topicScratchCapacity.remove();
         if (topicCacheArena.scope().isAlive())
             topicCacheArena.close();
-    }
-
-    private static int normalizeTopicLength(MemorySegment topic, int capacity,
-                                            long reportedLength) {
-        long len = reportedLength;
-        if (len < 0)
-            len = 0;
-        if (len > capacity)
-            len = capacity;
-        int bounded = (int) len;
-        if (bounded > 0 && topic.get(ValueLayout.JAVA_BYTE, bounded - 1) == 0)
-            bounded--;
-        return bounded;
     }
 
     private static int validateMessages(List<Message> messages, String name) {
@@ -1612,7 +1326,7 @@ public final class NativeSpot implements Spot {
         return (int) value;
     }
 
-    private void ensureOpen() {
+    void ensureOpen() {
         if (handle == null || handle.address() == 0)
             throw new IllegalStateException("spot is closed");
         ensureNoCallbackFailure();
@@ -1631,48 +1345,6 @@ public final class NativeSpot implements Spot {
         } catch (ReflectiveOperationException ex) {
             throw new IllegalStateException("failed to bind callback " + name,
               ex);
-        }
-    }
-
-    private void handleSubscribeCallback(MemorySegment sourceRid,
-                                         MemorySegment topic,
-                                         long topicLen,
-                                         MemorySegment parts,
-                                         long partCount,
-                                         MemorySegment userdata) {
-        SubscribeCallback handler = subscribeHandler;
-        ExecutorService executor = callbackExecutor;
-        if (handler == null || executor == null)
-            return;
-        CallbackSubscribeData snapshot = null;
-        try {
-            snapshot = snapshotSubscribe(sourceRid, topic, topicLen, parts,
-                partCount);
-            CallbackSubscribeData callbackSnapshot = snapshot;
-            executor.execute(() -> dispatchSubscribe(handler, callbackSnapshot));
-            snapshot = null;
-        } catch (RejectedExecutionException ex) {
-            recordCallbackFailure(ex);
-        } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
-        } finally {
-            closeSnapshot(snapshot);
-        }
-    }
-
-    private void dispatchSubscribe(SubscribeCallback handler,
-                                   CallbackSubscribeData snapshot) {
-        try {
-            Received received = materializeReceived(snapshot);
-            InternalAccess.enterCallback();
-            try (received) {
-                handler.onMessage(snapshot.routingId(), snapshot.topicId(),
-                    received);
-            } finally {
-                InternalAccess.leaveCallback();
-            }
-        } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
         }
     }
 
@@ -1702,24 +1374,6 @@ public final class NativeSpot implements Spot {
         }
     }
 
-    private static CallbackSubscribeData snapshotSubscribe(MemorySegment sourceRid,
-                                                           MemorySegment topic,
-                                                           long topicLen,
-                                                           MemorySegment parts,
-                                                           long partCount) {
-        Message[] snapshotParts = InternalAccess.messageFromOwnedMessageVectorShared(
-            parts, partCount);
-        NativeMessage.multipartClose(parts, partCount);
-        return new CallbackSubscribeData(readRoutingId(sourceRid),
-            decodeTopic(topic, topicLen), snapshotParts);
-    }
-
-    private static Received materializeReceived(CallbackSubscribeData snapshot) {
-        return InternalAccess.received(snapshot.routingId(), null,
-          snapshot.parts(), 0L,
-          false, null);
-    }
-
     private static RoutingId readRoutingId(MemorySegment sourceRid) {
         if (sourceRid == null || sourceRid.address() == 0)
             return null;
@@ -1735,19 +1389,6 @@ public final class NativeSpot implements Spot {
         return InternalAccess.routingIdFromTrusted(value);
     }
 
-    private static String decodeTopic(MemorySegment topic, long topicLen) {
-        int length = Math.max(0, Math.toIntExact(topicLen));
-        if (length == 0)
-            return "";
-        MemorySegment topicBytes = topic.reinterpret(length);
-        if (length > 0 && topicBytes.get(ValueLayout.JAVA_BYTE, length - 1) == 0)
-            length--;
-        if (length == 0)
-            return "";
-        ByteBuffer buffer = topicBytes.asSlice(0, length).asByteBuffer();
-        return StandardCharsets.UTF_8.decode(buffer).toString();
-    }
-
     private void recordCallbackFailure(RuntimeException failure) {
         callbackFailure = failure;
         Thread current = Thread.currentThread();
@@ -1755,135 +1396,6 @@ public final class NativeSpot implements Spot {
           current.getUncaughtExceptionHandler();
         if (uncaught != null)
             uncaught.uncaughtException(current, failure);
-    }
-
-    private Optional<TopicMessage> receiveTopicMessage(boolean nonBlocking) {
-        ensureOpen();
-        while (true) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment ridOut = arena.allocate(ValueLayout.ADDRESS);
-                MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
-                MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-                topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-                Message[] parts = new Message[4];
-                int partCount = 0;
-                RoutingId routingId = null;
-                String topicId = "";
-                while (true) {
-                    Message part = new Message();
-                    boolean success = false;
-                    int rc = RecvResult.INTERNAL_ERROR.value();
-                    try {
-                        rc = Native.spotSubscribePart(handle, ridOut,
-                          topicOut, TOPIC_CAPACITY, topicLenOut,
-                          InternalAccess.messageNativeHandle(part),
-                          hasMoreOut, nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
-                        if (rc == 0) {
-                            success = true;
-                            InternalAccess.messageFinishReceive(part,
-                              hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
-                            if (partCount == 0) {
-                                routingId = readRoutingIdPtr(
-                                  ridOut.get(ValueLayout.ADDRESS, 0));
-                                int topicLength = normalizeTopicLength(topicOut,
-                                  TOPIC_CAPACITY,
-                                  topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                                topicId = decodeTopic(topicOut, topicLength);
-                            }
-                            if (partCount == parts.length) {
-                                parts = java.util.Arrays.copyOf(parts,
-                                  partCount * 2);
-                            }
-                            parts[partCount++] = part;
-                            if (!InternalAccess.messageMore(part)) {
-                                return Optional.of(InternalAccess.topicMessage(
-                                  routingId,
-                                  topicId,
-                                  partCount == parts.length ? parts
-                                    : java.util.Arrays.copyOf(parts, partCount)));
-                            }
-                            continue;
-                        }
-                    } finally {
-                        if (!success) {
-                            try {
-                                part.close();
-                            } catch (RuntimeException ignored) {
-                            }
-                        }
-                    }
-                    RecvResult result;
-                    try {
-                        result = RecvResult.fromValue(rc);
-                    } catch (IllegalArgumentException ex) {
-                        int errno = Native.errno();
-                        if (errno == ERRNO_EINTR)
-                            break;
-                        throw InternalAccess.zlinkExceptionFromLastError(
-                          "zlink_spot_subscribe_part");
-                    }
-                    for (int i = 0; i < partCount; i++) {
-                        try {
-                            parts[i].close();
-                        } catch (RuntimeException ignored) {
-                        }
-                    }
-                    if (nonBlocking && (result == RecvResult.NO_DATA
-                        || result == RecvResult.BUSY)) {
-                        return Optional.empty();
-                    }
-                    throw new ZlinkRecvException(result, Native.errno());
-                }
-            }
-        }
-    }
-
-    private Optional<SubscriptionEvent> receiveSubscriptionEvent(
-      boolean nonBlocking) {
-        ensureOpen();
-        while (true) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-                rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-                  (byte) 0);
-                MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
-                MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
-                MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-                topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-
-                int rc = Native.subscriptionEvent(handle, rid, subscribedOut,
-                  topicOut, topicLenOut,
-                  nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
-                if (rc == 0) {
-                    int topicLength = normalizeTopicLength(topicOut,
-                      TOPIC_CAPACITY, topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                    String topicId = decodeTopic(topicOut, topicLength);
-                    return Optional.of(new SubscriptionEvent(
-                      Optional.ofNullable(readRoutingId(rid)),
-                      topicId, subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
-                }
-                RecvResult result;
-                try {
-                    result = RecvResult.fromValue(rc);
-                } catch (IllegalArgumentException ex) {
-                    int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
-                        continue;
-                    throw InternalAccess.zlinkExceptionFromLastError("zlink_xpub_recv_part");
-                }
-                if (result == RecvResult.NO_DATA && nonBlocking) {
-                    return Optional.empty();
-                }
-                if (result == RecvResult.NO_DATA) {
-                    throw new ZlinkRecvException(result, Native.errno());
-                }
-                if (result == RecvResult.BUSY && nonBlocking) {
-                    return Optional.empty();
-                }
-                throw new ZlinkRecvException(result, Native.errno());
-            }
-        }
     }
 
     private static void closeMsgVector(MemorySegment vec, int count) {
@@ -2054,13 +1566,6 @@ public final class NativeSpot implements Spot {
           nativeMsg, handler, userData, flags, partFlag, timeoutMs);
     }
 
-    private static RoutingId readRoutingIdPtr(MemorySegment nativeRidPtr) {
-        if (nativeRidPtr == null || nativeRidPtr.address() == 0)
-            return null;
-        return readRoutingId(nativeRidPtr.reinterpret(
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()));
-    }
-
     private static String requireChannelName(String channelName) {
         Objects.requireNonNull(channelName, "channelName");
         if (channelName.isEmpty()) {
@@ -2069,28 +1574,12 @@ public final class NativeSpot implements Spot {
         return channelName;
     }
 
-    private static void closeSnapshot(CallbackSubscribeData snapshot) {
-        if (snapshot == null)
-            return;
-        for (Message part : snapshot.parts()) {
-            if (part == null)
-                continue;
-            try {
-                part.close();
-            } catch (RuntimeException ignored) {
-            }
-        }
-    }
-
     private static ExecutorService newCallbackExecutor() {
         return RuntimeResources.daemonSingleThreadExecutor(
             "zlink-spot-callback");
     }
 
-    private record CallbackSubscribeData(RoutingId routingId, String topicId,
-                                         Message[] parts) {}
-
-    private MemorySegment topicCString(String topic) {
+    MemorySegment topicCString(String topic) {
         Objects.requireNonNull(topic, "topic");
         if (topic.isEmpty())
             throw new IllegalArgumentException("topic must not be empty");

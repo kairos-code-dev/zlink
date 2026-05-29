@@ -8,6 +8,9 @@ using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Describes the envelope kind of a received message.
+/// </summary>
 public enum ReceivedMessageType
 {
     Raw = 0,
@@ -16,6 +19,14 @@ public enum ReceivedMessageType
     ErrorReply = 3
 }
 
+/// <summary>
+/// Holds one received message envelope.
+/// </summary>
+/// <remarks>
+/// A received envelope owns its message parts until disposed or until an API
+/// explicitly transfers ownership. Reuse instances created by <c>Create</c>
+/// with receive APIs that accept caller-provided storage.
+/// </remarks>
 public sealed partial class Received : IDisposable
 {
     private ReceivedMetadata? _metadata;
@@ -45,6 +56,9 @@ public sealed partial class Received : IDisposable
         return new Received();
     }
 
+    /// <summary>
+    /// Gets the source routing id when the receive path provides one.
+    /// </summary>
     public RoutingId? RoutingId
     {
         get
@@ -55,6 +69,9 @@ public sealed partial class Received : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets the source spot routing id when the envelope came from a spot route.
+    /// </summary>
     public RoutingId? SpotRid
     {
         get
@@ -63,42 +80,70 @@ public sealed partial class Received : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets the request sequence when this envelope can be replied to.
+    /// </summary>
     public ulong? RequestSeq => _metadata?.RequestSeq;
 
+    /// <summary>
+    /// Gets the envelope kind.
+    /// </summary>
     public ReceivedMessageType MessageType { get; private set; } =
         ReceivedMessageType.Raw;
 
+    /// <summary>
+    /// Gets the message parts owned by this envelope.
+    /// </summary>
+    /// <remarks>
+    /// The returned messages are disposed when this envelope is disposed unless
+    /// ownership has been explicitly transferred by another API.
+    /// </remarks>
     public IReadOnlyList<Message> Parts => PartsCollection;
 
+    /// <summary>
+    /// Gets whether the envelope currently contains exactly one message part.
+    /// </summary>
     public bool IsSinglePart => _singlePart != null || PartsCollection.IsSinglePart;
 
+    /// <summary>
+    /// Returns the first message part without transferring ownership.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Message FirstPart()
     {
         return _singlePart ?? PartsCollection.First();
     }
 
+    /// <summary>
+    /// Returns the only message part or throws when the envelope is multipart.
+    /// </summary>
     public Message SinglePartOrThrow()
     {
         return _singlePart ?? PartsCollection.Single();
     }
 
     /// <summary>
-    /// Start a reply (operation builder).
+    /// Start a reply operation for request envelopes.
     /// </summary>
+    /// <remarks>
+    /// The operation is valid only when <see cref="RequestSeq"/> has a value.
+    /// </remarks>
     public ReplyOperation Reply()
     {
         return new ReceivedReplyOperationImpl(this);
     }
 
     /// <summary>
-    /// Start a send (operation builder).
+    /// Start a send operation addressed to the source route of this envelope.
     /// </summary>
     public SendOperation Send()
     {
         return new ReceivedSendOperationImpl(this);
     }
 
+    /// <summary>
+    /// Disposes the message parts owned by this envelope.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Dispose()
     {

@@ -38,6 +38,8 @@ contract/runtime 소유, 공개 계약 카테고리, 파일 분할 기준, 검�
   옵션 접근자, 버퍼 코덱, 검증 헬퍼.
 - 문서 역할: 이 README는 라이브러리 형태와 리뷰 규칙을 정의한다.
   `Contracts/`가 정확한 공개 동작 표면을 소유한다.
+- API reference 주석: [`api-reference-comments.ko.md`](./api-reference-comments.ko.md)가
+  `Contracts/`의 XML 주석 작성과 리뷰 기준을 정의한다.
 
 런타임 구현 파일은 `Contracts/`나 문서화된 생성 진입점만으로는 이해할 수 없는
 사용자 노출 동작을 정의하지 않는다.

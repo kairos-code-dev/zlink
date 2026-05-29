@@ -4,39 +4,90 @@ using System;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Socket contract for routed message sockets.
+/// </summary>
 public interface IRoutedMessageSocket : ISocket
 {
+    /// <summary>
+    /// Start a multipart send operation addressed to <paramref name="routingId"/>.
+    /// </summary>
     SendOperation Send(RoutingId routingId);
 
+    /// <summary>
+    /// Receive a routed message into caller-provided envelope storage.
+    /// </summary>
+    /// <param name="result">Reusable storage overwritten on success.</param>
+    /// <param name="flags">Receive behavior flags.</param>
+    /// <returns>
+    /// true on success; false when <see cref="RecvFlags.DontWait"/> is set
+    /// and no message is available.
+    /// </returns>
     bool Recv(Received result, RecvFlags flags = RecvFlags.None);
 
+    /// <summary>
+    /// Register a callback invoked when the socket can accept more sends.
+    /// </summary>
     void OnSendReady(Action handler);
 }
 
+/// <summary>
+/// Routed message socket that also supports connect and bind operations.
+/// </summary>
 public interface IConnectableRoutedMessageSocket : IRoutedMessageSocket,
     IConnectableSocket
 {
 }
 
+/// <summary>
+/// ROUTER socket contract.
+/// </summary>
 public interface IRouterSocket : IConnectableRoutedMessageSocket
 {
+    /// <summary>
+    /// Gets ROUTER-specific socket options.
+    /// </summary>
     new RouterSocketOptions Options { get; }
 
+    /// <summary>
+    /// Attach a discovery service used by this socket for route-aware operations.
+    /// </summary>
     void AttachDiscovery(IDiscovery discovery);
 
+    /// <summary>
+    /// Set the routing id used by this ROUTER socket.
+    /// </summary>
     void SetRoutingId(RoutingId routingId);
 
+    /// <summary>
+    /// Get the routing id used by this ROUTER socket.
+    /// </summary>
     RoutingId GetRoutingId();
 
+    /// <summary>
+    /// Start a request operation addressed to a peer routing id.
+    /// </summary>
     RequestOperation Request(RoutingId peerRid);
 
+    /// <summary>
+    /// Start a reply operation addressed to a peer request.
+    /// </summary>
     ReplyOperation Reply(RoutingId rid, ulong requestSeq);
 
+    /// <summary>
+    /// Start a send operation addressed to a spot route.
+    /// </summary>
     SendOperation SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
 
+    /// <summary>
+    /// Start a request operation addressed to a spot route.
+    /// </summary>
     RequestOperation RequestToSpot(RoutingId destNodeRid,
         RoutingId destSpotRid);
 
+    /// <summary>
+    /// Start a reply operation addressed to a spot request.
+    /// </summary>
     ReplyOperation ReplyToSpot(RoutingId destNodeRid,
         RoutingId destSpotRid, ulong requestSeq);
 }

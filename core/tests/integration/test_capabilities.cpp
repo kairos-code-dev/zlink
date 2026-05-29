@@ -37,8 +37,8 @@ void test_capabilities ()
     TEST_ASSERT_TRUE (!zlink_has ("wss"));
 #endif
 
-    // OpenPGM transport sources can be built for internal transport work, but
-    // PGM/EPGM are not part of zlink's public capability surface.
+    // OpenPGM transport is temporarily disabled until PGM/EPGM behavior is
+    // reworked and reintroduced.
     TEST_ASSERT_TRUE (!zlink_has ("pgm"));
     TEST_ASSERT_TRUE (!zlink_has ("epgm"));
 

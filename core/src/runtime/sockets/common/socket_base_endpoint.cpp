@@ -86,8 +86,8 @@ int zlink::socket_base_t::check_protocol (const std::string &protocol_) const
     }
 
 #ifdef ZLINK_HAVE_OPENPGM
-    //  PGM/EPGM transport code is retained for internal transport work, but
-    //  the public socket layer does not expose it as a supported endpoint.
+    //  PGM/EPGM is temporarily disabled until the transport behavior is
+    //  reworked and reintroduced.
     if (protocol_ == protocol_name::pgm || protocol_ == protocol_name::epgm) {
         errno = EPROTONOSUPPORT;
         return -1;

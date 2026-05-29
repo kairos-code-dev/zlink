@@ -27,7 +27,7 @@ static void spot_sub_diag_log (const char *stage_)
     if (!spot_debug::enabled ("ZLINK_SPOT_SUB_DIAG_LOG"))
         return;
 
-    FILE *fp = fopen (spot_debug::sub_diag_log_path, "a");
+    FILE *fp = fopen (spot_debug::sub_diag_log_path (), "a");
     if (!fp)
         return;
 

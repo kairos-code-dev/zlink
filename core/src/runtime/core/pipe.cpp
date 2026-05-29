@@ -96,7 +96,7 @@ void zlink::send_hello_msg (pipe_t *pipe_, const options_t &options_)
     pipe_->flush ();
 }
 
-zlink::pipe_t::stream_packet_state_t::stream_packet_state_t () :
+zlink::pipe_stream_packet_state_t::pipe_stream_packet_state_t () :
     stage (prefix_stage),
     prefix_used (0),
     header_size (0),
@@ -111,7 +111,7 @@ zlink::pipe_t::stream_packet_state_t::stream_packet_state_t () :
     errno_assert (body_rc == 0);
 }
 
-zlink::pipe_t::stream_packet_state_t::~stream_packet_state_t ()
+zlink::pipe_stream_packet_state_t::~pipe_stream_packet_state_t ()
 {
     const int header_rc = header.close ();
     errno_assert (header_rc == 0);
@@ -119,7 +119,7 @@ zlink::pipe_t::stream_packet_state_t::~stream_packet_state_t ()
     errno_assert (body_rc == 0);
 }
 
-void zlink::pipe_t::stream_packet_state_t::reset ()
+void zlink::pipe_stream_packet_state_t::reset ()
 {
     if (header.check ()) {
         const int header_rc = header.close ();

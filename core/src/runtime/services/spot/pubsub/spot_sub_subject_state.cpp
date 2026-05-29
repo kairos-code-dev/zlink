@@ -653,7 +653,7 @@ void spot_sub_t::handle_ready_probe (const std::string &raw_filter_,
                  raw_filter_.c_str (),
                  peer_endpoint_.empty () ? "-" : peer_endpoint_.c_str ());
         fflush (stderr);
-        FILE *fp = fopen (spot_debug::ready_ack_log_path, "a");
+        FILE *fp = fopen (spot_debug::ready_ack_log_path (), "a");
         if (fp) {
             fprintf (fp, "probe raw=%s endpoint=%s\n", raw_filter_.c_str (),
                      peer_endpoint_.empty () ? "-" : peer_endpoint_.c_str ());

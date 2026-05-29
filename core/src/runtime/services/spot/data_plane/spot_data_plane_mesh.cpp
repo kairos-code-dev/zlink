@@ -32,7 +32,7 @@ void spot_ctrl_debugf (const char *fmt_, ...)
     va_list args;
     va_start (args, fmt_);
     debug_vfprintf_with_file ("ZLINK_SPOT_CTRL_DEBUG", "[spot-ctrl] ",
-                              spot_debug::ctrl_log_path, fmt_, args);
+                              spot_debug::ctrl_log_path (), fmt_, args);
     va_end (args);
 }
 

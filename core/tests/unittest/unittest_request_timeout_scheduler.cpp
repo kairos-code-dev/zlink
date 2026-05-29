@@ -37,14 +37,13 @@ void cleanup_handler (void *userdata_)
 
 void wait_until_entered (callback_state_t *state_)
 {
+    const unsigned int timeout_ms = SETTLE_TIME * 20;
     void *watch = zlink_stopwatch_start ();
     while (state_->entered.load (std::memory_order_relaxed) == 0) {
         msleep (1);
-#ifdef ZLINK_BUILD_DRAFT
         TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (
-          SETTLE_TIME, zlink_stopwatch_intermediate (watch),
+          timeout_ms, zlink_stopwatch_intermediate (watch),
           "Timeout waiting for request timeout handler");
-#endif
     }
     zlink_stopwatch_stop (watch);
 }

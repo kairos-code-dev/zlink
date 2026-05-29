@@ -948,8 +948,7 @@ set(core-sources
     src/runtime/core/session_base.cpp
     src/runtime/core/session_base_pipe_io.cpp
     src/runtime/core/address.cpp
-    src/runtime/core/endpoint.cpp
-    src/runtime/core/platform_thread.cpp)
+    src/runtime/core/endpoint.cpp)
 
 set(protocol-sources
     src/runtime/protocol/zmp_decoder.cpp
@@ -1072,7 +1071,8 @@ set(socket-common-sources
     src/runtime/sockets/common/socket_base_msg.cpp
     src/runtime/sockets/common/socket_base_monitor.cpp
     src/runtime/sockets/common/socket_base_routing.cpp
-    src/runtime/sockets/common/socket_runtime.cpp)
+    src/runtime/sockets/common/socket_runtime.cpp
+    src/runtime/sockets/common/socket_submit_retry_fault_injection.cpp)
 
 set(socket-dealer-sources
     src/runtime/sockets/dealer/dealer.cpp)

@@ -3,35 +3,12 @@
 #include "utils/precompiled.hpp"
 
 #include "sockets/common/socket_base.hpp"
+#include "sockets/common/socket_submit_retry_fault_injection.hpp"
 #include "utils/err.hpp"
 #include "utils/likely.hpp"
 
-#ifdef ZLINK_BUILD_TESTS
-#include <atomic>
-#endif
-
 namespace
 {
-#ifdef ZLINK_BUILD_TESTS
-std::atomic<int> g_submit_retry_faults_remaining (0);
-std::atomic<int> g_submit_retry_fault_errno (ENOTCONN);
-
-bool take_submit_retry_fault (int *err_out_)
-{
-    int remaining = g_submit_retry_faults_remaining.load (
-      std::memory_order_relaxed);
-    while (remaining > 0) {
-        if (g_submit_retry_faults_remaining.compare_exchange_weak (
-              remaining, remaining - 1, std::memory_order_relaxed)) {
-            *err_out_ =
-              g_submit_retry_fault_errno.load (std::memory_order_relaxed);
-            return true;
-        }
-    }
-    return false;
-}
-#endif
-
 void prepare_direct_send_message (zlink::msg_t *msg_, int flags_)
 {
     msg_->reset_flags (zlink::msg_t::more);
@@ -69,16 +46,6 @@ int submit_retry_wait_ms (int remaining_ms_)
     return remaining_ms_ < 20 ? remaining_ms_ : 20;
 }
 }
-
-#ifdef ZLINK_BUILD_TESTS
-extern "C" void zlink_test_set_submit_retry_fault (int count_, int err_)
-{
-    g_submit_retry_fault_errno.store (err_ == 0 ? ENOTCONN : err_,
-                                      std::memory_order_relaxed);
-    g_submit_retry_faults_remaining.store (count_ < 0 ? 0 : count_,
-                                           std::memory_order_relaxed);
-}
-#endif
 
 int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 {
@@ -185,7 +152,7 @@ int zlink::socket_base_t::send_direct_with_retry (
     _auto_hwm_send_attempts.fetch_add (1, std::memory_order_relaxed);
 #ifdef ZLINK_BUILD_TESTS
     int injected_errno = 0;
-    if (take_submit_retry_fault (&injected_errno)) {
+    if (zlink::socket_submit_retry_fault::consume (&injected_errno)) {
         rc = -1;
         errno = injected_errno;
     } else
@@ -232,7 +199,7 @@ int zlink::socket_base_t::send_direct_with_retry (
             prepare_direct_send_message (msg_, flags_);
             _auto_hwm_send_attempts.fetch_add (1, std::memory_order_relaxed);
 #ifdef ZLINK_BUILD_TESTS
-            if (take_submit_retry_fault (&injected_errno)) {
+            if (zlink::socket_submit_retry_fault::consume (&injected_errno)) {
                 rc = -1;
                 errno = injected_errno;
             } else

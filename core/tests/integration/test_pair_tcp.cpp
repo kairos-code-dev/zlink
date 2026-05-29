@@ -11,28 +11,14 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
-typedef void (*extra_func_t) (void *socket_);
-
-#ifdef ZLINK_BUILD_DRAFT
-void set_sockopt_fastpath (void *socket)
-{
-    LIBZLINK_UNUSED (socket);
-}
-#endif
-
-void test_pair_tcp (extra_func_t extra_func_ = NULL)
+void test_pair_tcp ()
 {
     void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
-
-    if (extra_func_)
-        extra_func_ (sb);
 
     char my_endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (sb, my_endpoint, sizeof my_endpoint);
 
     void *sc = test_context_socket (ZLINK_SOCKET_PAIR);
-    if (extra_func_)
-        extra_func_ (sc);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, my_endpoint));
 
@@ -77,13 +63,6 @@ void test_pair_tcp_connect_by_name ()
 }
 
 
-#ifdef ZLINK_BUILD_DRAFT
-void test_pair_tcp_fastpath ()
-{
-    test_pair_tcp (set_sockopt_fastpath);
-}
-#endif
-
 #ifdef _WIN32
 void test_io_completion_port ()
 {
@@ -120,9 +99,6 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_pair_tcp_regular);
     RUN_TEST (test_pair_tcp_connect_by_name);
-#ifdef ZLINK_BUILD_DRAFT
-    RUN_TEST (test_pair_tcp_fastpath);
-#endif
 #ifdef _WIN32
     RUN_TEST (test_io_completion_port);
 #endif

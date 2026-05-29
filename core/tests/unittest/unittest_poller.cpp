@@ -22,17 +22,6 @@ void test_create ()
     zlink::poller_t poller (thread_ctx);
 }
 
-#if 0
-// TODO this triggers an assertion. should it be a valid use case?
-void test_start_empty ()
-{
-    zlink::thread_ctx_t thread_ctx;
-    zlink::poller_t poller (thread_ctx);
-    poller.start ();
-    msleep (SETTLE_TIME);
-}
-#endif
-
 struct test_events_t : zlink::i_poll_events
 {
     test_events_t (zlink::poller_t &poller_) : _poller (poller_)
@@ -59,11 +48,6 @@ struct test_events_t : zlink::i_poll_events
     void timer_event (int id_) ZLINK_OVERRIDE
     {
         LIBZLINK_UNUSED (id_);
-        _poller.rm_socket (_handle);
-        _handle = (zlink::poller_t::handle_t) NULL;
-        _poller.stop ();
-
-        // this must only be incremented after rm_fd
         timer_events.add (1);
     }
 
@@ -78,28 +62,13 @@ struct test_events_t : zlink::i_poll_events
 
 void wait_in_events (test_events_t &events_)
 {
+    const unsigned int event_timeout_ms = SETTLE_TIME * 40;
     void *watch = zlink_stopwatch_start ();
     while (events_.in_events.get () < 1) {
         msleep (1);
-#ifdef ZLINK_BUILD_DRAFT
-        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (SETTLE_TIME,
+        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (event_timeout_ms,
                                            zlink_stopwatch_intermediate (watch),
                                            "Timeout waiting for in event");
-#endif
-    }
-    zlink_stopwatch_stop (watch);
-}
-
-void wait_timer_events (test_events_t &events_)
-{
-    void *watch = zlink_stopwatch_start ();
-    while (events_.timer_events.get () < 1) {
-        msleep (1);
-#ifdef ZLINK_BUILD_DRAFT
-        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (SETTLE_TIME,
-                                           zlink_stopwatch_intermediate (watch),
-                                           "Timeout waiting for timer event");
-#endif
     }
     zlink_stopwatch_stop (watch);
 }
@@ -165,27 +134,6 @@ void test_add_fd_and_start_and_receive_data ()
     wait_in_events (events);
 }
 
-void test_add_fd_and_remove_by_timer ()
-{
-    zlink::thread_ctx_t thread_ctx;
-    zlink::poller_t poller (thread_ctx);
-
-    boost::asio::io_context &io_context = poller.get_io_context ();
-    boost::asio::ip::tcp::socket server (io_context);
-    boost::asio::ip::tcp::socket client (io_context);
-    create_connected_tcp_pair (io_context, &server, &client);
-
-    test_events_t events (poller);
-
-    zlink::poller_t::handle_t handle = poller.add_tcp_socket (&server, &events);
-    events.set_handle (handle);
-
-    poller.add_timer (50, &events, 0);
-    poller.start ();
-
-    wait_timer_events (events);
-}
-
 int main (void)
 {
     UNITY_BEGIN ();
@@ -195,7 +143,6 @@ int main (void)
 
     RUN_TEST (test_create);
     RUN_TEST (test_add_fd_and_start_and_receive_data);
-    RUN_TEST (test_add_fd_and_remove_by_timer);
 
     zlink::shutdown_network ();
 

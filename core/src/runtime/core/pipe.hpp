@@ -14,6 +14,7 @@
 #include "core/options.hpp"
 #include "core/endpoint.hpp"
 #include "core/msg.hpp"
+#include "core/pipe_stream_packet_state.hpp"
 #include "utils/fast_mutex.hpp"
 
 namespace zlink
@@ -68,30 +69,7 @@ class pipe_t ZLINK_FINAL : public object_t,
                          const bool conflate_[2]);
 
   public:
-    struct stream_packet_state_t
-    {
-        enum stage_t
-        {
-            prefix_stage,
-            header_stage,
-            body_stage
-        };
-
-        stream_packet_state_t ();
-        ~stream_packet_state_t ();
-
-        void reset ();
-
-        stage_t stage;
-        unsigned char prefix[6];
-        size_t prefix_used;
-        size_t header_size;
-        size_t body_size;
-        size_t header_used;
-        size_t body_used;
-        msg_t header;
-        msg_t body;
-    };
+    typedef pipe_stream_packet_state_t stream_packet_state_t;
 
     //  Specifies the object to send events to.
     void set_event_sink (i_pipe_events *sink_);

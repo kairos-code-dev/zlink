@@ -9,9 +9,29 @@ namespace zlink
 {
 namespace spot_debug
 {
-static const char ready_ack_log_path[] = "/tmp/zlink_spot_ready_ack.log";
-static const char ctrl_log_path[] = "/tmp/zlink_spot_ctrl.log";
-static const char sub_diag_log_path[] = "/tmp/zlink_spot_sub_diag.log";
+inline const char *path_from_env (const char *env_, const char *fallback_)
+{
+    const char *path = std::getenv (env_);
+    return path && path[0] != '\0' ? path : fallback_;
+}
+
+inline const char *ready_ack_log_path ()
+{
+    return path_from_env ("ZLINK_DEBUG_SPOT_READY_ACK_LOG",
+                          "/tmp/zlink_spot_ready_ack.log");
+}
+
+inline const char *ctrl_log_path ()
+{
+    return path_from_env ("ZLINK_SPOT_CTRL_DEBUG_LOG",
+                          "/tmp/zlink_spot_ctrl.log");
+}
+
+inline const char *sub_diag_log_path ()
+{
+    return path_from_env ("ZLINK_SPOT_SUB_DIAG_LOG_PATH",
+                          "/tmp/zlink_spot_sub_diag.log");
+}
 
 inline void route_publish_log_path (int process_id_, char *out_, size_t size_)
 {
@@ -45,7 +65,7 @@ inline void ready_ack (const char *prefix_, const char *fmt_, ...)
     va_list args;
     va_start (args, fmt_);
     debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK", prefix_,
-                              ready_ack_log_path, fmt_, args);
+                              ready_ack_log_path (), fmt_, args);
     va_end (args);
 }
 
@@ -54,7 +74,7 @@ inline void ctrl (const char *fmt_, ...)
     va_list args;
     va_start (args, fmt_);
     debug_vfprintf_with_file ("ZLINK_SPOT_CTRL_DEBUG", "[spot-ctrl] ",
-                              ctrl_log_path, fmt_, args);
+                              ctrl_log_path (), fmt_, args);
     va_end (args);
 }
 }

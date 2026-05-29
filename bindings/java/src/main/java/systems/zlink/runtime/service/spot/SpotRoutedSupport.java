@@ -21,7 +21,7 @@ import systems.zlink.contracts.sockets.SpotDispatchInfo;
 import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
 import systems.zlink.contracts.errors.SubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.InternalAccess;

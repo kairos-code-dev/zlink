@@ -8,7 +8,7 @@ import systems.zlink.contracts.core.Stopwatch;
 import systems.zlink.contracts.core.ZlinkThread;
 import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.eventing.Timer;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.sockets.Socket;

@@ -39,6 +39,7 @@ import systems.zlink.contracts.sockets.SendFlag;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.SendOp;
 import systems.zlink.contracts.sockets.SocketType;
+import systems.zlink.contracts.sockets.SubmitRetryMode;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
 import systems.zlink.contracts.sockets.SpotDispatchInfo;
@@ -802,6 +803,19 @@ public class SocketContractTest {
             assertTrue(stream.options().notifyEnabled());
             assertTrue(hasPublicMethod(PairSocket.class, "options"));
             assertEquals(CommonSocketOptions.class, pair.options().getClass());
+            assertEquals(SubmitRetryMode.OFF, pair.options().submitRetryMode());
+            assertEquals(Duration.ZERO, pair.options().submitRetryTimeout());
+            assertEquals(0, pair.options().submitRetryAttempts());
+            assertDoesNotThrow(() ->
+                pair.options().submitRetryMode(SubmitRetryMode.LOCAL_FAILURE));
+            assertDoesNotThrow(() ->
+                pair.options().submitRetryTimeout(Duration.ofMillis(42)));
+            assertDoesNotThrow(() -> pair.options().submitRetryAttempts(2));
+            assertEquals(SubmitRetryMode.LOCAL_FAILURE,
+                pair.options().submitRetryMode());
+            assertEquals(Duration.ofMillis(42),
+                pair.options().submitRetryTimeout());
+            assertEquals(2, pair.options().submitRetryAttempts());
             assertFalse(hasPublicMethod(CommonSocketOptions.class,
                 "autoHwmMessageUnitBytes"));
         }

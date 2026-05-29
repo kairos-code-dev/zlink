@@ -88,6 +88,7 @@ bindings/java/src/main/java/systems/zlink/
 |   |   +-- discovery/
 |   |   +-- spot/
 |   +-- errors/
++-- internal/
 +-- runtime/
 |   +-- core/
 |   +-- messaging/
@@ -103,6 +104,9 @@ bindings/java/src/main/java/systems/zlink/
 
 `contracts`는 public API map이다. 리뷰어는 이 트리와 public factory만 읽고도
 사용자가 관찰 가능한 모든 동작을 이해할 수 있어야 한다.
+
+`internal`은 non-exported bridge map이다. Contract 소유 상태와 runtime 구현을
+연결해야 하지만 그 hook을 애플리케이션용 API로 만들면 안 되는 코드만 둔다.
 
 `runtime`은 구현 map이다. Java 목표 분류인 `core`, `messaging`, `sockets`,
 `eventing`, `service`, `errors`, 그리고 `.NET`의 `Runtime/Native`에 대응하는
@@ -144,61 +148,62 @@ Runtime 패키지는 동일한 .NET 표준 분류를 Java 패키지 이름으로
 | `systems.zlink.runtime.nativeapi` | JNI/Panama 선언, ABI mirror, 심볼 로딩, native artifact lookup. |
 
 Enum, flag, result 타입은 그 의미를 부여하는 개념과 함께 둔다. `enums`나
-`callbacks` 같은 문법 전용 패키지는 만들지 않는다.
+`callbacks` 같은 문법 전용 public Java package는 만들지 않는다.
+`SocketEnums/` 같은 물리 source 폴더는 Java `package` 선언이 소유 contract
+패키지로 유지될 때에만 파일 분류 그룹으로 허용한다.
 
 ## Proposed Repository Layout
 
 Java 바인딩 저장소 레이아웃의 리뷰 대상은 다음과 같다. `.NET`과 동일한 public
-contract 분류를 유지하면서 Java 패키지 이름과 Java 파일 규칙을 사용한다.
+contract 분류를 유지하면서 Java 패키지 이름과 Java 파일 규칙을 사용한다. 샘플과
+perf 디렉터리는 기존 Gradle 프로젝트 형태를 유지하며, 분류 규칙은 그 안의 source
+package tree에 적용한다.
 
 ```text
 bindings/java/
 +-- build.gradle.kts
 +-- settings.gradle.kts
 +-- gradle/
++-- codec/
+|   +-- zlink-codec-json/
+|   +-- zlink-codec-messagepack/
+|   +-- zlink-codec-protobuf/
+|   +-- zlink-ext-netty/
 +-- native/
+|   +-- linux-x64/
 |   +-- linux-x86_64/
-|   +-- linux-aarch64/
-|   +-- macos-x86_64/
-|   +-- macos-aarch64/
-|   +-- windows-x86_64/
+|   +-- src/
 +-- src/
 |   +-- main/
 |   |   +-- java/
 |   |   |   +-- module-info.java
-|   |   |   +-- systems/
-|   |   |       +-- zlink/
-|   |   |           +-- contracts/
-|   |   |           +-- runtime/
-|   |   +-- resources/
-|   |       +-- native/
-|   |           +-- linux-x86_64/
-|   |           +-- linux-aarch64/
-|   |           +-- macos-x86_64/
-|   |           +-- macos-aarch64/
-|   |           +-- windows-x86_64/
+|   |   |   +-- systems/zlink/contracts/
+|   |   |   +-- systems/zlink/runtime/
+|   |   +-- resources/native/
+|   |       +-- darwin-aarch64/
+|   |       +-- darwin-x86_64/
+|   |       +-- linux-aarch64/
+|   |       +-- linux-x64/
+|   |       +-- linux-x86_64/
+|   |       +-- windows-aarch64/
+|   |       +-- windows-x86_64/
 |   +-- test/
-|       +-- java/
-|           +-- systems/
-|               +-- zlink/
-|                   +-- contract/
-|                   +-- integration/
+|       +-- java/systems/zlink/
+|           +-- contract/
+|           +-- integration/
 +-- tests/
 |   +-- run_tests.sh
-|   +-- contract/
-|   +-- integration/
-|   +-- native-loading/
+|   +-- certs/
 +-- samples/
-|   +-- README.md
-|   +-- basic/
-|   +-- messaging/
-|   +-- service/
-|   +-- spot/
+|   +-- Zlink.Samples/
+|       +-- src/main/java/systems/zlink/samples/
 +-- perf/
-    +-- README.md
-    +-- run_benchmarks_multi.sh
-    +-- scenarios/
+    +-- common/
+    +-- multi/Zlink.BindingBench.Multi/
+    +-- single/Zlink.BindingBench/
+    +-- baseline/
     +-- results/
+    +-- tests/
 ```
 
 `contracts`만 public Java API 트리이다. `runtime`, `native`,
@@ -206,117 +211,92 @@ bindings/java/
 애플리케이션용 테스트는 `systems.zlink.contracts.*`만 import한다.
 `systems.zlink.runtime.*`은 import하지 않는다.
 
+`systems/zlink/internal/`은 contract 소유 public helper와 runtime 구현 사이를
+잇는 non-exported bridge로만 존재할 수 있다. Public contract 패키지가 아니며
+샘플, perf, 애플리케이션은 import하지 않는다.
+
 ### Public Contract Layout
 
 이 트리는 [.NET 바인딩 청사진](../dotnet/README.md)이 정의한 contract 카테고리의
-Java 투영이다. .NET 파일 목록을 그대로 복사하지 않는다. 하나의 .NET contract
-소유자가 여러 public C# 타입을 담을 때 Java는 동일한 그룹 이름의 디렉터리로
-표현할 수 있다. 이때 디렉터리는 파일당 하나의 public Java 타입을 담는다.
+Java 투영이다. 아래 그룹 디렉터리는 Java 트리를 .NET과 유사한 수준으로 읽기
+쉽게 만들기 위한 물리 source-file 그룹이다. 추가 public Java package 이름을
+만들지는 않는다. 예를 들어 `contracts/sockets/SocketEnums/SendResult.java`는
+여전히 `package systems.zlink.contracts.sockets;`를 선언한다. 이렇게 해야 Java
+패키지 관례와 public import 경로를 유지하면서도 요구한 파일 분류를 제공할 수
+있다.
 
 ```text
 systems/zlink/contracts/
 +-- core/
 |   +-- AtomicCounter.java
 |   +-- Context.java
+|   +-- ContextOption.java
 |   +-- ContextOptions.java
 |   +-- RoutingId.java
+|   +-- Stopwatch.java
 |   +-- Zlink.java
-|   +-- ZlinkStopwatch.java
 |   +-- ZlinkThread.java
+|   +-- ZlinkVersion.java
 +-- errors/
 |   +-- Errors/
-|       +-- ZlinkException.java
-|       +-- ZlinkError.java
-|       +-- ZlinkErrorCode.java
-|       +-- SubmitException.java
-|       +-- RecvException.java
-|       +-- RequestException.java
-|       +-- ConfigException.java
+|       +-- *Exception.java
+|       +-- *Result.java
+|       +-- ErrorCode.java
+|       +-- ProtocolError.java
 +-- eventing/
 |   +-- EventEnums/
-|   |   +-- PollEvents.java
-|   |   +-- MonitorEvents.java
-|   |   +-- TimerState.java
-|   +-- Monitor.java
-|   +-- PollEvent.java
+|   +-- EventHandlers/
+|   +-- EventModels/
+|   +-- MonitorSocket.java
 |   +-- Poller.java
 |   +-- Timer.java
-|   +-- ZlinkPoll.java
 +-- messaging/
 |   +-- Message.java
-|   +-- MessageOperations/
-|   |   +-- MessageSendOperation.java
-|   |   +-- MessageRequestOperation.java
-|   +-- OperationContracts/
-|   |   +-- SendOperation.java
-|   |   +-- RequestOperation.java
-|   |   +-- ReplyOperation.java
-|   |   +-- SubmitResult.java
 |   +-- Received.java
+|   +-- SubscriptionEntry.java
 |   +-- SubscriptionEvent.java
 |   +-- TopicMessage.java
 +-- service/
 |   +-- discovery/
 |   |   +-- Discovery.java
+|   |   +-- SpotRoute.java
 |   +-- registry/
 |   |   +-- Registry.java
-|   |   +-- RegistryModels/
-|   |   |   +-- RegistryEntry.java
-|   |   |   +-- RegistrySnapshot.java
 |   |   +-- RegistryQueryClient.java
+|   |   +-- RegistryEnums/
+|   |   +-- RegistryModels/
 |   +-- spot/
 |       +-- Actor.java
-|       +-- ActorJoinOperations/
-|       |   +-- ActorJoinOperation.java
-|       |   +-- ActorLeaveOperation.java
-|       +-- ActorManagementOperations/
-|       |   +-- ActorCreateOperation.java
-|       |   +-- ActorLookupOperation.java
-|       |   +-- ActorLocationOperation.java
-|       +-- ServiceEnums/
-|       |   +-- ServiceState.java
-|       |   +-- DispatchResult.java
 |       +-- Spot.java
 |       +-- SpotDispatchInfo.java
 |       +-- SpotNode.java
+|       +-- ActorJoinOperations/
+|       +-- ActorManagementOperations/
+|       +-- ActorModels/
+|       +-- ServiceEnums/
 |       +-- SpotNodeModels/
-|       |   +-- SpotNodeInfo.java
-|       |   +-- SpotLookupResult.java
+|       +-- SpotOperations/
 |       +-- TopologyEnums/
-|           +-- TopologyRole.java
-|           +-- TopologyState.java
 +-- sockets/
     +-- Socket.java
     +-- StreamSocket.java
     +-- MessageSocketContracts/
-    |   +-- MessageSocket.java
-    |   +-- PairSocket.java
-    |   +-- DealerSocket.java
     +-- PubSubSocketContracts/
-    |   +-- PubSocket.java
-    |   +-- SubSocket.java
-    |   +-- XPubSocket.java
-    |   +-- XSubSocket.java
     +-- RoutedSocketContracts/
-    |   +-- RoutedSocket.java
-    |   +-- RouterSocket.java
-    |   +-- RoutedSendOperation.java
-    |   +-- RoutedRequestOperation.java
-    |   +-- RoutedReplyOperation.java
     +-- SocketEnums/
-    |   +-- SocketType.java
-    |   +-- SendFlags.java
-    |   +-- RecvFlags.java
-    |   +-- BindResult.java
+    +-- SocketHandlers/
+    +-- SocketOperations/
     +-- SocketOptionFacades/
-        +-- SocketOptions.java
-        +-- SendOptions.java
-        +-- RecvOptions.java
-        +-- LingerOptions.java
 ```
 
-그룹 디렉터리는 임의의 하위 패키지가 아니다.
-[.NET 바인딩 청사진](../dotnet/README.md)이 정의한 contract 그룹의 Java 투영이다.
+`systems/zlink/internal/ContractAccess.java` 같은 internal bridge 파일은
+export되지 않고 애플리케이션용 API가 아니므로 의도적으로 `contracts/` 트리 밖에
+둔다.
+
+그룹 디렉터리는 임의의 기능 묶음이 아니다.
+[.NET 바인딩 청사진](../dotnet/README.md)이 정의한 contract 그룹의 Java source
+file 그룹이다. 새 public contract 파일은 그 개념을 소유하는 가장 작은 그룹에
+둔다.
 
 Java public 이름은 Java 이름이어야 한다. C#의 `I` 접두사는 복사하지 않는다:
 `.NET`의 `ISocket.cs`는 Java의 `Socket.java`에, `IStreamSocket.cs`는 Java의
@@ -325,21 +305,26 @@ Java public 이름은 Java 이름이어야 한다. C#의 `I` 접두사는 복사
 ### Runtime Layout
 
 Runtime 트리는 public contract 트리를 비추되, 구현 소유자를 찾는 데 도움이 될
-때에만 그렇게 한다. Public API가 아니며 JPMS로 export하지 않는다.
+때에만 그렇게 한다. Public API가 아니며 JPMS로 export하지 않는다. Runtime 파일은
+각 runtime 카테고리에 맞는 일반 Java package 선언을 사용한다.
 
 ```text
 systems/zlink/runtime/
 +-- core/
+|   +-- NativeAtomicCounter.java
 |   +-- NativeContext.java
-|   +-- NativeZlink.java
-|   +-- ContextOptionApplier.java
+|   +-- NativeCoreResources.java
+|   +-- NativeCoreRuntime.java
+|   +-- NativeRuntimeFactory.java
+|   +-- NativeStopwatch.java
+|   +-- NativeZlinkThread.java
 +-- messaging/
-|   +-- NativeMessageStorage.java
-|   +-- MessageMaterializer.java
-|   +-- MultipartCursor.java
-|   +-- RequestProgressPump.java
+|   +-- NativeMessageRuntime.java
+|   +-- ReceivedPartCursor.java
 +-- sockets/
-|   +-- NativeSocket.java
+|   +-- NativeSocketBase.java
+|   +-- NativeSocketRuntime.java
+|   +-- NativeSockets.java
 |   +-- NativePairSocket.java
 |   +-- NativeDealerSocket.java
 |   +-- NativeRouterSocket.java
@@ -348,33 +333,39 @@ systems/zlink/runtime/
 |   +-- NativeXPubSocket.java
 |   +-- NativeXSubSocket.java
 |   +-- NativeStreamSocket.java
-|   +-- SocketKernels.java
-|   +-- RouterReceiveRuntime.java
-|   +-- RouterRequestRuntime.java
+|   +-- NativeRouterReceiveSupport.java
+|   +-- NativeRouterRequestSupport.java
+|   +-- NativeRouterSpotSupport.java
+|   +-- NativeStreamActorSupport.java
+|   +-- SocketOperations.java
 +-- eventing/
-|   +-- NativeMonitor.java
+|   +-- NativeMonitorSocket.java
+|   +-- NativePollEvents.java
 |   +-- NativePoller.java
 |   +-- NativeTimer.java
-|   +-- PollEventDecoder.java
 +-- service/
 |   +-- discovery/
 |   |   +-- NativeDiscovery.java
 |   +-- registry/
 |   |   +-- NativeRegistry.java
-|   |   +-- RegistryModelDecoder.java
+|   |   +-- NativeRegistryCodecs.java
+|   |   +-- NativeRegistryQueryClient.java
 |   +-- spot/
-|       +-- NativeActorRuntime.java
+|       +-- NativeActor.java
 |       +-- NativeSpot.java
 |       +-- NativeSpotNode.java
-|       +-- SpotDispatchRuntime.java
+|       +-- SpotOptions.java
+|       +-- SpotRoutedSupport.java
 +-- errors/
-|   +-- NativeErrorMapper.java
-|   +-- NativeResult.java
+|   +-- NativeErrorRuntime.java
 +-- nativeapi/
     +-- Native.java
     +-- NativeLayouts.java
     +-- NativeMsg.java
-    +-- NativeLibraryLoader.java
+    +-- NativeHelpers.java
+    +-- NativeSymbols.java
+    +-- LibraryLoader.java
+    +-- InternalAccess.java
 ```
 
 Runtime support 파일은 목표 runtime 카테고리 안에서 실제 구현 복잡성을 감출

@@ -7,7 +7,7 @@ import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.PollSourceKind;
 import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.eventing.Timer;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.service.spot.Spot;

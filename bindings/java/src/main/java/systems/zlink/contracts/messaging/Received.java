@@ -12,7 +12,7 @@ import systems.zlink.contracts.service.spot.SendOp;
 import systems.zlink.contracts.service.spot.SendSubmitOp;
 import systems.zlink.contracts.errors.SubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;

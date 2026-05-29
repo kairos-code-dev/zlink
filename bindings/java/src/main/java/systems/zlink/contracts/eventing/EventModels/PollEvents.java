@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.eventing;
 
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import java.util.Objects;
 
 public final class PollEvents {

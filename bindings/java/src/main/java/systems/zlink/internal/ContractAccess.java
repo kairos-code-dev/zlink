@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.contracts.internal;
+package systems.zlink.internal;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.ContextOption;

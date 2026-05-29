@@ -4,7 +4,7 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.service.spot.ActorPart;
 import systems.zlink.contracts.eventing.Timer;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;

@@ -5,7 +5,7 @@ package systems.zlink.contracts.errors;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import java.util.Locale;
 
 public abstract class ZlinkException extends RuntimeException {

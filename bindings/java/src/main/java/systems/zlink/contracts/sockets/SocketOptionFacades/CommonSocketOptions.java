@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 
 import java.time.Duration;
 import java.util.Objects;
@@ -314,6 +314,33 @@ public class CommonSocketOptions {
     public void reconnectIntervalMax(Duration value) {
         Objects.requireNonNull(value, "value");
         ContractAccess.socketSetOption(socket, SocketOptions.RECONNECT_IVL_MAX, toIntMillis(value, "value"));
+    }
+
+    public SubmitRetryMode submitRetryMode() {
+        return SubmitRetryMode.fromValue(
+            ContractAccess.socketGetOption(socket, SocketOptions.SUBMIT_RETRY_MODE));
+    }
+
+    public void submitRetryMode(SubmitRetryMode value) {
+        Objects.requireNonNull(value, "value");
+        ContractAccess.socketSetOption(socket, SocketOptions.SUBMIT_RETRY_MODE, value.value());
+    }
+
+    public Duration submitRetryTimeout() {
+        return Duration.ofMillis(ContractAccess.socketGetOption(socket, SocketOptions.SUBMIT_RETRY_TIMEOUT));
+    }
+
+    public void submitRetryTimeout(Duration value) {
+        Objects.requireNonNull(value, "value");
+        ContractAccess.socketSetOption(socket, SocketOptions.SUBMIT_RETRY_TIMEOUT, toIntMillis(value, "value"));
+    }
+
+    public int submitRetryAttempts() {
+        return ContractAccess.socketGetOption(socket, SocketOptions.SUBMIT_RETRY_ATTEMPTS);
+    }
+
+    public void submitRetryAttempts(int value) {
+        ContractAccess.socketSetOption(socket, SocketOptions.SUBMIT_RETRY_ATTEMPTS, value);
     }
 
     int fd() {

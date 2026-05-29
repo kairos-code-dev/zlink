@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 
 public final class SubSocketOptions extends CommonSocketOptions {
     public SubSocketOptions(Socket socket) {

@@ -2,7 +2,7 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import java.time.Duration;
 import java.util.Objects;
 

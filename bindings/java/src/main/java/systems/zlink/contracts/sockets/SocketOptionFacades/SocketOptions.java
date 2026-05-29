@@ -98,6 +98,15 @@ public final class SocketOptions {
     public static final SocketOptionKey<Integer> ROUTE_VALUE_MAX_SIZE =
       SocketOptionKey.int32("ROUTE_VALUE_MAX_SIZE",
         SocketOption.ROUTE_VALUE_MAX_SIZE, true, true);
+    public static final SocketOptionKey<Integer> SUBMIT_RETRY_MODE =
+      SocketOptionKey.int32("SUBMIT_RETRY_MODE",
+        SocketOption.SUBMIT_RETRY_MODE, true, true);
+    public static final SocketOptionKey<Integer> SUBMIT_RETRY_TIMEOUT =
+      SocketOptionKey.int32("SUBMIT_RETRY_TIMEOUT",
+        SocketOption.SUBMIT_RETRY_TIMEOUT, true, true);
+    public static final SocketOptionKey<Integer> SUBMIT_RETRY_ATTEMPTS =
+      SocketOptionKey.int32("SUBMIT_RETRY_ATTEMPTS",
+        SocketOption.SUBMIT_RETRY_ATTEMPTS, true, true);
     public static final SocketOptionKey<Integer> XPUB_VERBOSE =
       SocketOptionKey.int32("XPUB_VERBOSE", SocketOption.XPUB_VERBOSE,
         true, true);
@@ -228,7 +237,8 @@ public final class SocketOptions {
         LAST_ENDPOINT, ROUTER_MANDATORY, TCP_KEEPALIVE,
         TCP_KEEPALIVE_CNT, TCP_KEEPALIVE_IDLE, TCP_KEEPALIVE_INTVL,
         TCP_NODELAY, IMMEDIATE, XPUB_VERBOSE, IPV6, PROBE_ROUTER,
-        CONFLATE, RID_DUPLICATE_POLICY, ROUTE_VALUE_MAX_SIZE, TOS,
+        CONFLATE, RID_DUPLICATE_POLICY, ROUTE_VALUE_MAX_SIZE,
+        SUBMIT_RETRY_MODE, SUBMIT_RETRY_TIMEOUT, SUBMIT_RETRY_ATTEMPTS, TOS,
         CONNECT_ROUTING_ID, CONNECT_ROUTING_ID_BYTES,
         HANDSHAKE_IVL, XPUB_NODROP, BLOCKY, XPUB_MANUAL,
         XPUB_WELCOME_MSG, XPUB_WELCOME_MSG_BYTES,

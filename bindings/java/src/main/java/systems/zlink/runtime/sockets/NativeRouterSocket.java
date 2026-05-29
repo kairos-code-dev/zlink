@@ -12,7 +12,7 @@ import systems.zlink.contracts.service.spot.ReplyOp;
 import systems.zlink.contracts.service.spot.RequestOp;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOp;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.internal.ContractAccess;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -91,6 +91,7 @@ bindings/java/src/main/java/systems/zlink/
 |   |   +-- discovery/
 |   |   +-- spot/
 |   +-- errors/
++-- internal/
 +-- runtime/
 |   +-- core/
 |   +-- messaging/
@@ -106,6 +107,10 @@ bindings/java/src/main/java/systems/zlink/
 
 `contracts` is the public API map. A reviewer should be able to understand all
 user-observable behavior by reading this tree and the public factories.
+
+`internal` is the non-exported bridge map. It exists only for code that must
+connect contract-owned state to runtime implementations without making those
+hooks application-facing API.
 
 `runtime` is the implementation map. It mirrors the Java target classification:
 `core`, `messaging`, `sockets`, `eventing`, `service`, `errors`, and Java's
@@ -149,62 +154,63 @@ names:
 | `systems.zlink.runtime.nativeapi` | JNI/Panama declarations, ABI mirrors, symbol loading, and native artifact lookup. |
 
 Enum, flag, and result types live with the concept that gives them meaning.
-Do not create syntax-only packages such as `enums` or `callbacks`.
+Do not create syntax-only public Java packages such as `enums` or `callbacks`.
+Physical source folders such as `SocketEnums/` are allowed only as file
+classification groups when the Java `package` declaration remains the owning
+contract package.
 
 ## Proposed Repository Layout
 
 This is the review target for the Java binding repository layout. It keeps the
 same public contract classification as `.NET`, while using Java package names
-and Java file rules.
+and Java file rules. The sample and perf directories keep their Gradle project
+shape; the classification rule applies to the source package trees inside them.
 
 ```text
 bindings/java/
 +-- build.gradle.kts
 +-- settings.gradle.kts
 +-- gradle/
++-- codec/
+|   +-- zlink-codec-json/
+|   +-- zlink-codec-messagepack/
+|   +-- zlink-codec-protobuf/
+|   +-- zlink-ext-netty/
 +-- native/
+|   +-- linux-x64/
 |   +-- linux-x86_64/
-|   +-- linux-aarch64/
-|   +-- macos-x86_64/
-|   +-- macos-aarch64/
-|   +-- windows-x86_64/
+|   +-- src/
 +-- src/
 |   +-- main/
 |   |   +-- java/
 |   |   |   +-- module-info.java
-|   |   |   +-- systems/
-|   |   |       +-- zlink/
-|   |   |           +-- contracts/
-|   |   |           +-- runtime/
-|   |   +-- resources/
-|   |       +-- native/
-|   |           +-- linux-x86_64/
-|   |           +-- linux-aarch64/
-|   |           +-- macos-x86_64/
-|   |           +-- macos-aarch64/
-|   |           +-- windows-x86_64/
+|   |   |   +-- systems/zlink/contracts/
+|   |   |   +-- systems/zlink/runtime/
+|   |   +-- resources/native/
+|   |       +-- darwin-aarch64/
+|   |       +-- darwin-x86_64/
+|   |       +-- linux-aarch64/
+|   |       +-- linux-x64/
+|   |       +-- linux-x86_64/
+|   |       +-- windows-aarch64/
+|   |       +-- windows-x86_64/
 |   +-- test/
-|       +-- java/
-|           +-- systems/
-|               +-- zlink/
-|                   +-- contract/
-|                   +-- integration/
+|       +-- java/systems/zlink/
+|           +-- contract/
+|           +-- integration/
 +-- tests/
 |   +-- run_tests.sh
-|   +-- contract/
-|   +-- integration/
-|   +-- native-loading/
+|   +-- certs/
 +-- samples/
-|   +-- README.md
-|   +-- basic/
-|   +-- messaging/
-|   +-- service/
-|   +-- spot/
+|   +-- Zlink.Samples/
+|       +-- src/main/java/systems/zlink/samples/
 +-- perf/
-    +-- README.md
-    +-- run_benchmarks_multi.sh
-    +-- scenarios/
+    +-- common/
+    +-- multi/Zlink.BindingBench.Multi/
+    +-- single/Zlink.BindingBench/
+    +-- baseline/
     +-- results/
+    +-- tests/
 ```
 
 `contracts` is the only public Java API tree. `runtime`, `native`, and
@@ -212,119 +218,93 @@ bindings/java/
 perf, and application-facing tests must import `systems.zlink.contracts.*`,
 not `systems.zlink.runtime.*`.
 
+`systems/zlink/internal/` may exist only as a non-exported bridge between
+contract-owned public helpers and runtime implementations. It is not a public
+contract package and must not be imported by samples, perf, or applications.
+
 ### Public Contract Layout
 
 This tree is the Java projection of the contract categories defined by the
-[.NET binding blueprint](../dotnet/README.md). Do not copy the .NET file list
-here. When one .NET contract owner contains several public C# types, Java may
-represent that owner as a directory with the same group name. The directory
-then contains one public Java type per file.
+[.NET binding blueprint](../dotnet/README.md). The group directories below are
+physical source-file groups used to keep the Java tree readable at a .NET-like
+level. They do not create additional public Java package names. For example,
+`contracts/sockets/SocketEnums/SendResult.java` still declares
+`package systems.zlink.contracts.sockets;`. This preserves Java package
+conventions and public import paths while still giving reviewers the requested
+file classification.
 
 ```text
 systems/zlink/contracts/
 +-- core/
 |   +-- AtomicCounter.java
 |   +-- Context.java
+|   +-- ContextOption.java
 |   +-- ContextOptions.java
 |   +-- RoutingId.java
+|   +-- Stopwatch.java
 |   +-- Zlink.java
-|   +-- ZlinkStopwatch.java
 |   +-- ZlinkThread.java
+|   +-- ZlinkVersion.java
 +-- errors/
 |   +-- Errors/
-|       +-- ZlinkException.java
-|       +-- ZlinkError.java
-|       +-- ZlinkErrorCode.java
-|       +-- SubmitException.java
-|       +-- RecvException.java
-|       +-- RequestException.java
-|       +-- ConfigException.java
+|       +-- *Exception.java
+|       +-- *Result.java
+|       +-- ErrorCode.java
+|       +-- ProtocolError.java
 +-- eventing/
 |   +-- EventEnums/
-|   |   +-- PollEvents.java
-|   |   +-- MonitorEvents.java
-|   |   +-- TimerState.java
-|   +-- Monitor.java
-|   +-- PollEvent.java
+|   +-- EventHandlers/
+|   +-- EventModels/
+|   +-- MonitorSocket.java
 |   +-- Poller.java
 |   +-- Timer.java
-|   +-- ZlinkPoll.java
 +-- messaging/
 |   +-- Message.java
-|   +-- MessageOperations/
-|   |   +-- MessageSendOperation.java
-|   |   +-- MessageRequestOperation.java
-|   +-- OperationContracts/
-|   |   +-- SendOperation.java
-|   |   +-- RequestOperation.java
-|   |   +-- ReplyOperation.java
-|   |   +-- SubmitResult.java
 |   +-- Received.java
+|   +-- SubscriptionEntry.java
 |   +-- SubscriptionEvent.java
 |   +-- TopicMessage.java
 +-- service/
 |   +-- discovery/
 |   |   +-- Discovery.java
+|   |   +-- SpotRoute.java
 |   +-- registry/
 |   |   +-- Registry.java
-|   |   +-- RegistryModels/
-|   |   |   +-- RegistryEntry.java
-|   |   |   +-- RegistrySnapshot.java
 |   |   +-- RegistryQueryClient.java
+|   |   +-- RegistryEnums/
+|   |   +-- RegistryModels/
 |   +-- spot/
 |       +-- Actor.java
-|       +-- ActorJoinOperations/
-|       |   +-- ActorJoinOperation.java
-|       |   +-- ActorLeaveOperation.java
-|       +-- ActorManagementOperations/
-|       |   +-- ActorCreateOperation.java
-|       |   +-- ActorLookupOperation.java
-|       |   +-- ActorLocationOperation.java
-|       +-- ServiceEnums/
-|       |   +-- ServiceState.java
-|       |   +-- DispatchResult.java
 |       +-- Spot.java
 |       +-- SpotDispatchInfo.java
 |       +-- SpotNode.java
+|       +-- ActorJoinOperations/
+|       +-- ActorManagementOperations/
+|       +-- ActorModels/
+|       +-- ServiceEnums/
 |       +-- SpotNodeModels/
-|       |   +-- SpotNodeInfo.java
-|       |   +-- SpotLookupResult.java
+|       +-- SpotOperations/
 |       +-- TopologyEnums/
-|           +-- TopologyRole.java
-|           +-- TopologyState.java
 +-- sockets/
     +-- Socket.java
     +-- StreamSocket.java
     +-- MessageSocketContracts/
-    |   +-- MessageSocket.java
-    |   +-- PairSocket.java
-    |   +-- DealerSocket.java
     +-- PubSubSocketContracts/
-    |   +-- PubSocket.java
-    |   +-- SubSocket.java
-    |   +-- XPubSocket.java
-    |   +-- XSubSocket.java
     +-- RoutedSocketContracts/
-    |   +-- RoutedSocket.java
-    |   +-- RouterSocket.java
-    |   +-- RoutedSendOperation.java
-    |   +-- RoutedRequestOperation.java
-    |   +-- RoutedReplyOperation.java
     +-- SocketEnums/
-    |   +-- SocketType.java
-    |   +-- SendFlags.java
-    |   +-- RecvFlags.java
-    |   +-- BindResult.java
+    +-- SocketHandlers/
+    +-- SocketOperations/
     +-- SocketOptionFacades/
-        +-- SocketOptions.java
-        +-- SendOptions.java
-        +-- RecvOptions.java
-        +-- LingerOptions.java
 ```
 
-The group directories are not arbitrary subpackages. They are Java projections
-of the contract groups defined by the
-[.NET binding blueprint](../dotnet/README.md).
+Internal bridge files such as `systems/zlink/internal/ContractAccess.java` are
+intentionally outside the `contracts/` tree because they are not exported and
+are not application-facing API.
+
+The group directories are not arbitrary feature buckets. They are Java source
+file groups for the contract groups defined by the
+[.NET binding blueprint](../dotnet/README.md). A new public contract file must
+go into the smallest group that owns its concept.
 
 Java public names should still be Java names. The C# `I` prefix is not copied:
 `.NET` `ISocket.cs` maps to Java `Socket.java`, and `IStreamSocket.cs` maps to
@@ -332,23 +312,28 @@ Java `StreamSocket.java`.
 
 ### Runtime Layout
 
-The runtime tree mirrors the public contract tree only where that helps a
-reader find the implementation owner. It is not public API, and JPMS must not
-export it.
+The runtime tree mirrors the public contract tree where that helps a reader
+find the implementation owner. It is not public API, and JPMS must not export
+it. Runtime files use normal Java package declarations that match their runtime
+category.
 
 ```text
 systems/zlink/runtime/
 +-- core/
+|   +-- NativeAtomicCounter.java
 |   +-- NativeContext.java
-|   +-- NativeZlink.java
-|   +-- ContextOptionApplier.java
+|   +-- NativeCoreResources.java
+|   +-- NativeCoreRuntime.java
+|   +-- NativeRuntimeFactory.java
+|   +-- NativeStopwatch.java
+|   +-- NativeZlinkThread.java
 +-- messaging/
-|   +-- NativeMessageStorage.java
-|   +-- MessageMaterializer.java
-|   +-- MultipartCursor.java
-|   +-- RequestProgressPump.java
+|   +-- NativeMessageRuntime.java
+|   +-- ReceivedPartCursor.java
 +-- sockets/
-|   +-- NativeSocket.java
+|   +-- NativeSocketBase.java
+|   +-- NativeSocketRuntime.java
+|   +-- NativeSockets.java
 |   +-- NativePairSocket.java
 |   +-- NativeDealerSocket.java
 |   +-- NativeRouterSocket.java
@@ -357,33 +342,39 @@ systems/zlink/runtime/
 |   +-- NativeXPubSocket.java
 |   +-- NativeXSubSocket.java
 |   +-- NativeStreamSocket.java
-|   +-- SocketKernels.java
-|   +-- RouterReceiveRuntime.java
-|   +-- RouterRequestRuntime.java
+|   +-- NativeRouterReceiveSupport.java
+|   +-- NativeRouterRequestSupport.java
+|   +-- NativeRouterSpotSupport.java
+|   +-- NativeStreamActorSupport.java
+|   +-- SocketOperations.java
 +-- eventing/
-|   +-- NativeMonitor.java
+|   +-- NativeMonitorSocket.java
+|   +-- NativePollEvents.java
 |   +-- NativePoller.java
 |   +-- NativeTimer.java
-|   +-- PollEventDecoder.java
 +-- service/
 |   +-- discovery/
 |   |   +-- NativeDiscovery.java
 |   +-- registry/
 |   |   +-- NativeRegistry.java
-|   |   +-- RegistryModelDecoder.java
+|   |   +-- NativeRegistryCodecs.java
+|   |   +-- NativeRegistryQueryClient.java
 |   +-- spot/
-|       +-- NativeActorRuntime.java
+|       +-- NativeActor.java
 |       +-- NativeSpot.java
 |       +-- NativeSpotNode.java
-|       +-- SpotDispatchRuntime.java
+|       +-- SpotOptions.java
+|       +-- SpotRoutedSupport.java
 +-- errors/
-|   +-- NativeErrorMapper.java
-|   +-- NativeResult.java
+|   +-- NativeErrorRuntime.java
 +-- nativeapi/
     +-- Native.java
     +-- NativeLayouts.java
     +-- NativeMsg.java
-    +-- NativeLibraryLoader.java
+    +-- NativeHelpers.java
+    +-- NativeSymbols.java
+    +-- LibraryLoader.java
+    +-- InternalAccess.java
 ```
 
 Runtime support files are allowed only when they hide real implementation

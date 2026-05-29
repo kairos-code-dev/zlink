@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/Contracts/Service/spot.hpp>
+#include <Runtime/Messaging/received_access.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
 
@@ -104,15 +105,12 @@ bool send_submit_operation_t::submit () &&
         case detail::spot_operation_kind_t::raw_router_send_spot:
             return detail::submit_raw_send_state (state);
         case detail::spot_operation_kind_t::received_send: {
-            if (!state.received || !state.received->has_send_fn ())
+            if (!state.received
+                || !zlink::detail::received_access_t::has_send_fn (
+                  *state.received))
                 throw submit_error_t (submit_result_t::invalid_argument,
                                       EINVAL);
-            if (detail::send_part_count (state) == 1u
-                && state.received->_runtime
-                && state.received->_runtime->_send_context_handle
-                && state.received->_runtime->_send_context_kind
-                     != received_t::send_context_kind_t::none
-                && state.received->_routing_id.has_value ()) {
+            if (detail::send_part_count (state) == 1u) {
                 message_t &part = detail::send_single_part (state);
                 if (!part.valid ()) {
                     detail::restore_single_send_part_to_source (state);
@@ -120,47 +118,23 @@ bool send_submit_operation_t::submit () &&
                                           EINVAL);
                 }
 
-                zlink_submit_result_t direct_rc = ZLINK_SUBMIT_INVALID_ARGUMENT;
-                void *send_context_handle = reinterpret_cast<void *> (
-                  state.received->_runtime->_send_context_handle);
-                if (state.received->_runtime->_send_context_kind
-                    == received_t::send_context_kind_t::socket_rid) {
-                    direct_rc =
-                      zlink_send_part_rid (send_context_handle,
-                                           zlink::detail::routing_id_native (
-                                             *state.received->_routing_id),
-                                           zlink::detail::native_handle (part),
-                                           static_cast<zlink_send_flags_t> (
-                                             static_cast<int> (state.flags)),
-                                           ZLINK_PART_FINAL);
-                } else if (state.received->_spot_rid.has_value ()) {
-                    direct_rc = zlink_router_send_spot_part (
-                      send_context_handle,
-                      zlink::detail::routing_id_native (
-                        *state.received->_routing_id),
-                      zlink::detail::routing_id_native (
-                        *state.received->_spot_rid),
-                      zlink::detail::native_handle (part),
-                      static_cast<zlink_send_flags_t> (
-                        static_cast<int> (state.flags)),
-                      ZLINK_PART_FINAL);
+                submit_result_t result = submit_result_t::invalid_argument;
+                int result_errno = EINVAL;
+                if (zlink::detail::received_access_t::submit_direct_send (
+                      *state.received, part, state.flags, result,
+                      result_errno)) {
+                    if (result == submit_result_t::ok)
+                        return true;
+                    detail::restore_single_send_part_to_source (state);
+                    if (state.flags == send_flags_t::dontwait
+                        && result == submit_result_t::backpressured)
+                        return false;
+                    throw submit_error_t (result, result_errno);
                 }
-
-                const submit_result_t result =
-                  static_cast<submit_result_t> (direct_rc);
-                if (result == submit_result_t::ok) {
-                    zlink::detail::mark_sent (part);
-                    return true;
-                }
-                detail::restore_single_send_part_to_source (state);
-                if (state.flags == send_flags_t::dontwait
-                    && result == submit_result_t::backpressured)
-                    return false;
-                throw submit_error_t (result, zlink_errno ());
             }
             std::vector<message_t> parts = detail::take_send_parts (state);
-            const bool sent =
-              state.received->invoke_send_fn (parts, state.flags);
+            const bool sent = zlink::detail::received_access_t::invoke_send_fn (
+              *state.received, parts, state.flags);
             if (!sent)
                 detail::restore_single_send_part_to_source (state, parts);
             return sent;

@@ -3,6 +3,7 @@
 #define ZLINK_CPP_RUNTIME_CORE_OPERATION_DETAIL_HPP_INCLUDED
 
 #include <zlink/Contracts/Messaging/received.hpp>
+#include "../Messaging/received_access.hpp"
 #include "routing_id_access.hpp"
 #include "../Native/native_parts.hpp"
 
@@ -14,7 +15,7 @@ namespace zlink
 namespace detail
 {
 
-inline std::function<void()> make_socket_request_progress (void *socket_)
+inline std::function<void ()> make_socket_request_progress (void *socket_)
 {
     return zlink::detail::make_request_progress_callback (socket_);
 }
@@ -33,10 +34,10 @@ inline received_t make_received (
   bool has_request_seq_,
   zlink_msg_t *parts_,
   size_t part_count_,
-  std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
-    std::function<void(std::vector<message_t> &, send_flags_t)> ())
+  std::function<void (std::vector<message_t> &, send_flags_t)> reply_fn_ =
+    std::function<void (std::vector<message_t> &, send_flags_t)> ())
 {
-    return received_t (
+    return zlink::detail::received_access_t::make (
       (routing_id_ && routing_id_->size > 0)
         ? std::optional<routing_id_t> (
             zlink::detail::native_routing_id (*routing_id_))

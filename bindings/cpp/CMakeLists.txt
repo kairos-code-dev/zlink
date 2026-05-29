@@ -358,6 +358,52 @@ if(ZLINK_CPP_BUILD_TESTS)
       "tests/contract/${test_source}"
     )
   endforeach()
+
+  find_package(nlohmann_json QUIET)
+  if(nlohmann_json_FOUND)
+    add_cpp_contract_test(
+      test_cpp_contract_codec_json
+      tests/contract/test_cpp_contract_codec_json.cpp
+    )
+    target_include_directories(test_cpp_contract_codec_json PRIVATE
+      ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-json/include
+    )
+    target_link_libraries(test_cpp_contract_codec_json PRIVATE
+      nlohmann_json::nlohmann_json
+    )
+  endif()
+
+  find_package(msgpack-cxx QUIET CONFIG)
+  if(TARGET msgpack-cxx OR TARGET msgpack-cxx::msgpack-cxx)
+    add_cpp_contract_test(
+      test_cpp_contract_codec_messagepack
+      tests/contract/test_cpp_contract_codec_messagepack.cpp
+    )
+    target_include_directories(test_cpp_contract_codec_messagepack PRIVATE
+      ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-messagepack/include
+    )
+    if(TARGET msgpack-cxx)
+      target_link_libraries(test_cpp_contract_codec_messagepack PRIVATE msgpack-cxx)
+    else()
+      target_link_libraries(test_cpp_contract_codec_messagepack PRIVATE msgpack-cxx::msgpack-cxx)
+    endif()
+  endif()
+
+  find_package(Protobuf QUIET)
+  if(Protobuf_FOUND)
+    add_cpp_contract_test(
+      test_cpp_contract_codec_protobuf
+      tests/contract/test_cpp_contract_codec_protobuf.cpp
+    )
+    target_include_directories(test_cpp_contract_codec_protobuf PRIVATE
+      ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-protobuf/include
+    )
+    if(TARGET protobuf::libprotobuf)
+      target_link_libraries(test_cpp_contract_codec_protobuf PRIVATE protobuf::libprotobuf)
+    elseif(TARGET protobuf::protobuf)
+      target_link_libraries(test_cpp_contract_codec_protobuf PRIVATE protobuf::protobuf)
+    endif()
+  endif()
 endif()
 
 option(ZLINK_CPP_BUILD_BENCHMARKS "Build C++ binding benchmarks" OFF)

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/Contracts/Service/spot.hpp>
+#include <Runtime/Messaging/received_access.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_state.hpp>
 
@@ -119,9 +120,12 @@ void reply_submit_operation_t::submit () &&
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     if (state.kind == detail::spot_operation_kind_t::received_reply) {
-        if (!state.received || !state.received->has_reply_fn ())
+        if (!state.received
+            || !zlink::detail::received_access_t::has_reply_fn (
+              *state.received))
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        state.received->invoke_reply_fn (state.parts, state.flags);
+        zlink::detail::received_access_t::invoke_reply_fn (
+          *state.received, state.parts, state.flags);
         return;
     }
 

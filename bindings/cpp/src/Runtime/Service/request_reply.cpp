@@ -4,6 +4,7 @@
 #include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
+#include <Runtime/Service/request_submitter.hpp>
 
 namespace zlink
 {
@@ -71,32 +72,16 @@ submit_raw_request_async (detail::spot_operation_state_t &state_)
 {
     ensure_raw_request_state (state_);
 
-    std::unique_ptr<detail::request_state_t> request_state (
-      detail::make_future_request_state ());
-    std::future<std::vector<message_t> > future =
-      request_state->promise->get_future ();
-    std::vector<zlink_msg_t> native;
-    if (detail::move_parts_to_native (state_.parts, native) != 0)
-        throw last_error ();
-
-    size_t failed_index = 0;
-    const int rc = detail::submit_native_parts (
-      native, failed_index,
+    return detail::submit_request_parts_async (
+      state_.parts,
+      zlink::detail::make_socket_request_progress (state_.raw_socket),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-           bool is_final_) {
-          return submit_raw_request_part (state_, part_out_, part_flag_,
-                                          is_final_, ZLINK_SEND_FLAGS_NONE,
-                                          request_state.get ());
+           zlink_reply_handler_fn callback_, void *request_state_) {
+          const bool is_final_ = callback_ != nullptr;
+          return submit_raw_request_part (
+            state_, part_out_, part_flag_, is_final_, ZLINK_SEND_FLAGS_NONE,
+            static_cast<detail::request_state_t *> (request_state_));
       });
-    if (rc != 0) {
-        detail::close_native_parts (native, failed_index);
-        throw last_error ();
-    }
-
-    request_state.release ();
-    return async_result_t<std::vector<message_t> > (
-      std::move (future),
-      zlink::detail::make_socket_request_progress (state_.raw_socket));
 }
 
 bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
@@ -104,33 +89,16 @@ bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
 {
     ensure_raw_request_state (state_);
 
-    std::unique_ptr<detail::request_state_t> request_state (
-      detail::make_callback_request_state (std::move (callback_)));
-    std::vector<zlink_msg_t> native;
-    if (detail::move_parts_to_native (state_.parts, native) != 0)
-        throw last_error ();
-
-    size_t failed_index = 0;
-    const int rc = detail::submit_native_parts (
-      native, failed_index,
+    return detail::submit_request_parts_callback (
+      state_.parts, std::move (callback_), state_.flags,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-           bool is_final_) {
+           zlink_reply_handler_fn callback, void *request_state) {
+          const bool is_final_ = callback != nullptr;
           return submit_raw_request_part (
             state_, part_out_, part_flag_, is_final_,
             static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
-            request_state.get ());
+            static_cast<detail::request_state_t *> (request_state));
       });
-    if (rc != 0) {
-        detail::close_native_parts (native, failed_index);
-        const submit_error_t err (static_cast<submit_result_t> (rc),
-                                  zlink_errno ());
-        if (state_.flags == send_flags_t::dontwait
-            && err.result () == submit_result_t::backpressured)
-            return false;
-        throw err;
-    }
-    request_state.release ();
-    return true;
 }
 
 } // namespace

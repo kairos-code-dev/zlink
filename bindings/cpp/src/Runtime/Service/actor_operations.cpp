@@ -44,6 +44,35 @@ bool submit_actor_request_callback (request_callback_t callback_,
     return true;
 }
 
+template <typename Submit>
+async_result_t<actor_lookup_result_t> submit_actor_lookup_async (Submit submit_)
+{
+    std::unique_ptr<detail::actor_lookup_result_state_t> request_state (
+      detail::make_future_actor_lookup_state ());
+    std::future<actor_lookup_result_t> future =
+      request_state->promise->get_future ();
+    const submit_result_t rc =
+      static_cast<submit_result_t> (submit_ (request_state.get ()));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return async_result_t<actor_lookup_result_t> (std::move (future));
+}
+
+template <typename Submit>
+bool submit_actor_lookup_callback (actor_lookup_callback_t callback_,
+                                   Submit submit_)
+{
+    std::unique_ptr<detail::actor_lookup_result_state_t> request_state (
+      detail::make_callback_actor_lookup_state (std::move (callback_)));
+    const submit_result_t rc =
+      static_cast<submit_result_t> (submit_ (request_state.get ()));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return true;
+}
+
 } // namespace
 
 actor_join_operation_t::~actor_join_operation_t () = default;
@@ -484,36 +513,25 @@ actor_lookup_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 async_result_t<actor_lookup_result_t>
 actor_lookup_operation_t::submit_async () &&
 {
-    std::unique_ptr<detail::actor_lookup_result_state_t> request_state (
-      detail::make_future_actor_lookup_state ());
-    std::future<actor_lookup_result_t> future =
-      request_state->promise->get_future ();
-    const submit_result_t rc =
-      static_cast<submit_result_t> (zlink_remote_actor_get_ref (
-        state ().node, zlink::detail::routing_id_native (state ().aux_rid),
-        state ().actor_id.c_str (), &detail::actor_lookup_result_trampoline,
-        request_state.get (),
-        zlink::detail::native_timeout_ms (state ().timeout)));
-    if (rc != submit_result_t::ok)
-        throw submit_error_t (rc, zlink_errno ());
-    request_state.release ();
-    return async_result_t<actor_lookup_result_t> (std::move (future));
+    return submit_actor_lookup_async (
+      [&] (detail::actor_lookup_result_state_t *request_state) {
+          return zlink_remote_actor_get_ref (
+            state ().node, zlink::detail::routing_id_native (state ().aux_rid),
+            state ().actor_id.c_str (), &detail::actor_lookup_result_trampoline,
+            request_state, zlink::detail::native_timeout_ms (state ().timeout));
+      });
 }
 
 bool actor_lookup_operation_t::submit (actor_lookup_callback_t callback_) &&
 {
-    std::unique_ptr<detail::actor_lookup_result_state_t> request_state (
-      detail::make_callback_actor_lookup_state (std::move (callback_)));
-    const submit_result_t rc =
-      static_cast<submit_result_t> (zlink_remote_actor_get_ref (
-        state ().node, zlink::detail::routing_id_native (state ().aux_rid),
-        state ().actor_id.c_str (), &detail::actor_lookup_result_trampoline,
-        request_state.get (),
-        zlink::detail::native_timeout_ms (state ().timeout)));
-    if (rc != submit_result_t::ok)
-        throw submit_error_t (rc, zlink_errno ());
-    request_state.release ();
-    return true;
+    return submit_actor_lookup_callback (
+      std::move (callback_),
+      [&] (detail::actor_lookup_result_state_t *request_state) {
+          return zlink_remote_actor_get_ref (
+            state ().node, zlink::detail::routing_id_native (state ().aux_rid),
+            state ().actor_id.c_str (), &detail::actor_lookup_result_trampoline,
+            request_state, zlink::detail::native_timeout_ms (state ().timeout));
+      });
 }
 
 actor_bind_operation_t::~actor_bind_operation_t () = default;

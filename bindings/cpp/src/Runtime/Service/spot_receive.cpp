@@ -2,6 +2,7 @@
 
 #include <Runtime/Service/spot_impl.hpp>
 #include <Runtime/Service/detail.hpp>
+#include <Runtime/Native/subscription_reader.hpp>
 
 namespace zlink
 {
@@ -322,15 +323,11 @@ spot_t::publish_impl (const char *topic_, message_t &part_, send_flags_t flags_)
     source_rid = part_source_rid;
     topic_length = part_topic_length;
 
-    const size_t topic_size = topic_length < sizeof (topic_buffer)
-                                ? topic_length
-                                : sizeof (topic_buffer) - 1u;
+    const size_t topic_size =
+      zlink::detail::bounded_topic_size (topic_length, sizeof (topic_buffer));
     std::string topic (topic_buffer, topic_size);
     const std::optional<routing_id_t> source =
-      source_rid && source_rid->size > 0
-        ? std::optional<routing_id_t> (
-            zlink::detail::native_routing_id (*source_rid))
-        : std::nullopt;
+      zlink::detail::optional_native_routing_id (source_rid);
 
     if (!has_more) {
         message_t part;
@@ -353,8 +350,9 @@ spot_t::publish_impl (const char *topic_, message_t &part_, send_flags_t flags_)
             zlink_part_flag_t more = ZLINK_PART_FINAL;
             size_t ignored_topic_length = 0u;
             const int rc = zlink_spot_subscribe_part (
-              _impl->handle, &part_source_rid, nullptr, 0u, &ignored_topic_length,
-              &native_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
+              _impl->handle, &part_source_rid, nullptr, 0u,
+              &ignored_topic_length, &native_part, &more,
+              ZLINK_RECV_FLAGS_DONTWAIT);
             if (rc != ZLINK_RECV_OK) {
                 const int err = errno;
                 (void) zlink_msg_close (&native_part);
@@ -427,14 +425,10 @@ spot_t::subscribe_part_impl (std::optional<routing_id_t> *source_rid_out_,
         return rc;
     }
 
-    const size_t topic_size = topic_length < sizeof (topic_buffer)
-                                ? topic_length
-                                : sizeof (topic_buffer) - 1u;
-    topic_out_.assign (topic_buffer, topic_size);
-    if (source_rid_out_ && source_rid && source_rid->size > 0)
-        *source_rid_out_ = zlink::detail::native_routing_id (*source_rid);
-    zlink::detail::adopt_native_message (part_out_, &native_part);
-    has_more_out_ = has_more != ZLINK_PART_FINAL;
+    zlink::detail::assign_subscription_part (
+      source_rid_out_, topic_out_, part_out_, has_more_out_, source_rid,
+      topic_buffer, topic_length, sizeof (topic_buffer), &native_part,
+      has_more);
     return 0;
 }
 
@@ -460,14 +454,10 @@ spot_t::subscription_event_impl (routing_id_t &source_rid_out_,
     if (rc != 0)
         return rc;
 
-    if (source_rid && source_rid->size > 0)
-        source_rid_out_ = zlink::detail::native_routing_id (*source_rid);
-    else
-        source_rid_out_ = zlink::detail::unchecked_empty_routing_id ();
+    source_rid_out_ = zlink::detail::routing_id_or_empty (source_rid);
 
-    const size_t topic_size = topic_length < sizeof (topic_buffer)
-                                ? topic_length
-                                : sizeof (topic_buffer) - 1u;
+    const size_t topic_size =
+      zlink::detail::bounded_topic_size (topic_length, sizeof (topic_buffer));
     topic_.assign (topic_buffer, topic_size);
     subscribed_out_ = subscribed != 0;
     return 0;

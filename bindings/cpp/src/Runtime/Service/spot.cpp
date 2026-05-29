@@ -4,6 +4,7 @@
 #include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Service/actor_model_access.hpp>
 #include <Runtime/Service/actor_detail.hpp>
+#include <Runtime/Messaging/received_access.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
 #include <Runtime/Service/spot_access.hpp>
 
@@ -140,8 +141,8 @@ spot_t::spot_t (spot_node_t &node_) : _impl (std::make_unique<impl> ())
         _impl->last_error = errno != 0 ? errno : EFAULT;
 }
 
-spot_t::spot_t (native_handle_ctor_tag_t) noexcept :
-    _impl (std::make_unique<impl> ())
+spot_t::spot_t (native_handle_ctor_tag_t) noexcept
+    : _impl (std::make_unique<impl> ())
 {
 }
 
@@ -375,7 +376,7 @@ std::optional<received_t> spot_t::recv_routed_optional (recv_flags_t flags_)
         };
     }
 
-    return std::optional<received_t> (received_t (
+    return std::optional<received_t> (zlink::detail::received_access_t::make (
       (source_node_rid && source_node_rid->size > 0)
         ? std::optional<routing_id_t> (
             zlink::detail::native_routing_id (*source_node_rid))

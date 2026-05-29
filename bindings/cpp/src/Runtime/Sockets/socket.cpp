@@ -8,6 +8,8 @@
 #include <Runtime/Options/option_ids.hpp>
 #include <Runtime/Service/discovery_access.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
+#include <Runtime/Messaging/received_access.hpp>
+#include <Runtime/Native/subscription_reader.hpp>
 
 namespace zlink
 {
@@ -133,8 +135,8 @@ int socket_t::attach_discovery (service::discovery_t &discovery_)
       detail::native_handle (*this), zlink::detail::native_handle (discovery_));
 }
 
-socket_t::socket_t () noexcept :
-    _socket (std::make_unique<detail::socket_handle_t> ())
+socket_t::socket_t () noexcept
+    : _socket (std::make_unique<detail::socket_handle_t> ())
 {
 }
 
@@ -272,27 +274,26 @@ int socket_t::receive (received_t &received_, recv_flags_t flags_)
                                : std::nullopt;
 
     if (envelope.single_part.has_value ()) {
-        received_ = received_t (
+        received_ = detail::received_access_t::make (
           source_rid, source_spot_rid, request_seq,
           std::move (*envelope.single_part),
           std::function<void (std::vector<message_t> &, send_flags_t)> (),
           std::move (send_fn));
     } else if (envelope.parts.size () == 1u) {
-        received_ = received_t (
+        received_ = detail::received_access_t::make (
           source_rid, source_spot_rid, request_seq,
           std::move (envelope.parts[0]),
           std::function<void (std::vector<message_t> &, send_flags_t)> (),
           std::move (send_fn));
     } else {
-        received_ = received_t (
+        received_ = detail::received_access_t::make (
           source_rid, source_spot_rid, request_seq, std::move (envelope.parts),
           std::function<void (std::vector<message_t> &, send_flags_t)> (),
           std::move (send_fn));
     }
     if (source_rid.has_value () && !source_spot_rid.has_value ())
-        received_.set_send_context (
-          reinterpret_cast<std::uintptr_t> (detail::native_handle (*this)),
-          received_t::send_context_kind_t::socket_rid);
+        detail::received_access_t::set_socket_rid_send_context (
+          received_, detail::native_handle (*this));
     return 0;
 }
 
@@ -385,12 +386,9 @@ int socket_t::subscribe (topic_message_t &message_, recv_flags_t flags_)
         (void) zlink_msg_close (&native_part);
 
         if (has_more == ZLINK_PART_FINAL) {
-            message_ = topic_message_t (
-              source_rid && source_rid->size > 0
-                ? std::optional<routing_id_t> (
-                    zlink::detail::native_routing_id (*source_rid))
-                : std::nullopt,
-              std::move (topic), std::move (first_part));
+            message_ =
+              topic_message_t (detail::optional_native_routing_id (source_rid),
+                               std::move (topic), std::move (first_part));
             break;
         }
 
@@ -422,10 +420,7 @@ int socket_t::subscribe (topic_message_t &message_, recv_flags_t flags_)
 
             if (has_more == ZLINK_PART_FINAL) {
                 message_ = topic_message_t (
-                  source_rid && source_rid->size > 0
-                    ? std::optional<routing_id_t> (
-                        zlink::detail::native_routing_id (*source_rid))
-                    : std::nullopt,
+                  detail::optional_native_routing_id (source_rid),
                   std::move (topic), std::move (parts));
                 break;
             }
@@ -459,13 +454,9 @@ int socket_t::subscribe_part (std::optional<routing_id_t> &source_rid_out_,
         return static_cast<int> (rc);
     }
 
-    source_rid_out_ = source_rid && source_rid->size > 0
-                        ? std::optional<routing_id_t> (
-                            zlink::detail::native_routing_id (*source_rid))
-                        : std::nullopt;
-    topic_out_.assign (topic_buffer, topic_size);
-    zlink::detail::adopt_native_message (part_out_, &native_part);
-    has_more_out_ = has_more != ZLINK_PART_FINAL;
+    detail::assign_subscription_part (
+      &source_rid_out_, topic_out_, part_out_, has_more_out_, source_rid,
+      topic_buffer, topic_size, sizeof (topic_buffer), &native_part, has_more);
     return 0;
 }
 
@@ -488,10 +479,7 @@ int socket_t::subscription_event (routing_id_t &source_rid_out_,
         return rc;
     }
 
-    if (source_rid && source_rid->size > 0)
-        source_rid_out_ = zlink::detail::native_routing_id (*source_rid);
-    else
-        source_rid_out_ = zlink::detail::unchecked_empty_routing_id ();
+    source_rid_out_ = detail::routing_id_or_empty (source_rid);
 
     const unsigned char *data =
       static_cast<const unsigned char *> (zlink_msg_data (&part));

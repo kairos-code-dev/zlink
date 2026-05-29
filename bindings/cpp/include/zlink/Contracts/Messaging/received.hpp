@@ -14,81 +14,20 @@
 namespace zlink
 {
 
+namespace detail
+{
+struct received_access_t;
+}
+
 class received_t
 {
   public:
     received_t () = default;
-
-    received_t (const received_t &other)
-        : _routing_id (other._routing_id),
-          _spot_rid (other._spot_rid),
-          _request_seq (other._request_seq),
-          _single_part (other._single_part),
-          _parts (other._parts),
-          _runtime (clone_runtime_state (other._runtime))
-    {
-    }
-
-    received_t &operator= (const received_t &other)
-    {
-        if (this == &other)
-            return *this;
-
-        _routing_id = other._routing_id;
-        _spot_rid = other._spot_rid;
-        _request_seq = other._request_seq;
-        _single_part = other._single_part;
-        _parts = other._parts;
-        _runtime = clone_runtime_state (other._runtime);
-        return *this;
-    }
+    received_t (const received_t &other);
+    received_t &operator= (const received_t &other);
 
     received_t (received_t &&) noexcept = default;
     received_t &operator= (received_t &&) noexcept = default;
-
-    received_t (std::optional<routing_id_t> routing_id_,
-                std::optional<routing_id_t> spot_rid_,
-                std::optional<uint64_t> request_seq_,
-                std::vector<message_t> parts_,
-                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
-                  std::function<void(std::vector<message_t> &, send_flags_t)> (),
-                std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_ =
-                  std::function<bool(std::vector<message_t> &, send_flags_t)> ())
-        : _routing_id (std::move (routing_id_)),
-          _spot_rid (std::move (spot_rid_)),
-          _request_seq (std::move (request_seq_)),
-          _single_part (),
-          _parts (std::move (parts_)),
-          _runtime ()
-    {
-        if (reply_fn_ || send_fn_) {
-            ensure_runtime_state ();
-            _runtime->_reply_fn = std::move (reply_fn_);
-            _runtime->_send_fn = std::move (send_fn_);
-        }
-    }
-
-    received_t (std::optional<routing_id_t> routing_id_,
-                std::optional<routing_id_t> spot_rid_,
-                std::optional<uint64_t> request_seq_,
-                message_t part_,
-                std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_ =
-                  std::function<void(std::vector<message_t> &, send_flags_t)> (),
-                std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_ =
-                  std::function<bool(std::vector<message_t> &, send_flags_t)> ())
-        : _routing_id (std::move (routing_id_)),
-          _spot_rid (std::move (spot_rid_)),
-          _request_seq (std::move (request_seq_)),
-          _single_part (std::move (part_)),
-          _parts (),
-          _runtime ()
-    {
-        if (reply_fn_ || send_fn_) {
-            ensure_runtime_state ();
-            _runtime->_reply_fn = std::move (reply_fn_);
-            _runtime->_send_fn = std::move (send_fn_);
-        }
-    }
 
     const std::optional<routing_id_t> &routing_id () const noexcept
     {
@@ -130,6 +69,7 @@ class received_t
     friend class service::send_submit_operation_t;
     friend class service::reply_operation_t;
     friend class service::reply_submit_operation_t;
+    friend struct detail::received_access_t;
 
     enum class send_context_kind_t
     {
@@ -138,58 +78,27 @@ class received_t
         router_spot
     };
 
+    received_t (std::optional<routing_id_t> routing_id_,
+                std::optional<routing_id_t> spot_rid_,
+                std::optional<uint64_t> request_seq_,
+                std::vector<message_t> parts_);
+
+    received_t (std::optional<routing_id_t> routing_id_,
+                std::optional<routing_id_t> spot_rid_,
+                std::optional<uint64_t> request_seq_,
+                message_t part_);
+
     void materialize_parts () const;
-    void set_send_context (std::uintptr_t handle_, send_context_kind_t kind_)
-    {
-        ensure_runtime_state ();
-        _runtime->_send_context_handle = handle_;
-        _runtime->_send_context_kind = kind_;
-    }
-
-    void set_reply_fn (
-      std::function<void(std::vector<message_t> &, send_flags_t)> reply_fn_)
-    {
-        ensure_runtime_state ();
-        _runtime->_reply_fn = std::move (reply_fn_);
-    }
-
-    void set_send_fn (
-      std::function<bool(std::vector<message_t> &, send_flags_t)> send_fn_)
-    {
-        ensure_runtime_state ();
-        _runtime->_send_fn = std::move (send_fn_);
-    }
-
-    bool has_reply_fn () const noexcept
-    {
-        return _runtime && static_cast<bool> (_runtime->_reply_fn);
-    }
-
-    bool has_send_fn () const noexcept
-    {
-        return _runtime && static_cast<bool> (_runtime->_send_fn);
-    }
-
-    void invoke_reply_fn (std::vector<message_t> &parts_, send_flags_t flags_)
-    {
-        _runtime->_reply_fn (parts_, flags_);
-    }
-
-    bool invoke_send_fn (std::vector<message_t> &parts_, send_flags_t flags_)
-    {
-        return _runtime->_send_fn (parts_, flags_);
-    }
-
     struct runtime_state_t
     {
-        std::function<void(std::vector<message_t> &, send_flags_t)> _reply_fn;
-        std::function<bool(std::vector<message_t> &, send_flags_t)> _send_fn;
+        std::function<void (std::vector<message_t> &, send_flags_t)> _reply_fn;
+        std::function<bool (std::vector<message_t> &, send_flags_t)> _send_fn;
         std::uintptr_t _send_context_handle = 0;
         send_context_kind_t _send_context_kind = send_context_kind_t::none;
     };
 
-    static std::unique_ptr<runtime_state_t> clone_runtime_state (
-      const std::unique_ptr<runtime_state_t> &state_)
+    static std::unique_ptr<runtime_state_t>
+    clone_runtime_state (const std::unique_ptr<runtime_state_t> &state_)
     {
         if (!state_)
             return std::unique_ptr<runtime_state_t> ();

@@ -1046,6 +1046,18 @@ struct actor_lookup_operation_arg_t
     char actor_id[ZLINK_ACTOR_ID_MAX];
 };
 
+actor_lookup_operation_arg_t *new_actor_lookup_operation_arg ()
+{
+    actor_lookup_operation_arg_t *arg =
+      new (std::nothrow) actor_lookup_operation_arg_t;
+    if (!arg) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    memset (arg, 0, sizeof (*arg));
+    return arg;
+}
+
 void cleanup_actor_lookup_operation_arg (void *arg_)
 {
     delete static_cast<actor_lookup_operation_arg_t *> (arg_);
@@ -1102,6 +1114,32 @@ struct actor_reply_operation_arg_t
 void cleanup_actor_reply_operation_arg (void *arg_)
 {
     delete static_cast<actor_reply_operation_arg_t *> (arg_);
+}
+
+zlink_request_result_t run_actor_reply_operation (void *arg_);
+
+actor_reply_operation_arg_t *new_actor_reply_operation_arg (
+  zlink_request_result_t (*run_) (actor_reply_operation_arg_t *))
+{
+    actor_reply_operation_arg_t *arg =
+      new (std::nothrow) actor_reply_operation_arg_t;
+    if (!arg) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    arg->run = run_;
+    return arg;
+}
+
+zlink_submit_result_t schedule_actor_reply_operation (
+  zlink_reply_handler_fn handler_,
+  void *userdata_,
+  uint32_t timeout_ms_,
+  actor_reply_operation_arg_t *arg_)
+{
+    return zlink::spot_actor_async::schedule_reply_operation (
+      handler_, userdata_, timeout_ms_, run_actor_reply_operation, arg_,
+      cleanup_actor_reply_operation_arg);
 }
 
 zlink_request_result_t run_destroy_operation_locked (
@@ -2073,15 +2111,11 @@ extern "C" zlink_submit_result_t zlink_remote_actor_get_ref (
         return ZLINK_SUBMIT_INVALID_HANDLE;
     }
 
-    actor_lookup_operation_arg_t *arg =
-      new (std::nothrow) actor_lookup_operation_arg_t;
-    if (!arg) {
-        errno = ENOMEM;
+    actor_lookup_operation_arg_t *arg = new_actor_lookup_operation_arg ();
+    if (!arg)
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
-    }
     arg->request_node = static_cast<zlink::spot_node_t *> (node_);
     arg->target_node_rid = *target_node_rid_;
-    memset (arg->actor_id, 0, sizeof (arg->actor_id));
     strncpy (arg->actor_id, actor_id_, ZLINK_ACTOR_ID_MAX - 1);
     return zlink::spot_actor_async::schedule_lookup_operation (
       handler_, userdata_, timeout_ms_, run_actor_lookup_operation, arg,
@@ -2111,17 +2145,12 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_destroy (
     }
 
     actor_reply_operation_arg_t *arg =
-      new (std::nothrow) actor_reply_operation_arg_t;
-    if (!arg) {
-        errno = ENOMEM;
+      new_actor_reply_operation_arg (run_destroy_operation_locked);
+    if (!arg)
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
-    }
-    arg->run = run_destroy_operation_locked;
     arg->request_node = static_cast<zlink::spot_node_t *> (node_);
     arg->actor = *actor_;
-    return zlink::spot_actor_async::schedule_reply_operation (
-      handler_, userdata_, timeout_ms_, run_actor_reply_operation, arg,
-      cleanup_actor_reply_operation_arg);
+    return schedule_actor_reply_operation (handler_, userdata_, timeout_ms_, arg);
 }
 
 extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
@@ -2420,18 +2449,13 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_leave_spot (
     }
 
     actor_reply_operation_arg_t *arg =
-      new (std::nothrow) actor_reply_operation_arg_t;
-    if (!arg) {
-        errno = ENOMEM;
+      new_actor_reply_operation_arg (run_leave_operation_locked);
+    if (!arg)
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
-    }
-    arg->run = run_leave_operation_locked;
     arg->request_node = static_cast<zlink::spot_node_t *> (node_);
     arg->actor = *actor_ref_;
     arg->rid = *dest_spot_rid_;
-    return zlink::spot_actor_async::schedule_reply_operation (
-      handler_, userdata_, timeout_ms_, run_actor_reply_operation, arg,
-      cleanup_actor_reply_operation_arg);
+    return schedule_actor_reply_operation (handler_, userdata_, timeout_ms_, arg);
 }
 
 extern "C" zlink_recv_result_t zlink_spot_actor_join_recv (
@@ -2626,18 +2650,13 @@ extern "C" zlink_submit_result_t zlink_stream_bind_actor (
     }
 
     actor_reply_operation_arg_t *arg =
-      new (std::nothrow) actor_reply_operation_arg_t;
-    if (!arg) {
-        errno = ENOMEM;
+      new_actor_reply_operation_arg (run_bind_operation_locked);
+    if (!arg)
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
-    }
-    arg->run = run_bind_operation_locked;
     arg->stream = stream_;
     arg->actor = *actor_ref_;
     arg->rid = *session_rid_;
-    return zlink::spot_actor_async::schedule_reply_operation (
-      handler_, userdata_, timeout_ms_, run_actor_reply_operation, arg,
-      cleanup_actor_reply_operation_arg);
+    return schedule_actor_reply_operation (handler_, userdata_, timeout_ms_, arg);
 }
 
 extern "C" zlink_submit_result_t zlink_stream_unbind_actor (
@@ -2659,18 +2678,13 @@ extern "C" zlink_submit_result_t zlink_stream_unbind_actor (
     }
 
     actor_reply_operation_arg_t *arg =
-      new (std::nothrow) actor_reply_operation_arg_t;
-    if (!arg) {
-        errno = ENOMEM;
+      new_actor_reply_operation_arg (run_unbind_operation_locked);
+    if (!arg)
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
-    }
-    arg->run = run_unbind_operation_locked;
     arg->stream = stream_;
     arg->rid = *session_rid_;
     strncpy (arg->actor_id, actor_id_, ZLINK_ACTOR_ID_MAX - 1);
-    return zlink::spot_actor_async::schedule_reply_operation (
-      handler_, userdata_, timeout_ms_, run_actor_reply_operation, arg,
-      cleanup_actor_reply_operation_arg);
+    return schedule_actor_reply_operation (handler_, userdata_, timeout_ms_, arg);
 }
 
 extern "C" zlink_submit_result_t zlink_stream_send_bound_actor_part (

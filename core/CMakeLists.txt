@@ -231,7 +231,7 @@ if(WITH_TLS)
   find_package(OpenSSL REQUIRED)
   if(OpenSSL_FOUND)
     message(STATUS "OpenSSL found: ${OPENSSL_VERSION}")
-    # Internal flag kept as ZLINK_HAVE_ASIO_SSL for compatibility
+    # The generated platform header still consumes the historical ASIO SSL flag.
     set(ZLINK_HAVE_ASIO_SSL 1)
   else()
     message(FATAL_ERROR "OpenSSL not found. Install libssl-dev (required for WITH_TLS)")
@@ -242,7 +242,7 @@ endif()
 set(BUNDLED_BEAST_HEADER "${BUNDLED_BOOST_INCLUDE_DIR}/boost/beast.hpp")
 if(EXISTS "${BUNDLED_BEAST_HEADER}")
   message(STATUS "Beast headers found - WebSocket support enabled")
-  # Internal flags kept for compatibility
+  # The generated platform header still consumes the historical ASIO WS flags.
   set(ZLINK_HAVE_ASIO_WS 1)
   # WSS (WebSocket Secure) requires TLS
   if(ZLINK_HAVE_ASIO_SSL)
@@ -347,9 +347,12 @@ if(WITH_MILITANT)
 endif()
 
 set(API_POLLER
-    ""
+    "poll"
     CACHE STRING "Choose polling system for zlink_poll(er)_*. valid values are
-  poll or select [default=poll unless POLLER=select]")
+  poll or select [default=poll]")
+if(API_POLLER STREQUAL "")
+  set(API_POLLER "poll" CACHE STRING "Choose polling system for zlink_poll(er)_*" FORCE)
+endif()
 
 # POLLER is always 'asio' - no other options are supported
 
@@ -423,14 +426,6 @@ endif()
 
 message(STATUS "Using polling method in I/O threads: ${POLLER}")
 set(ZLINK_IOTHREAD_POLLER_USE_ASIO 1)
-
-if(API_POLLER STREQUAL "")
-  if(POLLER STREQUAL "select")
-    set(API_POLLER "select")
-  else()
-    set(API_POLLER "poll")
-  endif()
-endif()
 
 message(STATUS "Using polling method in zlink_poll(er)_* API: ${API_POLLER}")
 string(TOUPPER ${API_POLLER} UPPER_API_POLLER)

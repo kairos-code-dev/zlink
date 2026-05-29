@@ -23,16 +23,6 @@
 #include <thread>
 #include <unity.h>
 
-int zlink_service_send_internal (void *handle_,
-                                 zlink_msg_t *parts_,
-                                 size_t part_count_,
-                                 zlink_send_flags_t flags_);
-int zlink_service_send_rid_internal (void *handle_,
-                                     const zlink_routing_id_t *target_rid_,
-                                     zlink_msg_t *parts_,
-                                     size_t part_count_,
-                                     zlink_send_flags_t flags_);
-
 #ifndef ZLINK_SNDMORE
 #define ZLINK_SNDMORE ((zlink_send_flags_t) 0x0002u)
 #endif

@@ -23,11 +23,6 @@ class socket_base_t;
 class spot_node_t;
 }
 
-namespace zlink
-{
-namespace spot_actor_api_internal
-{
-
 #include "api/actor/spot/service_spot_actor_handle_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_lifecycle_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_registry_state_internal.hpp"
@@ -35,6 +30,3 @@ namespace spot_actor_api_internal
 #include "api/actor/spot/service_spot_actor_route_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_join_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_runtime_state_internal.hpp"
-
-}
-}

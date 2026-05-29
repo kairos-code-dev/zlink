@@ -2,6 +2,11 @@
 
 #pragma once
 
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 struct lifecycle_event_t
 {
     lifecycle_event_t () : kind (ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED)
@@ -21,3 +26,6 @@ struct actor_lifecycle_state_t
 
     std::map<spot_logical_state_t *, std::deque<lifecycle_event_t> > queues;
 };
+
+}
+}

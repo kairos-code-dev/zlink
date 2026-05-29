@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "precompiled.hpp"
+#include "utils/precompiled.hpp"
 
 #include "services/spot/data_plane/spot_data_plane_message_io_internal.hpp"
 

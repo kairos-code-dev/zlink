@@ -74,14 +74,6 @@ scheduler_state_t &scheduler_state ()
     return state;
 }
 
-uint64_t monotonic_now_ns ()
-{
-    return static_cast<uint64_t> (
-      std::chrono::duration_cast<std::chrono::nanoseconds> (
-        std::chrono::steady_clock::now ().time_since_epoch ())
-        .count ());
-}
-
 void run_timeout_loop ()
 {
     scheduler_state_t &state = scheduler_state ();
@@ -173,9 +165,7 @@ std::shared_ptr<task_t> schedule (uint32_t timeout_ms_,
     task->handler = handler_;
     task->cleanup = cleanup_;
     task->userdata = userdata_;
-    task->deadline_ns =
-      monotonic_now_ns ()
-      + static_cast<uint64_t> (timeout_ms_) * static_cast<uint64_t> (1000000);
+    task->deadline_ns = deadline_after_ms (timeout_ms_);
     task->registered = true;
 
     {
@@ -213,6 +203,21 @@ void cancel (const std::shared_ptr<task_t> &task_)
     while (task_->firing)
         task_->cv.wait (lock);
     task_->completed = true;
+}
+
+uint64_t monotonic_now_ns ()
+{
+    return static_cast<uint64_t> (
+      std::chrono::duration_cast<std::chrono::nanoseconds> (
+        std::chrono::steady_clock::now ().time_since_epoch ())
+        .count ());
+}
+
+uint64_t deadline_after_ms (uint32_t timeout_ms_)
+{
+    return monotonic_now_ns ()
+           + static_cast<uint64_t> (timeout_ms_)
+               * static_cast<uint64_t> (1000000);
 }
 }
 }

@@ -6,7 +6,7 @@
 #undef min
 #endif
 
-#include <generic_mtrie_impl.hpp>
+#include <utils/generic_mtrie_impl.hpp>
 
 #include <unity.h>
 

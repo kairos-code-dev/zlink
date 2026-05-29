@@ -1218,7 +1218,7 @@ if(ZLINK_HAVE_OPENPGM)
 endif()
 
 # Keep include roots explicit. Category includes use api/, services/, sockets/
-# prefixes; src/runtime/utils remains for legacy "precompiled.hpp" includes.
+# prefixes; precompiled headers are included through utils/precompiled.hpp.
 include_directories(
     src
     src/runtime
@@ -1231,7 +1231,6 @@ include_directories(
     src/runtime/transports/ws
     src/runtime/transports/tls
     src/runtime/transports/pgm
-    src/runtime/utils
 )
 
 if(MINGW)

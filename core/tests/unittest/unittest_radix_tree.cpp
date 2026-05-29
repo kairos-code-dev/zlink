@@ -2,8 +2,8 @@
 
 #include "../testutil.hpp"
 
-#include <radix_tree.hpp>
-#include <stdint.hpp>
+#include <utils/radix_tree.hpp>
+#include <utils/stdint.hpp>
 
 #include <set>
 #include <string>

@@ -2,6 +2,11 @@
 
 #pragma once
 
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 struct actor_spot_snapshot_t
 {
     actor_spot_snapshot_t () : facade (NULL) {}
@@ -42,3 +47,6 @@ struct actor_node_registry_t
     std::set<spot_handle_t *> known_spots;
     std::set<zlink::spot_node_t *> known_nodes;
 };
+
+}
+}

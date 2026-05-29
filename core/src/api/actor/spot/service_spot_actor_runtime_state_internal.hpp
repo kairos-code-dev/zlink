@@ -2,6 +2,11 @@
 
 #pragma once
 
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 struct actor_runtime_t
 {
     actor_runtime_t () : protocol_drop_count (0), next_join_epoch (1) {}
@@ -15,3 +20,6 @@ struct actor_runtime_t
     uint64_t protocol_drop_count;
     uint64_t next_join_epoch;
 };
+
+}
+}

@@ -2,6 +2,11 @@
 
 #pragma once
 
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 struct session_binding_key_t
 {
     session_binding_key_t () : stream (NULL)
@@ -121,3 +126,6 @@ struct actor_session_state_t
     std::map<void *, zlink::spot_node_t *> stream_owners;
     std::set<void *> explicit_stream_owners;
 };
+
+}
+}

@@ -6,8 +6,8 @@
 #include "../testutil_unity.hpp"
 #include "unittest_resolver_common.hpp"
 
-#include <ip_resolver.hpp>
-#include <ip.hpp>
+#include <utils/ip_resolver.hpp>
+#include <utils/ip.hpp>
 
 #ifndef _WIN32
 #include <sys/types.h>

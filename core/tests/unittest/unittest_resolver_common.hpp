@@ -3,7 +3,7 @@
 #ifndef __UNITTEST_RESOLVER_COMMON_INCLUDED__
 #define __UNITTEST_RESOLVER_COMMON_INCLUDED__
 
-#include <ip_resolver.hpp>
+#include <utils/ip_resolver.hpp>
 #include <string.h>
 
 //  Attempt a resolution and test the results.

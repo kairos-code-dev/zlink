@@ -2,6 +2,11 @@
 
 #pragma once
 
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 struct queued_join_request_t
 {
     queued_join_request_t () :
@@ -100,3 +105,6 @@ struct actor_join_state_t
       pending_remote_actor_keys;
     std::map<spot_logical_state_t *, size_t> pending_count_by_spot;
 };
+
+}
+}

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "precompiled.hpp"
+#include "utils/precompiled.hpp"
 
 #include "services/discovery/discovery_access.hpp"
 #include "services/discovery/discovery.hpp"

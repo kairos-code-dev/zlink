@@ -2,6 +2,11 @@
 
 #pragma once
 
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 struct actor_route_state_t
 {
     bool is_disconnected (zlink::spot_node_t *source_node_,
@@ -19,3 +24,6 @@ struct actor_route_state_t
     std::map<std::string, zlink_actor_route_t> active;
     std::set<std::pair<zlink::spot_node_t *, std::string> > disconnected;
 };
+
+}
+}

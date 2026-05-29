@@ -2,6 +2,11 @@
 
 #pragma once
 
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 const uint32_t actor_handle_tag = 0xacc70001u;
 
 struct queued_actor_part_t
@@ -88,3 +93,6 @@ struct actor_handle_t
     bool pending_remote_join;
     std::deque<queued_actor_part_t> queue;
 };
+
+}
+}

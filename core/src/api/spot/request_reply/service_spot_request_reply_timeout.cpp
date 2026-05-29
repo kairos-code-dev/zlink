@@ -20,14 +20,6 @@ using zlink::spot_reqrep_internal::pending_spot_key_t;
 using zlink::spot_reqrep_internal::router_spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 
-uint64_t monotonic_now_ns ()
-{
-    return static_cast<uint64_t> (
-      std::chrono::duration_cast<std::chrono::nanoseconds> (
-        std::chrono::steady_clock::now ().time_since_epoch ())
-        .count ());
-}
-
 const std::chrono::milliseconds spot_timeout_reaper_idle_wait (100);
 
 std::mutex g_spot_timeout_reaper_mutex;
@@ -58,7 +50,7 @@ spot_timeout_reaper_shutdown_t g_spot_timeout_reaper_shutdown;
 
 std::chrono::nanoseconds ns_until_deadline (uint64_t deadline_ns_)
 {
-    const uint64_t now_ns = monotonic_now_ns ();
+    const uint64_t now_ns = zlink::request_timeout::monotonic_now_ns ();
     if (deadline_ns_ <= now_ns)
         return std::chrono::nanoseconds (0);
     return std::chrono::nanoseconds (deadline_ns_ - now_ns);
@@ -73,7 +65,7 @@ void update_spot_timeout_reaper_deadline (uint64_t deadline_ns_)
       g_spot_timeout_reaper_next_deadline_hint_ns.load (
         std::memory_order_acquire);
     if (hinted_deadline != 0 && hinted_deadline <= deadline_ns_
-        && hinted_deadline > monotonic_now_ns ()) {
+        && hinted_deadline > zlink::request_timeout::monotonic_now_ns ()) {
         return;
     }
 
@@ -109,7 +101,7 @@ void run_spot_timeout_reaper ()
             break;
         lock.unlock ();
 
-        const uint64_t now_ns = monotonic_now_ns ();
+        const uint64_t now_ns = zlink::request_timeout::monotonic_now_ns ();
         std::vector<std::shared_ptr<spot_request_reply_state_t> > states =
           zlink::spot_reqrep_internal::snapshot_spot_states ();
         uint64_t next_deadline_ns = 0;
@@ -224,9 +216,7 @@ int zlink::spot_reqrep_internal::register_spot_pending_request (
                                                 state_->requests.default_timeout_ms);
     if (resolved_timeout_ms > 0) {
         pending.deadline_ns =
-          monotonic_now_ns ()
-          + static_cast<uint64_t> (resolved_timeout_ms)
-              * static_cast<uint64_t> (1000000);
+          zlink::request_timeout::deadline_after_ms (resolved_timeout_ms);
         ensure_spot_timeout_reaper_started ();
     }
 

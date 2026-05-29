@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "precompiled.hpp"
+#include "utils/precompiled.hpp"
 
 #include "api/service/service_handle_internal.hpp"
 #include "services/spot/pubsub/spot_sub.hpp"

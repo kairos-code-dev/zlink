@@ -13,7 +13,7 @@ function assertRuntimeHandle(value: unknown, name: string): asserts value is Nat
 
 export function asRuntimeContext(ctx: Context): RuntimeContext {
   assertRuntimeHandle(ctx, 'context');
-  return ctx as unknown as RuntimeContext;
+  return ctx as RuntimeContext;
 }
 
 export function asRuntimeSocket(socket: BaseSocket): RuntimeBaseSocket {

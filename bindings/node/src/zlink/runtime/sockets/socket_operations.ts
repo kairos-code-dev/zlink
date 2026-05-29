@@ -30,7 +30,6 @@ import {
   TopicMessage,
   SubscriptionEvent,
   type MessageLike,
-  type MessageSnapshot
 } from '../../contracts';
 import { validateCString } from '../options/validation';
 import {
@@ -60,6 +59,8 @@ import {
 
 const PREBUILD_SUBSCRIBE_OPTION = 6;
 const PREBUILD_UNSUBSCRIBE_OPTION = 7;
+// Packaged prebuilds may predate the dedicated subscription exports.
+// Keep this bridge until every published platform prebuild is refreshed.
 
 import type {
   SubscriptionEntry,
@@ -92,6 +93,7 @@ export type {
   ActorRef,
   ActorUnbindOperation,
 } from '../../contracts/service';
+export type { MessageSnapshot } from '../../contracts';
 export { NativeSocketType as SocketType };
 export {
   Message,
@@ -218,8 +220,8 @@ export class MessageSocket extends SendSocket {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().socketRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null
-        : requireNative().socketRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; requestSeq?: bigint | null } | null;
+        ? requireNative().socketRecvMessageNoWait(this.nativeHandle())
+        : requireNative().socketRecvMessage(this.nativeHandle(), flags | 0);
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
@@ -278,8 +280,8 @@ export class SubscriberSocket extends ConnectableSocket {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().socketTrySubscribeMessage(this.nativeHandle()) as { topic: string; parts: MessageSnapshot[]; routingId?: Buffer | null } | null
-        : requireNative().socketSubscribeMessage(this.nativeHandle(), flags | 0) as { topic: string; parts: MessageSnapshot[]; routingId?: Buffer | null } | null;
+        ? requireNative().socketTrySubscribeMessage(this.nativeHandle())
+        : requireNative().socketSubscribeMessage(this.nativeHandle(), flags | 0);
     } catch (error) {
       throw recvNativeError(error, flags, 'subscribe failed');
     }
@@ -344,8 +346,8 @@ export class RoutedMessageSocket extends ConnectableSocket {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().routerRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null; spotRid?: Buffer | null; requestSeq?: bigint | null } | null
-        : requireNative().routerRecvMessage(this.nativeHandle(), flags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null; spotRid?: Buffer | null; requestSeq?: bigint | null } | null;
+        ? requireNative().routerRecvMessageNoWait(this.nativeHandle())
+        : requireNative().routerRecvMessage(this.nativeHandle(), flags | 0);
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
@@ -391,4 +393,3 @@ export {
   normalizeBufferLike,
   wrapRoutingId,
 };
-export type { MessageSnapshot };

@@ -1,5 +1,28 @@
 // SPDX-License-Identifier: MPL-2.0
 
+import type {
+  NativeReceivedRaw,
+  NativeTopicMessageRaw
+} from '../messaging/message_materializer';
+import type {
+  MonitorEventValueRaw,
+  MonitorStatusRaw
+} from '../../contracts/eventing';
+import type {
+  RegistryServiceSummaryFilter,
+  RegistryTopologyFilter
+} from '../../contracts/service';
+import type {
+  MemberPeerEntryRaw,
+  RegistryServiceSummaryEntryRaw,
+  RegistryStatusRaw,
+  RegistryTopologyEntryRaw
+} from '../service/registry/registry_support';
+import type {
+  DiscoveryActorRouteRaw,
+  DiscoverySpotRouteRaw
+} from '../service/discovery/discovery';
+
 type NativeFn = (...args: unknown[]) => unknown;
 type NativeHandle = unknown;
 type NativeBuffer = Buffer;
@@ -40,12 +63,18 @@ interface ContextNativeBinding {
 }
 
 interface SocketNativeBinding {
-  dealerRequest: NativeFn;
+  dealerRequest: (
+    socket: NativeHandle,
+    parts: readonly unknown[],
+    callback: unknown,
+    flags: number,
+    timeoutMs: number
+  ) => void;
   handleGetRoutingId: (handle: NativeHandle) => Buffer;
   handleSetRoutingId: (handle: NativeHandle, routingId: Buffer) => void;
   monitorOpen: NativeHandleFn;
-  routerRecvMessage: NativeFn;
-  routerRecvMessageNoWait: NativeFn;
+  routerRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
+  routerRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
   routerReply: NativeFn;
   routerRequest: NativeFn;
   routerSpotReply: NativeFn;
@@ -61,16 +90,36 @@ interface SocketNativeBinding {
   socketGetOpt: NativeBufferFn;
   socketNew: (ctx: NativeHandle, type: number) => NativeHandle;
   socketPublish: NativeNumberFn;
-  socketRecvMessage: NativeFn;
-  socketRecvMessageNoWait: NativeFn;
-  socketSend: NativeFn;
-  socketSendNoWaitResult: NativeFn;
-  socketSendNoWaitResultParts: NativeFn;
-  socketSendParts: NativeFn;
-  socketSendReadyHandler: NativeFn;
-  socketSendRouting: NativeFn;
-  socketSendRoutingNoWaitResult: NativeFn;
-  socketSendRoutingNoWaitResultParts: NativeFn;
+  socketRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
+  socketRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
+  socketSend: (socket: NativeHandle, payload: unknown, flags: number) => void;
+  socketSendNoWaitResult: (socket: NativeHandle, payload: unknown) => number;
+  socketSendNoWaitResultParts: (
+    socket: NativeHandle,
+    parts: readonly unknown[]
+  ) => number;
+  socketSendParts: (
+    socket: NativeHandle,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  socketSendReadyHandler: (socket: NativeHandle, handler: unknown) => void;
+  socketSendRouting: (
+    socket: NativeHandle,
+    routingId: Buffer,
+    payload: unknown,
+    flags: number
+  ) => void;
+  socketSendRoutingNoWaitResult: (
+    socket: NativeHandle,
+    routingId: Buffer,
+    payload: unknown
+  ) => number;
+  socketSendRoutingNoWaitResultParts: (
+    socket: NativeHandle,
+    routingId: Buffer,
+    parts: readonly unknown[]
+  ) => number;
   socketSetChannelName: (socket: NativeHandle, channelName: string) => void;
   socketSetOpt: (socket: NativeHandle, option: number, value: Buffer) => void;
   socketSetSubscription?: (socket: NativeHandle, topic: string) => void;
@@ -87,10 +136,13 @@ interface SocketNativeBinding {
     requireClientCert: number
   ) => void;
   socketStreamAttach: NativeVoidFn;
-  socketSubscribeMessage: NativeFn;
+  socketSubscribeMessage: (
+    socket: NativeHandle,
+    flags: number
+  ) => NativeTopicMessageRaw | null;
   socketSubscriptionEvent: NativeFn;
   socketTryPublish: NativeFn;
-  socketTrySubscribeMessage: NativeFn;
+  socketTrySubscribeMessage: (socket: NativeHandle) => NativeTopicMessageRaw | null;
   socketTrySubscriptionEvent: NativeFn;
   socketUnbind: (socket: NativeHandle, endpoint: string) => void;
   socketUnsetSubscription?: (socket: NativeHandle, topic: string) => void;
@@ -110,10 +162,13 @@ interface EventingNativeBinding {
   atomicCounterSet: (counter: NativeHandle, value: number) => void;
   atomicCounterValue: NativeNumberFn;
   monitorClose: NativeVoidFn;
-  monitorHandler: NativeFn;
-  monitorRecv: NativeFn;
-  monitorRecvNoWait: NativeFn;
-  monitorStatus: NativeFn;
+  monitorHandler: (
+    monitor: NativeHandle,
+    handler: (event: MonitorEventValueRaw) => void
+  ) => void;
+  monitorRecv: (monitor: NativeHandle) => MonitorEventValueRaw;
+  monitorRecvNoWait: (monitor: NativeHandle) => MonitorEventValueRaw | null;
+  monitorStatus: (monitor: NativeHandle) => MonitorStatusRaw;
   pollEventsDestroy: NativeVoidFn;
   pollEventsFd: NativeNumberFn;
   pollEventsNew: NativeHandleFn;
@@ -138,40 +193,79 @@ interface EventingNativeBinding {
   stopwatchStart: NativeHandleFn;
   stopwatchStop: NativeNumberFn;
   timerDestroy: NativeVoidFn;
-  timerHandler: NativeFn;
-  timerNew: NativeFn;
-  timerRecv: NativeFn;
-  timerStart: NativeFn;
-  timerStop: NativeFn;
+  timerHandler: (
+    timer: NativeHandle,
+    handler: (fireCount: bigint) => void
+  ) => void;
+  timerNew: NativeHandleFn;
+  timerRecv: (timer: NativeHandle, flags: number) => bigint | null;
+  timerStart: (timer: NativeHandle, intervalNs: bigint, repeatCount: bigint) => void;
+  timerStop: (timer: NativeHandle) => void;
 }
 
 interface ServiceNativeBinding {
-  discoveryConnectRegistry: NativeFn;
-  discoveryDestroy: NativeFn;
-  discoveryGetProviders: NativeFn;
-  discoveryGetValue: NativeFn;
-  discoveryNew: NativeFn;
-  discoveryResolveActor: NativeFn;
-  discoveryResolveSpot: NativeFn;
-  discoverySetTlsClient: NativeFn;
-  discoverySetValue: NativeFn;
-  registryAddPeer: NativeFn;
-  registryDestroy: NativeFn;
-  registryMemberPeers: NativeFn;
-  registryNew: NativeFn;
-  registryQueryClientConnect: NativeFn;
-  registryQueryClientNew: NativeFn;
-  registryQueryDestroy: NativeFn;
-  registryQueryTopology: NativeFn;
-  registryServiceSummary: NativeFn;
-  registrySetBroadcastInterval: NativeFn;
-  registrySetEndpoints: NativeFn;
-  registrySetHeartbeat: NativeFn;
-  registrySetId: NativeFn;
-  registrySetTlsClient: NativeFn;
-  registrySetTlsServer: NativeFn;
-  registryStatus: NativeFn;
-  registryTopology: NativeFn;
+  discoveryConnectRegistry: (discovery: NativeHandle, endpoint: string) => void;
+  discoveryDestroy: (discovery: NativeHandle) => void;
+  discoveryGetProviders: (discovery: NativeHandle) => MemberPeerEntryRaw[];
+  discoveryGetValue: (discovery: NativeHandle) => number;
+  discoveryNew: (
+    ctx: NativeHandle,
+    autoConnectType: number,
+    channelName: string
+  ) => NativeHandle;
+  discoveryResolveActor: (discovery: NativeHandle, actorId: string) => DiscoveryActorRouteRaw;
+  discoveryResolveSpot: (discovery: NativeHandle, spotRid: Buffer) => DiscoverySpotRouteRaw;
+  discoverySetTlsClient: (
+    discovery: NativeHandle,
+    ca: string,
+    hostname: string,
+    trustSystem: number
+  ) => void;
+  discoverySetValue: (discovery: NativeHandle, value: number) => void;
+  registryAddPeer: (registry: NativeHandle, pubEndpoint: string) => void;
+  registryDestroy: (registry: NativeHandle) => void;
+  registryMemberPeers: (registry: NativeHandle, channelName: string) => MemberPeerEntryRaw[];
+  registryNew: (ctx: NativeHandle) => NativeHandle;
+  registryQueryClientConnect: (client: NativeHandle, endpoint: string) => void;
+  registryQueryClientNew: (ctx: NativeHandle) => NativeHandle;
+  registryQueryDestroy: (client: NativeHandle) => void;
+  registryQueryTopology: (
+    client: NativeHandle,
+    filter?: RegistryTopologyFilter
+  ) => RegistryTopologyEntryRaw[];
+  registryServiceSummary: (
+    registry: NativeHandle,
+    filter?: RegistryServiceSummaryFilter
+  ) => RegistryServiceSummaryEntryRaw[];
+  registrySetBroadcastInterval: (registry: NativeHandle, intervalMs: number) => void;
+  registrySetEndpoints: (
+    registry: NativeHandle,
+    pubEndpoint: string,
+    routerEndpoint: string
+  ) => void;
+  registrySetHeartbeat: (
+    registry: NativeHandle,
+    intervalMs: number,
+    timeoutMs: number
+  ) => void;
+  registrySetId: (registry: NativeHandle, id: number) => void;
+  registrySetTlsClient: (
+    registry: NativeHandle,
+    ca: string,
+    hostname: string,
+    trustSystem: number
+  ) => void;
+  registrySetTlsServer: (
+    registry: NativeHandle,
+    cert: string,
+    key: string,
+    requireClientCert: number
+  ) => void;
+  registryStatus: (registry: NativeHandle) => RegistryStatusRaw;
+  registryTopology: (
+    registry: NativeHandle,
+    filter?: RegistryTopologyFilter
+  ) => RegistryTopologyEntryRaw[];
   remoteActorGetRef: NativeFn;
   spotActorJoinRecv: NativeFn;
   spotActorJoinReply: NativeFn;

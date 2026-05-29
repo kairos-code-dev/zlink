@@ -28,7 +28,6 @@ import {
   type Context,
   type Message,
   type MessageLike,
-  type MessageSnapshot,
   type SendOperation,
   type SocketSendReadyHandler,
   type StreamPacketHandler,
@@ -88,8 +87,8 @@ export class StreamSocket extends SocketBase {
     let raw;
     try {
       raw = ((recvFlags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().socketRecvMessageNoWait(this.nativeHandle()) as { parts: MessageSnapshot[]; routingId?: Buffer | null } | null
-        : requireNative().socketRecvMessage(this.nativeHandle(), recvFlags | 0) as { parts: MessageSnapshot[]; routingId?: Buffer | null } | null;
+        ? requireNative().socketRecvMessageNoWait(this.nativeHandle())
+        : requireNative().socketRecvMessage(this.nativeHandle(), recvFlags | 0);
     } catch (error) {
       throw recvNativeError(error, recvFlags, 'recv failed');
     }

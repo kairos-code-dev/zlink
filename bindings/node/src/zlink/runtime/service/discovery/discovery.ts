@@ -19,25 +19,25 @@ import {
 } from '../../../contracts/service';
 import { mapMemberPeerEntry, type MemberPeerEntryRaw } from '../registry/registry_support';
 
-interface ActorRefRaw {
+export interface DiscoveryActorRefRaw {
   nodeRid: Buffer;
   actorId: string;
   generation: bigint | number;
 }
 
-interface ActorRouteRaw {
-  actor: ActorRefRaw;
+export interface DiscoveryActorRouteRaw {
+  actor: DiscoveryActorRefRaw;
   currentSpotRid: Buffer;
   currentSpotKind: number;
 }
 
-interface SpotRouteRaw {
+export interface DiscoverySpotRouteRaw {
   spotRid: Buffer;
   ownerNodeRid: Buffer;
   spotKind: number;
 }
 
-function actorRefFromRaw(raw: ActorRefRaw): ActorRef {
+function actorRefFromRaw(raw: DiscoveryActorRefRaw): ActorRef {
   return {
     nodeRid: RoutingId.from(raw.nodeRid),
     actorId: raw.actorId,
@@ -45,7 +45,7 @@ function actorRefFromRaw(raw: ActorRefRaw): ActorRef {
   };
 }
 
-function actorRouteFromRaw(raw: ActorRouteRaw): ActorRoute {
+function actorRouteFromRaw(raw: DiscoveryActorRouteRaw): ActorRoute {
   return {
     actor: actorRefFromRaw(raw.actor),
     currentSpotRid: RoutingId.from(raw.currentSpotRid),
@@ -90,7 +90,7 @@ export class Discovery extends NativeHandle {
   resolveSpot(spotRid: RoutingId): SpotRoute {
     const normalizedSpotRid = normalizeRoutingId(spotRid);
     const raw = configCall('discovery spot resolve failed', () =>
-      requireNative().discoveryResolveSpot(this._native, normalizedSpotRid) as SpotRouteRaw
+      requireNative().discoveryResolveSpot(this._native, normalizedSpotRid)
     );
     return {
       spotRid: RoutingId.from(raw.spotRid),
@@ -106,7 +106,7 @@ export class Discovery extends NativeHandle {
         requireNative().discoveryResolveActor(
           this._native,
           normalizedActorId
-        ) as ActorRouteRaw
+        )
       )
     );
   }

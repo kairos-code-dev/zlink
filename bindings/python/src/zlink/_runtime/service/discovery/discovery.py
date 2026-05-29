@@ -26,7 +26,6 @@ from ...._native.ffi import (
     lib,
 )
 from ....contracts.service.discovery import (
-    Discovery as _ContractDiscovery,
     MemberPeerEntry,
     RegistryServiceSummaryEntry,
     RegistryServiceSummaryFilter,
@@ -221,7 +220,7 @@ def _build_topology_filter(filter_):
     return native
 
 
-class Discovery(_ContractDiscovery):
+class Discovery:
     def __init__(self, ctx, auto_connect_type, channel_name: str):
         self._handle = lib().zlink_discovery_new(
             ctx._handle,

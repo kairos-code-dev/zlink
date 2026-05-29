@@ -2,7 +2,6 @@
 
 import ctypes
 
-from ...contracts.core.context import Context, ContextOptions
 from ...contracts.core.options import AutoHwmProfile, ContextOption
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.errors.errors import CloseError, ConfigError
@@ -15,7 +14,7 @@ from ..handles.native_support import (
 )
 
 
-class NativeContext(Context):
+class NativeContext:
     def __init__(self):
         if hasattr(self, "_handle"):
             return
@@ -69,7 +68,7 @@ class NativeContext(Context):
         self.close()
 
 
-class NativeContextOptions(ContextOptions):
+class NativeContextOptions:
     def __init__(self, context):
         self._context = context
         self._thread_name_prefix = ""

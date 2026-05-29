@@ -5,16 +5,6 @@ import ctypes
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.sockets.codes import RecvResult, SubmitResult
 from ...contracts.errors.errors import CloseError, ConfigError, RecvError, SubmitError
-from ...contracts.messaging.message import Message as _ContractMessage
-from ...contracts.messaging.received import (
-    Received as _ContractReceived,
-    ReceivedMessage as _ContractReceivedMessage,
-    ReceivedMultipart as _ContractReceivedMultipart,
-)
-from ...contracts.messaging.subscription_event import (
-    SubscriptionEvent as _ContractSubscriptionEvent,
-)
-from ...contracts.messaging.topic_message import TopicMessage as _ContractTopicMessage
 from ..._native.ffi import ZlinkMsg, lib
 from ..._runtime.handles.native_support import (
     _init_msg_from_buffer,
@@ -32,7 +22,7 @@ METADATA_KEY_USER_MIN = 0x0100
 METADATA_VALUE_MAX = 65535
 
 
-class ReceivedMessage(_ContractReceivedMessage):
+class ReceivedMessage:
     def __init__(self, msg=None, routing_id=None, *, owner=None, index=None):
         self._msg = msg
         self._owner = owner
@@ -164,7 +154,7 @@ class _BaseReceived:
         self.close()
 
 
-class ReceivedMultipart(_BaseReceived, _ContractReceivedMultipart):
+class ReceivedMultipart(_BaseReceived):
     def __init__(
         self,
         owner=None,
@@ -246,7 +236,7 @@ class ReceivedMultipart(_BaseReceived, _ContractReceivedMultipart):
         self._send_sender = send_sender
 
 
-class TopicMessage(_BaseReceived, _ContractTopicMessage):
+class TopicMessage(_BaseReceived):
     def __init__(
         self,
         topic=None,
@@ -325,7 +315,7 @@ class TopicMessage(_BaseReceived, _ContractTopicMessage):
         self.request_seq = request_seq
 
 
-class Received(ReceivedMultipart, _ContractReceived):
+class Received(ReceivedMultipart):
     def send(self):
         """Return a SendOp routed back to the source of this Received.
 
@@ -344,7 +334,7 @@ class Received(ReceivedMultipart, _ContractReceived):
         return self._reply_sender()
 
 
-class SubscriptionEvent(_ContractSubscriptionEvent):
+class SubscriptionEvent:
     def __init__(self, topic="", subscribed=False, routing_id=None):
         self.routing_id = routing_id
         self.topic = topic
@@ -361,7 +351,7 @@ class SubscriptionEvent(_ContractSubscriptionEvent):
         source.subscribed = False
 
 
-class Message(_ContractMessage):
+class Message:
     def __init__(self, size: int | None = None):
         self._msg = ZlinkMsg()
         self._valid = False

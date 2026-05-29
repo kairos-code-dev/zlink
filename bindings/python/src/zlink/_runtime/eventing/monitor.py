@@ -6,7 +6,7 @@ from ...contracts.core.options import AutoHwmRecalcReason
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.errors.errors import CloseError, ConfigError, HandlerError, RecvError
 from ...contracts.eventing.codes import MonitorEventMask
-from ...contracts.eventing.monitor import MonitorEvent, MonitorSocket, MonitorStatus
+from ...contracts.eventing.monitor import MonitorEvent, MonitorStatus
 from ...contracts.sockets.codes import HandlerResult, RecvResult
 from ..._native.ffi import (
     ZlinkMonitorEvent,
@@ -62,7 +62,9 @@ _SOCKET_MONITOR_HANDLER = ctypes.CFUNCTYPE(
 )
 
 
-class NativeMonitorSocket(MonitorSocket):
+class NativeMonitorSocket:
+    ignore_handler = staticmethod(lambda event: None)
+
     def __init__(self, handle):
         self._handle = handle
         self._handler = None

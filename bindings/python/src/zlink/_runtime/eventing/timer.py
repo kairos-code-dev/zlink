@@ -4,7 +4,6 @@ import ctypes
 
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.errors.errors import CloseError, ConfigError, HandlerError, RecvError
-from ...contracts.eventing.timer import Timer
 from ...contracts.sockets.codes import HandlerResult, RecvResult
 from ..._native.ffi import lib
 from ..core.zlink import _as_handle, _report_unhandled_exception
@@ -19,7 +18,7 @@ _TIMER_HANDLER = ctypes.CFUNCTYPE(
 )
 
 
-class NativeTimer(Timer):
+class NativeTimer:
     def __init__(self) -> None:
         if hasattr(self, "_handle"):
             return

@@ -124,6 +124,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink, "PollSourceKind"))
         self.assertTrue(hasattr(zlink.Poller, "wait"))
         self.assertFalse(hasattr(zlink.Poller, "poll"))
+        self.assertTrue(hasattr(zlink.Stopwatch, "intermediate"))
+        self.assertFalse(hasattr(zlink.Stopwatch, "elapsed_ns"))
+        self.assertFalse(hasattr(zlink.Stopwatch, "start"))
+        self.assertFalse(hasattr(zlink.Thread, "start"))
         self.assertEqual(zlink.MonitorEventMask.PEER_WEIGHT_CHANGED.value, 1 << 15)
         self.assertFalse(hasattr(zlink, "SocketMonitorEvent"))
         self.assertTrue(hasattr(zlink, "Actor"))
@@ -158,6 +162,24 @@ class CoreApiAlignmentTests(unittest.TestCase):
         remote = zlink.remote_actor_ref(zlink.RoutingId(b"node"), "actor")
         self.assertTrue(remote.is_unchecked())
         self.assertEqual(remote.generation, 0)
+
+    def test_protocol_contracts_do_not_inject_runtime_stub_methods(self):
+        with zlink.create_stopwatch() as watch:
+            self.assertFalse(hasattr(watch, "start"))
+            self.assertFalse(hasattr(watch, "elapsed_ns"))
+            self.assertGreaterEqual(watch.intermediate(), 0)
+
+        thread = zlink.create_thread(lambda: None)
+        self.assertFalse(hasattr(thread, "start"))
+        thread.join()
+
+    def test_router_reply_contract_matches_runtime_signature(self):
+        ctx = zlink.create_context()
+
+        with ctx:
+            with zlink.create_router_socket(ctx) as router:
+                op = router.reply(zlink.RoutingId.from_bytes(b"peer"), 1)
+                self.assertIsInstance(op, zlink.ReplyOp)
 
     def test_context_options_use_snake_case(self):
         ctx = zlink.create_context()

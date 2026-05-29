@@ -5,14 +5,6 @@ import ctypes
 from ...contracts.core.routing_id import RoutingId
 from ...contracts.sockets.codes import RidDuplicatePolicy, RouterOption, SocketOption
 from ...contracts.messaging.message import Message, create_message_from
-from ...contracts.sockets.socket_options import (
-    CommonSocketOptions as _ContractCommonSocketOptions,
-    DealerSocketOptions as _ContractDealerSocketOptions,
-    PubSocketOptions as _ContractPubSocketOptions,
-    RouterSocketOptions as _ContractRouterSocketOptions,
-    StreamSocketOptions as _ContractStreamSocketOptions,
-    SubSocketOptions as _ContractSubSocketOptions,
-)
 from ..._native.ffi import lib
 from ..buffers.payload_buffers import (
     _bool_bytes,
@@ -23,7 +15,7 @@ from ..buffers.payload_buffers import (
 )
 
 
-class CommonSocketOptions(_ContractCommonSocketOptions):
+class CommonSocketOptions:
     def __init__(self, socket):
         self._socket = socket
 
@@ -210,7 +202,7 @@ class CommonSocketOptions(_ContractCommonSocketOptions):
         self._socket._set_common_int_option(SocketOption.SUBMIT_RETRY_ATTEMPTS, value)
 
 
-class DealerSocketOptions(_ContractDealerSocketOptions):
+class DealerSocketOptions:
     _PROBE = 0x3201
     _REQUEST_TIMEOUT_MS = 0x3202
     _WEIGHT = 0x3203
@@ -245,7 +237,7 @@ class DealerSocketOptions(_ContractDealerSocketOptions):
         self._socket._set_dealer_option(self._REQUEST_TIMEOUT_MS, _int32_bytes(value))
 
 
-class StreamSocketOptions(_ContractStreamSocketOptions):
+class StreamSocketOptions:
     _NOTIFY = 0x3501
 
     def __init__(self, socket):
@@ -260,7 +252,7 @@ class StreamSocketOptions(_ContractStreamSocketOptions):
         self._socket._set_stream_option(self._NOTIFY, _bool_bytes(value))
 
 
-class SubSocketOptions(_ContractSubSocketOptions):
+class SubSocketOptions:
     _TOPICS_COUNT = 0x3400
 
     def __init__(self, socket):
@@ -271,7 +263,7 @@ class SubSocketOptions(_ContractSubSocketOptions):
         return _read_int32(self._socket._get_sub_option(self._TOPICS_COUNT, 4))
 
 
-class PubSocketOptions(_ContractPubSocketOptions):
+class PubSocketOptions:
     _VERBOSE = 0x3301
     _VERBOSER = 0x3302
     _MANUAL = 0x3303
@@ -352,7 +344,7 @@ class PubSocketOptions(_ContractPubSocketOptions):
         )
 
 
-class RouterSocketOptions(_ContractRouterSocketOptions):
+class RouterSocketOptions:
     # RID_DUPLICATE_POLICY common option values (mirrors ZLINK_RID_DUPLICATE_*)
     _RID_DUPLICATE_POLICY_OPTION = 0x3033
     _RID_DUPLICATE_REJECT = 0

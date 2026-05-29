@@ -2,7 +2,6 @@
 
 import ctypes
 
-from ....contracts.service.discovery import Registry as _ContractRegistry
 from ...._native.ffi import (
     ZlinkRegistryServiceSummaryEntry,
     ZlinkRegistryServiceSummaryFilter,
@@ -34,7 +33,7 @@ from ..discovery.discovery import (
 )
 
 
-class Registry(_ContractRegistry):
+class Registry:
     def __init__(self, ctx):
         self._handle = lib().zlink_registry_new(ctx._handle)
         if not self._handle:

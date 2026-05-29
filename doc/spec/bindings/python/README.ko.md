@@ -45,8 +45,7 @@ Python은 물리적 패키지 트리를 .NET 카테고리 맵에 가깝게 유�
   `typing.Protocol` 선언이다. 공개 표면을 설명하지만 생성자는 아니다.
 - 공개 생성: `create_context()`, `create_pair_socket(...)`,
   `create_message_from(...)`, `create_poller()`, `create_spot_node(...)` 같은
-  패키지 루트 팩토리와 `Context.create_pair_socket()`,
-  `SpotNode.create_spot()` 같은 공개 계약 메서드가 담당한다.
+  패키지 루트 팩토리와 `SpotNode.create_spot()` 같은 공개 소유자 메서드가 담당한다.
 - 내부 구현: `_runtime`, `_native`처럼 언더스코어 접두 패키지, 비공개 확장 모듈,
   콜백 브리지 코드, request 진행 헬퍼, raw part-loop 헬퍼.
 - 문서 역할: 이 README는 형태와 의미 범위를 정의한다.
@@ -301,17 +300,16 @@ import하지 않는다. 패키지 루트는 팩토리에서 런타임 구현을 
 
 ## 생성 진입점
 
-공개 생성은 패키지 루트 팩토리와 공개 계약 메서드가 제공한다.
+공개 생성은 패키지 루트 팩토리와 공개 소유자 메서드가 제공한다.
 
 - `create_context()`는 네이티브 기반 context 구현을 생성한다.
 - `create_pair_socket(...)`, `create_dealer_socket(...)`,
   `create_router_socket(...)`, `create_pub_socket(...)`,
   `create_sub_socket(...)`, `create_xpub_socket(...)`,
   `create_xsub_socket(...)`, `create_stream_socket(...)`은 네이티브 기반 소켓 구현을
-  생성한다. 대응하는 `Context.create_*` 메서드는 이 팩토리에 위임할 수 있다.
+  생성한다.
 - `create_registry(...)`, `create_discovery(...)`, `create_spot_node(...)`는 서비스
-  계층 구현을 생성한다. 대응하는 `Context.create_*` 메서드는 이 팩토리에 위임할
-  수 있다.
+  계층 구현을 생성한다.
 - `Spot` 핸들은 `SpotNode.create_spot()`, `entry_spot()`,
   `get_or_create_spot(...)`, `spot_lookup(...)`을 통해 얻는다. `Spot`의 직접
   생성은 공개되지 않는다.

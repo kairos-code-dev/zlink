@@ -5,13 +5,13 @@ import ctypes
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.errors.errors import CloseError, ConfigError, RecvError
 from ...contracts.eventing.codes import PollEventFlag, PollSourceKind
-from ...contracts.eventing.poller import PollEvent, PollEvents, Poller
+from ...contracts.eventing.poller import PollEvent, PollEvents
 from ...contracts.sockets.codes import RecvResult
 from ..._native.ffi import ZlinkPollerEvent, lib
 from ..handles.native_support import _raise_last_error, _raise_result_error
 
 
-class NativePollEvents(PollEvents):
+class NativePollEvents:
     def __init__(self, capacity):
         capacity = int(capacity)
         if capacity <= 0:
@@ -66,7 +66,7 @@ class NativePollEvents(PollEvents):
         return self._events[index]
 
 
-class NativePoller(Poller):
+class NativePoller:
     def __init__(self):
         if hasattr(self, "_handle"):
             return

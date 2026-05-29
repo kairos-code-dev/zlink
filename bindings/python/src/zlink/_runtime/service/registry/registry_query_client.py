@@ -2,7 +2,6 @@
 
 import ctypes
 
-from ....contracts.service.discovery import RegistryQueryClient as _ContractRegistryQueryClient
 from ...._native.ffi import lib
 from ...handles.native_support import (
     CloseError,
@@ -18,7 +17,7 @@ from ...handles.native_support import (
 from ..discovery.discovery import _build_topology_filter, _query_topology
 
 
-class RegistryQueryClient(_ContractRegistryQueryClient):
+class RegistryQueryClient:
     def __init__(self, ctx):
         self._handle = lib().zlink_registry_query_client_new(ctx._handle)
         if not self._handle:

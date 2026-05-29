@@ -4,7 +4,6 @@ import ctypes
 import sys
 import types
 
-from ...contracts.core.utilities import AtomicCounter, Stopwatch, Thread
 from ...contracts.errors.codes import CloseResult, ConfigResult
 from ...contracts.errors.errors import CloseError, ConfigError
 from ..._native.ffi import lib
@@ -82,7 +81,7 @@ def multipart_close(parts):
         part.close()
 
 
-class NativeStopwatch(Stopwatch):
+class NativeStopwatch:
     def __init__(self) -> None:
         if hasattr(self, "_handle"):
             return
@@ -119,7 +118,7 @@ class NativeStopwatch(Stopwatch):
         self.close()
 
 
-class NativeThread(Thread):
+class NativeThread:
     def __init__(self, target) -> None:
         if hasattr(self, "_handle"):
             return
@@ -149,7 +148,7 @@ class NativeThread(Thread):
         self._callback = None
 
 
-class NativeAtomicCounter(AtomicCounter):
+class NativeAtomicCounter:
     def __init__(self) -> None:
         if hasattr(self, "_handle"):
             return

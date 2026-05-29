@@ -49,8 +49,8 @@ classes live under `_runtime`, and callers create them through explicit
   but are not constructors.
 - Public construction: package-root factories such as `create_context()`,
   `create_pair_socket(...)`, `create_message_from(...)`, `create_poller()`,
-  and `create_spot_node(...)`, plus public contract methods such as
-  `Context.create_pair_socket()` and `SpotNode.create_spot()`.
+  and `create_spot_node(...)`, plus public owner methods such as
+  `SpotNode.create_spot()`.
 - Internal implementation: underscore-prefixed packages such as `_runtime` and
   `_native`, private extension modules, callback bridge code, request progress
   helpers, and raw part-loop helpers.
@@ -332,7 +332,7 @@ modules.
 
 ## Construction Entry Points
 
-Public construction is provided by package-root factories and public contract
+Public construction is provided by package-root factories and public owner
 methods.
 
 - `create_context()` creates the native-backed context implementation.
@@ -340,11 +340,9 @@ methods.
   `create_router_socket(...)`, `create_pub_socket(...)`,
   `create_sub_socket(...)`, `create_xpub_socket(...)`,
   `create_xsub_socket(...)`, and `create_stream_socket(...)` create
-  native-backed socket implementations. The matching `Context.create_*`
-  methods may delegate to these factories.
+  native-backed socket implementations.
 - `create_registry(...)`, `create_discovery(...)`, and
-  `create_spot_node(...)` create service-layer implementations. The matching
-  `Context.create_*` methods may delegate to these factories.
+  `create_spot_node(...)` create service-layer implementations.
 - `Spot` handles are obtained through `SpotNode.create_spot()`,
   `entry_spot()`, `get_or_create_spot(...)`, or `spot_lookup(...)`; direct
   `Spot` construction is not public.

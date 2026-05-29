@@ -366,6 +366,15 @@ based on the following classification:
 | `ZLINK_OPT_RECONNECT_IVL` | Initial reconnection interval in milliseconds (`int`) |
 | `ZLINK_OPT_RECONNECT_IVL_MAX` | Maximum reconnection interval in milliseconds (`int`; 0 = use RECONNECT_IVL only) |
 | `ZLINK_OPT_HANDSHAKE_IVL` | ZMTP handshake timeout in milliseconds (`int`) |
+| `ZLINK_OPT_SUBMIT_RETRY_MODE` | Local-submit retry mode (`int`; `ZLINK_SUBMIT_RETRY_OFF` or `ZLINK_SUBMIT_RETRY_LOCAL_FAILURE`; raw socket default is off) |
+| `ZLINK_OPT_SUBMIT_RETRY_TIMEOUT` | Local-submit retry budget in milliseconds (`int`; raw socket default is 0, which disables retry) |
+| `ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS` | Additional retry attempts after the first submit (`int`; raw socket default is 0, current maximum is 16) |
+
+Submit retry only retries local submit failures classified as `ENOTCONN` or
+`EHOSTUNREACH`. It does not run for `ZLINK_DONTWAIT` calls, backpressure
+(`EAGAIN`), admission rejection, argument errors, or reply timeout after a
+request submit has already succeeded. Managed SPOT/service outbound internals
+use a default profile of `LOCAL_FAILURE`/100ms/2 attempts.
 
 ##### TCP
 

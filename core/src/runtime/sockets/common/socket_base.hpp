@@ -359,6 +359,8 @@ class socket_base_t : public own_t,
     virtual int xsend (zlink::msg_t *msg_);
     virtual int xsend_routed (const zlink_routing_id_t *target_rid_,
                               zlink::msg_t *msg_);
+    virtual bool xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_,
+                                        int err_) const;
     virtual int xrollback ();
 
     //  The default implementation assumes that recv in not supported.
@@ -666,10 +668,13 @@ class routing_socket_base_t : public socket_base_t
     {
         pipe_t *pipe;
         bool active;
+        bool locally_initiated;
         uint32_t weight;
     };
 
-    void add_out_pipe (blob_t routing_id_, pipe_t *pipe_);
+    void add_out_pipe (blob_t routing_id_,
+                       pipe_t *pipe_,
+                       bool locally_initiated_);
     bool has_out_pipe (const blob_t &routing_id_) const;
     out_pipe_t *lookup_out_pipe (const blob_t &routing_id_);
     const out_pipe_t *lookup_out_pipe (const blob_t &routing_id_) const;
@@ -680,6 +685,8 @@ class routing_socket_base_t : public socket_base_t
     void mark_out_pipe_inactive (out_pipe_t *out_pipe_);
     void update_out_pipe_weight (out_pipe_t *out_pipe_, uint32_t weight_);
     bool has_writable_weighted_out_pipes () const;
+    bool xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_,
+                                int err_) const ZLINK_OVERRIDE;
     template <typename Func> bool any_of_out_pipes (Func func_)
     {
         bool res = false;
@@ -696,8 +703,10 @@ class routing_socket_base_t : public socket_base_t
     //  Outbound pipes indexed by the peer IDs.
     typedef std::map<blob_t, out_pipe_t> out_pipes_t;
     typedef std::map<pipe_t *, out_pipes_t::iterator> out_pipe_index_t;
+    typedef std::set<blob_t> submit_retry_local_rids_t;
     out_pipes_t _out_pipes;
     out_pipe_index_t _out_pipe_index;
+    submit_retry_local_rids_t _submit_retry_local_rids;
     size_t _writable_weighted_out_pipes;
 
     // Next assigned name on a zlink_connect() call used by ROUTER socket type.

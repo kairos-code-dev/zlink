@@ -6,6 +6,11 @@
 
 #include "core/options_dispatch_internal.hpp"
 
+namespace
+{
+const int max_submit_retry_attempts = 16;
+}
+
 int zlink::options_setsockopt_core_socket (options_t *self_,
                                            int option_,
                                            const void *optval_,
@@ -104,6 +109,29 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
         case ZLINK_INTERNAL_OPT_INVERT_MATCHING:
             return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_,
                                                       &self_->invert_matching);
+
+        case ZLINK_INTERNAL_OPT_SUBMIT_RETRY_MODE:
+            if (is_int_
+                && (value_ == ZLINK_SUBMIT_RETRY_OFF
+                    || value_ == ZLINK_SUBMIT_RETRY_LOCAL_FAILURE)) {
+                self_->submit_retry_mode = value_;
+                return 0;
+            }
+            break;
+
+        case ZLINK_INTERNAL_OPT_SUBMIT_RETRY_TIMEOUT:
+            if (is_int_ && value_ >= 0) {
+                self_->submit_retry_timeout = value_;
+                return 0;
+            }
+            break;
+
+        case ZLINK_INTERNAL_OPT_SUBMIT_RETRY_ATTEMPTS:
+            if (is_int_ && value_ >= 0 && value_ <= max_submit_retry_attempts) {
+                self_->submit_retry_attempts = value_;
+                return 0;
+            }
+            break;
 
         case ZLINK_INTERNAL_OPT_STREAM_NOTIFY:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
@@ -249,6 +277,24 @@ int zlink::options_getsockopt_core_socket (const options_t *self_,
         case ZLINK_INTERNAL_OPT_INVERT_MATCHING:
             if (is_int_) {
                 *value_ = self_->invert_matching;
+                return 0;
+            }
+            break;
+        case ZLINK_INTERNAL_OPT_SUBMIT_RETRY_MODE:
+            if (is_int_) {
+                *value_ = self_->submit_retry_mode;
+                return 0;
+            }
+            break;
+        case ZLINK_INTERNAL_OPT_SUBMIT_RETRY_TIMEOUT:
+            if (is_int_) {
+                *value_ = self_->submit_retry_timeout;
+                return 0;
+            }
+            break;
+        case ZLINK_INTERNAL_OPT_SUBMIT_RETRY_ATTEMPTS:
+            if (is_int_) {
+                *value_ = self_->submit_retry_attempts;
                 return 0;
             }
             break;

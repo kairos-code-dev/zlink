@@ -68,7 +68,7 @@ defined in `<zlink.h>`:
 ```c
 #define ZLINK_VERSION_MAJOR 6
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 2
+#define ZLINK_VERSION_PATCH 3
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))

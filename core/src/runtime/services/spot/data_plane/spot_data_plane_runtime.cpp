@@ -202,6 +202,9 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     const int zero = 0;
     const int neg_one = -1;
     const int one = 1;
+    const int submit_retry_mode = ZLINK_SUBMIT_RETRY_LOCAL_FAILURE;
+    const int submit_retry_timeout = 100;
+    const int submit_retry_attempts = 2;
     const spot_node_hwm_config_t hwm_config =
       runtime_ ? runtime_->hwm_config_snapshot () : spot_node_hwm_config_t ();
     const bool pubsub_hwm_override =
@@ -346,6 +349,15 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                                               &neg_one, sizeof (neg_one));
         state_->external_router->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO,
                                               &zero, sizeof (zero));
+        state_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_SUBMIT_RETRY_MODE, &submit_retry_mode,
+          sizeof (submit_retry_mode));
+        state_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_SUBMIT_RETRY_TIMEOUT, &submit_retry_timeout,
+          sizeof (submit_retry_timeout));
+        state_->external_router->setsockopt (
+          ZLINK_INTERNAL_OPT_SUBMIT_RETRY_ATTEMPTS, &submit_retry_attempts,
+          sizeof (submit_retry_attempts));
     }
     state_->mesh_pub_hwm.current_sndhwm =
       state_->mesh_pub

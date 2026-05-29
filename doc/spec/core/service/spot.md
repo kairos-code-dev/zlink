@@ -332,6 +332,12 @@ zlink_connect_result_t zlink_spot_node_connect_router_channel_peer(
   const char *channel_name,
   const char *endpoint);
 
+zlink_connect_result_t zlink_spot_node_connect_router_channel_peer_rid(
+  void *node,
+  const char *channel_name,
+  const zlink_routing_id_t *peer_rid,
+  const char *endpoint);
+
 zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer(
   void *node,
   const char *channel_name,
@@ -367,6 +373,10 @@ using the target node routing id and target spot routing id.
   views for route mesh or client/server router channels. A channel name that
   does not match the discovery view fails with `EINVAL`.
 - Manual peers and discovery peers cannot be mixed in the same channel.
+- `zlink_spot_node_connect_router_channel_peer_rid()` is the explicit
+  rid-anchored connect form. It binds the resulting peer entry to a known
+  routing id so future snapshot lookups and disconnect-by-rid calls match
+  cleanly even before the first reply is observed.
 - `zlink_spot_node_disconnect_router_channel_peer_rid()` disconnects by router
   channel peer routing id. SPOT mesh peers and router channel peers are exposed
   as distinct peer kinds in snapshots.
@@ -430,9 +440,12 @@ zlink_submit_result_t zlink_spot_request_channel(
 - Channel request reply has separate owners:
   transport owner is the selected attached `DEALER`, while delivery owner is
   the originating `Spot` dispatch stream.
-- A matched channel reply is delivered through
-  `ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE` and the final callback
-  runs from `zlink_spot_channel_reply_progress_from()`.
+- A matched channel reply is delivered through the
+  `zlink_reply_handler_fn` registered with
+  `zlink_spot_request_channel_part()`. The
+  `ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE` dispatch event signals
+  that the attached dealer made progress; the core drives completion
+  delivery internally and no public drain call is required from the user.
 - Attached channel dealer metadata may be queried with
   `zlink_socket_get_channel_name()`. Manual setups may pre-set the same fixed
   metadata with `zlink_socket_set_channel_name()`.
@@ -572,7 +585,7 @@ Drain rules by dispatch subject:
 | `SUBSCRIBE_READABLE` | `SPOT` | `spot_` (or NULL) | `zlink_spot_subscribe()` |
 | `ROUTED_READABLE` | `SPOT` | `spot_` (or NULL) | `zlink_spot_recv()` |
 | `TIMER_READABLE` | `TIMER` | timer handle | `zlink_timer_recv()` |
-| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | `zlink_spot_channel_reply_progress_from()` |
+| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | none — completion fires via the `zlink_reply_handler_fn` registered at request time |
 | `ACTOR_READABLE` | `ACTOR` | callback-lifetime `const zlink_actor_ref_t *` | `zlink_spot_node_actor_recv_part()` |
 | `ACTOR_JOIN_READABLE` | `SPOT` | `spot_` | `zlink_spot_actor_join_recv()` |
 | `ACTOR_LIFECYCLE_READABLE` | `SPOT` | `NULL` | `zlink_spot_recv_actor_lifecycle()` |
@@ -591,10 +604,6 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(
   void *spot,
   zlink_spot_dispatch_event_handler_fn handler,
   void *userdata);
-
-int zlink_spot_channel_reply_progress_from(
-  void *spot,
-  void *dealer);
 
 zlink_config_result_t zlink_socket_set_channel_name(
   void *socket,
@@ -618,8 +627,11 @@ They are consumed through dispatch readiness followed by an explicit drain call.
 
 After `SUBSCRIBE_READABLE` or `ROUTED_READABLE`, callers must drain until the
 corresponding pull API returns `ZLINK_RECV_NO_DATA` / `EAGAIN`.
-`zlink_spot_channel_reply_progress_from()` drains channel reply completions
-for the attached dealer identified by the dispatch `subject`.
+`CHANNEL_REPLY_READABLE` is a readiness notification only — the matching
+`zlink_reply_handler_fn` from the originating
+`zlink_spot_request_channel_part()` call is invoked by the core's internal
+completion driver. The dispatch `subject` field carries the attached dealer
+handle for diagnostic and ordering purposes.
 
 ## Spot routed request initiation
 

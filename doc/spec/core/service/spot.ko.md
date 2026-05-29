@@ -324,6 +324,12 @@ zlink_connect_result_t zlink_spot_node_connect_router_channel_peer(
   const char *channel_name,
   const char *endpoint);
 
+zlink_connect_result_t zlink_spot_node_connect_router_channel_peer_rid(
+  void *node,
+  const char *channel_name,
+  const zlink_routing_id_t *peer_rid,
+  const char *endpoint);
+
 zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer(
   void *node,
   const char *channel_name,
@@ -358,6 +364,10 @@ target node routing id와 target spot routing id를 지정해 local `Spot`으로
   client/server router channel view를 제공하는 discovery만 받는다. channel 이름이
   discovery의 channel view와 다르면 `EINVAL`이다.
 - 같은 channel에서 수동 peer와 discovery peer source는 섞을 수 없다.
+- `zlink_spot_node_connect_router_channel_peer_rid()`는 routing id를 명시적으로
+  지정해 연결하는 형태다. 결과 peer entry가 알려진 routing id에 즉시 묶이므로
+  첫 reply가 관측되기 전이라도 snapshot 조회와 rid 기반 disconnect가
+  매끄럽게 동작한다.
 - `zlink_spot_node_disconnect_router_channel_peer_rid()`는 router channel peer의
   routing id로 연결을 끊는다. SPOT mesh peer와 router channel peer는 별도 peer
   종류로 조회된다.
@@ -471,9 +481,11 @@ channel request의 transport owner와 delivery owner는 다르다.
 - **delivery owner**: 최종 user callback을 실행하는 `Spot` dispatch stream
 
 즉 network reply는 선택된 `DEALER` 경로로 돌아오지만, 최종 callback 실행은 request를
-시작한 `Spot`의 dispatch stream이 맡는다. reply는 `CHANNEL_REPLY_READABLE` dispatch
-event로 올라오며, `zlink_spot_channel_reply_progress_from()` 호출 안에서 callback이
-실행된다.
+시작한 `Spot`의 dispatch stream이 맡는다. reply는
+`zlink_spot_request_channel_part()` 호출 시 등록한 `zlink_reply_handler_fn`을
+통해 전달된다. `CHANNEL_REPLY_READABLE` dispatch event는 attached dealer에
+진행이 발생했음을 알리는 readiness 신호이며, 실제 완료 전달은 core가 내부적으로
+수행한다. 사용자가 별도로 public drain API를 호출할 필요는 없다.
 
 ### Topic publish/subscribe
 
@@ -597,7 +609,7 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
 | `SUBSCRIBE_READABLE` | `SPOT` | `spot_` (또는 NULL) | `zlink_spot_subscribe()` |
 | `ROUTED_READABLE` | `SPOT` | `spot_` (또는 NULL) | `zlink_spot_recv()` |
 | `TIMER_READABLE` | `TIMER` | timer handle | `zlink_timer_recv()` |
-| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | `zlink_spot_channel_reply_progress_from()` |
+| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | 없음 — 요청 시 등록한 `zlink_reply_handler_fn`이 자동으로 호출됨 |
 | `ACTOR_READABLE` | `ACTOR` | callback lifetime의 `const zlink_actor_ref_t *` | `zlink_spot_node_actor_recv_part()` |
 | `ACTOR_JOIN_READABLE` | `SPOT` | `spot_` | `zlink_spot_actor_join_recv()` |
 
@@ -629,20 +641,16 @@ readiness 이벤트다.
 - `ACTOR_JOIN_READABLE`은 Spot에 처리할 Actor join request가 있다는 뜻이다.
   `zlink_spot_actor_join_recv()`가 `ZLINK_RECV_NO_DATA`를 반환할 때까지 모두 읽어 처리한다.
 
-#### Channel reply progress
+#### Channel reply 진행
 
-```c
-ZLINK_EXPORT int zlink_spot_channel_reply_progress_from (
-  void *spot_,
-  void *dealer_);
-```
-
-- `CHANNEL_REPLY_READABLE` callback이 전달한 `subject`(dealer handle)에 대해
-  `spot_`에 귀속된 channel reply completion을 모두 읽어 처리한다.
-- 처리 중 해당 dealer source queue에 적재된 request completion callback을 실행한다.
-- `dealer_`가 해당 `Spot`에 attach된 channel dealer가 아니면 `EINVAL` 또는 `ENOENT`로
-  실패한다.
-- `subject`는 raw socket처럼 직접 recv하라는 뜻이 아니라, 이 함수를 호출하라는 신호다.
+- `CHANNEL_REPLY_READABLE`은 attached dealer에 진행이 발생했음을 알리는
+  readiness 이벤트일 뿐, 별도 public drain API는 없다.
+- 실제 reply 전달은 `zlink_spot_request_channel_part()` 호출 시 등록한
+  `zlink_reply_handler_fn`을 통해 자동으로 이뤄지며, core 내부의 completion
+  driver가 이를 수행한다.
+- callback의 `subject`(dealer handle)는 어떤 attached dealer에서 진행이
+  발생했는지 알려주는 진단 정보이며, 호출자가 직접 recv해야 한다는 뜻은
+  아니다.
 
 #### Handler 등록
 
@@ -1588,4 +1596,6 @@ zlink_config_result_t zlink_spot_actors(
 - channel request의 transport owner는 attach된 `DEALER`지만, callback delivery
   owner는 request를 시작한 `Spot`의 dispatch stream이다.
 - `CHANNEL_REPLY_READABLE` callback에서 `subject`를 일반 dealer처럼 raw recv하지
-  않는다. `zlink_spot_channel_reply_progress_from()`를 통해서만 읽어 처리한다.
+  않는다. 별도 public drain API는 없으며, reply는
+  `zlink_spot_request_channel_part()`에 등록한 `zlink_reply_handler_fn`을 통해
+  core가 내부적으로 전달한다.

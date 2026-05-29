@@ -51,7 +51,7 @@ bool spot_direct_route_debug_enabled ()
 const size_t routed_send_drain_batch_limit = 2048;
 const size_t routed_send_drain_batch_bytes_limit = 16 * 1024 * 1024;
 
-bool is_transient_routed_send_error (int err_)
+bool is_queue_drain_retry_error (int err_)
 {
     return err_ == EAGAIN || err_ == ENOTCONN || err_ == EHOSTUNREACH;
 }
@@ -157,7 +157,7 @@ int send_external_router_once (zlink::spot_runtime_t *runtime_,
 
     const int rc = zlink::logical_multipart_send_routed (
       runtime_->external_router, route_id_, &(*combined_)[0],
-      combined_->size (), flags_ | ZLINK_DONTWAIT);
+      combined_->size (), flags_);
     if (spot_direct_route_debug_enabled ()) {
         const std::string route_id = routing_id_debug_string (*route_id_);
         std::fprintf (stderr,
@@ -307,7 +307,7 @@ int dispatch_router_socket_spot_delivery (void *router_,
       &target_rid,
       &(*combined_)[0],
       combined_->size (),
-      static_cast<zlink_send_flags_t> (flags_ | ZLINK_DONTWAIT));
+      flags_);
 }
 
 bool router_has_transport_endpoint (void *router_)
@@ -607,7 +607,7 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_send_queue (
           runtime_, entry.flags, &entry.parts);
         const int saved_errno = errno;
         if (rc != 0) {
-            if (is_transient_routed_send_error (saved_errno)) {
+            if (is_queue_drain_retry_error (saved_errno)) {
                 std::deque<zlink::spot_data_plane_runtime_state_t::
                              routed_send_entry_t>
                   retry;

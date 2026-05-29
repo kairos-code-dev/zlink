@@ -6,15 +6,79 @@
 #include "utils/err.hpp"
 #include "utils/likely.hpp"
 
+#ifdef ZLINK_BUILD_TESTS
+#include <atomic>
+#endif
+
 namespace
 {
+#ifdef ZLINK_BUILD_TESTS
+std::atomic<int> g_submit_retry_faults_remaining (0);
+std::atomic<int> g_submit_retry_fault_errno (ENOTCONN);
+
+bool take_submit_retry_fault (int *err_out_)
+{
+    int remaining = g_submit_retry_faults_remaining.load (
+      std::memory_order_relaxed);
+    while (remaining > 0) {
+        if (g_submit_retry_faults_remaining.compare_exchange_weak (
+              remaining, remaining - 1, std::memory_order_relaxed)) {
+            *err_out_ =
+              g_submit_retry_fault_errno.load (std::memory_order_relaxed);
+            return true;
+        }
+    }
+    return false;
+}
+#endif
+
 void prepare_direct_send_message (zlink::msg_t *msg_, int flags_)
 {
     msg_->reset_flags (zlink::msg_t::more);
     if (flags_ & ZLINK_SNDMORE)
         msg_->set_flags (zlink::msg_t::more);
 }
+
+bool is_submit_retry_errno (int err_)
+{
+    return err_ == ENOTCONN || err_ == EHOSTUNREACH;
 }
+
+bool submit_retry_enabled (const zlink::options_t &options_, int flags_)
+{
+    return (flags_ & ZLINK_DONTWAIT) == 0
+           && options_.submit_retry_mode == ZLINK_SUBMIT_RETRY_LOCAL_FAILURE
+           && options_.submit_retry_timeout > 0
+           && options_.submit_retry_attempts > 0
+           && options_.reconnect_ivl > 0;
+}
+
+int effective_submit_retry_timeout (const zlink::options_t &options_)
+{
+    if (options_.sndtimeo <= 0)
+        return options_.submit_retry_timeout;
+    return options_.submit_retry_timeout < options_.sndtimeo
+             ? options_.submit_retry_timeout
+             : options_.sndtimeo;
+}
+
+int submit_retry_wait_ms (int remaining_ms_)
+{
+    if (remaining_ms_ <= 0)
+        return 0;
+    return remaining_ms_ < 20 ? remaining_ms_ : 20;
+}
+}
+
+#ifdef ZLINK_BUILD_TESTS
+extern "C" void zlink_test_set_submit_retry_fault (int count_, int err_)
+{
+    g_submit_retry_fault_errno.store (err_ == 0 ? ENOTCONN : err_,
+                                      std::memory_order_relaxed);
+    g_submit_retry_faults_remaining.store (count_ < 0 ? 0 : count_,
+                                           std::memory_order_relaxed);
+}
+#endif
 
 int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 {
@@ -83,6 +147,15 @@ bool zlink::socket_base_t::direct_send_needs_public_api_sync () const
     return options.type != ZLINK_CORE_SOCKET_PAIR;
 }
 
+bool zlink::socket_base_t::xsubmit_retry_allowed (
+  const zlink_routing_id_t *target_rid_,
+  int err_) const
+{
+    LIBZLINK_UNUSED (target_rid_);
+    LIBZLINK_UNUSED (err_);
+    return true;
+}
+
 int zlink::socket_base_t::send_direct_with_retry (
   const zlink_routing_id_t *target_rid_,
   msg_t *msg_,
@@ -110,6 +183,13 @@ int zlink::socket_base_t::send_direct_with_retry (
     prepare_direct_send_message (msg_, flags_);
 
     _auto_hwm_send_attempts.fetch_add (1, std::memory_order_relaxed);
+#ifdef ZLINK_BUILD_TESTS
+    int injected_errno = 0;
+    if (take_submit_retry_fault (&injected_errno)) {
+        rc = -1;
+        errno = injected_errno;
+    } else
+#endif
     rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
     if (rc == 0) {
         dispatch_runtime ().clear_send_recovery_pending ();
@@ -124,6 +204,51 @@ int zlink::socket_base_t::send_direct_with_retry (
             dispatch_runtime ().clear_send_recovery_pending ();
             return 0;
         }
+    }
+    if (unlikely (errno != EAGAIN)
+        && submit_retry_enabled (options, flags_)
+        && is_submit_retry_errno (errno)
+        && xsubmit_retry_allowed (target_rid_, errno)) {
+        const uint64_t end =
+          _clock.now_ms () + effective_submit_retry_timeout (options);
+        int attempts_left = options.submit_retry_attempts;
+        int last_errno = errno;
+        while (attempts_left-- > 0) {
+            const uint64_t now = _clock.now_ms ();
+            if (now >= end)
+                break;
+            int remaining = static_cast<int> (end - now);
+            if (remaining <= 0)
+                break;
+
+            arm_send_ready_notification ();
+            const int wait_ms = submit_retry_wait_ms (remaining);
+            rc = process_commands (wait_ms, false);
+            if (unlikely (rc != 0)) {
+                dispatch_runtime ().clear_send_recovery_pending ();
+                return -1;
+            }
+
+            prepare_direct_send_message (msg_, flags_);
+            _auto_hwm_send_attempts.fetch_add (1, std::memory_order_relaxed);
+#ifdef ZLINK_BUILD_TESTS
+            if (take_submit_retry_fault (&injected_errno)) {
+                rc = -1;
+                errno = injected_errno;
+            } else
+#endif
+            rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
+            if (rc == 0) {
+                dispatch_runtime ().clear_send_recovery_pending ();
+                return 0;
+            }
+            last_errno = errno;
+            if (!is_submit_retry_errno (errno))
+                break;
+            if (!xsubmit_retry_allowed (target_rid_, errno))
+                break;
+        }
+        errno = last_errno;
     }
     if (unlikely (errno != EAGAIN)) {
         dispatch_runtime ().clear_send_recovery_pending ();

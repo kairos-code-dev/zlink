@@ -280,7 +280,8 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
         if (needs_route_registration) {
             blob_t routing_id (static_cast<unsigned char *> (msg_->data ()),
                                msg_->size ());
-            if (adopt_peer_routing_id (socket_pipe, ZLINK_MOVE (routing_id)))
+            if (adopt_peer_routing_id (socket_pipe, ZLINK_MOVE (routing_id),
+                                       false))
                 promote_anonymous_pipe_for_dispatch (socket_pipe);
         }
         store_dispatch_source_rid (&_dispatch_source_rid,

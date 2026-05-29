@@ -828,7 +828,6 @@ uint32_t zlink::stream_t::ensure_dispatch_routing_id (pipe_t *pipe_)
 
 void zlink::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 {
-    LIBZLINK_UNUSED (locally_initiated_);
     blob_t routing_id;
 
     uint32_t routing_id_value = pipe_->get_server_socket_routing_id ();
@@ -852,7 +851,7 @@ void zlink::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
     shard.routes[routing_id_value] = pipe_;
 
     if (!has_out_pipe (routing_id))
-        add_out_pipe (ZLINK_MOVE (routing_id), pipe_);
+        add_out_pipe (ZLINK_MOVE (routing_id), pipe_, locally_initiated_);
 }
 
 void zlink::stream_t::maybe_emit_connect_event (pipe_t *pipe_,

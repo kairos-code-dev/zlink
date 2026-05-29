@@ -95,7 +95,8 @@ bool router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
                 erase_out_pipe (old_pipe);
                 old_pipe->set_router_socket_routing_id (new_routing_id);
-                add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe);
+                add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe,
+                              existing_outpipe->locally_initiated);
 
                 if (old_pipe == _current_in)
                     _terminate_current_in = true;
@@ -105,10 +106,13 @@ bool router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         }
     }
 
-    return adopt_peer_routing_id (pipe_, ZLINK_MOVE (routing_id));
+    return adopt_peer_routing_id (pipe_, ZLINK_MOVE (routing_id),
+                                  locally_initiated_);
 }
 
-bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_)
+bool router_t::adopt_peer_routing_id (pipe_t *pipe_,
+                                      blob_t routing_id_,
+                                      bool locally_initiated_)
 {
     const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id_);
     if (existing_outpipe) {
@@ -124,7 +128,8 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_)
 
         erase_out_pipe (old_pipe);
         old_pipe->set_router_socket_routing_id (new_routing_id);
-        add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe);
+        add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe,
+                      existing_outpipe->locally_initiated);
 
         if (old_pipe == _current_in)
             _terminate_current_in = true;
@@ -133,7 +138,7 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_)
     }
 
     pipe_->set_router_socket_routing_id (routing_id_);
-    add_out_pipe (ZLINK_MOVE (routing_id_), pipe_);
+    add_out_pipe (ZLINK_MOVE (routing_id_), pipe_, locally_initiated_);
     if (router_debug_enabled ()) {
         char rid_text[160];
         format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text,

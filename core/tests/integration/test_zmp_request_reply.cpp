@@ -141,6 +141,22 @@ void init_string_part (zlink_msg_t *part_, const char *text_)
     memcpy (zlink_msg_data (part_), text_, size);
 }
 
+void configure_submit_retry (void *socket_)
+{
+    int retry_mode = ZLINK_SUBMIT_RETRY_LOCAL_FAILURE;
+    int retry_timeout = 200;
+    int retry_attempts = 2;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_SUBMIT_RETRY_MODE, &retry_mode,
+                        sizeof (retry_mode)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_SUBMIT_RETRY_TIMEOUT,
+                        &retry_timeout, sizeof (retry_timeout)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS,
+                        &retry_attempts, sizeof (retry_attempts)));
+}
+
 std::string part_to_string_and_close (zlink_msg_t *part_)
 {
     TEST_ASSERT_NOT_NULL (part_);
@@ -1322,6 +1338,7 @@ void test_dealer_request_uses_socket_default_timeout_when_reply_is_missing ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
       dealer, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, &default_timeout_ms,
       sizeof (default_timeout_ms)));
+    configure_submit_retry (dealer);
 
     int observed_timeout_ms = 0;
     size_t observed_timeout_size = sizeof (observed_timeout_ms);
@@ -1344,11 +1361,18 @@ void test_dealer_request_uses_socket_default_timeout_when_reply_is_missing ()
 
     reply_probe_t reply_probe;
     reply_probe.progress_handle = dealer;
+    const std::chrono::steady_clock::time_point start =
+      std::chrono::steady_clock::now ();
     TEST_ASSERT_SUCCESS_ERRNO (zlink_dealer_request (
       dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 0));
 
     recv_router_request_into_probe (router, &handler_probe);
     TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+    const long elapsed_ms =
+      static_cast<long> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::steady_clock::now () - start)
+          .count ());
 
     {
         std::lock_guard<std::mutex> lock (reply_probe.mutex);
@@ -1356,6 +1380,9 @@ void test_dealer_request_uses_socket_default_timeout_when_reply_is_missing ()
         TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TIMED_OUT, reply_probe.result);
         TEST_ASSERT_EQUAL_UINT64 (0, reply_probe.part_count);
         TEST_ASSERT_EQUAL_UINT64 (1, reply_probe.callback_count);
+        TEST_ASSERT_TRUE_MESSAGE (
+          elapsed_ms < 500,
+          "submit retry must not retry request completion timeout");
     }
 
     msleep (SETTLE_TIME);

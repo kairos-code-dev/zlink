@@ -350,6 +350,15 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | `ZLINK_OPT_RECONNECT_IVL` | 초기 재연결 간격 (ms, `int`) |
 | `ZLINK_OPT_RECONNECT_IVL_MAX` | 최대 재연결 간격 (ms, `int`; 0=IVL만 사용) |
 | `ZLINK_OPT_HANDSHAKE_IVL` | ZMTP 핸드셰이크 타임아웃 (ms, `int`) |
+| `ZLINK_OPT_SUBMIT_RETRY_MODE` | local submit 실패 재시도 모드 (`int`; `ZLINK_SUBMIT_RETRY_OFF` 또는 `ZLINK_SUBMIT_RETRY_LOCAL_FAILURE`, raw socket 기본값 off) |
+| `ZLINK_OPT_SUBMIT_RETRY_TIMEOUT` | local submit 실패 재시도 예산 (ms, `int`; raw socket 기본값 0, 0이면 재시도 없음) |
+| `ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS` | 최초 submit 이후 추가 재시도 횟수 (`int`; raw socket 기본값 0, 현재 상한 16) |
+
+Submit retry는 `ENOTCONN` 또는 `EHOSTUNREACH`로 분류되는 local submit 실패만
+짧게 다시 시도합니다. `ZLINK_DONTWAIT` 호출, backpressure(`EAGAIN`), admission
+거절, 인자 오류, request submit 성공 뒤의 reply timeout은 retry 대상이 아닙니다.
+managed SPOT/service outbound 내부 경로는 기본 profile로
+`LOCAL_FAILURE`/100ms/2회를 사용합니다.
 
 ##### TCP
 

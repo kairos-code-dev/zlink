@@ -783,18 +783,13 @@ int send_request_reply_message (void *socket_handle_,
         return -1;
     }
 
-    const zlink_send_flags_t effective_flags =
-      (routed && socket_type (handle) == ZLINK_CORE_SOCKET_ROUTER)
-        ? static_cast<zlink_send_flags_t> (flags_ | ZLINK_DONTWAIT)
-        : flags_;
-
     const int rc = routed
                      ? zlink::logical_multipart_send_routed (
                          handle.socket, peer_rid_, &combined[0],
-                         total_part_count, effective_flags)
+                         total_part_count, flags_)
                      : zlink::logical_multipart_send (
                          handle.socket, &combined[0], total_part_count,
-                         effective_flags);
+                         flags_);
     if (rc != 0)
         return -1;
 

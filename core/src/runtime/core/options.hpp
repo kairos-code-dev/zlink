@@ -105,6 +105,11 @@ struct options_t
     int rcvtimeo;
     int sndtimeo;
 
+    // Submit retry policy for transient local send failures.
+    int submit_retry_mode;
+    int submit_retry_timeout;
+    int submit_retry_attempts;
+
     //  If true, IPv6 is enabled (as well as IPv4)
     bool ipv6;
 

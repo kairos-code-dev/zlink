@@ -46,7 +46,6 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -68,9 +67,6 @@ import java.util.function.BiConsumer;
  */
 public final class NativeSpot implements Spot {
     private static final long MSG_SIZE = NativeLayouts.MESSAGE_LAYOUT.byteSize();
-    private static final int TOPIC_CAPACITY = 256;
-    private static final int TOPIC_CACHE_LIMIT = 1024;
-    private static final int TOPIC_SCRATCH_INITIAL_CAPACITY = 64;
     private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_ENOTCONN = 107;
     private static final int ERRNO_ENOTCONN_WIN = 10057;
@@ -78,7 +74,6 @@ public final class NativeSpot implements Spot {
     private static final int ERRNO_EHOSTUNREACH_WIN = 10065;
     private static final int ERRNO_ETIMEDOUT = 110;
     private static final int ERRNO_ETIMEDOUT_WIN = 10060;
-    private static final int SEND_DONTWAIT = 1;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_SEND_READY_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
@@ -103,30 +98,13 @@ public final class NativeSpot implements Spot {
         }
     }
 
-    private final ConcurrentHashMap<String, MemorySegment> topicCache =
-      new ConcurrentHashMap<>();
-    private final Arena topicCacheArena = Arena.ofShared();
-    private final ThreadLocal<MemorySegment> topicScratch =
-      ThreadLocal.withInitial(() -> Arena.ofAuto().allocate(
-        TOPIC_SCRATCH_INITIAL_CAPACITY));
-    private final ThreadLocal<Integer> topicScratchCapacity =
-      ThreadLocal.withInitial(() -> TOPIC_SCRATCH_INITIAL_CAPACITY);
-
-    private static final class SpotSendScratch {
-        final Arena arena = Arena.ofAuto();
-        final MemorySegment nativeMsg =
-          arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
-    }
-
-    private final ThreadLocal<SpotSendScratch> spotSendScratch =
-      ThreadLocal.withInitial(SpotSendScratch::new);
-
     private MemorySegment handle;
     private SendReadyHandler sendReadyHandler;
     private Arena sendReadyCallbackArena;
     private MemorySegment sendReadyCallbackStub = MemorySegment.NULL;
     private volatile ExecutorService callbackExecutor;
     private volatile RuntimeException callbackFailure;
+    private final SpotSendPlane sendPlane;
     private final SpotRoutedSupport routedSupport;
     private final SpotSubscriptionSupport subscriptionSupport;
     private final SpotNode ownerNode;
@@ -175,6 +153,7 @@ public final class NativeSpot implements Spot {
             throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_new");
         this.ownerNode = node;
         this.handle = nativeHandle;
+        this.sendPlane = new SpotSendPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.options = new SpotOptions(this);
@@ -187,6 +166,7 @@ public final class NativeSpot implements Spot {
             throw new IllegalArgumentException("spot handle must not be null");
         this.ownerNode = node;
         this.handle = handle;
+        this.sendPlane = new SpotSendPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.options = new SpotOptions(this);
@@ -198,6 +178,7 @@ public final class NativeSpot implements Spot {
             throw new IllegalArgumentException("spot handle must not be null");
         this.ownerNode = null;
         this.handle = handle;
+        this.sendPlane = new SpotSendPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
         this.options = new SpotOptions(this);
@@ -545,79 +526,17 @@ public final class NativeSpot implements Spot {
 
     private boolean publishInternal(String topicId, Message part,
                                  boolean nonBlocking) {
-        Objects.requireNonNull(topicId, "topicId");
-        Objects.requireNonNull(part, "part");
-        if (!nonBlocking && InternalAccess.inCallback()) {
-            throw new IllegalStateException(
-                "blocking publish is not supported from callback context; use SendFlags.DONT_WAIT");
-        }
-        while (true) {
-            int rc = spotPublishPartOnce(topicId, part,
-                nonBlocking ? SEND_DONTWAIT : 0, Native.PART_FINAL);
-            if (rc == 0)
-                return true;
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            throw submitFailure("zlink_spot_publish_part");
-        }
+        return sendPlane.publish(topicId, part, nonBlocking);
     }
 
     private boolean publishInternal(String topicId, List<Message> parts,
                                  boolean nonBlocking) {
-        validateMessages(parts, "parts");
-        if (!nonBlocking && InternalAccess.inCallback()) {
-            throw new IllegalStateException(
-                "blocking publish is not supported from callback context; use SendFlags.DONT_WAIT");
-        }
-        MemorySegment topic = topicCString(topicId);
-        try (Arena arena = Arena.ofConfined()) {
-            for (int i = 0; i < parts.size(); i++) {
-                int partFlag = i + 1 < parts.size()
-                    ? Native.PART_MORE : Native.PART_FINAL;
-                while (true) {
-                    int rc = spotPublishPartOnce(topic,
-                        Objects.requireNonNull(parts.get(i), "parts[" + i + "]"),
-                        nonBlocking ? SEND_DONTWAIT : 0, partFlag, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
-                        continue;
-                    throw submitFailure("zlink_spot_publish_part");
-                }
-            }
-        }
-        return true;
+        return sendPlane.publish(topicId, parts, nonBlocking);
     }
 
     private boolean sendChannelInternal(String channelName, List<Message> parts,
                                      boolean nonBlocking) {
-        validateMessages(parts, "parts");
-        if (!nonBlocking && InternalAccess.inCallback()) {
-            throw new IllegalStateException(
-                "blocking sendToChannel is not supported from callback context; use non-blocking send");
-        }
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment service = NativeHelpers.toCString(arena,
-              requireChannelName(channelName));
-            for (int i = 0; i < parts.size(); i++) {
-                int partFlag = i + 1 < parts.size()
-                    ? Native.PART_MORE : Native.PART_FINAL;
-                while (true) {
-                    int rc = spotSendChannelPartOnce(service,
-                        Objects.requireNonNull(parts.get(i), "parts[" + i + "]"),
-                        nonBlocking ? SEND_DONTWAIT : 0, partFlag, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
-                        continue;
-                    throw submitFailure("zlink_spot_send_channel_part");
-                }
-            }
-        }
-        return true;
+        return sendPlane.sendToChannel(channelName, parts, nonBlocking);
     }
 
     private CompletableFuture<List<Message>> requestChannelInternal(
@@ -646,6 +565,18 @@ public final class NativeSpot implements Spot {
             "zlink-spot-request-progress");
     }
 
+    MemorySegment topicCString(String topic) {
+        return sendPlane.topicCString(topic);
+    }
+
+    private ZlinkSubmitException submitFailure(String apiName) {
+        int errno = Native.errno();
+        ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
+        if (submit != null)
+            return submit;
+        throw InternalAccess.zlinkExceptionFromLastError(apiName);
+    }
+
     private void drainChannelReplyFrom(MemorySegment dealerSubject) {
         Objects.requireNonNull(dealerSubject, "dealerSubject");
         ensureOpen();
@@ -662,14 +593,6 @@ public final class NativeSpot implements Spot {
             throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
         }
         drainChannelReplyFrom(subject);
-    }
-
-    private ZlinkSubmitException submitFailure(String apiName) {
-        int errno = Native.errno();
-        ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
-        if (submit != null)
-            return submit;
-        throw InternalAccess.zlinkExceptionFromLastError(apiName);
     }
 
     private static MemorySegment spotDispatchSubject(SpotDispatchInfo info) {
@@ -1296,6 +1219,7 @@ public final class NativeSpot implements Spot {
         sendReadyCallbackStub = MemorySegment.NULL;
         handle = MemorySegment.NULL;
         Native.spotDestroy(currentHandle);
+        sendPlane.close();
         routedSupport.close();
         subscriptionSupport.close();
         if (ownerNode != null) {
@@ -1304,18 +1228,6 @@ public final class NativeSpot implements Spot {
         RuntimeResources.shutdownExecutor(executor);
         RuntimeResources.closeArena(readyArena);
         readyStub = MemorySegment.NULL;
-        topicCache.clear();
-        topicScratch.remove();
-        topicScratchCapacity.remove();
-        if (topicCacheArena.scope().isAlive())
-            topicCacheArena.close();
-    }
-
-    private static int validateMessages(List<Message> messages, String name) {
-        Objects.requireNonNull(messages, name);
-        if (messages.isEmpty())
-            throw new IllegalArgumentException(name + " required");
-        return messages.size();
     }
 
     private static int boundedCount(long value) {
@@ -1451,66 +1363,6 @@ public final class NativeSpot implements Spot {
         }
     }
 
-    private int spotPublishPartOnce(String topicId, Message part, int flags,
-                                    int partFlag) {
-        return spotPublishPartOnce(topicCString(topicId), part, flags,
-          partFlag, spotSendScratch.get().nativeMsg);
-    }
-
-    private int spotPublishPartOnce(MemorySegment topic, Message part,
-                                    int flags, int partFlag, Arena arena) {
-        return spotPublishPartOnce(topic, part, flags, partFlag,
-          arena.allocate(NativeLayouts.MESSAGE_LAYOUT));
-    }
-
-    private int spotPublishPartOnce(MemorySegment topic, Message part,
-                                    int flags, int partFlag,
-                                    MemorySegment nativeMsg) {
-        Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
-        try {
-            int rc = Native.spotPublishPart(handle, topic, nativeMsg, flags,
-              partFlag);
-            if (rc != 0) {
-                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
-                    anchor);
-            }
-            return rc;
-        } catch (RuntimeException ex) {
-            InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
-                anchor);
-            throw ex;
-        }
-    }
-
-    private int spotSendChannelPartOnce(String channelName, Message part,
-                                        int flags, int partFlag) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment service = NativeHelpers.toCString(arena,
-              requireChannelName(channelName));
-            return spotSendChannelPartOnce(service, part, flags, partFlag,
-                arena);
-        }
-    }
-
-    private int spotSendChannelPartOnce(MemorySegment service, Message part,
-                                        int flags, int partFlag, Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
-        Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
-        try {
-            int rc = Native.spotSendChannelPart(handle, service, nativeMsg,
-              flags, partFlag);
-            if (rc != 0) {
-                InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
-                    anchor);
-            }
-            return rc;
-        } catch (RuntimeException ex) {
-            InternalAccess.messageRestoreFromNative(part, nativeMsg, false,
-                anchor);
-            throw ex;
-        }
-    }
-
     private void submitSpotRequestChannel(String channelName,
                                           List<Message> payload,
                                           MemorySegment handler,
@@ -1566,7 +1418,7 @@ public final class NativeSpot implements Spot {
           nativeMsg, handler, userData, flags, partFlag, timeoutMs);
     }
 
-    private static String requireChannelName(String channelName) {
+    static String requireChannelName(String channelName) {
         Objects.requireNonNull(channelName, "channelName");
         if (channelName.isEmpty()) {
             throw new IllegalArgumentException("channelName must not be empty");
@@ -1577,38 +1429,5 @@ public final class NativeSpot implements Spot {
     private static ExecutorService newCallbackExecutor() {
         return RuntimeResources.daemonSingleThreadExecutor(
             "zlink-spot-callback");
-    }
-
-    MemorySegment topicCString(String topic) {
-        Objects.requireNonNull(topic, "topic");
-        if (topic.isEmpty())
-            throw new IllegalArgumentException("topic must not be empty");
-        if (topic.length() >= TOPIC_CAPACITY)
-            throw new IllegalArgumentException("topic too long");
-        MemorySegment cached = topicCache.get(topic);
-        if (cached != null)
-            return cached;
-        if (topicCache.size() >= TOPIC_CACHE_LIMIT)
-            return topicScratchCString(topic);
-        MemorySegment encoded = NativeHelpers.toCString(topicCacheArena, topic);
-        MemorySegment previous = topicCache.putIfAbsent(topic, encoded);
-        return previous == null ? encoded : previous;
-    }
-
-    private MemorySegment topicScratchCString(String value) {
-        byte[] utf8 = value.getBytes(StandardCharsets.UTF_8);
-        int needed = utf8.length + 1;
-        MemorySegment scratch = topicScratch.get();
-        int capacity = topicScratchCapacity.get();
-        if (capacity < needed) {
-            int grown = Math.max(capacity << 1, needed);
-            scratch = Arena.ofAuto().allocate(grown);
-            topicScratch.set(scratch);
-            topicScratchCapacity.set(grown);
-        }
-        MemorySegment.copy(MemorySegment.ofArray(utf8), 0, scratch, 0,
-          utf8.length);
-        scratch.set(ValueLayout.JAVA_BYTE, utf8.length, (byte) 0);
-        return scratch.asSlice(0, needed);
     }
 }

@@ -13,7 +13,6 @@ import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.runtime.nativeapi.RecvScratch;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.runtime.nativeapi.SendScratch;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.*;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
@@ -24,8 +23,6 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMessage;
-import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
@@ -60,11 +57,10 @@ final class NativeSocketRuntime implements AutoCloseable {
     private final TopicPlane topicPlane;
     private final ReceivePlane receivePlane;
     private final NettySocketPlane nettyPlane;
+    private final SocketSendPlane sendPlane;
     private MemorySegment handle;
     private final boolean own;
     private final SocketType socketTypeHint;
-    private final ThreadLocal<SendScratch> sendScratch =
-      ThreadLocal.withInitial(SendScratch::new);
     private final ThreadLocal<RecvScratch> recvScratch =
       ThreadLocal.withInitial(RecvScratch::new);
 
@@ -98,6 +94,7 @@ final class NativeSocketRuntime implements AutoCloseable {
         this.topicPlane = new TopicPlane(this);
         this.receivePlane = new ReceivePlane(this);
         this.nettyPlane = new NettySocketPlane(this);
+        this.sendPlane = new SocketSendPlane(this);
     }
 
     NativeSocketRuntime(MemorySegment handle, boolean own, SocketType socketTypeHint) {
@@ -109,6 +106,7 @@ final class NativeSocketRuntime implements AutoCloseable {
         this.topicPlane = new TopicPlane(this);
         this.receivePlane = new ReceivePlane(this);
         this.nettyPlane = new NettySocketPlane(this);
+        this.sendPlane = new SocketSendPlane(this);
     }
 
     /** Binds the socket to the endpoint. */
@@ -341,30 +339,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public void sendMessageFrame(RoutingId routingId, Message message, SendFlag flag) {
-        Objects.requireNonNull(routingId, "routingId");
-        Objects.requireNonNull(message, "message");
-        Objects.requireNonNull(flag, "flag");
-        ensureBlockingSendAllowed(flag);
-        while (true) {
-            int rc = sendPartOnce(message, routingId, flag.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return;
-            int errno = Native.errno();
-            if (isTransientBlockingSendErrno(errno))
-                continue;
-            throwPartSubmitFailure("zlink_send_part_rid");
-        }
-    }
-
-    private static boolean isTransientBlockingSendErrno(int errno) {
-        return errno == ERRNO_EINTR
-            || errno == ERRNO_EAGAIN
-            || errno == ERRNO_EWOULDBLOCK_WIN
-            || errno == ERRNO_ENOTCONN
-            || errno == ERRNO_ENOTCONN_WIN
-            || errno == ERRNO_EHOSTUNREACH
-            || errno == ERRNO_EHOSTUNREACH_WIN;
+        sendPlane.sendMessageFrame(routingId, message, flag);
     }
 
     public boolean send(List<Message> parts) {
@@ -386,18 +361,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     SendResult sendMessageFrameNoWaitResult(RoutingId routingId, Message message) {
-        Objects.requireNonNull(routingId, "routingId");
-        Objects.requireNonNull(message, "message");
-        while (true) {
-            int rc = sendPartOnce(message, routingId,
-                SendFlag.DONTWAIT.getValue(), Native.PART_FINAL);
-            if (rc == 0)
-                return SendResult.SENT;
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            return classifyNonBlockingSendErrno("zlink_send_part_rid");
-        }
+        return sendPlane.sendMessageFrameNoWaitResult(routingId, message);
     }
 
     SendResult sendNoWaitResult(List<Message> parts) {
@@ -419,79 +383,19 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     boolean send(byte[] routingIdBytes, Message part, SendFlag flags) {
-        Objects.requireNonNull(routingIdBytes, "routingIdBytes");
-        Objects.requireNonNull(part, "part");
-        Objects.requireNonNull(flags, "flags");
-        ensureBlockingSendAllowed(flags);
-        while (true) {
-            int rc = sendPartOnce(part, routingIdBytes, flags.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return true;
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0
-                && (errno == ERRNO_EAGAIN
-                    || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                return false;
-            }
-            throwPartSubmitFailure("zlink_send_part_rid");
-        }
+        return sendPlane.send(routingIdBytes, part, flags);
     }
 
     void send(int rid, Message part, SendFlag flags) {
-        Objects.requireNonNull(part, "part");
-        Objects.requireNonNull(flags, "flags");
-        ensureBlockingSendAllowed(flags);
-        int effectiveFlags = flags.getValue();
-        int rc = Native.sendMultipartU32(handle, rid, InternalAccess.messageNativeHandle(part), 1,
-            effectiveFlags);
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_java_send_u32");
-        InternalAccess.messageMarkTransferred(part);
+        sendPlane.send(rid, part, flags);
     }
 
     int send(int rid, MemorySegment payload, int length, int sendFlags) {
-        Objects.requireNonNull(payload, "payload");
-        SendFlag flag = SendFlag.fromValue(sendFlags);
-        return sendDirectSegment(rid, payload, length, flag);
+        return sendPlane.send(rid, payload, length, sendFlags);
     }
 
     int sendCopied(int rid, MemorySegment payload, int length, int sendFlags) {
-        Objects.requireNonNull(payload, "payload");
-        SendFlag flag = SendFlag.fromValue(sendFlags);
-        ensureBlockingSendAllowed(flag);
-        SendScratch scratch = sendScratch.get();
-        MemorySegment nativeMsg = scratch.nativeMsg;
-        int rc = NativeMessage.messageInitSize(nativeMsg, length);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_msg_init_size");
-        if (length > 0) {
-            MemorySegment dst = NativeMessage.messageData(nativeMsg).reinterpret(length);
-            MemorySegment.copy(payload, 0, dst, 0, length);
-        }
-        boolean success = false;
-        try {
-            rc = Native.sendMultipartU32(handle, rid, nativeMsg, 1,
-                flag.getValue());
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_java_send_u32");
-            success = true;
-        } finally {
-            if (!success) {
-                try {
-                    NativeMessage.messageClose(nativeMsg);
-                } catch (RuntimeException ignored) {
-                }
-            }
-        }
-        return length;
-    }
-
-    private int sendDirectSegment(int rid, MemorySegment payload, int length,
-                                  SendFlag flag) {
-        return sendCopied(rid, payload, length, flag.getValue());
+        return sendPlane.sendCopied(rid, payload, length, sendFlags);
     }
 
     public boolean send(RoutingId rid, List<Message> parts) {
@@ -533,20 +437,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public void publishMessageFrame(String topicId, Message message, SendFlag flags) {
-        Objects.requireNonNull(topicId, "topicId");
-        Objects.requireNonNull(message, "message");
-        Objects.requireNonNull(flags, "flags");
-        ensureBlockingSendAllowed(flags);
-        while (true) {
-            int rc = publishPartOnce(topicId, message, flags.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return;
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            throwPartSubmitFailure("zlink_publish_part");
-        }
+        sendPlane.publishMessageFrame(topicId, message, flags);
     }
 
     /** Publishes a multipart payload to a topic-aware socket. */
@@ -570,18 +461,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public SendResult publishMessageFrameNoWaitResult(String topicId, Message message) {
-        Objects.requireNonNull(topicId, "topicId");
-        Objects.requireNonNull(message, "message");
-        while (true) {
-            int rc = publishPartOnce(topicId, message,
-                SendFlag.DONTWAIT.getValue(), Native.PART_FINAL);
-            if (rc == 0)
-                return SendResult.SENT;
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            return classifyNonBlockingSendErrno("zlink_publish_part");
-        }
+        return sendPlane.publishMessageFrameNoWaitResult(topicId, message);
     }
 
     public SendResult publishNoWaitResult(String topicId, List<Message> parts) {
@@ -1083,159 +963,15 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public void sendMessageFrame(Message message, SendFlag flag) {
-        Objects.requireNonNull(message, "message");
-        Objects.requireNonNull(flag, "flag");
-        ensureBlockingSendAllowed(flag);
-        while (true) {
-            int rc = sendPartOnce(message, (RoutingId) null, flag.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return;
-            int errno = Native.errno();
-            if (isTransientBlockingSendErrno(errno))
-                continue;
-            throwPartSubmitFailure("zlink_send_part");
-        }
+        sendPlane.sendMessageFrame(message, flag);
     }
 
     public boolean sendMessageFrameNoWaitResult(Message message, SendFlag flag) {
-        Objects.requireNonNull(message, "message");
-        Objects.requireNonNull(flag, "flag");
-        while (true) {
-            int rc = sendPartOnce(message, (RoutingId) null, flag.getValue(),
-                Native.PART_FINAL);
-            if (rc == 0)
-                return true;
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)
-                return false;
-            throw ZlinkException.fromLastError("zlink_send_part");
-        }
+        return sendPlane.sendMessageFrameNoWaitResult(message, flag);
     }
 
     public SendResult sendMessageFrameNoWaitResult(Message message) {
-        Objects.requireNonNull(message, "message");
-        while (true) {
-            int rc = sendPartOnce(message, (RoutingId) null,
-                SendFlag.DONTWAIT.getValue(), Native.PART_FINAL);
-            if (rc == 0)
-                return SendResult.SENT;
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            return classifyNonBlockingSendErrno("zlink_send_part");
-        }
-    }
-
-    private int sendPartOnce(Message message, RoutingId routingId, int flags,
-                             int partFlag) {
-        SendScratch scratch = sendScratch.get();
-        MemorySegment messageHandle = InternalAccess.messageNativeHandle(message);
-        MemorySegment nativeRoutingId = routingId == null
-            ? MemorySegment.NULL
-            : nativeRoutingId(scratch, routingId);
-        // DONT_WAIT is contractually non-blocking — use the critical FFM
-        // variant so the JVM elides GC safepoint transitions. Other flags
-        // (blocking send) keep the regular handle for safety.
-        boolean useCritical =
-            (flags & SendFlag.DONTWAIT.getValue()) != 0;
-        int rc;
-        if (nativeRoutingId.address() == 0) {
-            rc = useCritical
-                ? Native.sendPartNoWaitCritical(handle, messageHandle, flags,
-                    partFlag)
-                : Native.sendPart(handle, messageHandle, flags, partFlag);
-        } else {
-            rc = useCritical
-                ? Native.sendPartRidNoWaitCritical(handle, nativeRoutingId,
-                    messageHandle, flags, partFlag)
-                : Native.sendPartRid(handle, nativeRoutingId, messageHandle,
-                    flags, partFlag);
-        }
-        if (rc == 0) {
-            InternalAccess.messageMarkTransferred(message);
-        }
-        return rc;
-    }
-
-    private int sendPartOnce(Message message, byte[] routingIdBytes, int flags,
-                             int partFlag) {
-        SendScratch scratch = sendScratch.get();
-        MemorySegment messageHandle = InternalAccess.messageNativeHandle(message);
-        MemorySegment nativeRoutingId = nativeRoutingId(scratch,
-            routingIdBytes);
-        boolean useCritical =
-            (flags & SendFlag.DONTWAIT.getValue()) != 0;
-        int rc = useCritical
-            ? Native.sendPartRidNoWaitCritical(handle, nativeRoutingId,
-                messageHandle, flags, partFlag)
-            : Native.sendPartRid(handle, nativeRoutingId, messageHandle,
-                flags, partFlag);
-        if (rc == 0) {
-            InternalAccess.messageMarkTransferred(message);
-        }
-        return rc;
-    }
-
-    // Publish hot path. Mirrors sendPartOnce: reuse the thread-local
-    // SendScratch (no per-call Arena), cache the encoded topic segment (C
-    // passes a const char* with zero per-call allocation), pass the message's
-    // own native handle directly (no extra messageInit/messageMove), and use the
-    // safepoint-eliding critical downcall when DONT_WAIT is set.
-    private int publishPartOnce(String topicId, Message message, int flags,
-                                int partFlag) {
-        SendScratch scratch = sendScratch.get();
-        MemorySegment nativeTopic = nativeTopic(scratch, topicId);
-        MemorySegment messageHandle = InternalAccess.messageNativeHandle(message);
-        boolean useCritical =
-            (flags & SendFlag.DONTWAIT.getValue()) != 0;
-        int rc = useCritical
-            ? Native.publishPartNoWaitCritical(handle, nativeTopic,
-                messageHandle, flags, partFlag)
-            : Native.publishPart(handle, nativeTopic, messageHandle, flags,
-                partFlag);
-        if (rc == 0) {
-            InternalAccess.messageMarkTransferred(message);
-        }
-        return rc;
-    }
-
-    // Multipart publish step against a pre-encoded native topic segment.
-    // Same handle-direct, critical-when-DONT_WAIT model as the single-part
-    // publishPartOnce above.
-    private int publishPartOnce(MemorySegment nativeTopic, Message message,
-                                int flags, int partFlag) {
-        MemorySegment messageHandle = InternalAccess.messageNativeHandle(message);
-        boolean useCritical =
-            (flags & SendFlag.DONTWAIT.getValue()) != 0;
-        int rc = useCritical
-            ? Native.publishPartNoWaitCritical(handle, nativeTopic,
-                messageHandle, flags, partFlag)
-            : Native.publishPart(handle, nativeTopic, messageHandle, flags,
-                partFlag);
-        if (rc == 0) {
-            InternalAccess.messageMarkTransferred(message);
-        }
-        return rc;
-    }
-
-    // Returns a cached native UTF-8 encoding of the topic. Steady-state
-    // publishes reuse the same constant topic, so the common path is a
-    // reference/equality hit with no allocation or re-encoding.
-    private static MemorySegment nativeTopic(SendScratch scratch,
-                                             String topicId) {
-        if (scratch.cachedTopicString != null
-            && scratch.cachedTopicString.equals(topicId)
-            && scratch.cachedTopicSegment != null) {
-            return scratch.cachedTopicSegment;
-        }
-        MemorySegment encoded = scratch.arena.allocateFrom(topicId,
-            StandardCharsets.UTF_8);
-        scratch.cachedTopicString = topicId;
-        scratch.cachedTopicSegment = encoded;
-        return encoded;
+        return sendPlane.sendMessageFrameNoWaitResult(message);
     }
 
     public void recvMessageFrame(Message message, ReceiveFlag flag) {
@@ -1252,118 +988,20 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     public void sendParts(RoutingId routingId, List<Message> parts,
                    SendFlag flags, boolean nonBlocking) {
-        ensureOpen();
-        validateParts(parts);
-        ensureBlockingSendAllowed(flags);
-        boolean explicitNonBlocking =
-            (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = sendPartOnce(parts.get(i), routingId, flags.getValue(),
-                    partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                if ((nonBlocking || explicitNonBlocking)
-                    && (errno == ERRNO_EAGAIN
-                        || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                    throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED,
-                        errno);
-                }
-                throwPartSubmitFailure(
-                    routingId == null ? "zlink_send_part"
-                        : "zlink_send_part_rid");
-            }
-        }
+        sendPlane.sendParts(routingId, parts, flags, nonBlocking);
     }
 
     public SendResult sendNoWaitPartsResult(RoutingId routingId, List<Message> parts) {
-        ensureOpen();
-        validateParts(parts);
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = sendPartOnce(parts.get(i), routingId,
-                    SendFlag.DONTWAIT.getValue(), partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                return classifyNonBlockingSendErrno(
-                    routingId == null ? "zlink_send_part"
-                        : "zlink_send_part_rid");
-            }
-        }
-        return SendResult.SENT;
+        return sendPlane.sendNoWaitPartsResult(routingId, parts);
     }
 
     public void publishParts(String topicId, List<Message> parts,
                       SendFlag flags, boolean nonBlocking) {
-        ensureOpen();
-        validateParts(parts);
-        ensureBlockingSendAllowed(flags);
-        boolean explicitNonBlocking =
-            (flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0;
-        MemorySegment nativeTopic = nativeTopic(sendScratch.get(), topicId);
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = publishPartOnce(nativeTopic, parts.get(i),
-                    flags.getValue(), partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                if ((nonBlocking || explicitNonBlocking)
-                    && (errno == ERRNO_EAGAIN
-                        || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                    throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED,
-                        errno);
-                }
-                throwPartSubmitFailure("zlink_publish_part");
-            }
-        }
+        sendPlane.publishParts(topicId, parts, flags, nonBlocking);
     }
 
     public SendResult publishNoWaitPartsResult(String topicId, List<Message> parts) {
-        ensureOpen();
-        validateParts(parts);
-        MemorySegment nativeTopic = nativeTopic(sendScratch.get(), topicId);
-        for (int i = 0; i < parts.size(); i++) {
-            int partFlag = i + 1 < parts.size()
-                ? Native.PART_MORE : Native.PART_FINAL;
-            while (true) {
-                int rc = publishPartOnce(nativeTopic, parts.get(i),
-                    SendFlag.DONTWAIT.getValue(), partFlag);
-                if (rc == 0)
-                    break;
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                return classifyNonBlockingSendErrno("zlink_publish_part");
-            }
-        }
-        return SendResult.SENT;
-    }
-
-    private SendResult classifyNonBlockingSendErrno(String apiName) {
-        int errno = Native.errno();
-        if (NativeSubmitErrors.isBackpressured(errno))
-            return SendResult.BACKPRESSURED;
-        if (NativeSubmitErrors.isNotConnected(errno))
-            return SendResult.NOT_READY;
-        if (NativeSubmitErrors.isNotAdmitted(errno)) {
-            throw new ZlinkSubmitException(SubmitResult.NOT_ADMITTED, errno);
-        }
-        throw ZlinkException.fromLastError(apiName);
+        return sendPlane.publishNoWaitPartsResult(topicId, parts);
     }
 
     static ZlinkSubmitException submitExceptionFromSendResult(int rc) {
@@ -1390,36 +1028,6 @@ final class NativeSocketRuntime implements AutoCloseable {
             case BACKPRESSURED -> false;
             case NOT_READY -> throw submitExceptionFromSendResult(result);
         };
-    }
-
-    private void throwPartSubmitFailure(String apiName) {
-        int errno = Native.errno();
-        ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
-        if (submit != null)
-            throw submit;
-        throw ZlinkException.fromLastError(apiName);
-    }
-
-    private static void validateParts(List<Message> parts) {
-        if (parts.isEmpty())
-            throw new IllegalArgumentException("parts must not be empty");
-        for (int i = 0; i < parts.size(); i++) {
-            if (parts.get(i) == null)
-                throw new IllegalArgumentException("parts[" + i + "] is null");
-        }
-    }
-
-    /**
-     * Rejects blocking sends from callback context without mutating the caller's
-     * requested send flags.
-     */
-    private static void ensureBlockingSendAllowed(SendFlag flags) {
-        Objects.requireNonNull(flags, "flags");
-        if (InternalAccess.inCallback()
-            && (flags.getValue() & SendFlag.DONTWAIT.getValue()) == 0) {
-            throw new IllegalStateException(
-                "blocking send is not supported from callback context; use SendFlag.DONTWAIT");
-        }
     }
 
     static RoutingId toRoutingId(byte[] value) {
@@ -1474,95 +1082,6 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     RecvScratch recvScratch() {
         return recvScratch.get();
-    }
-
-    private static MemorySegment nativeRoutingId(Arena arena, RoutingId routingId) {
-        byte[] value = InternalAccess.routingIdTrustedBytes(routingId);
-        MemorySegment nativeRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-            (byte) value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
-                NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
-        }
-        return nativeRid;
-    }
-
-    private static MemorySegment nativeRoutingId(SendScratch scratch,
-                                                 RoutingId routingId) {
-        byte[] value = InternalAccess.routingIdTrustedBytes(routingId);
-        if (scratch.cachedRoutingIdBytes == value) {
-            return scratch.cachedRoutingIdSegment;
-        }
-        MemorySegment cachedRid = cachedNativeRoutingId(scratch, value);
-        if (cachedRid != null) {
-            scratch.cachedRoutingIdBytes = value;
-            scratch.cachedRoutingIdSegment = cachedRid;
-            return cachedRid;
-        }
-        MemorySegment nativeRid = scratch.nativeRoutingId;
-        writeNativeRoutingId(nativeRid, value);
-        scratch.cachedRoutingIdBytes = value;
-        scratch.cachedRoutingIdSegment = nativeRid;
-        return nativeRid;
-    }
-
-    private static MemorySegment nativeRoutingId(SendScratch scratch,
-                                                 byte[] value) {
-        MemorySegment nativeRid = scratch.nativeRoutingId;
-        writeNativeRoutingId(nativeRid, value);
-        return nativeRid;
-    }
-
-    private static MemorySegment cachedNativeRoutingId(SendScratch scratch,
-                                                       byte[] value) {
-        byte[][] keys = scratch.cachedRoutingIdKeys;
-        MemorySegment[] segments = scratch.cachedRoutingIdSegments;
-        if (keys == null || segments == null) {
-            keys = new byte[SendScratch.ROUTING_ID_CACHE_CAPACITY][];
-            segments = new MemorySegment[SendScratch.ROUTING_ID_CACHE_CAPACITY];
-            scratch.cachedRoutingIdKeys = keys;
-            scratch.cachedRoutingIdSegments = segments;
-        }
-        int slot = System.identityHashCode(value)
-            & (SendScratch.ROUTING_ID_CACHE_CAPACITY - 1);
-        MemorySegment nativeRid = segments[slot];
-        if (keys[slot] == value && nativeRid != null) {
-            return nativeRid;
-        }
-        if (nativeRid == null) {
-            nativeRid = scratch.arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-            segments[slot] = nativeRid;
-        }
-        keys[slot] = value;
-        writeNativeRoutingId(nativeRid, value);
-        return nativeRid;
-    }
-
-    private static void writeNativeRoutingId(MemorySegment nativeRid,
-                                             byte[] value) {
-        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-            (byte) value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, nativeRid,
-                NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
-        }
-    }
-
-    private static MemorySegment nativeRoutingIdU32(SendScratch scratch,
-                                                    int routingId) {
-        MemorySegment nativeRid = scratch.nativeRoutingId;
-        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-            (byte) Integer.BYTES);
-        nativeRid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-            (byte) (routingId >>> 24));
-        nativeRid.set(ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_DATA_OFFSET + 1, (byte) (routingId >>> 16));
-        nativeRid.set(ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_DATA_OFFSET + 2, (byte) (routingId >>> 8));
-        nativeRid.set(ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_DATA_OFFSET + 3, (byte) routingId);
-        return nativeRid;
     }
 
     byte[] subscriptionAt(long index, MemorySegment lenInOut,

@@ -31,7 +31,6 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
@@ -81,6 +80,7 @@ public final class NativeSpot implements Spot {
     private final SpotRequestPlane requestPlane;
     private final SpotRoutedSupport routedSupport;
     private final SpotSubscriptionSupport subscriptionSupport;
+    private final SpotActorJoinSupport actorJoinSupport;
     private final SpotNode ownerNode;
     private final SpotOptions options;
 
@@ -131,6 +131,7 @@ public final class NativeSpot implements Spot {
         this.requestPlane = new SpotRequestPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
+        this.actorJoinSupport = new SpotActorJoinSupport(this);
         this.options = new SpotOptions(this);
     }
 
@@ -145,6 +146,7 @@ public final class NativeSpot implements Spot {
         this.requestPlane = new SpotRequestPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
+        this.actorJoinSupport = new SpotActorJoinSupport(this);
         this.options = new SpotOptions(this);
     }
 
@@ -158,6 +160,7 @@ public final class NativeSpot implements Spot {
         this.requestPlane = new SpotRequestPlane(this);
         this.routedSupport = new SpotRoutedSupport(this);
         this.subscriptionSupport = new SpotSubscriptionSupport(this);
+        this.actorJoinSupport = new SpotActorJoinSupport(this);
         this.options = new SpotOptions(this);
     }
 
@@ -685,44 +688,7 @@ public final class NativeSpot implements Spot {
     }
 
     public ActorJoinRequest recvActorJoin(RecvFlags flags) {
-        Objects.requireNonNull(flags, "flags");
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment infoOut = arena.allocate(
-              NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
-            MemorySegment partsOut = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment partCountOut = arena.allocate(ValueLayout.JAVA_LONG);
-            Message message = null;
-            boolean success = false;
-            try {
-                int rc = Native.spotActorJoinRecv(handle, infoOut, partsOut,
-                  partCountOut, flags.value());
-                if (rc != 0) {
-                    if (flags == RecvFlags.DONT_WAIT
-                        && rc == RecvResult.NO_DATA.value()) {
-                        return null;
-                    }
-                    throw new ZlinkRecvException(RecvResult.fromValue(rc));
-                }
-                MemorySegment parts = partsOut.get(ValueLayout.ADDRESS, 0);
-                long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
-                Message[] messages = partCount > 0
-                  ? InternalAccess.messageFromOwnedMessageVector(parts, partCount)
-                  : new Message[] { new Message() };
-                NativeMessage.multipartClose(parts, partCount);
-                message = messages[0];
-                for (int i = 1; i < messages.length; i++) {
-                    messages[i].close();
-                }
-                success = true;
-                return ContractAccess.actorJoinRequest(
-                  readActorJoinInfo(infoOut), message);
-            } finally {
-                if (!success) {
-                    message.close();
-                }
-            }
-        }
+        return actorJoinSupport.recvActorJoin(flags);
     }
 
     public ActorJoinRequest recvActorJoin() {
@@ -737,9 +703,7 @@ public final class NativeSpot implements Spot {
      */
     public ActorJoinReplyOperation replyActorJoin(ActorJoinRequest request,
                                            int joinResultCode) {
-        Objects.requireNonNull(request, "request");
-        ensureOpen();
-        return new ActorJoinReplyBuilder(request, joinResultCode);
+        return actorJoinSupport.replyActorJoin(request, joinResultCode);
     }
 
     public SpotActorLifecycleEvent recvActorLifecycle(RecvFlags flags) {
@@ -769,129 +733,6 @@ public final class NativeSpot implements Spot {
 
     public SpotActorLifecycleEvent recvActorLifecycle() {
         return recvActorLifecycle(RecvFlags.NONE);
-    }
-
-    private final class ActorJoinReplyBuilder implements ActorJoinReplyOperation {
-        private final ActorJoinRequest request;
-        private final int joinResultCode;
-        private final MessagePartsBuffer parts = new MessagePartsBuffer();
-        private boolean submitted;
-
-        ActorJoinReplyBuilder(ActorJoinRequest request, int joinResultCode) {
-            this.request = request;
-            this.joinResultCode = joinResultCode;
-        }
-
-        @Override
-        public ActorJoinReplyOperation message(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
-            return this;
-        }
-
-        @Override
-        public void submit() {
-            ensureNotSubmitted();
-            submitted = true;
-            ensureOpen();
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment nativeInfo = arena.allocate(
-                  NativeLayouts.ACTOR_JOIN_INFO_LAYOUT);
-                writeActorJoinInfo(nativeInfo, request.info());
-                MemorySegment partsArr = parts.copyToNativeArray(arena);
-                int rc = Native.spotActorJoinReply(handle, nativeInfo,
-                  joinResultCode, partsArr, parts.size());
-                if (rc != 0) {
-                    MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
-                    throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
-                }
-            }
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
-    }
-
-    private static ActorJoinInfo readActorJoinInfo(MemorySegment segment) {
-        MemorySegment view = segment.reinterpret(
-          NativeLayouts.ACTOR_JOIN_INFO_LAYOUT.byteSize());
-        return ContractAccess.actorJoinInfoFromNative(
-          ActorInterop.actorRefFromNative(view.asSlice(
-            NativeLayouts.ACTOR_JOIN_INFO_SOURCE_ACTOR_OFFSET,
-            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
-          ActorInterop.actorRefFromNative(view.asSlice(
-            NativeLayouts.ACTOR_JOIN_INFO_TARGET_ACTOR_OFFSET,
-            NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
-          ActorInterop.readRoutingId(view.asSlice(
-            NativeLayouts.ACTOR_JOIN_INFO_SOURCE_NODE_RID_OFFSET,
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
-          ActorInterop.readRoutingId(view.asSlice(
-            NativeLayouts.ACTOR_JOIN_INFO_SOURCE_SPOT_RID_OFFSET,
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
-          ActorInterop.readRoutingId(view.asSlice(
-            NativeLayouts.ACTOR_JOIN_INFO_TARGET_NODE_RID_OFFSET,
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
-          ActorInterop.readRoutingId(view.asSlice(
-            NativeLayouts.ACTOR_JOIN_INFO_TARGET_SPOT_RID_OFFSET,
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
-          view.get(ValueLayout.JAVA_LONG_UNALIGNED,
-            NativeLayouts.ACTOR_JOIN_INFO_JOIN_EPOCH_OFFSET),
-          view.get(ValueLayout.ADDRESS,
-            NativeLayouts.ACTOR_JOIN_INFO_REQUEST_OFFSET),
-          view.get(ValueLayout.JAVA_INT,
-            NativeLayouts.ACTOR_JOIN_INFO_FLAGS_OFFSET));
-    }
-
-    private static void writeActorJoinInfo(MemorySegment out,
-                                           ActorJoinInfo info) {
-        ActorInterop.writeActorRef(out.asSlice(
-          NativeLayouts.ACTOR_JOIN_INFO_SOURCE_ACTOR_OFFSET,
-          NativeLayouts.ACTOR_REF_LAYOUT.byteSize()), info.sourceActor());
-        ActorInterop.writeActorRef(out.asSlice(
-          NativeLayouts.ACTOR_JOIN_INFO_TARGET_ACTOR_OFFSET,
-          NativeLayouts.ACTOR_REF_LAYOUT.byteSize()), info.targetActor());
-        writeRoutingId(out.asSlice(
-          NativeLayouts.ACTOR_JOIN_INFO_SOURCE_NODE_RID_OFFSET,
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()),
-          ContractAccess.actorJoinInfoSourceNodeRidRaw(info));
-        writeRoutingId(out.asSlice(
-          NativeLayouts.ACTOR_JOIN_INFO_SOURCE_SPOT_RID_OFFSET,
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()),
-          ContractAccess.actorJoinInfoSourceSpotRidRaw(info));
-        writeRoutingId(out.asSlice(
-          NativeLayouts.ACTOR_JOIN_INFO_TARGET_NODE_RID_OFFSET,
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()),
-          ContractAccess.actorJoinInfoTargetNodeRidRaw(info));
-        writeRoutingId(out.asSlice(
-          NativeLayouts.ACTOR_JOIN_INFO_TARGET_SPOT_RID_OFFSET,
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()),
-          ContractAccess.actorJoinInfoTargetSpotRidRaw(info));
-        out.set(ValueLayout.JAVA_LONG_UNALIGNED,
-          NativeLayouts.ACTOR_JOIN_INFO_JOIN_EPOCH_OFFSET, info.joinEpoch());
-        out.set(ValueLayout.ADDRESS,
-          NativeLayouts.ACTOR_JOIN_INFO_REQUEST_OFFSET,
-          actorJoinRequestState(info));
-        out.set(ValueLayout.JAVA_INT,
-          NativeLayouts.ACTOR_JOIN_INFO_FLAGS_OFFSET, info.flags());
-    }
-
-    private static void writeRoutingId(MemorySegment out, RoutingId rid) {
-        byte[] value = rid == null ? new byte[0]
-          : InternalAccess.routingIdTrustedBytes(rid);
-        out.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-          (byte) value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, out,
-              NativeLayouts.ROUTING_ID_DATA_OFFSET, value.length);
-        }
-    }
-
-    private static MemorySegment actorJoinRequestState(ActorJoinInfo info) {
-        Object state = ContractAccess.actorJoinInfoRequestState(info);
-        return state instanceof MemorySegment segment ? segment
-          : MemorySegment.NULL;
     }
 
     public List<ActorRef> actors() {

@@ -209,6 +209,23 @@ internal sealed partial class Spot
         return encoded;
     }
 
+    private byte[] GetChannelNameUtf8(string channelName)
+    {
+        byte[]? cached = _channelNameCacheUtf8;
+        string? cachedKey = _channelNameCacheKey;
+        if (cached != null
+            && (ReferenceEquals(cachedKey, channelName)
+                || string.Equals(cachedKey, channelName, StringComparison.Ordinal)))
+        {
+            return cached;
+        }
+
+        byte[] encoded = PublishTopicEncoding.GetNullTerminatedUtf8(channelName);
+        _channelNameCacheKey = channelName;
+        _channelNameCacheUtf8 = encoded;
+        return encoded;
+    }
+
     private byte[] GetValidatedPublishTopicUtf8(string topic, string paramName)
     {
         byte[]? cached = _publishTopicCacheUtf8;

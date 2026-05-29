@@ -109,6 +109,21 @@ public sealed class test_optimization_guard
     }
 
     [Fact]
+    public void channel_part_interop_does_not_marshal_channel_name_strings()
+    {
+        string source = ReadZlinkSource();
+
+        Assert.Contains("zlink_spot_send_channel_part_utf8", source,
+            StringComparison.Ordinal);
+        Assert.Contains("zlink_spot_request_channel_part_utf8", source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("zlink_spot_send_channel_part(IntPtr spot",
+            source, StringComparison.Ordinal);
+        Assert.DoesNotContain("zlink_spot_request_channel_part(IntPtr spot",
+            source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void spot_dispatch_subscribe_readable_uses_cached_info()
     {
         string source = ReadZlinkSource();

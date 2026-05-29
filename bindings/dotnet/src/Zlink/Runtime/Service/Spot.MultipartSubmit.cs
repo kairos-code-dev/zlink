@@ -67,45 +67,42 @@ internal sealed partial class Spot
             NativeMessageParts.MoveToNative(parts, nativeParts, paramName,
                 ref built);
 
-            byte[]? publishTopicUtf8 = kind == SpotMultipartSubmitKind.Publish
+            // Encode the subject (topic or channel name) to UTF-8 once and pin
+            // it for the whole part loop, rather than re-marshalling the managed
+            // string on every native call.
+            byte[] subjectUtf8 = kind == SpotMultipartSubmitKind.Publish
                 ? GetPublishTopicUtf8(subject)
-                : null;
-            for (int i = 0; i < built; i++)
+                : GetChannelNameUtf8(subject);
+            fixed (byte* subjectPtr = subjectUtf8)
             {
-                NativeMethods.ZlinkPartFlag partFlag = i + 1 < built
-                    ? NativeMethods.ZlinkPartFlag.More
-                    : NativeMethods.ZlinkPartFlag.Final;
-                int rc;
-                if (kind == SpotMultipartSubmitKind.Publish)
+                for (int i = 0; i < built; i++)
                 {
-                    fixed (byte* topicPtr = publishTopicUtf8)
-                    {
-                        rc = NativeMethods.zlink_spot_publish_part_utf8(
-                            _handle, topicPtr, ref nativeParts[i], flags,
+                    NativeMethods.ZlinkPartFlag partFlag = i + 1 < built
+                        ? NativeMethods.ZlinkPartFlag.More
+                        : NativeMethods.ZlinkPartFlag.Final;
+                    int rc = kind == SpotMultipartSubmitKind.Publish
+                        ? NativeMethods.zlink_spot_publish_part_utf8(_handle,
+                            subjectPtr, ref nativeParts[i], flags, partFlag)
+                        : NativeMethods.zlink_spot_send_channel_part_utf8(
+                            _handle, subjectPtr, ref nativeParts[i], flags,
                             partFlag);
-                    }
-                }
-                else
-                {
-                    rc = NativeMethods.zlink_spot_send_channel_part(_handle,
-                        subject, ref nativeParts[i], flags, partFlag);
-                }
-                submitted = i + 1;
-                if (rc == 0)
-                    continue;
+                    submitted = i + 1;
+                    if (rc == 0)
+                        continue;
 
-                if (mapNoWaitResult)
-                {
-                    SendResult? sendResult = TryMapSendResultFromErrno();
-                    if (sendResult != null)
+                    if (mapNoWaitResult)
                     {
-                        NativeMessageParts.RestoreManaged(parts, nativeParts,
-                            submitted, built - submitted);
-                        return sendResult.Value;
+                        SendResult? sendResult = TryMapSendResultFromErrno();
+                        if (sendResult != null)
+                        {
+                            NativeMessageParts.RestoreManaged(parts, nativeParts,
+                                submitted, built - submitted);
+                            return sendResult.Value;
+                        }
                     }
+                    throw ZlinkException.CreateSubmitException(
+                        NativeMethods.zlink_errno());
                 }
-                throw ZlinkException.CreateSubmitException(
-                    NativeMethods.zlink_errno());
             }
             return SendResult.Sent;
         }
@@ -131,14 +128,19 @@ internal sealed partial class Spot
     private unsafe SendResult SubmitSingleChannel(string channelName,
         Message part, int flags, bool mapNoWaitResult)
     {
+        byte[] channelNameUtf8 = GetChannelNameUtf8(channelName);
         ZlinkMsg nativePart = default;
         bool submitted = false;
         try
         {
             part.MoveTo(ref nativePart);
-            int rc = NativeMethods.zlink_spot_send_channel_part(_handle,
-                channelName, ref nativePart, flags,
-                NativeMethods.ZlinkPartFlag.Final);
+            int rc;
+            fixed (byte* channelPtr = channelNameUtf8)
+            {
+                rc = NativeMethods.zlink_spot_send_channel_part_utf8(_handle,
+                    channelPtr, ref nativePart, flags,
+                    NativeMethods.ZlinkPartFlag.Final);
+            }
             submitted = true;
             if (rc == 0)
                 return SendResult.Sent;

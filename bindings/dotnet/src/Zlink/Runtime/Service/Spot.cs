@@ -45,6 +45,8 @@ internal sealed partial class Spot : ISpot
     private bool _dispatchEventHandlerInstalled;
     private string? _publishTopicCacheKey;
     private byte[]? _publishTopicCacheUtf8;
+    private string? _channelNameCacheKey;
+    private byte[]? _channelNameCacheUtf8;
 
     internal IntPtr Handle => _handle;
     internal SpotOptions Options { get; }

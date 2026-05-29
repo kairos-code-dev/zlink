@@ -16,16 +16,20 @@ internal static partial class NativeMethods
         IntPtr entries,
         ref nuint count);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_send_channel_part(IntPtr spot,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        ref ZlinkMsg part, int flags, ZlinkPartFlag partFlag);
+    // Pre-encoded channel-name interop for the data plane: callers pin a cached
+    // UTF-8 buffer once instead of re-marshalling the managed string on every
+    // part, mirroring zlink_spot_publish_part_utf8.
+    [DllImport(LibraryName, EntryPoint = "zlink_spot_send_channel_part",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe int zlink_spot_send_channel_part_utf8(
+        IntPtr spot, byte* channelName, ref ZlinkMsg part, int flags,
+        ZlinkPartFlag partFlag);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_request_channel_part(IntPtr spot,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        ref ZlinkMsg part, IntPtr handler, IntPtr userData,
-        int flags, ZlinkPartFlag partFlag, uint timeoutMs);
+    [DllImport(LibraryName, EntryPoint = "zlink_spot_request_channel_part",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe int zlink_spot_request_channel_part_utf8(
+        IntPtr spot, byte* channelName, ref ZlinkMsg part, IntPtr handler,
+        IntPtr userData, int flags, ZlinkPartFlag partFlag, uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_set_spot_option(IntPtr spot,

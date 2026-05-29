@@ -90,6 +90,7 @@ internal sealed partial class Spot : ISpot
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
         Message[] cloned = RequestReplySupport.CloneParts(parts);
+        byte[] channelNameUtf8 = GetChannelNameUtf8(channelName);
         uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -113,31 +114,34 @@ internal sealed partial class Spot : ISpot
                 RequestCallState.TimeoutFromUserData(userdata);
             }, handle, (int)timeoutMs, Timeout.Infinite));
 
-            for (int i = 0; i < cloned.Length; i++)
+            fixed (byte* channelPtr = channelNameUtf8)
             {
-                ZlinkMsg nativePart = default;
-                cloned[i].MoveTo(ref nativePart);
-                bool submitted = false;
-                try
+                for (int i = 0; i < cloned.Length; i++)
                 {
-                    int rc = NativeMethods.zlink_spot_request_channel_part(_handle,
-                        channelName, ref nativePart,
-                        RoutedReplyHandlerPtr,
-                        GCHandle.ToIntPtr(handle),
-                        flags,
-                        i + 1 < cloned.Length
-                            ? NativeMethods.ZlinkPartFlag.More
-                            : NativeMethods.ZlinkPartFlag.Final,
-                        timeoutMs);
-                    submitted = true;
-                    if (rc != 0)
-                        throw ZlinkException.CreateSubmitException(
-                            NativeMethods.zlink_errno());
-                }
-                finally
-                {
-                    if (!submitted)
-                        NativeMethods.zlink_msg_close(ref nativePart);
+                    ZlinkMsg nativePart = default;
+                    cloned[i].MoveTo(ref nativePart);
+                    bool submitted = false;
+                    try
+                    {
+                        int rc = NativeMethods.zlink_spot_request_channel_part_utf8(
+                            _handle, channelPtr, ref nativePart,
+                            RoutedReplyHandlerPtr,
+                            GCHandle.ToIntPtr(handle),
+                            flags,
+                            i + 1 < cloned.Length
+                                ? NativeMethods.ZlinkPartFlag.More
+                                : NativeMethods.ZlinkPartFlag.Final,
+                            timeoutMs);
+                        submitted = true;
+                        if (rc != 0)
+                            throw ZlinkException.CreateSubmitException(
+                                NativeMethods.zlink_errno());
+                    }
+                    finally
+                    {
+                        if (!submitted)
+                            NativeMethods.zlink_msg_close(ref nativePart);
+                    }
                 }
             }
 

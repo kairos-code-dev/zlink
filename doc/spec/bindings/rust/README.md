@@ -242,6 +242,25 @@ The binding should feel like a safe Rust crate over a native runtime.
   actor operations so native state stays hidden.
 - `unsafe` and raw FFI are confined to private modules.
 
+### Safe FFI RAII Wrapper Placement
+
+Native-backed Rust resources use the standard safe FFI RAII wrapper pattern:
+public `struct` handles own native lifetime, public inherent `impl` methods
+expose safe Rust operations, and `Drop` releases native resources.
+
+The public inherent `impl` surface belongs in the matching `contracts/` owner
+file, even when the implementation delegates immediately to runtime helpers.
+Runtime modules hide C API calls, `unsafe` blocks, raw handles, downcasts,
+errno mapping, and native struct conversion behind `pub(crate)` helper
+functions. Runtime modules must not be the only place where public methods on
+a public resource can be discovered.
+
+Use traits only when callers need substitutable behavior or generic bounds.
+Do not create a trait just to make a native-backed handle look like an
+interface. For a single concrete C-handle wrapper, prefer `pub struct` plus
+public inherent methods in `contracts/` and private runtime helpers under
+`runtime/`.
+
 ## Contract / Runtime Placement Rules
 
 - Public structs, enums, traits, errors, and builder contracts belong in the
@@ -249,6 +268,9 @@ The binding should feel like a safe Rust crate over a native runtime.
 - Public free functions, associated helper functions, convenience methods, and
   builder helper methods belong in public modules when callers can use them
   directly.
+- Public inherent `impl` blocks for native-backed public resources belong in
+  the contract owner file. Their bodies may be thin delegations into
+  `pub(crate)` runtime helpers.
 - Runtime handle owners, request pumps, callback adapters, and part-loop
   helpers stay private or `pub(crate)`.
 - FFI bindings, raw pointers, native struct mirrors, marshalling helpers, and

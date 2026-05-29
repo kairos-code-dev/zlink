@@ -1,4 +1,7 @@
 use crate::actor_models::ActorRef;
+use crate::actor_received::ActorReceived;
+use crate::error::RecvError;
+use crate::flags::RecvFlags;
 use crate::monitor_contracts::MonitorStatus;
 use crate::routing_id::RoutingId;
 use std::marker::PhantomData;
@@ -175,6 +178,10 @@ impl SpotDispatchInfo<'_> {
             actor_for_recv,
             _marker: PhantomData,
         }
+    }
+
+    pub fn recv_actor(&self, out: &mut ActorReceived, flags: RecvFlags) -> Result<bool, RecvError> {
+        crate::service::spot_dispatch_info_recv_actor(self, out, flags)
     }
 }
 

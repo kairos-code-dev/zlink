@@ -2,6 +2,10 @@ use std::any::Any;
 use std::time::Duration;
 
 use crate::error::{CloseError, ConfigError};
+use crate::socket_contracts::{
+    DealerSocket, PairSocket, PubSocket, RouterSocket, StreamSocket, SubSocket, XPubSocket,
+    XSubSocket,
+};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AutoHwmProfile {
@@ -66,6 +70,51 @@ pub struct Context {
 }
 
 impl Context {
+    /// Create a new context with default settings.
+    pub fn new() -> Result<Self, ConfigError> {
+        crate::ctx::context_new()
+    }
+
+    /// Create a PAIR socket.
+    pub fn pair_socket(&self) -> Result<PairSocket, ConfigError> {
+        crate::ctx::context_pair_socket(self)
+    }
+
+    /// Create a PUB socket.
+    pub fn pub_socket(&self) -> Result<PubSocket, ConfigError> {
+        crate::ctx::context_pub_socket(self)
+    }
+
+    /// Create a SUB socket.
+    pub fn sub_socket(&self) -> Result<SubSocket, ConfigError> {
+        crate::ctx::context_sub_socket(self)
+    }
+
+    /// Create a DEALER socket.
+    pub fn dealer_socket(&self) -> Result<DealerSocket, ConfigError> {
+        crate::ctx::context_dealer_socket(self)
+    }
+
+    /// Create a ROUTER socket.
+    pub fn router_socket(&self) -> Result<RouterSocket, ConfigError> {
+        crate::ctx::context_router_socket(self)
+    }
+
+    /// Create an XPUB socket.
+    pub fn xpub_socket(&self) -> Result<XPubSocket, ConfigError> {
+        crate::ctx::context_xpub_socket(self)
+    }
+
+    /// Create an XSUB socket.
+    pub fn xsub_socket(&self) -> Result<XSubSocket, ConfigError> {
+        crate::ctx::context_xsub_socket(self)
+    }
+
+    /// Create a STREAM socket.
+    pub fn stream_socket(&self) -> Result<StreamSocket, ConfigError> {
+        crate::ctx::context_stream_socket(self)
+    }
+
     /// Interrupt all blocking calls on sockets of this context with ETERM.
     pub fn shutdown(&self) -> Result<(), CloseError> {
         self.inner.shutdown()

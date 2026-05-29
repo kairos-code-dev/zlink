@@ -2,6 +2,7 @@ use std::any::Any;
 
 use crate::error::{CloseError, RecvError, RecvResult};
 use crate::message::{Message, RoutingId};
+use crate::spot_operations::{Empty, ReplyOp, SendOp};
 
 pub(crate) trait ReceivedReplyRuntime: Any + Send {
     fn as_any(&self) -> &dyn Any;
@@ -105,6 +106,14 @@ impl Received {
             part.close_now();
         }
         Ok(())
+    }
+
+    pub fn reply(&self) -> ReplyOp<Empty> {
+        crate::messaging_domain_runtime::received_reply(self)
+    }
+
+    pub fn send(&self) -> SendOp<Empty> {
+        crate::messaging_domain_runtime::received_send(self)
     }
 }
 

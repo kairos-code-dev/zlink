@@ -1,17 +1,9 @@
 use crate::core_context::Context;
-use crate::domain::Received;
-use crate::error::{ConfigError, HandlerError, RecvError};
+use crate::error::ConfigError;
 use crate::ffi;
-use crate::flags::RecvFlags;
-use crate::flags::{CommonSocketOptions, DealerSocketOptions};
-use crate::message::RoutingId;
 use crate::socket_contracts::{DealerSocket, SocketRuntime};
-use crate::spot_operations::Empty;
-use crate::spot_operations::{RequestOp, SendOp};
 
-use super::{
-    SocketInner, impl_attach_discovery, impl_base_socket, impl_connect, impl_routing_id_options,
-};
+use super::SocketInner;
 
 struct NativeDealerSocket {
     inner: SocketInner,
@@ -35,49 +27,7 @@ impl DealerSocket {
             }),
         })
     }
-
-    pub fn send(&self) -> SendOp<Empty> {
-        crate::service::socket_send_op(dealer_inner(self).handle)
-    }
-
-    /// Canonical caller-provided storage recv. See
-    /// `doc/spec/bindings/README.md`.
-    pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
-        dealer_inner(self).recv(out, flags)
-    }
-
-    pub fn request(&self) -> RequestOp<Empty> {
-        crate::service::dealer_request_op(dealer_inner(self).handle)
-    }
-
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn() + Send + 'static,
-    {
-        dealer_inner_mut(self).on_send_ready(handler)
-    }
-
-    pub fn set_channel_name(&self, channel_name: &str) -> Result<(), ConfigError> {
-        dealer_inner(self).set_channel_name(channel_name)
-    }
-
-    pub fn channel_name(&self) -> Result<String, ConfigError> {
-        dealer_inner(self).channel_name()
-    }
-
-    pub fn common_options(&self) -> CommonSocketOptions<'_> {
-        CommonSocketOptions::new(dealer_inner(self))
-    }
-
-    pub fn dealer_options(&self) -> DealerSocketOptions<'_> {
-        DealerSocketOptions::new(self)
-    }
 }
-
-impl_base_socket!(DealerSocket, dealer_inner, dealer_inner_mut);
-impl_attach_discovery!(DealerSocket, dealer_inner);
-impl_connect!(DealerSocket, dealer_inner);
-impl_routing_id_options!(DealerSocket, dealer_inner);
 
 fn native_dealer(socket: &DealerSocket) -> &NativeDealerSocket {
     socket

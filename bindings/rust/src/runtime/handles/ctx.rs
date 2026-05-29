@@ -72,65 +72,52 @@ struct NativeContext {
 unsafe impl Send for NativeContext {}
 unsafe impl Sync for NativeContext {}
 
-impl Context {
-    /// Create a new context with default settings.
-    pub fn new() -> Result<Self, ConfigError> {
-        let handle = unsafe { ffi::zlink_ctx_new() };
-        if handle.is_null() {
-            return Err(ConfigError::new(
-                crate::error::ConfigResult::InvalidHandle,
-                last_errno(),
-            ));
-        }
-        Ok(Self {
-            inner: Box::new(NativeContext {
-                handle,
-                thread_name_prefix: Mutex::new(String::new()),
-            }),
-        })
+pub(crate) fn context_new() -> Result<Context, ConfigError> {
+    let handle = unsafe { ffi::zlink_ctx_new() };
+    if handle.is_null() {
+        return Err(ConfigError::new(
+            crate::error::ConfigResult::InvalidHandle,
+            last_errno(),
+        ));
     }
+    Ok(Context {
+        inner: Box::new(NativeContext {
+            handle,
+            thread_name_prefix: Mutex::new(String::new()),
+        }),
+    })
+}
 
-    // -- Socket factories --------------------------------------------------
+pub(crate) fn context_pair_socket(context: &Context) -> Result<PairSocket, ConfigError> {
+    PairSocket::new(context)
+}
 
-    /// Create a PAIR socket.
-    pub fn pair_socket(&self) -> Result<PairSocket, ConfigError> {
-        PairSocket::new(self)
-    }
+pub(crate) fn context_pub_socket(context: &Context) -> Result<PubSocket, ConfigError> {
+    PubSocket::new(context)
+}
 
-    /// Create a PUB socket.
-    pub fn pub_socket(&self) -> Result<PubSocket, ConfigError> {
-        PubSocket::new(self)
-    }
+pub(crate) fn context_sub_socket(context: &Context) -> Result<SubSocket, ConfigError> {
+    SubSocket::new(context)
+}
 
-    /// Create a SUB socket.
-    pub fn sub_socket(&self) -> Result<SubSocket, ConfigError> {
-        SubSocket::new(self)
-    }
+pub(crate) fn context_dealer_socket(context: &Context) -> Result<DealerSocket, ConfigError> {
+    DealerSocket::new(context)
+}
 
-    /// Create a DEALER socket.
-    pub fn dealer_socket(&self) -> Result<DealerSocket, ConfigError> {
-        DealerSocket::new(self)
-    }
+pub(crate) fn context_router_socket(context: &Context) -> Result<RouterSocket, ConfigError> {
+    RouterSocket::new(context)
+}
 
-    /// Create a ROUTER socket.
-    pub fn router_socket(&self) -> Result<RouterSocket, ConfigError> {
-        RouterSocket::new(self)
-    }
+pub(crate) fn context_xpub_socket(context: &Context) -> Result<XPubSocket, ConfigError> {
+    XPubSocket::new(context)
+}
 
-    /// Create an XPUB socket.
-    pub fn xpub_socket(&self) -> Result<XPubSocket, ConfigError> {
-        XPubSocket::new(self)
-    }
+pub(crate) fn context_xsub_socket(context: &Context) -> Result<XSubSocket, ConfigError> {
+    XSubSocket::new(context)
+}
 
-    /// Create an XSUB socket.
-    pub fn xsub_socket(&self) -> Result<XSubSocket, ConfigError> {
-        XSubSocket::new(self)
-    }
-
-    /// Create a STREAM socket.
-    pub fn stream_socket(&self) -> Result<StreamSocket, ConfigError> {
-        StreamSocket::new(self)
-    }
+pub(crate) fn context_stream_socket(context: &Context) -> Result<StreamSocket, ConfigError> {
+    StreamSocket::new(context)
 }
 
 impl NativeContext {

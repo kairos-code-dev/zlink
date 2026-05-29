@@ -1,21 +1,14 @@
 use std::ffi::c_void;
 use std::ptr;
 
-use super::{
-    SocketInner, close_unreceived_part, impl_attach_discovery, impl_base_socket, impl_connect,
-    impl_routing_id_options,
-};
+use super::{SocketInner, close_unreceived_part};
 use crate::core_context::Context;
 use crate::domain::Received;
-use crate::error::{ConfigError, HandlerError, RecvError};
+use crate::error::{ConfigError, RecvError};
 use crate::ffi;
-use crate::flags::RecvFlags;
-use crate::flags::{CommonSocketOptions, RouterSocketOptions};
 use crate::message::{Message, RoutingId};
 use crate::native_errors::check_recv_rc;
 use crate::socket_contracts::{RouterSocket, SocketRuntime};
-use crate::spot_operations::Empty;
-use crate::spot_operations::{ReplyOp, RequestOp, SendOp};
 
 struct NativeRouterSocket {
     inner: SocketInner,
@@ -39,89 +32,7 @@ impl RouterSocket {
             }),
         })
     }
-
-    pub fn send(&self, target: &RoutingId) -> SendOp<Empty> {
-        crate::service::socket_send_to_op(router_inner(self).handle, *target)
-    }
-
-    /// Canonical caller-provided storage routed recv. See
-    /// `doc/spec/bindings/README.md`.
-    pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
-        match recv_router_once(router_inner(self).handle, flags.bits())? {
-            Some(received) => {
-                out.adopt_from(received);
-                Ok(true)
-            }
-            None => Ok(false),
-        }
-    }
-
-    pub fn request(&self, peer_rid: &RoutingId) -> RequestOp<Empty> {
-        crate::service::router_request_op(router_inner(self).handle, *peer_rid)
-    }
-
-    pub fn reply(&self, rid: &RoutingId, request_seq: u64) -> ReplyOp<Empty> {
-        crate::service::router_reply_op(router_inner(self).handle, *rid, request_seq)
-    }
-
-    pub fn send_to_spot(
-        &self,
-        dest_node_rid: &RoutingId,
-        dest_spot_rid: &RoutingId,
-    ) -> SendOp<Empty> {
-        crate::service::router_send_to_spot_op(
-            router_inner(self).handle,
-            *dest_node_rid,
-            *dest_spot_rid,
-        )
-    }
-
-    pub fn request_to_spot(
-        &self,
-        dest_node_rid: &RoutingId,
-        dest_spot_rid: &RoutingId,
-    ) -> RequestOp<Empty> {
-        crate::service::router_request_to_spot_op(
-            router_inner(self).handle,
-            *dest_node_rid,
-            *dest_spot_rid,
-        )
-    }
-
-    pub fn reply_to_spot(
-        &self,
-        dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId,
-        request_seq: u64,
-    ) -> ReplyOp<Empty> {
-        crate::service::router_reply_to_spot_op(
-            router_inner(self).handle,
-            dest_node_rid,
-            dest_spot_rid,
-            request_seq,
-        )
-    }
-
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
-    where
-        F: Fn() + Send + 'static,
-    {
-        router_inner_mut(self).on_send_ready(handler)
-    }
-
-    pub fn common_options(&self) -> CommonSocketOptions<'_> {
-        CommonSocketOptions::new(router_inner(self))
-    }
-
-    pub fn router_options(&self) -> RouterSocketOptions<'_> {
-        RouterSocketOptions::new(router_inner(self))
-    }
 }
-
-impl_base_socket!(RouterSocket, router_inner, router_inner_mut);
-impl_attach_discovery!(RouterSocket, router_inner);
-impl_connect!(RouterSocket, router_inner);
-impl_routing_id_options!(RouterSocket, router_inner);
 
 pub(crate) fn router_inner(socket: &RouterSocket) -> &SocketInner {
     &socket
@@ -175,7 +86,10 @@ fn router_received_from_raw(
     }
 }
 
-fn recv_router_once(handle: *mut c_void, flags: u32) -> Result<Option<Received>, RecvError> {
+pub(crate) fn recv_router_once(
+    handle: *mut c_void,
+    flags: u32,
+) -> Result<Option<Received>, RecvError> {
     let mut source_node_rid = ptr::null();
     let mut source_spot_rid = ptr::null();
     let mut request_seq = 0u64;

@@ -154,7 +154,10 @@ pub use spot_models::{
     TopologySource, TopologyState,
 };
 pub use spot_node_resource::SpotNode;
-pub use spot_operations::{CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp};
+pub use spot_operations::{
+    ActorBindOp, ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorJoinReplyOp, ActorLeaveOp,
+    ActorLookupOp, ActorUnbindOp, CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp,
+};
 pub use spot_resource::Spot;
 pub use stream_socket_contract::StreamSocket;
 pub use topic_message_contract::TopicMessage;

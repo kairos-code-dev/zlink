@@ -1,4 +1,5 @@
 use super::*;
+use crate::spot_resource::SpotPublicRuntime;
 
 // ---------------------------------------------------------------------------
 // Spot
@@ -72,8 +73,10 @@ impl Spot {
         }
         Ok(wrap_spot(handle, node.raw()))
     }
+}
 
-    pub fn publish(&self, topic: &str) -> SendOp<Empty> {
+impl SpotPublicRuntime for Spot {
+    fn publish(&self, topic: &str) -> SendOp<Empty> {
         let c_topic = fixed_cstring_or_panic(topic, "topic");
         wrap_send_op(NativeSendOp {
             handle: spot_handle(self),
@@ -83,7 +86,7 @@ impl Spot {
         })
     }
 
-    pub fn send_to_channel(&self, channel_name: &str) -> SendOp<Empty> {
+    fn send_to_channel(&self, channel_name: &str) -> SendOp<Empty> {
         let c_channel_name = fixed_cstring_or_panic(channel_name, "channel_name");
         wrap_send_op(NativeSendOp {
             handle: spot_handle(self),
@@ -95,11 +98,7 @@ impl Spot {
         })
     }
 
-    pub fn send_to_spot(
-        &self,
-        dest_node_rid: RoutingId,
-        dest_spot_rid: RoutingId,
-    ) -> SendOp<Empty> {
+    fn send_to_spot(&self, dest_node_rid: RoutingId, dest_spot_rid: RoutingId) -> SendOp<Empty> {
         wrap_send_op(NativeSendOp {
             handle: spot_handle(self),
             kind: SendOpKind::SendToSpot {
@@ -111,7 +110,7 @@ impl Spot {
         })
     }
 
-    pub fn request_to_channel(&self, channel_name: &str) -> RequestOp<Empty> {
+    fn request_to_channel(&self, channel_name: &str) -> RequestOp<Empty> {
         let c_channel_name = fixed_cstring_or_panic(channel_name, "channel_name");
         wrap_request_op(NativeRequestOp {
             handle: spot_handle(self),
@@ -124,7 +123,7 @@ impl Spot {
         })
     }
 
-    pub fn request_to_spot(
+    fn request_to_spot(
         &self,
         dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId,
@@ -141,7 +140,7 @@ impl Spot {
         })
     }
 
-    pub fn request_to_router(&self, peer_rid: RoutingId) -> RequestOp<Empty> {
+    fn request_to_router(&self, peer_rid: RoutingId) -> RequestOp<Empty> {
         wrap_request_op(NativeRequestOp {
             handle: spot_handle(self),
             kind: RequestOpKind::ToRouter { peer_rid },
@@ -151,7 +150,7 @@ impl Spot {
         })
     }
 
-    pub fn reply_to_spot(
+    fn reply_to_spot(
         &self,
         dest_node_rid: RoutingId,
         dest_spot_rid: RoutingId,
@@ -169,7 +168,7 @@ impl Spot {
         })
     }
 
-    pub fn reply_to_router(&self, peer_rid: RoutingId, request_seq: u64) -> ReplyOp<Empty> {
+    fn reply_to_router(&self, peer_rid: RoutingId, request_seq: u64) -> ReplyOp<Empty> {
         wrap_reply_op(NativeReplyOp {
             handle: spot_handle(self),
             kind: ReplyOpKind::ToRouter {
@@ -181,7 +180,7 @@ impl Spot {
         })
     }
 
-    pub fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError> {
+    fn set_routing_id(&self, rid: &RoutingId) -> Result<(), ConfigError> {
         check_config_rc(unsafe {
             ffi::zlink_set_routing_id(
                 spot_handle(self),
@@ -191,23 +190,23 @@ impl Spot {
         })
     }
 
-    pub fn routing_id(&self) -> Result<RoutingId, ConfigError> {
+    fn routing_id(&self) -> Result<RoutingId, ConfigError> {
         let mut raw = MaybeUninit::<ffi::zlink_routing_id_t>::uninit();
         check_config_rc(unsafe { ffi::zlink_get_routing_id(spot_handle(self), raw.as_mut_ptr()) })?;
         Ok(RoutingId::from_raw(unsafe { raw.assume_init() }))
     }
 
-    pub fn set_subscription(&self, filter: &str) -> Result<(), ConfigError> {
+    fn set_subscription(&self, filter: &str) -> Result<(), ConfigError> {
         let c = CString::new(filter).map_err(|_| config_validation_error())?;
         check_config_rc(unsafe { ffi::zlink_set_subscription(spot_handle(self), c.as_ptr()) })
     }
 
-    pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError> {
+    fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError> {
         let c = CString::new(filter).map_err(|_| config_validation_error())?;
         check_config_rc(unsafe { ffi::zlink_unset_subscription(spot_handle(self), c.as_ptr()) })
     }
 
-    pub fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError> {
+    fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError> {
         let mut topic_buf = [0i8; 256];
         match recv_spot_subscribed_parts(spot_handle(self), &mut topic_buf, flags.bits())? {
             Some((routing_id, topic, parts)) => {
@@ -218,7 +217,7 @@ impl Spot {
         }
     }
 
-    pub fn receive_subscription_event(
+    fn receive_subscription_event(
         &self,
         _out: &mut SubscriptionEvent,
         _flags: RecvFlags,
@@ -229,7 +228,7 @@ impl Spot {
         ))
     }
 
-    pub fn recv_actor_join_with_flags(
+    fn recv_actor_join_with_flags(
         &self,
         flags: RecvFlags,
     ) -> Result<Option<ActorJoinRequest>, RecvError> {
@@ -263,7 +262,7 @@ impl Spot {
         Ok(Some(ActorJoinRequest { info, message }))
     }
 
-    pub fn recv_actor_join(&self) -> Result<ActorJoinRequest, RecvError> {
+    fn recv_actor_join(&self) -> Result<ActorJoinRequest, RecvError> {
         self.recv_actor_join_with_flags(RecvFlags::NONE)?
             .ok_or_else(|| RecvError::new(RecvResult::NoData, libc::EAGAIN))
     }
@@ -271,7 +270,7 @@ impl Spot {
     /// Reply to an Actor join admission request (operation builder).
     /// Multipart reply payload accumulates via `.message(...)`. A zero-message
     /// `submit()` is allowed.
-    pub fn reply_actor_join(
+    fn reply_actor_join(
         &self,
         request: &ActorJoinRequest,
         join_result_code: i32,
@@ -285,7 +284,7 @@ impl Spot {
         }
     }
 
-    pub fn actors(&self) -> Result<Vec<ActorRef>, ConfigError> {
+    fn actors(&self) -> Result<Vec<ActorRef>, ConfigError> {
         let count = count_entries_config(|count| unsafe {
             ffi::zlink_spot_actors(spot_handle(self), ptr::null_mut(), count)
         })?;
@@ -303,7 +302,7 @@ impl Spot {
         Ok(entries[..actual].iter().map(ActorRef::from_raw).collect())
     }
 
-    pub fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
+    fn on_dispatch_event<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: for<'a> Fn(SpotDispatchInfo<'a>) + Send + 'static,
     {
@@ -323,7 +322,7 @@ impl Spot {
         Ok(())
     }
 
-    pub fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
+    fn on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError>
     where
         F: Fn() + Send + 'static,
     {
@@ -339,7 +338,7 @@ impl Spot {
         Ok(())
     }
 
-    pub fn recv_actor_lifecycle_with_flags(
+    fn recv_actor_lifecycle_with_flags(
         &self,
         flags: RecvFlags,
     ) -> Result<Option<SpotActorLifecycleEvent>, RecvError> {
@@ -364,13 +363,13 @@ impl Spot {
         }))
     }
 
-    pub fn recv_actor_lifecycle(&self) -> Result<SpotActorLifecycleEvent, RecvError> {
+    fn recv_actor_lifecycle(&self) -> Result<SpotActorLifecycleEvent, RecvError> {
         self.recv_actor_lifecycle_with_flags(RecvFlags::NONE)?
             .ok_or_else(|| RecvError::new(RecvResult::NoData, libc::EAGAIN))
     }
 
     /// Receive a routed message, blocking until one is available.
-    pub fn recv_routed(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
+    fn recv_routed(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
         match recv_spot_routed_parts(spot_handle(self), flags.bits())? {
             Some((node_rid, spot_rid, req_seq, parts)) => {
                 out.adopt_from(spot_received_from_raw(
@@ -386,7 +385,7 @@ impl Spot {
         }
     }
 
-    pub fn close(&mut self) -> Result<(), CloseError> {
+    fn close(&mut self) -> Result<(), CloseError> {
         destroy_handle_close(&mut spot_handle(self), ffi::zlink_spot_destroy)
     }
 }
@@ -399,22 +398,24 @@ pub(super) struct SpotReplyCallbackState {
     pub(super) _progress: Option<RequestProgressGuard>,
 }
 
-impl SpotDispatchInfo<'_> {
-    pub fn recv_actor(&self, out: &mut ActorReceived, flags: RecvFlags) -> Result<bool, RecvError> {
-        if self.event != SpotDispatchEvent::ActorReadable {
-            return Err(RecvError::new(RecvResult::NotSupported, libc::ENOTSUP));
+pub(crate) fn spot_dispatch_info_recv_actor(
+    info: &SpotDispatchInfo<'_>,
+    out: &mut ActorReceived,
+    flags: RecvFlags,
+) -> Result<bool, RecvError> {
+    if info.event != SpotDispatchEvent::ActorReadable {
+        return Err(RecvError::new(RecvResult::NotSupported, libc::ENOTSUP));
+    }
+    let actor = info
+        .actor_for_recv
+        .as_ref()
+        .ok_or_else(|| RecvError::new(RecvResult::InvalidHandle, libc::EFAULT))?;
+    match recv_actor_once(info.node_cookie as *mut c_void, actor, flags)? {
+        Some(received) => {
+            out.adopt_from(received);
+            Ok(true)
         }
-        let actor = self
-            .actor_for_recv
-            .as_ref()
-            .ok_or_else(|| RecvError::new(RecvResult::InvalidHandle, libc::EFAULT))?;
-        match recv_actor_once(self.node_cookie as *mut c_void, actor, flags)? {
-            Some(received) => {
-                out.adopt_from(received);
-                Ok(true)
-            }
-            None => Ok(false),
-        }
+        None => Ok(false),
     }
 }
 

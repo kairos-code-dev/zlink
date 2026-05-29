@@ -211,57 +211,57 @@ impl Received {
             })),
         }
     }
+}
 
-    pub fn reply(&self) -> ReplyOp<Empty> {
-        match self
-            .reply_context
-            .as_ref()
-            .expect("missing reply context")
-            .as_any()
-            .downcast_ref::<ReplyContext>()
-            .expect("zlink reply context")
-        {
-            ReplyContext::Router {
-                handle,
-                routing_id,
-                request_seq,
-            } => crate::service::router_reply_op(*handle, *routing_id, *request_seq),
-            ReplyContext::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-                request_seq,
-            } => crate::service::spot_reply_to_spot_op(*handle, *node_rid, *spot_rid, *request_seq),
-            ReplyContext::SpotRouter {
-                handle,
-                peer_rid,
-                request_seq,
-            } => crate::service::spot_reply_to_router_op(*handle, *peer_rid, *request_seq),
-        }
+pub(crate) fn received_reply(received: &Received) -> ReplyOp<Empty> {
+    match received
+        .reply_context
+        .as_ref()
+        .expect("missing reply context")
+        .as_any()
+        .downcast_ref::<ReplyContext>()
+        .expect("zlink reply context")
+    {
+        ReplyContext::Router {
+            handle,
+            routing_id,
+            request_seq,
+        } => crate::service::router_reply_op(*handle, *routing_id, *request_seq),
+        ReplyContext::Spot {
+            handle,
+            node_rid,
+            spot_rid,
+            request_seq,
+        } => crate::service::spot_reply_to_spot_op(*handle, *node_rid, *spot_rid, *request_seq),
+        ReplyContext::SpotRouter {
+            handle,
+            peer_rid,
+            request_seq,
+        } => crate::service::spot_reply_to_router_op(*handle, *peer_rid, *request_seq),
     }
+}
 
-    pub fn send(&self) -> SendOp<Empty> {
-        match self
-            .send_context
-            .as_ref()
-            .expect("missing send context")
-            .as_any()
-            .downcast_ref::<SendContext>()
-            .expect("zlink send context")
-        {
-            SendContext::Router { handle, routing_id } => {
-                crate::service::socket_send_to_op(*handle, *routing_id)
-            }
-            SendContext::RouterSpot {
-                handle,
-                node_rid,
-                spot_rid,
-            } => crate::service::router_send_to_spot_op(*handle, *node_rid, *spot_rid),
-            SendContext::Spot {
-                handle,
-                node_rid,
-                spot_rid,
-            } => crate::service::spot_send_to_spot_op(*handle, *node_rid, *spot_rid),
+pub(crate) fn received_send(received: &Received) -> SendOp<Empty> {
+    match received
+        .send_context
+        .as_ref()
+        .expect("missing send context")
+        .as_any()
+        .downcast_ref::<SendContext>()
+        .expect("zlink send context")
+    {
+        SendContext::Router { handle, routing_id } => {
+            crate::service::socket_send_to_op(*handle, *routing_id)
         }
+        SendContext::RouterSpot {
+            handle,
+            node_rid,
+            spot_rid,
+        } => crate::service::router_send_to_spot_op(*handle, *node_rid, *spot_rid),
+        SendContext::Spot {
+            handle,
+            node_rid,
+            spot_rid,
+        } => crate::service::spot_send_to_spot_op(*handle, *node_rid, *spot_rid),
     }
 }

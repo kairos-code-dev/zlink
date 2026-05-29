@@ -215,12 +215,31 @@ bindings/rust/
   필수이며, 이를 통해 네이티브 상태를 숨긴다.
 - `unsafe`와 raw FFI는 private 모듈로 한정한다.
 
+### Safe FFI RAII Wrapper 배치
+
+네이티브 기반 Rust 리소스는 Rust에서 일반적인 safe FFI RAII wrapper 패턴을
+사용한다. 공개 `struct` 핸들이 네이티브 lifetime을 소유하고, 공개 inherent
+`impl` 메서드가 안전한 Rust 작업을 노출하며, `Drop`이 네이티브 리소스를 해제한다.
+
+공개 inherent `impl` 표면은 대응하는 `contracts/` 소유 파일에 둔다. 메서드 본문이
+즉시 런타임 헬퍼로 위임하더라도 공개 메서드 목록은 계약 파일에서 읽을 수 있어야
+한다. 런타임 모듈은 C API 호출, `unsafe` 블록, raw 핸들, downcast, errno 매핑,
+네이티브 struct 변환을 `pub(crate)` 헬퍼 함수 뒤에 숨긴다. 공개 리소스의 공개
+메서드를 런타임 모듈에서만 발견할 수 있는 상태로 두지 않는다.
+
+Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요할 때만 사용한다.
+네이티브 기반 핸들을 인터페이스처럼 보이게 하려고 trait를 만들지 않는다. 구현체가
+하나인 C 핸들 wrapper는 `contracts/`의 `pub struct`와 공개 inherent 메서드,
+`runtime/`의 private 헬퍼 조합을 우선한다.
+
 ## 계약 / 런타임 배치 규칙
 
 - 공개 struct, enum, trait, error, builder 계약은 매칭되는 `contracts/`
   카테고리에 속하며, 공개일 경우 `lib.rs`에서 re-export된다.
 - 공개 free function, 연관 헬퍼 함수, convenience 메서드, builder 헬퍼 메서드는
   호출자가 직접 사용할 수 있을 때 공개 모듈에 속한다.
+- 네이티브 기반 공개 리소스의 공개 inherent `impl` 블록은 계약 소유 파일에 둔다.
+  본문은 얇게 `pub(crate)` 런타임 헬퍼로 위임할 수 있다.
 - 런타임 핸들 소유자, request pump, 콜백 adapter, part-loop 헬퍼는 private
   또는 `pub(crate)`로 유지한다.
 - FFI 바인딩, raw 포인터, 네이티브 struct mirror, marshalling 헬퍼, 플랫폼

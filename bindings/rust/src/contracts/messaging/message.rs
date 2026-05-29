@@ -23,6 +23,25 @@ pub struct Message {
 }
 
 impl Message {
+    /// Create an empty (zero-length) message.
+    pub fn new() -> Result<Self, ConfigError> {
+        crate::message_runtime::message_new()
+    }
+
+    /// Create a message of the given size filled with uninitialized bytes.
+    pub fn with_size(size: usize) -> Result<Self, ConfigError> {
+        crate::message_runtime::message_with_size(size)
+    }
+
+    pub fn allocate(size: usize) -> Result<Self, ConfigError> {
+        Self::with_size(size)
+    }
+
+    /// Create a message by copying the given byte source.
+    pub fn try_from<T: AsRef<[u8]>>(data: T) -> Result<Self, ConfigError> {
+        crate::message_runtime::message_from_slice(data.as_ref())
+    }
+
     /// View the message payload as a byte slice.
     pub fn as_bytes(&self) -> &[u8] {
         self.inner.as_bytes()
@@ -87,5 +106,29 @@ impl Message {
         Ok(Self {
             inner: self.inner.try_clone_box()?,
         })
+    }
+}
+
+impl TryFrom<&[u8]> for Message {
+    type Error = ConfigError;
+
+    fn try_from(data: &[u8]) -> Result<Self, ConfigError> {
+        crate::message_runtime::message_from_slice(data)
+    }
+}
+
+impl TryFrom<Vec<u8>> for Message {
+    type Error = ConfigError;
+
+    fn try_from(v: Vec<u8>) -> Result<Self, ConfigError> {
+        crate::message_runtime::message_from_slice(&v)
+    }
+}
+
+impl TryFrom<&str> for Message {
+    type Error = ConfigError;
+
+    fn try_from(value: &str) -> Result<Self, ConfigError> {
+        crate::message_runtime::message_from_slice(value.as_bytes())
     }
 }

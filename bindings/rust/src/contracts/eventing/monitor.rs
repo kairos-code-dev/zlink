@@ -139,6 +139,11 @@ pub struct SocketMonitor {
 }
 
 impl SocketMonitor {
+    /// Open a socket monitor for all events.
+    pub fn open(socket: &dyn Monitorable) -> Result<Self, ConfigError> {
+        crate::monitor::socket_monitor_open(socket)
+    }
+
     /// Blocking receive of a monitor event.
     pub fn recv(&self) -> Result<MonitorEvent, RecvError> {
         self.inner.recv()
@@ -172,5 +177,15 @@ impl SocketMonitor {
 
     pub fn close(&mut self) -> Result<(), CloseError> {
         self.inner.close()
+    }
+}
+
+impl MonitorStatus {
+    pub fn is_ready(&self) -> bool {
+        crate::monitor::monitor_status_is_ready(self)
+    }
+
+    pub fn is_closed(&self) -> bool {
+        crate::monitor::monitor_status_is_closed(self)
     }
 }

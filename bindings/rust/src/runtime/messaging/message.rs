@@ -120,39 +120,28 @@ impl Drop for NativeMessage {
     }
 }
 
+pub(crate) fn message_new() -> Result<Message, ConfigError> {
+    Ok(Message {
+        inner: Box::new(NativeMessage::new()?),
+    })
+}
+
+pub(crate) fn message_with_size(size: usize) -> Result<Message, ConfigError> {
+    Ok(Message {
+        inner: Box::new(NativeMessage::with_size(size)?),
+    })
+}
+
+pub(crate) fn message_from_slice(data: &[u8]) -> Result<Message, ConfigError> {
+    let mut msg = message_with_size(data.len())?;
+    unsafe {
+        let dst = ffi::zlink_msg_data(msg.raw_mut()) as *mut u8;
+        std::ptr::copy_nonoverlapping(data.as_ptr(), dst, data.len());
+    }
+    Ok(msg)
+}
+
 impl Message {
-    /// Create an empty (zero-length) message.
-    pub fn new() -> Result<Self, ConfigError> {
-        Ok(Self {
-            inner: Box::new(NativeMessage::new()?),
-        })
-    }
-
-    /// Create a message of the given size filled with uninitialized bytes.
-    pub fn with_size(size: usize) -> Result<Self, ConfigError> {
-        Ok(Self {
-            inner: Box::new(NativeMessage::with_size(size)?),
-        })
-    }
-
-    pub fn allocate(size: usize) -> Result<Self, ConfigError> {
-        Self::with_size(size)
-    }
-
-    fn from_slice(data: &[u8]) -> Result<Self, ConfigError> {
-        let mut msg = Self::with_size(data.len())?;
-        unsafe {
-            let dst = ffi::zlink_msg_data(msg.raw_mut()) as *mut u8;
-            std::ptr::copy_nonoverlapping(data.as_ptr(), dst, data.len());
-        }
-        Ok(msg)
-    }
-
-    /// Create a message by copying the given byte source.
-    pub fn try_from<T: AsRef<[u8]>>(data: T) -> Result<Self, ConfigError> {
-        Self::from_slice(data.as_ref())
-    }
-
     pub(crate) fn raw_mut(&mut self) -> &mut ffi::zlink_msg_t {
         &mut self
             .inner
@@ -175,29 +164,5 @@ impl Message {
             ffi::zlink_msg_close(self.raw_mut());
             let _ = ffi::zlink_msg_init(self.raw_mut());
         }
-    }
-}
-
-impl TryFrom<&[u8]> for Message {
-    type Error = ConfigError;
-
-    fn try_from(data: &[u8]) -> Result<Self, ConfigError> {
-        Self::from_slice(data)
-    }
-}
-
-impl TryFrom<Vec<u8>> for Message {
-    type Error = ConfigError;
-
-    fn try_from(v: Vec<u8>) -> Result<Self, ConfigError> {
-        Self::from_slice(&v)
-    }
-}
-
-impl TryFrom<&str> for Message {
-    type Error = ConfigError;
-
-    fn try_from(value: &str) -> Result<Self, ConfigError> {
-        Self::from_slice(value.as_bytes())
     }
 }

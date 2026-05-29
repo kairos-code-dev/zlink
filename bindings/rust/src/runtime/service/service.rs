@@ -67,8 +67,9 @@ use crate::spot_models::{
 };
 use crate::spot_node_resource::{SpotNode, SpotNodeRuntime};
 use crate::spot_operations::{
-    CallbackReady, Empty, Ready, ReplyOp, ReplyOpRuntime, RequestOp, RequestOpRuntime, SendOp,
-    SendOpRuntime,
+    ActorBindOp, ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorJoinReplyOp, ActorLeaveOp,
+    ActorLookupOp, ActorReplyOpInner, ActorReplyOpKind, ActorUnbindOp, CallbackReady, Empty, Ready,
+    ReplyOp, ReplyOpRuntime, RequestOp, RequestOpRuntime, SendOp, SendOpRuntime,
 };
 use crate::spot_resource::{Spot, SpotRuntime};
 use crate::topic_message_contract::TopicMessage;
@@ -78,13 +79,21 @@ use spot_receive::{
 
 mod actor_model_runtime;
 mod discovery_runtime;
+pub(crate) use discovery_runtime::{
+    discovery_actor_route_sync_enabled, discovery_close, discovery_connect_registry,
+    discovery_get_value, discovery_member_peers, discovery_new, discovery_resolve_actor,
+    discovery_resolve_spot, discovery_set_actor_route_sync_enabled,
+    discovery_set_spot_owner_sync_enabled, discovery_set_tls_client, discovery_set_value,
+    discovery_spot_owner_sync_enabled,
+};
 mod registry_runtime;
 use actor_model_runtime::*;
+pub(crate) use registry_runtime::*;
 mod spot_node_runtime;
 pub(crate) use spot_node_runtime::*;
 mod actor_ops_runtime;
 mod actor_runtime;
-pub(crate) use actor_ops_runtime::*;
 mod spot_runtime;
 pub(crate) use spot_runtime::*;
 mod registry_query_runtime;
+pub(crate) use registry_query_runtime::*;

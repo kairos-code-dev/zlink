@@ -68,14 +68,14 @@ impl MonitorStatus {
             auto_hwm_deferred_rcvhwm: raw.auto_hwm_deferred_rcvhwm,
         }
     }
+}
 
-    pub fn is_ready(&self) -> bool {
-        self.state_flags & ffi::ZLINK_MONITOR_STATE_READY != 0
-    }
+pub(crate) fn monitor_status_is_ready(status: &MonitorStatus) -> bool {
+    status.state_flags & ffi::ZLINK_MONITOR_STATE_READY != 0
+}
 
-    pub fn is_closed(&self) -> bool {
-        self.state_flags & ffi::ZLINK_MONITOR_STATE_CLOSED != 0
-    }
+pub(crate) fn monitor_status_is_closed(status: &MonitorStatus) -> bool {
+    status.state_flags & ffi::ZLINK_MONITOR_STATE_CLOSED != 0
 }
 
 // ---------------------------------------------------------------------------
@@ -89,32 +89,29 @@ struct NativeSocketMonitor {
 
 unsafe impl Send for NativeSocketMonitor {}
 
-impl SocketMonitor {
-    /// Open a socket monitor for all events.
-    pub fn open(socket: &dyn Monitorable) -> Result<Self, ConfigError> {
-        Self::open_with_events(socket, SocketMonitorEventMask::ALL)
-    }
+pub(crate) fn socket_monitor_open(socket: &dyn Monitorable) -> Result<SocketMonitor, ConfigError> {
+    socket_monitor_open_with_events(socket, SocketMonitorEventMask::ALL)
+}
 
-    /// Open a socket monitor with an explicit typed event mask.
-    pub(crate) fn open_with_events(
-        socket: &dyn Monitorable,
-        events: SocketMonitorEventMask,
-    ) -> Result<Self, ConfigError> {
-        let target = monitorable_handle(socket)?;
-        let opts = ffi::zlink_socket_monitor_open_options_t {
-            events: events.bits(),
-        };
-        let handle = unsafe { ffi::zlink_socket_monitor_open(target, &opts) };
-        if handle.is_null() {
-            return Err(crate::error::ConfigError::new(
-                crate::error::ConfigResult::InvalidArgument,
-                last_errno(),
-            ));
-        }
-        Ok(Self {
-            inner: Box::new(NativeSocketMonitor { handle, _cb: None }),
-        })
+/// Open a socket monitor with an explicit typed event mask.
+pub(crate) fn socket_monitor_open_with_events(
+    socket: &dyn Monitorable,
+    events: SocketMonitorEventMask,
+) -> Result<SocketMonitor, ConfigError> {
+    let target = monitorable_handle(socket)?;
+    let opts = ffi::zlink_socket_monitor_open_options_t {
+        events: events.bits(),
+    };
+    let handle = unsafe { ffi::zlink_socket_monitor_open(target, &opts) };
+    if handle.is_null() {
+        return Err(crate::error::ConfigError::new(
+            crate::error::ConfigResult::InvalidArgument,
+            last_errno(),
+        ));
     }
+    Ok(SocketMonitor {
+        inner: Box::new(NativeSocketMonitor { handle, _cb: None }),
+    })
 }
 
 impl SocketMonitorRuntime for NativeSocketMonitor {

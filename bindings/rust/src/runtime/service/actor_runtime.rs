@@ -1,7 +1,8 @@
 use super::*;
+use crate::actor_resource::ActorPublicRuntime;
 
-impl Actor {
-    pub fn actor_ref(&self) -> Result<ActorRef, ConfigError> {
+impl ActorPublicRuntime for Actor {
+    fn actor_ref(&self) -> Result<ActorRef, ConfigError> {
         actor_native(self)
             .actor_ref
             .as_ref()
@@ -11,7 +12,7 @@ impl Actor {
             })
     }
 
-    pub fn close_with_timeout(&mut self, timeout: Duration) -> Result<(), RequestError> {
+    fn close_with_timeout(&mut self, timeout: Duration) -> Result<(), RequestError> {
         let Some(actor_ref) = actor_native_mut(self).actor_ref.take() else {
             return Ok(());
         };
@@ -33,12 +34,12 @@ impl Actor {
         })
     }
 
-    pub fn close(&mut self) -> Result<(), RequestError> {
+    fn close(&mut self) -> Result<(), RequestError> {
         self.close_with_timeout(Duration::from_millis(0))
     }
 
     /// Async user-Spot join (operation builder).
-    pub fn join(&self, spot: &Spot) -> ActorJoinOp<Empty> {
+    fn join(&self, spot: &Spot) -> ActorJoinOp<Empty> {
         let raw_actor =
             self.actor_ref()
                 .and_then(|a| a.to_raw())
@@ -76,7 +77,7 @@ impl Actor {
     }
 
     /// Async leave to the same node's Entry Spot (operation builder).
-    pub fn leave(&self, spot: &Spot) -> ActorLeaveOp<Empty> {
+    fn leave(&self, spot: &Spot) -> ActorLeaveOp<Empty> {
         let raw_actor =
             self.actor_ref()
                 .and_then(|a| a.to_raw())
@@ -107,7 +108,7 @@ impl Actor {
         }
     }
 
-    pub fn recv(&self, out: &mut ActorReceived, flags: RecvFlags) -> Result<bool, RecvError> {
+    fn recv(&self, out: &mut ActorReceived, flags: RecvFlags) -> Result<bool, RecvError> {
         let actor_ref = self.actor_ref().map_err(recv_error_from_config)?;
         match recv_actor_once(actor_native(self).node_handle, &actor_ref, flags)? {
             Some(received) => {
@@ -119,7 +120,7 @@ impl Actor {
     }
 
     /// Actor-to-session relay (operation builder).
-    pub fn send_bound_session_msg(&self) -> SendOp<Empty> {
+    fn send_bound_session_msg(&self) -> SendOp<Empty> {
         let raw_actor =
             self.actor_ref()
                 .and_then(|a| a.to_raw())
@@ -139,7 +140,7 @@ impl Actor {
         })
     }
 
-    pub fn close_bound_session(&self, timeout: Duration) -> Result<(), RequestError> {
+    fn close_bound_session(&self, timeout: Duration) -> Result<(), RequestError> {
         let raw_actor = self
             .actor_ref()
             .map_err(|err| {

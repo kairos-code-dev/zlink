@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use super::*;
+use crate::spot_operations::{
+    ReplyOpEmptyRuntime, ReplyOpReadyRuntime, RequestOpCallbackReadyRuntime, RequestOpEmptyRuntime,
+    RequestOpReadyRuntime, SendOpEmptyRuntime, SendOpReadyRuntime,
+};
 
 // ---------------------------------------------------------------------------
 // Typestate operation builders
@@ -86,8 +90,8 @@ pub(super) enum SendOpKind {
     },
 }
 
-impl SendOp<Empty> {
-    pub fn message(self, message: Message) -> SendOp<Ready> {
+impl SendOpEmptyRuntime for SendOp<Empty> {
+    fn message(self, message: Message) -> SendOp<Ready> {
         let op = take_send_op(self);
         wrap_send_op(NativeSendOp {
             handle: op.handle,
@@ -98,14 +102,14 @@ impl SendOp<Empty> {
     }
 }
 
-impl SendOp<Ready> {
-    pub fn message(mut self, message: Message) -> Self {
+impl SendOpReadyRuntime for SendOp<Ready> {
+    fn message(mut self, message: Message) -> Self {
         let op = send_op_mut(&mut self);
         op.parts.push(message);
         self
     }
 
-    pub fn flags(self, flags: SendFlags) -> Self {
+    fn flags(self, flags: SendFlags) -> Self {
         let mut op = take_send_op(self);
         op.flags = flags;
         wrap_send_op(op)
@@ -114,7 +118,7 @@ impl SendOp<Ready> {
     /// Submit the send operation.
     /// Returns `Ok(false)` for temporary backpressure with `DONT_WAIT`, `Ok(true)` on success.
     /// # Errors: SubmitError
-    pub fn submit(self) -> Result<bool, SubmitError> {
+    fn submit(self) -> Result<bool, SubmitError> {
         let mut op = take_send_op(self);
         let flags = op.flags;
         let handle = op.handle;
@@ -431,8 +435,8 @@ pub(crate) fn router_request_to_spot_op(
     })
 }
 
-impl RequestOp<Empty> {
-    pub fn message(self, message: Message) -> RequestOp<Ready> {
+impl RequestOpEmptyRuntime for RequestOp<Empty> {
+    fn message(self, message: Message) -> RequestOp<Ready> {
         let op = take_request_op(self);
         wrap_request_op(NativeRequestOp {
             handle: op.handle,
@@ -444,19 +448,19 @@ impl RequestOp<Empty> {
     }
 }
 
-impl RequestOp<Ready> {
-    pub fn message(mut self, message: Message) -> Self {
+impl RequestOpReadyRuntime for RequestOp<Ready> {
+    fn message(mut self, message: Message) -> Self {
         request_op_mut(&mut self).parts.push(message);
         self
     }
 
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+    fn timeout(mut self, timeout: Duration) -> Self {
         request_op_mut(&mut self).timeout = timeout;
         self
     }
 
     /// Setting flags moves to `CallbackReady` (only callback `submit` available).
-    pub fn flags(self, flags: SendFlags) -> RequestOp<CallbackReady> {
+    fn flags(self, flags: SendFlags) -> RequestOp<CallbackReady> {
         let op = take_request_op(self);
         wrap_request_op(NativeRequestOp {
             handle: op.handle,
@@ -469,7 +473,7 @@ impl RequestOp<Ready> {
 
     /// Async submit — produces the reply.
     /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
+    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
         let (tx, rx) = mpsc::channel();
         request_op_submit_callback_owned(self, SendFlags::NONE, move |result| {
             let _ = tx.send(result);
@@ -486,7 +490,7 @@ impl RequestOp<Ready> {
 
     /// Callback submit.
     /// # Errors: SubmitError
-    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
@@ -494,24 +498,24 @@ impl RequestOp<Ready> {
     }
 }
 
-impl RequestOp<CallbackReady> {
-    pub fn message(mut self, message: Message) -> Self {
+impl RequestOpCallbackReadyRuntime for RequestOp<CallbackReady> {
+    fn message(mut self, message: Message) -> Self {
         request_op_mut(&mut self).parts.push(message);
         self
     }
 
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+    fn timeout(mut self, timeout: Duration) -> Self {
         request_op_mut(&mut self).timeout = timeout;
         self
     }
 
-    pub fn flags(mut self, flags: SendFlags) -> Self {
+    fn flags(mut self, flags: SendFlags) -> Self {
         request_op_mut(&mut self).flags = Some(flags);
         self
     }
 
     /// # Errors: SubmitError
-    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
@@ -861,8 +865,8 @@ pub(crate) fn spot_reply_to_router_op(
     })
 }
 
-impl ReplyOp<Empty> {
-    pub fn message(self, message: Message) -> ReplyOp<Ready> {
+impl ReplyOpEmptyRuntime for ReplyOp<Empty> {
+    fn message(self, message: Message) -> ReplyOp<Ready> {
         let op = take_reply_op(self);
         wrap_reply_op(NativeReplyOp {
             handle: op.handle,
@@ -873,19 +877,19 @@ impl ReplyOp<Empty> {
     }
 }
 
-impl ReplyOp<Ready> {
-    pub fn message(mut self, message: Message) -> Self {
+impl ReplyOpReadyRuntime for ReplyOp<Ready> {
+    fn message(mut self, message: Message) -> Self {
         reply_op_mut(&mut self).parts.push(message);
         self
     }
 
-    pub fn flags(mut self, flags: SendFlags) -> Self {
+    fn flags(mut self, flags: SendFlags) -> Self {
         reply_op_mut(&mut self).flags = flags;
         self
     }
 
     /// # Errors: SubmitError
-    pub fn submit(self) -> Result<(), SubmitError> {
+    fn submit(self) -> Result<(), SubmitError> {
         let mut op = take_reply_op(self);
         let flags = op.flags;
         if flags.bits() != 0 {

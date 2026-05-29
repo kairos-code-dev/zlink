@@ -91,6 +91,10 @@ pub struct Poller {
 }
 
 impl Poller {
+    pub fn new() -> Result<Self, ConfigError> {
+        crate::poller::poller_new()
+    }
+
     pub fn add_socket(
         &self,
         socket: &dyn Pollable,
@@ -145,6 +149,15 @@ pub struct Timer {
 }
 
 impl Timer {
+    pub fn new() -> Result<Self, ConfigError> {
+        crate::poller::timer_new()
+    }
+
+    /// Create a timer that belongs to (and is dispatched by) the given `Spot`.
+    pub fn from_spot(spot: &crate::Spot) -> Result<Self, ConfigError> {
+        crate::poller::timer_from_spot(spot)
+    }
+
     pub fn start(&self, interval_ns: u64, repeat_count: u64) -> Result<(), ConfigError> {
         self.inner.start(interval_ns, repeat_count)
     }

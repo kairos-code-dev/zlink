@@ -19,22 +19,20 @@ struct NativePoller {
 
 unsafe impl Send for NativePoller {}
 
-impl Poller {
-    pub fn new() -> Result<Self, ConfigError> {
-        let handle = unsafe { ffi::zlink_poller_new() };
-        if handle.is_null() {
-            return Err(crate::error::ConfigError::new(
-                crate::error::ConfigResult::InvalidArgument,
-                last_errno(),
-            ));
-        }
-        Ok(Self {
-            inner: Box::new(NativePoller {
-                handle,
-                sockets: Mutex::new(HashMap::new()),
-            }),
-        })
+pub(crate) fn poller_new() -> Result<Poller, ConfigError> {
+    let handle = unsafe { ffi::zlink_poller_new() };
+    if handle.is_null() {
+        return Err(crate::error::ConfigError::new(
+            crate::error::ConfigResult::InvalidArgument,
+            last_errno(),
+        ));
     }
+    Ok(Poller {
+        inner: Box::new(NativePoller {
+            handle,
+            sockets: Mutex::new(HashMap::new()),
+        }),
+    })
 }
 
 impl PollerRuntime for NativePoller {
@@ -249,39 +247,36 @@ struct NativeTimer {
 
 unsafe impl Send for NativeTimer {}
 
-impl Timer {
-    pub fn new() -> Result<Self, ConfigError> {
-        let handle = unsafe { ffi::zlink_timer_new() };
-        if handle.is_null() {
-            return Err(crate::error::ConfigError::new(
-                crate::error::ConfigResult::InvalidArgument,
-                last_errno(),
-            ));
-        }
-        Ok(Self {
-            inner: Box::new(NativeTimer {
-                handle,
-                callback: None,
-            }),
-        })
+pub(crate) fn timer_new() -> Result<Timer, ConfigError> {
+    let handle = unsafe { ffi::zlink_timer_new() };
+    if handle.is_null() {
+        return Err(crate::error::ConfigError::new(
+            crate::error::ConfigResult::InvalidArgument,
+            last_errno(),
+        ));
     }
+    Ok(Timer {
+        inner: Box::new(NativeTimer {
+            handle,
+            callback: None,
+        }),
+    })
+}
 
-    /// Create a timer that belongs to (and is dispatched by) the given `Spot`.
-    pub fn from_spot(spot: &crate::Spot) -> Result<Self, ConfigError> {
-        let handle = unsafe { ffi::zlink_spot_timer_new(crate::service::spot_handle(spot)) };
-        if handle.is_null() {
-            return Err(crate::error::ConfigError::new(
-                crate::error::ConfigResult::InvalidArgument,
-                last_errno(),
-            ));
-        }
-        Ok(Self {
-            inner: Box::new(NativeTimer {
-                handle,
-                callback: None,
-            }),
-        })
+pub(crate) fn timer_from_spot(spot: &crate::Spot) -> Result<Timer, ConfigError> {
+    let handle = unsafe { ffi::zlink_spot_timer_new(crate::service::spot_handle(spot)) };
+    if handle.is_null() {
+        return Err(crate::error::ConfigError::new(
+            crate::error::ConfigResult::InvalidArgument,
+            last_errno(),
+        ));
     }
+    Ok(Timer {
+        inner: Box::new(NativeTimer {
+            handle,
+            callback: None,
+        }),
+    })
 }
 
 impl TimerRuntime for NativeTimer {

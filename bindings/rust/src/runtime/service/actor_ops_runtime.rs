@@ -1,4 +1,8 @@
 use super::*;
+use crate::spot_operations::{
+    ActorJoinEntrySpotOpRuntime, ActorJoinOpEmptyRuntime, ActorJoinOpReadyRuntime,
+    ActorJoinReplyOpRuntime, ActorLookupOpRuntime, ActorReplyOpRuntime, ActorReplyOpTimeoutRuntime,
+};
 
 // ---------------------------------------------------------------------------
 // Actor value structs
@@ -8,41 +12,15 @@ use super::*;
 // Actor operation builders
 // ---------------------------------------------------------------------------
 
-/// Async Actor join builder. Payload accumulates via `.message(...)`.
-pub struct ActorJoinOp<State> {
-    pub(super) node_handle: *mut c_void,
-    pub(super) spot_handle: *mut c_void,
-    pub(super) actor: ffi::zlink_actor_ref_t,
-    pub(super) dest_node_rid: RoutingId,
-    pub(super) dest_spot_rid: RoutingId,
-    pub(super) parts: Vec<Message>,
-    pub(super) flags: SendFlags,
-    pub(super) timeout: Duration,
-    pub(super) _state: std::marker::PhantomData<State>,
-}
-
-unsafe impl<S> Send for ActorJoinOp<S> {}
-
-/// Async Actor Entry Spot join builder.
-pub struct ActorJoinEntrySpotOp<State> {
-    pub(super) node_handle: *mut c_void,
-    pub(super) actor: ffi::zlink_actor_ref_t,
-    pub(super) dest_node_rid: RoutingId,
-    pub(super) timeout: Duration,
-    pub(super) _state: std::marker::PhantomData<State>,
-}
-
-unsafe impl<S> Send for ActorJoinEntrySpotOp<S> {}
-
-impl ActorJoinEntrySpotOp<Empty> {
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+impl ActorJoinEntrySpotOpRuntime for ActorJoinEntrySpotOp<Empty> {
+    fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
     /// Submit and await completion (async).
     /// # Errors: ZlinkError
-    pub async fn submit_async(self) -> Result<ActorJoinEntrySpotResult, ZlinkError> {
+    async fn submit_async(self) -> Result<ActorJoinEntrySpotResult, ZlinkError> {
         let (tx, rx) = mpsc::channel();
         self.submit(move |result| {
             let _ = tx.send(result);
@@ -58,7 +36,7 @@ impl ActorJoinEntrySpotOp<Empty> {
 
     /// Submit with a completion callback.
     /// # Errors: SubmitError
-    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(ActorJoinEntrySpotResult) + Send + 'static,
     {
@@ -85,8 +63,8 @@ impl ActorJoinEntrySpotOp<Empty> {
     }
 }
 
-impl ActorJoinOp<Empty> {
-    pub fn message(self, message: Message) -> ActorJoinOp<Ready> {
+impl ActorJoinOpEmptyRuntime for ActorJoinOp<Empty> {
+    fn message(self, message: Message) -> ActorJoinOp<Ready> {
         ActorJoinOp {
             node_handle: self.node_handle,
             spot_handle: self.spot_handle,
@@ -101,25 +79,25 @@ impl ActorJoinOp<Empty> {
     }
 }
 
-impl ActorJoinOp<Ready> {
-    pub fn message(mut self, message: Message) -> Self {
+impl ActorJoinOpReadyRuntime for ActorJoinOp<Ready> {
+    fn message(mut self, message: Message) -> Self {
         self.parts.push(message);
         self
     }
 
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+    fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
-    pub fn flags(mut self, flags: SendFlags) -> Self {
+    fn flags(mut self, flags: SendFlags) -> Self {
         self.flags = flags;
         self
     }
 
     /// Submit and await completion (async). Returns `(ActorJoinResult, parts)`.
     /// # Errors: ZlinkError
-    pub async fn submit_async(self) -> Result<(ActorJoinResult, Vec<Message>), ZlinkError> {
+    async fn submit_async(self) -> Result<(ActorJoinResult, Vec<Message>), ZlinkError> {
         let (tx, rx) = mpsc::channel();
         self.submit(move |result, parts| {
             let _ = tx.send((result, parts));
@@ -135,7 +113,7 @@ impl ActorJoinOp<Ready> {
 
     /// Submit with a completion callback.
     /// # Errors: SubmitError
-    pub fn submit<F>(mut self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(mut self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(ActorJoinResult, Vec<Message>) + Send + 'static,
     {
@@ -179,25 +157,14 @@ impl ActorJoinOp<Ready> {
     }
 }
 
-/// Builder for replying to an Actor join admission request. 0-part submit is allowed.
-pub struct ActorJoinReplyOp<State> {
-    pub(super) spot_handle: *mut c_void,
-    pub(super) info: ffi::zlink_actor_join_info_t,
-    pub(super) join_result_code: i32,
-    pub(super) parts: Vec<Message>,
-    pub(super) _state: std::marker::PhantomData<State>,
-}
-
-unsafe impl<S> Send for ActorJoinReplyOp<S> {}
-
-impl ActorJoinReplyOp<Empty> {
-    pub fn message(mut self, message: Message) -> ActorJoinReplyOp<Empty> {
+impl ActorJoinReplyOpRuntime for ActorJoinReplyOp<Empty> {
+    fn message(mut self, message: Message) -> ActorJoinReplyOp<Empty> {
         self.parts.push(message);
         self
     }
 
     /// # Errors: SubmitError
-    pub fn submit(mut self) -> Result<(), SubmitError> {
+    fn submit(mut self) -> Result<(), SubmitError> {
         // 0..N parts allowed.
         let mut native: Vec<ffi::zlink_msg_t> = Vec::with_capacity(self.parts.len());
         unsafe {
@@ -230,31 +197,6 @@ impl ActorJoinReplyOp<Empty> {
         }
         check_submit_rc(rc)
     }
-}
-
-/// Payload-less builder shared by leave / destroy / bind / unbind.
-pub(super) struct ActorReplyOpInner {
-    pub(super) handle: *mut c_void,
-    pub(super) kind: ActorReplyOpKind,
-    pub(super) timeout: Duration,
-}
-
-pub(super) enum ActorReplyOpKind {
-    Leave {
-        actor: ffi::zlink_actor_ref_t,
-        current_spot_rid: RoutingId,
-    },
-    Destroy {
-        actor: ffi::zlink_actor_ref_t,
-    },
-    Bind {
-        session_rid: RoutingId,
-        actor: ffi::zlink_actor_ref_t,
-    },
-    Unbind {
-        session_rid: RoutingId,
-        actor_id: std::ffi::CString,
-    },
 }
 
 impl ActorReplyOpInner {
@@ -323,27 +265,20 @@ impl ActorReplyOpInner {
     }
 }
 
-/// Async Actor leave builder (payload-less).
-pub struct ActorLeaveOp<State> {
-    pub(super) inner: ActorReplyOpInner,
-    pub(super) _state: std::marker::PhantomData<State>,
-}
-
-unsafe impl<S> Send for ActorLeaveOp<S> {}
-
-impl ActorLeaveOp<Empty> {
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+impl ActorReplyOpTimeoutRuntime for ActorLeaveOp<Empty> {
+    fn timeout(mut self, timeout: Duration) -> Self {
         self.inner.timeout = timeout;
         self
     }
+}
 
-    /// # Errors: ZlinkError
-    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
+impl ActorReplyOpRuntime for ActorLeaveOp<Empty> {
+    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
         actor_reply_op_submit_async(self.inner).await
     }
 
     /// # Errors: SubmitError
-    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
@@ -351,27 +286,20 @@ impl ActorLeaveOp<Empty> {
     }
 }
 
-/// Async Actor destroy builder (payload-less).
-pub struct ActorDestroyOp<State> {
-    pub(super) inner: ActorReplyOpInner,
-    pub(super) _state: std::marker::PhantomData<State>,
-}
-
-unsafe impl<S> Send for ActorDestroyOp<S> {}
-
-impl ActorDestroyOp<Empty> {
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+impl ActorReplyOpTimeoutRuntime for ActorDestroyOp<Empty> {
+    fn timeout(mut self, timeout: Duration) -> Self {
         self.inner.timeout = timeout;
         self
     }
+}
 
-    /// # Errors: ZlinkError
-    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
+impl ActorReplyOpRuntime for ActorDestroyOp<Empty> {
+    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
         actor_reply_op_submit_async(self.inner).await
     }
 
     /// # Errors: SubmitError
-    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
@@ -379,27 +307,20 @@ impl ActorDestroyOp<Empty> {
     }
 }
 
-/// Async Actor bind builder (payload-less).
-pub struct ActorBindOp<State> {
-    pub(super) inner: ActorReplyOpInner,
-    pub(super) _state: std::marker::PhantomData<State>,
-}
-
-unsafe impl<S> Send for ActorBindOp<S> {}
-
-impl ActorBindOp<Empty> {
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+impl ActorReplyOpTimeoutRuntime for ActorBindOp<Empty> {
+    fn timeout(mut self, timeout: Duration) -> Self {
         self.inner.timeout = timeout;
         self
     }
+}
 
-    /// # Errors: ZlinkError
-    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
+impl ActorReplyOpRuntime for ActorBindOp<Empty> {
+    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
         actor_reply_op_submit_async(self.inner).await
     }
 
     /// # Errors: SubmitError
-    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
@@ -407,27 +328,20 @@ impl ActorBindOp<Empty> {
     }
 }
 
-/// Async Actor unbind builder (payload-less).
-pub struct ActorUnbindOp<State> {
-    pub(super) inner: ActorReplyOpInner,
-    pub(super) _state: std::marker::PhantomData<State>,
-}
-
-unsafe impl<S> Send for ActorUnbindOp<S> {}
-
-impl ActorUnbindOp<Empty> {
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+impl ActorReplyOpTimeoutRuntime for ActorUnbindOp<Empty> {
+    fn timeout(mut self, timeout: Duration) -> Self {
         self.inner.timeout = timeout;
         self
     }
+}
 
-    /// # Errors: ZlinkError
-    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
+impl ActorReplyOpRuntime for ActorUnbindOp<Empty> {
+    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
         actor_reply_op_submit_async(self.inner).await
     }
 
     /// # Errors: SubmitError
-    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static,
     {
@@ -452,25 +366,14 @@ async fn actor_reply_op_submit_async(inner: ActorReplyOpInner) -> Result<Vec<Mes
         .map_err(ZlinkError::from)
 }
 
-/// Async remote Actor lookup builder (payload-less).
-pub struct ActorLookupOp<State> {
-    pub(super) node_handle: *mut c_void,
-    pub(super) target_node_rid: RoutingId,
-    pub(super) actor_id: std::ffi::CString,
-    pub(super) timeout: Duration,
-    pub(super) _state: std::marker::PhantomData<State>,
-}
-
-unsafe impl<S> Send for ActorLookupOp<S> {}
-
-impl ActorLookupOp<Empty> {
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+impl ActorLookupOpRuntime for ActorLookupOp<Empty> {
+    fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
     /// # Errors: ZlinkError
-    pub async fn submit_async(self) -> Result<ActorLookupResult, ZlinkError> {
+    async fn submit_async(self) -> Result<ActorLookupResult, ZlinkError> {
         let (tx, rx) = mpsc::channel();
         self.submit(move |result| {
             let _ = tx.send(result);
@@ -485,7 +388,7 @@ impl ActorLookupOp<Empty> {
     }
 
     /// # Errors: SubmitError
-    pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
+    fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(ActorLookupResult) + Send + 'static,
     {

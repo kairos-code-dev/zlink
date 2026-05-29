@@ -1,5 +1,4 @@
 mod dealer;
-mod macros;
 mod pair;
 mod pub_socket;
 mod router;
@@ -8,17 +7,17 @@ mod sub;
 mod xpub;
 mod xsub;
 
-pub(crate) use dealer::dealer_inner;
-pub(crate) use macros::{
-    impl_attach_discovery, impl_base_socket, impl_connect, impl_routing_id_options,
+pub(crate) use dealer::{dealer_inner, dealer_inner_mut};
+pub(crate) use pair::{pair_handle, pair_inner, pair_inner_mut};
+pub(crate) use pub_socket::{pub_inner, pub_inner_mut};
+pub(crate) use router::{recv_router_once, router_inner, router_inner_mut};
+pub(crate) use stream::{
+    stream_attach_actor_gateway, stream_bind_actor, stream_bound_actors, stream_inner,
+    stream_inner_mut, stream_on_packet, stream_send_bound_actor, stream_unbind_actor,
 };
-pub(crate) use pair::pair_handle;
-pub(crate) use pub_socket::pub_inner;
-pub(crate) use router::router_inner;
-pub(crate) use stream::stream_inner;
-pub(crate) use sub::sub_inner;
-pub(crate) use xpub::xpub_inner;
-pub(crate) use xsub::xsub_inner;
+pub(crate) use sub::{sub_inner, sub_inner_mut};
+pub(crate) use xpub::{xpub_inner, xpub_inner_mut};
+pub(crate) use xsub::{xsub_inner, xsub_inner_mut};
 
 use std::ffi::{CStr, CString, c_void};
 use std::mem::MaybeUninit;

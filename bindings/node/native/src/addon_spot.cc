@@ -381,37 +381,7 @@ static napi_value create_spot_node_actor_entry_value(
     return obj;
 }
 
-static const size_t k_spot_routed_slot_count = 256;
-static const size_t k_router_spot_slot_count = 256;
 static const size_t k_spot_dispatch_event_slot_count = 256;
-
-struct spot_routed_js_payload_t
-{
-    std::vector<unsigned char> source_rid;
-    std::vector<unsigned char> spot_rid;
-    uint64_t request_seq;
-    std::vector<std::vector<unsigned char> > parts;
-};
-
-struct spot_routed_js_state_t
-{
-    spot_routed_js_state_t () : used (false), spot (NULL), env (NULL), tsfn (NULL) {}
-
-    bool used;
-    void *spot;
-    napi_env env;
-    napi_threadsafe_function tsfn;
-};
-
-struct router_spot_js_state_t
-{
-    router_spot_js_state_t () : used (false), router (NULL), env (NULL), tsfn (NULL) {}
-
-    bool used;
-    void *router;
-    napi_env env;
-    napi_threadsafe_function tsfn;
-};
 
 struct spot_dispatch_event_js_payload_t
 {
@@ -468,10 +438,6 @@ struct request_js_state_t
     napi_threadsafe_function tsfn;
 };
 
-static std::mutex g_spot_routed_slots_mu;
-static spot_routed_js_state_t g_spot_routed_slots[k_spot_routed_slot_count];
-static std::mutex g_router_spot_slots_mu;
-static router_spot_js_state_t g_router_spot_slots[k_router_spot_slot_count];
 static std::mutex g_spot_dispatch_event_slots_mu;
 static spot_dispatch_event_js_state_t
   g_spot_dispatch_event_slots[k_spot_dispatch_event_slot_count];
@@ -481,26 +447,6 @@ static void close_recv_parts(zlink_msg_t *parts, size_t part_count)
     if (!parts)
         return;
     zlink_multipart_close(parts, part_count);
-}
-
-static int classify_try_send_errno()
-{
-    switch (zlink_errno()) {
-    case EAGAIN:
-        return ZLINK_SUBMIT_BACKPRESSURED;
-#ifdef ENOTCONN
-    case ENOTCONN:
-#endif
-#ifdef EHOSTUNREACH
-    case EHOSTUNREACH:
-#endif
-#ifdef ETIMEDOUT
-    case ETIMEDOUT:
-#endif
-        return ZLINK_SUBMIT_NOT_CONNECTED;
-    default:
-        return -1;
-    }
 }
 
 static void copy_routing_id(zlink_routing_id_t *out,
@@ -664,23 +610,6 @@ static int spot_send_spot_parts(void *spot,
     return ZLINK_SUBMIT_OK;
 }
 
-static bool init_msg_from_buffer_arg(napi_env env, napi_value value, zlink_msg_t *msg)
-{
-    void *data = NULL;
-    size_t len = 0;
-    if (napi_get_buffer_info(env, value, &data, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "payload must be Buffer");
-        return false;
-    }
-    if (zlink_msg_init_size(msg, len) != 0) {
-        throw_last_error(env, "msg_init_size failed");
-        return false;
-    }
-    if (len > 0 && data)
-        memcpy(zlink_msg_data(msg), data, len);
-    return true;
-}
-
 static int spot_reply_router_parts(void *spot,
                                    const zlink_routing_id_t *peer_rid,
                                    uint64_t request_seq,
@@ -744,357 +673,6 @@ static int spot_recv_parts(void *spot,
     copy_routing_id(source_rid, source_rid_ptr);
     copy_routing_id(spot_rid, spot_rid_ptr);
     return collect_recv_parts(spot, &first_part, has_more, parts);
-}
-
-static bool spot_echo_transient_errno(int err)
-{
-    return err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT;
-}
-
-static void close_msg_vector_all(std::vector<zlink_msg_t> *parts)
-{
-    if (!parts)
-        return;
-    for (size_t i = 0; i < parts->size(); ++i)
-        zlink_msg_close(&(*parts)[i]);
-    parts->clear();
-}
-
-static void drain_spot_route_echo(void *spot)
-{
-    if (!spot)
-        return;
-
-    for (;;) {
-        zlink_routing_id_t source_rid;
-        zlink_routing_id_t spot_rid;
-        uint64_t request_seq = 0;
-        std::vector<zlink_msg_t> parts;
-        const int recv_rc = spot_recv_parts(
-          spot,
-          &source_rid,
-          &spot_rid,
-          &request_seq,
-          &parts,
-          ZLINK_RECV_FLAGS_DONTWAIT);
-        const int recv_errno = errno;
-        if (recv_rc != ZLINK_RECV_OK) {
-            if (recv_errno == EAGAIN || recv_errno == EWOULDBLOCK)
-                return;
-            return;
-        }
-        if (source_rid.size == 0 || spot_rid.size == 0 || parts.empty()
-            || request_seq != 0) {
-            close_msg_vector_all(&parts);
-            return;
-        }
-
-        const int submit_rc = spot_send_spot_parts(
-          spot,
-          &source_rid,
-          &spot_rid,
-          parts.data(),
-          parts.size(),
-          ZLINK_DONTWAIT);
-        if (submit_rc == ZLINK_SUBMIT_OK)
-            continue;
-
-        const int submit_errno = errno;
-        close_msg_vector_all(&parts);
-        if (submit_rc == ZLINK_SUBMIT_BACKPRESSURED
-            || submit_rc == ZLINK_SUBMIT_NOT_CONNECTED
-            || spot_echo_transient_errno(submit_errno)) {
-            continue;
-        }
-        return;
-    }
-}
-
-static void spot_route_echo_dispatch(void *spot,
-                                     const zlink_spot_dispatch_info_t *info,
-                                     void *userdata)
-{
-    (void) userdata;
-    if (!spot || !info
-        || info->event != ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE) {
-        return;
-    }
-    drain_spot_route_echo(spot);
-}
-
-struct spot_perf_sendsend_slot_t
-{
-    spot_perf_sendsend_slot_t()
-      : spot(NULL), payload(NULL), payload_len(0), inflight(false), seq(1)
-    {
-    }
-
-    void *spot;
-    unsigned char *payload;
-    size_t payload_len;
-    bool inflight;
-    uint64_t seq;
-};
-
-static uint64_t perf_epoch_now_ns()
-{
-    using namespace std::chrono;
-    return static_cast<uint64_t>(
-      duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count());
-}
-
-static void write_u32_le(unsigned char *data, uint32_t value)
-{
-    data[0] = static_cast<unsigned char>(value & 0xffu);
-    data[1] = static_cast<unsigned char>((value >> 8) & 0xffu);
-    data[2] = static_cast<unsigned char>((value >> 16) & 0xffu);
-    data[3] = static_cast<unsigned char>((value >> 24) & 0xffu);
-}
-
-static void write_u64_le(unsigned char *data, uint64_t value)
-{
-    for (size_t i = 0; i < 8; ++i)
-        data[i] = static_cast<unsigned char>((value >> (i * 8u)) & 0xffu);
-}
-
-static uint32_t read_u32_le(const unsigned char *data)
-{
-    return static_cast<uint32_t>(data[0])
-           | (static_cast<uint32_t>(data[1]) << 8)
-           | (static_cast<uint32_t>(data[2]) << 16)
-           | (static_cast<uint32_t>(data[3]) << 24);
-}
-
-static uint64_t read_u64_le(const unsigned char *data)
-{
-    uint64_t value = 0;
-    for (size_t i = 0; i < 8; ++i)
-        value |= static_cast<uint64_t>(data[i]) << (i * 8u);
-    return value;
-}
-
-static void stamp_perf_header(unsigned char *payload,
-                              size_t payload_len,
-                              uint32_t run_id,
-                              uint32_t msg_size,
-                              uint64_t seq)
-{
-    if (!payload || payload_len < 29)
-        return;
-    write_u32_le(payload, 0x5a4c4e4bu);
-    write_u32_le(payload + 4, run_id);
-    payload[8] = 1u;
-    write_u32_le(payload + 9, msg_size);
-    write_u64_le(payload + 13, seq);
-    write_u64_le(payload + 21, perf_epoch_now_ns());
-}
-
-static bool decode_perf_header(const void *data,
-                               size_t len,
-                               uint32_t *run_id_out,
-                               uint32_t *msg_size_out,
-                               uint8_t *phase_out,
-                               uint64_t *sent_ts_out)
-{
-    if (!data || len < 29)
-        return false;
-    const unsigned char *bytes = static_cast<const unsigned char *>(data);
-    if (read_u32_le(bytes) != 0x5a4c4e4bu)
-        return false;
-    if (run_id_out)
-        *run_id_out = read_u32_le(bytes + 4);
-    if (phase_out)
-        *phase_out = bytes[8];
-    if (msg_size_out)
-        *msg_size_out = read_u32_le(bytes + 9);
-    if (sent_ts_out)
-        *sent_ts_out = read_u64_le(bytes + 21);
-    return true;
-}
-
-static bool parse_spot_handle_array(napi_env env,
-                                    napi_value value,
-                                    std::vector<void *> *spots)
-{
-    bool is_array = false;
-    if (napi_is_array(env, value, &is_array) != napi_ok || !is_array) {
-        napi_throw_type_error(env, NULL, "spots must be an array");
-        return false;
-    }
-    uint32_t len = 0;
-    napi_get_array_length(env, value, &len);
-    spots->clear();
-    spots->reserve(len);
-    for (uint32_t i = 0; i < len; ++i) {
-        napi_value item;
-        napi_get_element(env, value, i, &item);
-        void *spot = NULL;
-        if (napi_get_value_external(env, item, &spot) != napi_ok || !spot) {
-            napi_throw_type_error(env, NULL, "spot handle invalid");
-            return false;
-        }
-        spots->push_back(spot);
-    }
-    return true;
-}
-
-static bool parse_payload_array(napi_env env,
-                                napi_value value,
-                                std::vector<unsigned char *> *payloads,
-                                std::vector<size_t> *payload_lens)
-{
-    bool is_array = false;
-    if (napi_is_array(env, value, &is_array) != napi_ok || !is_array) {
-        napi_throw_type_error(env, NULL, "payloads must be an array");
-        return false;
-    }
-    uint32_t len = 0;
-    napi_get_array_length(env, value, &len);
-    payloads->clear();
-    payload_lens->clear();
-    payloads->reserve(len);
-    payload_lens->reserve(len);
-    for (uint32_t i = 0; i < len; ++i) {
-        napi_value item;
-        napi_get_element(env, value, i, &item);
-        void *data = NULL;
-        size_t data_len = 0;
-        if (napi_get_buffer_info(env, item, &data, &data_len) != napi_ok
-            || !data || data_len < 29) {
-            napi_throw_type_error(env, NULL, "payload buffer invalid");
-            return false;
-        }
-        payloads->push_back(static_cast<unsigned char *>(data));
-        payload_lens->push_back(data_len);
-    }
-    return true;
-}
-
-static bool any_perf_slot_inflight(const std::vector<spot_perf_sendsend_slot_t> &slots)
-{
-    for (size_t i = 0; i < slots.size(); ++i) {
-        if (slots[i].inflight)
-            return true;
-    }
-    return false;
-}
-
-static bool drain_perf_sendsend_slot(spot_perf_sendsend_slot_t *slot,
-                                     uint32_t expected_run_id,
-                                     uint32_t expected_msg_size,
-                                     uint64_t active_stop_ns,
-                                     uint64_t *accepted_out,
-                                     std::vector<double> *latencies_ns)
-{
-    if (!slot || !slot->spot || !accepted_out || !latencies_ns) {
-        errno = EINVAL;
-        return false;
-    }
-
-    for (;;) {
-        zlink_routing_id_t source_rid;
-        zlink_routing_id_t spot_rid;
-        uint64_t request_seq = 0;
-        std::vector<zlink_msg_t> parts;
-        const int rc = spot_recv_parts(
-          slot->spot,
-          &source_rid,
-          &spot_rid,
-          &request_seq,
-          &parts,
-          ZLINK_RECV_FLAGS_DONTWAIT);
-        const int saved_errno = errno;
-        if (rc != ZLINK_RECV_OK) {
-            if (saved_errno == EAGAIN || saved_errno == EWOULDBLOCK)
-                return true;
-            return false;
-        }
-
-        slot->inflight = false;
-        if (!parts.empty()) {
-            uint32_t run_id = 0;
-            uint32_t msg_size = 0;
-            uint8_t phase = 0;
-            uint64_t sent_ts = 0;
-            const uint64_t now_ns = perf_epoch_now_ns();
-            if (decode_perf_header(zlink_msg_data(&parts[0]),
-                                   zlink_msg_size(&parts[0]),
-                                   &run_id,
-                                   &msg_size,
-                                   &phase,
-                                   &sent_ts)
-                && run_id == expected_run_id
-                && phase == 1u
-                && msg_size == expected_msg_size
-                && sent_ts > 0
-                && now_ns >= sent_ts
-                && now_ns < active_stop_ns) {
-                ++(*accepted_out);
-                latencies_ns->push_back(
-                  static_cast<double>(now_ns - sent_ts) / 2.0);
-            }
-        }
-        close_msg_vector_all(&parts);
-    }
-}
-
-static bool drain_perf_sendsend_slots(std::vector<spot_perf_sendsend_slot_t> *slots,
-                                      uint32_t expected_run_id,
-                                      uint32_t expected_msg_size,
-                                      uint64_t active_stop_ns,
-                                      uint64_t *accepted_out,
-                                      std::vector<double> *latencies_ns)
-{
-    for (size_t i = 0; i < slots->size(); ++i) {
-        if (!drain_perf_sendsend_slot(&(*slots)[i],
-                                      expected_run_id,
-                                      expected_msg_size,
-                                      active_stop_ns,
-                                      accepted_out,
-                                      latencies_ns)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static int submit_perf_sendsend_slot(spot_perf_sendsend_slot_t *slot,
-                                     const zlink_routing_id_t *dest_node_rid,
-                                     const zlink_routing_id_t *dest_spot_rid,
-                                     uint32_t run_id,
-                                     uint32_t msg_size)
-{
-    if (!slot || !slot->spot || !dest_node_rid || !dest_spot_rid) {
-        errno = EINVAL;
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    }
-
-    stamp_perf_header(slot->payload,
-                      slot->payload_len,
-                      run_id,
-                      msg_size,
-                      slot->seq);
-    zlink_msg_t part;
-    if (zlink_msg_init_size(&part, slot->payload_len) != 0) {
-        return ZLINK_SUBMIT_INTERNAL_ERROR;
-    }
-    if (slot->payload_len > 0) {
-        memcpy(zlink_msg_data(&part), slot->payload, slot->payload_len);
-    }
-    const int rc = zlink_spot_send_spot_part(
-      slot->spot,
-      dest_node_rid,
-      dest_spot_rid,
-      &part,
-      ZLINK_DONTWAIT,
-      ZLINK_PART_FINAL);
-    if (rc == ZLINK_SUBMIT_OK) {
-        slot->inflight = true;
-        ++slot->seq;
-        return rc;
-    }
-    zlink_msg_close(&part);
-    return rc;
 }
 
 static int router_request_spot_parts(void *router,
@@ -1431,146 +1009,6 @@ static napi_value create_message_data_buffer(napi_env env, zlink_msg_t *msg)
     return data;
 }
 
-static spot_routed_js_state_t *find_spot_routed_slot_by_spot_unsafe(void *spot)
-{
-    for (size_t i = 0; i < k_spot_routed_slot_count; ++i) {
-        if (g_spot_routed_slots[i].used && g_spot_routed_slots[i].spot == spot)
-            return &g_spot_routed_slots[i];
-    }
-    return NULL;
-}
-
-static spot_routed_js_state_t *find_free_spot_routed_slot_unsafe()
-{
-    for (size_t i = 0; i < k_spot_routed_slot_count; ++i) {
-        if (!g_spot_routed_slots[i].used)
-            return &g_spot_routed_slots[i];
-    }
-    return NULL;
-}
-
-static void reset_spot_routed_slot_unsafe(spot_routed_js_state_t *state)
-{
-    if (!state)
-        return;
-    state->used = false;
-    state->spot = NULL;
-    state->env = NULL;
-    state->tsfn = NULL;
-}
-
-static void spot_routed_tsfn_finalize(napi_env env,
-                                      void *finalize_data,
-                                      void *finalize_hint)
-{
-    (void) env;
-    (void) finalize_hint;
-    spot_routed_js_state_t *state =
-      static_cast<spot_routed_js_state_t *>(finalize_data);
-    if (!state)
-        return;
-    std::lock_guard<std::mutex> lock(g_spot_routed_slots_mu);
-    reset_spot_routed_slot_unsafe(state);
-}
-
-static void spot_routed_tsfn_call_js(napi_env env,
-                                     napi_value js_cb,
-                                     void *context,
-                                     void *data)
-{
-    (void) context;
-    std::unique_ptr<spot_routed_js_payload_t> payload(
-      static_cast<spot_routed_js_payload_t *>(data));
-    if (!env || !js_cb || !payload)
-        return;
-
-    napi_value argv[4];
-    if (!payload->source_rid.empty()) {
-        if (napi_create_buffer_copy(
-              env, payload->source_rid.size(), payload->source_rid.data(), NULL,
-              &argv[0])
-            != napi_ok) {
-            return;
-        }
-    } else {
-        napi_get_null(env, &argv[0]);
-    }
-    if (!payload->spot_rid.empty()) {
-        if (napi_create_buffer_copy(
-              env, payload->spot_rid.size(), payload->spot_rid.data(), NULL,
-              &argv[1])
-            != napi_ok) {
-            return;
-        }
-    } else {
-        napi_get_null(env, &argv[1]);
-    }
-    napi_create_bigint_uint64(env, payload->request_seq, &argv[2]);
-    if (napi_create_array_with_length(env, payload->parts.size(), &argv[3])
-        != napi_ok) {
-        return;
-    }
-    for (size_t i = 0; i < payload->parts.size(); ++i) {
-        const std::vector<unsigned char> &part = payload->parts[i];
-        napi_value part_buf;
-        if (napi_create_buffer_copy(
-              env, part.size(), part.empty() ? NULL : part.data(), NULL,
-              &part_buf)
-            != napi_ok) {
-            return;
-        }
-        napi_set_element(env, argv[3], static_cast<uint32_t>(i), part_buf);
-    }
-
-    napi_value recv;
-    napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 4, argv, &recv);
-}
-
-static void spot_routed_dispatch(const zlink_routing_id_t *source_rid,
-                                 const zlink_routing_id_t *spot_rid,
-                                 uint64_t request_seq,
-                                 zlink_msg_t *parts,
-                                 size_t part_count,
-                                 void *userdata)
-{
-    spot_routed_js_state_t *state =
-      static_cast<spot_routed_js_state_t *>(userdata);
-    if (!state)
-        return;
-
-    napi_threadsafe_function tsfn = NULL;
-    {
-        std::lock_guard<std::mutex> lock(g_spot_routed_slots_mu);
-        if (!state->used || !state->tsfn)
-            return;
-        tsfn = state->tsfn;
-    }
-
-    std::unique_ptr<spot_routed_js_payload_t> payload(
-      new spot_routed_js_payload_t());
-    if (source_rid && source_rid->size > 0) {
-        payload->source_rid.assign(source_rid->data, source_rid->data + source_rid->size);
-    }
-    if (spot_rid && spot_rid->size > 0) {
-        payload->spot_rid.assign(spot_rid->data, spot_rid->data + spot_rid->size);
-    }
-    payload->request_seq = request_seq;
-    payload->parts.reserve(part_count);
-    for (size_t i = 0; i < part_count; ++i) {
-        const size_t size = zlink_msg_size(&parts[i]);
-        const unsigned char *data = static_cast<const unsigned char *>(zlink_msg_data(&parts[i]));
-        payload->parts.push_back(std::vector<unsigned char>(data, data + size));
-    }
-
-    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
-        != napi_ok) {
-        return;
-    }
-    (void) payload.release();
-}
-
 static napi_value create_spot_routed_value(napi_env env,
                                            const zlink_routing_id_t *source_rid,
                                            const zlink_routing_id_t *spot_rid,
@@ -1779,165 +1217,6 @@ static void spot_dispatch_event_dispatch(void *spot_,
                 break;
         }
     }
-    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
-        != napi_ok) {
-        return;
-    }
-    (void) payload.release();
-}
-
-static router_spot_js_state_t *find_router_spot_slot_by_router_unsafe(void *router)
-{
-    for (size_t i = 0; i < k_router_spot_slot_count; ++i) {
-        if (g_router_spot_slots[i].used && g_router_spot_slots[i].router == router)
-            return &g_router_spot_slots[i];
-    }
-    return NULL;
-}
-
-static router_spot_js_state_t *find_free_router_spot_slot_unsafe()
-{
-    for (size_t i = 0; i < k_router_spot_slot_count; ++i) {
-        if (!g_router_spot_slots[i].used)
-            return &g_router_spot_slots[i];
-    }
-    return NULL;
-}
-
-static void reset_router_spot_slot_unsafe(router_spot_js_state_t *state)
-{
-    if (!state)
-        return;
-    state->used = false;
-    state->router = NULL;
-    state->env = NULL;
-    state->tsfn = NULL;
-}
-
-static void router_spot_tsfn_finalize(napi_env env,
-                                      void *finalize_data,
-                                      void *finalize_hint)
-{
-    (void) env;
-    (void) finalize_hint;
-    router_spot_js_state_t *state =
-      static_cast<router_spot_js_state_t *>(finalize_data);
-    if (!state)
-        return;
-    std::lock_guard<std::mutex> lock(g_router_spot_slots_mu);
-    reset_router_spot_slot_unsafe(state);
-}
-
-static void router_spot_tsfn_call_js(napi_env env,
-                                     napi_value js_cb,
-                                     void *context,
-                                     void *data)
-{
-    (void) context;
-    std::unique_ptr<spot_routed_js_payload_t> payload(
-      static_cast<spot_routed_js_payload_t *>(data));
-    if (!env || !js_cb || !payload)
-        return;
-
-    napi_value argv[4];
-    if (!payload->source_rid.empty()) {
-        if (napi_create_buffer_copy(
-              env, payload->source_rid.size(), payload->source_rid.data(), NULL,
-              &argv[0])
-            != napi_ok) {
-            return;
-        }
-    } else {
-        napi_get_null(env, &argv[0]);
-    }
-    if (!payload->spot_rid.empty()) {
-        if (napi_create_buffer_copy(
-              env, payload->spot_rid.size(), payload->spot_rid.data(), NULL,
-              &argv[1])
-            != napi_ok) {
-            return;
-        }
-    } else {
-        napi_get_null(env, &argv[1]);
-    }
-    napi_create_bigint_uint64(env, payload->request_seq, &argv[2]);
-    if (napi_create_array_with_length(env, payload->parts.size(), &argv[3])
-        != napi_ok) {
-        return;
-    }
-    for (size_t i = 0; i < payload->parts.size(); ++i) {
-        const std::vector<unsigned char> &part = payload->parts[i];
-        napi_value part_buf;
-        if (napi_create_buffer_copy(
-              env, part.size(), part.empty() ? NULL : part.data(), NULL,
-              &part_buf)
-            != napi_ok) {
-            return;
-        }
-        napi_set_element(env, argv[3], static_cast<uint32_t>(i), part_buf);
-    }
-
-    napi_value recv;
-    napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 4, argv, &recv);
-}
-
-static void release_router_spot_handler_slot(void *router)
-{
-    napi_threadsafe_function tsfn = NULL;
-    {
-        std::lock_guard<std::mutex> lock(g_router_spot_slots_mu);
-        router_spot_js_state_t *state = find_router_spot_slot_by_router_unsafe(router);
-        if (!state)
-            return;
-        tsfn = state->tsfn;
-        reset_router_spot_slot_unsafe(state);
-    }
-    if (tsfn)
-        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
-}
-
-static void router_spot_dispatch(void *closure,
-                                 const zlink_routing_id_t *source_node_rid,
-                                 const zlink_routing_id_t *source_spot_rid,
-                                 uint64_t request_seq,
-                                 zlink_msg_t *parts,
-                                 size_t part_count,
-                                 void *userdata)
-{
-    (void) userdata;
-    router_spot_js_state_t *state =
-      static_cast<router_spot_js_state_t *>(closure);
-    if (!state)
-        return;
-
-    napi_threadsafe_function tsfn = NULL;
-    {
-        std::lock_guard<std::mutex> lock(g_router_spot_slots_mu);
-        if (!state->used || !state->tsfn)
-            return;
-        tsfn = state->tsfn;
-    }
-
-    std::unique_ptr<spot_routed_js_payload_t> payload(
-      new spot_routed_js_payload_t());
-    if (source_node_rid && source_node_rid->size > 0) {
-        payload->source_rid.assign(
-          source_node_rid->data, source_node_rid->data + source_node_rid->size);
-    }
-    if (source_spot_rid && source_spot_rid->size > 0) {
-        payload->spot_rid.assign(
-          source_spot_rid->data, source_spot_rid->data + source_spot_rid->size);
-    }
-    payload->request_seq = request_seq;
-    payload->parts.reserve(part_count);
-    for (size_t i = 0; i < part_count; ++i) {
-        const size_t size = zlink_msg_size(&parts[i]);
-        const unsigned char *data = static_cast<const unsigned char *>(zlink_msg_data(&parts[i]));
-        payload->parts.push_back(std::vector<unsigned char>(data, data + size));
-    }
-
     if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
         != napi_ok) {
         return;
@@ -2197,28 +1476,6 @@ napi_value create_message_snapshot_value(napi_env env,
     napi_set_named_property(env, obj, "data", data);
     napi_set_named_property(env, obj, "refCount", ref_count);
     napi_set_named_property(env, obj, "properties", props);
-    return obj;
-}
-
-static napi_value create_monitor_event_value(napi_env env,
-                                             const zlink_monitor_event_t &event)
-{
-    napi_value obj;
-    napi_create_object(env, &obj);
-
-    napi_value event_value;
-    napi_create_uint32(env, static_cast<uint32_t>(event.event), &event_value);
-    napi_set_named_property(env, obj, "event", event_value);
-
-    napi_value detail_value;
-    napi_create_uint32(env, static_cast<uint32_t>(event.value), &detail_value);
-    napi_set_named_property(env, obj, "value", detail_value);
-
-    napi_value routing_id = create_routing_id_value(env, event.routing_id);
-    napi_set_named_property(env, obj, "routingId", routing_id);
-
-    set_string_property(env, obj, "localAddr", event.local_addr);
-    set_string_property(env, obj, "remoteAddr", event.remote_addr);
     return obj;
 }
 
@@ -2790,38 +2047,6 @@ napi_value spot_send_spot(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_send_spot_from(napi_env env, napi_callback_info info)
-{
-    napi_value argv[5];
-    size_t argc = 5;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    zlink_routing_id_t dest_node_rid;
-    zlink_routing_id_t dest_spot_rid;
-    if (!parse_routing_id_value(env, argv[1], &dest_node_rid))
-        return NULL;
-    if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
-        return NULL;
-    zlink_msg_t part;
-    if (!init_msg_from_buffer_arg(env, argv[3], &part))
-        return NULL;
-    int32_t flags = 0;
-    if (argc >= 5)
-        napi_get_value_int32(env, argv[4], &flags);
-    int rc = spot_send_spot_parts(spot,
-                                  &dest_node_rid,
-                                  &dest_spot_rid,
-                                  &part,
-                                  1,
-                                  static_cast<zlink_send_flags_t>(flags));
-    if (rc != ZLINK_SUBMIT_OK)
-        return throw_last_error(env, "spotSendToSpotFrom failed");
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
 napi_value spot_reply_router(napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
@@ -2913,191 +2138,6 @@ napi_value spot_dispatch_event_handler(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_attach_route_echo(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    if (argc < 1) {
-        napi_throw_type_error(env, NULL, "spotAttachRouteEcho requires (spot)");
-        return NULL;
-    }
-
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    release_spot_dispatch_event_handler_slot(spot);
-    if (zlink_spot_dispatch_event_handler(spot, spot_route_echo_dispatch, NULL)
-        != 0) {
-        return throw_last_error(env, "spotAttachRouteEcho failed");
-    }
-
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
-napi_value spot_perf_sendsend_loop(napi_env env, napi_callback_info info)
-{
-    napi_value argv[7];
-    size_t argc = 7;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    if (argc < 7) {
-        napi_throw_type_error(
-          env,
-          NULL,
-          "spotPerfSendSendLoop requires (spots, destNodeRid, destSpotRid, payloads, msgSize, durationSeconds, runId)");
-        return NULL;
-    }
-
-    std::vector<void *> spot_handles;
-    std::vector<unsigned char *> payloads;
-    std::vector<size_t> payload_lens;
-    if (!parse_spot_handle_array(env, argv[0], &spot_handles))
-        return NULL;
-    zlink_routing_id_t dest_node_rid;
-    zlink_routing_id_t dest_spot_rid;
-    if (!parse_routing_id_value(env, argv[1], &dest_node_rid))
-        return NULL;
-    if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
-        return NULL;
-    if (!parse_payload_array(env, argv[3], &payloads, &payload_lens))
-        return NULL;
-    if (spot_handles.size() != payloads.size()) {
-        napi_throw_range_error(env, NULL, "spots and payloads length mismatch");
-        return NULL;
-    }
-
-    uint32_t msg_size = 0;
-    napi_get_value_uint32(env, argv[4], &msg_size);
-    double duration_seconds = 0.0;
-    napi_get_value_double(env, argv[5], &duration_seconds);
-    uint32_t run_id = 0;
-    napi_get_value_uint32(env, argv[6], &run_id);
-    if (msg_size < 29 || duration_seconds <= 0.0 || run_id == 0) {
-        napi_throw_range_error(env, NULL, "invalid perf loop settings");
-        return NULL;
-    }
-
-    std::vector<spot_perf_sendsend_slot_t> slots(spot_handles.size());
-    for (size_t i = 0; i < slots.size(); ++i) {
-        slots[i].spot = spot_handles[i];
-        slots[i].payload = payloads[i];
-        slots[i].payload_len = payload_lens[i];
-    }
-
-    void *poller = zlink_poller_new();
-    if (!poller)
-        return throw_last_error(env, "spotPerfSendSendLoop poller create failed");
-    for (size_t i = 0; i < slots.size(); ++i) {
-        if (zlink_poller_add(poller, slots[i].spot, &slots[i], ZLINK_POLLIN)
-            != ZLINK_CONFIG_OK) {
-            zlink_poller_destroy(&poller);
-            return throw_last_error(env, "spotPerfSendSendLoop poller add failed");
-        }
-    }
-
-    const uint64_t active_start_ns = perf_epoch_now_ns();
-    const uint64_t active_stop_ns =
-      active_start_ns
-      + static_cast<uint64_t>(duration_seconds * 1000000000.0);
-    uint64_t accepted = 0;
-    std::vector<double> latencies_ns;
-    latencies_ns.reserve(262144);
-    std::vector<zlink_poller_event_t> events(slots.size());
-
-    while (perf_epoch_now_ns() < active_stop_ns) {
-        bool progressed = false;
-        for (size_t i = 0; i < slots.size(); ++i) {
-            if (slots[i].inflight)
-                continue;
-            const int rc = submit_perf_sendsend_slot(&slots[i],
-                                                     &dest_node_rid,
-                                                     &dest_spot_rid,
-                                                     run_id,
-                                                     msg_size);
-            if (rc == ZLINK_SUBMIT_OK) {
-                progressed = true;
-                continue;
-            }
-            const int err = zlink_errno();
-            if (rc == ZLINK_SUBMIT_BACKPRESSURED || err == EAGAIN
-                || err == EWOULDBLOCK || rc == ZLINK_SUBMIT_NOT_CONNECTED) {
-                continue;
-            }
-            zlink_poller_destroy(&poller);
-            return throw_last_error(env, "spotPerfSendSendLoop send failed");
-        }
-        if (progressed)
-            continue;
-
-        zlink_config_result_t poll_err = ZLINK_CONFIG_OK;
-        const int event_count = zlink_poller_wait(
-          poller,
-          events.empty() ? NULL : &events[0],
-          static_cast<int>(events.size()),
-          50,
-          &poll_err);
-        if (event_count < 0) {
-            if (zlink_errno() == EINTR)
-                continue;
-            zlink_poller_destroy(&poller);
-            return throw_last_error(env, "spotPerfSendSendLoop poll failed");
-        }
-        if (!drain_perf_sendsend_slots(&slots,
-                                       run_id,
-                                       msg_size,
-                                       active_stop_ns,
-                                       &accepted,
-                                       &latencies_ns)) {
-            zlink_poller_destroy(&poller);
-            return throw_last_error(env, "spotPerfSendSendLoop recv failed");
-        }
-    }
-
-    const uint64_t drain_deadline_ns = perf_epoch_now_ns() + 1000000000ULL;
-    while (any_perf_slot_inflight(slots) && perf_epoch_now_ns() < drain_deadline_ns) {
-        if (!drain_perf_sendsend_slots(&slots,
-                                       run_id,
-                                       msg_size,
-                                       active_stop_ns,
-                                       &accepted,
-                                       &latencies_ns)) {
-            zlink_poller_destroy(&poller);
-            return throw_last_error(env, "spotPerfSendSendLoop drain failed");
-        }
-        if (any_perf_slot_inflight(slots)) {
-            zlink_config_result_t poll_err = ZLINK_CONFIG_OK;
-            const int event_count = zlink_poller_wait(
-              poller,
-              events.empty() ? NULL : &events[0],
-              static_cast<int>(events.size()),
-              50,
-              &poll_err);
-            if (event_count < 0 && zlink_errno() != EINTR) {
-                zlink_poller_destroy(&poller);
-                return throw_last_error(env, "spotPerfSendSendLoop drain poll failed");
-            }
-        }
-    }
-    zlink_poller_destroy(&poller);
-
-    napi_value out;
-    napi_create_object(env, &out);
-    napi_value accepted_value;
-    napi_create_double(env, static_cast<double>(accepted), &accepted_value);
-    napi_set_named_property(env, out, "accepted", accepted_value);
-    napi_value latencies;
-    napi_create_array_with_length(
-      env, static_cast<uint32_t>(latencies_ns.size()), &latencies);
-    for (size_t i = 0; i < latencies_ns.size(); ++i) {
-        napi_value item;
-        napi_create_double(env, latencies_ns[i], &item);
-        napi_set_element(env, latencies, static_cast<uint32_t>(i), item);
-    }
-    napi_set_named_property(env, out, "latenciesNs", latencies);
-    return out;
-}
-
 napi_value spot_recv_routed(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -3129,71 +2169,6 @@ napi_value spot_recv_routed(napi_env env, napi_callback_info info)
                                      parts.data(),
                                      parts.size());
     close_msg_vector(parts);
-    return out;
-}
-
-napi_value spot_recv_routed_payload_into(napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    void *target = NULL;
-    size_t target_len = 0;
-    if (napi_get_buffer_info(env, argv[1], &target, &target_len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "recvRoutedPayloadInto buffer invalid");
-        return NULL;
-    }
-    int32_t flags = 0;
-    if (argc >= 3)
-        napi_get_value_int32(env, argv[2], &flags);
-    zlink_routing_id_t source_rid;
-    zlink_routing_id_t spot_rid;
-    uint64_t request_seq = 0;
-    std::vector<zlink_msg_t> parts;
-    int rc = spot_recv_parts(
-      spot,
-      &source_rid,
-      &spot_rid,
-      &request_seq,
-      &parts,
-      static_cast<zlink_recv_flags_t>(flags));
-    if (rc != ZLINK_RECV_OK)
-        return throw_last_error(env, "spotRecvRoutedPayloadInto failed");
-    if (parts.size() != 1) {
-        close_msg_vector(parts);
-        errno = EINVAL;
-        return throw_last_error(env, "spotRecvRoutedPayloadInto multipart");
-    }
-    const size_t payload_len = zlink_msg_size(&parts[0]);
-    if (payload_len > target_len) {
-        close_msg_vector(parts);
-        errno = EMSGSIZE;
-        return throw_last_error(env, "spotRecvRoutedPayloadInto buffer too small");
-    }
-    if (payload_len > 0 && target)
-        memcpy(target, zlink_msg_data(&parts[0]), payload_len);
-    close_msg_vector(parts);
-
-    napi_value out;
-    napi_create_object(env, &out);
-    set_uint32_property(env, out, "size", static_cast<uint32_t>(payload_len));
-    napi_value source_value = source_rid.size > 0 ? create_routing_id_value(env, source_rid)
-                                                  : (napi_value) NULL;
-    if (source_rid.size == 0)
-        napi_get_null(env, &source_value);
-    napi_set_named_property(env, out, "sourceRid", source_value);
-    napi_set_named_property(env, out, "sourceNodeRid", source_value);
-    napi_value spot_value = spot_rid.size > 0 ? create_routing_id_value(env, spot_rid)
-                                              : (napi_value) NULL;
-    if (spot_rid.size == 0)
-        napi_get_null(env, &spot_value);
-    napi_set_named_property(env, out, "spotRid", spot_value);
-    napi_set_named_property(env, out, "sourceSpotRid", spot_value);
-    napi_value request_seq_value;
-    napi_create_bigint_uint64(env, request_seq, &request_seq_value);
-    napi_set_named_property(env, out, "requestSeq", request_seq_value);
     return out;
 }
 
@@ -3671,20 +2646,6 @@ napi_value spot_node_disconnect_router_channel_peer_rid(napi_env env, napi_callb
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
-}
-
-napi_value spot_node_register(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_spot_node(
-      env, "SpotNode.register is not available on the aligned public API");
-}
-
-napi_value spot_node_unregister(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_spot_node(
-      env, "SpotNode.unregister is not available on the aligned public API");
 }
 
 napi_value spot_node_set_discovery(napi_env env, napi_callback_info info)
@@ -4888,7 +3849,6 @@ napi_value spot_destroy(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
-    release_socket_subscribe_handler_slot(spot);
     release_spot_send_ready_handler_slot(spot);
     release_spot_dispatch_event_handler_slot(spot);
     void *tmp = spot;
@@ -4943,52 +3903,6 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
-}
-
-napi_value spot_try_publish(napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    std::string topic = get_string(env, argv[1]);
-
-    bool is_buffer = false;
-    napi_is_buffer(env, argv[2], &is_buffer);
-    std::vector<zlink_msg_t> parts;
-    if (is_buffer) {
-        void *data = NULL;
-        size_t len = 0;
-        if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
-            napi_throw_type_error(env, NULL, "payload must be Buffer");
-            return NULL;
-        }
-        parts.resize(1);
-        if (zlink_msg_init_size(&parts[0], len) != 0)
-            return throw_last_error(env, "publishNoWaitResult failed");
-        if (len > 0)
-            memcpy(zlink_msg_data(&parts[0]), data, len);
-    } else {
-        if (!build_msg_vector(env, argv[2], &parts))
-            return NULL;
-    }
-
-    int rc = spot_publish_parts(
-      spot, topic.c_str(), parts.data(), parts.size(),
-      ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc == ZLINK_SUBMIT_OK) {
-        rc = ZLINK_SUBMIT_OK;
-    } else {
-        rc = classify_try_send_errno();
-    }
-    if (rc < 0) {
-        return throw_last_error(env, "publishNoWaitResult failed");
-    }
-
-    napi_value out;
-    napi_create_int32(env, rc, &out);
-    return out;
 }
 
 napi_value spot_send_channel(napi_env env, napi_callback_info info)
@@ -5126,65 +4040,6 @@ napi_value spot_request_spot(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_request_spot_from(napi_env env, napi_callback_info info)
-{
-    napi_value argv[7];
-    size_t argc = 7;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    if (argc < 7) {
-        napi_throw_type_error(
-          env, NULL,
-          "spotRequestSpotFrom requires (spot, destNodeRid, destSpotRid, payload, handler, flags, timeoutMs)");
-        return NULL;
-    }
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    zlink_routing_id_t dest_node_rid;
-    zlink_routing_id_t dest_spot_rid;
-    if (!parse_routing_id_value(env, argv[1], &dest_node_rid))
-        return NULL;
-    if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
-        return NULL;
-    zlink_msg_t part;
-    if (!init_msg_from_buffer_arg(env, argv[3], &part))
-        return NULL;
-    napi_valuetype handler_type = napi_undefined;
-    napi_typeof(env, argv[4], &handler_type);
-    if (handler_type != napi_function) {
-        zlink_msg_close(&part);
-        napi_throw_type_error(env, NULL, "spotRequestSpotFrom handler must be a function");
-        return NULL;
-    }
-    int32_t flags = 0;
-    napi_get_value_int32(env, argv[5], &flags);
-    int32_t timeout_ms = 0;
-    napi_get_value_int32(env, argv[6], &timeout_ms);
-    request_js_state_t *state = create_request_js_state(env, argv[4]);
-    if (!state) {
-        zlink_msg_close(&part);
-        return NULL;
-    }
-    int rc = spot_request_spot_parts(spot,
-                                     &dest_node_rid,
-                                     &dest_spot_rid,
-                                     &part,
-                                     1,
-                                     request_reply_callback_trampoline,
-                                     state,
-                                     static_cast<zlink_send_flags_t>(flags),
-                                     static_cast<uint32_t>(timeout_ms));
-    if (rc != ZLINK_SUBMIT_OK) {
-        if (state->tsfn) {
-            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
-            state->tsfn = NULL;
-        }
-        return throw_last_error(env, "spotRequestSpotFrom failed");
-    }
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
 napi_value spot_request_router(napi_env env, napi_callback_info info)
 {
     napi_value argv[6];
@@ -5277,11 +4132,6 @@ napi_value spot_subscribe(napi_env env, napi_callback_info info)
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
-}
-
-napi_value spot_subscribe_pattern(napi_env env, napi_callback_info info)
-{
-    return spot_subscribe(env, info);
 }
 
 napi_value spot_unsubscribe(napi_env env, napi_callback_info info)
@@ -5404,86 +4254,6 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
     }
 }
 
-napi_value spot_recv_payload_into(napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    void *data = NULL;
-    size_t len = 0;
-    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "spotRecvPayloadInto buffer invalid");
-        return NULL;
-    }
-    if (len == 0) {
-        napi_throw_range_error(
-          env, NULL, "spotRecvPayloadInto buffer must not be empty");
-        return NULL;
-    }
-    int32_t flags = 0;
-    if (argc >= 3)
-        napi_get_value_int32(env, argv[2], &flags);
-
-    std::vector<char> topic(256, '\0');
-    zlink_routing_id_t routing_id;
-    size_t topic_len = topic.size();
-    for (;;) {
-        memset(&routing_id, 0, sizeof(routing_id));
-        const zlink_routing_id_t *source_rid = NULL;
-        zlink_msg_t part;
-        if (zlink_msg_init(&part) != 0)
-            return throw_last_error(env, "spotRecvPayloadInto failed");
-        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        int rc = zlink_spot_subscribe_part(
-          spot,
-          &source_rid,
-          topic.data(),
-          topic.size(),
-          &topic_len,
-          &part,
-          &has_more,
-          static_cast<zlink_recv_flags_t>(flags));
-        if (rc == ZLINK_RECV_OK) {
-            copy_routing_id(&routing_id, source_rid);
-            if (has_more != ZLINK_PART_FINAL) {
-                zlink_msg_close(&part);
-                napi_throw_error(env, NULL, "spotRecvPayloadInto requires single-part message");
-                return NULL;
-            }
-            const size_t total = zlink_msg_size(&part);
-            if (total > 0) {
-                const size_t copy_len = std::min(total, len);
-                memcpy(data, zlink_msg_data(&part), copy_len);
-            }
-            zlink_msg_close(&part);
-
-            napi_value out;
-            napi_create_object(env, &out);
-            napi_value size_value;
-            napi_create_int32(env, static_cast<int32_t>(total), &size_value);
-            napi_set_named_property(env, out, "size", size_value);
-            napi_value topic_value;
-            napi_create_string_utf8(env, topic.data(), topic_len, &topic_value);
-            napi_set_named_property(env, out, "topic", topic_value);
-            napi_value rid = create_routing_id_value(env, routing_id);
-            napi_set_named_property(env, out, "routingId", rid);
-            return out;
-        }
-        const int err = zlink_errno();
-        zlink_msg_close(&part);
-        if (err == EAGAIN) {
-            napi_value none;
-            napi_get_null(env, &none);
-            return none;
-        }
-        if (err != EMSGSIZE)
-            return throw_last_error(env, "spotRecvPayloadInto failed");
-        topic.assign(topic_len > 0 ? topic_len : 1, '\0');
-    }
-}
-
 napi_value spot_subscription_event(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -5498,12 +4268,10 @@ napi_value spot_subscription_event(napi_env env, napi_callback_info info)
     zlink_routing_id_t routing_id;
     int subscribed = 0;
     std::vector<char> topic(256, '\0');
-    size_t topic_len = topic.size();
     memset(&routing_id, 0, sizeof(routing_id));
     (void) spot;
     (void) flags;
     subscribed = 0;
-    topic_len = 0;
     errno = ENOTSUP;
     int rc = ZLINK_RECV_NOT_SUPPORTED;
     if (rc != ZLINK_RECV_OK)
@@ -5531,11 +4299,9 @@ napi_value spot_try_subscription_event(napi_env env, napi_callback_info info)
     zlink_routing_id_t routing_id;
     int subscribed = 0;
     std::vector<char> topic(256, '\0');
-    size_t topic_len = topic.size();
     memset(&routing_id, 0, sizeof(routing_id));
     (void) spot;
     subscribed = 0;
-    topic_len = 0;
     errno = ENOTSUP;
     int rc = ZLINK_RECV_NOT_SUPPORTED;
     if (rc != ZLINK_RECV_OK) {
@@ -5556,30 +4322,4 @@ napi_value spot_try_subscription_event(napi_env env, napi_callback_info info)
     napi_get_boolean(env, subscribed != 0, &subscribed_value);
     napi_set_named_property(env, obj, "subscribed", subscribed_value);
     return obj;
-}
-
-napi_value spot_subscribe_handler(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    if (argc < 2) {
-        napi_throw_type_error(
-          env, NULL, "subscribeHandler requires (spot, handler)");
-        return NULL;
-    }
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    napi_valuetype handler_type = napi_undefined;
-    napi_typeof(env, argv[1], &handler_type);
-    if (handler_type != napi_function) {
-        napi_throw_type_error(
-          env, NULL, "subscribeHandler handler must be a function");
-        return NULL;
-    }
-    if (!attach_socket_subscribe_handler(env, spot, argv[1]))
-        return NULL;
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
 }

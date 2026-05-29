@@ -628,7 +628,8 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
   spot_runtime_t *runtime_,
   spot_data_plane_runtime_state_t *state_,
   const std::string &topic_,
-  const spot_owned_msg_parts_t &parts_)
+  const spot_owned_msg_parts_t &parts_,
+  size_t precomputed_encoded_bytes_)
 {
     if (!runtime_ || !state_ || topic_.empty ()) {
         errno = EINVAL;
@@ -638,7 +639,9 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
     if (state_->local_fanout.targets.empty ())
         return 0;
 
-    const size_t encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+    const size_t encoded_bytes = precomputed_encoded_bytes_ > 0
+                                   ? precomputed_encoded_bytes_
+                                   : spot_msg_parts_encoded_bytes (parts_);
     if (!spot_data_plane_pending_t::queue_has_room (
           state_->local_fanout.pending_bytes,
           state_->local_fanout.pending_hard_limit, encoded_bytes)) {
@@ -669,7 +672,8 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
             errno = EAGAIN;
         if (errno != EAGAIN
             || !spot_data_plane_pending_t::enqueue_local_target_message (
-              state_, &target, topic_, parts_, &local_pending_message_id)) {
+              state_, &target, topic_, parts_, &local_pending_message_id,
+              encoded_bytes)) {
             return -1;
         }
         ++target_it;
@@ -683,14 +687,17 @@ int spot_data_plane_forwarder_t::forward_mesh_pub (
   spot_runtime_t *runtime_,
   spot_data_plane_runtime_state_t *state_,
   const std::string &topic_,
-  const spot_owned_msg_parts_t &parts_)
+  const spot_owned_msg_parts_t &parts_,
+  size_t precomputed_encoded_bytes_)
 {
     if (!runtime_ || !state_ || topic_.empty ()) {
         errno = EINVAL;
         return -1;
     }
 
-    const size_t encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+    const size_t encoded_bytes = precomputed_encoded_bytes_ > 0
+                                   ? precomputed_encoded_bytes_
+                                   : spot_msg_parts_encoded_bytes (parts_);
     if (!spot_data_plane_pending_t::queue_has_room (
           state_->remote_mesh.pending_bytes,
           state_->remote_mesh.pending_hard_limit, encoded_bytes)) {
@@ -713,7 +720,7 @@ int spot_data_plane_forwarder_t::forward_mesh_pub (
 
     uint64_t mesh_pending_message_id = 0;
     if (!spot_data_plane_pending_t::enqueue_mesh_broadcast_pending (
-          state_, topic_, parts_, &mesh_pending_message_id)) {
+          state_, topic_, parts_, &mesh_pending_message_id, encoded_bytes)) {
         return -1;
     }
 
@@ -980,7 +987,8 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
             if (state_->local_fanout.targets.empty ()) {
                 entry.need_local = false;
             } else if (forward_local_fanout (runtime_, state_, entry.topic,
-                                             entry.parts)
+                                             entry.parts,
+                                             entry.encoded_bytes)
                        != 0) {
                 if (errno == EAGAIN)
                     break;
@@ -990,7 +998,8 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
             }
         }
         if (entry.need_mesh) {
-            if (forward_mesh_pub (runtime_, state_, entry.topic, entry.parts)
+            if (forward_mesh_pub (runtime_, state_, entry.topic, entry.parts,
+                                  entry.encoded_bytes)
                 != 0) {
                 if (errno == EAGAIN)
                     break;
@@ -1011,7 +1020,8 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
             if (state_->local_fanout.targets.empty ()) {
                 entry.need_local = false;
             } else if (forward_local_fanout (runtime_, state_, entry.topic,
-                                             entry.parts)
+                                             entry.parts,
+                                             entry.encoded_bytes)
                        != 0) {
                 if (errno == EAGAIN)
                     break;

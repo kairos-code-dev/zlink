@@ -262,7 +262,8 @@ struct spot_data_plane_pending_t
       spot_data_plane_runtime_state_t::local_target_state_t *target_,
       const std::string &topic_,
       const spot_owned_msg_parts_t &parts_,
-      uint64_t *message_id_inout_);
+      uint64_t *message_id_inout_,
+      size_t precomputed_encoded_bytes_ = 0);
     static bool enqueue_mesh_pending (
       spot_data_plane_runtime_state_t *state_,
       spot_data_plane_runtime_state_t::remote_target_state_t *target_,
@@ -273,7 +274,8 @@ struct spot_data_plane_pending_t
       spot_data_plane_runtime_state_t *state_,
       const std::string &topic_,
       const spot_owned_msg_parts_t &parts_,
-      uint64_t *message_id_inout_);
+      uint64_t *message_id_inout_,
+      size_t precomputed_encoded_bytes_ = 0);
     static bool stage_publish_message (
       std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> *queue_,
       const std::string &topic_,
@@ -348,11 +350,13 @@ struct spot_data_plane_forwarder_t
     static int forward_local_fanout (spot_runtime_t *runtime_,
                                      spot_data_plane_runtime_state_t *state_,
                                      const std::string &topic_,
-                                     const spot_owned_msg_parts_t &parts_);
+                                     const spot_owned_msg_parts_t &parts_,
+                                     size_t precomputed_encoded_bytes_ = 0);
     static int forward_mesh_pub (spot_runtime_t *runtime_,
                                  spot_data_plane_runtime_state_t *state_,
                                  const std::string &topic_,
-                                 const spot_owned_msg_parts_t &parts_);
+                                 const spot_owned_msg_parts_t &parts_,
+                                 size_t precomputed_encoded_bytes_ = 0);
     static int stage_message (spot_data_plane_runtime_state_t *state_,
                               const std::string &topic_,
                               const spot_owned_msg_parts_t &parts_,

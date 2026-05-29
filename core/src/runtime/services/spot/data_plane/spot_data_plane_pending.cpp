@@ -203,7 +203,8 @@ bool spot_data_plane_pending_t::enqueue_local_target_message (
   spot_data_plane_runtime_state_t::local_target_state_t *target_,
   const std::string &topic_,
   const spot_owned_msg_parts_t &parts_,
-  uint64_t *message_id_inout_)
+  uint64_t *message_id_inout_,
+  size_t precomputed_encoded_bytes_)
 {
     if (!state_ || !target_ || topic_.empty ()) {
         errno = EINVAL;
@@ -219,7 +220,9 @@ bool spot_data_plane_pending_t::enqueue_local_target_message (
         spot_data_plane_runtime_state_t::publish_pending_entry_t entry;
         entry.message_id = message_id;
         entry.topic = topic_;
-        entry.encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+        entry.encoded_bytes = precomputed_encoded_bytes_ > 0
+                                ? precomputed_encoded_bytes_
+                                : spot_msg_parts_encoded_bytes (parts_);
         if (!queue_has_room (state_->local_fanout.pending_bytes,
                              state_->local_fanout.pending_hard_limit,
                              entry.encoded_bytes)) {
@@ -294,7 +297,8 @@ bool spot_data_plane_pending_t::enqueue_mesh_broadcast_pending (
   spot_data_plane_runtime_state_t *state_,
   const std::string &topic_,
   const spot_owned_msg_parts_t &parts_,
-  uint64_t *message_id_inout_)
+  uint64_t *message_id_inout_,
+  size_t precomputed_encoded_bytes_)
 {
     if (!state_ || topic_.empty ()) {
         errno = EINVAL;
@@ -310,7 +314,9 @@ bool spot_data_plane_pending_t::enqueue_mesh_broadcast_pending (
         spot_data_plane_runtime_state_t::publish_pending_entry_t entry;
         entry.message_id = message_id;
         entry.topic = topic_;
-        entry.encoded_bytes = spot_msg_parts_encoded_bytes (parts_);
+        entry.encoded_bytes = precomputed_encoded_bytes_ > 0
+                                ? precomputed_encoded_bytes_
+                                : spot_msg_parts_encoded_bytes (parts_);
         if (!queue_has_room (state_->remote_mesh.pending_bytes,
                              state_->remote_mesh.pending_hard_limit,
                              entry.encoded_bytes)) {

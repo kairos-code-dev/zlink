@@ -56,6 +56,19 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.XPubSocket, "receive_subscription_event_into"))
         self.assertFalse(hasattr(zlink.SubSocket, "on_subscribe"))
         self.assertFalse(hasattr(zlink.XSubSocket, "on_subscribe"))
+        with zlink.Context() as ctx:
+            with zlink.PubSocket(ctx) as pub:
+                self.assertTrue(hasattr(pub, "pub_options"))
+                self.assertFalse(hasattr(pub, "publisher_options"))
+            with zlink.SubSocket(ctx) as sub:
+                self.assertTrue(hasattr(sub, "sub_options"))
+                self.assertFalse(hasattr(sub, "subscriber_options"))
+            with zlink.XPubSocket(ctx) as xpub:
+                self.assertTrue(hasattr(xpub, "pub_options"))
+                self.assertFalse(hasattr(xpub, "publisher_options"))
+            with zlink.XSubSocket(ctx) as xsub:
+                self.assertTrue(hasattr(xsub, "sub_options"))
+                self.assertFalse(hasattr(xsub, "subscriber_options"))
         self.assertFalse(hasattr(zlink.MonitorSocket, "try_recv"))
         self.assertFalse(hasattr(zlink, "ServiceMonitor"))
         self.assertFalse(hasattr(zlink.Spot, "try_subscribe"))
@@ -553,7 +566,9 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertEqual(message.size(), 7)
             self.assertEqual(message.to_bytes(), b"payload")
             self.assertEqual(bytes(message.data), b"payload")
-            self.assertEqual(message.ref_count(), message.refCount())
+            self.assertFalse(hasattr(message, "getProperty"))
+            self.assertFalse(hasattr(message, "refCount"))
+            self.assertGreaterEqual(message.ref_count(), 1)
             self.assertFalse(message.is_empty())
             self.assertEqual(message.to_string(), "payload")
 

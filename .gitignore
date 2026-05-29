@@ -32,6 +32,7 @@ build_*/
 /compile_commands.json
 /.cache/
 /.pytest_cache/
+**/.pytest_cache/
 /Testing/
 /.pid
 /1
@@ -89,6 +90,7 @@ libunity.a
 .*~
 .libs
 __pycache__/
+*.py[cod]
 
 # /core/src
 ## Ignore generated files in configuration process
@@ -183,6 +185,11 @@ bindings/**/.yarn/cache/
 bindings/**/.yarn/unplugged/
 bindings/**/.yarn/build-state.yml
 bindings/**/.pnp.cjs
+
+## Binding perf/build outputs
+bindings/**/perf/build/
+bindings/go/single
+bindings/go/multi
 bindings/**/.pnp.loader.mjs
 bindings/**/dist/
 bindings/**/build/

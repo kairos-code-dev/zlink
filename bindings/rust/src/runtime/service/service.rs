@@ -2010,7 +2010,7 @@ enum SendOpKind {
     Publish {
         topic: std::ffi::CString,
     },
-    SendChannel {
+    SendToChannel {
         channel_name: std::ffi::CString,
     },
     SendToSpot {
@@ -2105,7 +2105,7 @@ impl SendOp<Ready> {
                     ffi::zlink_spot_publish_part(handle, tp, part, flags.bits(), part_flag)
                 })?
             }
-            SendOpKind::SendChannel { channel_name } => {
+            SendOpKind::SendToChannel { channel_name } => {
                 let cn = channel_name.as_ptr();
                 submit_part_sequence(&mut native, |part, part_flag, _| unsafe {
                     ffi::zlink_spot_send_channel_part(handle, cn, part, flags.bits(), part_flag)
@@ -3625,7 +3625,7 @@ impl Spot {
         let c_channel_name = fixed_cstring_or_panic(channel_name, "channel_name");
         wrap_send_op(NativeSendOp {
             handle: spot_handle(self),
-            kind: SendOpKind::SendChannel {
+            kind: SendOpKind::SendToChannel {
                 channel_name: c_channel_name,
             },
             parts: Vec::new(),

@@ -15,7 +15,7 @@ class XpubXsubScenarioTest(unittest.TestCase):
             def run():
                 xpub = zlink.XPubSocket(ctx)
                 xsub = zlink.XSubSocket(ctx)
-                xpub.publisher_options.verbose = True
+                xpub.pub_options.verbose = True
                 ep = endpoint_for(name, endpoint, "-xpub")
                 xpub.bind(ep)
                 xsub.connect(ep)

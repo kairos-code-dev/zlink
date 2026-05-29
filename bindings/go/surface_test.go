@@ -242,11 +242,11 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.Spot)(nil), "Publish") {
 		t.Fatalf("Spot should expose Publish")
 	}
-	if !hasMethod((*zlink.Spot)(nil), "SendChannel") {
-		t.Fatalf("Spot should expose SendChannel")
+	if !hasMethod((*zlink.Spot)(nil), "SendToChannel") {
+		t.Fatalf("Spot should expose SendToChannel")
 	}
-	if !hasMethod((*zlink.Spot)(nil), "RequestChannel") {
-		t.Fatalf("Spot should expose RequestChannel")
+	if !hasMethod((*zlink.Spot)(nil), "RequestToChannel") {
+		t.Fatalf("Spot should expose RequestToChannel")
 	}
 	if !hasMethod((*zlink.Spot)(nil), "Subscribe") {
 		t.Fatalf("Spot should expose Subscribe")

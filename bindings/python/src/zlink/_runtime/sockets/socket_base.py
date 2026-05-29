@@ -687,7 +687,7 @@ class _SubscriberOptionSocket(_Socket):
         return self._get_raw_option(lib().zlink_get_sub_option, option, size)
 
     @property
-    def subscriber_options(self):
+    def sub_options(self):
         return SubSocketOptions(self)
 
 

@@ -20,7 +20,7 @@ static inline int zlink_spot_dispatch_event_handler_go_local(void *s, uintptr_t 
     return zlink_spot_dispatch_event_handler(s, (zlink_spot_dispatch_event_handler_fn)goZlinkSpotDispatchEventTrampoline, (void *)userdata);
 }
 
-static inline int zlink_spot_request_channel_part_go_local(void *spot, const char *channel_name, zlink_msg_t *part, zlink_send_flags_t flags, zlink_part_flag_t part_flag, uint32_t timeout_ms, uintptr_t userdata) {
+static inline int zlink_spot_request_to_channel_part_go_local(void *spot, const char *channel_name, zlink_msg_t *part, zlink_send_flags_t flags, zlink_part_flag_t part_flag, uint32_t timeout_ms, uintptr_t userdata) {
     return zlink_spot_request_channel_part(spot, channel_name, part, (zlink_reply_handler_fn)goZlinkReplyTrampoline, (void *)userdata, flags, part_flag, timeout_ms);
 }
 
@@ -264,88 +264,6 @@ func (n *SpotNode) AttachPubIngress(pub *PubSocket) error {
 		return err
 	}
 	return configErrorFromResult(C.zlink_spot_node_attach_pub_ingress(handle, pubHandle))
-}
-
-func (n *SpotNode) SetOption(option SpotNodeOption, value int) error {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return err
-	}
-	raw := C.int(value)
-	return configErrorFromResult(C.zlink_set_spot_node_option(
-		handle,
-		C.zlink_spot_node_option_t(option),
-		unsafe.Pointer(&raw),
-		C.size_t(C.sizeof_int),
-	))
-}
-
-func (n *SpotNode) Option(option SpotNodeOption) (int, error) {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return 0, err
-	}
-	var raw C.int
-	size := C.size_t(C.sizeof_int)
-	if err := configErrorFromResult(C.zlink_get_spot_node_option(
-		handle,
-		C.zlink_spot_node_option_t(option),
-		unsafe.Pointer(&raw),
-		&size,
-	)); err != nil {
-		return 0, err
-	}
-	return int(raw), nil
-}
-
-func (n *SpotNode) SetRouterHighWaterMark(value int) error {
-	return n.SetOption(SpotNodeOptionRouterHighWaterMark, value)
-}
-
-func (n *SpotNode) RouterHighWaterMark() (int, error) {
-	return n.Option(SpotNodeOptionRouterHighWaterMark)
-}
-
-func (n *SpotNode) SetPubSubHighWaterMark(value int) error {
-	return n.SetOption(SpotNodeOptionPubSubHighWaterMark, value)
-}
-
-func (n *SpotNode) PubSubHighWaterMark() (int, error) {
-	return n.Option(SpotNodeOptionPubSubHighWaterMark)
-}
-
-func (n *SpotNode) SetRouterHwmProfile(value AutoHwmProfile) error {
-	return n.SetOption(SpotNodeOptionRouterHwmProfile, int(value))
-}
-
-func (n *SpotNode) RouterHwmProfile() (AutoHwmProfile, error) {
-	value, err := n.Option(SpotNodeOptionRouterHwmProfile)
-	return AutoHwmProfile(value), err
-}
-
-func (n *SpotNode) SetPubSubHwmProfile(value AutoHwmProfile) error {
-	return n.SetOption(SpotNodeOptionPubSubHwmProfile, int(value))
-}
-
-func (n *SpotNode) PubSubHwmProfile() (AutoHwmProfile, error) {
-	value, err := n.Option(SpotNodeOptionPubSubHwmProfile)
-	return AutoHwmProfile(value), err
-}
-
-func (n *SpotNode) SetDispatchWorkersMin(value int) error {
-	return n.SetOption(SpotNodeOptionDispatchWorkersMin, value)
-}
-
-func (n *SpotNode) DispatchWorkersMin() (int, error) {
-	return n.Option(SpotNodeOptionDispatchWorkersMin)
-}
-
-func (n *SpotNode) SetDispatchWorkersMax(value int) error {
-	return n.SetOption(SpotNodeOptionDispatchWorkersMax, value)
-}
-
-func (n *SpotNode) DispatchWorkersMax() (int, error) {
-	return n.Option(SpotNodeOptionDispatchWorkersMax)
 }
 
 func (n *SpotNode) SetRoutingID(id RoutingID) error {
@@ -1076,7 +994,7 @@ func (s *Spot) Publish(topic string) SendOp {
 	})
 }
 
-func (s *Spot) SendChannel(channelName string) SendOp {
+func (s *Spot) SendToChannel(channelName string) SendOp {
 	return newSendBuilder(s, func(parts []sendBuilderPart, flags SendFlags) error {
 		return s.core.withCString(channelName, func(cstr *C.char) error {
 			return submitMultipartFromBuilderParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
@@ -1096,7 +1014,7 @@ func (s *Spot) SendToSpot(destNodeRid, destSpotRid RoutingID) SendOp {
 	})
 }
 
-func (s *Spot) RequestChannel(channelName string) RequestOp {
+func (s *Spot) RequestToChannel(channelName string) RequestOp {
 	return newRequestBuilder(s, func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
@@ -1388,7 +1306,7 @@ func (s *Spot) startChannelRequestBuilder(channelName string, flags SendFlags, t
 	handle := cgo.NewHandle(state)
 	if err := s.core.withCString(channelName, func(cstr *C.char) error {
 		return submitMultipartFromRequestParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-			return submitErrorFromResult(C.zlink_spot_request_channel_part_go_local(
+			return submitErrorFromResult(C.zlink_spot_request_to_channel_part_go_local(
 				s.raw(),
 				cstr,
 				part,

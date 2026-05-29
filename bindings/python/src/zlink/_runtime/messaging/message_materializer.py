@@ -474,14 +474,8 @@ class Message(_ContractMessage):
     def get_property(self, name):
         return _msg_gets(self._msg, name) if self._valid else None
 
-    def getProperty(self, name):
-        return self.get_property(name)
-
     def ref_count(self):
         return _msg_refcnt(self._msg) if self._valid else -1
-
-    def refCount(self):
-        return self.ref_count()
 
     def close(self):
         if not self._valid:

@@ -873,7 +873,7 @@ class PubSocket(
     _socket_type_value = SocketType.PUB
 
     @property
-    def publisher_options(self):
+    def pub_options(self):
         return PubSocketOptions(self)
 
     def publish(self, topic):
@@ -905,7 +905,7 @@ class XPubSocket(
     _socket_type_value = SocketType.XPUB
 
     @property
-    def publisher_options(self):
+    def pub_options(self):
         return PubSocketOptions(self)
 
     def publish(self, topic):

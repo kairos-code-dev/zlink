@@ -4,7 +4,6 @@ import asyncio
 import ctypes
 import errno
 import threading
-import time
 from dataclasses import dataclass, field
 
 from ...eventing.dispatcher import CallbackDispatcher
@@ -46,7 +45,6 @@ from ...._native.ffi import (
     ZlinkActorRecvInfo,
     ZlinkActorRef,
     ZlinkMsg,
-    ZlinkPollerEvent,
     ZlinkRoutingId,
     ZlinkSpotActorLifecycleInfo,
     ZlinkSpotActorLifecycleEvent,
@@ -109,6 +107,15 @@ from ...handles.native_support import (
 )
 from ....contracts.eventing.monitor import MonitorStatus
 from ...eventing.monitor import _monitor_status_from_native
+from .request_progress import (
+    PendingActorJoin as _PendingActorJoin,
+    PendingActorJoinEntrySpot as _PendingActorJoinEntrySpot,
+    PendingActorLookup as _PendingActorLookup,
+    PendingRequest as _PendingRequest,
+    RequestProgressPump as _RequestProgressPump,
+    acquire_external_request_progress as _acquire_external_request_progress,
+    release_external_request_progress as _release_external_request_progress,
+)
 
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
@@ -116,8 +123,6 @@ _ERRNO_ENOTSUP = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
 _SPOT_INIT_TOKEN = object()
 _UNSET = object()
 _REQUEST_PROGRESS_IDLE_GRACE_S = 0.1
-_PROGRESS_SPIN_ITERATIONS = 32
-_PROGRESS_MAX_DELAY_S = 0.008
 
 _SPOT_ROUTED_HANDLER = ctypes.CFUNCTYPE(
     None,
@@ -637,253 +642,6 @@ def _make_message_list(parts_ptr, part_count):
         msg._keepalive = None
         messages.append(msg)
     return messages
-
-
-class _PendingRequest:
-    def __init__(self, *, loop=None, callback=None):
-        self.loop = loop
-        self.future = loop.create_future() if loop is not None else None
-        self.callback = callback
-
-    def resolve(self, result, received, errnum=0):
-        if self.future is not None:
-            if result == RequestResult.OK:
-                self.loop.call_soon_threadsafe(self.future.set_result, received)
-            else:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_exception,
-                    RequestError(result, errnum),
-                )
-            return
-        if self.callback is None:
-            return
-        try:
-            self.callback(result, received if result == RequestResult.OK else [])
-        except Exception:
-            _report_unhandled_callback_exception(self.callback)
-
-
-class _PendingActorJoin:
-    """Pending state for ActorJoinOp: surfaces (ActorJoinResult, list[Message])."""
-
-    def __init__(self, *, loop=None, callback=None):
-        self.loop = loop
-        self.future = loop.create_future() if loop is not None else None
-        self.callback = callback
-
-    def resolve(self, join_result, messages, errnum=0):
-        result = join_result.result
-        if self.future is not None:
-            if result == RequestResult.OK:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_result, (join_result, messages)
-                )
-            else:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_exception, RequestError(result, errnum)
-                )
-            return
-        if self.callback is None:
-            return
-        try:
-            self.callback(join_result, messages if result == RequestResult.OK else [])
-        except Exception:
-            _report_unhandled_callback_exception(self.callback)
-
-
-class _PendingActorJoinEntrySpot:
-    """Pending state for ActorJoinEntrySpotOp."""
-
-    def __init__(self, *, loop=None, callback=None):
-        self.loop = loop
-        self.future = loop.create_future() if loop is not None else None
-        self.callback = callback
-
-    def resolve(self, join_result, errnum=0):
-        result = join_result.result
-        if self.future is not None:
-            if result == RequestResult.OK:
-                self.loop.call_soon_threadsafe(self.future.set_result, join_result)
-            else:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_exception, RequestError(result, errnum)
-                )
-            return
-        if self.callback is None:
-            return
-        try:
-            self.callback(join_result)
-        except Exception:
-            _report_unhandled_callback_exception(self.callback)
-
-
-class _PendingActorLookup:
-    """Pending state for ActorLookupOp: surfaces ActorLookupResult."""
-
-    def __init__(self, *, loop=None, callback=None):
-        self.loop = loop
-        self.future = loop.create_future() if loop is not None else None
-        self.callback = callback
-
-    def resolve(self, lookup_result, errnum=0):
-        result = lookup_result.result
-        if self.future is not None:
-            if result == RequestResult.OK:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_result, lookup_result
-                )
-            else:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_exception, RequestError(result, errnum)
-                )
-            return
-        if self.callback is None:
-            return
-        try:
-            self.callback(lookup_result)
-        except Exception:
-            _report_unhandled_callback_exception(self.callback)
-
-
-_POLL_COMPLETION = 32  # ZLINK_POLLCOMPLETION
-_EXTERNAL_REQUEST_PROGRESS = {}
-_EXTERNAL_REQUEST_PROGRESS_LOCK = threading.Lock()
-
-
-def _acquire_external_request_progress(handle):
-    if not handle:
-        return
-    with _EXTERNAL_REQUEST_PROGRESS_LOCK:
-        _EXTERNAL_REQUEST_PROGRESS[handle] = (
-            _EXTERNAL_REQUEST_PROGRESS.get(handle, 0) + 1
-        )
-
-
-def _release_external_request_progress(handle):
-    if not handle:
-        return
-    with _EXTERNAL_REQUEST_PROGRESS_LOCK:
-        count = _EXTERNAL_REQUEST_PROGRESS.get(handle, 0) - 1
-        if count > 0:
-            _EXTERNAL_REQUEST_PROGRESS[handle] = count
-        else:
-            _EXTERNAL_REQUEST_PROGRESS.pop(handle, None)
-
-
-def _external_request_progress_active(handle):
-    if not handle:
-        return False
-    with _EXTERNAL_REQUEST_PROGRESS_LOCK:
-        return _EXTERNAL_REQUEST_PROGRESS.get(handle, 0) > 0
-
-
-class _RequestProgressPump:
-    """Background worker draining request completions for spot/channel handles.
-
-    Uses the canonical poller-based progress model: a dedicated zlink_poller
-    has each in-flight target (spot handle, channel dealer handles) added
-    with the ZLINK_POLLCOMPLETION interest. zlink_poller_wait() blocks until
-    completions are available and the core drains them internally.
-    """
-
-    def __init__(self, target_provider, is_active):
-        self._target_provider = target_provider
-        self._is_active = is_active
-        self._lock = threading.Lock()
-        self._stop = threading.Event()
-        self._thread = None
-
-    def ensure_running(self):
-        with self._lock:
-            if self._stop.is_set():
-                return
-            if not any(
-                not _external_request_progress_active(handle)
-                for handle in self._target_provider()
-                if handle
-            ):
-                return
-            if self._thread is not None and self._thread.is_alive():
-                return
-            self._thread = threading.Thread(
-                target=self._run,
-                name="zlink-spot-request-progress",
-                daemon=True,
-            )
-            self._thread.start()
-
-    def _run(self):
-        try:
-            poller = lib().zlink_poller_new()
-            if not poller:
-                return
-            registered = set()
-            try:
-                idle_since = None
-                events = (ZlinkPollerEvent * 8)()
-                error_out = ctypes.c_int()
-                while not self._stop.is_set():
-                    current = set()
-                    for handle in self._target_provider():
-                        if handle and not _external_request_progress_active(handle):
-                            current.add(handle)
-                    for handle in current - registered:
-                        rc = lib().zlink_poller_add(
-                            poller,
-                            handle,
-                            None,
-                            ctypes.c_short(_POLL_COMPLETION),
-                        )
-                        if rc == 0:
-                            registered.add(handle)
-                    for handle in registered - current:
-                        lib().zlink_poller_remove(poller, handle)
-                        registered.discard(handle)
-                    if not self._is_active() and not registered:
-                        if idle_since is None:
-                            idle_since = time.monotonic()
-                        elif (
-                            time.monotonic() - idle_since
-                            >= _REQUEST_PROGRESS_IDLE_GRACE_S
-                        ):
-                            break
-                        if self._stop.wait(0.001):
-                            break
-                        continue
-                    idle_since = None
-                    if not registered:
-                        if self._stop.wait(0.001):
-                            break
-                        continue
-                    try:
-                        lib().zlink_poller_wait(
-                            poller, events, 8, 50, ctypes.byref(error_out)
-                        )
-                    except Exception:
-                        break
-            finally:
-                for handle in list(registered):
-                    try:
-                        lib().zlink_poller_remove(poller, handle)
-                    except Exception:
-                        pass
-                handle_ptr = ctypes.c_void_p(poller)
-                lib().zlink_poller_destroy(ctypes.byref(handle_ptr))
-        finally:
-            with self._lock:
-                if self._thread is threading.current_thread():
-                    self._thread = None
-
-    def stop(self):
-        self._stop.set()
-        with self._lock:
-            thread = self._thread
-        if (
-            thread is not None
-            and thread.is_alive()
-            and thread is not threading.current_thread()
-        ):
-            thread.join(timeout=1.0)
 
 
 def _recv_spot_subscribed(handle, flags):
@@ -2735,6 +2493,7 @@ class Spot:
         self._request_progress = _RequestProgressPump(
             self._request_progress_handles,
             lambda: bool(self._request_pending),
+            idle_grace_s=_REQUEST_PROGRESS_IDLE_GRACE_S,
         )
 
     def _register_timer(self, timer):
@@ -2834,12 +2593,12 @@ class Spot:
     def send_to_channel(self, channel_name):
         return SendOp(
             self,
-            lambda parts, flags: self._send_channel_submit(
+            lambda parts, flags: self._send_to_channel_submit(
                 channel_name, parts, flags
             ),
         )
 
-    def _send_channel_submit(self, channel_name, parts, flags=0):
+    def _send_to_channel_submit(self, channel_name, parts, flags=0):
         try:
             _ensure_not_in_callback("blocking send")
             channel_bytes = _validated_c_string_value(
@@ -2903,15 +2662,15 @@ class Spot:
         )
         return RequestOp(
             self,
-            lambda parts, *, timeout=0: self._request_channel_async(
+            lambda parts, *, timeout=0: self._request_to_channel_async(
                 channel_bytes, parts, timeout=timeout
             ),
-            lambda parts, callback, *, flags=0, timeout=0: self._request_channel_callback(
+            lambda parts, callback, *, flags=0, timeout=0: self._request_to_channel_callback(
                 channel_bytes, parts, callback, flags=flags, timeout=timeout
             ),
         )
 
-    def _request_channel_async(self, channel_bytes, payload, *, timeout=0):
+    def _request_to_channel_async(self, channel_bytes, payload, *, timeout=0):
         async def _run():
             loop = asyncio.get_running_loop()
             pending = _PendingRequest(loop=loop)
@@ -2930,7 +2689,7 @@ class Spot:
 
         return _run()
 
-    def _request_channel_callback(self, channel_bytes, payload, callback, *, flags=0, timeout=0):
+    def _request_to_channel_callback(self, channel_bytes, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
         handle = id(pending)
         self._request_pending[handle] = pending

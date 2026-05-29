@@ -3,9 +3,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export interface NativeBinding {
-  [name: string]: (...args: unknown[]) => unknown;
-}
+import type { NativeBinding } from './binding';
 
 interface NativeLoadFailure {
   target: string;

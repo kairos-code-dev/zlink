@@ -54,38 +54,6 @@ inline void spot_clear_msg_parts (spot_owned_msg_parts_t *parts_)
     parts_->clear ();
 }
 
-inline int spot_copy_msg_parts (const spot_owned_msg_parts_t &parts_,
-                                std::vector<zlink_msg_t> *out_)
-{
-    if (!out_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    out_->clear ();
-    out_->resize (parts_.size ());
-    if (!out_->empty ())
-        memset (&(*out_)[0], 0, out_->size () * sizeof (zlink_msg_t));
-
-    size_t index = 0;
-    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin ();
-         it != parts_.end (); ++it, ++index) {
-        spot_init_msg_frame (&(*out_)[index]);
-        if (zlink_msg_copy (&(*out_)[index],
-                            const_cast<zlink_msg_t *> (&(*it)))
-            != 0) {
-            const int err = errno;
-            for (size_t i = 0; i <= index; ++i)
-                spot_close_msg_frame (&(*out_)[i]);
-            out_->clear ();
-            errno = err;
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
 inline int spot_move_msg_parts (spot_owned_msg_parts_t *parts_,
                                 std::vector<zlink_msg_t> *out_)
 {
@@ -143,6 +111,11 @@ inline void spot_copy_msg_parts_to_strings (
         out_->push_back (spot_msg_frame_to_string (*it));
 }
 
+enum
+{
+    spot_publish_inline_frame_cap = 16
+};
+
 inline int spot_publish_msg_parts (socket_base_t *socket_,
                                    const std::string &topic_,
                                    const spot_owned_msg_parts_t &parts_)
@@ -152,19 +125,39 @@ inline int spot_publish_msg_parts (socket_base_t *socket_,
         return -1;
     }
 
-    std::vector<zlink_msg_t> send_frames;
-    if (spot_copy_msg_parts (parts_, &send_frames) != 0)
-        return -1;
+    const size_t count = parts_.size ();
+    zlink_msg_t inline_storage[spot_publish_inline_frame_cap];
+    std::vector<zlink_msg_t> heap_storage;
+    zlink_msg_t *send_frames = inline_storage;
+    if (count > spot_publish_inline_frame_cap) {
+        heap_storage.resize (count);
+        send_frames = &heap_storage[0];
+    }
+
+    size_t prepared = 0;
+    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin ();
+         prepared < count; ++prepared, ++it) {
+        spot_init_msg_frame (&send_frames[prepared]);
+        if (zlink_msg_copy (&send_frames[prepared],
+                            const_cast<zlink_msg_t *> (&(*it)))
+            != 0) {
+            const int err = errno;
+            for (size_t i = 0; i <= prepared; ++i)
+                spot_close_msg_frame (&send_frames[i]);
+            errno = err;
+            return -1;
+        }
+    }
 
     const int rc = logical_multipart_publish (
       socket_,
       topic_.c_str (),
-      send_frames.empty () ? NULL : &send_frames[0],
-      send_frames.size (),
+      count > 0 ? send_frames : NULL,
+      count,
       ZLINK_DONTWAIT,
       true);
     const int saved_errno = rc == 0 ? 0 : errno;
-    for (size_t i = 0; i < send_frames.size (); ++i)
+    for (size_t i = 0; i < count; ++i)
         spot_close_msg_frame (&send_frames[i]);
     if (saved_errno != 0) {
         errno = saved_errno;
@@ -182,19 +175,39 @@ inline int spot_publish_msg_parts_consume (socket_base_t *socket_,
         return -1;
     }
 
-    std::vector<zlink_msg_t> send_frames;
-    if (spot_move_msg_parts (parts_, &send_frames) != 0)
-        return -1;
+    const size_t count = parts_->size ();
+    zlink_msg_t inline_storage[spot_publish_inline_frame_cap];
+    std::vector<zlink_msg_t> heap_storage;
+    zlink_msg_t *send_frames = inline_storage;
+    if (count > spot_publish_inline_frame_cap) {
+        heap_storage.resize (count);
+        send_frames = &heap_storage[0];
+    }
+
+    size_t prepared = 0;
+    for (spot_owned_msg_parts_t::iterator it = parts_->begin ();
+         prepared < count; ++prepared, ++it) {
+        spot_init_msg_frame (&send_frames[prepared]);
+        if (zlink_msg_move (&send_frames[prepared], &(*it)) != 0) {
+            const int err = errno;
+            for (size_t i = 0; i <= prepared; ++i)
+                spot_close_msg_frame (&send_frames[i]);
+            spot_clear_msg_parts (parts_);
+            errno = err;
+            return -1;
+        }
+    }
+    spot_clear_msg_parts (parts_);
 
     const int rc = logical_multipart_publish (
       socket_,
       topic_.c_str (),
-      send_frames.empty () ? NULL : &send_frames[0],
-      send_frames.size (),
+      count > 0 ? send_frames : NULL,
+      count,
       0,
       true);
     const int saved_errno = rc == 0 ? 0 : errno;
-    for (size_t i = 0; i < send_frames.size (); ++i)
+    for (size_t i = 0; i < count; ++i)
         spot_close_msg_frame (&send_frames[i]);
     if (saved_errno != 0) {
         errno = saved_errno;

@@ -34,7 +34,7 @@ static bool parse_actor_join_info_value(napi_env env,
 static napi_value create_actor_part_value(
   napi_env env,
   const zlink_actor_recv_info_t &info,
-  const std::vector<unsigned char> &part,
+  zlink_msg_t *part,
   int more);
 
 static const size_t k_spot_send_ready_slot_count = 8;
@@ -300,15 +300,16 @@ static bool parse_actor_join_info_value(napi_env env,
 static napi_value create_actor_part_value(
   napi_env env,
   const zlink_actor_recv_info_t &info,
-  const std::vector<unsigned char> &part,
+  zlink_msg_t *part,
   int more)
 {
     napi_value obj;
     napi_create_object(env, &obj);
     napi_set_named_property(env, obj, "info",
                             create_actor_recv_info_value(env, info));
-    napi_value msg = create_buffer_copy_or_empty(
-      env, part.empty() ? NULL : part.data(), part.size());
+    napi_value msg = create_message_data_buffer(env, part);
+    if (!msg)
+        return NULL;
     napi_set_named_property(env, obj, "message", msg);
     napi_value more_value;
     napi_get_boolean(env, more != ZLINK_PART_FINAL, &more_value);
@@ -383,12 +384,20 @@ static const size_t k_spot_dispatch_event_slot_count = 256;
 
 struct spot_dispatch_event_js_payload_t
 {
+    spot_dispatch_event_js_payload_t() : event(0), subject_kind(0), subject_handle(0), part_count(0) {}
+    ~spot_dispatch_event_js_payload_t()
+    {
+        if (part_count > 0)
+            close_recv_parts(actor_parts.data(), part_count);
+    }
+
     int event;
     uint32_t subject_kind;
     uint64_t subject_handle;
     std::vector<zlink_actor_recv_info_t> actor_infos;
-    std::vector<std::vector<unsigned char> > actor_parts;
+    std::vector<zlink_msg_t> actor_parts;
     std::vector<int> actor_more;
+    size_t part_count;
 };
 
 struct spot_dispatch_event_js_state_t
@@ -980,8 +989,10 @@ static void spot_dispatch_event_tsfn_call_js(napi_env env,
     for (size_t i = 0; i < payload->actor_parts.size(); ++i) {
         napi_value part = create_actor_part_value(env,
                                                   payload->actor_infos[i],
-                                                  payload->actor_parts[i],
+                                                  &payload->actor_parts[i],
                                                   payload->actor_more[i]);
+        if (!part)
+            return;
         napi_set_element(env, actor_parts, static_cast<uint32_t>(i), part);
     }
     napi_set_named_property(env, info, "actorParts", actor_parts);
@@ -1053,14 +1064,22 @@ static void spot_dispatch_event_dispatch(void *spot_,
                 zlink_msg_close(&part);
                 break;
             }
-            const unsigned char *data =
-              static_cast<const unsigned char *>(zlink_msg_data(&part));
-            const size_t size = zlink_msg_size(&part);
+            const size_t part_index = payload->actor_parts.size();
+            payload->actor_parts.resize(part_index + 1);
+            if (zlink_msg_init(&payload->actor_parts[part_index]) != 0) {
+                payload->actor_parts.resize(part_index);
+                zlink_msg_close(&part);
+                break;
+            }
+            payload->part_count = part_index + 1;
+            if (zlink_msg_move(&payload->actor_parts[part_index], &part) != 0) {
+                zlink_msg_close(&payload->actor_parts[part_index]);
+                payload->actor_parts.resize(part_index);
+                payload->part_count = part_index;
+                zlink_msg_close(&part);
+                break;
+            }
             payload->actor_infos.push_back(recv_info);
-            std::vector<unsigned char> copy;
-            if (data && size > 0)
-                copy.assign(data, data + size);
-            payload->actor_parts.push_back(copy);
             payload->actor_more.push_back(static_cast<int>(more));
             zlink_msg_close(&part);
             if (more == ZLINK_PART_FINAL)
@@ -3230,12 +3249,7 @@ napi_value spot_node_actor_recv_part(napi_env env, napi_callback_info info)
         }
         return throw_last_error(env, "spotNodeActorRecvPart failed");
     }
-    const unsigned char *data =
-      static_cast<const unsigned char *>(zlink_msg_data(&part));
-    std::vector<unsigned char> copy;
-    if (data && zlink_msg_size(&part) > 0)
-        copy.assign(data, data + zlink_msg_size(&part));
-    napi_value out = create_actor_part_value(env, recv_info, copy, more);
+    napi_value out = create_actor_part_value(env, recv_info, &part, more);
     zlink_msg_close(&part);
     return out;
 }
@@ -3563,7 +3577,10 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
-    std::string topic = get_string(env, argv[1]);
+    char topic_stack[256];
+    std::string topic_heap;
+    const char *topic =
+      get_c_string_arg(env, argv[1], topic_stack, sizeof(topic_stack), &topic_heap);
     int32_t flags = 0;
     napi_get_value_int32(env, argv[3], &flags);
 
@@ -3588,7 +3605,7 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
     }
 
     int rc = spot_publish_parts(spot,
-                                topic.c_str(),
+                                topic,
                                 parts.data(),
                                 parts.size(),
                                 static_cast<zlink_send_flags_t>(flags));
@@ -3608,7 +3625,10 @@ napi_value spot_send_channel(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
-    std::string channel_name = get_string(env, argv[1]);
+    char channel_stack[256];
+    std::string channel_heap;
+    const char *channel_name =
+      get_c_string_arg(env, argv[1], channel_stack, sizeof(channel_stack), &channel_heap);
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector_or_single(env, argv[2], &parts))
         return NULL;
@@ -3616,7 +3636,7 @@ napi_value spot_send_channel(napi_env env, napi_callback_info info)
     napi_get_value_int32(env, argv[3], &flags);
 
     int rc = spot_send_channel_parts(spot,
-                                     channel_name.c_str(),
+                                     channel_name,
                                      parts.data(),
                                      parts.size(),
                                      static_cast<zlink_send_flags_t>(flags));
@@ -3641,7 +3661,10 @@ napi_value spot_request_channel(napi_env env, napi_callback_info info)
     }
     void *spot = NULL;
     napi_get_value_external(env, argv[0], &spot);
-    std::string channel_name = get_string(env, argv[1]);
+    char channel_stack[256];
+    std::string channel_heap;
+    const char *channel_name =
+      get_c_string_arg(env, argv[1], channel_stack, sizeof(channel_stack), &channel_heap);
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector_or_single(env, argv[2], &parts))
         return NULL;
@@ -3662,7 +3685,7 @@ napi_value spot_request_channel(napi_env env, napi_callback_info info)
         return NULL;
     }
     int rc = spot_request_channel_parts(spot,
-                                        channel_name.c_str(),
+                                        channel_name,
                                         parts.data(),
                                         parts.size(),
                                         request_reply_callback_trampoline,

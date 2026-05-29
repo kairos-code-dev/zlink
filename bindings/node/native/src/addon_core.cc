@@ -44,8 +44,16 @@ int classify_try_send_errno()
 
 struct stream_js_payload_t
 {
+    stream_js_payload_t() : packet_count(0) {}
+    ~stream_js_payload_t()
+    {
+        if (packet_count > 0)
+            close_recv_parts(packets.data(), packet_count);
+    }
+
     std::vector<unsigned char> routing_id;
-    std::vector<std::vector<unsigned char> > packets;
+    std::vector<zlink_msg_t> packets;
+    size_t packet_count;
 };
 
 struct socket_monitor_handler_js_payload_t
@@ -720,12 +728,9 @@ void stream_tsfn_call_js(napi_env env,
         return;
     }
     for (size_t i = 0; i < payload->packets.size(); ++i) {
-        const std::vector<unsigned char> &packet = payload->packets[i];
-        napi_value packet_buf;
-        if (napi_create_buffer_copy(
-              env, packet.size(), packet.empty() ? NULL : packet.data(), NULL,
-              &packet_buf)
-            != napi_ok) {
+        napi_value packet_buf =
+          create_message_data_buffer(env, &payload->packets[i]);
+        if (!packet_buf) {
             return;
         }
         napi_set_element(env, argv[1], static_cast<uint32_t>(i), packet_buf);
@@ -910,22 +915,25 @@ void stream_on_packet_slot(void *stream_,
         remember_stream_peer_unsafe(state, rid_);
         payload.reset(new stream_js_payload_t());
         payload->routing_id.assign(rid_->data, rid_->data + rid_->size);
-
-        const unsigned char *header_data =
-          static_cast<const unsigned char *>(zlink_msg_data(header_));
-        const size_t header_size = zlink_msg_size(header_);
-        std::vector<unsigned char> header;
-        if (header_data && header_size > 0)
-            header.assign(header_data, header_data + header_size);
-        payload->packets.push_back(header);
-
-        const unsigned char *body_data =
-          static_cast<const unsigned char *>(zlink_msg_data(body_));
-        const size_t body_size = zlink_msg_size(body_);
-        std::vector<unsigned char> body;
-        if (body_data && body_size > 0)
-            body.assign(body_data, body_data + body_size);
-        payload->packets.push_back(body);
+        payload->packets.resize(2);
+        if (zlink_msg_init(&payload->packets[0]) != 0) {
+            close_messages();
+            return;
+        }
+        payload->packet_count = 1;
+        if (zlink_msg_move(&payload->packets[0], header_) != 0) {
+            close_messages();
+            return;
+        }
+        if (zlink_msg_init(&payload->packets[1]) != 0) {
+            close_messages();
+            return;
+        }
+        payload->packet_count = 2;
+        if (zlink_msg_move(&payload->packets[1], body_) != 0) {
+            close_messages();
+            return;
+        }
     }
 
     close_messages();

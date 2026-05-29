@@ -354,8 +354,11 @@ export class Spot extends NativeHandle {
   setDispatchHandler(handler: SpotDispatchEventHandler): void {
     handlerCall('spot dispatch handler registration failed', () => {
       requireNative().spotDispatchEventHandler(this._native, this._node.nativeHandle(), (raw: SpotDispatchRaw) => {
-        const actorParts = (raw.actorParts ?? []).map((part) => actorPartFromRaw(part));
-        const actorRef = actorParts[0]?.info.actor ?? null;
+        const rawActorParts = raw.actorParts ?? [];
+        const actorParts = new Array<ActorPart | undefined>(rawActorParts.length);
+        const actorRef = rawActorParts[0]?.info.actor
+          ? actorRefFromRaw(rawActorParts[0].info.actor)
+          : null;
         let index = 0;
         handler({
           event: raw.event as SpotDispatchEvent,
@@ -363,11 +366,16 @@ export class Spot extends NativeHandle {
           timer: null,
           actorRef,
           recvActorPart(flags: RecvFlags = RecvFlags.None): ActorPart | null {
-            const part = actorParts[index++] ?? null;
-            if (!part && ((flags | 0) & (RecvFlags.DontWait | 0))) {
+            const current = index++;
+            const rawPart = rawActorParts[current] ?? null;
+            if (!rawPart && ((flags | 0) & (RecvFlags.DontWait | 0))) {
               return null;
             }
-            return part;
+            if (!rawPart) {
+              return null;
+            }
+            actorParts[current] ??= actorPartFromRaw(rawPart);
+            return actorParts[current];
           }
         });
       });

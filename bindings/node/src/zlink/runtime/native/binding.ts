@@ -25,23 +25,29 @@ import type {
 } from '../service/discovery/discovery';
 import type {
   ActorJoinEntrySpotResultRaw,
-  ActorJoinInfoRaw,
   ActorJoinResultRaw,
   ActorLookupResultRaw,
   ActorPartRaw,
   ActorRefRaw,
-  SpotActorLifecycleInfoRaw
+  SpotNodeActorEntryRaw,
+  SpotNodeSpotEntryRaw
 } from '../service/spot/actor_models';
+import type {
+  SpotActorJoinRecvRaw,
+  SpotActorLifecycleRaw,
+  SpotDispatchRaw,
+  SpotNodePeerEntryRaw,
+  SpotNodeSocketEntryRaw,
+  SpotNodeSpotGetOrNewRaw,
+  SpotNodeStatusRaw,
+  SpotNodeSubjectEntryRaw,
+  SpotRoutedRaw
+} from '../service/spot/spot_raw_models';
 
 type NativeHandle = unknown;
 type NativeBuffer = Buffer;
 type NullableNativeHandle = NativeHandle | null;
 type NativeVersion = [number, number, number];
-type NativeVoidFn = (...args: unknown[]) => void;
-type NativeHandleFn = (...args: unknown[]) => NativeHandle;
-type NativeNumberFn = (...args: unknown[]) => number;
-type NativeBufferFn = (...args: unknown[]) => Buffer;
-type NativeStringFn = (...args: unknown[]) => string;
 type NativeRequestCallback = (result: number, replyParts: Buffer[] | null) => void;
 type NativeActorJoinCallback = (result: ActorJoinResultRaw | null, replyParts: Buffer[] | null) => void;
 type NativeActorEntryJoinCallback = (result: ActorJoinEntrySpotResultRaw | null) => void;
@@ -85,7 +91,7 @@ interface SocketNativeBinding {
   ) => void;
   handleGetRoutingId: (handle: NativeHandle) => Buffer;
   handleSetRoutingId: (handle: NativeHandle, routingId: Buffer) => void;
-  monitorOpen: NativeHandleFn;
+  monitorOpen: (socket: NativeHandle, eventMask: number) => NativeHandle;
   routerRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
   routerRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
   routerReply: (
@@ -185,7 +191,11 @@ interface SocketNativeBinding {
     key: string,
     requireClientCert: number
   ) => void;
-  socketStreamAttach: NativeVoidFn;
+  socketStreamAttach: (
+    socket: NativeHandle,
+    handler: (routingId: Buffer | null, packets: Buffer[]) => number,
+    packetCount: number
+  ) => void;
   socketSubscribeMessage: (
     socket: NativeHandle,
     flags: number
@@ -235,13 +245,13 @@ interface SocketNativeBinding {
 }
 
 interface EventingNativeBinding {
-  atomicCounterDec: NativeNumberFn;
-  atomicCounterDestroy: NativeVoidFn;
-  atomicCounterInc: NativeNumberFn;
-  atomicCounterNew: NativeHandleFn;
+  atomicCounterDec: (counter: NativeHandle) => number;
+  atomicCounterDestroy: (counter: NativeHandle) => void;
+  atomicCounterInc: (counter: NativeHandle) => number;
+  atomicCounterNew: () => NativeHandle;
   atomicCounterSet: (counter: NativeHandle, value: number) => void;
-  atomicCounterValue: NativeNumberFn;
-  monitorClose: NativeVoidFn;
+  atomicCounterValue: (counter: NativeHandle) => number;
+  monitorClose: (monitor: NativeHandle) => void;
   monitorHandler: (
     monitor: NativeHandle,
     handler: (event: MonitorEventValueRaw) => void
@@ -249,35 +259,50 @@ interface EventingNativeBinding {
   monitorRecv: (monitor: NativeHandle) => MonitorEventValueRaw;
   monitorRecvNoWait: (monitor: NativeHandle) => MonitorEventValueRaw | null;
   monitorStatus: (monitor: NativeHandle) => MonitorStatusRaw;
-  pollEventsDestroy: NativeVoidFn;
-  pollEventsFd: NativeNumberFn;
-  pollEventsNew: NativeHandleFn;
-  pollEventsRevents: NativeNumberFn;
-  pollEventsSlot: NativeNumberFn;
-  pollEventsSourceKind: NativeNumberFn;
-  pollerAdd: NativeVoidFn;
-  pollerAddFd: NativeVoidFn;
-  pollerAddTimer: NativeVoidFn;
-  pollerDestroy: NativeVoidFn;
-  pollerModify: NativeVoidFn;
-  pollerModifyFd: NativeVoidFn;
-  pollerNew: NativeHandleFn;
-  pollerRemove: NativeVoidFn;
-  pollerRemoveFd: NativeVoidFn;
-  pollerRemoveTimer: NativeVoidFn;
-  pollerSize: NativeNumberFn;
-  pollerWait: NativeNumberFn;
-  pollerWaitInto: NativeNumberFn;
-  spotTimerNew: NativeHandleFn;
-  stopwatchIntermediate: NativeNumberFn;
-  stopwatchStart: NativeHandleFn;
-  stopwatchStop: NativeNumberFn;
-  timerDestroy: NativeVoidFn;
+  pollEventsDestroy: (events: NativeHandle) => void;
+  pollEventsFd: (events: NativeHandle, index: number) => number;
+  pollEventsNew: (capacity: number) => NativeHandle;
+  pollEventsRevents: (events: NativeHandle, index: number) => number;
+  pollEventsSlot: (events: NativeHandle, index: number) => number;
+  pollEventsSourceKind: (events: NativeHandle, index: number) => number;
+  pollerAdd: (
+    poller: NativeHandle,
+    handle: NativeHandle,
+    slot: bigint | null,
+    events: number
+  ) => void;
+  pollerAddFd: (
+    poller: NativeHandle,
+    fd: number,
+    slot: bigint,
+    events: number
+  ) => void;
+  pollerAddTimer: (poller: NativeHandle, timer: NativeHandle, slot: bigint) => void;
+  pollerDestroy: (poller: NativeHandle) => void;
+  pollerModify: (poller: NativeHandle, handle: NativeHandle, events: number) => void;
+  pollerModifyFd: (poller: NativeHandle, fd: number, events: number) => void;
+  pollerNew: () => NativeHandle;
+  pollerRemove: (poller: NativeHandle, handle: NativeHandle) => void;
+  pollerRemoveFd: (poller: NativeHandle, fd: number) => void;
+  pollerRemoveTimer: (poller: NativeHandle, timer: NativeHandle) => void;
+  pollerSize: (poller: NativeHandle) => number;
+  pollerWait: (poller: NativeHandle, timeoutMs: number) => number;
+  pollerWaitInto: (
+    poller: NativeHandle,
+    events: NativeHandle,
+    capacity: number,
+    timeoutMs: number
+  ) => number;
+  spotTimerNew: (spot: NativeHandle) => NativeHandle;
+  stopwatchIntermediate: (watch: NativeHandle) => number;
+  stopwatchStart: () => NativeHandle;
+  stopwatchStop: (watch: NativeHandle) => number;
+  timerDestroy: (timer: NativeHandle) => void;
   timerHandler: (
     timer: NativeHandle,
     handler: (fireCount: bigint) => void
   ) => void;
-  timerNew: NativeHandleFn;
+  timerNew: () => NativeHandle;
   timerRecv: (timer: NativeHandle, flags: number) => bigint | null;
   timerStart: (timer: NativeHandle, intervalNs: bigint, repeatCount: bigint) => void;
   timerStop: (timer: NativeHandle) => void;
@@ -353,10 +378,7 @@ interface ServiceNativeBinding {
     callback: NativeActorLookupCallback,
     timeoutMs: number
   ) => void;
-  spotActorJoinRecv: (
-    spot: NativeHandle,
-    flags: number
-  ) => { info: ActorJoinInfoRaw; message: unknown } | null;
+  spotActorJoinRecv: (spot: NativeHandle, flags: number) => SpotActorJoinRecvRaw | null;
   spotActorJoinReply: (
     spot: NativeHandle,
     info: Record<string, unknown>,
@@ -368,7 +390,7 @@ interface ServiceNativeBinding {
   spotDispatchEventHandler: (
     spot: NativeHandle,
     node: NativeHandle,
-    handler: (event: unknown) => void
+    handler: (event: SpotDispatchRaw) => void
   ) => void;
   spotGetOption: (spot: NativeHandle, option: number) => Buffer;
   spotNew: (node: NativeHandle) => NativeHandle;
@@ -420,7 +442,7 @@ interface ServiceNativeBinding {
     parts: readonly unknown[],
     flags: number
   ) => void;
-  spotNodeActors: (node: NativeHandle) => unknown[];
+  spotNodeActors: (node: NativeHandle) => SpotNodeActorEntryRaw[];
   spotNodeAttachChannelDealer: (
     node: NativeHandle,
     discovery: NativeHandle,
@@ -458,10 +480,10 @@ interface ServiceNativeBinding {
   ) => void;
   spotNodeEntrySpot: (node: NativeHandle) => NativeHandle;
   spotNodeGetOption: (node: NativeHandle, option: number) => Buffer;
-  spotNodeInternalSockets: (node: NativeHandle, filter?: unknown) => Array<Record<string, unknown>>;
+  spotNodeInternalSockets: (node: NativeHandle, filter?: unknown) => SpotNodeSocketEntryRaw[];
   spotNodeNew: (ctx: NativeHandle, options: { mode: number }) => NativeHandle;
-  spotNodePeers: (node: NativeHandle) => unknown[];
-  spotNodePeersQuery: (node: NativeHandle, filter?: unknown) => unknown[];
+  spotNodePeers: (node: NativeHandle) => SpotNodePeerEntryRaw[];
+  spotNodePeersQuery: (node: NativeHandle, filter?: unknown) => SpotNodePeerEntryRaw[];
   spotNodeSetDiscovery: (node: NativeHandle, discovery: NativeHandle) => void;
   spotNodeSetOption: (node: NativeHandle, option: number, value: Buffer) => void;
   spotNodeSetPubBind: (node: NativeHandle, endpoint: string) => void;
@@ -481,11 +503,11 @@ interface ServiceNativeBinding {
   spotNodeSpotGetOrNew: (
     node: NativeHandle,
     spotRid: Buffer
-  ) => { spot: NativeHandle; created: boolean };
+  ) => SpotNodeSpotGetOrNewRaw;
   spotNodeSpotLookup: (node: NativeHandle, spotRid: Buffer) => NativeHandle | null;
-  spotNodeSpots: (node: NativeHandle) => unknown[];
-  spotNodeStatus: (node: NativeHandle) => Record<string, unknown>;
-  spotNodeSubjects: (node: NativeHandle, filter?: unknown) => unknown[];
+  spotNodeSpots: (node: NativeHandle) => SpotNodeSpotEntryRaw[];
+  spotNodeStatus: (node: NativeHandle) => SpotNodeStatusRaw;
+  spotNodeSubjects: (node: NativeHandle, filter?: unknown) => SpotNodeSubjectEntryRaw[];
   spotPublish: (
     spot: NativeHandle,
     topic: string,
@@ -493,12 +515,9 @@ interface ServiceNativeBinding {
     flags: number
   ) => void;
   spotRecv: (spot: NativeHandle, flags: number) => NativeTopicMessageRaw | null;
-  spotRecvActorLifecycle: (
-    spot: NativeHandle,
-    flags: number
-  ) => { kind: number; info: SpotActorLifecycleInfoRaw } | null;
+  spotRecvActorLifecycle: (spot: NativeHandle, flags: number) => SpotActorLifecycleRaw | null;
   spotRecvNoWait: (spot: NativeHandle) => NativeTopicMessageRaw | null;
-  spotRecvRouted: (spot: NativeHandle, flags: number) => unknown | null;
+  spotRecvRouted: (spot: NativeHandle, flags: number) => SpotRoutedRaw | null;
   spotReplyRouter: (
     spot: NativeHandle,
     peerRid: Buffer,

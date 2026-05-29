@@ -11,12 +11,13 @@ import { adoptTopicMessage, materializeReceived, materializeTopicMessage, type N
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
 import { RuntimeReplyOperation, RuntimeRequestOperation, RuntimeSendOperation, normalizeReplyFlags, submitErrorFromResult } from '../../sockets/socket_operations';
 import { toMessageParts, toOwnedMessage } from '../../buffers/message_conversion';
-import { Message, Received, RoutingId, TopicMessage, type MessageLike, type MessageSnapshot } from '../../../contracts';
+import { Message, Received, RoutingId, TopicMessage, type MessageLike } from '../../../contracts';
 import { RecvFlags, SendFlags } from '../../../contracts/sockets/socket_constants';
 import { SubmitResult } from '../../../contracts/errors/errors';
 import { SpotDispatchEvent, SpotDispatchSubjectKind, type ActorJoinRequest, type ActorJoinReplyOperation, type ActorPart, type ActorRef, type ReplyOperation, type RequestCallback, type RequestOperation, type SendOperation, type SpotActorLifecycleEvent, type SpotDispatchEventHandler, type SpotSendReadyHandler, type SubscriptionEntry } from '../../../contracts/service';
 import { SpotOption } from './spot_options';
-import { RuntimeActorJoinReplyOperation, actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFromRaw, spotActorLifecycleInfoFromRaw, type SpotActorLifecycleInfoRaw } from './spot_operations';
+import { RuntimeActorJoinReplyOperation, actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFromRaw, spotActorLifecycleInfoFromRaw } from './spot_operations';
+import type { ActorRefRaw, SpotActorJoinRecvRaw, SpotActorLifecycleRaw, SpotDispatchRaw, SpotRoutedRaw } from './spot_raw_models';
 
 type OwnerSpotNode = { nativeHandle(): unknown; readonly routingId: RoutingId; unregisterSpot(spot: Spot): void };
 
@@ -307,7 +308,7 @@ export class Spot extends NativeHandle {
   recvRouted(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
     let raw;
     try {
-      raw = requireNative().spotRecvRouted(this._native, flags | 0) as { sourceRid?: Buffer | null; spotRid?: Buffer | null; requestSeq?: bigint | null; parts: MessageSnapshot[] } | null;
+      raw = requireNative().spotRecvRouted(this._native, flags | 0) as SpotRoutedRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'recvRouted failed');
     }
@@ -347,21 +348,7 @@ export class Spot extends NativeHandle {
   }
   setDispatchHandler(handler: SpotDispatchEventHandler): void {
     handlerCall('spot dispatch handler registration failed', () => {
-      requireNative().spotDispatchEventHandler(this._native, this._node.nativeHandle(), (raw: {
-        event: number;
-        subjectKind: number;
-        subjectHandle: bigint;
-        actorParts?: Array<{
-          info: {
-            actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
-            sourceNodeRid: Buffer;
-            sourceSessionRid: Buffer;
-            flags: number;
-          };
-          message: Buffer;
-          more: boolean;
-        }>;
-      }) => {
+      requireNative().spotDispatchEventHandler(this._native, this._node.nativeHandle(), (raw: SpotDispatchRaw) => {
         const actorParts = (raw.actorParts ?? []).map((part) => actorPartFromRaw(part));
         const actorRef = actorParts[0]?.info.actor ?? null;
         let index = 0;
@@ -384,21 +371,7 @@ export class Spot extends NativeHandle {
   recvActorJoin(flags: RecvFlags = RecvFlags.None): ActorJoinRequest | null {
     let raw;
     try {
-      raw = requireNative().spotActorJoinRecv(this._native, flags | 0) as {
-        info: {
-          actor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
-          sourceActor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
-          targetActor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
-          sourceNodeRid: Buffer;
-          sourceSpotRid?: Buffer | null;
-          targetNodeRid?: Buffer | null;
-          targetSpotRid?: Buffer | null;
-          joinEpoch?: bigint | number;
-          flags: number;
-          requestHandle: bigint;
-        };
-        message: MessageSnapshot;
-      } | null;
+      raw = requireNative().spotActorJoinRecv(this._native, flags | 0) as SpotActorJoinRecvRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'actor join recv failed');
     }
@@ -426,10 +399,7 @@ export class Spot extends NativeHandle {
   recvActorLifecycle(flags: RecvFlags = RecvFlags.None): SpotActorLifecycleEvent | null {
     let raw;
     try {
-      raw = requireNative().spotRecvActorLifecycle(this._native, flags | 0) as {
-        kind: number;
-        info: SpotActorLifecycleInfoRaw;
-      } | null;
+      raw = requireNative().spotRecvActorLifecycle(this._native, flags | 0) as SpotActorLifecycleRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'actor lifecycle recv failed');
     }
@@ -443,7 +413,7 @@ export class Spot extends NativeHandle {
   }
   actors(): ActorRef[] {
     return (configCall('spot actors snapshot failed', () =>
-      requireNative().spotActors(this._native) as Array<{ nodeRid: Buffer; actorId: string; generation: bigint | number }>
+      requireNative().spotActors(this._native) as ActorRefRaw[]
     ))
       .map((entry) => actorRefFromRaw(entry));
   }

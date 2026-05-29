@@ -8,6 +8,7 @@
         "native/src/addon_core_options.cc",
         "native/src/addon_core_perf.cc",
         "native/src/addon_discovery.cc",
+        "native/src/addon_exports.cc",
         "native/src/addon_spot.cc"
       ],
       "include_dirs": [ "../../core/include" ],

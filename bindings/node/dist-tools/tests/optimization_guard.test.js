@@ -9,6 +9,12 @@ const ROOT = path.basename(path.resolve(__dirname, '..')) === 'dist-tools'
     : path.resolve(__dirname, '..');
 const NATIVE_SRC = path.join(ROOT, 'native', 'src');
 const TS_SRC = path.join(ROOT, 'src');
+function readNativeRegistrationSources() {
+    return [
+        path.join(NATIVE_SRC, 'addon.cc'),
+        path.join(NATIVE_SRC, 'addon_exports.cc')
+    ].map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+}
 const aggregateSymbols = [
     'zlink_send',
     'zlink_recv',
@@ -134,6 +140,7 @@ test('node multi router-router client uses public routed send path', () => {
 test('node binding does not expose borrowed buffer send helpers', () => {
     const files = [
         path.join(ROOT, 'native', 'src', 'addon.cc'),
+        path.join(ROOT, 'native', 'src', 'addon_exports.cc'),
         path.join(ROOT, 'native', 'src', 'addon_core.cc'),
         path.join(ROOT, 'native', 'src', 'addon_core_api.h')
     ];
@@ -143,7 +150,7 @@ test('node binding does not expose borrowed buffer send helpers', () => {
     assert.doesNotMatch(body, /init_msg_borrowed_from_bytes/);
 });
 test('native addon registration stays limited to runtime-owned methods', () => {
-    const body = fs.readFileSync(path.join(ROOT, 'native', 'src', 'addon.cc'), 'utf8');
+    const body = readNativeRegistrationSources();
     const removedExports = [
         'socketPerfDealerDealerSendLoop',
         'socketPerfDealerRouterEchoLoop',
@@ -199,7 +206,7 @@ test('native addon registration stays limited to runtime-owned methods', () => {
     }
 });
 test('native addon registration matches the typed native binding surface', () => {
-    const addon = fs.readFileSync(path.join(ROOT, 'native', 'src', 'addon.cc'), 'utf8');
+    const addon = readNativeRegistrationSources();
     const binding = fs.readFileSync(path.join(ROOT, 'src', 'zlink', 'runtime', 'native', 'binding.ts'), 'utf8');
     const registered = [...addon.matchAll(/ZLINK_METHOD\("([^"]+)"/g)]
         .map((match) => match[1])

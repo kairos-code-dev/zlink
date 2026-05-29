@@ -7,7 +7,6 @@ import { Discovery } from '../discovery/discovery';
 import { Actor } from './actor';
 import { Spot } from './spot';
 import { NativeHandle } from '../../handles/native_handle';
-import { materializeMonitorStatus } from '../../eventing/monitor_status';
 import { closeCall, configCall, connectCall } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
@@ -15,95 +14,14 @@ import { RuntimeSendOperation } from '../../sockets/socket_operations';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { requireNative } from '../../native/native';
 import { RoutingId } from '../../../contracts';
-import type { MonitorStatusRaw } from '../../../contracts/eventing';
 import type { AutoHwmProfileValue } from '../../../contracts/core';
-import { SpotNodeMode, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRef, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSocketOwnerValue, type SpotNodeSpotEntry, type SpotNodeStateValue, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter, type SpotPeerKindValue, type SpotPeerSourceValue, type SpotPeerStateValue, type SpotRoleValue } from '../../../contracts/service';
-import type { SocketTypeValue } from '../../../contracts/sockets/socket_constants';
+import { SpotNodeMode, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRef, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSpotEntry, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter } from '../../../contracts/service';
 import { SpotNodeOption } from './spot_options';
 import { RuntimeActorDestroyOperation, RuntimeActorJoinEntrySpotOperation, RuntimeActorJoinOperation, RuntimeActorLeaveOperation, RuntimeActorLookupOperation, actorRefFromRaw, actorRefToRaw, invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorSendBoundSession, invokeRemoteActorGetRef, spotNodeActorEntryFromRaw, spotNodeSpotEntryFromRaw } from './spot_operations';
+import { mapSpotNodePeerEntry, mapSpotNodeSocketEntry, mapSpotNodeStatus, mapSpotNodeSubjectEntry, type ActorRefRaw, type SpotNodePeerEntryRaw, type SpotNodeSocketEntryRaw, type SpotNodeSpotGetOrNewRaw, type SpotNodeStatusRaw, type SpotNodeSubjectEntryRaw } from './spot_raw_models';
 
-function mapSpotNodeStatus(entry: {
-  channelName: string;
-  localEndpoint: string;
-  nodeRoutingId?: Buffer | null;
-  state: number;
-  configuredPeerCount: number;
-  activePeerCount: number;
-  connectedPeerCount: number;
-  subjectCount: number;
-  readySubjectCount: number;
-  disconnectedSubTargetCount?: number;
-  disconnectedRoutedTargetCount?: number;
-  lastError: number;
-  lastChangedMs: number | bigint;
-}, fallbackRoutingId: RoutingId): SpotNodeStatus {
-  const nodeRoutingId = entry.nodeRoutingId
-    ? RoutingId.from(entry.nodeRoutingId)
-    : fallbackRoutingId;
-  return {
-    channelName: entry.channelName,
-    localEndpoint: entry.localEndpoint,
-    nodeRoutingId,
-    state: entry.state as SpotNodeStateValue,
-    configuredPeerCount: entry.configuredPeerCount,
-    activePeerCount: entry.activePeerCount,
-    connectedPeerCount: entry.connectedPeerCount,
-    subjectCount: entry.subjectCount,
-    readySubjectCount: entry.readySubjectCount,
-    disconnectedSubTargetCount: entry.disconnectedSubTargetCount ?? 0,
-    disconnectedRoutedTargetCount: entry.disconnectedRoutedTargetCount ?? 0,
-    lastError: entry.lastError,
-    lastChangedMs: BigInt(entry.lastChangedMs)
-  };
-}
-
-function mapSpotNodePeerEntry(entry: {
-  channelName: string;
-  localEndpoint: string;
-  peerEndpoint: string;
-  source: number;
-  kind: number;
-  state: number;
-  weight: number;
-  connectedSinceMs: number | bigint;
-  lastChangedMs: number | bigint;
-}): SpotNodePeerEntry {
-  return {
-    channelName: entry.channelName,
-    localEndpoint: entry.localEndpoint,
-    peerEndpoint: entry.peerEndpoint,
-    source: entry.source as SpotPeerSourceValue,
-    kind: entry.kind as SpotPeerKindValue,
-    state: entry.state as SpotPeerStateValue,
-    weight: entry.weight,
-    connectedSinceMs: BigInt(entry.connectedSinceMs),
-    lastChangedMs: BigInt(entry.lastChangedMs)
-  };
-}
-
-function mapSpotNodeSubjectEntry(entry: {
-  role: number;
-  subject: string;
-  subjectKind: number;
-  readyPeerCount: number;
-  activePeerCount: number;
-  lastChangedMs: number | bigint;
-}): SpotNodeSubjectEntry {
-  return {
-    role: entry.role as SpotRoleValue,
-    subject: entry.subject,
-    subjectKind: entry.subjectKind,
-    readyPeerCount: entry.readyPeerCount,
-    activePeerCount: entry.activePeerCount,
-    lastChangedMs: BigInt(entry.lastChangedMs)
-  };
-}
-
-type SpotNodePeerEntryRaw = Parameters<typeof mapSpotNodePeerEntry>[0];
-type SpotNodeSubjectEntryRaw = Parameters<typeof mapSpotNodeSubjectEntry>[0];
 type SpotNodeSpotEntryRaw = Parameters<typeof spotNodeSpotEntryFromRaw>[0];
 type SpotNodeActorEntryRaw = Parameters<typeof spotNodeActorEntryFromRaw>[0];
-type ActorRefRaw = Parameters<typeof actorRefFromRaw>[0];
 
 export class SpotNode extends NativeHandle {
   private readonly _spots = new Set<Spot>();
@@ -275,9 +193,7 @@ export class SpotNode extends NativeHandle {
     const spot = Spot.create(this);
     this._spots.add(spot);
     try {
-      const raw = requireNative().spotNodeStatus(this._native) as {
-        nodeRoutingId?: Buffer | null;
-      };
+      const raw = requireNative().spotNodeStatus(this._native) as SpotNodeStatusRaw;
       if (raw?.nodeRoutingId) {
         this._nodeRoutingId = RoutingId.from(raw.nodeRoutingId);
       }
@@ -307,7 +223,7 @@ export class SpotNode extends NativeHandle {
     const normalizedSpotRid = normalizeRoutingId(spotRid, 'spotRid');
     const result = configCall('spot node spot get-or-create failed', () =>
       requireNative().spotNodeSpotGetOrNew(this._native, normalizedSpotRid)
-    ) as { spot: unknown; created: boolean };
+    ) as SpotNodeSpotGetOrNewRaw;
     const spot = Spot.fromNative(this, result.spot);
     this._spots.add(spot);
     return { spot, created: !!result.created };
@@ -378,19 +294,8 @@ export class SpotNode extends NativeHandle {
   }
   status(): SpotNodeStatus {
     const raw = configCall('spot node status snapshot failed', () =>
-      requireNative().spotNodeStatus(this._native) as {
-      channelName: string;
-      localEndpoint: string;
-      nodeRoutingId?: Buffer | null;
-      state: number;
-      configuredPeerCount: number;
-      activePeerCount: number;
-      connectedPeerCount: number;
-      subjectCount: number;
-      readySubjectCount: number;
-      lastError: number;
-      lastChangedMs: number | bigint;
-    });
+      requireNative().spotNodeStatus(this._native) as SpotNodeStatusRaw
+    );
     if (raw.nodeRoutingId) {
       this._nodeRoutingId = RoutingId.from(raw.nodeRoutingId);
     }
@@ -416,17 +321,9 @@ export class SpotNode extends NativeHandle {
   }
   internalSockets(filter?: SpotNodeSocketFilter): SpotNodeSocketEntry[] {
     return (configCall('spot node internal socket snapshot failed', () =>
-      requireNative().spotNodeInternalSockets(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+      requireNative().spotNodeInternalSockets(this._native, filter ?? undefined) as SpotNodeSocketEntryRaw[]
     ))
-      .map((entry) => ({
-        owner: entry.owner as SpotNodeSocketOwnerValue,
-        ownerId: BigInt(entry.ownerId as number | bigint),
-        ownerName: entry.ownerName as string,
-        socketName: entry.socketName as string,
-        socketType: entry.socketType as SocketTypeValue,
-        autoHwmVisible: Boolean(entry.autoHwmVisible),
-        snapshot: materializeMonitorStatus(entry.snapshot as MonitorStatusRaw),
-      }));
+      .map((entry) => mapSpotNodeSocketEntry(entry));
   }
   spots(): SpotNodeSpotEntry[] {
     return (configCall('spot node spots snapshot failed', () =>

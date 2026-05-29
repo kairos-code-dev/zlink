@@ -74,19 +74,6 @@ inline void move_to_native (message_t &message_, zlink_msg_t *dest_)
     message_access_t::valid (message_) = false;
 }
 
-inline void copy_to_native (const message_t &message_, zlink_msg_t *dest_)
-{
-    if (!dest_ || !message_.valid ())
-        return;
-    if (zlink_msg_init (dest_) != 0)
-        return;
-    if (zlink_msg_copy (
-          dest_, const_cast<zlink_msg_t *> (message_access_t::native (message_)))
-        == 0)
-        return;
-    zlink_msg_close (dest_);
-}
-
 inline void mark_sent (message_t &message_) noexcept
 {
     message_access_t::valid (message_) = false;

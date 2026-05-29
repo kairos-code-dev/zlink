@@ -1289,37 +1289,3 @@ func (s *Spot) RecvActorLifecycle(flags RecvFlags) (SpotActorLifecycleEvent, boo
 		Info: spotActorLifecycleInfoFromC(&event.info),
 	}, true, nil
 }
-
-func (s *Spot) startChannelRequest(channelName string, flags SendFlags, timeout time.Duration, parts ...*Message) (*replyCallbackState, error) {
-	builderParts := make([]requestBuilderPart, len(parts))
-	for i, part := range parts {
-		builderParts[i] = requestBuilderPart{message: part}
-	}
-	return s.startChannelRequestBuilder(channelName, flags, timeout, builderParts)
-}
-
-func (s *Spot) startChannelRequestBuilder(channelName string, flags SendFlags, timeout time.Duration, parts []requestBuilderPart) (*replyCallbackState, error) {
-	if timeout <= 0 {
-		timeout = defaultRequestTimeout
-	}
-	state := newReplyCallbackState()
-	handle := cgo.NewHandle(state)
-	if err := s.core.withCString(channelName, func(cstr *C.char) error {
-		return submitMultipartFromRequestParts(parts, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
-			return submitErrorFromResult(C.zlink_spot_request_to_channel_part_go_local(
-				s.raw(),
-				cstr,
-				part,
-				C.zlink_send_flags_t(flags),
-				partFlag,
-				C.uint32_t(requestTimeoutMillis(timeout)),
-				C.uintptr_t(handle),
-			))
-		})
-	}); err != nil {
-		handle.Delete()
-		return nil, err
-	}
-	startSpotRequestProgress(s.raw(), state)
-	return state, nil
-}

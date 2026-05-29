@@ -122,6 +122,12 @@ from .native_parts import (
     prepare_native_parts as _prepare_native_parts,
     submit_parts as _submit_parts,
 )
+from .spot_submit import (
+    submit_channel_request as _submit_channel_request,
+    submit_channel_send as _submit_channel_send,
+    submit_spot_request as _submit_spot_request,
+    submit_spot_send as _submit_spot_send,
+)
 
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
@@ -2562,18 +2568,7 @@ class Spot:
                 channel_name, field="channel_name", max_length=255
             )
             native_parts = self._native_parts_from_payload(parts)
-            rc, err = _submit_parts(
-                native_parts,
-                lambda part_ptr, part_flag: lib().zlink_spot_send_channel_part(
-                    self._handle,
-                    channel_bytes,
-                    part_ptr,
-                    int(flags),
-                    part_flag,
-                ),
-            )
-            if rc != 0:
-                _raise_result_error(SubmitError, SubmitResult, rc, err)
+            _submit_channel_send(self._handle, channel_bytes, native_parts, flags)
             return True
         except SubmitError as ex:
             if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
@@ -2594,19 +2589,13 @@ class Spot:
             native_parts = self._native_parts_from_payload(parts)
             native_node = _copy_routing_id(dest_node_rid)
             native_spot = _copy_routing_id(dest_spot_rid)
-            rc, err = _submit_parts(
+            _submit_spot_send(
+                self._handle,
+                native_node,
+                native_spot,
                 native_parts,
-                lambda part_ptr, part_flag: lib().zlink_spot_send_spot_part(
-                    self._handle,
-                    ctypes.byref(native_node),
-                    ctypes.byref(native_spot),
-                    part_ptr,
-                    int(flags),
-                    part_flag,
-                ),
+                flags,
             )
-            if rc != 0:
-                _raise_result_error(SubmitError, SubmitResult, rc, err)
             return True
         except SubmitError as ex:
             if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
@@ -2671,23 +2660,20 @@ class Spot:
         self._request_progress_targets[handle] = self._request_progress_target(
             channel_bytes
         )
-        rc, err = _submit_parts(
-            native_parts,
-            lambda part_ptr, part_flag: lib().zlink_spot_request_channel_part(
+        try:
+            _submit_channel_request(
                 self._handle,
                 channel_bytes,
-                part_ptr,
+                native_parts,
                 reply_handler,
-                ctypes.c_void_p(handle),
-                int(flags),
-                part_flag,
+                handle,
+                flags,
                 _timeout_to_ms(timeout),
-            ),
-        )
-        if rc != 0:
+            )
+        except Exception:
             self._request_pending.pop(handle, None)
             self._request_progress_targets.pop(handle, None)
-            _raise_result_error(SubmitError, SubmitResult, rc, err)
+            raise
 
     def request_to_spot(self, dest_node_rid, dest_spot_rid):
         return RequestOp(
@@ -2765,24 +2751,21 @@ class Spot:
         native_spot = _copy_routing_id(dest_spot_rid)
         reply_handler = self._ensure_request_reply_handler()
         self._request_progress_targets[handle] = self._request_progress_target()
-        rc, err = _submit_parts(
-            native_parts,
-            lambda part_ptr, part_flag: lib().zlink_spot_request_spot_part(
+        try:
+            _submit_spot_request(
                 self._handle,
-                ctypes.byref(native_node),
-                ctypes.byref(native_spot),
-                part_ptr,
+                native_node,
+                native_spot,
+                native_parts,
                 reply_handler,
-                ctypes.c_void_p(handle),
-                int(flags),
-                part_flag,
+                handle,
+                flags,
                 _timeout_to_ms(timeout),
-            ),
-        )
-        if rc != 0:
+            )
+        except Exception:
             self._request_pending.pop(handle, None)
             self._request_progress_targets.pop(handle, None)
-            _raise_result_error(SubmitError, SubmitResult, rc, err)
+            raise
 
     def _recv_subscribed(self, flags):
         return _recv_spot_subscribed(self._handle, flags)

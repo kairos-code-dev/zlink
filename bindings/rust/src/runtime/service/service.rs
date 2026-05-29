@@ -4,6 +4,8 @@ use std::ptr;
 use std::sync::mpsc;
 use std::time::Duration;
 
+mod spot_receive;
+
 use crate::actor_models::{
     ActorJoinEntrySpotResult, ActorJoinInfo, ActorJoinRequest, ActorJoinResult, ActorLookupResult,
     ActorRecvInfo, ActorRef, ActorRoute, SpotActorLifecycleEvent, SpotActorLifecycleEventKind,
@@ -36,8 +38,7 @@ use crate::registry_query_client_resource::{RegistryQueryClient, RegistryQueryCl
 use crate::registry_resource::{Registry, RegistryRuntime};
 use crate::request_progress::RequestProgressGuard;
 use crate::socket::{
-    CallbackBox, close_unreceived_part, prepare_send_parts, routing_id_from_ptr,
-    send_ready_trampoline, submit_part_sequence, take_parts,
+    CallbackBox, prepare_send_parts, send_ready_trampoline, submit_part_sequence, take_parts,
 };
 use crate::spot_models::{
     AutoConnectType, RegistryState, ServiceKind, ServiceRole, SocketType, SpotDispatchEvent,
@@ -54,6 +55,9 @@ use crate::spot_operations::{
 };
 use crate::spot_resource::{Spot, SpotRuntime};
 use crate::topic_message_contract::TopicMessage;
+use spot_receive::{
+    borrowed_parts_to_messages, recv_spot_routed_parts, recv_spot_subscribed_parts,
+};
 
 // ---------------------------------------------------------------------------
 // Registry
@@ -3896,8 +3900,6 @@ impl Spot {
 }
 
 type SpotReplyCallback = Box<dyn FnOnce(Result<Vec<Message>, RequestError>) + Send>;
-type SpotSubscribedParts =
-    Result<Option<(Option<RoutingId>, smol_str::SmolStr, Vec<Message>)>, RecvError>;
 type SpotDispatchHandler<F> = (*mut c_void, F);
 
 struct SpotReplyCallbackState {
@@ -4136,144 +4138,6 @@ fn take_message_raw(message: &mut Message) -> ffi::zlink_msg_t {
         ffi::zlink_msg_init(native.as_mut_ptr());
         ffi::zlink_msg_move(native.as_mut_ptr(), message.raw_mut());
         native.assume_init()
-    }
-}
-
-fn borrowed_parts_to_messages(parts: *mut ffi::zlink_msg_t, part_count: usize) -> Vec<Message> {
-    let mut out = Vec::with_capacity(part_count);
-    for i in 0..part_count {
-        unsafe {
-            let mut dest = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-            ffi::zlink_msg_init(dest.as_mut_ptr());
-            ffi::zlink_msg_move(dest.as_mut_ptr(), parts.add(i));
-            out.push(Message::from_raw(dest.assume_init()));
-        }
-    }
-    out
-}
-
-type SpotRoutedParts = Result<
-    Option<(
-        *const ffi::zlink_routing_id_t,
-        *const ffi::zlink_routing_id_t,
-        u64,
-        Vec<Message>,
-    )>,
-    RecvError,
->;
-
-fn recv_spot_routed_parts(handle: *mut c_void, flags: ffi::zlink_recv_flags_t) -> SpotRoutedParts {
-    let mut source_node_rid_ptr: *const ffi::zlink_routing_id_t = ptr::null();
-    let mut source_spot_rid_ptr: *const ffi::zlink_routing_id_t = ptr::null();
-    let mut request_seq: u64 = 0;
-    let mut parts = Vec::new();
-    let mut recv_flags = flags;
-
-    loop {
-        let mut part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-        unsafe {
-            ffi::zlink_msg_init(part.as_mut_ptr());
-        }
-        let mut has_more = 0;
-        let rc = unsafe {
-            ffi::zlink_spot_recv_part(
-                handle,
-                &mut source_node_rid_ptr,
-                &mut source_spot_rid_ptr,
-                &mut request_seq,
-                part.as_mut_ptr(),
-                &mut has_more,
-                recv_flags,
-            )
-        };
-
-        if parts.is_empty() {
-            if rc == RecvResult::NoData as i32 {
-                close_unreceived_part(&mut part);
-                return Ok(None);
-            }
-            if rc != 0 {
-                close_unreceived_part(&mut part);
-                let errno = unsafe { ffi::zlink_errno() };
-                if errno == libc::EAGAIN {
-                    return Ok(None);
-                }
-                return Err(check_recv_rc(rc).unwrap_err());
-            }
-        } else if rc != 0 {
-            close_unreceived_part(&mut part);
-            return Err(check_recv_rc(rc).unwrap_err());
-        }
-
-        parts.push(unsafe { Message::from_raw(part.assume_init()) });
-        if has_more == 0 {
-            return Ok(Some((
-                source_node_rid_ptr,
-                source_spot_rid_ptr,
-                request_seq,
-                parts,
-            )));
-        }
-        recv_flags = ffi::ZLINK_DONTWAIT;
-    }
-}
-
-fn recv_spot_subscribed_parts(
-    handle: *mut c_void,
-    topic_buf: &mut [i8; 256],
-    flags: ffi::zlink_recv_flags_t,
-) -> SpotSubscribedParts {
-    let mut routing_id = None;
-    let mut topic = smol_str::SmolStr::default();
-    let mut parts = Vec::new();
-    let mut recv_flags = flags;
-
-    loop {
-        let mut source_rid_ptr = ptr::null();
-        let mut topic_len = topic_buf.len();
-        let mut part = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-        unsafe {
-            ffi::zlink_msg_init(part.as_mut_ptr());
-        }
-        let mut has_more = 0;
-        let rc = unsafe {
-            ffi::zlink_spot_subscribe_part(
-                handle,
-                &mut source_rid_ptr,
-                topic_buf.as_mut_ptr(),
-                topic_buf.len(),
-                &mut topic_len,
-                part.as_mut_ptr(),
-                &mut has_more,
-                recv_flags,
-            )
-        };
-
-        if parts.is_empty() {
-            if rc == RecvResult::NoData as i32 {
-                close_unreceived_part(&mut part);
-                return Ok(None);
-            }
-            if rc != 0 {
-                close_unreceived_part(&mut part);
-                let errno = unsafe { ffi::zlink_errno() };
-                if errno == libc::EAGAIN {
-                    return Ok(None);
-                }
-                return Err(check_recv_rc(rc).unwrap_err());
-            }
-            routing_id = routing_id_from_ptr(source_rid_ptr);
-            topic = crate::socket::cstr_buf_to_smolstr(topic_buf, topic_len);
-        } else if rc != 0 {
-            close_unreceived_part(&mut part);
-            return Err(check_recv_rc(rc).unwrap_err());
-        }
-
-        parts.push(unsafe { Message::from_raw(part.assume_init()) });
-        if has_more == 0 {
-            return Ok(Some((routing_id, topic, parts)));
-        }
-        recv_flags = ffi::ZLINK_DONTWAIT;
     }
 }
 

@@ -43,6 +43,69 @@ inline int send_single_no_wait_result (send_result_t &result_,
 }
 
 template <typename NativeSend>
+inline int submit_single_message_part_restore (message_t &part_,
+                                               NativeSend send_)
+{
+    if (!part_.valid ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_msg_t native;
+    detail::move_to_native (part_, &native);
+    if (part_.valid ())
+        return -1;
+
+    const int rc = send_ (&native);
+    if (rc != 0) {
+        const int err = errno;
+        detail::restore_part_from_native (part_, native);
+        errno = err;
+    }
+    return rc;
+}
+
+template <typename NativeSend>
+inline int submit_single_message_part_no_wait_result (send_result_t &result_,
+                                                      message_t &part_,
+                                                      NativeSend send_)
+{
+    if (!part_.valid ()) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink_msg_t native;
+    detail::move_to_native (part_, &native);
+    if (part_.valid ())
+        return -1;
+
+    const int rc = send_ (&native);
+    if (rc == 0) {
+        result_ = send_result_t::sent;
+        return 0;
+    }
+
+    if (rc == ZLINK_SUBMIT_BACKPRESSURED || rc == ZLINK_SUBMIT_NOT_CONNECTED) {
+        result_ = zlink::detail::to_send_result (rc);
+        detail::restore_part_from_native (part_, native);
+        return 0;
+    }
+
+    const int err = errno;
+    if (detail::classify_nonblocking_send_errno (err, result_)) {
+        if (result_ != send_result_t::sent)
+            detail::restore_part_from_native (part_, native);
+        errno = err;
+        return 0;
+    }
+
+    detail::restore_part_from_native (part_, native);
+    errno = err;
+    return -1;
+}
+
+template <typename NativeSend>
 inline int send_parts_no_wait_result (send_result_t &result_,
                                       std::vector<message_t> &parts_,
                                       NativeSend send_)

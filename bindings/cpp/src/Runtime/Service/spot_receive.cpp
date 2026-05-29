@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <Runtime/Service/spot_impl.hpp>
+#include <Runtime/Native/native_send.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Native/subscription_reader.hpp>
 
@@ -163,25 +164,13 @@ spot_t::publish_impl (const char *topic_, message_t &part_, send_flags_t flags_)
         return -1;
     }
 
-    zlink_msg_t native;
-    zlink::detail::move_to_native (part_, &native);
-    if (part_.valid ())
-        return -1;
-
-    const int rc = zlink_spot_publish_part (
-      _impl->handle, topic_, &native,
-      static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
-      ZLINK_PART_FINAL);
-    if (rc != 0) {
-        const int err = errno;
-        part_.init ();
-        if (part_.valid ())
-            (void) zlink_msg_move (zlink::detail::native_handle (part_),
-                                   &native);
-        (void) zlink_msg_close (&native);
-        errno = err;
-    }
-    return rc;
+    return zlink::detail::submit_single_message_part_restore (
+      part_, [&] (zlink_msg_t *native_) {
+          return zlink_spot_publish_part (
+            _impl->handle, topic_, native_,
+            static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
+            ZLINK_PART_FINAL);
+      });
 }
 
 [[nodiscard]] int spot_t::send_channel_impl (const char *channel_name_,
@@ -230,46 +219,12 @@ spot_t::publish_impl (const char *topic_, message_t &part_, send_flags_t flags_)
         return -1;
     }
 
-    zlink_msg_t native;
-    zlink::detail::move_to_native (part_, &native);
-    if (part_.valid ())
-        return -1;
-
-    const int rc = zlink_spot_send_channel_part (
-      _impl->handle, channel_name_, &native, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
-    if (rc == 0) {
-        result_out_ = send_result_t::sent;
-        return 0;
-    }
-    if (rc == ZLINK_SUBMIT_BACKPRESSURED || rc == ZLINK_SUBMIT_NOT_CONNECTED) {
-        result_out_ = zlink::detail::to_send_result (rc);
-        part_.init ();
-        if (part_.valid ())
-            (void) zlink_msg_move (zlink::detail::native_handle (part_),
-                                   &native);
-        (void) zlink_msg_close (&native);
-        return 0;
-    }
-
-    const int err = errno;
-    if (detail::classify_nonblocking_send_errno (err, result_out_)) {
-        if (result_out_ != send_result_t::sent) {
-            part_.init ();
-            if (part_.valid ())
-                (void) zlink_msg_move (zlink::detail::native_handle (part_),
-                                       &native);
-            (void) zlink_msg_close (&native);
-        }
-        errno = err;
-        return 0;
-    }
-
-    part_.init ();
-    if (part_.valid ())
-        (void) zlink_msg_move (zlink::detail::native_handle (part_), &native);
-    (void) zlink_msg_close (&native);
-    errno = err;
-    return -1;
+    return zlink::detail::submit_single_message_part_no_wait_result (
+      result_out_, part_, [&] (zlink_msg_t *native_) {
+          return zlink_spot_send_channel_part (_impl->handle, channel_name_,
+                                               native_, ZLINK_DONTWAIT,
+                                               ZLINK_PART_FINAL);
+      });
 }
 
 [[nodiscard]] int spot_t::subscribe_impl (topic_message_t &message_out_,
@@ -440,45 +395,11 @@ spot_t::publish_no_wait_result_impl (send_result_t &result_out_,
         return -1;
     }
 
-    zlink_msg_t native;
-    zlink::detail::move_to_native (part_, &native);
-    if (part_.valid ())
-        return -1;
-
-    const int rc = zlink_spot_publish_part (_impl->handle, topic_, &native,
-                                            ZLINK_DONTWAIT, ZLINK_PART_FINAL);
-    if (rc == 0) {
-        result_out_ = send_result_t::sent;
-        return 0;
-    }
-    if (rc == ZLINK_SUBMIT_BACKPRESSURED || rc == ZLINK_SUBMIT_NOT_CONNECTED) {
-        result_out_ = zlink::detail::to_send_result (rc);
-        part_.init ();
-        if (part_.valid ())
-            (void) zlink_msg_move (zlink::detail::native_handle (part_),
-                                   &native);
-        (void) zlink_msg_close (&native);
-        return 0;
-    }
-
-    const int err = errno;
-    if (detail::classify_nonblocking_send_errno (err, result_out_)) {
-        if (result_out_ != send_result_t::sent) {
-            part_.init ();
-            if (part_.valid ())
-                (void) zlink_msg_move (zlink::detail::native_handle (part_),
-                                       &native);
-            (void) zlink_msg_close (&native);
-        }
-        return 0;
-    }
-
-    part_.init ();
-    if (part_.valid ())
-        (void) zlink_msg_move (zlink::detail::native_handle (part_), &native);
-    (void) zlink_msg_close (&native);
-    errno = err;
-    return -1;
+    return zlink::detail::submit_single_message_part_no_wait_result (
+      result_out_, part_, [&] (zlink_msg_t *native_) {
+          return zlink_spot_publish_part (_impl->handle, topic_, native_,
+                                          ZLINK_DONTWAIT, ZLINK_PART_FINAL);
+      });
 }
 
 } // namespace service

@@ -16,6 +16,7 @@ import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
+import systems.zlink.perf.PerfErrno;
 import systems.zlink.perf.PerfUtil;
 import java.time.Duration;
 import java.util.List;
@@ -192,7 +193,7 @@ final class PerfDealerRouter {
             throw ex;
         } catch (systems.zlink.contracts.errors.ZlinkException ex) {
             int errno = ex.getInternalErrno();
-            if (errno == 11 || errno == 4 || errno == 10035) {
+            if (PerfErrno.isRetryableSend(errno)) {
                 return false;
             }
             throw ex;
@@ -213,8 +214,8 @@ final class PerfDealerRouter {
             throw ex;
         } catch (systems.zlink.contracts.errors.ZlinkException ex) {
             int errno = ex.getInternalErrno();
-            if (errno == 11 || errno == 4 || errno == 10035
-                || errno == 110) {
+            if (PerfErrno.isRetryableSend(errno)
+                || errno == PerfErrno.ETIMEDOUT) {
                 return false;
             }
             throw ex;

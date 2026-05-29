@@ -13,9 +13,6 @@ import java.util.List;
 import java.util.Objects;
 
 public final class PerfSocketPollSet implements AutoCloseable {
-    private static final int ERRNO_EINTR = 4;
-    private static final int ERRNO_EAGAIN = 11;
-    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private static final int MASK_POLLIN = 1;
     private static final int MASK_POLLOUT = 2;
     private static final int MASK_POLLERR = 4;
@@ -92,9 +89,7 @@ public final class PerfSocketPollSet implements AutoCloseable {
                 timeoutMs == -1 ? WAIT_FOREVER : Duration.ofMillis(timeoutMs));
         } catch (ZlinkException ex) {
             int errno = ex.getInternalErrno();
-            if (errno == ERRNO_EINTR
-                || errno == ERRNO_EAGAIN
-                || errno == ERRNO_EWOULDBLOCK_WIN) {
+            if (PerfErrno.isRetryableSend(errno)) {
                 return 0;
             }
             throw ex;

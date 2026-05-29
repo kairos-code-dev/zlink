@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 final class NativeRouterReceiveSupport implements AutoCloseable {
+    private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_ROUTER_HANDLER =
@@ -321,7 +322,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                     flags.value());
                 if (rc == 0) break;
                 int errno = Native.errno();
-                if (errno == 4) continue;
+                if (errno == ERRNO_EINTR) continue;
                 RecvResult result = RecvResult.fromValue(rc);
                 if (nullOnNoData && (result == RecvResult.NO_DATA
                     || result == RecvResult.BUSY)) {
@@ -462,7 +463,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                     flags.value());
                 if (rc == 0) break;
                 int errno = Native.errno();
-                if (errno == 4) continue;
+                if (errno == ERRNO_EINTR) continue;
                 RecvResult result = RecvResult.fromValue(rc);
                 if (nullOnNoData && (result == RecvResult.NO_DATA
                     || result == RecvResult.BUSY)) {

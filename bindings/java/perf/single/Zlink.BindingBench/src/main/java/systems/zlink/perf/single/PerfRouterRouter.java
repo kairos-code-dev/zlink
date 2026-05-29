@@ -19,6 +19,7 @@ import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.perf.PerfSocketPollSet;
 import systems.zlink.perf.PerfStopToken;
+import systems.zlink.perf.PerfErrno;
 import systems.zlink.perf.PerfUtil;
 import java.util.Arrays;
 import java.nio.charset.StandardCharsets;
@@ -323,7 +324,7 @@ final class PerfRouterRouter {
             throw ex;
         } catch (systems.zlink.contracts.errors.ZlinkException ex) {
             int errno = ex.getInternalErrno();
-            if (errno == 11 || errno == 4 || errno == 10035) {
+            if (PerfErrno.isRetryableSend(errno)) {
                 return false;
             }
             throw ex;
@@ -345,8 +346,10 @@ final class PerfRouterRouter {
             throw ex;
         } catch (systems.zlink.contracts.errors.ZlinkException ex) {
             int errno = ex.getInternalErrno();
-            if (errno == 11 || errno == 4 || errno == 10035
-                || errno == 110 || errno == 113 || errno == 107) {
+            if (PerfErrno.isRetryableSend(errno)
+                || errno == PerfErrno.ETIMEDOUT
+                || errno == PerfErrno.EHOSTUNREACH
+                || errno == PerfErrno.ENOTCONN) {
                 return false;
             }
             throw ex;

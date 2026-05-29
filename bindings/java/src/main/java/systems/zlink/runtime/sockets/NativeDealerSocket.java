@@ -9,13 +9,12 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.service.spot.SendOperation;
-import systems.zlink.contracts.service.spot.SendSubmitOperation;
+import systems.zlink.runtime.messaging.MessageOperations;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 
@@ -29,7 +28,9 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
     }
 
     public SendOperation send() {
-        return new DealerSendBuilder();
+        return MessageOperations.send(
+            (part, flags) -> super.send(part, SendFlag.fromValue(flags.value())),
+            (parts, flags) -> super.send(parts, SendFlag.fromValue(flags.value())));
     }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
@@ -48,7 +49,7 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
     }
     public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
     public RequestOperation request() {
-        return SocketOperations.request(this::requestAsync, this::requestCallback);
+        return MessageOperations.request(this::requestAsync, this::requestCallback);
     }
 
     private CompletableFuture<List<Message>> requestAsync(List<Message> parts,
@@ -83,60 +84,6 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             } catch (Exception ignored) {
             }
-        }
-    }
-
-    private final class DealerSendBuilder implements SendOperation, SendSubmitOperation {
-        private Message singlePart;
-        private MessageParts parts;
-        private int partCount;
-        private SendFlags flags = SendFlags.NONE;
-        private boolean submitted;
-
-        @Override
-        public SendSubmitOperation message(Message part) {
-            ensureNotSubmitted();
-            Objects.requireNonNull(part, "part");
-            if (partCount == 0) {
-                singlePart = part;
-            } else {
-                if (parts == null) {
-                    parts = new MessageParts();
-                    parts.add(singlePart);
-                    singlePart = null;
-                }
-                parts.add(part);
-            }
-            partCount++;
-            return this;
-        }
-
-        @Override
-        public SendSubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
-            return this;
-        }
-
-        @Override
-        public boolean submit() {
-            markSubmitted();
-            SendFlag nativeFlags = SendFlag.fromValue(flags.value());
-            if (partCount == 1)
-                return NativeDealerSocket.super.send(singlePart, nativeFlags);
-            return NativeDealerSocket.super.send(parts.asList(), nativeFlags);
-        }
-
-        private void markSubmitted() {
-            ensureNotSubmitted();
-            if (partCount == 0)
-                throw new IllegalArgumentException("at least one message required");
-            submitted = true;
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
         }
     }
 

@@ -589,7 +589,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                 }
 
                 int errno = Native.errno();
-                if (errno == 4)
+                if (errno == ERRNO_EINTR)
                     continue;
                 closeArena();
                 throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_recv_part");

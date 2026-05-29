@@ -12,6 +12,7 @@ import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.internal.ContractAccess;
+import systems.zlink.runtime.messaging.MessageOperations;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +33,7 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
     }
 
     public SendOperation send(RoutingId rid) {
-        return SocketOperations.send(
+        return MessageOperations.send(
             (part, flags) -> sendInternal(rid, part, flags),
             (parts, flags) -> sendInternal(rid, parts, flags));
     }
@@ -78,7 +79,7 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
     public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
 
     public RequestOperation request(RoutingId rid) {
-        return SocketOperations.request(
+        return MessageOperations.request(
             (parts, flags, timeout) -> requestAsync(rid, parts, flags, timeout),
             (parts, callback, flags, timeout) ->
                 requestCallback(rid, parts, callback, flags, timeout));
@@ -102,13 +103,13 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
     }
 
     public ReplyOperation reply(RoutingId rid, long requestSequence) {
-        return SocketOperations.reply((parts, flags) ->
+        return MessageOperations.reply((parts, flags) ->
             InternalAccess.routerReply(this, rid, requestSequence, parts,
                 flags));
     }
 
     public SendOperation sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
-        return SocketOperations.send((parts, flags) ->
+        return MessageOperations.send((parts, flags) ->
             sendToSpotInternal(destNodeRid, destSpotRid, parts, flags));
     }
 
@@ -120,7 +121,7 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
 
     public RequestOperation requestToSpot(RoutingId destNodeRid,
                                    RoutingId destSpotRid) {
-        return SocketOperations.request(
+        return MessageOperations.request(
             (parts, flags, timeout) ->
                 requestToSpotAsync(destNodeRid, destSpotRid, parts, flags,
                   timeout),
@@ -151,7 +152,7 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
 
     public ReplyOperation replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
                                long requestSeq) {
-        return SocketOperations.reply((parts, flags) ->
+        return MessageOperations.reply((parts, flags) ->
             InternalAccess.routerReplyToSpot(this, destNodeRid, destSpotRid,
               requestSeq, parts, flags));
     }

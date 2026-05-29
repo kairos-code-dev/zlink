@@ -14,8 +14,8 @@ import systems.zlink.contracts.service.spot.ReplyHandler;
 import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOperation;
-import systems.zlink.contracts.service.spot.SendSubmitOperation;
 import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.runtime.messaging.MessageOperations;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.sockets.StreamUInt32FramedNativeHandler;
 import systems.zlink.runtime.sockets.StreamUInt32RawNativeHandler;
@@ -59,7 +59,9 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
     }
     public SendOperation send(RoutingId rid) {
         Objects.requireNonNull(rid, "rid");
-        return new RoutedSendBuilder(rid);
+        return MessageOperations.send((parts, flags) ->
+            NativeStreamSocket.super.send(rid, parts,
+                SendFlag.fromValue(flags.value())));
     }
     /** Canonical caller-provided storage recv. See doc/spec/bindings/README.md. */
     public boolean recv(Received result, RecvFlags flags) {
@@ -113,7 +115,8 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
     public SendOperation sendBoundActor(RoutingId sessionRid, String actorId) {
         Objects.requireNonNull(sessionRid, "sessionRid");
         Objects.requireNonNull(actorId, "actorId");
-        return new BoundActorSendBuilder(sessionRid, actorId);
+        return MessageOperations.send((parts, flags) ->
+            sendBoundActorReceiveds(sessionRid, actorId, parts, flags));
     }
 
     public List<ActorRef> boundActors(RoutingId sessionRid) {
@@ -167,86 +170,6 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
                                         List<Message> parts, SendFlags flags) {
         return InternalAccess.streamSendBoundActorReceiveds(this, sessionRid,
             actorId, parts, flags);
-    }
-
-    private final class RoutedSendBuilder implements SendOperation, SendSubmitOperation {
-        private final RoutingId rid;
-        private final MessageParts parts = new MessageParts();
-        private SendFlags flags = SendFlags.NONE;
-        private boolean submitted;
-
-        RoutedSendBuilder(RoutingId rid) {
-            this.rid = rid;
-        }
-
-        @Override
-        public SendSubmitOperation message(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
-            return this;
-        }
-
-        @Override
-        public SendSubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
-            return this;
-        }
-
-        @Override
-        public boolean submit() {
-            ensureNotSubmitted();
-            submitted = true;
-            if (parts.isEmpty())
-                throw new IllegalArgumentException("at least one message required");
-            return NativeStreamSocket.super.send(rid, parts.asList(),
-                SendFlag.fromValue(flags.value()));
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
-    }
-
-    private final class BoundActorSendBuilder implements SendOperation, SendSubmitOperation {
-        private final RoutingId sessionRid;
-        private final String actorId;
-        private final MessageParts parts = new MessageParts();
-        private SendFlags flags = SendFlags.NONE;
-        private boolean submitted;
-
-        BoundActorSendBuilder(RoutingId sessionRid, String actorId) {
-            this.sessionRid = sessionRid;
-            this.actorId = actorId;
-        }
-
-        @Override
-        public SendSubmitOperation message(Message part) {
-            ensureNotSubmitted();
-            parts.add(Objects.requireNonNull(part, "part"));
-            return this;
-        }
-
-        @Override
-        public SendSubmitOperation flags(SendFlags value) {
-            ensureNotSubmitted();
-            flags = Objects.requireNonNull(value, "flags");
-            return this;
-        }
-
-        @Override
-        public boolean submit() {
-            ensureNotSubmitted();
-            submitted = true;
-            return sendBoundActorReceiveds(sessionRid, actorId, parts.asList(),
-                flags);
-        }
-
-        private void ensureNotSubmitted() {
-            if (submitted)
-                throw new IllegalStateException("operation already submitted");
-        }
     }
 
     private final class ActorBindBuilder implements ActorBindOperation {

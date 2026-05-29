@@ -8,6 +8,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.runtime.messaging.MessageOperations;
 import java.util.List;
 final class NativePairSocket extends NativeSocketBase implements PairSocket {
     NativePairSocket(Context ctx) {
@@ -15,7 +16,7 @@ final class NativePairSocket extends NativeSocketBase implements PairSocket {
     }
 
     public SendOperation send() {
-        return SocketOperations.send((parts, flags) ->
+        return MessageOperations.send((parts, flags) ->
             super.send(parts, SendFlag.fromValue(flags.value())));
     }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }

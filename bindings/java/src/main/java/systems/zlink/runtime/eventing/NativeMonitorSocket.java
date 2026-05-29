@@ -48,9 +48,6 @@ public final class NativeMonitorSocket implements SocketMonitor {
             NativeMonitorSocket::new);
     }
 
-    public static void ensureRegistered() {
-    }
-
     NativeMonitorSocket(MemorySegment handle, boolean own) {
         this.handle = handle;
         this.own = own;

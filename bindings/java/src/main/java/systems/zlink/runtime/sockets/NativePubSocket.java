@@ -6,6 +6,7 @@ import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.runtime.messaging.MessageOperations;
 
 final class NativePubSocket extends NativeSocketBase implements PubSocket {
     private final PubSocketOptions options = new PubSocketOptions(this);
@@ -15,7 +16,7 @@ final class NativePubSocket extends NativeSocketBase implements PubSocket {
     }
 
     public SendOperation publish(String topicId) {
-        return SocketOperations.send(
+        return MessageOperations.send(
             (part, flags) -> super.publish(topicId, part,
                 SendFlag.fromValue(flags.value())),
             (parts, flags) ->

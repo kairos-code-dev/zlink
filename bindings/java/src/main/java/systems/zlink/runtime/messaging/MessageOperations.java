@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.runtime.sockets;
-
-import systems.zlink.contracts.sockets.*;
+package systems.zlink.runtime.messaging;
 
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.RequestCallback;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.ReplyOperation;
 import systems.zlink.contracts.service.spot.ReplySubmitOperation;
 import systems.zlink.contracts.service.spot.RequestCallbackSubmitOperation;
@@ -12,15 +12,16 @@ import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.service.spot.RequestSubmitOperation;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.service.spot.SendSubmitOperation;
+import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-final class SocketOperations {
+public final class MessageOperations {
     private static final long DEFAULT_TIMEOUT_MS = 5_000L;
 
-    private SocketOperations() {
+    private MessageOperations() {
     }
 
     public static SendOperation send(SendInvoker invoker) {
@@ -28,14 +29,14 @@ final class SocketOperations {
     }
 
     public static SendOperation send(SingleSendInvoker singleInvoker,
-                              SendInvoker invoker) {
+                                     SendInvoker invoker) {
         return new SendBuilder(
             Objects.requireNonNull(singleInvoker, "singleInvoker"),
             Objects.requireNonNull(invoker, "invoker"));
     }
 
     public static RequestOperation request(RequestAsyncInvoker asyncInvoker,
-                                    RequestCallbackInvoker callbackInvoker) {
+                                           RequestCallbackInvoker callbackInvoker) {
         return new RequestBuilder(asyncInvoker, callbackInvoker);
     }
 
@@ -71,11 +72,12 @@ final class SocketOperations {
         void submit(List<Message> parts, SendFlags flags);
     }
 
-    private static final class SendBuilder implements SendOperation, SendSubmitOperation {
+    private static final class SendBuilder
+      implements SendOperation, SendSubmitOperation {
         private final SingleSendInvoker singleInvoker;
         private final SendInvoker invoker;
         private Message singlePart;
-        private MessageParts parts;
+        private MessagePartsBuffer parts;
         private int partCount;
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
@@ -94,7 +96,7 @@ final class SocketOperations {
                 singlePart = part;
             } else {
                 if (parts == null) {
-                    parts = new MessageParts();
+                    parts = new MessagePartsBuffer();
                     parts.add(singlePart);
                     singlePart = null;
                 }
@@ -115,9 +117,8 @@ final class SocketOperations {
         public boolean submit() {
             markSubmitted();
             if (partCount == 1) {
-                if (singleInvoker != null) {
+                if (singleInvoker != null)
                     return singleInvoker.submit(singlePart, flags);
-                }
                 return invoker.submit(List.of(singlePart), flags);
             }
             return invoker.submit(parts.asList(), flags);
@@ -140,18 +141,17 @@ final class SocketOperations {
       implements RequestOperation, RequestSubmitOperation {
         private final RequestAsyncInvoker asyncInvoker;
         private final RequestCallbackInvoker callbackInvoker;
-        private final MessageParts parts = new MessageParts();
-        private Duration timeout =
-          Duration.ofMillis(DEFAULT_TIMEOUT_MS);
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
+        private Duration timeout = Duration.ofMillis(DEFAULT_TIMEOUT_MS);
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
         private RequestBuilder(RequestAsyncInvoker asyncInvoker,
                                RequestCallbackInvoker callbackInvoker) {
             this.asyncInvoker = Objects.requireNonNull(asyncInvoker,
-              "asyncInvoker");
+                "asyncInvoker");
             this.callbackInvoker = Objects.requireNonNull(callbackInvoker,
-              "callbackInvoker");
+                "callbackInvoker");
         }
 
         @Override
@@ -171,7 +171,7 @@ final class SocketOperations {
         public RequestCallbackSubmitOperation flags(SendFlags value) {
             ensureNotSubmitted();
             return new CallbackRequestBuilder(this,
-              Objects.requireNonNull(value, "flags"));
+                Objects.requireNonNull(value, "flags"));
         }
 
         @Override
@@ -184,7 +184,7 @@ final class SocketOperations {
         public boolean submit(RequestCallback callback) {
             markSubmitted();
             return callbackInvoker.submit(parts.asList(),
-              Objects.requireNonNull(callback, "callback"), flags, timeout);
+                Objects.requireNonNull(callback, "callback"), flags, timeout);
         }
 
         private void addMessage(Message part) {
@@ -210,8 +210,7 @@ final class SocketOperations {
         private final RequestBuilder source;
         private SendFlags flags;
 
-        private CallbackRequestBuilder(RequestBuilder source,
-                                       SendFlags flags) {
+        private CallbackRequestBuilder(RequestBuilder source, SendFlags flags) {
             this.source = source;
             this.flags = flags;
         }
@@ -239,14 +238,15 @@ final class SocketOperations {
         public boolean submit(RequestCallback callback) {
             source.markSubmitted();
             return source.callbackInvoker.submit(source.parts.asList(),
-              Objects.requireNonNull(callback, "callback"), flags,
-              source.timeout);
+                Objects.requireNonNull(callback, "callback"), flags,
+                source.timeout);
         }
     }
 
-    private static final class ReplyBuilder implements ReplyOperation, ReplySubmitOperation {
+    private static final class ReplyBuilder
+      implements ReplyOperation, ReplySubmitOperation {
         private final ReplyInvoker invoker;
-        private final MessageParts parts = new MessageParts();
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 

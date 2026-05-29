@@ -273,7 +273,6 @@ final class SocketCore {
     }
 
     SocketMonitor monitorOpen(int events) {
-        NativeMonitorSocket.ensureRegistered();
         MemorySegment sock = Native.monitorOpen(socket.handle(), events);
         if (sock == null || sock.address() == 0)
             throw ZlinkException.fromLastError("zlink_socket_monitor_open");

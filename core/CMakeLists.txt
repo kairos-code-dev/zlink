@@ -1058,12 +1058,14 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/node/spot_node_handles.cpp
     src/runtime/services/spot/node/spot_node_lifecycle.cpp
     src/runtime/services/spot/node/spot_node_peer.cpp
+    src/runtime/services/spot/node/spot_node_pubsub_fanout.cpp
     src/runtime/services/spot/node/spot_node_router_channel.cpp
     src/runtime/services/spot/node/spot_node_shutdown.cpp
     src/runtime/services/spot/node/spot_node_service_attachment.cpp
     src/runtime/services/spot/node/spot_node_service_attachment_cache.cpp
     src/runtime/services/spot/node/spot_node_service_attachment_recv.cpp
     src/runtime/services/spot/node/spot_node_summary.cpp
+    src/runtime/services/spot/node/spot_node_tls.cpp
     src/runtime/services/spot/pubsub/spot_pub.cpp
     src/runtime/services/spot/dispatch/spot_dispatch_context.cpp
     src/runtime/services/spot/dispatch/spot_dispatch_worker_pool.cpp

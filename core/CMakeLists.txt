@@ -1015,6 +1015,7 @@ set(runtime-service-registry-sources
     src/runtime/services/registry/registry_control.cpp
     src/runtime/services/registry/registry_query.cpp
     src/runtime/services/registry/registry_projection.cpp
+    src/runtime/services/registry/registry_route_rpc.cpp
     src/runtime/services/registry/registry_runtime.cpp
     src/runtime/services/registry/registry_socket_owner.cpp
     src/runtime/services/registry/registry_state.cpp)

@@ -3,8 +3,6 @@
 
 #include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Eventing/monitor_access.hpp>
-#include <Runtime/Eventing/poller_item_registry.hpp>
-#include <Runtime/Eventing/poller_socket_cache.hpp>
 #include <Runtime/Eventing/timer_access.hpp>
 #include <Runtime/Service/spot_access.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
@@ -23,6 +21,25 @@ namespace zlink
 namespace
 {
 
+struct poller_item_t
+{
+    void *socket_handle = nullptr;
+    int fd = 0;
+    void *timer_handle = nullptr;
+    timer_t *timer = nullptr;
+    poll_source_kind_t source_kind = poll_source_kind_t::socket;
+    poll_event_flag_t events = poll_event_flag_t::none;
+    std::uintptr_t slot = 0;
+    bool native_poller_only = false;
+};
+
+bool is_socket_poll_item_active (const poller_item_t &item_,
+                                 short events_) noexcept
+{
+    return events_ != 0 && !item_.native_poller_only
+           && item_.source_kind == poll_source_kind_t::socket;
+}
+
 poll_source_kind_t
 to_source_kind (zlink_poller_source_kind_t source_kind_) noexcept
 {
@@ -36,6 +53,129 @@ to_source_kind (zlink_poller_source_kind_t source_kind_) noexcept
             return poll_source_kind_t::socket;
     }
 }
+
+struct socket_poll_cache_t
+{
+    std::vector<zlink_pollitem_t> poll_items;
+    std::vector<size_t> item_indexes;
+    std::vector<size_t> item_positions;
+    bool dirty = true;
+    static constexpr size_t npos = static_cast<size_t> (-1);
+
+    void clear ()
+    {
+        poll_items.clear ();
+        item_indexes.clear ();
+        item_positions.clear ();
+        dirty = true;
+    }
+
+    void mark_dirty () noexcept { dirty = true; }
+
+    void rebuild_if_needed (
+      const std::vector<std::unique_ptr<poller_item_t>> &items_)
+    {
+        if (!dirty)
+            return;
+
+        poll_items.clear ();
+        item_indexes.clear ();
+        item_positions.assign (items_.size (), npos);
+        poll_items.reserve (items_.size ());
+        item_indexes.reserve (items_.size ());
+
+        for (size_t i = 0; i < items_.size (); ++i) {
+            const poller_item_t &item = *items_[i];
+            if (item.source_kind != poll_source_kind_t::socket
+                || item.native_poller_only)
+                continue;
+            const short events = static_cast<short> (item.events);
+            if (events == 0)
+                continue;
+
+            zlink_pollitem_t poll_item;
+            poll_item.socket = item.socket_handle;
+            poll_item.fd = 0;
+            poll_item.events = events;
+            poll_item.revents = 0;
+            item_positions[i] = poll_items.size ();
+            poll_items.push_back (poll_item);
+            item_indexes.push_back (i);
+        }
+
+        dirty = false;
+    }
+
+    void reset_revents () noexcept
+    {
+        for (size_t i = 0; i < poll_items.size (); ++i)
+            poll_items[i].revents = 0;
+    }
+
+    void update_if_clean (
+      std::vector<std::unique_ptr<poller_item_t>> &items_,
+      size_t index_,
+      poll_event_flag_t events_)
+    {
+        poller_item_t &item = *items_[index_];
+        if (dirty) {
+            item.events = events_;
+            return;
+        }
+
+        if (item_positions.size () != items_.size ()) {
+            dirty = true;
+            item.events = events_;
+            return;
+        }
+
+        const short old_events = static_cast<short> (item.events);
+        const short new_events = static_cast<short> (events_);
+        const bool old_active = is_socket_poll_item_active (item, old_events);
+        const bool new_active = is_socket_poll_item_active (item, new_events);
+
+        item.events = events_;
+
+        const size_t position = item_positions[index_];
+        if (old_active && position >= poll_items.size ()) {
+            dirty = true;
+            return;
+        }
+
+        if (old_active && new_active) {
+            poll_items[position].events = new_events;
+            return;
+        }
+
+        if (old_active && !new_active) {
+            poll_items.erase (poll_items.begin () + position);
+            item_indexes.erase (item_indexes.begin () + position);
+            item_positions[index_] = npos;
+            for (size_t i = position; i < item_indexes.size (); ++i)
+                item_positions[item_indexes[i]] = i;
+            return;
+        }
+
+        if (!old_active && new_active) {
+            size_t insert_at = item_indexes.size ();
+            for (size_t i = 0; i < item_indexes.size (); ++i) {
+                if (item_indexes[i] > index_) {
+                    insert_at = i;
+                    break;
+                }
+            }
+            zlink_pollitem_t poll_item;
+            poll_item.socket = item.socket_handle;
+            poll_item.fd = 0;
+            poll_item.events = new_events;
+            poll_item.revents = 0;
+            poll_items.insert (poll_items.begin () + insert_at, poll_item);
+            item_indexes.insert (item_indexes.begin () + insert_at, index_);
+            for (size_t i = insert_at; i < item_indexes.size (); ++i)
+                item_positions[item_indexes[i]] = i;
+        }
+    }
+};
 
 } // namespace
 
@@ -106,19 +246,54 @@ struct poller_t::impl
 
     int find_socket (const void *socket_handle_) const noexcept
     {
-        return find_socket_item (items, socket_item_indexes, socket_handle_);
+        const auto cached = socket_item_indexes.find (socket_handle_);
+        if (cached != socket_item_indexes.end ()) {
+            const size_t index = cached->second;
+            if (index < items.size ()
+                && items[index]->source_kind == poll_source_kind_t::socket
+                && items[index]->socket_handle == socket_handle_) {
+                return static_cast<int> (index);
+            }
+        }
+
+        for (size_t i = 0; i < items.size (); ++i) {
+            if (items[i]->source_kind == poll_source_kind_t::socket
+                && items[i]->socket_handle == socket_handle_) {
+                return static_cast<int> (i);
+            }
+        }
+        return -1;
     }
 
-    int find_fd (int fd_) const noexcept { return find_fd_item (items, fd_); }
+    int find_fd (int fd_) const noexcept
+    {
+        for (size_t i = 0; i < items.size (); ++i) {
+            if (items[i]->source_kind == poll_source_kind_t::fd
+                && items[i]->fd == fd_)
+                return static_cast<int> (i);
+        }
+        return -1;
+    }
 
     int find_timer (const void *timer_handle_) const noexcept
     {
-        return find_timer_item (items, timer_handle_);
+        for (size_t i = 0; i < items.size (); ++i) {
+            if (items[i]->source_kind == poll_source_kind_t::timer
+                && items[i]->timer_handle == timer_handle_)
+                return static_cast<int> (i);
+        }
+        return -1;
     }
 
     void rebuild_socket_item_indexes ()
     {
-        zlink::rebuild_socket_item_indexes (items, socket_item_indexes);
+        socket_item_indexes.clear ();
+        socket_item_indexes.reserve (items.size ());
+        for (size_t i = 0; i < items.size (); ++i) {
+            const poller_item_t &item = *items[i];
+            if (item.source_kind == poll_source_kind_t::socket)
+                socket_item_indexes[item.socket_handle] = i;
+        }
     }
 
     void erase_item_at (int index_, bool non_socket_item_)
@@ -391,10 +566,10 @@ struct poller_t::impl
         socket_poll_cache.reset_revents ();
 
         zlink_config_result_t error = static_cast<zlink_config_result_t> (0);
-        const int rc =
-          zlink_poll (&socket_poll_cache.poll_items[0],
-                      static_cast<int> (socket_poll_cache.poll_items.size ()),
-                      timeout_, &error);
+        const int rc = zlink_poll (
+          &socket_poll_cache.poll_items[0],
+          static_cast<int> (socket_poll_cache.poll_items.size ()), timeout_,
+          &error);
         if (rc <= 0) {
             if (rc == 0)
                 return 0;

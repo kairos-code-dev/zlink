@@ -151,14 +151,9 @@ add_library(zlink_cpp STATIC
   src/Runtime/Eventing/poller.cpp
   src/Runtime/Eventing/monitor.cpp
   src/Runtime/Eventing/timers.cpp
-  src/Runtime/Messaging/async_wait_scheduler.cpp
   src/Runtime/Messaging/message.cpp
   src/Runtime/Messaging/received.cpp
-  src/Runtime/Options/dealer_socket_options.cpp
-  src/Runtime/Options/pubsub_socket_options.cpp
-  src/Runtime/Options/router_socket_options.cpp
   src/Runtime/Options/socket_options.cpp
-  src/Runtime/Options/stream_socket_options.cpp
   src/Runtime/Sockets/socket.cpp
   src/Runtime/Sockets/dealer.cpp
   src/Runtime/Sockets/pair.cpp
@@ -171,9 +166,7 @@ add_library(zlink_cpp STATIC
   src/Runtime/Service/discovery.cpp
   src/Runtime/Service/query.cpp
   src/Runtime/Service/registry.cpp
-  src/Runtime/Service/reply_operations.cpp
   src/Runtime/Service/request_reply.cpp
-  src/Runtime/Service/send_operations.cpp
   src/Runtime/Service/spot.cpp
   src/Runtime/Service/spot_receive.cpp
   src/Runtime/Service/spot_send.cpp

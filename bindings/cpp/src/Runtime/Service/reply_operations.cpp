@@ -115,10 +115,10 @@ void reply_submit_operation_t::submit () &&
 
     if (state.kind == detail::spot_operation_kind_t::received_reply) {
         if (!state.received
-            || !zlink::detail::received_access_t::has_reply_fn (
+            || !zlink::detail::received_access_t::has_reply_context (
               *state.received))
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        zlink::detail::received_access_t::invoke_reply_fn (
+        zlink::detail::received_access_t::submit_reply (
           *state.received, state.parts, state.flags);
         return;
     }

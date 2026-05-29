@@ -106,7 +106,7 @@ bool send_submit_operation_t::submit () &&
             return detail::submit_raw_send_state (state);
         case detail::spot_operation_kind_t::received_send: {
             if (!state.received
-                || !zlink::detail::received_access_t::has_send_fn (
+                || !zlink::detail::received_access_t::has_send_context (
                   *state.received))
                 throw submit_error_t (submit_result_t::invalid_argument,
                                       EINVAL);
@@ -133,7 +133,7 @@ bool send_submit_operation_t::submit () &&
                 }
             }
             std::vector<message_t> parts = detail::take_send_parts (state);
-            const bool sent = zlink::detail::received_access_t::invoke_send_fn (
+            const bool sent = zlink::detail::received_access_t::submit_send (
               *state.received, parts, state.flags);
             if (!sent)
                 detail::restore_single_send_part_to_source (state, parts);

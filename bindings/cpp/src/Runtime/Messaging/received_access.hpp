@@ -4,6 +4,7 @@
 
 #include <Runtime/Core/routing_id_access.hpp>
 #include <Runtime/Native/message_access.hpp>
+#include <Runtime/Native/native_send.hpp>
 
 #include <zlink/Contracts/Messaging/received.hpp>
 
@@ -14,53 +15,22 @@ namespace detail
 
 struct received_access_t
 {
-    using reply_fn_t =
-      std::function<void (std::vector<message_t> &, send_flags_t)>;
-    using send_fn_t =
-      std::function<bool (std::vector<message_t> &, send_flags_t)>;
-
     static received_t make (std::optional<routing_id_t> routing_id_,
                             std::optional<routing_id_t> spot_rid_,
                             std::optional<uint64_t> request_seq_,
-                            std::vector<message_t> parts_,
-                            reply_fn_t reply_fn_ = reply_fn_t (),
-                            send_fn_t send_fn_ = send_fn_t ())
+                            std::vector<message_t> parts_)
     {
-        received_t received (std::move (routing_id_), std::move (spot_rid_),
-                             std::move (request_seq_), std::move (parts_));
-        set_reply_fn (received, std::move (reply_fn_));
-        set_send_fn (received, std::move (send_fn_));
-        return received;
+        return received_t (std::move (routing_id_), std::move (spot_rid_),
+                           std::move (request_seq_), std::move (parts_));
     }
 
     static received_t make (std::optional<routing_id_t> routing_id_,
                             std::optional<routing_id_t> spot_rid_,
                             std::optional<uint64_t> request_seq_,
-                            message_t part_,
-                            reply_fn_t reply_fn_ = reply_fn_t (),
-                            send_fn_t send_fn_ = send_fn_t ())
+                            message_t part_)
     {
-        received_t received (std::move (routing_id_), std::move (spot_rid_),
-                             std::move (request_seq_), std::move (part_));
-        set_reply_fn (received, std::move (reply_fn_));
-        set_send_fn (received, std::move (send_fn_));
-        return received;
-    }
-
-    static void set_reply_fn (received_t &received_, reply_fn_t reply_fn_)
-    {
-        if (!reply_fn_)
-            return;
-        received_.ensure_runtime_state ();
-        received_._runtime->_reply_fn = std::move (reply_fn_);
-    }
-
-    static void set_send_fn (received_t &received_, send_fn_t send_fn_)
-    {
-        if (!send_fn_)
-            return;
-        received_.ensure_runtime_state ();
-        received_._runtime->_send_fn = std::move (send_fn_);
+        return received_t (std::move (routing_id_), std::move (spot_rid_),
+                           std::move (request_seq_), std::move (part_));
     }
 
     static void set_socket_rid_send_context (received_t &received_,
@@ -77,62 +47,70 @@ struct received_access_t
                           received_t::send_context_kind_t::router_spot);
     }
 
-    static bool has_reply_fn (const received_t &received_) noexcept
+    static void set_spot_spot_send_context (received_t &received_,
+                                            void *handle_)
     {
-        return received_._runtime
-               && static_cast<bool> (received_._runtime->_reply_fn);
+        set_send_context (received_, handle_,
+                          received_t::send_context_kind_t::spot_spot);
     }
 
-    static bool has_send_fn (const received_t &received_) noexcept
+    static bool has_send_context (const received_t &received_) noexcept
     {
-        return received_._runtime
-               && static_cast<bool> (received_._runtime->_send_fn);
+        return received_._send_context_handle != 0
+               && received_._send_context_kind
+                    != received_t::send_context_kind_t::none
+               && received_._routing_id.has_value ();
     }
 
-    static void invoke_reply_fn (received_t &received_,
-                                 std::vector<message_t> &parts_,
-                                 send_flags_t flags_)
+    static bool has_reply_context (const received_t &received_) noexcept
     {
-        received_._runtime->_reply_fn (parts_, flags_);
+        return has_send_context (received_)
+               && received_._request_seq.has_value ();
     }
 
-    static bool invoke_send_fn (received_t &received_,
-                                std::vector<message_t> &parts_,
-                                send_flags_t flags_)
-    {
-        return received_._runtime->_send_fn (parts_, flags_);
-    }
-
+    // Single-part send fast path: one native call, no intermediate vector.
     static bool submit_direct_send (received_t &received_,
                                     message_t &part_,
                                     send_flags_t flags_,
                                     submit_result_t &result_out_,
                                     int &errno_out_)
     {
-        if (!received_._runtime || !received_._runtime->_send_context_handle
-            || received_._runtime->_send_context_kind
-                 == received_t::send_context_kind_t::none
-            || !received_._routing_id.has_value ()) {
+        if (!has_send_context (received_))
             return false;
-        }
 
         void *handle =
-          reinterpret_cast<void *> (received_._runtime->_send_context_handle);
+          reinterpret_cast<void *> (received_._send_context_handle);
+        const zlink_send_flags_t native_flags =
+          static_cast<zlink_send_flags_t> (static_cast<int> (flags_));
         zlink_submit_result_t rc = ZLINK_SUBMIT_INVALID_ARGUMENT;
-        if (received_._runtime->_send_context_kind
-            == received_t::send_context_kind_t::socket_rid) {
-            rc = zlink_send_part_rid (
-              handle, zlink::detail::routing_id_native (*received_._routing_id),
-              zlink::detail::native_handle (part_),
-              static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
-              ZLINK_PART_FINAL);
-        } else if (received_._spot_rid.has_value ()) {
-            rc = zlink_router_send_spot_part (
-              handle, zlink::detail::routing_id_native (*received_._routing_id),
-              zlink::detail::routing_id_native (*received_._spot_rid),
-              zlink::detail::native_handle (part_),
-              static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
-              ZLINK_PART_FINAL);
+        switch (received_._send_context_kind) {
+            case received_t::send_context_kind_t::socket_rid:
+                rc = zlink_send_part_rid (
+                  handle,
+                  zlink::detail::routing_id_native (*received_._routing_id),
+                  zlink::detail::native_handle (part_), native_flags,
+                  ZLINK_PART_FINAL);
+                break;
+            case received_t::send_context_kind_t::router_spot:
+                if (received_._spot_rid.has_value ())
+                    rc = zlink_router_send_spot_part (
+                      handle,
+                      zlink::detail::routing_id_native (*received_._routing_id),
+                      zlink::detail::routing_id_native (*received_._spot_rid),
+                      zlink::detail::native_handle (part_), native_flags,
+                      ZLINK_PART_FINAL);
+                break;
+            case received_t::send_context_kind_t::spot_spot:
+                if (received_._spot_rid.has_value ())
+                    rc = zlink_spot_send_spot_part (
+                      handle,
+                      zlink::detail::routing_id_native (*received_._routing_id),
+                      zlink::detail::routing_id_native (*received_._spot_rid),
+                      zlink::detail::native_handle (part_), native_flags,
+                      ZLINK_PART_FINAL);
+                break;
+            default:
+                break;
         }
 
         result_out_ = static_cast<submit_result_t> (rc);
@@ -142,15 +120,106 @@ struct received_access_t
         return true;
     }
 
+    // Multipart send: reconstructs the native submit from the stored context.
+    static bool submit_send (received_t &received_,
+                             std::vector<message_t> &parts_,
+                             send_flags_t flags_)
+    {
+        void *handle =
+          reinterpret_cast<void *> (received_._send_context_handle);
+        const zlink_send_flags_t native_flags =
+          static_cast<zlink_send_flags_t> (static_cast<int> (flags_));
+        if (received_._send_context_kind
+              == received_t::send_context_kind_t::router_spot
+            && received_._spot_rid.has_value ()) {
+            return zlink::detail::submit_received_send_parts (
+              parts_, flags_,
+              [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
+                  return zlink_router_send_spot_part (
+                    handle,
+                    zlink::detail::routing_id_native (*received_._routing_id),
+                    zlink::detail::routing_id_native (*received_._spot_rid),
+                    part_out_, native_flags, part_flag_);
+              });
+        }
+        if (received_._send_context_kind
+              == received_t::send_context_kind_t::spot_spot
+            && received_._spot_rid.has_value ()) {
+            return zlink::detail::submit_received_send_parts (
+              parts_, flags_,
+              [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
+                  return zlink_spot_send_spot_part (
+                    handle,
+                    zlink::detail::routing_id_native (*received_._routing_id),
+                    zlink::detail::routing_id_native (*received_._spot_rid),
+                    part_out_, native_flags, part_flag_);
+              });
+        }
+        return zlink::detail::submit_received_send_parts (
+          parts_, flags_,
+          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
+              return zlink_send_part_rid (
+                handle,
+                zlink::detail::routing_id_native (*received_._routing_id),
+                part_out_, native_flags, part_flag_);
+          });
+    }
+
+    // Reply: reconstructs the native reply submit from the stored context and
+    // request sequence.
+    static void submit_reply (received_t &received_,
+                              std::vector<message_t> &parts_,
+                              send_flags_t flags_)
+    {
+        void *handle =
+          reinterpret_cast<void *> (received_._send_context_handle);
+        const uint64_t request_seq = *received_._request_seq;
+        if (received_._send_context_kind
+              == received_t::send_context_kind_t::router_spot
+            && received_._spot_rid.has_value ()) {
+            zlink::detail::submit_received_reply_parts (
+              parts_, flags_,
+              [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
+                  return zlink_router_reply_spot_part (
+                    handle,
+                    zlink::detail::routing_id_native (*received_._routing_id),
+                    zlink::detail::routing_id_native (*received_._spot_rid),
+                    request_seq, part_out_, part_flag_);
+              });
+            return;
+        }
+        if (received_._send_context_kind
+              == received_t::send_context_kind_t::spot_spot
+            && received_._spot_rid.has_value ()) {
+            zlink::detail::submit_received_reply_parts (
+              parts_, flags_,
+              [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
+                  return zlink_spot_reply_spot_part (
+                    handle,
+                    zlink::detail::routing_id_native (*received_._routing_id),
+                    zlink::detail::routing_id_native (*received_._spot_rid),
+                    request_seq, part_out_, part_flag_);
+              });
+            return;
+        }
+        zlink::detail::submit_received_reply_parts (
+          parts_, flags_,
+          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
+              return zlink_router_reply_part (
+                handle,
+                zlink::detail::routing_id_native (*received_._routing_id),
+                request_seq, part_out_, part_flag_);
+          });
+    }
+
   private:
     static void set_send_context (received_t &received_,
                                   void *handle_,
                                   received_t::send_context_kind_t kind_)
     {
-        received_.ensure_runtime_state ();
-        received_._runtime->_send_context_handle =
+        received_._send_context_handle =
           reinterpret_cast<std::uintptr_t> (handle_);
-        received_._runtime->_send_context_kind = kind_;
+        received_._send_context_kind = kind_;
     }
 };
 

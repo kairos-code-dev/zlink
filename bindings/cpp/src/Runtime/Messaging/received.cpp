@@ -24,30 +24,6 @@ void close_parts (std::vector<message_t> &parts_)
 
 } // namespace
 
-received_t::received_t (const received_t &other) :
-    _routing_id (other._routing_id),
-    _spot_rid (other._spot_rid),
-    _request_seq (other._request_seq),
-    _single_part (other._single_part),
-    _parts (other._parts),
-    _runtime (clone_runtime_state (other._runtime))
-{
-}
-
-received_t &received_t::operator= (const received_t &other)
-{
-    if (this == &other)
-        return *this;
-
-    _routing_id = other._routing_id;
-    _spot_rid = other._spot_rid;
-    _request_seq = other._request_seq;
-    _single_part = other._single_part;
-    _parts = other._parts;
-    _runtime = clone_runtime_state (other._runtime);
-    return *this;
-}
-
 received_t::received_t (std::optional<routing_id_t> routing_id_,
                         std::optional<routing_id_t> spot_rid_,
                         std::optional<uint64_t> request_seq_,
@@ -56,8 +32,7 @@ received_t::received_t (std::optional<routing_id_t> routing_id_,
     _spot_rid (std::move (spot_rid_)),
     _request_seq (std::move (request_seq_)),
     _single_part (),
-    _parts (std::move (parts_)),
-    _runtime ()
+    _parts (std::move (parts_))
 {
 }
 
@@ -69,8 +44,7 @@ received_t::received_t (std::optional<routing_id_t> routing_id_,
     _spot_rid (std::move (spot_rid_)),
     _request_seq (std::move (request_seq_)),
     _single_part (std::move (part_)),
-    _parts (),
-    _runtime ()
+    _parts ()
 {
 }
 

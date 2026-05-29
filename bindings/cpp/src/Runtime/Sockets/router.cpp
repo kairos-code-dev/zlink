@@ -32,20 +32,11 @@ int router_socket_t::recv (received_t &out_, recv_flags_t flags_)
     const int rc = socket_t::receive (out_, flags_, false);
     if (rc != 0)
         return rc;
-    if (out_.request_seq ().has_value () && out_.routing_id ().has_value ()) {
-        void *router_handle_ = detail::native_handle (*this);
-        const routing_id_t reply_node_rid = *out_.routing_id ();
-        const uint64_t request_seq = *out_.request_seq ();
-        detail::received_access_t::set_reply_fn (
-          out_, detail::make_router_reply_fn (router_handle_, reply_node_rid,
-                                              out_.spot_rid (), request_seq));
-    }
+    // The reply/send context (router handle + the routing ids and request
+    // sequence already stored on `out_`) is enough to reconstruct the native
+    // call lazily at submit time, so no per-receive closures are built here.
     if (out_.routing_id ().has_value ()) {
         void *router_handle_ = detail::native_handle (*this);
-        const routing_id_t send_node_rid = *out_.routing_id ();
-        detail::received_access_t::set_send_fn (
-          out_, detail::make_router_send_fn (router_handle_, send_node_rid,
-                                             out_.spot_rid ()));
         if (out_.spot_rid ().has_value ()) {
             detail::received_access_t::set_router_spot_send_context (
               out_, router_handle_);

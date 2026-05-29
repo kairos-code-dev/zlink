@@ -8,7 +8,6 @@
 #include "../Core/operation_detail.hpp"
 #include "../Messaging/received_access.hpp"
 #include "../Native/native_receive.hpp"
-#include "../Native/native_send.hpp"
 #include "../Service/spot_access.hpp"
 
 #include <memory>
@@ -23,55 +22,6 @@ namespace zlink
 
 namespace detail
 {
-
-inline received_t recv_router_received (void *router_handle_,
-                                        recv_flags_t flags_)
-{
-    const zlink_routing_id_t *source_node_rid = nullptr;
-    const zlink_routing_id_t *source_spot_rid = nullptr;
-    uint64_t request_seq = 0;
-    std::vector<message_t> parts;
-    const recv_result_t rc = static_cast<recv_result_t> (
-      detail::recv_router_parts (router_handle_, flags_, &source_node_rid,
-                                 &source_spot_rid, &request_seq, parts));
-    if (rc != recv_result_t::ok)
-        throw recv_error_t (rc, zlink_errno ());
-    std::function<void (std::vector<message_t> &, send_flags_t)> reply_fn;
-    std::function<bool (std::vector<message_t> &, send_flags_t)> send_fn;
-    std::optional<routing_id_t> routing_id =
-      (source_node_rid && source_node_rid->size > 0)
-        ? std::optional<routing_id_t> (
-            zlink::detail::native_routing_id (*source_node_rid))
-        : std::nullopt;
-    std::optional<routing_id_t> spot_rid =
-      (source_spot_rid && source_spot_rid->size > 0)
-        ? std::optional<routing_id_t> (
-            zlink::detail::native_routing_id (*source_spot_rid))
-        : std::nullopt;
-
-    if (routing_id) {
-        send_fn =
-          detail::make_router_send_fn (router_handle_, *routing_id, spot_rid);
-    }
-
-    if (routing_id && request_seq != 0u) {
-        reply_fn = detail::make_router_reply_fn (router_handle_, *routing_id,
-                                                 spot_rid, request_seq);
-    }
-    std::optional<uint64_t> maybe_request_seq =
-      request_seq != 0u ? std::optional<uint64_t> (request_seq) : std::nullopt;
-
-    if (parts.size () == 1u) {
-        message_t part = std::move (parts[0]);
-        return detail::received_access_t::make (
-          std::move (routing_id), std::move (spot_rid), maybe_request_seq,
-          std::move (part), std::move (reply_fn), std::move (send_fn));
-    }
-
-    return detail::received_access_t::make (
-      std::move (routing_id), std::move (spot_rid), maybe_request_seq,
-      std::move (parts), std::move (reply_fn), std::move (send_fn));
-}
 
 class recv_part_out_guard_t
 {

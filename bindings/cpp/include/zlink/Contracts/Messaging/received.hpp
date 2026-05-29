@@ -6,8 +6,6 @@
 #include "message.hpp"
 
 #include <cstdint>
-#include <functional>
-#include <memory>
 #include <optional>
 #include <vector>
 
@@ -23,8 +21,8 @@ class received_t
 {
   public:
     received_t () = default;
-    received_t (const received_t &other);
-    received_t &operator= (const received_t &other);
+    received_t (const received_t &other) = default;
+    received_t &operator= (const received_t &other) = default;
 
     received_t (received_t &&) noexcept = default;
     received_t &operator= (received_t &&) noexcept = default;
@@ -75,7 +73,8 @@ class received_t
     {
         none,
         socket_rid,
-        router_spot
+        router_spot,
+        spot_spot
     };
 
     received_t (std::optional<routing_id_t> routing_id_,
@@ -89,34 +88,17 @@ class received_t
                 message_t part_);
 
     void materialize_parts () const;
-    struct runtime_state_t
-    {
-        std::function<void (std::vector<message_t> &, send_flags_t)> _reply_fn;
-        std::function<bool (std::vector<message_t> &, send_flags_t)> _send_fn;
-        std::uintptr_t _send_context_handle = 0;
-        send_context_kind_t _send_context_kind = send_context_kind_t::none;
-    };
-
-    static std::unique_ptr<runtime_state_t>
-    clone_runtime_state (const std::unique_ptr<runtime_state_t> &state_)
-    {
-        if (!state_)
-            return std::unique_ptr<runtime_state_t> ();
-        return std::make_unique<runtime_state_t> (*state_);
-    }
-
-    void ensure_runtime_state ()
-    {
-        if (!_runtime)
-            _runtime = std::make_unique<runtime_state_t> ();
-    }
 
     std::optional<routing_id_t> _routing_id;
     std::optional<routing_id_t> _spot_rid;
     std::optional<uint64_t> _request_seq;
     mutable std::optional<message_t> _single_part;
     mutable std::vector<message_t> _parts;
-    std::unique_ptr<runtime_state_t> _runtime;
+    // Send/reply context, reconstructed lazily at submit time from the stored
+    // routing ids and request sequence. Avoids per-receive std::function
+    // closures and their heap allocations on the server hot path.
+    std::uintptr_t _send_context_handle = 0;
+    send_context_kind_t _send_context_kind = send_context_kind_t::none;
 };
 
 } // namespace zlink

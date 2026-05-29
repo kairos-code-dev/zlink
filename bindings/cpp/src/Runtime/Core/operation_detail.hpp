@@ -28,30 +28,6 @@ resolve_timeout (std::chrono::milliseconds requested_,
     return requested_ == std::chrono::milliseconds () ? fallback_ : requested_;
 }
 
-inline received_t make_received (
-  const zlink_routing_id_t *routing_id_,
-  const zlink_routing_id_t *spot_rid_,
-  uint64_t request_seq_,
-  bool has_request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  std::function<void (std::vector<message_t> &, send_flags_t)> reply_fn_ =
-    std::function<void (std::vector<message_t> &, send_flags_t)> ())
-{
-    return zlink::detail::received_access_t::make (
-      (routing_id_ && routing_id_->size > 0)
-        ? std::optional<routing_id_t> (
-            zlink::detail::native_routing_id (*routing_id_))
-        : std::nullopt,
-      (spot_rid_ && spot_rid_->size > 0)
-        ? std::optional<routing_id_t> (
-            zlink::detail::native_routing_id (*spot_rid_))
-        : std::nullopt,
-      has_request_seq_ ? std::optional<uint64_t> (request_seq_) : std::nullopt,
-      detail::take_parts_from_native (parts_, part_count_),
-      std::move (reply_fn_));
-}
-
 } // namespace detail
 } // namespace zlink
 

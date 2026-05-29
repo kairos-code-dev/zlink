@@ -10,7 +10,8 @@ import type {
 } from '../../contracts/eventing';
 import type {
   RegistryServiceSummaryFilter,
-  RegistryTopologyFilter
+  RegistryTopologyFilter,
+  SubscriptionEntry
 } from '../../contracts/service';
 import type {
   MemberPeerEntryRaw,
@@ -22,8 +23,16 @@ import type {
   DiscoveryActorRouteRaw,
   DiscoverySpotRouteRaw
 } from '../service/discovery/discovery';
+import type {
+  ActorJoinEntrySpotResultRaw,
+  ActorJoinInfoRaw,
+  ActorJoinResultRaw,
+  ActorLookupResultRaw,
+  ActorPartRaw,
+  ActorRefRaw,
+  SpotActorLifecycleInfoRaw
+} from '../service/spot/actor_models';
 
-type NativeFn = (...args: unknown[]) => unknown;
 type NativeHandle = unknown;
 type NativeBuffer = Buffer;
 type NullableNativeHandle = NativeHandle | null;
@@ -33,6 +42,10 @@ type NativeHandleFn = (...args: unknown[]) => NativeHandle;
 type NativeNumberFn = (...args: unknown[]) => number;
 type NativeBufferFn = (...args: unknown[]) => Buffer;
 type NativeStringFn = (...args: unknown[]) => string;
+type NativeRequestCallback = (result: number, replyParts: Buffer[] | null) => void;
+type NativeActorJoinCallback = (result: ActorJoinResultRaw | null, replyParts: Buffer[] | null) => void;
+type NativeActorEntryJoinCallback = (result: ActorJoinEntrySpotResultRaw | null) => void;
+type NativeActorLookupCallback = (result: ActorLookupResultRaw) => void;
 
 interface CoreNativeBinding {
   errno: () => number;
@@ -75,21 +88,58 @@ interface SocketNativeBinding {
   monitorOpen: NativeHandleFn;
   routerRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
   routerRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
-  routerReply: NativeFn;
-  routerRequest: NativeFn;
-  routerSpotReply: NativeFn;
-  routerSpotRequest: NativeFn;
-  routerSpotSend: NativeFn;
+  routerReply: (
+    socket: NativeHandle,
+    peerRid: Buffer,
+    requestSeq: bigint,
+    parts: readonly unknown[]
+  ) => void;
+  routerRequest: (
+    socket: NativeHandle,
+    peerRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  routerSpotReply: (
+    socket: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    requestSeq: bigint,
+    parts: readonly unknown[]
+  ) => void;
+  routerSpotRequest: (
+    socket: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  routerSpotSend: (
+    socket: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
   socketAttachDiscovery: (socket: NativeHandle, discovery: NativeHandle) => void;
   socketBind: (socket: NativeHandle, endpoint: string) => void;
   socketClose: (socket: NativeHandle) => void;
   socketConnect: (socket: NativeHandle, endpoint: string) => void;
   socketDisconnect: (socket: NativeHandle, endpoint: string) => void;
   socketDisconnectRid: (socket: NativeHandle, routingId: Buffer) => void;
-  socketGetChannelName: NativeStringFn;
-  socketGetOpt: NativeBufferFn;
+  socketGetChannelName: (socket: NativeHandle) => string;
+  socketGetOpt: (socket: NativeHandle, option: number) => Buffer;
   socketNew: (ctx: NativeHandle, type: number) => NativeHandle;
-  socketPublish: NativeNumberFn;
+  socketPublish: (
+    socket: NativeHandle,
+    topic: string,
+    payload: unknown,
+    flags: number
+  ) => number;
   socketRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
   socketRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
   socketSend: (socket: NativeHandle, payload: unknown, flags: number) => void;
@@ -140,18 +190,48 @@ interface SocketNativeBinding {
     socket: NativeHandle,
     flags: number
   ) => NativeTopicMessageRaw | null;
-  socketSubscriptionEvent: NativeFn;
-  socketTryPublish: NativeFn;
+  socketSubscriptionEvent: (
+    socket: NativeHandle,
+    flags: number
+  ) => { routingId?: Buffer | null; topic: string; subscribed: boolean } | null;
+  socketTryPublish: (
+    socket: NativeHandle,
+    topic: string,
+    payload: unknown
+  ) => number;
   socketTrySubscribeMessage: (socket: NativeHandle) => NativeTopicMessageRaw | null;
-  socketTrySubscriptionEvent: NativeFn;
+  socketTrySubscriptionEvent: (
+    socket: NativeHandle
+  ) => { routingId?: Buffer | null; topic: string; subscribed: boolean } | null;
   socketUnbind: (socket: NativeHandle, endpoint: string) => void;
   socketUnsetSubscription?: (socket: NativeHandle, topic: string) => void;
   streamAttachActorGateway: (socket: NativeHandle, node: NativeHandle) => void;
-  streamBindActor: NativeFn;
-  streamBoundActors: NativeFn;
-  streamSendBoundActorPart: NativeFn;
-  streamUnbindActor: NativeFn;
-  subscriptionAt: NativeFn;
+  streamBindActor: (
+    stream: NativeHandle,
+    sessionRid: Buffer,
+    actor: ActorRefRaw,
+    callback: NativeRequestCallback,
+    timeoutMs: number
+  ) => void;
+  streamBoundActors: (
+    stream: NativeHandle,
+    sessionRid: Buffer
+  ) => ActorRefRaw[];
+  streamSendBoundActorPart: (
+    stream: NativeHandle,
+    sessionRid: Buffer,
+    actorId: string,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  streamUnbindActor: (
+    stream: NativeHandle,
+    sessionRid: Buffer,
+    actorId: string,
+    callback: NativeRequestCallback,
+    timeoutMs: number
+  ) => void;
+  subscriptionAt: (socket: NativeHandle, index: number) => SubscriptionEntry | null;
 }
 
 interface EventingNativeBinding {
@@ -266,68 +346,214 @@ interface ServiceNativeBinding {
     registry: NativeHandle,
     filter?: RegistryTopologyFilter
   ) => RegistryTopologyEntryRaw[];
-  remoteActorGetRef: NativeFn;
-  spotActorJoinRecv: NativeFn;
-  spotActorJoinReply: NativeFn;
-  spotActors: NativeFn;
-  spotDestroy: NativeFn;
-  spotDispatchEventHandler: NativeFn;
-  spotGetOption: NativeFn;
-  spotNew: NativeFn;
-  spotNodeActorCloseBoundSession: NativeFn;
-  spotNodeActorDestroy: NativeFn;
-  spotNodeActorJoinEntrySpot: NativeFn;
-  spotNodeActorJoinSpot: NativeFn;
-  spotNodeActorLeaveSpot: NativeFn;
-  spotNodeActorLookup: NativeFn;
-  spotNodeActorNew: NativeFn;
-  spotNodeActorRecvPart: NativeFn;
-  spotNodeActorSendBoundSessionMsg: NativeFn;
-  spotNodeActors: NativeFn;
-  spotNodeAttachChannelDealer: NativeFn;
-  spotNodeAttachChannelDealerManual: NativeFn;
-  spotNodeAttachPubIngress: NativeFn;
-  spotNodeAttachRouterChannelDiscovery: NativeFn;
-  spotNodeConnectPeerPub: NativeFn;
-  spotNodeConnectRouterChannelPeer: NativeFn;
-  spotNodeDestroy: NativeFn;
-  spotNodeDisconnectPeerPub: NativeFn;
-  spotNodeDisconnectPeerRidPub: NativeFn;
-  spotNodeDisconnectRouterChannelPeer: NativeFn;
-  spotNodeDisconnectRouterChannelPeerRid: NativeFn;
-  spotNodeEntrySpot: NativeFn;
-  spotNodeGetOption: NativeFn;
-  spotNodeInternalSockets: NativeFn;
-  spotNodeNew: NativeFn;
-  spotNodePeers: NativeFn;
-  spotNodePeersQuery: NativeFn;
-  spotNodeSetDiscovery: NativeFn;
-  spotNodeSetOption: NativeFn;
-  spotNodeSetPubBind: NativeFn;
-  spotNodeSetRouterBind: NativeFn;
-  spotNodeSetTlsClient: NativeFn;
-  spotNodeSetTlsServer: NativeFn;
-  spotNodeSpotGetOrNew: NativeFn;
-  spotNodeSpotLookup: NativeFn;
-  spotNodeSpots: NativeFn;
-  spotNodeStatus: NativeFn;
-  spotNodeSubjects: NativeFn;
-  spotPublish: NativeFn;
-  spotRecv: NativeFn;
-  spotRecvActorLifecycle: NativeFn;
-  spotRecvNoWait: NativeFn;
-  spotRecvRouted: NativeFn;
-  spotReplyRouter: NativeFn;
-  spotReplySpot: NativeFn;
-  spotRequestChannel: NativeFn;
-  spotRequestRouter: NativeFn;
-  spotRequestSpot: NativeFn;
-  spotSendChannel: NativeFn;
-  spotSendReadyHandler: NativeFn;
-  spotSendToSpot: NativeFn;
-  spotSetOption: NativeFn;
-  spotSubscribe: NativeFn;
-  spotUnsubscribe: NativeFn;
+  remoteActorGetRef: (
+    node: NativeHandle,
+    targetNodeRid: Buffer,
+    actorId: string,
+    callback: NativeActorLookupCallback,
+    timeoutMs: number
+  ) => void;
+  spotActorJoinRecv: (
+    spot: NativeHandle,
+    flags: number
+  ) => { info: ActorJoinInfoRaw; message: unknown } | null;
+  spotActorJoinReply: (
+    spot: NativeHandle,
+    info: Record<string, unknown>,
+    joinResultCode: number,
+    parts: readonly unknown[]
+  ) => void;
+  spotActors: (spot: NativeHandle) => ActorRefRaw[];
+  spotDestroy: (spot: NativeHandle) => void;
+  spotDispatchEventHandler: (
+    spot: NativeHandle,
+    node: NativeHandle,
+    handler: (event: unknown) => void
+  ) => void;
+  spotGetOption: (spot: NativeHandle, option: number) => Buffer;
+  spotNew: (node: NativeHandle) => NativeHandle;
+  spotNodeActorCloseBoundSession: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    timeoutMs: number
+  ) => void;
+  spotNodeActorDestroy: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    callbackOrTimeout: NativeRequestCallback | number,
+    timeoutMs?: number
+  ) => void;
+  spotNodeActorJoinEntrySpot: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    destNodeRid: Buffer,
+    callback: NativeActorEntryJoinCallback,
+    timeoutMs: number
+  ) => void;
+  spotNodeActorJoinSpot: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeActorJoinCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotNodeActorLeaveSpot: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    currentSpotRid: Buffer,
+    callback: NativeRequestCallback,
+    timeoutMs: number
+  ) => void;
+  spotNodeActorLookup: (node: NativeHandle, actorId: string) => ActorRefRaw;
+  spotNodeActorNew: (node: NativeHandle, actorId: string) => ActorRefRaw;
+  spotNodeActorRecvPart: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    flags: number
+  ) => ActorPartRaw | null;
+  spotNodeActorSendBoundSessionMsg: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  spotNodeActors: (node: NativeHandle) => unknown[];
+  spotNodeAttachChannelDealer: (
+    node: NativeHandle,
+    discovery: NativeHandle,
+    dealer: NativeHandle
+  ) => void;
+  spotNodeAttachChannelDealerManual: (
+    node: NativeHandle,
+    channelName: string,
+    dealer: NativeHandle
+  ) => void;
+  spotNodeAttachPubIngress: (node: NativeHandle, pub: NativeHandle) => void;
+  spotNodeAttachRouterChannelDiscovery: (
+    node: NativeHandle,
+    channelName: string,
+    discovery: NativeHandle
+  ) => void;
+  spotNodeConnectPeerPub: (node: NativeHandle, endpoint: string) => void;
+  spotNodeConnectRouterChannelPeer: (
+    node: NativeHandle,
+    channelName: string,
+    endpoint: string
+  ) => void;
+  spotNodeDestroy: (node: NativeHandle) => void;
+  spotNodeDisconnectPeerPub: (node: NativeHandle, endpoint: string) => void;
+  spotNodeDisconnectPeerRidPub: (node: NativeHandle, targetNodeRid: Buffer) => void;
+  spotNodeDisconnectRouterChannelPeer: (
+    node: NativeHandle,
+    channelName: string,
+    endpoint: string
+  ) => void;
+  spotNodeDisconnectRouterChannelPeerRid: (
+    node: NativeHandle,
+    channelName: string,
+    peerRid: Buffer
+  ) => void;
+  spotNodeEntrySpot: (node: NativeHandle) => NativeHandle;
+  spotNodeGetOption: (node: NativeHandle, option: number) => Buffer;
+  spotNodeInternalSockets: (node: NativeHandle, filter?: unknown) => Array<Record<string, unknown>>;
+  spotNodeNew: (ctx: NativeHandle, options: { mode: number }) => NativeHandle;
+  spotNodePeers: (node: NativeHandle) => unknown[];
+  spotNodePeersQuery: (node: NativeHandle, filter?: unknown) => unknown[];
+  spotNodeSetDiscovery: (node: NativeHandle, discovery: NativeHandle) => void;
+  spotNodeSetOption: (node: NativeHandle, option: number, value: Buffer) => void;
+  spotNodeSetPubBind: (node: NativeHandle, endpoint: string) => void;
+  spotNodeSetRouterBind: (node: NativeHandle, endpoint: string) => void;
+  spotNodeSetTlsClient: (
+    node: NativeHandle,
+    ca: string,
+    hostname: string,
+    trustSystem: number
+  ) => void;
+  spotNodeSetTlsServer: (
+    node: NativeHandle,
+    cert: string,
+    key: string,
+    requireClientCert: number
+  ) => void;
+  spotNodeSpotGetOrNew: (
+    node: NativeHandle,
+    spotRid: Buffer
+  ) => { spot: NativeHandle; created: boolean };
+  spotNodeSpotLookup: (node: NativeHandle, spotRid: Buffer) => NativeHandle | null;
+  spotNodeSpots: (node: NativeHandle) => unknown[];
+  spotNodeStatus: (node: NativeHandle) => Record<string, unknown>;
+  spotNodeSubjects: (node: NativeHandle, filter?: unknown) => unknown[];
+  spotPublish: (
+    spot: NativeHandle,
+    topic: string,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  spotRecv: (spot: NativeHandle, flags: number) => NativeTopicMessageRaw | null;
+  spotRecvActorLifecycle: (
+    spot: NativeHandle,
+    flags: number
+  ) => { kind: number; info: SpotActorLifecycleInfoRaw } | null;
+  spotRecvNoWait: (spot: NativeHandle) => NativeTopicMessageRaw | null;
+  spotRecvRouted: (spot: NativeHandle, flags: number) => unknown | null;
+  spotReplyRouter: (
+    spot: NativeHandle,
+    peerRid: Buffer,
+    requestSeq: bigint,
+    parts: readonly Buffer[]
+  ) => void;
+  spotReplySpot: (
+    spot: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    requestSeq: bigint,
+    parts: readonly Buffer[]
+  ) => void;
+  spotRequestChannel: (
+    spot: NativeHandle,
+    channelName: string,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotRequestRouter: (
+    spot: NativeHandle,
+    peerRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotRequestSpot: (
+    spot: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotSendChannel: (
+    spot: NativeHandle,
+    channelName: string,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  spotSendReadyHandler: (spot: NativeHandle, handler: unknown) => void;
+  spotSendToSpot: (
+    spot: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  spotSetOption: (spot: NativeHandle, option: number, value: Buffer) => void;
+  spotSubscribe: (spot: NativeHandle, topic: string) => void;
+  spotUnsubscribe: (spot: NativeHandle, topic: string) => void;
 }
 
 export interface NativeBinding

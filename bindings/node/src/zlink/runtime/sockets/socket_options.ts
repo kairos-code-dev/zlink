@@ -110,49 +110,65 @@ export class CommonSocketOptions {
     return new CommonSocketOptions(OPTION_CREATE_TOKEN, socket);
   }
 
-  get linger(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.LINGER), 'linger'); }
-  set linger(value: number) { this._socket.setSockOptRaw(SocketOption.LINGER, int32Buffer(value, 'linger')); }
-  get sendHwm(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.SNDHWM), 'sendHwm'); }
-  set sendHwm(value: number) { this._socket.setSockOptRaw(SocketOption.SNDHWM, int32Buffer(value, 'sendHwm')); }
-  get recvHwm(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.RCVHWM), 'recvHwm'); }
-  set recvHwm(value: number) { this._socket.setSockOptRaw(SocketOption.RCVHWM, int32Buffer(value, 'recvHwm')); }
-  get sendTimeout(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.SNDTIMEO), 'sendTimeout'); }
-  set sendTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.SNDTIMEO, int32Buffer(value, 'sendTimeout')); }
-  get recvTimeout(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.RCVTIMEO), 'recvTimeout'); }
-  set recvTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.RCVTIMEO, int32Buffer(value, 'recvTimeout')); }
-  get immediate(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.IMMEDIATE), 'immediate'); }
-  set immediate(value: boolean) { this._socket.setSockOptRaw(SocketOption.IMMEDIATE, boolBuffer(value)); }
-  get ridDuplicatePolicy(): RidDuplicatePolicyValue { return readInt32Option(this._socket.getSockOptRaw(SocketOption.RID_DUPLICATE_POLICY), 'ridDuplicatePolicy') as RidDuplicatePolicyValue; }
-  set ridDuplicatePolicy(value: RidDuplicatePolicyValue) { this._socket.setSockOptRaw(SocketOption.RID_DUPLICATE_POLICY, int32Buffer(value, 'ridDuplicatePolicy')); }
-  get connectTimeout(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.CONNECT_TIMEOUT), 'connectTimeout'); }
-  set connectTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.CONNECT_TIMEOUT, int32Buffer(value, 'connectTimeout')); }
-  get ipv6(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.IPV6), 'ipv6'); }
-  set ipv6(value: boolean) { this._socket.setSockOptRaw(SocketOption.IPV6, boolBuffer(value)); }
-  get tcpNoDelay(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.TCP_NODELAY), 'tcpNoDelay'); }
-  set tcpNoDelay(value: boolean) { this._socket.setSockOptRaw(SocketOption.TCP_NODELAY, boolBuffer(value)); }
-  get tcpKeepalive(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.TCP_KEEPALIVE), 'tcpKeepalive'); }
-  set tcpKeepalive(value: number) { this._socket.setSockOptRaw(SocketOption.TCP_KEEPALIVE, int32Buffer(value, 'tcpKeepalive')); }
-  get heartbeatInterval(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.HEARTBEAT_IVL), 'heartbeatInterval'); }
-  set heartbeatInterval(value: number) { this._socket.setSockOptRaw(SocketOption.HEARTBEAT_IVL, int32Buffer(value, 'heartbeatInterval')); }
-  get heartbeatTtl(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.HEARTBEAT_TTL), 'heartbeatTtl'); }
-  set heartbeatTtl(value: number) { this._socket.setSockOptRaw(SocketOption.HEARTBEAT_TTL, int32Buffer(value, 'heartbeatTtl')); }
-  get heartbeatTimeout(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.HEARTBEAT_TIMEOUT), 'heartbeatTimeout'); }
-  set heartbeatTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.HEARTBEAT_TIMEOUT, int32Buffer(value, 'heartbeatTimeout')); }
+  protected readInt32(option: number, name: string): number {
+    return readInt32Option(this._socket.getSockOptRaw(option), name);
+  }
+
+  protected writeInt32(option: number, value: number, name: string): void {
+    this._socket.setSockOptRaw(option, int32Buffer(value, name));
+  }
+
+  protected readBool(option: number, name: string): boolean {
+    return readBoolOption(this._socket.getSockOptRaw(option), name);
+  }
+
+  protected writeBool(option: number, value: boolean): void {
+    this._socket.setSockOptRaw(option, boolBuffer(value));
+  }
+
+  get linger(): number { return this.readInt32(SocketOption.LINGER, 'linger'); }
+  set linger(value: number) { this.writeInt32(SocketOption.LINGER, value, 'linger'); }
+  get sendHwm(): number { return this.readInt32(SocketOption.SNDHWM, 'sendHwm'); }
+  set sendHwm(value: number) { this.writeInt32(SocketOption.SNDHWM, value, 'sendHwm'); }
+  get recvHwm(): number { return this.readInt32(SocketOption.RCVHWM, 'recvHwm'); }
+  set recvHwm(value: number) { this.writeInt32(SocketOption.RCVHWM, value, 'recvHwm'); }
+  get sendTimeout(): number { return this.readInt32(SocketOption.SNDTIMEO, 'sendTimeout'); }
+  set sendTimeout(value: number) { this.writeInt32(SocketOption.SNDTIMEO, value, 'sendTimeout'); }
+  get recvTimeout(): number { return this.readInt32(SocketOption.RCVTIMEO, 'recvTimeout'); }
+  set recvTimeout(value: number) { this.writeInt32(SocketOption.RCVTIMEO, value, 'recvTimeout'); }
+  get immediate(): boolean { return this.readBool(SocketOption.IMMEDIATE, 'immediate'); }
+  set immediate(value: boolean) { this.writeBool(SocketOption.IMMEDIATE, value); }
+  get ridDuplicatePolicy(): RidDuplicatePolicyValue { return this.readInt32(SocketOption.RID_DUPLICATE_POLICY, 'ridDuplicatePolicy') as RidDuplicatePolicyValue; }
+  set ridDuplicatePolicy(value: RidDuplicatePolicyValue) { this.writeInt32(SocketOption.RID_DUPLICATE_POLICY, value, 'ridDuplicatePolicy'); }
+  get connectTimeout(): number { return this.readInt32(SocketOption.CONNECT_TIMEOUT, 'connectTimeout'); }
+  set connectTimeout(value: number) { this.writeInt32(SocketOption.CONNECT_TIMEOUT, value, 'connectTimeout'); }
+  get ipv6(): boolean { return this.readBool(SocketOption.IPV6, 'ipv6'); }
+  set ipv6(value: boolean) { this.writeBool(SocketOption.IPV6, value); }
+  get tcpNoDelay(): boolean { return this.readBool(SocketOption.TCP_NODELAY, 'tcpNoDelay'); }
+  set tcpNoDelay(value: boolean) { this.writeBool(SocketOption.TCP_NODELAY, value); }
+  get tcpKeepalive(): number { return this.readInt32(SocketOption.TCP_KEEPALIVE, 'tcpKeepalive'); }
+  set tcpKeepalive(value: number) { this.writeInt32(SocketOption.TCP_KEEPALIVE, value, 'tcpKeepalive'); }
+  get heartbeatInterval(): number { return this.readInt32(SocketOption.HEARTBEAT_IVL, 'heartbeatInterval'); }
+  set heartbeatInterval(value: number) { this.writeInt32(SocketOption.HEARTBEAT_IVL, value, 'heartbeatInterval'); }
+  get heartbeatTtl(): number { return this.readInt32(SocketOption.HEARTBEAT_TTL, 'heartbeatTtl'); }
+  set heartbeatTtl(value: number) { this.writeInt32(SocketOption.HEARTBEAT_TTL, value, 'heartbeatTtl'); }
+  get heartbeatTimeout(): number { return this.readInt32(SocketOption.HEARTBEAT_TIMEOUT, 'heartbeatTimeout'); }
+  set heartbeatTimeout(value: number) { this.writeInt32(SocketOption.HEARTBEAT_TIMEOUT, value, 'heartbeatTimeout'); }
   get maxMsgSize(): bigint { return readInt64Option(this._socket.getSockOptRaw(SocketOption.MAXMSGSIZE), 'maxMsgSize'); }
   set maxMsgSize(value: bigint) { this._socket.setSockOptRaw(SocketOption.MAXMSGSIZE, int64Buffer(value, 'maxMsgSize')); }
   get lastEndpoint(): string { return readStringOption(this._socket.getSockOptRaw(SocketOption.LAST_ENDPOINT)); }
-  get backlog(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.BACKLOG), 'backlog'); }
-  set backlog(value: number) { this._socket.setSockOptRaw(SocketOption.BACKLOG, int32Buffer(value, 'backlog')); }
-  get reconnectInterval(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.RECONNECT_IVL), 'reconnectInterval'); }
-  set reconnectInterval(value: number) { this._socket.setSockOptRaw(SocketOption.RECONNECT_IVL, int32Buffer(value, 'reconnectInterval')); }
-  get reconnectIntervalMax(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.RECONNECT_IVL_MAX), 'reconnectIntervalMax'); }
-  set reconnectIntervalMax(value: number) { this._socket.setSockOptRaw(SocketOption.RECONNECT_IVL_MAX, int32Buffer(value, 'reconnectIntervalMax')); }
-  get submitRetryMode(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.SUBMIT_RETRY_MODE), 'submitRetryMode'); }
-  set submitRetryMode(value: number) { this._socket.setSockOptRaw(SocketOption.SUBMIT_RETRY_MODE, int32Buffer(value, 'submitRetryMode')); }
-  get submitRetryTimeout(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.SUBMIT_RETRY_TIMEOUT), 'submitRetryTimeout'); }
-  set submitRetryTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.SUBMIT_RETRY_TIMEOUT, int32Buffer(value, 'submitRetryTimeout')); }
-  get submitRetryAttempts(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.SUBMIT_RETRY_ATTEMPTS), 'submitRetryAttempts'); }
-  set submitRetryAttempts(value: number) { this._socket.setSockOptRaw(SocketOption.SUBMIT_RETRY_ATTEMPTS, int32Buffer(value, 'submitRetryAttempts')); }
+  get backlog(): number { return this.readInt32(SocketOption.BACKLOG, 'backlog'); }
+  set backlog(value: number) { this.writeInt32(SocketOption.BACKLOG, value, 'backlog'); }
+  get reconnectInterval(): number { return this.readInt32(SocketOption.RECONNECT_IVL, 'reconnectInterval'); }
+  set reconnectInterval(value: number) { this.writeInt32(SocketOption.RECONNECT_IVL, value, 'reconnectInterval'); }
+  get reconnectIntervalMax(): number { return this.readInt32(SocketOption.RECONNECT_IVL_MAX, 'reconnectIntervalMax'); }
+  set reconnectIntervalMax(value: number) { this.writeInt32(SocketOption.RECONNECT_IVL_MAX, value, 'reconnectIntervalMax'); }
+  get submitRetryMode(): number { return this.readInt32(SocketOption.SUBMIT_RETRY_MODE, 'submitRetryMode'); }
+  set submitRetryMode(value: number) { this.writeInt32(SocketOption.SUBMIT_RETRY_MODE, value, 'submitRetryMode'); }
+  get submitRetryTimeout(): number { return this.readInt32(SocketOption.SUBMIT_RETRY_TIMEOUT, 'submitRetryTimeout'); }
+  set submitRetryTimeout(value: number) { this.writeInt32(SocketOption.SUBMIT_RETRY_TIMEOUT, value, 'submitRetryTimeout'); }
+  get submitRetryAttempts(): number { return this.readInt32(SocketOption.SUBMIT_RETRY_ATTEMPTS, 'submitRetryAttempts'); }
+  set submitRetryAttempts(value: number) { this.writeInt32(SocketOption.SUBMIT_RETRY_ATTEMPTS, value, 'submitRetryAttempts'); }
 }
 
 export class DealerSocketOptions extends CommonSocketOptions {
@@ -162,12 +178,12 @@ export class DealerSocketOptions extends CommonSocketOptions {
   static create(socket: SocketBase): DealerSocketOptions {
     return new DealerSocketOptions(OPTION_CREATE_TOKEN, socket);
   }
-  get probe(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.DEALER_PROBE), 'probe'); }
-  set probe(value: boolean) { this._socket.setSockOptRaw(SocketOption.DEALER_PROBE, boolBuffer(value)); }
-  get requestTimeout(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.DEALER_REQUEST_TIMEOUT_MS), 'requestTimeout'); }
-  set requestTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.DEALER_REQUEST_TIMEOUT_MS, int32Buffer(value, 'requestTimeout')); }
-  get peerWeight(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.DEALER_WEIGHT), 'peerWeight'); }
-  set peerWeight(value: number) { this._socket.setSockOptRaw(SocketOption.DEALER_WEIGHT, int32Buffer(value, 'peerWeight')); }
+  get probe(): boolean { return this.readBool(SocketOption.DEALER_PROBE, 'probe'); }
+  set probe(value: boolean) { this.writeBool(SocketOption.DEALER_PROBE, value); }
+  get requestTimeout(): number { return this.readInt32(SocketOption.DEALER_REQUEST_TIMEOUT_MS, 'requestTimeout'); }
+  set requestTimeout(value: number) { this.writeInt32(SocketOption.DEALER_REQUEST_TIMEOUT_MS, value, 'requestTimeout'); }
+  get peerWeight(): number { return this.readInt32(SocketOption.DEALER_WEIGHT, 'peerWeight'); }
+  set peerWeight(value: number) { this.writeInt32(SocketOption.DEALER_WEIGHT, value, 'peerWeight'); }
 }
 
 export class RouterSocketOptions extends CommonSocketOptions {
@@ -177,12 +193,12 @@ export class RouterSocketOptions extends CommonSocketOptions {
   static create(socket: SocketBase): RouterSocketOptions {
     return new RouterSocketOptions(OPTION_CREATE_TOKEN, socket);
   }
-  get mandatory(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.ROUTER_MANDATORY), 'mandatory'); }
-  set mandatory(value: boolean) { this._socket.setSockOptRaw(SocketOption.ROUTER_MANDATORY, boolBuffer(value)); }
+  get mandatory(): boolean { return this.readBool(SocketOption.ROUTER_MANDATORY, 'mandatory'); }
+  set mandatory(value: boolean) { this.writeBool(SocketOption.ROUTER_MANDATORY, value); }
   get handover(): boolean { return this.ridDuplicatePolicy === RidDuplicatePolicy.Handover; }
   set handover(value: boolean) { this.ridDuplicatePolicy = value ? RidDuplicatePolicy.Handover : RidDuplicatePolicy.Reject; }
-  get probe(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.PROBE_ROUTER), 'probe'); }
-  set probe(value: boolean) { this._socket.setSockOptRaw(SocketOption.PROBE_ROUTER, boolBuffer(value)); }
+  get probe(): boolean { return this.readBool(SocketOption.PROBE_ROUTER, 'probe'); }
+  set probe(value: boolean) { this.writeBool(SocketOption.PROBE_ROUTER, value); }
   get connectRoutingId(): RoutingId | null { return readRoutingIdOption(this._socket.getSockOptRaw(SocketOption.CONNECT_ROUTING_ID)); }
   setConnectRoutingId(routingId: RoutingId): void {
     this._socket.setSockOptRaw(
@@ -190,10 +206,10 @@ export class RouterSocketOptions extends CommonSocketOptions {
       normalizeRoutingId(routingId, 'routingId')
     );
   }
-  get requestTimeout(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.ROUTER_REQUEST_TIMEOUT_MS), 'requestTimeout'); }
-  set requestTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.ROUTER_REQUEST_TIMEOUT_MS, int32Buffer(value, 'requestTimeout')); }
-  get peerWeight(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.ROUTER_WEIGHT), 'peerWeight'); }
-  set peerWeight(value: number) { this._socket.setSockOptRaw(SocketOption.ROUTER_WEIGHT, int32Buffer(value, 'peerWeight')); }
+  get requestTimeout(): number { return this.readInt32(SocketOption.ROUTER_REQUEST_TIMEOUT_MS, 'requestTimeout'); }
+  set requestTimeout(value: number) { this.writeInt32(SocketOption.ROUTER_REQUEST_TIMEOUT_MS, value, 'requestTimeout'); }
+  get peerWeight(): number { return this.readInt32(SocketOption.ROUTER_WEIGHT, 'peerWeight'); }
+  set peerWeight(value: number) { this.writeInt32(SocketOption.ROUTER_WEIGHT, value, 'peerWeight'); }
 }
 
 export class StreamSocketOptions extends CommonSocketOptions {
@@ -203,8 +219,8 @@ export class StreamSocketOptions extends CommonSocketOptions {
   static create(socket: SocketBase): StreamSocketOptions {
     return new StreamSocketOptions(OPTION_CREATE_TOKEN, socket);
   }
-  get notify(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.STREAM_NOTIFY), 'notify'); }
-  set notify(value: boolean) { this._socket.setSockOptRaw(SocketOption.STREAM_NOTIFY, boolBuffer(value)); }
+  get notify(): boolean { return this.readBool(SocketOption.STREAM_NOTIFY, 'notify'); }
+  set notify(value: boolean) { this.writeBool(SocketOption.STREAM_NOTIFY, value); }
 }
 
 export class PubSocketOptions extends CommonSocketOptions {
@@ -216,30 +232,30 @@ export class PubSocketOptions extends CommonSocketOptions {
   static create(socket: SocketBase): PubSocketOptions {
     return new PubSocketOptions(OPTION_CREATE_TOKEN, socket);
   }
-  get verbose(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_VERBOSE), 'verbose'); }
+  get verbose(): boolean { return this.readBool(SocketOption.XPUB_VERBOSE, 'verbose'); }
   set verbose(value: boolean) {
-    this._socket.setSockOptRaw(SocketOption.XPUB_VERBOSE, boolBuffer(value));
-    this._socket.setSockOptRaw(SocketOption.XPUB_VERBOSER, boolBuffer(false));
+    this.writeBool(SocketOption.XPUB_VERBOSE, value);
+    this.writeBool(SocketOption.XPUB_VERBOSER, false);
   }
-  get verboser(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_VERBOSER), 'verboser'); }
+  get verboser(): boolean { return this.readBool(SocketOption.XPUB_VERBOSER, 'verboser'); }
   set verboser(value: boolean) {
-    this._socket.setSockOptRaw(SocketOption.XPUB_VERBOSE, boolBuffer(value));
-    this._socket.setSockOptRaw(SocketOption.XPUB_VERBOSER, boolBuffer(value));
+    this.writeBool(SocketOption.XPUB_VERBOSE, value);
+    this.writeBool(SocketOption.XPUB_VERBOSER, value);
   }
-  get noDrop(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_NODROP), 'noDrop'); }
+  get noDrop(): boolean { return this.readBool(SocketOption.XPUB_NODROP, 'noDrop'); }
   set noDrop(value: boolean) {
-    this._socket.setSockOptRaw(SocketOption.XPUB_NODROP, boolBuffer(value));
+    this.writeBool(SocketOption.XPUB_NODROP, value);
   }
-  get manual(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_MANUAL), 'manual'); }
+  get manual(): boolean { return this.readBool(SocketOption.XPUB_MANUAL, 'manual'); }
   set manual(value: boolean) {
-    this._socket.setSockOptRaw(SocketOption.XPUB_MANUAL, boolBuffer(value));
+    this.writeBool(SocketOption.XPUB_MANUAL, value);
   }
-  get manualLastValue(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_MANUAL_LAST_VALUE), 'manualLastValue'); }
+  get manualLastValue(): boolean { return this.readBool(SocketOption.XPUB_MANUAL_LAST_VALUE, 'manualLastValue'); }
   set manualLastValue(value: boolean) {
-    this._socket.setSockOptRaw(SocketOption.XPUB_MANUAL, boolBuffer(value));
-    this._socket.setSockOptRaw(SocketOption.XPUB_MANUAL_LAST_VALUE, boolBuffer(value));
+    this.writeBool(SocketOption.XPUB_MANUAL, value);
+    this.writeBool(SocketOption.XPUB_MANUAL_LAST_VALUE, value);
   }
-  get topicsCount(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.XPUB_TOPICS_COUNT), 'topicsCount'); }
+  get topicsCount(): number { return this.readInt32(SocketOption.XPUB_TOPICS_COUNT, 'topicsCount'); }
   welcomeMessage(): Message { return Message.from(this._welcomeMessage); }
   setWelcomeMessage(message: MessageLike): void {
     const payload = normalizeMessageLikePayload(message);
@@ -263,5 +279,5 @@ export class SubSocketOptions extends CommonSocketOptions {
   static create(socket: SocketBase): SubSocketOptions {
     return new SubSocketOptions(OPTION_CREATE_TOKEN, socket);
   }
-  get topicsCount(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.SUB_TOPICS_COUNT), 'topicsCount'); }
+  get topicsCount(): number { return this.readInt32(SocketOption.SUB_TOPICS_COUNT, 'topicsCount'); }
 }

@@ -40,7 +40,6 @@ final class NativeSocketRuntime implements AutoCloseable {
     static final int DEFAULT_IO_BUFFER_SIZE = 8192;
     static final int TOPIC_CAPACITY = 256;
     private final SocketCore socketCore;
-    private final MessagePlane messagePlane;
     private final TopicPlane topicPlane;
     private final ReceivePlane receivePlane;
     private final NettySocketPlane nettyPlane;
@@ -75,7 +74,6 @@ final class NativeSocketRuntime implements AutoCloseable {
         this.own = true;
         this.socketTypeHint = type;
         this.socketCore = new SocketCore(this);
-        this.messagePlane = new MessagePlane(this);
         this.topicPlane = new TopicPlane(this);
         this.receivePlane = new ReceivePlane(this);
         this.nettyPlane = new NettySocketPlane(this);
@@ -88,7 +86,6 @@ final class NativeSocketRuntime implements AutoCloseable {
         this.own = own;
         this.socketTypeHint = socketTypeHint;
         this.socketCore = new SocketCore(this);
-        this.messagePlane = new MessagePlane(this);
         this.topicPlane = new TopicPlane(this);
         this.receivePlane = new ReceivePlane(this);
         this.nettyPlane = new NettySocketPlane(this);
@@ -272,8 +269,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public boolean send(Message part) {
-        messagePlane.send(part);
-        return true;
+        return send(part, SendFlag.NONE);
     }
 
     public boolean send(Message part, SendFlag flags) {
@@ -281,7 +277,8 @@ final class NativeSocketRuntime implements AutoCloseable {
         if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
             return trySendResult(sendNoWaitResult(part));
         }
-        messagePlane.send(part, flags);
+        Objects.requireNonNull(part, "part");
+        sendMessageFrame(part, flags);
         return true;
     }
 
@@ -290,8 +287,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public boolean send(List<Message> parts) {
-        messagePlane.send(parts);
-        return true;
+        return send(parts, SendFlag.NONE);
     }
 
     boolean send(List<Message> parts, SendFlag flags) {
@@ -299,12 +295,14 @@ final class NativeSocketRuntime implements AutoCloseable {
         if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
             return trySendResult(sendNoWaitResult(parts));
         }
-        messagePlane.send(parts, flags);
+        Objects.requireNonNull(parts, "parts");
+        sendParts(null, parts, flags, false);
         return true;
     }
 
     SendResult sendNoWaitResult(Message part) {
-        return messagePlane.sendNoWaitResult(part);
+        Objects.requireNonNull(part, "part");
+        return sendMessageFrameNoWaitResult(part);
     }
 
     SendResult sendMessageFrameNoWaitResult(RoutingId routingId, Message message) {
@@ -312,12 +310,12 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     SendResult sendNoWaitResult(List<Message> parts) {
-        return messagePlane.sendNoWaitResult(parts);
+        Objects.requireNonNull(parts, "parts");
+        return sendNoWaitPartsResult(null, parts);
     }
 
     boolean send(RoutingId rid, Message part) {
-        messagePlane.send(rid, part);
-        return true;
+        return send(rid, part, SendFlag.NONE);
     }
 
     boolean send(RoutingId rid, Message part, SendFlag flags) {
@@ -325,7 +323,8 @@ final class NativeSocketRuntime implements AutoCloseable {
         if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
             return trySendResult(sendNoWaitResult(rid, part));
         }
-        messagePlane.send(rid, part, flags);
+        Objects.requireNonNull(part, "part");
+        sendMessageFrame(rid, part, flags);
         return true;
     }
 
@@ -346,8 +345,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public boolean send(RoutingId rid, List<Message> parts) {
-        messagePlane.send(rid, parts);
-        return true;
+        return send(rid, parts, SendFlag.NONE);
     }
 
     public boolean send(RoutingId rid, List<Message> parts, SendFlag flags) {
@@ -355,16 +353,19 @@ final class NativeSocketRuntime implements AutoCloseable {
         if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0) {
             return trySendResult(sendNoWaitResult(rid, parts));
         }
-        messagePlane.send(rid, parts, flags);
+        Objects.requireNonNull(parts, "parts");
+        sendParts(rid, parts, flags, false);
         return true;
     }
 
     SendResult sendNoWaitResult(RoutingId rid, Message part) {
-        return messagePlane.sendNoWaitResult(rid, part);
+        Objects.requireNonNull(part, "part");
+        return sendMessageFrameNoWaitResult(rid, part);
     }
 
     SendResult sendNoWaitResult(RoutingId rid, List<Message> parts) {
-        return messagePlane.sendNoWaitResult(rid, parts);
+        Objects.requireNonNull(parts, "parts");
+        return sendNoWaitPartsResult(rid, parts);
     }
 
     /** Publishes a single payload part to a topic-aware socket. */
@@ -416,19 +417,19 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public Received recv() {
-        return messagePlane.recv();
+        return recvLazy(ReceiveFlag.NONE);
     }
 
     public Received recv(ReceiveFlag flags) {
         Objects.requireNonNull(flags, "flags");
         if (flags == ReceiveFlag.DONTWAIT) {
-            return messagePlane.recvNoWaitOrNull();
+            return recvLazyNoWaitOrNull();
         }
-        return messagePlane.recv(flags);
+        return recvLazy(flags);
     }
 
     public Received recvNoWaitOrNull() {
-        return messagePlane.recvNoWaitOrNull();
+        return recvLazyNoWaitOrNull();
     }
 
     public boolean recvInto(Received result, ReceiveFlag flags) {

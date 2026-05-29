@@ -71,7 +71,8 @@ public final class ActorInterop {
         return new ActorRef(
           readRoutingId(view.asSlice(NativeLayouts.ACTOR_REF_NODE_RID_OFFSET,
             NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
-          readCString(view.asSlice(NativeLayouts.ACTOR_REF_ACTOR_ID_OFFSET,
+          NativeHelpers.fromCString(view.asSlice(
+            NativeLayouts.ACTOR_REF_ACTOR_ID_OFFSET,
             NativeLayouts.ACTOR_ID_MAX), NativeLayouts.ACTOR_ID_MAX),
           view.get(ValueLayout.JAVA_LONG_UNALIGNED,
             NativeLayouts.ACTOR_REF_GENERATION_OFFSET));
@@ -226,16 +227,6 @@ public final class ActorInterop {
             NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_JOIN_EPOCH_OFFSET),
           view.get(ValueLayout.JAVA_INT,
             NativeLayouts.SPOT_ACTOR_LIFECYCLE_INFO_FLAGS_OFFSET));
-    }
-
-    public static String readCString(MemorySegment segment, int maxLen) {
-        int len = NativeHelpers.cStringLength(segment, maxLen);
-        if (len == 0) {
-            return "";
-        }
-        byte[] bytes = new byte[len];
-        MemorySegment.copy(segment, 0, MemorySegment.ofArray(bytes), 0, len);
-        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     private static void writeRoutingId(MemorySegment out, RoutingId rid) {

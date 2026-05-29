@@ -166,6 +166,8 @@ internal sealed partial class SocketKernel : IDisposable
 
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
+        // Preserve SendToSpotCore ownership semantics without the temporary
+        // IReadOnlyList wrapper used by the multipart path.
         Message cloned = RequestReplySupport.CloneMessage(part);
         ZlinkMsg nativePart = default;
         bool submitted = false;

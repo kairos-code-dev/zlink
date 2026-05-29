@@ -11,6 +11,8 @@ internal sealed class RequestCallState
 {
     private CancellationTokenRegistration _cancellationRegistration;
     private System.Threading.Timer? _timeoutTimer;
+    // Native completion, user cancellation, and timeout all share this gate;
+    // the first terminal edge owns cleanup for the managed registrations.
     private int _completed;
 
     internal RequestCallState(TaskCompletionSource<Received> completion)

@@ -103,6 +103,8 @@ internal static class RequestProgressPump
     private static int ExternalProgressCount(
         ConcurrentDictionary<nint, ProgressState> states, nint key)
     {
+        // External poll loops already drive completion for their handles;
+        // starting a private pump would split ownership of the same readiness.
         ConcurrentDictionary<nint, int> external =
             ReferenceEquals(states, SpotStates)
                 ? ExternalSpotProgress
@@ -191,6 +193,8 @@ internal static class RequestProgressPump
                     int activeCount = Volatile.Read(ref state.ActiveCount);
                     if (activeCount <= 0)
                     {
+                        // Keep the worker alive briefly after the last task so
+                        // bursty request batches do not churn background threads.
                         long nowTicks = Stopwatch.GetTimestamp();
                         if (idleDeadlineTicks == 0)
                             idleDeadlineTicks = nowTicks + IdleKeepaliveTicks;

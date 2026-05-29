@@ -22,7 +22,7 @@ class BoundaryValidationContractTests(unittest.TestCase):
 
     def test_endpoint_and_channel_name_reject_fixed_buffer_overflow(self):
         with zlink.Context() as ctx:
-            with zlink.PairSocket(ctx) as socket:
+            with zlink.RouterSocket(ctx) as socket:
                 socket.set_channel_name(b"c" * 255)
                 self.assertEqual(socket.get_channel_name(), "c" * 255)
 
@@ -42,7 +42,7 @@ class BoundaryValidationContractTests(unittest.TestCase):
             with self.assertRaises(OverflowError):
                 ctx.options.io_threads = -(1 << 31) - 1
 
-            with zlink.PairSocket(ctx) as socket:
+            with zlink.RouterSocket(ctx) as socket:
                 socket.options.max_msg_size = (1 << 63) - 1
                 self.assertEqual(socket.options.max_msg_size, (1 << 63) - 1)
 
@@ -50,6 +50,35 @@ class BoundaryValidationContractTests(unittest.TestCase):
                     socket.options.max_msg_size = 1 << 63
                 with self.assertRaises(OverflowError):
                     socket.options.max_msg_size = -(1 << 63) - 1
+
+    def test_submit_retry_mode_enum_values_are_public(self):
+        self.assertEqual(zlink.SubmitRetryMode.OFF, 0)
+        self.assertEqual(zlink.SubmitRetryMode.LOCAL_FAILURE, 1)
+
+    def test_submit_retry_options_roundtrip_and_validate_native_bounds(self):
+        with zlink.Context() as ctx:
+            with zlink.RouterSocket(ctx) as socket:
+                self.assertEqual(socket.options.submit_retry_mode,
+                                 zlink.SubmitRetryMode.OFF)
+                self.assertEqual(socket.options.submit_retry_timeout_ms, 0)
+                self.assertEqual(socket.options.submit_retry_attempts, 0)
+
+                socket.options.submit_retry_mode = (
+                    zlink.SubmitRetryMode.LOCAL_FAILURE)
+                socket.options.submit_retry_timeout_ms = 250
+                socket.options.submit_retry_attempts = 16
+
+                self.assertEqual(socket.options.submit_retry_mode,
+                                 zlink.SubmitRetryMode.LOCAL_FAILURE)
+                self.assertEqual(socket.options.submit_retry_timeout_ms, 250)
+                self.assertEqual(socket.options.submit_retry_attempts, 16)
+
+                with self.assertRaises(zlink.ConfigError):
+                    socket.options.submit_retry_mode = 2
+                with self.assertRaises(zlink.ConfigError):
+                    socket.options.submit_retry_timeout_ms = -1
+                with self.assertRaises(zlink.ConfigError):
+                    socket.options.submit_retry_attempts = 17
 
 
 class OwnershipContractTests(unittest.TestCase):

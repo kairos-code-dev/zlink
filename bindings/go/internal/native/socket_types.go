@@ -50,6 +50,13 @@ const (
 	RIDDuplicateHandover RIDDuplicatePolicy = 1
 )
 
+type SubmitRetryMode int
+
+const (
+	SubmitRetryOff          SubmitRetryMode = 0
+	SubmitRetryLocalFailure SubmitRetryMode = 1
+)
+
 type CommonSocketOptions struct {
 	socket *connectionSocket
 }
@@ -271,6 +278,32 @@ func (o *CommonSocketOptions) SetReconnectIntervalMax(value time.Duration) error
 
 func (o *CommonSocketOptions) ReconnectIntervalMax() (time.Duration, error) {
 	return o.socket.getDurationOption(C.ZLINK_OPT_RECONNECT_IVL_MAX)
+}
+
+func (o *CommonSocketOptions) SetSubmitRetryMode(value SubmitRetryMode) error {
+	return o.socket.setIntOption(C.ZLINK_OPT_SUBMIT_RETRY_MODE, int32(value))
+}
+
+func (o *CommonSocketOptions) SubmitRetryMode() (SubmitRetryMode, error) {
+	value, err := o.socket.getIntOption(C.ZLINK_OPT_SUBMIT_RETRY_MODE)
+	return SubmitRetryMode(value), err
+}
+
+func (o *CommonSocketOptions) SetSubmitRetryTimeout(value time.Duration) error {
+	return o.socket.setDurationOption(C.ZLINK_OPT_SUBMIT_RETRY_TIMEOUT, value)
+}
+
+func (o *CommonSocketOptions) SubmitRetryTimeout() (time.Duration, error) {
+	return o.socket.getDurationOption(C.ZLINK_OPT_SUBMIT_RETRY_TIMEOUT)
+}
+
+func (o *CommonSocketOptions) SetSubmitRetryAttempts(value int) error {
+	return o.socket.setIntOption(C.ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, int32(value))
+}
+
+func (o *CommonSocketOptions) SubmitRetryAttempts() (int, error) {
+	value, err := o.socket.getIntOption(C.ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS)
+	return int(value), err
 }
 
 func (o *CommonSocketOptions) LastEndpoint() (string, error) {
@@ -1258,6 +1291,32 @@ func (s *connectionSocket) SetRidDuplicatePolicy(value int) error {
 
 func (s *connectionSocket) RidDuplicatePolicy() (int, error) {
 	value, err := s.getIntOption(C.ZLINK_OPT_RID_DUPLICATE_POLICY)
+	return int(value), err
+}
+
+func (s *connectionSocket) SetSubmitRetryMode(value SubmitRetryMode) error {
+	return s.setIntOption(C.ZLINK_OPT_SUBMIT_RETRY_MODE, int32(value))
+}
+
+func (s *connectionSocket) SubmitRetryMode() (SubmitRetryMode, error) {
+	value, err := s.getIntOption(C.ZLINK_OPT_SUBMIT_RETRY_MODE)
+	return SubmitRetryMode(value), err
+}
+
+func (s *connectionSocket) SetSubmitRetryTimeout(value time.Duration) error {
+	return s.setDurationOption(C.ZLINK_OPT_SUBMIT_RETRY_TIMEOUT, value)
+}
+
+func (s *connectionSocket) SubmitRetryTimeout() (time.Duration, error) {
+	return s.getDurationOption(C.ZLINK_OPT_SUBMIT_RETRY_TIMEOUT)
+}
+
+func (s *connectionSocket) SetSubmitRetryAttempts(value int) error {
+	return s.setIntOption(C.ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, int32(value))
+}
+
+func (s *connectionSocket) SubmitRetryAttempts() (int, error) {
+	value, err := s.getIntOption(C.ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS)
 	return int(value), err
 }
 

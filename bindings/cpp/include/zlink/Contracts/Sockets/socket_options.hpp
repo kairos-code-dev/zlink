@@ -26,6 +26,12 @@ enum class tcp_keepalive_mode_t : int
     on = 1
 };
 
+enum class submit_retry_mode_t : int
+{
+    off = 0,
+    local_failure = 1
+};
+
 class common_socket_options_t
 {
   public:
@@ -68,6 +74,12 @@ class common_socket_options_t
     void reconnect_interval (std::chrono::milliseconds value);
     std::chrono::milliseconds reconnect_interval_max () const;
     void reconnect_interval_max (std::chrono::milliseconds value);
+    submit_retry_mode_t submit_retry_mode () const;
+    void submit_retry_mode (submit_retry_mode_t value);
+    std::chrono::milliseconds submit_retry_timeout () const;
+    void submit_retry_timeout (std::chrono::milliseconds value);
+    int submit_retry_attempts () const;
+    void submit_retry_attempts (int value);
     std::string last_endpoint () const;
 
   protected:

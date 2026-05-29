@@ -12,6 +12,14 @@ template<typename T> class has_common_socket_options_facade_t
       -> decltype (std::declval<U &> ().linger (),
                     std::declval<U &> ().linger (
                       std::chrono::milliseconds (0)),
+                    std::declval<U &> ().submit_retry_mode (),
+                    std::declval<U &> ().submit_retry_mode (
+                      zlink::submit_retry_mode_t::local_failure),
+                    std::declval<U &> ().submit_retry_timeout (),
+                    std::declval<U &> ().submit_retry_timeout (
+                      std::chrono::milliseconds (0)),
+                    std::declval<U &> ().submit_retry_attempts (),
+                    std::declval<U &> ().submit_retry_attempts (0),
                     std::declval<U &> ().send_hwm (),
                     std::declval<U &> ().send_hwm (
                       zlink::message_count_t::value (0)),
@@ -231,6 +239,16 @@ void test_socket_common_and_router_options ()
     zlink::common_socket_options_t common = router.options ();
     common.linger (std::chrono::milliseconds (0));
     assert (common.linger () == std::chrono::milliseconds (0));
+    assert (common.submit_retry_mode () == zlink::submit_retry_mode_t::off);
+    assert (common.submit_retry_timeout () == std::chrono::milliseconds (0));
+    assert (common.submit_retry_attempts () == 0);
+    common.submit_retry_mode (zlink::submit_retry_mode_t::local_failure);
+    common.submit_retry_timeout (std::chrono::milliseconds (42));
+    common.submit_retry_attempts (2);
+    assert (common.submit_retry_mode ()
+            == zlink::submit_retry_mode_t::local_failure);
+    assert (common.submit_retry_timeout () == std::chrono::milliseconds (42));
+    assert (common.submit_retry_attempts () == 2);
 
     zlink::stream_socket_t stream (ctx);
     zlink::stream_socket_options_t stream_options = stream.options ();

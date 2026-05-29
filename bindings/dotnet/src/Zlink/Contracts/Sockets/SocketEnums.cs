@@ -30,6 +30,12 @@ public enum RidDuplicatePolicy
     Handover = 1
 }
 
+public enum SubmitRetryMode
+{
+    Off = 0,
+    LocalFailure = 1
+}
+
 [Flags]
 public enum SendFlags
 {

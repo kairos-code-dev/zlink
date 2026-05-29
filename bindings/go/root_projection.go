@@ -90,6 +90,7 @@ type (
 	RegistryTopologyFilter       = impl.RegistryTopologyFilter
 	RegistryOption               = impl.RegistryOption
 	RIDDuplicatePolicy           = impl.RIDDuplicatePolicy
+	SubmitRetryMode              = impl.SubmitRetryMode
 	CommonSocketOptions          = impl.CommonSocketOptions
 	PubSocketOptions             = impl.PubSocketOptions
 	PairSocket                   = impl.PairSocket
@@ -231,6 +232,8 @@ const (
 	RegistryOptionBroadcastIntervalMS       = impl.RegistryOptionBroadcastIntervalMS
 	RIDDuplicateReject                      = impl.RIDDuplicateReject
 	RIDDuplicateHandover                    = impl.RIDDuplicateHandover
+	SubmitRetryOff                         = impl.SubmitRetryOff
+	SubmitRetryLocalFailure                = impl.SubmitRetryLocalFailure
 	PollIn                                  = impl.PollIn
 	PollOut                                 = impl.PollOut
 	PollCompletion                          = impl.PollCompletion

@@ -351,6 +351,48 @@ impl SocketInner {
         )
     }
 
+    pub fn set_submit_retry_mode(&self, value: i32) -> Result<(), ConfigError> {
+        set_int_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_SUBMIT_RETRY_MODE,
+            value,
+        )
+    }
+
+    pub fn submit_retry_mode(&self) -> Result<i32, ConfigError> {
+        get_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SUBMIT_RETRY_MODE)
+    }
+
+    pub fn set_submit_retry_timeout(&self, d: Duration) -> Result<(), ConfigError> {
+        set_duration_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_SUBMIT_RETRY_TIMEOUT,
+            d,
+        )
+    }
+
+    pub fn submit_retry_timeout(&self) -> Result<Duration, ConfigError> {
+        get_duration_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_SUBMIT_RETRY_TIMEOUT,
+        )
+    }
+
+    pub fn set_submit_retry_attempts(&self, value: i32) -> Result<(), ConfigError> {
+        set_int_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS,
+            value,
+        )
+    }
+
+    pub fn submit_retry_attempts(&self) -> Result<i32, ConfigError> {
+        get_int_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS,
+        )
+    }
+
     pub fn set_send_buffer_size(&self, bytes: i32) -> Result<(), ConfigError> {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDBUF, bytes)
     }

@@ -12,7 +12,7 @@ func TestCommonTypedOptions(t *testing.T) {
 	defer ctx.Close()
 	opts := ctx.Options()
 
-	socket, _ := ctx.PairSocket()
+	socket, _ := ctx.RouterSocket()
 	defer socket.Close()
 
 	if err := socket.SetSendHWM(1000); err != nil {
@@ -29,6 +29,33 @@ func TestCommonTypedOptions(t *testing.T) {
 	}
 	if err := socket.SetLinger(50 * time.Millisecond); err != nil {
 		t.Fatalf("SetLinger() error = %v", err)
+	}
+	if got, err := socket.SubmitRetryMode(); err != nil || got != zlink.SubmitRetryOff {
+		t.Fatalf("SubmitRetryMode() = (%v, %v), want (off, nil)", got, err)
+	}
+	if got, err := socket.SubmitRetryTimeout(); err != nil || got != 0 {
+		t.Fatalf("SubmitRetryTimeout() = (%v, %v), want (0, nil)", got, err)
+	}
+	if got, err := socket.SubmitRetryAttempts(); err != nil || got != 0 {
+		t.Fatalf("SubmitRetryAttempts() = (%d, %v), want (0, nil)", got, err)
+	}
+	if err := socket.SetSubmitRetryMode(zlink.SubmitRetryLocalFailure); err != nil {
+		t.Fatalf("SetSubmitRetryMode() error = %v", err)
+	}
+	if err := socket.SetSubmitRetryTimeout(42 * time.Millisecond); err != nil {
+		t.Fatalf("SetSubmitRetryTimeout() error = %v", err)
+	}
+	if err := socket.SetSubmitRetryAttempts(2); err != nil {
+		t.Fatalf("SetSubmitRetryAttempts() error = %v", err)
+	}
+	if got, err := socket.SubmitRetryMode(); err != nil || got != zlink.SubmitRetryLocalFailure {
+		t.Fatalf("SubmitRetryMode() = (%v, %v), want (local failure, nil)", got, err)
+	}
+	if got, err := socket.SubmitRetryTimeout(); err != nil || got != 42*time.Millisecond {
+		t.Fatalf("SubmitRetryTimeout() = (%v, %v), want (42ms, nil)", got, err)
+	}
+	if got, err := socket.SubmitRetryAttempts(); err != nil || got != 2 {
+		t.Fatalf("SubmitRetryAttempts() = (%d, %v), want (2, nil)", got, err)
 	}
 	if err := socket.SetTCPKeepalive(true); err != nil {
 		t.Fatalf("SetTCPKeepalive() error = %v", err)

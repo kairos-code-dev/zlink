@@ -40,6 +40,12 @@ pub enum RidDuplicatePolicy {
     Handover = 1,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SubmitRetryMode {
+    Off = 0,
+    LocalFailure = 1,
+}
+
 pub(crate) trait CommonSocketOptionRuntime {
     fn set_linger(&self, d: Duration) -> Result<(), ConfigError>;
     fn linger(&self) -> Result<Duration, ConfigError>;
@@ -77,6 +83,12 @@ pub(crate) trait CommonSocketOptionRuntime {
     fn reconnect_interval(&self) -> Result<Duration, ConfigError>;
     fn set_reconnect_interval_max(&self, d: Duration) -> Result<(), ConfigError>;
     fn reconnect_interval_max(&self) -> Result<Duration, ConfigError>;
+    fn set_submit_retry_mode(&self, value: SubmitRetryMode) -> Result<(), ConfigError>;
+    fn submit_retry_mode(&self) -> Result<SubmitRetryMode, ConfigError>;
+    fn set_submit_retry_timeout(&self, d: Duration) -> Result<(), ConfigError>;
+    fn submit_retry_timeout(&self) -> Result<Duration, ConfigError>;
+    fn set_submit_retry_attempts(&self, value: i32) -> Result<(), ConfigError>;
+    fn submit_retry_attempts(&self) -> Result<i32, ConfigError>;
 }
 
 pub struct CommonSocketOptions<'a> {
@@ -195,6 +207,24 @@ impl<'a> CommonSocketOptions<'a> {
     }
     pub fn reconnect_interval_max(&self) -> Result<Duration, ConfigError> {
         self.inner.reconnect_interval_max()
+    }
+    pub fn set_submit_retry_mode(&self, value: SubmitRetryMode) -> Result<(), ConfigError> {
+        self.inner.set_submit_retry_mode(value)
+    }
+    pub fn submit_retry_mode(&self) -> Result<SubmitRetryMode, ConfigError> {
+        self.inner.submit_retry_mode()
+    }
+    pub fn set_submit_retry_timeout(&self, d: Duration) -> Result<(), ConfigError> {
+        self.inner.set_submit_retry_timeout(d)
+    }
+    pub fn submit_retry_timeout(&self) -> Result<Duration, ConfigError> {
+        self.inner.submit_retry_timeout()
+    }
+    pub fn set_submit_retry_attempts(&self, value: i32) -> Result<(), ConfigError> {
+        self.inner.set_submit_retry_attempts(value)
+    }
+    pub fn submit_retry_attempts(&self) -> Result<i32, ConfigError> {
+        self.inner.submit_retry_attempts()
     }
 }
 

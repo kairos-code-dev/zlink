@@ -114,6 +114,9 @@ typedef enum zlink_option_t
     ZLINK_OPT_CONFLATE = 0x301B,
     ZLINK_OPT_BLOCKY = 0x301E,
     ZLINK_OPT_INVERT_MATCHING = 0x3020,
+    ZLINK_OPT_SUBMIT_RETRY_MODE = 0x3037,
+    ZLINK_OPT_SUBMIT_RETRY_TIMEOUT = 0x3038,
+    ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS = 0x3039,
 
     /* Introspection and protocol metadata */
     ZLINK_OPT_FD = 0x3007,
@@ -127,6 +130,12 @@ typedef enum zlink_option_t
     ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC = 0x3035,
     ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC = 0x3036
 } zlink_option_t;
+
+typedef enum zlink_submit_retry_mode_t
+{
+    ZLINK_SUBMIT_RETRY_OFF = 0,
+    ZLINK_SUBMIT_RETRY_LOCAL_FAILURE = 1
+} zlink_submit_retry_mode_t;
 
 typedef enum zlink_rid_duplicate_policy_t
 {

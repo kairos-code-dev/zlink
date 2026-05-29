@@ -115,6 +115,12 @@ internal static class SocketOptions
         Int(SocketOption.DiscoverySpotOwnerSync);
     public static SocketOptionKey<int> DiscoveryActorRouteSync { get; } =
         Int(SocketOption.DiscoveryActorRouteSync);
+    public static SocketOptionKey<int> SubmitRetryMode { get; } =
+        Int(SocketOption.SubmitRetryMode);
+    public static SocketOptionKey<int> SubmitRetryTimeout { get; } =
+        Int(SocketOption.SubmitRetryTimeout);
+    public static SocketOptionKey<int> SubmitRetryAttempts { get; } =
+        Int(SocketOption.SubmitRetryAttempts);
     public static SocketOptionKey<int> XPubVerbose { get; } =
         Int(SocketOption.XPubVerbose);
     public static SocketOptionKey<int> Ipv6 { get; } = Int(SocketOption.Ipv6);

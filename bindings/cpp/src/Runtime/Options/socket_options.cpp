@@ -530,6 +530,52 @@ void common_socket_options_t::reconnect_interval_max (
       static_cast<int> (value.count ()));
 }
 
+submit_retry_mode_t common_socket_options_t::submit_retry_mode () const
+{
+    return static_cast<submit_retry_mode_t> (
+      detail::get_common_option_value<int> (
+        detail::native_option_handle (_socket),
+        detail::socket_option_id::submit_retry_mode));
+}
+
+void common_socket_options_t::submit_retry_mode (submit_retry_mode_t value)
+{
+    detail::set_common_option_value<int> (
+      detail::native_option_handle (_socket),
+      detail::socket_option_id::submit_retry_mode, static_cast<int> (value));
+}
+
+std::chrono::milliseconds common_socket_options_t::submit_retry_timeout () const
+{
+    return std::chrono::milliseconds (
+      detail::get_common_option_value<int> (
+        detail::native_option_handle (_socket),
+        detail::socket_option_id::submit_retry_timeout));
+}
+
+void common_socket_options_t::submit_retry_timeout (
+  std::chrono::milliseconds value)
+{
+    detail::set_common_option_value<int> (
+      detail::native_option_handle (_socket),
+      detail::socket_option_id::submit_retry_timeout,
+      static_cast<int> (value.count ()));
+}
+
+int common_socket_options_t::submit_retry_attempts () const
+{
+    return detail::get_common_option_value<int> (
+      detail::native_option_handle (_socket),
+      detail::socket_option_id::submit_retry_attempts);
+}
+
+void common_socket_options_t::submit_retry_attempts (int value)
+{
+    detail::set_common_option_value<int> (
+      detail::native_option_handle (_socket),
+      detail::socket_option_id::submit_retry_attempts, value);
+}
+
 std::string common_socket_options_t::last_endpoint () const
 {
     return detail::get_common_option_string (detail::native_option_handle (_socket), detail::socket_option_id::last_endpoint);

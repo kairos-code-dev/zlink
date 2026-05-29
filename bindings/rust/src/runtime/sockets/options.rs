@@ -5,7 +5,7 @@ use crate::ffi;
 use crate::flags::{
     CommonSocketOptionRuntime, DealerSocketOptionRuntime, PubSocketOptionRuntime,
     RidDuplicatePolicy, RouterSocketOptionRuntime, StreamSocketOptionRuntime,
-    SubSocketOptionRuntime,
+    SubSocketOptionRuntime, SubmitRetryMode,
 };
 use crate::message::{Message, RoutingId};
 use crate::socket::SocketInner;
@@ -124,6 +124,27 @@ impl CommonSocketOptionRuntime for SocketInner {
     }
     fn reconnect_interval_max(&self) -> Result<Duration, ConfigError> {
         self.reconnect_interval_max()
+    }
+    fn set_submit_retry_mode(&self, value: SubmitRetryMode) -> Result<(), ConfigError> {
+        self.set_submit_retry_mode(value as i32)
+    }
+    fn submit_retry_mode(&self) -> Result<SubmitRetryMode, ConfigError> {
+        Ok(match self.submit_retry_mode()? {
+            1 => SubmitRetryMode::LocalFailure,
+            _ => SubmitRetryMode::Off,
+        })
+    }
+    fn set_submit_retry_timeout(&self, d: Duration) -> Result<(), ConfigError> {
+        self.set_submit_retry_timeout(d)
+    }
+    fn submit_retry_timeout(&self) -> Result<Duration, ConfigError> {
+        self.submit_retry_timeout()
+    }
+    fn set_submit_retry_attempts(&self, value: i32) -> Result<(), ConfigError> {
+        self.set_submit_retry_attempts(value)
+    }
+    fn submit_retry_attempts(&self) -> Result<i32, ConfigError> {
+        self.submit_retry_attempts()
     }
 }
 

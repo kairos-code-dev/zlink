@@ -65,6 +65,9 @@ class SocketOption(IntEnum):
     RID_DUPLICATE_POLICY = 0x3033
     DISCOVERY_SPOT_OWNER_SYNC = 0x3035
     DISCOVERY_ACTOR_ROUTE_SYNC = 0x3036
+    SUBMIT_RETRY_MODE = 0x3037
+    SUBMIT_RETRY_TIMEOUT = 0x3038
+    SUBMIT_RETRY_ATTEMPTS = 0x3039
 
     ROUTING_ID = 5
     SUBSCRIBE = 6
@@ -138,6 +141,10 @@ class RidDuplicatePolicy(IntEnum):
     REJECT = 0
     HANDOVER = 1
 
+class SubmitRetryMode(IntEnum):
+    OFF = 0
+    LOCAL_FAILURE = 1
+
 __all__ = [
     "SocketType",
     "SocketOption",
@@ -149,4 +156,5 @@ __all__ = [
     "HandlerResult",
     "RouterOption",
     "RidDuplicatePolicy",
+    "SubmitRetryMode",
 ]

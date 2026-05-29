@@ -3556,7 +3556,7 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
 
 | Facade | 내용 | 적용 소켓 |
 |---|---|---|
-| `CommonSocketOptions` | linger, sendHwm, recvHwm, sendTimeout, recvTimeout, immediate, connectTimeout, ipv6, tcpNoDelay, tcpKeepalive, heartbeatInterval/Ttl/Timeout, maxMsgSize, backlog, reconnectInterval/Max | 전체 |
+| `CommonSocketOptions` | linger, sendHwm, recvHwm, sendTimeout, recvTimeout, immediate, connectTimeout, ipv6, tcpNoDelay, tcpKeepalive, heartbeatInterval/Ttl/Timeout, maxMsgSize, backlog, reconnectInterval/Max, submitRetryMode, submitRetryTimeout, submitRetryAttempts | 전체 |
 | `RouterSocketOptions` | mandatory (bool), handover (bool), probe (bool), connectRoutingId (RoutingId) | Router |
 | `DealerSocketOptions` | probe (bool) | Dealer |
 | `StreamSocketOptions` | notify (bool) | Stream |
@@ -3566,6 +3566,10 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
 - 각 facade의 option 항목은 `core/include/zlink.h`의 해당 option enum 값을
   기준으로 한다.
 - facade 내 option 값 타입은 Option Value Types 정책을 따른다.
+- submit retry option은 raw socket facade에서 기본값을 off/0ms/0회로 노출한다.
+  managed SPOT/service 내부 profile은 `LOCAL_FAILURE`/100ms/2회를 사용할 수 있지만,
+  raw socket option 기본값을 바꾸지 않는다. `DONTWAIT` 호출, backpressure, admission
+  거절, request submit 성공 뒤의 reply timeout은 submit retry 대상이 아니다.
 
 ### 옵션 값 타입
 - option 값은 가능한 한 의미 기반 타입으로 노출한다.

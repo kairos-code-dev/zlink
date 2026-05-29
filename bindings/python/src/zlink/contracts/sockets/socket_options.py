@@ -75,6 +75,9 @@ class CommonSocketOptions:
     backlog = _contract_property()
     reconnect_interval_ms = _contract_property()
     reconnect_interval_max_ms = _contract_property()
+    submit_retry_mode = _contract_property()
+    submit_retry_timeout_ms = _contract_property()
+    submit_retry_attempts = _contract_property()
 
 
 class DealerSocketOptions:

@@ -185,6 +185,30 @@ class CommonSocketOptions(_ContractCommonSocketOptions):
     def reconnect_interval_max_ms(self, value):
         self._socket._set_common_int_option(SocketOption.RECONNECT_IVL_MAX, value)
 
+    @property
+    def submit_retry_mode(self):
+        return self._socket._get_common_int_option(SocketOption.SUBMIT_RETRY_MODE)
+
+    @submit_retry_mode.setter
+    def submit_retry_mode(self, value):
+        self._socket._set_common_int_option(SocketOption.SUBMIT_RETRY_MODE, value)
+
+    @property
+    def submit_retry_timeout_ms(self):
+        return self._socket._get_common_int_option(SocketOption.SUBMIT_RETRY_TIMEOUT)
+
+    @submit_retry_timeout_ms.setter
+    def submit_retry_timeout_ms(self, value):
+        self._socket._set_common_int_option(SocketOption.SUBMIT_RETRY_TIMEOUT, value)
+
+    @property
+    def submit_retry_attempts(self):
+        return self._socket._get_common_int_option(SocketOption.SUBMIT_RETRY_ATTEMPTS)
+
+    @submit_retry_attempts.setter
+    def submit_retry_attempts(self, value):
+        self._socket._set_common_int_option(SocketOption.SUBMIT_RETRY_ATTEMPTS, value)
+
 
 class DealerSocketOptions(_ContractDealerSocketOptions):
     _PROBE = 0x3201

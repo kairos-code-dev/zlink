@@ -27,6 +27,43 @@ public sealed class test_socket_options
     }
 
     [Fact]
+    public void submit_retry_mode_values_match_native_contract()
+    {
+        Assert.Equal(0, (int)SubmitRetryMode.Off);
+        Assert.Equal(1, (int)SubmitRetryMode.LocalFailure);
+    }
+
+    [Fact]
+    public void submit_retry_options_roundtrip_and_validate_native_bounds()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
+
+        Assert.Equal(SubmitRetryMode.Off, router.Options.SubmitRetryMode);
+        Assert.Equal(0, router.Options.SubmitRetryTimeoutMilliseconds);
+        Assert.Equal(0, router.Options.SubmitRetryAttempts);
+
+        router.Options.SubmitRetryMode = SubmitRetryMode.LocalFailure;
+        router.Options.SubmitRetryTimeoutMilliseconds = 250;
+        router.Options.SubmitRetryAttempts = 16;
+
+        Assert.Equal(SubmitRetryMode.LocalFailure,
+            router.Options.SubmitRetryMode);
+        Assert.Equal(250, router.Options.SubmitRetryTimeoutMilliseconds);
+        Assert.Equal(16, router.Options.SubmitRetryAttempts);
+
+        Assert.Throws<ZlinkConfigException>(() =>
+            router.Options.SubmitRetryMode = (SubmitRetryMode)2);
+        Assert.Throws<ZlinkConfigException>(() =>
+            router.Options.SubmitRetryTimeoutMilliseconds = -1);
+        Assert.Throws<ZlinkConfigException>(() =>
+            router.Options.SubmitRetryAttempts = 17);
+    }
+
+    [Fact]
     public void socket_options_runtime_string_getter_works()
     {
         if (!CoreTestSupport.IsNativeAvailable())

@@ -228,6 +228,24 @@ public class CommonSocketOptions
         set => Socket.SetOption(SocketOptions.InvertMatching, value ? 1 : 0);
     }
 
+    public SubmitRetryMode SubmitRetryMode
+    {
+        get => (SubmitRetryMode)Socket.GetOption(SocketOptions.SubmitRetryMode);
+        set => Socket.SetOption(SocketOptions.SubmitRetryMode, (int)value);
+    }
+
+    public int SubmitRetryTimeoutMilliseconds
+    {
+        get => Socket.GetOption(SocketOptions.SubmitRetryTimeout);
+        set => Socket.SetOption(SocketOptions.SubmitRetryTimeout, value);
+    }
+
+    public int SubmitRetryAttempts
+    {
+        get => Socket.GetOption(SocketOptions.SubmitRetryAttempts);
+        set => Socket.SetOption(SocketOptions.SubmitRetryAttempts, value);
+    }
+
     internal bool ZmpMetadata
     {
         get => Socket.GetOption(SocketOptions.ZmpMetadata) != 0;

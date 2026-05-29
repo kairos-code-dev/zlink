@@ -8,7 +8,7 @@
 use zlink::{
     AutoConnectType, Context, Discovery, Message, MonitorEvent, Received, RecvError, RecvFlags,
     RidDuplicatePolicy, RoutingId, SendFlags, SendResult, SocketMonitor, SpotNode, StreamSocket,
-    SubscriptionEvent, TopicMessage, XPubSocket,
+    SubmitRetryMode, SubscriptionEvent, TopicMessage, XPubSocket,
 };
 
 // ---------------------------------------------------------------------------
@@ -143,6 +143,28 @@ fn common_typed_options() {
     options
         .set_linger(std::time::Duration::from_millis(100))
         .unwrap();
+    assert_eq!(options.submit_retry_mode().unwrap(), SubmitRetryMode::Off);
+    assert_eq!(
+        options.submit_retry_timeout().unwrap(),
+        std::time::Duration::from_millis(0)
+    );
+    assert_eq!(options.submit_retry_attempts().unwrap(), 0);
+    options
+        .set_submit_retry_mode(SubmitRetryMode::LocalFailure)
+        .unwrap();
+    options
+        .set_submit_retry_timeout(std::time::Duration::from_millis(42))
+        .unwrap();
+    options.set_submit_retry_attempts(2).unwrap();
+    assert_eq!(
+        options.submit_retry_mode().unwrap(),
+        SubmitRetryMode::LocalFailure
+    );
+    assert_eq!(
+        options.submit_retry_timeout().unwrap(),
+        std::time::Duration::from_millis(42)
+    );
+    assert_eq!(options.submit_retry_attempts().unwrap(), 2);
     options.set_tcp_keepalive(true).unwrap();
     options.set_tcp_nodelay(true).unwrap();
     options.set_ipv6(false).unwrap();

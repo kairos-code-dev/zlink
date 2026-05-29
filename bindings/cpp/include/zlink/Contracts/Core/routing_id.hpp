@@ -85,7 +85,7 @@ class router_socket_t;
 class stream_socket_t;
 class pub_socket_t;
 class xpub_socket_t;
-class zlink_timer_t;
+class timer_t;
 namespace service
 {
 class spot_node_t;

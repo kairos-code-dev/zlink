@@ -2,6 +2,7 @@
 #include "zlink/Contracts/Core/context.hpp"
 
 #include <Runtime/Core/context_access.hpp>
+#include <Runtime/Core/duration_conversion.hpp>
 
 #include <zlink.h>
 
@@ -279,7 +280,7 @@ void context_options_t::auto_hwm_recalc_debounce (
   std::chrono::milliseconds value_)
 {
     detail::throw_if_failed<config_error_t> (
-      _ctx.set_option_raw (14, static_cast<int> (value_.count ())));
+      _ctx.set_option_raw (14, detail::native_option_ms (value_)));
 }
 
 zlink::auto_hwm_profile context_options_t::auto_hwm_profile () const

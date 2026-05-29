@@ -45,16 +45,7 @@ template<typename T> class async_result_t
 
     void wait () const
     {
-        if (!_state->progress) {
-            _state->future.wait ();
-            return;
-        }
-
-        while (_state->future.wait_for (std::chrono::milliseconds (0))
-               != std::future_status::ready) {
-            pump_progress_once ();
-            (void) _state->future.wait_for (progress_slice ());
-        }
+        wait_until_ready (*_state);
     }
 
     template<typename Rep, typename Period>
@@ -130,6 +121,7 @@ template<typename T> class async_result_t
         state->waiter_started.store (true);
         std::thread ([state, continuation_]() mutable {
             try {
+                wait_until_ready (*state);
                 state->value = std::make_unique<T> (state->future.get ());
             } catch (...) {
                 state->error = std::current_exception ();
@@ -165,6 +157,20 @@ template<typename T> class async_result_t
     static std::chrono::milliseconds progress_slice ()
     {
         return std::chrono::milliseconds (1);
+    }
+
+    static void wait_until_ready (shared_state_t &state_)
+    {
+        if (!state_.progress) {
+            state_.future.wait ();
+            return;
+        }
+
+        while (state_.future.wait_for (std::chrono::milliseconds (0))
+               != std::future_status::ready) {
+            state_.progress ();
+            (void) state_.future.wait_for (progress_slice ());
+        }
     }
 
     void pump_progress_once () const

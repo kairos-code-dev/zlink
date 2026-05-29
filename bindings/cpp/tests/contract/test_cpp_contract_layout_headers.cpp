@@ -48,8 +48,8 @@ static_assert (std::is_class<zlink::spot_node_socket_entry_t>::value,
                "public projection must expose spot_node_socket_entry_t");
 static_assert (std::is_class<zlink::service::spot_t>::value,
                "public projection must expose service::spot_t");
-static_assert (std::is_class<zlink::zlink_timer_t>::value,
-               "public projection must expose zlink_timer_t");
+static_assert (std::is_class<zlink::timer_t>::value,
+               "public projection must expose timer_t");
 static_assert (std::is_enum<zlink::auto_connect_type_t>::value,
                "public projection must expose auto_connect_type_t");
 static_assert (std::is_class<zlink::member_peer_entry_t>::value,

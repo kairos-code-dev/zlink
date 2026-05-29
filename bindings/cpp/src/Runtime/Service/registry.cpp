@@ -2,6 +2,7 @@
 
 #include <zlink/Contracts/Service/registry.hpp>
 #include <Runtime/Core/context_access.hpp>
+#include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Service/registry_access.hpp>
 #include <Runtime/Service/service_model_access.hpp>
 
@@ -115,6 +116,18 @@ uint32_t registry_t::get (int option_) const
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (err));
     return value;
+}
+
+void registry_t::set_heartbeat (std::chrono::milliseconds interval_,
+                                std::chrono::milliseconds timeout_)
+{
+    set_heartbeat (zlink::detail::native_timeout_ms (interval_),
+                   zlink::detail::native_timeout_ms (timeout_));
+}
+
+void registry_t::set_broadcast_interval (std::chrono::milliseconds interval_)
+{
+    set_broadcast_interval (zlink::detail::native_timeout_ms (interval_));
 }
 
 void registry_t::add_peer (const std::string &peer_pub_endpoint_)

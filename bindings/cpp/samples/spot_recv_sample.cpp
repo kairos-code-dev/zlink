@@ -13,7 +13,7 @@ int main ()
       ctx, zlink::auto_connect_type::spot_mesh, detail::k_spot_service);
     zlink::service::spot_node_t topic_node (ctx);
     zlink::service::spot_t topic_spot = topic_node.create_spot ();
-    zlink::zlink_timer_t timer = zlink::zlink_timer_t::from_spot (topic_spot);
+    zlink::timer_t timer = zlink::timer_t::from_spot (topic_spot);
     assert (registry.valid ());
     assert (discovery.valid ());
     assert (topic_node.valid ());
@@ -58,9 +58,9 @@ int main ()
     std::optional<uint64_t> fire_count = timer.recv ();
     assert (fire_count && *fire_count == 1);
 
-    char zlink_timer_tick[32];
+    char timer_tick[32];
     std::snprintf (
-      zlink_timer_tick, sizeof (zlink_timer_tick), "tick-%llu",
+      timer_tick, sizeof (timer_tick), "tick-%llu",
       static_cast<unsigned long long> (*fire_count));
 
     std::printf (
@@ -69,6 +69,6 @@ int main ()
       topic.c_str (), publish_payload.c_str ());
     std::printf (
       "[spot/recv] channel: \"%s\" tick: 1 timer: \"%s\" -> next-round\n",
-      detail::k_spot_service, zlink_timer_tick);
+      detail::k_spot_service, timer_tick);
     return 0;
 }

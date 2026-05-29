@@ -3,6 +3,7 @@
 #define ZLINK_CPP_RUNTIME_SERVICE_ACTOR_DETAIL_HPP_INCLUDED
 
 #include "actor_model_access.hpp"
+#include "../Core/duration_conversion.hpp"
 #include "detail.hpp"
 #include "spot_state.hpp"
 
@@ -235,7 +236,7 @@ inline int submit_actor_join (
       native.data (), native.size (),
       &detail::actor_join_result_trampoline, result_state_,
       static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
-      static_cast<uint32_t> (state_.timeout.count ()));
+      zlink::detail::native_timeout_ms (state_.timeout));
 
     if (rc != ZLINK_SUBMIT_OK)
         detail::restore_parts_from_native (state_.parts, native);

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include <zlink/Contracts/Errors/errors.hpp>
 #include <zlink/Contracts/Sockets/socket_options.hpp>
+#include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Core/routing_id_access.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
 #include <Runtime/Options/option_ids.hpp>
@@ -240,7 +241,7 @@ void common_socket_options_t::linger (std::chrono::milliseconds value)
 {
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket), detail::socket_option_id::linger,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 message_count_t common_socket_options_t::send_hwm () const
@@ -282,7 +283,7 @@ void common_socket_options_t::send_timeout (std::chrono::milliseconds value)
 {
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket),
-      detail::socket_option_id::sndtimeo, static_cast<int> (value.count ()));
+      detail::socket_option_id::sndtimeo, detail::native_option_ms (value));
 }
 
 std::chrono::milliseconds common_socket_options_t::recv_timeout () const
@@ -296,7 +297,7 @@ void common_socket_options_t::recv_timeout (std::chrono::milliseconds value)
 {
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket),
-      detail::socket_option_id::rcvtimeo, static_cast<int> (value.count ()));
+      detail::socket_option_id::rcvtimeo, detail::native_option_ms (value));
 }
 
 bool common_socket_options_t::immediate () const
@@ -326,7 +327,7 @@ void common_socket_options_t::connect_timeout (std::chrono::milliseconds value)
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket),
       detail::socket_option_id::connect_timeout,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 bool common_socket_options_t::ipv6 () const
@@ -387,7 +388,7 @@ void common_socket_options_t::heartbeat_interval (
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket),
       detail::socket_option_id::heartbeat_ivl,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 std::chrono::milliseconds common_socket_options_t::heartbeat_ttl () const
@@ -402,7 +403,7 @@ void common_socket_options_t::heartbeat_ttl (std::chrono::milliseconds value)
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket),
       detail::socket_option_id::heartbeat_ttl,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 std::chrono::milliseconds common_socket_options_t::heartbeat_timeout () const
@@ -418,7 +419,7 @@ void common_socket_options_t::heartbeat_timeout (
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket),
       detail::socket_option_id::heartbeat_timeout,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 rid_duplicate_policy_t common_socket_options_t::rid_duplicate_policy () const
@@ -478,7 +479,7 @@ void common_socket_options_t::reconnect_interval (
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket),
       detail::socket_option_id::reconnect_ivl,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 std::chrono::milliseconds
@@ -495,7 +496,7 @@ void common_socket_options_t::reconnect_interval_max (
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket),
       detail::socket_option_id::reconnect_ivl_max,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 submit_retry_mode_t common_socket_options_t::submit_retry_mode () const
@@ -526,7 +527,7 @@ void common_socket_options_t::submit_retry_timeout (
     detail::set_common_option_value<int> (
       detail::native_option_handle (_socket),
       detail::socket_option_id::submit_retry_timeout,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 int common_socket_options_t::submit_retry_attempts () const
@@ -635,7 +636,7 @@ void router_socket_options_t::request_timeout (std::chrono::milliseconds value)
     detail::set_router_option_value<int> (
       detail::native_option_handle (_socket),
       detail::router_option_id::request_timeout_ms,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 peer_weight_t router_socket_options_t::peer_weight () const
@@ -679,7 +680,7 @@ void dealer_socket_options_t::request_timeout (std::chrono::milliseconds value)
     detail::set_dealer_option_value<int> (
       detail::native_option_handle (_socket),
       detail::dealer_option_id::request_timeout_ms,
-      static_cast<int> (value.count ()));
+      detail::native_option_ms (value));
 }
 
 peer_weight_t dealer_socket_options_t::peer_weight () const

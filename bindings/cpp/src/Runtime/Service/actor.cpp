@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/Contracts/Service/actor.hpp>
+#include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Service/actor_model_access.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_access.hpp>
@@ -79,7 +80,7 @@ void actor_t::close (std::chrono::milliseconds timeout_)
         zlink::detail::native_handle (*_node),
         zlink::detail::actor_ref_native (_ref),
         &detail::request_callback_trampoline, state.get (),
-        static_cast<uint32_t> (timeout_.count ())));
+        zlink::detail::native_timeout_ms (timeout_)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     state.release ();
@@ -94,7 +95,7 @@ void actor_t::close_bound_session (std::chrono::milliseconds timeout_)
         zlink_spot_node_actor_close_bound_session (
           zlink::detail::native_handle (*_node),
           zlink::detail::actor_ref_native (_ref),
-          static_cast<uint32_t> (timeout_.count ()))));
+          zlink::detail::native_timeout_ms (timeout_))));
 }
 
 actor_t spot_node_t::create_actor (const std::string &actor_id_)

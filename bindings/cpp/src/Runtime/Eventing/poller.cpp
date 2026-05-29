@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include "zlink/Contracts/Eventing/poller.hpp"
 
+#include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Eventing/monitor_access.hpp>
 #include <Runtime/Eventing/timer_access.hpp>
 #include <Runtime/Service/spot_access.hpp>
@@ -25,7 +26,7 @@ struct poller_item_t
     void *socket_handle = nullptr;
     int fd = 0;
     void *timer_handle = nullptr;
-    zlink_timer_t *timer = nullptr;
+    timer_t *timer = nullptr;
     poll_source_kind_t source_kind = poll_source_kind_t::socket;
     poll_event_flag_t events = poll_event_flag_t::none;
     std::uintptr_t slot = 0;
@@ -368,7 +369,7 @@ struct poller_t::impl
         ++non_socket_item_count;
     }
 
-    void add_timer (zlink_timer_t &timer_, std::uintptr_t slot_)
+    void add_timer (timer_t &timer_, std::uintptr_t slot_)
     {
         ensure_addable ();
         sync_socket_native_events_if_needed ();
@@ -445,7 +446,7 @@ struct poller_t::impl
         return true;
     }
 
-    bool remove_timer (zlink_timer_t &timer_)
+    bool remove_timer (timer_t &timer_)
     {
         ensure_open ();
         const int index = find_timer (detail::native_handle (timer_));
@@ -621,7 +622,7 @@ void poller_t::add_fd (int fd_, poll_event_flag_t events_, std::uintptr_t slot_)
     _impl->add_fd (fd_, events_, slot_);
 }
 
-void poller_t::add (zlink_timer_t &timer_, std::uintptr_t slot_)
+void poller_t::add (timer_t &timer_, std::uintptr_t slot_)
 {
     _impl->add_timer (timer_, slot_);
 }
@@ -669,7 +670,7 @@ void poller_t::modify (socket_t &socket_, poll_event_flag_t events_)
     _impl->modify_socket (zlink::detail::native_handle (socket_), events_);
 }
 
-bool poller_t::remove (zlink_timer_t &timer_)
+bool poller_t::remove (timer_t &timer_)
 {
     return _impl->remove_timer (timer_);
 }
@@ -699,7 +700,7 @@ size_t poller_t::wait (poll_event_t *events_,
                        std::chrono::milliseconds timeout_)
 {
     return _impl->wait (events_, capacity_,
-                        static_cast<long> (timeout_.count ()));
+                        detail::native_poll_timeout_ms (timeout_));
 }
 
 void poller_t::close ()

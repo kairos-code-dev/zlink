@@ -12,7 +12,7 @@
 namespace zlink
 {
 
-class zlink_timer_t;
+class timer_t;
 namespace service
 {
 class spot_t;
@@ -22,21 +22,21 @@ namespace detail
 struct timer_access_t;
 } // namespace detail
 
-class zlink_timer_t
+class timer_t
 {
   public:
-    zlink_timer_t ();
+    timer_t ();
 
-    ~zlink_timer_t ();
+    ~timer_t ();
 
-    zlink_timer_t (zlink_timer_t &&other) noexcept;
+    timer_t (timer_t &&other) noexcept;
 
-    zlink_timer_t &operator= (zlink_timer_t &&other) noexcept;
+    timer_t &operator= (timer_t &&other) noexcept;
 
-    zlink_timer_t (const zlink_timer_t &) = delete;
-    zlink_timer_t &operator= (const zlink_timer_t &) = delete;
+    timer_t (const timer_t &) = delete;
+    timer_t &operator= (const timer_t &) = delete;
 
-    static zlink_timer_t from_spot (service::spot_t &spot_);
+    static timer_t from_spot (service::spot_t &spot_);
 
     bool valid () const noexcept;
 
@@ -44,9 +44,12 @@ class zlink_timer_t
     void start (std::chrono::duration<Rep, Period> interval_,
                 uint64_t repeat_count_ = 0)
     {
-        const uint64_t interval_ns = static_cast<uint64_t> (
+        const auto interval_ns_value =
           std::chrono::duration_cast<std::chrono::nanoseconds> (interval_)
-            .count ());
+            .count ();
+        if (interval_ns_value < 0)
+            throw config_error_t (config_result_t::invalid_argument, EINVAL);
+        const uint64_t interval_ns = static_cast<uint64_t> (interval_ns_value);
         start_ns (interval_ns, repeat_count_);
     }
 

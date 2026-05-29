@@ -45,7 +45,7 @@ class poller_t
               std::uintptr_t slot_);
 
     void add_fd (int fd_, poll_event_flag_t events_, std::uintptr_t slot_);
-    void add (zlink_timer_t &timer_, std::uintptr_t slot_);
+    void add (timer_t &timer_, std::uintptr_t slot_);
 
     void modify_fd (int fd_, poll_event_flag_t events_);
     void modify (socket_monitor_t &monitor_, poll_event_flag_t events_);
@@ -55,7 +55,7 @@ class poller_t
     bool remove (socket_monitor_t &monitor_);
     bool remove (socket_t &socket_);
 
-    bool remove (zlink_timer_t &timer_);
+    bool remove (timer_t &timer_);
     bool remove_fd (int fd_);
 
     size_t wait (poll_event_t *events_,

@@ -444,7 +444,7 @@ void test_poller_distinguishes_timer_and_socket_in_same_buffer ()
     zlink::context_t ctx;
     zlink::pair_socket_t sender (ctx);
     zlink::pair_socket_t receiver (ctx);
-    zlink::zlink_timer_t timer;
+    zlink::timer_t timer;
     const std::string endpoint =
       zlink_cpp_contract::unique_inproc ("poller-timer-socket");
     sender.bind (endpoint);

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <Runtime/Service/spot_impl.hpp>
+#include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Service/actor_model_access.hpp>
 #include <Runtime/Service/actor_detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
@@ -85,7 +86,7 @@ bool spot_t::valid () const noexcept
 
 void spot_t::request_timeout (std::chrono::milliseconds timeout_)
 {
-    const int value = static_cast<int> (timeout_.count ());
+    const int value = zlink::detail::native_option_ms (timeout_);
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
       zlink_set_spot_option (_impl->handle, ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS,
                              &value, sizeof (value))));

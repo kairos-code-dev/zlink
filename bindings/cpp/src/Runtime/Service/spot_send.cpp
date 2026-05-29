@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <Runtime/Service/spot_impl.hpp>
+#include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
 
@@ -227,10 +228,9 @@ spot_t::request_to_spot (const routing_id_t &dest_node_rid_,
               is_final_ ? &detail::request_callback_trampoline : nullptr,
               is_final_ ? state.get () : nullptr, ZLINK_SEND_FLAGS_NONE,
               part_flag_,
-              is_final_ ? static_cast<uint32_t> (
+              is_final_ ? zlink::detail::native_timeout_ms (
                             zlink::detail::resolve_timeout (
-                              timeout_, _impl->default_request_timeout)
-                              .count ())
+                              timeout_, _impl->default_request_timeout))
                         : 0u);
         }));
     if (rc != submit_result_t::ok) {
@@ -270,10 +270,9 @@ bool spot_t::request_to_spot (
               is_final_ ? state.get () : nullptr,
               static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
               part_flag_,
-              is_final_ ? static_cast<uint32_t> (
+              is_final_ ? zlink::detail::native_timeout_ms (
                             zlink::detail::resolve_timeout (
-                              timeout_, _impl->default_request_timeout)
-                              .count ())
+                              timeout_, _impl->default_request_timeout))
                         : 0u);
         }));
     if (rc != submit_result_t::ok) {
@@ -321,10 +320,9 @@ spot_t::request_to_router (const routing_id_t &peer_rid_,
               is_final_ ? &detail::request_callback_trampoline : nullptr,
               is_final_ ? state.get () : nullptr, ZLINK_SEND_FLAGS_NONE,
               part_flag_,
-              is_final_ ? static_cast<uint32_t> (
+              is_final_ ? zlink::detail::native_timeout_ms (
                             zlink::detail::resolve_timeout (
-                              timeout_, _impl->default_request_timeout)
-                              .count ())
+                              timeout_, _impl->default_request_timeout))
                         : 0u);
         }));
     if (rc != submit_result_t::ok) {
@@ -363,10 +361,9 @@ bool spot_t::request_to_router (
               is_final_ ? state.get () : nullptr,
               static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
               part_flag_,
-              is_final_ ? static_cast<uint32_t> (
+              is_final_ ? zlink::detail::native_timeout_ms (
                             zlink::detail::resolve_timeout (
-                              timeout_, _impl->default_request_timeout)
-                              .count ())
+                              timeout_, _impl->default_request_timeout))
                         : 0u);
         }));
     if (rc != submit_result_t::ok) {
@@ -413,10 +410,9 @@ spot_t::request_channel (const std::string &channel_name_,
               is_final_ ? &detail::request_callback_trampoline : nullptr,
               is_final_ ? state.get () : nullptr, ZLINK_SEND_FLAGS_NONE,
               part_flag_,
-              is_final_ ? static_cast<uint32_t> (
+              is_final_ ? zlink::detail::native_timeout_ms (
                             zlink::detail::resolve_timeout (
-                              timeout_, _impl->default_request_timeout)
-                              .count ())
+                              timeout_, _impl->default_request_timeout))
                         : 0u);
         }));
     if (rc != submit_result_t::ok) {
@@ -469,10 +465,9 @@ bool spot_t::request_channel (
               is_final_ ? state.get () : nullptr,
               static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
               part_flag_,
-              is_final_ ? static_cast<uint32_t> (
+              is_final_ ? zlink::detail::native_timeout_ms (
                             zlink::detail::resolve_timeout (
-                              timeout_, _impl->default_request_timeout)
-                              .count ())
+                              timeout_, _impl->default_request_timeout))
                         : 0u);
         }));
     if (rc != submit_result_t::ok) {

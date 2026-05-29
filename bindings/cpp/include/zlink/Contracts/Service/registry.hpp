@@ -61,21 +61,14 @@ class registry_t
     }
 
     void set_heartbeat (std::chrono::milliseconds interval_,
-                        std::chrono::milliseconds timeout_)
-    {
-        set_heartbeat (static_cast<uint32_t> (interval_.count ()),
-                       static_cast<uint32_t> (timeout_.count ()));
-    }
+                        std::chrono::milliseconds timeout_);
 
     void set_broadcast_interval (uint32_t interval_ms_)
     {
         set (14340, interval_ms_);
     }
 
-    void set_broadcast_interval (std::chrono::milliseconds interval_)
-    {
-        set_broadcast_interval (static_cast<uint32_t> (interval_.count ()));
-    }
+    void set_broadcast_interval (std::chrono::milliseconds interval_);
 
     void set_tls_server (const std::string &cert_,
                          const std::string &key_,

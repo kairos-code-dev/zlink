@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/Contracts/Service/spot.hpp>
+#include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Core/operation_state_owner.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
@@ -41,7 +42,7 @@ zlink_submit_result_t submit_raw_request_part (
   detail::request_state_t *request_state_)
 {
     const uint32_t timeout =
-      is_final_ ? static_cast<uint32_t> (state_.timeout.count ()) : 0u;
+      is_final_ ? zlink::detail::native_timeout_ms (state_.timeout) : 0u;
     auto callback = is_final_ ? &detail::request_callback_trampoline : nullptr;
     void *userdata = is_final_ ? request_state_ : nullptr;
 

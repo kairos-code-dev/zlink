@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/Contracts/Service/spot.hpp>
+#include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Core/operation_state_owner.hpp>
 #include <Runtime/Service/actor_detail.hpp>
 #include <Runtime/Service/spot_access.hpp>
@@ -218,7 +219,7 @@ actor_join_entry_spot_operation_t::submit_async () &&
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         zlink::detail::routing_id_native (state ().aux_rid),
         &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -236,7 +237,7 @@ bool actor_join_entry_spot_operation_t::submit (
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         zlink::detail::routing_id_native (state ().aux_rid),
         &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -345,7 +346,7 @@ actor_leave_operation_t::submit_async () &&
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         zlink::detail::routing_id_native (state ().aux_rid),
         &detail::request_callback_trampoline, request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -361,7 +362,7 @@ bool actor_leave_operation_t::submit (request_callback_t callback_) &&
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         zlink::detail::routing_id_native (state ().aux_rid),
         &detail::request_callback_trampoline, request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -409,7 +410,7 @@ actor_destroy_operation_t::submit_async () &&
       static_cast<submit_result_t> (zlink_spot_node_actor_destroy (
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         &detail::request_callback_trampoline, request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -424,7 +425,7 @@ bool actor_destroy_operation_t::submit (request_callback_t callback_) &&
       static_cast<submit_result_t> (zlink_spot_node_actor_destroy (
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         &detail::request_callback_trampoline, request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -473,7 +474,7 @@ actor_lookup_operation_t::submit_async () &&
         state ().node, zlink::detail::routing_id_native (state ().aux_rid),
         state ().actor_id.c_str (), &detail::actor_lookup_result_trampoline,
         request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -489,7 +490,7 @@ bool actor_lookup_operation_t::submit (actor_lookup_callback_t callback_) &&
         state ().node, zlink::detail::routing_id_native (state ().aux_rid),
         state ().actor_id.c_str (), &detail::actor_lookup_result_trampoline,
         request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -539,7 +540,7 @@ actor_bind_operation_t::submit_async () &&
         zlink::detail::routing_id_native (state ().session_rid),
         zlink::detail::actor_ref_native (state ().actor),
         &detail::request_callback_trampoline, request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -556,7 +557,7 @@ bool actor_bind_operation_t::submit (request_callback_t callback_) &&
         zlink::detail::routing_id_native (state ().session_rid),
         zlink::detail::actor_ref_native (state ().actor),
         &detail::request_callback_trampoline, request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -606,7 +607,7 @@ actor_unbind_operation_t::submit_async () &&
         zlink::detail::routing_id_native (state ().session_rid),
         state ().actor_id.c_str (), &detail::request_callback_trampoline,
         request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
@@ -623,7 +624,7 @@ bool actor_unbind_operation_t::submit (request_callback_t callback_) &&
         zlink::detail::routing_id_native (state ().session_rid),
         state ().actor_id.c_str (), &detail::request_callback_trampoline,
         request_state.get (),
-        static_cast<uint32_t> (state ().timeout.count ())));
+        zlink::detail::native_timeout_ms (state ().timeout)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();

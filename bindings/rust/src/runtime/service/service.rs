@@ -1297,22 +1297,22 @@ impl SpotNode {
         Ok(value)
     }
 
-    pub fn router_hwm(&self) -> Result<i32, ConfigError> {
+    pub fn router_high_water_mark(&self) -> Result<i32, ConfigError> {
         self.get_option_i32(ffi::zlink_spot_node_option_t::ZLINK_SPOT_NODE_OPT_ROUTER_HWM)
     }
 
-    pub fn set_router_hwm(&self, value: i32) -> Result<(), ConfigError> {
+    pub fn set_router_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
         self.set_option_i32(
             ffi::zlink_spot_node_option_t::ZLINK_SPOT_NODE_OPT_ROUTER_HWM,
             value,
         )
     }
 
-    pub fn pubsub_hwm(&self) -> Result<i32, ConfigError> {
+    pub fn pubsub_high_water_mark(&self) -> Result<i32, ConfigError> {
         self.get_option_i32(ffi::zlink_spot_node_option_t::ZLINK_SPOT_NODE_OPT_PUBSUB_HWM)
     }
 
-    pub fn set_pubsub_hwm(&self, value: i32) -> Result<(), ConfigError> {
+    pub fn set_pubsub_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
         self.set_option_i32(
             ffi::zlink_spot_node_option_t::ZLINK_SPOT_NODE_OPT_PUBSUB_HWM,
             value,

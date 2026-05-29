@@ -19,11 +19,11 @@ fn main() {
     let pub_sock = ctx.pub_socket().expect("pub");
     pub_sock
         .common_options()
-        .set_send_hwm(settings.send_hwm)
+        .set_send_high_water_mark(settings.send_high_water_mark)
         .expect("sndhwm");
     pub_sock
         .common_options()
-        .set_recv_hwm(settings.recv_hwm)
+        .set_receive_high_water_mark(settings.receive_high_water_mark)
         .expect("rcvhwm");
     pub_sock
         .common_options()

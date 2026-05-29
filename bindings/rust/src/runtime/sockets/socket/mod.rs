@@ -288,19 +288,19 @@ impl SocketInner {
 
     // -- Common typed options (per Option Policy) --------------------------
 
-    pub fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError> {
+    pub fn set_send_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDHWM, value)
     }
 
-    pub fn send_hwm(&self) -> Result<i32, ConfigError> {
+    pub fn send_high_water_mark(&self) -> Result<i32, ConfigError> {
         get_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDHWM)
     }
 
-    pub fn set_recv_hwm(&self, value: i32) -> Result<(), ConfigError> {
+    pub fn set_receive_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVHWM, value)
     }
 
-    pub fn recv_hwm(&self) -> Result<i32, ConfigError> {
+    pub fn receive_high_water_mark(&self) -> Result<i32, ConfigError> {
         get_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVHWM)
     }
 
@@ -320,11 +320,11 @@ impl SocketInner {
         get_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDTIMEO)
     }
 
-    pub fn set_recv_timeout(&self, d: Duration) -> Result<(), ConfigError> {
+    pub fn set_receive_timeout(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVTIMEO, d)
     }
 
-    pub fn recv_timeout(&self) -> Result<Duration, ConfigError> {
+    pub fn receive_timeout(&self) -> Result<Duration, ConfigError> {
         get_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVTIMEO)
     }
 
@@ -360,7 +360,10 @@ impl SocketInner {
     }
 
     pub fn submit_retry_mode(&self) -> Result<i32, ConfigError> {
-        get_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SUBMIT_RETRY_MODE)
+        get_int_opt(
+            self.handle,
+            ffi::zlink_option_t::ZLINK_OPT_SUBMIT_RETRY_MODE,
+        )
     }
 
     pub fn set_submit_retry_timeout(&self, d: Duration) -> Result<(), ConfigError> {
@@ -401,7 +404,7 @@ impl SocketInner {
         set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVBUF, bytes)
     }
 
-    pub fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError> {
+    pub fn set_max_message_size(&self, bytes: i64) -> Result<(), ConfigError> {
         let v = bytes;
         check_config_rc(unsafe {
             ffi::zlink_set_option(
@@ -413,7 +416,7 @@ impl SocketInner {
         })
     }
 
-    pub fn max_msg_size(&self) -> Result<i64, ConfigError> {
+    pub fn max_message_size(&self) -> Result<i64, ConfigError> {
         get_i64_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_MAXMSGSIZE)
     }
 
@@ -461,7 +464,7 @@ impl SocketInner {
         )
     }
 
-    pub fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ConfigError> {
+    pub fn set_tcp_no_delay(&self, enabled: bool) -> Result<(), ConfigError> {
         set_bool_opt(
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_TCP_NODELAY,
@@ -469,7 +472,7 @@ impl SocketInner {
         )
     }
 
-    pub fn tcp_nodelay(&self) -> Result<bool, ConfigError> {
+    pub fn tcp_no_delay(&self) -> Result<bool, ConfigError> {
         get_bool_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_TCP_NODELAY)
     }
 

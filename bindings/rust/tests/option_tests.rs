@@ -29,21 +29,21 @@ fn context_option_auto_hwm_msg_unit_bytes() {
 }
 
 #[test]
-fn common_option_send_hwm() {
+fn common_option_send_high_water_mark() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
     let options = sock.common_options();
-    options.set_send_hwm(500).unwrap();
-    assert_eq!(options.send_hwm().unwrap(), 500);
+    options.set_send_high_water_mark(500).unwrap();
+    assert_eq!(options.send_high_water_mark().unwrap(), 500);
 }
 
 #[test]
-fn common_option_recv_hwm() {
+fn common_option_receive_high_water_mark() {
     let ctx = Context::new().unwrap();
     let sock = ctx.dealer_socket().unwrap();
     let options = sock.common_options();
-    options.set_recv_hwm(1500).unwrap();
-    assert_eq!(options.recv_hwm().unwrap(), 1500);
+    options.set_receive_high_water_mark(1500).unwrap();
+    assert_eq!(options.receive_high_water_mark().unwrap(), 1500);
 }
 
 #[test]
@@ -65,10 +65,10 @@ fn common_option_tcp_keepalive_boolean() {
 }
 
 #[test]
-fn common_option_tcp_nodelay_boolean() {
+fn common_option_tcp_no_delay_boolean() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pair_socket().unwrap();
-    sock.common_options().set_tcp_nodelay(true).unwrap();
+    sock.common_options().set_tcp_no_delay(true).unwrap();
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn pub_option_verbose() {
 fn pub_option_nodrop() {
     let ctx = Context::new().unwrap();
     let sock = ctx.pub_socket().unwrap();
-    sock.pub_options().set_nodrop(false).unwrap();
+    sock.pub_options().set_no_drop(false).unwrap();
 }
 
 #[test]

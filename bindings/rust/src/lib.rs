@@ -119,7 +119,7 @@ pub use error::{
 };
 pub use flags::{
     CommonSocketOptions, DealerSocketOptions, PubSocketOptions, RecvFlags, RidDuplicatePolicy,
-    RouterSocketOptions, SendFlags, StreamSocketOptions, SubSocketOptions,
+    RouterSocketOptions, SendFlags, StreamSocketOptions, SubSocketOptions, SubmitRetryMode,
 };
 pub use message::Message;
 pub use message_socket_contracts::{DealerSocket, PairSocket};

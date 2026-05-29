@@ -576,10 +576,10 @@ fn try_reserve_tcp_port() -> io::Result<std::net::TcpListener> {
 pub struct MultiSettings {
     pub clients: usize,
     pub duration_seconds: u64,
-    pub send_hwm: i32,
-    pub recv_hwm: i32,
+    pub send_high_water_mark: i32,
+    pub receive_high_water_mark: i32,
     pub send_timeout_ms: u64,
-    pub recv_timeout_ms: u64,
+    pub receive_timeout_ms: u64,
 }
 
 impl MultiSettings {
@@ -587,10 +587,10 @@ impl MultiSettings {
         Self {
             clients: env_or("PERF_MULTI_CLIENTS", 100),
             duration_seconds: env_or("PERF_MULTI_DURATION_SECONDS", 5) as u64,
-            send_hwm: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 0)),
-            recv_hwm: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 0)),
+            send_high_water_mark: env_or_i32("PERF_MULTI_SNDHWM", env_or_i32("PERF_MULTI_HWM", 0)),
+            receive_high_water_mark: env_or_i32("PERF_MULTI_RCVHWM", env_or_i32("PERF_MULTI_HWM", 0)),
             send_timeout_ms: env_or("PERF_MULTI_SNDTIMEO_MS", 200) as u64,
-            recv_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
+            receive_timeout_ms: env_or("PERF_MULTI_RCVTIMEO_MS", 200) as u64,
         }
     }
 }
@@ -607,19 +607,19 @@ fn manual_socket_overrides_allowed() -> bool {
 }
 
 pub trait MultiSocketHwmOptions {
-    fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
-    fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_send_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_receive_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError>;
 }
 
 macro_rules! impl_multi_socket_hwm_options {
     ($($ty:ty),+ $(,)?) => {
         $(
             impl MultiSocketHwmOptions for $ty {
-                fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
-                    Ok(self.common_options().set_send_hwm(hwm)?)
+                fn set_send_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_send_high_water_mark(hwm)?)
                 }
-                fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
-                    Ok(self.common_options().set_recv_hwm(hwm)?)
+                fn set_receive_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_receive_high_water_mark(hwm)?)
                 }
             }
         )+
@@ -641,11 +641,11 @@ pub fn apply_multi_hwm<O: MultiSocketHwmOptions>(opts: &O, settings: &MultiSetti
     if !manual_socket_overrides_allowed() {
         return;
     }
-    if settings.send_hwm > 0 {
-        opts.set_send_hwm(settings.send_hwm).expect("sndhwm");
+    if settings.send_high_water_mark > 0 {
+        opts.set_send_high_water_mark(settings.send_high_water_mark).expect("sndhwm");
     }
-    if settings.recv_hwm > 0 {
-        opts.set_recv_hwm(settings.recv_hwm).expect("rcvhwm");
+    if settings.receive_high_water_mark > 0 {
+        opts.set_receive_high_water_mark(settings.receive_high_water_mark).expect("rcvhwm");
     }
 }
 
@@ -666,15 +666,15 @@ pub fn apply_multi_spot_node_admission(node: &zlink::SpotNode, settings: &MultiS
     if !manual_socket_overrides_allowed() {
         return;
     }
-    let admission = if settings.send_hwm > 0 {
-        settings.send_hwm
+    let admission = if settings.send_high_water_mark > 0 {
+        settings.send_high_water_mark
     } else {
-        settings.recv_hwm
+        settings.receive_high_water_mark
     };
     if admission > 0 {
-        node.set_pubsub_hwm(admission)
+        node.set_pubsub_high_water_mark(admission)
             .expect("spot node pubsub hwm");
-        node.set_router_hwm(admission)
+        node.set_router_high_water_mark(admission)
             .expect("spot node router hwm");
     }
 }

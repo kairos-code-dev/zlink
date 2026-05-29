@@ -32,8 +32,8 @@ pub(crate) trait ContextOptionRuntime {
     fn set_thread_priority(&self, priority: i32) -> Result<(), ConfigError>;
     fn thread_scheduling_policy(&self) -> Result<i32, ConfigError>;
     fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ConfigError>;
-    fn max_msg_size(&self) -> Result<i32, ConfigError>;
-    fn set_max_msg_size(&self, size: i32) -> Result<(), ConfigError>;
+    fn max_message_size(&self) -> Result<i32, ConfigError>;
+    fn set_max_message_size(&self, size: i32) -> Result<(), ConfigError>;
     fn msg_t_size(&self) -> Result<i32, ConfigError>;
     fn blocky(&self) -> Result<bool, ConfigError>;
     fn set_blocky(&self, blocky: bool) -> Result<(), ConfigError>;
@@ -119,11 +119,11 @@ impl<'a> ContextOptions<'a> {
     pub fn set_thread_scheduling_policy(&self, policy: i32) -> Result<(), ConfigError> {
         self.context.set_thread_scheduling_policy(policy)
     }
-    pub fn max_msg_size(&self) -> Result<i32, ConfigError> {
-        self.context.max_msg_size()
+    pub fn max_message_size(&self) -> Result<i32, ConfigError> {
+        self.context.max_message_size()
     }
-    pub fn set_max_msg_size(&self, size: i32) -> Result<(), ConfigError> {
-        self.context.set_max_msg_size(size)
+    pub fn set_max_message_size(&self, size: i32) -> Result<(), ConfigError> {
+        self.context.set_max_message_size(size)
     }
     pub fn msg_t_size(&self) -> Result<i32, ConfigError> {
         self.context.msg_t_size()

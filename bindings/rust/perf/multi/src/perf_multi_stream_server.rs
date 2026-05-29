@@ -30,12 +30,12 @@ fn main() {
         .expect("sndtimeo");
     stream
         .common_options()
-        .set_recv_timeout(std::time::Duration::from_millis(settings.recv_timeout_ms))
+        .set_receive_timeout(std::time::Duration::from_millis(settings.receive_timeout_ms))
         .expect("rcvtimeo");
     stream
         .common_options()
-        .set_tcp_nodelay(true)
-        .expect("tcp_nodelay");
+        .set_tcp_no_delay(true)
+        .expect("tcp_no_delay");
     let (echo_tx, echo_rx) = mpsc::channel::<(zlink::RoutingId, Vec<u8>, Vec<u8>)>();
     // C perf_multi_stream_session.hpp handle_packet_message(): the wire stop
     // token in the body ends the run; the echo send result is NOT discarded —

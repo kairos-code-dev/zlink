@@ -58,7 +58,7 @@ fn main() {
             .set_send_timeout(Duration::from_millis(settings.send_timeout_ms))
             .expect("send timeout");
         sock.common_options()
-            .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
+            .set_receive_timeout(Duration::from_millis(settings.receive_timeout_ms))
             .expect("recv timeout");
         let rid = RoutingId::from_bytes(format!("CLIENT-{index}").as_bytes());
         sock.set_routing_id(&rid).expect("set rid");

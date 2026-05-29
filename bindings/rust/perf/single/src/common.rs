@@ -645,11 +645,11 @@ fn manual_socket_overrides_allowed() -> bool {
         .unwrap_or(false)
 }
 
-pub fn resolve_single_send_hwm() -> i32 {
+pub fn resolve_single_send_high_water_mark() -> i32 {
     env_or_i32("PERF_SINGLE_SNDHWM", env_or_i32("PERF_SINGLE_HWM", 0))
 }
 
-pub fn resolve_single_recv_hwm() -> i32 {
+pub fn resolve_single_receive_high_water_mark() -> i32 {
     env_or_i32("PERF_SINGLE_RCVHWM", env_or_i32("PERF_SINGLE_HWM", 0))
 }
 
@@ -659,30 +659,30 @@ pub fn apply_single_hwm<O: SingleSocketHwmOptions>(opts: &O) {
     if !manual_socket_overrides_allowed() {
         return;
     }
-    let sndhwm = resolve_single_send_hwm();
-    let rcvhwm = resolve_single_recv_hwm();
+    let sndhwm = resolve_single_send_high_water_mark();
+    let rcvhwm = resolve_single_receive_high_water_mark();
     if sndhwm > 0 {
-        opts.set_send_hwm(sndhwm).expect("sndhwm");
+        opts.set_send_high_water_mark(sndhwm).expect("sndhwm");
     }
     if rcvhwm > 0 {
-        opts.set_recv_hwm(rcvhwm).expect("rcvhwm");
+        opts.set_receive_high_water_mark(rcvhwm).expect("rcvhwm");
     }
 }
 
 pub trait SingleSocketHwmOptions {
-    fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
-    fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_send_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError>;
+    fn set_receive_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError>;
 }
 
 macro_rules! impl_single_socket_hwm_options {
     ($($ty:ty),+ $(,)?) => {
         $(
             impl SingleSocketHwmOptions for $ty {
-                fn set_send_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
-                    Ok(self.common_options().set_send_hwm(hwm)?)
+                fn set_send_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_send_high_water_mark(hwm)?)
                 }
-                fn set_recv_hwm(&self, hwm: i32) -> Result<(), ZlinkError> {
-                    Ok(self.common_options().set_recv_hwm(hwm)?)
+                fn set_receive_high_water_mark(&self, hwm: i32) -> Result<(), ZlinkError> {
+                    Ok(self.common_options().set_receive_high_water_mark(hwm)?)
                 }
             }
         )+
@@ -708,13 +708,13 @@ pub fn apply_single_spot_node_admission(node: &zlink::SpotNode) {
     if !manual_socket_overrides_allowed() {
         return;
     }
-    let sndhwm = resolve_single_send_hwm();
-    let rcvhwm = resolve_single_recv_hwm();
+    let sndhwm = resolve_single_send_high_water_mark();
+    let rcvhwm = resolve_single_receive_high_water_mark();
     if sndhwm > 0 {
-        node.set_pubsub_hwm(sndhwm).expect("spot node pubsub hwm");
+        node.set_pubsub_high_water_mark(sndhwm).expect("spot node pubsub hwm");
     }
     if rcvhwm > 0 {
-        node.set_router_hwm(rcvhwm).expect("spot node router hwm");
+        node.set_router_high_water_mark(rcvhwm).expect("spot node router hwm");
     }
 }
 
@@ -722,7 +722,7 @@ pub fn resolve_single_idle_drain_ms() -> u64 {
     env_or_u64("PERF_SINGLE_RCVTIMEO_MS", 200)
 }
 
-pub fn resolve_single_recv_timeout() -> Duration {
+pub fn resolve_single_receive_timeout() -> Duration {
     Duration::from_millis(env_or_u64("PERF_SINGLE_RCVTIMEO_MS", 200))
 }
 

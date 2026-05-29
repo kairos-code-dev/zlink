@@ -18,17 +18,17 @@ impl CommonSocketOptionRuntime for SocketInner {
     fn linger(&self) -> Result<Duration, ConfigError> {
         self.linger()
     }
-    fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError> {
-        self.set_send_hwm(value)
+    fn set_send_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
+        self.set_send_high_water_mark(value)
     }
-    fn send_hwm(&self) -> Result<i32, ConfigError> {
-        self.send_hwm()
+    fn send_high_water_mark(&self) -> Result<i32, ConfigError> {
+        self.send_high_water_mark()
     }
-    fn set_recv_hwm(&self, value: i32) -> Result<(), ConfigError> {
-        self.set_recv_hwm(value)
+    fn set_receive_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
+        self.set_receive_high_water_mark(value)
     }
-    fn recv_hwm(&self) -> Result<i32, ConfigError> {
-        self.recv_hwm()
+    fn receive_high_water_mark(&self) -> Result<i32, ConfigError> {
+        self.receive_high_water_mark()
     }
     fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError> {
         self.set_send_timeout(d)
@@ -36,11 +36,11 @@ impl CommonSocketOptionRuntime for SocketInner {
     fn send_timeout(&self) -> Result<Duration, ConfigError> {
         self.send_timeout()
     }
-    fn set_recv_timeout(&self, d: Duration) -> Result<(), ConfigError> {
-        self.set_recv_timeout(d)
+    fn set_receive_timeout(&self, d: Duration) -> Result<(), ConfigError> {
+        self.set_receive_timeout(d)
     }
-    fn recv_timeout(&self) -> Result<Duration, ConfigError> {
-        self.recv_timeout()
+    fn receive_timeout(&self) -> Result<Duration, ConfigError> {
+        self.receive_timeout()
     }
     fn set_immediate(&self, enabled: bool) -> Result<(), ConfigError> {
         self.set_immediate(enabled)
@@ -71,11 +71,11 @@ impl CommonSocketOptionRuntime for SocketInner {
     fn ipv6(&self) -> Result<bool, ConfigError> {
         self.ipv6()
     }
-    fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.set_tcp_nodelay(enabled)
+    fn set_tcp_no_delay(&self, enabled: bool) -> Result<(), ConfigError> {
+        self.set_tcp_no_delay(enabled)
     }
-    fn tcp_nodelay(&self) -> Result<bool, ConfigError> {
-        self.tcp_nodelay()
+    fn tcp_no_delay(&self) -> Result<bool, ConfigError> {
+        self.tcp_no_delay()
     }
     fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ConfigError> {
         self.set_tcp_keepalive(enabled)
@@ -101,11 +101,11 @@ impl CommonSocketOptionRuntime for SocketInner {
     fn heartbeat_timeout(&self) -> Result<Duration, ConfigError> {
         self.heartbeat_timeout()
     }
-    fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError> {
-        self.set_max_msg_size(bytes)
+    fn set_max_message_size(&self, bytes: i64) -> Result<(), ConfigError> {
+        self.set_max_message_size(bytes)
     }
-    fn max_msg_size(&self) -> Result<i64, ConfigError> {
-        self.max_msg_size()
+    fn max_message_size(&self) -> Result<i64, ConfigError> {
+        self.max_message_size()
     }
     fn set_backlog(&self, value: i32) -> Result<(), ConfigError> {
         self.set_backlog(value)
@@ -223,7 +223,7 @@ impl PubSocketOptionRuntime for SocketInner {
     fn set_verboser(&self, enabled: bool) -> Result<(), ConfigError> {
         self.set_pub_bool_opt(ffi::zlink_pub_option_t::ZLINK_PUB_OPT_VERBOSER, enabled)
     }
-    fn set_nodrop(&self, enabled: bool) -> Result<(), ConfigError> {
+    fn set_no_drop(&self, enabled: bool) -> Result<(), ConfigError> {
         self.set_pub_bool_opt(ffi::zlink_pub_option_t::ZLINK_PUB_OPT_NODROP, enabled)
     }
     fn set_manual(&self, enabled: bool) -> Result<(), ConfigError> {

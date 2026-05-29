@@ -284,7 +284,7 @@ fn main() {
                 .request_to_spot(server_node_rid.clone(), server_spot_rid.clone())
                 .message(request)
                 .timeout(Duration::from_millis(
-                    settings.recv_timeout_ms.max(settings.send_timeout_ms),
+                    settings.receive_timeout_ms.max(settings.send_timeout_ms),
                 ))
                 .flags(SendFlags::DONT_WAIT)
                 .submit(move |result| {
@@ -329,7 +329,7 @@ fn main() {
     }
     let pending_drain_deadline = Instant::now()
         + Duration::from_millis(
-            1000.max(settings.recv_timeout_ms.max(settings.send_timeout_ms) * 4),
+            1000.max(settings.receive_timeout_ms.max(settings.send_timeout_ms) * 4),
         );
     while waiting
         .iter()

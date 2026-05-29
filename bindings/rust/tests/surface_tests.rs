@@ -135,10 +135,10 @@ fn common_typed_options() {
     let sock = ctx.pair_socket().unwrap();
     let options = sock.common_options();
 
-    options.set_send_hwm(1000).unwrap();
-    assert_eq!(options.send_hwm().unwrap(), 1000);
-    options.set_recv_hwm(2000).unwrap();
-    assert_eq!(options.recv_hwm().unwrap(), 2000);
+    options.set_send_high_water_mark(1000).unwrap();
+    assert_eq!(options.send_high_water_mark().unwrap(), 1000);
+    options.set_receive_high_water_mark(2000).unwrap();
+    assert_eq!(options.receive_high_water_mark().unwrap(), 2000);
 
     options
         .set_linger(std::time::Duration::from_millis(100))
@@ -166,7 +166,7 @@ fn common_typed_options() {
     );
     assert_eq!(options.submit_retry_attempts().unwrap(), 2);
     options.set_tcp_keepalive(true).unwrap();
-    options.set_tcp_nodelay(true).unwrap();
+    options.set_tcp_no_delay(true).unwrap();
     options.set_ipv6(false).unwrap();
 }
 
@@ -196,9 +196,9 @@ fn pub_typed_options() {
     let pub_options = sock.pub_options();
     pub_options.set_verbose(false).unwrap();
     pub_options.set_verboser(false).unwrap();
-    pub_options.set_nodrop(false).unwrap();
+    pub_options.set_no_drop(false).unwrap();
     common
-        .set_recv_timeout(std::time::Duration::from_millis(1))
+        .set_receive_timeout(std::time::Duration::from_millis(1))
         .unwrap();
 }
 

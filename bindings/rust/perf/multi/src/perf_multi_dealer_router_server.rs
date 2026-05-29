@@ -22,7 +22,7 @@ fn main() {
     common::apply_multi_hwm(&router, &settings);
     router
         .common_options()
-        .set_recv_timeout(Duration::from_millis(settings.recv_timeout_ms))
+        .set_receive_timeout(Duration::from_millis(settings.receive_timeout_ms))
         .expect("recv timeout");
     if matches!(args.transport.as_str(), "tls" | "wss") {
         let tls = common::resolve_perf_tls_paths().expect("TLS certs not found");

@@ -257,7 +257,7 @@ fn dealer_router_send_from_callback() {
     // Dealer receives the reply sent from the router handle.
     dealer
         .common_options()
-        .set_recv_timeout(Duration::from_secs(5))
+        .set_receive_timeout(Duration::from_secs(5))
         .unwrap();
     let mut response = Received::empty();
     dealer.recv(&mut response, RecvFlags::NONE).unwrap();
@@ -294,7 +294,7 @@ fn pair_send_from_callback() {
     server.send().message(reply).submit().unwrap();
     client
         .common_options()
-        .set_recv_timeout(Duration::from_secs(5))
+        .set_receive_timeout(Duration::from_secs(5))
         .unwrap();
     let mut response = Received::empty();
     client.recv(&mut response, RecvFlags::NONE).unwrap();

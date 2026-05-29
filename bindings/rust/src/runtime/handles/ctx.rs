@@ -223,11 +223,11 @@ impl ContextOptionRuntime for NativeContext {
         )
     }
 
-    fn max_msg_size(&self) -> Result<i32, ConfigError> {
+    fn max_message_size(&self) -> Result<i32, ConfigError> {
         self.get_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_MSGSZ as i32)
     }
 
-    fn set_max_msg_size(&self, size: i32) -> Result<(), ConfigError> {
+    fn set_max_message_size(&self, size: i32) -> Result<(), ConfigError> {
         self.set_int_option(ffi::zlink_ctx_option_t::ZLINK_MAX_MSGSZ as i32, size)
     }
 

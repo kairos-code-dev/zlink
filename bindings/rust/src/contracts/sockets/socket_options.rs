@@ -49,14 +49,14 @@ pub enum SubmitRetryMode {
 pub(crate) trait CommonSocketOptionRuntime {
     fn set_linger(&self, d: Duration) -> Result<(), ConfigError>;
     fn linger(&self) -> Result<Duration, ConfigError>;
-    fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError>;
-    fn send_hwm(&self) -> Result<i32, ConfigError>;
-    fn set_recv_hwm(&self, value: i32) -> Result<(), ConfigError>;
-    fn recv_hwm(&self) -> Result<i32, ConfigError>;
+    fn set_send_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
+    fn send_high_water_mark(&self) -> Result<i32, ConfigError>;
+    fn set_receive_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
+    fn receive_high_water_mark(&self) -> Result<i32, ConfigError>;
     fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError>;
     fn send_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_recv_timeout(&self, d: Duration) -> Result<(), ConfigError>;
-    fn recv_timeout(&self) -> Result<Duration, ConfigError>;
+    fn set_receive_timeout(&self, d: Duration) -> Result<(), ConfigError>;
+    fn receive_timeout(&self) -> Result<Duration, ConfigError>;
     fn set_immediate(&self, enabled: bool) -> Result<(), ConfigError>;
     fn immediate(&self) -> Result<bool, ConfigError>;
     fn set_rid_duplicate_policy(&self, value: RidDuplicatePolicy) -> Result<(), ConfigError>;
@@ -65,8 +65,8 @@ pub(crate) trait CommonSocketOptionRuntime {
     fn connect_timeout(&self) -> Result<Duration, ConfigError>;
     fn set_ipv6(&self, enabled: bool) -> Result<(), ConfigError>;
     fn ipv6(&self) -> Result<bool, ConfigError>;
-    fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn tcp_nodelay(&self) -> Result<bool, ConfigError>;
+    fn set_tcp_no_delay(&self, enabled: bool) -> Result<(), ConfigError>;
+    fn tcp_no_delay(&self) -> Result<bool, ConfigError>;
     fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ConfigError>;
     fn tcp_keepalive(&self) -> Result<bool, ConfigError>;
     fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError>;
@@ -75,8 +75,8 @@ pub(crate) trait CommonSocketOptionRuntime {
     fn heartbeat_ttl(&self) -> Result<Duration, ConfigError>;
     fn set_heartbeat_timeout(&self, d: Duration) -> Result<(), ConfigError>;
     fn heartbeat_timeout(&self) -> Result<Duration, ConfigError>;
-    fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError>;
-    fn max_msg_size(&self) -> Result<i64, ConfigError>;
+    fn set_max_message_size(&self, bytes: i64) -> Result<(), ConfigError>;
+    fn max_message_size(&self) -> Result<i64, ConfigError>;
     fn set_backlog(&self, value: i32) -> Result<(), ConfigError>;
     fn backlog(&self) -> Result<i32, ConfigError>;
     fn set_reconnect_interval(&self, d: Duration) -> Result<(), ConfigError>;
@@ -106,17 +106,17 @@ impl<'a> CommonSocketOptions<'a> {
     pub fn linger(&self) -> Result<Duration, ConfigError> {
         self.inner.linger()
     }
-    pub fn set_send_hwm(&self, value: i32) -> Result<(), ConfigError> {
-        self.inner.set_send_hwm(value)
+    pub fn set_send_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
+        self.inner.set_send_high_water_mark(value)
     }
-    pub fn send_hwm(&self) -> Result<i32, ConfigError> {
-        self.inner.send_hwm()
+    pub fn send_high_water_mark(&self) -> Result<i32, ConfigError> {
+        self.inner.send_high_water_mark()
     }
-    pub fn set_recv_hwm(&self, value: i32) -> Result<(), ConfigError> {
-        self.inner.set_recv_hwm(value)
+    pub fn set_receive_high_water_mark(&self, value: i32) -> Result<(), ConfigError> {
+        self.inner.set_receive_high_water_mark(value)
     }
-    pub fn recv_hwm(&self) -> Result<i32, ConfigError> {
-        self.inner.recv_hwm()
+    pub fn receive_high_water_mark(&self) -> Result<i32, ConfigError> {
+        self.inner.receive_high_water_mark()
     }
     pub fn set_send_timeout(&self, d: Duration) -> Result<(), ConfigError> {
         self.inner.set_send_timeout(d)
@@ -124,11 +124,11 @@ impl<'a> CommonSocketOptions<'a> {
     pub fn send_timeout(&self) -> Result<Duration, ConfigError> {
         self.inner.send_timeout()
     }
-    pub fn set_recv_timeout(&self, d: Duration) -> Result<(), ConfigError> {
-        self.inner.set_recv_timeout(d)
+    pub fn set_receive_timeout(&self, d: Duration) -> Result<(), ConfigError> {
+        self.inner.set_receive_timeout(d)
     }
-    pub fn recv_timeout(&self) -> Result<Duration, ConfigError> {
-        self.inner.recv_timeout()
+    pub fn receive_timeout(&self) -> Result<Duration, ConfigError> {
+        self.inner.receive_timeout()
     }
     pub fn set_immediate(&self, enabled: bool) -> Result<(), ConfigError> {
         self.inner.set_immediate(enabled)
@@ -154,11 +154,11 @@ impl<'a> CommonSocketOptions<'a> {
     pub fn ipv6(&self) -> Result<bool, ConfigError> {
         self.inner.ipv6()
     }
-    pub fn set_tcp_nodelay(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.inner.set_tcp_nodelay(enabled)
+    pub fn set_tcp_no_delay(&self, enabled: bool) -> Result<(), ConfigError> {
+        self.inner.set_tcp_no_delay(enabled)
     }
-    pub fn tcp_nodelay(&self) -> Result<bool, ConfigError> {
-        self.inner.tcp_nodelay()
+    pub fn tcp_no_delay(&self) -> Result<bool, ConfigError> {
+        self.inner.tcp_no_delay()
     }
     pub fn set_tcp_keepalive(&self, enabled: bool) -> Result<(), ConfigError> {
         self.inner.set_tcp_keepalive(enabled)
@@ -184,11 +184,11 @@ impl<'a> CommonSocketOptions<'a> {
     pub fn heartbeat_timeout(&self) -> Result<Duration, ConfigError> {
         self.inner.heartbeat_timeout()
     }
-    pub fn set_max_msg_size(&self, bytes: i64) -> Result<(), ConfigError> {
-        self.inner.set_max_msg_size(bytes)
+    pub fn set_max_message_size(&self, bytes: i64) -> Result<(), ConfigError> {
+        self.inner.set_max_message_size(bytes)
     }
-    pub fn max_msg_size(&self) -> Result<i64, ConfigError> {
-        self.inner.max_msg_size()
+    pub fn max_message_size(&self) -> Result<i64, ConfigError> {
+        self.inner.max_message_size()
     }
     pub fn set_backlog(&self, value: i32) -> Result<(), ConfigError> {
         self.inner.set_backlog(value)
@@ -322,7 +322,7 @@ impl<'a> StreamSocketOptions<'a> {
 pub(crate) trait PubSocketOptionRuntime {
     fn set_verbose(&self, enabled: bool) -> Result<(), ConfigError>;
     fn set_verboser(&self, enabled: bool) -> Result<(), ConfigError>;
-    fn set_nodrop(&self, enabled: bool) -> Result<(), ConfigError>;
+    fn set_no_drop(&self, enabled: bool) -> Result<(), ConfigError>;
     fn set_manual(&self, enabled: bool) -> Result<(), ConfigError>;
     fn manual_last_value(&self) -> Result<bool, ConfigError>;
     fn set_manual_last_value(&self, enabled: bool) -> Result<(), ConfigError>;
@@ -348,8 +348,8 @@ impl<'a> PubSocketOptions<'a> {
     pub fn set_verboser(&self, enabled: bool) -> Result<(), ConfigError> {
         self.inner.set_verboser(enabled)
     }
-    pub fn set_nodrop(&self, enabled: bool) -> Result<(), ConfigError> {
-        self.inner.set_nodrop(enabled)
+    pub fn set_no_drop(&self, enabled: bool) -> Result<(), ConfigError> {
+        self.inner.set_no_drop(enabled)
     }
     pub fn set_manual(&self, enabled: bool) -> Result<(), ConfigError> {
         self.inner.set_manual(enabled)

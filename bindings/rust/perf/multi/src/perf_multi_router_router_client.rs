@@ -54,13 +54,13 @@ fn main() {
     for index in 0..settings.clients {
         let sock = ctx.router_socket().expect("router");
         sock.common_options()
-            .set_send_hwm(settings.send_hwm)
+            .set_send_high_water_mark(settings.send_high_water_mark)
             .expect("sndhwm");
         sock.common_options()
-            .set_recv_hwm(settings.recv_hwm)
+            .set_receive_high_water_mark(settings.receive_high_water_mark)
             .expect("rcvhwm");
         sock.common_options()
-            .set_recv_timeout(Duration::from_millis(1))
+            .set_receive_timeout(Duration::from_millis(1))
             .expect("recv timeout");
         let rid = RoutingId::from_bytes(format!("CLIENT-{index}").as_bytes());
         sock.set_routing_id(&rid).expect("set rid");

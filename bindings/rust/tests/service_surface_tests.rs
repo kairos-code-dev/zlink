@@ -49,6 +49,10 @@ fn spot_node_snapshot_surfaces_exist() {
     node.set_routing_id(&RoutingId::from_bytes(b"node-surface"))
         .unwrap();
     let _ = node.routing_id().unwrap();
+    node.set_router_high_water_mark(1).unwrap();
+    node.set_pubsub_high_water_mark(1).unwrap();
+    let _ = node.router_high_water_mark().unwrap();
+    let _ = node.pubsub_high_water_mark().unwrap();
 }
 
 #[test]

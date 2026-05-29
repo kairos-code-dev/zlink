@@ -35,7 +35,10 @@ fn blocking_publish_failure_surfaces_error() {
     let ctx = Context::new().unwrap();
     let pub_sock = ctx.pub_socket().unwrap();
     pub_sock.bind("inproc://sf-pub-nodrop").unwrap();
-    pub_sock.common_options().set_send_hwm(1).unwrap();
+    pub_sock
+        .common_options()
+        .set_send_high_water_mark(1)
+        .unwrap();
     pub_sock
         .common_options()
         .set_send_timeout(Duration::from_millis(100))
@@ -69,7 +72,7 @@ fn try_send_returns_not_ready_or_backpressured() {
 fn try_send_backpressure() {
     let ctx = Context::new().unwrap();
     let a = ctx.pair_socket().unwrap();
-    a.common_options().set_send_hwm(1).unwrap();
+    a.common_options().set_send_high_water_mark(1).unwrap();
     a.bind("inproc://sf-try-send-bp").unwrap();
 
     let b = ctx.pair_socket().unwrap();
@@ -126,7 +129,10 @@ fn try_publish_backpressure_or_not_ready() {
     // PUB socket with HWM=1, connected subscriber, fill queue
     let ctx = Context::new().unwrap();
     let pub_sock = ctx.pub_socket().unwrap();
-    pub_sock.common_options().set_send_hwm(1).unwrap();
+    pub_sock
+        .common_options()
+        .set_send_high_water_mark(1)
+        .unwrap();
     pub_sock.bind("inproc://sf-try-pub-bp").unwrap();
 
     let sub_sock = ctx.sub_socket().unwrap();

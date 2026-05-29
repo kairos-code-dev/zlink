@@ -30,6 +30,11 @@ import {
   strerror as runtimeStrerror,
   version as runtimeVersion,
 } from './zlink/runtime/defaults';
+import {
+  asPublicContract,
+  asRuntimeContext,
+  asRuntimeSocket,
+} from './zlink/runtime/public_bridge';
 import type {
   AtomicCounter,
   AutoConnectTypeValue,
@@ -53,63 +58,49 @@ import type {
   XSubSocket,
 } from './zlink/contracts';
 import type { BaseSocket, Message, SpotNodeModeValue } from './zlink/contracts';
-import type { RuntimeContext } from './zlink/runtime/core/context';
-import type { RuntimeBaseSocket } from './zlink/runtime/sockets';
-
-function runtimeContext(ctx: Context): RuntimeContext {
-  return ctx as unknown as RuntimeContext;
-}
-
-function runtimeSocket(socket: BaseSocket): RuntimeBaseSocket {
-  return socket as unknown as RuntimeBaseSocket;
-}
-
-function publicContract<T>(value: unknown): T {
-  return value as T;
-}
 
 export function createContext(): Context {
-  return publicContract<Context>(createRuntimeContext());
+  return asPublicContract<Context>(createRuntimeContext());
 }
 
 export function createPairSocket(ctx: Context): PairSocket {
-  return publicContract<PairSocket>(createRuntimePairSocket(runtimeContext(ctx)));
+  return asPublicContract<PairSocket>(createRuntimePairSocket(asRuntimeContext(ctx)));
 }
 
 export function createPubSocket(ctx: Context): PubSocket {
-  return publicContract<PubSocket>(createRuntimePubSocket(runtimeContext(ctx)));
+  return asPublicContract<PubSocket>(createRuntimePubSocket(asRuntimeContext(ctx)));
 }
 
 export function createSubSocket(ctx: Context): SubSocket {
-  return publicContract<SubSocket>(createRuntimeSubSocket(runtimeContext(ctx)));
+  return asPublicContract<SubSocket>(createRuntimeSubSocket(asRuntimeContext(ctx)));
 }
 
 export function createXPubSocket(ctx: Context): XPubSocket {
-  return publicContract<XPubSocket>(createRuntimeXPubSocket(runtimeContext(ctx)));
+  return asPublicContract<XPubSocket>(createRuntimeXPubSocket(asRuntimeContext(ctx)));
 }
 
 export function createXSubSocket(ctx: Context): XSubSocket {
-  return publicContract<XSubSocket>(createRuntimeXSubSocket(runtimeContext(ctx)));
+  return asPublicContract<XSubSocket>(createRuntimeXSubSocket(asRuntimeContext(ctx)));
 }
 
 export function createDealerSocket(ctx: Context): DealerSocket {
-  return publicContract<DealerSocket>(createRuntimeDealerSocket(runtimeContext(ctx)));
+  return asPublicContract<DealerSocket>(createRuntimeDealerSocket(asRuntimeContext(ctx)));
 }
 
 export function createRouterSocket(ctx: Context): RouterSocket {
-  return publicContract<RouterSocket>(createRuntimeRouterSocket(runtimeContext(ctx)));
+  return asPublicContract<RouterSocket>(createRuntimeRouterSocket(asRuntimeContext(ctx)));
 }
 
 export function createStreamSocket(ctx: Context): StreamSocket {
-  return publicContract<StreamSocket>(createRuntimeStreamSocket(runtimeContext(ctx)));
+  return asPublicContract<StreamSocket>(createRuntimeStreamSocket(asRuntimeContext(ctx)));
 }
 
 export function createRegistry(ctx: Context): Registry {
-  return publicContract<Registry>(createRuntimeRegistry(runtimeContext(ctx)));
+  return asPublicContract<Registry>(createRuntimeRegistry(asRuntimeContext(ctx)));
 }
 
 export function createRegistryQueryClient(ctx: Context): RegistryQueryClient {
-  return publicContract<RegistryQueryClient>(createRuntimeRegistryQueryClient(runtimeContext(ctx)));
+  return asPublicContract<RegistryQueryClient>(createRuntimeRegistryQueryClient(asRuntimeContext(ctx)));
 }
 
 export function createDiscovery(
@@ -117,35 +108,35 @@ export function createDiscovery(
   autoConnectType: AutoConnectTypeValue,
   channelName: string
 ): Discovery {
-  return publicContract<Discovery>(createRuntimeDiscovery(runtimeContext(ctx), autoConnectType, channelName));
+  return asPublicContract<Discovery>(createRuntimeDiscovery(asRuntimeContext(ctx), autoConnectType, channelName));
 }
 
 export function createSpotNode(ctx: Context, mode?: SpotNodeModeValue): SpotNode {
-  return publicContract<SpotNode>(createRuntimeSpotNode(runtimeContext(ctx), mode));
+  return asPublicContract<SpotNode>(createRuntimeSpotNode(asRuntimeContext(ctx), mode));
 }
 
 export function createPoller(): Poller {
-  return publicContract<Poller>(createRuntimePoller());
+  return asPublicContract<Poller>(createRuntimePoller());
 }
 
 export function createPollEvents(capacity: number): PollEvents {
-  return publicContract<PollEvents>(createRuntimePollEvents(capacity));
+  return asPublicContract<PollEvents>(createRuntimePollEvents(capacity));
 }
 
 export function createTimer(): Timer {
-  return publicContract<Timer>(createRuntimeTimer());
+  return asPublicContract<Timer>(createRuntimeTimer());
 }
 
 export function createThread(handler: () => void): Thread {
-  return publicContract<Thread>(createRuntimeThread(handler));
+  return asPublicContract<Thread>(createRuntimeThread(handler));
 }
 
 export function createStopwatch(): Stopwatch {
-  return publicContract<Stopwatch>(createRuntimeStopwatch());
+  return asPublicContract<Stopwatch>(createRuntimeStopwatch());
 }
 
 export function createAtomicCounter(initialValue = 0): AtomicCounter {
-  return publicContract<AtomicCounter>(createRuntimeAtomicCounter(initialValue));
+  return asPublicContract<AtomicCounter>(createRuntimeAtomicCounter(initialValue));
 }
 
 export function version(): [number, number, number] {
@@ -161,7 +152,11 @@ export function has(capability: string): boolean {
 }
 
 export function proxy(frontend: BaseSocket, backend: BaseSocket, capture?: BaseSocket): void {
-  runtimeProxy(runtimeSocket(frontend), runtimeSocket(backend), capture ? runtimeSocket(capture) : undefined);
+  runtimeProxy(
+    asRuntimeSocket(frontend),
+    asRuntimeSocket(backend),
+    capture ? asRuntimeSocket(capture) : undefined
+  );
 }
 
 export function proxySteerable(
@@ -171,10 +166,10 @@ export function proxySteerable(
   control: BaseSocket
 ): void {
   runtimeProxySteerable(
-    runtimeSocket(frontend),
-    runtimeSocket(backend),
-    capture ? runtimeSocket(capture) : undefined,
-    runtimeSocket(control)
+    asRuntimeSocket(frontend),
+    asRuntimeSocket(backend),
+    capture ? asRuntimeSocket(capture) : undefined,
+    asRuntimeSocket(control)
   );
 }
 

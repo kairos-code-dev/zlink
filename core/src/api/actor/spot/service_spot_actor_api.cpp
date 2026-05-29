@@ -48,6 +48,8 @@
 #include <thread>
 #include <vector>
 
+using namespace zlink::spot_actor_api_internal;
+
 namespace
 {
 
@@ -95,6 +97,13 @@ bool same_logical_spot (const spot_handle_t *lhs_, const spot_handle_t *rhs_)
         return true;
     return lhs_->logical_state && lhs_->logical_state == rhs_->logical_state;
 }
+
+}
+
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
 
 spot_logical_state_t *join_queue_key (
   const std::shared_ptr<spot_logical_state_t> &state_)
@@ -374,6 +383,12 @@ void actor_join_state_t::untrack_pending_remote_actor (
     }
 }
 
+}
+}
+
+namespace
+{
+
 spot_handle_t *find_spot_facade_for_state_locked (
   zlink::spot_node_t *node_,
   const std::shared_ptr<spot_logical_state_t> &state_)
@@ -503,6 +518,13 @@ void collect_received_join_requests_for_stream_locked (
       stream_, already_aborted_, received_aborts_);
 }
 
+}
+
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 void actor_lifecycle_state_t::clear (spot_logical_state_t *key_)
 {
     queues.erase (key_);
@@ -530,6 +552,12 @@ bool actor_lifecycle_state_t::pop (
         queues.erase (queue_it);
     return true;
 }
+
+}
+}
+
+namespace
+{
 
 zlink_routing_id_t actor_current_spot_rid_locked (const actor_handle_t *actor_)
 {
@@ -561,6 +589,13 @@ void set_actor_entry_spot_locked (actor_handle_t *actor_)
     actor_->last_changed_ms = now_ms ();
     update_active_route_locked (actor_);
 }
+
+}
+
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
 
 void actor_node_registry_t::register_spot (spot_handle_t *spot_)
 {
@@ -744,6 +779,12 @@ actor_handle_t *actor_node_registry_t::find_unique_actor_by_id (
     return match;
 }
 
+}
+}
+
+namespace
+{
+
 bool is_stream_socket (void *stream_)
 {
     zlink::socket_base_t *stream = try_as_socket (stream_);
@@ -757,6 +798,13 @@ void fill_ref (const actor_handle_t *actor_, zlink_actor_ref_t *out_)
     strncpy (out_->actor_id, actor_->actor_id.c_str (), ZLINK_ACTOR_ID_MAX - 1);
     out_->generation = actor_->generation;
 }
+
+}
+
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
 
 bool actor_route_state_t::is_disconnected (
   zlink::spot_node_t *source_node_, const zlink_routing_id_t &target_rid_) const
@@ -858,6 +906,12 @@ void actor_route_state_t::mark_disconnected (
     disconnected.insert (
       std::make_pair (node_, routing_id_key (target_node_rid_)));
 }
+
+}
+}
+
+namespace
+{
 
 actor_handle_t *create_actor_locked_with_generation (
   zlink::spot_node_t *node_,
@@ -1165,7 +1219,20 @@ zlink_submit_result_t send_actor_gateway_packet (
     return ZLINK_SUBMIT_OK;
 }
 
+}
+
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 #include "api/actor/spot/service_spot_actor_session_state.inc"
+
+}
+}
+
+namespace
+{
 
 actor_session_state_t::binding_map_t::iterator find_session_binding_locked (
   void *stream_, const zlink_routing_id_t *session_rid_)

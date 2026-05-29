@@ -11,12 +11,18 @@
 #include <vector>
 #include <memory>
 
-struct actor_handle_t;
 struct spot_handle_t;
 struct spot_logical_state_t;
 
 namespace zlink
 {
+namespace spot_actor_api_internal
+{
+struct actor_handle_t;
+}
+
+using spot_actor_api_internal::actor_handle_t;
+
 class ctx_t;
 class discovery_t;
 class mutex_t;

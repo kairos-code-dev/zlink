@@ -14,11 +14,12 @@
 #include <string>
 #include <vector>
 
-#include "api/actor/spot/service_spot_actor_handle_state_internal.hpp"
-
-namespace
+namespace zlink
+{
+namespace spot_actor_api_internal
 {
 
+#include "api/actor/spot/service_spot_actor_handle_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_lifecycle_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_registry_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_session_state_internal.hpp"
@@ -26,4 +27,5 @@ namespace
 #include "api/actor/spot/service_spot_actor_join_state_internal.hpp"
 #include "api/actor/spot/service_spot_actor_runtime_state_internal.hpp"
 
+}
 }

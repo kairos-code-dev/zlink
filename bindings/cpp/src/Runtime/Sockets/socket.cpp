@@ -140,7 +140,8 @@ int socket_t::attach_discovery (service::discovery_t &discovery_)
 }
 
 socket_t::socket_t () noexcept
-    : _socket (std::make_unique<detail::socket_handle_t> ())
+    : _socket (std::make_unique<detail::socket_handle_t> ()),
+      _type (socket_type::pair)
 {
 }
 
@@ -148,7 +149,8 @@ socket_t::socket_t (context_t &ctx_, socket_type type_) :
     _socket (std::make_unique<detail::socket_handle_t> (
       zlink_socket (detail::native_handle (ctx_),
                     static_cast<zlink_socket_type_t> (type_)),
-      true))
+      true)),
+    _type (type_)
 {
 }
 
@@ -253,14 +255,23 @@ int socket_t::send_no_wait_result (send_result_t &result_,
 
 int socket_t::receive (received_t &received_, recv_flags_t flags_)
 {
+    return receive (received_, flags_, true);
+}
+
+int socket_t::receive (received_t &received_,
+                       recv_flags_t flags_,
+                       bool attach_routed_send_context_)
+{
     detail::recv_envelope_t envelope;
-    const int rc =
-      detail::recv_envelope (detail::native_handle (*this), flags_, envelope);
+    const bool use_router_recv = _type == socket_type::router;
+    const int rc = detail::recv_envelope (detail::native_handle (*this), flags_,
+                                          envelope, use_router_recv);
     if (rc != 0)
         return rc;
 
     std::function<bool (std::vector<message_t> &, send_flags_t)> send_fn;
-    if (!zlink::detail::routing_id_empty (envelope.source_rid)) {
+    if (attach_routed_send_context_
+        && !zlink::detail::routing_id_empty (envelope.source_rid)) {
         send_fn = detail::make_routed_send_fn (detail::native_handle (*this),
                                                envelope.source_rid);
     }
@@ -295,7 +306,8 @@ int socket_t::receive (received_t &received_, recv_flags_t flags_)
           std::function<void (std::vector<message_t> &, send_flags_t)> (),
           std::move (send_fn));
     }
-    if (source_rid.has_value () && !source_spot_rid.has_value ())
+    if (attach_routed_send_context_ && source_rid.has_value ()
+        && !source_spot_rid.has_value ())
         detail::received_access_t::set_socket_rid_send_context (
           received_, detail::native_handle (*this));
     return 0;

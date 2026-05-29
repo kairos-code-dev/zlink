@@ -29,7 +29,7 @@ router_socket_t::send (const routing_id_t &target_rid_)
 
 int router_socket_t::recv (received_t &out_, recv_flags_t flags_)
 {
-    const int rc = socket_t::receive (out_, flags_);
+    const int rc = socket_t::receive (out_, flags_, false);
     if (rc != 0)
         return rc;
     if (out_.request_seq ().has_value () && out_.routing_id ().has_value ()) {

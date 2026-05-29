@@ -116,6 +116,10 @@ class socket_t
     [[nodiscard]] int
     receive (received_t &received_, recv_flags_t flags_ = recv_flags_t::none);
 
+    [[nodiscard]] int receive (received_t &received_,
+                               recv_flags_t flags_,
+                               bool attach_routed_send_context_);
+
     [[nodiscard]] int publish (const std::string &topic_id_,
                                      message_t &part_,
                                      send_flags_t flags_ = send_flags_t::none);
@@ -211,6 +215,7 @@ class socket_t
     friend struct detail::socket_access_t;
 
     std::unique_ptr<detail::socket_handle_t> _socket;
+    socket_type _type;
 };
 
 } // namespace zlink

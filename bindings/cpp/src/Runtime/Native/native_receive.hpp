@@ -142,11 +142,14 @@ inline bool socket_uses_router_recv (void *socket_)
 }
 
 inline int
-recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &envelope_)
+recv_envelope (void *socket_,
+               recv_flags_t flags_,
+               recv_envelope_t &envelope_,
+               bool use_router_recv_)
 {
     envelope_.reset ();
 
-    if (socket_uses_router_recv (socket_)) {
+    if (use_router_recv_) {
         const zlink_routing_id_t *source_rid = nullptr;
         const zlink_routing_id_t *source_spot_rid = nullptr;
         uint64_t request_seq = 0;
@@ -249,6 +252,13 @@ recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &envelope_)
     }
 
     return 0;
+}
+
+inline int
+recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &envelope_)
+{
+    return recv_envelope (socket_, flags_, envelope_,
+                          socket_uses_router_recv (socket_));
 }
 
 inline int recv_parts (void *socket_,

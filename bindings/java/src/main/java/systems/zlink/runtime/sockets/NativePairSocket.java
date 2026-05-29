@@ -7,7 +7,6 @@ import systems.zlink.contracts.sockets.*;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOperation;
 import java.util.List;
 final class NativePairSocket extends NativeSocketBase implements PairSocket {
@@ -15,11 +14,6 @@ final class NativePairSocket extends NativeSocketBase implements PairSocket {
         super(ctx, SocketType.PAIR);
     }
 
-    public void bind(String endpoint) { super.bind(endpoint); }
-    public void connect(String endpoint) { super.connect(endpoint); }
-    public void unbind(String endpoint) { super.unbind(endpoint); }
-    public void disconnect(String endpoint) { super.disconnect(endpoint); }
-    public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
     public SendOperation send() {
         return SocketOperations.send((parts, flags) ->
             super.send(parts, SendFlag.fromValue(flags.value())));

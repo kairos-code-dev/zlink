@@ -134,37 +134,11 @@ tasks.register('runMessageOutboundMicrobench', JavaExec) {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
-tasks.register('runFfmVsJniMicrobench', JavaExec) {
-    group = 'benchmark'
-    description = 'Compare FFM and JNI call/copy overhead on the Java bridge'
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'systems.zlink.FfmVsJniMicrobench'
-    jvmArgs '--enable-native-access=ALL-UNNAMED'
-}
-
-tasks.register('runMsgOperationMicrobench', JavaExec) {
-    group = 'benchmark'
-    description = 'Measure msg_t and Message hot-path operations'
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'systems.zlink.MsgOperationMicrobench'
-    jvmArgs '--enable-native-access=ALL-UNNAMED'
-}
-
-tasks.register('runMsgInteropFfmVsJniMicrobench', JavaExec) {
-    group = 'benchmark'
-    description = 'Compare msg_t primitive operations via FFM and JNI'
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'systems.zlink.MsgInteropFfmVsJniMicrobench'
-    jvmArgs '--enable-native-access=ALL-UNNAMED'
-}
-
 javadoc {
     source = sourceSets.main.allJava.matching {
         exclude 'systems/zlink/internal/**'
         exclude 'systems/zlink/InternalAccess.java'
+        exclude 'systems/zlink/runtime/**'
     }
     options.encoding = 'UTF-8'
     options.docTitle = 'zlink Java Binding API'

@@ -5,11 +5,9 @@ package systems.zlink.runtime.sockets;
 import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.core.Context;
-import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.service.spot.RequestOperation;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.service.spot.SendSubmitOperation;
 import java.nio.file.Files;
@@ -30,16 +28,6 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
         super(ctx, SocketType.DEALER);
     }
 
-    public void bind(String endpoint) { super.bind(endpoint); }
-    public void connect(String endpoint) { super.connect(endpoint); }
-    public void unbind(String endpoint) { super.unbind(endpoint); }
-    public void disconnect(String endpoint) { super.disconnect(endpoint); }
-    public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
-    public void attachDiscovery(Discovery discovery) { super.attachDiscovery(discovery); }
-    public void setChannelName(String channelName) { super.setChannelName(channelName); }
-    public String getChannelName() { return super.getChannelName(); }
-    public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
-    public RoutingId getRoutingId() { return super.getRoutingId(); }
     public SendOperation send() {
         return new DealerSendBuilder();
     }

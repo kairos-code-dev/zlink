@@ -32,10 +32,6 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
         super(ctx, SocketType.STREAM);
     }
 
-    public void bind(String endpoint) { super.bind(endpoint); }
-    public void unbind(String endpoint) { super.unbind(endpoint); }
-    public void setRoutingId(RoutingId rid) { super.setRoutingId(rid); }
-    public RoutingId getRoutingId() { return super.getRoutingId(); }
     boolean send(int rid, Message part) {
         return super.send(RoutingId.from(Integer.toUnsignedLong(rid)), part,
             SendFlag.NONE);

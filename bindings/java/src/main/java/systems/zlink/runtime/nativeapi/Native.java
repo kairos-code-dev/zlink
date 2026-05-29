@@ -495,11 +495,6 @@ public final class Native {
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
           ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
           ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_JAVA_ROUTER_RECV = optionalDowncall(
-      "zlink_java_router_recv_compat",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_ROUTER_REQUEST_PART = downcall(
       "zlink_router_request_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -869,7 +864,7 @@ public final class Native {
             || parts.address() == 0;
     }
 
-    private static MemorySegment nthPart(MemorySegment parts, long index) {
+    static MemorySegment nthPart(MemorySegment parts, long index) {
         long messageSize = NativeLayouts.MESSAGE_LAYOUT.byteSize();
         return parts.asSlice(index * messageSize, messageSize);
     }
@@ -2076,83 +2071,9 @@ public final class Native {
                                  MemorySegment requestSeqOut,
                                  MemorySegment partsOut,
                                  MemorySegment partCountOut, int flags) {
-        try {
-            if (MH_JAVA_ROUTER_RECV != null) {
-                return (int) MH_JAVA_ROUTER_RECV.invokeExact(router,
-                    sourceNodeRidOut, sourceSpotRidOut, requestSeqOut,
-                    partsOut, partCountOut, flags);
-            }
-            NativeMultipartScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
-            scratch.reset();
-            MemorySegment nodeRidPtrOut = scratch.nodeRidPtrOut;
-            MemorySegment spotRidPtrOut = scratch.spotRidPtrOut;
-            MemorySegment seqOut = scratch.seqOut;
-            MemorySegment hasMoreOut = scratch.hasMoreOut;
-            while (true) {
-                List<Message> receivedParts = null;
-                while (true) {
-                    Message part = new Message();
-                    boolean success = false;
-                    try {
-                        int rc = routerRecvPart(router, nodeRidPtrOut,
-                            spotRidPtrOut, seqOut,
-                            InternalAccess.messageNativeHandle(part),
-                            hasMoreOut, flags);
-                        if (rc != 0) {
-                            if (receivedParts != null) {
-                                Message.closeAll(receivedParts);
-                            }
-                            if (errno() == ERRNO_EINTR) {
-                                break;
-                            }
-                            return rc;
-                        }
-                        success = true;
-                        if (receivedParts == null) {
-                            sourceNodeRidOut.set(ValueLayout.ADDRESS, 0,
-                                nodeRidPtrOut.get(ValueLayout.ADDRESS, 0));
-                            sourceSpotRidOut.set(ValueLayout.ADDRESS, 0,
-                                spotRidPtrOut.get(ValueLayout.ADDRESS, 0));
-                            requestSeqOut.set(ValueLayout.JAVA_LONG, 0,
-                                seqOut.get(ValueLayout.JAVA_LONG, 0));
-                        }
-                        InternalAccess.messageFinishReceive(part,
-                            hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
-                        boolean partHasMore = InternalAccess.messageMore(part);
-                        if (!partHasMore && receivedParts == null) {
-                            MemorySegment parts = scratch.allocateParts(1);
-                            InternalAccess.messageMoveTo(part, nthPart(parts, 0));
-                            part.close();
-                            partsOut.set(ValueLayout.ADDRESS, 0, parts);
-                            partCountOut.set(ValueLayout.JAVA_LONG, 0,
-                                scratch.partCount());
-                            return 0;
-                        }
-                        if (receivedParts == null) {
-                            receivedParts = new ArrayList<>();
-                        }
-                        receivedParts.add(part);
-                        if (!partHasMore) {
-                            MemorySegment parts =
-                                scratch.materializeParts(receivedParts);
-                            partsOut.set(ValueLayout.ADDRESS, 0, parts);
-                            partCountOut.set(ValueLayout.JAVA_LONG, 0,
-                                scratch.partCount());
-                            return 0;
-                        }
-                    } finally {
-                        if (!success) {
-                            try {
-                                part.close();
-                            } catch (RuntimeException ignored) {
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_recv_part failed", t);
-        }
+        return NativeRouterReceive.recv(router, sourceNodeRidOut,
+            sourceSpotRidOut, requestSeqOut, partsOut, partCountOut, flags,
+            MULTIPART_RECEIVE_SCRATCH.get());
     }
 
     public static int routerRecvPart(MemorySegment router,

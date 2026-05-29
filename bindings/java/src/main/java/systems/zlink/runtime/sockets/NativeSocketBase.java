@@ -196,14 +196,14 @@ abstract class NativeSocketBase implements Socket {
         this.runtime = new NativeSocketRuntime(handle, own, socketTypeHint);
     }
 
-    void bind(String endpoint) { runtime.bind(endpoint); }
-    void connect(String endpoint) { runtime.connect(endpoint); }
-    void unbind(String endpoint) { runtime.unbind(endpoint); }
-    void disconnect(String endpoint) { runtime.disconnect(endpoint); }
-    void disconnectRid(RoutingId peerRid) { runtime.disconnectRid(peerRid); }
-    void attachDiscovery(systems.zlink.contracts.service.discovery.Discovery discovery) { runtime.attachDiscovery(discovery); }
-    void setChannelName(String channelName) { runtime.setChannelName(channelName); }
-    String getChannelName() { return runtime.getChannelName(); }
+    public void bind(String endpoint) { runtime.bind(endpoint); }
+    public void connect(String endpoint) { runtime.connect(endpoint); }
+    public void unbind(String endpoint) { runtime.unbind(endpoint); }
+    public void disconnect(String endpoint) { runtime.disconnect(endpoint); }
+    public void disconnectRid(RoutingId peerRid) { runtime.disconnectRid(peerRid); }
+    public void attachDiscovery(systems.zlink.contracts.service.discovery.Discovery discovery) { runtime.attachDiscovery(discovery); }
+    public void setChannelName(String channelName) { runtime.setChannelName(channelName); }
+    public String getChannelName() { return runtime.getChannelName(); }
     void attachStreamRaw(StreamRawPacketHandler handler) { runtime.attachStreamRaw(handler); }
     void attachStreamRaw(StreamUInt32RawNativeHandler handler) { runtime.attachStreamRaw(handler); }
     void attachStreamPacket(StreamFramedPacketHandler handler) { runtime.attachStreamPacket(handler); }
@@ -258,11 +258,11 @@ abstract class NativeSocketBase implements Socket {
     Optional<TopicMessage> subscribeNoWait() { return runtime.subscribeNoWait(); }
     boolean receiveSubscriptionEvent(SubscriptionEvent result, ReceiveFlag flags) { return runtime.receiveSubscriptionEvent(result, flags); }
     Optional<SubscriptionEvent> tryReceiveSubscriptionEvent() { return runtime.tryReceiveSubscriptionEvent(); }
-    void setRoutingId(RoutingId rid) { runtime.setRoutingId(rid); }
-    RoutingId getRoutingId() { return runtime.getRoutingId(); }
-    void setSubscription(String filter) { runtime.setSubscription(filter); }
+    public void setRoutingId(RoutingId rid) { runtime.setRoutingId(rid); }
+    public RoutingId getRoutingId() { return runtime.getRoutingId(); }
+    public void setSubscription(String filter) { runtime.setSubscription(filter); }
     void setSubscription(byte[] filter) { runtime.setSubscription(filter); }
-    void unsetSubscription(String filter) { runtime.unsetSubscription(filter); }
+    public void unsetSubscription(String filter) { runtime.unsetSubscription(filter); }
     void unsetSubscription(byte[] filter) { runtime.unsetSubscription(filter); }
     List<SubscriptionEntry> subscriptions() { return runtime.subscriptions(); }
     void onReceive(SocketMessageHandler handler) { runtime.onReceive(handler); }

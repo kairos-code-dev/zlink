@@ -5,7 +5,6 @@ package systems.zlink.runtime.sockets;
 import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.core.Context;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.TopicMessage;
 import java.util.Optional;
@@ -17,13 +16,6 @@ final class NativeXSubSocket extends NativeSocketBase implements XSubSocket {
         super(ctx, SocketType.XSUB);
     }
 
-    public void bind(String endpoint) { super.bind(endpoint); }
-    public void connect(String endpoint) { super.connect(endpoint); }
-    public void unbind(String endpoint) { super.unbind(endpoint); }
-    public void disconnect(String endpoint) { super.disconnect(endpoint); }
-    public void disconnectRid(RoutingId routingId) { super.disconnectRid(routingId); }
-    public void setSubscription(String filter) { super.setSubscription(filter); }
-    public void unsetSubscription(String filter) { super.unsetSubscription(filter); }
     public Optional<SubscriptionEntry> subscriptionAt(int index) {
         if (index < 0)
             throw new IndexOutOfBoundsException("subscription index " + index);

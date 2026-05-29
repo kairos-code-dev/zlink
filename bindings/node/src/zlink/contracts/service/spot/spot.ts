@@ -2,7 +2,6 @@
 
 import type {
   Received,
-  SubscriptionEvent,
   TopicMessage,
 } from '../../messaging';
 import type { RoutingId } from '../../core';
@@ -28,7 +27,6 @@ export interface Spot {
   setSubscription(filter: string): void;
   unsetSubscription(filter: string): void;
   subscriptionAt(index: number): SubscriptionEntry | null;
-  receiveSubscriptionEvent(result: SubscriptionEvent, flags?: RecvFlags): boolean;
   sendToChannel(channelName: string): SendOperation;
   requestToChannel(channelName: string): RequestOperation;
   sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOperation;

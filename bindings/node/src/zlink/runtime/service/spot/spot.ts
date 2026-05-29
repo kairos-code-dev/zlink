@@ -11,11 +11,10 @@ import { adoptTopicMessage, materializeReceived, materializeTopicMessage, type N
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
 import { RuntimeReplyOperation, RuntimeRequestOperation, RuntimeSendOperation, normalizeReplyFlags, submitErrorFromResult } from '../../sockets/socket_operations';
 import { toMessageParts, toOwnedMessage } from '../../buffers/message_conversion';
-import { Message, Received, RoutingId, SubscriptionEvent, TopicMessage, type MessageLike, type MessageSnapshot } from '../../../contracts';
+import { Message, Received, RoutingId, TopicMessage, type MessageLike, type MessageSnapshot } from '../../../contracts';
 import { RecvFlags, SendFlags } from '../../../contracts/sockets/socket_constants';
 import { SubmitResult } from '../../../contracts/errors/errors';
 import { SpotDispatchEvent, SpotDispatchSubjectKind, type ActorJoinRequest, type ActorJoinReplyOperation, type ActorPart, type ActorRef, type ReplyOperation, type RequestCallback, type RequestOperation, type SendOperation, type SpotActorLifecycleEvent, type SpotDispatchEventHandler, type SpotSendReadyHandler, type SubscriptionEntry } from '../../../contracts/service';
-import { wrapRoutingId } from '../../../contracts/service/spot/spot_models';
 import { SpotOption } from './spot_options';
 import { RuntimeActorJoinReplyOperation, actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFromRaw, spotActorLifecycleInfoFromRaw, type SpotActorLifecycleInfoRaw } from './spot_operations';
 
@@ -129,41 +128,6 @@ export class Spot extends NativeHandle {
       return true;
     }
     return materializeTopicMessage(raw);
-  }
-  receiveSubscriptionEvent(result: SubscriptionEvent, flags?: RecvFlags): boolean;
-  receiveSubscriptionEvent(resultOrFlags: SubscriptionEvent | RecvFlags = RecvFlags.None,
-                           maybeFlags: RecvFlags = RecvFlags.None): SubscriptionEvent | null | boolean {
-    const hasResult = resultOrFlags instanceof SubscriptionEvent;
-    const flags = hasResult ? maybeFlags : resultOrFlags as RecvFlags;
-    let raw;
-    try {
-      raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().spotSubscriptionEventNoWait(this._native) as {
-            routingId?: Buffer | null;
-            topic: string;
-            subscribed: boolean;
-          } | null
-        : requireNative().spotSubscriptionEvent(this._native, flags | 0) as {
-            routingId?: Buffer | null;
-            topic: string;
-            subscribed: boolean;
-          } | null;
-    } catch (error) {
-      throw recvNativeError(error, flags, 'spot subscription event recv failed');
-    }
-    if (!raw) {
-      return hasResult ? false : null;
-    }
-    const event = SubscriptionEvent.create(
-      raw.topic,
-      raw.subscribed,
-      wrapRoutingId(raw.routingId ?? null)
-    );
-    if (hasResult) {
-      resultOrFlags.adoptFrom(event);
-      return true;
-    }
-    return event;
   }
   setSendReadyHandler(handler: SpotSendReadyHandler): void {
     handlerCall('spot send-ready handler registration failed', () => {

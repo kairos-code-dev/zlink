@@ -223,8 +223,6 @@ static void define_spot_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("spotUnsubscribe", spot_unsubscribe),
         ZLINK_METHOD("spotRecv", spot_recv),
         ZLINK_METHOD("spotRecvNoWait", spot_try_recv),
-        ZLINK_METHOD("spotSubscriptionEvent", spot_subscription_event),
-        ZLINK_METHOD("spotSubscriptionEventNoWait", spot_try_subscription_event),
     };
     define_exports(env, exports, descs, sizeof(descs) / sizeof(*descs));
 }

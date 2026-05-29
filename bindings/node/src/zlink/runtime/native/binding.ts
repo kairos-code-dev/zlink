@@ -205,8 +205,6 @@ interface ServiceNativeBinding {
   spotSendToSpot: NativeFn;
   spotSetOption: NativeFn;
   spotSubscribe: NativeFn;
-  spotSubscriptionEvent: NativeFn;
-  spotSubscriptionEventNoWait: NativeFn;
   spotUnsubscribe: NativeFn;
 }
 

@@ -7,21 +7,6 @@ namespace {
 
 static const int k_snapshot_retry_limit = 4;
 
-napi_value unsupported_receiver(napi_env env, const char *method)
-{
-    napi_throw_error(env, NULL, method);
-    return NULL;
-}
-
-int discovery_member_peer_count(void *discovery)
-{
-    size_t count = 0;
-    int rc = zlink_discovery_member_peers(discovery, NULL, &count);
-    if (rc != 0)
-        return -1;
-    return static_cast<int>(count);
-}
-
 void set_uint32_property(napi_env env, napi_value obj, const char *name, uint32_t value)
 {
     napi_value out;
@@ -662,36 +647,6 @@ napi_value discovery_connect(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value discovery_provider_count(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *disc = NULL;
-    napi_get_value_external(env, argv[0], &disc);
-    int count = discovery_member_peer_count(disc);
-    if (count < 0)
-        return throw_last_error(env, "discovery_member_peers failed");
-    napi_value out;
-    napi_create_int32(env, count, &out);
-    return out;
-}
-
-napi_value discovery_service_available(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *disc = NULL;
-    napi_get_value_external(env, argv[0], &disc);
-    int count = discovery_member_peer_count(disc);
-    if (count < 0)
-        return throw_last_error(env, "discovery_member_peers failed");
-    napi_value out;
-    napi_get_boolean(env, count > 0, &out);
-    return out;
-}
-
 napi_value discovery_get_providers(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -803,95 +758,6 @@ napi_value discovery_destroy(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value provider_new(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env, "Receiver is not available on the aligned public API");
-}
-
-napi_value provider_bind(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env, "Receiver.bind is not available on the aligned public API");
-}
-
-napi_value provider_connect_registry(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env,
-      "Receiver.connectRegistry is not available on the aligned public API");
-}
-
-napi_value provider_register(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env, "Receiver.register is not available on the aligned public API");
-}
-
-napi_value provider_update_weight(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env,
-      "Receiver.updateWeight is not available on the aligned public API");
-}
-
-napi_value provider_unregister(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env, "Receiver.unregister is not available on the aligned public API");
-}
-
-napi_value provider_register_result(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env,
-      "Receiver.registerResult is not available on the aligned public API");
-}
-
-napi_value provider_set_tls_server(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env,
-      "Receiver.setTlsServer is not available on the aligned public API");
-}
-
-napi_value provider_router(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env, "Receiver.routerSocket is not available on the aligned public API");
-}
-
-napi_value provider_router_peers(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env, "Receiver.routerPeers is not available on the aligned public API");
-}
-
-napi_value provider_setsockopt(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env, "Receiver.setSockOpt is not available on the aligned public API");
-}
-
-napi_value registry_setsockopt(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    napi_throw_error(env, NULL,
-                     "Registry.setSockOpt is not available on the aligned public API");
-    return NULL;
-}
-
 napi_value registry_set_tls_server(napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
@@ -974,11 +840,4 @@ napi_value discovery_set_tls_server(napi_env env, napi_callback_info info)
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
-}
-
-napi_value provider_destroy(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_receiver(
-      env, "Receiver.close is not available on the aligned public API");
 }

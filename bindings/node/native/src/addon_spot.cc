@@ -12,7 +12,6 @@
 namespace {
 
 static napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid);
-static napi_value unsupported_spot_node(napi_env env, const char *method);
 static napi_value create_message_snapshot_value(napi_env env,
                                                 const zlink_routing_id_t *routing_id,
                                                 zlink_msg_t *msg);
@@ -1369,12 +1368,6 @@ bool attach_spot_send_ready_handler(napi_env env, void *spot, napi_value handler
         return false;
     }
     return true;
-}
-
-napi_value unsupported_spot_node(napi_env env, const char *method)
-{
-    napi_throw_error(env, NULL, method);
-    return NULL;
 }
 
 void set_uint32_property(napi_env env, napi_value obj, const char *name, uint32_t value)
@@ -3799,34 +3792,6 @@ napi_value remote_actor_get_ref(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_node_pub_socket(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_spot_node(
-      env, "SpotNode.pubSocket is not available on the aligned public API");
-}
-
-napi_value spot_node_sub_socket(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_spot_node(
-      env, "SpotNode.subSocket is not available on the aligned public API");
-}
-
-napi_value spot_node_pub_peers(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_spot_node(
-      env, "SpotNode.pubPeers is not available on the aligned public API");
-}
-
-napi_value spot_node_sub_peers(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    return unsupported_spot_node(
-      env, "SpotNode.subPeers is not available on the aligned public API");
-}
-
 napi_value spot_new(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
@@ -4252,74 +4217,4 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
             return throw_last_error(env, "spot_try_recv failed");
         topic.assign(topic_len > 0 ? topic_len : 1, '\0');
     }
-}
-
-napi_value spot_subscription_event(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    int32_t flags = 0;
-    if (argc >= 2)
-        napi_get_value_int32(env, argv[1], &flags);
-
-    zlink_routing_id_t routing_id;
-    int subscribed = 0;
-    std::vector<char> topic(256, '\0');
-    memset(&routing_id, 0, sizeof(routing_id));
-    (void) spot;
-    (void) flags;
-    subscribed = 0;
-    errno = ENOTSUP;
-    int rc = ZLINK_RECV_NOT_SUPPORTED;
-    if (rc != ZLINK_RECV_OK)
-        return throw_last_error(env, "spotSubscriptionEvent failed");
-
-    napi_value obj;
-    napi_create_object(env, &obj);
-    napi_value routing_id_value = create_routing_id_value(env, routing_id);
-    napi_set_named_property(env, obj, "routingId", routing_id_value);
-    set_string_property(env, obj, "topic", topic.data());
-    napi_value subscribed_value;
-    napi_get_boolean(env, subscribed != 0, &subscribed_value);
-    napi_set_named_property(env, obj, "subscribed", subscribed_value);
-    return obj;
-}
-
-napi_value spot_try_subscription_event(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-
-    zlink_routing_id_t routing_id;
-    int subscribed = 0;
-    std::vector<char> topic(256, '\0');
-    memset(&routing_id, 0, sizeof(routing_id));
-    (void) spot;
-    subscribed = 0;
-    errno = ENOTSUP;
-    int rc = ZLINK_RECV_NOT_SUPPORTED;
-    if (rc != ZLINK_RECV_OK) {
-        if (zlink_errno() == EAGAIN) {
-            napi_value none;
-            napi_get_null(env, &none);
-            return none;
-        }
-        return throw_last_error(env, "spotSubscriptionEventNoWait failed");
-    }
-
-    napi_value obj;
-    napi_create_object(env, &obj);
-    napi_value routing_id_value = create_routing_id_value(env, routing_id);
-    napi_set_named_property(env, obj, "routingId", routing_id_value);
-    set_string_property(env, obj, "topic", topic.data());
-    napi_value subscribed_value;
-    napi_get_boolean(env, subscribed != 0, &subscribed_value);
-    napi_set_named_property(env, obj, "subscribed", subscribed_value);
-    return obj;
 }

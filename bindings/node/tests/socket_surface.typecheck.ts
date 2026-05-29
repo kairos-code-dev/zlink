@@ -171,9 +171,7 @@ spot.setSubscription('topic');
 spot.subscriptionAt(0);
 spot.unsetSubscription('topic');
 const spotTopicMessage = new zlink.TopicMessage();
-const spotSubscriptionEvent = new zlink.SubscriptionEvent();
 spot.subscribe(spotTopicMessage);
-spot.receiveSubscriptionEvent(spotSubscriptionEvent);
 spot.setSendReadyHandler(() => {});
 spot.setDispatchHandler((info) => {
   info.actorRef?.generation;

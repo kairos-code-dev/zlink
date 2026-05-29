@@ -72,5 +72,3 @@ napi_value spot_subscribe(napi_env env, napi_callback_info info);
 napi_value spot_unsubscribe(napi_env env, napi_callback_info info);
 napi_value spot_recv(napi_env env, napi_callback_info info);
 napi_value spot_try_recv(napi_env env, napi_callback_info info);
-napi_value spot_subscription_event(napi_env env, napi_callback_info info);
-napi_value spot_try_subscription_event(napi_env env, napi_callback_info info);

@@ -20,14 +20,6 @@ static const size_t k_send_ready_handler_slot_count = 8;
 static const size_t k_socket_monitor_handler_slot_count = 8;
 static const int32_t k_stream_dispatch_none = 0;
 static const int32_t k_stream_dispatch_len32be = 1;
-static const int32_t k_legacy_socket_pair = 0;
-static const int32_t k_legacy_socket_pub = 1;
-static const int32_t k_legacy_socket_sub = 2;
-static const int32_t k_legacy_socket_dealer = 5;
-static const int32_t k_legacy_socket_router = 6;
-static const int32_t k_legacy_socket_xpub = 9;
-static const int32_t k_legacy_socket_xsub = 10;
-static const int32_t k_legacy_socket_stream = 11;
 
 int classify_try_send_errno()
 {
@@ -242,28 +234,20 @@ int zlink_stream_detach (void *s_);
 zlink_socket_type_t translate_socket_type(int32_t type)
 {
     switch (type) {
-    case k_legacy_socket_pair:
     case ZLINK_SOCKET_PAIR:
         return ZLINK_SOCKET_PAIR;
-    case k_legacy_socket_pub:
     case ZLINK_SOCKET_PUB:
         return ZLINK_SOCKET_PUB;
-    case k_legacy_socket_sub:
     case ZLINK_SOCKET_SUB:
         return ZLINK_SOCKET_SUB;
-    case k_legacy_socket_dealer:
     case ZLINK_SOCKET_DEALER:
         return ZLINK_SOCKET_DEALER;
-    case k_legacy_socket_router:
     case ZLINK_SOCKET_ROUTER:
         return ZLINK_SOCKET_ROUTER;
-    case k_legacy_socket_xpub:
     case ZLINK_SOCKET_XPUB:
         return ZLINK_SOCKET_XPUB;
-    case k_legacy_socket_xsub:
     case ZLINK_SOCKET_XSUB:
         return ZLINK_SOCKET_XSUB;
-    case k_legacy_socket_stream:
     case ZLINK_SOCKET_STREAM:
         return ZLINK_SOCKET_STREAM;
     default:

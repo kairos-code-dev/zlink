@@ -22,8 +22,8 @@ import type {
   ActorUnbindOperation,
   ReplyHandler
 } from '../../../contracts/service';
+import { OperationPayload } from '../../../contracts/messaging/operation_payload';
 import { requestErrorFromResult } from '../../messaging/request_executor';
-import { OperationPayload } from '../../sockets/socket_operation_builders';
 
 type ActorJoinInvoker = (
   parts: readonly MessageLike[],
@@ -34,7 +34,7 @@ type ActorJoinInvoker = (
 
 export class RuntimeActorJoinOperation implements ActorJoinOperation, ActorJoinSubmitOperation, ActorJoinCallbackSubmitOperation {
   private readonly _invoke: ActorJoinInvoker;
-  private readonly _payload = new OperationPayload();
+  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
   private _flags: SendFlags = SendFlags.None;
   private _timeoutMs = 0;
   private _callbackMode = false;
@@ -87,7 +87,7 @@ type ActorJoinEntrySpotInvoker = (
 
 export class RuntimeActorJoinReplyOperation implements ActorJoinReplyOperation {
   private readonly _invoke: (parts: readonly MessageLike[]) => void;
-  private readonly _payload = new OperationPayload();
+  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
 
   constructor(invoke: (parts: readonly MessageLike[]) => void) {
     this._invoke = invoke;

@@ -2234,20 +2234,6 @@ napi_value router_spot_reply(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value router_spot_handler(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    napi_throw_error(env, NULL, "routerSpotHandler not implemented");
-    return NULL;
-}
-
-napi_value router_spot_recv(napi_env env, napi_callback_info info)
-{
-    (void) info;
-    napi_throw_error(env, NULL, "routerSpotRecv not implemented");
-    return NULL;
-}
-
 napi_value discovery_resolve_actor(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];

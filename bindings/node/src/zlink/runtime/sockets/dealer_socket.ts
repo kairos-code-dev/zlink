@@ -7,21 +7,15 @@ import {
   MessageSocket,
   RuntimeRequestOperation,
 } from './socket_operations';
-import {
-  NativeSocketType,
-  RoutingId,
-  SendFlags,
-  configCall,
-  executeNativeRequest,
-  requireNative,
-  startRequestProgress,
-  validateCString,
-  type Context,
-  type Message,
-  type MessageLike,
-  type RequestCallback,
-  type RequestOperation,
-} from './socket_runtime_support';
+import type { RuntimeContext as Context } from '../core/context';
+import { configCall } from '../errors/native_errors';
+import { executeNativeRequest } from '../messaging/request_executor';
+import { startRequestProgress } from '../messaging/request_progress';
+import { requireNative } from '../native/native';
+import { validateCString } from '../options/validation';
+import { RoutingId, type Message, type MessageLike } from '../../contracts';
+import { SendFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
+import type { RequestCallback, RequestOperation } from '../../contracts/service';
 
 export class DealerSocket extends MessageSocket {
   readonly options: DealerSocketOptions;

@@ -8,32 +8,36 @@ import {
   RuntimeSendOperation,
 } from './socket_operations';
 import { submitErrorFromResult } from './socket_submit_errors';
+import type { RuntimeContext as Context } from '../core/context';
 import {
-  NativeSocketType,
-  Received,
-  RecvFlags,
-  RoutingId,
-  SendFlags,
-  SubmitResult,
   configCall,
   handlerCall,
-  materializeReceived,
-  materializeReceivedInto,
-  requireNative,
   recvNativeError,
   submitNativeError,
-  validateCString,
-  wrapRoutingId,
-  type ActorBindOperation,
-  type ActorRef,
-  type ActorUnbindOperation,
-  type Context,
+} from '../errors/native_errors';
+import {
+  materializeReceived,
+  materializeReceivedInto,
+} from '../messaging/message_materializer';
+import { requireNative } from '../native/native';
+import { validateCString } from '../options/validation';
+import {
+  Received,
+  RoutingId,
   type Message,
   type MessageLike,
-  type SendOperation,
-  type SocketSendReadyHandler,
-  type StreamPacketHandler,
-} from './socket_runtime_support';
+} from '../../contracts';
+import { SubmitResult } from '../../contracts/errors/errors';
+import { wrapRoutingId } from '../../contracts/service/spot/spot_models';
+import { RecvFlags, SendFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
+import type {
+  ActorBindOperation,
+  ActorRef,
+  ActorUnbindOperation,
+  SendOperation,
+  SocketSendReadyHandler,
+  StreamPacketHandler,
+} from '../../contracts/service';
 import {
   RuntimeActorBindOperation,
   RuntimeActorUnbindOperation,

@@ -4,14 +4,11 @@ import { PubSocketOptions } from './socket_options';
 import {
   PublisherSocket,
 } from './socket_operations';
-import {
-  NativeSocketType,
-  configCall,
-  handlerCall,
-  requireNative,
-  type Context,
-  type SocketSendReadyHandler,
-} from './socket_runtime_support';
+import type { RuntimeContext as Context } from '../core/context';
+import { configCall, handlerCall } from '../errors/native_errors';
+import { requireNative } from '../native/native';
+import { SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
+import type { SocketSendReadyHandler } from '../../contracts/service';
 
 export class PubSocket extends PublisherSocket {
   readonly options: PubSocketOptions;

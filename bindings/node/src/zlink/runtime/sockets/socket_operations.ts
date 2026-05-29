@@ -34,11 +34,6 @@ import {
   SubmitResult,
 } from '../../contracts/errors/errors';
 
-const PREBUILD_SUBSCRIBE_OPTION = 6;
-const PREBUILD_UNSUBSCRIBE_OPTION = 7;
-// Packaged prebuilds may predate the dedicated subscription exports.
-// Keep this bridge until every published platform prebuild is refreshed.
-
 import type {
   SubscriptionEntry,
   SocketSendReadyHandler,
@@ -49,7 +44,6 @@ import {
   RuntimeSendOperation,
 } from './socket_operation_builders';
 export {
-  OperationPayload,
   PublishOperation,
   RuntimeReplyOperation,
   RuntimeRequestOperation,
@@ -158,31 +152,13 @@ export class SubscriberSocket extends ConnectableSocket {
   setSubscription(topicOrPattern: string): void {
     const topic = validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER);
     configCall('subscription set failed', () => {
-      const native = requireNative();
-      if (native.socketSetSubscription) {
-        native.socketSetSubscription(this.nativeHandle(), topic);
-        return;
-      }
-      native.socketSetOpt(
-        this.nativeHandle(),
-        PREBUILD_SUBSCRIBE_OPTION,
-        Buffer.from(topic)
-      );
+      requireNative().socketSetSubscription(this.nativeHandle(), topic);
     });
   }
   unsetSubscription(topicOrPattern: string): void {
     const topic = validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER);
     configCall('subscription unset failed', () => {
-      const native = requireNative();
-      if (native.socketUnsetSubscription) {
-        native.socketUnsetSubscription(this.nativeHandle(), topic);
-        return;
-      }
-      native.socketSetOpt(
-        this.nativeHandle(),
-        PREBUILD_UNSUBSCRIBE_OPTION,
-        Buffer.from(topic)
-      );
+      requireNative().socketUnsetSubscription(this.nativeHandle(), topic);
     });
   }
   subscriptionAt(index: number): SubscriptionEntry | null {

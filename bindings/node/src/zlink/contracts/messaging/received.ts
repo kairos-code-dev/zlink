@@ -10,6 +10,7 @@ import {
   freezeMessageParts,
   freezeOwnedMessageParts,
 } from './envelope';
+import { OperationPayload } from './operation_payload';
 
 const RECEIVED_CREATE_TOKEN = Symbol('received.create');
 
@@ -38,34 +39,11 @@ interface ReceivedReplySubmitOperation {
   submit(): void;
 }
 
-class ReceivedOpPayload {
-  private readonly _parts: Message[] = [];
-  private _submitted = false;
-
-  append(message: Message | BufferLike): void {
-    this.ensureOpen();
-    this._parts.push(message instanceof Message ? message : Message.from(message));
-  }
-
-  ensureOpen(): void {
-    if (this._submitted) {
-      throw new TypeError('operation has already been submitted');
-    }
-  }
-
-  consume(): readonly Message[] {
-    this.ensureOpen();
-    if (this._parts.length === 0) {
-      throw new TypeError('operation requires at least one message');
-    }
-    this._submitted = true;
-    return this._parts;
-  }
-}
-
 class ReceivedSendOperation implements ReceivedSendOperation, ReceivedSendSubmitOperation {
   private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => boolean;
-  private readonly _payload = new ReceivedOpPayload();
+  private readonly _payload = new OperationPayload<Message | BufferLike, Message>(
+    (message) => message instanceof Message ? message : Message.from(message)
+  );
   private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: (parts: readonly Message[], flags: SendFlags) => boolean) {
@@ -90,7 +68,9 @@ class ReceivedSendOperation implements ReceivedSendOperation, ReceivedSendSubmit
 
 class ReceivedReplyOperation implements ReceivedReplyOperation, ReceivedReplySubmitOperation {
   private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => void;
-  private readonly _payload = new ReceivedOpPayload();
+  private readonly _payload = new OperationPayload<Message | BufferLike, Message>(
+    (message) => message instanceof Message ? message : Message.from(message)
+  );
   private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: (parts: readonly Message[], flags: SendFlags) => void) {

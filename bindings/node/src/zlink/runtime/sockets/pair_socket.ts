@@ -4,10 +4,8 @@ import { CommonSocketOptions } from './socket_options';
 import {
   MessageSocket,
 } from './socket_operations';
-import {
-  NativeSocketType,
-  type Context,
-} from './socket_runtime_support';
+import type { RuntimeContext as Context } from '../core/context';
+import { SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
 
 export class PairSocket extends MessageSocket {
   readonly options: CommonSocketOptions;

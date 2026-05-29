@@ -21,12 +21,39 @@ function commandOutput(command, args) {
   return execFileSync(command, args, { encoding: 'utf8' });
 }
 
+function optionalCommandOutput(command, args) {
+  try {
+    return commandOutput(command, args);
+  } catch {
+    return null;
+  }
+}
+
 function fileDescription(target) {
   return commandOutput('file', [target]).trim();
 }
 
 function readElfDynamic(target) {
   return commandOutput('readelf', ['-d', target]);
+}
+
+function readPeImports(target) {
+  const output = optionalCommandOutput('objdump', ['-p', target]);
+  if (!output) return [];
+  return [...output.matchAll(/DLL Name:\s*([^\r\n]+)/g)]
+    .map((match) => match[1].trim())
+    .filter(Boolean);
+}
+
+function isWindowsSystemDll(name) {
+  const normalized = name.toLowerCase();
+  return normalized === 'kernel32.dll' ||
+    normalized === 'advapi32.dll' ||
+    normalized === 'ws2_32.dll' ||
+    normalized === 'iphlpapi.dll' ||
+    normalized === 'mswsock.dll' ||
+    normalized === 'libnode.dll' ||
+    normalized.startsWith('api-ms-win-');
 }
 
 function validateLinux(dir, arch) {
@@ -82,12 +109,25 @@ function validateWindows(dir, arch) {
     fail(`unsupported Windows prebuild arch: ${arch}`);
   }
 
+  const bundled = new Set(
+    fs.readdirSync(dir)
+      .filter((name) => name.endsWith('.dll') || name.endsWith('.node'))
+      .map((name) => name.toLowerCase())
+  );
+
   for (const name of fs.readdirSync(dir).sort()) {
     if (!name.endsWith('.dll') && !name.endsWith('.node')) continue;
     const target = path.join(dir, name);
     const description = fileDescription(target);
     if (!description.includes(expected)) {
       fail(`${target} is not ${expected}: ${description}`);
+    }
+    for (const dllName of readPeImports(target)) {
+      const normalized = dllName.toLowerCase();
+      if (isWindowsSystemDll(normalized)) continue;
+      if (!bundled.has(normalized)) {
+        fail(`${target} depends on missing bundled DLL ${dllName}`);
+      }
     }
   }
 }

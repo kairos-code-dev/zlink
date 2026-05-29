@@ -10,24 +10,20 @@ import {
   RoutedMessageSocket,
 } from './socket_operations';
 import { normalizeReplyFlags } from './socket_submit_errors';
-import {
-  NativeSocketType,
-  RoutingId,
-  SendFlags,
-  SubmitResult,
-  configCall,
-  executeNativeRequest,
-  requireNative,
-  startRequestProgress,
-  submitNativeError,
-  type Context,
-  type Message,
-  type MessageLike,
-  type RequestCallback,
-  type RequestOperation,
-  type ReplyOperation,
-  type SendOperation,
-} from './socket_runtime_support';
+import type { RuntimeContext as Context } from '../core/context';
+import { configCall, submitNativeError } from '../errors/native_errors';
+import { executeNativeRequest } from '../messaging/request_executor';
+import { startRequestProgress } from '../messaging/request_progress';
+import { requireNative } from '../native/native';
+import { RoutingId, type Message, type MessageLike } from '../../contracts';
+import { SubmitResult } from '../../contracts/errors/errors';
+import { SendFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
+import type {
+  ReplyOperation,
+  RequestCallback,
+  RequestOperation,
+  SendOperation,
+} from '../../contracts/service';
 
 export class RouterSocket extends RoutedMessageSocket {
   readonly options: RouterSocketOptions;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { Message, type MessageLike } from '../../contracts';
+import { OperationPayload } from '../../contracts/messaging/operation_payload';
 import { SendFlags } from '../../contracts/sockets/socket_constants';
 import type {
   RequestCallback,
@@ -27,34 +28,9 @@ export type RequestInvoker = (
 ) => Promise<Message[]> | boolean;
 export type ReplyInvoker = (parts: readonly MessageLike[], flags: SendFlags) => void;
 
-export class OperationPayload {
-  private readonly _parts: MessageLike[] = [];
-  private _submitted = false;
-
-  append(message: MessageLike): void {
-    this.ensureOpen();
-    this._parts.push(message);
-  }
-
-  ensureOpen(): void {
-    if (this._submitted) {
-      throw new TypeError('operation has already been submitted');
-    }
-  }
-
-  consume(): readonly MessageLike[] {
-    this.ensureOpen();
-    if (this._parts.length === 0) {
-      throw new TypeError('operation requires at least one message');
-    }
-    this._submitted = true;
-    return this._parts;
-  }
-}
-
 export class RuntimeSendOperation implements SendOperation, SendSubmitOperation {
   private readonly _invoke: SendInvoker;
-  private readonly _payload = new OperationPayload();
+  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
   private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: SendInvoker) {
@@ -128,7 +104,7 @@ export class PublishOperation implements SendOperation, SendSubmitOperation {
 
 export class RuntimeRequestOperation implements RequestOperation, RequestSubmitOperation, RequestCallbackSubmitOperation {
   private readonly _invoke: RequestInvoker;
-  private readonly _payload = new OperationPayload();
+  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
   private _timeoutMs = 0;
   private _flags: SendFlags = SendFlags.None;
   private _callbackMode = false;
@@ -167,7 +143,7 @@ export class RuntimeRequestOperation implements RequestOperation, RequestSubmitO
 
 export class RuntimeReplyOperation implements ReplyOperation, ReplySubmitOperation {
   private readonly _invoke: ReplyInvoker;
-  private readonly _payload = new OperationPayload();
+  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
   private _flags: SendFlags = SendFlags.None;
 
   constructor(invoke: ReplyInvoker) {

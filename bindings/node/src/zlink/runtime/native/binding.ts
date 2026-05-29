@@ -178,7 +178,7 @@ interface SocketNativeBinding {
   ) => number;
   socketSetChannelName: (socket: NativeHandle, channelName: string) => void;
   socketSetOpt: (socket: NativeHandle, option: number, value: Buffer) => void;
-  socketSetSubscription?: (socket: NativeHandle, topic: string) => void;
+  socketSetSubscription: (socket: NativeHandle, topic: string) => void;
   socketSetTlsClient: (
     socket: NativeHandle,
     ca: string,
@@ -214,7 +214,7 @@ interface SocketNativeBinding {
     socket: NativeHandle
   ) => { routingId?: Buffer | null; topic: string; subscribed: boolean } | null;
   socketUnbind: (socket: NativeHandle, endpoint: string) => void;
-  socketUnsetSubscription?: (socket: NativeHandle, topic: string) => void;
+  socketUnsetSubscription: (socket: NativeHandle, topic: string) => void;
   streamAttachActorGateway: (socket: NativeHandle, node: NativeHandle) => void;
   streamBindActor: (
     stream: NativeHandle,

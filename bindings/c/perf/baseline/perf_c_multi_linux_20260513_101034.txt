@@ -474,7 +474,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=256, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -484,7 +484,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=1024, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -494,7 +494,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=65536, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -504,7 +504,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=131072, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -514,7 +514,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=262144, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -607,7 +607,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=256, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -617,7 +617,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=1024, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -627,7 +627,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=65536, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -637,7 +637,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=131072, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -647,7 +647,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=262144, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -740,7 +740,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=256, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -750,7 +750,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=1024, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -760,7 +760,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=65536, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -770,7 +770,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=131072, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|
@@ -780,7 +780,7 @@ META,clients,100
       | mesh-xsub       | xsub   | recv_ingress | -      | 256    | 0      | 262144 |
       | peer_ctrl_pub   | pub    | control      | 0      | -      | 262144 | 0      |
       | peer_ctrl_sub   | sub    | control      | -      | 0      | 0      | 262144 |
-      
+
       - Size(B)=262144, MsgUnit(B)=4096
       | Socket          | Type   | Role         | SNDHWM | RCVHWM | SNDBUF | RCVBUF |
       |-----------------|--------|--------------|--------|--------|--------|--------|

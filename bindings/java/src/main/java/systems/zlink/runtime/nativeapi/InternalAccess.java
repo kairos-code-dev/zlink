@@ -13,7 +13,6 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.contracts.service.spot.ActorReceived;
 import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ReplyHandler;
 import systems.zlink.contracts.service.spot.Spot;

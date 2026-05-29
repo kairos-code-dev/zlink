@@ -65,20 +65,6 @@ final class NativeSymbols {
         return cDowncall("free", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
     }
 
-    static MethodHandle unsupportedLegacyDowncall(String name,
-                                                  FunctionDescriptor fd) {
-        MethodType methodType = fd.toMethodType();
-        UnsupportedOperationException failure =
-          new UnsupportedOperationException(
-            "Legacy native symbol '" + name
-              + "' is not part of the canonical zlink surface.");
-        MethodHandle throwing = MethodHandles.throwException(
-          methodType.returnType(), UnsupportedOperationException.class);
-        throwing = MethodHandles.insertArguments(throwing, 0, failure);
-        return MethodHandles.dropArguments(throwing, 0,
-          methodType.parameterArray());
-    }
-
     private static MethodHandle missingDowncall(String name,
                                                 FunctionDescriptor fd) {
         MethodType methodType = fd.toMethodType();

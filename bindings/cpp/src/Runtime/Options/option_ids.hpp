@@ -69,4 +69,6 @@ enum class stream_option_id : int
     notify = 13569
 };
 
+void clear_dealer_option_store (void *handle_) noexcept;
+
 } // namespace zlink::detail

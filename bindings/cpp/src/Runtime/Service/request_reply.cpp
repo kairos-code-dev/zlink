@@ -9,6 +9,29 @@ namespace zlink
 namespace service
 {
 
+namespace
+{
+
+template <typename State>
+std::unique_ptr<State> make_operation_state (State &&state_)
+{
+    return std::unique_ptr<State> (new State (std::move (state_)));
+}
+
+template <typename State>
+State &operation_state (std::unique_ptr<State> &state_) noexcept
+{
+    return *state_;
+}
+
+template <typename State>
+const State &operation_state (const std::unique_ptr<State> &state_) noexcept
+{
+    return *state_;
+}
+
+} // namespace
+
 send_submit_operation_t::~send_submit_operation_t () = default;
 send_submit_operation_t::send_submit_operation_t (
   send_submit_operation_t &&) noexcept = default;
@@ -17,19 +40,19 @@ send_submit_operation_t &send_submit_operation_t::operator= (
 
 send_submit_operation_t::send_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (new detail::spot_operation_state_t (std::move (state_)))
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &send_submit_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 send_submit_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 send_submit_operation_t &&send_submit_operation_t::message (message_t &part_) &&
@@ -59,18 +82,18 @@ send_operation_t &
 send_operation_t::operator= (send_operation_t &&) noexcept = default;
 
 send_operation_t::send_operation_t (detail::spot_operation_state_t &&state_) :
-    _state (new detail::spot_operation_state_t (std::move (state_)))
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &send_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::spot_operation_state_t &send_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 send_submit_operation_t send_operation_t::message (message_t &part_) &&
@@ -97,19 +120,19 @@ request_submit_operation_t &request_submit_operation_t::operator= (
 
 request_submit_operation_t::request_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (new detail::spot_operation_state_t (std::move (state_)))
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &request_submit_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 request_submit_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 request_submit_operation_t &&
@@ -134,19 +157,19 @@ request_operation_t::operator= (request_operation_t &&) noexcept = default;
 
 request_operation_t::request_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (new detail::spot_operation_state_t (std::move (state_)))
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &request_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 request_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 request_submit_operation_t request_operation_t::message (message_t &part_) &&
@@ -165,20 +188,20 @@ request_callback_submit_operation_t::operator= (
 
 request_callback_submit_operation_t::request_callback_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (new detail::spot_operation_state_t (std::move (state_)))
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &
 request_callback_submit_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 request_callback_submit_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 request_callback_submit_operation_t &&
@@ -211,19 +234,19 @@ reply_submit_operation_t &reply_submit_operation_t::operator= (
 
 reply_submit_operation_t::reply_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (new detail::spot_operation_state_t (std::move (state_)))
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &reply_submit_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 reply_submit_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 reply_submit_operation_t &&
@@ -245,18 +268,18 @@ reply_operation_t &
 reply_operation_t::operator= (reply_operation_t &&) noexcept = default;
 
 reply_operation_t::reply_operation_t (detail::spot_operation_state_t &&state_) :
-    _state (new detail::spot_operation_state_t (std::move (state_)))
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &reply_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::spot_operation_state_t &reply_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 reply_submit_operation_t reply_operation_t::message (message_t &part_) &&

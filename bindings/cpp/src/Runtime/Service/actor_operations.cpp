@@ -10,27 +10,54 @@ namespace zlink
 namespace service
 {
 
-actor_join_operation_t::~actor_join_operation_t () = default;
-actor_join_operation_t::actor_join_operation_t (actor_join_operation_t &&) noexcept = default;
-actor_join_operation_t &
-actor_join_operation_t::operator= (actor_join_operation_t &&) noexcept = default;
+namespace
+{
 
-actor_join_operation_t::actor_join_operation_t (detail::actor_join_state_t &&state_)
-    : _state (new detail::actor_join_state_t (std::move (state_)))
+template <typename State>
+std::unique_ptr<State> make_operation_state (State &&state_)
+{
+    return std::unique_ptr<State> (new State (std::move (state_)));
+}
+
+template <typename State>
+State &operation_state (std::unique_ptr<State> &state_) noexcept
+{
+    return *state_;
+}
+
+template <typename State>
+const State &operation_state (const std::unique_ptr<State> &state_) noexcept
+{
+    return *state_;
+}
+
+} // namespace
+
+actor_join_operation_t::~actor_join_operation_t () = default;
+actor_join_operation_t::actor_join_operation_t (
+  actor_join_operation_t &&) noexcept = default;
+actor_join_operation_t &actor_join_operation_t::operator= (
+  actor_join_operation_t &&) noexcept = default;
+
+actor_join_operation_t::actor_join_operation_t (
+  detail::actor_join_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::actor_join_state_t &actor_join_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
-const detail::actor_join_state_t &actor_join_operation_t::state () const noexcept
+const detail::actor_join_state_t &
+actor_join_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
-actor_join_submit_operation_t actor_join_operation_t::message (message_t &part_) &&
+actor_join_submit_operation_t
+actor_join_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
     return actor_join_submit_operation_t (std::move (state ()));
@@ -39,26 +66,28 @@ actor_join_submit_operation_t actor_join_operation_t::message (message_t &part_)
 actor_join_submit_operation_t::~actor_join_submit_operation_t () = default;
 actor_join_submit_operation_t::actor_join_submit_operation_t (
   actor_join_submit_operation_t &&) noexcept = default;
-actor_join_submit_operation_t &
-actor_join_submit_operation_t::operator= (actor_join_submit_operation_t &&) noexcept = default;
+actor_join_submit_operation_t &actor_join_submit_operation_t::operator= (
+  actor_join_submit_operation_t &&) noexcept = default;
 
 actor_join_submit_operation_t::actor_join_submit_operation_t (
-  detail::actor_join_state_t &&state_)
-    : _state (new detail::actor_join_state_t (std::move (state_)))
+  detail::actor_join_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::actor_join_state_t &actor_join_submit_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
-const detail::actor_join_state_t &actor_join_submit_operation_t::state () const noexcept
+const detail::actor_join_state_t &
+actor_join_submit_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
-actor_join_submit_operation_t &&actor_join_submit_operation_t::message (message_t &part_) &&
+actor_join_submit_operation_t &&
+actor_join_submit_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
     return std::move (*this);
@@ -71,7 +100,8 @@ actor_join_submit_operation_t::timeout (std::chrono::milliseconds timeout_) &&
     return std::move (*this);
 }
 
-actor_join_callback_submit_operation_t actor_join_submit_operation_t::flags (int flags_) &&
+actor_join_callback_submit_operation_t
+actor_join_submit_operation_t::flags (int flags_) &&
 {
     state ().flags = send_flags_t (flags_);
     return actor_join_callback_submit_operation_t (std::move (state ()));
@@ -86,8 +116,8 @@ actor_join_submit_operation_t::submit_async () &&
       request_state->promise->get_future ();
     const int rc = detail::submit_actor_join (state (), request_state.get ());
     if (rc != ZLINK_SUBMIT_OK) {
-        throw submit_error_t (
-          static_cast<submit_result_t> (rc), zlink_errno ());
+        throw submit_error_t (static_cast<submit_result_t> (rc),
+                              zlink_errno ());
     }
     request_state.release ();
     return async_result_t<actor_join_result_t> (std::move (future));
@@ -99,7 +129,8 @@ bool actor_join_submit_operation_t::submit (actor_join_callback_t callback_) &&
     return std::move (ready).submit (std::move (callback_));
 }
 
-actor_join_callback_submit_operation_t::~actor_join_callback_submit_operation_t () = default;
+actor_join_callback_submit_operation_t::
+  ~actor_join_callback_submit_operation_t () = default;
 actor_join_callback_submit_operation_t::actor_join_callback_submit_operation_t (
   actor_join_callback_submit_operation_t &&) noexcept = default;
 actor_join_callback_submit_operation_t &
@@ -107,21 +138,21 @@ actor_join_callback_submit_operation_t::operator= (
   actor_join_callback_submit_operation_t &&) noexcept = default;
 
 actor_join_callback_submit_operation_t::actor_join_callback_submit_operation_t (
-  detail::actor_join_state_t &&state_)
-    : _state (new detail::actor_join_state_t (std::move (state_)))
+  detail::actor_join_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::actor_join_state_t &
 actor_join_callback_submit_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::actor_join_state_t &
 actor_join_callback_submit_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 actor_join_callback_submit_operation_t &&
@@ -157,14 +188,15 @@ bool actor_join_callback_submit_operation_t::submit (
             && static_cast<submit_result_t> (rc)
                  == submit_result_t::backpressured)
             return false;
-        throw submit_error_t (
-          static_cast<submit_result_t> (rc), zlink_errno ());
+        throw submit_error_t (static_cast<submit_result_t> (rc),
+                              zlink_errno ());
     }
     request_state.release ();
     return true;
 }
 
-actor_join_entry_spot_operation_t::~actor_join_entry_spot_operation_t () = default;
+actor_join_entry_spot_operation_t::~actor_join_entry_spot_operation_t () =
+  default;
 actor_join_entry_spot_operation_t::actor_join_entry_spot_operation_t (
   actor_join_entry_spot_operation_t &&) noexcept = default;
 actor_join_entry_spot_operation_t &
@@ -172,25 +204,24 @@ actor_join_entry_spot_operation_t::operator= (
   actor_join_entry_spot_operation_t &&) noexcept = default;
 
 actor_join_entry_spot_operation_t::actor_join_entry_spot_operation_t (
-  detail::actor_payloadless_state_t &&state_)
-    : _state (new detail::actor_payloadless_state_t (std::move (state_)))
+  detail::actor_payloadless_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::actor_payloadless_state_t &
 actor_join_entry_spot_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::actor_payloadless_state_t &
 actor_join_entry_spot_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
-actor_join_entry_spot_operation_t &&
-actor_join_entry_spot_operation_t::timeout (
+actor_join_entry_spot_operation_t &&actor_join_entry_spot_operation_t::timeout (
   std::chrono::milliseconds timeout_) &&
 {
     state ().timeout = timeout_;
@@ -204,12 +235,11 @@ actor_join_entry_spot_operation_t::submit_async () &&
       request_state (detail::make_future_actor_join_entry_spot_state ());
     std::future<actor_join_entry_spot_result_t> future =
       request_state->promise->get_future ();
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_spot_node_actor_join_entry_spot (
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_join_entry_spot (
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         zlink::detail::routing_id_native (state ().aux_rid),
-        &detail::actor_join_entry_spot_result_trampoline,
-        request_state.get (),
+        &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
         static_cast<uint32_t> (state ().timeout.count ())));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
@@ -223,12 +253,11 @@ bool actor_join_entry_spot_operation_t::submit (
     std::unique_ptr<detail::actor_join_entry_spot_result_state_t>
       request_state (detail::make_callback_actor_join_entry_spot_state (
         std::move (callback_)));
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_spot_node_actor_join_entry_spot (
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_join_entry_spot (
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         zlink::detail::routing_id_native (state ().aux_rid),
-        &detail::actor_join_entry_spot_result_trampoline,
-        request_state.get (),
+        &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
         static_cast<uint32_t> (state ().timeout.count ())));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
@@ -239,27 +268,29 @@ bool actor_join_entry_spot_operation_t::submit (
 actor_join_reply_operation_t::~actor_join_reply_operation_t () = default;
 actor_join_reply_operation_t::actor_join_reply_operation_t (
   actor_join_reply_operation_t &&) noexcept = default;
-actor_join_reply_operation_t &
-actor_join_reply_operation_t::operator= (actor_join_reply_operation_t &&) noexcept = default;
+actor_join_reply_operation_t &actor_join_reply_operation_t::operator= (
+  actor_join_reply_operation_t &&) noexcept = default;
 
 actor_join_reply_operation_t::actor_join_reply_operation_t (
-  detail::actor_join_reply_state_t &&state_)
-    : _state (new detail::actor_join_reply_state_t (std::move (state_)))
+  detail::actor_join_reply_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
-detail::actor_join_reply_state_t &actor_join_reply_operation_t::state () noexcept
+detail::actor_join_reply_state_t &
+actor_join_reply_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::actor_join_reply_state_t &
 actor_join_reply_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
-actor_join_reply_operation_t &&actor_join_reply_operation_t::message (message_t &part_) &&
+actor_join_reply_operation_t &&
+actor_join_reply_operation_t::message (message_t &part_) &&
 {
     state ().parts.push_back (std::move (part_));
     return std::move (*this);
@@ -273,8 +304,8 @@ void actor_join_reply_operation_t::submit () &&
     zlink_actor_join_info_t native_info =
       zlink::detail::actor_model_access_t::to_native (state ().info);
     if (state ().parts.empty ()) {
-        const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_spot_actor_join_reply (
+        const submit_result_t rc =
+          static_cast<submit_result_t> (zlink_spot_actor_join_reply (
             state ().spot, &native_info, state ().join_result_code, NULL, 0u));
         if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
@@ -284,10 +315,10 @@ void actor_join_reply_operation_t::submit () &&
     std::vector<zlink_msg_t> native;
     if (detail::move_parts_to_native (state ().parts, native) != 0)
         throw last_error ();
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_spot_actor_join_reply (
-        state ().spot, &native_info, state ().join_result_code,
-        native.data (), native.size ()));
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_actor_join_reply (
+        state ().spot, &native_info, state ().join_result_code, native.data (),
+        native.size ()));
     if (rc != submit_result_t::ok) {
         detail::restore_parts_from_native (state ().parts, native);
         throw submit_error_t (rc, zlink_errno ());
@@ -295,25 +326,26 @@ void actor_join_reply_operation_t::submit () &&
 }
 
 actor_leave_operation_t::~actor_leave_operation_t () = default;
-actor_leave_operation_t::actor_leave_operation_t (actor_leave_operation_t &&) noexcept = default;
-actor_leave_operation_t &
-actor_leave_operation_t::operator= (actor_leave_operation_t &&) noexcept = default;
+actor_leave_operation_t::actor_leave_operation_t (
+  actor_leave_operation_t &&) noexcept = default;
+actor_leave_operation_t &actor_leave_operation_t::operator= (
+  actor_leave_operation_t &&) noexcept = default;
 
 actor_leave_operation_t::actor_leave_operation_t (
-  detail::actor_payloadless_state_t &&state_)
-    : _state (new detail::actor_payloadless_state_t (std::move (state_)))
+  detail::actor_payloadless_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::actor_payloadless_state_t &actor_leave_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::actor_payloadless_state_t &
 actor_leave_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 actor_leave_operation_t &&
@@ -323,15 +355,15 @@ actor_leave_operation_t::timeout (std::chrono::milliseconds timeout_) &&
     return std::move (*this);
 }
 
-async_result_t<std::vector<message_t>>
+async_result_t<std::vector<message_t> >
 actor_leave_operation_t::submit_async () &&
 {
     std::unique_ptr<detail::request_state_t> request_state (
       detail::make_future_request_state ());
-    std::future<std::vector<message_t>> future =
+    std::future<std::vector<message_t> > future =
       request_state->promise->get_future ();
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_spot_node_actor_leave_spot (
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_leave_spot (
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         zlink::detail::routing_id_native (state ().aux_rid),
         &detail::request_callback_trampoline, request_state.get (),
@@ -339,15 +371,15 @@ actor_leave_operation_t::submit_async () &&
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
-    return async_result_t<std::vector<message_t>> (std::move (future));
+    return async_result_t<std::vector<message_t> > (std::move (future));
 }
 
 bool actor_leave_operation_t::submit (request_callback_t callback_) &&
 {
     std::unique_ptr<detail::request_state_t> request_state (
       detail::make_callback_request_state (std::move (callback_)));
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_spot_node_actor_leave_spot (
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_leave_spot (
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         zlink::detail::routing_id_native (state ().aux_rid),
         &detail::request_callback_trampoline, request_state.get (),
@@ -361,24 +393,24 @@ bool actor_leave_operation_t::submit (request_callback_t callback_) &&
 actor_destroy_operation_t::~actor_destroy_operation_t () = default;
 actor_destroy_operation_t::actor_destroy_operation_t (
   actor_destroy_operation_t &&) noexcept = default;
-actor_destroy_operation_t &
-actor_destroy_operation_t::operator= (actor_destroy_operation_t &&) noexcept = default;
+actor_destroy_operation_t &actor_destroy_operation_t::operator= (
+  actor_destroy_operation_t &&) noexcept = default;
 
 actor_destroy_operation_t::actor_destroy_operation_t (
-  detail::actor_payloadless_state_t &&state_)
-    : _state (new detail::actor_payloadless_state_t (std::move (state_)))
+  detail::actor_payloadless_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::actor_payloadless_state_t &actor_destroy_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::actor_payloadless_state_t &
 actor_destroy_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 actor_destroy_operation_t &&
@@ -388,30 +420,30 @@ actor_destroy_operation_t::timeout (std::chrono::milliseconds timeout_) &&
     return std::move (*this);
 }
 
-async_result_t<std::vector<message_t>>
+async_result_t<std::vector<message_t> >
 actor_destroy_operation_t::submit_async () &&
 {
     std::unique_ptr<detail::request_state_t> request_state (
       detail::make_future_request_state ());
-    std::future<std::vector<message_t>> future =
+    std::future<std::vector<message_t> > future =
       request_state->promise->get_future ();
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_spot_node_actor_destroy (
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_destroy (
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         &detail::request_callback_trampoline, request_state.get (),
         static_cast<uint32_t> (state ().timeout.count ())));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
-    return async_result_t<std::vector<message_t>> (std::move (future));
+    return async_result_t<std::vector<message_t> > (std::move (future));
 }
 
 bool actor_destroy_operation_t::submit (request_callback_t callback_) &&
 {
     std::unique_ptr<detail::request_state_t> request_state (
       detail::make_callback_request_state (std::move (callback_)));
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_spot_node_actor_destroy (
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_destroy (
         state ().node, zlink::detail::actor_ref_native (state ().actor),
         &detail::request_callback_trampoline, request_state.get (),
         static_cast<uint32_t> (state ().timeout.count ())));
@@ -422,25 +454,26 @@ bool actor_destroy_operation_t::submit (request_callback_t callback_) &&
 }
 
 actor_lookup_operation_t::~actor_lookup_operation_t () = default;
-actor_lookup_operation_t::actor_lookup_operation_t (actor_lookup_operation_t &&) noexcept = default;
-actor_lookup_operation_t &
-actor_lookup_operation_t::operator= (actor_lookup_operation_t &&) noexcept = default;
+actor_lookup_operation_t::actor_lookup_operation_t (
+  actor_lookup_operation_t &&) noexcept = default;
+actor_lookup_operation_t &actor_lookup_operation_t::operator= (
+  actor_lookup_operation_t &&) noexcept = default;
 
 actor_lookup_operation_t::actor_lookup_operation_t (
-  detail::actor_payloadless_state_t &&state_)
-    : _state (new detail::actor_payloadless_state_t (std::move (state_)))
+  detail::actor_payloadless_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::actor_payloadless_state_t &actor_lookup_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 const detail::actor_payloadless_state_t &
 actor_lookup_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 actor_lookup_operation_t &&
@@ -457,8 +490,8 @@ actor_lookup_operation_t::submit_async () &&
       detail::make_future_actor_lookup_state ());
     std::future<actor_lookup_result_t> future =
       request_state->promise->get_future ();
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_remote_actor_get_ref (
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_remote_actor_get_ref (
         state ().node, zlink::detail::routing_id_native (state ().aux_rid),
         state ().actor_id.c_str (), &detail::actor_lookup_result_trampoline,
         request_state.get (),
@@ -473,8 +506,8 @@ bool actor_lookup_operation_t::submit (actor_lookup_callback_t callback_) &&
 {
     std::unique_ptr<detail::actor_lookup_result_state_t> request_state (
       detail::make_callback_actor_lookup_state (std::move (callback_)));
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_remote_actor_get_ref (
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_remote_actor_get_ref (
         state ().node, zlink::detail::routing_id_native (state ().aux_rid),
         state ().actor_id.c_str (), &detail::actor_lookup_result_trampoline,
         request_state.get (),
@@ -486,23 +519,26 @@ bool actor_lookup_operation_t::submit (actor_lookup_callback_t callback_) &&
 }
 
 actor_bind_operation_t::~actor_bind_operation_t () = default;
-actor_bind_operation_t::actor_bind_operation_t (actor_bind_operation_t &&) noexcept = default;
-actor_bind_operation_t &
-actor_bind_operation_t::operator= (actor_bind_operation_t &&) noexcept = default;
+actor_bind_operation_t::actor_bind_operation_t (
+  actor_bind_operation_t &&) noexcept = default;
+actor_bind_operation_t &actor_bind_operation_t::operator= (
+  actor_bind_operation_t &&) noexcept = default;
 
-actor_bind_operation_t::actor_bind_operation_t (detail::actor_bind_state_t &&state_)
-    : _state (new detail::actor_bind_state_t (std::move (state_)))
+actor_bind_operation_t::actor_bind_operation_t (
+  detail::actor_bind_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::actor_bind_state_t &actor_bind_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
-const detail::actor_bind_state_t &actor_bind_operation_t::state () const noexcept
+const detail::actor_bind_state_t &
+actor_bind_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 actor_bind_operation_t &&
@@ -512,32 +548,34 @@ actor_bind_operation_t::timeout (std::chrono::milliseconds timeout_) &&
     return std::move (*this);
 }
 
-async_result_t<std::vector<message_t>>
+async_result_t<std::vector<message_t> >
 actor_bind_operation_t::submit_async () &&
 {
     std::unique_ptr<detail::request_state_t> request_state (
       detail::make_future_request_state ());
-    std::future<std::vector<message_t>> future =
+    std::future<std::vector<message_t> > future =
       request_state->promise->get_future ();
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_stream_bind_actor (
-        state ().stream, zlink::detail::routing_id_native (state ().session_rid),
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_stream_bind_actor (
+        state ().stream,
+        zlink::detail::routing_id_native (state ().session_rid),
         zlink::detail::actor_ref_native (state ().actor),
         &detail::request_callback_trampoline, request_state.get (),
         static_cast<uint32_t> (state ().timeout.count ())));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
-    return async_result_t<std::vector<message_t>> (std::move (future));
+    return async_result_t<std::vector<message_t> > (std::move (future));
 }
 
 bool actor_bind_operation_t::submit (request_callback_t callback_) &&
 {
     std::unique_ptr<detail::request_state_t> request_state (
       detail::make_callback_request_state (std::move (callback_)));
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_stream_bind_actor (
-        state ().stream, zlink::detail::routing_id_native (state ().session_rid),
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_stream_bind_actor (
+        state ().stream,
+        zlink::detail::routing_id_native (state ().session_rid),
         zlink::detail::actor_ref_native (state ().actor),
         &detail::request_callback_trampoline, request_state.get (),
         static_cast<uint32_t> (state ().timeout.count ())));
@@ -550,22 +588,24 @@ bool actor_bind_operation_t::submit (request_callback_t callback_) &&
 actor_unbind_operation_t::~actor_unbind_operation_t () = default;
 actor_unbind_operation_t::actor_unbind_operation_t (
   actor_unbind_operation_t &&) noexcept = default;
-actor_unbind_operation_t &
-actor_unbind_operation_t::operator= (actor_unbind_operation_t &&) noexcept = default;
+actor_unbind_operation_t &actor_unbind_operation_t::operator= (
+  actor_unbind_operation_t &&) noexcept = default;
 
-actor_unbind_operation_t::actor_unbind_operation_t (detail::actor_bind_state_t &&state_)
-    : _state (new detail::actor_bind_state_t (std::move (state_)))
+actor_unbind_operation_t::actor_unbind_operation_t (
+  detail::actor_bind_state_t &&state_) :
+    _state (make_operation_state (std::move (state_)))
 {
 }
 
 detail::actor_bind_state_t &actor_unbind_operation_t::state () noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
-const detail::actor_bind_state_t &actor_unbind_operation_t::state () const noexcept
+const detail::actor_bind_state_t &
+actor_unbind_operation_t::state () const noexcept
 {
-    return *_state;
+    return operation_state (_state);
 }
 
 actor_unbind_operation_t &&
@@ -575,32 +615,34 @@ actor_unbind_operation_t::timeout (std::chrono::milliseconds timeout_) &&
     return std::move (*this);
 }
 
-async_result_t<std::vector<message_t>>
+async_result_t<std::vector<message_t> >
 actor_unbind_operation_t::submit_async () &&
 {
     std::unique_ptr<detail::request_state_t> request_state (
       detail::make_future_request_state ());
-    std::future<std::vector<message_t>> future =
+    std::future<std::vector<message_t> > future =
       request_state->promise->get_future ();
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_stream_unbind_actor (
-        state ().stream, zlink::detail::routing_id_native (state ().session_rid),
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_stream_unbind_actor (
+        state ().stream,
+        zlink::detail::routing_id_native (state ().session_rid),
         state ().actor_id.c_str (), &detail::request_callback_trampoline,
         request_state.get (),
         static_cast<uint32_t> (state ().timeout.count ())));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     request_state.release ();
-    return async_result_t<std::vector<message_t>> (std::move (future));
+    return async_result_t<std::vector<message_t> > (std::move (future));
 }
 
 bool actor_unbind_operation_t::submit (request_callback_t callback_) &&
 {
     std::unique_ptr<detail::request_state_t> request_state (
       detail::make_callback_request_state (std::move (callback_)));
-    const submit_result_t rc = static_cast<submit_result_t> (
-      zlink_stream_unbind_actor (
-        state ().stream, zlink::detail::routing_id_native (state ().session_rid),
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_stream_unbind_actor (
+        state ().stream,
+        zlink::detail::routing_id_native (state ().session_rid),
         state ().actor_id.c_str (), &detail::request_callback_trampoline,
         request_state.get (),
         static_cast<uint32_t> (state ().timeout.count ())));
@@ -610,14 +652,14 @@ bool actor_unbind_operation_t::submit (request_callback_t callback_) &&
     return true;
 }
 
-actor_bind_operation_t detail_make_actor_bind_operation (
-  detail::actor_bind_state_t &&state_)
+actor_bind_operation_t
+detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_)
 {
     return actor_bind_operation_t (std::move (state_));
 }
 
-actor_unbind_operation_t detail_make_actor_unbind_operation (
-  detail::actor_bind_state_t &&state_)
+actor_unbind_operation_t
+detail_make_actor_unbind_operation (detail::actor_bind_state_t &&state_)
 {
     return actor_unbind_operation_t (std::move (state_));
 }
@@ -630,10 +672,10 @@ actor_destroy_operation_t spot_node_t::destroy_actor (const actor_ref_t &actor_)
     return actor_destroy_operation_t (std::move (state));
 }
 
-actor_join_operation_t spot_node_t::join_actor (
-  const actor_ref_t &actor_,
-  const routing_id_t &dest_node_rid_,
-  const routing_id_t &dest_spot_rid_)
+actor_join_operation_t
+spot_node_t::join_actor (const actor_ref_t &actor_,
+                         const routing_id_t &dest_node_rid_,
+                         const routing_id_t &dest_spot_rid_)
 {
     detail::actor_join_state_t state;
     state.node = zlink::detail::native_handle (*this);
@@ -643,9 +685,9 @@ actor_join_operation_t spot_node_t::join_actor (
     return actor_join_operation_t (std::move (state));
 }
 
-actor_join_entry_spot_operation_t spot_node_t::join_actor_entry_spot (
-  const actor_ref_t &actor_,
-  const routing_id_t &dest_node_rid_)
+actor_join_entry_spot_operation_t
+spot_node_t::join_actor_entry_spot (const actor_ref_t &actor_,
+                                    const routing_id_t &dest_node_rid_)
 {
     detail::actor_payloadless_state_t state;
     state.node = zlink::detail::native_handle (*this);
@@ -655,9 +697,9 @@ actor_join_entry_spot_operation_t spot_node_t::join_actor_entry_spot (
     return actor_join_entry_spot_operation_t (std::move (state));
 }
 
-actor_leave_operation_t spot_node_t::leave_actor (
-  const actor_ref_t &actor_,
-  const routing_id_t &current_spot_rid_)
+actor_leave_operation_t
+spot_node_t::leave_actor (const actor_ref_t &actor_,
+                          const routing_id_t &current_spot_rid_)
 {
     detail::actor_payloadless_state_t state;
     state.node = zlink::detail::native_handle (*this);
@@ -667,9 +709,9 @@ actor_leave_operation_t spot_node_t::leave_actor (
     return actor_leave_operation_t (std::move (state));
 }
 
-actor_lookup_operation_t spot_node_t::remote_actor_get_ref (
-  const routing_id_t &target_node_rid_,
-  const std::string &actor_id_)
+actor_lookup_operation_t
+spot_node_t::remote_actor_get_ref (const routing_id_t &target_node_rid_,
+                                   const std::string &actor_id_)
 {
     zlink::detail::validate_bounded_c_string (
       actor_id_, ZLINK_ACTOR_ID_MAX - 1u, "actor_id");

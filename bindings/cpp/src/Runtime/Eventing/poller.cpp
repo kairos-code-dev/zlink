@@ -75,12 +75,14 @@ struct poller_t::impl
 
     bool is_socket_only () const noexcept { return non_socket_item_count == 0; }
 
-    void ensure_addable () const
+    void ensure_open () const
     {
         if (!poller)
             throw config_error_t (config_result_t::invalid_handle,
                                   detail::current_errno ());
     }
+
+    void ensure_addable () const { ensure_open (); }
 
     void delete_items () noexcept
     {
@@ -177,6 +179,15 @@ struct poller_t::impl
         }
     }
 
+    void erase_item_at (int index_, bool non_socket_item_)
+    {
+        items.erase (items.begin () + index_);
+        rebuild_socket_item_indexes ();
+        if (non_socket_item_)
+            --non_socket_item_count;
+        socket_poll_items_dirty = true;
+    }
+
     void commit_added_item (std::unique_ptr<poller_item_t> item_,
                             config_result_t rc_)
     {
@@ -266,9 +277,7 @@ struct poller_t::impl
 
     void modify_socket (void *socket_handle_, poll_event_flag_t events_)
     {
-        if (!poller)
-            throw config_error_t (config_result_t::invalid_handle,
-                                  detail::current_errno ());
+        ensure_open ();
         const int index = find_socket (socket_handle_);
         if (index < 0)
             throw config_error_t (config_result_t::invalid_argument,
@@ -290,9 +299,7 @@ struct poller_t::impl
 
     void modify_fd (int fd_, poll_event_flag_t events_)
     {
-        if (!poller)
-            throw config_error_t (config_result_t::invalid_handle,
-                                  detail::current_errno ());
+        ensure_open ();
         const int index = find_fd (fd_);
         if (index < 0)
             throw config_error_t (config_result_t::invalid_argument,
@@ -306,9 +313,7 @@ struct poller_t::impl
 
     bool remove_socket (void *socket_handle_)
     {
-        if (!poller)
-            throw config_error_t (config_result_t::invalid_handle,
-                                  detail::current_errno ());
+        ensure_open ();
         const int index = find_socket (socket_handle_);
         if (index < 0)
             throw config_error_t (config_result_t::invalid_argument,
@@ -320,19 +325,13 @@ struct poller_t::impl
 
         const bool native_only =
           items[static_cast<size_t> (index)]->native_poller_only;
-        items.erase (items.begin () + index);
-        rebuild_socket_item_indexes ();
-        if (native_only)
-            --non_socket_item_count;
-        socket_poll_items_dirty = true;
+        erase_item_at (index, native_only);
         return true;
     }
 
     bool remove_timer (zlink_timer_t &timer_)
     {
-        if (!poller)
-            throw config_error_t (config_result_t::invalid_handle,
-                                  detail::current_errno ());
+        ensure_open ();
         const int index = find_timer (detail::native_handle (timer_));
         if (index < 0)
             throw config_error_t (config_result_t::invalid_argument,
@@ -342,18 +341,13 @@ struct poller_t::impl
           zlink_poller_remove_timer (poller, detail::native_handle (timer_)));
         detail::throw_if_failed<config_error_t> (rc);
 
-        items.erase (items.begin () + index);
-        rebuild_socket_item_indexes ();
-        --non_socket_item_count;
-        socket_poll_items_dirty = true;
+        erase_item_at (index, true);
         return true;
     }
 
     bool remove_fd (int fd_)
     {
-        if (!poller)
-            throw config_error_t (config_result_t::invalid_handle,
-                                  detail::current_errno ());
+        ensure_open ();
         const int index = find_fd (fd_);
         if (index < 0)
             throw config_error_t (config_result_t::invalid_argument,
@@ -363,10 +357,7 @@ struct poller_t::impl
           static_cast<config_result_t> (zlink_poller_remove_fd (poller, fd_));
         detail::throw_if_failed<config_error_t> (rc);
 
-        items.erase (items.begin () + index);
-        rebuild_socket_item_indexes ();
-        --non_socket_item_count;
-        socket_poll_items_dirty = true;
+        erase_item_at (index, true);
         return true;
     }
 

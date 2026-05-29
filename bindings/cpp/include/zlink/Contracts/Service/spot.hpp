@@ -25,6 +25,7 @@ namespace service
 class spot_t
 {
   public:
+    // Lifecycle and identity.
     ~spot_t ();
 
     spot_t (spot_t &&other) noexcept;
@@ -40,6 +41,7 @@ class spot_t
 
     std::chrono::milliseconds request_timeout () const;
 
+    // Message builders.
     send_operation_t publish (const std::string &topic_);
 
     send_operation_t send_channel (const std::string &channel_name_);
@@ -139,6 +141,7 @@ class spot_t
       std::chrono::milliseconds timeout_ = {});
 
   public:
+    // Pub/sub receive surface.
     int subscribe (topic_message_t &out_,
                    recv_flags_t flags_ = recv_flags_t::none);
 
@@ -231,6 +234,7 @@ class spot_t
     friend struct zlink::detail::spot_access_t;
 
   public:
+    // Routing and actor surface.
     void set_routing_id (const routing_id_t &routing_id_);
 
     void get_routing_id (routing_id_t &out_) const;

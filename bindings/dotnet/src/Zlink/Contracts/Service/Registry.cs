@@ -31,8 +31,6 @@ public interface IRegistry : IDisposable, IAsyncDisposable
     RegistryServiceSummaryEntry[] ServiceSummary(
         RegistryServiceSummaryFilter? filter = null);
 
-    RegistryTopologyEntry[] Topology();
-
     RegistryTopologyEntry[] Topology(
         RegistryTopologyFilter? filter = null);
 

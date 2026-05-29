@@ -1071,7 +1071,7 @@ internal sealed class SpotNode : ISpotNode
             }
             catch (Exception ex)
             {
-                Runtime.ReportUnhandledCallbackException(ex);
+                CallbackExceptionHub.Report(ex);
             }
         });
     }

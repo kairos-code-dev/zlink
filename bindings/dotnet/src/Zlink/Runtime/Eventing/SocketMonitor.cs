@@ -160,7 +160,7 @@ internal sealed class SocketMonitor : ISocketMonitor
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
         }
     }
 

@@ -24,7 +24,7 @@ internal sealed class ZlinkThread : IZlinkThread
             }
             catch (Exception ex)
             {
-                Runtime.ReportUnhandledCallbackException(ex);
+                CallbackExceptionHub.Report(ex);
                 throw;
             }
         })

@@ -4,11 +4,11 @@ using System;
 
 namespace Systems.Zlink;
 
-internal static class Runtime
+internal static class CallbackExceptionHub
 {
     public static event Action<Exception>? UnhandledCallbackException;
 
-    internal static void ReportUnhandledCallbackException(Exception exception)
+    internal static void Report(Exception exception)
     {
         try
         {
@@ -18,5 +18,4 @@ internal static class Runtime
         {
         }
     }
-
 }

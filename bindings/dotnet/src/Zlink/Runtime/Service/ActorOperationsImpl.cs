@@ -26,7 +26,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
     private TimeSpan _timeout;
     private SendFlags _flags;
     private bool _callbackStage;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ActorJoinOperationImpl(SpotNode node, ActorRef actor,
         RoutingId destNodeRid, RoutingId destSpotRid)
@@ -94,7 +94,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
         if (_callbackStage)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.JoinActorAsync(_node, _actor, _destNodeRid,
             _destSpotRid, _parts.Parts, _timeout, _flags, ct);
     }
@@ -104,7 +104,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.JoinActorCallback(_node, _actor, _destNodeRid,
             _destSpotRid, _parts.Parts, _timeout, _flags, callback);
     }
@@ -123,9 +123,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -136,7 +134,7 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
     private readonly ActorRef _actor;
     private readonly RoutingId _destNodeRid;
     private TimeSpan _timeout;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ActorJoinEntrySpotOperationImpl(SpotNode node, ActorRef actor,
         RoutingId destNodeRid)
@@ -157,7 +155,7 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.JoinActorEntrySpotAsync(_node, _actor,
             _destNodeRid, _timeout, ct);
     }
@@ -167,16 +165,14 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.JoinActorEntrySpotCallback(_node, _actor,
             _destNodeRid, _timeout, callback);
     }
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -186,7 +182,7 @@ internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
     private readonly ActorJoinRequest _request;
     private readonly int _joinResultCode;
     private OperationMessageBuffer _parts;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ActorJoinReplyOperationImpl(Spot spot, ActorJoinRequest request,
         int joinResultCode)
@@ -198,19 +194,15 @@ internal sealed class ActorJoinReplyOperationImpl : ActorJoinReplyOperation
 
     public ActorJoinReplyOperation Message(Message message)
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
         _parts.Add(message);
         return this;
     }
 
     public void Submit()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
-        _submitted = true;
+        _submission.EnsureNotSubmitted();
+        _submission.MarkSubmitted();
         _spot.ReplyActorJoinInternal(_request, _joinResultCode,
             _parts.PartsOrEmpty);
     }
@@ -222,7 +214,7 @@ internal sealed class ActorLeaveOperationImpl : ActorLeaveOperation
     private readonly ActorRef _actor;
     private readonly RoutingId _currentSpotRid;
     private TimeSpan _timeout;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ActorLeaveOperationImpl(SpotNode node, ActorRef actor,
         RoutingId currentSpotRid)
@@ -243,7 +235,7 @@ internal sealed class ActorLeaveOperationImpl : ActorLeaveOperation
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.LeaveActorAsync(_node, _actor, _currentSpotRid,
             _timeout, ct);
     }
@@ -253,16 +245,14 @@ internal sealed class ActorLeaveOperationImpl : ActorLeaveOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.LeaveActorCallback(_node, _actor, _currentSpotRid,
             _timeout, callback);
     }
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -271,7 +261,7 @@ internal sealed class ActorDestroyOperationImpl : ActorDestroyOperation
     private readonly SpotNode _node;
     private readonly ActorRef _actor;
     private TimeSpan _timeout;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ActorDestroyOperationImpl(SpotNode node, ActorRef actor)
     {
@@ -290,7 +280,7 @@ internal sealed class ActorDestroyOperationImpl : ActorDestroyOperation
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.DestroyActorAsync(_node, _actor, _timeout, ct);
     }
 
@@ -299,16 +289,14 @@ internal sealed class ActorDestroyOperationImpl : ActorDestroyOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.DestroyActorCallback(_node, _actor, _timeout,
             callback);
     }
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -318,7 +306,7 @@ internal sealed class ActorLookupOperationImpl : ActorLookupOperation
     private readonly RoutingId _targetNodeRid;
     private readonly string _actorId;
     private TimeSpan _timeout;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ActorLookupOperationImpl(SpotNode node, RoutingId targetNodeRid,
         string actorId)
@@ -338,7 +326,7 @@ internal sealed class ActorLookupOperationImpl : ActorLookupOperation
     public Task<ActorLookupResult> SubmitAsync(CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.RemoteActorGetRefAsync(_node, _targetNodeRid,
             _actorId, _timeout, ct);
     }
@@ -348,16 +336,14 @@ internal sealed class ActorLookupOperationImpl : ActorLookupOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.RemoteActorGetRefCallback(_node, _targetNodeRid,
             _actorId, _timeout, callback);
     }
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -367,7 +353,7 @@ internal sealed class ActorBindOperationImpl : ActorBindOperation
     private readonly RoutingId _sessionRid;
     private readonly ActorRef _actor;
     private TimeSpan _timeout;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ActorBindOperationImpl(StreamSocket stream, RoutingId sessionRid,
         ActorRef actor)
@@ -388,7 +374,7 @@ internal sealed class ActorBindOperationImpl : ActorBindOperation
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.BindActorAsync(_stream, _sessionRid, _actor,
             _timeout, ct);
     }
@@ -398,16 +384,14 @@ internal sealed class ActorBindOperationImpl : ActorBindOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.BindActorCallback(_stream, _sessionRid, _actor,
             _timeout, callback);
     }
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -417,7 +401,7 @@ internal sealed class ActorUnbindOperationImpl : ActorUnbindOperation
     private readonly RoutingId _sessionRid;
     private readonly string _actorId;
     private TimeSpan _timeout;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ActorUnbindOperationImpl(StreamSocket stream, RoutingId sessionRid,
         string actorId)
@@ -438,7 +422,7 @@ internal sealed class ActorUnbindOperationImpl : ActorUnbindOperation
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.UnbindActorAsync(_stream, _sessionRid, _actorId,
             _timeout, ct);
     }
@@ -448,15 +432,13 @@ internal sealed class ActorUnbindOperationImpl : ActorUnbindOperation
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return ActorInterop.UnbindActorCallback(_stream, _sessionRid, _actorId,
             _timeout, callback);
     }
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }

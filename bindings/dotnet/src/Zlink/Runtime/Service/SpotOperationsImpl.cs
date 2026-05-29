@@ -29,7 +29,7 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
     private readonly RoutingId _destSpotRid;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal SpotSendOperation(Spot spot, SpotOperationKind kind,
         string? channelName = null, string? topicOrChannel = null,
@@ -60,7 +60,7 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
     public bool Submit()
     {
         EnsureReadyToSubmit();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _kind switch
         {
             SpotOperationKind.Publish => _parts.IsSingle
@@ -87,9 +87,7 @@ internal sealed class SpotSendOperation : SendOperation, SendSubmitOperation
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -106,7 +104,7 @@ internal sealed class SpotRequestOperation : RequestOperation,
     private TimeSpan _timeout;
     private SendFlags _flags;
     private bool _callbackStage;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal SpotRequestOperation(Spot spot, SpotOperationKind kind,
         string? channelName = null, RoutingId destNodeRid = default,
@@ -163,7 +161,7 @@ internal sealed class SpotRequestOperation : RequestOperation,
         if (_callbackStage)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _kind switch
         {
             SpotOperationKind.RequestToChannel => _spot.RequestToChannelAsync(
@@ -180,7 +178,7 @@ internal sealed class SpotRequestOperation : RequestOperation,
     public bool Submit(RequestCallback callback)
     {
         EnsureReadyToSubmit();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _kind switch
         {
             SpotOperationKind.RequestToChannel => _spot.RequestToChannel(
@@ -211,9 +209,7 @@ internal sealed class SpotRequestOperation : RequestOperation,
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -227,7 +223,7 @@ internal sealed class SpotReplyOperation : ReplyOperation, ReplySubmitOperation
     private readonly ulong _requestSeq;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal SpotReplyOperation(Spot spot, SpotOperationKind kind,
         RoutingId destNodeRid = default, RoutingId destSpotRid = default,
@@ -258,7 +254,7 @@ internal sealed class SpotReplyOperation : ReplyOperation, ReplySubmitOperation
     public void Submit()
     {
         EnsureReadyToSubmit();
-        _submitted = true;
+        _submission.MarkSubmitted();
         switch (_kind)
         {
             case SpotOperationKind.ReplyToSpot:
@@ -283,8 +279,6 @@ internal sealed class SpotReplyOperation : ReplyOperation, ReplySubmitOperation
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }

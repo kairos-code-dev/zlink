@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Systems.Zlink.Native;
 
@@ -71,7 +70,7 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
                 }
             }
 
-            return ReadTopologyEntries(_handle, filterPtr,
+            return RegistryTopologyReader.Read(_handle, filterPtr,
                 NativeMethods.zlink_registry_query_client_topology);
         }
     }
@@ -122,53 +121,6 @@ internal sealed class RegistryQueryClient : IRegistryQueryClient
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(RegistryQueryClient));
     }
-
-    internal static RegistryTopologyEntry[] ReadTopologyEntries(IntPtr handle,
-        IntPtr filterPtr, TopologyReadFn nativeCall)
-    {
-        for (int attempt = 0; attempt < 4; attempt++)
-        {
-            nuint count = 0;
-            int rc = nativeCall(handle, filterPtr, IntPtr.Zero, ref count);
-            ZlinkException.ThrowConfigIfError(rc);
-            if (count == 0)
-                return Array.Empty<RegistryTopologyEntry>();
-
-            int entrySize = Marshal.SizeOf<ZlinkRegistryTopologyEntry>();
-            IntPtr entries = Marshal.AllocHGlobal(
-                checked((int)(count * (nuint)entrySize)));
-            try
-            {
-                nuint actual = count;
-                rc = nativeCall(handle, filterPtr, entries, ref actual);
-                if (rc != 0 && RegistryReadSupport.IsRetryableSizeRace(
-                    NativeMethods.zlink_errno()))
-                    continue;
-                ZlinkException.ThrowConfigIfError(rc);
-
-                RegistryTopologyEntry[] result =
-                    new RegistryTopologyEntry[(int)actual];
-                for (int i = 0; i < result.Length; i++)
-                {
-                    IntPtr current = IntPtr.Add(entries, i * entrySize);
-                    ZlinkRegistryTopologyEntry native =
-                        Marshal.PtrToStructure<ZlinkRegistryTopologyEntry>(
-                            current);
-                    result[i] = TopologyModelConverters.FromNative(ref native);
-                }
-                return result;
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(entries);
-            }
-        }
-
-        throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-    }
-
-    internal delegate int TopologyReadFn(IntPtr handle, IntPtr filter,
-        IntPtr entries, ref nuint count);
 
     private static unsafe void WriteFixedString(string value, byte* destination,
         int capacity)

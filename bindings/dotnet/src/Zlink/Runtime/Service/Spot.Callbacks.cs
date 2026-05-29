@@ -61,7 +61,7 @@ internal sealed partial class Spot
             }
             catch (Exception ex)
             {
-                Runtime.ReportUnhandledCallbackException(ex);
+                CallbackExceptionHub.Report(ex);
             }
             return;
         }
@@ -92,7 +92,7 @@ internal sealed partial class Spot
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
         }
     }
 

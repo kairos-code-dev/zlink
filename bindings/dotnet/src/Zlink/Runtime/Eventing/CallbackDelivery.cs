@@ -74,7 +74,7 @@ internal static class CallbackDelivery
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
         }
     }
 

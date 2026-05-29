@@ -14,7 +14,7 @@ internal sealed class MessageSocketSendOperation : SendOperation,
     private readonly MessageSocketBase _socket;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal MessageSocketSendOperation(MessageSocketBase socket)
     {
@@ -41,7 +41,7 @@ internal sealed class MessageSocketSendOperation : SendOperation,
     public bool Submit()
     {
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _parts.IsSingle
             ? _socket.SendCore(_parts.Single, _flags)
             : _socket.SendCore(_parts.Parts, _flags);
@@ -55,9 +55,7 @@ internal sealed class MessageSocketSendOperation : SendOperation,
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -67,7 +65,7 @@ internal sealed class PublisherSendOperation : SendOperation, SendSubmitOperatio
     private readonly string _topic;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal PublisherSendOperation(PublisherSocketBase socket, string topic)
     {
@@ -95,7 +93,7 @@ internal sealed class PublisherSendOperation : SendOperation, SendSubmitOperatio
     public bool Submit()
     {
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _parts.IsSingle
             ? _socket.PublishCore(_topic, _parts.Single, _flags)
             : _socket.PublishCore(_topic, _parts.Parts, _flags);
@@ -109,9 +107,7 @@ internal sealed class PublisherSendOperation : SendOperation, SendSubmitOperatio
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -121,7 +117,7 @@ internal sealed class RoutedSendOperation : SendOperation, SendSubmitOperation
     private readonly RoutingId _routingId;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal RoutedSendOperation(RoutedMessageSocketBase socket,
         RoutingId routingId)
@@ -147,7 +143,7 @@ internal sealed class RoutedSendOperation : SendOperation, SendSubmitOperation
     public bool Submit()
     {
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _parts.IsSingle
             ? _socket.SendRoutedCore(_routingId, _parts.Single, _flags)
             : _socket.SendRoutedCore(_routingId, _parts.Parts, _flags);
@@ -161,9 +157,7 @@ internal sealed class RoutedSendOperation : SendOperation, SendSubmitOperation
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -175,7 +169,7 @@ internal sealed class DealerRequestOperation : RequestOperation,
     private TimeSpan _timeout;
     private SendFlags _flags;
     private bool _callbackStage;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal DealerRequestOperation(DealerSocket socket)
     {
@@ -233,7 +227,7 @@ internal sealed class DealerRequestOperation : RequestOperation,
         if (_callbackStage)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _socket.RequestCore(_parts.Parts, _timeout, ct);
     }
 
@@ -242,7 +236,7 @@ internal sealed class DealerRequestOperation : RequestOperation,
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _socket.RequestCallbackCore(_parts.Parts, callback, _flags,
             _timeout);
     }
@@ -261,9 +255,7 @@ internal sealed class DealerRequestOperation : RequestOperation,
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -288,7 +280,7 @@ internal sealed class RouterRequestOperation : RequestOperation,
     private TimeSpan _timeout;
     private SendFlags _flags;
     private bool _callbackStage;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal RouterRequestOperation(RouterSocket socket,
         RouterOperationKind kind, RoutingId peerRid, RoutingId destNodeRid,
@@ -352,7 +344,7 @@ internal sealed class RouterRequestOperation : RequestOperation,
         if (_callbackStage)
             throw new ZlinkConfigException(
                 ZlinkConfigException.ErrorCode.InvalidState);
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _kind switch
         {
             RouterOperationKind.Request => _socket.RequestCore(_peerRid,
@@ -369,7 +361,7 @@ internal sealed class RouterRequestOperation : RequestOperation,
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _kind switch
         {
             RouterOperationKind.Request => _socket.RequestCallbackCore(_peerRid,
@@ -396,9 +388,7 @@ internal sealed class RouterRequestOperation : RequestOperation,
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -409,7 +399,7 @@ internal sealed class RouterSendOperation : SendOperation, SendSubmitOperation
     private readonly RoutingId _destSpotRid;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal RouterSendOperation(RouterSocket socket, RoutingId destNodeRid,
         RoutingId destSpotRid)
@@ -436,7 +426,7 @@ internal sealed class RouterSendOperation : SendOperation, SendSubmitOperation
     public bool Submit()
     {
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _socket.SendToSpotCore(_destNodeRid, _destSpotRid, _parts.Parts,
             _flags);
     }
@@ -449,9 +439,7 @@ internal sealed class RouterSendOperation : SendOperation, SendSubmitOperation
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -466,7 +454,7 @@ internal sealed class RouterReplyOperation : ReplyOperation,
     private readonly ulong _requestSeq;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal RouterReplyOperation(RouterSocket socket, RouterOperationKind kind,
         RoutingId peerRid, RoutingId destNodeRid, RoutingId destSpotRid,
@@ -497,7 +485,7 @@ internal sealed class RouterReplyOperation : ReplyOperation,
     public void Submit()
     {
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         switch (_kind)
         {
             case RouterOperationKind.Reply:
@@ -521,9 +509,7 @@ internal sealed class RouterReplyOperation : ReplyOperation,
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -535,7 +521,7 @@ internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
     private readonly string? _actorId;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal StreamSendOperation(StreamSocket socket, RoutingId routingId)
     {
@@ -568,7 +554,7 @@ internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
     public bool Submit()
     {
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         if (_actorId != null)
         {
             return _socket.SendBoundActorCore(_sessionRid!.Value, _actorId,
@@ -587,9 +573,7 @@ internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -600,7 +584,7 @@ internal sealed class ActorSendBoundSessionOperation : SendOperation,
     private readonly ActorRef _actor;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ActorSendBoundSessionOperation(SpotNode node, ActorRef actor)
     {
@@ -625,7 +609,7 @@ internal sealed class ActorSendBoundSessionOperation : SendOperation,
     public bool Submit()
     {
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return Actor.SendBoundSessionCore(_node, _actor, _parts.Parts, _flags);
     }
 
@@ -637,9 +621,7 @@ internal sealed class ActorSendBoundSessionOperation : SendOperation,
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -649,7 +631,7 @@ internal sealed class ReceivedSendOperationImpl : SendOperation,
     private readonly Received _received;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ReceivedSendOperationImpl(Received received)
     {
@@ -673,7 +655,7 @@ internal sealed class ReceivedSendOperationImpl : SendOperation,
     public bool Submit()
     {
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         return _parts.IsSingle
             ? _received.SendCore(_parts.Single, _flags)
             : _received.SendCore(_parts.Parts, _flags);
@@ -687,9 +669,7 @@ internal sealed class ReceivedSendOperationImpl : SendOperation,
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }
 
@@ -699,7 +679,7 @@ internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
     private readonly Received _received;
     private OperationMessageBuffer _parts;
     private SendFlags _flags;
-    private bool _submitted;
+    private OperationSubmissionGuard _submission;
 
     internal ReceivedReplyOperationImpl(Received received)
     {
@@ -723,7 +703,7 @@ internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
     public void Submit()
     {
         EnsureReady();
-        _submitted = true;
+        _submission.MarkSubmitted();
         _received.ReplyCore(_parts.Parts, _flags);
     }
 
@@ -735,8 +715,6 @@ internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
 
     private void EnsureNotSubmitted()
     {
-        if (_submitted)
-            throw new ZlinkConfigException(
-                ZlinkConfigException.ErrorCode.InvalidState);
+        _submission.EnsureNotSubmitted();
     }
 }

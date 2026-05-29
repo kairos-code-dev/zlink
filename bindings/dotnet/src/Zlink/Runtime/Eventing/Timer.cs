@@ -248,7 +248,7 @@ internal sealed class Timer : IZlinkTimer
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
         }
     }
 }

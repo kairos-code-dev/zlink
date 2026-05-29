@@ -9,8 +9,8 @@ public static class Zlink
 {
     public static event Action<Exception>? UnhandledCallbackException
     {
-        add => Runtime.UnhandledCallbackException += value;
-        remove => Runtime.UnhandledCallbackException -= value;
+        add => CallbackExceptionHub.UnhandledCallbackException += value;
+        remove => CallbackExceptionHub.UnhandledCallbackException -= value;
     }
 
     internal static int Errno()

@@ -141,7 +141,7 @@ internal static class RequestReplySupport
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
         }
     }
 

@@ -2008,7 +2008,7 @@ internal sealed partial class SocketKernel : IDisposable
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
             if (!delivered && payloadMsg != null)
             {
                 try
@@ -2062,7 +2062,7 @@ internal sealed partial class SocketKernel : IDisposable
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
             if (!delivered && payloadMsg != null)
             {
                 try
@@ -2111,7 +2111,7 @@ internal sealed partial class SocketKernel : IDisposable
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
             if (!delivered)
             {
                 try
@@ -2176,7 +2176,7 @@ internal sealed partial class SocketKernel : IDisposable
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
             if (!delivered)
             {
                 try
@@ -2240,7 +2240,7 @@ internal sealed partial class SocketKernel : IDisposable
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
             if (!delivered && managedParts != null)
             {
                 foreach (Message part in managedParts)
@@ -2267,7 +2267,7 @@ internal sealed partial class SocketKernel : IDisposable
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
         }
     }
 
@@ -2304,7 +2304,7 @@ internal sealed partial class SocketKernel : IDisposable
         }
         catch (Exception ex)
         {
-            Runtime.ReportUnhandledCallbackException(ex);
+            CallbackExceptionHub.Report(ex);
             if (!delivered && managedParts != null)
             {
                 foreach (Message part in managedParts)

@@ -337,47 +337,9 @@ internal sealed class Registry : IRegistry
     private RegistryTopologyEntry[] ReadTopologyEntries(IntPtr filterPtr,
         bool snapshot)
     {
-        for (int attempt = 0; attempt < 4; attempt++)
-        {
-            nuint count = 0;
-            int rc = NativeMethods.zlink_registry_topology(_handle,
-                snapshot ? IntPtr.Zero : filterPtr, IntPtr.Zero, ref count);
-            ZlinkException.ThrowConfigIfError(rc);
-            if (count == 0)
-                return Array.Empty<RegistryTopologyEntry>();
-
-            int entrySize = Marshal.SizeOf<ZlinkRegistryTopologyEntry>();
-            IntPtr entries = Marshal.AllocHGlobal(
-                checked((int)(count * (nuint)entrySize)));
-            try
-            {
-                nuint actual = count;
-                rc = NativeMethods.zlink_registry_topology(_handle,
-                    snapshot ? IntPtr.Zero : filterPtr, entries, ref actual);
-                if (rc != 0 && RegistryReadSupport.IsRetryableSizeRace(
-                    NativeMethods.zlink_errno()))
-                    continue;
-                ZlinkException.ThrowConfigIfError(rc);
-
-                RegistryTopologyEntry[] result =
-                    new RegistryTopologyEntry[(int)actual];
-                for (int i = 0; i < result.Length; i++)
-                {
-                    IntPtr current = IntPtr.Add(entries, i * entrySize);
-                    ZlinkRegistryTopologyEntry native =
-                        Marshal.PtrToStructure<ZlinkRegistryTopologyEntry>(
-                            current);
-                    result[i] = TopologyModelConverters.FromNative(ref native);
-                }
-                return result;
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(entries);
-            }
-        }
-
-        throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+        return RegistryTopologyReader.Read(_handle,
+            snapshot ? IntPtr.Zero : filterPtr,
+            NativeMethods.zlink_registry_topology);
     }
 
     private static unsafe void WriteFixedString(string value, byte* destination,

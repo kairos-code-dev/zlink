@@ -1,6 +1,6 @@
 import * as zlink from '@zlink-systems/zlink';
 
-const ctx = new zlink.Context();
+const ctx = zlink.createContext();
 const routingId = zlink.RoutingId.from(Buffer.from('id'));
 const peerRoutingId = zlink.RoutingId.from(Buffer.from('peer'));
 const AUTO_CONNECT_SPOT_MESH = 5;
@@ -41,56 +41,56 @@ ctx.options.socketLimit;
 ctx.options.msgTSize;
 ctx.recalculateAutoHwm();
 
-const registry = new zlink.Registry(ctx);
+const registry = zlink.createRegistry(ctx);
 registry.setTlsServer('cert', 'key');
 registry.setTlsClient('ca', 'host');
 
-const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'surface-discovery');
+const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'surface-discovery');
 discovery.setTlsClient('ca', 'host');
 discovery.resolveSpot(routingId);
 discovery.memberPeers();
-const monitorHandler: zlink.SocketMonitorHandler = zlink.MonitorSocket.ignoreHandler;
+const monitorHandler: zlink.SocketMonitorHandler = () => {};
 void monitorHandler;
 
-const pub = new zlink.PubSocket(ctx);
+const pub = zlink.createPubSocket(ctx);
 const baseSocket: zlink.BaseSocket = pub;
 void baseSocket;
 pub.publish('topic').message('ok').submit();
-pub.onSendReady(() => {});
-pub.attachDiscovery(new zlink.Discovery(ctx, AUTO_CONNECT_FANOUT, 'pub-service'));
+pub.setSendReadyHandler(() => {});
+pub.attachDiscovery(zlink.createDiscovery(ctx, AUTO_CONNECT_FANOUT, 'pub-service'));
 pub.setTlsServer('cert', 'key');
 pub.setTlsClient('ca', 'host');
 pub.options.verbose = true;
 
-const sub = new zlink.SubSocket(ctx);
+const sub = zlink.createSubSocket(ctx);
 sub.setSubscription('topic');
 sub.subscriptionAt(0);
 const subTopicMessage = new zlink.TopicMessage();
 sub.subscribe(subTopicMessage);
-sub.attachDiscovery(new zlink.Discovery(ctx, AUTO_CONNECT_FANOUT, 'sub-service'));
+sub.attachDiscovery(zlink.createDiscovery(ctx, AUTO_CONNECT_FANOUT, 'sub-service'));
 sub.setTlsServer('cert', 'key');
 sub.setTlsClient('ca', 'host');
 sub.options.topicsCount;
 
 const dealerReceived = new zlink.Received();
-const dealer = new zlink.DealerSocket(ctx);
+const dealer = zlink.createDealerSocket(ctx);
 dealer.send().message('ok').submit();
 dealer.recv(dealerReceived);
-dealer.onSendReady(() => {});
+dealer.setSendReadyHandler(() => {});
 dealer.setRoutingId(routingId);
 dealer.getRoutingId();
-dealer.attachDiscovery(new zlink.Discovery(ctx, AUTO_CONNECT_CLIENT_SERVER, 'dealer-service'));
+dealer.attachDiscovery(zlink.createDiscovery(ctx, AUTO_CONNECT_CLIENT_SERVER, 'dealer-service'));
 dealer.setTlsServer('cert', 'key');
 dealer.setTlsClient('ca', 'host');
 dealer.options.probe = true;
 
 const routerReceived = new zlink.Received();
-const router = new zlink.RouterSocket(ctx);
+const router = zlink.createRouterSocket(ctx);
 router.recv(routerReceived);
-router.onSendReady(() => {});
+router.setSendReadyHandler(() => {});
 router.setRoutingId(routingId);
 router.getRoutingId();
-router.attachDiscovery(new zlink.Discovery(ctx, AUTO_CONNECT_ROUTE_MESH, 'router-service'));
+router.attachDiscovery(zlink.createDiscovery(ctx, AUTO_CONNECT_ROUTE_MESH, 'router-service'));
 router.setTlsServer('cert', 'key');
 router.setTlsClient('ca', 'host');
 router.send(routingId).message('ok').submit();
@@ -98,27 +98,27 @@ router.reply(routingId, 1n).message('ok').submit();
 router.options.mandatory = true;
 router.options.setConnectRoutingId(peerRoutingId);
 
-const stream = new zlink.StreamSocket(ctx);
+const stream = zlink.createStreamSocket(ctx);
 stream.send(routingId).message('ok').submit();
 const streamReceived = new zlink.Received();
 stream.recv(streamReceived);
-stream.onPacket((sourceRid, header, body) => {
+stream.setPacketHandler((sourceRid, header, body) => {
   sourceRid.toString();
   header.data();
   body.data();
 });
-stream.onSendReady(() => {});
+stream.setSendReadyHandler(() => {});
 stream.setRoutingId(routingId);
 stream.getRoutingId();
 stream.setTlsServer('cert', 'key');
 stream.setTlsClient('ca', 'host');
 stream.options.notify = true;
 
-const xpub = new zlink.XPubSocket(ctx);
+const xpub = zlink.createXPubSocket(ctx);
 xpub.publish('topic').message('ok').submit();
 const xpubSubscriptionEvent = new zlink.SubscriptionEvent();
 xpub.receiveSubscriptionEvent(xpubSubscriptionEvent);
-xpub.onSendReady(() => {});
+xpub.setSendReadyHandler(() => {});
 xpub.options.verbose = true;
 xpub.options.verboser = true;
 xpub.options.noDrop = true;
@@ -132,7 +132,7 @@ new zlink.CommonSocketOptions(pub);
 // @ts-expect-error option facades are created by their owning socket/context.
 new zlink.ContextOptions(ctx);
 
-const spotNode = new zlink.SpotNode(ctx);
+const spotNode = zlink.createSpotNode(ctx);
 spotNode.setTlsServer('cert', 'key');
 spotNode.setTlsClient('ca', 'host');
 spotNode.setRoutingId(routingId);
@@ -159,13 +159,14 @@ stream.sendBoundActor(routingId, 'typed-actor').message('payload').submit();
 spot.setRoutingId(routingId);
 spot.routingId;
 spot.publish('topic').message('ok').submit();
-spot.publishFrom('topic', Buffer.from('ok'));
-spot.subscribePayloadInto(Buffer.alloc(16), zlink.RecvFlags.DontWait);
-spot.recvRoutedPayloadInto(Buffer.alloc(16), zlink.RecvFlags.DontWait);
-spot.sendChannel('svc').message('ok').submit();
-spot.sendToSpotFrom(routingId, routingId, Buffer.from('ok'), zlink.SendFlags.DontWait);
-spot.requestToSpotFrom(routingId, routingId, Buffer.from('ok'), (_result, _parts) => {}, zlink.SendFlags.DontWait, 1000);
-spot.requestChannel('svc').message('ok').submitAsync();
+const spotTopicStorage = new zlink.TopicMessage();
+spot.subscribe(spotTopicStorage, zlink.RecvFlags.DontWait);
+const spotRoutedStorage = new zlink.Received();
+spot.recvRouted(spotRoutedStorage, zlink.RecvFlags.DontWait);
+spot.sendToChannel('svc').message('ok').submit();
+spot.sendToSpot(routingId, routingId).message(Buffer.from('ok')).flags(zlink.SendFlags.DontWait).submit();
+spot.requestToSpot(routingId, routingId).message(Buffer.from('ok')).flags(zlink.SendFlags.DontWait).timeout(1000).submit((_result, _parts) => {});
+spot.requestToChannel('svc').message('ok').submitAsync();
 spot.setSubscription('topic');
 spot.subscriptionAt(0);
 spot.unsetSubscription('topic');
@@ -173,8 +174,8 @@ const spotTopicMessage = new zlink.TopicMessage();
 const spotSubscriptionEvent = new zlink.SubscriptionEvent();
 spot.subscribe(spotTopicMessage);
 spot.receiveSubscriptionEvent(spotSubscriptionEvent);
-spot.onSendReady(() => {});
-spot.onDispatchEvent((info) => {
+spot.setSendReadyHandler(() => {});
+spot.setDispatchHandler((info) => {
   info.actorRef?.generation;
   info.timer?.stop();
   info.recvActorPart(zlink.RecvFlags.DontWait);
@@ -193,8 +194,8 @@ monitor.onEvent(() => {});
 monitor.status();
 monitor.close();
 
-const poller = new zlink.Poller();
-const pollEvents = new zlink.PollEvents(1);
+const poller = zlink.createPoller();
+const pollEvents = zlink.createPollEvents(1);
 poller.add(pub, [zlink.PollEventFlag.PollIn], 1);
 poller.modify(pub, [zlink.PollEventFlag.PollIn, zlink.PollEventFlag.PollOut]);
 const pollCount = poller.wait(pollEvents, 0);
@@ -209,9 +210,9 @@ poller.size;
 pollEvents.close();
 poller.close();
 
-const thread = new zlink.Thread(() => {});
+const thread = zlink.createThread(() => {});
 thread.join();
-const counter = new zlink.AtomicCounter(1);
+const counter = zlink.createAtomicCounter(1);
 counter.set(counter.inc());
 counter.dec();
 counter.value();
@@ -254,9 +255,9 @@ router.reply(routingId, 1n, 'direct-payload');
 // @ts-expect-error spot publish payloads must go through operation builders.
 spot.publish('topic', 'direct-payload');
 // @ts-expect-error channel send payloads must go through operation builders.
-spot.sendChannel('svc', 'direct-payload');
+spot.sendToChannel('svc', 'direct-payload');
 // @ts-expect-error channel request payloads must go through operation builders.
-spot.requestChannel('svc', 'direct-payload');
+spot.requestToChannel('svc', 'direct-payload');
 
 registry.close();
 discovery.close();

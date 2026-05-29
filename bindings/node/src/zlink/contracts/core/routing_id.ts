@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: MPL-2.0
+
+import { ConfigError, ConfigResult } from '../errors/errors';
+
+const ROUTING_ID_MAX_LENGTH = 255;
+const ROUTING_ID_CREATE_TOKEN = Symbol('routing-id.create');
+
+function normalizeRoutingIdBytes(bytes: Buffer | Uint8Array, name: string): Buffer {
+  if (!Buffer.isBuffer(bytes) && !(bytes instanceof Uint8Array)) {
+    throw new TypeError(`${name} must be a Buffer or Uint8Array`);
+  }
+  const normalized = Buffer.from(bytes);
+  if (normalized.length === 0 || normalized.length > ROUTING_ID_MAX_LENGTH) {
+    throw new ConfigError(
+      ConfigResult.InvalidArgument,
+      0,
+      `${name} must be 1..${ROUTING_ID_MAX_LENGTH} bytes`
+    );
+  }
+  return normalized;
+}
+
+function normalizeRoutingIdHex(value: string): Buffer {
+  if (typeof value !== 'string') {
+    throw new TypeError('value must be a string');
+  }
+  if (value.length === 0 || value.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(value)) {
+    throw new ConfigError(
+      ConfigResult.InvalidArgument,
+      0,
+      'value must be a non-empty even-length hex string'
+    );
+  }
+  if (value.length > ROUTING_ID_MAX_LENGTH * 2) {
+    throw new ConfigError(
+      ConfigResult.InvalidArgument,
+      0,
+      `value must decode to at most ${ROUTING_ID_MAX_LENGTH} bytes`
+    );
+  }
+  return normalizeRoutingIdBytes(Buffer.from(value, 'hex'), 'value');
+}
+
+function normalizeRoutingIdValue(value: string | Buffer | Uint8Array | number): Buffer {
+  if (typeof value === 'string') {
+    return normalizeRoutingIdBytes(Buffer.from(value, 'utf8'), 'value');
+  }
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value) || value < 0 || value > 0xFFFF_FFFF) {
+      throw new RangeError('routing id uint32 value must be in range 0..4294967295');
+    }
+    const buffer = Buffer.allocUnsafe(4);
+    buffer.writeUInt32BE(value >>> 0, 0);
+    return buffer;
+  }
+  return normalizeRoutingIdBytes(value, 'value');
+}
+
+function tryPrintableUtf8(bytes: Buffer): string | null {
+  const text = bytes.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(bytes)) {
+    return null;
+  }
+  return /[\u0000-\u001f\u007f-\u009f]/u.test(text) ? null : text;
+}
+
+function uuidString(bytes: Buffer): string {
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+export class RoutingId {
+  private readonly _bytes: Buffer;
+
+  private constructor(token: symbol, bytes: Buffer) {
+    if (token !== ROUTING_ID_CREATE_TOKEN) {
+      throw new TypeError('RoutingId values are created with RoutingId.from() or RoutingId.fromHex()');
+    }
+    this._bytes = bytes;
+    Object.freeze(this);
+  }
+
+  static from(value: string | Buffer | Uint8Array | number): RoutingId {
+    return new RoutingId(ROUTING_ID_CREATE_TOKEN, normalizeRoutingIdValue(value));
+  }
+
+  static fromHex(value: string): RoutingId {
+    return new RoutingId(ROUTING_ID_CREATE_TOKEN, normalizeRoutingIdHex(value));
+  }
+
+  toBytes(): Buffer {
+    return Buffer.from(this._bytes);
+  }
+
+  /** @internal */
+  borrowedBytes(): Buffer {
+    return this._bytes;
+  }
+
+  get size(): number {
+    return this._bytes.length;
+  }
+
+  equals(other: RoutingId): boolean {
+    return other instanceof RoutingId && this._bytes.equals(other._bytes);
+  }
+
+  toHex(): string {
+    return this._bytes.toString('hex');
+  }
+
+  toString(): string {
+    const utf8 = tryPrintableUtf8(this._bytes);
+    if (utf8 !== null) {
+      return utf8;
+    }
+    if (this._bytes.length === 4) {
+      return this._bytes.readUInt32BE(0).toString(10);
+    }
+    if (this._bytes.length === 16) {
+      return uuidString(this._bytes);
+    }
+    return `hex:${this.toHex()}`;
+  }
+}

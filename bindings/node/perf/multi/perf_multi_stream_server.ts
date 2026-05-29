@@ -65,10 +65,10 @@ function sleepMillis(ms) {
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
-  const ctx = new zlink.Context();
+  const ctx = zlink.createContext();
   applyContextPolicy(ctx, 'server', 'MULTI_STREAM');
-  const stream = new zlink.StreamSocket(ctx);
-  const poller = new zlink.Poller();
+  const stream = zlink.createStreamSocket(ctx);
+  const poller = zlink.createPoller();
   let pollBuffer = null;
   let rl = null;
   let stop = false;
@@ -81,14 +81,14 @@ async function main() {
     ctx.recalculateAutoHwm();
     emitMultiSocketHwmDetail(stream, 'endpoint', options.transport, options.msgSize);
     stream.bind(options.endpoint);
-    stream.onPacket((sourceRid, header, body) => {
+    stream.setPacketHandler((sourceRid, header, body) => {
       const frame = packetFrame(header, body);
       if (pending.length > 0 || !tryStreamSend(stream, sourceRid, frame)) {
         pending.push({ routingId: sourceRid, frame });
       }
     });
     poller.add(stream, pollEvents(POLLOUT), 0);
-    pollBuffer = new zlink.PollEvents(1);
+    pollBuffer = zlink.createPollEvents(1);
     console.log(`READY,${options.endpoint}`);
 
     rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });

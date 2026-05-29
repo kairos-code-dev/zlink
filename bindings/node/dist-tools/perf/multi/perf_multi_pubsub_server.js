@@ -11,9 +11,9 @@ const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const TOPIC = 'bench';
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'server', 'MULTI_PUBSUB');
-    const pub = new zlink.PubSocket(ctx);
+    const pub = zlink.createPubSocket(ctx);
     const payload = createPayload(options.msgSize);
     let rl = null;
     try {

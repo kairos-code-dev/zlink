@@ -17,8 +17,8 @@ test('legacy compatibility socket stays out of the aligned public api', () => {
     assert.equal(zlink.BaseSocket, undefined);
 });
 test('dedicated option helpers cover routing id and generic option access', () => {
-    const ctx = new zlink.Context();
-    const dealer = new zlink.DealerSocket(ctx);
+    const ctx = zlink.createContext();
+    const dealer = zlink.createDealerSocket(ctx);
     const routingId = zlink.RoutingId.from(Buffer.from('dealer-1'));
     dealer.setRoutingId(routingId);
     assert.equal(dealer.getRoutingId().toBytes().toString(), 'dealer-1');
@@ -26,11 +26,11 @@ test('dedicated option helpers cover routing id and generic option access', () =
     ctx.close();
 });
 test('stream compat helpers stay off the canonical stream surface', () => {
-    const ctx = new zlink.Context();
-    const stream = new zlink.StreamSocket(ctx);
+    const ctx = zlink.createContext();
+    const stream = zlink.createStreamSocket(ctx);
     assert.equal(stream.streamAttach, undefined);
     assert.equal(stream.streamDetach, undefined);
-    assert.equal(typeof stream.onPacket, 'function');
+    assert.equal(typeof stream.setPacketHandler, 'function');
     assert.equal(stream.onReceive, undefined);
     assert.equal(typeof stream.send, 'function');
     assert.equal(zlink.Socket, undefined);

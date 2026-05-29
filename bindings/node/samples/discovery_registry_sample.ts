@@ -31,10 +31,10 @@ async function waitForTopologyEntry(registry, channelName, endpoint) {
 }
 
 async function main() {
-  const ctx = new zlink.Context();
-  const registry = new zlink.Registry(ctx);
-  const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'sample');
-  const node = new zlink.SpotNode(ctx);
+  const ctx = zlink.createContext();
+  const registry = zlink.createRegistry(ctx);
+  const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'sample');
+  const node = zlink.createSpotNode(ctx);
   const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const serviceEndpoint = `tcp://127.0.0.1:${await reservePort()}`;

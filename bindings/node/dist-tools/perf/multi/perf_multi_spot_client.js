@@ -116,10 +116,10 @@ async function closeWorkers(workers) {
 }
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'client', 'MULTI_SPOT');
-    const controlPub = new zlink.PubSocket(ctx);
-    const controlSub = new zlink.SubSocket(ctx);
+    const controlPub = zlink.createPubSocket(ctx);
+    const controlSub = zlink.createSubSocket(ctx);
     const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
     const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
     let workers = [];
@@ -138,7 +138,7 @@ async function main() {
         trace('control-connected');
         trace(`creating-recv-workers clients=${options.clients}`);
         workers = spawnRecvWorkers(options);
-        await Promise.all(workers.map((worker) => onceWorkerMessage(worker, 'ready', Number(process.env.PERF_CONNECT_READY_TIMEOUT_MS || 1000))));
+        await Promise.all(workers.map((worker) => onceWorkerMessage(worker, 'ready', Number(process.env.PERF_CONNECT_READY_TIMEOUT_MS || 5000))));
         trace(`recv-workers-ready count=${workers.length}`);
         const stabilizationDeadline = Date.now() + resolveMultiSpotReadySettleMs();
         while (Date.now() < stabilizationDeadline) {

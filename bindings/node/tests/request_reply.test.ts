@@ -5,9 +5,9 @@ const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
 
 test('request-reply helpers expose canonical socket accessors', () => {
-  const ctx = new zlink.Context();
-  const routerSocket = new zlink.RouterSocket(ctx);
-  const dealerSocket = new zlink.DealerSocket(ctx);
+  const ctx = zlink.createContext();
+  const routerSocket = zlink.createRouterSocket(ctx);
+  const dealerSocket = zlink.createDealerSocket(ctx);
 
   assert.equal(typeof routerSocket.request, 'function');
   assert.equal(typeof routerSocket.reply, 'function');
@@ -25,9 +25,9 @@ test('request-reply helpers expose canonical socket accessors', () => {
 });
 
 test('router recv and reply still work through the canonical socket surface', () => {
-  const ctx = new zlink.Context();
-  const routerSocket = new zlink.RouterSocket(ctx);
-  const dealerSocket = new zlink.DealerSocket(ctx);
+  const ctx = zlink.createContext();
+  const routerSocket = zlink.createRouterSocket(ctx);
+  const dealerSocket = zlink.createDealerSocket(ctx);
   const clientRoutingId = zlink.RoutingId.from(Buffer.from('request-reply-client'));
 
   routerSocket.bind('inproc://request-reply-contract');
@@ -54,9 +54,9 @@ test('router recv and reply still work through the canonical socket surface', ()
 });
 
 test('reply helpers reject non-none flags when the core lacks reply flag support', () => {
-  const ctx = new zlink.Context();
-  const routerSocket = new zlink.RouterSocket(ctx);
-  const spotNode = new zlink.SpotNode(ctx);
+  const ctx = zlink.createContext();
+  const routerSocket = zlink.createRouterSocket(ctx);
+  const spotNode = zlink.createSpotNode(ctx);
   const spot = spotNode.createSpot();
   const routingId = zlink.RoutingId.from(Buffer.from('peer'));
   const spotRoutingId = zlink.RoutingId.from(Buffer.from('spot'));

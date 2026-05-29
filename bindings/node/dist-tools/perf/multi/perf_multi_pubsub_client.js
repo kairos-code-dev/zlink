@@ -22,7 +22,7 @@ function isStopTokenPayload(buffer, size) {
 }
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'client', 'MULTI_PUBSUB');
     const subs = [];
     const payloadBuffers = [];
@@ -30,7 +30,7 @@ async function main() {
     let collector = null;
     try {
         for (let i = 0; i < options.clients; i += 1) {
-            const sub = new zlink.SubSocket(ctx);
+            const sub = zlink.createSubSocket(ctx);
             applySocketPolicy(sub);
             configureTlsClient(sub, options.transport);
             sub.setSubscription(TOPIC);
@@ -55,8 +55,8 @@ async function main() {
                     activeStartNs,
                     activeStopNs,
                 });
-                const poller = new zlink.Poller();
-                const pollBuffer = new zlink.PollEvents(Math.max(1, subs.length));
+                const poller = zlink.createPoller();
+                const pollBuffer = zlink.createPollEvents(Math.max(1, subs.length));
                 try {
                     for (let i = 0; i < subs.length; i += 1) {
                         poller.add(subs[i], pollEvents(POLLIN), i);
@@ -85,11 +85,13 @@ async function main() {
                             }
                             const payload = payloadBuffers[index];
                             while (true) {
-                                const received = subs[index].subscribePayloadInto(payload, zlink.RecvFlags.DontWait);
-                                if (!received) {
+                                const received = new zlink.TopicMessage();
+                                if (!subs[index].subscribe(received, zlink.RecvFlags.DontWait)) {
                                     break;
                                 }
-                                if (isStopTokenPayload(payload, received.size)) {
+                                const data = received.singlePartOrThrow().data();
+                                data.copy(payload, 0, 0, Math.min(payload.length, data.length));
+                                if (isStopTokenPayload(payload, data.length)) {
                                     stopReceived = true;
                                     continue;
                                 }

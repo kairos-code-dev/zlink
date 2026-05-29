@@ -5,10 +5,10 @@ const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
 const AUTO_CONNECT_SPOT_MESH = 5;
 test('routing id accepts 255-byte maximum and rejects overflow', () => {
-    const ctx = new zlink.Context();
-    const dealer = new zlink.DealerSocket(ctx);
-    const router = new zlink.RouterSocket(ctx);
-    const stream = new zlink.StreamSocket(ctx);
+    const ctx = zlink.createContext();
+    const dealer = zlink.createDealerSocket(ctx);
+    const router = zlink.createRouterSocket(ctx);
+    const stream = zlink.createStreamSocket(ctx);
     const maxRoutingId = zlink.RoutingId.from(Buffer.alloc(255, 0x61));
     const overflowRoutingId = Buffer.alloc(256, 0x62);
     assert.doesNotThrow(() => dealer.setRoutingId(maxRoutingId));
@@ -29,21 +29,21 @@ test('routing id accepts 255-byte maximum and rejects overflow', () => {
     ctx.close();
 });
 test('stream attach actor gateway requires routed node', () => {
-    const ctx = new zlink.Context();
-    const stream = new zlink.StreamSocket(ctx);
-    const node = new zlink.SpotNode(ctx, zlink.SpotNodeMode.PubSub);
+    const ctx = zlink.createContext();
+    const stream = zlink.createStreamSocket(ctx);
+    const node = zlink.createSpotNode(ctx, zlink.SpotNodeMode.PubSub);
     assert.throws(() => stream.attachActorGateway(node), /not supported/i);
     node.close();
     stream.close();
     ctx.close();
 });
 test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
-    const ctx = new zlink.Context();
-    const pair = new zlink.PairSocket(ctx);
-    const registry = new zlink.Registry(ctx);
-    const query = new zlink.RegistryQueryClient(ctx);
-    const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'svc');
-    const node = new zlink.SpotNode(ctx);
+    const ctx = zlink.createContext();
+    const pair = zlink.createPairSocket(ctx);
+    const registry = zlink.createRegistry(ctx);
+    const query = zlink.createRegistryQueryClient(ctx);
+    const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'svc');
+    const node = zlink.createSpotNode(ctx);
     const spot = node.createSpot();
     const maxChannelName = 's'.repeat(255);
     assert.throws(() => pair.bind('tcp://127.0.0.1:5555\0bad'), /embedded null/);
@@ -53,7 +53,7 @@ test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
     assert.throws(() => discovery.connectRegistry('x'.repeat(256)), /255 bytes/);
     assert.throws(() => node.setPubBind('tcp://127.0.0.1:5557\0bad'), /embedded null/);
     assert.throws(() => spot.setSubscription('topic\0bad'), /embedded null/);
-    assert.doesNotThrow(() => new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, maxChannelName).close());
+    assert.doesNotThrow(() => zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, maxChannelName).close());
     spot.close();
     node.close();
     discovery.close();
@@ -63,8 +63,8 @@ test('fixed-size c-string inputs reject embedded nulls and overflow', () => {
     ctx.close();
 });
 test('typed numeric options fail fast on int32 and int64 boundary violations', () => {
-    const ctx = new zlink.Context();
-    const pair = new zlink.PairSocket(ctx);
+    const ctx = zlink.createContext();
+    const pair = zlink.createPairSocket(ctx);
     assert.throws(() => {
         pair.options.linger = 2147483648;
     }, /fit in int32/);

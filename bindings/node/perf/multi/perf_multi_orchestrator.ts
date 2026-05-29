@@ -136,6 +136,16 @@ function hasProtocolUnsupported(processRef) {
     && processRef.__stderrLines.some((line) => line.toLowerCase().includes('protocol not supported'));
 }
 
+function hasAddressInUse(processRef) {
+  return Array.isArray(processRef.__stderrLines)
+    && processRef.__stderrLines.some((line) => /address already in use/i.test(line));
+}
+
+function startupBindRetryCount(args) {
+  const value = Number(args.__startupBindRetry || 0);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+}
+
 async function waitForExit(processRef) {
   if (processRef.exitCode !== null || processRef.signalCode !== null) {
     return processRef.exitCode;
@@ -446,7 +456,7 @@ function resolveMultiTimeoutSeconds(args) {
 function resolveClientReadyTimeoutMs(args) {
   const configured = Number.isFinite(args.connectReadyTimeoutMs)
     ? args.connectReadyTimeoutMs
-    : 1000;
+    : 5000;
   if (
     args.pattern === 'MULTI_SPOT'
     || args.pattern === 'MULTI_SPOT_REQREP'
@@ -455,7 +465,7 @@ function resolveClientReadyTimeoutMs(args) {
     const spotReadyTimeout = Number(process.env.PERF_MULTI_SPOT_READY_TIMEOUT_MS);
     const minimumSpotReadyTimeout = Number.isFinite(spotReadyTimeout)
       ? spotReadyTimeout
-      : Math.max(1000, configured * 6);
+      : Math.max(5000, configured * 6);
     return Math.max(configured, minimumSpotReadyTimeout);
   }
   return configured;
@@ -520,18 +530,48 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     detached: true
   });
   attachProcessCapture(server, resultLines);
-  await waitForLine(
-    server,
-    `READY,${endpoint}`,
-    serverScript,
-    Number.isFinite(args.serverReadyTimeoutMs) ? args.serverReadyTimeoutMs : 10_000
-  );
+  try {
+    await waitForLine(
+      server,
+      `READY,${endpoint}`,
+      serverScript,
+      Number.isFinite(args.serverReadyTimeoutMs) ? args.serverReadyTimeoutMs : 10_000
+    );
+  } catch (error) {
+    await Promise.allSettled([terminateProcessTree(server, 1000)]);
+    if (hasAddressInUse(server) && startupBindRetryCount(args) < 3) {
+      return spawnMultiPair(serverScript, clientScript, {
+        ...args,
+        __startupBindRetry: startupBindRetryCount(args) + 1
+      });
+    }
+    const stderrText = Array.isArray(server.__stderrLines) ? server.__stderrLines.join('\n') : '';
+    if (stderrText) {
+      error.message = `${error.message}\n${stderrText}`;
+    }
+    throw error;
+  }
   if (
     args.pattern === 'MULTI_SPOT'
     || args.pattern === 'MULTI_SPOT_REQREP'
     || args.pattern === 'MULTI_SPOT_SENDSEND'
   ) {
-    await waitForPrefix(server, 'CONTROL_READY,', serverScript, 10_000);
+    try {
+      await waitForPrefix(server, 'CONTROL_READY,', serverScript, 10_000);
+    } catch (error) {
+      await Promise.allSettled([terminateProcessTree(server, 1000)]);
+      if (hasAddressInUse(server) && startupBindRetryCount(args) < 3) {
+        return spawnMultiPair(serverScript, clientScript, {
+          ...args,
+          __startupBindRetry: startupBindRetryCount(args) + 1
+        });
+      }
+      const stderrText = Array.isArray(server.__stderrLines) ? server.__stderrLines.join('\n') : '';
+      if (stderrText) {
+        error.message = `${error.message}\n${stderrText}`;
+      }
+      throw error;
+    }
   }
 
   const clientSpawn = buildClientSpawn(clientPath, clientArgs, args);

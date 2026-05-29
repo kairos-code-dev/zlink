@@ -168,12 +168,12 @@ function socketTypeName(socketOrType) {
     }
   }
   const socket = socketOrType;
-  if (socket instanceof zlink.PairSocket) return 'pair';
-  if (socket instanceof zlink.PubSocket) return 'pub';
-  if (socket instanceof zlink.SubSocket) return 'sub';
-  if (socket instanceof zlink.DealerSocket) return 'dealer';
-  if (socket instanceof zlink.RouterSocket) return 'router';
-  if (zlink.StreamSocket && socket instanceof zlink.StreamSocket) return 'stream';
+  if (typeof socket.setPacketHandler === 'function') return 'stream';
+  if (typeof socket.reply === 'function') return 'router';
+  if (typeof socket.request === 'function') return 'dealer';
+  if (typeof socket.publish === 'function') return 'pub';
+  if (typeof socket.subscribe === 'function') return 'sub';
+  if (typeof socket.send === 'function' && typeof socket.recv === 'function') return 'pair';
   return 'unknown';
 }
 
@@ -548,7 +548,7 @@ function subscribeNoWaitInto(socket, received) {
 async function waitForConnectionReady(
   socket,
   connectFn = null,
-  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 1000)
+  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
 ) {
   return waitForConnectionReadyCount(socket, 1, connectFn, timeoutMs);
 }
@@ -557,7 +557,7 @@ async function waitForConnectionReadyCount(
   socket,
   expectedCount,
   connectFn = null,
-  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 1000)
+  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
 ) {
   const monitor = socket.monitorOpen([MonitorEventType.ConnectionReady]);
   try {
@@ -600,13 +600,28 @@ async function waitForConnectionReadyCount(
   }
 }
 
+async function waitForSpotNodeConnectedPeerCount(
+  node,
+  expectedCount,
+  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
+) {
+  const targetCount = Math.max(1, Math.trunc(expectedCount || 1));
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (node.status().connectedPeerCount >= targetCount) {
+      return;
+    }
+    await sleepMs(1);
+  }
+  throw new Error(
+    `spot node connected peer timeout after ${timeoutMs}ms (${node.status().connectedPeerCount}/${targetCount})`
+  );
+}
+
 function trySocketSend(socket, ...args) {
   try {
     const routed = args.length >= 2 && args[0] instanceof zlink.RoutingId;
     const payload = routed ? args[1] : args[0];
-    if (!routed && !Array.isArray(payload) && typeof socket.sendFrom === 'function') {
-      return socket.sendFrom(payload, zlink.SendFlags.DontWait);
-    }
     let op = routed ? socket.send(args[0]) : socket.send();
     const parts = Array.isArray(payload) ? payload : [payload];
     for (const part of parts) {
@@ -666,7 +681,7 @@ function sleepMs(ms) {
 // emits NO POLLOUT drain wakeup when it has no live subscriber pipe.
 // C therefore does NOT wait on a signal-driven `-1` POLLOUT poller for
 // control sends — it uses a BOUNDED deadline
-// (PERF_MULTI_CONNECT_READY_TIMEOUT_MS, default 1000ms), a blocking
+// (PERF_MULTI_CONNECT_READY_TIMEOUT_MS, default 5000ms), a blocking
 // publish attempt, and a short (<=10ms) timed idle wait on backpressure,
 // then RETURNS (false) on timeout so the caller's higher-level handshake
 // loop (e.g. wait_msg_size_start_with_ready_republish) can re-publish.
@@ -676,7 +691,7 @@ async function publishControlUntilSent(socket, _waiter, topic, payload) {
   const body = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
   const deadlineMs = Math.max(
     1,
-    integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 1000)
+    integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
   );
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {
@@ -765,9 +780,9 @@ async function waitForControlStart(controlSub, waiter, msgSize) {
 }
 
 function createSocketEventWaiter(socket, events) {
-  const poller = new zlink.Poller();
+  const poller = zlink.createPoller();
   poller.add(socket, pollEvents(events), 0);
-  const eventBuffer = new zlink.PollEvents(1);
+  const eventBuffer = zlink.createPollEvents(1);
 
   return {
     // PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven `-1` wait. The core
@@ -825,5 +840,6 @@ module.exports = {
   waitForRunnerControlConnected,
   waitForRunnerStart,
   waitForConnectionReadyCount,
-  waitForConnectionReady
+  waitForConnectionReady,
+  waitForSpotNodeConnectedPeerCount
 };

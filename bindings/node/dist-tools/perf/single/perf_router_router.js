@@ -41,8 +41,8 @@ async function runRouterRouterBenchmark(msgSize, options) {
             msgSize,
             options,
             endpointToken: 'router-router',
-            createReceiver: (ctx) => new zlink.RouterSocket(ctx),
-            createSender: (ctx) => new zlink.RouterSocket(ctx),
+            createReceiver: (ctx) => zlink.createRouterSocket(ctx),
+            createSender: (ctx) => zlink.createRouterSocket(ctx),
             configureReceiver: (socket) => socket.setRoutingId(RECEIVER_ROUTING_ID),
             configureSender: (socket) => socket.setRoutingId(zlink.RoutingId.from(SENDER_ID)),
             handshake: (sender, receiver) => {
@@ -88,9 +88,9 @@ async function runRouterRouterBenchmark(msgSize, options) {
             },
         });
     }
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx);
-    const receiver = new zlink.RouterSocket(ctx);
+    const receiver = zlink.createRouterSocket(ctx);
     const receiverMonitor = receiver.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     const endpoint = await benchmarkEndpoint(options.transport, `router-router-${msgSize}`);
     let worker = null;

@@ -2,4 +2,7 @@
 
 export * from './sockets';
 export * from './eventing';
-export * from '../runtime/handles/canonical';
+export * from './core';
+export * from './messaging';
+export * from './errors';
+export * from './service';

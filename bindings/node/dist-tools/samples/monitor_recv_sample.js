@@ -16,9 +16,9 @@ async function reservePort() {
 async function main() {
     const port = await reservePort();
     const endpoint = `tcp://127.0.0.1:${port}`;
-    const ctx = new zlink.Context();
-    const server = new zlink.PairSocket(ctx);
-    const client = new zlink.PairSocket(ctx);
+    const ctx = zlink.createContext();
+    const server = zlink.createPairSocket(ctx);
+    const client = zlink.createPairSocket(ctx);
     const serverMonitor = server.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     const clientMonitor = client.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     try {

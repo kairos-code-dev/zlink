@@ -27,10 +27,10 @@ const { isStopToken } = require('../perf_stop_token');
 // expected_stop_count, line 299).
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'server', 'MULTI_DEALER_DEALER');
-    const server = new zlink.DealerSocket(ctx);
-    const poller = new zlink.Poller();
+    const server = zlink.createDealerSocket(ctx);
+    const poller = zlink.createPoller();
     const payloadSize = Math.max(options.msgSize, HEADER_SIZE);
     const recvBuffer = Buffer.allocUnsafe(payloadSize);
     let pollBuffer = null;
@@ -44,7 +44,7 @@ async function main() {
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(server, 'endpoint', options.transport, options.msgSize);
         poller.add(server, pollEvents(POLLIN), 0);
-        pollBuffer = new zlink.PollEvents(1);
+        pollBuffer = zlink.createPollEvents(1);
         const readyBarrier = waitForConnectionReadyCount(server, options.clients);
         console.log(`READY,${options.endpoint}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -77,10 +77,13 @@ async function main() {
                     continue;
                 }
                 while (true) {
-                    const receivedBytes = server.recvInto(recvBuffer, zlink.RecvFlags.DontWait);
-                    if (receivedBytes === null) {
+                    const received = new zlink.Received();
+                    if (!server.recv(received, zlink.RecvFlags.DontWait)) {
                         break;
                     }
+                    const data = received.singlePartOrThrow().data();
+                    data.copy(recvBuffer, 0, 0, Math.min(recvBuffer.length, data.length));
+                    const receivedBytes = data.length;
                     if (isStopToken(recvBuffer.subarray(0, receivedBytes))) {
                         continue;
                     }
@@ -102,7 +105,8 @@ async function main() {
             while (currentEpochNs() < tailDeadlineNs && currentEpochNs() < idleDeadlineNs) {
                 let drained = false;
                 while (true) {
-                    if (server.recvInto(recvBuffer, zlink.RecvFlags.DontWait) === null) {
+                    const received = new zlink.Received();
+                    if (!server.recv(received, zlink.RecvFlags.DontWait)) {
                         break;
                     }
                     drained = true;

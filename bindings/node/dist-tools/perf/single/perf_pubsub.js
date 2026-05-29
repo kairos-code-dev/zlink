@@ -13,9 +13,15 @@ function trace(message) {
 function yieldImmediate() {
     return new Promise((resolve) => setImmediate(resolve));
 }
-function trySubscribePayloadInto(socket, buffer, flags) {
+function trySubscribe(socket, buffer, flags) {
     try {
-        return socket.subscribePayloadInto(buffer, flags);
+        const received = new zlink.TopicMessage();
+        if (!socket.subscribe(received, flags)) {
+            return null;
+        }
+        const data = received.singlePartOrThrow().data();
+        data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
+        return { size: data.length };
     }
     catch (error) {
         if (error instanceof zlink.RecvError &&
@@ -40,7 +46,7 @@ async function drainPubSubPayloadInto(socket, buffer, onHeader, options = {}) {
         let processed = false;
         let first = true;
         while (true) {
-            const received = trySubscribePayloadInto(socket, buffer, first ? zlink.RecvFlags.None : zlink.RecvFlags.DontWait);
+            const received = trySubscribe(socket, buffer, first ? zlink.RecvFlags.None : zlink.RecvFlags.DontWait);
             if (!received) {
                 break;
             }
@@ -81,8 +87,8 @@ async function runPubSubBenchmark(msgSize, options) {
             msgSize,
             options,
             endpointToken: 'pubsub',
-            createReceiver: (ctx) => new zlink.SubSocket(ctx),
-            createSender: (ctx) => new zlink.PubSocket(ctx),
+            createReceiver: (ctx) => zlink.createSubSocket(ctx),
+            createSender: (ctx) => zlink.createPubSocket(ctx),
             configureReceiver: (socket) => socket.setSubscription(TOPIC),
             senderBinds: true,
             drainViaSubscribe: true,
@@ -118,9 +124,9 @@ async function runPubSubBenchmark(msgSize, options) {
             },
         });
     }
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx);
-    const sub = new zlink.SubSocket(ctx);
+    const sub = zlink.createSubSocket(ctx);
     const subMonitor = sub.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
     const endpoint = await benchmarkEndpoint(options.transport, `pubsub-${msgSize}`);
     let worker = null;
@@ -185,14 +191,9 @@ async function runPubSubBenchmark(msgSize, options) {
         // the worker, SUB connects here). No extra start/stop ack — the
         // subscriber drains until the wire stop token on the topic.
         const payloadBuffer = Buffer.allocUnsafe(Math.max(msgSize, HEADER_SIZE, STOP_TOKEN_BYTES.length));
-        const recvTask = typeof sub.subscribePayloadInto === 'function'
-            ? drainPubSubPayloadInto(sub, payloadBuffer, (header) => {
-                collector.record(header, currentEpochNs());
-            }, { recordUntilNs: activeStopNs })
-            : drainRecvSocket(sub, (received) => {
-                const header = decodeMetricHeaderFromParts(received.parts, Math.max(msgSize, HEADER_SIZE));
-                collector.record(header, currentEpochNs());
-            }, { recordUntilNs: activeStopNs });
+        const recvTask = drainPubSubPayloadInto(sub, payloadBuffer, (header) => {
+            collector.record(header, currentEpochNs());
+        }, { recordUntilNs: activeStopNs });
         await Promise.race([
             recvTask,
             workerError.then((message) => Promise.reject(new Error(message.message)))

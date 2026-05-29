@@ -5,7 +5,7 @@ const zlink = require('@zlink-systems/zlink');
 const { createMetricCollector, createPayload, createRunId, decodeMetricHeaderFromParts, currentEpochNs, sleepImmediate, sleepMillis, summarizeMetrics, stampPayload } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
-const { POLLIN, POLLCOMPLETION, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, subscribeNoWait, trySocketPublish, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
+const { POLLIN, POLLCOMPLETION, POLLOUT, applyAutoHwmMsgUnit, applySocketPolicy, applyContextPolicy, applySpotNodeAdmission, createSocketEventWaiter, emitMultiSocketHwmDetail, pollEvents, publishControlUntilSent, subscribeNoWait, trySocketPublish, waitForSpotNodeConnectedPeerCount, waitForRunnerControlConnected, waitForRunnerStart } = require('./perf_multi_runtime');
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID = zlink.RoutingId.from(Buffer.from('PERF_SPOT_REQREP_NODE', 'ascii'));
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.from(Buffer.from('PERF_SPOT_REQREP_SPOT', 'ascii'));
@@ -14,6 +14,9 @@ function trace(message) {
     if (TRACE) {
         console.error(`[multi-spot-reqrep-client] ${message}`);
     }
+}
+function traceValue(label, value) {
+    trace(`${label}=${JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? item.toString() : item)}`);
 }
 function activeSpotSlotLimit(totalSlots, msgSize) {
     if (msgSize >= 131072) {
@@ -53,26 +56,35 @@ function closeQuietly(resource) {
 }
 function tryRequestSpotReply(spot, payload, timeoutMs, onReply, onDone) {
     try {
-        return spot.requestToSpotFrom(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID, payload, (result, parts) => {
+        return spot.requestToSpot(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID)
+            .message(payload)
+            .flags(zlink.SendFlags.DontWait)
+            .timeout(timeoutMs)
+            .submit((result, parts) => {
             try {
                 if (result === zlink.RequestResult.Ok) {
                     onReply(decodeMetricHeaderFromParts(parts));
+                }
+                else {
+                    trace(`request callback result=${result}`);
                 }
             }
             finally {
                 closeParts(parts);
                 onDone();
             }
-        }, zlink.SendFlags.DontWait, timeoutMs);
+        });
     }
     catch (error) {
         if (error instanceof zlink.SubmitError &&
             error.result === zlink.SubmitResult.Backpressured) {
+            trace('request submit backpressured');
             return false;
         }
         const text = String(error && error.message ? error.message : error);
         if ((error && error.code === 'EAGAIN') ||
             /Resource temporarily unavailable|temporarily unavailable|would block/i.test(text)) {
+            trace(`request submit temporarily unavailable: ${text}`);
             return false;
         }
         throw error;
@@ -92,13 +104,13 @@ function receiveControlStart(controlSub, msgSize) {
 }
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'client', 'MULTI_SPOT_REQREP');
-    const controlPub = new zlink.PubSocket(ctx);
-    const controlSub = new zlink.SubSocket(ctx);
+    const controlPub = zlink.createPubSocket(ctx);
+    const controlSub = zlink.createSubSocket(ctx);
     const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
     const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
-    const node = new zlink.SpotNode(ctx);
+    const node = zlink.createSpotNode(ctx);
     const slots = [];
     try {
         applySocketPolicy(controlPub);
@@ -136,6 +148,7 @@ async function main() {
         await sleepMillis(resolveMultiSpotReadySettleMs());
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
         await sleepMillis(resolveMultiSpotControlSettleMs());
+        await waitForSpotNodeConnectedPeerCount(node, 1);
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
         await sleepMillis(resolveMultiSpotControlSettleMs());
         await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `READY_COUNT,${options.msgSize},${slots.length}`);
@@ -169,6 +182,9 @@ async function main() {
             ]);
         }
         trace('start-ready');
+        traceValue('status', node.status());
+        traceValue('peers', node.peers());
+        traceValue('subjects', node.subjects());
         const runId = createRunId(1);
         const activeStartNs = currentEpochNs();
         const activeStopNs = activeStartNs + BigInt(Math.floor(options.duration * 1_000_000_000));
@@ -180,8 +196,8 @@ async function main() {
             roundTrip: true,
         });
         let seq = 1n;
-        const poller = new zlink.Poller();
-        const pollBuffer = new zlink.PollEvents(Math.max(1, slots.length));
+        const poller = zlink.createPoller();
+        const pollBuffer = zlink.createPollEvents(Math.max(1, slots.length));
         for (let i = 0; i < slots.length; i += 1) {
             poller.add(slots[i].spot, pollEvents(POLLCOMPLETION), i);
         }

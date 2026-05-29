@@ -81,9 +81,10 @@ function submitOnce(kind, socket, body, receiverRoutingId, topic) {
         return true;
     }
     if (kind === 'dealer_router') {
-        return socket.sendFrom(body, zlink.SendFlags.None);
+        socket.send().message(body).flags(zlink.SendFlags.None).submit();
+        return true;
     }
-    return socket.sendFrom(body, zlink.SendFlags.DontWait);
+    return socket.send().message(body).flags(zlink.SendFlags.DontWait).submit();
 }
 // Retry through transient backpressure until accepted (C send_step_retry
 // loop). Returns when the message is on the wire; throws only on a real
@@ -125,7 +126,7 @@ function submitStopOnce(kind, socket, receiverRoutingId, topic) {
             .flags(zlink.SendFlags.None).submit();
         return;
     }
-    socket.sendFrom(STOP_TOKEN_BYTES, zlink.SendFlags.None);
+    socket.send().message(STOP_TOKEN_BYTES).flags(zlink.SendFlags.None).submit();
 }
 function sendStopToken(kind, socket, receiverRoutingId, topic) {
     // PERF_SINGLE_TEST_POLICY § 1.4 / C send_stop_token_with_retry
@@ -170,7 +171,7 @@ async function main() {
     const topic = typeof workerData.topic === 'string' && workerData.topic.length > 0
         ? workerData.topic
         : DEFAULT_TOPIC;
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx);
     const payload = createPayload(msgSize);
     let socket = null;
@@ -180,28 +181,28 @@ async function main() {
     try {
         switch (kind) {
             case 'pair':
-                socket = new zlink.PairSocket(ctx);
+                socket = zlink.createPairSocket(ctx);
                 applySocketPolicy(socket, options);
                 applyAutoHwmMsgUnit(ctx, msgSize);
                 ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 break;
             case 'dealer_dealer':
-                socket = new zlink.DealerSocket(ctx);
+                socket = zlink.createDealerSocket(ctx);
                 applySocketPolicy(socket, options);
                 applyAutoHwmMsgUnit(ctx, msgSize);
                 ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 break;
             case 'dealer_router':
-                socket = new zlink.DealerSocket(ctx);
+                socket = zlink.createDealerSocket(ctx);
                 applySocketPolicy(socket, options);
                 applyAutoHwmMsgUnit(ctx, msgSize);
                 ctx.recalculateAutoHwm();
                 await connectSender(kind, socket, endpoint, transport);
                 break;
             case 'pubsub':
-                socket = new zlink.PubSocket(ctx);
+                socket = zlink.createPubSocket(ctx);
                 applySocketPolicy(socket, options);
                 applyAutoHwmMsgUnit(ctx, msgSize);
                 ctx.recalculateAutoHwm();
@@ -211,7 +212,7 @@ async function main() {
                 port.postMessage({ type: 'bound' });
                 break;
             case 'router_router': {
-                socket = new zlink.RouterSocket(ctx);
+                socket = zlink.createRouterSocket(ctx);
                 applySocketPolicy(socket, options);
                 applyAutoHwmMsgUnit(ctx, msgSize);
                 socket.setRoutingId(zlink.RoutingId.from(Buffer.from(senderRoutingIdBytes)));

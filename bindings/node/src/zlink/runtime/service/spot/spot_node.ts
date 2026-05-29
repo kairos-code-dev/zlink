@@ -1,0 +1,450 @@
+// SPDX-License-Identifier: MPL-2.0
+
+import { randomBytes } from 'node:crypto';
+import { DefaultContext as Context } from '../../core/context';
+import { DefaultDealerSocket as DealerSocket, DefaultPubSocket as PubSocket } from '../../sockets';
+import { Discovery } from '../discovery/discovery';
+import { Actor } from './actor';
+import { Spot } from './spot';
+import { NativeHandle } from '../../handles/native_handle';
+import { materializeMonitorStatus } from '../../eventing/monitor_status';
+import { closeCall, configCall, connectCall } from '../../errors/native_errors';
+import { validateCString } from '../../options/validation';
+import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
+import { SendOperation } from '../../sockets/socket_operations';
+import { normalizeRoutingId } from '../../core/routing_id';
+import { requireNative } from '../../native/native';
+import { RoutingId } from '../../../contracts';
+import type { MonitorStatusRaw } from '../../../contracts/eventing';
+import { AutoHwmProfile, type AutoHwmProfileValue } from '../../../contracts/core';
+import { SpotNodeMode, SpotNodeSocketOwner, type ActorDestroyOp, type ActorJoinEntrySpotOp, type ActorJoinOp, type ActorLeaveOp, type ActorLookupOp, type ActorRef, type SendOp, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSocketOwnerValue, type SpotNodeSpotEntry, type SpotNodeStateValue, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter, type SpotPeerKindValue, type SpotPeerSourceValue, type SpotPeerStateValue, type SpotRoleValue } from '../../../contracts/service';
+import type { SocketTypeValue } from '../../../contracts/sockets/socket_constants';
+import { SpotNodeOption } from './spot_options';
+import { ActorDestroyOperation, ActorJoinEntrySpotOperation, ActorJoinOperation, ActorLeaveOperation, ActorLookupOperation, actorRefFromRaw, actorRefToRaw, invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorSendBoundSession, invokeRemoteActorGetRef, spotNodeActorEntryFromRaw, spotNodeSpotEntryFromRaw } from './spot_operations';
+
+function mapSpotNodeStatus(entry: {
+  channelName: string;
+  localEndpoint: string;
+  nodeRoutingId?: Buffer | null;
+  state: number;
+  configuredPeerCount: number;
+  activePeerCount: number;
+  connectedPeerCount: number;
+  subjectCount: number;
+  readySubjectCount: number;
+  disconnectedSubTargetCount?: number;
+  disconnectedRoutedTargetCount?: number;
+  lastError: number;
+  lastChangedMs: number | bigint;
+}, fallbackRoutingId: RoutingId): SpotNodeStatus {
+  const nodeRoutingId = entry.nodeRoutingId
+    ? RoutingId.from(entry.nodeRoutingId)
+    : fallbackRoutingId;
+  return {
+    channelName: entry.channelName,
+    localEndpoint: entry.localEndpoint,
+    nodeRoutingId,
+    state: entry.state as SpotNodeStateValue,
+    configuredPeerCount: entry.configuredPeerCount,
+    activePeerCount: entry.activePeerCount,
+    connectedPeerCount: entry.connectedPeerCount,
+    subjectCount: entry.subjectCount,
+    readySubjectCount: entry.readySubjectCount,
+    disconnectedSubTargetCount: entry.disconnectedSubTargetCount ?? 0,
+    disconnectedRoutedTargetCount: entry.disconnectedRoutedTargetCount ?? 0,
+    lastError: entry.lastError,
+    lastChangedMs: BigInt(entry.lastChangedMs)
+  };
+}
+
+function mapSpotNodePeerEntry(entry: {
+  channelName: string;
+  localEndpoint: string;
+  peerEndpoint: string;
+  source: number;
+  kind: number;
+  state: number;
+  weight: number;
+  connectedSinceMs: number | bigint;
+  lastChangedMs: number | bigint;
+}): SpotNodePeerEntry {
+  return {
+    channelName: entry.channelName,
+    localEndpoint: entry.localEndpoint,
+    peerEndpoint: entry.peerEndpoint,
+    source: entry.source as SpotPeerSourceValue,
+    kind: entry.kind as SpotPeerKindValue,
+    state: entry.state as SpotPeerStateValue,
+    weight: entry.weight,
+    connectedSinceMs: BigInt(entry.connectedSinceMs),
+    lastChangedMs: BigInt(entry.lastChangedMs)
+  };
+}
+
+function mapSpotNodeSubjectEntry(entry: {
+  role: number;
+  subject: string;
+  subjectKind: number;
+  readyPeerCount: number;
+  activePeerCount: number;
+  lastChangedMs: number | bigint;
+}): SpotNodeSubjectEntry {
+  return {
+    role: entry.role as SpotRoleValue,
+    subject: entry.subject,
+    subjectKind: entry.subjectKind,
+    readyPeerCount: entry.readyPeerCount,
+    activePeerCount: entry.activePeerCount,
+    lastChangedMs: BigInt(entry.lastChangedMs)
+  };
+}
+
+
+export class SpotNode extends NativeHandle {
+  private readonly _spots = new Set<Spot>();
+  private readonly _channelDealers = new Map<string, DealerSocket>();
+  private _nodeRoutingId: RoutingId;
+  constructor(ctx: Context, mode: SpotNodeModeValue = SpotNodeMode.All) {
+    super(requireNative().spotNodeNew(ctx.nativeHandle(), { mode: mode | 0 }));
+    this._nodeRoutingId = RoutingId.from(randomBytes(16));
+  }
+  /** @internal */
+  nativeHandle(): unknown { return this._native; }
+  setPubBind(endpoint: string): void {
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    configCall('spot node pub bind failed', () => {
+      requireNative().spotNodeSetPubBind(this._native, normalizedEndpoint);
+    });
+  }
+  setRouterBind(endpoint: string): void {
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    configCall('spot node router bind endpoint failed', () => {
+      requireNative().spotNodeSetRouterBind(this._native, normalizedEndpoint);
+    });
+  }
+  connectPeer(endpoint: string): void {
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    connectCall('spot node peer connect failed', () => {
+      requireNative().spotNodeConnectPeerPub(this._native, normalizedEndpoint);
+    });
+  }
+  disconnectPeer(endpoint: string): void {
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    connectCall('spot node peer disconnect failed', () => {
+      requireNative().spotNodeDisconnectPeerPub(this._native, normalizedEndpoint);
+    });
+  }
+  disconnectPeerRid(targetNodeRid: RoutingId): void {
+    const normalizedTargetNodeRid = normalizeRoutingId(targetNodeRid);
+    connectCall('spot node peer disconnect by routing id failed', () => {
+      requireNative().spotNodeDisconnectPeerRidPub(
+        this._native,
+        normalizedTargetNodeRid
+      );
+    });
+  }
+  connectRouterChannelPeer(channelName: string, endpoint: string): void {
+    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    connectCall('spot node router channel peer connect failed', () => {
+      requireNative().spotNodeConnectRouterChannelPeer(
+        this._native,
+        normalizedChannelName,
+        normalizedEndpoint
+      );
+    });
+  }
+  disconnectRouterChannelPeer(channelName: string, endpoint: string): void {
+    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    connectCall('spot node router channel peer disconnect failed', () => {
+      requireNative().spotNodeDisconnectRouterChannelPeer(
+        this._native,
+        normalizedChannelName,
+        normalizedEndpoint
+      );
+    });
+  }
+  disconnectRouterChannelPeerRid(channelName: string, peerRid: RoutingId): void {
+    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedPeerRid = normalizeRoutingId(peerRid);
+    connectCall('spot node router channel peer disconnect by routing id failed', () => {
+      requireNative().spotNodeDisconnectRouterChannelPeerRid(
+        this._native,
+        normalizedChannelName,
+        normalizedPeerRid
+      );
+    });
+  }
+  attachChannelDealer(discovery: Discovery, dealer: DealerSocket): void {
+    configCall('spot node channel dealer attachment failed', () => {
+      requireNative().spotNodeAttachChannelDealer(
+        this._native,
+        discovery.nativeHandle(),
+        dealer.nativeHandle()
+      );
+    });
+  }
+  attachChannelDealerManual(channelName: string, dealer: DealerSocket): void {
+    const normalized = validateCString(channelName, 'channelName');
+    configCall('spot node channel dealer attachment failed', () => {
+      requireNative().spotNodeAttachChannelDealerManual(
+        this._native,
+        normalized,
+        dealer.nativeHandle()
+      );
+    });
+    this._channelDealers.set(normalized, dealer);
+  }
+  attachPubIngress(pub: PubSocket): void {
+    configCall('spot node pub ingress attachment failed', () => {
+      requireNative().spotNodeAttachPubIngress(this._native, pub.nativeHandle());
+    });
+  }
+  attachDiscovery(discovery: Discovery): void {
+    configCall('spot node discovery attachment failed', () => {
+      requireNative().spotNodeSetDiscovery(this._native, discovery.nativeHandle());
+    });
+  }
+  attachSpotRouteChannelDiscovery(channelName: string, discovery: Discovery): void {
+    const normalizedChannelName = validateCString(channelName, 'channelName');
+    configCall('spot node router channel discovery attachment failed', () => {
+      requireNative().spotNodeAttachRouterChannelDiscovery(
+        this._native,
+        normalizedChannelName,
+        discovery.nativeHandle()
+      );
+    });
+  }
+  setRoutingId(routingId: RoutingId): void {
+    const normalizedRoutingId = normalizeRoutingId(routingId);
+    configCall('spot node routing id set failed', () => {
+      requireNative().handleSetRoutingId(this._native, normalizedRoutingId);
+    });
+    this._nodeRoutingId = routingId;
+  }
+  get routingId(): RoutingId {
+    this._nodeRoutingId = RoutingId.from(configCall('spot node routing id get failed', () =>
+      requireNative().handleGetRoutingId(this._native) as Buffer
+    ));
+    return this._nodeRoutingId;
+  }
+  setTlsServer(cert: string, key: string, requireClientCert: boolean = false): void {
+    const normalizedCert = validateCString(cert, 'cert', Number.MAX_SAFE_INTEGER);
+    const normalizedKey = validateCString(key, 'key', Number.MAX_SAFE_INTEGER);
+    configCall('spot node TLS server configuration failed', () => {
+      requireNative().spotNodeSetTlsServer(this._native, normalizedCert, normalizedKey, requireClientCert ? 1 : 0);
+    });
+  }
+  setTlsClient(ca: string, hostname: string, trustSystem: boolean = false): void {
+    const normalizedCa = validateCString(ca, 'ca', Number.MAX_SAFE_INTEGER);
+    const normalizedHostname = validateCString(hostname, 'hostname', Number.MAX_SAFE_INTEGER);
+    configCall('spot node TLS client configuration failed', () => {
+      requireNative().spotNodeSetTlsClient(this._native, normalizedCa, normalizedHostname, trustSystem ? 1 : 0);
+    });
+  }
+  private setOptionRaw(option: number, value: number): void {
+    const buffer = int32Buffer(value, 'value');
+    configCall('spot node option set failed', () => {
+      requireNative().spotNodeSetOption(this._native, option, buffer);
+    });
+  }
+  private getOptionRaw(option: number, name: string): number {
+    return readInt32Option(configCall('spot node option get failed', () =>
+      requireNative().spotNodeGetOption(this._native, option) as Buffer
+    ), name);
+  }
+  get routerHwmProfile(): AutoHwmProfileValue { return this.getOptionRaw(SpotNodeOption.ROUTER_HWM_PROFILE, 'routerHwmProfile') as AutoHwmProfileValue; }
+  set routerHwmProfile(value: AutoHwmProfileValue) { this.setOptionRaw(SpotNodeOption.ROUTER_HWM_PROFILE, value | 0); }
+  get routerHwm(): number { return this.getOptionRaw(SpotNodeOption.ROUTER_HWM, 'routerHwm'); }
+  set routerHwm(value: number) { this.setOptionRaw(SpotNodeOption.ROUTER_HWM, value | 0); }
+  get pubsubHwmProfile(): AutoHwmProfileValue { return this.getOptionRaw(SpotNodeOption.PUBSUB_HWM_PROFILE, 'pubsubHwmProfile') as AutoHwmProfileValue; }
+  set pubsubHwmProfile(value: AutoHwmProfileValue) { this.setOptionRaw(SpotNodeOption.PUBSUB_HWM_PROFILE, value | 0); }
+  get pubsubHwm(): number { return this.getOptionRaw(SpotNodeOption.PUBSUB_HWM, 'pubsubHwm'); }
+  set pubsubHwm(value: number) { this.setOptionRaw(SpotNodeOption.PUBSUB_HWM, value | 0); }
+  get dispatchWorkersMin(): number { return this.getOptionRaw(SpotNodeOption.DISPATCH_WORKERS_MIN, 'dispatchWorkersMin'); }
+  set dispatchWorkersMin(value: number) { this.setOptionRaw(SpotNodeOption.DISPATCH_WORKERS_MIN, value | 0); }
+  get dispatchWorkersMax(): number { return this.getOptionRaw(SpotNodeOption.DISPATCH_WORKERS_MAX, 'dispatchWorkersMax'); }
+  set dispatchWorkersMax(value: number) { this.setOptionRaw(SpotNodeOption.DISPATCH_WORKERS_MAX, value | 0); }
+  createSpot(): Spot {
+    const spot = Spot.create(this);
+    this._spots.add(spot);
+    try {
+      const raw = requireNative().spotNodeStatus(this._native) as {
+        nodeRoutingId?: Buffer | null;
+      };
+      if (raw?.nodeRoutingId) {
+        this._nodeRoutingId = RoutingId.from(raw.nodeRoutingId);
+      }
+    } catch {
+      // Ignore cache warm-up failure; status() will surface real errors later.
+    }
+    return spot;
+  }
+  entrySpot(): Spot {
+    const spot = Spot.fromNative(this, configCall('spot node entry spot lookup failed', () =>
+      requireNative().spotNodeEntrySpot(this._native)
+    ));
+    this._spots.add(spot);
+    return spot;
+  }
+  spotLookup(spotRid: RoutingId): Spot | null {
+    const normalizedSpotRid = normalizeRoutingId(spotRid, 'spotRid');
+    const native = configCall('spot node spot lookup failed', () =>
+      requireNative().spotNodeSpotLookup(this._native, normalizedSpotRid)
+    );
+    if (!native) return null;
+    const spot = Spot.fromNative(this, native);
+    this._spots.add(spot);
+    return spot;
+  }
+  getOrCreateSpot(spotRid: RoutingId): { spot: Spot; created: boolean } {
+    const normalizedSpotRid = normalizeRoutingId(spotRid, 'spotRid');
+    const result = configCall('spot node spot get-or-create failed', () =>
+      requireNative().spotNodeSpotGetOrNew(this._native, normalizedSpotRid)
+    ) as { spot: unknown; created: boolean };
+    const spot = Spot.fromNative(this, result.spot);
+    this._spots.add(spot);
+    return { spot, created: !!result.created };
+  }
+  createActor(actorId: string): Actor {
+    const normalizedActorId = validateCString(actorId, 'actorId', 255);
+    return Actor.create(
+      this._native,
+      actorRefFromRaw(configCall('spot node actor create failed', () =>
+        requireNative().spotNodeActorNew(
+          this._native,
+          normalizedActorId
+        ) as any
+      ))
+    );
+  }
+  actorLookup(actorId: string): ActorRef {
+    const normalizedActorId = validateCString(actorId, 'actorId', 255);
+    return actorRefFromRaw(
+      configCall('spot node actor lookup failed', () =>
+        requireNative().spotNodeActorLookup(
+          this._native,
+          normalizedActorId
+        ) as any
+      )
+    );
+  }
+  remoteActorGetRef(targetNodeRid: RoutingId, actorId: string): ActorLookupOp {
+    const node = this._native;
+    const normalizedNodeRid = normalizeRoutingId(targetNodeRid, 'targetNodeRid');
+    const normalizedActorId = validateCString(actorId, 'actorId', 255);
+    return new ActorLookupOperation((callback, timeoutMs) =>
+      invokeRemoteActorGetRef(node, normalizedNodeRid, normalizedActorId, callback, timeoutMs),
+    );
+  }
+  destroyActor(actor: ActorRef): ActorDestroyOp {
+    const node = this._native;
+    const actorRaw = actorRefToRaw(actor);
+    return new ActorDestroyOperation((callback, timeoutMs) =>
+      invokeActorDestroy(node, actorRaw, callback, timeoutMs),
+    );
+  }
+  joinActor(actor: ActorRef, destNodeRid: RoutingId, destSpotRid: RoutingId): ActorJoinOp {
+    const node = this._native;
+    return new ActorJoinOperation((parts, callback, flags, timeoutMs) =>
+      invokeActorJoin(node, actor, destNodeRid, destSpotRid, null, parts, callback, flags, timeoutMs),
+    );
+  }
+  joinActorEntrySpot(actor: ActorRef, destNodeRid: RoutingId): ActorJoinEntrySpotOp {
+    const node = this._native;
+    return new ActorJoinEntrySpotOperation((callback, timeoutMs) =>
+      invokeActorJoinEntrySpot(node, actor, destNodeRid, callback, timeoutMs),
+    );
+  }
+  leaveActor(actor: ActorRef, currentSpotRid: RoutingId): ActorLeaveOp {
+    const node = this._native;
+    return new ActorLeaveOperation((callback, timeoutMs) =>
+      invokeActorLeave(node, actor, currentSpotRid, callback, timeoutMs),
+    );
+  }
+  sendBoundSessionMsg(actor: ActorRef): SendOp {
+    const node = this._native;
+    return new SendOperation((parts, flags) => invokeActorSendBoundSession(node, actor, parts, flags));
+  }
+  /** @internal */
+  unregisterSpot(spot: Spot): void {
+    this._spots.delete(spot);
+  }
+  status(): SpotNodeStatus {
+    const raw = configCall('spot node status snapshot failed', () =>
+      requireNative().spotNodeStatus(this._native) as {
+      channelName: string;
+      localEndpoint: string;
+      nodeRoutingId?: Buffer | null;
+      state: number;
+      configuredPeerCount: number;
+      activePeerCount: number;
+      connectedPeerCount: number;
+      subjectCount: number;
+      readySubjectCount: number;
+      lastError: number;
+      lastChangedMs: number | bigint;
+    });
+    if (raw.nodeRoutingId) {
+      this._nodeRoutingId = RoutingId.from(raw.nodeRoutingId);
+    }
+    return mapSpotNodeStatus(raw, this._nodeRoutingId);
+  }
+  peers(): SpotNodePeerEntry[] {
+    return (configCall('spot node peers snapshot failed', () =>
+      requireNative().spotNodePeers(this._native) as Array<Record<string, unknown>>
+    ))
+      .map((entry) => mapSpotNodePeerEntry(entry as any));
+  }
+  peersQuery(filter?: SpotNodePeerFilter): SpotNodePeerEntry[] {
+    return (configCall('spot node peers query failed', () =>
+      requireNative().spotNodePeersQuery(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+    ))
+      .map((entry) => mapSpotNodePeerEntry(entry as any));
+  }
+  subjects(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[] {
+    return (configCall('spot node subjects snapshot failed', () =>
+      requireNative().spotNodeSubjects(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+    ))
+      .map((entry) => mapSpotNodeSubjectEntry(entry as any));
+  }
+  internalSockets(filter?: SpotNodeSocketFilter): SpotNodeSocketEntry[] {
+    return (configCall('spot node internal socket snapshot failed', () =>
+      requireNative().spotNodeInternalSockets(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+    ))
+      .map((entry) => ({
+        owner: entry.owner as SpotNodeSocketOwnerValue,
+        ownerId: BigInt(entry.ownerId as number | bigint),
+        ownerName: entry.ownerName as string,
+        socketName: entry.socketName as string,
+        socketType: entry.socketType as SocketTypeValue,
+        autoHwmVisible: Boolean(entry.autoHwmVisible),
+        snapshot: materializeMonitorStatus(entry.snapshot as MonitorStatusRaw),
+      }));
+  }
+  spots(): SpotNodeSpotEntry[] {
+    return (configCall('spot node spots snapshot failed', () =>
+      requireNative().spotNodeSpots(this._native) as Array<Record<string, unknown>>
+    ))
+      .map((entry) => spotNodeSpotEntryFromRaw(entry as any));
+  }
+  actors(): SpotNodeActorEntry[] {
+    return (configCall('spot node actors snapshot failed', () =>
+      requireNative().spotNodeActors(this._native) as Array<Record<string, unknown>>
+    ))
+      .map((entry) => spotNodeActorEntryFromRaw(entry as any));
+  }
+  close(): void {
+    if (!this._native) {
+      return;
+    }
+    for (const spot of [...this._spots]) {
+      spot.close();
+    }
+    closeCall('spot node close failed', () => {
+      requireNative().spotNodeDestroy(this._native);
+    });
+    this._native = null;
+  }
+}

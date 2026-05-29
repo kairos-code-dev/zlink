@@ -31,7 +31,7 @@ const TOPIC = 'bench';
 
 function trySpotPublish(spot: any, payload: Buffer, flags = zlink.SendFlags.DontWait): boolean {
   try {
-    return spot.publishFrom(TOPIC, payload, flags);
+    return spot.publish(TOPIC).message(payload).flags(flags).submit();
   } catch (error: any) {
     if (error instanceof zlink.SubmitError &&
         (error.result === zlink.SubmitResult.Backpressured ||
@@ -51,12 +51,18 @@ function trySpotPublish(spot: any, payload: Buffer, flags = zlink.SendFlags.Dont
 async function publishStopToken(spot: any) {
   // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token. Spot
   // stop delivery is a required phase-end signal, so failure is surfaced.
-  spot.publishFrom(TOPIC, STOP_TOKEN_BYTES, zlink.SendFlags.None);
+  spot.publish(TOPIC).message(STOP_TOKEN_BYTES).flags(zlink.SendFlags.None).submit();
 }
 
-function trySpotSubscribePayloadInto(spot: any, buffer: Buffer) {
+function trySpotSubscribe(spot: any, buffer: Buffer) {
   try {
-    return spot.subscribePayloadInto(buffer, zlink.RecvFlags.DontWait);
+    const received = new zlink.TopicMessage();
+    if (!spot.subscribe(received, zlink.RecvFlags.DontWait)) {
+      return null;
+    }
+    const data = received.singlePartOrThrow().data();
+    data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
+    return { size: data.length, topic: received.topic, routingId: received.routingId };
   } catch (error: any) {
     if (error instanceof zlink.RecvError &&
         (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
@@ -69,7 +75,7 @@ function trySpotSubscribePayloadInto(spot: any, buffer: Buffer) {
 function drainSpot(spot: any, buffer: Buffer, onMessage: (received: any) => void): boolean {
   let processed = false;
   while (true) {
-    const received = trySpotSubscribePayloadInto(spot, buffer);
+    const received = trySpotSubscribe(spot, buffer);
     if (!received) {
       return processed;
     }
@@ -79,10 +85,10 @@ function drainSpot(spot: any, buffer: Buffer, onMessage: (received: any) => void
 }
 
 async function runSpotBenchmark(msgSize: number, options: any) {
-  const ctx = new zlink.Context();
+  const ctx = zlink.createContext();
   applyContextPolicy(ctx);
-  const publisherNode = new zlink.SpotNode(ctx);
-  const subscriberNode = new zlink.SpotNode(ctx);
+  const publisherNode = zlink.createSpotNode(ctx);
+  const subscriberNode = zlink.createSpotNode(ctx);
   let publisher: any = null;
   let subscriber: any = null;
   let stopPublisher: any = null;

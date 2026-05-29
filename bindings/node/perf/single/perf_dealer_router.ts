@@ -33,14 +33,14 @@ async function runDealerRouterBenchmark(msgSize, options) {
       msgSize,
       options,
       endpointToken: 'dealer-router',
-      createReceiver: (ctx) => new zlink.RouterSocket(ctx),
-      createSender: (ctx) => new zlink.DealerSocket(ctx),
+      createReceiver: (ctx) => zlink.createRouterSocket(ctx),
+      createSender: (ctx) => zlink.createDealerSocket(ctx),
     });
   }
 
-  const ctx = new zlink.Context();
+  const ctx = zlink.createContext();
   applyContextPolicy(ctx);
-  const router = new zlink.RouterSocket(ctx);
+  const router = zlink.createRouterSocket(ctx);
   const routerMonitor = router.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
   const endpoint = await benchmarkEndpoint(options.transport, `dealer-router-${msgSize}`);
   let worker = null;

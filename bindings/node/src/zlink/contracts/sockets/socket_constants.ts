@@ -3,47 +3,21 @@
 export const SocketType = Object.freeze({
   ANY: 0,
   PAIR: 0x1001, PUB: 0x1002, SUB: 0x1003, DEALER: 0x1004,
-  ROUTER: 0x1005, XPUB: 0x1006, XSUB: 0x1007, STREAM: 0x1008
+  ROUTER: 0x1005, XPUB: 0x1006, XSUB: 0x1007, STREAM: 0x1008,
+  Any: 0,
+  Pair: 0x1001,
+  Pub: 0x1002,
+  Sub: 0x1003,
+  Dealer: 0x1004,
+  Router: 0x1005,
+  XPub: 0x1006,
+  XSub: 0x1007,
+  Stream: 0x1008
 } as const);
+export type SocketTypeValue = typeof SocketType[keyof typeof SocketType];
 
 export type MonitorEventMask = number;
 export const SOCKET_MONITOR_EVENT_ALL = 0xFFFF;
-
-export const SocketOption = Object.freeze({
-  AFFINITY: 0x3001, RATE: 0x3003, RECOVERY_IVL: 0x3004,
-  SNDBUF: 0x3005, RCVBUF: 0x3006, FD: 0x3007, EVENTS: 0x3008,
-  TYPE: 0x3009, LINGER: 0x300A, RECONNECT_IVL: 0x300B,
-  BACKLOG: 0x300C, RECONNECT_IVL_MAX: 0x300D, MAXMSGSIZE: 0x300E,
-  SNDHWM: 0x300F, RCVHWM: 0x3010, MULTICAST_HOPS: 0x3011,
-  RCVTIMEO: 0x3012, SNDTIMEO: 0x3013, LAST_ENDPOINT: 0x3014,
-  TCP_KEEPALIVE: 0x3015, TCP_KEEPALIVE_CNT: 0x3016,
-  TCP_KEEPALIVE_IDLE: 0x3017, TCP_KEEPALIVE_INTVL: 0x3018,
-  IMMEDIATE: 0x3019, IPV6: 0x301A, CONFLATE: 0x301B,
-  TOS: 0x301C, HANDSHAKE_IVL: 0x301D, BLOCKY: 0x301E,
-  INVERT_MATCHING: 0x3020, HEARTBEAT_IVL: 0x3021,
-  HEARTBEAT_TTL: 0x3022, HEARTBEAT_TIMEOUT: 0x3023,
-  CONNECT_TIMEOUT: 0x3024, TCP_MAXRT: 0x3025,
-  MULTICAST_MAXTPDU: 0x3026, BINDTODEVICE: 0x3027,
-  TLS_CERT: 0x3028, TLS_KEY: 0x3029, TLS_CA: 0x302A,
-  TLS_VERIFY: 0x302B, TLS_REQUIRE_CLIENT_CERT: 0x302C,
-  TLS_HOSTNAME: 0x302D, TLS_TRUST_SYSTEM: 0x302E,
-  TLS_PASSWORD: 0x302F, ZMP_METADATA: 0x3030,
-  TCP_NODELAY: 0x3031, ROUTE_VALUE_MAX_SIZE: 0x3032,
-  RID_DUPLICATE_POLICY: 0x3033,
-  DISCOVERY_SPOT_OWNER_SYNC: 0x3035, DISCOVERY_ACTOR_ROUTE_SYNC: 0x3036,
-  ROUTING_ID: 5, SUBSCRIBE: 6, UNSUBSCRIBE: 7,
-  ROUTER_MANDATORY: 0x3101,
-  PROBE_ROUTER: 0x3103, CONNECT_ROUTING_ID: 0x3104,
-  ROUTER_REQUEST_TIMEOUT_MS: 0x3105, ROUTER_WEIGHT: 0x3106,
-  DEALER_PROBE: 0x3201, DEALER_REQUEST_TIMEOUT_MS: 0x3202,
-  DEALER_WEIGHT: 0x3203,
-  XPUB_VERBOSE: 0x3301, XPUB_VERBOSER: 0x3302, XPUB_MANUAL: 0x3303,
-  XPUB_MANUAL_LAST_VALUE: 0x3304, XPUB_NODROP: 0x3305,
-  XPUB_WELCOME_MSG: 0x3306, XPUB_TOPICS_COUNT: 0x3307,
-  XPUB_APPROVE_SUBSCRIBE: 0x3308, XPUB_REJECT_SUBSCRIBE: 0x3309,
-  SUB_TOPICS_COUNT: 0x3400,
-  STREAM_NOTIFY: 0x3501
-} as const);
 
 export const SendFlags = Object.freeze({ None: 0, DontWait: 0x0001 } as const);
 export type SendFlags = typeof SendFlags[keyof typeof SendFlags];
@@ -57,6 +31,15 @@ export const RidDuplicatePolicy = Object.freeze({
 } as const);
 export type RidDuplicatePolicy =
   typeof RidDuplicatePolicy[keyof typeof RidDuplicatePolicy];
+export type RidDuplicatePolicyValue = RidDuplicatePolicy;
+
+export const SubmitRetryMode = Object.freeze({
+  Off: 0,
+  LocalFailure: 1
+} as const);
+export type SubmitRetryMode =
+  typeof SubmitRetryMode[keyof typeof SubmitRetryMode];
+export type SubmitRetryModeValue = SubmitRetryMode;
 
 export const PollEventFlag = Object.freeze({
   PollIn: 1,

@@ -27,8 +27,8 @@ function frame(payload) {
 async function main() {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
-  const ctx = new zlink.Context();
-  const stream = new zlink.StreamSocket(ctx);
+  const ctx = zlink.createContext();
+  const stream = zlink.createStreamSocket(ctx);
   let client;
 
   try {
@@ -38,7 +38,7 @@ async function main() {
 
     const received = await new Promise((resolve, reject) => {
       try {
-        stream.onPacket((sourceRid, header, body) => {
+        stream.setPacketHandler((sourceRid, header, body) => {
           resolve({ sourceRid, header, body });
         });
       } catch (error) {

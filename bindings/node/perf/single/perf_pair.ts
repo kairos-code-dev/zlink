@@ -35,14 +35,14 @@ async function runPairBenchmark(msgSize, options) {
       msgSize,
       options,
       endpointToken: 'pair',
-      createReceiver: (ctx) => new zlink.PairSocket(ctx),
-      createSender: (ctx) => new zlink.PairSocket(ctx),
+      createReceiver: (ctx) => zlink.createPairSocket(ctx),
+      createSender: (ctx) => zlink.createPairSocket(ctx),
     });
   }
 
-  const ctx = new zlink.Context();
+  const ctx = zlink.createContext();
   applyContextPolicy(ctx);
-  const server = new zlink.PairSocket(ctx);
+  const server = zlink.createPairSocket(ctx);
   const serverMonitor = server.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
   const endpoint = await benchmarkEndpoint(options.transport, `pair-${msgSize}`);
   let worker = null;

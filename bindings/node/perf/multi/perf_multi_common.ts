@@ -68,7 +68,7 @@ function resolveMultiConnectConcurrency(clientCount) {
 
 function resolveMultiSpotReadySettleMs() {
   const configured = Number(process.env.PERF_MULTI_SPOT_READY_SETTLE_MS);
-  return Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 1000;
+  return Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 5000;
 }
 
 function resolveMultiSpotControlSettleMs() {

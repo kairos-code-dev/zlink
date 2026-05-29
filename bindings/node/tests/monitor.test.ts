@@ -18,6 +18,23 @@ async function reservePort() {
   return port;
 }
 
+async function setPubBindOnReservedPort(node) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    try {
+      node.setPubBind(endpoint);
+      return endpoint;
+    } catch (error) {
+      if (!/Address already in use/i.test(String(error?.message ?? error))) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 async function waitFor(deadlineMs, read) {
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {
@@ -31,12 +48,13 @@ async function waitFor(deadlineMs, read) {
 }
 
 test('socket monitor exposes recv and snapshot surface', () => {
-  const ctx = new zlink.Context();
-  const socket = new zlink.PairSocket(ctx);
+  const ctx = zlink.createContext();
+  const socket = zlink.createPairSocket(ctx);
   const monitor = socket.monitorOpen();
 
   assert.equal(typeof monitor.recv, 'function');
-  assert.equal(typeof monitor.snapshot, 'function');
+  assert.equal(monitor.snapshot, undefined);
+  assert.equal(typeof monitor.status, 'function');
   const snapshot = monitor.status();
   assert.equal(typeof snapshot.autoHwmProfile, 'number');
   assert.equal(typeof snapshot.autoHwmPolicyClass, 'number');
@@ -52,8 +70,8 @@ test('socket monitor exposes recv and snapshot surface', () => {
 test('socket monitor receives bind state events', async () => {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
-  const ctx = new zlink.Context();
-  const socket = new zlink.PairSocket(ctx);
+  const ctx = zlink.createContext();
+  const socket = zlink.createPairSocket(ctx);
   const monitor = socket.monitorOpen();
   let client;
 
@@ -77,8 +95,8 @@ test('socket monitor receives bind state events', async () => {
 test('socket monitor onEvent receives bind state events', async () => {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
-  const ctx = new zlink.Context();
-  const socket = new zlink.PairSocket(ctx);
+  const ctx = zlink.createContext();
+  const socket = zlink.createPairSocket(ctx);
   const monitor = socket.monitorOpen();
   let client;
 
@@ -111,12 +129,11 @@ test('socket monitor onEvent receives bind state events', async () => {
 });
 
 test('spot node status snapshot starts empty', async () => {
-  const ctx = new zlink.Context();
-  const node = new zlink.SpotNode(ctx);
+  const ctx = zlink.createContext();
+  const node = zlink.createSpotNode(ctx);
   const spot = node.createSpot();
-  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
-  node.setPubBind(endpoint);
+  await setPubBindOnReservedPort(node);
 
   assert.equal(node.status().connectedPeerCount, 0);
   assert.equal(node.peers().length, 0);
@@ -129,21 +146,20 @@ test('spot node status snapshot starts empty', async () => {
 });
 
 test('discovery member peers reflect service-up state', async () => {
-  const ctx = new zlink.Context();
-  const registry = new zlink.Registry(ctx);
-  const providerDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'monitor-service-up');
-  const watcherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'monitor-service-up');
-  const node = new zlink.SpotNode(ctx);
+  const ctx = zlink.createContext();
+  const registry = zlink.createRegistry(ctx);
+  const providerDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'monitor-service-up');
+  const watcherDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'monitor-service-up');
+  const node = zlink.createSpotNode(ctx);
   const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const serviceEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
   try {
     registry.bind(pubEndpoint, routerEndpoint);
     providerDiscovery.connectRegistry(routerEndpoint);
     watcherDiscovery.connectRegistry(routerEndpoint);
     node.attachDiscovery(providerDiscovery);
-    node.setPubBind(serviceEndpoint);
+    await setPubBindOnReservedPort(node);
 
     const peer = await waitFor(5000, () =>
       watcherDiscovery.memberPeers().find((entry) =>
@@ -158,18 +174,14 @@ test('discovery member peers reflect service-up state', async () => {
 });
 
 test('spot node subject status reflects remote sub readiness after direct peer connect', async () => {
-  const port = await reservePort();
-  const clientPort = await reservePort();
-  const endpoint = `tcp://127.0.0.1:${port}`;
-  const clientEndpoint = `tcp://127.0.0.1:${clientPort}`;
-  const ctx = new zlink.Context();
-  const serverNode = new zlink.SpotNode(ctx);
-  const clientNode = new zlink.SpotNode(ctx);
+  const ctx = zlink.createContext();
+  const serverNode = zlink.createSpotNode(ctx);
+  const clientNode = zlink.createSpotNode(ctx);
   const serverSpot = serverNode.createSpot();
   const clientSpot = clientNode.createSpot();
   try {
-    serverNode.setPubBind(endpoint);
-    clientNode.setPubBind(clientEndpoint);
+    const endpoint = await setPubBindOnReservedPort(serverNode);
+    await setPubBindOnReservedPort(clientNode);
     clientNode.connectPeer(endpoint);
     clientSpot.setSubscription('topic.monitor.remote');
 
@@ -200,13 +212,12 @@ test('spot node subject status reflects remote sub readiness after direct peer c
 });
 
 test('spot node subject status stays unready before peer connect', async () => {
-  const ctx = new zlink.Context();
-  const node = new zlink.SpotNode(ctx);
+  const ctx = zlink.createContext();
+  const node = zlink.createSpotNode(ctx);
   const spot = node.createSpot();
-  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
 
   try {
-    node.setPubBind(endpoint);
+    await setPubBindOnReservedPort(node);
     spot.setSubscription('topic.monitor.local-only');
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(node.status().connectedPeerCount, 0);

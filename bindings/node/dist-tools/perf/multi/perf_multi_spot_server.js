@@ -27,7 +27,7 @@ function resolveSpotLatencyOnlyIntervalNs() {
 }
 function trySpotPublish(spot, _channelName, topic, payload, flags) {
     try {
-        return spot.publishFrom(topic, payload, flags);
+        return spot.publish(topic).message(payload).flags(flags).submit();
     }
     catch (error) {
         if (error instanceof zlink.SubmitError &&
@@ -67,11 +67,11 @@ function connectDataEndpoint(node, connectedDataEndpoints, endpoint) {
 }
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'server', 'MULTI_SPOT');
-    const node = new zlink.SpotNode(ctx);
-    const controlPub = new zlink.PubSocket(ctx);
-    const controlSub = new zlink.SubSocket(ctx);
+    const node = zlink.createSpotNode(ctx);
+    const controlPub = zlink.createPubSocket(ctx);
+    const controlSub = zlink.createSubSocket(ctx);
     const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
     let spot = null;
     const payload = createPayload(options.msgSize);
@@ -90,16 +90,16 @@ async function main() {
         applySpotNodeAdmission(node);
         node.setPubBind(dataBindEndpoint);
         spot = node.createSpot();
-        const spotPoller = new zlink.Poller();
-        const spotEvents = new zlink.PollEvents(1);
+        const spotPoller = zlink.createPoller();
+        const spotEvents = zlink.createPollEvents(1);
         spotPoller.add(spot, [POLLOUT], 0);
         applySocketPolicy(controlPub);
         applySocketPolicy(controlSub);
         applyAutoHwmMsgUnit(ctx, options.msgSize);
         controlPub.bind(options.controlEndpoint);
         controlSub.setSubscription(CONTROL_TOPIC);
-        controlPoller = new zlink.Poller();
-        controlEvents = new zlink.PollEvents(1);
+        controlPoller = zlink.createPoller();
+        controlEvents = zlink.createPollEvents(1);
         controlPoller.add(controlSub, pollEvents(POLLIN), 0);
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(controlPub, 'spotnode_control_pub', options.transport, options.msgSize);

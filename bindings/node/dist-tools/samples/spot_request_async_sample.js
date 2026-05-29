@@ -18,17 +18,17 @@ async function recvRouterRequest(router, received, timeoutMs) {
 }
 async function main() {
     const endpoint = `inproc://spot-request-async-${process.pid}`;
-    const ctx = new zlink.Context();
-    const requesterNode = new zlink.SpotNode(ctx);
-    const responderRouter = new zlink.RouterSocket(ctx);
-    const requesterDealer = new zlink.DealerSocket(ctx);
+    const ctx = zlink.createContext();
+    const requesterNode = zlink.createSpotNode(ctx);
+    const responderRouter = zlink.createRouterSocket(ctx);
+    const requesterDealer = zlink.createDealerSocket(ctx);
     let requester = null;
     try {
         requester = requesterNode.createSpot();
         responderRouter.bind(endpoint);
         requesterDealer.connect(endpoint);
         requesterNode.attachChannelDealerManual(CHANNEL_NAME, requesterDealer);
-        const pendingReply = requester.requestChannel(CHANNEL_NAME)
+        const pendingReply = requester.requestToChannel(CHANNEL_NAME)
             .message(Buffer.from(REQUEST_PAYLOAD))
             .timeout(2000)
             .submitAsync();

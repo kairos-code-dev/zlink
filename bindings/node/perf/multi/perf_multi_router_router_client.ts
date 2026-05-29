@@ -35,7 +35,7 @@ const SERVER_ROUTING_ID = zlink.RoutingId.from(SERVER_ID);
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
-  const ctx = new zlink.Context();
+  const ctx = zlink.createContext();
   applyContextPolicy(ctx, 'client', 'MULTI_ROUTER_ROUTER');
   const routers = [];
   const payloads = [];
@@ -43,12 +43,12 @@ async function main() {
   const replyMessages = [];
   const waiting = [];
   const sendPending = [];
-  const poller = new zlink.Poller();
-  const pollBuffer = new zlink.PollEvents(Math.max(1, options.clients));
+  const poller = zlink.createPoller();
+  const pollBuffer = zlink.createPollEvents(Math.max(1, options.clients));
 
   try {
     for (let i = 0; i < options.clients; i += 1) {
-      const router = new zlink.RouterSocket(ctx);
+      const router = zlink.createRouterSocket(ctx);
       applySocketPolicy(router);
       configureTlsClient(router, options.transport);
       router.setRoutingId(
@@ -87,13 +87,15 @@ async function main() {
       while (true) {
         if (options.msgSize >= 65536) {
           const echoed = replyBuffers[index];
-          const received = routers[index].recvPayloadInto(echoed, zlink.RecvFlags.DontWait);
-          if (received === null) {
+          const received = new zlink.Received();
+          if (!routers[index].recv(received, zlink.RecvFlags.DontWait)) {
             break;
           }
+          const data = received.singlePartOrThrow().data();
+          data.copy(echoed, 0, 0, Math.min(echoed.length, data.length));
           waiting[index] = false;
           collector.record(
-            decodeMetricHeader(echoed.subarray(0, Math.min(received, echoed.length))),
+            decodeMetricHeader(echoed.subarray(0, Math.min(data.length, echoed.length))),
             currentEpochNs()
           );
         } else {

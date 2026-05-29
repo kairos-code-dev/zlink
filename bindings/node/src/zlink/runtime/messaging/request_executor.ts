@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { Message } from '../../contracts/messaging/message';
+import { Message } from '../../contracts';
 import { RequestError, RequestResult, SubmitResult } from '../../contracts/errors/errors';
 import { SendFlags } from '../../contracts/sockets/socket_constants';
 import { submitNativeError } from '../errors/native_errors';

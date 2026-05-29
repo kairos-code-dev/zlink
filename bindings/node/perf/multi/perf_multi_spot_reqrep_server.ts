@@ -39,6 +39,12 @@ function trace(message) {
   }
 }
 
+function traceValue(label, value) {
+  trace(`${label}=${JSON.stringify(value, (_key, item) =>
+    typeof item === 'bigint' ? item.toString() : item
+  )}`);
+}
+
 function closeQuietly(resource) {
   try {
     resource?.close();
@@ -47,18 +53,53 @@ function closeQuietly(resource) {
   }
 }
 
+function recvRoutedNoWait(spot, received) {
+  try {
+    return spot.recvRouted(received, zlink.RecvFlags.DontWait);
+  } catch (error) {
+    const message = String(error?.message ?? error);
+    if (error instanceof zlink.RecvError
+        && (error.result === zlink.RecvResult.NoData
+            || /Device or resource busy|Resource temporarily unavailable/i.test(message))) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function drainRoutedRequests(spot) {
+  const received = new zlink.Received();
+  let count = 0;
+  try {
+    while (recvRoutedNoWait(spot, received)) {
+      count += 1;
+      let reply = received.reply();
+      for (const part of received.parts) reply = reply.message(part);
+      reply.submit();
+    }
+  } finally {
+    received.close();
+  }
+  if (count > 0) {
+    trace(`drained routed requests=${count}`);
+  }
+  return count;
+}
+
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
-  const ctx = new zlink.Context();
+  const ctx = zlink.createContext();
   applyContextPolicy(ctx, 'server', 'MULTI_SPOT_REQREP');
-  const node = new zlink.SpotNode(ctx);
-  const controlPub = new zlink.PubSocket(ctx);
-  const controlSub = new zlink.SubSocket(ctx);
+  const node = zlink.createSpotNode(ctx);
+  const controlPub = zlink.createPubSocket(ctx);
+  const controlSub = zlink.createSubSocket(ctx);
   const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
   let spot = null;
   let readyCount = 0;
   let connected = false;
   let dataConnected = false;
+  let expectedDataPeers = 0;
+  let dataReadySince = 0;
   let startRequested = false;
   let stop = false;
   let connectedControlEndpoint = '';
@@ -86,8 +127,8 @@ async function main() {
     emitMultiSocketHwmDetail(node, 'spotnode_data', options.transport, options.msgSize);
     controlPub.bind(options.controlEndpoint);
     controlSub.setSubscription(CONTROL_TOPIC);
-    controlPoller = new zlink.Poller();
-    controlEvents = new zlink.PollEvents(1);
+    controlPoller = zlink.createPoller();
+    controlEvents = zlink.createPollEvents(1);
     controlPoller.add(controlSub, pollEvents(POLLIN), 0);
 
     console.log(`READY,${options.endpoint}`);
@@ -113,26 +154,20 @@ async function main() {
       }
     })();
 
-    spot.onDispatchEvent((info) => {
-      if (info.event !== zlink.SpotDispatchEvent.RoutedReadable) {
-        return;
-      }
-      while (true) {
-        const received = spot.recvRouted(zlink.RecvFlags.DontWait);
-        if (!received) {
-          return;
+    const dataRouteSettleMs = 250;
+    const isStartReady = () => {
+      const dataReady = dataConnected && node.status().connectedPeerCount >= Math.max(1, expectedDataPeers);
+      if (dataReady) {
+        if (dataReadySince === 0) {
+          dataReadySince = Date.now();
         }
-        try {
-          let reply = received.reply();
-          for (const part of received.parts) reply = reply.message(part);
-          reply.submit();
-        } finally {
-          received.close();
-        }
+      } else {
+        dataReadySince = 0;
       }
-    });
-
-    while (!stop && !(connected && dataConnected && readyCount >= options.clients && startRequested)) {
+      return connected && dataReady && Date.now() - dataReadySince >= dataRouteSettleMs
+        && readyCount >= options.clients && startRequested;
+    };
+    while (!stop && !isStartReady()) {
       let drained = false;
       while (true) {
         const received = subscribeNoWait(controlSub);
@@ -151,6 +186,7 @@ async function main() {
             if (endpoint && !dataConnected) {
               node.connectPeer(endpoint);
               dataConnected = true;
+              expectedDataPeers = 1;
             }
             continue;
           }
@@ -161,12 +197,15 @@ async function main() {
           received.close();
         }
       }
-      if (!(connected && dataConnected && readyCount >= options.clients && startRequested) && !drained) {
+      if (!isStartReady() && !drained) {
         controlPoller.wait(controlEvents, 50);
       }
       await sleepMillis(0);
     }
     trace(`control-ready connected=${connected} data=${dataConnected} ready=${readyCount} start=${startRequested}`);
+    traceValue('status', node.status());
+    traceValue('peers', node.peers());
+    traceValue('subjects', node.subjects());
 
     if (stop) {
       return;
@@ -175,7 +214,9 @@ async function main() {
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `START,${options.msgSize}`);
 
     while (!stop) {
-      await sleepMillis(50);
+      if (drainRoutedRequests(spot) === 0) {
+        await sleepMillis(1);
+      }
     }
     trace('stop');
   } finally {

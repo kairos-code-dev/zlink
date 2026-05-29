@@ -24,18 +24,18 @@ async function waitFor(condition, label, timeoutMs = 5000) {
     }
     throw new Error(`${label} timed out`);
 }
-test('spot onDispatchEvent permits subscribe drain after async callback delivery', async () => {
+test('spot setDispatchHandler permits subscribe drain after async callback delivery', async () => {
     const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const ctx = new zlink.Context();
-    const publisherNode = new zlink.SpotNode(ctx);
-    const subscriberNode = new zlink.SpotNode(ctx);
+    const ctx = zlink.createContext();
+    const publisherNode = zlink.createSpotNode(ctx);
+    const subscriberNode = zlink.createSpotNode(ctx);
     const publisher = publisherNode.createSpot();
     const subscriber = subscriberNode.createSpot();
     let readableEvents = 0;
     try {
         publisherNode.setPubBind(endpoint);
         subscriber.setSubscription('dispatch-drain');
-        subscriber.onDispatchEvent((info) => {
+        subscriber.setDispatchHandler((info) => {
             if (info.event === zlink.SpotDispatchEvent.SubscribeReadable) {
                 readableEvents += 1;
             }

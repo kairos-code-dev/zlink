@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MPL-2.0
+
+import { NativeHandle } from '../handles/native_handle';
+import { requireNative } from '../native/native';
+import {
+  closeCall,
+  configCall,
+  handlerCall,
+  recvNativeError
+} from '../errors/native_errors';
+import { RecvFlags } from '../../contracts/sockets/socket_constants';
+import {
+  MonitorEvent,
+  type MonitorEventValueRaw,
+  type MonitorStatus,
+  type MonitorStatusRaw,
+} from '../../contracts/eventing';
+import type { SocketMonitorHandler } from '../../contracts/service';
+import { materializeMonitorStatus } from './monitor_status';
+
+export class MonitorSocket extends NativeHandle {
+  static readonly ignoreHandler: SocketMonitorHandler = () => {};
+
+  constructor(native: unknown) {
+    super(native);
+  }
+
+  recv(flags: RecvFlags = RecvFlags.None): MonitorEvent | null {
+    try {
+      if ((flags | 0) & (RecvFlags.DontWait | 0)) {
+        const raw = requireNative().monitorRecvNoWait(this._native) as MonitorEventValueRaw | null;
+        return raw ? MonitorEvent.create(raw) : null;
+      }
+      return MonitorEvent.create(requireNative().monitorRecv(this._native) as MonitorEventValueRaw);
+    } catch (error) {
+      throw recvNativeError(error, flags, 'monitor recv failed');
+    }
+  }
+
+  onEvent(handler: SocketMonitorHandler): void {
+    handlerCall('monitor handler registration failed', () => {
+      requireNative().monitorHandler(this._native, (event: MonitorEventValueRaw) => {
+        handler(MonitorEvent.create(event));
+      });
+    });
+  }
+
+  status(): MonitorStatus {
+    return materializeMonitorStatus(configCall('monitor status failed', () =>
+      requireNative().monitorStatus(this._native) as MonitorStatusRaw
+    ));
+  }
+
+  close(): void {
+    if (this._native) {
+      closeCall('monitor close failed', () => {
+        requireNative().monitorClose(this._native);
+      });
+      this._native = null;
+    }
+  }
+}

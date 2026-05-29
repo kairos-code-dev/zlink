@@ -5,9 +5,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
 test('router can send reply in a synchronous request-reply exchange', () => {
-    const ctx = new zlink.Context();
-    const router = new zlink.RouterSocket(ctx);
-    const dealer = new zlink.DealerSocket(ctx);
+    const ctx = zlink.createContext();
+    const router = zlink.createRouterSocket(ctx);
+    const dealer = zlink.createDealerSocket(ctx);
     router.bind('inproc://dealer-router-callback');
     dealer.connect('inproc://dealer-router-callback');
     dealer.send().message('request').submit();
@@ -24,9 +24,9 @@ test('router can send reply in a synchronous request-reply exchange', () => {
     ctx.close();
 });
 test('router can send multiple replies in a synchronous request-reply loop', () => {
-    const ctx = new zlink.Context();
-    const router = new zlink.RouterSocket(ctx);
-    const dealer = new zlink.DealerSocket(ctx);
+    const ctx = zlink.createContext();
+    const router = zlink.createRouterSocket(ctx);
+    const dealer = zlink.createDealerSocket(ctx);
     router.bind('inproc://dealer-router-callback-multi');
     dealer.connect('inproc://dealer-router-callback-multi');
     const ROUND_COUNT = 5;
@@ -49,9 +49,9 @@ test('router can send multiple replies in a synchronous request-reply loop', () 
     ctx.close();
 });
 test('router recv + send works as synchronous request-reply', () => {
-    const ctx = new zlink.Context();
-    const router = new zlink.RouterSocket(ctx);
-    const dealer = new zlink.DealerSocket(ctx);
+    const ctx = zlink.createContext();
+    const router = zlink.createRouterSocket(ctx);
+    const dealer = zlink.createDealerSocket(ctx);
     router.bind('inproc://dealer-router-sync-rr');
     dealer.connect('inproc://dealer-router-sync-rr');
     dealer.send().message('sync-request').submit();

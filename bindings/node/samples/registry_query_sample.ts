@@ -21,7 +21,7 @@ async function reservePort() {
 async function waitForTopologyEntry(query, channelName, endpoint) {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    const entry = query.snapshot({ channelName }).find((item) => item.channelName === channelName);
+    const entry = query.topology({ channelName }).find((item) => item.channelName === channelName);
     if (entry) {
       return entry;
     }
@@ -31,11 +31,11 @@ async function waitForTopologyEntry(query, channelName, endpoint) {
 }
 
 async function main() {
-  const ctx = new zlink.Context();
-  const registry = new zlink.Registry(ctx);
-  const query = new zlink.RegistryQueryClient(ctx);
-  const discovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, 'sample');
-  const node = new zlink.SpotNode(ctx);
+  const ctx = zlink.createContext();
+  const registry = zlink.createRegistry(ctx);
+  const query = zlink.createRegistryQueryClient(ctx);
+  const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'sample');
+  const node = zlink.createSpotNode(ctx);
   const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const serviceEndpoint = `tcp://127.0.0.1:${await reservePort()}`;

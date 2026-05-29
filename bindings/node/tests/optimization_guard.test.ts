@@ -103,7 +103,7 @@ test('node multi spot drain checks fallback deadline inside each burst', () => {
   );
 });
 
-test('node multi non-routed single-part sends use public sendFrom fast path', () => {
+test('node multi non-routed single-part sends use canonical send builder', () => {
   const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_runtime.ts');
   const body = fs.readFileSync(file, 'utf8');
   const trySend = body.match(
@@ -111,15 +111,17 @@ test('node multi non-routed single-part sends use public sendFrom fast path', ()
   );
 
   assert.ok(trySend?.groups?.body, 'missing trySocketSend helper');
-  assert.match(trySend.groups.body, /typeof socket\.sendFrom === 'function'/);
-  assert.match(trySend.groups.body, /socket\.sendFrom\(payload, zlink\.SendFlags\.DontWait\)/);
+  assert.doesNotMatch(trySend.groups.body, /sendFrom/);
+  assert.match(trySend.groups.body, /\.send\(\)/);
+  assert.match(trySend.groups.body, /\.flags\(zlink\.SendFlags\.DontWait\)\.submit\(\)/);
 });
 
-test('node multi dealer-dealer receiver uses raw public recvInto path', () => {
+test('node multi dealer-dealer receiver uses caller-provided Received storage', () => {
   const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_dealer_dealer_server.ts');
   const body = fs.readFileSync(file, 'utf8');
 
-  assert.match(body, /\.recvInto\(/);
+  assert.match(body, /new zlink\.Received\(\)/);
+  assert.match(body, /\.recv\(received, zlink\.RecvFlags\.DontWait\)/);
   assert.doesNotMatch(body, /\brecvNoWaitInto\b/);
   assert.doesNotMatch(body, /\brecvNoWait\b/);
 });
@@ -128,7 +130,8 @@ test('node multi pubsub client reuses caller-provided topic storage', () => {
   const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_pubsub_client.ts');
   const body = fs.readFileSync(file, 'utf8');
 
-  assert.match(body, /subscribePayloadInto/);
+  assert.match(body, /new zlink\.TopicMessage\(\)/);
+  assert.match(body, /\.subscribe\(received, zlink\.RecvFlags\.DontWait\)/);
   assert.match(body, /recordPayload/);
   assert.match(body, /const TOPIC = 'bench'/);
   assert.doesNotMatch(body, /\bsubscribeNoWait\b/);
@@ -158,7 +161,6 @@ test('node multi router-router client uses public routed send path', () => {
 
 test('node binding does not expose borrowed buffer send helpers', () => {
   const files = [
-    path.join(ROOT, 'src', 'zlink', 'runtime', 'core', 'canonical.ts'),
     path.join(ROOT, 'native', 'src', 'addon.cc'),
     path.join(ROOT, 'native', 'src', 'addon_core.cc'),
     path.join(ROOT, 'native', 'src', 'addon_core_api.h')

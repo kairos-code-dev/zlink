@@ -113,12 +113,12 @@ function applySpotNodeAdmission(node, options = {}) {
 }
 
 function socketTypeName(socket) {
-  if (socket instanceof zlink.PairSocket) return 'pair';
-  if (socket instanceof zlink.PubSocket) return 'pub';
-  if (socket instanceof zlink.SubSocket) return 'sub';
-  if (socket instanceof zlink.DealerSocket) return 'dealer';
-  if (socket instanceof zlink.RouterSocket) return 'router';
-  if (zlink.StreamSocket && socket instanceof zlink.StreamSocket) return 'stream';
+  if (typeof socket.setPacketHandler === 'function') return 'stream';
+  if (typeof socket.reply === 'function') return 'router';
+  if (typeof socket.request === 'function') return 'dealer';
+  if (typeof socket.publish === 'function') return 'pub';
+  if (typeof socket.subscribe === 'function') return 'sub';
+  if (typeof socket.send === 'function' && typeof socket.recv === 'function') return 'pair';
   return 'unknown';
 }
 
@@ -420,10 +420,13 @@ async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
     }
     let first = true;
     while (true) {
-      const receivedSize = router.recvPayloadInto(buffer, first ? RecvFlags.None : RecvFlags.DontWait);
-      if (receivedSize === null) {
+      const received = new zlink.Received();
+      if (!router.recv(received, first ? RecvFlags.None : RecvFlags.DontWait)) {
         break;
       }
+      const data = received.singlePartOrThrow().data();
+      data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
+      const receivedSize = data.length;
       first = false;
       if (receivedSize === STOP_TOKEN_BYTES.length
           && buffer.subarray(0, receivedSize).equals(STOP_TOKEN_BYTES)) {
@@ -535,7 +538,7 @@ async function runLocalSocketOneWayBenchmark({
   receiverHwmComponent = 'receiver',
   senderHwmComponent = 'sender'
 }) {
-  const ctx = new zlink.Context();
+  const ctx = zlink.createContext();
   applyContextPolicy(ctx);
   const receiver = createReceiver(ctx);
   const sender = createSender(ctx);

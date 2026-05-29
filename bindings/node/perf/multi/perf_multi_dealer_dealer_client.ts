@@ -41,16 +41,16 @@ const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 // START,<size> to BOTH; sender runs the send window after START.
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
-  const ctx = new zlink.Context();
+  const ctx = zlink.createContext();
   applyContextPolicy(ctx, 'client', 'MULTI_DEALER_DEALER');
   const dealers = [];
-  const poller = new zlink.Poller();
-  const pollBuffer = new zlink.PollEvents(Math.max(1, options.clients));
+  const poller = zlink.createPoller();
+  const pollBuffer = zlink.createPollEvents(Math.max(1, options.clients));
   let rl = null;
 
   try {
     for (let i = 0; i < options.clients; i += 1) {
-      const dealer = new zlink.DealerSocket(ctx);
+      const dealer = zlink.createDealerSocket(ctx);
       applySocketPolicy(dealer, { transport: options.transport });
       configureTlsClient(dealer, options.transport);
       dealers.push(dealer);
@@ -111,8 +111,25 @@ async function main() {
         }
       }
     }
-    for (const dealer of dealers) {
-      dealer.sendFrom(STOP_TOKEN_BYTES, zlink.SendFlags.None);
+    for (let i = 0; i < dealers.length; i += 1) {
+      const deadline = Date.now() + 5000;
+      while (!trySocketSend(dealers[i], STOP_TOKEN_BYTES)) {
+        if (Date.now() >= deadline) {
+          throw new Error('stop token send timeout');
+        }
+        pending[i] = true;
+        const readyCount = poller.wait(pollBuffer, 50);
+        for (let offset = 0; offset < readyCount; offset += 1) {
+          const index = pollBuffer.slot(offset);
+          if (!Number.isInteger(index) || index < 0 || index >= dealers.length) {
+            continue;
+          }
+          const event = { revents: pollBuffer.revents(offset) };
+          if (pollEventHas(event, POLLOUT)) {
+            pending[index] = false;
+          }
+        }
+      }
     }
     console.log(`CLIENT_DONE,${options.msgSize}`);
   } finally {

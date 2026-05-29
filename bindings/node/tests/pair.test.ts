@@ -23,9 +23,9 @@ function recvText(socket) {
 }
 
 test('pair messaging uses Message and Received by default', () => {
-  const ctx = new zlink.Context();
-  const sender = new zlink.PairSocket(ctx);
-  const receiver = new zlink.PairSocket(ctx);
+  const ctx = zlink.createContext();
+  const sender = zlink.createPairSocket(ctx);
+  const receiver = zlink.createPairSocket(ctx);
 
   sender.bind('inproc://pair-contract');
   receiver.connect('inproc://pair-contract');
@@ -45,11 +45,11 @@ test('pair messaging uses Message and Received by default', () => {
 });
 
 test('poller writes reusable event buffer and dispatches by slot', () => {
-  const ctx = new zlink.Context();
-  const sender = new zlink.PairSocket(ctx);
-  const receiver = new zlink.PairSocket(ctx);
-  const poller = new zlink.Poller();
-  const events = new zlink.PollEvents(2);
+  const ctx = zlink.createContext();
+  const sender = zlink.createPairSocket(ctx);
+  const receiver = zlink.createPairSocket(ctx);
+  const poller = zlink.createPoller();
+  const events = zlink.createPollEvents(2);
 
   sender.bind('inproc://node-poller-reusable');
   receiver.connect('inproc://node-poller-reusable');
@@ -73,13 +73,13 @@ test('poller writes reusable event buffer and dispatches by slot', () => {
 });
 
 test('poller capacity limits written events without losing remaining readiness', () => {
-  const ctx = new zlink.Context();
-  const sender1 = new zlink.PairSocket(ctx);
-  const receiver1 = new zlink.PairSocket(ctx);
-  const sender2 = new zlink.PairSocket(ctx);
-  const receiver2 = new zlink.PairSocket(ctx);
-  const poller = new zlink.Poller();
-  const events = new zlink.PollEvents(1);
+  const ctx = zlink.createContext();
+  const sender1 = zlink.createPairSocket(ctx);
+  const receiver1 = zlink.createPairSocket(ctx);
+  const sender2 = zlink.createPairSocket(ctx);
+  const receiver2 = zlink.createPairSocket(ctx);
+  const poller = zlink.createPoller();
+  const events = zlink.createPollEvents(1);
 
   sender1.bind('inproc://node-poller-capacity-a');
   receiver1.connect('inproc://node-poller-capacity-a');
@@ -119,11 +119,11 @@ test('poller capacity limits written events without losing remaining readiness',
 });
 
 test('poller modify remove and timeout follow core semantics', () => {
-  const ctx = new zlink.Context();
-  const sender = new zlink.PairSocket(ctx);
-  const receiver = new zlink.PairSocket(ctx);
-  const poller = new zlink.Poller();
-  const events = new zlink.PollEvents(1);
+  const ctx = zlink.createContext();
+  const sender = zlink.createPairSocket(ctx);
+  const receiver = zlink.createPairSocket(ctx);
+  const poller = zlink.createPoller();
+  const events = zlink.createPollEvents(1);
 
   sender.bind('inproc://node-poller-modify-remove');
   receiver.connect('inproc://node-poller-modify-remove');
@@ -149,12 +149,12 @@ test('poller modify remove and timeout follow core semantics', () => {
 });
 
 test('poller distinguishes socket and timer events in one buffer', () => {
-  const ctx = new zlink.Context();
-  const sender = new zlink.PairSocket(ctx);
-  const receiver = new zlink.PairSocket(ctx);
-  const timer = new zlink.Timer();
-  const poller = new zlink.Poller();
-  const events = new zlink.PollEvents(2);
+  const ctx = zlink.createContext();
+  const sender = zlink.createPairSocket(ctx);
+  const receiver = zlink.createPairSocket(ctx);
+  const timer = zlink.createTimer();
+  const poller = zlink.createPoller();
+  const events = zlink.createPollEvents(2);
 
   sender.bind('inproc://node-poller-timer-socket');
   receiver.connect('inproc://node-poller-timer-socket');
@@ -193,13 +193,13 @@ test('poller distinguishes socket and timer events in one buffer', () => {
 });
 
 test('poller runtime surface excludes allocation wait and wrapper lookups', () => {
-  const events = new zlink.PollEvents(1);
-  const poller = new zlink.Poller();
+  const events = zlink.createPollEvents(1);
+  const poller = zlink.createPoller();
 
   assert.equal(poller.waitMany, undefined);
   assert.equal(events.socket, undefined);
   assert.equal(events.timer, undefined);
-  assert.throws(() => new zlink.PollEvents(0), RangeError);
+  assert.throws(() => zlink.createPollEvents(0), RangeError);
   assert.throws(() => poller.addFd(0, [zlink.PollEventFlag.PollIn], -1), RangeError);
 
   poller.close();
@@ -207,8 +207,8 @@ test('poller runtime surface excludes allocation wait and wrapper lookups', () =
 });
 
 test('recv returns null when no message is available with DontWait', () => {
-  const ctx = new zlink.Context();
-  const pair = new zlink.PairSocket(ctx);
+  const ctx = zlink.createContext();
+  const pair = zlink.createPairSocket(ctx);
 
   assert.equal(recvMaybe(pair), null);
 
@@ -217,9 +217,9 @@ test('recv returns null when no message is available with DontWait', () => {
 });
 
 test('recvHandler delivers multipart Message instances', () => {
-  const ctx = new zlink.Context();
-  const sender = new zlink.PairSocket(ctx);
-  const receiver = new zlink.PairSocket(ctx);
+  const ctx = zlink.createContext();
+  const sender = zlink.createPairSocket(ctx);
+  const receiver = zlink.createPairSocket(ctx);
 
   sender.bind('inproc://pair-handler-contract');
   receiver.connect('inproc://pair-handler-contract');
@@ -239,22 +239,23 @@ test('recvHandler delivers multipart Message instances', () => {
   ctx.close();
 });
 
-test('pair supports buffer fast paths', () => {
-  const ctx = new zlink.Context();
-  const sender = new zlink.PairSocket(ctx);
-  const receiver = new zlink.PairSocket(ctx);
+test('pair supports canonical builder send and caller-provided recv storage', () => {
+  const ctx = zlink.createContext();
+  const sender = zlink.createPairSocket(ctx);
+  const receiver = zlink.createPairSocket(ctx);
 
   sender.bind('inproc://pair-buffer-fast-path');
   receiver.connect('inproc://pair-buffer-fast-path');
 
-  assert.equal(sender.sendFrom(Buffer.from('buffer-ping')), true);
-  assert.equal(receiver.recvBuffer().toString(), 'buffer-ping');
+  sender.send().message(Buffer.from('buffer-ping')).submit();
+  const first = new zlink.Received();
+  assert.equal(receiver.recv(first), true);
+  assert.equal(first.singlePartOrThrow().data().toString(), 'buffer-ping');
 
-  assert.equal(sender.sendFrom(Buffer.from('buffer-pong')), true);
-  const target = Buffer.alloc(32);
-  const size = receiver.recvInto(target);
-  assert.equal(size, 'buffer-pong'.length);
-  assert.equal(target.subarray(0, size).toString(), 'buffer-pong');
+  sender.send().message(Buffer.from('buffer-pong')).submit();
+  const second = new zlink.Received();
+  assert.equal(receiver.recv(second), true);
+  assert.equal(second.singlePartOrThrow().data().toString(), 'buffer-pong');
 
   receiver.close();
   sender.close();
@@ -262,8 +263,8 @@ test('pair supports buffer fast paths', () => {
 });
 
 test('pair surface stays recv-only on the canonical api', () => {
-  const ctx = new zlink.Context();
-  const receiver = new zlink.PairSocket(ctx);
+  const ctx = zlink.createContext();
+  const receiver = zlink.createPairSocket(ctx);
 
   assert.equal(receiver.onReceive, undefined);
   assert.equal(typeof receiver.recv, 'function');

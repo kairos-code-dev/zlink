@@ -8,7 +8,7 @@ const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, recvNoWaitInto, sendStopTokenOnce, trySocketSend, waitForConnectionReady } = require('./perf_multi_runtime');
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'client', 'MULTI_DEALER_ROUTER');
     const dealers = [];
     const payloads = [];
@@ -16,11 +16,11 @@ async function main() {
     const replyMessages = [];
     const waiting = [];
     const sendPending = [];
-    const poller = new zlink.Poller();
-    const pollBuffer = new zlink.PollEvents(Math.max(1, options.clients));
+    const poller = zlink.createPoller();
+    const pollBuffer = zlink.createPollEvents(Math.max(1, options.clients));
     try {
         for (let i = 0; i < options.clients; i += 1) {
-            const dealer = new zlink.DealerSocket(ctx);
+            const dealer = zlink.createDealerSocket(ctx);
             applySocketPolicy(dealer);
             configureTlsClient(dealer, options.transport);
             dealer.setRoutingId(zlink.RoutingId.from(Buffer.from(`CLIENT-${i}`, 'ascii')));
@@ -56,12 +56,14 @@ async function main() {
             while (true) {
                 if (options.msgSize >= 65536) {
                     const echoed = replyBuffers[index];
-                    const receivedBytes = dealers[index].recvInto(echoed, zlink.RecvFlags.DontWait);
-                    if (receivedBytes === null) {
+                    const received = new zlink.Received();
+                    if (!dealers[index].recv(received, zlink.RecvFlags.DontWait)) {
                         break;
                     }
+                    const data = received.singlePartOrThrow().data();
+                    data.copy(echoed, 0, 0, Math.min(echoed.length, data.length));
                     waiting[index] = false;
-                    collector.record(decodeMetricHeader(echoed.subarray(0, Math.min(receivedBytes, echoed.length))), currentEpochNs());
+                    collector.record(decodeMetricHeader(echoed.subarray(0, Math.min(data.length, echoed.length))), currentEpochNs());
                 }
                 else {
                     const echoed = replyMessages[index];

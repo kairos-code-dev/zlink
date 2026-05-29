@@ -8,7 +8,7 @@ const perf_stop_token_1 = require("../perf_stop_token");
 const TOPIC = 'bench';
 function trySpotPublish(spot, payload, flags = zlink.SendFlags.DontWait) {
     try {
-        return spot.publishFrom(TOPIC, payload, flags);
+        return spot.publish(TOPIC).message(payload).flags(flags).submit();
     }
     catch (error) {
         if (error instanceof zlink.SubmitError &&
@@ -28,11 +28,17 @@ function trySpotPublish(spot, payload, flags = zlink.SendFlags.DontWait) {
 async function publishStopToken(spot) {
     // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token. Spot
     // stop delivery is a required phase-end signal, so failure is surfaced.
-    spot.publishFrom(TOPIC, perf_stop_token_1.STOP_TOKEN_BYTES, zlink.SendFlags.None);
+    spot.publish(TOPIC).message(perf_stop_token_1.STOP_TOKEN_BYTES).flags(zlink.SendFlags.None).submit();
 }
-function trySpotSubscribePayloadInto(spot, buffer) {
+function trySpotSubscribe(spot, buffer) {
     try {
-        return spot.subscribePayloadInto(buffer, zlink.RecvFlags.DontWait);
+        const received = new zlink.TopicMessage();
+        if (!spot.subscribe(received, zlink.RecvFlags.DontWait)) {
+            return null;
+        }
+        const data = received.singlePartOrThrow().data();
+        data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
+        return { size: data.length, topic: received.topic, routingId: received.routingId };
     }
     catch (error) {
         if (error instanceof zlink.RecvError &&
@@ -45,7 +51,7 @@ function trySpotSubscribePayloadInto(spot, buffer) {
 function drainSpot(spot, buffer, onMessage) {
     let processed = false;
     while (true) {
-        const received = trySpotSubscribePayloadInto(spot, buffer);
+        const received = trySpotSubscribe(spot, buffer);
         if (!received) {
             return processed;
         }
@@ -54,10 +60,10 @@ function drainSpot(spot, buffer, onMessage) {
     }
 }
 async function runSpotBenchmark(msgSize, options) {
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     (0, perf_single_common_1.applyContextPolicy)(ctx);
-    const publisherNode = new zlink.SpotNode(ctx);
-    const subscriberNode = new zlink.SpotNode(ctx);
+    const publisherNode = zlink.createSpotNode(ctx);
+    const subscriberNode = zlink.createSpotNode(ctx);
     let publisher = null;
     let subscriber = null;
     let stopPublisher = null;

@@ -19,8 +19,8 @@ function parseArgs(argv) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const ctx = new zlink.Context();
-  const node = new zlink.SpotNode(ctx);
+  const ctx = zlink.createContext();
+  const node = zlink.createSpotNode(ctx);
   let spot = null;
 
   try {

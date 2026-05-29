@@ -7,8 +7,8 @@ import {
   RoutingId,
   TopicMessage,
   type MessageSnapshot
-} from '../../contracts/messaging/message';
-import { wrapRoutingId } from '../../contracts/service/models';
+} from '../../contracts';
+import { wrapRoutingId } from '../../contracts/service';
 
 export interface NativeReceivedRaw {
   parts: MessageSnapshot[];

@@ -25,9 +25,9 @@ function timeoutPromise(ms, label) {
 async function main() {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
-  const ctx = new zlink.Context();
-  const routerSocket = new zlink.RouterSocket(ctx);
-  const dealerSocket = new zlink.DealerSocket(ctx);
+  const ctx = zlink.createContext();
+  const routerSocket = zlink.createRouterSocket(ctx);
+  const dealerSocket = zlink.createDealerSocket(ctx);
   const clientRoutingId = zlink.RoutingId.from(Buffer.from('request-reply-client'));
 
   try {

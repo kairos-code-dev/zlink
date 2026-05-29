@@ -33,12 +33,12 @@ async function waitForSpotPeer(node: { status(): { connectedPeerCount: number } 
 }
 
 async function main() {
-  const ctx = new zlink.Context();
-  const registry = new zlink.Registry(ctx);
-  const publisherDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
-  const subscriberDiscovery = new zlink.Discovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
-  const publisherNode = new zlink.SpotNode(ctx);
-  const subscriberNode = new zlink.SpotNode(ctx);
+  const ctx = zlink.createContext();
+  const registry = zlink.createRegistry(ctx);
+  const publisherDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
+  const subscriberDiscovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, CHANNEL_NAME);
+  const publisherNode = zlink.createSpotNode(ctx);
+  const subscriberNode = zlink.createSpotNode(ctx);
   let publisher = null;
   let subscriber = null;
   const topic = 'room:lobby';

@@ -17,9 +17,9 @@ function recvSubscriptionEventMaybe(socket) {
 }
 
 test('xpub exposes subscription events and dedicated option helpers', () => {
-  const ctx = new zlink.Context();
-  const xpub = new zlink.XPubSocket(ctx);
-  const xsub = new zlink.XSubSocket(ctx);
+  const ctx = zlink.createContext();
+  const xpub = zlink.createXPubSocket(ctx);
+  const xsub = zlink.createXSubSocket(ctx);
 
   xpub.bind('inproc://xpub-events');
   xsub.connect('inproc://xpub-events');

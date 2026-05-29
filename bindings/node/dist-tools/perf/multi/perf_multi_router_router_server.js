@@ -19,25 +19,27 @@ function drainPending(router, pending) {
 }
 function receiveAndQueueReplies(router, recvBuffer, pending) {
     while (true) {
-        const received = router.recvInto(recvBuffer, zlink.RecvFlags.DontWait);
-        if (received === null) {
+        const received = new zlink.Received();
+        if (!router.recv(received, zlink.RecvFlags.DontWait)) {
             break;
         }
         if (!received.routingId || received.spotRid || received.requestSeq) {
             continue;
         }
+        const data = received.singlePartOrThrow().data();
+        data.copy(recvBuffer, 0, 0, Math.min(recvBuffer.length, data.length));
         pending.push({
             routingId: received.routingId,
-            payload: Buffer.from(recvBuffer.subarray(0, received.size))
+            payload: Buffer.from(recvBuffer.subarray(0, data.length))
         });
     }
 }
 async function main() {
     const options = parseMultiArgs(process.argv.slice(2));
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'server', 'MULTI_ROUTER_ROUTER');
-    const router = new zlink.RouterSocket(ctx);
-    const poller = new zlink.Poller();
+    const router = zlink.createRouterSocket(ctx);
+    const poller = zlink.createPoller();
     const recvBuffer = Buffer.allocUnsafe(Math.max(options.msgSize, HEADER_SIZE, STOP_TOKEN_BYTES.length));
     const pending = [];
     let pollBuffer = null;
@@ -52,7 +54,7 @@ async function main() {
         ctx.recalculateAutoHwm();
         emitMultiSocketHwmDetail(router, 'endpoint', options.transport, options.msgSize);
         poller.add(router, pollEvents(POLLIN), 0);
-        pollBuffer = new zlink.PollEvents(1);
+        pollBuffer = zlink.createPollEvents(1);
         const readyBarrier = waitForConnectionReadyCount(router, options.clients);
         console.log(`READY,${options.endpoint}`);
         rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });

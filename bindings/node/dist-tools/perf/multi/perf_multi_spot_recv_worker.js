@@ -7,9 +7,15 @@ const { configureTlsClient } = require('../common/perf_tls');
 const { createRunId, decodeMetricHeader, currentEpochNs, HEADER_SIZE, sleepMillis } = require('../common/perf_metrics');
 const { applyAutoHwmMsgUnit, applyContextPolicy, applySpotNodeAdmission, emitMultiSocketHwmDetail } = require('./perf_multi_runtime');
 const TOPIC = 'bench';
-function trySpotSubscribePayloadInto(spot, buffer) {
+function trySpotSubscribe(spot, buffer) {
     try {
-        return spot.subscribePayloadInto(buffer, zlink.RecvFlags.DontWait);
+        const received = new zlink.TopicMessage();
+        if (!spot.subscribe(received, zlink.RecvFlags.DontWait)) {
+            return null;
+        }
+        const data = received.singlePartOrThrow().data();
+        data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
+        return { size: data.length, topic: received.topic, routingId: received.routingId };
     }
     catch (error) {
         if (error instanceof zlink.RecvError &&
@@ -59,9 +65,9 @@ async function waitForStart() {
 }
 async function main() {
     const options = workerData;
-    const ctx = new zlink.Context();
+    const ctx = zlink.createContext();
     applyContextPolicy(ctx, 'client', 'MULTI_SPOT');
-    const node = new zlink.SpotNode(ctx);
+    const node = zlink.createSpotNode(ctx);
     const slots = [];
     try {
         configureTlsClient(node, options.transport);
@@ -100,7 +106,7 @@ async function main() {
                 const { spot, buffer } = slots[i];
                 let drained = 0;
                 while (drained < burstCap && currentEpochNs() < fallbackDeadlineNs) {
-                    const received = trySpotSubscribePayloadInto(spot, buffer);
+                    const received = trySpotSubscribe(spot, buffer);
                     if (!received) {
                         break;
                     }

@@ -33,6 +33,7 @@ const {
   publishControlUntilSent,
   subscribeNoWait,
   trySocketPublish,
+  waitForSpotNodeConnectedPeerCount,
   waitForRunnerControlConnected,
   waitForRunnerStart
 } = require('./perf_multi_runtime');
@@ -44,6 +45,13 @@ const SERVER_NODE_ROUTING_ID = zlink.RoutingId.from(
 const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.from(
   Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii')
 );
+const TRACE = process.env.PERF_MULTI_SPOT_SENDSEND_TRACE === '1';
+
+function trace(message) {
+  if (TRACE) {
+    console.error(`[multi-spot-sendsend-client] ${message}`);
+  }
+}
 
 function isTransientSendError(error) {
   return error instanceof zlink.SubmitError
@@ -55,12 +63,10 @@ function isTransientSendError(error) {
 
 function sendToServer(slot) {
   try {
-    return slot.spot.sendToSpotFrom(
-      SERVER_NODE_ROUTING_ID,
-      SERVER_SPOT_ROUTING_ID,
-      slot.payload,
-      zlink.SendFlags.DontWait
-    );
+    return slot.spot.sendToSpot(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID)
+      .message(slot.payload)
+      .flags(zlink.SendFlags.DontWait)
+      .submit();
   } catch (error) {
     if (isTransientSendError(error)) {
       return false;
@@ -101,15 +107,15 @@ function receiveControlStart(controlSub, msgSize) {
 
 async function main() {
   const options = parseMultiArgs(process.argv.slice(2));
-  const ctx = new zlink.Context();
+  const ctx = zlink.createContext();
   applyContextPolicy(ctx, 'client', 'MULTI_SPOT_SENDSEND');
-  const controlPub = new zlink.PubSocket(ctx);
-  const controlSub = new zlink.SubSocket(ctx);
+  const controlPub = zlink.createPubSocket(ctx);
+  const controlSub = zlink.createSubSocket(ctx);
   const controlPubWaiter = createSocketEventWaiter(controlPub, POLLOUT);
   const controlSubWaiter = createSocketEventWaiter(controlSub, POLLIN);
-  const node = new zlink.SpotNode(ctx);
+  const node = zlink.createSpotNode(ctx);
   const slots = [];
-  const poller = new zlink.Poller();
+  const poller = zlink.createPoller();
   let pollBuffer = null;
 
   try {
@@ -122,6 +128,7 @@ async function main() {
     controlSub.setSubscription(CONTROL_TOPIC);
     controlSub.connect(options.serverControlEndpoint);
     await waitForRunnerControlConnected();
+    trace('control-connected');
 
     node.setRoutingId(zlink.RoutingId.from(Buffer.from('PERF_SPOT_SENDSEND_CLIENT_NODE', 'ascii')));
     const dataEndpoint = await benchmarkEndpoint(options.transport, `multi-spot-sendsend-client-${process.pid}`);
@@ -149,6 +156,7 @@ async function main() {
     await sleepMillis(resolveMultiSpotReadySettleMs());
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, `DATA_ENDPOINT,${dataEndpoint}`);
     await sleepMillis(resolveMultiSpotControlSettleMs());
+    await waitForSpotNodeConnectedPeerCount(node, 1);
     await publishControlUntilSent(controlPub, controlPubWaiter, CONTROL_TOPIC, 'CONNECTED');
     await sleepMillis(resolveMultiSpotControlSettleMs());
     await publishControlUntilSent(
@@ -158,6 +166,7 @@ async function main() {
       `READY_COUNT,${options.msgSize},${slots.length}`
     );
     console.log(`CLIENT_READY,${options.msgSize}`);
+    trace('client-ready');
 
     // C parity: wait_msg_size_start_with_ready_republish — re-publish
     // READY_COUNT every 250ms while waiting for START (stdin or control)
@@ -182,10 +191,11 @@ async function main() {
         sleepMillis(Math.min(50, Math.max(1, nextReadyAt - Date.now())))
       ]);
     }
+    trace('start-ready');
 
     const runId = createRunId(1);
     const activeSlots = slots.slice(0, activeSpotSlotLimit(slots.length, options.msgSize));
-    pollBuffer = new zlink.PollEvents(Math.max(1, activeSlots.length));
+    pollBuffer = zlink.createPollEvents(Math.max(1, activeSlots.length));
     for (let i = 0; i < activeSlots.length; i += 1) {
       poller.add(activeSlots[i].spot, pollEvents(POLLIN), i);
     }
@@ -202,18 +212,17 @@ async function main() {
     const drainSlot = (index) => {
       const slot = activeSlots[index];
       let progressed = false;
+      const received = new zlink.Received();
       while (true) {
-        let received = null;
         try {
-          received = slot.spot.recvRouted(zlink.RecvFlags.DontWait);
+          if (!slot.spot.recvRouted(received, zlink.RecvFlags.DontWait)) {
+            break;
+          }
         } catch (error) {
           if (error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData) {
             break;
           }
           throw error;
-        }
-        if (received === null) {
-          break;
         }
         try {
           if (!received.routingId || !received.spotRid || received.requestSeq !== 0n
@@ -294,6 +303,7 @@ async function main() {
     }
 
     const result = await collector.finish();
+    trace(`finish accepted=${result.accepted}`);
     for (const metricLine of summarizeMetrics(
       'MULTI_SPOT_SENDSEND',
       options.transport,

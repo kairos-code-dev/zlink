@@ -39,9 +39,9 @@ async function acceptJoin(actor, spot, payload) {
 async function main() {
     const port = await reservePort();
     const endpoint = `tcp://127.0.0.1:${port}`;
-    const ctx = new zlink.Context();
-    const node = new zlink.SpotNode(ctx);
-    const stream = new zlink.StreamSocket(ctx);
+    const ctx = zlink.createContext();
+    const node = zlink.createSpotNode(ctx);
+    const stream = zlink.createStreamSocket(ctx);
     let spot = null;
     let actor = null;
     let client = null;
@@ -50,7 +50,7 @@ async function main() {
         spot = node.createSpot();
         actor = node.createActor('queue-player-1');
         const payloads = [];
-        spot.onDispatchEvent((info) => {
+        spot.setDispatchHandler((info) => {
             if (info.event !== zlink.SpotDispatchEvent.ActorReadable) {
                 return;
             }
@@ -66,7 +66,7 @@ async function main() {
         client = net.createConnection({ host: '127.0.0.1', port });
         await once(client, 'connect');
         session = await new Promise((resolve) => {
-            stream.onPacket((sourceRid) => resolve(sourceRid));
+            stream.setPacketHandler((sourceRid) => resolve(sourceRid));
             client.write(frame(Buffer.from('open')));
         });
         await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();

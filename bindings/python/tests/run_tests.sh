@@ -15,6 +15,7 @@ if [[ -n "${PYTHONPATH:-}" ]]; then
   PYTHONPATH_ENTRIES+=("${PYTHONPATH}")
 fi
 export PYTHONPATH="$(IFS=:; printf '%s' "${PYTHONPATH_ENTRIES[*]}")"
+export PYTHONDONTWRITEBYTECODE="${PYTHONDONTWRITEBYTECODE:-1}"
 
 cd "${ROOT_DIR}"
 pytest -q "$@"

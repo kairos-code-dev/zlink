@@ -5,8 +5,7 @@
     "outDir": "dist-tools",
     "declaration": false,
     "sourceMap": false,
-    "moduleDetection": "force",
-    "noCheck": true
+    "moduleDetection": "force"
   },
   "include": [
     "tests/**/*.ts",

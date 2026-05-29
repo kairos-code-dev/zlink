@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/Contracts/Service/spot.hpp>
+#include <Runtime/Core/operation_state_owner.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
 
@@ -12,22 +13,164 @@ namespace service
 namespace
 {
 
-template <typename State>
-std::unique_ptr<State> make_operation_state (State &&state_)
+bool is_raw_request_kind (detail::spot_operation_kind_t kind_) noexcept
 {
-    return std::unique_ptr<State> (new State (std::move (state_)));
+    return kind_ == detail::spot_operation_kind_t::raw_request
+           || kind_ == detail::spot_operation_kind_t::raw_routed_request
+           || kind_ == detail::spot_operation_kind_t::raw_router_request_spot;
 }
 
-template <typename State>
-State &operation_state (std::unique_ptr<State> &state_) noexcept
+void ensure_raw_request_state (const detail::spot_operation_state_t &state_)
 {
-    return *state_;
+    if (!state_.raw_socket)
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+    if (state_.kind != detail::spot_operation_kind_t::raw_request
+        && !state_.first_rid)
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+    if (state_.kind == detail::spot_operation_kind_t::raw_router_request_spot
+        && !state_.second_rid)
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 }
 
-template <typename State>
-const State &operation_state (const std::unique_ptr<State> &state_) noexcept
+zlink_submit_result_t submit_raw_request_part (
+  detail::spot_operation_state_t &state_,
+  zlink_msg_t *part_out_,
+  zlink_part_flag_t part_flag_,
+  bool is_final_,
+  zlink_send_flags_t flags_,
+  detail::request_state_t *request_state_)
 {
-    return *state_;
+    const uint32_t timeout =
+      is_final_ ? static_cast<uint32_t> (state_.timeout.count ()) : 0u;
+    zlink_request_callback_t callback =
+      is_final_ ? &detail::request_callback_trampoline : NULL;
+    void *userdata = is_final_ ? request_state_ : NULL;
+
+    switch (state_.kind) {
+        case detail::spot_operation_kind_t::raw_request:
+            return zlink_dealer_request_part (state_.raw_socket, part_out_,
+                                              flags_, part_flag_, timeout,
+                                              callback, userdata);
+        case detail::spot_operation_kind_t::raw_routed_request:
+            return zlink_router_request_part (
+              state_.raw_socket,
+              zlink::detail::routing_id_native (*state_.first_rid), part_out_,
+              flags_, part_flag_, timeout, callback, userdata);
+        case detail::spot_operation_kind_t::raw_router_request_spot:
+            return zlink_router_request_spot_part (
+              state_.raw_socket,
+              zlink::detail::routing_id_native (*state_.first_rid),
+              zlink::detail::routing_id_native (*state_.second_rid), part_out_,
+              callback, userdata, flags_, part_flag_, timeout);
+        default:
+            return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+}
+
+async_result_t<std::vector<message_t>>
+submit_raw_request_async (detail::spot_operation_state_t &state_)
+{
+    ensure_raw_request_state (state_);
+
+    detail::request_state_t *request_state =
+      detail::make_future_request_state ();
+    std::future<std::vector<message_t>> future =
+      request_state->promise->get_future ();
+    std::vector<zlink_msg_t> native;
+    if (detail::move_parts_to_native (state_.parts, native) != 0) {
+        delete request_state;
+        throw last_error ();
+    }
+
+    size_t failed_index = 0;
+    const int rc = detail::submit_native_parts (
+      native, failed_index,
+      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
+           bool is_final_) {
+          return submit_raw_request_part (state_, part_out_, part_flag_,
+                                          is_final_, ZLINK_SEND_FLAGS_NONE,
+                                          request_state);
+      });
+    if (rc != 0) {
+        detail::close_native_parts (native, failed_index);
+        delete request_state;
+        throw last_error ();
+    }
+
+    return async_result_t<std::vector<message_t>> (
+      std::move (future),
+      zlink::detail::make_socket_request_progress (state_.raw_socket));
+}
+
+bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
+                                  request_callback_t callback_)
+{
+    ensure_raw_request_state (state_);
+
+    detail::request_state_t *request_state =
+      detail::make_callback_request_state (std::move (callback_));
+    std::vector<zlink_msg_t> native;
+    if (detail::move_parts_to_native (state_.parts, native) != 0) {
+        delete request_state;
+        throw last_error ();
+    }
+
+    size_t failed_index = 0;
+    const int rc = detail::submit_native_parts (
+      native, failed_index,
+      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
+           bool is_final_) {
+          return submit_raw_request_part (
+            state_, part_out_, part_flag_, is_final_,
+            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
+            request_state);
+      });
+    if (rc != 0) {
+        detail::close_native_parts (native, failed_index);
+        delete request_state;
+        const submit_error_t err (static_cast<submit_result_t> (rc),
+                                  zlink_errno ());
+        if (state_.flags == send_flags_t::dontwait
+            && err.result () == submit_result_t::backpressured)
+            return false;
+        throw err;
+    }
+    return true;
+}
+
+void submit_raw_reply (detail::spot_operation_state_t &state_)
+{
+    if (!state_.raw_socket || !state_.first_rid)
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+    if (state_.kind == detail::spot_operation_kind_t::raw_router_reply_spot
+        && !state_.second_rid)
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+
+    zlink::detail::throw_if_reply_flags_unsupported (state_.flags);
+    std::vector<zlink_msg_t> native;
+    if (detail::move_parts_to_native (state_.parts, native) != 0)
+        throw last_error ();
+
+    size_t failed_index = 0;
+    const int rc = detail::submit_native_parts (
+      native, failed_index,
+      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+          if (state_.kind == detail::spot_operation_kind_t::raw_reply) {
+              return zlink_router_reply_part (
+                state_.raw_socket,
+                zlink::detail::routing_id_native (*state_.first_rid),
+                state_.request_seq, part_out_, part_flag_);
+          }
+          return zlink_router_reply_spot_part (
+            state_.raw_socket,
+            zlink::detail::routing_id_native (*state_.first_rid),
+            zlink::detail::routing_id_native (*state_.second_rid),
+            state_.request_seq, part_out_, part_flag_);
+      });
+    if (rc != 0) {
+        detail::restore_parts_from_native (state_.parts, native, failed_index);
+        throw last_error ();
+    }
 }
 
 } // namespace
@@ -40,19 +183,19 @@ send_submit_operation_t &send_submit_operation_t::operator= (
 
 send_submit_operation_t::send_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (make_operation_state (std::move (state_)))
+    _state (zlink::detail::make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &send_submit_operation_t::state () noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 send_submit_operation_t::state () const noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 send_submit_operation_t &&send_submit_operation_t::message (message_t &part_) &&
@@ -82,18 +225,18 @@ send_operation_t &
 send_operation_t::operator= (send_operation_t &&) noexcept = default;
 
 send_operation_t::send_operation_t (detail::spot_operation_state_t &&state_) :
-    _state (make_operation_state (std::move (state_)))
+    _state (zlink::detail::make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &send_operation_t::state () noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 const detail::spot_operation_state_t &send_operation_t::state () const noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 send_submit_operation_t send_operation_t::message (message_t &part_) &&
@@ -120,19 +263,19 @@ request_submit_operation_t &request_submit_operation_t::operator= (
 
 request_submit_operation_t::request_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (make_operation_state (std::move (state_)))
+    _state (zlink::detail::make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &request_submit_operation_t::state () noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 request_submit_operation_t::state () const noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 request_submit_operation_t &&
@@ -157,19 +300,19 @@ request_operation_t::operator= (request_operation_t &&) noexcept = default;
 
 request_operation_t::request_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (make_operation_state (std::move (state_)))
+    _state (zlink::detail::make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &request_operation_t::state () noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 request_operation_t::state () const noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 request_submit_operation_t request_operation_t::message (message_t &part_) &&
@@ -188,20 +331,20 @@ request_callback_submit_operation_t::operator= (
 
 request_callback_submit_operation_t::request_callback_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (make_operation_state (std::move (state_)))
+    _state (zlink::detail::make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &
 request_callback_submit_operation_t::state () noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 request_callback_submit_operation_t::state () const noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 request_callback_submit_operation_t &&
@@ -234,19 +377,19 @@ reply_submit_operation_t &reply_submit_operation_t::operator= (
 
 reply_submit_operation_t::reply_submit_operation_t (
   detail::spot_operation_state_t &&state_) :
-    _state (make_operation_state (std::move (state_)))
+    _state (zlink::detail::make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &reply_submit_operation_t::state () noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 const detail::spot_operation_state_t &
 reply_submit_operation_t::state () const noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 reply_submit_operation_t &&
@@ -268,18 +411,18 @@ reply_operation_t &
 reply_operation_t::operator= (reply_operation_t &&) noexcept = default;
 
 reply_operation_t::reply_operation_t (detail::spot_operation_state_t &&state_) :
-    _state (make_operation_state (std::move (state_)))
+    _state (zlink::detail::make_operation_state (std::move (state_)))
 {
 }
 
 detail::spot_operation_state_t &reply_operation_t::state () noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 const detail::spot_operation_state_t &reply_operation_t::state () const noexcept
 {
-    return operation_state (_state);
+    return zlink::detail::operation_state (_state);
 }
 
 reply_submit_operation_t reply_operation_t::message (message_t &part_) &&
@@ -428,71 +571,8 @@ request_submit_operation_t::submit_async () &&
     if (state.parts.empty ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
-    if (state.kind == detail::spot_operation_kind_t::raw_request
-        || state.kind == detail::spot_operation_kind_t::raw_routed_request
-        || state.kind
-             == detail::spot_operation_kind_t::raw_router_request_spot) {
-        if (!state.raw_socket)
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        if (state.kind != detail::spot_operation_kind_t::raw_request
-            && !state.first_rid)
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        if (state.kind == detail::spot_operation_kind_t::raw_router_request_spot
-            && !state.second_rid)
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-
-        detail::request_state_t *request_state =
-          detail::make_future_request_state ();
-        std::future<std::vector<message_t> > future =
-          request_state->promise->get_future ();
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (state.parts, native) != 0) {
-            delete request_state;
-            throw last_error ();
-        }
-        size_t failed_index = 0;
-        const int rc = detail::submit_native_parts (
-          native, failed_index,
-          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-               bool is_final_) {
-              const uint32_t timeout =
-                is_final_ ? static_cast<uint32_t> (state.timeout.count ()) : 0u;
-              switch (state.kind) {
-                  case detail::spot_operation_kind_t::raw_request:
-                      return zlink_dealer_request_part (
-                        state.raw_socket, part_out_, ZLINK_SEND_FLAGS_NONE,
-                        part_flag_, timeout,
-                        is_final_ ? &detail::request_callback_trampoline : NULL,
-                        is_final_ ? request_state : NULL);
-                  case detail::spot_operation_kind_t::raw_routed_request:
-                      return zlink_router_request_part (
-                        state.raw_socket,
-                        zlink::detail::routing_id_native (*state.first_rid),
-                        part_out_, ZLINK_SEND_FLAGS_NONE, part_flag_, timeout,
-                        is_final_ ? &detail::request_callback_trampoline : NULL,
-                        is_final_ ? request_state : NULL);
-                  case detail::spot_operation_kind_t::raw_router_request_spot:
-                      return zlink_router_request_spot_part (
-                        state.raw_socket,
-                        zlink::detail::routing_id_native (*state.first_rid),
-                        zlink::detail::routing_id_native (*state.second_rid),
-                        part_out_,
-                        is_final_ ? &detail::request_callback_trampoline : NULL,
-                        is_final_ ? request_state : NULL, ZLINK_SEND_FLAGS_NONE,
-                        part_flag_, timeout);
-                  default:
-                      return ZLINK_SUBMIT_INVALID_ARGUMENT;
-              }
-          });
-        if (rc != 0) {
-            detail::close_native_parts (native, failed_index);
-            delete request_state;
-            throw last_error ();
-        }
-        return async_result_t<std::vector<message_t> > (
-          std::move (future),
-          zlink::detail::make_socket_request_progress (state.raw_socket));
-    }
+    if (is_raw_request_kind (state.kind))
+        return submit_raw_request_async (state);
 
     if (!state.spot)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
@@ -534,79 +614,8 @@ bool request_callback_submit_operation_t::submit (
     if (state.parts.empty ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
-    if (state.kind == detail::spot_operation_kind_t::raw_request
-        || state.kind == detail::spot_operation_kind_t::raw_routed_request
-        || state.kind
-             == detail::spot_operation_kind_t::raw_router_request_spot) {
-        if (!state.raw_socket)
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        if (state.kind != detail::spot_operation_kind_t::raw_request
-            && !state.first_rid)
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        if (state.kind == detail::spot_operation_kind_t::raw_router_request_spot
-            && !state.second_rid)
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-
-        detail::request_state_t *request_state =
-          detail::make_callback_request_state (std::move (callback_));
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (state.parts, native) != 0) {
-            delete request_state;
-            throw last_error ();
-        }
-        size_t failed_index = 0;
-        const int rc = detail::submit_native_parts (
-          native, failed_index,
-          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-               bool is_final_) {
-              const uint32_t timeout =
-                is_final_ ? static_cast<uint32_t> (state.timeout.count ()) : 0u;
-              switch (state.kind) {
-                  case detail::spot_operation_kind_t::raw_request:
-                      return zlink_dealer_request_part (
-                        state.raw_socket, part_out_,
-                        static_cast<zlink_send_flags_t> (
-                          static_cast<int> (state.flags)),
-                        part_flag_, timeout,
-                        is_final_ ? &detail::request_callback_trampoline : NULL,
-                        is_final_ ? request_state : NULL);
-                  case detail::spot_operation_kind_t::raw_routed_request:
-                      return zlink_router_request_part (
-                        state.raw_socket,
-                        zlink::detail::routing_id_native (*state.first_rid),
-                        part_out_,
-                        static_cast<zlink_send_flags_t> (
-                          static_cast<int> (state.flags)),
-                        part_flag_, timeout,
-                        is_final_ ? &detail::request_callback_trampoline : NULL,
-                        is_final_ ? request_state : NULL);
-                  case detail::spot_operation_kind_t::raw_router_request_spot:
-                      return zlink_router_request_spot_part (
-                        state.raw_socket,
-                        zlink::detail::routing_id_native (*state.first_rid),
-                        zlink::detail::routing_id_native (*state.second_rid),
-                        part_out_,
-                        is_final_ ? &detail::request_callback_trampoline : NULL,
-                        is_final_ ? request_state : NULL,
-                        static_cast<zlink_send_flags_t> (
-                          static_cast<int> (state.flags)),
-                        part_flag_, timeout);
-                  default:
-                      return ZLINK_SUBMIT_INVALID_ARGUMENT;
-              }
-          });
-        if (rc != 0) {
-            detail::close_native_parts (native, failed_index);
-            delete request_state;
-            const submit_error_t err (static_cast<submit_result_t> (rc),
-                                      zlink_errno ());
-            if (state.flags == send_flags_t::dontwait
-                && err.result () == submit_result_t::backpressured)
-                return false;
-            throw err;
-        }
-        return true;
-    }
+    if (is_raw_request_kind (state.kind))
+        return submit_raw_request_callback (state, std::move (callback_));
 
     if (!state.spot)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
@@ -651,36 +660,7 @@ void reply_submit_operation_t::submit () &&
 
     if (state.kind == detail::spot_operation_kind_t::raw_reply
         || state.kind == detail::spot_operation_kind_t::raw_router_reply_spot) {
-        if (!state.raw_socket || !state.first_rid)
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        if (state.kind == detail::spot_operation_kind_t::raw_router_reply_spot
-            && !state.second_rid)
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        zlink::detail::throw_if_reply_flags_unsupported (state.flags);
-        std::vector<zlink_msg_t> native;
-        if (detail::move_parts_to_native (state.parts, native) != 0)
-            throw last_error ();
-        size_t failed_index = 0;
-        const int rc = detail::submit_native_parts (
-          native, failed_index,
-          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-              if (state.kind == detail::spot_operation_kind_t::raw_reply) {
-                  return zlink_router_reply_part (
-                    state.raw_socket,
-                    zlink::detail::routing_id_native (*state.first_rid),
-                    state.request_seq, part_out_, part_flag_);
-              }
-              return zlink_router_reply_spot_part (
-                state.raw_socket,
-                zlink::detail::routing_id_native (*state.first_rid),
-                zlink::detail::routing_id_native (*state.second_rid),
-                state.request_seq, part_out_, part_flag_);
-          });
-        if (rc != 0) {
-            detail::restore_parts_from_native (state.parts, native,
-                                               failed_index);
-            throw last_error ();
-        }
+        submit_raw_reply (state);
         return;
     }
 

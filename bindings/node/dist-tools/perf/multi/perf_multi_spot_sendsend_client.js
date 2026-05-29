@@ -216,7 +216,7 @@ async function main() {
             if (progressed) {
                 continue;
             }
-            const remainingMs = Number((activeStopNs - currentEpochNs()) / 1000000n);
+            const remainingMs = Number((BigInt(activeStopNs - currentEpochNs())) / 1000000n);
             if (remainingMs <= 0) {
                 break;
             }

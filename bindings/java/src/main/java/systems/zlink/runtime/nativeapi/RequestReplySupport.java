@@ -44,6 +44,14 @@ public final class RequestReplySupport {
         return timeout == null ? DEFAULT_TIMEOUT_MS : Math.max(1L, timeout.toMillis());
     }
 
+    public static int toTimeoutInt(long timeoutMs) {
+        if (timeoutMs <= 1L) {
+            return 1;
+        }
+        return timeoutMs >= Integer.MAX_VALUE ? Integer.MAX_VALUE
+            : (int) timeoutMs;
+    }
+
     public static <T> void armTimeout(ConcurrentMap<Long, CompletableFuture<T>> pending,
                                       long requestId,
                                       CompletableFuture<T> future,

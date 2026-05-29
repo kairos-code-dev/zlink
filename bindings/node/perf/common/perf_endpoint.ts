@@ -12,11 +12,15 @@ async function reservePort() {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const address = server.address();
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   return address.port;
 }
 
-async function benchmarkEndpoint(transport, token, options = {}) {
+async function benchmarkEndpoint(
+  transport,
+  token,
+  options: { suite?: string; bindPort?: number | string } = {}
+) {
   const suite = options.suite || 'single';
   if (transport === 'inproc' && suite === 'single') {
     return `inproc://perf-${token}-${process.pid}`;

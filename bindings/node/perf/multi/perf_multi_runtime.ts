@@ -50,7 +50,10 @@ function waitPollerOne(poller, events, timeoutMs) {
   };
 }
 
-function applySocketPolicy(socket, options = {}) {
+function applySocketPolicy(
+  socket,
+  options: { transport?: string; recvTimeout?: number; noDrop?: boolean } = {}
+) {
   const linger = integerEnv('PERF_MULTI_LINGER_MS', 0);
   // C parity: bindings/c/perf/multi/common/perf_multi_runtime.hpp
   // apply_debug_timeouts (~986-997) sets ZLINK_OPT_SNDTIMEO/RCVTIMEO to

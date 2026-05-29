@@ -4,7 +4,19 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 export interface NativeBinding {
-  [name: string]: (...args: any[]) => any;
+  [name: string]: (...args: unknown[]) => unknown;
+}
+
+interface NativeLoadFailure {
+  target: string;
+  error: unknown;
+}
+
+function describeLoadFailure(failure: NativeLoadFailure): string {
+  const message = failure.error instanceof Error
+    ? failure.error.message
+    : String(failure.error);
+  return `${failure.target}: ${message}`;
 }
 
 function refreshAddonRuntimeLink(
@@ -33,8 +45,10 @@ function prependPathEntries(entries: Array<string | undefined>): void {
   process.env.PATH = existing.join(';');
 }
 
-function loadNative(): NativeBinding | null {
+function loadNative(): NativeBinding {
   const packageRoot = path.join(__dirname, '..', '..', '..', '..');
+  const failures: NativeLoadFailure[] = [];
+  const buildAddon = path.join(packageRoot, 'build', 'Release', 'zlink.node');
   try {
     if (process.platform === 'linux') {
       const addonDir = path.join(packageRoot, 'build', 'Release');
@@ -50,8 +64,9 @@ function loadNative(): NativeBinding | null {
       }
       process.env.LD_LIBRARY_PATH = existing.join(':');
     }
-    return require(path.join(packageRoot, 'build', 'Release', 'zlink.node')) as NativeBinding;
-  } catch (_) {
+    return require(buildAddon) as NativeBinding;
+  } catch (error) {
+    failures.push({ target: buildAddon, error });
     try {
       const prebuiltDir = path.join(
         packageRoot,
@@ -70,15 +85,28 @@ function loadNative(): NativeBinding | null {
         ]);
       }
       return require(prebuilt) as NativeBinding;
-    } catch (_) {
-      return null;
+    } catch (error) {
+      failures.push({
+        target: path.join(packageRoot, 'prebuilds', `${process.platform}-${process.arch}`, 'zlink.node'),
+        error
+      });
     }
   }
+  throw new Error([
+    'zlink native addon not found. Build with node-gyp.',
+    ...failures.map((failure) => `- ${describeLoadFailure(failure)}`)
+  ].join('\n'));
 }
 
-const native = loadNative();
+let native: NativeBinding | null = null;
+let loadError: Error | null = null;
+try {
+  native = loadNative();
+} catch (error) {
+  loadError = error instanceof Error ? error : new Error(String(error));
+}
 
 export function requireNative(): NativeBinding {
-  if (!native) throw new Error('zlink native addon not found. Build with node-gyp.');
+  if (!native) throw loadError ?? new Error('zlink native addon not found. Build with node-gyp.');
   return native;
 }

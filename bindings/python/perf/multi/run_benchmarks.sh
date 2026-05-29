@@ -38,6 +38,7 @@ if [[ $show_help -eq 0 ]]; then
     export ZLINK_LIBRARY_PATH="${ZLINK_LIBRARY_PATH:-$CORE_RUNTIME}"
     echo "Perf runtime libzlink: $(realpath "$CORE_RUNTIME")"
 fi
+export PYTHONDONTWRITEBYTECODE="${PYTHONDONTWRITEBYTECODE:-1}"
 
 exec python -u "$SCRIPT_DIR/run_benchmarks.py" \
     "${default_args[@]}" \

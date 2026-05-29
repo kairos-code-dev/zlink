@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Multi perf common utilities.
 
 use std::fs;

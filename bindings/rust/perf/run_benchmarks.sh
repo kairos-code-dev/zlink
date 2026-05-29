@@ -220,7 +220,7 @@ sleep_millis() {
 }
 
 # -- Build -------------------------------------------------------------------
-TARGET_DIR="${BUILD_DIR:-${SCRIPT_DIR}/single/target}"
+TARGET_DIR="${BUILD_DIR:-${CARGO_TARGET_DIR:-/tmp/zlink-rust-target/perf-single}}"
 SINGLE_DIR="${TARGET_DIR}/release"
 
 if [[ "${REUSE_BUILD}" -eq 0 ]]; then

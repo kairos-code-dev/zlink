@@ -85,10 +85,7 @@ public final class RoutedRequestSupport {
     }
 
     public static int toTimeoutInt(long timeoutMs) {
-        if (timeoutMs <= 1L) {
-            return 1;
-        }
-        return timeoutMs >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) timeoutMs;
+        return RequestReplySupport.toTimeoutInt(timeoutMs);
     }
 
     private static MethodHandle callbackHandle() {

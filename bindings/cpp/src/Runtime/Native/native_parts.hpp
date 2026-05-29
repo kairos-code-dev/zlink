@@ -49,11 +49,6 @@ inline int recv_result_from_errno (int err_) noexcept
     }
 }
 
-inline int recv_result_from_rc (int rc_) noexcept
-{
-    return rc_ == 0 ? ZLINK_RECV_OK : recv_result_from_errno (errno);
-}
-
 inline int recv_router_parts (void *router_,
                               recv_flags_t flags_,
                               const zlink_routing_id_t **source_node_rid_out_,
@@ -172,19 +167,6 @@ inline bool socket_uses_router_recv (void *socket_)
         return false;
 
     return type == ZLINK_SOCKET_ROUTER || type == 6;
-}
-
-inline bool socket_uses_stream_recv (void *socket_)
-{
-    if (!socket_)
-        return false;
-
-    int type = 0;
-    size_t size = sizeof (type);
-    if (zlink_get_option (socket_, ZLINK_OPT_TYPE, &type, &size) != 0)
-        return false;
-
-    return type == ZLINK_SOCKET_STREAM;
 }
 
 inline int

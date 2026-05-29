@@ -69,6 +69,21 @@ export function actorPartFromRaw(raw: ActorPartRaw): ActorPart {
 
 export const actorJoinRequestHandles = new WeakMap<ActorJoinInfo, bigint>();
 
+function actorJoinRefFromRaw(
+  raw: {
+    actor?: ActorRefRaw;
+    sourceActor?: ActorRefRaw;
+    targetActor?: ActorRefRaw;
+  },
+  field: 'sourceActor' | 'targetActor'
+): ActorRef {
+  const actor = raw[field] ?? raw.actor;
+  if (!actor) {
+    throw new TypeError(`actor join info missing ${field}`);
+  }
+  return actorRefFromRaw(actor);
+}
+
 export function actorJoinInfoFromRaw(raw: {
   actor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
   sourceActor?: { nodeRid: Buffer; actorId: string; generation: bigint | number };
@@ -81,8 +96,8 @@ export function actorJoinInfoFromRaw(raw: {
   flags: number;
   requestHandle: bigint;
 }): ActorJoinInfo {
-  const sourceActor = actorRefFromRaw(raw.sourceActor ?? raw.actor!);
-  const targetActor = actorRefFromRaw(raw.targetActor ?? raw.actor!);
+  const sourceActor = actorJoinRefFromRaw(raw, 'sourceActor');
+  const targetActor = actorJoinRefFromRaw(raw, 'targetActor');
   const info = {
     sourceActor,
     targetActor,

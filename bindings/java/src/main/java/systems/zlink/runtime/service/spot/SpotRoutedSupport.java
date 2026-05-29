@@ -31,6 +31,7 @@ import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
+import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -48,12 +49,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
@@ -80,9 +75,6 @@ final class SpotRoutedSupport implements AutoCloseable {
       new ConcurrentHashMap<>();
     private static final ConcurrentMap<Long, SpotRoutedSupport> DISPATCH_RECEIVERS =
       new ConcurrentHashMap<>();
-    private static final ScheduledExecutorService REQUEST_TIMEOUTS =
-      Executors.newSingleThreadScheduledExecutor(new TimeoutThreadFactory());
-
     private final Spot spot;
     private SpotDispatchEventHandler dispatchEventHandler;
     private ExecutorService callbackExecutor;
@@ -114,7 +106,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                                                 timeoutMs) -> {
             submitSpotRequestSpot(destNodeRid, destSpotRid, payload,
               REPLY_CALLBACK, MemorySegment.ofAddress(requestId), flags.value(),
-              toTimeoutInt(timeoutMs));
+              RequestReplySupport.toTimeoutInt(timeoutMs));
             return 0;
         });
     }
@@ -129,7 +121,7 @@ final class SpotRoutedSupport implements AutoCloseable {
               (arena, payload, requestId, timeoutMs) -> {
                   submitSpotRequestSpot(destNodeRid, destSpotRid, payload,
                     REPLY_CALLBACK, MemorySegment.ofAddress(requestId),
-                    flags.value(), toTimeoutInt(timeoutMs));
+                    flags.value(), RequestReplySupport.toTimeoutInt(timeoutMs));
                   return 0;
               });
             return true;
@@ -151,7 +143,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                                                 timeoutMs) -> {
             submitSpotRequestRouter(peerRid, payload, REPLY_CALLBACK,
               MemorySegment.ofAddress(requestId), flags.value(),
-              toTimeoutInt(timeoutMs));
+              RequestReplySupport.toTimeoutInt(timeoutMs));
             return 0;
         });
     }
@@ -165,7 +157,7 @@ final class SpotRoutedSupport implements AutoCloseable {
               (arena, payload, requestId, timeoutMs) -> {
                   submitSpotRequestRouter(peerRid, payload, REPLY_CALLBACK,
                     MemorySegment.ofAddress(requestId), flags.value(),
-                    toTimeoutInt(timeoutMs));
+                    RequestReplySupport.toTimeoutInt(timeoutMs));
                   return 0;
               });
             return true;
@@ -419,7 +411,7 @@ final class SpotRoutedSupport implements AutoCloseable {
     private CompletableFuture<List<Message>> requestViaNative(List<Message> parts,
                                                               Duration timeout,
                                                               NativeRequest request) {
-        long timeoutMs = timeoutMillis(timeout);
+        long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
         CompletableFuture<Received> future = registerPending(requestId, timeoutMs);
         RequestProgressPump.trackSpotRequest(future, handle(),
@@ -443,7 +435,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                                           Duration timeout,
                                           NativeRequest request) {
         Objects.requireNonNull(callback, "callback");
-        long timeoutMs = timeoutMillis(timeout);
+        long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
         PendingCallback pending = registerPendingCallback(requestId, callback);
         RequestProgressPump.trackSpotRequest(pending.progress, handle(),
@@ -877,13 +869,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                                                                long timeoutMs) {
         CompletableFuture<Received> future = new CompletableFuture<>();
         PENDING.put(requestId, future);
-        ScheduledFuture<?> timeout = REQUEST_TIMEOUTS.schedule(() -> {
-            if (PENDING.remove(requestId, future)) {
-                future.completeExceptionally(new TimeoutException(
-                    "request timed out"));
-            }
-        }, timeoutMs, TimeUnit.MILLISECONDS);
-        future.whenComplete((ignored, error) -> timeout.cancel(false));
+        RequestReplySupport.armTimeout(PENDING, requestId, future, timeoutMs);
         return future;
     }
 
@@ -1014,36 +1000,6 @@ final class SpotRoutedSupport implements AutoCloseable {
         return readRoutingId(nativeRid);
     }
 
-    private static long timeoutMillis(Duration timeout) {
-        return timeout == null ? 5_000L : Math.max(1L, timeout.toMillis());
-    }
-
-    private static int toTimeoutInt(long timeoutMs) {
-        if (timeoutMs <= 1L) {
-            return 1;
-        }
-        return timeoutMs >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) timeoutMs;
-    }
-
-    private static Throwable unwrap(Throwable error) {
-        if (error instanceof java.util.concurrent.CompletionException
-            && error.getCause() != null) {
-            return error.getCause();
-        }
-        return error;
-    }
-
-    private static RequestResult requestResult(Throwable error) {
-        Throwable cause = unwrap(error);
-        if (cause instanceof ZlinkRequestException requestException) {
-            return requestException.getResult();
-        }
-        if (cause instanceof TimeoutException) {
-            return RequestResult.TIMED_OUT;
-        }
-        return RequestResult.PROTOCOL_ERROR;
-    }
-
     private static MethodHandle callbackHandle(String name, MethodType type) {
         try {
             return MethodHandles.lookup().findStatic(SpotRoutedSupport.class,
@@ -1073,15 +1029,5 @@ final class SpotRoutedSupport implements AutoCloseable {
     private interface NativeSubmit {
         int invoke(Arena arena, List<Message> payload);
     }
-
-    private static final class TimeoutThreadFactory implements ThreadFactory {
-        @Override
-        public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, "zlink-spot-request-timeout");
-            thread.setDaemon(true);
-            return thread;
-        }
-    }
-
 
 }

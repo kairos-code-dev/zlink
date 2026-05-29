@@ -12,7 +12,7 @@ async function reservePort() {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const { port } = server.address();
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   return port;
 }
 
@@ -36,7 +36,11 @@ async function main() {
     client = net.createConnection({ host: '127.0.0.1', port });
     await once(client, 'connect');
 
-    const received = await new Promise((resolve, reject) => {
+    const received = await new Promise<{
+      sourceRid: InstanceType<typeof zlink.RoutingId>;
+      header: InstanceType<typeof zlink.Message>;
+      body: InstanceType<typeof zlink.Message>;
+    }>((resolve, reject) => {
       try {
         stream.setPacketHandler((sourceRid, header, body) => {
           resolve({ sourceRid, header, body });

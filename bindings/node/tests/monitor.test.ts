@@ -14,7 +14,7 @@ async function reservePort() {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const { port } = server.address();
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   return port;
 }
 
@@ -101,7 +101,7 @@ test('socket monitor onEvent receives bind state events', async () => {
   let client;
 
   try {
-    const eventPromise = new Promise((resolve, reject) => {
+    const eventPromise = new Promise<{ event: number }>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('socket monitor onEvent timeout'));
       }, 5000);

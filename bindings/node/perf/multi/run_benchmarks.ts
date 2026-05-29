@@ -320,7 +320,7 @@ async function main() {
         emit(`      ${multiTableSeparatorLine()}`);
       }
 
-      const samples = new Map(msgSizes.map((size) => [size, []]));
+      const samples = new Map<number, any[]>(msgSizes.map((size) => [size, []]));
       const failedSizes = new Map();
       const sectionEmitted = new Set();
       let transportUnsupported = false;

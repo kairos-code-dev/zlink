@@ -7,6 +7,17 @@ const measurement = require('./perf_measurement');
 const report = require('./perf_report');
 const runtimePolicy = require('./perf_runtime_policy');
 
+export const {
+  HEADER_SIZE,
+  createPayload,
+  createRunId,
+  currentEpochNs,
+  decodeMetricHeader,
+  sleepMillis,
+  summarizeMetrics,
+  stampPayload
+} = measurement;
+
 module.exports = {
   ...args,
   ...measurement,

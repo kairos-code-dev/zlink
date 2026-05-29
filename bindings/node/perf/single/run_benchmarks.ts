@@ -111,7 +111,7 @@ function errorText(error) {
 }
 
 function buildBinaryEnv(options) {
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     PERF_SINGLE_DURATION_SECONDS: String(options.duration)
   };
@@ -358,7 +358,7 @@ async function main() {
         emit(`      ${singleTableSeparatorLine()}`);
       }
 
-      const samples = new Map(sizes.map((size) => [size, []]));
+      const samples = new Map<number, any[]>(sizes.map((size) => [size, []]));
       const failedSizes = new Map();
       const failedRecords = new Map();
       let transportUnsupported = false;

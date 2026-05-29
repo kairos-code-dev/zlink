@@ -13,6 +13,7 @@ echo ""
 
 source "$HOME/.cargo/env" 2>/dev/null || true
 export LD_LIBRARY_PATH="$CORE_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/zlink-rust-target/tests}"
 
 PASS=0
 FAIL=0

@@ -12,7 +12,7 @@ async function reservePort() {
   srv.listen(0, '127.0.0.1');
   await once(srv, 'listening');
   const { port } = srv.address();
-  await new Promise((resolve, reject) => srv.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => srv.close((error) => error ? reject(error) : resolve()));
   return port;
 }
 

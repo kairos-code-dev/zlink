@@ -36,7 +36,7 @@ function pollCompletionUntil(poller, pollBuffer, stopNs) {
     if (remainingNs <= 0n) {
         return 0;
     }
-    const remainingMs = Number((remainingNs + 999999n) / 1000000n);
+    const remainingMs = Number((BigInt(remainingNs) + 999999n) / 1000000n);
     return poller.wait(pollBuffer, Math.min(50, Math.max(1, remainingMs)));
 }
 function closeParts(parts) {

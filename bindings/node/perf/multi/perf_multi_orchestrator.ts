@@ -27,7 +27,7 @@ function collectLines(stream, onLine) {
 }
 
 async function waitForLine(processRef, expected, label, timeoutMs) {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     let done = false;
     if (processRef.__seenLines.includes(expected)) {
       resolve();
@@ -59,7 +59,7 @@ async function waitForLine(processRef, expected, label, timeoutMs) {
 }
 
 async function waitForPrefix(processRef, prefix, label, timeoutMs) {
-  return new Promise((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     let done = false;
     const seen = processRef.__seenLines.find((line) => line.startsWith(prefix));
     if (seen) {
@@ -178,7 +178,7 @@ function ensureChildStdinErrorHandler(processRef) {
   processRef.__stdinErrorHandlerAttached = true;
 }
 
-function writeChildLine(processRef, line, options = {}) {
+function writeChildLine(processRef, line, options: { end?: boolean } = {}) {
   const stdin = processRef?.stdin;
   if (!stdin || !stdin.writable || stdin.destroyed) {
     return;

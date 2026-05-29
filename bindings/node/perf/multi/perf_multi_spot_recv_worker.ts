@@ -20,6 +20,7 @@ const {
 } = require('./perf_multi_runtime');
 
 const TOPIC = 'bench';
+type StartMessage = { activeStartNs: string };
 
 function trySpotSubscribe(spot, buffer) {
   try {
@@ -106,7 +107,7 @@ async function main() {
     }
     parentPort.postMessage({ type: 'ready' });
 
-    const start = await waitForStart();
+    const start = await waitForStart() as StartMessage;
     const activeStartNs = BigInt(start.activeStartNs);
     const graceMultiplier = options.msgSize >= 262144
       ? 4

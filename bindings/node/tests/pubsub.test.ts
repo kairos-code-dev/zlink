@@ -16,7 +16,7 @@ async function reservePort() {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const { port } = server.address();
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   return port;
 }
 
@@ -179,7 +179,7 @@ test('remote spot peer delivery works across child processes', async () => {
   const clientPath = path.join(fixturesDir, 'spot_child_client.js');
 
   const waitForLine = (child, expected, timeoutMs, sink) => {
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       let buffered = '';
       let done = false;
       const timeout = setTimeout(() => {

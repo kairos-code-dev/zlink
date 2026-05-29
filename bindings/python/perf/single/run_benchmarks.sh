@@ -29,5 +29,6 @@ if [[ $show_help -eq 0 ]]; then
 fi
 
 export ZLINK_LIBRARY_PATH="${ZLINK_LIBRARY_PATH:-$CORE_RUNTIME}"
+export PYTHONDONTWRITEBYTECODE="${PYTHONDONTWRITEBYTECODE:-1}"
 
 exec python -u "$ROOT_DIR/run_benchmarks.py" "$@"

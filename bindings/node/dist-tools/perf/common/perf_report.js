@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = require('node:fs');
 const path = require('node:path');
-function buildEffectiveOptions(options, extraLines) {
+function buildEffectiveOptions(options, extraLines = []) {
     const patterns = options.patterns || options.pattern || '-';
     const lines = [
         `- lang: ${options.lang}`,

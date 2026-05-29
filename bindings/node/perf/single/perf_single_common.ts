@@ -48,7 +48,22 @@ async function benchmarkEndpoint(transport, token) {
   return commonBenchmarkEndpoint(transport, token, { suite: 'single' });
 }
 
-function applySocketPolicy(socket, options = {}) {
+interface SingleSocketPolicyOptions {
+  hwm?: number;
+  sendHwm?: number;
+  recvHwm?: number;
+  sendTimeoutMs?: number;
+  recvTimeoutMs?: number;
+  recvTimeout?: number;
+  lingerMs?: number;
+  noDrop?: boolean;
+}
+
+interface RecordUntilOptions {
+  recordUntilNs?: bigint | number | string;
+}
+
+function applySocketPolicy(socket, options: SingleSocketPolicyOptions = {}) {
   const manualOverrides =
     manualSocketOverridesEnabled('single');
   const hwm = Number.isFinite(options.hwm)
@@ -88,7 +103,7 @@ function applySocketPolicy(socket, options = {}) {
   }
 }
 
-function applySpotNodeAdmission(node, options = {}) {
+function applySpotNodeAdmission(node, options: Pick<SingleSocketPolicyOptions, 'hwm' | 'sendHwm' | 'recvHwm'> = {}) {
   const manualOverrides =
     manualSocketOverridesEnabled('single');
   if (!manualOverrides) {
@@ -341,7 +356,7 @@ async function waitForPostReadySettle(timeoutMs) {
 // An occasional `await sleepImmediate()` lets queued Worker postMessages and
 // the error channel run without turning every receive cycle into a scheduler
 // round trip.
-async function drainRecvSocket(socket, onMessage, options = {}) {
+async function drainRecvSocket(socket, onMessage, options: RecordUntilOptions = {}) {
   const useSubscribe = typeof socket.subscribe === 'function';
   const recvTimeoutMs = Math.max(
     1,
@@ -400,7 +415,7 @@ async function drainRecvSocket(socket, onMessage, options = {}) {
   }
 }
 
-async function drainRouterRecvInto(router, msgSize, onHeader, options = {}) {
+async function drainRouterRecvInto(router, msgSize, onHeader, options: RecordUntilOptions = {}) {
   const payloadSize = Math.max(msgSize, HEADER_SIZE);
   const buffer = Buffer.allocUnsafe(Math.max(HEADER_SIZE, STOP_TOKEN_BYTES.length));
   const recordUntilNs = options.recordUntilNs === undefined
@@ -695,7 +710,7 @@ function spawnSenderWorker(workerData) {
 }
 
 function waitForWorkerMessage(worker, expectedType, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 1000)) {
-  return new Promise((resolve, reject) => {
+  return new Promise<any>((resolve, reject) => {
     const seen = worker.__seenMessages.find((message) => message && message.type === expectedType);
     if (seen) {
       resolve(seen);
@@ -735,7 +750,7 @@ function waitForWorkerMessage(worker, expectedType, timeoutMs = integerEnv('PERF
 }
 
 function waitForWorkerError(worker) {
-  return new Promise((resolve) => {
+  return new Promise<any>((resolve) => {
     const seen = worker.__seenMessages.find((message) => message && message.type === 'error');
     if (seen) {
       resolve(seen);
@@ -762,7 +777,7 @@ async function closeSenderWorker(worker) {
   if (!worker) {
     return;
   }
-  const waitForExit = new Promise((resolve) => {
+  const waitForExit = new Promise<void>((resolve) => {
     worker.once('exit', () => resolve());
   });
   try {
@@ -784,6 +799,31 @@ async function closeSenderWorker(worker) {
 }
 
 module.exports = {
+  applyAutoHwmMsgUnit,
+  applyContextPolicy,
+  applySpotNodeAdmission,
+  applySocketPolicy,
+  configureTlsClient,
+  configureTlsServer,
+  emitSingleSocketHwmDetail,
+  emitSpotNodeHwmDetail,
+  benchmarkEndpoint,
+  closeSenderWorker,
+  drainRouterRecvInto,
+  drainRecvSocket,
+  parseSingleBinaryArgs,
+  runLocalSocketOneWayBenchmark,
+  sendSocketRequired,
+  spawnSenderWorker,
+  waitForWorkerDone,
+  waitForWorkerError,
+  waitForWorkerMessage,
+  waitForPostReadySettle,
+  waitForConnectionReady,
+  waitForMonitorConnectionReady,
+};
+
+export {
   applyAutoHwmMsgUnit,
   applyContextPolicy,
   applySpotNodeAdmission,

@@ -36,6 +36,7 @@ import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
+import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -57,11 +58,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
@@ -103,12 +101,6 @@ public final class NativeSpot implements Spot {
     private static final AtomicLong NEXT_REQUEST_ID = new AtomicLong(1L);
     private static final ConcurrentMap<Long, CompletableFuture<Received>> PENDING =
       new ConcurrentHashMap<>();
-    private static final ScheduledExecutorService REQUEST_TIMEOUTS =
-      Executors.newSingleThreadScheduledExecutor(runnable -> {
-          Thread thread = new Thread(runnable, "zlink-spot-request-timeout");
-          thread.setDaemon(true);
-          return thread;
-      });
 
     static {
         try {
@@ -575,7 +567,7 @@ public final class NativeSpot implements Spot {
                       response = reply;
                   }
                   callback.accept(error == null ? RequestResult.OK
-                      : requestResult(error), response);
+                      : RequestReplySupport.requestResult(error), response);
               });
             return true;
         } catch (ZlinkSubmitException ex) {
@@ -667,7 +659,7 @@ public final class NativeSpot implements Spot {
     private CompletableFuture<List<Message>> requestChannelInternal(
       String channelName, List<Message> parts, Duration timeout,
       SendFlags flags) {
-        long timeoutMs = timeoutMillis(timeout);
+        long timeoutMs = RequestReplySupport.timeoutMillis(timeout);
         long requestId = NEXT_REQUEST_ID.getAndIncrement();
         CompletableFuture<Received> future = registerPending(requestId,
           timeoutMs);
@@ -676,7 +668,7 @@ public final class NativeSpot implements Spot {
             submitSpotRequestChannel(channelName, parts, REPLY_CALLBACK,
                 MemorySegment.ofAddress(requestId),
                 Objects.requireNonNull(flags, "flags").value(),
-                toTimeoutInt(timeoutMs));
+                RequestReplySupport.toTimeoutInt(timeoutMs));
         } catch (RuntimeException ex) {
             PENDING.remove(requestId);
             future.cancel(false);
@@ -1914,13 +1906,7 @@ public final class NativeSpot implements Spot {
                                                                long timeoutMs) {
         CompletableFuture<Received> future = new CompletableFuture<>();
         PENDING.put(requestId, future);
-        ScheduledFuture<?> timeout = REQUEST_TIMEOUTS.schedule(() -> {
-            if (PENDING.remove(requestId, future)) {
-                future.completeExceptionally(new TimeoutException(
-                    "request timed out"));
-            }
-        }, timeoutMs, TimeUnit.MILLISECONDS);
-        future.whenComplete((ignored, error) -> timeout.cancel(false));
+        RequestReplySupport.armTimeout(PENDING, requestId, future, timeoutMs);
         return future;
     }
 
@@ -2073,36 +2059,6 @@ public final class NativeSpot implements Spot {
             return null;
         return readRoutingId(nativeRidPtr.reinterpret(
           NativeLayouts.ROUTING_ID_LAYOUT.byteSize()));
-    }
-
-    private static long timeoutMillis(Duration timeout) {
-        return timeout == null ? 5_000L : Math.max(1L, timeout.toMillis());
-    }
-
-    private static int toTimeoutInt(long timeoutMs) {
-        if (timeoutMs <= 1L)
-            return 1;
-        return timeoutMs >= Integer.MAX_VALUE ? Integer.MAX_VALUE
-          : (int) timeoutMs;
-    }
-
-    private static Throwable unwrap(Throwable error) {
-        if (error instanceof java.util.concurrent.CompletionException
-            && error.getCause() != null) {
-            return error.getCause();
-        }
-        return error;
-    }
-
-    private static RequestResult requestResult(Throwable error) {
-        Throwable cause = unwrap(error);
-        if (cause instanceof ZlinkRequestException requestException) {
-            return requestException.getResult();
-        }
-        if (cause instanceof TimeoutException) {
-            return RequestResult.TIMED_OUT;
-        }
-        return RequestResult.PROTOCOL_ERROR;
     }
 
     private static String requireChannelName(String channelName) {

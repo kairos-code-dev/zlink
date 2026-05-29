@@ -26,30 +26,8 @@ internal static partial class ActorInterop
     internal static void OnReply(int result, IntPtr parts, nuint partCount,
         IntPtr userData)
     {
-        GCHandle handle = GCHandle.FromIntPtr(userData);
-        RequestCallState state = (RequestCallState)handle.Target!;
-        try
-        {
-            if (result != 0)
-            {
-                state.TrySetException(new ZlinkRequestException(
-                    (RequestResult)result));
-                return;
-            }
-
-            Message[] replyParts = Message.FromNativeVector(parts, partCount);
-            parts = IntPtr.Zero;
-            partCount = 0;
-            Received received = Received.Create((RoutingId?)null, replyParts);
-            if (!state.TrySetResult(received))
-                RequestReplySupport.DisposeParts(replyParts);
-        }
-        finally
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-            handle.Free();
-        }
+        RequestReplySupport.CompleteReceivedReply(result, parts, partCount,
+            userData);
     }
 
     internal static void OnJoinReply(IntPtr resultPtr, IntPtr parts,

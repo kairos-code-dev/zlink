@@ -10,6 +10,7 @@ echo "=== zlink Rust binding samples ==="
 echo ""
 
 source "$HOME/.cargo/env" 2>/dev/null || true
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/zlink-rust-target/samples}"
 
 PASS=0
 FAIL=0

@@ -248,39 +248,28 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     void setDealerIntOption(int option, int value) {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setDealerOption(handle, option, nativeValue,
-              ValueLayout.JAVA_INT.byteSize());
-            if (rc != 0) {
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-            }
-        }
+        setNativeIntOption(option, value, Native::setDealerOption);
     }
 
     int getDealerIntOption(int option) {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = Native.getDealerOption(handle, option, nativeValue, len);
-            if (rc != 0) {
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-            }
-            return nativeValue.get(ValueLayout.JAVA_INT, 0);
-        }
+        return getNativeIntOption(option, Native::getDealerOption);
     }
 
     int getRouterIntOption(int option) {
+        return getNativeIntOption(option, Native::getRouterOption);
+    }
+
+    void setRouterIntOption(int option, int value) {
+        setNativeIntOption(option, value, Native::setRouterOption);
+    }
+
+    private int getNativeIntOption(int option, NativeIntOptionGetter getter) {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = Native.getRouterOption(handle, option, nativeValue, len);
+            int rc = getter.get(handle, option, nativeValue, len);
             if (rc != 0) {
                 throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             }
@@ -288,17 +277,30 @@ final class NativeSocketRuntime implements AutoCloseable {
         }
     }
 
-    void setRouterIntOption(int option, int value) {
+    private void setNativeIntOption(int option, int value,
+                                    NativeIntOptionSetter setter) {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
             nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setRouterOption(handle, option, nativeValue,
+            int rc = setter.set(handle, option, nativeValue,
               ValueLayout.JAVA_INT.byteSize());
             if (rc != 0) {
                 throw new ZlinkConfigException(ConfigResult.fromValue(rc));
             }
         }
+    }
+
+    @FunctionalInterface
+    private interface NativeIntOptionGetter {
+        int get(MemorySegment handle, int option, MemorySegment value,
+                MemorySegment len);
+    }
+
+    @FunctionalInterface
+    private interface NativeIntOptionSetter {
+        int set(MemorySegment handle, int option, MemorySegment value,
+                long len);
     }
 
     @SuppressWarnings("unchecked")
@@ -2534,299 +2536,105 @@ final class NativeSocketRuntime implements AutoCloseable {
 
         void onReceive(SocketMessageHandler handler) {
             Objects.requireNonNull(handler, "handler");
-            ensureOpen();
-            ensureNoCallbackFailure();
-            ExecutorService executor = callbackExecutor;
-            boolean createdExecutor = false;
-            if (executor == null) {
-                executor = newCallbackExecutor();
-                callbackExecutor = executor;
-                createdExecutor = true;
-            }
-            Arena arena = Arena.ofShared();
-            MemorySegment stub = LINKER.upcallStub(callbackHandle("handleReceiveCallback",
+            Arena arena = installCallback("handleReceiveCallback",
                 MethodType.methodType(void.class, MemorySegment.class,
-                    MemorySegment.class, long.class, MemorySegment.class)),
-                FD_RECV_CALLBACK, arena);
-            boolean success = false;
-            try {
-                int rc = Native.recvHandler(socket.handle(), stub, MemorySegment.NULL);
-                if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_recv_handler");
-                success = true;
-                RuntimeResources.closeArena(receiveCallbackArena);
-                receiveCallbackArena = arena;
-                receiveHandler = handler;
-            } finally {
-                if (!success) {
-                    if (createdExecutor) {
-                        callbackExecutor = null;
-                        RuntimeResources.shutdownExecutor(executor);
-                    }
-                    RuntimeResources.closeArena(arena);
-                }
-            }
+                    MemorySegment.class, long.class, MemorySegment.class),
+                FD_RECV_CALLBACK, "zlink_recv_handler",
+                stub -> Native.recvHandler(socket.handle(), stub,
+                    MemorySegment.NULL));
+            RuntimeResources.closeArena(receiveCallbackArena);
+            receiveCallbackArena = arena;
+            receiveHandler = handler;
         }
 
         void onSubscribe(SubscribeHandler handler) {
             Objects.requireNonNull(handler, "handler");
-            ensureOpen();
-            ensureNoCallbackFailure();
-            ExecutorService executor = callbackExecutor;
-            boolean createdExecutor = false;
-            if (executor == null) {
-                executor = newCallbackExecutor();
-                callbackExecutor = executor;
-                createdExecutor = true;
-            }
-            Arena arena = Arena.ofShared();
-            MemorySegment stub = LINKER.upcallStub(callbackHandle(
-                "handleSubscribeCallback", MethodType.methodType(void.class,
+            Arena arena = installCallback("handleSubscribeCallback",
+                MethodType.methodType(void.class,
                     MemorySegment.class, MemorySegment.class, long.class,
-                    MemorySegment.class, long.class, MemorySegment.class)),
-                FD_SUBSCRIBE_CALLBACK, arena);
-            boolean success = false;
-            try {
-                int rc = Native.subscribeHandler(socket.handle(), stub, MemorySegment.NULL);
-                if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_subscribe_handler");
-                success = true;
-                RuntimeResources.closeArena(subscribeCallbackArena);
-                subscribeCallbackArena = arena;
-                subscribeHandler = handler;
-            } finally {
-                if (!success) {
-                    if (createdExecutor) {
-                        callbackExecutor = null;
-                        RuntimeResources.shutdownExecutor(executor);
-                    }
-                    RuntimeResources.closeArena(arena);
-                }
-            }
+                    MemorySegment.class, long.class, MemorySegment.class),
+                FD_SUBSCRIBE_CALLBACK, "zlink_subscribe_handler",
+                stub -> Native.subscribeHandler(socket.handle(), stub,
+                    MemorySegment.NULL));
+            RuntimeResources.closeArena(subscribeCallbackArena);
+            subscribeCallbackArena = arena;
+            subscribeHandler = handler;
         }
 
         void setSendReadyHandler(SendReadyHandler handler) {
             Objects.requireNonNull(handler, "handler");
-            ensureOpen();
-            ensureNoCallbackFailure();
-            ExecutorService executor = callbackExecutor;
-            boolean createdExecutor = false;
-            if (executor == null) {
-                executor = newCallbackExecutor();
-                callbackExecutor = executor;
-                createdExecutor = true;
-            }
-            Arena arena = Arena.ofShared();
-            MemorySegment stub = LINKER.upcallStub(callbackHandle(
-                "handleSendReadyCallback", MethodType.methodType(void.class,
-                    MemorySegment.class, MemorySegment.class)),
-                FD_SEND_READY_CALLBACK, arena);
-            boolean success = false;
-            try {
-                int rc = Native.sendReadyHandler(socket.handle(), stub, MemorySegment.NULL);
-                if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_send_ready_handler");
-                success = true;
-                RuntimeResources.closeArena(sendReadyCallbackArena);
-                sendReadyCallbackArena = arena;
-                sendReadyHandler = handler;
-            } finally {
-                if (!success) {
-                    if (createdExecutor) {
-                        callbackExecutor = null;
-                        RuntimeResources.shutdownExecutor(executor);
-                    }
-                    RuntimeResources.closeArena(arena);
-                }
-            }
+            Arena arena = installCallback("handleSendReadyCallback",
+                MethodType.methodType(void.class,
+                    MemorySegment.class, MemorySegment.class),
+                FD_SEND_READY_CALLBACK, "zlink_send_ready_handler",
+                stub -> Native.sendReadyHandler(socket.handle(), stub,
+                    MemorySegment.NULL));
+            RuntimeResources.closeArena(sendReadyCallbackArena);
+            sendReadyCallbackArena = arena;
+            sendReadyHandler = handler;
         }
 
         void attachStreamRaw(StreamRawPacketHandler handler) {
             Objects.requireNonNull(handler, "handler");
-            ensureOpen();
-            ensureNoCallbackFailure();
-            ExecutorService executor = callbackExecutor;
-            boolean createdExecutor = false;
-            if (executor == null) {
-                executor = newCallbackExecutor();
-                callbackExecutor = executor;
-                createdExecutor = true;
-            }
-            Arena arena = Arena.ofShared();
-            MemorySegment stub = LINKER.upcallStub(callbackHandle(
-                "handleStreamRawCallback",
+            Arena arena = installCallback("handleStreamRawCallback",
                 MethodType.methodType(int.class, MemorySegment.class,
-                    MemorySegment.class, MemorySegment.class)),
-                FD_STREAM_RAW_CALLBACK, arena);
-            boolean success = false;
-            try {
-                int rc = Native.streamAttachRaw(socket.handle(), stub);
-                if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_stream_attach_raw");
-                success = true;
-                RuntimeResources.closeArena(streamRawCallbackArena);
-                streamRawCallbackArena = arena;
-                streamPacketHandler = handler;
-            } finally {
-                if (!success) {
-                    if (createdExecutor) {
-                        callbackExecutor = null;
-                        RuntimeResources.shutdownExecutor(executor);
-                    }
-                    RuntimeResources.closeArena(arena);
-                }
-            }
+                    MemorySegment.class, MemorySegment.class),
+                FD_STREAM_RAW_CALLBACK, "zlink_stream_attach_raw",
+                stub -> Native.streamAttachRaw(socket.handle(), stub));
+            RuntimeResources.closeArena(streamRawCallbackArena);
+            streamRawCallbackArena = arena;
+            streamPacketHandler = handler;
         }
 
         void attachStreamRaw(StreamUInt32RawNativeHandler handler) {
             Objects.requireNonNull(handler, "handler");
-            ensureOpen();
-            ensureNoCallbackFailure();
-            ExecutorService executor = callbackExecutor;
-            boolean createdExecutor = false;
-            if (executor == null) {
-                executor = newCallbackExecutor();
-                callbackExecutor = executor;
-                createdExecutor = true;
-            }
-            Arena arena = Arena.ofShared();
-            MemorySegment stub = LINKER.upcallStub(callbackHandle(
-                "handleStreamRawUInt32NativeCallback",
+            Arena arena = installCallback("handleStreamRawUInt32NativeCallback",
                 MethodType.methodType(int.class, MemorySegment.class,
-                    MemorySegment.class, MemorySegment.class)),
-                FD_STREAM_RAW_CALLBACK, arena);
-            boolean success = false;
-            try {
-                int rc = Native.streamAttachRaw(socket.handle(), stub);
-                if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_stream_attach_raw");
-                success = true;
-                RuntimeResources.closeArena(streamRawCallbackArena);
-                streamRawCallbackArena = arena;
-                streamUInt32RawNativeHandler = handler;
-            } finally {
-                if (!success) {
-                    if (createdExecutor) {
-                        callbackExecutor = null;
-                        RuntimeResources.shutdownExecutor(executor);
-                    }
-                    RuntimeResources.closeArena(arena);
-                }
-            }
+                    MemorySegment.class, MemorySegment.class),
+                FD_STREAM_RAW_CALLBACK, "zlink_stream_attach_raw",
+                stub -> Native.streamAttachRaw(socket.handle(), stub));
+            RuntimeResources.closeArena(streamRawCallbackArena);
+            streamRawCallbackArena = arena;
+            streamUInt32RawNativeHandler = handler;
         }
 
         void attachStreamPacket(StreamFramedPacketHandler handler) {
             Objects.requireNonNull(handler, "handler");
-            ensureOpen();
-            ensureNoCallbackFailure();
-            ExecutorService executor = callbackExecutor;
-            boolean createdExecutor = false;
-            if (executor == null) {
-                executor = newCallbackExecutor();
-                callbackExecutor = executor;
-                createdExecutor = true;
-            }
-            Arena arena = Arena.ofShared();
-            MemorySegment stub = LINKER.upcallStub(callbackHandle(
-                "handleStreamPacketCallback",
+            Arena arena = installCallback("handleStreamPacketCallback",
                 MethodType.methodType(void.class, MemorySegment.class,
                     MemorySegment.class, MemorySegment.class,
-                    MemorySegment.class, MemorySegment.class)),
-                FD_STREAM_PACKET_CALLBACK, arena);
-            boolean success = false;
-            try {
-                int rc = Native.streamPacketHandler(socket.handle(), stub);
-                if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_stream_packet_handler");
-                success = true;
-                RuntimeResources.closeArena(streamPacketCallbackArena);
-                streamPacketCallbackArena = arena;
-                streamFramedPacketHandler = handler;
-            } finally {
-                if (!success) {
-                    if (createdExecutor) {
-                        callbackExecutor = null;
-                        RuntimeResources.shutdownExecutor(executor);
-                    }
-                    RuntimeResources.closeArena(arena);
-                }
-            }
+                    MemorySegment.class, MemorySegment.class),
+                FD_STREAM_PACKET_CALLBACK, "zlink_stream_packet_handler",
+                stub -> Native.streamPacketHandler(socket.handle(), stub));
+            RuntimeResources.closeArena(streamPacketCallbackArena);
+            streamPacketCallbackArena = arena;
+            streamFramedPacketHandler = handler;
         }
 
         void attachStreamPacket(StreamUInt32FramedPacketHandler handler) {
             Objects.requireNonNull(handler, "handler");
-            ensureOpen();
-            ensureNoCallbackFailure();
-            ExecutorService executor = callbackExecutor;
-            boolean createdExecutor = false;
-            if (executor == null) {
-                executor = newCallbackExecutor();
-                callbackExecutor = executor;
-                createdExecutor = true;
-            }
-            Arena arena = Arena.ofShared();
-            MemorySegment stub = LINKER.upcallStub(callbackHandle(
-                "handleStreamPacketUInt32Callback",
+            Arena arena = installCallback("handleStreamPacketUInt32Callback",
                 MethodType.methodType(void.class, MemorySegment.class,
                     MemorySegment.class, MemorySegment.class,
-                    MemorySegment.class, MemorySegment.class)),
-                FD_STREAM_PACKET_CALLBACK, arena);
-            boolean success = false;
-            try {
-                int rc = Native.streamPacketHandler(socket.handle(), stub);
-                if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_stream_packet_handler");
-                success = true;
-                RuntimeResources.closeArena(streamPacketCallbackArena);
-                streamPacketCallbackArena = arena;
-                streamUInt32FramedPacketHandler = handler;
-            } finally {
-                if (!success) {
-                    if (createdExecutor) {
-                        callbackExecutor = null;
-                        RuntimeResources.shutdownExecutor(executor);
-                    }
-                    RuntimeResources.closeArena(arena);
-                }
-            }
+                    MemorySegment.class, MemorySegment.class),
+                FD_STREAM_PACKET_CALLBACK, "zlink_stream_packet_handler",
+                stub -> Native.streamPacketHandler(socket.handle(), stub));
+            RuntimeResources.closeArena(streamPacketCallbackArena);
+            streamPacketCallbackArena = arena;
+            streamUInt32FramedPacketHandler = handler;
         }
 
         void attachStreamPacket(StreamUInt32FramedNativeHandler handler) {
             Objects.requireNonNull(handler, "handler");
-            ensureOpen();
-            ensureNoCallbackFailure();
-            ExecutorService executor = callbackExecutor;
-            boolean createdExecutor = false;
-            if (executor == null) {
-                executor = newCallbackExecutor();
-                callbackExecutor = executor;
-                createdExecutor = true;
-            }
-            Arena arena = Arena.ofShared();
-            MemorySegment stub = LINKER.upcallStub(callbackHandle(
-                "handleStreamPacketUInt32NativeCallback",
+            Arena arena = installCallback("handleStreamPacketUInt32NativeCallback",
                 MethodType.methodType(void.class, MemorySegment.class,
                     MemorySegment.class, MemorySegment.class,
-                    MemorySegment.class, MemorySegment.class)),
-                FD_STREAM_PACKET_CALLBACK, arena);
-            boolean success = false;
-            try {
-                int rc = Native.streamPacketHandler(socket.handle(), stub);
-                if (rc != 0)
-                    throw ZlinkException.fromLastError("zlink_stream_packet_handler");
-                success = true;
-                RuntimeResources.closeArena(streamPacketCallbackArena);
-                streamPacketCallbackArena = arena;
-                streamUInt32FramedNativeHandler = handler;
-            } finally {
-                if (!success) {
-                    if (createdExecutor) {
-                        callbackExecutor = null;
-                        RuntimeResources.shutdownExecutor(executor);
-                    }
-                    RuntimeResources.closeArena(arena);
-                }
-            }
+                    MemorySegment.class, MemorySegment.class),
+                FD_STREAM_PACKET_CALLBACK, "zlink_stream_packet_handler",
+                stub -> Native.streamPacketHandler(socket.handle(), stub));
+            RuntimeResources.closeArena(streamPacketCallbackArena);
+            streamPacketCallbackArena = arena;
+            streamUInt32FramedNativeHandler = handler;
         }
 
         void detachStream() {
@@ -2908,6 +2716,42 @@ final class NativeSocketRuntime implements AutoCloseable {
         private void failIfDiscoveryAttached(String operation) {
             if (discoveryAttached) {
                 throw ZlinkException.fromErrno(operation, ERRNO_EFSM);
+            }
+        }
+
+        private Arena installCallback(String callbackName,
+                                      MethodType callbackType,
+                                      FunctionDescriptor descriptor,
+                                      String nativeOperation,
+                                      CallbackRegistration registration) {
+            ensureOpen();
+            ensureNoCallbackFailure();
+            ExecutorService executor = callbackExecutor;
+            boolean createdExecutor = false;
+            if (executor == null) {
+                executor = newCallbackExecutor();
+                callbackExecutor = executor;
+                createdExecutor = true;
+            }
+            Arena arena = Arena.ofShared();
+            MemorySegment stub = LINKER.upcallStub(callbackHandle(callbackName,
+                callbackType), descriptor, arena);
+            boolean success = false;
+            try {
+                int rc = registration.register(stub);
+                if (rc != 0) {
+                    throw ZlinkException.fromLastError(nativeOperation);
+                }
+                success = true;
+                return arena;
+            } finally {
+                if (!success) {
+                    if (createdExecutor) {
+                        callbackExecutor = null;
+                        RuntimeResources.shutdownExecutor(executor);
+                    }
+                    RuntimeResources.closeArena(arena);
+                }
             }
         }
 
@@ -3323,6 +3167,11 @@ final class NativeSocketRuntime implements AutoCloseable {
 
         private record CallbackSubscribeData(RoutingId routingId, String topicId,
                                              Message[] parts) {}
+
+        @FunctionalInterface
+        private interface CallbackRegistration {
+            int register(MemorySegment stub);
+        }
     }
 
     private static final class MessagePlane {

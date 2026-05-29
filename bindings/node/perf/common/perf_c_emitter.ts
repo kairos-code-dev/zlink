@@ -23,6 +23,7 @@ const {
 } = require('./perf_c_format');
 
 const STREAM_VARIANT_PATTERNS = new Set(['MULTI_STREAM']);
+type AutoHwmDetailRow = Record<string, string> & { _dedup_key?: string };
 
 function envGet(name) {
   const value = process.env[name];
@@ -312,13 +313,13 @@ function buildSingleOptionItems(opts) {
     ['ctx_auto_hwm_profile', envGet('PERF_CTX_AUTO_HWM_PROFILE') || 'balanced'],
     ['patterns', opts.patterns.join(',')],
     ['transports', opts.transports.length > 0 ? [...new Set(opts.transports)].sort().join(',') : 'none'],
-    ['msg_sizes', opts.msgSizes.length > 0 ? [...new Set(opts.msgSizes)].sort((a, b) => a - b).join(',') : 'none']
+    ['msg_sizes', opts.msgSizes.length > 0 ? [...new Set<number>(opts.msgSizes)].sort((a, b) => a - b).join(',') : 'none']
   ];
 }
 
 function buildMultiOptionItems(opts) {
   const transports = [...new Set(opts.transports)].sort();
-  const sizes = [...new Set(opts.msgSizes)].sort((a, b) => a - b);
+  const sizes = [...new Set<number>(opts.msgSizes)].sort((a, b) => a - b);
   const clientsMeta = resolveClientsMeta(opts.patterns, opts.clientsOverride) || '100';
   const clientsForConnect = Math.max(1, Number.parseInt(clientsMeta, 10) || 100);
   const connectRaw = Number.isFinite(opts.connectConcurrency)
@@ -520,7 +521,7 @@ function createAutoHwmCollector() {
   const tableSeen = new Set();
 
   function addLine(line) {
-    const fields = autoHwmParseDetailLine(line);
+    const fields = autoHwmParseDetailLine(line) as AutoHwmDetailRow | null;
     if (!fields) {
       return;
     }

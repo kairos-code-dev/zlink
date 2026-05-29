@@ -59,7 +59,12 @@ function trySubscribe(socket, buffer, flags) {
   }
 }
 
-async function drainPubSubPayloadInto(socket, buffer, onHeader, options = {}) {
+async function drainPubSubPayloadInto(
+  socket,
+  buffer,
+  onHeader,
+  options: { recordUntilNs?: bigint | number | string } = {}
+) {
   const recordUntilNs = options.recordUntilNs === undefined
     ? null
     : BigInt(options.recordUntilNs);

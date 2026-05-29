@@ -7,6 +7,7 @@
 #include "perf_spot_control.hpp"
 #include "perf_spot_handshake.hpp"
 #include "perf_tls.hpp"
+#include "perf_socket_option_helpers.hpp"
 #include "../../common/perf_latency_sampler.hpp"
 #include "../../common/perf_monitor_wait.hpp"
 #include "../../common/perf_socket_adapter.hpp"
@@ -28,139 +29,14 @@
 #include <thread>
 #include <vector>
 
-namespace perf {
-namespace multi {
+namespace perf
+{
+namespace multi
+{
 
 typedef ::perf::socket_t perf_socket_t;
 
 static const char *k_stop_token = "__zlink_perf_stop__";
-
-template<typename SocketLike, typename T>
-inline auto set_common_socket_option_impl (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<T> key,
-  const T &value,
-  int) -> decltype (socket.set_option (key, value), int ())
-{
-    return socket.set_option (key, value);
-}
-
-template<typename SocketLike, typename T>
-inline int set_common_socket_option_impl (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<T> key,
-  const T &value,
-  long)
-{
-    try {
-        switch (key.option) {
-        case perf::options::socket_option::sndhwm:
-            socket.options ().send_hwm (zlink::message_count_t::value (value));
-            return 0;
-        case perf::options::socket_option::rcvhwm:
-            socket.options ().recv_hwm (zlink::message_count_t::value (value));
-            return 0;
-        case perf::options::socket_option::sndtimeo:
-            socket.options ().send_timeout (std::chrono::milliseconds (value));
-            return 0;
-        case perf::options::socket_option::rcvtimeo:
-            socket.options ().recv_timeout (std::chrono::milliseconds (value));
-            return 0;
-        case perf::options::socket_option::linger:
-            socket.options ().linger (std::chrono::milliseconds (value));
-            return 0;
-        default:
-            errno = EOPNOTSUPP;
-            return -1;
-        }
-    }
-    catch (const zlink::config_error_t &err) {
-        errno = err.internal_errno ();
-        return -1;
-    }
-}
-
-template<typename SocketLike, typename T>
-inline int set_common_socket_option (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<T> key,
-  const T &value)
-{
-    return set_common_socket_option_impl (socket, key, value, 0);
-}
-
-template<typename SocketLike, typename T>
-inline auto get_common_socket_option_impl (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<T> key,
-  T &value,
-  int) -> decltype (socket.get_option (key, &value), int ())
-{
-    return socket.get_option (key, &value);
-}
-
-template<typename SocketLike, typename T>
-inline int get_common_socket_option_impl (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<T> key,
-  T &value,
-  long)
-{
-    (void) socket;
-    (void) key;
-    (void) value;
-    errno = EOPNOTSUPP;
-    return -1;
-}
-
-template<typename SocketLike>
-inline auto get_common_socket_option_string_impl (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<std::string> key,
-  std::string &value,
-  int) -> decltype (socket.get_option (key, value), int ())
-{
-    return socket.get_option (key, value);
-}
-
-template<typename SocketLike>
-inline int get_common_socket_option_string_impl (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<std::string> key,
-  std::string &value,
-  long)
-{
-    try {
-        if (key.option == perf::options::socket_option::last_endpoint) {
-            value = socket.options ().last_endpoint ();
-            return 0;
-        }
-    }
-    catch (const zlink::config_error_t &err) {
-        errno = err.internal_errno ();
-        return -1;
-    }
-    errno = EOPNOTSUPP;
-    return -1;
-}
-
-template<typename SocketLike, typename T>
-inline int get_common_socket_option (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<T> key,
-  T &value)
-{
-    return get_common_socket_option_impl (socket, key, value, 0);
-}
-
-template<typename SocketLike>
-inline int get_common_socket_option (
-  SocketLike &socket,
-  perf::options::socket_option_key_t<std::string> key,
-  std::string &value)
-{
-    return get_common_socket_option_string_impl (socket, key, value, 0);
-}
 
 inline bool is_supported_transport (const std::string &transport)
 {
@@ -294,7 +170,6 @@ class ctx_guard_t
         (void) options.blocky (bench_ctx_blocky () != 0);
         (void) options.auto_hwm_enabled (true);
         (void) options.auto_hwm_profile (bench_ctx_auto_hwm_profile ());
-
     }
 
     ~ctx_guard_t ()
@@ -304,7 +179,7 @@ class ctx_guard_t
     }
 
     zlink::context_t &ctx () { return _ctx; }
-    operator zlink::context_t &() { return _ctx; }
+    operator zlink::context_t & () { return _ctx; }
 
   private:
     zlink::context_t _ctx;
@@ -324,10 +199,8 @@ struct connect_monitor_t
 typedef ::perf::latency_sampler_stats_t bench_latency_stats_t;
 typedef ::perf::latency_sampler_t bench_latency_sampler_t;
 
-template<typename SocketLike>
-inline void apply_benchmark_hwm (SocketLike &socket,
-                                 int sndhwm,
-                                 int rcvhwm)
+template <typename SocketLike>
+inline void apply_benchmark_hwm (SocketLike &socket, int sndhwm, int rcvhwm)
 {
     if (!manual_socket_overrides_enabled ())
         return;
@@ -339,19 +212,16 @@ inline void apply_benchmark_hwm (SocketLike &socket,
       socket, perf::options::socket_options::rcvhwm, rcv_value);
 }
 
-template<typename SocketLike>
-inline void apply_debug_timeouts (SocketLike &socket,
-                                  const std::string &)
+template <typename SocketLike>
+inline void apply_debug_timeouts (SocketLike &socket, const std::string &)
 {
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     (void) set_common_socket_option (
-      socket, perf::options::socket_options::sndtimeo,
-      settings.sndtimeo_ms);
+      socket, perf::options::socket_options::sndtimeo, settings.sndtimeo_ms);
     (void) set_common_socket_option (
-      socket, perf::options::socket_options::rcvtimeo,
-      settings.rcvtimeo_ms);
-    (void) set_common_socket_option (
-      socket, perf::options::socket_options::linger, 0);
+      socket, perf::options::socket_options::rcvtimeo, settings.rcvtimeo_ms);
+    (void) set_common_socket_option (socket,
+                                     perf::options::socket_options::linger, 0);
 }
 
 inline bool apply_benchmark_auto_hwm_msg_unit (ctx_guard_t &ctx,
@@ -396,78 +266,78 @@ inline bool auto_hwm_detail_enabled ()
 inline const char *auto_hwm_role_name (uint32_t role)
 {
     switch (role) {
-    case 1:
-        return "control";
-    case 2:
-        return "routed";
-    case 3:
-        return "fanout";
-    case 4:
-        return "recv_ingress";
-    case 5:
-        return "spot_data";
-    case 6:
-        return "peer_queue";
-    case 7:
-        return "stream";
-    default:
-        return "none";
+        case 1:
+            return "control";
+        case 2:
+            return "routed";
+        case 3:
+            return "fanout";
+        case 4:
+            return "recv_ingress";
+        case 5:
+            return "spot_data";
+        case 6:
+            return "peer_queue";
+        case 7:
+            return "stream";
+        default:
+            return "none";
     }
 }
 
 inline const char *auto_hwm_profile_name (uint32_t profile)
 {
     switch (profile) {
-    case static_cast<uint32_t> (zlink::auto_hwm_profile::compact):
-        return "compact";
-    case static_cast<uint32_t> (zlink::auto_hwm_profile::low_latency):
-        return "low_latency";
-    case static_cast<uint32_t> (zlink::auto_hwm_profile::balanced):
-        return "balanced";
-    case static_cast<uint32_t> (zlink::auto_hwm_profile::throughput):
-        return "throughput";
-    default:
-        return "unknown";
+        case static_cast<uint32_t> (zlink::auto_hwm_profile::compact):
+            return "compact";
+        case static_cast<uint32_t> (zlink::auto_hwm_profile::low_latency):
+            return "low_latency";
+        case static_cast<uint32_t> (zlink::auto_hwm_profile::balanced):
+            return "balanced";
+        case static_cast<uint32_t> (zlink::auto_hwm_profile::throughput):
+            return "throughput";
+        default:
+            return "unknown";
     }
 }
 
 inline const char *auto_hwm_policy_class_name (uint32_t policy_class)
 {
     switch (policy_class) {
-    case 1:
-        return "fanout";
-    case 2:
-        return "spot_data";
-    case 3:
-        return "recv_ingress";
-    case 4:
-        return "routed";
-    case 5:
-        return "peer_queue";
-    case 6:
-        return "stream";
-    case 7:
-        return "control";
-    default:
-        return "none";
+        case 1:
+            return "fanout";
+        case 2:
+            return "spot_data";
+        case 3:
+            return "recv_ingress";
+        case 4:
+            return "routed";
+        case 5:
+            return "peer_queue";
+        case 6:
+            return "stream";
+        case 7:
+            return "control";
+        default:
+            return "none";
     }
 }
 
 inline const char *auto_hwm_recalc_reason_name (uint32_t reason)
 {
     switch (reason) {
-    case 1:
-        return "initial";
-    case 2:
-        return "role_change";
-    case 3:
-        return "policy_toggle";
-    case 4:
-        return "refresh";
-    case 5:
-        return "deferred_shrink";
-    default:
-        return "unknown";
+        case 1:
+            return "initial";
+        case 2:
+            return "role_change";
+        case 3:
+            return "policy_toggle";
+        case 4:
+            return "refresh";
+        case 5:
+            return "deferred_shrink";
+        default:
+            return "unknown";
     }
 }
 
@@ -480,7 +350,7 @@ inline std::string auto_hwm_env_or_default (const char *name,
     return default_value ? default_value : "";
 }
 
-template<typename SocketLike>
+template <typename SocketLike>
 inline void emit_auto_hwm_detail (SocketLike &socket,
                                   const std::string &component,
                                   const std::string &label,
@@ -551,87 +421,76 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
         emitted.insert (key);
     }
 
-    std::cout << "AUTO_HWM_DETAIL"
-              << ",pattern=" << pattern
-              << ",transport=" << transport_value
-              << ",component=" << component
-              << ",label=" << label
-              << ",socket_type=" << socket_type_value
-              << ",msg_size=" << msg_size
-              << ",source=monitor_snapshot"
-              << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
-              << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
-              << ",role_id=" << snapshot.auto_hwm_role
-              << ",profile="
-              << auto_hwm_profile_name (snapshot.auto_hwm_profile)
-              << ",profile_id=" << snapshot.auto_hwm_profile
-              << ",policy_class="
-              << auto_hwm_policy_class_name (snapshot.auto_hwm_policy_class)
-              << ",policy_class_id=" << snapshot.auto_hwm_policy_class
-              << ",unit_budget_bytes="
-              << snapshot.auto_hwm_unit_budget_bytes
-              << ",size_cap=" << snapshot.auto_hwm_size_cap
-              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
-              << ",socket_message_slots="
-              << snapshot.auto_hwm_socket_message_slots
-              << ",effective_message_bytes="
-              << snapshot.auto_hwm_effective_message_bytes
-              << ",effective_sndbuf=" << effective_sndbuf
-              << ",effective_rcvbuf=" << effective_rcvbuf
-              << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms
-              << ",last_recalc_reason="
-              << auto_hwm_recalc_reason_name (
-                   snapshot.auto_hwm_last_recalc_reason)
-              << ",send_blocked_ratio_ppm="
-              << snapshot.auto_hwm_send_blocked_ratio_ppm
-              << ",deferred_sndhwm=" << snapshot.auto_hwm_deferred_sndhwm
-              << ",deferred_rcvhwm=" << snapshot.auto_hwm_deferred_rcvhwm
-              << std::endl;
+    std::cout
+      << "AUTO_HWM_DETAIL" << ",pattern=" << pattern
+      << ",transport=" << transport_value << ",component=" << component
+      << ",label=" << label << ",socket_type=" << socket_type_value
+      << ",msg_size=" << msg_size << ",source=monitor_snapshot"
+      << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
+      << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
+      << ",role_id=" << snapshot.auto_hwm_role
+      << ",profile=" << auto_hwm_profile_name (snapshot.auto_hwm_profile)
+      << ",profile_id=" << snapshot.auto_hwm_profile << ",policy_class="
+      << auto_hwm_policy_class_name (snapshot.auto_hwm_policy_class)
+      << ",policy_class_id=" << snapshot.auto_hwm_policy_class
+      << ",unit_budget_bytes=" << snapshot.auto_hwm_unit_budget_bytes
+      << ",size_cap=" << snapshot.auto_hwm_size_cap
+      << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+      << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+      << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots
+      << ",effective_message_bytes="
+      << snapshot.auto_hwm_effective_message_bytes
+      << ",effective_sndbuf=" << effective_sndbuf
+      << ",effective_rcvbuf=" << effective_rcvbuf
+      << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms
+      << ",last_recalc_reason="
+      << auto_hwm_recalc_reason_name (snapshot.auto_hwm_last_recalc_reason)
+      << ",send_blocked_ratio_ppm=" << snapshot.auto_hwm_send_blocked_ratio_ppm
+      << ",deferred_sndhwm=" << snapshot.auto_hwm_deferred_sndhwm
+      << ",deferred_rcvhwm=" << snapshot.auto_hwm_deferred_rcvhwm << std::endl;
 }
 
-inline const char *spot_socket_type_name (
-  zlink::spot_node_socket_type_t socket_type)
+inline const char *
+spot_socket_type_name (zlink::spot_node_socket_type_t socket_type)
 {
     switch (socket_type) {
-    case zlink::spot_node_socket_type_t::pair:
-        return "pair";
-    case zlink::spot_node_socket_type_t::dealer:
-        return "dealer";
-    case zlink::spot_node_socket_type_t::router:
-        return "router";
-    case zlink::spot_node_socket_type_t::stream:
-        return "stream";
-    case zlink::spot_node_socket_type_t::pub:
-        return "pub";
-    case zlink::spot_node_socket_type_t::xpub:
-        return "xpub";
-    case zlink::spot_node_socket_type_t::sub:
-        return "sub";
-    case zlink::spot_node_socket_type_t::xsub:
-        return "xsub";
-    default:
-        return "unknown";
+        case zlink::spot_node_socket_type_t::pair:
+            return "pair";
+        case zlink::spot_node_socket_type_t::dealer:
+            return "dealer";
+        case zlink::spot_node_socket_type_t::router:
+            return "router";
+        case zlink::spot_node_socket_type_t::stream:
+            return "stream";
+        case zlink::spot_node_socket_type_t::pub:
+            return "pub";
+        case zlink::spot_node_socket_type_t::xpub:
+            return "xpub";
+        case zlink::spot_node_socket_type_t::sub:
+            return "sub";
+        case zlink::spot_node_socket_type_t::xsub:
+            return "xsub";
+        default:
+            return "unknown";
     }
 }
 
-inline const char *spot_socket_owner_name (
-  zlink::spot_node_socket_owner_t owner)
+inline const char *
+spot_socket_owner_name (zlink::spot_node_socket_owner_t owner)
 {
     switch (owner) {
-    case zlink::spot_node_socket_owner_t::node:
-        return "node";
-    case zlink::spot_node_socket_owner_t::spot:
-        return "spot";
-    default:
-        return "unknown";
+        case zlink::spot_node_socket_owner_t::node:
+            return "node";
+        case zlink::spot_node_socket_owner_t::spot:
+            return "spot";
+        default:
+            return "unknown";
     }
 }
 
-inline void emit_spot_node_auto_hwm_snapshot (
-  zlink::service::spot_node_t &node,
-  const std::string &transport,
-  size_t msg_size)
+inline void emit_spot_node_auto_hwm_snapshot (zlink::service::spot_node_t &node,
+                                              const std::string &transport,
+                                              size_t msg_size)
 {
     if (!auto_hwm_detail_enabled ())
         return;
@@ -688,51 +547,40 @@ inline void emit_spot_node_auto_hwm_snapshot (
             emitted.insert (key);
         }
 
-        std::cout << "AUTO_HWM_DETAIL"
-                  << ",pattern=" << pattern
-                  << ",transport=" << transport_value
-                  << ",component=spotnode"
-                  << ",label=" << socket
-                  << ",owner=" << spot_socket_owner_name (entry.owner ())
-                  << ",owner_id=" << entry.owner_id ()
-                  << ",socket=" << socket
-                  << ",socket_type=" << socket_type
-                  << ",msg_size=" << msg_size
-                  << ",source=spotnode_snapshot"
-                  << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
-                  << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
-                  << ",role_id=" << snapshot.auto_hwm_role
-                  << ",profile="
-                  << auto_hwm_profile_name (snapshot.auto_hwm_profile)
-                  << ",profile_id=" << snapshot.auto_hwm_profile
-                  << ",policy_class="
-                  << auto_hwm_policy_class_name (
-                       snapshot.auto_hwm_policy_class)
-                  << ",policy_class_id=" << snapshot.auto_hwm_policy_class
-                  << ",unit_budget_bytes="
-                  << snapshot.auto_hwm_unit_budget_bytes
-                  << ",size_cap=" << snapshot.auto_hwm_size_cap
-                  << ",scope=shared"
-                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
-                  << ",socket_message_slots="
-                  << snapshot.auto_hwm_socket_message_slots
-                  << ",effective_message_bytes="
-                  << snapshot.auto_hwm_effective_message_bytes
-                  << ",effective_sndbuf="
-                  << effective_sndbuf
-                  << ",effective_rcvbuf=" << effective_rcvbuf
-                  << ",last_recalc_reason="
-                  << auto_hwm_recalc_reason_name (
-                       snapshot.auto_hwm_last_recalc_reason)
-                  << std::endl;
+        std::cout
+          << "AUTO_HWM_DETAIL" << ",pattern=" << pattern
+          << ",transport=" << transport_value << ",component=spotnode"
+          << ",label=" << socket
+          << ",owner=" << spot_socket_owner_name (entry.owner ())
+          << ",owner_id=" << entry.owner_id () << ",socket=" << socket
+          << ",socket_type=" << socket_type << ",msg_size=" << msg_size
+          << ",source=spotnode_snapshot"
+          << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
+          << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
+          << ",role_id=" << snapshot.auto_hwm_role
+          << ",profile=" << auto_hwm_profile_name (snapshot.auto_hwm_profile)
+          << ",profile_id=" << snapshot.auto_hwm_profile << ",policy_class="
+          << auto_hwm_policy_class_name (snapshot.auto_hwm_policy_class)
+          << ",policy_class_id=" << snapshot.auto_hwm_policy_class
+          << ",unit_budget_bytes=" << snapshot.auto_hwm_unit_budget_bytes
+          << ",size_cap=" << snapshot.auto_hwm_size_cap << ",scope=shared"
+          << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+          << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+          << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots
+          << ",effective_message_bytes="
+          << snapshot.auto_hwm_effective_message_bytes
+          << ",effective_sndbuf=" << effective_sndbuf
+          << ",effective_rcvbuf=" << effective_rcvbuf << ",last_recalc_reason="
+          << auto_hwm_recalc_reason_name (snapshot.auto_hwm_last_recalc_reason)
+          << std::endl;
     }
 }
 
-template<typename SocketLike>
-inline void apply_benchmark_socket_options (SocketLike &socket,
-                                            const multi_bench_settings_t &settings,
-                                            const std::string &transport)
+template <typename SocketLike>
+inline void
+apply_benchmark_socket_options (SocketLike &socket,
+                                const multi_bench_settings_t &settings,
+                                const std::string &transport)
 {
     // Manual HWM is a debug-only override; the default benchmark surface uses
     // context auto-HWM.
@@ -740,7 +588,7 @@ inline void apply_benchmark_socket_options (SocketLike &socket,
     apply_debug_timeouts (socket, transport);
 }
 
-template<typename SocketLike>
+template <typename SocketLike>
 inline bool open_socket_monitor (SocketLike &socket,
                                  zlink::monitor_event events,
                                  connect_monitor_t &out)
@@ -753,11 +601,11 @@ inline bool open_socket_monitor (SocketLike &socket,
     return true;
 }
 
-template<typename SocketLike>
+template <typename SocketLike>
 inline bool open_connect_monitor (SocketLike &socket, connect_monitor_t &out)
 {
-    return open_socket_monitor (
-      socket, zlink::monitor_event::connection_ready, out);
+    return open_socket_monitor (socket, zlink::monitor_event::connection_ready,
+                                out);
 }
 
 // Migrated to unified perf::wait_socket_monitor_event in
@@ -772,7 +620,7 @@ inline int poll_connect_ready_count (connect_monitor_t &mon)
     int ready = 0;
     for (;;) {
         const std::optional<zlink::monitor_event_t> ev =
-          mon.monitor->recv (static_cast<int>(zlink::send_flags_t::dontwait));
+          mon.monitor->recv (static_cast<int> (zlink::send_flags_t::dontwait));
         if (!ev)
             break;
         if (static_cast<uint64_t> (ev->event)
@@ -815,9 +663,9 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon,
         if (now >= deadline)
             break;
 
-        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                         deadline - now)
-                         .count ();
+        long wait_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
+            .count ();
         if (wait_ms < 1)
             wait_ms = 1;
 
@@ -881,15 +729,14 @@ inline bool wait_connect_ready_all (std::vector<connect_monitor_t> &monitors,
         if (now >= deadline)
             break;
 
-        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
-                         deadline - now)
-                         .count ();
+        long wait_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
+            .count ();
         if (wait_ms < 1)
             wait_ms = 1;
 
-        const size_t rc =
-          poller.wait (events.data (), events.size (),
-                       std::chrono::milliseconds (wait_ms));
+        const size_t rc = poller.wait (events.data (), events.size (),
+                                       std::chrono::milliseconds (wait_ms));
         if (rc == 0)
             continue;
 
@@ -900,7 +747,8 @@ inline bool wait_connect_ready_all (std::vector<connect_monitor_t> &monitors,
             const size_t monitor_index = active_indices[active_index];
             if (ready[monitor_index])
                 continue;
-            const int count = poll_connect_ready_count (monitors[monitor_index]);
+            const int count =
+              poll_connect_ready_count (monitors[monitor_index]);
             if (count <= 0)
                 continue;
             ready[monitor_index] = 1;
@@ -961,7 +809,7 @@ inline std::string normalize_endpoint_host (const std::string &endpoint)
     return out;
 }
 
-template<typename SocketLike>
+template <typename SocketLike>
 inline std::string bind_and_resolve_endpoint (SocketLike &socket,
                                               const std::string &transport,
                                               const std::string &id,
@@ -971,7 +819,8 @@ inline std::string bind_and_resolve_endpoint (SocketLike &socket,
     const std::string endpoint = make_endpoint (transport, id, fixed_port);
     try {
         socket.bind (endpoint);
-    } catch (const zlink::binding_error_t &) {
+    }
+    catch (const zlink::binding_error_t &) {
         return std::string ();
     }
 
@@ -1027,15 +876,10 @@ inline void debug_header_trace (const char *role,
         return;
     --remaining;
 
-    std::cerr << "HEADER_TRACE"
-              << ",role=" << (role ? role : "")
-              << ",pattern=" << pattern
-              << ",transport=" << transport
-              << ",size=" << size
-              << ",stage=" << (stage ? stage : "")
-              << ",phase=" << phase
-              << ",run_id=" << run_id
-              << ",seq=" << seq
+    std::cerr << "HEADER_TRACE" << ",role=" << (role ? role : "")
+              << ",pattern=" << pattern << ",transport=" << transport
+              << ",size=" << size << ",stage=" << (stage ? stage : "")
+              << ",phase=" << phase << ",run_id=" << run_id << ",seq=" << seq
               << ",sent_ts_ns=" << sent_ts_ns
               << ",observed_ts_ns=" << observed_ts_ns;
     if (latency_ns >= 0.0) {
@@ -1075,48 +919,40 @@ inline void print_result (const std::string &lib,
     const double p95_ms = p95_ns / 1000000.0;
     const double p99_ms = p99_ns / 1000000.0;
 
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",throughput," << std::fixed << std::setprecision (3) << throughput
-              << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",bandwidth," << std::fixed << std::setprecision (3) << bandwidth
-              << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",latency," << std::fixed << std::setprecision (3) << latency_ms
-              << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",latency_p95," << std::fixed << std::setprecision (3) << p95_ms
-              << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
-              << ",latency_p99," << std::fixed << std::setprecision (3) << p99_ms
-              << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
+              << size << ",throughput," << std::fixed << std::setprecision (3)
+              << throughput << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
+              << size << ",bandwidth," << std::fixed << std::setprecision (3)
+              << bandwidth << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
+              << size << ",latency," << std::fixed << std::setprecision (3)
+              << latency_ms << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
+              << size << ",latency_p95," << std::fixed << std::setprecision (3)
+              << p95_ms << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << ","
+              << size << ",latency_p99," << std::fixed << std::setprecision (3)
+              << p99_ms << std::endl;
 }
 
-inline void print_client_result_lines (
-  const std::string &lib,
-  const std::string &pattern,
-  const std::string &transport,
-  size_t size,
-  unsigned long long active_count,
-  int active_seconds,
-  double bandwidth_multiplier,
-  const bench_latency_stats_t &latency)
+inline void print_client_result_lines (const std::string &lib,
+                                       const std::string &pattern,
+                                       const std::string &transport,
+                                       size_t size,
+                                       unsigned long long active_count,
+                                       int active_seconds,
+                                       double bandwidth_multiplier,
+                                       const bench_latency_stats_t &latency)
 {
     const double throughput =
       static_cast<double> (active_count)
       / static_cast<double> (std::max (1, active_seconds));
-    const double bandwidth =
-      throughput * static_cast<double> (size) * bandwidth_multiplier / 1000000.0;
+    const double bandwidth = throughput * static_cast<double> (size)
+                             * bandwidth_multiplier / 1000000.0;
 
-    print_result (lib,
-                  pattern,
-                  transport,
-                  size,
-                  throughput,
-                  bandwidth,
-                  latency.mean_ns,
-                  latency.p95_ns,
-                  latency.p99_ns);
+    print_result (lib, pattern, transport, size, throughput, bandwidth,
+                  latency.mean_ns, latency.p95_ns, latency.p99_ns);
 }
 
 inline void print_ready (const std::string &endpoint)

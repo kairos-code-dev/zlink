@@ -185,7 +185,8 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
             throw new ArgumentNullException(nameof(parts));
 
         Message[] cloned = RequestReplySupport.CloneParts(parts);
-        uint timeoutMs = NormalizeRequestTimeout(timeout);
+        uint timeoutMs = RequestReplySupport.NormalizeRequestTimeout(timeout,
+            DefaultRequestTimeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;
@@ -227,15 +228,6 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         }
     }
 
-    private static uint NormalizeRequestTimeout(TimeSpan timeout)
-    {
-        TimeSpan effective = timeout == TimeSpan.Zero
-            ? DefaultRequestTimeout
-            : timeout;
-        return BoundaryValidation.EncodeTimeoutMilliseconds(effective,
-            nameof(timeout));
-    }
-
     private ReceivedReplyHandler CreateReplyHandler(ulong requestSeq)
     {
         return (replyParts, sendFlags) => ReplyCore(
@@ -268,29 +260,7 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
     private static void OnRequestReply(int result, IntPtr parts, nuint partCount,
         IntPtr userData)
     {
-        GCHandle handle = GCHandle.FromIntPtr(userData);
-        RequestCallState state = (RequestCallState)handle.Target!;
-        try
-        {
-            if (result != 0)
-            {
-                state.TrySetException(new ZlinkRequestException(
-                    (RequestResult)result));
-                return;
-            }
-
-            Message[] replyParts = Message.FromNativeVector(parts, partCount);
-            parts = IntPtr.Zero;
-            partCount = 0;
-            Received received = Received.Create((RoutingId?)null, replyParts);
-            if (!state.TrySetResult(received))
-                RequestReplySupport.DisposeParts(replyParts);
-        }
-        finally
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-            handle.Free();
-        }
+        RequestReplySupport.CompleteReceivedReply(result, parts, partCount,
+            userData);
     }
 }

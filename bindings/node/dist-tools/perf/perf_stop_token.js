@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.STOP_TOKEN_BYTES = exports.STOP_TOKEN_STRING = void 0;
+exports.isStopToken = isStopToken;
+exports.isStopTokenParts = isStopTokenParts;
 // Wire-level shutdown token shared by all Node perf patterns.
 //
 // PERF_SINGLE_TEST_POLICY § 1.4 / PERF_MULTI_TEST_POLICY § 1.3.1 mandate
@@ -11,7 +14,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // `bindings/cpp/perf/single/common/perf_single_common.hpp` and keeps
 // the wire bytes identical across language bindings.
 const STOP_TOKEN_STRING = '__zlink_perf_stop__';
+exports.STOP_TOKEN_STRING = STOP_TOKEN_STRING;
 const STOP_TOKEN_BYTES = Buffer.from(STOP_TOKEN_STRING);
+exports.STOP_TOKEN_BYTES = STOP_TOKEN_BYTES;
 function isStopToken(buf) {
     if (!buf) {
         return false;

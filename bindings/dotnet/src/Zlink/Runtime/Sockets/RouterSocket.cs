@@ -139,7 +139,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         _ = flags;
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nativeRoutingId = peerRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
@@ -162,7 +162,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         RoutingId destSpotRid, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
     {
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
@@ -237,7 +237,7 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         SendFlags flags = SendFlags.None)
     {
         _ = flags;
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
@@ -261,11 +261,11 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         RoutingId destNodeRid, RoutingId destSpotRid, IReadOnlyList<Message> parts,
         TimeSpan timeout, CancellationToken ct, int flags = 0)
     {
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
-        uint timeoutMs = NormalizeTimeout(timeout);
+        uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;
@@ -331,10 +331,11 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
         int flags = 0)
     {
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nativeRoutingId = peerRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
-        uint timeoutMs = NormalizeRequestTimeout(timeout);
+        uint timeoutMs = RequestReplySupport.NormalizeRequestTimeout(timeout,
+            DefaultRequestTimeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;
@@ -376,84 +377,17 @@ internal sealed class RouterSocket : ConnectableRoutedMessageSocketBase,
         }
     }
 
-    private static uint NormalizeTimeout(TimeSpan timeout)
-    {
-        return BoundaryValidation.EncodeTimeoutMilliseconds(timeout,
-            nameof(timeout));
-    }
-
-    private static uint NormalizeRequestTimeout(TimeSpan timeout)
-    {
-        TimeSpan effective = timeout == TimeSpan.Zero
-            ? DefaultRequestTimeout
-            : timeout;
-        return BoundaryValidation.EncodeTimeoutMilliseconds(effective,
-            nameof(timeout));
-    }
-
-    private static void EnsureParts(IReadOnlyList<Message> parts, string paramName)
-    {
-        if (parts == null)
-            throw new ArgumentNullException(paramName);
-        if (parts.Count == 0)
-            throw new ArgumentException("Parts must not be empty.", paramName);
-    }
-
     private static void OnSpotReply(int result, IntPtr parts, nuint partCount,
         IntPtr userData)
     {
-        GCHandle handle = GCHandle.FromIntPtr(userData);
-        RequestCallState state = (RequestCallState)handle.Target!;
-        try
-        {
-            if (result != 0)
-            {
-                state.TrySetException(new ZlinkRequestException(
-                    (RequestResult)result));
-                return;
-            }
-
-            Message[] replyParts = Message.FromNativeVector(parts, partCount);
-            parts = IntPtr.Zero;
-            partCount = 0;
-            Received received = Received.Create((RoutingId?)null, replyParts);
-            if (!state.TrySetResult(received))
-                RequestReplySupport.DisposeParts(replyParts);
-        }
-        finally
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-            handle.Free();
-        }
+        RequestReplySupport.CompleteReceivedReply(result, parts, partCount,
+            userData);
     }
 
     private static void OnRequestReply(int result, IntPtr parts, nuint partCount,
         IntPtr userData)
     {
-        GCHandle handle = GCHandle.FromIntPtr(userData);
-        RequestCallState state = (RequestCallState)handle.Target!;
-        try
-        {
-            if (result != 0)
-            {
-                state.TrySetException(new ZlinkRequestException(
-                    (RequestResult)result));
-                return;
-            }
-
-            Message[] replyParts = Message.FromNativeVector(parts, partCount);
-            parts = IntPtr.Zero;
-            partCount = 0;
-            Received received = Received.Create((RoutingId?)null, replyParts);
-            if (!state.TrySetResult(received))
-                RequestReplySupport.DisposeParts(replyParts);
-        }
-        finally
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-            handle.Free();
-        }
+        RequestReplySupport.CompleteReceivedReply(result, parts, partCount,
+            userData);
     }
 }

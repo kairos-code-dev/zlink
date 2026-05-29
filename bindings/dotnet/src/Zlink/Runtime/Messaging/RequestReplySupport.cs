@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
@@ -24,6 +25,31 @@ internal static class RequestReplySupport
         for (int i = 0; i < parts.Count; i++)
             cloned[i] = CloneMessage(parts[i]);
         return cloned;
+    }
+
+    internal static void EnsureParts(IReadOnlyList<Message> parts,
+        string paramName)
+    {
+        if (parts == null)
+            throw new ArgumentNullException(paramName);
+        if (parts.Count == 0)
+            throw new ArgumentException("Parts must not be empty.", paramName);
+    }
+
+    internal static uint NormalizeTimeout(TimeSpan timeout)
+    {
+        return BoundaryValidation.EncodeTimeoutMilliseconds(timeout,
+            nameof(timeout));
+    }
+
+    internal static uint NormalizeRequestTimeout(TimeSpan timeout,
+        TimeSpan defaultTimeout)
+    {
+        TimeSpan effective = timeout == TimeSpan.Zero
+            ? defaultTimeout
+            : timeout;
+        return BoundaryValidation.EncodeTimeoutMilliseconds(effective,
+            nameof(timeout));
     }
 
     internal static IReadOnlyList<Message> TakeOwnedParts(Received source)
@@ -124,6 +150,35 @@ internal static class RequestReplySupport
                 task.Result));
         }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
+    }
+
+    internal static void CompleteReceivedReply(int result, IntPtr parts,
+        nuint partCount, IntPtr userData)
+    {
+        GCHandle handle = GCHandle.FromIntPtr(userData);
+        RequestCallState state = (RequestCallState)handle.Target!;
+        try
+        {
+            if (result != 0)
+            {
+                state.TrySetException(new ZlinkRequestException(
+                    (RequestResult)result));
+                return;
+            }
+
+            Message[] replyParts = Message.FromNativeVector(parts, partCount);
+            parts = IntPtr.Zero;
+            partCount = 0;
+            Received received = Received.Create((RoutingId?)null, replyParts);
+            if (!state.TrySetResult(received))
+                DisposeParts(replyParts);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
+            handle.Free();
+        }
     }
 
     private static void DeliverCallback(SynchronizationContext? context,

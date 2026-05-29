@@ -15,7 +15,7 @@ async function reservePort() {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const { port } = server.address();
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   return port;
 }
 
@@ -60,7 +60,7 @@ test('router requestToSpot promise resolves through spot routed reply', async ()
     responderNode.connectRouterChannelPeer('api', endpoint);
     await waitForPeer(responderNode);
 
-    const handled = new Promise((resolve, reject) => {
+    const handled = new Promise<void>((resolve, reject) => {
       const deadline = Date.now() + 5000;
       const received = new zlink.Received();
       const poll = () => {
@@ -138,7 +138,7 @@ test('spot requestToSpot promise resolves through peer spot routed reply', async
       waitForSpotPeer(clientNode)
     ]);
 
-    const handled = new Promise((resolve, reject) => {
+    const handled = new Promise<void>((resolve, reject) => {
       const deadline = Date.now() + 5000;
       const received = new zlink.Received();
       const poll = () => {
@@ -199,7 +199,7 @@ test('spot requestToSpot resolves across child processes', async () => {
   const serverPath = path.join(fixturesDir, 'spot_reqrep_child_server.js');
   const clientPath = path.join(fixturesDir, 'spot_reqrep_child_client.js');
 
-  const waitForLine = (child, expected, timeoutMs, sink) => new Promise((resolve, reject) => {
+  const waitForLine = (child, expected, timeoutMs, sink) => new Promise<void>((resolve, reject) => {
     let buffered = '';
     let done = false;
     const timeout = setTimeout(() => {

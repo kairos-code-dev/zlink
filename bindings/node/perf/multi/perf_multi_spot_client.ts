@@ -32,6 +32,7 @@ const {
 
 const CONTROL_TOPIC = 'bench';
 const TRACE = process.env.PERF_MULTI_SPOT_TRACE === '1';
+type SpotWorkerResult = { accepted?: number; latenciesNs?: Array<bigint | number | string> };
 
 function trace(message) {
   if (TRACE) {
@@ -244,7 +245,7 @@ async function main() {
     }
     const workerResults = await Promise.all(resultWaits);
     trace('recv-workers-done');
-    const result = workerResults.reduce((merged, item) => {
+    const result = (workerResults as SpotWorkerResult[]).reduce((merged, item) => {
       merged.accepted += item.accepted || 0;
       if (Array.isArray(item.latenciesNs)) {
         for (let i = 0; i < item.latenciesNs.length; i += 1) {

@@ -493,7 +493,8 @@ if [[ -n "${BUILD_DIR}" ]]; then
     TARGET_DIR="${BUILD_DIR}/rust-multi"
     STREAM_BUILD_DIR="${BUILD_DIR}/stream-client"
 else
-    TARGET_DIR="${SCRIPT_DIR}/multi/target"
+    TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/zlink-rust-target/perf-multi}"
+    STREAM_BUILD_DIR="${TMPDIR:-/tmp}/zlink-rust-perf-stream-client"
 fi
 BIN_DIR="${TARGET_DIR}/release"
 

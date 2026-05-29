@@ -53,3 +53,10 @@ module.exports = {
   isStopToken,
   isStopTokenParts,
 };
+
+export {
+  STOP_TOKEN_STRING,
+  STOP_TOKEN_BYTES,
+  isStopToken,
+  isStopTokenParts,
+};

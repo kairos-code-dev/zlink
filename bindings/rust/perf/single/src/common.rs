@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Shared perf utilities - metric header, latency stats, phase control.
 
 use std::fs;
@@ -241,7 +239,6 @@ pub fn load_tls_pem(tls: &TlsPaths) -> TlsPem {
     }
 }
 
-#[allow(dead_code)]
 pub fn emit_unsupported(pattern: &str, transport: &str, reason: &str) {
     let _ = reason;
     println!("UNSUPPORTED,rust,{pattern},{transport}");
@@ -590,7 +587,6 @@ impl PerfConfig {
         }
     }
 
-    #[allow(dead_code)]
     pub fn endpoint(&self, suffix: &str) -> String {
         match self.transport.as_str() {
             "inproc" => format!("inproc://perf-{suffix}"),

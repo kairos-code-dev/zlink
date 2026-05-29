@@ -2,19 +2,6 @@
 
 from .spot import (
     Actor,
-    ActorBindOp,
-    ActorDestroyOp,
-    ActorJoinCallbackOp,
-    ActorJoinEntrySpotOp,
-    ActorJoinOp,
-    ActorJoinReplyOp,
-    ActorLeaveOp,
-    ActorLookupOp,
-    ActorUnbindOp,
-    ReplyOp,
-    RequestCallbackOp,
-    RequestOp,
-    SendOp,
     Spot,
     SpotNode,
     create_spot,
@@ -24,12 +11,26 @@ from .spot import (
     _actor_id_bytes,
     _actor_ref_from_native,
     _actor_ref_to_native,
-    _close_native_parts_array,
-    _clone_payload,
-    _prepare_native_parts,
     _release_external_request_progress,
     _timeout_to_ms,
 )
+from .actor_ops import (
+    ActorBindOp,
+    ActorDestroyOp,
+    ActorJoinCallbackOp,
+    ActorJoinEntrySpotOp,
+    ActorJoinOp,
+    ActorJoinReplyOp,
+    ActorLeaveOp,
+    ActorLookupOp,
+    ActorUnbindOp,
+)
+from .native_parts import (
+    close_native_parts_array as _close_native_parts_array,
+    prepare_native_parts as _prepare_native_parts,
+)
+from .spot_ops import ReplyOp, RequestCallbackOp, RequestOp, SendOp
+from .spot_receive import _clone_payload
 from .spot_models_runtime import (
     ActorJoinEntrySpotResult,
     ActorJoinInfo,

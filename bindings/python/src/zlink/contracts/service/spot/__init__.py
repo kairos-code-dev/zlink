@@ -28,19 +28,45 @@ from .spot_models import (
     SpotNodeSubjectEntry,
     SpotNodeSubjectFilter,
 )
+from .spot_operations import (
+    ActorBindOp,
+    ActorDestroyOp,
+    ActorJoinCallbackOp,
+    ActorJoinEntrySpotOp,
+    ActorJoinOp,
+    ActorJoinReplyOp,
+    ActorLeaveOp,
+    ActorLookupOp,
+    ActorUnbindOp,
+    ReplyOp,
+    RequestCallbackOp,
+    RequestOp,
+    SendOp,
+)
 from .spot_node import SpotNode
-from .spot_models import *
-from .spot_operations import *
 
 __all__ = [
     "Actor",
+    "ActorBindOp",
+    "ActorDestroyOp",
     "ActorJoinEntrySpotResult",
+    "ActorJoinEntrySpotOp",
     "ActorJoinInfo",
+    "ActorJoinCallbackOp",
+    "ActorJoinOp",
+    "ActorJoinReplyOp",
     "ActorJoinRequest",
     "ActorJoinResult",
+    "ActorLeaveOp",
+    "ActorLookupOp",
     "ActorRecvInfo",
     "ActorRef",
     "ActorRoute",
+    "ActorUnbindOp",
+    "ReplyOp",
+    "RequestCallbackOp",
+    "RequestOp",
+    "SendOp",
     "Spot",
     "SpotActorLifecycleEvent",
     "SpotActorLifecycleInfo",

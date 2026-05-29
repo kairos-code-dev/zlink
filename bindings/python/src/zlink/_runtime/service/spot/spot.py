@@ -31,14 +31,12 @@ from ....contracts.service.codes import (
     SubjectKind,
 )
 from ...._native.ffi import (
-    ZlinkActorJoinInfo,
     ZlinkActorJoinEntrySpotResult,
     ZlinkActorJoinResult,
     ZlinkActorLookupResult,
     ZlinkMsg,
     ZlinkRoutingId,
     ZlinkSpotActorLifecycleInfo,
-    ZlinkSpotActorLifecycleEvent,
     ZlinkSpotDispatchInfo,
     ZlinkSpotNodePeerEntry,
     ZlinkSpotNodePeerFilter,
@@ -105,9 +103,7 @@ from .request_progress import (
 )
 from .native_parts import (
     clone_payload as _clone_payload_parts,
-    close_native_parts as _close_native_parts,
     close_native_parts_array as _close_native_parts_array,
-    prepare_native_parts as _prepare_native_parts,
     submit_parts as _submit_parts,
 )
 from .spot_submit import (
@@ -116,6 +112,7 @@ from .spot_submit import (
     submit_spot_request as _submit_spot_request,
     submit_spot_send as _submit_spot_send,
 )
+from .spot_actor_join_runtime import SpotActorJoinMixin
 from .spot_ops import (
     ReplyOp,
     RequestCallbackOp,
@@ -156,8 +153,6 @@ from .spot_models_runtime import (
     _actor_ref_to_native,
     _message_from_native,
     _recv_actor_part,
-    _routing_id_or_empty,
-    _spot_actor_lifecycle_info_from_native,
     remote_actor_ref,
 )
 
@@ -296,7 +291,7 @@ def _make_spot_routed_send_sender(spot, node_rid, spot_rid):
     return lambda: spot.send_to_spot(node_rid, spot_rid)
 
 
-class Spot:
+class Spot(SpotActorJoinMixin):
     @classmethod
     def _create(cls, node):
         return cls(node, _internal=_SPOT_INIT_TOKEN)
@@ -1004,104 +999,6 @@ class Spot:
         self._dispatch_handler = handler
         self._dispatch_handler_cb = callback
 
-    def recv_actor_join(self, *, flags=0):
-        info = ZlinkActorJoinInfo()
-        parts = ctypes.POINTER(ZlinkMsg)()
-        part_count = ctypes.c_size_t()
-        rc = lib().zlink_spot_actor_join_recv(
-            self._handle,
-            ctypes.byref(info),
-            ctypes.byref(parts),
-            ctypes.byref(part_count),
-            int(flags),
-        )
-        if rc != 0:
-            try:
-                _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
-            except RecvError as ex:
-                if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
-                    return None
-                raise
-        messages = _make_message_list(parts, part_count.value)
-        lib().zlink_multipart_close(parts, part_count.value)
-        message = messages[0] if messages else Message()
-        for extra in messages[1:]:
-            extra.close()
-        return ActorJoinRequest(
-            info=ActorJoinInfo(
-                source_actor=_actor_ref_from_native(info.source_actor),
-                target_actor=_actor_ref_from_native(info.target_actor),
-                source_node_rid=_routing_id_bytes(info.source_node_rid),
-                source_spot_rid=_routing_id_or_empty(info.source_spot_rid),
-                target_node_rid=_routing_id_or_empty(info.target_node_rid),
-                target_spot_rid=_routing_id_or_empty(info.target_spot_rid),
-                join_epoch=int(info.join_epoch),
-                flags=int(info.flags),
-            ),
-            message=message,
-            _native=info,
-        )
-
-    def recv_actor_lifecycle(self, *, flags=0):
-        event = ZlinkSpotActorLifecycleEvent()
-        rc = lib().zlink_spot_recv_actor_lifecycle(
-            self._handle,
-            ctypes.byref(event),
-            int(flags),
-        )
-        if rc != 0:
-            try:
-                _raise_result_error(RecvError, RecvResult, rc, lib().zlink_errno())
-            except RecvError as ex:
-                if int(flags) & 1 and ex.result == RecvResult.NO_DATA:
-                    return None
-                raise
-        return SpotActorLifecycleEvent(
-            kind=SpotActorLifecycleEventKind(int(event.kind)),
-            info=_spot_actor_lifecycle_info_from_native(event.info),
-        )
-
-    def reply_actor_join(self, request, join_result_code):
-        if not isinstance(request, ActorJoinRequest):
-            raise TypeError("request must be ActorJoinRequest")
-        return ActorJoinReplyOp(self, request, join_result_code)
-
-    def _submit_actor_join_reply(self, request, join_result_code, parts):
-        if parts:
-            native_parts = _clone_payload(parts)
-            native_array = _prepare_native_parts(native_parts)
-            parts_arg = native_array
-            count = len(native_parts)
-        else:
-            native_parts = []
-            parts_arg = None
-            count = 0
-        rc = lib().zlink_spot_actor_join_reply(
-            self._handle,
-            ctypes.byref(request._native),
-            int(join_result_code),
-            parts_arg,
-            count,
-        )
-        if rc != 0:
-            _close_native_parts(native_parts)
-            _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
-
-    def actors(self):
-        count = ctypes.c_size_t()
-        rc = lib().zlink_spot_actors(self._handle, None, ctypes.byref(count))
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        if count.value == 0:
-            return []
-        entries = (ZlinkActorRef * int(count.value))()
-        rc = lib().zlink_spot_actors(
-            self._handle, entries, ctypes.byref(count)
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return [_actor_ref_from_native(entry) for entry in entries[: int(count.value)]]
-
     def _cancel_pending_requests(self):
         for handle, pending in list(self._request_pending.items()):
             self._request_pending.pop(handle, None)
@@ -1188,7 +1085,6 @@ for _public_type in (
     ActorJoinOp,
     ActorJoinCallbackOp,
     ActorJoinEntrySpotOp,
-    ActorJoinReplyOp,
     ActorLeaveOp,
     ActorDestroyOp,
     ActorLookupOp,

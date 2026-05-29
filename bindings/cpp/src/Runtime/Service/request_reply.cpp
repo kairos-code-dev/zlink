@@ -42,8 +42,7 @@ zlink_submit_result_t submit_raw_request_part (
 {
     const uint32_t timeout =
       is_final_ ? static_cast<uint32_t> (state_.timeout.count ()) : 0u;
-    zlink_request_callback_t callback =
-      is_final_ ? &detail::request_callback_trampoline : NULL;
+    auto callback = is_final_ ? &detail::request_callback_trampoline : NULL;
     void *userdata = is_final_ ? request_state_ : NULL;
 
     switch (state_.kind) {

@@ -474,7 +474,7 @@ internal sealed partial class Spot : ISpot
     internal unsafe bool SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
@@ -529,7 +529,7 @@ internal sealed partial class Spot : ISpot
         SendFlags flags = SendFlags.None)
     {
         _ = flags;
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
@@ -608,7 +608,7 @@ internal sealed partial class Spot : ISpot
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {
         _ = flags;
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId routingId = peerRid.ToNative();
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         try
@@ -1017,9 +1017,9 @@ internal sealed partial class Spot : ISpot
         IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
         int flags = 0)
     {
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         Message[] cloned = RequestReplySupport.CloneParts(parts);
-        uint timeoutMs = NormalizeTimeout(timeout);
+        uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;
@@ -1085,7 +1085,7 @@ internal sealed partial class Spot : ISpot
         RoutingId destNodeRid, RoutingId destSpotRid, IReadOnlyList<Message> parts,
         TimeSpan timeout, CancellationToken ct, int flags = 0)
     {
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
         return RequestRoutedAsyncInternal(parts, timeout, ct, flags,
@@ -1101,10 +1101,10 @@ internal sealed partial class Spot : ISpot
         Action<RequestResult, IReadOnlyList<Message>> callback, SendFlags flags,
         TimeSpan timeout)
     {
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nodeRid = destNodeRid.ToNative();
         ZlinkRoutingId spotRid = destSpotRid.ToNative();
-        uint timeoutMs = NormalizeTimeout(timeout);
+        uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         GCHandle handle = default;
         SpotRequestCallbackState? state = null;
@@ -1158,7 +1158,7 @@ internal sealed partial class Spot : ISpot
         IReadOnlyList<Message> parts, TimeSpan timeout, CancellationToken ct,
         int flags = 0)
     {
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
         ZlinkRoutingId nativePeerRid = peerRid.ToNative();
         return RequestRoutedAsyncInternal(parts, timeout, ct, flags,
             (ref ZlinkMsg nativePart, IntPtr handler, IntPtr userData,
@@ -1177,7 +1177,7 @@ internal sealed partial class Spot : ISpot
         int flags, SpotRequestPartSubmitter submit)
     {
         Message[] cloned = RequestReplySupport.CloneParts(parts);
-        uint timeoutMs = NormalizeTimeout(timeout);
+        uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
         var completion = new TaskCompletionSource<Received>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;
@@ -1242,44 +1242,8 @@ internal sealed partial class Spot : ISpot
     private static void OnRoutedReply(int result, IntPtr parts, nuint partCount,
         IntPtr userData)
     {
-        GCHandle handle = GCHandle.FromIntPtr(userData);
-        RequestCallState state = (RequestCallState)handle.Target!;
-        try
-        {
-            if (result != 0)
-            {
-                state.TrySetException(new ZlinkRequestException(
-                    (RequestResult)result));
-                return;
-            }
-
-            Message[] replyParts = Message.FromNativeVector(parts, partCount);
-            parts = IntPtr.Zero;
-            partCount = 0;
-            Received received = Received.Create((RoutingId?)null, replyParts);
-            if (!state.TrySetResult(received))
-                RequestReplySupport.DisposeParts(replyParts);
-        }
-        finally
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-            handle.Free();
-        }
-    }
-
-    private static uint NormalizeTimeout(TimeSpan timeout)
-    {
-        return BoundaryValidation.EncodeTimeoutMilliseconds(timeout,
-            nameof(timeout));
-    }
-
-    private static void EnsureParts(IReadOnlyList<Message> parts, string paramName)
-    {
-        if (parts == null)
-            throw new ArgumentNullException(paramName);
-        if (parts.Count == 0)
-            throw new ArgumentException("Parts must not be empty.", paramName);
+        RequestReplySupport.CompleteReceivedReply(result, parts, partCount,
+            userData);
     }
 
     private static T? TryReceiveCore<T>(Func<T> operation) where T : class

@@ -44,7 +44,7 @@ internal sealed partial class Spot
             throw new ArgumentNullException(nameof(parts));
         ValidateTopicId(topic, nameof(topic));
         EnsureNotDisposed();
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
 
         if ((flags & SendFlags.DontWait) != 0)
         {
@@ -78,7 +78,7 @@ internal sealed partial class Spot
             throw new ArgumentNullException(nameof(parts));
         ValidateTopicId(topic, nameof(topic));
         EnsureNotDisposed();
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
 
         if (parts is Message[] array)
             return PublishNoWaitParts(topic, array, nameof(parts));
@@ -120,7 +120,7 @@ internal sealed partial class Spot
             throw new ArgumentNullException(nameof(parts));
         ValidateChannelName(channelName, nameof(channelName));
         EnsureNotDisposed();
-        EnsureParts(parts, nameof(parts));
+        RequestReplySupport.EnsureParts(parts, nameof(parts));
 
         try
         {

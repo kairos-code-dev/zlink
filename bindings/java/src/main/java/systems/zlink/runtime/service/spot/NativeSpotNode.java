@@ -56,7 +56,7 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMonitorStatuses;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -1525,12 +1525,12 @@ public final class NativeSpotNode implements SpotNode {
                 for (int i = 0; i < parts.size(); i++) {
                     Message part = parts.get(i);
                     MemorySegment nativeMsg = arena.allocate(
-                      NativeLayouts.MSG_LAYOUT);
+                      NativeLayouts.MESSAGE_LAYOUT);
                     InternalAccess.messageCopyTo(part, nativeMsg);
-                    int rc = Native.spotNodeActorSendBoundSessionMsg(handle,
+                    int rc = Native.spotNodeActorSendBoundSessionMessage(handle,
                       refSegment, nativeMsg, flags.value());
                     if (rc != 0) {
-                        NativeMsg.msgClose(nativeMsg);
+                        NativeMessage.messageClose(nativeMsg);
                         if (flags == SendFlags.DONT_WAIT
                             && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
                             return false;

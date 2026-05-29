@@ -60,8 +60,8 @@ public final class MessagePartsBuffer {
         int count = size();
         if (count == 0)
             return MemorySegment.NULL;
-        MemorySegment out = arena.allocate(NativeLayouts.MSG_LAYOUT, count);
-        long stride = NativeLayouts.MSG_LAYOUT.byteSize();
+        MemorySegment out = arena.allocate(NativeLayouts.MESSAGE_LAYOUT, count);
+        long stride = NativeLayouts.MESSAGE_LAYOUT.byteSize();
         int copied = 0;
         try {
             for (int i = 0; i < count; i++) {
@@ -79,9 +79,9 @@ public final class MessagePartsBuffer {
     public static void closeNativeArray(MemorySegment parts, int count) {
         if (parts == MemorySegment.NULL || count <= 0)
             return;
-        long stride = NativeLayouts.MSG_LAYOUT.byteSize();
+        long stride = NativeLayouts.MESSAGE_LAYOUT.byteSize();
         for (int i = 0; i < count; i++) {
-            NativeMsg.msgClose(parts.asSlice(i * stride, stride));
+            NativeMessage.messageClose(parts.asSlice(i * stride, stride));
         }
     }
 }

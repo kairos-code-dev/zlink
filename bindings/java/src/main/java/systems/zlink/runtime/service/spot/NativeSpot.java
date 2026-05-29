@@ -33,7 +33,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import java.lang.foreign.Arena;
@@ -70,7 +70,7 @@ import java.util.function.BiConsumer;
  * service model.
  */
 public final class NativeSpot implements Spot {
-    private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
+    private static final long MSG_SIZE = NativeLayouts.MESSAGE_LAYOUT.byteSize();
     private static final int TOPIC_CAPACITY = 256;
     private static final int TOPIC_CACHE_LIMIT = 1024;
     private static final int TOPIC_SCRATCH_INITIAL_CAPACITY = 64;
@@ -153,7 +153,7 @@ public final class NativeSpot implements Spot {
     private static final class SpotSendScratch {
         final Arena arena = Arena.ofAuto();
         final MemorySegment nativeMsg =
-          arena.allocate(NativeLayouts.MSG_LAYOUT);
+          arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
     }
 
     private final ThreadLocal<SpotRecvScratch> spotRecvScratch =
@@ -1102,9 +1102,9 @@ public final class NativeSpot implements Spot {
                 MemorySegment parts = partsOut.get(ValueLayout.ADDRESS, 0);
                 long partCount = partCountOut.get(ValueLayout.JAVA_LONG, 0);
                 Message[] messages = partCount > 0
-                  ? InternalAccess.messageFromOwnedMsgVector(parts, partCount)
+                  ? InternalAccess.messageFromOwnedMessageVector(parts, partCount)
                   : new Message[] { new Message() };
-                NativeMsg.multipartClose(parts, partCount);
+                NativeMessage.multipartClose(parts, partCount);
                 message = messages[0];
                 for (int i = 1; i < messages.length; i++) {
                     messages[i].close();
@@ -1715,9 +1715,9 @@ public final class NativeSpot implements Spot {
                                                            long topicLen,
                                                            MemorySegment parts,
                                                            long partCount) {
-        Message[] snapshotParts = InternalAccess.messageFromOwnedMsgVectorShared(
+        Message[] snapshotParts = InternalAccess.messageFromOwnedMessageVectorShared(
             parts, partCount);
-        NativeMsg.multipartClose(parts, partCount);
+        NativeMessage.multipartClose(parts, partCount);
         return new CallbackSubscribeData(readRoutingId(sourceRid),
             decodeTopic(topic, topicLen), snapshotParts);
     }
@@ -1897,7 +1897,7 @@ public final class NativeSpot implements Spot {
     private static void closeMsgVector(MemorySegment vec, int count) {
         for (int i = 0; i < count; i++) {
             MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
-            NativeMsg.msgClose(msg);
+            NativeMessage.messageClose(msg);
         }
     }
 
@@ -1942,7 +1942,7 @@ public final class NativeSpot implements Spot {
                 }
                 return;
             }
-            Message[] frames = InternalAccess.messageFromOwnedMsgVectorShared(
+            Message[] frames = InternalAccess.messageFromOwnedMessageVectorShared(
               parts, partCount);
             Received received = InternalAccess.received(null, null, frames, 0L,
               false, null);
@@ -1954,7 +1954,7 @@ public final class NativeSpot implements Spot {
                 future.completeExceptionally(error);
             }
         } finally {
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
         }
     }
 
@@ -1967,7 +1967,7 @@ public final class NativeSpot implements Spot {
     private int spotPublishPartOnce(MemorySegment topic, Message part,
                                     int flags, int partFlag, Arena arena) {
         return spotPublishPartOnce(topic, part, flags, partFlag,
-          arena.allocate(NativeLayouts.MSG_LAYOUT));
+          arena.allocate(NativeLayouts.MESSAGE_LAYOUT));
     }
 
     private int spotPublishPartOnce(MemorySegment topic, Message part,
@@ -2001,7 +2001,7 @@ public final class NativeSpot implements Spot {
 
     private int spotSendChannelPartOnce(MemorySegment service, Message part,
                                         int flags, int partFlag, Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
         Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
         try {
             int rc = Native.spotSendChannelPart(handle, service, nativeMsg,
@@ -2067,7 +2067,7 @@ public final class NativeSpot implements Spot {
                                            int partFlag,
                                            int timeoutMs,
                                            Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
         InternalAccess.messageCopyTo(part, nativeMsg);
         return Native.spotRequestChannelPart(handle, service,
           nativeMsg, handler, userData, flags, partFlag, timeoutMs);

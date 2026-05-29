@@ -16,7 +16,7 @@ import systems.zlink.contracts.sockets.SocketMessageHandler;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -144,7 +144,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                     MemorySegment.class, long.class, MemorySegment.class,
                     long.class, MemorySegment.class)),
                 FD_ROUTER_HANDLER, arena);
-            int rc = NativeMsg.routerHandler(InternalAccess.socketHandle(socket), stub,
+            int rc = NativeMessage.routerHandler(InternalAccess.socketHandle(socket), stub,
                 MemorySegment.NULL);
             if (rc != 0) {
                 if (createdExecutor) {
@@ -243,7 +243,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         SocketMessageHandler handler = dataHandler;
         ExecutorService executor = callbackExecutor;
         if (handler == null || executor == null) {
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
             return;
         }
         CallbackReceivedData snapshot;
@@ -268,9 +268,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                                                  long partCount) {
         Message[] snapshotParts;
         try {
-            snapshotParts = InternalAccess.messageFromOwnedMsgVectorShared(parts, partCount);
+            snapshotParts = InternalAccess.messageFromOwnedMessageVectorShared(parts, partCount);
         } finally {
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
         }
         return new CallbackReceivedData(readRoutingId(sourceNodeRid),
             readRoutingId(sourceSpotRid), requestSequence, snapshotParts);
@@ -692,24 +692,24 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                                              long partCount) {
             this.partsAddr = partsAddr;
             this.partCount = Math.max(0L, partCount);
-            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+            long messageSize = NativeLayouts.MESSAGE_LAYOUT.byteSize();
             this.parts = this.partCount == 0 || partsAddr == null
                 || partsAddr.address() == 0
                 ? MemorySegment.NULL
                 : MemorySegment.ofAddress(partsAddr.address()).reinterpret(
-                    msgSize * this.partCount);
+                    messageSize * this.partCount);
         }
 
         @Override
         public Message nextPartOrNull() {
             if (closed || nextIndex >= partCount)
                 return null;
-            long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+            long messageSize = NativeLayouts.MESSAGE_LAYOUT.byteSize();
             Message next = new Message();
             boolean success = false;
             try {
-                MemorySegment src = parts.asSlice(nextIndex * msgSize, msgSize);
-                int rc = NativeMsg.msgMove(InternalAccess.messageNativeHandle(next), src);
+                MemorySegment src = parts.asSlice(nextIndex * messageSize, messageSize);
+                int rc = NativeMessage.messageMove(InternalAccess.messageNativeHandle(next), src);
                 if (rc != 0) {
                     throw ZlinkException.fromLastError("zlink_msg_move");
                 }
@@ -743,7 +743,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                 vectorClosed = true;
                 // Native.routerRecv() exposes a thread-local multipart view.
                 // Close the moved-from parts, but do not free the backing array.
-                NativeMsg.multipartClose(partsAddr, partCount);
+                NativeMessage.multipartClose(partsAddr, partCount);
             }
         }
     }

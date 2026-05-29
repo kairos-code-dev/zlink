@@ -216,7 +216,7 @@ final class NativeRouterSpotSupport {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
             InternalAccess.messageCopyTo(part, nativeMsg);
             return Native.routerSendSpotPart(InternalAccess.socketHandle(socket),
                 nodeRid, spotRid, nativeMsg, flags, partFlag);
@@ -235,7 +235,7 @@ final class NativeRouterSpotSupport {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
             InternalAccess.messageCopyTo(part, nativeMsg);
             return Native.routerRequestSpotPart(InternalAccess.socketHandle(socket),
                 nodeRid, spotRid, nativeMsg, handler, userData, flags,
@@ -252,7 +252,7 @@ final class NativeRouterSpotSupport {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
             InternalAccess.messageCopyTo(part, nativeMsg);
             return Native.routerReplySpotPart(InternalAccess.socketHandle(socket),
                 nodeRid, spotRid, requestSeq, nativeMsg, partFlag);

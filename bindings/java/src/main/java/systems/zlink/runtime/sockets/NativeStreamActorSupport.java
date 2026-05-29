@@ -19,7 +19,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -151,7 +151,7 @@ final class NativeStreamActorSupport {
             MemorySegment socketHandle = InternalAccess.socketHandle(socket);
             for (int i = 0; i < parts.size(); i++) {
                 MemorySegment nativeMsg =
-                  arena.allocate(NativeLayouts.MSG_LAYOUT);
+                  arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
                 InternalAccess.messageCopyTo(parts.get(i), nativeMsg);
                 int more = i + 1 < parts.size()
                   ? Native.PART_MORE
@@ -160,7 +160,7 @@ final class NativeStreamActorSupport {
                   nativeSessionRid, nativeActorId, nativeMsg, flags.value(),
                   more);
                 if (rc != 0) {
-                    NativeMsg.msgClose(nativeMsg);
+                    NativeMessage.messageClose(nativeMsg);
                     if (flags == SendFlags.DONT_WAIT
                         && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
                         return false;

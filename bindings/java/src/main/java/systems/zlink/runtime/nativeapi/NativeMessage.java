@@ -12,7 +12,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 
-public final class NativeMsg {
+public final class NativeMessage {
     private static final Linker LINKER = Linker.nativeLinker();
     private static final SymbolLookup LOOKUP = LibraryLoader.lookup();
     private static final SymbolLookup C_LOOKUP = LINKER.defaultLookup();
@@ -100,9 +100,9 @@ public final class NativeMsg {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
-    private NativeMsg() {}
+    private NativeMessage() {}
 
-    public static int msgInit(MemorySegment msg) {
+    public static int messageInit(MemorySegment msg) {
         try {
             return (int) MH_MSG_INIT.invokeExact(msg);
         } catch (Throwable t) {
@@ -110,7 +110,7 @@ public final class NativeMsg {
         }
     }
 
-    public static int msgInitSize(MemorySegment msg, int size) {
+    public static int messageInitSize(MemorySegment msg, int size) {
         try {
             return (int) MH_MSG_INIT_SIZE.invokeExact(msg, (long) size);
         } catch (Throwable t) {
@@ -118,7 +118,7 @@ public final class NativeMsg {
         }
     }
 
-    public static int msgClose(MemorySegment msg) {
+    public static int messageClose(MemorySegment msg) {
         try {
             return (int) MH_MSG_CLOSE.invokeExact(msg);
         } catch (Throwable t) {
@@ -126,7 +126,7 @@ public final class NativeMsg {
         }
     }
 
-    public static int msgMove(MemorySegment dest, MemorySegment src) {
+    public static int messageMove(MemorySegment dest, MemorySegment src) {
         try {
             return (int) MH_MSG_MOVE.invokeExact(dest, src);
         } catch (Throwable t) {
@@ -134,7 +134,7 @@ public final class NativeMsg {
         }
     }
 
-    public static int msgCopy(MemorySegment dest, MemorySegment src) {
+    public static int messageCopy(MemorySegment dest, MemorySegment src) {
         try {
             return (int) MH_MSG_COPY.invokeExact(dest, src);
         } catch (Throwable t) {
@@ -142,7 +142,7 @@ public final class NativeMsg {
         }
     }
 
-    public static MemorySegment msgData(MemorySegment msg) {
+    public static MemorySegment messageData(MemorySegment msg) {
         try {
             return (MemorySegment) MH_MSG_DATA.invokeExact(msg);
         } catch (Throwable t) {
@@ -150,7 +150,7 @@ public final class NativeMsg {
         }
     }
 
-    public static long msgDataAddr(MemorySegment msg) {
+    public static long messageDataAddress(MemorySegment msg) {
         try {
             return (long) MH_MSG_DATA_ADDR.invokeExact(msg);
         } catch (Throwable t) {
@@ -158,7 +158,7 @@ public final class NativeMsg {
         }
     }
 
-    public static long msgSize(MemorySegment msg) {
+    public static long messageSize(MemorySegment msg) {
         try {
             return (long) MH_MSG_SIZE.invokeExact(msg);
         } catch (Throwable t) {
@@ -166,7 +166,7 @@ public final class NativeMsg {
         }
     }
 
-    public static int msgRefCnt(MemorySegment msg) {
+    public static int messageRefCount(MemorySegment msg) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
             int refCount = (int) MH_MSG_REFCNT.invokeExact(msg, errorOut);
@@ -182,7 +182,7 @@ public final class NativeMsg {
         }
     }
 
-    public static MemorySegment msgGets(MemorySegment msg, MemorySegment property) {
+    public static MemorySegment messageGetProperty(MemorySegment msg, MemorySegment property) {
         try {
             return (MemorySegment) MH_MSG_GETS.invokeExact(msg, property);
         } catch (Throwable t) {
@@ -190,7 +190,7 @@ public final class NativeMsg {
         }
     }
 
-    public static void msgvClose(MemorySegment parts, long count) {
+    public static void messageVectorClose(MemorySegment parts, long count) {
         try {
             MH_MSGV_CLOSE.invokeExact(parts, count);
             if (parts != null && parts.address() != 0) {

@@ -260,7 +260,7 @@ public final class NativeDealerRequestSupport {
             int partFlag = i + 1 < payload.size()
                 ? Native.PART_MORE : Native.PART_FINAL;
             try (Arena arena = Arena.ofConfined()) {
-                MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+                MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
                 InternalAccess.messageCopyTo(payload.get(i), nativeMsg);
                 int rc = Native.dealerRequestPart(
                     InternalAccess.socketHandle(socket), nativeMsg,

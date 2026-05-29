@@ -138,7 +138,7 @@ final class NativeRouterRequestSupport {
                 ? Native.PART_MORE : Native.PART_FINAL;
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment nativeRid = nativeRoutingId(arena, routingId);
-                MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+                MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
                 InternalAccess.messageCopyTo(payload.get(i), nativeMsg);
                 int rc = Native.routerRequestPart(
                     InternalAccess.socketHandle(socket), nativeRid, nativeMsg,
@@ -159,7 +159,7 @@ final class NativeRouterRequestSupport {
                                            int partFlag) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeRid = nativeRoutingId(arena, routingId);
-            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
             InternalAccess.messageTransferTo(part, nativeMsg);
             try {
                 int rc = Native.routerReplyPart(

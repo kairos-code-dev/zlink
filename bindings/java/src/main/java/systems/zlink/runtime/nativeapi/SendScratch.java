@@ -9,7 +9,7 @@ public final class SendScratch {
     public static final int ROUTING_ID_CACHE_CAPACITY = 256;
 
     public final Arena arena = Arena.ofConfined();
-    public final MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+    public final MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
     public final MemorySegment nativeRoutingId = arena.allocate(
         NativeLayouts.ROUTING_ID_LAYOUT);
     public byte[] cachedRoutingIdBytes;

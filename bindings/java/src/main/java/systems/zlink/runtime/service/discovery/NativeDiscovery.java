@@ -19,7 +19,7 @@ import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.service.registry.NativeRegistryCodecs;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -332,10 +332,10 @@ public final class NativeDiscovery implements Discovery {
     }
 
     private static byte[] readMessageBytes(MemorySegment message) {
-        int size = Math.toIntExact(NativeMsg.msgSize(message));
+        int size = Math.toIntExact(NativeMessage.messageSize(message));
         byte[] bytes = new byte[size];
         if (size > 0) {
-            MemorySegment.copy(NativeMsg.msgData(message).reinterpret(size), 0,
+            MemorySegment.copy(NativeMessage.messageData(message).reinterpret(size), 0,
               MemorySegment.ofArray(bytes), 0, size);
         }
         return bytes;

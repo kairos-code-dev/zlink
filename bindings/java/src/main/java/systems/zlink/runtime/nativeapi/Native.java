@@ -50,10 +50,10 @@ public final class Native {
                 reset();
                 return MemorySegment.NULL;
             }
-            long needed = NativeLayouts.MSG_LAYOUT.byteSize() * newPartCount;
+            long needed = NativeLayouts.MESSAGE_LAYOUT.byteSize() * newPartCount;
             if (parts == MemorySegment.NULL || parts.byteSize() < needed) {
                 parts = Arena.ofAuto().allocate(needed,
-                    NativeLayouts.MSG_LAYOUT.byteAlignment());
+                    NativeLayouts.MESSAGE_LAYOUT.byteAlignment());
             }
             partCount = newPartCount;
             return parts;
@@ -1049,8 +1049,8 @@ public final class Native {
     }
 
     private static MemorySegment nthPart(MemorySegment parts, long index) {
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        return parts.asSlice(index * msgSize, msgSize);
+        long messageSize = NativeLayouts.MESSAGE_LAYOUT.byteSize();
+        return parts.asSlice(index * messageSize, messageSize);
     }
 
     private static int sendMultipartLoop(MemorySegment socket,
@@ -1127,7 +1127,7 @@ public final class Native {
             return parts;
         } catch (RuntimeException ex) {
             if (parts.address() != 0 && moved > 0) {
-                NativeMsg.multipartClose(parts, moved);
+                NativeMessage.multipartClose(parts, moved);
             }
             throw ex;
         } finally {
@@ -1555,7 +1555,7 @@ public final class Native {
         }
     }
 
-    public static int streamSendMsg(MemorySegment socket, MemorySegment rid,
+    public static int streamSendMessage(MemorySegment socket, MemorySegment rid,
                                     MemorySegment msg, int flags) {
         try {
             return (int) MH_STREAM_SEND_MSG.invokeExact(socket, rid, msg, flags);
@@ -3548,7 +3548,7 @@ public final class Native {
         }
     }
 
-    public static int spotNodeActorSendBoundSessionMsg(MemorySegment node,
+    public static int spotNodeActorSendBoundSessionMessage(MemorySegment node,
                                                        MemorySegment actor,
                                                        MemorySegment message,
                                                        int flags) {

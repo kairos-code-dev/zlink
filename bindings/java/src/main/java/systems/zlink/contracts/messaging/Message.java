@@ -29,7 +29,7 @@ public final class Message implements AutoCloseable {
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private static final boolean NATIVE_LITTLE_ENDIAN =
         ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
-    private static final long MSG_LAYOUT_SIZE = ContractAccess.nativeMessageLayoutSize();
+    private static final long MESSAGE_LAYOUT_SIZE = ContractAccess.nativeMessageLayoutSize();
 
     private final Object scope;
     private final long ownedMsgSlotAddress;
@@ -930,8 +930,8 @@ public final class Message implements AutoCloseable {
                 slots[count] = 0L;
                 return slot;
             }
-            long address = UNSAFE.allocateMemory(MSG_LAYOUT_SIZE);
-            UNSAFE.setMemory(address, MSG_LAYOUT_SIZE, (byte) 0);
+            long address = UNSAFE.allocateMemory(MESSAGE_LAYOUT_SIZE);
+            UNSAFE.setMemory(address, MESSAGE_LAYOUT_SIZE, (byte) 0);
             return address;
         }
 

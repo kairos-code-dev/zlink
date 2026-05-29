@@ -28,7 +28,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
@@ -474,11 +474,11 @@ final class NativeSocketRuntime implements AutoCloseable {
         ensureBlockingSendAllowed(flag);
         SendScratch scratch = sendScratch.get();
         MemorySegment nativeMsg = scratch.nativeMsg;
-        int rc = NativeMsg.msgInitSize(nativeMsg, length);
+        int rc = NativeMessage.messageInitSize(nativeMsg, length);
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_msg_init_size");
         if (length > 0) {
-            MemorySegment dst = NativeMsg.msgData(nativeMsg).reinterpret(length);
+            MemorySegment dst = NativeMessage.messageData(nativeMsg).reinterpret(length);
             MemorySegment.copy(payload, 0, dst, 0, length);
         }
         boolean success = false;
@@ -491,7 +491,7 @@ final class NativeSocketRuntime implements AutoCloseable {
         } finally {
             if (!success) {
                 try {
-                    NativeMsg.msgClose(nativeMsg);
+                    NativeMessage.messageClose(nativeMsg);
                 } catch (RuntimeException ignored) {
                 }
             }
@@ -1630,7 +1630,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     // Publish hot path. Mirrors sendPartOnce: reuse the thread-local
     // SendScratch (no per-call Arena), cache the encoded topic segment (C
     // passes a const char* with zero per-call allocation), pass the message's
-    // own native handle directly (no extra msgInit/msgMove), and use the
+    // own native handle directly (no extra messageInit/messageMove), and use the
     // safepoint-eliding critical downcall when DONT_WAIT is set.
     private int publishPartOnce(String topicId, Message message, int flags,
                                 int partFlag) {
@@ -3281,9 +3281,9 @@ final class NativeSocketRuntime implements AutoCloseable {
         private CallbackReceivedData snapshotReceive(MemorySegment sourceRid,
                                                      MemorySegment parts,
                                                      long partCount) {
-            Message[] snapshotParts = InternalAccess.messageFromOwnedMsgVectorShared(parts,
+            Message[] snapshotParts = InternalAccess.messageFromOwnedMessageVectorShared(parts,
                 partCount);
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
             return new CallbackReceivedData(readRoutingId(sourceRid), snapshotParts);
         }
 
@@ -3292,9 +3292,9 @@ final class NativeSocketRuntime implements AutoCloseable {
                                                         long topicLen,
                                                         MemorySegment parts,
                                                         long partCount) {
-            Message[] snapshotParts = InternalAccess.messageFromOwnedMsgVectorShared(parts,
+            Message[] snapshotParts = InternalAccess.messageFromOwnedMessageVectorShared(parts,
                 partCount);
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
             return new CallbackSubscribeData(readRoutingId(sourceRid),
                 decodeTopic(topic, topicLen), snapshotParts);
         }

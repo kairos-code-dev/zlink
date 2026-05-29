@@ -27,7 +27,7 @@ import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
@@ -631,7 +631,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                                       Message part,
                                       int partFlag,
                                       Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
         InternalAccess.messageCopyTo(part, nativeMsg);
         return Native.spotReplySpotPart(handle(), nodeRid, spotRid,
             requestSeq, nativeMsg, partFlag);
@@ -643,7 +643,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                                       Message part,
                                       int partFlag,
                                       Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
         Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
         try {
             int rc = Native.spotReplySpotPart(handle(), nodeRid, spotRid,
@@ -666,7 +666,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                                      int flags,
                                      int partFlag,
                                      Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
         InternalAccess.messageCopyTo(part, nativeMsg);
         return Native.spotSendSpotPart(handle(), nodeRid, spotRid,
             nativeMsg, flags, partFlag);
@@ -681,7 +681,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                                         int partFlag,
                                         int timeoutMs,
                                         Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
         InternalAccess.messageCopyTo(part, nativeMsg);
         return Native.spotRequestSpotPart(handle(), nodeRid, spotRid,
           nativeMsg, handler, userData, flags, partFlag, timeoutMs);
@@ -696,7 +696,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                                         int partFlag,
                                         int timeoutMs,
                                         Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
         Object anchor = InternalAccess.messageTransferTo(part, nativeMsg);
         try {
             int rc = Native.spotRequestSpotPart(handle(), nodeRid, spotRid,
@@ -721,7 +721,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                                           int partFlag,
                                           int timeoutMs,
                                           Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
         InternalAccess.messageCopyTo(part, nativeMsg);
         return Native.spotRequestRouterPart(handle(), nativeRid,
           nativeMsg, handler, userData, flags, partFlag, timeoutMs);
@@ -732,7 +732,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                                         Message part,
                                         int partFlag,
                                         Arena arena) {
-        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+        MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
         InternalAccess.messageCopyTo(part, nativeMsg);
         return Native.spotReplyRouterPart(handle(), nativeRid,
             requestSeq, nativeMsg, partFlag);
@@ -917,7 +917,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                 }
                 return;
             }
-            Message[] frames = InternalAccess.messageFromOwnedMsgVectorShared(
+            Message[] frames = InternalAccess.messageFromOwnedMessageVectorShared(
               parts, partCount);
             if (pending != null) {
                 pending.complete(RequestResult.OK, java.util.Arrays.asList(frames),
@@ -937,7 +937,7 @@ public final class SpotRoutedSupport implements AutoCloseable {
                 pending.completeExceptionally(error);
             }
         } finally {
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
         }
     }
 

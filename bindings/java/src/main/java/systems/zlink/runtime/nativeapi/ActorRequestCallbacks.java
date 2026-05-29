@@ -192,12 +192,12 @@ public final class ActorRequestCallbacks {
         long id = userdata.address();
         Pending pending = PENDING.remove(id);
         if (pending == null) {
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
             return;
         }
         try {
             Message[] messages = result == RequestResult.OK.value()
-              ? InternalAccess.messageFromOwnedMsgVectorShared(parts, partCount)
+              ? InternalAccess.messageFromOwnedMessageVectorShared(parts, partCount)
               : new Message[0];
             pending.callback().accept(RequestResult.fromValue(result),
               Collections.unmodifiableList(Arrays.asList(messages)));
@@ -206,7 +206,7 @@ public final class ActorRequestCallbacks {
             pending.future().completeExceptionally(ex);
             throw ex;
         } finally {
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
         }
     }
 
@@ -232,7 +232,7 @@ public final class ActorRequestCallbacks {
                   null, 0L, 0)
               : ActorInterop.actorJoinResultFromNative(result);
             Message[] messages = joinResult.result() == RequestResult.OK
-              ? InternalAccess.messageFromOwnedMsgVectorShared(parts, partCount)
+              ? InternalAccess.messageFromOwnedMessageVectorShared(parts, partCount)
               : new Message[0];
             join.handler().onJoinResult(joinResult,
               Collections.unmodifiableList(Arrays.asList(messages)));
@@ -241,7 +241,7 @@ public final class ActorRequestCallbacks {
             join.future().completeExceptionally(ex);
             throw ex;
         } finally {
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
         }
     }
 

@@ -64,14 +64,14 @@ public final class RoutedRequestSupport {
 
     public static MemorySegment movePayloadToNative(Arena arena,
                                                     List<Message> payload) {
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        MemorySegment nativeParts = arena.allocate(msgSize * payload.size(),
-          NativeLayouts.MSG_LAYOUT.byteAlignment());
+        long messageSize = NativeLayouts.MESSAGE_LAYOUT.byteSize();
+        MemorySegment nativeParts = arena.allocate(messageSize * payload.size(),
+          NativeLayouts.MESSAGE_LAYOUT.byteAlignment());
         int built = 0;
         try {
             for (int i = 0; i < payload.size(); i++) {
                 InternalAccess.messageTransferTo(payload.get(i),
-                  nativeParts.asSlice((long) i * msgSize, msgSize));
+                  nativeParts.asSlice((long) i * messageSize, messageSize));
                 built++;
             }
             return nativeParts;
@@ -119,7 +119,7 @@ public final class RoutedRequestSupport {
                 return;
             }
             if (future != null) {
-                Message[] frames = InternalAccess.messageFromOwnedMsgVectorShared(
+                Message[] frames = InternalAccess.messageFromOwnedMessageVectorShared(
                     parts, partCount);
                 RequestReplySupport.completeAsync(future,
                     () -> InternalAccess.received((RoutingId) null,
@@ -130,7 +130,7 @@ public final class RoutedRequestSupport {
                 RequestReplySupport.completeExceptionallyAsync(future, error);
             }
         } finally {
-            NativeMsg.multipartClose(parts, partCount);
+            NativeMessage.multipartClose(parts, partCount);
         }
     }
 }

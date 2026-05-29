@@ -390,19 +390,19 @@ public final class InternalAccess {
         return ContractAccess.messageSharedCopyOf(message);
     }
 
-    public static Message[] messageFromMsgVector(MemorySegment partsAddr,
+    public static Message[] messageFromMessageVector(MemorySegment partsAddr,
                                                  long count) {
         return ContractAccess.nativeMessageMaterializeVector(partsAddr, count,
             null, true);
     }
 
-    public static Message[] messageFromOwnedMsgVector(MemorySegment partsAddr,
+    public static Message[] messageFromOwnedMessageVector(MemorySegment partsAddr,
                                                       long count) {
         return ContractAccess.nativeMessageMaterializeVector(partsAddr, count,
             null, false);
     }
 
-    public static Message[] messageFromOwnedMsgVectorShared(
+    public static Message[] messageFromOwnedMessageVectorShared(
       MemorySegment partsAddr,
       long count) {
         return ContractAccess.nativeMessageMaterializeVectorShared(partsAddr,

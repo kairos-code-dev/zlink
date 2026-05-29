@@ -6,7 +6,7 @@ import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
@@ -176,50 +176,50 @@ final class NativeMessageRuntime {
     }
 
     static long layoutSize() {
-        return NativeLayouts.MSG_LAYOUT.byteSize();
+        return NativeLayouts.MESSAGE_LAYOUT.byteSize();
     }
 
     static MemorySegment allocate(Arena arena) {
-        return arena.allocate(NativeLayouts.MSG_LAYOUT);
+        return arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
     }
 
     static int init(MemorySegment msg) {
-        return NativeMsg.msgInit(msg);
+        return NativeMessage.messageInit(msg);
     }
 
     static int initSize(MemorySegment msg, int size) {
-        return NativeMsg.msgInitSize(msg, size);
+        return NativeMessage.messageInitSize(msg, size);
     }
 
     static int close(MemorySegment msg) {
-        return NativeMsg.msgClose(msg);
+        return NativeMessage.messageClose(msg);
     }
 
     static int move(MemorySegment destination, MemorySegment source) {
-        return NativeMsg.msgMove(destination, source);
+        return NativeMessage.messageMove(destination, source);
     }
 
     static int copy(MemorySegment destination, MemorySegment source) {
-        return NativeMsg.msgCopy(destination, source);
+        return NativeMessage.messageCopy(destination, source);
     }
 
     static long size(MemorySegment msg) {
-        return NativeMsg.msgSize(msg);
+        return NativeMessage.messageSize(msg);
     }
 
     static long dataAddress(MemorySegment msg) {
-        return NativeMsg.msgDataAddr(msg);
+        return NativeMessage.messageDataAddress(msg);
     }
 
     static int refCount(MemorySegment msg) {
-        return NativeMsg.msgRefCnt(msg);
+        return NativeMessage.messageRefCount(msg);
     }
 
     static String getProperty(MemorySegment msg, String property) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeKey = arena.allocateFrom(property,
                 StandardCharsets.UTF_8);
-            MemorySegment nativeValue = NativeMsg.msgGets(msg, nativeKey);
+            MemorySegment nativeValue = NativeMessage.messageGetProperty(msg, nativeKey);
             if (nativeValue == null || nativeValue.address() == 0)
                 return null;
             return nativeValue.reinterpret(Long.MAX_VALUE).getString(0);
@@ -227,7 +227,7 @@ final class NativeMessageRuntime {
     }
 
     static void closeVector(MemorySegment parts, long count) {
-        NativeMsg.msgvClose(parts, count);
+        NativeMessage.messageVectorClose(parts, count);
     }
 
     static Message[] materializeVector(MemorySegment partsAddr,
@@ -238,8 +238,8 @@ final class NativeMessageRuntime {
             return new Message[0];
         if (count > Integer.MAX_VALUE)
             throw new IllegalArgumentException("msg vector too large: " + count);
-        long msgSize = layoutSize();
-        if (count > Long.MAX_VALUE / msgSize)
+        long messageSize = layoutSize();
+        if (count > Long.MAX_VALUE / messageSize)
             throw new IllegalArgumentException("msg vector too large: " + count);
 
         int outSize = (int) count;
@@ -257,10 +257,10 @@ final class NativeMessageRuntime {
         int built = 0;
         boolean success = false;
         MemorySegment parts = MemorySegment.ofAddress(partsAddr.address())
-            .reinterpret(msgSize * count);
+            .reinterpret(messageSize * count);
         try {
             for (int i = 0; i < count; i++) {
-                MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
+                MemorySegment src = parts.asSlice((long) i * messageSize, messageSize);
                 Message msg = ContractAccess.messagePrepareVectorTarget(out[i]);
                 out[i] = msg;
                 int rc = move((MemorySegment) ContractAccess.messageNativeHandle(msg),
@@ -279,7 +279,7 @@ final class NativeMessageRuntime {
                     resetBuilt(out, built);
                 }
             } else if (!success) {
-                closeRemaining(parts, built, count, msgSize);
+                closeRemaining(parts, built, count, messageSize);
                 Message.closeAll(out);
             }
         }
@@ -302,9 +302,9 @@ final class NativeMessageRuntime {
     }
 
     private static void closeRemaining(MemorySegment parts, int built,
-                                       long count, long msgSize) {
+                                       long count, long messageSize) {
         for (int i = built; i < count; i++) {
-            MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
+            MemorySegment src = parts.asSlice((long) i * messageSize, messageSize);
             try {
                 close(src);
             } catch (RuntimeException ignored) {

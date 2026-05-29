@@ -32,7 +32,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
-import systems.zlink.runtime.nativeapi.NativeMsg;
+import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -395,12 +395,12 @@ public final class NativeActor implements Actor {
                 MemorySegment refSegment = ActorInterop.actorRefToNative(arena, ref);
                 for (int i = 0; i < parts.size(); i++) {
                     Message part = parts.get(i);
-                    MemorySegment nativeMsg = arena.allocate(NativeLayouts.MSG_LAYOUT);
+                    MemorySegment nativeMsg = arena.allocate(NativeLayouts.MESSAGE_LAYOUT);
                     InternalAccess.messageCopyTo(part, nativeMsg);
-                    int rc = Native.spotNodeActorSendBoundSessionMsg(nodeHandle(),
+                    int rc = Native.spotNodeActorSendBoundSessionMessage(nodeHandle(),
                       refSegment, nativeMsg, flags.value());
                     if (rc != 0) {
-                        NativeMsg.msgClose(nativeMsg);
+                        NativeMessage.messageClose(nativeMsg);
                         if (flags == SendFlags.DONT_WAIT
                             && SubmitResult.fromValue(rc) == SubmitResult.BACKPRESSURED) {
                             return false;

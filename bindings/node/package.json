@@ -25,6 +25,7 @@
     "dist/**/*",
     "prebuilds/**/*",
     "native/src/**/*",
+    "scripts/verify_prebuilds.js",
     "binding.gyp",
     "README.md"
   ],
@@ -33,6 +34,7 @@
     "clean": "rm -rf dist dist-tools",
     "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && ln -sfn ../dist dist-tools/dist && npm run build:codecs",
     "build:codecs": "npm --prefix packages/zlink-codec-json run build && npm --prefix packages/zlink-codec-messagepack run build && npm --prefix packages/zlink-codec-protobuf run build",
+    "verify:prebuilds": "node scripts/verify_prebuilds.js",
     "rebuild-native": "node-gyp configure build",
     "perf:single": "./perf/single/run_benchmarks.sh",
     "perf:multi": "./perf/multi/run_benchmarks.sh",

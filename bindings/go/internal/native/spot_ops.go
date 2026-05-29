@@ -2,14 +2,8 @@
 
 package native
 
-/*
-#include <errno.h>
-*/
-import "C"
-
 import (
 	"context"
-	"errors"
 	"time"
 )
 
@@ -64,11 +58,11 @@ type ReplySubmitOp interface {
 // --- sendBuilder ---
 
 type sendBuilder struct {
-	spot      *Spot
-	parts     []sendBuilderPart
-	flags     SendFlags
-	submitted bool
-	submit    func(parts []sendBuilderPart, flags SendFlags) error
+	spot  *Spot
+	parts []sendBuilderPart
+	flags SendFlags
+	submitOnce
+	submit func(parts []sendBuilderPart, flags SendFlags) error
 }
 
 type sendBuilderPart struct {
@@ -108,19 +102,14 @@ func (b *sendBuilder) Flags(flags SendFlags) SendSubmitOp {
 }
 
 func (b *sendBuilder) Submit(_ context.Context) (bool, error) {
-	if b.submitted {
-		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
-	}
 	if len(b.parts) == 0 {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, configInvalidArgumentError()
 	}
-	b.submitted = true
-	if err := b.submit(b.parts, b.flags); err != nil {
-		var submitErr *SubmitError
-		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
-			return false, nil
-		}
+	if err := b.markSubmitted(); err != nil {
 		return false, err
+	}
+	if err := b.submit(b.parts, b.flags); err != nil {
+		return submitBackpressureAsNotSubmitted(err)
 	}
 	return true, nil
 }
@@ -128,11 +117,11 @@ func (b *sendBuilder) Submit(_ context.Context) (bool, error) {
 // --- requestBuilder ---
 
 type requestBuilderState struct {
-	parts     []requestBuilderPart
-	flags     SendFlags
-	timeout   time.Duration
-	submitted bool
-	submit    func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error
+	parts   []requestBuilderPart
+	flags   SendFlags
+	timeout time.Duration
+	submitOnce
+	submit func(parts []requestBuilderPart, flags SendFlags, timeout time.Duration, callback RequestReplyCallback) error
 }
 
 type requestBuilder struct {
@@ -225,19 +214,14 @@ func (s *requestBuilderState) doSubmitAsync() (<-chan RequestReplyCompletion, er
 }
 
 func (s *requestBuilderState) doSubmitCallback(callback RequestReplyCallback) (bool, error) {
-	if s.submitted {
-		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
-	}
 	if len(s.parts) == 0 || callback == nil {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, configInvalidArgumentError()
 	}
-	s.submitted = true
-	if err := s.submit(s.parts, s.flags, s.timeout, callback); err != nil {
-		var submitErr *SubmitError
-		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
-			return false, nil
-		}
+	if err := s.markSubmitted(); err != nil {
 		return false, err
+	}
+	if err := s.submit(s.parts, s.flags, s.timeout, callback); err != nil {
+		return submitBackpressureAsNotSubmitted(err)
 	}
 	return true, nil
 }
@@ -245,11 +229,11 @@ func (s *requestBuilderState) doSubmitCallback(callback RequestReplyCallback) (b
 // --- replyBuilder ---
 
 type replyBuilder struct {
-	spot      *Spot
-	parts     []*Message
-	flags     SendFlags
-	submitted bool
-	submit    func(parts []*Message, flags SendFlags) error
+	spot  *Spot
+	parts []*Message
+	flags SendFlags
+	submitOnce
+	submit func(parts []*Message, flags SendFlags) error
 }
 
 func newReplyBuilder(spot *Spot, submit func(parts []*Message, flags SendFlags) error) ReplyOp {
@@ -267,12 +251,11 @@ func (b *replyBuilder) Flags(flags SendFlags) ReplySubmitOp {
 }
 
 func (b *replyBuilder) Submit(_ context.Context) error {
-	if b.submitted {
-		return &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
-	}
 	if len(b.parts) == 0 {
-		return &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return configInvalidArgumentError()
 	}
-	b.submitted = true
+	if err := b.markSubmitted(); err != nil {
+		return err
+	}
 	return b.submit(b.parts, b.flags)
 }

@@ -2,24 +2,17 @@
 
 package native
 
-/*
-#include <errno.h>
-#include "zlink.h"
-*/
-import "C"
-
 import (
 	"context"
-	"errors"
 	"time"
 )
 
 // --- lookup builder ---
 
 type actorLookupBuilderState struct {
-	timeout   time.Duration
-	submitted bool
-	submit    func(timeout time.Duration, cb actorLookupCallback) error
+	timeout time.Duration
+	submitOnce
+	submit func(timeout time.Duration, cb actorLookupCallback) error
 }
 
 type actorLookupBuilder struct {
@@ -55,19 +48,14 @@ func (b *actorLookupBuilder) SubmitAsync(ctx context.Context) (<-chan ActorLooku
 }
 
 func (b *actorLookupBuilder) Submit(_ context.Context, cb func(ActorLookupResult)) (bool, error) {
-	if b.state.submitted {
-		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
-	}
 	if cb == nil {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, configInvalidArgumentError()
 	}
-	b.state.submitted = true
-	if err := b.state.submit(b.state.timeout, cb); err != nil {
-		var submitErr *SubmitError
-		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
-			return false, nil
-		}
+	if err := b.state.markSubmitted(); err != nil {
 		return false, err
+	}
+	if err := b.state.submit(b.state.timeout, cb); err != nil {
+		return submitBackpressureAsNotSubmitted(err)
 	}
 	return true, nil
 }

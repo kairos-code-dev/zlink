@@ -107,6 +107,22 @@ class _BaseReceived:
             for index in range(owner._part_count)
         )
 
+    def _close_current_owner(self):
+        if self._owner is None:
+            return
+        try:
+            self._owner.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _attach_owner(self, owner):
+        self._owner = owner
+        self.parts = self._build_parts(owner)
+
+    def _clear_owner(self):
+        self._owner = None
+        self.parts = ()
+
     def __iter__(self):
         return iter(self.parts)
 
@@ -138,8 +154,7 @@ class _BaseReceived:
         if self._owner is None:
             return
         self._owner.close()
-        self._owner = None
-        self.parts = ()
+        self._clear_owner()
 
     def __enter__(self):
         return self
@@ -192,11 +207,7 @@ class ReceivedMultipart(_BaseReceived):
         left detached after the call."""
         if source is self:
             return
-        if self._owner is not None:
-            try:
-                self._owner.close()
-            except Exception:  # noqa: BLE001
-                pass
+        self._close_current_owner()
         self._owner = source._owner
         self.parts = source.parts
         self.routing_id = source.routing_id
@@ -204,8 +215,7 @@ class ReceivedMultipart(_BaseReceived):
         self.request_seq = source.request_seq
         self._reply_sender = source._reply_sender
         self._send_sender = source._send_sender
-        source._owner = None
-        source.parts = ()
+        source._clear_owner()
         source.routing_id = None
         source.spot_rid = None
         source.request_seq = None
@@ -222,13 +232,8 @@ class ReceivedMultipart(_BaseReceived):
         reply_sender=None,
         send_sender=None,
     ):
-        if self._owner is not None:
-            try:
-                self._owner.close()
-            except Exception:  # noqa: BLE001
-                pass
-        self._owner = owner
-        self.parts = self._build_parts(owner)
+        self._close_current_owner()
+        self._attach_owner(owner)
         self.routing_id = routing_id
         self.spot_rid = spot_rid
         self.request_seq = request_seq
@@ -275,11 +280,7 @@ class TopicMessage(_BaseReceived):
     def _adopt_from(self, source):
         if source is self:
             return
-        if self._owner is not None:
-            try:
-                self._owner.close()
-            except Exception:  # noqa: BLE001
-                pass
+        self._close_current_owner()
         self._topic = source._topic
         self._topic_raw = source._topic_raw
         self._owner = source._owner
@@ -288,8 +289,7 @@ class TopicMessage(_BaseReceived):
         self.request_seq = source.request_seq
         source._topic = ""
         source._topic_raw = None
-        source._owner = None
-        source.parts = ()
+        source._clear_owner()
         source.routing_id = None
         source.request_seq = None
 
@@ -302,15 +302,10 @@ class TopicMessage(_BaseReceived):
         routing_id=None,
         request_seq=None,
     ):
-        if self._owner is not None:
-            try:
-                self._owner.close()
-            except Exception:  # noqa: BLE001
-                pass
+        self._close_current_owner()
         self._topic = topic
         self._topic_raw = topic_raw
-        self._owner = owner
-        self.parts = self._build_parts(owner)
+        self._attach_owner(owner)
         self.routing_id = routing_id
         self.request_seq = request_seq
 

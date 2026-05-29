@@ -1,15 +1,13 @@
-use std::any::Any;
-
 use crate::error::{CloseError, RecvError, RecvResult};
 use crate::message::{Message, RoutingId};
 use crate::spot_operations::{Empty, ReplyOp, SendOp};
 
-pub(crate) trait ReceivedReplyRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
+pub(crate) trait ReceivedReplyRuntime: Send {
+    fn reply_op(&self) -> ReplyOp<Empty>;
 }
 
-pub(crate) trait ReceivedSendRuntime: Any + Send {
-    fn as_any(&self) -> &dyn Any;
+pub(crate) trait ReceivedSendRuntime: Send {
+    fn send_op(&self) -> SendOp<Empty>;
 }
 
 pub struct Received {

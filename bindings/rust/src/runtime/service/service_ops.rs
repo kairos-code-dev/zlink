@@ -580,19 +580,11 @@ where
                     handle,
                     cn,
                     part,
-                    if is_final {
-                        Some(spot_reply_callback)
-                    } else {
-                        None
-                    },
-                    if is_final {
-                        state_ptr.cast()
-                    } else {
-                        std::ptr::null_mut()
-                    },
+                    request_reply_handler(is_final),
+                    request_reply_userdata(is_final, state_ptr),
                     flags.bits(),
                     part_flag,
-                    if is_final { timeout_ms } else { 0 },
+                    request_reply_timeout(is_final, timeout_ms),
                 )
             })?
         }
@@ -608,19 +600,11 @@ where
                     nr,
                     sr,
                     part,
-                    if is_final {
-                        Some(spot_reply_callback)
-                    } else {
-                        None
-                    },
-                    if is_final {
-                        state_ptr.cast()
-                    } else {
-                        std::ptr::null_mut()
-                    },
+                    request_reply_handler(is_final),
+                    request_reply_userdata(is_final, state_ptr),
                     flags.bits(),
                     part_flag,
-                    if is_final { timeout_ms } else { 0 },
+                    request_reply_timeout(is_final, timeout_ms),
                 )
             })?
         }
@@ -632,19 +616,11 @@ where
                     pr,
                     std::ptr::null(),
                     part,
-                    if is_final {
-                        Some(spot_reply_callback)
-                    } else {
-                        None
-                    },
-                    if is_final {
-                        state_ptr.cast()
-                    } else {
-                        std::ptr::null_mut()
-                    },
+                    request_reply_handler(is_final),
+                    request_reply_userdata(is_final, state_ptr),
                     flags.bits(),
                     part_flag,
-                    if is_final { timeout_ms } else { 0 },
+                    request_reply_timeout(is_final, timeout_ms),
                 )
             })?
         }
@@ -655,17 +631,9 @@ where
                     part,
                     flags.bits(),
                     part_flag,
-                    if is_final { timeout_ms } else { 0 },
-                    if is_final {
-                        Some(spot_reply_callback)
-                    } else {
-                        None
-                    },
-                    if is_final {
-                        state_ptr.cast()
-                    } else {
-                        std::ptr::null_mut()
-                    },
+                    request_reply_timeout(is_final, timeout_ms),
+                    request_reply_handler(is_final),
+                    request_reply_userdata(is_final, state_ptr),
                 )
             })?
         }
@@ -678,17 +646,9 @@ where
                     part,
                     flags.bits(),
                     part_flag,
-                    if is_final { timeout_ms } else { 0 },
-                    if is_final {
-                        Some(spot_reply_callback)
-                    } else {
-                        None
-                    },
-                    if is_final {
-                        state_ptr.cast()
-                    } else {
-                        std::ptr::null_mut()
-                    },
+                    request_reply_timeout(is_final, timeout_ms),
+                    request_reply_handler(is_final),
+                    request_reply_userdata(is_final, state_ptr),
                 )
             })?
         }
@@ -704,19 +664,11 @@ where
                     nr,
                     sr,
                     part,
-                    if is_final {
-                        Some(spot_reply_callback)
-                    } else {
-                        None
-                    },
-                    if is_final {
-                        state_ptr.cast()
-                    } else {
-                        std::ptr::null_mut()
-                    },
+                    request_reply_handler(is_final),
+                    request_reply_userdata(is_final, state_ptr),
                     flags.bits(),
                     part_flag,
-                    if is_final { timeout_ms } else { 0 },
+                    request_reply_timeout(is_final, timeout_ms),
                 )
             })?
         }
@@ -727,6 +679,26 @@ where
         }
     }
     check_submit_rc(rc)
+}
+
+fn request_reply_handler(is_final: bool) -> Option<ffi::zlink_reply_handler_fn> {
+    if is_final {
+        Some(spot_reply_callback)
+    } else {
+        None
+    }
+}
+
+fn request_reply_userdata(is_final: bool, state_ptr: *mut SpotReplyCallbackState) -> *mut c_void {
+    if is_final {
+        state_ptr.cast()
+    } else {
+        std::ptr::null_mut()
+    }
+}
+
+fn request_reply_timeout(is_final: bool, timeout_ms: u32) -> u32 {
+    if is_final { timeout_ms } else { 0 }
 }
 
 pub(super) struct NativeReplyOp {

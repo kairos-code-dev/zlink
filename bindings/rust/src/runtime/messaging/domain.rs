@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::ffi::c_void;
 
 use crate::domain::{Received, ReceivedReplyRuntime, ReceivedSendRuntime};
@@ -29,8 +28,25 @@ enum ReplyContext {
 unsafe impl Send for ReplyContext {}
 
 impl ReceivedReplyRuntime for ReplyContext {
-    fn as_any(&self) -> &dyn Any {
-        self
+    fn reply_op(&self) -> ReplyOp<Empty> {
+        match self {
+            ReplyContext::Router {
+                handle,
+                routing_id,
+                request_seq,
+            } => crate::service::router_reply_op(*handle, *routing_id, *request_seq),
+            ReplyContext::Spot {
+                handle,
+                node_rid,
+                spot_rid,
+                request_seq,
+            } => crate::service::spot_reply_to_spot_op(*handle, *node_rid, *spot_rid, *request_seq),
+            ReplyContext::SpotRouter {
+                handle,
+                peer_rid,
+                request_seq,
+            } => crate::service::spot_reply_to_router_op(*handle, *peer_rid, *request_seq),
+        }
     }
 }
 
@@ -55,8 +71,22 @@ enum SendContext {
 unsafe impl Send for SendContext {}
 
 impl ReceivedSendRuntime for SendContext {
-    fn as_any(&self) -> &dyn Any {
-        self
+    fn send_op(&self) -> SendOp<Empty> {
+        match self {
+            SendContext::Router { handle, routing_id } => {
+                crate::service::socket_send_to_op(*handle, *routing_id)
+            }
+            SendContext::RouterSpot {
+                handle,
+                node_rid,
+                spot_rid,
+            } => crate::service::router_send_to_spot_op(*handle, *node_rid, *spot_rid),
+            SendContext::Spot {
+                handle,
+                node_rid,
+                spot_rid,
+            } => crate::service::spot_send_to_spot_op(*handle, *node_rid, *spot_rid),
+        }
     }
 }
 
@@ -214,54 +244,17 @@ impl Received {
 }
 
 pub(crate) fn received_reply(received: &Received) -> ReplyOp<Empty> {
-    match received
+    received
         .reply_context
         .as_ref()
         .expect("missing reply context")
-        .as_any()
-        .downcast_ref::<ReplyContext>()
-        .expect("zlink reply context")
-    {
-        ReplyContext::Router {
-            handle,
-            routing_id,
-            request_seq,
-        } => crate::service::router_reply_op(*handle, *routing_id, *request_seq),
-        ReplyContext::Spot {
-            handle,
-            node_rid,
-            spot_rid,
-            request_seq,
-        } => crate::service::spot_reply_to_spot_op(*handle, *node_rid, *spot_rid, *request_seq),
-        ReplyContext::SpotRouter {
-            handle,
-            peer_rid,
-            request_seq,
-        } => crate::service::spot_reply_to_router_op(*handle, *peer_rid, *request_seq),
-    }
+        .reply_op()
 }
 
 pub(crate) fn received_send(received: &Received) -> SendOp<Empty> {
-    match received
+    received
         .send_context
         .as_ref()
         .expect("missing send context")
-        .as_any()
-        .downcast_ref::<SendContext>()
-        .expect("zlink send context")
-    {
-        SendContext::Router { handle, routing_id } => {
-            crate::service::socket_send_to_op(*handle, *routing_id)
-        }
-        SendContext::RouterSpot {
-            handle,
-            node_rid,
-            spot_rid,
-        } => crate::service::router_send_to_spot_op(*handle, *node_rid, *spot_rid),
-        SendContext::Spot {
-            handle,
-            node_rid,
-            spot_rid,
-        } => crate::service::spot_send_to_spot_op(*handle, *node_rid, *spot_rid),
-    }
+        .send_op()
 }

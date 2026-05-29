@@ -2,26 +2,19 @@
 
 package native
 
-/*
-#include <errno.h>
-#include "zlink.h"
-*/
-import "C"
-
 import (
 	"context"
-	"errors"
 	"time"
 )
 
 // --- join builder implementation ---
 
 type actorJoinBuilderState struct {
-	parts     []*Message
-	flags     SendFlags
-	timeout   time.Duration
-	submitted bool
-	submit    func(parts []*Message, flags SendFlags, timeout time.Duration, cb actorJoinCallback) error
+	parts   []*Message
+	flags   SendFlags
+	timeout time.Duration
+	submitOnce
+	submit func(parts []*Message, flags SendFlags, timeout time.Duration, cb actorJoinCallback) error
 }
 
 type actorJoinBuilder struct {
@@ -41,9 +34,9 @@ func newActorJoinOp(submit func(parts []*Message, flags SendFlags, timeout time.
 }
 
 type actorJoinEntrySpotBuilderState struct {
-	timeout   time.Duration
-	submitted bool
-	submit    func(timeout time.Duration, cb actorJoinEntrySpotCallback) error
+	timeout time.Duration
+	submitOnce
+	submit func(timeout time.Duration, cb actorJoinEntrySpotCallback) error
 }
 
 type actorJoinEntrySpotBuilder struct {
@@ -79,13 +72,12 @@ func (b *actorJoinEntrySpotBuilder) SubmitAsync(_ context.Context) (<-chan Actor
 }
 
 func (b *actorJoinEntrySpotBuilder) Submit(_ context.Context, callback func(ActorJoinEntrySpotResult)) (bool, error) {
-	if b.state.submitted {
-		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
-	}
 	if callback == nil {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, configInvalidArgumentError()
 	}
-	b.state.submitted = true
+	if err := b.state.markSubmitted(); err != nil {
+		return false, err
+	}
 	if err := b.state.submit(b.state.timeout, callback); err != nil {
 		return false, err
 	}
@@ -159,19 +151,14 @@ func (s *actorJoinBuilderState) doSubmitAsync() (<-chan ActorJoinCompletion, err
 }
 
 func (s *actorJoinBuilderState) doSubmitCallback(callback func(ActorJoinResult, []*Message)) (bool, error) {
-	if s.submitted {
-		return false, &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
-	}
 	if len(s.parts) == 0 || callback == nil {
-		return false, &ConfigError{Result: ConfigInvalidArgument, internalErrno: int(C.EINVAL)}
+		return false, configInvalidArgumentError()
 	}
-	s.submitted = true
-	if err := s.submit(s.parts, s.flags, s.timeout, callback); err != nil {
-		var submitErr *SubmitError
-		if errors.As(err, &submitErr) && submitErr.Result == SubmitBackpressured {
-			return false, nil
-		}
+	if err := s.markSubmitted(); err != nil {
 		return false, err
+	}
+	if err := s.submit(s.parts, s.flags, s.timeout, callback); err != nil {
+		return submitBackpressureAsNotSubmitted(err)
 	}
 	return true, nil
 }
@@ -179,9 +166,9 @@ func (s *actorJoinBuilderState) doSubmitCallback(callback func(ActorJoinResult, 
 // --- join reply builder ---
 
 type actorJoinReplyBuilder struct {
-	parts     []*Message
-	submitted bool
-	submit    func(parts []*Message) error
+	parts []*Message
+	submitOnce
+	submit func(parts []*Message) error
 }
 
 func newActorJoinReplyOp(submit func(parts []*Message) error) ActorJoinReplyOp {
@@ -194,9 +181,8 @@ func (b *actorJoinReplyBuilder) Message(msg *Message) ActorJoinReplyOp {
 }
 
 func (b *actorJoinReplyBuilder) Submit(_ context.Context) error {
-	if b.submitted {
-		return &ConfigError{Result: ConfigInvalidState, internalErrno: int(C.EINVAL)}
+	if err := b.markSubmitted(); err != nil {
+		return err
 	}
-	b.submitted = true
 	return b.submit(b.parts)
 }

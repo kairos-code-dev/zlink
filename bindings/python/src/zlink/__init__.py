@@ -153,61 +153,67 @@ from .contracts.service.spot import (
 )
 from ._runtime.service.spot import spot as spot_runtime
 
-register_context_factory(create_context)
-register_core_implementation(
-    core_runtime,
-    stopwatch_factory=core_runtime.create_stopwatch,
-    thread_factory=core_runtime.create_thread,
-    atomic_counter_factory=core_runtime.create_atomic_counter,
-)
-register_poller_factories(
-    poller_factory=create_poller,
-    poll_events_factory=create_poll_events,
-)
-register_timer_factories(
-    timer_factory=create_timer,
-    spot_timer_factory=create_timer_from_spot,
-)
-register_socket_monitor_factory(runtime_open_socket_monitor)
-register_messaging_factories(
-    message_factory=messaging_runtime.create_message,
-    message_from_factory=messaging_runtime.message_from,
-    message_allocate_factory=messaging_runtime.message_allocate,
-    message_wrap_buffer_factory=messaging_runtime.wrap_message_buffer,
-    received_message_factory=messaging_runtime.create_received_message,
-    received_message_from_owner_factory=messaging_runtime.received_message_from_owner,
-    received_multipart_factory=messaging_runtime.create_received_multipart,
-    received_factory=messaging_runtime.create_received,
-    topic_message_factory=messaging_runtime.create_topic_message,
-    subscription_event_factory=messaging_runtime.create_subscription_event,
-)
-register_socket_option_factories(
-    common_socket_options_factory=socket_options_runtime.create_common_socket_options,
-    dealer_socket_options_factory=socket_options_runtime.create_dealer_socket_options,
-    stream_socket_options_factory=socket_options_runtime.create_stream_socket_options,
-    sub_socket_options_factory=socket_options_runtime.create_sub_socket_options,
-    pub_socket_options_factory=socket_options_runtime.create_pub_socket_options,
-    router_socket_options_factory=socket_options_runtime.create_router_socket_options,
-)
-register_socket_factories(
-    pair_socket_factory=socket_runtime.create_pair_socket,
-    dealer_socket_factory=socket_runtime.create_dealer_socket,
-    router_socket_factory=socket_runtime.create_router_socket,
-    stream_socket_factory=socket_runtime.create_stream_socket,
-    pub_socket_factory=socket_runtime.create_pub_socket,
-    sub_socket_factory=socket_runtime.create_sub_socket,
-    xpub_socket_factory=socket_runtime.create_xpub_socket,
-    xsub_socket_factory=socket_runtime.create_xsub_socket,
-)
-register_discovery_factories(
-    registry_factory=discovery_runtime.create_registry,
-    discovery_factory=discovery_runtime.create_discovery,
-    registry_query_client_factory=discovery_runtime.create_registry_query_client,
-)
-register_spot_factories(
-    spot_node_factory=spot_runtime.create_spot_node,
-    spot_factory=spot_runtime.create_spot,
-)
+
+def _bootstrap_runtime():
+    register_context_factory(create_context)
+    register_core_implementation(
+        core_runtime,
+        stopwatch_factory=core_runtime.create_stopwatch,
+        thread_factory=core_runtime.create_thread,
+        atomic_counter_factory=core_runtime.create_atomic_counter,
+    )
+    register_poller_factories(
+        poller_factory=create_poller,
+        poll_events_factory=create_poll_events,
+    )
+    register_timer_factories(
+        timer_factory=create_timer,
+        spot_timer_factory=create_timer_from_spot,
+    )
+    register_socket_monitor_factory(runtime_open_socket_monitor)
+    register_messaging_factories(
+        message_factory=messaging_runtime.create_message,
+        message_from_factory=messaging_runtime.message_from,
+        message_allocate_factory=messaging_runtime.message_allocate,
+        message_wrap_buffer_factory=messaging_runtime.wrap_message_buffer,
+        received_message_factory=messaging_runtime.create_received_message,
+        received_message_from_owner_factory=messaging_runtime.received_message_from_owner,
+        received_multipart_factory=messaging_runtime.create_received_multipart,
+        received_factory=messaging_runtime.create_received,
+        topic_message_factory=messaging_runtime.create_topic_message,
+        subscription_event_factory=messaging_runtime.create_subscription_event,
+    )
+    register_socket_option_factories(
+        common_socket_options_factory=socket_options_runtime.create_common_socket_options,
+        dealer_socket_options_factory=socket_options_runtime.create_dealer_socket_options,
+        stream_socket_options_factory=socket_options_runtime.create_stream_socket_options,
+        sub_socket_options_factory=socket_options_runtime.create_sub_socket_options,
+        pub_socket_options_factory=socket_options_runtime.create_pub_socket_options,
+        router_socket_options_factory=socket_options_runtime.create_router_socket_options,
+    )
+    register_socket_factories(
+        pair_socket_factory=socket_runtime.create_pair_socket,
+        dealer_socket_factory=socket_runtime.create_dealer_socket,
+        router_socket_factory=socket_runtime.create_router_socket,
+        stream_socket_factory=socket_runtime.create_stream_socket,
+        pub_socket_factory=socket_runtime.create_pub_socket,
+        sub_socket_factory=socket_runtime.create_sub_socket,
+        xpub_socket_factory=socket_runtime.create_xpub_socket,
+        xsub_socket_factory=socket_runtime.create_xsub_socket,
+    )
+    register_discovery_factories(
+        registry_factory=discovery_runtime.create_registry,
+        discovery_factory=discovery_runtime.create_discovery,
+        registry_query_client_factory=discovery_runtime.create_registry_query_client,
+    )
+    register_spot_factories(
+        spot_node_factory=spot_runtime.create_spot_node,
+        spot_factory=spot_runtime.create_spot,
+    )
+
+
+_bootstrap_runtime()
+
 create_message = messaging_runtime.create_message
 allocate_message = messaging_runtime.message_allocate
 create_message_from = messaging_runtime.message_from

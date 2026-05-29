@@ -36,6 +36,7 @@ import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
+import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -799,7 +800,7 @@ public final class NativeSpot implements Spot {
             if (rc != 0)
                 throw InternalAccess.zlinkExceptionFromLastError("zlink_send_ready_handler");
             success = true;
-            closeArena(sendReadyCallbackArena);
+            RuntimeResources.closeArena(sendReadyCallbackArena);
             sendReadyCallbackArena = arena;
             sendReadyCallbackStub = stub;
             sendReadyHandler = handler;
@@ -807,9 +808,9 @@ public final class NativeSpot implements Spot {
             if (!success) {
                 if (createdExecutor) {
                     callbackExecutor = null;
-                    shutdownExecutor(executor);
+                    RuntimeResources.shutdownExecutor(executor);
                 }
-                closeArena(arena);
+                RuntimeResources.closeArena(arena);
             }
         }
     }
@@ -1579,9 +1580,9 @@ public final class NativeSpot implements Spot {
         if (ownerNode != null) {
             InternalAccess.spotNodeReleaseSpot(ownerNode, this);
         }
-        shutdownExecutor(executor);
-        closeArena(subscribeArena);
-        closeArena(readyArena);
+        RuntimeResources.shutdownExecutor(executor);
+        RuntimeResources.closeArena(subscribeArena);
+        RuntimeResources.closeArena(readyArena);
         subscribeStub = MemorySegment.NULL;
         readyStub = MemorySegment.NULL;
         topicCache.clear();
@@ -1900,11 +1901,6 @@ public final class NativeSpot implements Spot {
         }
     }
 
-    private static void closeArena(Arena arena) {
-        if (arena != null && arena.scope().isAlive())
-            arena.close();
-    }
-
     private static void closeReceived(Received received) {
         if (received != null) {
             try {
@@ -2131,16 +2127,8 @@ public final class NativeSpot implements Spot {
     }
 
     private static ExecutorService newCallbackExecutor() {
-        return Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "zlink-spot-callback");
-            thread.setDaemon(true);
-            return thread;
-        });
-    }
-
-    private static void shutdownExecutor(ExecutorService executor) {
-        if (executor != null)
-            executor.shutdown();
+        return RuntimeResources.daemonSingleThreadExecutor(
+            "zlink-spot-callback");
     }
 
     private record CallbackSubscribeData(RoutingId routingId, String topicId,

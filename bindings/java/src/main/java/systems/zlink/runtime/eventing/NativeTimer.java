@@ -14,6 +14,7 @@ import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -136,7 +137,7 @@ public final class NativeTimer implements ZlinkTimer {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
         this.handler = handler;
-        closeArena(handlerArena);
+        RuntimeResources.closeArena(handlerArena);
         handlerArena = Arena.ofShared();
         int rc = Native.timerHandler(handle, FIRE_STUB, MemorySegment.NULL);
         if (rc != 0) {
@@ -155,7 +156,7 @@ public final class NativeTimer implements ZlinkTimer {
             Native.timerDestroy(handle);
         }
         handle = MemorySegment.NULL;
-        closeArena(handlerArena);
+        RuntimeResources.closeArena(handlerArena);
         handlerArena = null;
         handler = null;
     }
@@ -194,9 +195,4 @@ public final class NativeTimer implements ZlinkTimer {
         }
     }
 
-    private static void closeArena(Arena arena) {
-        if (arena != null && arena.scope().isAlive()) {
-            arena.close();
-        }
-    }
 }

@@ -19,46 +19,9 @@ public final class Native {
     private static final int ERRNO_EINTR = 4;
     public static final int PART_FINAL = 0;
     public static final int PART_MORE = 1;
-    private static final ThreadLocal<MultipartReceiveScratch>
+    private static final ThreadLocal<NativeMultipartScratch>
         MULTIPART_RECEIVE_SCRATCH =
-            ThreadLocal.withInitial(MultipartReceiveScratch::new);
-
-    private static final class MultipartReceiveScratch {
-        private final MemorySegment nodeRidPtrOut;
-        private final MemorySegment spotRidPtrOut;
-        private final MemorySegment seqOut;
-        private final MemorySegment hasMoreOut;
-        private MemorySegment parts = MemorySegment.NULL;
-        private long partCount;
-        private final MultipartReceive result = new MultipartReceive();
-
-        MultipartReceiveScratch() {
-            Arena auto = Arena.ofAuto();
-            nodeRidPtrOut = auto.allocate(ValueLayout.ADDRESS);
-            spotRidPtrOut = auto.allocate(ValueLayout.ADDRESS);
-            seqOut = auto.allocate(ValueLayout.JAVA_LONG);
-            hasMoreOut = auto.allocate(ValueLayout.JAVA_INT);
-        }
-
-        private void reset() {
-            parts = MemorySegment.NULL;
-            partCount = 0L;
-        }
-
-        private MemorySegment allocateParts(long newPartCount) {
-            if (newPartCount <= 0) {
-                reset();
-                return MemorySegment.NULL;
-            }
-            long needed = NativeLayouts.MESSAGE_LAYOUT.byteSize() * newPartCount;
-            if (parts == MemorySegment.NULL || parts.byteSize() < needed) {
-                parts = Arena.ofAuto().allocate(needed,
-                    NativeLayouts.MESSAGE_LAYOUT.byteAlignment());
-            }
-            partCount = newPartCount;
-            return parts;
-        }
-    }
+            ThreadLocal.withInitial(NativeMultipartScratch::new);
 
     private static MemorySegment requireSymbol(String name) {
         return NativeSymbols.require(name);
@@ -894,32 +857,6 @@ public final class Native {
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private Native() {}
 
-    public static final class MultipartReceive {
-        private byte[] routingId;
-        private MemorySegment parts;
-        private long partCount;
-
-        private MultipartReceive reset(byte[] routingId, MemorySegment parts,
-                                       long partCount) {
-            this.routingId = routingId;
-            this.parts = parts;
-            this.partCount = partCount;
-            return this;
-        }
-
-        public byte[] getRoutingId() {
-            return routingId;
-        }
-
-        public MemorySegment parts() {
-            return parts;
-        }
-
-        public long partCount() {
-            return partCount;
-        }
-    }
-
     private static boolean invalidMultipart(MemorySegment parts,
                                             long partCount) {
         return partCount <= 0
@@ -953,23 +890,6 @@ public final class Native {
         return 0;
     }
 
-    private static byte[] decodeRoutingIdPointer(MemorySegment routingIdPtr) {
-        if (routingIdPtr == null || routingIdPtr.address() == 0) {
-            return null;
-        }
-        MemorySegment routingId = routingIdPtr.reinterpret(
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        int routingIdSize = routingId.get(ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (routingIdSize == 0) {
-            return null;
-        }
-        byte[] decoded = new byte[routingIdSize];
-        MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-            MemorySegment.ofArray(decoded), 0, routingIdSize);
-        return decoded;
-    }
-
     private static void copyRoutingIdOut(MemorySegment target,
                                          MemorySegment routingIdPtr) {
         if (target == null || target.address() == 0) {
@@ -989,33 +909,6 @@ public final class Native {
         if (routingIdSize > 0) {
             MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
                 target, NativeLayouts.ROUTING_ID_DATA_OFFSET, routingIdSize);
-        }
-    }
-
-    private static MemorySegment materializeParts(MultipartReceiveScratch scratch,
-                                                  List<Message> receivedParts) {
-        MemorySegment parts = scratch.allocateParts(receivedParts.size());
-        long moved = 0L;
-        try {
-            for (int i = 0; i < receivedParts.size(); i++) {
-                InternalAccess.messageMoveTo(receivedParts.get(i),
-                    nthPart(parts, i));
-                receivedParts.get(i).close();
-                moved++;
-            }
-            return parts;
-        } catch (RuntimeException ex) {
-            if (parts.address() != 0 && moved > 0) {
-                NativeMessage.multipartClose(parts, moved);
-            }
-            throw ex;
-        } finally {
-            for (int i = (int) moved; i < receivedParts.size(); i++) {
-                try {
-                    receivedParts.get(i).close();
-                } catch (RuntimeException ignored) {
-                }
-            }
         }
     }
 
@@ -1319,63 +1212,6 @@ public final class Native {
                 sourceRidOut, partOut, hasMoreOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_recv_part (critical) failed", t);
-        }
-    }
-
-    public static MultipartReceive recvMultipart(MemorySegment socket,
-                                                 int flags) {
-        MultipartReceiveScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
-        scratch.reset();
-        try {
-            while (true) {
-                List<Message> receivedParts = new ArrayList<>();
-                byte[] routingId = null;
-                try (Arena arena = Arena.ofConfined()) {
-                    MemorySegment routingIdOut = arena.allocate(
-                        ValueLayout.ADDRESS);
-                    MemorySegment hasMoreOut = arena.allocate(
-                        ValueLayout.JAVA_INT);
-                    while (true) {
-                        Message part = new Message();
-                        boolean success = false;
-                        try {
-                            int rc = recv(socket, routingIdOut,
-                                InternalAccess.messageNativeHandle(part),
-                                hasMoreOut, flags);
-                            if (rc != 0) {
-                                Message.closeAll(receivedParts);
-                                if (errno() == ERRNO_EINTR) {
-                                    break;
-                                }
-                                return null;
-                            }
-                            success = true;
-                            if (receivedParts.isEmpty()) {
-                                routingId = decodeRoutingIdPointer(
-                                    routingIdOut.get(ValueLayout.ADDRESS, 0));
-                            }
-                            InternalAccess.messageFinishReceive(part,
-                                hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
-                            receivedParts.add(part);
-                            if (!InternalAccess.messageMore(part)) {
-                                MemorySegment parts =
-                                    materializeParts(scratch, receivedParts);
-                                return scratch.result.reset(routingId, parts,
-                                    scratch.partCount);
-                            }
-                        } finally {
-                            if (!success) {
-                                try {
-                                    part.close();
-                                } catch (RuntimeException ignored) {
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_recv_part failed", t);
         }
     }
 
@@ -1746,7 +1582,7 @@ public final class Native {
                                 MemorySegment topicIdLenOut,
                                 int flags) {
         try {
-            MultipartReceiveScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
+            NativeMultipartScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
             scratch.reset();
             while (true) {
                 List<Message> receivedParts = new ArrayList<>();
@@ -1784,11 +1620,11 @@ public final class Native {
                                 hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
                             receivedParts.add(part);
                             if (!InternalAccess.messageMore(part)) {
-                                MemorySegment parts = materializeParts(scratch,
-                                    receivedParts);
+                                MemorySegment parts =
+                                    scratch.materializeParts(receivedParts);
                                 partsOut.set(ValueLayout.ADDRESS, 0, parts);
                                 partCountOut.set(ValueLayout.JAVA_LONG, 0,
-                                    scratch.partCount);
+                                    scratch.partCount());
                                 return 0;
                             }
                         } finally {
@@ -2238,7 +2074,7 @@ public final class Native {
                     sourceNodeRidOut, sourceSpotRidOut, requestSeqOut,
                     partsOut, partCountOut, flags);
             }
-            MultipartReceiveScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
+            NativeMultipartScratch scratch = MULTIPART_RECEIVE_SCRATCH.get();
             scratch.reset();
             MemorySegment nodeRidPtrOut = scratch.nodeRidPtrOut;
             MemorySegment spotRidPtrOut = scratch.spotRidPtrOut;
@@ -2281,7 +2117,7 @@ public final class Native {
                             part.close();
                             partsOut.set(ValueLayout.ADDRESS, 0, parts);
                             partCountOut.set(ValueLayout.JAVA_LONG, 0,
-                                scratch.partCount);
+                                scratch.partCount());
                             return 0;
                         }
                         if (receivedParts == null) {
@@ -2289,11 +2125,11 @@ public final class Native {
                         }
                         receivedParts.add(part);
                         if (!partHasMore) {
-                            MemorySegment parts = materializeParts(scratch,
-                                receivedParts);
+                            MemorySegment parts =
+                                scratch.materializeParts(receivedParts);
                             partsOut.set(ValueLayout.ADDRESS, 0, parts);
                             partCountOut.set(ValueLayout.JAVA_LONG, 0,
-                                scratch.partCount);
+                                scratch.partCount());
                             return 0;
                         }
                     } finally {

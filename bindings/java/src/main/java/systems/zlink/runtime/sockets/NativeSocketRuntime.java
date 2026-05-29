@@ -29,6 +29,7 @@ import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
+import systems.zlink.runtime.nativeapi.RuntimeResources;
 import systems.zlink.runtime.eventing.NativeMonitorSocket;
 import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
@@ -47,7 +48,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
@@ -2168,11 +2168,6 @@ final class NativeSocketRuntime implements AutoCloseable {
             .reinterpret(length);
     }
 
-    private static void closeArena(Arena arena) {
-        if (arena != null && arena.scope().isAlive())
-            arena.close();
-    }
-
     static int toIntLength(long length) {
         if (length > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("length too large: " + length);
@@ -2545,16 +2540,16 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if (rc != 0)
                     throw ZlinkException.fromLastError("zlink_recv_handler");
                 success = true;
-                closeArena(receiveCallbackArena);
+                RuntimeResources.closeArena(receiveCallbackArena);
                 receiveCallbackArena = arena;
                 receiveHandler = handler;
             } finally {
                 if (!success) {
                     if (createdExecutor) {
                         callbackExecutor = null;
-                        shutdownExecutor(executor);
+                        RuntimeResources.shutdownExecutor(executor);
                     }
-                    closeArena(arena);
+                    RuntimeResources.closeArena(arena);
                 }
             }
         }
@@ -2582,16 +2577,16 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if (rc != 0)
                     throw ZlinkException.fromLastError("zlink_subscribe_handler");
                 success = true;
-                closeArena(subscribeCallbackArena);
+                RuntimeResources.closeArena(subscribeCallbackArena);
                 subscribeCallbackArena = arena;
                 subscribeHandler = handler;
             } finally {
                 if (!success) {
                     if (createdExecutor) {
                         callbackExecutor = null;
-                        shutdownExecutor(executor);
+                        RuntimeResources.shutdownExecutor(executor);
                     }
-                    closeArena(arena);
+                    RuntimeResources.closeArena(arena);
                 }
             }
         }
@@ -2618,16 +2613,16 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if (rc != 0)
                     throw ZlinkException.fromLastError("zlink_send_ready_handler");
                 success = true;
-                closeArena(sendReadyCallbackArena);
+                RuntimeResources.closeArena(sendReadyCallbackArena);
                 sendReadyCallbackArena = arena;
                 sendReadyHandler = handler;
             } finally {
                 if (!success) {
                     if (createdExecutor) {
                         callbackExecutor = null;
-                        shutdownExecutor(executor);
+                        RuntimeResources.shutdownExecutor(executor);
                     }
-                    closeArena(arena);
+                    RuntimeResources.closeArena(arena);
                 }
             }
         }
@@ -2655,16 +2650,16 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if (rc != 0)
                     throw ZlinkException.fromLastError("zlink_stream_attach_raw");
                 success = true;
-                closeArena(streamRawCallbackArena);
+                RuntimeResources.closeArena(streamRawCallbackArena);
                 streamRawCallbackArena = arena;
                 streamPacketHandler = handler;
             } finally {
                 if (!success) {
                     if (createdExecutor) {
                         callbackExecutor = null;
-                        shutdownExecutor(executor);
+                        RuntimeResources.shutdownExecutor(executor);
                     }
-                    closeArena(arena);
+                    RuntimeResources.closeArena(arena);
                 }
             }
         }
@@ -2692,16 +2687,16 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if (rc != 0)
                     throw ZlinkException.fromLastError("zlink_stream_attach_raw");
                 success = true;
-                closeArena(streamRawCallbackArena);
+                RuntimeResources.closeArena(streamRawCallbackArena);
                 streamRawCallbackArena = arena;
                 streamUInt32RawNativeHandler = handler;
             } finally {
                 if (!success) {
                     if (createdExecutor) {
                         callbackExecutor = null;
-                        shutdownExecutor(executor);
+                        RuntimeResources.shutdownExecutor(executor);
                     }
-                    closeArena(arena);
+                    RuntimeResources.closeArena(arena);
                 }
             }
         }
@@ -2730,16 +2725,16 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if (rc != 0)
                     throw ZlinkException.fromLastError("zlink_stream_packet_handler");
                 success = true;
-                closeArena(streamPacketCallbackArena);
+                RuntimeResources.closeArena(streamPacketCallbackArena);
                 streamPacketCallbackArena = arena;
                 streamFramedPacketHandler = handler;
             } finally {
                 if (!success) {
                     if (createdExecutor) {
                         callbackExecutor = null;
-                        shutdownExecutor(executor);
+                        RuntimeResources.shutdownExecutor(executor);
                     }
-                    closeArena(arena);
+                    RuntimeResources.closeArena(arena);
                 }
             }
         }
@@ -2768,16 +2763,16 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if (rc != 0)
                     throw ZlinkException.fromLastError("zlink_stream_packet_handler");
                 success = true;
-                closeArena(streamPacketCallbackArena);
+                RuntimeResources.closeArena(streamPacketCallbackArena);
                 streamPacketCallbackArena = arena;
                 streamUInt32FramedPacketHandler = handler;
             } finally {
                 if (!success) {
                     if (createdExecutor) {
                         callbackExecutor = null;
-                        shutdownExecutor(executor);
+                        RuntimeResources.shutdownExecutor(executor);
                     }
-                    closeArena(arena);
+                    RuntimeResources.closeArena(arena);
                 }
             }
         }
@@ -2806,16 +2801,16 @@ final class NativeSocketRuntime implements AutoCloseable {
                 if (rc != 0)
                     throw ZlinkException.fromLastError("zlink_stream_packet_handler");
                 success = true;
-                closeArena(streamPacketCallbackArena);
+                RuntimeResources.closeArena(streamPacketCallbackArena);
                 streamPacketCallbackArena = arena;
                 streamUInt32FramedNativeHandler = handler;
             } finally {
                 if (!success) {
                     if (createdExecutor) {
                         callbackExecutor = null;
-                        shutdownExecutor(executor);
+                        RuntimeResources.shutdownExecutor(executor);
                     }
-                    closeArena(arena);
+                    RuntimeResources.closeArena(arena);
                 }
             }
         }
@@ -2830,8 +2825,8 @@ final class NativeSocketRuntime implements AutoCloseable {
             streamFramedPacketHandler = null;
             streamUInt32FramedPacketHandler = null;
             streamUInt32FramedNativeHandler = null;
-            closeArena(streamRawCallbackArena);
-            closeArena(streamPacketCallbackArena);
+            RuntimeResources.closeArena(streamRawCallbackArena);
+            RuntimeResources.closeArena(streamPacketCallbackArena);
             streamRawCallbackArena = null;
             streamPacketCallbackArena = null;
         }
@@ -2848,7 +2843,7 @@ final class NativeSocketRuntime implements AutoCloseable {
             if (length <= 0)
                 return MemorySegment.NULL;
             if (sendScratch.address() == 0 || sendScratchCapacity < length) {
-                closeArena(sendScratchArena);
+                RuntimeResources.closeArena(sendScratchArena);
                 sendScratchArena = Arena.ofShared();
                 sendScratch = sendScratchArena.allocate(length);
                 sendScratchCapacity = length;
@@ -2879,19 +2874,19 @@ final class NativeSocketRuntime implements AutoCloseable {
             streamUInt32FramedNativeHandler = null;
             callbackFailure = null;
             discoveryAttached = false;
-            shutdownExecutor(callbackExecutor);
+            RuntimeResources.shutdownExecutor(callbackExecutor);
             callbackExecutor = null;
-            closeArena(receiveCallbackArena);
-            closeArena(subscribeCallbackArena);
-            closeArena(sendReadyCallbackArena);
-            closeArena(streamRawCallbackArena);
-            closeArena(streamPacketCallbackArena);
+            RuntimeResources.closeArena(receiveCallbackArena);
+            RuntimeResources.closeArena(subscribeCallbackArena);
+            RuntimeResources.closeArena(sendReadyCallbackArena);
+            RuntimeResources.closeArena(streamRawCallbackArena);
+            RuntimeResources.closeArena(streamPacketCallbackArena);
             receiveCallbackArena = null;
             subscribeCallbackArena = null;
             sendReadyCallbackArena = null;
             streamRawCallbackArena = null;
             streamPacketCallbackArena = null;
-            closeArena(sendScratchArena);
+            RuntimeResources.closeArena(sendScratchArena);
             sendScratchArena = null;
             sendScratch = MemorySegment.NULL;
         }
@@ -3272,17 +3267,9 @@ final class NativeSocketRuntime implements AutoCloseable {
             }
         }
 
-        private static void closeArena(Arena arena) {
-            if (arena != null && arena.scope().isAlive())
-                arena.close();
-        }
-
         private static ExecutorService newCallbackExecutor() {
-            return Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "zlink-socket-callback");
-                thread.setDaemon(true);
-                return thread;
-            });
+            return RuntimeResources.daemonSingleThreadExecutor(
+                "zlink-socket-callback");
         }
 
         private static void closeReceived(Received received) {
@@ -3315,11 +3302,6 @@ final class NativeSocketRuntime implements AutoCloseable {
                 } catch (RuntimeException ignored) {
                 }
             }
-        }
-
-        private static void shutdownExecutor(ExecutorService executor) {
-            if (executor != null)
-                executor.shutdown();
         }
 
         private record CallbackReceivedData(RoutingId routingId,

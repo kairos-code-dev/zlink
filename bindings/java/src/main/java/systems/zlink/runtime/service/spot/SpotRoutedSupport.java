@@ -31,6 +31,7 @@ import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
+import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -394,7 +395,7 @@ final class SpotRoutedSupport implements AutoCloseable {
         int rc = Native.spotDispatchEventHandler(handle(), callback,
           MemorySegment.ofAddress(callbackId));
         if (rc != 0) {
-            closeArena(arena);
+            RuntimeResources.closeArena(arena);
             throw new ZlinkHandlerException(HandlerResult.fromValue(rc),
               Native.errno());
         }
@@ -410,7 +411,7 @@ final class SpotRoutedSupport implements AutoCloseable {
             DISPATCH_RECEIVERS.remove(callbackId);
             dispatchCallbackId = 0L;
         }
-        closeArena(dispatchCallbackArena);
+        RuntimeResources.closeArena(dispatchCallbackArena);
         dispatchCallbackArena = null;
         dispatchEventHandler = null;
     }
@@ -850,11 +851,7 @@ final class SpotRoutedSupport implements AutoCloseable {
         if (executor != null) {
             return executor;
         }
-        executor = Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, threadName);
-            thread.setDaemon(true);
-            return thread;
-        });
+        executor = RuntimeResources.daemonSingleThreadExecutor(threadName);
         callbackExecutor = executor;
         return executor;
     }
@@ -872,7 +869,7 @@ final class SpotRoutedSupport implements AutoCloseable {
     @Override
     public void close() {
         releaseDispatchEventHandlerSlot();
-        shutdownExecutor(callbackExecutor);
+        RuntimeResources.shutdownExecutor(callbackExecutor);
         callbackExecutor = null;
     }
 
@@ -1063,18 +1060,6 @@ final class SpotRoutedSupport implements AutoCloseable {
               name, type).bindTo(receiver);
         } catch (ReflectiveOperationException ex) {
             throw new ExceptionInInitializerError(ex);
-        }
-    }
-
-    private static void closeArena(Arena arena) {
-        if (arena != null && arena.scope().isAlive()) {
-            arena.close();
-        }
-    }
-
-    private static void shutdownExecutor(ExecutorService executor) {
-        if (executor != null) {
-            executor.shutdown();
         }
     }
 

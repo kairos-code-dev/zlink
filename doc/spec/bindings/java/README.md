@@ -250,7 +250,6 @@ systems/zlink/contracts/
 |       +-- *Exception.java
 |       +-- *Result.java
 |       +-- ErrorCode.java
-|       +-- ProtocolError.java
 +-- eventing/
 |   +-- EventEnums/
 |   +-- EventHandlers/

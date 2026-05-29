@@ -16,6 +16,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
+import systems.zlink.runtime.nativeapi.RuntimeResources;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -28,7 +29,6 @@ import java.lang.invoke.MethodType;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
@@ -147,9 +147,10 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             if (rc != 0) {
                 if (createdExecutor) {
                     callbackExecutor = null;
-                    shutdownExecutor(executor);
+                    RuntimeResources.shutdownExecutor(executor,
+                        1, TimeUnit.SECONDS);
                 }
-                closeArena(arena);
+                RuntimeResources.closeArena(arena);
                 throw ZlinkException.fromLastError("zlink_router_handler");
             }
             receiveCallbackArena = arena;
@@ -161,13 +162,14 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             dataHandler = handler;
         } catch (RuntimeException ex) {
             if (createdHandler) {
-                closeArena(receiveCallbackArena);
+                RuntimeResources.closeArena(receiveCallbackArena);
                 receiveCallbackArena = null;
                 handlerRegistered = false;
             }
             if (createdExecutor) {
                 callbackExecutor = null;
-                shutdownExecutor(executor);
+                RuntimeResources.shutdownExecutor(executor,
+                    1, TimeUnit.SECONDS);
             }
             throw ex;
         }
@@ -223,12 +225,13 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         }
         closed = true;
         dataHandler = null;
-        shutdownExecutor(callbackExecutor);
+        RuntimeResources.shutdownExecutor(callbackExecutor,
+            1, TimeUnit.SECONDS);
         callbackExecutor = null;
     }
 
     public void finishClose() {
-        closeArena(receiveCallbackArena);
+        RuntimeResources.closeArena(receiveCallbackArena);
         receiveCallbackArena = null;
     }
 
@@ -779,28 +782,8 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     }
 
     private static ExecutorService newCallbackExecutor() {
-        return Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "zlink-router-callback");
-            thread.setDaemon(true);
-            return thread;
-        });
-    }
-
-    private static void shutdownExecutor(ExecutorService executor) {
-        if (executor != null) {
-            executor.shutdown();
-            try {
-                executor.awaitTermination(1, TimeUnit.SECONDS);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-            }
-        }
-    }
-
-    private static void closeArena(Arena arena) {
-        if (arena != null && arena.scope().isAlive()) {
-            arena.close();
-        }
+        return RuntimeResources.daemonSingleThreadExecutor(
+            "zlink-router-callback");
     }
 
     // Internal optimization for the existing recv() path: probes the

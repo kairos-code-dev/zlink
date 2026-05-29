@@ -17,6 +17,7 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMonitorStatuses;
+import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -28,7 +29,6 @@ import java.lang.invoke.MethodType;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public final class NativeMonitorSocket implements SocketMonitor {
     private static final Linker LINKER = Linker.nativeLinker();
@@ -75,16 +75,16 @@ public final class NativeMonitorSocket implements SocketMonitor {
                 throw ZlinkException.fromLastError("zlink_socket_monitor_handler");
             }
             success = true;
-            closeArena(callbackArena);
+            RuntimeResources.closeArena(callbackArena);
             callbackArena = arena;
             callbackStub = stub;
             eventHandler = handler;
-            shutdownExecutor(previousExecutor);
+            RuntimeResources.shutdownExecutor(previousExecutor);
         } finally {
             if (!success) {
                 callbackExecutor = previousExecutor;
-                closeArena(arena);
-                shutdownExecutor(executor);
+                RuntimeResources.closeArena(arena);
+                RuntimeResources.shutdownExecutor(executor);
             }
         }
     }
@@ -133,9 +133,9 @@ public final class NativeMonitorSocket implements SocketMonitor {
             return;
         eventHandler = null;
         callbackFailure = null;
-        shutdownExecutor(callbackExecutor);
+        RuntimeResources.shutdownExecutor(callbackExecutor);
         callbackExecutor = null;
-        closeArena(callbackArena);
+        RuntimeResources.closeArena(callbackArena);
         callbackArena = null;
         callbackStub = MemorySegment.NULL;
         if (own) {
@@ -225,21 +225,8 @@ public final class NativeMonitorSocket implements SocketMonitor {
             uncaught.uncaughtException(current, failure);
     }
 
-    private static void closeArena(Arena arena) {
-        if (arena != null && arena.scope().isAlive())
-            arena.close();
-    }
-
     private static ExecutorService newCallbackExecutor() {
-        return Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "zlink-monitor-callback");
-            thread.setDaemon(true);
-            return thread;
-        });
-    }
-
-    private static void shutdownExecutor(ExecutorService executor) {
-        if (executor != null)
-            executor.shutdown();
+        return RuntimeResources.daemonSingleThreadExecutor(
+            "zlink-monitor-callback");
     }
 }

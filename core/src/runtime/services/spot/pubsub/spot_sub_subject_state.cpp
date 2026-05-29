@@ -347,6 +347,7 @@ void spot_sub_t::append_all_subjects (
         return;
 
     scoped_lock_t lock (_sync);
+    out_->reserve (out_->size () + _topics.size () + _patterns.size ());
     for (std::set<std::string>::const_iterator it = _topics.begin ();
          it != _topics.end (); ++it) {
         subject_descriptor_t subject;

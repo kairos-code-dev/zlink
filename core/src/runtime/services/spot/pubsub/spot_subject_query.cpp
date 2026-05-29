@@ -106,6 +106,8 @@ void append_logical_subscription_subjects (
         return;
 
     zlink::scoped_lock_t lock (state_->pubsub_sync);
+    out_->reserve (out_->size () + state_->subscription_topics.size ()
+                   + state_->subscription_patterns.size ());
     for (std::set<std::string>::const_iterator it =
            state_->subscription_topics.begin ();
          it != state_->subscription_topics.end (); ++it) {

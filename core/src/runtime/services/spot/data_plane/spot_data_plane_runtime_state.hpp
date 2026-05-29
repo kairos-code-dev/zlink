@@ -6,6 +6,7 @@
 #include <zlink.h>
 
 #include "core/signaler.hpp"
+#include "core/socket_poller.hpp"
 #include "services/spot/common/spot_message_parts_internal.hpp"
 
 #include <condition_variable>
@@ -18,8 +19,6 @@
 namespace zlink
 {
 class socket_base_t;
-class socket_poller_t;
-
 struct spot_data_plane_runtime_state_t
 {
     spot_data_plane_runtime_state_t ();
@@ -274,6 +273,7 @@ struct spot_data_plane_runtime_state_t
     remote_mesh_state_t remote_mesh;
     staged_publish_state_t staged;
     socket_poller_t *poller;
+    std::vector<socket_poller_t::event_t> poll_events;
 };
 
 }

@@ -482,7 +482,6 @@ int spot_data_plane_loop_t::run_until_shutdown (
         *protocol_state_out_ = protocol_state;
     spot_data_plane_protocol_state_t *protocol_state_ptr =
       protocol_state_out_ ? protocol_state_out_ : &protocol_state;
-    std::vector<socket_poller_t::event_t> events;
     unsigned int consecutive_ready_loops = 0;
 
     while (running) {
@@ -501,10 +500,11 @@ int spot_data_plane_loop_t::run_until_shutdown (
         const size_t event_capacity =
           static_cast<size_t> (
             std::max (state_->poller->size (), data_plane_min_event_capacity));
-        if (events.size () < event_capacity)
-            events.resize (event_capacity);
+        if (state_->poll_events.size () < event_capacity)
+            state_->poll_events.resize (event_capacity);
         const int rc = state_->poller->wait (
-          events.empty () ? NULL : &events[0], static_cast<int> (events.size ()),
+          state_->poll_events.empty () ? NULL : &state_->poll_events[0],
+          static_cast<int> (state_->poll_events.size ()),
           resolve_data_plane_poll_timeout_ms (next_bootstrap_ms, state_));
         if (rc < 0) {
             consecutive_ready_loops = 0;
@@ -521,8 +521,8 @@ int spot_data_plane_loop_t::run_until_shutdown (
         }
 
         fatal_errno = dispatch_ready_events (
-          events.empty () ? NULL : &events[0], rc, node_, runtime_, state_,
-          protocol_state_ptr, &running);
+          state_->poll_events.empty () ? NULL : &state_->poll_events[0], rc,
+          node_, runtime_, state_, protocol_state_ptr, &running);
         if (!running)
             break;
 
@@ -567,10 +567,14 @@ int spot_data_plane_loop_t::run_once (
         return errno;
     if (drain_direct_route_messages (node_, state_) != 0)
         return errno;
-    std::vector<socket_poller_t::event_t> events (
-      std::max (state_->poller->size (), data_plane_min_event_capacity));
+    const size_t event_capacity =
+      static_cast<size_t> (
+        std::max (state_->poller->size (), data_plane_min_event_capacity));
+    if (state_->poll_events.size () < event_capacity)
+        state_->poll_events.resize (event_capacity);
     const int rc = state_->poller->wait (
-      events.empty () ? NULL : &events[0], static_cast<int> (events.size ()), 0);
+      state_->poll_events.empty () ? NULL : &state_->poll_events[0],
+      static_cast<int> (state_->poll_events.size ()), 0);
     if (rc < 0) {
         if (errno == EAGAIN || errno == EINTR)
             return 0;
@@ -578,8 +582,9 @@ int spot_data_plane_loop_t::run_once (
     }
 
     int fatal_errno =
-      dispatch_ready_events (events.empty () ? NULL : &events[0], rc, node_,
-                             runtime_, state_, protocol_state_, running_out_);
+      dispatch_ready_events (
+        state_->poll_events.empty () ? NULL : &state_->poll_events[0], rc,
+        node_, runtime_, state_, protocol_state_, running_out_);
     if (!*running_out_ || fatal_errno != 0)
         return fatal_errno;
 

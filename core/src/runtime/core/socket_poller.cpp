@@ -356,6 +356,30 @@ void zlink::socket_poller_t::zero_trail_events (
     }
 }
 
+int zlink::socket_poller_t::check_socket_events (
+  zlink::socket_poller_t::event_t *events_, int n_events_)
+{
+    int found = 0;
+    for (items_t::iterator it = _items.begin (), end = _items.end ();
+         it != end && found < n_events_; ++it) {
+        if (!it->socket)
+            continue;
+
+        uint32_t events;
+        if (it->socket->get_events_internal (it->events, &events) == -1)
+            return -1;
+
+        if (it->events & events) {
+            events_[found].socket = it->socket;
+            events_[found].fd = zlink::retired_fd;
+            events_[found].user_data = it->user_data;
+            events_[found].events = it->events & events;
+            ++found;
+        }
+    }
+    return found;
+}
+
 #if defined ZLINK_POLL_BASED_ON_POLL
 int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *events_,
                                         int n_events_)
@@ -428,44 +452,6 @@ int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *event
     return found;
 }
 
-//Return 0 if timeout is expired otherwise 1
-int zlink::socket_poller_t::adjust_timeout (zlink::clock_t &clock_,
-                                          long timeout_,
-                                          uint64_t &now_,
-                                          uint64_t &end_,
-                                          bool &first_pass_)
-{
-    //  If socket_poller_t::timeout is zero, exit immediately whether there
-    //  are events or not.
-    if (timeout_ == 0)
-        return 0;
-
-    //  At this point we are meant to wait for events but there are none.
-    //  If timeout is infinite we can just loop until we get some events.
-    if (timeout_ < 0) {
-        if (first_pass_)
-            first_pass_ = false;
-        return 1;
-    }
-
-    //  The timeout is finite and there are no events. In the first pass
-    //  we get a timestamp of when the polling have begun. (We assume that
-    //  first pass have taken negligible time). We also compute the time
-    //  when the polling should time out.
-    now_ = clock_.now_ms ();
-    if (first_pass_) {
-        end_ = now_ + timeout_;
-        first_pass_ = false;
-        return 1;
-    }
-
-    //  Find out whether timeout have expired.
-    if (now_ >= end_)
-        return 0;
-
-    return 1;
-}
-
 int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
                                 int n_events_,
                                 long timeout_)
@@ -521,18 +507,28 @@ int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
     uint64_t now = 0;
     uint64_t end = 0;
 
-    bool first_pass = true;
-
     while (true) {
-        //  Compute the timeout for the subsequent poll.
+        const int socket_events = check_socket_events (events_, n_events_);
+        if (socket_events) {
+            if (socket_events > 0)
+                zero_trail_events (events_, n_events_, socket_events);
+            return socket_events;
+        }
+
         int timeout;
-        if (first_pass)
+        if (timeout_ == 0)
             timeout = 0;
         else if (timeout_ < 0)
             timeout = -1;
-        else
-            timeout =
-              static_cast<int> (std::min<uint64_t> (end - now, INT_MAX));
+        else {
+            if (end == 0) {
+                now = clock.now_ms ();
+                end = now + timeout_;
+            }
+            const uint64_t remaining = end > now ? end - now : 0;
+            timeout = static_cast<int> (
+              std::min<uint64_t> (remaining, INT_MAX));
+        }
 
         //  Wait for events.
         const int rc = poll (_pollfds, _pollset_size, timeout);
@@ -549,9 +545,13 @@ int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
             return found;
         }
 
-        //  Adjust timeout or break
-        if (adjust_timeout (clock, timeout_, now, end, first_pass) == 0)
+        if (timeout_ == 0)
             break;
+        if (timeout_ > 0) {
+            now = clock.now_ms ();
+            if (now >= end)
+                break;
+        }
     }
     errno = EAGAIN;
     return -1;
@@ -562,25 +562,34 @@ int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
     uint64_t now = 0;
     uint64_t end = 0;
 
-    bool first_pass = true;
-
     optimized_fd_set_t inset (_pollset_size);
     optimized_fd_set_t outset (_pollset_size);
     optimized_fd_set_t errset (_pollset_size);
 
     while (true) {
-        //  Compute the timeout for the subsequent poll.
+        const int socket_events = check_socket_events (events_, n_events_);
+        if (socket_events) {
+            if (socket_events > 0)
+                zero_trail_events (events_, n_events_, socket_events);
+            return socket_events;
+        }
+
         timeval timeout;
         timeval *ptimeout;
-        if (first_pass) {
+        if (timeout_ == 0) {
             timeout.tv_sec = 0;
             timeout.tv_usec = 0;
             ptimeout = &timeout;
         } else if (timeout_ < 0)
             ptimeout = NULL;
         else {
-            timeout.tv_sec = static_cast<long> ((end - now) / 1000);
-            timeout.tv_usec = static_cast<long> ((end - now) % 1000 * 1000);
+            if (end == 0) {
+                now = clock.now_ms ();
+                end = now + timeout_;
+            }
+            const uint64_t remaining = end > now ? end - now : 0;
+            timeout.tv_sec = static_cast<long> (remaining / 1000);
+            timeout.tv_usec = static_cast<long> (remaining % 1000 * 1000);
             ptimeout = &timeout;
         }
 
@@ -615,9 +624,13 @@ int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
             return found;
         }
 
-        //  Adjust timeout or break
-        if (adjust_timeout (clock, timeout_, now, end, first_pass) == 0)
+        if (timeout_ == 0)
             break;
+        if (timeout_ > 0) {
+            now = clock.now_ms ();
+            if (now >= end)
+                break;
+        }
     }
 
     errno = EAGAIN;

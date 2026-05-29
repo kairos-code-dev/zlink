@@ -133,6 +133,21 @@ zlink::request_completion::queue_state_t::queue_state_t () :
 {
 }
 
+namespace
+{
+int ensure_signal_ready_locked (
+  zlink::request_completion::queue_state_t *state_,
+  zlink::ctx_t *ctx_,
+  const char *prefix_)
+{
+    if (state_->close_requested) {
+        errno = ETERM;
+        return -1;
+    }
+    return zlink::internal_pair_queue::ensure (ctx_, prefix_, &state_->signal);
+}
+}
+
 int zlink::request_completion::ensure_signal_ready (queue_state_t *state_,
                                                     zlink::ctx_t *ctx_,
                                                     const char *prefix_)
@@ -143,11 +158,7 @@ int zlink::request_completion::ensure_signal_ready (queue_state_t *state_,
     }
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    if (state_->close_requested) {
-        errno = ETERM;
-        return -1;
-    }
-    return zlink::internal_pair_queue::ensure (ctx_, prefix_, &state_->signal);
+    return ensure_signal_ready_locked (state_, ctx_, prefix_);
 }
 
 int zlink::request_completion::enqueue (queue_state_t *state_,
@@ -163,22 +174,18 @@ int zlink::request_completion::enqueue (queue_state_t *state_,
         errno = EFAULT;
         return -1;
     }
-    if (ensure_signal_ready (state_, ctx_, prefix_) != 0)
-        return -1;
-
     queued_completion_t completion;
     completion.handler = handler_;
     completion.userdata = userdata_;
     completion.errnum = errnum_;
-    if (move_completion_parts (&completion.parts, parts_, part_count_) != 0)
-        return -1;
+    completion.parts.reserve (part_count_);
 
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        if (state_->close_requested) {
-            errno = ETERM;
+        if (ensure_signal_ready_locked (state_, ctx_, prefix_) != 0)
             return -1;
-        }
+        if (move_completion_parts (&completion.parts, parts_, part_count_) != 0)
+            return -1;
         const bool should_signal =
           state_->pending.empty () && !state_->signal_pending;
         state_->pending.push_back (std::move (completion));
@@ -206,15 +213,11 @@ int zlink::request_completion::signal (queue_state_t *state_,
         errno = EFAULT;
         return -1;
     }
-    if (ensure_signal_ready (state_, ctx_, prefix_) != 0)
-        return -1;
 
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        if (state_->close_requested) {
-            errno = ETERM;
+        if (ensure_signal_ready_locked (state_, ctx_, prefix_) != 0)
             return -1;
-        }
         if (state_->signal_pending) {
             errno = 0;
             return 0;

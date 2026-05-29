@@ -74,6 +74,8 @@ class socket_poller_t
     static void zero_trail_events (zlink::socket_poller_t::event_t *events_,
                                    int n_events_,
                                    int found_);
+    int check_socket_events (zlink::socket_poller_t::event_t *events_,
+                             int n_events_);
 #if defined ZLINK_POLL_BASED_ON_POLL
     int check_events (zlink::socket_poller_t::event_t *events_, int n_events_);
 #elif defined ZLINK_POLL_BASED_ON_SELECT
@@ -83,11 +85,6 @@ class socket_poller_t
                       fd_set &outset_,
                       fd_set &errset_);
 #endif
-    static int adjust_timeout (zlink::clock_t &clock_,
-                               long timeout_,
-                               uint64_t &now_,
-                               uint64_t &end_,
-                               bool &first_pass_);
     static bool is_socket (const item_t &item, const socket_base_t *socket_)
     {
         return item.socket == socket_;

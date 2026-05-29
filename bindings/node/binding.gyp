@@ -5,6 +5,7 @@
       "sources": [
         "native/src/addon.cc",
         "native/src/addon_core.cc",
+        "native/src/addon_core_options.cc",
         "native/src/addon_discovery.cc",
         "native/src/addon_spot.cc"
       ],

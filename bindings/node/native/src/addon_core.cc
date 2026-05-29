@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "addon_core_api.h"
+#include "addon_core_options.h"
 #include <algorithm>
 #include <errno.h>
 #include <atomic>
@@ -32,10 +33,6 @@ static const int32_t k_legacy_socket_router = 6;
 static const int32_t k_legacy_socket_xpub = 9;
 static const int32_t k_legacy_socket_xsub = 10;
 static const int32_t k_legacy_socket_stream = 11;
-static const int32_t k_legacy_opt_routing_id = 5;
-static const int32_t k_legacy_opt_subscribe = 6;
-static const int32_t k_legacy_opt_unsubscribe = 7;
-static const int32_t k_legacy_opt_xpub_verbose = 40;
 
 int classify_try_send_errno()
 {
@@ -402,15 +399,6 @@ router_handler_js_state_t *find_router_handler_slot_by_socket_unsafe(void *socke
     return NULL;
 }
 
-router_handler_js_state_t *find_free_router_handler_slot_unsafe()
-{
-    for (size_t i = 0; i < k_router_handler_slot_count; ++i) {
-        if (!g_router_handler_slots[i].used)
-            return &g_router_handler_slots[i];
-    }
-    return NULL;
-}
-
 subscribe_handler_js_state_t *find_subscribe_handler_slot_by_socket_unsafe(
   void *socket)
 {
@@ -419,15 +407,6 @@ subscribe_handler_js_state_t *find_subscribe_handler_slot_by_socket_unsafe(
             && g_subscribe_handler_slots[i].socket == socket) {
             return &g_subscribe_handler_slots[i];
         }
-    }
-    return NULL;
-}
-
-subscribe_handler_js_state_t *find_free_subscribe_handler_slot_unsafe()
-{
-    for (size_t i = 0; i < k_subscribe_handler_slot_count; ++i) {
-        if (!g_subscribe_handler_slots[i].used)
-            return &g_subscribe_handler_slots[i];
     }
     return NULL;
 }
@@ -608,27 +587,6 @@ void copy_routing_id(zlink_routing_id_t *out, const zlink_routing_id_t *in)
         memcpy(out, in, sizeof(*out));
     else
         memset(out, 0, sizeof(*out));
-}
-
-bool routing_id_from_buffer(napi_env env, napi_value value, zlink_routing_id_t *out)
-{
-    if (!out)
-        return false;
-    void *data = NULL;
-    size_t len = 0;
-    if (napi_get_buffer_info(env, value, &data, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "routingId must be Buffer");
-        return false;
-    }
-    if (len > sizeof(out->data)) {
-        napi_throw_range_error(env, NULL, "routingId too long");
-        return false;
-    }
-    memset(out, 0, sizeof(*out));
-    out->size = static_cast<uint8_t>(len);
-    if (len > 0 && data)
-        memcpy(out->data, data, len);
-    return true;
 }
 
 bool append_msg_move(std::vector<zlink_msg_t> *parts, zlink_msg_t *part)
@@ -1327,153 +1285,6 @@ bool parse_routing_id(napi_env env,
     return true;
 }
 
-int set_socket_option(void *sock, int32_t opt, const void *data, size_t len)
-{
-    switch (opt) {
-    case k_legacy_opt_routing_id:
-        return zlink_set_routing_id(sock, data, len);
-    case k_legacy_opt_subscribe: {
-        std::string filter(static_cast<const char *>(data), len);
-        return zlink_set_subscription(sock, filter.c_str());
-    }
-    case k_legacy_opt_unsubscribe: {
-        std::string filter(static_cast<const char *>(data), len);
-        return zlink_unset_subscription(sock, filter.c_str());
-    }
-    case k_legacy_opt_xpub_verbose: {
-        int value = 0;
-        if (len >= sizeof(int))
-            memcpy(&value, data, sizeof(int));
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_VERBOSE, &value,
-                                    sizeof(value));
-    }
-    case ZLINK_ROUTER_OPT_MANDATORY:
-        return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_MANDATORY, data, len);
-    case ZLINK_ROUTER_OPT_PROBE:
-        return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_PROBE, data, len);
-    case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
-        return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
-                                       data, len);
-    case ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS:
-        return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
-                                       data, len);
-    case ZLINK_ROUTER_OPT_WEIGHT:
-        return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_WEIGHT, data, len);
-    case ZLINK_DEALER_OPT_PROBE:
-        return zlink_set_dealer_option(sock, ZLINK_DEALER_OPT_PROBE, data, len);
-    case ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS:
-        return zlink_set_dealer_option(sock, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
-                                       data, len);
-    case ZLINK_DEALER_OPT_WEIGHT:
-        return zlink_set_dealer_option(sock, ZLINK_DEALER_OPT_WEIGHT, data, len);
-    case ZLINK_STREAM_OPT_NOTIFY:
-        return zlink_set_stream_option(sock, ZLINK_STREAM_OPT_NOTIFY, data, len);
-    case ZLINK_PUB_OPT_VERBOSE:
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_VERBOSE, data, len);
-    case ZLINK_PUB_OPT_VERBOSER:
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_VERBOSER, data, len);
-    case ZLINK_PUB_OPT_MANUAL:
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_MANUAL, data, len);
-    case ZLINK_PUB_OPT_MANUAL_LAST_VALUE:
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_MANUAL_LAST_VALUE, data, len);
-    case ZLINK_PUB_OPT_NODROP:
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_NODROP, data, len);
-    case ZLINK_PUB_OPT_WELCOME_MSG:
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_WELCOME_MSG, data, len);
-    case ZLINK_PUB_OPT_TOPICS_COUNT:
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_TOPICS_COUNT, data, len);
-    case ZLINK_PUB_OPT_APPROVE_SUBSCRIBE:
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_APPROVE_SUBSCRIBE, data, len);
-    case ZLINK_PUB_OPT_REJECT_SUBSCRIBE:
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_REJECT_SUBSCRIBE, data, len);
-    case ZLINK_SUB_OPT_TOPICS_COUNT:
-        return zlink_set_sub_option(sock, ZLINK_SUB_OPT_TOPICS_COUNT, data, len);
-    default:
-        return zlink_set_option(sock, static_cast<zlink_option_t>(opt), data,
-                                len);
-    }
-}
-
-int get_socket_option(void *sock, int32_t opt, void *data, size_t *len)
-{
-    switch (opt) {
-    case k_legacy_opt_routing_id: {
-        zlink_routing_id_t rid;
-        memset(&rid, 0, sizeof(rid));
-        int rc = zlink_get_routing_id(sock, &rid);
-        if (rc != 0)
-            return rc;
-        size_t copy_len = std::min(*len, static_cast<size_t>(rid.size));
-        if (copy_len > 0)
-            memcpy(data, rid.data, copy_len);
-        *len = rid.size;
-        return 0;
-    }
-    case ZLINK_ROUTER_OPT_MANDATORY:
-        return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_MANDATORY, data, len);
-    case ZLINK_ROUTER_OPT_PROBE:
-        return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_PROBE, data, len);
-    case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
-        return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
-                                       data, len);
-    case ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS:
-        return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
-                                       data, len);
-    case ZLINK_ROUTER_OPT_WEIGHT:
-        return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_WEIGHT, data, len);
-    case ZLINK_DEALER_OPT_PROBE:
-        return zlink_get_dealer_option(sock, ZLINK_DEALER_OPT_PROBE, data, len);
-    case ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS:
-        return zlink_get_dealer_option(sock, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
-                                       data, len);
-    case ZLINK_DEALER_OPT_WEIGHT:
-        return zlink_get_dealer_option(sock, ZLINK_DEALER_OPT_WEIGHT, data, len);
-    case ZLINK_STREAM_OPT_NOTIFY:
-        return zlink_get_stream_option(sock, ZLINK_STREAM_OPT_NOTIFY, data, len);
-    case ZLINK_PUB_OPT_VERBOSE:
-        return zlink_get_pub_option(sock, ZLINK_PUB_OPT_VERBOSE, data, len);
-    case ZLINK_PUB_OPT_VERBOSER:
-        return zlink_get_pub_option(sock, ZLINK_PUB_OPT_VERBOSER, data, len);
-    case ZLINK_PUB_OPT_MANUAL:
-        return zlink_get_pub_option(sock, ZLINK_PUB_OPT_MANUAL, data, len);
-    case ZLINK_PUB_OPT_MANUAL_LAST_VALUE:
-        return zlink_get_pub_option(sock, ZLINK_PUB_OPT_MANUAL_LAST_VALUE, data, len);
-    case ZLINK_PUB_OPT_NODROP:
-        return zlink_get_pub_option(sock, ZLINK_PUB_OPT_NODROP, data, len);
-    case ZLINK_PUB_OPT_WELCOME_MSG:
-        return zlink_get_pub_option(sock, ZLINK_PUB_OPT_WELCOME_MSG, data, len);
-    case ZLINK_PUB_OPT_TOPICS_COUNT:
-        return zlink_get_pub_option(sock, ZLINK_PUB_OPT_TOPICS_COUNT, data, len);
-    case ZLINK_SUB_OPT_TOPICS_COUNT:
-        return zlink_get_sub_option(sock, ZLINK_SUB_OPT_TOPICS_COUNT, data, len);
-    default:
-        return zlink_get_option(sock, static_cast<zlink_option_t>(opt), data,
-                                len);
-    }
-}
-
-size_t initial_getopt_buffer_len(int32_t opt)
-{
-    switch (opt) {
-    case k_legacy_opt_routing_id:
-    case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
-        return 255;
-    case ZLINK_OPT_LAST_ENDPOINT:
-    case ZLINK_OPT_TLS_CERT:
-    case ZLINK_OPT_TLS_KEY:
-    case ZLINK_OPT_TLS_CA:
-    case ZLINK_OPT_TLS_HOSTNAME:
-    case ZLINK_OPT_TLS_PASSWORD:
-    case ZLINK_OPT_BINDTODEVICE:
-    case ZLINK_OPT_ZMP_METADATA:
-        return 256;
-    case ZLINK_OPT_MAXMSGSIZE:
-        return sizeof(int64_t);
-    default:
-        return sizeof(int);
-    }
-}
-
 void stream_tsfn_finalize(napi_env env, void *finalize_data, void *finalize_hint)
 {
     (void) env;
@@ -1497,34 +1308,6 @@ void recv_handler_tsfn_finalize(napi_env env,
         return;
     std::lock_guard<std::mutex> lock(g_recv_handler_slots_mu);
     reset_recv_handler_slot_unsafe(state);
-}
-
-void router_handler_tsfn_finalize(napi_env env,
-                                  void *finalize_data,
-                                  void *finalize_hint)
-{
-    (void) env;
-    (void) finalize_hint;
-    router_handler_js_state_t *state =
-      static_cast<router_handler_js_state_t *>(finalize_data);
-    if (!state)
-        return;
-    std::lock_guard<std::mutex> lock(g_router_handler_slots_mu);
-    reset_router_handler_slot_unsafe(state);
-}
-
-void subscribe_handler_tsfn_finalize(napi_env env,
-                                     void *finalize_data,
-                                     void *finalize_hint)
-{
-    (void) env;
-    (void) finalize_hint;
-    subscribe_handler_js_state_t *state =
-      static_cast<subscribe_handler_js_state_t *>(finalize_data);
-    if (!state)
-        return;
-    std::lock_guard<std::mutex> lock(g_subscribe_handler_slots_mu);
-    reset_subscribe_handler_slot_unsafe(state);
 }
 
 void send_ready_handler_tsfn_finalize(napi_env env,
@@ -1644,124 +1427,6 @@ void recv_handler_tsfn_call_js(napi_env env,
     napi_value this_arg;
     napi_get_undefined(env, &this_arg);
     (void) napi_call_function(env, this_arg, js_cb, 2, argv, &recv);
-}
-
-void router_handler_tsfn_call_js(napi_env env,
-                                 napi_value js_cb,
-                                 void *context,
-                                 void *data)
-{
-    std::unique_ptr<router_handler_js_payload_t> payload(
-      static_cast<router_handler_js_payload_t *>(data));
-    (void) context;
-    if (!env || !js_cb || !payload)
-        return;
-
-    napi_value argv[1];
-    napi_create_object(env, &argv[0]);
-
-    zlink_routing_id_t rid;
-    memset(&rid, 0, sizeof(rid));
-    if (!payload->routing_id.empty()) {
-        rid.size = payload->routing_id.size();
-        memcpy(rid.data, payload->routing_id.data(), rid.size);
-    }
-
-    napi_value rid_value = create_routing_id_value(env, rid);
-    napi_set_named_property(env, argv[0], "routingId", rid_value);
-
-    napi_value spot_rid_value;
-    if (!payload->spot_routing_id.empty()) {
-        zlink_routing_id_t spot_rid;
-        memset(&spot_rid, 0, sizeof(spot_rid));
-        spot_rid.size = payload->spot_routing_id.size();
-        memcpy(spot_rid.data, payload->spot_routing_id.data(), spot_rid.size);
-        spot_rid_value = create_routing_id_value(env, spot_rid);
-    } else {
-        napi_get_null(env, &spot_rid_value);
-    }
-    napi_set_named_property(env, argv[0], "spotRid", spot_rid_value);
-
-    napi_value request_seq_value;
-    if (payload->request_seq == 0) {
-        napi_get_null(env, &request_seq_value);
-    } else {
-        napi_create_bigint_uint64(env, payload->request_seq, &request_seq_value);
-    }
-    napi_set_named_property(env, argv[0], "requestSeq", request_seq_value);
-
-    napi_value parts_array;
-    if (napi_create_array_with_length(env, payload->parts.size(), &parts_array)
-        != napi_ok) {
-        return;
-    }
-    for (size_t i = 0; i < payload->parts.size(); ++i) {
-        const std::vector<unsigned char> &part = payload->parts[i];
-        napi_value part_obj;
-        napi_create_object(env, &part_obj);
-
-        napi_value part_buf;
-        if (napi_create_buffer_copy(
-              env, part.size(), part.empty() ? NULL : part.data(), NULL,
-              &part_buf)
-            != napi_ok) {
-            return;
-        }
-        napi_set_named_property(env, part_obj, "data", part_buf);
-        napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_obj);
-    }
-    napi_set_named_property(env, argv[0], "parts", parts_array);
-
-    napi_value recv;
-    napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 1, argv, &recv);
-}
-
-void subscribe_handler_tsfn_call_js(napi_env env,
-                                    napi_value js_cb,
-                                    void *context,
-                                    void *data)
-{
-    std::unique_ptr<subscribe_handler_js_payload_t> payload(
-      static_cast<subscribe_handler_js_payload_t *>(data));
-    (void) context;
-    if (!env || !js_cb || !payload)
-        return;
-
-    napi_value argv[3];
-    if (!payload->routing_id.empty()) {
-        if (napi_create_buffer_copy(
-              env, payload->routing_id.size(), payload->routing_id.data(), NULL,
-              &argv[0])
-            != napi_ok) {
-            return;
-        }
-    } else {
-        napi_get_null(env, &argv[0]);
-    }
-    napi_create_string_utf8(
-      env, payload->topic.c_str(), payload->topic.size(), &argv[1]);
-    if (napi_create_array_with_length(env, payload->parts.size(), &argv[2])
-        != napi_ok) {
-        return;
-    }
-    for (size_t i = 0; i < payload->parts.size(); ++i) {
-        const std::vector<unsigned char> &part = payload->parts[i];
-        napi_value part_buf;
-        if (napi_create_buffer_copy(
-              env, part.size(), part.empty() ? NULL : part.data(), NULL,
-              &part_buf)
-            != napi_ok) {
-            return;
-        }
-        napi_set_element(env, argv[2], static_cast<uint32_t>(i), part_buf);
-    }
-
-    napi_value recv;
-    napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 3, argv, &recv);
 }
 
 void send_ready_handler_tsfn_call_js(napi_env env,
@@ -2549,47 +2214,6 @@ void subscribe_handler_slot_callback(const zlink_routing_id_t *source_rid_,
         payload.release();
     }
 }
-
-typedef void (*router_handler_slot_callback_t)(const zlink_routing_id_t *,
-                                               const zlink_routing_id_t *,
-                                               uint64_t,
-                                               zlink_msg_t *,
-                                               size_t,
-                                               void *);
-typedef void (*subscribe_handler_slot_callback_t)(const zlink_routing_id_t *,
-                                                  const char *,
-                                                  size_t,
-                                                  zlink_msg_t *,
-                                                  size_t,
-                                                  void *);
-
-#define ROUTER_HANDLER_SLOT_CALLBACK(N) &router_handler_slot_callback<N>
-static router_handler_slot_callback_t
-  g_router_handler_slot_callbacks[k_router_handler_slot_count] = {
-    ROUTER_HANDLER_SLOT_CALLBACK(0),
-    ROUTER_HANDLER_SLOT_CALLBACK(1),
-    ROUTER_HANDLER_SLOT_CALLBACK(2),
-    ROUTER_HANDLER_SLOT_CALLBACK(3),
-    ROUTER_HANDLER_SLOT_CALLBACK(4),
-    ROUTER_HANDLER_SLOT_CALLBACK(5),
-    ROUTER_HANDLER_SLOT_CALLBACK(6),
-    ROUTER_HANDLER_SLOT_CALLBACK(7),
-};
-#undef ROUTER_HANDLER_SLOT_CALLBACK
-
-#define SUBSCRIBE_HANDLER_SLOT_CALLBACK(N) &subscribe_handler_slot_callback<N>
-static subscribe_handler_slot_callback_t
-  g_subscribe_handler_slot_callbacks[k_subscribe_handler_slot_count] = {
-    SUBSCRIBE_HANDLER_SLOT_CALLBACK(0),
-    SUBSCRIBE_HANDLER_SLOT_CALLBACK(1),
-    SUBSCRIBE_HANDLER_SLOT_CALLBACK(2),
-    SUBSCRIBE_HANDLER_SLOT_CALLBACK(3),
-    SUBSCRIBE_HANDLER_SLOT_CALLBACK(4),
-    SUBSCRIBE_HANDLER_SLOT_CALLBACK(5),
-    SUBSCRIBE_HANDLER_SLOT_CALLBACK(6),
-    SUBSCRIBE_HANDLER_SLOT_CALLBACK(7),
-};
-#undef SUBSCRIBE_HANDLER_SLOT_CALLBACK
 
 #define SEND_READY_HANDLER_SLOT_CALLBACK(N) &send_ready_handler_slot_callback<N>
 typedef void (*send_ready_handler_slot_callback_t)(void *, void *);
@@ -5817,60 +5441,6 @@ static napi_value create_poller_event_result(napi_env env,
     return create_poller_event_value(env, event);
 }
 
-static napi_value create_spot_routed_value(napi_env env,
-                                          const zlink_routing_id_t *source_rid,
-                                          const zlink_routing_id_t *spot_rid,
-                                          uint64_t request_seq,
-                                          zlink_msg_t *parts,
-                                          size_t part_count)
-{
-    napi_value obj;
-    napi_create_object(env, &obj);
-
-    napi_value rid = source_rid ? create_routing_id_value(env, *source_rid)
-                                : create_external_or_null(env, NULL);
-    napi_set_named_property(env, obj, "sourceRid", rid);
-    napi_value spot = spot_rid ? create_routing_id_value(env, *spot_rid)
-                               : create_external_or_null(env, NULL);
-    napi_set_named_property(env, obj, "spotRid", spot);
-
-    napi_value request_seq_value;
-    if (request_seq == 0) {
-        napi_get_null(env, &request_seq_value);
-    } else {
-        napi_create_bigint_uint64(env, request_seq, &request_seq_value);
-    }
-    napi_set_named_property(env, obj, "requestSeq", request_seq_value);
-
-    napi_value parts_array;
-    napi_create_array_with_length(env, part_count, &parts_array);
-    for (size_t i = 0; i < part_count; ++i) {
-        napi_value part_obj;
-        napi_create_object(env, &part_obj);
-        napi_value part_buf;
-        napi_create_buffer_copy(
-          env,
-          zlink_msg_size(&parts[i]),
-          zlink_msg_size(&parts[i]) > 0 ? zlink_msg_data(&parts[i]) : NULL,
-          NULL,
-          &part_buf);
-        napi_set_named_property(env, part_obj, "data", part_buf);
-        napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_obj);
-    }
-    napi_set_named_property(env, obj, "parts", parts_array);
-    return obj;
-}
-
-static napi_value create_spot_routed_recv_value(napi_env env,
-                                               const zlink_routing_id_t *source_rid,
-                                               const zlink_routing_id_t *spot_rid,
-                                               uint64_t request_seq,
-                                               zlink_msg_t *parts,
-                                               size_t part_count)
-{
-    return create_spot_routed_value(env, source_rid, spot_rid, request_seq, parts, part_count);
-}
-
 struct timer_handler_js_state_t
 {
     timer_handler_js_state_t () : used (false), timer (NULL), env (NULL), tsfn (NULL) {}
@@ -6028,7 +5598,7 @@ napi_value poll(napi_env env, napi_callback_info info)
         items[i].revents = 0;
     }
     zlink_config_result_t err = ZLINK_CONFIG_OK;
-    int rc = zlink_poll(items.data(), items.size(), timeout, &err);
+    (void) zlink_poll(items.data(), items.size(), timeout, &err);
     if (err != ZLINK_CONFIG_OK)
         return throw_last_error(env, "poll failed");
     napi_value out;

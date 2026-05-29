@@ -214,38 +214,35 @@ class DealerSocketOptions(_ContractDealerSocketOptions):
     _PROBE = 0x3201
     _REQUEST_TIMEOUT_MS = 0x3202
     _WEIGHT = 0x3203
-    _DEFAULT_WEIGHT = 100
 
     def __init__(self, socket):
         self._socket = socket
 
     @property
     def probe(self):
-        return bool(getattr(self._socket, "_dealer_probe_option", False))
+        return bool(_read_int32(self._socket._get_dealer_option(self._PROBE, 4)))
 
     @probe.setter
     def probe(self, value):
         self._socket._set_dealer_option(self._PROBE, _bool_bytes(value))
-        self._socket._dealer_probe_option = bool(value)
 
     @property
     def weight(self):
-        # zlink_get_dealer_option is not available; return cached value or default 100.
-        return int(getattr(self._socket, "_dealer_weight_option", self._DEFAULT_WEIGHT))
+        return _read_int32(self._socket._get_dealer_option(self._WEIGHT, 4))
 
     @weight.setter
     def weight(self, value):
         self._socket._set_dealer_option(self._WEIGHT, _int32_bytes(value))
-        self._socket._dealer_weight_option = int(value)
 
     @property
     def request_timeout_ms(self):
-        return int(getattr(self._socket, "_dealer_request_timeout_ms", 5000))
+        return _read_int32(
+            self._socket._get_dealer_option(self._REQUEST_TIMEOUT_MS, 4)
+        )
 
     @request_timeout_ms.setter
     def request_timeout_ms(self, value):
         self._socket._set_dealer_option(self._REQUEST_TIMEOUT_MS, _int32_bytes(value))
-        self._socket._dealer_request_timeout_ms = int(value)
 
 
 class StreamSocketOptions(_ContractStreamSocketOptions):

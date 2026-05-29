@@ -202,6 +202,11 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_GET_DEALER_OPTION = downcall(
+            "zlink_get_dealer_option",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_SET_SPOT_OPTION = downcall(
             "zlink_set_spot_option",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -1377,6 +1382,16 @@ public final class Native {
               len);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_set_dealer_option failed", t);
+        }
+    }
+
+    public static int getDealerOption(MemorySegment handle, int option,
+                                      MemorySegment value, MemorySegment len) {
+        try {
+            return (int) MH_GET_DEALER_OPTION.invokeExact(handle, option, value,
+              len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_get_dealer_option failed", t);
         }
     }
 

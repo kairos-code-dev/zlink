@@ -37,7 +37,6 @@ routing_id_t routing_id_from_native_pointer (const void *native_) noexcept
 
 socket_t::~socket_t ()
 {
-    detail::clear_dealer_option_store (detail::native_handle (*this));
 }
 
 socket_t::socket_t (socket_t &&) noexcept = default;
@@ -51,7 +50,6 @@ bool socket_t::valid () const noexcept
 
 void socket_t::close ()
 {
-    detail::clear_dealer_option_store (detail::native_handle (*this));
     const int rc = _socket ? _socket->close () : 0;
     if (rc != 0)
         throw close_error_t (static_cast<close_result_t> (rc), zlink_errno ());

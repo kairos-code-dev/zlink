@@ -27,20 +27,6 @@ inline void *native_option_handle (socket_t *socket_)
     return native_handle (*socket_);
 }
 
-std::unordered_map<void *, std::unordered_map<int, int> > &
-dealer_option_store ()
-{
-    static std::unordered_map<void *, std::unordered_map<int, int> > values;
-    return values;
-}
-
-void clear_dealer_option_store (void *handle_) noexcept
-{
-    if (!handle_)
-        return;
-    dealer_option_store ().erase (handle_);
-}
-
 template <typename T, typename NativeOption, typename Getter>
 inline T get_option_value (void *handle_, NativeOption option_, Getter getter_)
 {
@@ -145,22 +131,9 @@ inline void set_router_option_value (void *handle_,
 template <typename T>
 T get_dealer_option_value (void *handle_, dealer_option_id option_)
 {
-    ensure_config_handle (handle_);
-    typename std::unordered_map<
-      void *, std::unordered_map<int, int> >::const_iterator it =
-      dealer_option_store ().find (handle_);
-    if (it != dealer_option_store ().end ()) {
-        typename std::unordered_map<int, int>::const_iterator value_it =
-          it->second.find (static_cast<int> (option_));
-        if (value_it != it->second.end ())
-            return static_cast<T> (value_it->second);
-    }
-    switch (option_) {
-        case detail::dealer_option_id::weight:
-            return static_cast<T> (100);
-        default:
-            return T ();
-    }
+    return get_option_value<T> (
+      handle_, static_cast<zlink_dealer_option_t> (option_),
+      zlink_get_dealer_option);
 }
 
 template <typename T>
@@ -171,8 +144,6 @@ inline void set_dealer_option_value (void *handle_,
     ensure_config_handle (handle_);
     set_option_value<T> (handle_, static_cast<zlink_dealer_option_t> (option_),
                          value_, zlink_set_dealer_option);
-    dealer_option_store ()[handle_][static_cast<int> (option_)] =
-      static_cast<int> (value_);
 }
 
 template <typename T>

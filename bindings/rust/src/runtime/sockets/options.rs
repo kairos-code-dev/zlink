@@ -190,13 +190,12 @@ impl DealerSocketOptionRuntime for DealerSocket {
             .set_dealer_bool_opt(ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_PROBE, enabled)
     }
     fn weight(&self) -> Result<u32, ConfigError> {
-        Ok(self.cached_weight())
+        crate::socket::dealer_inner(self)
+            .get_dealer_u32_opt(ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_WEIGHT)
     }
     fn set_weight(&self, value: u32) -> Result<(), ConfigError> {
         crate::socket::dealer_inner(self)
-            .set_dealer_u32_opt(ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_WEIGHT, value)?;
-        self.store_cached_weight(value);
-        Ok(())
+            .set_dealer_u32_opt(ffi::zlink_dealer_option_t::ZLINK_DEALER_OPT_WEIGHT, value)
     }
     fn set_request_timeout(&self, value: Duration) -> Result<(), ConfigError> {
         let millis = value.as_millis().min(i32::MAX as u128) as i32;

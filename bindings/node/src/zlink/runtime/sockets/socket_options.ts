@@ -162,8 +162,11 @@ export class DealerSocketOptions extends CommonSocketOptions {
   static create(socket: SocketBase): DealerSocketOptions {
     return new DealerSocketOptions(OPTION_CREATE_TOKEN, socket);
   }
+  get probe(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.DEALER_PROBE), 'probe'); }
   set probe(value: boolean) { this._socket.setSockOptRaw(SocketOption.DEALER_PROBE, boolBuffer(value)); }
+  get requestTimeout(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.DEALER_REQUEST_TIMEOUT_MS), 'requestTimeout'); }
   set requestTimeout(value: number) { this._socket.setSockOptRaw(SocketOption.DEALER_REQUEST_TIMEOUT_MS, int32Buffer(value, 'requestTimeout')); }
+  get peerWeight(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.DEALER_WEIGHT), 'peerWeight'); }
   set peerWeight(value: number) { this._socket.setSockOptRaw(SocketOption.DEALER_WEIGHT, int32Buffer(value, 'peerWeight')); }
 }
 

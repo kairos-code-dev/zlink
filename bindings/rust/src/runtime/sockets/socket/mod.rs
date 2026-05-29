@@ -827,6 +827,23 @@ impl SocketInner {
 
     // -- DEALER-option helpers --------------------------------------------
 
+    pub(crate) fn get_dealer_u32_opt(
+        &self,
+        opt: ffi::zlink_dealer_option_t,
+    ) -> Result<u32, ConfigError> {
+        let mut value: u32 = 0;
+        let mut len = std::mem::size_of::<u32>();
+        check_config_rc(unsafe {
+            ffi::zlink_get_dealer_option(
+                self.handle,
+                opt,
+                &mut value as *mut u32 as *mut c_void,
+                &mut len,
+            )
+        })?;
+        Ok(value)
+    }
+
     pub(crate) fn set_dealer_bool_opt(
         &self,
         opt: ffi::zlink_dealer_option_t,

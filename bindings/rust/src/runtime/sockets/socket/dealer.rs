@@ -1,5 +1,3 @@
-use std::sync::atomic::{AtomicU32, Ordering};
-
 use crate::core_context::Context;
 use crate::domain::Received;
 use crate::error::{ConfigError, HandlerError, RecvError};
@@ -17,7 +15,6 @@ use super::{
 
 struct NativeDealerSocket {
     inner: SocketInner,
-    weight: AtomicU32,
 }
 
 impl SocketRuntime for NativeDealerSocket {
@@ -35,7 +32,6 @@ impl DealerSocket {
         Ok(Self {
             inner: Box::new(NativeDealerSocket {
                 inner: SocketInner::create(ctx, ffi::zlink_socket_type_t::ZLINK_SOCKET_DEALER)?,
-                weight: AtomicU32::new(100),
             }),
         })
     }
@@ -75,14 +71,6 @@ impl DealerSocket {
 
     pub fn dealer_options(&self) -> DealerSocketOptions<'_> {
         DealerSocketOptions::new(self)
-    }
-
-    pub(crate) fn cached_weight(&self) -> u32 {
-        native_dealer(self).weight.load(Ordering::Relaxed)
-    }
-
-    pub(crate) fn store_cached_weight(&self, value: u32) {
-        native_dealer(self).weight.store(value, Ordering::Relaxed);
     }
 }
 

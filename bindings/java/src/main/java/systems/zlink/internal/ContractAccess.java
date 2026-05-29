@@ -136,6 +136,8 @@ public final class ContractAccess {
 
         void setDealerIntOption(Socket socket, int option, int value);
 
+        int getDealerIntOption(Socket socket, int option);
+
         int getRouterIntOption(Socket socket, int option);
 
         void setRouterIntOption(Socket socket, int option, int value);
@@ -545,6 +547,10 @@ public final class ContractAccess {
     public static void socketSetDealerIntOption(Socket socket, int option,
                                                 int value) {
         socketOptionsAccess().setDealerIntOption(socket, option, value);
+    }
+
+    public static int socketGetDealerIntOption(Socket socket, int option) {
+        return socketOptionsAccess().getDealerIntOption(socket, option);
     }
 
     public static int socketGetRouterIntOption(Socket socket, int option) {

@@ -1095,7 +1095,7 @@ func (s *DealerSocket) SetWeight(value int) error {
 func (s *DealerSocket) Weight() (int, error) {
 	var raw C.int
 	size := C.size_t(C.sizeof_int)
-	if err := configErrorFromResult(C.zlink_get_option(s.raw(), C.zlink_option_t(C.ZLINK_DEALER_OPT_WEIGHT), unsafe.Pointer(&raw), &size)); err != nil {
+	if err := configErrorFromResult(C.zlink_get_dealer_option(s.raw(), C.ZLINK_DEALER_OPT_WEIGHT, unsafe.Pointer(&raw), &size)); err != nil {
 		return 0, err
 	}
 	return int(raw), nil

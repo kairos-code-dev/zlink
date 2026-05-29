@@ -642,6 +642,16 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_get_dealer_option",
+            [
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_size_t),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_set_stream_option",
             [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t],
             ctypes.c_int,

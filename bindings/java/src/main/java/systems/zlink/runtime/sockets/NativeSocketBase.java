@@ -83,6 +83,11 @@ abstract class NativeSocketBase implements Socket {
             }
 
             @Override
+            public int getDealerIntOption(Socket socket, int option) {
+                return nativeSocket(socket).getDealerIntOption(option);
+            }
+
+            @Override
             public int getRouterIntOption(Socket socket, int option) {
                 return nativeSocket(socket).getRouterIntOption(option);
             }
@@ -149,6 +154,11 @@ abstract class NativeSocketBase implements Socket {
             public void setDealerIntOption(Socket socket, int option,
                                            int value) {
                 nativeSocket(socket).setDealerIntOption(option, value);
+            }
+
+            @Override
+            public int getDealerIntOption(Socket socket, int option) {
+                return nativeSocket(socket).getDealerIntOption(option);
             }
 
             @Override
@@ -296,6 +306,7 @@ abstract class NativeSocketBase implements Socket {
     byte[] subscriptionAt(long index, MemorySegment lenInOut, MemorySegment topicOut) { return runtime.subscriptionAt(index, lenInOut, topicOut, TOPIC_CAPACITY); }
     void ensureOpen() { runtime.ensureOpen(); }
     void setDealerIntOption(int option, int value) { runtime.setDealerIntOption(option, value); }
+    int getDealerIntOption(int option) { return runtime.getDealerIntOption(option); }
     int getRouterIntOption(int option) { return runtime.getRouterIntOption(option); }
     void setRouterIntOption(int option, int value) { runtime.setRouterIntOption(option, value); }
 

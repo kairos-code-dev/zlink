@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.Objects;
 
 public final class DealerSocketOptions extends CommonSocketOptions {
+    private static final int OPT_PROBE = 0x3201;
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3202;
     private static final int OPT_WEIGHT = 0x3203;
 
@@ -15,11 +16,11 @@ public final class DealerSocketOptions extends CommonSocketOptions {
     }
 
     public boolean probe() {
-        return ContractAccess.socketGetOption(socket, SocketOptions.PROBE_ROUTER) != 0;
+        return ContractAccess.socketGetDealerIntOption(socket, OPT_PROBE) != 0;
     }
 
     public void probe(boolean enabled) {
-        ContractAccess.socketSetOption(socket, SocketOptions.PROBE_ROUTER, enabled ? 1 : 0);
+        setIntOption(OPT_PROBE, enabled ? 1 : 0);
     }
 
     public void requestTimeout(Duration value) {

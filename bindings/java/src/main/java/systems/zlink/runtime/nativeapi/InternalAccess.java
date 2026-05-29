@@ -80,6 +80,7 @@ public final class InternalAccess {
         void setOption(Socket socket, SocketOptionKey<byte[]> option, byte[] value);
         <T> T getOption(Socket socket, SocketOptionKey<T> option);
         void setDealerIntOption(Socket socket, int option, int value);
+        int getDealerIntOption(Socket socket, int option);
         int getRouterIntOption(Socket socket, int option);
         void setRouterIntOption(Socket socket, int option, int value);
         boolean inCallback();
@@ -267,6 +268,10 @@ public final class InternalAccess {
     public static void socketSetDealerIntOption(Socket socket, int option,
                                                 int value) {
         socketAccess().setDealerIntOption(socket, option, value);
+    }
+
+    public static int socketGetDealerIntOption(Socket socket, int option) {
+        return socketAccess().getDealerIntOption(socket, option);
     }
 
     public static int socketGetRouterIntOption(Socket socket, int option) {

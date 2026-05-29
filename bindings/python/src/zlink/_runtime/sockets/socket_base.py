@@ -628,6 +628,9 @@ class _DealerOptionSocket(_Socket):
     def _set_dealer_option(self, option, value):
         self._set_raw_option(lib().zlink_set_dealer_option, option, value)
 
+    def _get_dealer_option(self, option, size=4):
+        return self._get_raw_option(lib().zlink_get_dealer_option, option, size)
+
     @property
     def dealer_options(self):
         return DealerSocketOptions(self)

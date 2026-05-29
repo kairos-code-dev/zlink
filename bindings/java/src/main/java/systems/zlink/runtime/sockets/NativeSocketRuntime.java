@@ -260,6 +260,20 @@ final class NativeSocketRuntime implements AutoCloseable {
         }
     }
 
+    int getDealerIntOption(int option) {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
+            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
+            int rc = Native.getDealerOption(handle, option, nativeValue, len);
+            if (rc != 0) {
+                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
+            }
+            return nativeValue.get(ValueLayout.JAVA_INT, 0);
+        }
+    }
+
     int getRouterIntOption(int option) {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {

@@ -1421,6 +1421,13 @@ int get_socket_option(void *sock, int32_t opt, void *data, size_t *len)
                                        data, len);
     case ZLINK_ROUTER_OPT_WEIGHT:
         return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_WEIGHT, data, len);
+    case ZLINK_DEALER_OPT_PROBE:
+        return zlink_get_dealer_option(sock, ZLINK_DEALER_OPT_PROBE, data, len);
+    case ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS:
+        return zlink_get_dealer_option(sock, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+                                       data, len);
+    case ZLINK_DEALER_OPT_WEIGHT:
+        return zlink_get_dealer_option(sock, ZLINK_DEALER_OPT_WEIGHT, data, len);
     case ZLINK_STREAM_OPT_NOTIFY:
         return zlink_get_stream_option(sock, ZLINK_STREAM_OPT_NOTIFY, data, len);
     case ZLINK_PUB_OPT_VERBOSE:

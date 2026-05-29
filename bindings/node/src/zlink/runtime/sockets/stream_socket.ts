@@ -17,10 +17,10 @@ import {
   PublisherSocket,
   RecvFlags,
   Received,
-  RequestOperation,
+  DefaultRequestOperation,
   RoutedMessageSocket,
   SendFlags,
-  SendOperation,
+  DefaultSendOperation,
   SocketOption,
   SubscriberSocket,
   SubscriptionEvent,
@@ -43,27 +43,27 @@ import {
   adoptTopicMessage,
   executeNativeRequest,
   startRequestProgress,
-  ReplyOperation,
+  DefaultReplyOperation,
   RecvResult,
   requestErrorFromResult,
-  type ActorBindOp,
+  type ActorBindOperation,
   type ActorRef,
-  type ActorUnbindOp,
+  type ActorUnbindOperation,
   type BufferLike,
   type Context,
   type Message,
   type MessageLike,
   type MessageSnapshot,
   type RequestCallback,
-  type RequestOp,
-  type ReplyOp,
-  type SendOp,
+  type RequestOperation,
+  type ReplyOperation,
+  type SendOperation,
   type SocketSendReadyHandler,
   type StreamPacketHandler,
 } from './socket_operations';
 import {
-  ActorBindOperation,
-  ActorUnbindOperation,
+  DefaultActorBindOperation,
+  DefaultActorUnbindOperation,
   actorRefFromRaw,
   actorRefToRaw,
   invokeStreamBindActor,
@@ -79,8 +79,8 @@ export class StreamSocket extends SocketBase {
     super(ctx, NativeSocketType.STREAM);
     this.options = StreamSocketOptions.create(this);
   }
-  send(routingId: RoutingId): SendOp {
-    return new SendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
+  send(routingId: RoutingId): SendOperation {
+    return new DefaultSendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
   }
   private sendDirect(routingId: RoutingId, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalized = normalizeMessageLikePayload(payload);
@@ -172,32 +172,38 @@ export class StreamSocket extends SocketBase {
       )
     );
   }
+  disconnectRid(routingId: RoutingId): void {
+    const normalizedRoutingId = normalizeRoutingId(routingId);
+    configCall('stream disconnect by routing id failed', () => {
+      requireNative().socketDisconnectRid(this.nativeHandle(), normalizedRoutingId);
+    });
+  }
   attachActorGateway(node: SpotNodeHandle): void {
     configCall('stream actor gateway attachment failed', () => {
       requireNative().streamAttachActorGateway(this.nativeHandle(), node.nativeHandle());
     });
   }
-  bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOp {
+  bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOperation {
     const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const actorRaw = actorRefToRaw(actor);
-    return new ActorBindOperation((callback, timeoutMs) =>
+    return new DefaultActorBindOperation((callback, timeoutMs) =>
       invokeStreamBindActor(handle, normalizedSessionRid, actorRaw, callback, timeoutMs),
     );
   }
-  unbindActor(sessionRid: RoutingId, actorId: string): ActorUnbindOp {
+  unbindActor(sessionRid: RoutingId, actorId: string): ActorUnbindOperation {
     const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    return new ActorUnbindOperation((callback, timeoutMs) =>
+    return new DefaultActorUnbindOperation((callback, timeoutMs) =>
       invokeStreamUnbindActor(handle, normalizedSessionRid, normalizedActorId, callback, timeoutMs),
     );
   }
-  sendBoundActor(sessionRid: RoutingId, actorId: string): SendOp {
+  sendBoundActor(sessionRid: RoutingId, actorId: string): SendOperation {
     const handle = this.nativeHandle();
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    return new SendOperation((parts, flags) =>
+    return new DefaultSendOperation((parts, flags) =>
       invokeStreamSendBoundActor(handle, normalizedSessionRid, normalizedActorId, parts, flags),
     );
   }

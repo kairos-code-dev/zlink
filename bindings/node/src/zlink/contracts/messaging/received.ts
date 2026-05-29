@@ -22,20 +22,20 @@ interface SendContext {
   send(parts: readonly Message[], flags: SendFlags): boolean;
 }
 
-interface ReceivedSendOp {
-  message(message: Message | BufferLike): ReceivedSendSubmitOp;
+interface ReceivedSendOperation {
+  message(message: Message | BufferLike): ReceivedSendSubmitOperation;
 }
-interface ReceivedSendSubmitOp {
-  message(message: Message | BufferLike): ReceivedSendSubmitOp;
-  flags(flags: SendFlags): ReceivedSendSubmitOp;
+interface ReceivedSendSubmitOperation {
+  message(message: Message | BufferLike): ReceivedSendSubmitOperation;
+  flags(flags: SendFlags): ReceivedSendSubmitOperation;
   submit(): boolean;
 }
-interface ReceivedReplyOp {
-  message(message: Message | BufferLike): ReceivedReplySubmitOp;
+interface ReceivedReplyOperation {
+  message(message: Message | BufferLike): ReceivedReplySubmitOperation;
 }
-interface ReceivedReplySubmitOp {
-  message(message: Message | BufferLike): ReceivedReplySubmitOp;
-  flags(flags: SendFlags): ReceivedReplySubmitOp;
+interface ReceivedReplySubmitOperation {
+  message(message: Message | BufferLike): ReceivedReplySubmitOperation;
+  flags(flags: SendFlags): ReceivedReplySubmitOperation;
   submit(): void;
 }
 
@@ -64,7 +64,7 @@ class ReceivedOpPayload {
   }
 }
 
-class ReceivedSendOperation implements ReceivedSendOp, ReceivedSendSubmitOp {
+class ReceivedSendOperation implements ReceivedSendOperation, ReceivedSendSubmitOperation {
   private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => boolean;
   private readonly _payload = new ReceivedOpPayload();
   private _flags: SendFlags = SendFlags.None;
@@ -73,12 +73,12 @@ class ReceivedSendOperation implements ReceivedSendOp, ReceivedSendSubmitOp {
     this._invoke = invoke;
   }
 
-  message(message: Message | BufferLike): ReceivedSendSubmitOp {
+  message(message: Message | BufferLike): ReceivedSendSubmitOperation {
     this._payload.append(message);
     return this;
   }
 
-  flags(flags: SendFlags): ReceivedSendSubmitOp {
+  flags(flags: SendFlags): ReceivedSendSubmitOperation {
     this._payload.ensureOpen();
     this._flags = flags;
     return this;
@@ -89,7 +89,7 @@ class ReceivedSendOperation implements ReceivedSendOp, ReceivedSendSubmitOp {
   }
 }
 
-class ReceivedReplyOperation implements ReceivedReplyOp, ReceivedReplySubmitOp {
+class ReceivedReplyOperation implements ReceivedReplyOperation, ReceivedReplySubmitOperation {
   private readonly _invoke: (parts: readonly Message[], flags: SendFlags) => void;
   private readonly _payload = new ReceivedOpPayload();
   private _flags: SendFlags = SendFlags.None;
@@ -98,12 +98,12 @@ class ReceivedReplyOperation implements ReceivedReplyOp, ReceivedReplySubmitOp {
     this._invoke = invoke;
   }
 
-  message(message: Message | BufferLike): ReceivedReplySubmitOp {
+  message(message: Message | BufferLike): ReceivedReplySubmitOperation {
     this._payload.append(message);
     return this;
   }
 
-  flags(flags: SendFlags): ReceivedReplySubmitOp {
+  flags(flags: SendFlags): ReceivedReplySubmitOperation {
     this._payload.ensureOpen();
     this._flags = flags;
     return this;
@@ -247,7 +247,7 @@ export class Received {
     return this.parts[0];
   }
 
-  reply(): ReceivedReplyOp {
+  reply(): ReceivedReplyOperation {
     if (!this.requestSeq || !this._replyContext) {
       throw invalidReplyContextError();
     }
@@ -255,7 +255,7 @@ export class Received {
     return new ReceivedReplyOperation((parts, flags) => replyContext.reply(parts, flags));
   }
 
-  send(): ReceivedSendOp {
+  send(): ReceivedSendOperation {
     if (!this._sendContext) {
       throw invalidSendContextError();
     }

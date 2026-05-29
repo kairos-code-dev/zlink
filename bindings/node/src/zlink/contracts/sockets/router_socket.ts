@@ -4,21 +4,21 @@ import type { RoutingId } from '../core';
 import type { Received } from '../messaging';
 import type { Discovery } from '../service';
 import type { RecvFlags } from './socket_constants';
-import type { ReplyOp, RequestOp, SendOp } from './socket_operations';
+import type { ReplyOperation, RequestOperation, SendOperation } from './socket_operations';
 import type { RouterSocketOptions } from './socket_options';
-import type { Socket } from './socket';
+import type { ConnectableSocket } from './socket';
 
-export interface RouterSocket extends Socket {
+export interface RouterSocket extends ConnectableSocket {
   readonly options: RouterSocketOptions;
-  send(routingId: RoutingId): SendOp;
+  send(routingId: RoutingId): SendOperation;
   recv(result: Received, flags?: RecvFlags): boolean;
   setSendReadyHandler(handler: () => void): void;
   setRoutingId(routingId: RoutingId): void;
   getRoutingId(): RoutingId;
   attachDiscovery(discovery: Discovery): void;
-  request(peerRid: RoutingId): RequestOp;
-  reply(peerRid: RoutingId, requestSeq: bigint): ReplyOp;
-  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOp;
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOp;
-  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOp;
+  request(peerRid: RoutingId): RequestOperation;
+  reply(peerRid: RoutingId, requestSeq: bigint): ReplyOperation;
+  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOperation;
+  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOperation;
+  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOperation;
 }

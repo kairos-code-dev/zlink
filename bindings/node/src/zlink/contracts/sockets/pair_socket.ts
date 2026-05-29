@@ -2,13 +2,13 @@
 
 import type { Received } from '../messaging';
 import type { RecvFlags } from './socket_constants';
-import type { SendOp } from './socket_operations';
+import type { SendOperation } from './socket_operations';
 import type { CommonSocketOptions } from './socket_options';
-import type { Socket } from './socket';
+import type { ConnectableSocket } from './socket';
 
-export interface PairSocket extends Socket {
+export interface PairSocket extends ConnectableSocket {
   readonly options: CommonSocketOptions;
-  send(): SendOp;
+  send(): SendOperation;
   recv(result: Received, flags?: RecvFlags): boolean;
   setSendReadyHandler(handler: () => void): void;
 }

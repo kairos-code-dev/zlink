@@ -3,7 +3,7 @@
 import type { RoutingId } from '../core';
 import type { Discovery } from '../service';
 import type { PairSocket } from './pair_socket';
-import type { RequestOp } from './socket_operations';
+import type { RequestOperation } from './socket_operations';
 import type { DealerSocketOptions } from './socket_options';
 
 export interface DealerSocket extends PairSocket {
@@ -13,5 +13,5 @@ export interface DealerSocket extends PairSocket {
   setRoutingId(routingId: RoutingId): void;
   getRoutingId(): RoutingId;
   attachDiscovery(discovery: Discovery): void;
-  request(): RequestOp;
+  request(): RequestOperation;
 }

@@ -8,7 +8,7 @@ import {
   TopicMessage,
   type MessageSnapshot
 } from '../../contracts';
-import { wrapRoutingId } from '../../contracts/service';
+import { wrapRoutingId } from '../../contracts/service/spot/spot_models';
 
 export interface NativeReceivedRaw {
   parts: MessageSnapshot[];

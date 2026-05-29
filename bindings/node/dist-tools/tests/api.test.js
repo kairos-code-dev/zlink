@@ -136,7 +136,7 @@ test('rid disconnect surface exists on sockets and spot nodes', () => {
     const node = zlink.createSpotNode(ctx);
     assert.equal(typeof pair.disconnectRid, 'function');
     assert.equal(typeof dealer.disconnectRid, 'function');
-    assert.equal(stream.disconnectRid, undefined);
+    assert.equal(typeof stream.disconnectRid, 'function');
     assert.equal(typeof node.disconnectPeerRid, 'function');
     node.close();
     stream.close();

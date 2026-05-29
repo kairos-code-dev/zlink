@@ -5,14 +5,14 @@ import type { SendFlags } from '../../sockets/socket_constants';
 import type { ReplyHandler } from '../../sockets/socket_operations';
 export type {
   ReplyHandler,
-  ReplyOp,
-  ReplySubmitOp,
+  ReplyOperation,
+  ReplySubmitOperation,
   RequestCallback,
-  RequestCallbackSubmitOp,
-  RequestOp,
-  RequestSubmitOp,
-  SendOp,
-  SendSubmitOp,
+  RequestCallbackSubmitOperation,
+  RequestOperation,
+  RequestSubmitOperation,
+  SendOperation,
+  SendSubmitOperation,
 } from '../../sockets/socket_operations';
 import type {
   ActorJoinEntrySpotResult,
@@ -24,62 +24,62 @@ export type ActorJoinHandler = (result: ActorJoinResult, parts: Message[]) => vo
 export type ActorJoinEntrySpotHandler = (result: ActorJoinEntrySpotResult) => void;
 export type ActorLookupHandler = (result: ActorLookupResult) => void;
 
-export interface ActorJoinOp {
-  message(message: MessageLike): ActorJoinSubmitOp;
+export interface ActorJoinOperation {
+  message(message: MessageLike): ActorJoinSubmitOperation;
 }
 
-export interface ActorJoinSubmitOp {
-  message(message: MessageLike): ActorJoinSubmitOp;
-  timeout(timeoutMs: number): ActorJoinSubmitOp;
-  flags(flags: SendFlags): ActorJoinCallbackSubmitOp;
+export interface ActorJoinSubmitOperation {
+  message(message: MessageLike): ActorJoinSubmitOperation;
+  timeout(timeoutMs: number): ActorJoinSubmitOperation;
+  flags(flags: SendFlags): ActorJoinCallbackSubmitOperation;
   submitAsync(): Promise<{ result: ActorJoinResult; parts: Message[] }>;
   submit(callback: ActorJoinHandler): boolean;
 }
 
-export interface ActorJoinCallbackSubmitOp {
-  message(message: MessageLike): ActorJoinCallbackSubmitOp;
-  timeout(timeoutMs: number): ActorJoinCallbackSubmitOp;
-  flags(flags: SendFlags): ActorJoinCallbackSubmitOp;
+export interface ActorJoinCallbackSubmitOperation {
+  message(message: MessageLike): ActorJoinCallbackSubmitOperation;
+  timeout(timeoutMs: number): ActorJoinCallbackSubmitOperation;
+  flags(flags: SendFlags): ActorJoinCallbackSubmitOperation;
   submit(callback: ActorJoinHandler): boolean;
 }
 
-export interface ActorJoinEntrySpotOp {
-  timeout(timeoutMs: number): ActorJoinEntrySpotOp;
+export interface ActorJoinEntrySpotOperation {
+  timeout(timeoutMs: number): ActorJoinEntrySpotOperation;
   submitAsync(): Promise<ActorJoinEntrySpotResult>;
   submit(callback: ActorJoinEntrySpotHandler): boolean;
 }
 
-export interface ActorJoinReplyOp {
-  message(message: MessageLike): ActorJoinReplyOp;
+export interface ActorJoinReplyOperation {
+  message(message: MessageLike): ActorJoinReplyOperation;
   submit(): void;
 }
 
-export interface ActorLeaveOp {
-  timeout(timeoutMs: number): ActorLeaveOp;
+export interface ActorLeaveOperation {
+  timeout(timeoutMs: number): ActorLeaveOperation;
   submitAsync(): Promise<Message[]>;
   submit(callback: ReplyHandler): boolean;
 }
 
-export interface ActorDestroyOp {
-  timeout(timeoutMs: number): ActorDestroyOp;
+export interface ActorDestroyOperation {
+  timeout(timeoutMs: number): ActorDestroyOperation;
   submitAsync(): Promise<Message[]>;
   submit(callback: ReplyHandler): boolean;
 }
 
-export interface ActorLookupOp {
-  timeout(timeoutMs: number): ActorLookupOp;
+export interface ActorLookupOperation {
+  timeout(timeoutMs: number): ActorLookupOperation;
   submitAsync(): Promise<ActorLookupResult>;
   submit(callback: ActorLookupHandler): boolean;
 }
 
-export interface ActorBindOp {
-  timeout(timeoutMs: number): ActorBindOp;
+export interface ActorBindOperation {
+  timeout(timeoutMs: number): ActorBindOperation;
   submitAsync(): Promise<Message[]>;
   submit(callback: ReplyHandler): boolean;
 }
 
-export interface ActorUnbindOp {
-  timeout(timeoutMs: number): ActorUnbindOp;
+export interface ActorUnbindOperation {
+  timeout(timeoutMs: number): ActorUnbindOperation;
   submitAsync(): Promise<Message[]>;
   submit(callback: ReplyHandler): boolean;
 }

@@ -82,7 +82,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(stream.subscribe, undefined);
     assert.equal(stream.connect, undefined);
     assert.equal(stream.disconnect, undefined);
-    assert.equal(stream.disconnectRid, undefined);
+    assert.equal(typeof stream.disconnectRid, 'function');
     assert.equal(stream.streamAttach, undefined);
     assert.equal(stream.setSockOpt, undefined);
     assert.equal(typeof stream.setRoutingId, 'function');

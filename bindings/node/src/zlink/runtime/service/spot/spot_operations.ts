@@ -9,7 +9,8 @@ import { messagesFromNativeBuffers, requestErrorFromResult } from '../../messagi
 import { Message, RoutingId, type MessageLike } from '../../../contracts';
 import { RequestResult, SubmitResult } from '../../../contracts/errors/errors';
 import { SendFlags } from '../../../contracts/sockets/socket_constants';
-import { wrapRoutingId, type ActorBindOp, type ActorDestroyOp, type ActorJoinCallbackSubmitOp, type ActorJoinEntrySpotHandler, type ActorJoinEntrySpotOp, type ActorJoinEntrySpotResult, type ActorJoinHandler, type ActorJoinInfo, type ActorJoinOp, type ActorJoinReplyOp, type ActorJoinResult, type ActorJoinSubmitOp, type ActorLeaveOp, type ActorLookupHandler, type ActorLookupOp, type ActorLookupResult, type ActorPart, type ActorRecvInfo, type ActorRef, type ActorRoute, type ActorUnbindOp, type ReplyHandler, type SpotActorLifecycleInfo, type SpotKindValue, type SpotNodeActorEntry, type SpotNodeSpotEntry } from '../../../contracts/service';
+import { type ActorBindOperation, type ActorDestroyOperation, type ActorJoinCallbackSubmitOperation, type ActorJoinEntrySpotHandler, type ActorJoinEntrySpotOperation, type ActorJoinEntrySpotResult, type ActorJoinHandler, type ActorJoinInfo, type ActorJoinOperation, type ActorJoinReplyOperation, type ActorJoinResult, type ActorJoinSubmitOperation, type ActorLeaveOperation, type ActorLookupHandler, type ActorLookupOperation, type ActorLookupResult, type ActorPart, type ActorRecvInfo, type ActorRef, type ActorRoute, type ActorUnbindOperation, type ReplyHandler, type SpotActorLifecycleInfo, type SpotKindValue, type SpotNodeActorEntry, type SpotNodeSpotEntry } from '../../../contracts/service';
+import { wrapRoutingId } from '../../../contracts/service/spot/spot_models';
 import { OperationPayload, submitErrorFromResult } from '../../sockets/socket_operations';
 
 
@@ -475,7 +476,7 @@ type ActorJoinInvoker = (
   timeoutMs: number,
 ) => boolean;
 
-export class ActorJoinOperation implements ActorJoinOp, ActorJoinSubmitOp, ActorJoinCallbackSubmitOp {
+export class DefaultActorJoinOperation implements ActorJoinOperation, ActorJoinSubmitOperation, ActorJoinCallbackSubmitOperation {
   private readonly _invoke: ActorJoinInvoker;
   private readonly _payload = new OperationPayload();
   private _flags: SendFlags = SendFlags.None;
@@ -497,7 +498,7 @@ export class ActorJoinOperation implements ActorJoinOp, ActorJoinSubmitOp, Actor
     return this;
   }
 
-  flags(flags: SendFlags): ActorJoinCallbackSubmitOp {
+  flags(flags: SendFlags): ActorJoinCallbackSubmitOperation {
     this._payload.ensureOpen();
     this._flags = flags;
     this._callbackMode = true;
@@ -528,7 +529,7 @@ type ActorJoinEntrySpotInvoker = (
   timeoutMs: number,
 ) => boolean;
 
-export class ActorJoinEntrySpotOperation implements ActorJoinEntrySpotOp {
+export class DefaultActorJoinEntrySpotOperation implements ActorJoinEntrySpotOperation {
   private readonly _invoke: ActorJoinEntrySpotInvoker;
   private _timeoutMs = 0;
   private _submitted = false;
@@ -570,7 +571,7 @@ export class ActorJoinEntrySpotOperation implements ActorJoinEntrySpotOp {
   }
 }
 
-export class ActorJoinReplyOperation implements ActorJoinReplyOp {
+export class DefaultActorJoinReplyOperation implements ActorJoinReplyOperation {
   private readonly _invoke: (parts: readonly MessageLike[]) => void;
   private readonly _payload = new OperationPayload();
 
@@ -578,7 +579,7 @@ export class ActorJoinReplyOperation implements ActorJoinReplyOp {
     this._invoke = invoke;
   }
 
-  message(message: MessageLike): ActorJoinReplyOp {
+  message(message: MessageLike): ActorJoinReplyOperation {
     this._payload.append(message);
     return this;
   }
@@ -636,14 +637,14 @@ export class ReplyHandlerOperation {
   }
 }
 
-export class ActorLeaveOperation extends ReplyHandlerOperation implements ActorLeaveOp {}
-export class ActorDestroyOperation extends ReplyHandlerOperation implements ActorDestroyOp {}
-export class ActorBindOperation extends ReplyHandlerOperation implements ActorBindOp {}
-export class ActorUnbindOperation extends ReplyHandlerOperation implements ActorUnbindOp {}
+export class DefaultActorLeaveOperation extends ReplyHandlerOperation implements ActorLeaveOperation {}
+export class DefaultActorDestroyOperation extends ReplyHandlerOperation implements ActorDestroyOperation {}
+export class DefaultActorBindOperation extends ReplyHandlerOperation implements ActorBindOperation {}
+export class DefaultActorUnbindOperation extends ReplyHandlerOperation implements ActorUnbindOperation {}
 
 type ActorLookupInvoker = (callback: ActorLookupHandler, timeoutMs: number) => boolean;
 
-export class ActorLookupOperation implements ActorLookupOp {
+export class DefaultActorLookupOperation implements ActorLookupOperation {
   private readonly _invoke: ActorLookupInvoker;
   private _timeoutMs = 0;
   private _submitted = false;
@@ -658,7 +659,7 @@ export class ActorLookupOperation implements ActorLookupOp {
     }
   }
 
-  timeout(timeoutMs: number): ActorLookupOp {
+  timeout(timeoutMs: number): ActorLookupOperation {
     this.ensureOpen();
     this._timeoutMs = timeoutMs | 0;
     return this;

@@ -17,10 +17,10 @@ import {
   PublisherSocket,
   RecvFlags,
   Received,
-  RequestOperation,
+  DefaultRequestOperation,
   RoutedMessageSocket,
   SendFlags,
-  SendOperation,
+  DefaultSendOperation,
   SocketOption,
   SubscriberSocket,
   SubscriptionEvent,
@@ -43,21 +43,21 @@ import {
   adoptTopicMessage,
   executeNativeRequest,
   startRequestProgress,
-  ReplyOperation,
+  DefaultReplyOperation,
   RecvResult,
   requestErrorFromResult,
-  type ActorBindOp,
+  type ActorBindOperation,
   type ActorRef,
-  type ActorUnbindOp,
+  type ActorUnbindOperation,
   type BufferLike,
   type Context,
   type Message,
   type MessageLike,
   type MessageSnapshot,
   type RequestCallback,
-  type RequestOp,
-  type ReplyOp,
-  type SendOp,
+  type RequestOperation,
+  type ReplyOperation,
+  type SendOperation,
   type SocketSendReadyHandler,
   type StreamPacketHandler,
 } from './socket_operations';
@@ -101,8 +101,8 @@ export class DealerSocket extends MessageSocket {
       requireNative().socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle());
     });
   }
-  request(): RequestOp {
-    return new RequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
+  request(): RequestOperation {
+    return new DefaultRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
       this.requestDirect(parts, cbOrTimeout as any, opFlags as any, opTimeout)
     );
   }

@@ -4,9 +4,9 @@ import { NativeHandle } from '../../handles/native_handle';
 import { requireNative } from '../../native/native';
 import { closeCall, configCall, recvNativeError } from '../../errors/native_errors';
 import { RecvFlags } from '../../../contracts/sockets/socket_constants';
-import type { ActorJoinOp, ActorLeaveOp, ActorPart, ActorRef, SendOp } from '../../../contracts/service';
-import { SendOperation } from '../../sockets/socket_operations';
-import { ActorJoinOperation, ActorLeaveOperation } from './spot_operations';
+import type { ActorJoinOperation, ActorLeaveOperation, ActorPart, ActorRef, SendOperation } from '../../../contracts/service';
+import { DefaultSendOperation } from '../../sockets/socket_operations';
+import { DefaultActorJoinOperation, DefaultActorLeaveOperation } from './spot_operations';
 import { Spot } from './spot';
 import { actorPartFromRaw, actorRefToRaw, invokeActorJoin, invokeActorLeave, invokeActorSendBoundSession } from './spot_operations';
 
@@ -35,11 +35,11 @@ export class Actor extends NativeHandle {
   get actorRef(): ActorRef {
     return this.ref();
   }
-  join(spot: Spot): ActorJoinOp {
+  join(spot: Spot): ActorJoinOperation {
     if (!(spot instanceof Spot)) {
       throw new TypeError('spot must be a Spot');
     }
-    return new ActorJoinOperation((parts, callback, flags, timeoutMs) =>
+    return new DefaultActorJoinOperation((parts, callback, flags, timeoutMs) =>
       invokeActorJoin(
         this._native,
         this.ref(),
@@ -53,13 +53,13 @@ export class Actor extends NativeHandle {
       ),
     );
   }
-  leave(spot: Spot): ActorLeaveOp {
+  leave(spot: Spot): ActorLeaveOperation {
     if (!(spot instanceof Spot)) {
       throw new TypeError('spot must be a Spot');
     }
     const actorRef = this.ref();
     const spotRid = spot.routingId;
-    return new ActorLeaveOperation((callback, timeoutMs) =>
+    return new DefaultActorLeaveOperation((callback, timeoutMs) =>
       invokeActorLeave(this._native, actorRef, spotRid, callback, timeoutMs),
     );
   }
@@ -76,10 +76,10 @@ export class Actor extends NativeHandle {
     }
     return raw ? actorPartFromRaw(raw) : null;
   }
-  sendBoundSession(): SendOp {
+  sendBoundSession(): SendOperation {
     const node = this._native;
     const ref = this.ref();
-    return new SendOperation((parts, flags) => invokeActorSendBoundSession(node, ref, parts, flags));
+    return new DefaultSendOperation((parts, flags) => invokeActorSendBoundSession(node, ref, parts, flags));
   }
   closeBoundSession(timeoutMs = 0): void {
     const actorRaw = actorRefToRaw(this.ref());

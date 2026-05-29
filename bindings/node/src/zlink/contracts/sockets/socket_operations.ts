@@ -7,41 +7,41 @@ import type { SendFlags } from './socket_constants';
 export type RequestCallback = (result: RequestResult, parts: readonly Message[]) => void;
 export type ReplyHandler = (result: RequestResult, parts: Message[]) => void;
 
-export interface SendOp {
-  message(message: MessageLike): SendSubmitOp;
+export interface SendOperation {
+  message(message: MessageLike): SendSubmitOperation;
 }
 
-export interface SendSubmitOp {
-  message(message: MessageLike): SendSubmitOp;
-  flags(flags: SendFlags): SendSubmitOp;
+export interface SendSubmitOperation {
+  message(message: MessageLike): SendSubmitOperation;
+  flags(flags: SendFlags): SendSubmitOperation;
   submit(): boolean;
 }
 
-export interface RequestOp {
-  message(message: MessageLike): RequestSubmitOp;
+export interface RequestOperation {
+  message(message: MessageLike): RequestSubmitOperation;
 }
 
-export interface RequestSubmitOp {
-  message(message: MessageLike): RequestSubmitOp;
-  timeout(timeoutMs: number): RequestSubmitOp;
-  flags(flags: SendFlags): RequestCallbackSubmitOp;
+export interface RequestSubmitOperation {
+  message(message: MessageLike): RequestSubmitOperation;
+  timeout(timeoutMs: number): RequestSubmitOperation;
+  flags(flags: SendFlags): RequestCallbackSubmitOperation;
   submitAsync(): Promise<Message[]>;
   submit(callback: RequestCallback): boolean;
 }
 
-export interface RequestCallbackSubmitOp {
-  message(message: MessageLike): RequestCallbackSubmitOp;
-  timeout(timeoutMs: number): RequestCallbackSubmitOp;
-  flags(flags: SendFlags): RequestCallbackSubmitOp;
+export interface RequestCallbackSubmitOperation {
+  message(message: MessageLike): RequestCallbackSubmitOperation;
+  timeout(timeoutMs: number): RequestCallbackSubmitOperation;
+  flags(flags: SendFlags): RequestCallbackSubmitOperation;
   submit(callback: RequestCallback): boolean;
 }
 
-export interface ReplyOp {
-  message(message: MessageLike): ReplySubmitOp;
+export interface ReplyOperation {
+  message(message: MessageLike): ReplySubmitOperation;
 }
 
-export interface ReplySubmitOp {
-  message(message: MessageLike): ReplySubmitOp;
-  flags(flags: SendFlags): ReplySubmitOp;
+export interface ReplySubmitOperation {
+  message(message: MessageLike): ReplySubmitOperation;
+  flags(flags: SendFlags): ReplySubmitOperation;
   submit(): void;
 }

@@ -4,11 +4,13 @@ import type { RoutingId } from '../../core';
 import type { DealerSocket, PubSocket } from '../../sockets';
 import type { Discovery } from '../discovery/discovery';
 import type {
-  ActorDestroyOp,
-  ActorJoinOp,
-  ActorLeaveOp,
-  ActorLookupOp,
+  ActorDestroyOperation,
+  ActorJoinEntrySpotOperation,
+  ActorJoinOperation,
+  ActorLeaveOperation,
+  ActorLookupOperation,
   ActorRef,
+  SendOperation,
   SpotNodeActorEntry,
   SpotNodeModeValue,
   SpotNodePeerEntry,
@@ -53,14 +55,16 @@ export interface SpotNode {
   getOrCreateSpot(spotRid: RoutingId): { spot: Spot; created: boolean };
   createActor(actorId: string): Actor;
   actorLookup(actorId: string): ActorRef;
-  remoteActorGetRef(targetNodeRid: RoutingId, actorId: string): ActorLookupOp;
-  destroyActor(actor: ActorRef): ActorDestroyOp;
-  joinActor(actor: ActorRef, targetNodeRid: RoutingId, targetSpotRid: RoutingId): ActorJoinOp;
-  leaveActor(actor: ActorRef, targetSpotRid: RoutingId): ActorLeaveOp;
+  remoteActorGetRef(targetNodeRid: RoutingId, actorId: string): ActorLookupOperation;
+  destroyActor(actor: ActorRef): ActorDestroyOperation;
+  joinActor(actor: ActorRef, targetNodeRid: RoutingId, targetSpotRid: RoutingId): ActorJoinOperation;
+  joinActorEntrySpot(actor: ActorRef, targetNodeRid: RoutingId): ActorJoinEntrySpotOperation;
+  leaveActor(actor: ActorRef, targetSpotRid: RoutingId): ActorLeaveOperation;
+  sendActorBoundSession(actor: ActorRef): SendOperation;
   status(): SpotNodeStatus;
   peers(filter?: SpotNodePeerFilter): SpotNodePeerEntry[];
   subjects(filter?: SpotNodeSubjectFilter): SpotNodeSubjectEntry[];
-  sockets(filter?: SpotNodeSocketFilter): SpotNodeSocketEntry[];
+  internalSockets(filter?: SpotNodeSocketFilter): SpotNodeSocketEntry[];
   spots(): SpotNodeSpotEntry[];
   actors(): SpotNodeActorEntry[];
   close(): void;

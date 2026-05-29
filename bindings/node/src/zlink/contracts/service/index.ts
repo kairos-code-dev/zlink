@@ -43,5 +43,25 @@ export type { ZlinkFactories } from './factories';
 export type { Actor } from './spot/actor';
 export type { Spot } from './spot/spot';
 export type { SpotNode } from './spot/spot_node';
-export * from './spot/spot_models';
+export type {
+  SocketSendReadyHandler,
+  StreamPacketHandler,
+  SocketMonitorHandler,
+  SpotSendReadyHandler,
+  ActorRef,
+  ActorRoute,
+  ActorRecvInfo,
+  ActorJoinInfo,
+  ActorPart,
+  ActorJoinRequest,
+  ActorJoinResult,
+  ActorJoinEntrySpotResult,
+  ActorLookupResult,
+  SpotActorLifecycleInfo,
+  SpotActorLifecycleEvent,
+  SpotNodeSpotEntry,
+  SpotNodeActorEntry,
+  SpotDispatchInfo,
+  SpotDispatchEventHandler,
+} from './spot/spot_models';
 export * from './spot/spot_operations';

@@ -102,7 +102,6 @@ import {
   RegistryState,
   TopologySource,
   TopologyState,
-  wrapRoutingId,
   type SpotDispatchSubjectKind as SpotDispatchSubjectKindValue,
   type ServiceRoleValue,
   type ServiceKindValue,
@@ -156,24 +155,25 @@ import {
   type SpotDispatchInfo,
   type SpotDispatchEventHandler,
   type RequestCallback,
-  type SendOp,
-  type SendSubmitOp,
-  type RequestOp,
-  type RequestSubmitOp,
-  type RequestCallbackSubmitOp,
-  type ReplyOp,
-  type ReplySubmitOp,
-  type ActorJoinOp,
-  type ActorJoinSubmitOp,
-  type ActorJoinCallbackSubmitOp,
-  type ActorJoinEntrySpotOp,
-  type ActorJoinReplyOp,
-  type ActorLeaveOp,
-  type ActorDestroyOp,
-  type ActorLookupOp,
-  type ActorBindOp,
-  type ActorUnbindOp,
+  type SendOperation,
+  type SendSubmitOperation,
+  type RequestOperation,
+  type RequestSubmitOperation,
+  type RequestCallbackSubmitOperation,
+  type ReplyOperation,
+  type ReplySubmitOperation,
+  type ActorJoinOperation,
+  type ActorJoinSubmitOperation,
+  type ActorJoinCallbackSubmitOperation,
+  type ActorJoinEntrySpotOperation,
+  type ActorJoinReplyOperation,
+  type ActorLeaveOperation,
+  type ActorDestroyOperation,
+  type ActorLookupOperation,
+  type ActorBindOperation,
+  type ActorUnbindOperation,
 } from '../../contracts/service';
+import { wrapRoutingId } from '../../contracts/service/spot/spot_models';
 import {
   MonitorSourceKind,
   MonitorEventType,
@@ -266,23 +266,23 @@ export type {
   SpotDispatchInfo,
   SpotDispatchEventHandler,
   RequestCallback,
-  SendOp,
-  SendSubmitOp,
-  RequestOp,
-  RequestSubmitOp,
-  RequestCallbackSubmitOp,
-  ReplyOp,
-  ReplySubmitOp,
-  ActorJoinOp,
-  ActorJoinSubmitOp,
-  ActorJoinCallbackSubmitOp,
-  ActorJoinEntrySpotOp,
-  ActorJoinReplyOp,
-  ActorLeaveOp,
-  ActorDestroyOp,
-  ActorLookupOp,
-  ActorBindOp,
-  ActorUnbindOp,
+  SendOperation,
+  SendSubmitOperation,
+  RequestOperation,
+  RequestSubmitOperation,
+  RequestCallbackSubmitOperation,
+  ReplyOperation,
+  ReplySubmitOperation,
+  ActorJoinOperation,
+  ActorJoinSubmitOperation,
+  ActorJoinCallbackSubmitOperation,
+  ActorJoinEntrySpotOperation,
+  ActorJoinReplyOperation,
+  ActorLeaveOperation,
+  ActorDestroyOperation,
+  ActorLookupOperation,
+  ActorBindOperation,
+  ActorUnbindOperation,
 } from '../../contracts/service';
 export type {
   MonitorSourceKindValue,
@@ -366,7 +366,7 @@ export class OperationPayload {
   }
 }
 
-export class SendOperation implements SendOp, SendSubmitOp {
+export class DefaultSendOperation implements SendOperation, SendSubmitOperation {
   private readonly _invoke: SendInvoker;
   private readonly _payload = new OperationPayload();
   private _flags: SendFlags = SendFlags.None;
@@ -375,12 +375,12 @@ export class SendOperation implements SendOp, SendSubmitOp {
     this._invoke = invoke;
   }
 
-  message(message: MessageLike): SendSubmitOp {
+  message(message: MessageLike): SendSubmitOperation {
     this._payload.append(message);
     return this;
   }
 
-  flags(flags: SendFlags): SendSubmitOp {
+  flags(flags: SendFlags): SendSubmitOperation {
     this._payload.ensureOpen();
     this._flags = flags;
     return this;
@@ -391,7 +391,7 @@ export class SendOperation implements SendOp, SendSubmitOp {
   }
 }
 
-export class PublishOperation implements SendOp, SendSubmitOp {
+export class PublishOperation implements SendOperation, SendSubmitOperation {
   private readonly _socket: PublisherSocket;
   private readonly _topic: string;
   private _single: MessageLike | null = null;
@@ -404,7 +404,7 @@ export class PublishOperation implements SendOp, SendSubmitOp {
     this._topic = topic;
   }
 
-  message(message: MessageLike): SendSubmitOp {
+  message(message: MessageLike): SendSubmitOperation {
     this.ensureOpen();
     if (this._parts) {
       this._parts.push(message);
@@ -417,7 +417,7 @@ export class PublishOperation implements SendOp, SendSubmitOp {
     return this;
   }
 
-  flags(flags: SendFlags): SendSubmitOp {
+  flags(flags: SendFlags): SendSubmitOperation {
     this.ensureOpen();
     this._flags = flags;
     return this;
@@ -440,7 +440,7 @@ export class PublishOperation implements SendOp, SendSubmitOp {
   }
 }
 
-export class RequestOperation implements RequestOp, RequestSubmitOp, RequestCallbackSubmitOp {
+export class DefaultRequestOperation implements RequestOperation, RequestSubmitOperation, RequestCallbackSubmitOperation {
   private readonly _invoke: RequestInvoker;
   private readonly _payload = new OperationPayload();
   private _timeoutMs = 0;
@@ -451,18 +451,18 @@ export class RequestOperation implements RequestOp, RequestSubmitOp, RequestCall
     this._invoke = invoke;
   }
 
-  message(message: MessageLike): RequestSubmitOp {
+  message(message: MessageLike): RequestSubmitOperation {
     this._payload.append(message);
     return this;
   }
 
-  timeout(timeoutMs: number): RequestSubmitOp {
+  timeout(timeoutMs: number): RequestSubmitOperation {
     this._payload.ensureOpen();
     this._timeoutMs = timeoutMs | 0;
     return this;
   }
 
-  flags(flags: SendFlags): RequestCallbackSubmitOp {
+  flags(flags: SendFlags): RequestCallbackSubmitOperation {
     this._payload.ensureOpen();
     this._flags = flags;
     this._callbackMode = true;
@@ -479,7 +479,7 @@ export class RequestOperation implements RequestOp, RequestSubmitOp, RequestCall
   }
 }
 
-export class ReplyOperation implements ReplyOp, ReplySubmitOp {
+export class DefaultReplyOperation implements ReplyOperation, ReplySubmitOperation {
   private readonly _invoke: ReplyInvoker;
   private readonly _payload = new OperationPayload();
   private _flags: SendFlags = SendFlags.None;
@@ -488,12 +488,12 @@ export class ReplyOperation implements ReplyOp, ReplySubmitOp {
     this._invoke = invoke;
   }
 
-  message(message: MessageLike): ReplySubmitOp {
+  message(message: MessageLike): ReplySubmitOperation {
     this._payload.append(message);
     return this;
   }
 
-  flags(flags: SendFlags): ReplySubmitOp {
+  flags(flags: SendFlags): ReplySubmitOperation {
     this._payload.ensureOpen();
     this._flags = flags;
     return this;
@@ -505,8 +505,8 @@ export class ReplyOperation implements ReplyOp, ReplySubmitOp {
 }
 
 export class SendSocket extends ConnectableSocket {
-  send(): SendOp {
-    return new SendOperation((parts, flags) => this.sendDirect(parts, flags));
+  send(): SendOperation {
+    return new DefaultSendOperation((parts, flags) => this.sendDirect(parts, flags));
   }
   protected sendDirect(payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const payload = normalizeMessageLikePayload(payloadOrParts);
@@ -537,7 +537,7 @@ export class SendSocket extends ConnectableSocket {
 }
 
 export class PublisherSocket extends ConnectableSocket {
-  publish(topic: string): SendOp {
+  publish(topic: string): SendOperation {
     return new PublishOperation(
       this,
       validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER)
@@ -653,8 +653,8 @@ export class SubscriberSocket extends ConnectableSocket {
 
 export type RouterSocket = { sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], flags?: SendFlags): boolean };
 export class RoutedMessageSocket extends ConnectableSocket {
-  send(routingId: RoutingId): SendOp {
-    return new SendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
+  send(routingId: RoutingId): SendOperation {
+    return new DefaultSendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
   }
   protected sendDirect(routingId: RoutingId, payload: readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     const normalizedRoutingId = normalizeRoutingId(routingId);

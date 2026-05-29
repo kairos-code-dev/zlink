@@ -379,15 +379,7 @@ internal static class RoutingIdCodec
 
         internal static RouteCacheKey Create(ReadOnlySpan<byte> bytes)
         {
-            const ulong offset = 14695981039346656037UL;
-            const ulong prime = 1099511628211UL;
-            ulong hash = offset;
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                hash ^= bytes[i];
-                hash *= prime;
-            }
-            return new RouteCacheKey(bytes.Length, hash);
+            return new RouteCacheKey(bytes.Length, RouteHash.Fnv1a(bytes));
         }
 
         public bool Equals(RouteCacheKey other)

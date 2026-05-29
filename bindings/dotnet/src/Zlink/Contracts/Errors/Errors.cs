@@ -2,6 +2,7 @@
 
 using System;
 using System.Globalization;
+using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
@@ -45,7 +46,7 @@ public abstract class ZlinkException : Exception
 
     internal static ZlinkException FromLastError()
     {
-        int errno = ErrorInterop.LastErrno();
+        int errno = NativeMethods.zlink_errno();
         return new LegacyZlinkException(errno);
     }
 
@@ -58,43 +59,43 @@ public abstract class ZlinkException : Exception
     internal static void ThrowConfigIfError(int rc)
     {
         if (rc != 0)
-            throw CreateConfigException(ErrorInterop.LastErrno());
+            throw CreateConfigException(NativeMethods.zlink_errno());
     }
 
     internal static void ThrowBindIfError(int rc)
     {
         if (rc != 0)
-            throw CreateBindException(ErrorInterop.LastErrno());
+            throw CreateBindException(NativeMethods.zlink_errno());
     }
 
     internal static void ThrowConnectIfError(int rc)
     {
         if (rc != 0)
-            throw CreateConnectException(ErrorInterop.LastErrno());
+            throw CreateConnectException(NativeMethods.zlink_errno());
     }
 
     internal static void ThrowRecvIfError(int rc)
     {
         if (rc != 0)
-            throw CreateRecvException(ErrorInterop.LastErrno());
+            throw CreateRecvException(NativeMethods.zlink_errno());
     }
 
     internal static void ThrowSubmitIfError(int rc)
     {
         if (rc != 0)
-            throw CreateSubmitException(ErrorInterop.LastErrno());
+            throw CreateSubmitException(NativeMethods.zlink_errno());
     }
 
     internal static void ThrowHandlerIfError(int rc)
     {
         if (rc != 0)
-            throw CreateHandlerException(ErrorInterop.LastErrno());
+            throw CreateHandlerException(NativeMethods.zlink_errno());
     }
 
     internal static void ThrowCloseIfError(int rc)
     {
         if (rc != 0)
-            throw CreateCloseException(ErrorInterop.LastErrno());
+            throw CreateCloseException(NativeMethods.zlink_errno());
     }
 
     internal static ErrorCode MapErrorCode(int errno)

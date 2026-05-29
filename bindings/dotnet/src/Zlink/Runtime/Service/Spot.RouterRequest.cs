@@ -110,8 +110,13 @@ internal sealed partial class Spot : ISpot
         TimeSpan timeout)
     {
         RequestReplySupport.EnsureParts(parts, nameof(parts));
-        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
-        ZlinkRoutingId spotRid = destSpotRid.ToNative();
+        // Reference the cached native routing ids rather than copying the
+        // 256-byte structs; parts are submitted synchronously in the loop
+        // below so the refs stay valid (no closure capture here).
+        ZlinkRoutingId nodeFallback = default;
+        ZlinkRoutingId spotFallback = default;
+        ref ZlinkRoutingId nodeRid = ref destNodeRid.ToNativeRef(ref nodeFallback);
+        ref ZlinkRoutingId spotRid = ref destSpotRid.ToNativeRef(ref spotFallback);
         uint timeoutMs = RequestReplySupport.NormalizeTimeout(timeout);
         Message[] cloned = RequestReplySupport.CloneParts(parts);
         GCHandle handle = default;

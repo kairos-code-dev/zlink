@@ -64,8 +64,12 @@ internal sealed partial class Spot : ISpot
         if (message == null)
             throw new ArgumentNullException(nameof(message));
         EnsureNotDisposed();
-        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
-        ZlinkRoutingId spotRid = destSpotRid.ToNative();
+        // Reference the cached native routing ids instead of copying the
+        // 256-byte ZlinkRoutingId structs, mirroring SocketKernel routed send.
+        ZlinkRoutingId nodeFallback = default;
+        ZlinkRoutingId spotFallback = default;
+        ref ZlinkRoutingId nodeRid = ref destNodeRid.ToNativeRef(ref nodeFallback);
+        ref ZlinkRoutingId spotRid = ref destSpotRid.ToNativeRef(ref spotFallback);
         try
         {
             int rc = SubmitCopiedSpotSendSingle(ref nodeRid, ref spotRid,

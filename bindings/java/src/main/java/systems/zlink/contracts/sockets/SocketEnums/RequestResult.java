@@ -28,8 +28,10 @@ public enum RequestResult {
         return value;
     }
 
+    private static final RequestResult[] VALUES = values();
+
     public static RequestResult fromValue(int value) {
-        for (RequestResult result : values()) {
+        for (RequestResult result : VALUES) {
             if (result.value == value) {
                 return result;
             }

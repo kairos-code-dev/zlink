@@ -22,8 +22,10 @@ public enum ConfigResult {
         return value;
     }
 
+    private static final ConfigResult[] VALUES = values();
+
     public static ConfigResult fromValue(int value) {
-        for (ConfigResult result : values()) {
+        for (ConfigResult result : VALUES) {
             if (result.value == value) {
                 return result;
             }

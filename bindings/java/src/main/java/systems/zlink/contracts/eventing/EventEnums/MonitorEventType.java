@@ -29,8 +29,10 @@ public enum MonitorEventType {
 
     public int getValue() { return value; }
 
+    private static final MonitorEventType[] VALUES = values();
+
     public static MonitorEventType fromValue(long value) {
-        for (MonitorEventType type : values()) {
+        for (MonitorEventType type : VALUES) {
             if (type.value == (int) value) {
                 return type;
             }

@@ -20,8 +20,10 @@ public enum CloseResult {
         return value;
     }
 
+    private static final CloseResult[] VALUES = values();
+
     public static CloseResult fromValue(int value) {
-        for (CloseResult result : values()) {
+        for (CloseResult result : VALUES) {
             if (result.value == value) {
                 return result;
             }

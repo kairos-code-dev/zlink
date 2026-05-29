@@ -5,6 +5,7 @@ package systems.zlink.runtime.nativeapi;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 
 public final class NativeRoutingIds {
     private NativeRoutingIds() {}
@@ -60,6 +61,27 @@ public final class NativeRoutingIds {
         MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
             MemorySegment.ofArray(value), 0, size);
         return value;
+    }
+
+    /**
+     * Builds a message-owned routing frame directly from the native routing-id
+     * slot, copying the bytes once into the frame without an intermediate
+     * {@code byte[]}. Returns {@code null} when no routing id is present.
+     */
+    public static Message readRoutingFrameOut(MemorySegment nativeRidOut) {
+        MemorySegment nativeRid = nativeRidOut.get(ValueLayout.ADDRESS, 0);
+        if (nativeRid.address() == 0) {
+            return null;
+        }
+        nativeRid = nativeRid.reinterpret(
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
+        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
+        if (size == 0) {
+            return null;
+        }
+        return InternalAccess.messageFromSegment(nativeRid,
+            NativeLayouts.ROUTING_ID_DATA_OFFSET, size);
     }
 
     public static RoutingId read(MemorySegment nativeRid) {

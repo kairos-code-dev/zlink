@@ -17,8 +17,10 @@ public enum MonitorSourceKind {
         return value;
     }
 
+    private static final MonitorSourceKind[] VALUES = values();
+
     static MonitorSourceKind fromValue(int value) {
-        for (MonitorSourceKind kind : values()) {
+        for (MonitorSourceKind kind : VALUES) {
             if (kind.value == value) {
                 return kind;
             }

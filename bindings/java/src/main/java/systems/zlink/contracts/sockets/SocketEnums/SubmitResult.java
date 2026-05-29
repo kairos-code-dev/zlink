@@ -29,8 +29,10 @@ public enum SubmitResult {
         return value;
     }
 
+    private static final SubmitResult[] VALUES = values();
+
     public static SubmitResult fromValue(int value) {
-        for (SubmitResult result : values()) {
+        for (SubmitResult result : VALUES) {
             if (result.value == value) {
                 return result;
             }

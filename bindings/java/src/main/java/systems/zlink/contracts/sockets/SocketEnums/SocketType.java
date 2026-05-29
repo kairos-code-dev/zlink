@@ -20,7 +20,6 @@ public enum SocketType {
     }
 
     public int getValue() { return value; }
-    public int value() { return value; }
 
     public static SocketType fromValue(int value) {
         return switch (value) {

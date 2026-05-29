@@ -22,8 +22,10 @@ public enum HandlerResult {
         return value;
     }
 
+    private static final HandlerResult[] VALUES = values();
+
     public static HandlerResult fromValue(int value) {
-        for (HandlerResult result : values()) {
+        for (HandlerResult result : VALUES) {
             if (result.value == value) {
                 return result;
             }

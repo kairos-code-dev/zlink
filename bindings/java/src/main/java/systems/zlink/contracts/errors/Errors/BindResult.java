@@ -21,8 +21,10 @@ public enum BindResult {
         return value;
     }
 
+    private static final BindResult[] VALUES = values();
+
     public static BindResult fromValue(int value) {
-        for (BindResult result : values()) {
+        for (BindResult result : VALUES) {
             if (result.value == value) {
                 return result;
             }

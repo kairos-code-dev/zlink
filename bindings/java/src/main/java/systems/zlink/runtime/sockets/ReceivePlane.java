@@ -146,18 +146,15 @@ final class ReceivePlane {
                     boolean hasMore =
                         scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
                     InternalAccess.messageFinishReceive(firstPart, hasMore);
-                    byte[] routingId = NativeRoutingIds.readBytesOut(
+                    Message routingFrame = NativeRoutingIds.readRoutingFrameOut(
                         scratch.sourceRidOut);
-                    if (routingId == null || routingId.length == 0) {
+                    if (routingFrame == null) {
                         return firstPart;
                     }
                     if (hasMore) {
                         InternalAccess.messageSetMore(firstPart, true);
-                        state.replace(new Message[] {firstPart});
-                    } else {
-                        state.replace(new Message[] {firstPart});
                     }
-                    Message routingFrame = Message.from(routingId);
+                    state.replace(new Message[] {firstPart});
                     InternalAccess.messageSetMore(routingFrame, true);
                     return routingFrame;
                 }

@@ -33,9 +33,11 @@ public enum PollEventFlags {
         return out;
     }
 
+    private static final PollEventFlags[] VALUES = values();
+
     static EnumSet<PollEventFlags> fromMask(int mask) {
         EnumSet<PollEventFlags> out = EnumSet.noneOf(PollEventFlags.class);
-        for (PollEventFlags flag : values()) {
+        for (PollEventFlags flag : VALUES) {
             if ((mask & flag.mask) != 0) {
                 out.add(flag);
             }

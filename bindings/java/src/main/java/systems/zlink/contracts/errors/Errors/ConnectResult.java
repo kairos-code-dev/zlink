@@ -23,8 +23,10 @@ public enum ConnectResult {
         return value;
     }
 
+    private static final ConnectResult[] VALUES = values();
+
     public static ConnectResult fromValue(int value) {
-        for (ConnectResult result : values()) {
+        for (ConnectResult result : VALUES) {
             if (result.value == value) {
                 return result;
             }

@@ -407,9 +407,10 @@ final class SocketSendPlane {
 
     private static MemorySegment nativeTopic(SendScratch scratch,
                                              String topicId) {
-        if (scratch.cachedTopicString != null
-            && scratch.cachedTopicString.equals(topicId)
-            && scratch.cachedTopicSegment != null) {
+        if (scratch.cachedTopicSegment != null
+            && (scratch.cachedTopicString == topicId
+                || (scratch.cachedTopicString != null
+                    && scratch.cachedTopicString.equals(topicId)))) {
             return scratch.cachedTopicSegment;
         }
         MemorySegment encoded = scratch.arena.allocateFrom(topicId,

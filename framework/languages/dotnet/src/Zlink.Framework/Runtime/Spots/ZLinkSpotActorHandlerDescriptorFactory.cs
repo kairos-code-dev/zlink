@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotActorHandlerDescriptorFactory
@@ -13,7 +11,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
     {
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            var descriptor = TryCreatePacketDescriptor(
+            var descriptor = ZLinkSpotActorInterfaceDescriptorFactory.TryCreatePacket(
                 surface,
                 expectedSpotType,
                 handlerType,
@@ -27,19 +25,14 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             }
         }
 
-        foreach (var method in EnumerateAttributedPacketMethods(handlerType))
+        foreach (var descriptor in ZLinkSpotActorAttributedDescriptorFactory.CreatePacketDescriptors(
+                     surface,
+                     expectedSpotType,
+                     handlerType,
+                     expectedActorType,
+                     packetName))
         {
-            var descriptor = TryCreateAttributedPacketDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                expectedActorType,
-                method,
-                packetName);
-            if (descriptor is not null)
-            {
-                return descriptor;
-            }
+            return descriptor;
         }
 
         throw new InvalidOperationException(
@@ -53,105 +46,16 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         string? packetName)
     {
         var matches = new List<ZLinkSpotActorInferredHandlerDescriptor>();
-        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
-        {
-            var packet = TryCreatePacketDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                definition,
-                arguments,
-                packetName);
-            if (packet is not null)
-            {
-                matches.Add(new ZLinkSpotActorInferredHandlerDescriptor { Packet = packet });
-                continue;
-            }
-
-            var joined = TryCreateLifecycleDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                definition,
-                arguments,
-                joined: true);
-            if (joined is not null)
-            {
-                matches.Add(new ZLinkSpotActorInferredHandlerDescriptor { Joined = joined });
-                continue;
-            }
-
-            var left = TryCreateLifecycleDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                definition,
-                arguments,
-                joined: false);
-            if (left is not null)
-            {
-                matches.Add(new ZLinkSpotActorInferredHandlerDescriptor { Left = left });
-                continue;
-            }
-
-            var disconnected = TryCreateDisconnectedDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                definition,
-                arguments);
-            if (disconnected is not null)
-            {
-                matches.Add(new ZLinkSpotActorInferredHandlerDescriptor { Disconnected = disconnected });
-            }
-        }
-
-        foreach (var method in EnumerateAttributedPacketMethods(handlerType))
-        {
-            var packet = TryCreateAttributedPacketDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                method,
-                packetName);
-            if (packet is not null)
-            {
-                matches.Add(new ZLinkSpotActorInferredHandlerDescriptor { Packet = packet });
-            }
-        }
-
-        foreach (var method in EnumerateAttributedLifecycleMethods(handlerType))
-        {
-            var lifecycle = TryCreateAttributedLifecycleDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                method);
-            if (lifecycle is not null)
-            {
-                matches.Add(lifecycle);
-            }
-        }
-
-        foreach (var method in EnumerateAttributedDisconnectedMethods(handlerType))
-        {
-            var disconnected = TryCreateAttributedDisconnectedDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                method);
-            if (disconnected is not null)
-            {
-                matches.Add(new ZLinkSpotActorInferredHandlerDescriptor { Disconnected = disconnected });
-            }
-        }
+        matches.AddRange(ZLinkSpotActorInterfaceDescriptorFactory.CreateInferredDescriptors(
+            surface,
+            expectedSpotType,
+            handlerType,
+            packetName));
+        matches.AddRange(ZLinkSpotActorAttributedDescriptorFactory.CreateInferredDescriptors(
+            surface,
+            expectedSpotType,
+            handlerType,
+            packetName));
 
         return matches.Count switch
         {
@@ -161,94 +65,6 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             _ => throw new InvalidOperationException(
                 $"Actor handler '{handlerType}' implements multiple supported actor handler interfaces. Use the explicit actor registration method."),
         };
-    }
-
-    private static ZLinkSpotActorPacketDescriptor? TryCreatePacketDescriptor(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        Type definition,
-        Type[] arguments,
-        string? packetName)
-    {
-        if (definition == typeof(IZLinkEntrySpotActorSendHandler<,,>))
-        {
-            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot)
-            {
-                return null;
-            }
-
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            ValidateActorType(handlerType, expectedActorType, arguments[1]);
-            return CreatePacketDescriptor(
-                surface,
-                handlerType,
-                arguments[0],
-                arguments[1],
-                arguments[2],
-                null,
-                packetName);
-        }
-
-        if (definition == typeof(IZLinkEntrySpotActorRequestHandler<,,,>))
-        {
-            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot)
-            {
-                return null;
-            }
-
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            ValidateActorType(handlerType, expectedActorType, arguments[1]);
-            return CreatePacketDescriptor(
-                surface,
-                handlerType,
-                arguments[0],
-                arguments[1],
-                arguments[2],
-                arguments[3],
-                packetName);
-        }
-
-        if (definition == typeof(IZLinkSpotActorSendHandler<,,>))
-        {
-            if (surface != ZLinkSpotActorHandlerSurface.UserSpot)
-            {
-                return null;
-            }
-
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            ValidateActorType(handlerType, expectedActorType, arguments[1]);
-            return CreatePacketDescriptor(
-                surface,
-                handlerType,
-                arguments[0],
-                arguments[1],
-                arguments[2],
-                null,
-                packetName);
-        }
-
-        if (definition == typeof(IZLinkSpotActorRequestHandler<,,,>))
-        {
-            if (surface != ZLinkSpotActorHandlerSurface.UserSpot)
-            {
-                return null;
-            }
-
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            ValidateActorType(handlerType, expectedActorType, arguments[1]);
-            return CreatePacketDescriptor(
-                surface,
-                handlerType,
-                arguments[0],
-                arguments[1],
-                arguments[2],
-                arguments[3],
-                packetName);
-        }
-
-        return null;
     }
 
     public static ZLinkSpotActorLifecycleDescriptor CreateLifecycle(
@@ -264,7 +80,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
 
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            var descriptor = TryCreateLifecycleDescriptor(
+            var descriptor = ZLinkSpotActorInterfaceDescriptorFactory.TryCreateLifecycle(
                 surface,
                 expectedSpotType,
                 handlerType,
@@ -272,27 +88,21 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
                 definition,
                 arguments,
                 joined);
-            if (descriptor is null)
+            if (descriptor is not null)
             {
-                continue;
+                return descriptor;
             }
-
-            return descriptor;
         }
 
-        foreach (var method in EnumerateAttributedLifecycleMethods(handlerType))
+        var attributed = ZLinkSpotActorAttributedDescriptorFactory.TryCreateLifecycle(
+            surface,
+            expectedSpotType,
+            handlerType,
+            expectedActorType,
+            joined);
+        if (attributed is not null)
         {
-            var descriptor = TryCreateAttributedLifecycleDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                expectedActorType,
-                method);
-            var candidate = joined ? descriptor?.Joined : descriptor?.Left;
-            if (candidate is not null)
-            {
-                return candidate;
-            }
+            return attributed;
         }
 
         throw new InvalidOperationException(
@@ -307,7 +117,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
     {
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
-            var descriptor = TryCreateDisconnectedDescriptor(
+            var descriptor = ZLinkSpotActorInterfaceDescriptorFactory.TryCreateDisconnected(
                 surface,
                 expectedSpotType,
                 handlerType,
@@ -320,340 +130,17 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             }
         }
 
-        foreach (var method in EnumerateAttributedDisconnectedMethods(handlerType))
+        var attributed = ZLinkSpotActorAttributedDescriptorFactory.TryCreateDisconnected(
+            surface,
+            expectedSpotType,
+            handlerType,
+            expectedActorType);
+        if (attributed is not null)
         {
-            var descriptor = TryCreateAttributedDisconnectedDescriptor(
-                surface,
-                expectedSpotType,
-                handlerType,
-                expectedActorType,
-                method);
-            if (descriptor is not null)
-            {
-                return descriptor;
-            }
+            return attributed;
         }
 
         throw new InvalidOperationException(
             $"Actor disconnected handler '{handlerType}' must implement a supported SPOT actor disconnected handler interface or declare a matching SPOT actor disconnected attribute.");
     }
-
-    private static ZLinkSpotActorLifecycleDescriptor? TryCreateLifecycleDescriptor(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        Type definition,
-        Type[] arguments,
-        bool joined)
-    {
-        var postActorJoinedDefinition = typeof(IZLinkSpotPostActorJoinedHandler<,>);
-        var spotDefinition = joined
-            ? postActorJoinedDefinition
-            : typeof(IZLinkSpotActorLeftHandler<,>);
-
-        if (definition != spotDefinition)
-        {
-            return null;
-        }
-
-        ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-        ValidateActorType(handlerType, expectedActorType, arguments[1]);
-        return new ZLinkSpotActorLifecycleDescriptor
-        {
-            HandlerType = handlerType,
-            SpotType = arguments[0],
-            ActorType = arguments[1],
-            Invoker = CreateInvoker(handlerType),
-            Surface = surface
-        };
-    }
-
-    private static ZLinkSpotActorLifecycleDescriptor? TryCreateDisconnectedDescriptor(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        Type definition,
-        Type[] arguments)
-    {
-        if (definition == typeof(IZLinkEntrySpotActorDisconnectedHandler<,>))
-        {
-            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot)
-            {
-                return null;
-            }
-
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            ValidateActorType(handlerType, expectedActorType, arguments[1]);
-            return CreateDisconnectedDescriptor(surface, handlerType, arguments[0], arguments[1]);
-        }
-
-        if (definition == typeof(IZLinkSpotActorDisconnectedHandler<,>))
-        {
-            if (surface != ZLinkSpotActorHandlerSurface.UserSpot)
-            {
-                return null;
-            }
-
-            ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-            ValidateActorType(handlerType, expectedActorType, arguments[1]);
-            return CreateDisconnectedDescriptor(surface, handlerType, arguments[0], arguments[1]);
-        }
-
-        return null;
-    }
-
-    private static ZLinkSpotActorLifecycleDescriptor CreateDisconnectedDescriptor(
-        ZLinkSpotActorHandlerSurface surface,
-        Type handlerType,
-        Type spotType,
-        Type actorType)
-    {
-        return new ZLinkSpotActorLifecycleDescriptor
-        {
-            HandlerType = handlerType,
-            SpotType = spotType,
-            ActorType = actorType,
-            Invoker = CreateInvoker(handlerType),
-            Surface = surface
-        };
-    }
-
-    private static ZLinkSpotActorPacketDescriptor CreatePacketDescriptor(
-        ZLinkSpotActorHandlerSurface surface,
-        Type handlerType,
-        Type? spotType,
-        Type actorType,
-        Type messageType,
-        Type? replyType,
-        string? packetName)
-    {
-        return CreatePacketDescriptor(
-            surface,
-            handlerType,
-            spotType,
-            actorType,
-            messageType,
-            replyType,
-            packetName,
-            CreateInvoker(handlerType));
-    }
-
-    private static ZLinkSpotActorPacketDescriptor CreatePacketDescriptor(
-        ZLinkSpotActorHandlerSurface surface,
-        Type handlerType,
-        Type? spotType,
-        Type actorType,
-        Type messageType,
-        Type? replyType,
-        string? packetName,
-        ZLinkHandlerMethodInvoker invoker)
-    {
-        return new ZLinkSpotActorPacketDescriptor
-        {
-            HandlerType = handlerType,
-            SpotType = spotType,
-            ActorType = actorType,
-            MessageType = messageType,
-            ReplyType = replyType,
-            Kind = replyType is null ? ZLinkMessageKind.Command : ZLinkMessageKind.Request,
-            Invoker = invoker,
-            MessageName = packetName ?? ZLinkMessageNameResolver.ResolveFromType(messageType),
-            Surface = surface
-        };
-    }
-
-    private static ZLinkHandlerMethodInvoker CreateInvoker(Type handlerType)
-    {
-        return ZLinkHandlerContractDescriptorSupport.CreateHandleAsyncInvoker(handlerType, "Handler");
-    }
-
-    private static void ValidateSpotType(Type handlerType, Type? expectedSpotType, Type actualSpotType)
-    {
-        if (expectedSpotType is null)
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor handler '{handlerType}' targets SPOT '{actualSpotType}', but registration expects '{expectedSpotType}'.");
-        }
-
-        ZLinkHandlerContractDescriptorSupport.RequireExactType(
-            handlerType,
-            expectedSpotType,
-            actualSpotType,
-            "SPOT actor handler");
-    }
-
-    private static void ValidateActorType(Type handlerType, Type? expectedActorType, Type actualActorType)
-    {
-        if (expectedActorType is null)
-        {
-            return;
-        }
-
-        ZLinkHandlerContractDescriptorSupport.RequireAssignableFrom(
-            handlerType,
-            expectedActorType,
-            actualActorType,
-            "SPOT actor handler");
-    }
-
-    private static IEnumerable<MethodInfo> EnumerateAttributedPacketMethods(Type handlerType)
-    {
-        return handlerType
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Where(static method =>
-                method.GetCustomAttribute<ZLinkSpotActorSendAttribute>() is not null
-                || method.GetCustomAttribute<ZLinkSpotActorRequestAttribute>() is not null);
-    }
-
-    private static IEnumerable<MethodInfo> EnumerateAttributedLifecycleMethods(Type handlerType)
-    {
-        return handlerType
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Where(static method =>
-                method.GetCustomAttribute<ZLinkSpotPostActorJoinedAttribute>() is not null
-                || method.GetCustomAttribute<ZLinkSpotActorLeftAttribute>() is not null);
-    }
-
-    private static IEnumerable<MethodInfo> EnumerateAttributedDisconnectedMethods(Type handlerType)
-    {
-        return handlerType
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Where(static method =>
-                method.GetCustomAttribute<ZLinkSpotActorDisconnectedAttribute>() is not null);
-    }
-
-    private static ZLinkSpotActorPacketDescriptor? TryCreateAttributedPacketDescriptor(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        MethodInfo method,
-        string? packetNameOverride)
-    {
-        var send = method.GetCustomAttribute<ZLinkSpotActorSendAttribute>();
-        var request = method.GetCustomAttribute<ZLinkSpotActorRequestAttribute>();
-        if (send is not null && request is not null)
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor handler '{handlerType}' method '{method.Name}' cannot declare both send and request attributes.");
-        }
-
-        if (send is null && request is null)
-        {
-            return null;
-        }
-
-        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 5, "SPOT actor packet handler");
-        var spotType = parameters[0].ParameterType;
-        var actorType = parameters[1].ParameterType;
-        var expectedContextType = request is null
-            ? typeof(ZLinkSpotActorSendContext)
-            : typeof(ZLinkSpotActorRequestContext);
-        if (parameters[2].ParameterType != expectedContextType)
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor packet handler '{handlerType}' method '{method.Name}' must use {expectedContextType.Name} as the third parameter.");
-        }
-
-        var messageType = parameters[3].ParameterType;
-        ZLinkHandlerMethodShape.RequireCancellationToken(handlerType, method, parameters[4], "SPOT actor packet handler");
-        ValidateSpotType(handlerType, expectedSpotType, spotType);
-        ValidateActorType(handlerType, expectedActorType, actorType);
-        var replyType = request is null ? null : GetReplyType(method.ReturnType);
-        if (send is not null)
-        {
-            ZLinkHandlerMethodShape.RequireNoReply(handlerType, method, "SPOT actor send handler");
-        }
-
-        var packetName = packetNameOverride ?? send?.PacketName ?? request?.PacketName;
-        return CreatePacketDescriptor(
-            surface,
-            handlerType,
-            spotType,
-            actorType,
-            messageType,
-            replyType,
-            packetName,
-            ZLinkHandlerMethodInvokerFactory.Create(method));
-    }
-
-    private static ZLinkSpotActorInferredHandlerDescriptor? TryCreateAttributedLifecycleDescriptor(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        MethodInfo method)
-    {
-        var postJoined = method.GetCustomAttribute<ZLinkSpotPostActorJoinedAttribute>();
-        var left = method.GetCustomAttribute<ZLinkSpotActorLeftAttribute>();
-        if (postJoined is not null && left is not null)
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor handler '{handlerType}' method '{method.Name}' cannot declare both joined and left attributes.");
-        }
-
-        if (postJoined is null && left is null)
-        {
-            return null;
-        }
-
-        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 4, "SPOT actor lifecycle handler");
-        var spotType = parameters[0].ParameterType;
-        var actorType = parameters[1].ParameterType;
-        if (parameters[2].ParameterType != typeof(ZLinkSpotActorChangeResult))
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor lifecycle handler '{handlerType}' method '{method.Name}' must use ZLinkSpotActorChangeResult as the third parameter.");
-        }
-
-        ZLinkHandlerMethodShape.RequireCancellationToken(handlerType, method, parameters[3], "SPOT actor lifecycle handler");
-        ZLinkHandlerMethodShape.RequireNoReply(handlerType, method, "SPOT actor lifecycle handler");
-        ValidateSpotType(handlerType, expectedSpotType, spotType);
-        ValidateActorType(handlerType, expectedActorType, actorType);
-        var descriptor = new ZLinkSpotActorLifecycleDescriptor
-        {
-            HandlerType = handlerType,
-            SpotType = spotType,
-            ActorType = actorType,
-            Invoker = ZLinkHandlerMethodInvokerFactory.Create(method),
-            Surface = surface
-        };
-        return postJoined is not null
-            ? new ZLinkSpotActorInferredHandlerDescriptor { Joined = descriptor }
-            : new ZLinkSpotActorInferredHandlerDescriptor { Left = descriptor };
-    }
-
-    private static ZLinkSpotActorLifecycleDescriptor? TryCreateAttributedDisconnectedDescriptor(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        MethodInfo method)
-    {
-        if (method.GetCustomAttribute<ZLinkSpotActorDisconnectedAttribute>() is null)
-        {
-            return null;
-        }
-
-        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 3, "SPOT actor disconnected handler");
-        var spotType = parameters[0].ParameterType;
-        var actorType = parameters[1].ParameterType;
-        ZLinkHandlerMethodShape.RequireCancellationToken(handlerType, method, parameters[2], "SPOT actor disconnected handler");
-        ZLinkHandlerMethodShape.RequireNoReply(handlerType, method, "SPOT actor disconnected handler");
-        ValidateSpotType(handlerType, expectedSpotType, spotType);
-        ValidateActorType(handlerType, expectedActorType, actorType);
-        return new ZLinkSpotActorLifecycleDescriptor
-        {
-            HandlerType = handlerType,
-            SpotType = spotType,
-            ActorType = actorType,
-            Invoker = ZLinkHandlerMethodInvokerFactory.Create(method),
-            Surface = surface
-        };
-    }
-
-    private static Type GetReplyType(Type returnType)
-        => ZLinkHandlerMethodShape.RequireReplyType(returnType, "SPOT actor request handler");
 }

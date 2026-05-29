@@ -8,9 +8,6 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
     bool routerEnabled,
     bool pubSubEnabled)
 {
-    private static bool DebugEnabled =>
-        Environment.GetEnvironmentVariable("ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY") == "1";
-
     public void ConnectDiscoveredPubSubPeers()
     {
         var discovery = discoveryProvider();
@@ -147,10 +144,7 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
 
     private static void Debug(string message)
     {
-        if (DebugEnabled)
-        {
-            Console.Error.WriteLine($"[zlink-framework-spot-discovery] {message}");
-        }
+        ZLinkFrameworkDebugLog.SpotDiscovery(message);
     }
 
     private void ConnectRouterPeer(RoutingId peerRoutingId, string endpoint)

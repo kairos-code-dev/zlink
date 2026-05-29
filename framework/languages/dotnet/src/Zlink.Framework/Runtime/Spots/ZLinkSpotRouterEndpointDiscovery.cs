@@ -34,11 +34,8 @@ internal static class ZLinkSpotRouterEndpointDiscovery
         }
         catch (ZlinkConfigException error)
         {
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY") == "1")
-            {
-                Console.Error.WriteLine(
-                    $"[zlink-framework-spot-discovery] resolve-router-endpoint rid={nodeRoutingId.ToHex()} errno={error.InternalErrno}");
-            }
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"resolve-router-endpoint rid={nodeRoutingId.ToHex()} errno={error.InternalErrno}");
             return false;
         }
     }

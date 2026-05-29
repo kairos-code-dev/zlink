@@ -272,11 +272,8 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
                 SpotDiscovery,
                 Node.RoutingId,
                 routerEndpoint);
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY") == "1")
-            {
-                Console.Error.WriteLine(
-                    $"[zlink-framework-spot-discovery] bind-local rid={Node.RoutingId.ToHex()} endpoint={routerEndpoint} bound={bound}");
-            }
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"bind-local rid={Node.RoutingId.ToHex()} endpoint={routerEndpoint} bound={bound}");
         }
 
         _discoveryReconciler.ConnectDiscoveredPubSubPeers();

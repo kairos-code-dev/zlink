@@ -104,44 +104,41 @@ inline bool submit_raw_send_state (spot_operation_state_t &state_)
     }
 
     std::vector<message_t> parts = take_send_parts (state_);
-    std::vector<zlink_msg_t> native;
-    if (zlink::detail::move_parts_to_native (parts, native) != 0)
+    const int raw_rc = zlink::detail::submit_message_parts (
+      parts,
+      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+          switch (state_.kind) {
+              case spot_operation_kind_t::raw_send:
+                  return zlink_send_part (state_.raw_socket, part_out_,
+                                          static_cast<zlink_send_flags_t> (
+                                            static_cast<int> (state_.flags)),
+                                          part_flag_);
+              case spot_operation_kind_t::raw_routed_send:
+                  return zlink_send_part_rid (
+                    state_.raw_socket, first_rid, part_out_,
+                    static_cast<zlink_send_flags_t> (
+                      static_cast<int> (state_.flags)),
+                    part_flag_);
+              case spot_operation_kind_t::raw_publish:
+                  return zlink_publish_part (
+                    state_.raw_socket, state_.topic.c_str (), part_out_,
+                    static_cast<zlink_send_flags_t> (
+                      static_cast<int> (state_.flags)),
+                    part_flag_);
+              case spot_operation_kind_t::raw_router_send_spot:
+                  return zlink_router_send_spot_part (
+                    state_.raw_socket, first_rid, second_rid, part_out_,
+                    static_cast<zlink_send_flags_t> (
+                      static_cast<int> (state_.flags)),
+                    part_flag_);
+              default:
+                  return ZLINK_SUBMIT_INVALID_ARGUMENT;
+          }
+      });
+    if (raw_rc == -1)
         throw last_error ();
-    size_t failed_index = 0;
-    const submit_result_t rc =
-      static_cast<submit_result_t> (zlink::detail::submit_native_parts (
-        native, failed_index,
-        [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-            switch (state_.kind) {
-                case spot_operation_kind_t::raw_send:
-                    return zlink_send_part (state_.raw_socket, part_out_,
-                                            static_cast<zlink_send_flags_t> (
-                                              static_cast<int> (state_.flags)),
-                                            part_flag_);
-                case spot_operation_kind_t::raw_routed_send:
-                    return zlink_send_part_rid (
-                      state_.raw_socket, first_rid, part_out_,
-                      static_cast<zlink_send_flags_t> (
-                        static_cast<int> (state_.flags)),
-                      part_flag_);
-                case spot_operation_kind_t::raw_publish:
-                    return zlink_publish_part (
-                      state_.raw_socket, state_.topic.c_str (), part_out_,
-                      static_cast<zlink_send_flags_t> (
-                        static_cast<int> (state_.flags)),
-                      part_flag_);
-                case spot_operation_kind_t::raw_router_send_spot:
-                    return zlink_router_send_spot_part (
-                      state_.raw_socket, first_rid, second_rid, part_out_,
-                      static_cast<zlink_send_flags_t> (
-                        static_cast<int> (state_.flags)),
-                      part_flag_);
-                default:
-                    return ZLINK_SUBMIT_INVALID_ARGUMENT;
-            }
-        }));
+    const submit_result_t rc = static_cast<submit_result_t> (raw_rc);
     if (rc != submit_result_t::ok) {
-        zlink::detail::restore_parts_from_native (parts, native, failed_index);
         restore_send_parts_to_state (state_, parts);
         if (state_.flags == send_flags_t::dontwait
             && rc == submit_result_t::backpressured) {
@@ -189,23 +186,19 @@ submit_stream_bound_actor_send_state (spot_operation_state_t &state_)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     std::vector<message_t> parts = take_send_parts (state_);
-    std::vector<zlink_msg_t> native;
-    if (zlink::detail::move_parts_to_native (parts, native) != 0)
+    const int raw_rc = zlink::detail::submit_message_parts (
+      parts,
+      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+          return zlink_stream_send_bound_actor_part (
+            state_.stream, zlink::detail::routing_id_native (*state_.first_rid),
+            state_.actor_id.c_str (), part_out_,
+            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
+            part_flag_);
+      });
+    if (raw_rc == -1)
         throw last_error ();
-    size_t failed_index = 0;
-    const submit_result_t rc =
-      static_cast<submit_result_t> (zlink::detail::submit_native_parts (
-        native, failed_index,
-        [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-            return zlink_stream_send_bound_actor_part (
-              state_.stream,
-              zlink::detail::routing_id_native (*state_.first_rid),
-              state_.actor_id.c_str (), part_out_,
-              static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
-              part_flag_);
-        }));
+    const submit_result_t rc = static_cast<submit_result_t> (raw_rc);
     if (rc != submit_result_t::ok) {
-        zlink::detail::restore_parts_from_native (parts, native, failed_index);
         restore_send_parts_to_state (state_, parts);
         if (state_.flags == send_flags_t::dontwait
             && rc == submit_result_t::backpressured) {

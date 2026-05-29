@@ -103,6 +103,7 @@ template <typename ReceivePart>
     }
 
     std::vector<message_t> parts;
+    parts.reserve (2);
     parts.push_back (std::move (first_part));
 
     for (;;) {

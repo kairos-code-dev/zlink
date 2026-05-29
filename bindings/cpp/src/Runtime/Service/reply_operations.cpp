@@ -21,13 +21,8 @@ void submit_raw_reply (detail::spot_operation_state_t &state_)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     zlink::detail::throw_if_reply_flags_unsupported (state_.flags);
-    std::vector<zlink_msg_t> native;
-    if (detail::move_parts_to_native (state_.parts, native) != 0)
-        throw last_error ();
-
-    size_t failed_index = 0;
-    const int rc = detail::submit_native_parts (
-      native, failed_index,
+    const int rc = detail::submit_message_parts (
+      state_.parts,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
           if (state_.kind == detail::spot_operation_kind_t::raw_reply) {
               return zlink_router_reply_part (
@@ -42,7 +37,6 @@ void submit_raw_reply (detail::spot_operation_state_t &state_)
             state_.request_seq, part_out_, part_flag_);
       });
     if (rc != 0) {
-        detail::restore_parts_from_native (state_.parts, native, failed_index);
         throw last_error ();
     }
 }

@@ -221,26 +221,21 @@ inline int submit_actor_join (
     if (!state_.node || state_.parts.empty ())
         return ZLINK_SUBMIT_INVALID_HANDLE;
 
-    std::vector<zlink_msg_t> native;
-    if (detail::move_parts_to_native (state_.parts, native) != 0)
-        return ZLINK_SUBMIT_INVALID_HANDLE;
-
     const zlink_routing_id_t dest_node_rid =
       zlink::detail::routing_id_native_value (state_.dest_node_rid);
     const zlink_routing_id_t dest_spot_rid =
       zlink::detail::routing_id_native_value (state_.dest_spot_rid);
-    const zlink_submit_result_t rc = zlink_spot_node_actor_join_spot (
-      state_.node, zlink::detail::actor_ref_native (state_.actor),
-      &dest_node_rid,
-      &dest_spot_rid,
-      native.data (), native.size (),
-      &detail::actor_join_result_trampoline, result_state_,
-      static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
-      zlink::detail::native_timeout_ms (state_.timeout));
-
-    if (rc != ZLINK_SUBMIT_OK)
-        detail::restore_parts_from_native (state_.parts, native);
-    return rc;
+    const int rc = submit_message_array (
+      state_.parts,
+      [&] (zlink_msg_t *native_, size_t part_count_) {
+          return zlink_spot_node_actor_join_spot (
+            state_.node, zlink::detail::actor_ref_native (state_.actor),
+            &dest_node_rid, &dest_spot_rid, native_, part_count_,
+            &detail::actor_join_result_trampoline, result_state_,
+            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
+            zlink::detail::native_timeout_ms (state_.timeout));
+      });
+    return rc == -1 ? ZLINK_SUBMIT_INVALID_HANDLE : rc;
 }
 
 template<typename SubmitFn>

@@ -38,6 +38,17 @@ inline void close_native_parts (std::vector<zlink_msg_t> &parts_,
         (void) zlink_msg_close (&parts_[i]);
 }
 
+inline void close_native_parts (zlink_msg_t *parts_,
+                                size_t part_count_,
+                                size_t start_index_ = 0) noexcept
+{
+    if (!parts_ || start_index_ >= part_count_)
+        return;
+
+    for (size_t i = start_index_; i < part_count_; ++i)
+        (void) zlink_msg_close (&parts_[i]);
+}
+
 inline int move_parts_to_native (std::vector<message_t> &parts_,
                                  std::vector<zlink_msg_t> &native_)
 {
@@ -275,6 +286,66 @@ inline int submit_message_parts (std::vector<message_t> &parts_,
       native_parts, failed_index, std::move (submit_));
     if (rc != 0)
         detail::restore_parts_from_native (parts_, native_parts, failed_index);
+    return rc;
+}
+
+template<typename SubmitFn>
+inline int submit_message_parts_close_on_failure (
+  std::vector<message_t> &parts_,
+  SubmitFn submit_)
+{
+    if (parts_.size () <= native_part_stack_capacity) {
+        std::array<zlink_msg_t, native_part_stack_capacity> native_parts;
+        if (detail::move_parts_to_native (
+              parts_, native_parts.data (), parts_.size ()) != 0)
+            return -1;
+
+        size_t failed_index = 0;
+        const int rc = detail::submit_native_parts (
+          native_parts.data (), parts_.size (), failed_index,
+          std::move (submit_));
+        if (rc != 0)
+            detail::close_native_parts (
+              native_parts.data (), parts_.size (), failed_index);
+        return rc;
+    }
+
+    std::vector<zlink_msg_t> native_parts;
+    if (detail::move_parts_to_native (parts_, native_parts) != 0)
+        return -1;
+
+    size_t failed_index = 0;
+    const int rc = detail::submit_native_parts (
+      native_parts, failed_index, std::move (submit_));
+    if (rc != 0)
+        detail::close_native_parts (native_parts, failed_index);
+    return rc;
+}
+
+template<typename SubmitFn>
+inline int submit_message_array (std::vector<message_t> &parts_,
+                                 SubmitFn submit_)
+{
+    if (parts_.size () <= native_part_stack_capacity) {
+        std::array<zlink_msg_t, native_part_stack_capacity> native_parts;
+        if (detail::move_parts_to_native (
+              parts_, native_parts.data (), parts_.size ()) != 0)
+            return -1;
+
+        const int rc = submit_ (native_parts.data (), parts_.size ());
+        if (rc != 0)
+            detail::restore_parts_from_native (
+              parts_, native_parts.data (), parts_.size ());
+        return rc;
+    }
+
+    std::vector<zlink_msg_t> native_parts;
+    if (detail::move_parts_to_native (parts_, native_parts) != 0)
+        return -1;
+
+    const int rc = submit_ (native_parts.data (), native_parts.size ());
+    if (rc != 0)
+        detail::restore_parts_from_native (parts_, native_parts);
     return rc;
 }
 

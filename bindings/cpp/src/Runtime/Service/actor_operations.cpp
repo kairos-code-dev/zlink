@@ -381,17 +381,18 @@ void actor_join_reply_operation_t::submit () &&
         return;
     }
 
-    std::vector<zlink_msg_t> native;
-    if (detail::move_parts_to_native (state ().parts, native) != 0)
+    const int raw_rc = detail::submit_message_array (
+      state ().parts,
+      [&] (zlink_msg_t *native_, size_t part_count_) {
+          return zlink_spot_actor_join_reply (
+            state ().spot, &native_info, state ().join_result_code, native_,
+            part_count_);
+      });
+    if (raw_rc == -1)
         throw last_error ();
-    const submit_result_t rc =
-      static_cast<submit_result_t> (zlink_spot_actor_join_reply (
-        state ().spot, &native_info, state ().join_result_code, native.data (),
-        native.size ()));
-    if (rc != submit_result_t::ok) {
-        detail::restore_parts_from_native (state ().parts, native);
+    const submit_result_t rc = static_cast<submit_result_t> (raw_rc);
+    if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
-    }
 }
 
 actor_leave_operation_t::~actor_leave_operation_t () = default;

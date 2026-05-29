@@ -520,46 +520,6 @@ int zlink::msg_t::copy (msg_t &src_)
     return 0;
 }
 
-void *zlink::msg_t::data ()
-{
-    //  Check the validity of the message.
-    zlink_assert (check ());
-
-    switch (_u.base.type) {
-        case type_vsm:
-            return _u.vsm.data;
-        case type_lmsg:
-            return _u.lmsg.content->data;
-        case type_cmsg:
-            return _u.cmsg.data;
-        case type_zclmsg:
-            return _u.zclmsg.content->data;
-        default:
-            zlink_assert (false);
-            return NULL;
-    }
-}
-
-size_t zlink::msg_t::size () const
-{
-    //  Check the validity of the message.
-    zlink_assert (check ());
-
-    switch (_u.base.type) {
-        case type_vsm:
-            return _u.vsm.size;
-        case type_lmsg:
-            return _u.lmsg.content->size;
-        case type_zclmsg:
-            return _u.zclmsg.content->size;
-        case type_cmsg:
-            return _u.cmsg.size;
-        default:
-            zlink_assert (false);
-            return 0;
-    }
-}
-
 uint32_t zlink::msg_t::refcnt_value () const
 {
     //  Check the validity of the message.

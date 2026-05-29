@@ -98,8 +98,43 @@ class msg_t
     int close ();
     int move (msg_t &src_);
     int copy (msg_t &src_);
-    void *data ();
-    size_t size () const;
+
+    void *data ()
+    {
+        zlink_assert (check ());
+        switch (_u.base.type) {
+            case type_vsm:
+                return _u.vsm.data;
+            case type_lmsg:
+                return _u.lmsg.content->data;
+            case type_cmsg:
+                return _u.cmsg.data;
+            case type_zclmsg:
+                return _u.zclmsg.content->data;
+            default:
+                zlink_assert (false);
+                return NULL;
+        }
+    }
+
+    size_t size () const
+    {
+        zlink_assert (check ());
+        switch (_u.base.type) {
+            case type_vsm:
+                return _u.vsm.size;
+            case type_lmsg:
+                return _u.lmsg.content->size;
+            case type_zclmsg:
+                return _u.zclmsg.content->size;
+            case type_cmsg:
+                return _u.cmsg.size;
+            default:
+                zlink_assert (false);
+                return 0;
+        }
+    }
+
     uint32_t refcnt_value () const;
     unsigned char flags () const;
     void set_flags (unsigned char flags_);

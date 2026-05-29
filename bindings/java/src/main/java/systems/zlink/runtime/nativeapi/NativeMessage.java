@@ -4,98 +4,38 @@ import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
-import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 
 public final class NativeMessage {
-    private static final Linker LINKER = Linker.nativeLinker();
-    private static final SymbolLookup LOOKUP = LibraryLoader.lookup();
-    private static final SymbolLookup C_LOOKUP = LINKER.defaultLookup();
-
-    private static MemorySegment requireSymbol(String name) {
-        return LOOKUP.find(name).orElseThrow(
-          () -> new IllegalStateException(
-            "Missing native symbol '" + name
-              + "'. Loaded libzlink is incompatible with this Java binding."));
-    }
-
-    private static MethodHandle downcall(String name, FunctionDescriptor fd) {
-        return LOOKUP.find(name)
-          .map(symbol -> LINKER.downcallHandle(symbol, fd))
-          .orElseGet(() -> missingDowncall(name, fd));
-    }
-
-    private static MethodHandle downcallCritical(String name,
-                                                 FunctionDescriptor fd) {
-        return LOOKUP.find(name)
-          .map(symbol -> LINKER.downcallHandle(symbol, fd,
-              Linker.Option.critical(false)))
-          .orElseGet(() -> missingDowncall(name, fd));
-    }
-
-    private static MethodHandle downcallAny(String[] names, FunctionDescriptor fd) {
-        for (String name : names) {
-            if (LOOKUP.find(name).isPresent()) {
-                return LINKER.downcallHandle(requireSymbol(name), fd);
-            }
-        }
-        return missingDowncall(
-          "one of: " + String.join(", ", names), fd);
-    }
-
-    private static MethodHandle cDowncall(String name, FunctionDescriptor fd) {
-        return C_LOOKUP.find(name)
-          .map(symbol -> LINKER.downcallHandle(symbol, fd))
-          .orElseGet(() -> missingDowncall(name, fd));
-    }
-
-    private static MethodHandle missingDowncall(String name,
-                                                FunctionDescriptor fd) {
-        MethodType methodType = fd.toMethodType();
-        IllegalStateException failure =
-          new IllegalStateException(
-            "Missing native symbol '" + name
-              + "'. Loaded libzlink is incompatible with this Java binding.");
-        MethodHandle throwing = MethodHandles.throwException(
-          methodType.returnType(), IllegalStateException.class);
-        throwing = MethodHandles.insertArguments(throwing, 0, failure);
-        return MethodHandles.dropArguments(throwing, 0,
-          methodType.parameterArray());
-    }
-
-    private static final MethodHandle MH_MSG_INIT = downcallCritical("zlink_msg_init",
+    private static final MethodHandle MH_MSG_INIT = NativeSymbols.downcallCritical("zlink_msg_init",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_INIT_SIZE = downcallCritical("zlink_msg_init_size",
+    private static final MethodHandle MH_MSG_INIT_SIZE = NativeSymbols.downcallCritical("zlink_msg_init_size",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_MSG_CLOSE = downcallCritical("zlink_msg_close",
+    private static final MethodHandle MH_MSG_CLOSE = NativeSymbols.downcallCritical("zlink_msg_close",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_MOVE = downcallCritical("zlink_msg_move",
+    private static final MethodHandle MH_MSG_MOVE = NativeSymbols.downcallCritical("zlink_msg_move",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_COPY = downcallCritical("zlink_msg_copy",
+    private static final MethodHandle MH_MSG_COPY = NativeSymbols.downcallCritical("zlink_msg_copy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_DATA = downcallCritical("zlink_msg_data",
+    private static final MethodHandle MH_MSG_DATA = NativeSymbols.downcallCritical("zlink_msg_data",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_DATA_ADDR = downcallCritical(
+    private static final MethodHandle MH_MSG_DATA_ADDR = NativeSymbols.downcallCritical(
             "zlink_java_msg_data_addr",
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_SIZE = downcallCritical("zlink_msg_size",
+    private static final MethodHandle MH_MSG_SIZE = NativeSymbols.downcallCritical("zlink_msg_size",
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_REFCNT = downcallCritical("zlink_msg_refcnt",
+    private static final MethodHandle MH_MSG_REFCNT = NativeSymbols.downcallCritical("zlink_msg_refcnt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_GETS = downcall("zlink_msg_gets",
+    private static final MethodHandle MH_MSG_GETS = NativeSymbols.downcall("zlink_msg_gets",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSGV_CLOSE = downcallAny(
+    private static final MethodHandle MH_MSGV_CLOSE = NativeSymbols.downcallAny(
             new String[] {"zlink_multipart_close", "zlink_msgv_close"},
             FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_FREE = cDowncall("free",
-            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
-    private static final MethodHandle MH_ROUTER_HANDLER = downcall(
+    private static final MethodHandle MH_FREE = NativeSymbols.freeDowncall();
+    private static final MethodHandle MH_ROUTER_HANDLER = NativeSymbols.downcall(
             "zlink_router_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));

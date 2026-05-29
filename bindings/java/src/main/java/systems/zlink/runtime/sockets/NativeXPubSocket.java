@@ -8,7 +8,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
-public final class NativeXPubSocket extends NativeSocketBase implements XPubSocket {
+final class NativeXPubSocket extends NativeSocketBase implements XPubSocket {
     private final PubSocketOptions options = new PubSocketOptions(this);
 
     NativeXPubSocket(Context ctx) {

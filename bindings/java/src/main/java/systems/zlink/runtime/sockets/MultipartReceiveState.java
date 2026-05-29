@@ -4,7 +4,7 @@ package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.runtime.nativeapi.InternalAccess;
-final class LegacyReceiveState {
+final class MultipartReceiveState {
     private Message[] frames = new Message[0];
     private int index;
 

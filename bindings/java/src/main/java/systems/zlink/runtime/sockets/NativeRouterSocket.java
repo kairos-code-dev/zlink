@@ -21,7 +21,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-public final class NativeRouterSocket extends NativeSocketBase implements RouterSocket {
+final class NativeRouterSocket extends NativeSocketBase implements RouterSocket {
     private static final boolean DEBUG_REQREP =
       Boolean.getBoolean("zlink.reqrep.debug");
     private final RouterSocketOptions options = new RouterSocketOptions(this);

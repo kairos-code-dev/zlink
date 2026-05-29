@@ -13,7 +13,7 @@ import java.lang.foreign.ValueLayout;
 import java.time.Duration;
 import java.util.Objects;
 
-public final class SpotOptions {
+final class SpotOptions {
     private static final int OPT_REQUEST_TIMEOUT_MS = 0x3701;
 
     private final Spot spot;

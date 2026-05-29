@@ -10,7 +10,7 @@ import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.TopicMessage;
 import java.util.Optional;
 
-public final class NativeXSubSocket extends NativeSocketBase implements XSubSocket {
+final class NativeXSubSocket extends NativeSocketBase implements XSubSocket {
     private final SubSocketOptions options = new SubSocketOptions(this);
 
     NativeXSubSocket(Context ctx) {

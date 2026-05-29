@@ -84,18 +84,14 @@ final class NativeSocketRuntime implements AutoCloseable {
       ThreadLocal.withInitial(SendScratch::new);
     private final ThreadLocal<RecvScratch> recvScratch =
       ThreadLocal.withInitial(RecvScratch::new);
-    private final ThreadLocal<LegacyReceiveState> legacyReceiveState =
-      ThreadLocal.withInitial(LegacyReceiveState::new);
+    private final ThreadLocal<MultipartReceiveState> multipartReceiveState =
+      ThreadLocal.withInitial(MultipartReceiveState::new);
     private final ThreadLocal<Received> activeLazyReceive =
       new ThreadLocal<>();
     private final ThreadLocal<byte[]> nettySendScratch =
       ThreadLocal.withInitial(() -> new byte[DEFAULT_IO_BUFFER_SIZE]);
 
     public static void ensureRegistered() {
-    }
-
-    private enum OptionFamily {
-        COMMON, ROUTER, PUB, SUB, STREAM
     }
 
     public void disconnectRid(RoutingId peerRid) {
@@ -112,9 +108,6 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     public static void leaveCallbackContext() {
         SocketCore.leaveCallback();
-    }
-
-    private record OptionRoute(OptionFamily family, int optionId) {
     }
 
     NativeSocketRuntime(Context ctx, SocketType type) {
@@ -618,7 +611,7 @@ final class NativeSocketRuntime implements AutoCloseable {
         Objects.requireNonNull(result, "result");
         Objects.requireNonNull(flags, "flags");
         if (flags == ReceiveFlag.DONTWAIT
-            && !legacyReceiveState.get().hasPending()) {
+            && !multipartReceiveState.get().hasPending()) {
             return recvIntoNoWait(result);
         }
         Message frame = nextRecvFrame(flags, flags == ReceiveFlag.DONTWAIT);
@@ -1356,14 +1349,14 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     void setSockOptRaw(int optionId, MemorySegment value, long len) {
-        OptionRoute route = optionRoute(optionId);
+        var route = optionRoute(optionId);
         int rc = switch (route.family()) {
             case ROUTER -> Native.setRouterOption(handle, route.optionId(), value, len);
             case PUB -> Native.setPubOption(handle, route.optionId(), value, len);
             case SUB -> Native.setSubOption(handle, route.optionId(), value, len);
             case STREAM -> Native.setStreamOption(handle, route.optionId(), value, len);
             case COMMON -> Native.setSockOpt(handle,
-                translateLegacyCommonOptionId(route.optionId()), value, len);
+                route.nativeCommonOptionId(), value, len);
         };
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_setsockopt");
@@ -1482,14 +1475,14 @@ final class NativeSocketRuntime implements AutoCloseable {
                 : arena.allocate(maxLen);
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, maxLen);
-            OptionRoute route = optionRoute(optionId);
+            var route = optionRoute(optionId);
             int rc = switch (route.family()) {
                 case ROUTER -> Native.getRouterOption(handle, route.optionId(), buf, len);
                 case PUB -> Native.getPubOption(handle, route.optionId(), buf, len);
                 case SUB -> Native.getSubOption(handle, route.optionId(), buf, len);
                 case STREAM -> Native.getStreamOption(handle, route.optionId(), buf, len);
                 case COMMON -> Native.getSockOpt(handle,
-                    translateLegacyCommonOptionId(route.optionId()), buf, len);
+                    route.nativeCommonOptionId(), buf, len);
             };
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_getsockopt");
@@ -1509,20 +1502,20 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     public int getSockOptInt(int optionId) {
         if (optionId == OPT_RCVMORE) {
-            return legacyReceiveState.get().pendingCount() > 0 ? 1 : 0;
+            return multipartReceiveState.get().pendingCount() > 0 ? 1 : 0;
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            OptionRoute route = optionRoute(optionId);
+            var route = optionRoute(optionId);
             int rc = switch (route.family()) {
                 case ROUTER -> Native.getRouterOption(handle, route.optionId(), buf, len);
                 case PUB -> Native.getPubOption(handle, route.optionId(), buf, len);
                 case SUB -> Native.getSubOption(handle, route.optionId(), buf, len);
                 case STREAM -> Native.getStreamOption(handle, route.optionId(), buf, len);
                 case COMMON -> Native.getSockOpt(handle,
-                    translateLegacyCommonOptionId(route.optionId()), buf, len);
+                    route.nativeCommonOptionId(), buf, len);
             };
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_getsockopt");
@@ -1709,7 +1702,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     Message nextRecvFrame(ReceiveFlag flags, boolean nonBlocking) {
         Objects.requireNonNull(flags, "flags");
         prepareRecvLikeOperation();
-        LegacyReceiveState state = legacyReceiveState.get();
+        MultipartReceiveState state = multipartReceiveState.get();
         while (true) {
             if (state.hasPending()) {
                 return state.poll();
@@ -1974,7 +1967,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public void prepareRecvLikeOperation() {
-        legacyReceiveState.get().closeRemaining();
+        multipartReceiveState.get().closeRemaining();
         Received active = activeLazyReceive.get();
         if (active != null) {
             InternalAccess.receivedForceMaterialize(active);
@@ -2124,14 +2117,14 @@ final class NativeSocketRuntime implements AutoCloseable {
             MemorySegment buf = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
             len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_LONG.byteSize());
-            OptionRoute route = optionRoute(optionId);
+            var route = optionRoute(optionId);
             int rc = switch (route.family()) {
                 case ROUTER -> Native.getRouterOption(handle, route.optionId(), buf, len);
                 case PUB -> Native.getPubOption(handle, route.optionId(), buf, len);
                 case SUB -> Native.getSubOption(handle, route.optionId(), buf, len);
                 case STREAM -> Native.getStreamOption(handle, route.optionId(), buf, len);
                 case COMMON -> Native.getSockOpt(handle,
-                    translateLegacyCommonOptionId(route.optionId()), buf, len);
+                    route.nativeCommonOptionId(), buf, len);
             };
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_getsockopt");
@@ -2139,107 +2132,8 @@ final class NativeSocketRuntime implements AutoCloseable {
         }
     }
 
-    private OptionRoute optionRoute(int optionId) {
-        SocketType type = resolveSocketType();
-        if (optionId == SocketOptions.ROUTER_MANDATORY.optionId()) {
-            return new OptionRoute(OptionFamily.ROUTER, 0x3101);
-        }
-        if (optionId == SocketOptions.PROBE_ROUTER.optionId()) {
-            return new OptionRoute(OptionFamily.ROUTER, 0x3103);
-        }
-        if (optionId == SocketOptions.CONNECT_ROUTING_ID.optionId()) {
-            return new OptionRoute(OptionFamily.ROUTER, 0x3104);
-        }
-        if (optionId == SocketOptions.XPUB_VERBOSE.optionId()) {
-            return new OptionRoute(OptionFamily.PUB, 0x3301);
-        }
-        if (optionId == SocketOptions.XPUB_VERBOSER.optionId()) {
-            return new OptionRoute(OptionFamily.PUB, 0x3302);
-        }
-        if (optionId == SocketOptions.XPUB_MANUAL.optionId()) {
-            return new OptionRoute(OptionFamily.PUB, 0x3303);
-        }
-        if (optionId == SocketOptions.XPUB_MANUAL_LAST_VALUE.optionId()
-            && type == SocketType.XPUB) {
-            return new OptionRoute(OptionFamily.PUB, 0x3304);
-        }
-        if (optionId == SocketOptions.XPUB_NODROP.optionId()) {
-            return new OptionRoute(OptionFamily.PUB, 0x3305);
-        }
-        if (optionId == SocketOptions.XPUB_WELCOME_MSG.optionId()) {
-            return new OptionRoute(OptionFamily.PUB, 0x3306);
-        }
-        if (optionId == SocketOptions.TOPICS_COUNT.optionId()) {
-            if (type == SocketType.SUB || type == SocketType.XSUB) {
-                return new OptionRoute(OptionFamily.SUB, 0x3400);
-            }
-            if (type == SocketType.PUB || type == SocketType.XPUB) {
-                return new OptionRoute(OptionFamily.PUB, 0x3307);
-            }
-        }
-        if (optionId == SocketOptions.PUB_APPROVE_SUBSCRIBE_BYTES.optionId()) {
-            return new OptionRoute(OptionFamily.PUB, 0x3308);
-        }
-        if (optionId == SocketOptions.PUB_REJECT_SUBSCRIBE_BYTES.optionId()) {
-            return new OptionRoute(OptionFamily.PUB, 0x3309);
-        }
-        if (optionId == SocketOptions.STREAM_NOTIFY.optionId()) {
-            return new OptionRoute(OptionFamily.STREAM, 0x3501);
-        }
-        return new OptionRoute(OptionFamily.COMMON, optionId);
-    }
-
-    private static int translateLegacyCommonOptionId(int optionId) {
-        return switch (optionId) {
-            case 4 -> 0x3001;
-            case 8 -> 0x3003;
-            case 9 -> 0x3004;
-            case 11 -> 0x3005;
-            case 12 -> 0x3006;
-            case 14 -> 0x3007;
-            case 15 -> 0x3008;
-            case 16 -> 0x3009;
-            case 17 -> 0x300A;
-            case 18 -> 0x300B;
-            case 19 -> 0x300C;
-            case 21 -> 0x300D;
-            case 22 -> 0x300E;
-            case 23 -> 0x300F;
-            case 24 -> 0x3010;
-            case 25 -> 0x3011;
-            case 27 -> 0x3012;
-            case 28 -> 0x3013;
-            case 32 -> 0x3014;
-            case 34 -> 0x3015;
-            case 35 -> 0x3016;
-            case 36 -> 0x3017;
-            case 37 -> 0x3018;
-            case 39 -> 0x3019;
-            case 42 -> 0x301A;
-            case 54 -> 0x301B;
-            case 57 -> 0x301C;
-            case 66 -> 0x301D;
-            case 70 -> 0x301E;
-            case 74 -> 0x3020;
-            case 75 -> 0x3021;
-            case 76 -> 0x3022;
-            case 77 -> 0x3023;
-            case 79 -> 0x3024;
-            case 80 -> 0x3025;
-            case 84 -> 0x3026;
-            case 92 -> 0x3027;
-            case 95 -> 0x3028;
-            case 96 -> 0x3029;
-            case 97 -> 0x302A;
-            case 98 -> 0x302B;
-            case 99 -> 0x302C;
-            case 100 -> 0x302D;
-            case 101 -> 0x302E;
-            case 102 -> 0x302F;
-            case 117 -> 0x3030;
-            case 118 -> 0x3031;
-            default -> optionId;
-        };
+    private SocketOptionRouter.Route optionRoute(int optionId) {
+        return SocketOptionRouter.route(optionId, resolveSocketType());
     }
 
     private static String decodeCString(byte[] raw) {

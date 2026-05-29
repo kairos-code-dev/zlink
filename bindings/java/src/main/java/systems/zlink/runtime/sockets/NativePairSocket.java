@@ -10,7 +10,7 @@ import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOperation;
 import java.util.List;
-public final class NativePairSocket extends NativeSocketBase implements PairSocket {
+final class NativePairSocket extends NativeSocketBase implements PairSocket {
     NativePairSocket(Context ctx) {
         super(ctx, SocketType.PAIR);
     }

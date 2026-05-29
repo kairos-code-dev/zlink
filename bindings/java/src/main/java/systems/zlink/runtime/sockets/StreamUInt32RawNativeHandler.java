@@ -6,7 +6,7 @@ package systems.zlink.runtime.sockets;
 import java.lang.foreign.MemorySegment;
 
 @FunctionalInterface
-public interface StreamUInt32RawNativeHandler {
+interface StreamUInt32RawNativeHandler {
     /**
      * Handles one raw STREAM chunk using callback-local borrowed native message
      * storage.

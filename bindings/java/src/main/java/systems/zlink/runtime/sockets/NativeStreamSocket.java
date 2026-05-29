@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-public final class NativeStreamSocket extends NativeSocketBase implements StreamSocket {
+final class NativeStreamSocket extends NativeSocketBase implements StreamSocket {
     private final StreamSocketOptions options = new StreamSocketOptions(this);
 
     NativeStreamSocket(Context ctx) {

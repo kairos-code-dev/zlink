@@ -9,7 +9,7 @@ import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOperation;
 
-public final class NativePubSocket extends NativeSocketBase implements PubSocket {
+final class NativePubSocket extends NativeSocketBase implements PubSocket {
     private final PubSocketOptions options = new PubSocketOptions(this);
 
     NativePubSocket(Context ctx) {

@@ -11,7 +11,7 @@ import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.TopicMessage;
 import java.util.Optional;
 
-public final class NativeSubSocket extends NativeSocketBase implements SubSocket {
+final class NativeSubSocket extends NativeSocketBase implements SubSocket {
     private final SubSocketOptions options = new SubSocketOptions(this);
 
     NativeSubSocket(Context ctx) {

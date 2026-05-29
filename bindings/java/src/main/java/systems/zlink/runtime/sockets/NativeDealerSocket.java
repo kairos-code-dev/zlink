@@ -21,7 +21,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 
-public final class NativeDealerSocket extends NativeSocketBase implements DealerSocket {
+final class NativeDealerSocket extends NativeSocketBase implements DealerSocket {
     private static final boolean DEBUG_REQREP =
       Boolean.getBoolean("zlink.reqrep.debug");
     private final DealerSocketOptions options = new DealerSocketOptions(this);

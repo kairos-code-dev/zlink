@@ -57,7 +57,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
-public final class SpotRoutedSupport implements AutoCloseable {
+final class SpotRoutedSupport implements AutoCloseable {
     private static final int ERRNO_EINTR = 4;
     private static final int SEND_DONTWAIT = 1;
     private static final Linker LINKER = Linker.nativeLinker();

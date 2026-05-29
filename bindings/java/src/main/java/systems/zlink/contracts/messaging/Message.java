@@ -5,7 +5,6 @@ package systems.zlink.contracts.messaging;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.internal.ContractAccess;
 import io.netty.buffer.ByteBuf;
-import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -21,7 +20,7 @@ import sun.misc.Unsafe;
  * bounded by Java object reachability.
  */
 public final class Message implements AutoCloseable {
-    private static final Unsafe UNSAFE = lookupUnsafe();
+    private static final Unsafe UNSAFE = UnsafeAccess.get();
     private static final long BYTE_ARRAY_BASE =
         UNSAFE.arrayBaseOffset(byte[].class);
     private static final int ERRNO_EINTR = 4;
@@ -29,7 +28,6 @@ public final class Message implements AutoCloseable {
     private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private static final boolean NATIVE_LITTLE_ENDIAN =
         ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
-    private static final long MESSAGE_LAYOUT_SIZE = ContractAccess.nativeMessageLayoutSize();
 
     private final Object scope;
     private final long ownedMsgSlotAddress;
@@ -910,46 +908,13 @@ public final class Message implements AutoCloseable {
         if (scope != null && ContractAccess.nativeMessageScopeAlive(scope)) {
             ContractAccess.nativeMessageCloseScope(scope);
         } else if (ownedMsgSlotAddress != 0L) {
-            releaseOwnedMsgSlot(ownedMsgSlotAddress);
+            MessageSlotPool.release(ownedMsgSlotAddress);
         }
         closed = true;
     }
 
-    private static final ThreadLocal<MsgSlotPool> MSG_SLOT_POOL =
-        ThreadLocal.withInitial(MsgSlotPool::new);
-
-    private static final class MsgSlotPool {
-        private static final int CAPACITY = 32;
-        private final long[] slots = new long[CAPACITY];
-        private int count;
-
-        long acquire() {
-            if (count > 0) {
-                count--;
-                long slot = slots[count];
-                slots[count] = 0L;
-                return slot;
-            }
-            long address = UNSAFE.allocateMemory(MESSAGE_LAYOUT_SIZE);
-            UNSAFE.setMemory(address, MESSAGE_LAYOUT_SIZE, (byte) 0);
-            return address;
-        }
-
-        void release(long slot) {
-            if (count < CAPACITY) {
-                slots[count++] = slot;
-            } else {
-                UNSAFE.freeMemory(slot);
-            }
-        }
-    }
-
     private static long allocateOwnedMsgSlot() {
-        return MSG_SLOT_POOL.get().acquire();
-    }
-
-    private static void releaseOwnedMsgSlot(long slot) {
-        MSG_SLOT_POOL.get().release(slot);
+        return MessageSlotPool.acquire();
     }
 
     private static void validateRange(int total, int offset, int length, String name) {
@@ -962,14 +927,4 @@ public final class Message implements AutoCloseable {
             throw new IndexOutOfBoundsException(name + " range out of bounds");
     }
 
-    private static Unsafe lookupUnsafe() {
-        try {
-            Field field = Unsafe.class.getDeclaredField("theUnsafe");
-            field.setAccessible(true);
-            return (Unsafe) field.get(null);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException("Unable to access sun.misc.Unsafe",
-                ex);
-        }
-    }
 }

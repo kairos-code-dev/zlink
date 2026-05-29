@@ -6,6 +6,7 @@ import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
+import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -43,6 +44,25 @@ final class NativeSymbols {
         return LOOKUP.find(name)
           .map(symbol -> LINKER.downcallHandle(symbol, fd))
           .orElse(null);
+    }
+
+    static MethodHandle downcallAny(String[] names, FunctionDescriptor fd) {
+        for (String name : names) {
+            if (LOOKUP.find(name).isPresent()) {
+                return LINKER.downcallHandle(require(name), fd);
+            }
+        }
+        return missingDowncall("one of: " + String.join(", ", names), fd);
+    }
+
+    static MethodHandle cDowncall(String name, FunctionDescriptor fd) {
+        return LINKER.defaultLookup().find(name)
+          .map(symbol -> LINKER.downcallHandle(symbol, fd))
+          .orElseGet(() -> missingDowncall(name, fd));
+    }
+
+    static MethodHandle freeDowncall() {
+        return cDowncall("free", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
     }
 
     static MethodHandle unsupportedLegacyDowncall(String name,

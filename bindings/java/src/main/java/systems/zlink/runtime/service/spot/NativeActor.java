@@ -42,7 +42,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-public final class NativeActor implements Actor {
+final class NativeActor implements Actor {
     private SpotNode node;
     private ActorRef ref;
 

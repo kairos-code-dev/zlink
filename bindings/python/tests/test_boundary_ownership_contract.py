@@ -5,9 +5,9 @@ import zlink
 
 class BoundaryValidationContractTests(unittest.TestCase):
     def test_stream_attach_actor_gateway_requires_routed_node(self):
-        with zlink.Context() as ctx:
-            with zlink.StreamSocket(ctx) as stream:
-                with zlink.SpotNode(ctx, zlink.SpotNodeMode.PUBSUB) as node:
+        with zlink.create_context() as ctx:
+            with zlink.create_stream_socket(ctx) as stream:
+                with zlink.create_spot_node(ctx, zlink.SpotNodeMode.PUBSUB) as node:
                     with self.assertRaises(zlink.ConfigError) as raised:
                         stream.attach_actor_gateway(node)
                     self.assertEqual(raised.exception.result,
@@ -21,8 +21,8 @@ class BoundaryValidationContractTests(unittest.TestCase):
                 zlink.RoutingId.from_bytes(invalid)
 
     def test_endpoint_and_channel_name_reject_fixed_buffer_overflow(self):
-        with zlink.Context() as ctx:
-            with zlink.RouterSocket(ctx) as socket:
+        with zlink.create_context() as ctx:
+            with zlink.create_router_socket(ctx) as socket:
                 socket.set_channel_name(b"c" * 255)
                 self.assertEqual(socket.get_channel_name(), "c" * 255)
 
@@ -36,13 +36,13 @@ class BoundaryValidationContractTests(unittest.TestCase):
                     socket.bind("inproc://bad\0endpoint")
 
     def test_typed_numeric_options_reject_native_width_overflow(self):
-        with zlink.Context() as ctx:
+        with zlink.create_context() as ctx:
             with self.assertRaises(OverflowError):
                 ctx.options.io_threads = 1 << 31
             with self.assertRaises(OverflowError):
                 ctx.options.io_threads = -(1 << 31) - 1
 
-            with zlink.RouterSocket(ctx) as socket:
+            with zlink.create_router_socket(ctx) as socket:
                 socket.options.max_message_size = (1 << 63) - 1
                 self.assertEqual(socket.options.max_message_size, (1 << 63) - 1)
 
@@ -56,8 +56,8 @@ class BoundaryValidationContractTests(unittest.TestCase):
         self.assertEqual(zlink.SubmitRetryMode.LOCAL_FAILURE, 1)
 
     def test_submit_retry_options_roundtrip_and_validate_native_bounds(self):
-        with zlink.Context() as ctx:
-            with zlink.RouterSocket(ctx) as socket:
+        with zlink.create_context() as ctx:
+            with zlink.create_router_socket(ctx) as socket:
                 self.assertEqual(socket.options.submit_retry_mode,
                                  zlink.SubmitRetryMode.OFF)
                 self.assertEqual(socket.options.submit_retry_timeout_ms, 0)
@@ -84,7 +84,7 @@ class BoundaryValidationContractTests(unittest.TestCase):
 class OwnershipContractTests(unittest.TestCase):
     def test_message_copy_owns_bytes_independently_of_source_buffer(self):
         source = bytearray(b"payload")
-        with zlink.Message.from_(source) as message:
+        with zlink.create_message_from(source) as message:
             source[:] = b"changed"
             self.assertEqual(message.to_bytes(), b"payload")
 
@@ -93,7 +93,7 @@ class OwnershipContractTests(unittest.TestCase):
         self.assertEqual(message.to_bytes(), b"")
 
     def test_caller_provided_received_storage_close_is_idempotent_when_empty(self):
-        received = zlink.Received()
+        received = zlink.create_received()
 
         self.assertEqual(len(received), 0)
         with self.assertRaises(zlink.RecvError) as raised:

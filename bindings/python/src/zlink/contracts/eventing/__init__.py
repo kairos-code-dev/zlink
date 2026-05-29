@@ -5,8 +5,8 @@ _MONITOR_NAMES = {
     "MonitorStatus",
     "MonitorSocket",
 }
-_POLLER_NAMES = {"Poller", "PollEvent", "PollEvents"}
-_TIMER_NAMES = {"Timer"}
+_POLLER_NAMES = {"Poller", "PollEvent", "PollEvents", "create_poller", "create_poll_events"}
+_TIMER_NAMES = {"Timer", "create_timer", "create_timer_from_spot"}
 
 
 def __getattr__(name):

@@ -28,10 +28,25 @@ Python 리팩토링은 호환성을 단절하는 정리 작업이다. 호환성 
 `zlink`에서 프로젝션되고, 공개 계약 소스는 소문자 `contracts` 아래에 있으며,
 구현 세부는 `_runtime`, `_native`처럼 언더스코어 접두 패키지에 둔다.
 
+Python은 물리적 패키지 트리를 .NET 카테고리 맵에 가깝게 유지한다.
+`contracts/core`, `contracts/messaging`, `contracts/sockets`,
+`contracts/eventing`, `contracts/service`, `contracts/errors`가 공개 계약
+소유자다. `_runtime/`은 같은 카테고리를 미러링하고, `handles`, `buffers`,
+`options`, `_native` 같은 구현 전용 경계를 둔다. 네이티브 기반 리소스와 operation
+계약은 `typing.Protocol` 기반의 구조적 인터페이스로 선언한다. 구체 런타임 클래스는
+`_runtime` 아래에 있고, 호출자는 명시적인 `create_*` 팩토리나 공개 계약 메서드로
+생성한다.
+
 ## 공개 계약 소스
 
 - 공개 계약 소스: `bindings/python/src/zlink/contracts/`.
 - 패키지 프로젝션: `zlink`에서 내보내는 이름들.
+- 공개 리소스 계약: 네이티브 기반 리소스, 빌더, operation 핸들은
+  `typing.Protocol` 선언이다. 공개 표면을 설명하지만 생성자는 아니다.
+- 공개 생성: `create_context()`, `create_pair_socket(...)`,
+  `create_message_from(...)`, `create_poller()`, `create_spot_node(...)` 같은
+  패키지 루트 팩토리와 `Context.create_pair_socket()`,
+  `SpotNode.create_spot()` 같은 공개 계약 메서드가 담당한다.
 - 내부 구현: `_runtime`, `_native`처럼 언더스코어 접두 패키지, 비공개 확장 모듈,
   콜백 브리지 코드, request 진행 헬퍼, raw part-loop 헬퍼.
 - 문서 역할: 이 README는 형태와 의미 범위를 정의한다.
@@ -85,13 +100,11 @@ bindings/python/
 |   |   |   |   +-- subscription_event.py
 |   |   |   +-- sockets/
 |   |   |   |   +-- socket.py
-|   |   |   |   +-- pair_socket.py
-|   |   |   |   +-- dealer_socket.py
-|   |   |   |   +-- router_socket.py
-|   |   |   |   +-- pubsub_sockets.py
+|   |   |   |   +-- message_socket_contracts.py
+|   |   |   |   +-- routed_socket_contracts.py
+|   |   |   |   +-- pubsub_socket_contracts.py
 |   |   |   |   +-- stream_socket.py
 |   |   |   |   +-- socket_options.py
-|   |   |   |   +-- socket_operations.py
 |   |   |   +-- eventing/
 |   |   |   |   +-- monitor.py
 |   |   |   |   +-- poller.py
@@ -116,9 +129,13 @@ bindings/python/
 |   |   +-- _runtime/
 |   |   |   +-- core/
 |   |   |   |   +-- context.py
+|   |   |   +-- handles/
+|   |   |   |   +-- native_handle.py
 |   |   |   +-- messaging/
 |   |   |   |   +-- message_materializer.py
 |   |   |   |   +-- request_progress.py
+|   |   |   +-- buffers/
+|   |   |   |   +-- payload_buffers.py
 |   |   |   +-- sockets/
 |   |   |   |   +-- socket_base.py
 |   |   |   |   +-- pair_socket.py
@@ -145,6 +162,8 @@ bindings/python/
 |   |   |   +-- errors/
 |   |   |   |   +-- native_errors.py
 |   |   |   |   +-- validation.py
+|   |   |   +-- options/
+|   |   |   |   +-- option_mapping.py
 |   |   +-- _native/
 |   |   +-- native/
 +-- codecs/
@@ -164,13 +183,15 @@ bindings/python/
 
 새로운 코어 기능을 매핑할 때.
 
-1. 공개 클래스, 함수, enum, 예외, 타입 alias를 올바른 공개 패키지 카테고리에
-   추가한다.
-2. `zlink` 패키지 export, 타입 힌트, API 레퍼런스 프로젝션을 갱신한다.
-3. 네이티브 확장/FFI 호출과 request 진행 헬퍼는 비공개 모듈에 둔다.
-4. 비공개 모듈이 아니라 `zlink`를 import하는 테스트를 추가한다.
-5. 샘플과 perf는 공개 export만을 통해 갱신한다.
-6. 비공개 확장 객체가 반환 값이나 예외로 새지 않는지 확인한다.
+1. 공개 Protocol, 구체 값 클래스, 함수, enum, 예외, 타입 alias를 올바른 공개
+   패키지 카테고리에 추가한다.
+2. 호출자가 생성할 수 있는 네이티브 기반 리소스에는 명시적인 `create_*` 팩토리를
+   추가하거나 연결한다.
+3. `zlink` 패키지 export, 타입 힌트, API 레퍼런스 프로젝션을 갱신한다.
+4. 네이티브 확장/FFI 호출과 request 진행 헬퍼는 비공개 모듈에 둔다.
+5. 비공개 모듈이 아니라 `zlink`를 import하는 테스트를 추가한다.
+6. 샘플과 perf는 공개 export만을 통해 갱신한다.
+7. 비공개 확장 객체가 반환 값이나 예외로 새지 않는지 확인한다.
 
 기존 코드를 이 형태로 리팩토링할 때.
 
@@ -201,13 +222,16 @@ bindings/python/
 
 바인딩은 네이티브 백엔드를 가진 Python 패키지처럼 느껴져야 한다.
 
-- 공개 클래스가 네이티브 리소스 수명을 소유하고 `close()`를 제공한다.
-- 리소스 클래스는 가능한 경우 context manager 사용을 지원한다.
+- 네이티브 기반 공개 리소스, 빌더, 핸들러, 재사용 저장소 표면은
+  `zlink.contracts` 안의 `typing.Protocol` 계약으로 선언한다.
+- 계약 클래스는 호출 가능한 형태만 설명한다. `__new__` 안에 팩토리 로직을 숨기지
+  않고, 호출자는 계약 클래스를 직접 인스턴스화하지 않는다.
+- 구체 런타임 클래스는 네이티브 리소스 수명을 소유하고 `close()`를 제공하며,
+  가능한 경우 context manager 사용을 지원한다.
+- routing id, topology entry, enum 값, result 도메인, 예외처럼 순수 Python
+  데이터인 값과 스냅샷은 구체 타입으로 유지한다. 네이티브 기반 메시지와 수신
+  저장소는 런타임 구현이 구체 Python 클래스여도 팩토리로 생성한다.
 - 타입 힌트는 공개 호출 형태를 기술하지만, 비공개 네이티브 상태는 숨긴다.
-- 정적 타이핑에서 실제 호출자 복잡도를 줄여줄 때 `Protocol`을 사용할 수 있다.
-  명확한 런타임 API를 대체해서는 안 된다.
-- 메시지, routing id, 수신 메타데이터, 토픽 메시지, 스냅샷, 옵션, enum, 예외
-  같은 값은 구체적인 Python 타입으로 유지한다.
 - 네이티브 핸들, raw FFI 포인터, 콜백 userdata, request 펌프, part-loop
   시퀀싱은 비공개 모듈에 둔다.
 
@@ -228,6 +252,8 @@ perf나 샘플의 편의를 위해 비공개 확장 객체를 노출하지 않�
   프로젝션하며 비공개 런타임 모듈을 노출하지 않는다.
 - 런타임의 구체 클래스는 패키지 루트 팩토리 뒤에 있는 생성 대상이다. 호출자는
   비공개 모듈을 직접 import하지 않는다.
+- 계약 이름은 숨은 `__new__` 팩토리 dispatch를 구현하지 않는다. 대문자로 시작하는
+  계약 이름은 타입 표면이지 생성 단축 경로가 아니다.
 - 패키지 루트 팩토리는 런타임 구현을 연결하기 위해서만 `_runtime`을 import할 수
   있다. 그 공개 어노테이션은 비공개 런타임 클래스가 아니라 계약 이름을 사용한다.
 
@@ -278,19 +304,24 @@ import하지 않는다. 패키지 루트는 팩토리에서 런타임 구현을 
 공개 생성은 패키지 루트 팩토리와 공개 계약 메서드가 제공한다.
 
 - `create_context()`는 네이티브 기반 context 구현을 생성한다.
-- `Context.create_pair_socket()`, `create_dealer_socket()`,
-  `create_router_socket()`, `create_pub_socket()`, `create_sub_socket()`,
-  `create_xpub_socket()`, `create_xsub_socket()`, `create_stream_socket()`은
-  네이티브 기반 소켓 구현을 생성한다.
-- `Context.create_registry()`, `create_discovery(...)`,
-  `create_spot_node(...)`는 서비스 계층 구현을 생성한다.
+- `create_pair_socket(...)`, `create_dealer_socket(...)`,
+  `create_router_socket(...)`, `create_pub_socket(...)`,
+  `create_sub_socket(...)`, `create_xpub_socket(...)`,
+  `create_xsub_socket(...)`, `create_stream_socket(...)`은 네이티브 기반 소켓 구현을
+  생성한다. 대응하는 `Context.create_*` 메서드는 이 팩토리에 위임할 수 있다.
+- `create_registry(...)`, `create_discovery(...)`, `create_spot_node(...)`는 서비스
+  계층 구현을 생성한다. 대응하는 `Context.create_*` 메서드는 이 팩토리에 위임할
+  수 있다.
 - `Spot` 핸들은 `SpotNode.create_spot()`, `entry_spot()`,
   `get_or_create_spot(...)`, `spot_lookup(...)`을 통해 얻는다. `Spot`의 직접
   생성은 공개되지 않는다.
 - Actor 핸들은 `SpotNode.create_actor(...)`를 통해 생성한다. Actor의 직접 생성은
   공개되지 않는다.
-- `create_poller()`, `create_timer()`, `create_timer(spot)`은 eventing 리소스를
-  생성한다.
+- `create_poller()`, `create_poll_events(...)`, `create_timer()`,
+  `create_timer_from_spot(...)`은 eventing 리소스를 생성한다.
+- `create_message(...)`, `allocate_message(...)`, `create_message_from(...)`,
+  `create_received()`, `create_topic_message()`, `create_subscription_event()`는
+  재사용 가능한 messaging 저장소를 생성한다.
 - 버전, capability, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개 패키지
   함수다. 이 함수들 뒤의 네이티브 호출은 비공개 모듈에 둔다.
 
@@ -336,8 +367,9 @@ import하지 않는다. 패키지 루트는 팩토리에서 런타임 구현을 
   프로토콜 envelope 헬퍼를 노출하지 않는다. dealer는 `request()`로 request를
   시작할 수 있지만, API 수준의 피어 routing id가 없으므로 임의의 토큰에 답할 수
   없다.
-- 메시지 payload 팩토리는 `from`이 Python 키워드이므로 `Message.from_(...)`을
-  사용한다. `copy_from`과 `from_bytes`는 공개 계약의 일부가 아니다.
+- 메시지 payload 팩토리는 계약 Protocol 클래스가 생성 단축 경로가 아니므로
+  `create_message_from(...)`을 사용한다. `copy_from`, `from_bytes`,
+  `Message.from_(...)`은 공개 계약의 일부가 아니다.
 - `send_no_wait`, `publish_with_flags`, `request_async` 같은 operation-start
   메서드 패밀리를 추가하지 않는다. operation 이름은 하나로 유지하고 변이는
   빌더가 흡수하도록 둔다. 빌더의 terminal 메서드는 `submit_async` 같은 관용

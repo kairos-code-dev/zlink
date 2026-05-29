@@ -1,17 +1,19 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 from . import message as _message_contract
 from .received import _BaseReceived
 
 
-class TopicMessage(_BaseReceived):
-    def __new__(cls, *args, **kwargs):
-        if cls is TopicMessage:
-            return _message_contract._require(
-                _message_contract._topic_message_factory, "topic message"
-            )(*args, **kwargs)
-        return super().__new__(cls)
+def create_topic_message(*args, **kwargs):
+    return _message_contract._require(
+        _message_contract._topic_message_factory, "topic message"
+    )(*args, **kwargs)
 
+
+@runtime_checkable
+class TopicMessage(_BaseReceived, Protocol):
     @property
     def topic(self): ...
 

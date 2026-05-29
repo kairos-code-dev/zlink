@@ -5,6 +5,7 @@ import errno
 from dataclasses import dataclass, field
 
 from ...messaging.message_materializer import Message as _RuntimeMessage
+from ...messaging.message_materializer import Message
 from ....contracts.sockets.codes import SocketType
 from ....contracts.service.codes import (
     SpotActorLifecycleEventKind,
@@ -27,7 +28,6 @@ from ...._native.ffi import (
     lib,
 )
 from ...handles.native_support import (
-    Message,
     RecvError,
     RecvResult,
     RequestResult,

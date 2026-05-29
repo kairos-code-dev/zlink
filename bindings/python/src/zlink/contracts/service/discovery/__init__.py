@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: MPL-2.0
 
-from .discovery import Discovery, register_discovery_factories
+from .discovery import (
+    Discovery,
+    create_discovery,
+    create_registry,
+    create_registry_query_client,
+    register_discovery_factories,
+)
 from .discovery_models import SpotRoute
 from ..registry import (
     MemberPeerEntry,
@@ -15,6 +21,9 @@ from ..registry import (
 
 __all__ = [
     "Discovery",
+    "create_discovery",
+    "create_registry",
+    "create_registry_query_client",
     "MemberPeerEntry",
     "Registry",
     "RegistryQueryClient",

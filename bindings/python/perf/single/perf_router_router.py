@@ -64,8 +64,8 @@ def main(argv=None):
 
     with perf_context() as ctx:
         apply_single_auto_hwm_msg_unit(ctx, args.msg_size)
-        with zlink.RouterSocket(ctx) as server:
-            with zlink.RouterSocket(ctx) as client:
+        with zlink.create_router_socket(ctx) as server:
+            with zlink.create_router_socket(ctx) as client:
                 server.set_routing_id(b"SERVER")
                 client.set_routing_id(b"CLIENT")
                 client.router_options.connect_routing_id = b"SERVER"

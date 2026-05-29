@@ -47,7 +47,7 @@ def _active_slot_limit(total_slots, msg_size):
 
 def _drain_reply(spot, *, expected_msg_size, run_id, active_deadline, latencies, record):
     progressed = False
-    received = zlink.Received()
+    received = zlink.create_received()
     while True:
         try:
             has_received = spot.recv_routed_into(
@@ -105,8 +105,8 @@ def main(argv=None):
 
     with perf_client_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        data_node = zlink.SpotNode(ctx)
-        control_node = zlink.SpotNode(ctx)
+        data_node = zlink.create_spot_node(ctx)
+        control_node = zlink.create_spot_node(ctx)
         configure_multi_tls_server(data_node, args.transport)
         configure_multi_tls_client(data_node, args.transport)
         configure_multi_tls_server(control_node, args.transport)
@@ -141,8 +141,8 @@ def main(argv=None):
             spot = data_node.create_spot()
             spot.set_routing_id(f"SPOT-SENDSEND-{index}".encode("ascii"))
             spots.append(spot)
-        poller = zlink.Poller()
-        poll_events = zlink.PollEvents(max(1, len(spots)))
+        poller = zlink.create_poller()
+        poll_events = zlink.create_poll_events(max(1, len(spots)))
         for index, spot in enumerate(spots):
             poller.add_socket(spot, zlink.PollEventFlag.POLLIN, index)
 

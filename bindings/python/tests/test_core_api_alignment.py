@@ -16,7 +16,7 @@ def _tcp_endpoint():
 
 
 def _recv_text(sock):
-    received = zlink.Received()
+    received = zlink.create_received()
     sock.recv_into(received)
     with received:
         return received.single_part_or_throw().to_bytes()
@@ -56,17 +56,17 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.XPubSocket, "receive_subscription_event_into"))
         self.assertFalse(hasattr(zlink.SubSocket, "on_subscribe"))
         self.assertFalse(hasattr(zlink.XSubSocket, "on_subscribe"))
-        with zlink.Context() as ctx:
-            with zlink.PubSocket(ctx) as pub:
+        with zlink.create_context() as ctx:
+            with zlink.create_pub_socket(ctx) as pub:
                 self.assertTrue(hasattr(pub, "pub_options"))
                 self.assertFalse(hasattr(pub, "publisher_options"))
-            with zlink.SubSocket(ctx) as sub:
+            with zlink.create_sub_socket(ctx) as sub:
                 self.assertTrue(hasattr(sub, "sub_options"))
                 self.assertFalse(hasattr(sub, "subscriber_options"))
-            with zlink.XPubSocket(ctx) as xpub:
+            with zlink.create_xpub_socket(ctx) as xpub:
                 self.assertTrue(hasattr(xpub, "pub_options"))
                 self.assertFalse(hasattr(xpub, "publisher_options"))
-            with zlink.XSubSocket(ctx) as xsub:
+            with zlink.create_xsub_socket(ctx) as xsub:
                 self.assertTrue(hasattr(xsub, "sub_options"))
                 self.assertFalse(hasattr(xsub, "subscriber_options"))
         self.assertFalse(hasattr(zlink.MonitorSocket, "try_recv"))
@@ -160,7 +160,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertEqual(remote.generation, 0)
 
     def test_context_options_use_snake_case(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
             self.assertTrue(hasattr(ctx.options, "io_threads"))
@@ -183,10 +183,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertFalse(hasattr(ctx.options, "maxSockets"))
 
     def test_common_socket_options_include_canonical_typed_accessors(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.PairSocket(ctx) as sock:
+            with zlink.create_pair_socket(ctx) as sock:
                 self.assertTrue(hasattr(sock, "get_channel_name"))
                 self.assertTrue(hasattr(sock, "set_channel_name"))
                 self.assertFalse(hasattr(sock.options, "auto_hwm_msg_unit_bytes"))
@@ -204,15 +204,15 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 self.assertIn("reconnect_interval_max_ms", dir(options))
 
     def test_pair_send_and_recv_use_flags(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.PairSocket(ctx) as sender:
-                with zlink.PairSocket(ctx) as receiver:
+            with zlink.create_pair_socket(ctx) as sender:
+                with zlink.create_pair_socket(ctx) as receiver:
                     endpoint = "inproc://py-canonical-pair"
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
-                    received = zlink.Received()
+                    received = zlink.create_received()
                     self.assertFalse(
                         receiver.recv_into(received, flags=zlink.RecvFlags.DONT_WAIT)
                     )
@@ -226,18 +226,18 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
 
     def test_poller_wait_uses_reusable_event_buffer(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.PairSocket(ctx) as sender:
-                with zlink.PairSocket(ctx) as receiver:
+            with zlink.create_pair_socket(ctx) as sender:
+                with zlink.create_pair_socket(ctx) as receiver:
                     endpoint = "inproc://py-poller-wait"
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
-                    with zlink.Poller() as poller:
+                    with zlink.create_poller() as poller:
                         poller.add_socket(receiver, zlink.PollEventFlag.POLLIN, 7)
                         sender.send().message(b"poller").submit()
-                        events = zlink.PollEvents(4)
+                        events = zlink.create_poll_events(4)
                         count = poller.wait(events, 1000)
                         self.assertEqual(count, 1)
                         self.assertEqual(events.ready_count, 1)
@@ -249,19 +249,19 @@ class CoreApiAlignmentTests(unittest.TestCase):
 
     def test_poller_rejects_empty_event_buffer_and_negative_slot(self):
         with self.assertRaises(ValueError):
-            zlink.PollEvents(0)
-        with zlink.Poller() as poller:
+            zlink.create_poll_events(0)
+        with zlink.create_poller() as poller:
             with self.assertRaises(ValueError):
                 poller.add_fd(0, zlink.PollEventFlag.POLLIN, -1)
 
     def test_poller_capacity_preserves_remaining_ready_sources(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.PairSocket(ctx) as sender1:
-                with zlink.PairSocket(ctx) as receiver1:
-                    with zlink.PairSocket(ctx) as sender2:
-                        with zlink.PairSocket(ctx) as receiver2:
+            with zlink.create_pair_socket(ctx) as sender1:
+                with zlink.create_pair_socket(ctx) as receiver1:
+                    with zlink.create_pair_socket(ctx) as sender2:
+                        with zlink.create_pair_socket(ctx) as receiver2:
                             endpoint1 = f"inproc://py-poller-capacity-a-{id(self)}"
                             endpoint2 = f"inproc://py-poller-capacity-b-{id(self)}"
                             sender1.bind(endpoint1)
@@ -269,7 +269,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                             sender2.bind(endpoint2)
                             receiver2.connect(endpoint2)
 
-                            with zlink.Poller() as poller:
+                            with zlink.create_poller() as poller:
                                 poller.add_socket(
                                     receiver1, zlink.PollEventFlag.POLLIN, 101
                                 )
@@ -279,7 +279,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                                 sender1.send().message(b"a").submit()
                                 sender2.send().message(b"b").submit()
 
-                                events = zlink.PollEvents(1)
+                                events = zlink.create_poll_events(1)
                                 count = poller.wait(events, 1000)
                                 self.assertEqual(count, 1)
                                 first_slot = events.slot(0)
@@ -298,16 +298,16 @@ class CoreApiAlignmentTests(unittest.TestCase):
                                     self.assertEqual(_recv_text(receiver2), b"b")
 
     def test_poller_modify_remove_and_timeout_follow_core_semantics(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.PairSocket(ctx) as sender:
-                with zlink.PairSocket(ctx) as receiver:
+            with zlink.create_pair_socket(ctx) as sender:
+                with zlink.create_pair_socket(ctx) as receiver:
                     endpoint = f"inproc://py-poller-modify-remove-{id(self)}"
                     sender.bind(endpoint)
                     receiver.connect(endpoint)
-                    with zlink.Poller() as poller:
-                        events = zlink.PollEvents(1)
+                    with zlink.create_poller() as poller:
+                        events = zlink.create_poll_events(1)
                         poller.add_socket(receiver, zlink.PollEventFlag.POLLIN, 31)
                         poller.modify_socket(receiver, zlink.PollEventFlag(0))
                         sender.send().message(b"hidden").submit()
@@ -323,17 +323,17 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         self.assertEqual(poller.wait(events, 0), 0)
 
     def test_poller_distinguishes_timer_and_socket_in_same_buffer(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.PairSocket(ctx) as sender:
-                with zlink.PairSocket(ctx) as receiver:
-                    with zlink.Timer() as timer:
+            with zlink.create_pair_socket(ctx) as sender:
+                with zlink.create_pair_socket(ctx) as receiver:
+                    with zlink.create_timer() as timer:
                         endpoint = f"inproc://py-poller-timer-socket-{id(self)}"
                         sender.bind(endpoint)
                         receiver.connect(endpoint)
-                        with zlink.Poller() as poller:
-                            events = zlink.PollEvents(2)
+                        with zlink.create_poller() as poller:
+                            events = zlink.create_poll_events(2)
                             poller.add_socket(receiver, zlink.PollEventFlag.POLLIN, 41)
                             poller.add_timer(timer, 42)
                             sender.send().message(b"socket").submit()
@@ -358,10 +358,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
                             self.assertTrue(saw_timer)
 
     def test_nonblocking_send_raises_submit_error(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.RouterSocket(ctx) as router:
+            with zlink.create_router_socket(ctx) as router:
                 router.options.mandatory = True
                 with self.assertRaises(zlink.SubmitError) as cm:
                     router.send(b"UNKNOWN").message(b"payload").flags(
@@ -370,11 +370,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 self.assertEqual(cm.exception.result, zlink.SubmitResult.NOT_CONNECTED)
 
     def test_pubsub_canonical_roundtrip(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.PubSocket(ctx) as publisher:
-                with zlink.SubSocket(ctx) as subscriber:
+            with zlink.create_pub_socket(ctx) as publisher:
+                with zlink.create_sub_socket(ctx) as subscriber:
                     endpoint = "inproc://py-canonical-pubsub"
                     publisher.bind(endpoint)
                     subscriber.connect(endpoint)
@@ -382,7 +382,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     publisher.publish(b"topic").message(b"payload").flags(
                         zlink.SendFlags.NONE
                     ).submit()
-                    received = zlink.TopicMessage()
+                    received = zlink.create_topic_message()
                     self.assertTrue(
                         subscriber.subscribe_into(received, flags=zlink.RecvFlags.NONE)
                     )
@@ -391,10 +391,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         self.assertEqual(received.single_part_or_throw().to_bytes(), b"payload")
 
     def test_monitor_surface_uses_recv_and_status(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.PairSocket(ctx) as sock:
+            with zlink.create_pair_socket(ctx) as sock:
                 with sock.monitor_open() as monitor:
                     self.assertFalse(hasattr(monitor, "try_recv"))
                     self.assertTrue(hasattr(monitor, "ignore_handler"))
@@ -411,10 +411,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     )
 
     def test_request_reply_canonical_roundtrip(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         async def scenario():
-            with zlink.RouterSocket(ctx) as router_socket:
+            with zlink.create_router_socket(ctx) as router_socket:
                 self.assertTrue(hasattr(router_socket, "request"))
                 self.assertFalse(hasattr(router_socket, "request_callback"))
                 self.assertTrue(hasattr(router_socket, "reply"))
@@ -424,13 +424,13 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 self.assertTrue(hasattr(router_socket, "reply_to_spot"))
                 self.assertFalse(hasattr(router_socket, "recv_spot"))
                 self.assertFalse(hasattr(router_socket, "on_spot_receive"))
-                with zlink.DealerSocket(ctx) as dealer_socket:
+                with zlink.create_dealer_socket(ctx) as dealer_socket:
                     endpoint = "inproc://py-canonical-request-reply"
                     router_socket.bind(endpoint)
                     dealer_socket.connect(endpoint)
 
                     def responder():
-                        received = zlink.Received()
+                        received = zlink.create_received()
                         self.assertTrue(router_socket.recv_into(received))
                         with received:
                             received.reply().message(b"pong").submit()
@@ -446,10 +446,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_spot_surface_and_pubsub_roundtrip(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.SpotNode(ctx) as node:
+            with zlink.create_spot_node(ctx) as node:
                 with self.assertRaises(TypeError):
                     zlink.Spot(node)
                 node.set_routing_id(b"node-1")
@@ -492,7 +492,7 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertTrue(hasattr(spot, "receive_subscription_event_into"))
                     self.assertFalse(hasattr(spot, "on_subscribe"))
 
-            with zlink.SpotNode(ctx) as loopback_node:
+            with zlink.create_spot_node(ctx) as loopback_node:
                 with loopback_node.create_spot() as loopback_spot:
                     loopback_spot.set_subscription(TOPIC)
                     subjects = loopback_node.subjects()
@@ -501,10 +501,10 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     )
 
     def test_discovery_surface_exposes_resolution_without_dealer_peer_mode(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.Discovery(
+            with zlink.create_discovery(
                 ctx, zlink.AutoConnectType.CLIENT_SERVER, "svc"
             ) as discovery:
                 self.assertTrue(hasattr(discovery, "resolve_spot"))
@@ -514,29 +514,29 @@ class CoreApiAlignmentTests(unittest.TestCase):
                 self.assertFalse(hasattr(zlink, "DiscoveryDealerPeerMode"))
 
     def test_message_and_routing_id_helpers_use_canonical_names(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
         ctx.close()
 
         rid = zlink.RoutingId.from_bytes(b"peer-1")
         self.assertEqual(rid.to_bytes(), b"peer-1")
         self.assertEqual(rid.size, 6)
         self.assertEqual(str(rid), "peer-1")
-        self.assertTrue(hasattr(zlink.Message, "from_"))
+        self.assertTrue(hasattr(zlink, "create_message_from"))
         self.assertFalse(hasattr(zlink.Message, "copy_from"))
         self.assertFalse(hasattr(zlink.Message, "from_bytes"))
 
     def test_message_does_not_expose_borrowed_wrap_surface(self):
         self.assertFalse(hasattr(zlink.Message, "wrap_buffer"))
-        self.assertTrue(hasattr(zlink.Message, "_wrap_buffer"))
+        self.assertFalse(hasattr(zlink.Message, "_wrap_buffer"))
 
     def test_async_request_surface_rejects_flags_without_callback(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.DealerSocket(ctx) as dealer:
+            with zlink.create_dealer_socket(ctx) as dealer:
                 op = dealer.request().message(b"payload").flags(zlink.SendFlags.NONE)
                 self.assertFalse(hasattr(op, "submit_async"))
-            with zlink.RouterSocket(ctx) as router:
+            with zlink.create_router_socket(ctx) as router:
                 peer_rid = zlink.RoutingId.from_bytes(b"peer")
                 spot_rid = zlink.RoutingId.from_bytes(b"spot")
                 op = router.request(peer_rid).message(b"payload").flags(
@@ -556,13 +556,13 @@ class CoreApiAlignmentTests(unittest.TestCase):
             def _set_pub_bool_option(self, _option, _enabled):
                 raise AssertionError("setter should not be called")
 
-        options = zlink.PubSocketOptions(_BrokenSocket())
+        options = zlink.create_pub_socket_options(_BrokenSocket())
         with self.assertRaises(zlink.ConfigError) as cm:
             _ = options.manual
         self.assertEqual(cm.exception.result, zlink.ConfigResult.NOT_SUPPORTED)
 
     def test_message_diagnostics_and_copy_helpers(self):
-        with zlink.Message.from_(b"payload") as message:
+        with zlink.create_message_from(b"payload") as message:
             self.assertEqual(message.size(), 7)
             self.assertEqual(message.to_bytes(), b"payload")
             self.assertEqual(bytes(message.data), b"payload")
@@ -578,14 +578,14 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertTrue(message.try_copy_to(bytearray(7)))
             self.assertFalse(message.try_copy_to(bytearray(6)))
 
-            with zlink.Message.from_(message) as copy:
+            with zlink.create_message_from(message) as copy:
                 self.assertEqual(copy.to_bytes(), b"payload")
                 self.assertIsNot(copy, message)
 
-        with zlink.Message.from_("text") as message:
+        with zlink.create_message_from("text") as message:
             self.assertEqual(message.to_bytes(), b"text")
 
-        with zlink.Message.allocate(3) as message:
+        with zlink.allocate_message(3) as message:
             data = message.data
             data[0] = 0x01
             data[1] = 0x02
@@ -593,27 +593,27 @@ class CoreApiAlignmentTests(unittest.TestCase):
             self.assertEqual(message.to_bytes(), b"\x01\x02\x03")
             self.assertFalse(message.is_empty())
 
-        with zlink.Message.allocate(0) as message:
+        with zlink.allocate_message(0) as message:
             self.assertTrue(message.is_empty())
 
     def test_c_string_inputs_reject_embedded_nul(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
 
         with ctx:
-            with zlink.PubSocket(ctx) as publisher:
+            with zlink.create_pub_socket(ctx) as publisher:
                 with self.assertRaises(ValueError):
                     publisher.publish(b"bad\0topic").message(b"payload").submit()
 
-            with zlink.SubSocket(ctx) as subscriber:
+            with zlink.create_sub_socket(ctx) as subscriber:
                 with self.assertRaises(ValueError):
                     subscriber.set_subscription(b"bad\0topic")
 
-            with zlink.SpotNode(ctx) as node:
+            with zlink.create_spot_node(ctx) as node:
                 with node.create_spot() as spot:
                     with self.assertRaises(ValueError):
                         spot.publish(b"bad\0topic").message(b"payload").submit()
 
-            with zlink.PairSocket(ctx) as pair:
+            with zlink.create_pair_socket(ctx) as pair:
                 with self.assertRaises(ValueError):
                     pair.bind("tcp://127.0.0.1\0:5555")
 
@@ -624,13 +624,13 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertIsInstance(zlink.strerror(0), str)
         self.assertIsInstance(zlink.has("tls"), bool)
 
-        with zlink.AtomicCounter() as counter:
+        with zlink.create_atomic_counter() as counter:
             counter.set(3)
             self.assertEqual(counter.value, 3)
             self.assertEqual(counter.increment(), 3)
             self.assertEqual(counter.decrement(), 1)
 
-        with zlink.Stopwatch() as watch:
+        with zlink.create_stopwatch() as watch:
             self.assertGreaterEqual(watch.intermediate(), 0)
             self.assertGreaterEqual(watch.stop(), 0)
 
@@ -639,11 +639,11 @@ class CoreApiAlignmentTests(unittest.TestCase):
         def _target():
             done.set()
 
-        thread = zlink.Thread(_target)
+        thread = zlink.create_thread(_target)
         thread.join()
         self.assertTrue(done.is_set())
 
-        with zlink.Timer() as timer:
+        with zlink.create_timer() as timer:
             self.assertIsNotNone(timer)
 
 

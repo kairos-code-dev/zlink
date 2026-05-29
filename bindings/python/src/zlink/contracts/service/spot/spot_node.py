@@ -1,18 +1,14 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 from ...core.options import AutoHwmProfile
 from ..codes import SpotNodeMode
 from . import spot as _spot_contract
 
 
-class SpotNode:
-    def __new__(cls, ctx, mode: int | SpotNodeMode | None = None):
-        if cls is SpotNode:
-            return _spot_contract._require(
-                _spot_contract._spot_node_factory, "spot node"
-            )(ctx, mode)
-        return object.__new__(cls)
-
+@runtime_checkable
+class SpotNode(Protocol):
     def set_pub_bind(self, endpoint: str): ...
     def set_router_bind(self, endpoint: str): ...
     def last_endpoint(self) -> str: ...

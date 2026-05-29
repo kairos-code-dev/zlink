@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 from .codes import PollSourceKind
 
@@ -23,14 +24,14 @@ class PollEvent:
     fd: int = 0
 
 
-class PollEvents:
-    def __new__(cls, capacity):
-        if cls is PollEvents:
-            if _poll_events_factory is None:
-                raise RuntimeError("zlink poll events runtime is not registered")
-            return _poll_events_factory(capacity)
-        return super().__new__(cls)
+def create_poll_events(capacity):
+    if _poll_events_factory is None:
+        raise RuntimeError("zlink poll events runtime is not registered")
+    return _poll_events_factory(capacity)
 
+
+@runtime_checkable
+class PollEvents(Protocol):
     @property
     def capacity(self): ...
 
@@ -50,14 +51,14 @@ class PollEvents:
     def event(self, index): ...
 
 
-class Poller:
-    def __new__(cls):
-        if cls is Poller:
-            if _poller_factory is None:
-                raise RuntimeError("zlink poller runtime is not registered")
-            return _poller_factory()
-        return super().__new__(cls)
+def create_poller():
+    if _poller_factory is None:
+        raise RuntimeError("zlink poller runtime is not registered")
+    return _poller_factory()
 
+
+@runtime_checkable
+class Poller(Protocol):
     def add_socket(self, socket, events, slot): ...
 
     def add_fd(self, fd, events, slot): ...

@@ -45,22 +45,22 @@ def main(argv=None):
 
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        with zlink.DealerSocket(ctx) as dealer:
+        with zlink.create_dealer_socket(ctx) as dealer:
             configure_multi_tls_server(dealer, args.transport)
             apply_multi_socket_options(dealer)
             with dealer.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as monitor:
                 dealer.bind(endpoint)
                 print(f"READY,{endpoint}", flush=True)
-                with zlink.Poller() as poller:
+                with zlink.create_poller() as poller:
                     poller.add_socket(dealer, zlink.PollEventFlag.POLLIN, 0)
-                    poll_events = zlink.PollEvents(1)
+                    poll_events = zlink.create_poll_events(1)
                     start_event.wait()
                     if stop_event.is_set():
                         return
                     active_deadline = time.perf_counter() + active_duration_s
                     latencies = []
                     count = 0
-                    recv_storage = zlink.Received()
+                    recv_storage = zlink.create_received()
 
                     def drain_ready():
                         # C receive_one_message + drain_non_blocking_messages:

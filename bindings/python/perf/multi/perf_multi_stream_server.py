@@ -34,7 +34,7 @@ def main(argv=None):
 
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        with zlink.StreamSocket(ctx) as server:
+        with zlink.create_stream_socket(ctx) as server:
             configure_multi_tls_server(server, args.transport)
             apply_multi_socket_options(server)
             server.options.tcp_no_delay = True
@@ -79,9 +79,9 @@ def main(argv=None):
             # (perf_aux_poll_wait_ms == 100ms); idle poll when empty. The
             # POLLIN data path is the installed packet handler above.
             aux_wait_ms = 100
-            with zlink.Poller() as poller:
+            with zlink.create_poller() as poller:
                 poller.add_socket(server, zlink.PollEventFlag.POLLOUT, 0)
-                poll_events = zlink.PollEvents(1)
+                poll_events = zlink.create_poll_events(1)
                 while not stop.is_set():
                     with pending_lock:
                         has_pending = bool(pending)

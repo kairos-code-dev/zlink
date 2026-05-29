@@ -71,8 +71,8 @@ def main(argv=None):
 
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        data_node = zlink.SpotNode(ctx)
-        control_node = zlink.SpotNode(ctx)
+        data_node = zlink.create_spot_node(ctx)
+        control_node = zlink.create_spot_node(ctx)
         configure_multi_tls_server(data_node, args.transport)
         configure_multi_tls_server(control_node, args.transport)
         configure_multi_tls_client(control_node, args.transport)

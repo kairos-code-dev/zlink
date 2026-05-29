@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 _common_socket_options_factory = None
 _dealer_socket_options_factory = None
 _stream_socket_options_factory = None
@@ -38,25 +40,43 @@ def _require(factory, name):
 
 
 def _stub_get(self):
-    raise NotImplementedError
+    ...
 
 
 def _stub_set(self, value):
-    raise NotImplementedError
+    ...
 
 
 def _contract_property():
     return property(_stub_get, _stub_set)
 
 
-class CommonSocketOptions:
-    def __new__(cls, socket):
-        if cls is CommonSocketOptions:
-            return _require(_common_socket_options_factory, "common socket options")(
-                socket
-            )
-        return super().__new__(cls)
+def create_common_socket_options(socket):
+    return _require(_common_socket_options_factory, "common socket options")(socket)
 
+
+def create_dealer_socket_options(socket):
+    return _require(_dealer_socket_options_factory, "dealer socket options")(socket)
+
+
+def create_stream_socket_options(socket):
+    return _require(_stream_socket_options_factory, "stream socket options")(socket)
+
+
+def create_sub_socket_options(socket):
+    return _require(_sub_socket_options_factory, "sub socket options")(socket)
+
+
+def create_pub_socket_options(socket):
+    return _require(_pub_socket_options_factory, "pub socket options")(socket)
+
+
+def create_router_socket_options(socket):
+    return _require(_router_socket_options_factory, "router socket options")(socket)
+
+
+@runtime_checkable
+class CommonSocketOptions(Protocol):
     linger_ms = _contract_property()
     send_high_water_mark = _contract_property()
     receive_high_water_mark = _contract_property()
@@ -80,46 +100,26 @@ class CommonSocketOptions:
     submit_retry_attempts = _contract_property()
 
 
-class DealerSocketOptions:
-    def __new__(cls, socket):
-        if cls is DealerSocketOptions:
-            return _require(_dealer_socket_options_factory, "dealer socket options")(
-                socket
-            )
-        return super().__new__(cls)
-
+@runtime_checkable
+class DealerSocketOptions(Protocol):
     probe = _contract_property()
     weight = _contract_property()
     request_timeout_ms = _contract_property()
 
 
-class StreamSocketOptions:
-    def __new__(cls, socket):
-        if cls is StreamSocketOptions:
-            return _require(_stream_socket_options_factory, "stream socket options")(
-                socket
-            )
-        return super().__new__(cls)
-
+@runtime_checkable
+class StreamSocketOptions(Protocol):
     notify = _contract_property()
 
 
-class SubSocketOptions:
-    def __new__(cls, socket):
-        if cls is SubSocketOptions:
-            return _require(_sub_socket_options_factory, "sub socket options")(socket)
-        return super().__new__(cls)
-
+@runtime_checkable
+class SubSocketOptions(Protocol):
     @property
     def topics_count(self): ...
 
 
-class PubSocketOptions:
-    def __new__(cls, socket):
-        if cls is PubSocketOptions:
-            return _require(_pub_socket_options_factory, "pub socket options")(socket)
-        return super().__new__(cls)
-
+@runtime_checkable
+class PubSocketOptions(Protocol):
     verbose = _contract_property()
     verboser = _contract_property()
     manual = _contract_property()
@@ -135,14 +135,8 @@ class PubSocketOptions:
     def reject_subscribe(self, routing_id): ...
 
 
-class RouterSocketOptions:
-    def __new__(cls, socket):
-        if cls is RouterSocketOptions:
-            return _require(_router_socket_options_factory, "router socket options")(
-                socket
-            )
-        return super().__new__(cls)
-
+@runtime_checkable
+class RouterSocketOptions(Protocol):
     mandatory = _contract_property()
     handover = _contract_property()
     probe = _contract_property()

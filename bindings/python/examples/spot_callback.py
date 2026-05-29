@@ -6,9 +6,9 @@ import zlink
 
 
 def main():
-    with zlink.Context() as ctx:
-        with zlink.SpotNode(ctx) as pub_node:
-            with zlink.SpotNode(ctx) as sub_node:
+    with zlink.create_context() as ctx:
+        with zlink.create_spot_node(ctx) as pub_node:
+            with zlink.create_spot_node(ctx) as sub_node:
                 with pub_node.create_spot() as pub_spot:
                     with sub_node.create_spot() as sub_spot:
                         pub_node.set_pub_bind("tcp://127.0.0.1:0")
@@ -16,7 +16,7 @@ def main():
                         sub_node.connect_peer(endpoint)
                         sub_spot.set_subscription(b"room:lobby")
                         deadline = time.monotonic() + 5.0
-                        received = zlink.TopicMessage()
+                        received = zlink.create_topic_message()
                         while time.monotonic() < deadline:
                             pub_spot.publish("room:lobby").message(b"hello-spot").submit()
                             try:

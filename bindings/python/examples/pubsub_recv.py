@@ -7,9 +7,9 @@ from sample_common import tcp_endpoint, wait_connected
 
 def main():
     port, endpoint = tcp_endpoint()
-    with zlink.Context() as ctx:
-        with zlink.PubSocket(ctx) as pub:
-            with zlink.SubSocket(ctx) as sub:
+    with zlink.create_context() as ctx:
+        with zlink.create_pub_socket(ctx) as pub:
+            with zlink.create_sub_socket(ctx) as sub:
                 with pub.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as pub_mon:
                     with sub.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as sub_mon:
                         pub.bind(endpoint)
@@ -18,7 +18,7 @@ def main():
                         wait_connected(pub_mon, sub_mon)
 
                 pub.publish(b"prices").message(b"101.25").submit()
-                received = zlink.TopicMessage()
+                received = zlink.create_topic_message()
                 assert sub.subscribe_into(received)
                 with received:
                     topic = received.topic

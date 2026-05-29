@@ -58,8 +58,8 @@ def main(argv=None):
 
     with perf_context() as ctx:
         apply_single_auto_hwm_msg_unit(ctx, args.msg_size)
-        with zlink.RouterSocket(ctx) as router:
-            with zlink.DealerSocket(ctx) as dealer:
+        with zlink.create_router_socket(ctx) as router:
+            with zlink.create_dealer_socket(ctx) as dealer:
                 endpoint = resolve_single_endpoint(args.transport, "dealer-router")
                 apply_single_socket_options(router, dealer)
                 configure_single_tls_server(router, args.transport)

@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
 
-class Actor:
+
+@runtime_checkable
+class Actor(Protocol):
     def ref(self): ...
 
     @property

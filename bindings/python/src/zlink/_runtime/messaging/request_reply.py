@@ -12,7 +12,6 @@ from ..handles.native_support import (
     HandlerResult,
     RecvError,
     RecvResult,
-    Received,
     RequestError,
     RequestResult,
     RoutingId,
@@ -30,7 +29,8 @@ from ..handles.native_support import (
     _raise_result_error,
     _routing_id_bytes,
 )
-from .message_materializer import Message
+from .message_materializer import Message, Received
+from ...contracts.messaging.message import create_message_from
 from ..sockets.socket_base import _enter_callback, _leave_callback
 from ..._native.ffi import ZlinkPollerEvent, lib
 
@@ -66,7 +66,7 @@ def _clone_payload(payload):
         if isinstance(part, Message):
             parts.append(_clone_native_msg(part._msg))
         else:
-            copied = Message.from_(part)
+            copied = create_message_from(part)
             parts.append(_clone_native_msg(copied._msg))
             copied.close()
     return parts

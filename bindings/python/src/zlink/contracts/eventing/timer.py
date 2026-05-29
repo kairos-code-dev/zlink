@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 _timer_factory = None
 _spot_timer_factory = None
 
@@ -11,22 +13,20 @@ def register_timer_factories(*, timer_factory, spot_timer_factory):
     _spot_timer_factory = spot_timer_factory
 
 
-class Timer:
-    def __new__(cls):
-        if cls is Timer:
-            if _timer_factory is None:
-                raise RuntimeError("zlink timer runtime is not registered")
-            return _timer_factory()
-        return super().__new__(cls)
+def create_timer():
+    if _timer_factory is None:
+        raise RuntimeError("zlink timer runtime is not registered")
+    return _timer_factory()
 
-    @classmethod
-    def from_spot(cls, spot):
-        if cls is Timer:
-            if _spot_timer_factory is None:
-                raise RuntimeError("zlink spot timer runtime is not registered")
-            return _spot_timer_factory(spot)
-        raise TypeError("Timer.from_spot is only supported on Timer")
 
+def create_timer_from_spot(spot):
+    if _spot_timer_factory is None:
+        raise RuntimeError("zlink spot timer runtime is not registered")
+    return _spot_timer_factory(spot)
+
+
+@runtime_checkable
+class Timer(Protocol):
     def start(self, interval_ns: int, repeat_count: int) -> None: ...
 
     def stop(self) -> None: ...

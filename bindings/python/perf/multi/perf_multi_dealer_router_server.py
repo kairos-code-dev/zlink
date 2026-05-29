@@ -35,19 +35,19 @@ def main(argv=None):
 
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        with zlink.RouterSocket(ctx) as router:
+        with zlink.create_router_socket(ctx) as router:
             configure_multi_tls_server(router, args.transport)
             apply_multi_socket_options(router)
             router.bind(endpoint)
             print(f"READY,{endpoint}", flush=True)
-            with zlink.Poller() as poller:
+            with zlink.create_poller() as poller:
                 poller.add_socket(
                     router,
                     zlink.PollEventFlag.POLLIN | zlink.PollEventFlag.POLLOUT,
                     0,
                 )
-                poll_events = zlink.PollEvents(1)
-                recv_storage = zlink.Received()
+                poll_events = zlink.create_poll_events(1)
+                recv_storage = zlink.create_received()
                 # PERF_MULTI_TEST_POLICY § 1.3.1: signal-driven wait. The
                 # echo server has no in-band phase end of its own; the
                 # runner shuts it down via stdin STOP/EOF and SIGTERM.

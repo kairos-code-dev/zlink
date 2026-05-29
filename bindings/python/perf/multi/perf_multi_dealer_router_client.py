@@ -41,7 +41,7 @@ def main(argv=None):
 
     with perf_client_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        sockets = [zlink.DealerSocket(ctx) for _ in range(args.clients)]
+        sockets = [zlink.create_dealer_socket(ctx) for _ in range(args.clients)]
         try:
             with ExitStack() as stack:
                 monitors = []
@@ -62,9 +62,9 @@ def main(argv=None):
                     )
 
                 active_deadline = time.perf_counter() + args.duration
-                recv_storage = [zlink.Received() for _ in sockets]
-                with zlink.Poller() as poller:
-                    poll_events = zlink.PollEvents(max(1, len(sockets)))
+                recv_storage = [zlink.create_received() for _ in sockets]
+                with zlink.create_poller() as poller:
+                    poll_events = zlink.create_poll_events(max(1, len(sockets)))
                     for index, sock in enumerate(sockets):
                         poller.add_socket(
                             sock,

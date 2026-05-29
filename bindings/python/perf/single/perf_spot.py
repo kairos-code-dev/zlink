@@ -85,8 +85,8 @@ def main(argv=None):
         # C single perf_spot.cpp: registry / discovery are NULL. The
         # publisher node binds and the subscriber node connect-peers
         # directly; no registry/discovery bootstrap in the measured path.
-        with zlink.SpotNode(ctx) as publisher_node:
-            with zlink.SpotNode(ctx) as subscriber_node:
+        with zlink.create_spot_node(ctx) as publisher_node:
+            with zlink.create_spot_node(ctx) as subscriber_node:
                 apply_single_spot_node_admission(
                     publisher_node, subscriber_node
                 )
@@ -138,7 +138,7 @@ def main(argv=None):
                                 ):
                                     return
                                 unpack_from = struct.unpack_from
-                                message = zlink.TopicMessage()
+                                message = zlink.create_topic_message()
                                 while True:
                                     received_message = _spot_subscribe_once(
                                         current_spot, message

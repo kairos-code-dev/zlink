@@ -39,7 +39,7 @@ def main(argv=None):
 
     with perf_client_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        sockets = [zlink.DealerSocket(ctx) for _ in range(args.clients)]
+        sockets = [zlink.create_dealer_socket(ctx) for _ in range(args.clients)]
         try:
             with ExitStack() as stack:
                 monitors = []
@@ -64,8 +64,8 @@ def main(argv=None):
 
                 active_deadline = time.perf_counter() + args.duration
                 send_pending = [False] * len(sockets)
-                with zlink.Poller() as poller:
-                    poll_events = zlink.PollEvents(max(1, len(sockets)))
+                with zlink.create_poller() as poller:
+                    poll_events = zlink.create_poll_events(max(1, len(sockets)))
                     for index, sock in enumerate(sockets):
                         poller.add_socket(sock, zlink.PollEventFlag.POLLOUT, index)
                     # C run_send_window: per socket, send DONTWAIT until

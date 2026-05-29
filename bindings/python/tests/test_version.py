@@ -25,31 +25,31 @@ class VersionTests(unittest.TestCase):
         self.assertEqual((major, minor, patch), (expected_major, expected_minor, expected_patch))
 
     def test_pair_send_recv(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
         with ctx:
-            with zlink.PairSocket(ctx) as s1:
-                with zlink.PairSocket(ctx) as s2:
+            with zlink.create_pair_socket(ctx) as s1:
+                with zlink.create_pair_socket(ctx) as s2:
                     endpoint = "inproc://py-pair"
                     s1.bind(endpoint)
                     s2.connect(endpoint)
                     payload = b"ping"
                     s1.send().message(payload).submit()
-                    received = zlink.Received()
+                    received = zlink.create_received()
                     self.assertTrue(s2.recv_into(received))
                     with received:
                         self.assertEqual(received.to_bytes_list(), [payload])
 
     def test_received_part_data_is_zero_copy_view(self):
-        ctx = zlink.Context()
+        ctx = zlink.create_context()
         with ctx:
-            with zlink.PairSocket(ctx) as s1:
-                with zlink.PairSocket(ctx) as s2:
+            with zlink.create_pair_socket(ctx) as s1:
+                with zlink.create_pair_socket(ctx) as s2:
                     endpoint = "inproc://py-pair-data"
                     s1.bind(endpoint)
                     s2.connect(endpoint)
                     payload = b"header-and-body-payload"
                     s1.send().message(payload).submit()
-                    received = zlink.Received()
+                    received = zlink.create_received()
                     self.assertTrue(s2.recv_into(received))
                     with received:
                         part = received.first_part()

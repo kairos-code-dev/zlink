@@ -5,9 +5,9 @@ from sample_support import tcp_endpoint, wait_connected
 def main():
     _, endpoint = tcp_endpoint()
 
-    with zlink.Context() as ctx:
-        with zlink.XPubSocket(ctx) as publisher:
-            with zlink.SubSocket(ctx) as subscriber:
+    with zlink.create_context() as ctx:
+        with zlink.create_xpub_socket(ctx) as publisher:
+            with zlink.create_sub_socket(ctx) as subscriber:
                 with publisher.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as publisher_monitor:
                     with subscriber.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as subscriber_monitor:
                         publisher.bind(endpoint)
@@ -15,13 +15,13 @@ def main():
                         subscriber.set_subscription(b"prices")
                         wait_connected(publisher_monitor, subscriber_monitor)
 
-                event = zlink.SubscriptionEvent()
+                event = zlink.create_subscription_event()
                 if not publisher.receive_subscription_event_into(event):
                     raise AssertionError("missing subscription event")
                 if not event.subscribed or event.topic != "prices":
                     raise AssertionError("unexpected subscription event")
                 publisher.publish(b"prices").message(b"101.25").submit()
-                received = zlink.TopicMessage()
+                received = zlink.create_topic_message()
                 assert subscriber.subscribe_into(received)
                 with received:
                     if received.topic != "prices":

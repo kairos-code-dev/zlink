@@ -9,8 +9,8 @@ from sample_support import tcp_endpoint, wait_socket_monitor_event
 def main():
     port, endpoint = tcp_endpoint()
 
-    with zlink.Context() as ctx:
-        with zlink.StreamSocket(ctx) as server:
+    with zlink.create_context() as ctx:
+        with zlink.create_stream_socket(ctx) as server:
             with server.monitor_open(zlink.MonitorEventMask.ACCEPTED) as server_monitor:
                 done = threading.Event()
                 observed = {}

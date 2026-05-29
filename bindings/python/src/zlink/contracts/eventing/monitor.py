@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 from .codes import MonitorEventMask
 
 _socket_monitor_factory = None
@@ -72,7 +74,8 @@ class MonitorEvent:
         self.local_addr = local_addr
         self.remote_addr = remote_addr
 
-class MonitorSocket:
+@runtime_checkable
+class MonitorSocket(Protocol):
     ignore_handler = staticmethod(lambda event: None)
 
     def status(self): ...

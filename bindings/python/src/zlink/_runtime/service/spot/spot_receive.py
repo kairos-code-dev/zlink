@@ -2,15 +2,17 @@
 
 import ctypes
 
-from ...messaging.message_materializer import Message as _RuntimeMessage
-from ....contracts.messaging.received import ReceivedMessage
+from ...messaging.message_materializer import (
+    Message as _RuntimeMessage,
+    Received,
+    ReceivedMessage,
+    SubscriptionEvent,
+    TopicMessage,
+)
 from ...._native.ffi import ZLINK_PART_FINAL, ZlinkMsg, ZlinkRoutingId, lib
 from ...handles.native_support import (
-    Received,
-    TopicMessage,
     RecvError,
     RecvResult,
-    SubscriptionEvent,
     _ReceivedPartsOwner,
     _clone_native_msg,
     _decode_topic_text,

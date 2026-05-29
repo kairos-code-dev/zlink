@@ -78,7 +78,7 @@ def _env_int(name, default):
 
 def perf_context():
     zlink_mod = _require_zlink()
-    ctx = zlink_mod.Context()
+    ctx = zlink_mod.create_context()
     io_threads = _env_int("PERF_IO_THREADS", 1)
     if io_threads > 0:
         ctx.options.io_threads = io_threads
@@ -90,9 +90,9 @@ def poll_idle_ms(timeout_ms=1):
     state = getattr(_idle_wait_local, "state", None)
     if state is None:
         zlink_mod = _require_zlink()
-        timer = zlink_mod.Timer()
-        poller = zlink_mod.Poller()
-        events = zlink_mod.PollEvents(1)
+        timer = zlink_mod.create_timer()
+        poller = zlink_mod.create_poller()
+        events = zlink_mod.create_poll_events(1)
         poller.add_timer(timer, 0)
         state = (timer, poller, events)
         _idle_wait_local.state = state
@@ -220,9 +220,9 @@ def apply_single_spot_node_admission(*nodes):
 def _recv_storage(method):
     zlink_mod = _require_zlink()
     if method == "recv":
-        return zlink_mod.Received()
+        return zlink_mod.create_received()
     if method == "subscribe":
-        return zlink_mod.TopicMessage()
+        return zlink_mod.create_topic_message()
     raise ValueError(f"unsupported recv method: {method}")
 
 
@@ -413,8 +413,8 @@ def publish_nonblocking(sock, topic, payload):
 
 def new_socket_poller(sock, events):
     zlink_mod = _require_zlink()
-    poller = zlink_mod.Poller()
-    poll_events = zlink_mod.PollEvents(1)
+    poller = zlink_mod.create_poller()
+    poll_events = zlink_mod.create_poll_events(1)
     poller.add_socket(sock, events, 0)
     return poller, poll_events
 

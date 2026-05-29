@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 _utility_implementation = None
 _stopwatch_factory = None
 _thread_factory = None
@@ -57,28 +59,57 @@ def multipart_close(parts):
     return _implementation().multipart_close(parts)
 
 
-class Stopwatch:
-    def __new__(cls):
-        if cls is Stopwatch:
-            if _stopwatch_factory is None:
-                raise RuntimeError("zlink stopwatch runtime is not registered")
-            return _stopwatch_factory()
-        return super().__new__(cls)
+def create_stopwatch():
+    if _stopwatch_factory is None:
+        raise RuntimeError("zlink stopwatch runtime is not registered")
+    return _stopwatch_factory()
 
 
-class Thread:
-    def __new__(cls, target):
-        if cls is Thread:
-            if _thread_factory is None:
-                raise RuntimeError("zlink thread runtime is not registered")
-            return _thread_factory(target)
-        return super().__new__(cls)
+def create_thread(target):
+    if _thread_factory is None:
+        raise RuntimeError("zlink thread runtime is not registered")
+    return _thread_factory(target)
 
 
-class AtomicCounter:
-    def __new__(cls):
-        if cls is AtomicCounter:
-            if _atomic_counter_factory is None:
-                raise RuntimeError("zlink atomic counter runtime is not registered")
-            return _atomic_counter_factory()
-        return super().__new__(cls)
+def create_atomic_counter():
+    if _atomic_counter_factory is None:
+        raise RuntimeError("zlink atomic counter runtime is not registered")
+    return _atomic_counter_factory()
+
+
+@runtime_checkable
+class Stopwatch(Protocol):
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+    def elapsed_ns(self) -> int: ...
+
+
+@runtime_checkable
+class Thread(Protocol):
+    def start(self) -> None: ...
+
+    def join(self) -> None: ...
+
+
+@runtime_checkable
+class AtomicCounter(Protocol):
+    def set(self, value: int) -> None: ...
+
+    def increment(self) -> int: ...
+
+    def decrement(self) -> int: ...
+
+    @property
+    def value(self) -> int: ...
+
+    def close(self) -> None: ...
+
+    def __enter__(self): ...
+
+    def __exit__(self, exc_type, exc, tb): ...
+
+    async def __aenter__(self): ...
+
+    async def __aexit__(self, exc_type, exc, tb): ...

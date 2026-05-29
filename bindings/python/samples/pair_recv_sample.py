@@ -5,9 +5,9 @@ from sample_support import tcp_endpoint, wait_connected
 def main():
     _, endpoint = tcp_endpoint()
 
-    with zlink.Context() as ctx:
-        with zlink.PairSocket(ctx) as server:
-            with zlink.PairSocket(ctx) as client:
+    with zlink.create_context() as ctx:
+        with zlink.create_pair_socket(ctx) as server:
+            with zlink.create_pair_socket(ctx) as client:
                 with server.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as server_monitor:
                     with client.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as client_monitor:
                         server.bind(endpoint)
@@ -15,7 +15,7 @@ def main():
                         wait_connected(server_monitor, client_monitor)
 
                 client.send().message(b"hello-pair").submit()
-                received = zlink.Received()
+                received = zlink.create_received()
                 if not server.recv_into(received):
                     raise AssertionError("expected pair payload")
                 with received:

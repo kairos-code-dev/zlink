@@ -14,9 +14,9 @@ def main():
     port = _reserve_tcp_port()
     endpoint = f"tcp://127.0.0.1:{port}"
 
-    with zlink.Context() as ctx:
-        with zlink.PairSocket(ctx) as server:
-            with zlink.PairSocket(ctx) as client:
+    with zlink.create_context() as ctx:
+        with zlink.create_pair_socket(ctx) as server:
+            with zlink.create_pair_socket(ctx) as client:
                 with server.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as server_monitor:
                     with client.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as client_monitor:
                         if server_monitor.status().is_ready():

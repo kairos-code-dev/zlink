@@ -114,8 +114,8 @@ def main(argv=None):
 
     with perf_client_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        data_node = zlink.SpotNode(ctx)
-        control_node = zlink.SpotNode(ctx)
+        data_node = zlink.create_spot_node(ctx)
+        control_node = zlink.create_spot_node(ctx)
         configure_multi_tls_client(data_node, args.transport)
         configure_multi_tls_server(control_node, args.transport)
         configure_multi_tls_client(control_node, args.transport)
@@ -184,8 +184,8 @@ def main(argv=None):
         sample_stride = _latency_sample_stride()
         active_deadline = time.perf_counter() + args.duration
         _trace(f"active-start duration={args.duration} clients={len(spots)}")
-        with zlink.Poller() as poller:
-            poll_events = zlink.PollEvents(max(1, len(spots)))
+        with zlink.create_poller() as poller:
+            poll_events = zlink.create_poll_events(max(1, len(spots)))
             for index, spot in enumerate(spots):
                 poller.add_socket(spot, zlink.PollEventFlag.POLLIN, index)
             while time.perf_counter() < active_deadline:
@@ -207,7 +207,7 @@ def main(argv=None):
                     if index < 0 or index >= len(spots):
                         continue
                     current_spot = spots[index]
-                    storage = zlink.TopicMessage()
+                    storage = zlink.create_topic_message()
                     while True:
                         if time.perf_counter() >= active_deadline:
                             expired = True

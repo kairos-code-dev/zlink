@@ -118,7 +118,7 @@ def _env_int(name, default):
 
 def _perf_context(primary_env):
     zlink_mod = _require_zlink()
-    ctx = zlink_mod.Context()
+    ctx = zlink_mod.create_context()
     default_io_threads = _env_int(
         "PERF_MULTI_DEFAULT_IO_THREADS",
         _env_int("PERF_DEFAULT_IO_THREADS", PYTHON_MULTI_DEFAULT_IO_THREADS),
@@ -298,8 +298,8 @@ def publish_control_payload(control_pub, payload, *, timeout_s=None):
 
 def new_spot_poller(spot, events):
     zlink_mod = _require_zlink()
-    poller = zlink_mod.Poller()
-    poll_events = zlink_mod.PollEvents(1)
+    poller = zlink_mod.create_poller()
+    poll_events = zlink_mod.create_poll_events(1)
     poller.add_socket(spot, events, 0)
     return poller, poll_events
 
@@ -334,7 +334,7 @@ def wait_spot_poller_until(poller, events, deadline, max_wait_s):
 
 def receive_control_payload(control_sub):
     zlink_mod = _require_zlink()
-    message = zlink_mod.TopicMessage()
+    message = zlink_mod.create_topic_message()
     try:
         received = control_sub.subscribe_into(
             message, flags=zlink_mod.RecvFlags.DONT_WAIT
@@ -378,11 +378,11 @@ def recv_nonblocking(sock, *, method="recv", storage=None):
     if method == "recv":
         recv_method = sock.recv_into
         if storage is None:
-            storage = zlink_mod.Received()
+            storage = zlink_mod.create_received()
     elif method == "subscribe":
         recv_method = sock.subscribe_into
         if storage is None:
-            storage = zlink_mod.TopicMessage()
+            storage = zlink_mod.create_topic_message()
     else:
         raise ValueError(f"unsupported recv method: {method}")
     try:
@@ -473,7 +473,7 @@ def wait_for_command_line(stream, *, deadline):
 
 
 def attach_spot_service_pair(ctx, node, channel_name):
-    dealer = _require_zlink().DealerSocket(ctx)
+    dealer = _require_zlink().create_dealer_socket(ctx)
     node.attach_channel_dealer_manual(channel_name, dealer)
     return dealer, None
 

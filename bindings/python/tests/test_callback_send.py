@@ -30,7 +30,7 @@ TOPIC = b"spot:callback"
 
 class CallbackSendTests(unittest.TestCase):
     def setUp(self):
-        self.ctx = zlink.Context()
+        self.ctx = zlink.create_context()
 
     def tearDown(self):
         if hasattr(self, "ctx") and self.ctx is not None:
@@ -38,7 +38,7 @@ class CallbackSendTests(unittest.TestCase):
 
     def test_stream_send_inside_on_packet_raises_explicit_error(self):
         port, endpoint = _tcp_endpoint()
-        stream = zlink.StreamSocket(self.ctx)
+        stream = zlink.create_stream_socket(self.ctx)
 
         done = threading.Event()
         callback_error = []
@@ -69,7 +69,7 @@ class CallbackSendTests(unittest.TestCase):
         stream.close()
 
     def test_spot_send_inside_on_dispatch_event_raises_explicit_error(self):
-        node = zlink.SpotNode(self.ctx)
+        node = zlink.create_spot_node(self.ctx)
         spot = node.create_spot()
         done = threading.Event()
         callback_error = []

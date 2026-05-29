@@ -3,8 +3,9 @@
 from .actor import Actor
 from .spot import (
     Spot,
+    create_spot,
+    create_spot_node,
     register_spot_factories,
-    register_spot_implementation_types,
     remote_actor_ref,
 )
 from .spot_models import (
@@ -68,6 +69,8 @@ __all__ = [
     "RequestOp",
     "SendOp",
     "Spot",
+    "create_spot",
+    "create_spot_node",
     "SpotActorLifecycleEvent",
     "SpotActorLifecycleInfo",
     "SpotDispatchInfo",
@@ -83,5 +86,4 @@ __all__ = [
     "SpotNodeSubjectFilter",
     "remote_actor_ref",
     "register_spot_factories",
-    "register_spot_implementation_types",
 ]

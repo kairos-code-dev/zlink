@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 _pair_socket_factory = None
 _dealer_socket_factory = None
 _router_socket_factory = None
@@ -8,7 +10,6 @@ _pub_socket_factory = None
 _sub_socket_factory = None
 _xpub_socket_factory = None
 _xsub_socket_factory = None
-_implementation_socket_types = {}
 
 
 def register_socket_factories(
@@ -46,24 +47,41 @@ def _require(factory, name):
     return factory
 
 
-def register_socket_implementation_types(**implementation_types):
-    _implementation_socket_types.update(implementation_types)
+def create_pair_socket(context=None):
+    return _require(_pair_socket_factory, "pair socket")(context)
 
 
-class _SocketContractMeta(type):
-    def __instancecheck__(cls, instance):
-        implementation_type = _implementation_socket_types.get(cls.__name__)
-        if implementation_type is not None and isinstance(instance, implementation_type):
-            return True
-        return type.__instancecheck__(cls, instance)
+def create_dealer_socket(context=None):
+    return _require(_dealer_socket_factory, "dealer socket")(context)
 
 
-class _SocketContract(metaclass=_SocketContractMeta):
+def create_router_socket(context=None):
+    return _require(_router_socket_factory, "router socket")(context)
+
+
+def create_stream_socket(context=None):
+    return _require(_stream_socket_factory, "stream socket")(context)
+
+
+def create_pub_socket(context=None):
+    return _require(_pub_socket_factory, "pub socket")(context)
+
+
+def create_sub_socket(context=None):
+    return _require(_sub_socket_factory, "sub socket")(context)
+
+
+def create_xpub_socket(context=None):
+    return _require(_xpub_socket_factory, "xpub socket")(context)
+
+
+def create_xsub_socket(context=None):
+    return _require(_xsub_socket_factory, "xsub socket")(context)
+
+
+@runtime_checkable
+class _SocketContract(Protocol):
     def bind(self, endpoint): ...
-
-    def connect(self, endpoint): ...
-
-    def disconnect(self, endpoint): ...
 
     def close(self): ...
 

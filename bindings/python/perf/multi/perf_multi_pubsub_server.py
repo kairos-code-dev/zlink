@@ -47,7 +47,7 @@ def main(argv=None):
 
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        with zlink.PubSocket(ctx) as publisher:
+        with zlink.create_pub_socket(ctx) as publisher:
             configure_multi_tls_server(publisher, args.transport)
             apply_multi_socket_options(publisher)
             publisher.bind(endpoint)

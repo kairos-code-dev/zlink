@@ -8,20 +8,20 @@ TOPIC = b"room:lobby"
 
 
 def main():
-    with zlink.Context() as ctx:
+    with zlink.create_context() as ctx:
         _, registry_pub_endpoint = tcp_endpoint()
         _, registry_router_endpoint = tcp_endpoint()
         _, publisher_endpoint = tcp_endpoint()
         _, subscriber_endpoint = tcp_endpoint()
-        with zlink.Registry(ctx) as registry:
-            with zlink.Discovery(
+        with zlink.create_registry(ctx) as registry:
+            with zlink.create_discovery(
                 ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME
             ) as publisher_discovery:
-                with zlink.Discovery(
+                with zlink.create_discovery(
                     ctx, zlink.AutoConnectType.SPOT_MESH, SERVICE_NAME
                 ) as subscriber_discovery:
-                    with zlink.SpotNode(ctx) as publisher_node:
-                        with zlink.SpotNode(ctx) as subscriber_node:
+                    with zlink.create_spot_node(ctx) as publisher_node:
+                        with zlink.create_spot_node(ctx) as subscriber_node:
                             with publisher_node.create_spot() as publisher:
                                 with subscriber_node.create_spot() as subscriber:
                                     publisher_node.set_routing_id(
@@ -64,7 +64,7 @@ def main():
                                         publisher.publish(TOPIC).message(
                                             b"hello-spot"
                                         ).submit()
-                                        received = zlink.TopicMessage()
+                                        received = zlink.create_topic_message()
                                         try:
                                             has_received = subscriber.subscribe_into(
                                                 received,

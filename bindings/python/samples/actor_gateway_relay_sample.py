@@ -11,8 +11,8 @@ from sample_support import (
 
 def main():
     port, endpoint = tcp_endpoint()
-    with zlink.Context() as ctx:
-        with zlink.SpotNode(ctx) as node:
+    with zlink.create_context() as ctx:
+        with zlink.create_spot_node(ctx) as node:
             with node.create_spot() as spot:
                 actor = node.actor("player-1")
                 actor_ref = actor.ref()
@@ -37,7 +37,7 @@ def main():
 
                 spot.on_dispatch_event(on_dispatch)
 
-                with zlink.StreamSocket(ctx) as stream:
+                with zlink.create_stream_socket(ctx) as stream:
                     stream.attach_actor_gateway(node)
                     with stream.monitor_open(zlink.MonitorEventMask.ACCEPTED) as monitor:
                         stream.bind(endpoint)
@@ -48,7 +48,7 @@ def main():
                                 monitor, zlink.MonitorEventMask.ACCEPTED
                             )
                             client.sendall(b"hello")
-                            stream_msg = zlink.Received()
+                            stream_msg = zlink.create_received()
                             if not stream.recv_into(stream_msg):
                                 raise AssertionError("expected stream payload")
                             with stream_msg:

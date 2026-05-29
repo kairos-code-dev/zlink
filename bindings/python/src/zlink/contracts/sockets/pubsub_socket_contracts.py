@@ -1,72 +1,66 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 from . import socket as _socket_contract
 
 
-class PubSocket(_socket_contract._SocketContract):
-    def __new__(cls, context=None):
-        if cls is PubSocket:
-            return _socket_contract._require(
-                _socket_contract._pub_socket_factory, "pub socket"
-            )(context)
-        return object.__new__(cls)
-
+@runtime_checkable
+class PubSocket(_socket_contract._SocketContract, Protocol):
     @property
     def pub_options(self): ...
+
+    def connect(self, endpoint): ...
+
+    def disconnect(self, endpoint): ...
 
     def publish(self, topic): ...
 
 
-class SubSocket(_socket_contract._SocketContract):
-    def __new__(cls, context=None):
-        if cls is SubSocket:
-            return _socket_contract._require(
-                _socket_contract._sub_socket_factory, "sub socket"
-            )(context)
-        return object.__new__(cls)
-
+@runtime_checkable
+class SubSocket(_socket_contract._SocketContract, Protocol):
     @property
     def sub_options(self): ...
 
-    def subscribe(self, topic): ...
+    def connect(self, endpoint): ...
 
-    def unsubscribe(self, topic): ...
+    def disconnect(self, endpoint): ...
 
-    def recv(self, *, flags=0): ...
+    def set_subscription(self, topic): ...
 
-    def recv_into(self, topic_message, *, flags=0): ...
+    def unset_subscription(self, topic): ...
+
+    def subscribe_into(self, topic_message, *, flags=0): ...
 
 
-class XPubSocket(_socket_contract._SocketContract):
-    def __new__(cls, context=None):
-        if cls is XPubSocket:
-            return _socket_contract._require(
-                _socket_contract._xpub_socket_factory, "xpub socket"
-            )(context)
-        return object.__new__(cls)
-
+@runtime_checkable
+class XPubSocket(_socket_contract._SocketContract, Protocol):
     @property
     def pub_options(self): ...
+
+    def connect(self, endpoint): ...
+
+    def disconnect(self, endpoint): ...
 
     def publish(self, topic): ...
 
     def receive_subscription_event_into(self, event, *, flags=0): ...
 
 
-class XSubSocket(_socket_contract._SocketContract):
-    def __new__(cls, context=None):
-        if cls is XSubSocket:
-            return _socket_contract._require(
-                _socket_contract._xsub_socket_factory, "xsub socket"
-            )(context)
-        return object.__new__(cls)
-
+@runtime_checkable
+class XSubSocket(_socket_contract._SocketContract, Protocol):
     @property
     def sub_options(self): ...
 
-    def subscribe(self, topic): ...
+    def connect(self, endpoint): ...
 
-    def unsubscribe(self, topic): ...
+    def disconnect(self, endpoint): ...
+
+    def set_subscription(self, topic): ...
+
+    def unset_subscription(self, topic): ...
+
+    def subscribe_into(self, topic_message, *, flags=0): ...
 
 
 __all__ = ["PubSocket", "SubSocket", "XPubSocket", "XSubSocket"]

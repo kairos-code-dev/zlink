@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: MPL-2.0
 
+import errno
 from dataclasses import dataclass
 
 from ...core.routing_id import RoutingId
+from ...errors import RecvError
 from ...eventing.monitor import MonitorStatus
 from ...messaging.message import Message
-from ...sockets.codes import SocketType
+from ...sockets.codes import RecvResult, SocketType
 from ..codes import (
     SpotActorLifecycleEventKind,
     SpotDispatchEvent,
@@ -29,7 +31,9 @@ class SpotDispatchInfo:
     channel_dealer: object | None = None
     actor: "ActorRef | None" = None
 
-    def recv_actor_part(self, *, flags=0): ...
+    def recv_actor_part(self, *, flags=0):
+        err = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
+        raise RecvError(RecvResult.NOT_SUPPORTED, err)
 
 
 @dataclass(frozen=True)

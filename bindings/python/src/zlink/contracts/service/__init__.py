@@ -1,6 +1,12 @@
 # SPDX-License-Identifier: MPL-2.0
 
-from .discovery import Discovery, SpotRoute
+from .discovery import (
+    Discovery,
+    SpotRoute,
+    create_discovery,
+    create_registry,
+    create_registry_query_client,
+)
 from .registry import (
     MemberPeerEntry,
     Registry,
@@ -34,12 +40,17 @@ from .spot import (
     SpotNodeStatus,
     SpotNodeSubjectEntry,
     SpotNodeSubjectFilter,
+    create_spot,
+    create_spot_node,
     remote_actor_ref,
 )
 from .spot.spot_operations import ReplyOp, RequestCallbackOp, RequestOp, SendOp
 
 __all__ = [
     "Discovery",
+    "create_discovery",
+    "create_registry",
+    "create_registry_query_client",
     "MemberPeerEntry",
     "Registry",
     "RegistryQueryClient",
@@ -58,6 +69,8 @@ __all__ = [
     "ActorRef",
     "ActorRoute",
     "Spot",
+    "create_spot",
+    "create_spot_node",
     "SpotActorLifecycleEvent",
     "SpotActorLifecycleInfo",
     "SpotDispatchInfo",

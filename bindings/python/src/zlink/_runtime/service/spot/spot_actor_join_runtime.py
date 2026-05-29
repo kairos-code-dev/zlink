@@ -13,7 +13,6 @@ from ....contracts.service.codes import SpotActorLifecycleEventKind
 from ...handles.native_support import (
     ConfigError,
     ConfigResult,
-    Message,
     RecvError,
     RecvResult,
     SubmitError,
@@ -21,6 +20,7 @@ from ...handles.native_support import (
     _raise_result_error,
     _routing_id_bytes,
 )
+from ...messaging.message_materializer import Message
 from .actor_ops import ActorJoinReplyOp
 from .native_parts import (
     close_native_parts as _close_native_parts,

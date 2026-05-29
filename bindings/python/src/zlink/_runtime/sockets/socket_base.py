@@ -28,11 +28,12 @@ from ..buffers.payload_buffers import (
     _read_int64,
 )
 from ...contracts.sockets.socket_options import (
-    CommonSocketOptions,
-    DealerSocketOptions,
-    StreamSocketOptions,
-    SubSocketOptions,
+    create_common_socket_options,
+    create_dealer_socket_options,
+    create_stream_socket_options,
+    create_sub_socket_options,
 )
+from ..messaging.message_materializer import Message, Received, TopicMessage
 from ..handles.native_support import (
     BindError,
     CloseError,
@@ -40,11 +41,8 @@ from ..handles.native_support import (
     ConnectError,
     HandlerError,
     HandlerResult,
-    Message,
     RecvError,
     RecvResult,
-    Received,
-    TopicMessage,
     SubmitError,
     ZlinkRoutingId,
     _SOCKET_RECV_HANDLER,
@@ -278,7 +276,7 @@ class _BaseSocket:
         self._dispatcher = CallbackDispatcher(
             "zlink-socket-dispatch", _enter_callback, _leave_callback
         )
-        self._options = CommonSocketOptions(self)
+        self._options = create_common_socket_options(self)
 
     @property
     def options(self):
@@ -633,7 +631,7 @@ class _DealerOptionSocket(_Socket):
 
     @property
     def dealer_options(self):
-        return DealerSocketOptions(self)
+        return create_dealer_socket_options(self)
 
 
 class _RouterOptionSocket(_Socket):
@@ -671,7 +669,7 @@ class _StreamOptionSocket(_Socket):
 
     @property
     def stream_options(self):
-        return StreamSocketOptions(self)
+        return create_stream_socket_options(self)
 
 
 class _PublisherOptionSocket(_Socket):
@@ -691,7 +689,7 @@ class _SubscriberOptionSocket(_Socket):
 
     @property
     def sub_options(self):
-        return SubSocketOptions(self)
+        return create_sub_socket_options(self)
 
 
 class _MessageSocket(_Socket):

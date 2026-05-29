@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 METADATA_KEY_USER_MIN = 0x0100
 METADATA_VALUE_MAX = 65535
 
@@ -56,30 +58,24 @@ def _require(factory, name):
     return factory
 
 
-class Message:
-    def __new__(cls, size: int | None = None):
-        if cls is Message:
-            return _require(_message_factory, "message")(size)
-        return super().__new__(cls)
+def create_message(size: int | None = None):
+    return _require(_message_factory, "message")(size)
 
-    @classmethod
-    def allocate(cls, size: int):
-        if cls is Message:
-            return _require(_message_allocate_factory, "message allocate")(size)
-        return cls(size)
 
-    @classmethod
-    def from_(cls, data):
-        if cls is Message:
-            return _require(_message_from_factory, "message from")(data)
-        raise NotImplementedError
+def allocate_message(size: int):
+    return _require(_message_allocate_factory, "message allocate")(size)
 
-    @classmethod
-    def _wrap_buffer(cls, data):
-        if cls is Message:
-            return _require(_message_wrap_buffer_factory, "message buffer")(data)
-        raise NotImplementedError
 
+def create_message_from(data):
+    return _require(_message_from_factory, "message from")(data)
+
+
+def wrap_message_buffer(data):
+    return _require(_message_wrap_buffer_factory, "message buffer")(data)
+
+
+@runtime_checkable
+class Message(Protocol):
     def copy(self): ...
 
     def size(self): ...

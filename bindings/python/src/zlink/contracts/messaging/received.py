@@ -1,27 +1,27 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 from ..errors.errors import RecvError, SubmitError
 from ..sockets.codes import RecvResult, SubmitResult
 from . import message as _message_contract
 
 
-class ReceivedMessage:
-    def __new__(cls, *args, **kwargs):
-        if cls is ReceivedMessage:
-            return _message_contract._require(
-                _message_contract._received_message_factory, "received message"
-            )(*args, **kwargs)
-        return super().__new__(cls)
+def create_received_message(*args, **kwargs):
+    return _message_contract._require(
+        _message_contract._received_message_factory, "received message"
+    )(*args, **kwargs)
 
-    @classmethod
-    def _from_owner(cls, owner, index, routing_id=None):
-        if cls is ReceivedMessage:
-            return _message_contract._require(
-                _message_contract._received_message_from_owner_factory,
-                "received message",
-            )(owner, index, routing_id)
-        return cls(routing_id=routing_id, owner=owner, index=index)
 
+def received_message_from_owner(owner, index, routing_id=None):
+    return _message_contract._require(
+        _message_contract._received_message_from_owner_factory,
+        "received message",
+    )(owner, index, routing_id)
+
+
+@runtime_checkable
+class ReceivedMessage(Protocol):
     def __len__(self): ...
 
     @property
@@ -40,7 +40,7 @@ class ReceivedMessage:
     async def __aexit__(self, exc_type, exc, tb): ...
 
 
-class _BaseReceived:
+class _BaseReceived(Protocol):
     _owner = None
     parts = ()
 
@@ -85,27 +85,27 @@ class _BaseReceived:
         self.close()
 
 
-class ReceivedMultipart(_BaseReceived):
-    def __new__(cls, *args, **kwargs):
-        if cls is ReceivedMultipart:
-            return _message_contract._require(
-                _message_contract._received_multipart_factory, "received multipart"
-            )(*args, **kwargs)
-        return super().__new__(cls)
+def create_received_multipart(*args, **kwargs):
+    return _message_contract._require(
+        _message_contract._received_multipart_factory, "received multipart"
+    )(*args, **kwargs)
 
+
+@runtime_checkable
+class ReceivedMultipart(_BaseReceived, Protocol):
     def _adopt_from(self, source): ...
 
     def _replace(self, owner, routing_id=None, request_seq=None, **kwargs): ...
 
 
-class Received(ReceivedMultipart):
-    def __new__(cls, *args, **kwargs):
-        if cls is Received:
-            return _message_contract._require(
-                _message_contract._received_factory, "received"
-            )(*args, **kwargs)
-        return super().__new__(cls)
+def create_received(*args, **kwargs):
+    return _message_contract._require(
+        _message_contract._received_factory, "received"
+    )(*args, **kwargs)
 
+
+@runtime_checkable
+class Received(ReceivedMultipart, Protocol):
     def send(self):
         if self._send_sender is None:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)

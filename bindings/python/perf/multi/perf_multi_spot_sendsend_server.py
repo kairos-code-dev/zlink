@@ -27,7 +27,7 @@ SERVER_SPOT_RID = b"SPOT-SENDSEND-SERVER-SPOT"
 
 
 def _drain_replier(replier):
-    received = zlink.Received()
+    received = zlink.create_received()
     while True:
         try:
             has_received = replier.recv_routed_into(
@@ -79,8 +79,8 @@ def main(argv=None):
 
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        data_node = zlink.SpotNode(ctx)
-        control_node = zlink.SpotNode(ctx)
+        data_node = zlink.create_spot_node(ctx)
+        control_node = zlink.create_spot_node(ctx)
         configure_multi_tls_server(data_node, args.transport)
         configure_multi_tls_server(control_node, args.transport)
         configure_multi_tls_client(control_node, args.transport)
@@ -109,8 +109,8 @@ def main(argv=None):
         print(f"CONTROL_READY,{control_endpoint}", flush=True)
 
         threading.Thread(target=stdin_loop, args=(control_node,), daemon=True).start()
-        poller = zlink.Poller()
-        poll_events = zlink.PollEvents(1)
+        poller = zlink.create_poller()
+        poll_events = zlink.create_poll_events(1)
         poller.add_socket(replier, zlink.PollEventFlag.POLLIN, 0)
 
         ready_units = 0

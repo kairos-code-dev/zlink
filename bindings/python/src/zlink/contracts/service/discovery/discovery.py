@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 _registry_factory = None
 _discovery_factory = None
 _registry_query_client_factory = None
@@ -25,7 +27,22 @@ def _require(factory, name):
     return factory
 
 
-class _ClosableContract:
+def create_registry(ctx):
+    return _require(_registry_factory, "registry")(ctx)
+
+
+def create_discovery(ctx, auto_connect_type, channel_name: str):
+    return _require(_discovery_factory, "discovery")(
+        ctx, auto_connect_type, channel_name
+    )
+
+
+def create_registry_query_client(ctx):
+    return _require(_registry_query_client_factory, "registry query client")(ctx)
+
+
+@runtime_checkable
+class _ClosableContract(Protocol):
     def close(self): ...
 
     def __enter__(self): ...
@@ -37,14 +54,8 @@ class _ClosableContract:
     async def __aexit__(self, exc_type, exc, tb): ...
 
 
-class Discovery(_ClosableContract):
-    def __new__(cls, ctx, auto_connect_type, channel_name: str):
-        if cls is Discovery:
-            return _require(_discovery_factory, "discovery")(
-                ctx, auto_connect_type, channel_name
-            )
-        return object.__new__(cls)
-
+@runtime_checkable
+class Discovery(_ClosableContract, Protocol):
     def connect_registry(self, registry_endpoint: str): ...
 
     def set_value(self, value: int): ...

@@ -1,20 +1,16 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 from ..discovery import discovery as _discovery_contract
 
 
-class Registry(_discovery_contract._ClosableContract):
+@runtime_checkable
+class Registry(_discovery_contract._ClosableContract, Protocol):
     REGISTRY_OPT_ID = 0x3801
     REGISTRY_OPT_HEARTBEAT_INTERVAL_MS = 0x3802
     REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS = 0x3803
     REGISTRY_OPT_BROADCAST_INTERVAL_MS = 0x3804
-
-    def __new__(cls, ctx):
-        if cls is Registry:
-            return _discovery_contract._require(
-                _discovery_contract._registry_factory, "registry"
-            )(ctx)
-        return object.__new__(cls)
 
     def bind(self, pub_endpoint: str, router_endpoint: str): ...
 

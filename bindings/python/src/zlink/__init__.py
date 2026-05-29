@@ -144,16 +144,12 @@ from .contracts.messaging.message import register_messaging_factories
 from ._runtime.messaging import message_materializer as messaging_runtime
 from .contracts.sockets.socket_options import register_socket_option_factories
 from ._runtime.options import option_mapping as socket_options_runtime
-from .contracts.sockets.socket import (
-    register_socket_factories,
-    register_socket_implementation_types,
-)
+from .contracts.sockets.socket import register_socket_factories
 from ._runtime.sockets import socket_base_impl as socket_runtime
 from .contracts.service.discovery import register_discovery_factories
 from ._runtime.service.discovery import discovery as discovery_runtime
 from .contracts.service.spot import (
     register_spot_factories,
-    register_spot_implementation_types,
 )
 from ._runtime.service.spot import spot as spot_runtime
 
@@ -203,16 +199,6 @@ register_socket_factories(
     xpub_socket_factory=socket_runtime.create_xpub_socket,
     xsub_socket_factory=socket_runtime.create_xsub_socket,
 )
-register_socket_implementation_types(
-    PairSocket=socket_runtime.PairSocket,
-    DealerSocket=socket_runtime.DealerSocket,
-    RouterSocket=socket_runtime.RouterSocket,
-    StreamSocket=socket_runtime.StreamSocket,
-    PubSocket=socket_runtime.PubSocket,
-    SubSocket=socket_runtime.SubSocket,
-    XPubSocket=socket_runtime.XPubSocket,
-    XSubSocket=socket_runtime.XSubSocket,
-)
 register_discovery_factories(
     registry_factory=discovery_runtime.create_registry,
     discovery_factory=discovery_runtime.create_discovery,
@@ -222,24 +208,36 @@ register_spot_factories(
     spot_node_factory=spot_runtime.create_spot_node,
     spot_factory=spot_runtime.create_spot,
 )
-register_spot_implementation_types(
-    Actor=spot_runtime.Actor,
-    SpotNode=spot_runtime.SpotNode,
-    SendOp=spot_runtime.SendOp,
-    RequestOp=spot_runtime.RequestOp,
-    RequestCallbackOp=spot_runtime.RequestCallbackOp,
-    ReplyOp=spot_runtime.ReplyOp,
-    ActorJoinOp=spot_runtime.ActorJoinOp,
-    ActorJoinCallbackOp=spot_runtime.ActorJoinCallbackOp,
-    ActorJoinEntrySpotOp=spot_runtime.ActorJoinEntrySpotOp,
-    ActorJoinReplyOp=spot_runtime.ActorJoinReplyOp,
-    ActorLeaveOp=spot_runtime.ActorLeaveOp,
-    ActorDestroyOp=spot_runtime.ActorDestroyOp,
-    ActorLookupOp=spot_runtime.ActorLookupOp,
-    ActorBindOp=spot_runtime.ActorBindOp,
-    ActorUnbindOp=spot_runtime.ActorUnbindOp,
-    Spot=spot_runtime.Spot,
-)
+create_message = messaging_runtime.create_message
+allocate_message = messaging_runtime.message_allocate
+create_message_from = messaging_runtime.message_from
+create_received = messaging_runtime.create_received
+create_topic_message = messaging_runtime.create_topic_message
+create_subscription_event = messaging_runtime.create_subscription_event
+create_stopwatch = core_runtime.create_stopwatch
+create_thread = core_runtime.create_thread
+create_atomic_counter = core_runtime.create_atomic_counter
+
+create_pair_socket = socket_runtime.create_pair_socket
+create_dealer_socket = socket_runtime.create_dealer_socket
+create_router_socket = socket_runtime.create_router_socket
+create_stream_socket = socket_runtime.create_stream_socket
+create_pub_socket = socket_runtime.create_pub_socket
+create_sub_socket = socket_runtime.create_sub_socket
+create_xpub_socket = socket_runtime.create_xpub_socket
+create_xsub_socket = socket_runtime.create_xsub_socket
+create_common_socket_options = socket_options_runtime.create_common_socket_options
+create_dealer_socket_options = socket_options_runtime.create_dealer_socket_options
+create_stream_socket_options = socket_options_runtime.create_stream_socket_options
+create_sub_socket_options = socket_options_runtime.create_sub_socket_options
+create_pub_socket_options = socket_options_runtime.create_pub_socket_options
+create_router_socket_options = socket_options_runtime.create_router_socket_options
+
+create_registry = discovery_runtime.create_registry
+create_discovery = discovery_runtime.create_discovery
+create_registry_query_client = discovery_runtime.create_registry_query_client
+create_spot_node = spot_runtime.create_spot_node
+create_spot = spot_runtime.create_spot
 
 __all__ = [
     "version",
@@ -249,37 +247,66 @@ __all__ = [
     "proxy_steerable",
     "sleep",
     "multipart_close",
+    "create_context",
     "Context",
     "ContextOptions",
     "CommonSocketOptions",
+    "create_common_socket_options",
     "DealerSocketOptions",
+    "create_dealer_socket_options",
     "StreamSocketOptions",
+    "create_stream_socket_options",
     "SubSocketOptions",
+    "create_sub_socket_options",
     "PubSocketOptions",
+    "create_pub_socket_options",
     "RouterSocketOptions",
+    "create_router_socket_options",
     "PairSocket",
+    "create_pair_socket",
     "DealerSocket",
+    "create_dealer_socket",
     "RouterSocket",
+    "create_router_socket",
     "StreamSocket",
+    "create_stream_socket",
     "PubSocket",
+    "create_pub_socket",
     "SubSocket",
+    "create_sub_socket",
     "XPubSocket",
+    "create_xpub_socket",
     "XSubSocket",
+    "create_xsub_socket",
     "Message",
+    "create_message",
+    "allocate_message",
+    "create_message_from",
     "Received",
+    "create_received",
     "TopicMessage",
+    "create_topic_message",
     "RoutingId",
     "SubscriptionEvent",
+    "create_subscription_event",
     "AtomicCounter",
+    "create_atomic_counter",
     "Stopwatch",
+    "create_stopwatch",
     "Thread",
+    "create_thread",
     "Timer",
+    "create_timer",
+    "create_timer_from_spot",
     "Poller",
+    "create_poller",
     "MonitorStatus",
     "MonitorEvent",
     "MonitorSocket",
     "Registry",
+    "create_registry",
     "Discovery",
+    "create_discovery",
     "MemberPeerEntry",
     "RegistryStatus",
     "RegistryServiceSummaryEntry",
@@ -287,12 +314,15 @@ __all__ = [
     "RegistryTopologyEntry",
     "RegistryTopologyFilter",
     "RegistryQueryClient",
+    "create_registry_query_client",
     "SendOp",
     "RequestOp",
     "RequestCallbackOp",
     "ReplyOp",
     "SpotNode",
+    "create_spot_node",
     "Spot",
+    "create_spot",
     "Actor",
     "ActorRef",
     "ActorJoinRequest",
@@ -370,4 +400,5 @@ __all__ = [
     "PollSourceKind",
     "PollEvent",
     "PollEvents",
+    "create_poll_events",
 ]

@@ -61,8 +61,8 @@ def main(argv=None):
         _publish_stop_token(publisher)
     with perf_context() as ctx:
         apply_single_auto_hwm_msg_unit(ctx, args.msg_size)
-        with zlink.PubSocket(ctx) as publisher:
-            with zlink.SubSocket(ctx) as subscriber:
+        with zlink.create_pub_socket(ctx) as publisher:
+            with zlink.create_sub_socket(ctx) as subscriber:
                 endpoint = resolve_single_endpoint(args.transport, "pubsub")
                 apply_single_socket_options(
                     publisher,

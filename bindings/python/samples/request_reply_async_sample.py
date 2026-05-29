@@ -8,9 +8,9 @@ from sample_support import tcp_endpoint, wait_connected
 async def main():
     _, endpoint = tcp_endpoint()
 
-    with zlink.Context() as ctx:
-        with zlink.RouterSocket(ctx) as router_socket:
-            with zlink.DealerSocket(ctx) as dealer_socket:
+    with zlink.create_context() as ctx:
+        with zlink.create_router_socket(ctx) as router_socket:
+            with zlink.create_dealer_socket(ctx) as dealer_socket:
                 try:
                     with router_socket.monitor_open(
                         zlink.MonitorEventMask.CONNECTION_READY
@@ -26,7 +26,7 @@ async def main():
                     pending_reply = asyncio.create_task(
                         dealer_socket.request().message(b"ping").timeout(2.0).submit_async()
                     )
-                    received = zlink.Received()
+                    received = zlink.create_received()
                     if not await asyncio.to_thread(router_socket.recv_into, received):
                         raise AssertionError("expected request payload")
                     with received:

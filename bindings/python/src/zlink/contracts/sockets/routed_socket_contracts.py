@@ -1,26 +1,24 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 from . import socket as _socket_contract
 
 
-class RouterSocket(_socket_contract._SocketContract):
-    def __new__(cls, context=None):
-        if cls is RouterSocket:
-            return _socket_contract._require(
-                _socket_contract._router_socket_factory, "router socket"
-            )(context)
-        return object.__new__(cls)
-
+@runtime_checkable
+class RouterSocket(_socket_contract._SocketContract, Protocol):
     @property
     def router_options(self): ...
+
+    def connect(self, endpoint): ...
+
+    def disconnect(self, endpoint): ...
 
     def send(self, routing_id): ...
 
     def request(self, routing_id): ...
 
     def reply(self, received): ...
-
-    def recv(self, *, flags=0): ...
 
     def recv_into(self, received, *, flags=0): ...
 

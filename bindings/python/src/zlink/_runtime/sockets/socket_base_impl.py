@@ -6,8 +6,8 @@ import errno
 
 from ...contracts.sockets.codes import RouterOption, SocketType
 from ...contracts.sockets.socket_options import (
-    PubSocketOptions,
-    RouterSocketOptions,
+    create_pub_socket_options,
+    create_router_socket_options,
 )
 from ..buffers.payload_buffers import _read_int32
 from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
@@ -46,6 +46,7 @@ from ...contracts.errors.codes import ConfigResult, ConnectResult
 from ...contracts.sockets.codes import HandlerResult, RecvResult, RequestResult, SubmitResult
 from ...contracts.core.routing_id import RoutingId
 from ..messaging.message_materializer import Message, Received, SubscriptionEvent
+from ...contracts.messaging.message import create_message_from
 from ..messaging.request_reply import (
     _PendingRequest,
     _RequestProgressPump,
@@ -237,7 +238,7 @@ class RouterSocket(
 
     @property
     def router_options(self):
-        return RouterSocketOptions(self)
+        return create_router_socket_options(self)
 
     def send(self, routing_id):
         from ..service.spot import SendOp
@@ -844,8 +845,8 @@ class StreamSocket(
                 routing_id = None
                 if source_rid_ptr:
                     routing_id = RoutingId(_routing_id_bytes(source_rid_ptr.contents))
-                header = Message.from_(_msg_to_bytes(header_ptr.contents))
-                body = Message.from_(_msg_to_bytes(body_ptr.contents))
+                header = create_message_from(_msg_to_bytes(header_ptr.contents))
+                body = create_message_from(_msg_to_bytes(body_ptr.contents))
             except Exception:
                 _report_unhandled_callback_exception(handler)
                 return
@@ -874,7 +875,7 @@ class PubSocket(
 
     @property
     def pub_options(self):
-        return PubSocketOptions(self)
+        return create_pub_socket_options(self)
 
     def publish(self, topic):
         from ..service.spot import SendOp
@@ -906,7 +907,7 @@ class XPubSocket(
 
     @property
     def pub_options(self):
-        return PubSocketOptions(self)
+        return create_pub_socket_options(self)
 
     def publish(self, topic):
         from ..service.spot import SendOp

@@ -7,9 +7,9 @@ from sample_common import tcp_endpoint, wait_connected
 
 def main():
     port, endpoint = tcp_endpoint()
-    with zlink.Context() as ctx:
-        with zlink.RouterSocket(ctx) as router:
-            with zlink.DealerSocket(ctx) as dealer:
+    with zlink.create_context() as ctx:
+        with zlink.create_router_socket(ctx) as router:
+            with zlink.create_dealer_socket(ctx) as dealer:
                 with router.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as rtr_mon:
                     with dealer.monitor_open(zlink.MonitorEventMask.CONNECTION_READY) as dlr_mon:
                         dealer.set_routing_id(b"CLIENT")
@@ -18,13 +18,13 @@ def main():
                         wait_connected(rtr_mon, dlr_mon)
 
                 dealer.send().message(b"ping").submit()
-                request = zlink.Received()
+                request = zlink.create_received()
                 if not router.recv_into(request):
                     raise RuntimeError("expected dealer-router request")
                 with request:
                     router.send(request.routing_id).message(b"pong").submit()
 
-                response = zlink.Received()
+                response = zlink.create_received()
                 if not dealer.recv_into(response):
                     raise RuntimeError("expected dealer-router response")
                 with response:

@@ -50,6 +50,7 @@ from ...._native.ffi import (
     ZlinkSpotNodeSubjectFilter,
     lib,
 )
+from ...messaging.message_materializer import Message
 from ...handles.native_support import (
     CloseError,
     CloseResult,
@@ -60,7 +61,6 @@ from ...handles.native_support import (
     _copy_routing_id,
     HandlerError,
     HandlerResult,
-    Message,
     RecvError,
     RecvResult,
     RequestError,

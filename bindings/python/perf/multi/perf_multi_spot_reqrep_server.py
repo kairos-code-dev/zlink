@@ -53,8 +53,8 @@ def main(argv=None):
 
     with perf_server_context() as ctx:
         apply_multi_auto_hwm_msg_unit(ctx, args.msg_size)
-        data_node = zlink.SpotNode(ctx)
-        control_node = zlink.SpotNode(ctx)
+        data_node = zlink.create_spot_node(ctx)
+        control_node = zlink.create_spot_node(ctx)
         configure_multi_tls_server(data_node, args.transport)
         configure_multi_tls_server(control_node, args.transport)
         configure_multi_tls_client(control_node, args.transport)
@@ -76,7 +76,7 @@ def main(argv=None):
         def on_dispatch(current_spot, info):
             if info.event != zlink.SpotDispatchEvent.ROUTED_READABLE:
                 return
-            received = zlink.Received()
+            received = zlink.create_received()
             while True:
                 try:
                     has_received = current_spot.recv_routed_into(

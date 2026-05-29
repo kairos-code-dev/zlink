@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
+from typing import Protocol, runtime_checkable
+
 from ...core.routing_id import RoutingId
 from .actor import Actor
 from .spot_models import ActorRef
@@ -7,7 +9,6 @@ from .spot_node import SpotNode
 
 _spot_node_factory = None
 _spot_factory = None
-_implementation_spot_types = {}
 
 
 def register_spot_factories(*, spot_node_factory, spot_factory):
@@ -23,19 +24,16 @@ def _require(factory, name):
     return factory
 
 
-def register_spot_implementation_types(**implementation_types):
-    _implementation_spot_types.update(implementation_types)
+def create_spot_node(ctx, mode=None):
+    return _require(_spot_node_factory, "spot node")(ctx, mode)
 
 
-class _SpotContractMeta(type):
-    def __instancecheck__(cls, instance):
-        implementation_type = _implementation_spot_types.get(cls.__name__)
-        if implementation_type is not None and isinstance(instance, implementation_type):
-            return True
-        return type.__instancecheck__(cls, instance)
+def create_spot(node):
+    return _require(_spot_factory, "spot")(node)
 
 
-class _ClosableContract(metaclass=_SpotContractMeta):
+@runtime_checkable
+class _ClosableContract(Protocol):
     def close(self, *args, **kwargs): ...
 
     def __enter__(self): ...
@@ -55,12 +53,8 @@ def remote_actor_ref(target_node_rid, actor_id):
     )
 
 
-class Spot(_ClosableContract):
-    def __new__(cls, node):
-        if cls is Spot:
-            raise TypeError("Spot() is internal; use SpotNode.create_spot()")
-        return object.__new__(cls)
-
+@runtime_checkable
+class Spot(_ClosableContract, Protocol):
     def set_routing_id(self, routing_id): ...
     def get_routing_id(self): ...
     @property

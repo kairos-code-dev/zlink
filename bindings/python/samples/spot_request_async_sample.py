@@ -13,11 +13,11 @@ REPLY_PAYLOAD = b"spot-pong"
 async def main():
     _, endpoint = tcp_endpoint()
 
-    with zlink.Context() as ctx:
-        with zlink.SpotNode(ctx) as requester_node:
+    with zlink.create_context() as ctx:
+        with zlink.create_spot_node(ctx) as requester_node:
             with requester_node.create_spot() as requester:
-                with zlink.DealerSocket(ctx) as requester_dealer:
-                    with zlink.RouterSocket(ctx) as responder_router:
+                with zlink.create_dealer_socket(ctx) as requester_dealer:
+                    with zlink.create_router_socket(ctx) as responder_router:
                         responder_router.bind(endpoint)
                         requester_dealer.connect(endpoint)
                         requester_node.attach_channel_dealer_manual(
@@ -26,7 +26,7 @@ async def main():
                         )
 
                         async def respond():
-                            received = zlink.Received()
+                            received = zlink.create_received()
                             if not responder_router.recv_into(received):
                                 raise AssertionError("expected spot request")
                             with received:

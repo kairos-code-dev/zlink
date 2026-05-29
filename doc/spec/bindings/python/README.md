@@ -35,14 +35,22 @@ Python should keep the physical package tree close to the .NET category map.
 `contracts/eventing`, `contracts/service`, and `contracts/errors` are the
 public contract owners. `_runtime/` mirrors those categories and also keeps
 implementation-only support packages such as `handles`, `buffers`, `options`,
-and a separate `_native` boundary. This is a package and responsibility
-alignment, not a request to replace concrete public classes with `Protocol`
-types by default.
+and a separate `_native` boundary. Native-backed resource and operation
+contracts use `typing.Protocol` as structural interfaces. Concrete runtime
+classes live under `_runtime`, and callers create them through explicit
+`create_*` factories or public contract methods.
 
 ## Public Contract Source
 
 - Public contract source: `bindings/python/src/zlink/contracts/`.
 - Package projection: names exported from `zlink`.
+- Public resource contracts: native-backed resources, builders, and operation
+  handles are `typing.Protocol` declarations. They describe the public surface
+  but are not constructors.
+- Public construction: package-root factories such as `create_context()`,
+  `create_pair_socket(...)`, `create_message_from(...)`, `create_poller()`,
+  and `create_spot_node(...)`, plus public contract methods such as
+  `Context.create_pair_socket()` and `SpotNode.create_spot()`.
 - Internal implementation: underscore-prefixed packages such as `_runtime` and
   `_native`, private extension modules, callback bridge code, request progress
   helpers, and raw part-loop helpers.
@@ -184,14 +192,17 @@ export it intentionally instead of documenting the private module.
 
 When mapping a new core capability:
 
-1. Add the public class, function, enum, exception, or type alias to the
+1. Add the public Protocol, concrete value class, function, enum, exception, or
+   type alias to the
    correct public package category.
-2. Update the `zlink` package export, type hints, and API reference projection.
-3. Keep native extension/FFI calls and request progress helpers in private
+2. Add or wire an explicit `create_*` factory for any native-backed resource
+   that callers can construct.
+3. Update the `zlink` package export, type hints, and API reference projection.
+4. Keep native extension/FFI calls and request progress helpers in private
    modules.
-4. Add tests that import `zlink`, not private modules.
-5. Update samples and perf only through public exports.
-6. Check that private extension objects do not leak through return values or
+5. Add tests that import `zlink`, not private modules.
+6. Update samples and perf only through public exports.
+7. Check that private extension objects do not leak through return values or
    exceptions.
 
 When refactoring existing code to this shape:
@@ -225,14 +236,18 @@ The refactor is complete only when Python-specific shortcuts below are removed.
 
 The binding should feel like a Python package with a native backend.
 
-- Public classes own native resource lifetime and provide `close()`.
-- Resource classes should support context manager usage when practical.
+- Native-backed public resources, builders, handlers, and reusable storage
+  surfaces are declared as `typing.Protocol` contracts in `zlink.contracts`.
+- Contract classes describe callable shape only. They do not hide factory logic
+  in `__new__` and callers do not instantiate them directly.
+- Concrete runtime classes own native resource lifetime, provide `close()`, and
+  support context manager usage when practical.
+- Values and snapshots that are plain Python data, such as routing id,
+  topology entries, enum values, result domains, and exceptions, stay concrete.
+  Native-backed message and receive storage are created through factories even
+  when their runtime implementation is a concrete Python class.
 - Type hints describe public call shapes, but private native state remains
   hidden.
-- `Protocol` may be used for static typing when it removes real caller
-  complexity. It must not replace a clear runtime API.
-- Values such as message, routing id, received metadata, topic message,
-  snapshots, options, enums, and exceptions stay concrete Python types.
 - Native handles, raw FFI pointers, callback userdata, request pumps, and
   part-loop sequencing stay in private modules.
 
@@ -254,6 +269,8 @@ Do not expose private extension objects for convenience in perf or samples.
   public package categories, not expose private runtime modules.
 - Runtime concrete classes are construction targets behind package-root
   factories; callers should not import private modules directly.
+- Contract names must not implement hidden `__new__` factory dispatch. A
+  capitalized contract name is a type surface, not a construction shortcut.
 - Package-root factories may import `_runtime` only to wire runtime
   implementations. Their public annotations must use contract names, not
   private runtime classes.
@@ -319,19 +336,25 @@ Public construction is provided by package-root factories and public contract
 methods.
 
 - `create_context()` creates the native-backed context implementation.
-- `Context.create_pair_socket()`, `create_dealer_socket()`,
-  `create_router_socket()`, `create_pub_socket()`, `create_sub_socket()`,
-  `create_xpub_socket()`, `create_xsub_socket()`, and
-  `create_stream_socket()` create native-backed socket implementations.
-- `Context.create_registry()`, `create_discovery(...)`, and
-  `create_spot_node(...)` create service-layer implementations.
+- `create_pair_socket(...)`, `create_dealer_socket(...)`,
+  `create_router_socket(...)`, `create_pub_socket(...)`,
+  `create_sub_socket(...)`, `create_xpub_socket(...)`,
+  `create_xsub_socket(...)`, and `create_stream_socket(...)` create
+  native-backed socket implementations. The matching `Context.create_*`
+  methods may delegate to these factories.
+- `create_registry(...)`, `create_discovery(...)`, and
+  `create_spot_node(...)` create service-layer implementations. The matching
+  `Context.create_*` methods may delegate to these factories.
 - `Spot` handles are obtained through `SpotNode.create_spot()`,
   `entry_spot()`, `get_or_create_spot(...)`, or `spot_lookup(...)`; direct
   `Spot` construction is not public.
 - Actor handles are created through `SpotNode.create_actor(...)`; direct Actor
   construction is not public.
-- `create_poller()`, `create_timer()`, and `create_timer(spot)` create eventing
-  resources.
+- `create_poller()`, `create_poll_events(...)`, `create_timer()`, and
+  `create_timer_from_spot(...)` create eventing resources.
+- `create_message(...)`, `allocate_message(...)`, `create_message_from(...)`,
+  `create_received()`, `create_topic_message()`, and
+  `create_subscription_event()` create reusable messaging storage.
 - Version, capability, strerror, proxy, sleep, and multipart cleanup helpers
   are public package functions. Native calls behind those functions stay in
   private modules.
@@ -380,9 +403,9 @@ from `zlink`.
   `request_frame(...)` or `reply(request_token, parts)`. A dealer can start a
   request through `request()`, but it cannot reply to an arbitrary token
   because it has no API-level peer routing id.
-- Message payload factories use `Message.from_(...)` because `from` is a
-  Python keyword. `copy_from` and `from_bytes` are not part of the public
-  contract.
+- Message payload factories use `create_message_from(...)` because contract
+  Protocol classes are not construction shortcuts. `copy_from`, `from_bytes`,
+  and `Message.from_(...)` are not part of the public contract.
 - Do not add operation-start method families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
   the builder absorb the variation. Terminal builder methods may use idiomatic

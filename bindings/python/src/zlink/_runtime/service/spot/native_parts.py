@@ -3,8 +3,8 @@
 import ctypes
 
 from ...._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
+from ...messaging.message_materializer import Message
 from ...handles.native_support import (
-    Message,
     _clone_native_msg,
     _init_msg_from_buffer,
 )

@@ -22,95 +22,16 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string>
 #include <string.h>
 #include <atomic>
 #include <vector>
 #include <thread>
-#include <limits.h>
-
-#ifndef ZLINK_HAVE_WINDOWS
-#include <unistd.h>
-#else
-#include <direct.h>
-#endif
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
 namespace net = boost::asio;
 using tcp = net::ip::tcp;
-
-//  Include test certificates (embedded PEM strings)
-#include "certs/test_certs.hpp"
-
-struct tls_files_t
-{
-    std::string dir;
-    std::string ca_cert;
-    std::string server_cert;
-    std::string server_key;
-};
-
-static bool write_pem_file (const std::string &path_, const char *pem_)
-{
-    FILE *fp = fopen (path_.c_str (), "wb");
-    if (!fp)
-        return false;
-    const size_t len = strlen (pem_);
-    const size_t written = fwrite (pem_, 1, len, fp);
-    fclose (fp);
-    return written == len;
-}
-
-static tls_files_t create_tls_files ()
-{
-    tls_files_t files;
-#ifdef ZLINK_HAVE_WINDOWS
-    char tmp_dir[MAX_PATH] = "";
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (tmp_dir));
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (tmp_dir));
-    files.dir.assign (tmp_dir);
-#else
-    char tmp_dir[PATH_MAX] = "";
-    const char *tmpdir = getenv ("TMPDIR");
-    if (!tmpdir || !*tmpdir)
-        tmpdir = "/tmp";
-    const int n =
-      snprintf (tmp_dir, sizeof (tmp_dir), "%s/zlink_tls_XXXXXX", tmpdir);
-    if (n <= 0 || static_cast<size_t> (n) >= sizeof (tmp_dir))
-        strcpy (tmp_dir, "/tmp/zlink_tls_XXXXXX");
-    char *dir = mkdtemp (tmp_dir);
-    TEST_ASSERT_NOT_NULL (dir);
-    files.dir.assign (dir);
-#endif
-
-    files.ca_cert = files.dir + "/ca.crt";
-    files.server_cert = files.dir + "/server.crt";
-    files.server_key = files.dir + "/server.key";
-
-    TEST_ASSERT_TRUE (write_pem_file (files.ca_cert,
-                                      zlink::test_certs::ca_cert_pem));
-    TEST_ASSERT_TRUE (write_pem_file (files.server_cert,
-                                      zlink::test_certs::server_cert_pem));
-    TEST_ASSERT_TRUE (write_pem_file (files.server_key,
-                                      zlink::test_certs::server_key_pem));
-
-    return files;
-}
-
-static void cleanup_tls_files (const tls_files_t &files_)
-{
-    remove (files_.ca_cert.c_str ());
-    remove (files_.server_cert.c_str ());
-    remove (files_.server_key.c_str ());
-#ifdef ZLINK_HAVE_WINDOWS
-    _rmdir (files_.dir.c_str ());
-#else
-    rmdir (files_.dir.c_str ());
-#endif
-}
 
 void setUp ()
 {
@@ -662,7 +583,7 @@ void test_zlink_wss_pair_message ()
 {
     setup_zlink_ctx ();
 
-    const tls_files_t files = create_tls_files ();
+    const tls_test_files_t files = make_tls_test_files ();
 
     void *server = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
     void *client = zlink_socket (g_ctx, ZLINK_SOCKET_PAIR);
@@ -708,7 +629,7 @@ void test_zlink_wss_pair_message ()
 
     zlink_close (client);
     zlink_close (server);
-    cleanup_tls_files (files);
+    cleanup_tls_test_files (files);
     teardown_zlink_ctx ();
 }
 #endif  // ZLINK_HAVE_WSS

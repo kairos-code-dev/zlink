@@ -158,6 +158,9 @@ bool strneq (const char *lhs, const char *rhs);
 
 extern const char *SEQ_END;
 
+std::string make_random_ipc_path ();
+std::string make_test_temp_dir (const char *prefix_);
+
 //  Temporary TLS test files (cert/key/CA) created from embedded PEMs.
 struct tls_test_files_t
 {

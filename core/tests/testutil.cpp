@@ -441,29 +441,10 @@ fd_t bind_socket_resolve_port (const char *address_,
         //  Cannot cast addr as gcc 4.4 will fail with strict aliasing errors
         (*(struct sockaddr_un *) &addr).sun_family = AF_UNIX;
         addr_len = sizeof (struct sockaddr_un);
-#if defined ZLINK_HAVE_WINDOWS
-        char buffer[MAX_PATH] = "";
-
-        TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (buffer));
-        TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (buffer));
-        strcat (buffer, "/ipc");
-#else
-        char buffer[PATH_MAX] = "";
-        const char *tmpdir = getenv ("TMPDIR");
-        if (!tmpdir || !*tmpdir)
-            tmpdir = "/tmp";
-        const int n =
-          snprintf (buffer, sizeof (buffer), "%s/zlinkXXXXXX", tmpdir);
-        if (n <= 0 || static_cast<size_t> (n) >= sizeof (buffer))
-            strcpy (buffer, "/tmp/zlinkXXXXXX");
-        int fd = mkstemp (buffer);
-        TEST_ASSERT_TRUE (fd != -1);
-        close (fd);
-        unlink (buffer);
-#endif
-        strcpy ((*(struct sockaddr_un *) &addr).sun_path, buffer);
+        const std::string ipc_path = make_random_ipc_path ();
+        strcpy ((*(struct sockaddr_un *) &addr).sun_path, ipc_path.c_str ());
         memcpy (my_endpoint_, "ipc://", 7);
-        strcat (my_endpoint_, buffer);
+        strcat (my_endpoint_, ipc_path.c_str ());
 
 #else
         return retired_fd;
@@ -501,6 +482,53 @@ bool strneq (const char *lhs_, const char *rhs_)
     return strcmp (lhs_, rhs_) != 0;
 }
 
+std::string make_random_ipc_path ()
+{
+#ifdef ZLINK_HAVE_WINDOWS
+    char path[MAX_PATH] = "";
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (path));
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (path));
+    strcat (path, "/ipc");
+    return std::string (path);
+#else
+    char path[PATH_MAX] = "";
+    const char *tmpdir = getenv ("TMPDIR");
+    if (!tmpdir || !*tmpdir)
+        tmpdir = "/tmp";
+    const int n = snprintf (path, sizeof (path), "%s/zlinkXXXXXX", tmpdir);
+    if (n <= 0 || static_cast<size_t> (n) >= sizeof (path))
+        strcpy (path, "/tmp/zlinkXXXXXX");
+    const int fd = mkstemp (path);
+    TEST_ASSERT_TRUE (fd != -1);
+    close (fd);
+    unlink (path);
+    return std::string (path);
+#endif
+}
+
+std::string make_test_temp_dir (const char *prefix_)
+{
+#ifdef ZLINK_HAVE_WINDOWS
+    LIBZLINK_UNUSED (prefix_);
+    char path[MAX_PATH] = "";
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (path));
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (path));
+    return std::string (path);
+#else
+    char path[PATH_MAX] = "";
+    const char *tmpdir = getenv ("TMPDIR");
+    if (!tmpdir || !*tmpdir)
+        tmpdir = "/tmp";
+    const int n = snprintf (path, sizeof (path), "%s/%sXXXXXX", tmpdir,
+                            prefix_ ? prefix_ : "zlink");
+    if (n <= 0 || static_cast<size_t> (n) >= sizeof (path))
+        strcpy (path, "/tmp/zlinkXXXXXX");
+    char *dir = mkdtemp (path);
+    TEST_ASSERT_NOT_NULL (dir);
+    return std::string (dir);
+#endif
+}
+
 static bool write_pem_file (const std::string &path_, const char *pem_)
 {
     FILE *fp = fopen (path_.c_str (), "wb");
@@ -515,24 +543,7 @@ static bool write_pem_file (const std::string &path_, const char *pem_)
 tls_test_files_t make_tls_test_files ()
 {
     tls_test_files_t files;
-#ifdef ZLINK_HAVE_WINDOWS
-    char tmp_dir[MAX_PATH] = "";
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (tmp_dir));
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (tmp_dir));
-    files.dir.assign (tmp_dir);
-#else
-    char tmp_dir[PATH_MAX] = "";
-    const char *tmpdir = getenv ("TMPDIR");
-    if (!tmpdir || !*tmpdir)
-        tmpdir = "/tmp";
-    const int n =
-      snprintf (tmp_dir, sizeof (tmp_dir), "%s/zlink_tls_XXXXXX", tmpdir);
-    if (n <= 0 || static_cast<size_t> (n) >= sizeof (tmp_dir))
-        strcpy (tmp_dir, "/tmp/zlink_tls_XXXXXX");
-    char *dir = mkdtemp (tmp_dir);
-    TEST_ASSERT_NOT_NULL (dir);
-    files.dir.assign (dir);
-#endif
+    files.dir = make_test_temp_dir ("zlink_tls_");
 
     files.ca_cert = files.dir + "/ca.crt";
     files.server_cert = files.dir + "/server.crt";

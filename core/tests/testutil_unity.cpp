@@ -393,38 +393,9 @@ void bind_loopback_ipc (void *socket_, char *my_endpoint_, size_t len_)
 #if defined(ZLINK_HAVE_IPC)
 void make_random_ipc_endpoint (char *out_endpoint_, size_t len_)
 {
-#ifdef ZLINK_HAVE_WINDOWS
-    char random_file[MAX_PATH];
-
-    {
-        const errno_t rc = tmpnam_s (random_file);
-        TEST_ASSERT_EQUAL (0, rc);
-    }
-
-    // _mkdir uses the process default ACL, which is sufficient for a private
-    // test endpoint directory created from tmpnam_s.
-    const int rc = _mkdir (random_file);
-    TEST_ASSERT_EQUAL (0, rc);
-
-    strcat (random_file, "/ipc");
-
-#else
-    char random_file[PATH_MAX] = "";
-    const char *tmpdir = getenv ("TMPDIR");
-    if (!tmpdir || !*tmpdir)
-        tmpdir = "/tmp";
-    const int n =
-      snprintf (random_file, sizeof (random_file), "%s/zlinkXXXXXX", tmpdir);
-    if (n <= 0 || static_cast<size_t> (n) >= sizeof (random_file))
-        strcpy (random_file, "/tmp/zlinkXXXXXX");
-
-    int fd = mkstemp (random_file);
-    TEST_ASSERT_TRUE (fd != -1);
-    close (fd);
-    unlink (random_file);
-#endif
-
-    const int rc = snprintf (out_endpoint_, len_, "ipc://%s", random_file);
+    const std::string ipc_path = make_random_ipc_path ();
+    const int rc =
+      snprintf (out_endpoint_, len_, "ipc://%s", ipc_path.c_str ());
     TEST_ASSERT_TRUE (rc > 0);
     TEST_ASSERT_LESS_THAN (len_, static_cast<size_t> (rc));
 }

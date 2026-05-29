@@ -25,20 +25,86 @@ extern "C" int zlink_spot_request_reply_get_default_timeout (
   void *optval_,
   size_t *optvallen_);
 
+namespace
+{
+zlink_config_result_t invalid_option_argument ()
+{
+    errno = EINVAL;
+    return ZLINK_CONFIG_INVALID_ARGUMENT;
+}
+
+zlink_config_result_t set_socket_only_option (void *handle_,
+                                              int socket_option_,
+                                              int expected_a_,
+                                              int expected_b_,
+                                              const void *optval_,
+                                              size_t optvallen_)
+{
+    zlink::socket_base_t *socket = as_socket (handle_);
+    if (!socket)
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    return zlink::config_result_internal::from_rc (set_socket_option_checked (
+      socket, socket_type_of (socket), expected_a_, expected_b_,
+      socket_option_, optval_, optvallen_));
+}
+
+zlink_config_result_t get_socket_only_option (void *handle_,
+                                              int socket_option_,
+                                              int expected_a_,
+                                              int expected_b_,
+                                              void *optval_,
+                                              size_t *optvallen_)
+{
+    zlink::socket_base_t *socket = as_socket (handle_);
+    if (!socket)
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    return zlink::config_result_internal::from_rc (get_socket_option_checked (
+      socket, socket_type_of (socket), expected_a_, expected_b_,
+      socket_option_, optval_, optvallen_));
+}
+
+zlink::socket_base_t *request_reply_socket_or_null (void *handle_,
+                                                    int expected_type_)
+{
+    zlink::socket_base_t *socket = as_socket (handle_);
+    if (!socket || socket_type_of (socket) != expected_type_)
+        return NULL;
+    return socket;
+}
+
+zlink_config_result_t set_socket_request_timeout (void *handle_,
+                                                  int expected_type_,
+                                                  const void *optval_,
+                                                  size_t optvallen_)
+{
+    if (!request_reply_socket_or_null (handle_, expected_type_))
+        return invalid_option_argument ();
+    return zlink::config_result_internal::from_rc (
+      zlink_socket_request_reply_set_default_timeout (handle_, optval_,
+                                                      optvallen_));
+}
+
+zlink_config_result_t get_socket_request_timeout (void *handle_,
+                                                  int expected_type_,
+                                                  void *optval_,
+                                                  size_t *optvallen_)
+{
+    if (!request_reply_socket_or_null (handle_, expected_type_))
+        return invalid_option_argument ();
+    return zlink::config_result_internal::from_rc (
+      zlink_socket_request_reply_get_default_timeout (handle_, optval_,
+                                                      optvallen_));
+}
+}
+
 zlink_config_result_t zlink_set_router_option (void *handle_,
                                               zlink_router_option_t option_,
                                               const void *optval_,
                                               size_t optvallen_)
 {
     if (option_ == ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS) {
-        zlink::socket_base_t *socket = as_socket (handle_);
-        if (!socket || socket_type_of (socket) != ZLINK_CORE_SOCKET_ROUTER) {
-            errno = EINVAL;
-            return ZLINK_CONFIG_INVALID_ARGUMENT;
-        }
-        return zlink::config_result_internal::from_rc (
-          zlink_socket_request_reply_set_default_timeout (handle_, optval_,
-                                                          optvallen_));
+        return set_socket_request_timeout (
+          handle_, ZLINK_CORE_SOCKET_ROUTER, optval_, optvallen_);
     }
 
     const int socket_option = map_router_option (option_);
@@ -73,14 +139,8 @@ zlink_config_result_t zlink_get_router_option (void *handle_,
                                               size_t *optvallen_)
 {
     if (option_ == ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS) {
-        zlink::socket_base_t *socket = as_socket (handle_);
-        if (!socket || socket_type_of (socket) != ZLINK_CORE_SOCKET_ROUTER) {
-            errno = EINVAL;
-            return ZLINK_CONFIG_INVALID_ARGUMENT;
-        }
-        return zlink::config_result_internal::from_rc (
-          zlink_socket_request_reply_get_default_timeout (handle_, optval_,
-                                                          optvallen_));
+        return get_socket_request_timeout (
+          handle_, ZLINK_CORE_SOCKET_ROUTER, optval_, optvallen_);
     }
 
     const int socket_option = map_router_option (option_);
@@ -115,26 +175,18 @@ zlink_config_result_t zlink_set_dealer_option (void *handle_,
                                               size_t optvallen_)
 {
     if (option_ == ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS) {
-        zlink::socket_base_t *socket = as_socket (handle_);
-        if (!socket || socket_type_of (socket) != ZLINK_CORE_SOCKET_DEALER) {
-            errno = EINVAL;
-            return ZLINK_CONFIG_INVALID_ARGUMENT;
-        }
-        return zlink::config_result_internal::from_rc (
-          zlink_socket_request_reply_set_default_timeout (handle_, optval_,
-                                                          optvallen_));
+        return set_socket_request_timeout (
+          handle_, ZLINK_CORE_SOCKET_DEALER, optval_, optvallen_);
     }
 
     const int socket_option = map_dealer_option (option_);
     if (socket_option < 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
-    zlink::socket_base_t *socket = as_socket (handle_);
-    if (!socket)
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    return zlink::config_result_internal::from_rc (set_socket_option_checked (
-      socket, socket_type_of (socket), ZLINK_CORE_SOCKET_DEALER,
-      ZLINK_CORE_SOCKET_DEALER, socket_option, optval_, optvallen_));
+    return set_socket_only_option (handle_, socket_option,
+                                   ZLINK_CORE_SOCKET_DEALER,
+                                   ZLINK_CORE_SOCKET_DEALER, optval_,
+                                   optvallen_);
 }
 
 zlink_config_result_t zlink_get_dealer_option (void *handle_,
@@ -143,26 +195,18 @@ zlink_config_result_t zlink_get_dealer_option (void *handle_,
                                               size_t *optvallen_)
 {
     if (option_ == ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS) {
-        zlink::socket_base_t *socket = as_socket (handle_);
-        if (!socket || socket_type_of (socket) != ZLINK_CORE_SOCKET_DEALER) {
-            errno = EINVAL;
-            return ZLINK_CONFIG_INVALID_ARGUMENT;
-        }
-        return zlink::config_result_internal::from_rc (
-          zlink_socket_request_reply_get_default_timeout (handle_, optval_,
-                                                          optvallen_));
+        return get_socket_request_timeout (
+          handle_, ZLINK_CORE_SOCKET_DEALER, optval_, optvallen_);
     }
 
     const int socket_option = map_dealer_option (option_);
     if (socket_option < 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
-    zlink::socket_base_t *socket = as_socket (handle_);
-    if (!socket)
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    return zlink::config_result_internal::from_rc (get_socket_option_checked (
-      socket, socket_type_of (socket), ZLINK_CORE_SOCKET_DEALER,
-      ZLINK_CORE_SOCKET_DEALER, socket_option, optval_, optvallen_));
+    return get_socket_only_option (handle_, socket_option,
+                                   ZLINK_CORE_SOCKET_DEALER,
+                                   ZLINK_CORE_SOCKET_DEALER, optval_,
+                                   optvallen_);
 }
 
 zlink_config_result_t zlink_set_stream_option (void *handle_,
@@ -174,12 +218,10 @@ zlink_config_result_t zlink_set_stream_option (void *handle_,
     if (socket_option < 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
-    zlink::socket_base_t *socket = as_socket (handle_);
-    if (!socket)
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    return zlink::config_result_internal::from_rc (set_socket_option_checked (
-      socket, socket_type_of (socket), ZLINK_CORE_SOCKET_STREAM,
-      ZLINK_CORE_SOCKET_STREAM, socket_option, optval_, optvallen_));
+    return set_socket_only_option (handle_, socket_option,
+                                   ZLINK_CORE_SOCKET_STREAM,
+                                   ZLINK_CORE_SOCKET_STREAM, optval_,
+                                   optvallen_);
 }
 
 zlink_config_result_t zlink_get_stream_option (void *handle_,
@@ -191,12 +233,10 @@ zlink_config_result_t zlink_get_stream_option (void *handle_,
     if (socket_option < 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
-    zlink::socket_base_t *socket = as_socket (handle_);
-    if (!socket)
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    return zlink::config_result_internal::from_rc (get_socket_option_checked (
-      socket, socket_type_of (socket), ZLINK_CORE_SOCKET_STREAM,
-      ZLINK_CORE_SOCKET_STREAM, socket_option, optval_, optvallen_));
+    return get_socket_only_option (handle_, socket_option,
+                                   ZLINK_CORE_SOCKET_STREAM,
+                                   ZLINK_CORE_SOCKET_STREAM, optval_,
+                                   optvallen_);
 }
 
 zlink_config_result_t zlink_set_spot_option (void *handle_,
@@ -249,9 +289,11 @@ zlink_config_result_t zlink_set_pub_option (void *handle_,
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        return zlink::config_result_internal::from_rc (set_socket_option_checked (
-          socket, socket_type_of (socket), ZLINK_CORE_SOCKET_PUB,
-          ZLINK_CORE_SOCKET_XPUB, socket_option, optval_, optvallen_));
+        return zlink::config_result_internal::from_rc (
+          set_socket_option_checked (socket, socket_type_of (socket),
+                                     ZLINK_CORE_SOCKET_PUB,
+                                     ZLINK_CORE_SOCKET_XPUB, socket_option,
+                                     optval_, optvallen_));
     }
     errno = 0;
 
@@ -270,9 +312,11 @@ zlink_config_result_t zlink_get_pub_option (void *handle_,
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        return zlink::config_result_internal::from_rc (get_socket_option_checked (
-          socket, socket_type_of (socket), ZLINK_CORE_SOCKET_PUB,
-          ZLINK_CORE_SOCKET_XPUB, socket_option, optval_, optvallen_));
+        return zlink::config_result_internal::from_rc (
+          get_socket_option_checked (socket, socket_type_of (socket),
+                                     ZLINK_CORE_SOCKET_PUB,
+                                     ZLINK_CORE_SOCKET_XPUB, socket_option,
+                                     optval_, optvallen_));
     }
     errno = 0;
 
@@ -291,13 +335,11 @@ zlink_config_result_t zlink_set_sub_option (void *handle_,
         return ZLINK_CONFIG_INVALID_ARGUMENT;
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
-        const int type = socket_type_of (socket);
-        if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {
-            errno = EINVAL;
-            return ZLINK_CONFIG_INVALID_ARGUMENT;
-        }
         return zlink::config_result_internal::from_rc (
-          socket->setsockopt (socket_option, optval_, optvallen_));
+          set_socket_option_checked (socket, socket_type_of (socket),
+                                     ZLINK_CORE_SOCKET_SUB,
+                                     ZLINK_CORE_SOCKET_XSUB, socket_option,
+                                     optval_, optvallen_));
     }
     errno = 0;
 

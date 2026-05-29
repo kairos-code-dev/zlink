@@ -204,7 +204,7 @@ test('native addon registration matches the typed native binding surface', () =>
     const registered = [...addon.matchAll(/ZLINK_METHOD\("([^"]+)"/g)]
         .map((match) => match[1])
         .sort();
-    const typed = [...binding.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9_]*)\s*:/gm)]
+    const typed = [...binding.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9_]*)\??\s*:/gm)]
         .map((match) => match[1])
         .sort();
     assert.deepEqual(registered, typed);

@@ -58,6 +58,9 @@ import {
   ZlinkError,
 } from '../../contracts/errors/errors';
 
+const PREBUILD_SUBSCRIBE_OPTION = 6;
+const PREBUILD_UNSUBSCRIBE_OPTION = 7;
+
 import type {
   SubscriptionEntry,
   SocketSendReadyHandler,
@@ -233,22 +236,32 @@ export class MessageSocket extends SendSocket {
 
 export class SubscriberSocket extends ConnectableSocket {
   setSubscription(topicOrPattern: string): void {
-    const topic = Buffer.from(validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER));
+    const topic = validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER);
     configCall('subscription set failed', () => {
-      requireNative().socketSetOpt(
+      const native = requireNative();
+      if (native.socketSetSubscription) {
+        native.socketSetSubscription(this.nativeHandle(), topic);
+        return;
+      }
+      native.socketSetOpt(
         this.nativeHandle(),
-        SocketOption.SUBSCRIBE | 0,
-        topic
+        PREBUILD_SUBSCRIBE_OPTION,
+        Buffer.from(topic)
       );
     });
   }
   unsetSubscription(topicOrPattern: string): void {
-    const topic = Buffer.from(validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER));
+    const topic = validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER);
     configCall('subscription unset failed', () => {
-      requireNative().socketSetOpt(
+      const native = requireNative();
+      if (native.socketUnsetSubscription) {
+        native.socketUnsetSubscription(this.nativeHandle(), topic);
+        return;
+      }
+      native.socketSetOpt(
         this.nativeHandle(),
-        SocketOption.UNSUBSCRIBE | 0,
-        topic
+        PREBUILD_UNSUBSCRIBE_OPTION,
+        Buffer.from(topic)
       );
     });
   }

@@ -9,7 +9,6 @@ import {
   RoutedMessageSocket,
   SendFlags,
   RuntimeSendOperation,
-  SocketOption,
   SubmitResult,
   RoutingId,
   requireNative,
@@ -34,17 +33,13 @@ export class RouterSocket extends RoutedMessageSocket {
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);
     configCall('routing id set failed', () => {
-      requireNative().socketSetOpt(
-        this.nativeHandle(),
-        SocketOption.ROUTING_ID | 0,
-        normalizedRoutingId
-      );
+      requireNative().handleSetRoutingId(this.nativeHandle(), normalizedRoutingId);
     });
   }
   getRoutingId(): RoutingId {
     return RoutingId.from(
       configCall('routing id get failed', () =>
-        requireNative().socketGetOpt(this.nativeHandle(), SocketOption.ROUTING_ID | 0) as Buffer
+        requireNative().handleGetRoutingId(this.nativeHandle()) as Buffer
       )
     );
   }

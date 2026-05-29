@@ -50,7 +50,6 @@ static void define_core_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("socketSendRoutingNoWaitResult", socket_try_send_routing),
         ZLINK_METHOD("socketSendRoutingNoWaitResultParts", socket_try_send_routing_parts),
         ZLINK_METHOD("socketSendRouting", socket_send_routing),
-        ZLINK_METHOD("socketRecv", socket_recv),
         ZLINK_METHOD("socketRecvMessage", socket_recv_message),
         ZLINK_METHOD("socketRecvMessageNoWait", socket_try_recv_message),
         ZLINK_METHOD("socketSubscribeMessage", socket_subscribe_message),
@@ -68,6 +67,8 @@ static void define_core_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("remoteActorGetRef", remote_actor_get_ref),
         ZLINK_METHOD("socketSetOpt", socket_setopt),
         ZLINK_METHOD("socketGetOpt", socket_getopt),
+        ZLINK_METHOD("socketSetSubscription", socket_set_subscription),
+        ZLINK_METHOD("socketUnsetSubscription", socket_unset_subscription),
         ZLINK_METHOD("socketSetChannelName", socket_set_channel_name),
         ZLINK_METHOD("socketGetChannelName", socket_get_channel_name),
         ZLINK_METHOD("handleSetRoutingId", handle_set_routing_id),
@@ -121,7 +122,6 @@ static void define_core_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("atomicCounterDec", atomic_counter_dec),
         ZLINK_METHOD("atomicCounterValue", atomic_counter_value),
         ZLINK_METHOD("atomicCounterDestroy", atomic_counter_destroy),
-        ZLINK_METHOD("poll", poll),
     };
     define_exports(env, exports, descs, sizeof(descs) / sizeof(*descs));
 }

@@ -2,38 +2,9 @@
 
 #include "addon_core_options.h"
 
-#include <algorithm>
-#include <string>
-
-namespace {
-
-static const int32_t k_legacy_opt_routing_id = 5;
-static const int32_t k_legacy_opt_subscribe = 6;
-static const int32_t k_legacy_opt_unsubscribe = 7;
-static const int32_t k_legacy_opt_xpub_verbose = 40;
-
-} // namespace
-
 int set_socket_option(void *sock, int32_t opt, const void *data, size_t len)
 {
     switch (opt) {
-    case k_legacy_opt_routing_id:
-        return zlink_set_routing_id(sock, data, len);
-    case k_legacy_opt_subscribe: {
-        std::string filter(static_cast<const char *>(data), len);
-        return zlink_set_subscription(sock, filter.c_str());
-    }
-    case k_legacy_opt_unsubscribe: {
-        std::string filter(static_cast<const char *>(data), len);
-        return zlink_unset_subscription(sock, filter.c_str());
-    }
-    case k_legacy_opt_xpub_verbose: {
-        int value = 0;
-        if (len >= sizeof(int))
-            memcpy(&value, data, sizeof(int));
-        return zlink_set_pub_option(sock, ZLINK_PUB_OPT_VERBOSE, &value,
-                                    sizeof(value));
-    }
     case ZLINK_ROUTER_OPT_MANDATORY:
         return zlink_set_router_option(sock, ZLINK_ROUTER_OPT_MANDATORY, data,
                                        len);
@@ -88,18 +59,6 @@ int set_socket_option(void *sock, int32_t opt, const void *data, size_t len)
 int get_socket_option(void *sock, int32_t opt, void *data, size_t *len)
 {
     switch (opt) {
-    case k_legacy_opt_routing_id: {
-        zlink_routing_id_t rid;
-        memset(&rid, 0, sizeof(rid));
-        int rc = zlink_get_routing_id(sock, &rid);
-        if (rc != 0)
-            return rc;
-        size_t copy_len = std::min(*len, static_cast<size_t>(rid.size));
-        if (copy_len > 0)
-            memcpy(data, rid.data, copy_len);
-        *len = rid.size;
-        return 0;
-    }
     case ZLINK_ROUTER_OPT_MANDATORY:
         return zlink_get_router_option(sock, ZLINK_ROUTER_OPT_MANDATORY, data,
                                        len);
@@ -148,7 +107,6 @@ int get_socket_option(void *sock, int32_t opt, void *data, size_t *len)
 size_t initial_getopt_buffer_len(int32_t opt)
 {
     switch (opt) {
-    case k_legacy_opt_routing_id:
     case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
         return 255;
     case ZLINK_OPT_LAST_ENDPOINT:

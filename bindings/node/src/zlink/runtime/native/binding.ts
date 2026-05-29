@@ -7,6 +7,9 @@ type NullableNativeHandle = NativeHandle | null;
 type NativeVersion = [number, number, number];
 type NativeVoidFn = (...args: unknown[]) => void;
 type NativeHandleFn = (...args: unknown[]) => NativeHandle;
+type NativeNumberFn = (...args: unknown[]) => number;
+type NativeBufferFn = (...args: unknown[]) => Buffer;
+type NativeStringFn = (...args: unknown[]) => string;
 
 interface CoreNativeBinding {
   errno: () => number;
@@ -38,9 +41,9 @@ interface ContextNativeBinding {
 
 interface SocketNativeBinding {
   dealerRequest: NativeFn;
-  handleGetRoutingId: NativeFn;
-  handleSetRoutingId: NativeFn;
-  monitorOpen: NativeFn;
+  handleGetRoutingId: (handle: NativeHandle) => Buffer;
+  handleSetRoutingId: (handle: NativeHandle, routingId: Buffer) => void;
+  monitorOpen: NativeHandleFn;
   routerRecvMessage: NativeFn;
   routerRecvMessageNoWait: NativeFn;
   routerReply: NativeFn;
@@ -48,17 +51,16 @@ interface SocketNativeBinding {
   routerSpotReply: NativeFn;
   routerSpotRequest: NativeFn;
   routerSpotSend: NativeFn;
-  socketAttachDiscovery: NativeFn;
-  socketBind: NativeFn;
-  socketClose: NativeFn;
-  socketConnect: NativeFn;
-  socketDisconnect: NativeFn;
-  socketDisconnectRid: NativeFn;
-  socketGetChannelName: NativeFn;
-  socketGetOpt: NativeFn;
-  socketNew: NativeFn;
-  socketPublish: NativeFn;
-  socketRecv: NativeFn;
+  socketAttachDiscovery: (socket: NativeHandle, discovery: NativeHandle) => void;
+  socketBind: (socket: NativeHandle, endpoint: string) => void;
+  socketClose: (socket: NativeHandle) => void;
+  socketConnect: (socket: NativeHandle, endpoint: string) => void;
+  socketDisconnect: (socket: NativeHandle, endpoint: string) => void;
+  socketDisconnectRid: (socket: NativeHandle, routingId: Buffer) => void;
+  socketGetChannelName: NativeStringFn;
+  socketGetOpt: NativeBufferFn;
+  socketNew: (ctx: NativeHandle, type: number) => NativeHandle;
+  socketPublish: NativeNumberFn;
   socketRecvMessage: NativeFn;
   socketRecvMessageNoWait: NativeFn;
   socketSend: NativeFn;
@@ -69,18 +71,30 @@ interface SocketNativeBinding {
   socketSendRouting: NativeFn;
   socketSendRoutingNoWaitResult: NativeFn;
   socketSendRoutingNoWaitResultParts: NativeFn;
-  socketSetChannelName: NativeFn;
-  socketSetOpt: NativeFn;
-  socketSetTlsClient: NativeFn;
-  socketSetTlsServer: NativeFn;
-  socketStreamAttach: NativeFn;
+  socketSetChannelName: (socket: NativeHandle, channelName: string) => void;
+  socketSetOpt: (socket: NativeHandle, option: number, value: Buffer) => void;
+  socketSetSubscription?: (socket: NativeHandle, topic: string) => void;
+  socketSetTlsClient: (
+    socket: NativeHandle,
+    ca: string,
+    hostname: string,
+    trustSystem: number
+  ) => void;
+  socketSetTlsServer: (
+    socket: NativeHandle,
+    cert: string,
+    key: string,
+    requireClientCert: number
+  ) => void;
+  socketStreamAttach: NativeVoidFn;
   socketSubscribeMessage: NativeFn;
   socketSubscriptionEvent: NativeFn;
   socketTryPublish: NativeFn;
   socketTrySubscribeMessage: NativeFn;
   socketTrySubscriptionEvent: NativeFn;
-  socketUnbind: NativeFn;
-  streamAttachActorGateway: NativeFn;
+  socketUnbind: (socket: NativeHandle, endpoint: string) => void;
+  socketUnsetSubscription?: (socket: NativeHandle, topic: string) => void;
+  streamAttachActorGateway: (socket: NativeHandle, node: NativeHandle) => void;
   streamBindActor: NativeFn;
   streamBoundActors: NativeFn;
   streamSendBoundActorPart: NativeFn;
@@ -89,42 +103,41 @@ interface SocketNativeBinding {
 }
 
 interface EventingNativeBinding {
-  atomicCounterDec: NativeFn;
-  atomicCounterDestroy: NativeFn;
-  atomicCounterInc: NativeFn;
+  atomicCounterDec: NativeNumberFn;
+  atomicCounterDestroy: NativeVoidFn;
+  atomicCounterInc: NativeNumberFn;
   atomicCounterNew: NativeHandleFn;
-  atomicCounterSet: NativeFn;
-  atomicCounterValue: NativeFn;
+  atomicCounterSet: (counter: NativeHandle, value: number) => void;
+  atomicCounterValue: NativeNumberFn;
   monitorClose: NativeVoidFn;
   monitorHandler: NativeFn;
   monitorRecv: NativeFn;
   monitorRecvNoWait: NativeFn;
   monitorStatus: NativeFn;
-  pollEventsDestroy: NativeFn;
-  pollEventsFd: NativeFn;
-  pollEventsNew: NativeFn;
-  pollEventsRevents: NativeFn;
-  pollEventsSlot: NativeFn;
-  pollEventsSourceKind: NativeFn;
-  pollerAdd: NativeFn;
-  pollerAddFd: NativeFn;
-  pollerAddTimer: NativeFn;
-  pollerDestroy: NativeFn;
-  pollerModify: NativeFn;
-  pollerModifyFd: NativeFn;
-  pollerNew: NativeFn;
-  pollerRemove: NativeFn;
-  pollerRemoveFd: NativeFn;
-  pollerRemoveTimer: NativeFn;
-  pollerSize: NativeFn;
-  pollerWait: NativeFn;
-  pollerWaitInto: NativeFn;
-  poll: NativeFn;
-  spotTimerNew: NativeFn;
-  stopwatchIntermediate: NativeFn;
-  stopwatchStart: NativeFn;
-  stopwatchStop: NativeFn;
-  timerDestroy: NativeFn;
+  pollEventsDestroy: NativeVoidFn;
+  pollEventsFd: NativeNumberFn;
+  pollEventsNew: NativeHandleFn;
+  pollEventsRevents: NativeNumberFn;
+  pollEventsSlot: NativeNumberFn;
+  pollEventsSourceKind: NativeNumberFn;
+  pollerAdd: NativeVoidFn;
+  pollerAddFd: NativeVoidFn;
+  pollerAddTimer: NativeVoidFn;
+  pollerDestroy: NativeVoidFn;
+  pollerModify: NativeVoidFn;
+  pollerModifyFd: NativeVoidFn;
+  pollerNew: NativeHandleFn;
+  pollerRemove: NativeVoidFn;
+  pollerRemoveFd: NativeVoidFn;
+  pollerRemoveTimer: NativeVoidFn;
+  pollerSize: NativeNumberFn;
+  pollerWait: NativeNumberFn;
+  pollerWaitInto: NativeNumberFn;
+  spotTimerNew: NativeHandleFn;
+  stopwatchIntermediate: NativeNumberFn;
+  stopwatchStart: NativeHandleFn;
+  stopwatchStop: NativeNumberFn;
+  timerDestroy: NativeVoidFn;
   timerHandler: NativeFn;
   timerNew: NativeFn;
   timerRecv: NativeFn;

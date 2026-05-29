@@ -14,6 +14,7 @@ import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeCallbackSupport;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMonitorStatuses;
@@ -40,8 +41,8 @@ public final class NativeMonitorSocket implements SocketMonitor {
     private SocketMonitorHandler eventHandler;
     private Arena callbackArena;
     private MemorySegment callbackStub = MemorySegment.NULL;
-    private volatile ExecutorService callbackExecutor;
-    private volatile RuntimeException callbackFailure;
+    private final NativeCallbackSupport callbacks =
+        new NativeCallbackSupport("zlink-monitor-callback");
 
     static {
         InternalAccess.register((InternalAccess.MonitorAccess)
@@ -56,10 +57,9 @@ public final class NativeMonitorSocket implements SocketMonitor {
     public void onEvent(SocketMonitorHandler handler) {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
-        ensureNoCallbackFailure();
-        ExecutorService executor = newCallbackExecutor();
-        ExecutorService previousExecutor = callbackExecutor;
-        callbackExecutor = executor;
+        callbacks.ensureNoFailure();
+        ExecutorService previousExecutor = callbacks.executor();
+        ExecutorService executor = callbacks.replaceExecutor();
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
           "handleEventCallback", MethodType.methodType(void.class,
@@ -79,9 +79,8 @@ public final class NativeMonitorSocket implements SocketMonitor {
             RuntimeResources.shutdownExecutor(previousExecutor);
         } finally {
             if (!success) {
-                callbackExecutor = previousExecutor;
+                callbacks.restoreExecutor(previousExecutor, executor);
                 RuntimeResources.closeArena(arena);
-                RuntimeResources.shutdownExecutor(executor);
             }
         }
     }
@@ -110,9 +109,9 @@ public final class NativeMonitorSocket implements SocketMonitor {
     }
 
     public MonitorStatus status() {
-        try (java.lang.foreign.Arena arena = java.lang.foreign.Arena.ofConfined()) {
+        try (Arena arena = Arena.ofConfined()) {
             MemorySegment out = arena.allocate(
-              systems.zlink.runtime.nativeapi.NativeLayouts.MONITOR_SNAPSHOT_LAYOUT);
+              NativeLayouts.MONITOR_SNAPSHOT_LAYOUT);
             int rc = Native.monitorStatus(handle, out);
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_monitor_status");
@@ -129,9 +128,7 @@ public final class NativeMonitorSocket implements SocketMonitor {
         if (handle == null || handle.address() == 0)
             return;
         eventHandler = null;
-        callbackFailure = null;
-        RuntimeResources.shutdownExecutor(callbackExecutor);
-        callbackExecutor = null;
+        callbacks.close();
         RuntimeResources.closeArena(callbackArena);
         callbackArena = null;
         callbackStub = MemorySegment.NULL;
@@ -144,13 +141,7 @@ public final class NativeMonitorSocket implements SocketMonitor {
     private void ensureOpen() {
         if (handle == null || handle.address() == 0)
             throw new IllegalStateException("monitor socket is closed");
-        ensureNoCallbackFailure();
-    }
-
-    private void ensureNoCallbackFailure() {
-        RuntimeException failure = callbackFailure;
-        if (failure != null)
-            throw failure;
+        callbacks.ensureNoFailure();
     }
 
     private MethodHandle callbackHandle(String name, MethodType type) {
@@ -166,7 +157,7 @@ public final class NativeMonitorSocket implements SocketMonitor {
     private void handleEventCallback(MemorySegment event,
                                      MemorySegment userdata) {
         SocketMonitorHandler handler = eventHandler;
-        ExecutorService executor = callbackExecutor;
+        ExecutorService executor = callbacks.executor();
         if (handler == null || executor == null)
             return;
         try {
@@ -197,7 +188,7 @@ public final class NativeMonitorSocket implements SocketMonitor {
               local, remote);
             executor.execute(() -> dispatchEvent(handler, monitorEvent));
         } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
         }
     }
 
@@ -207,23 +198,9 @@ public final class NativeMonitorSocket implements SocketMonitor {
         try {
             handler.onEvent(event);
         } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
         } finally {
             InternalAccess.leaveCallback();
         }
-    }
-
-    private void recordCallbackFailure(RuntimeException failure) {
-        callbackFailure = failure;
-        Thread current = Thread.currentThread();
-        Thread.UncaughtExceptionHandler uncaught =
-          current.getUncaughtExceptionHandler();
-        if (uncaught != null)
-            uncaught.uncaughtException(current, failure);
-    }
-
-    private static ExecutorService newCallbackExecutor() {
-        return RuntimeResources.daemonSingleThreadExecutor(
-            "zlink-monitor-callback");
     }
 }

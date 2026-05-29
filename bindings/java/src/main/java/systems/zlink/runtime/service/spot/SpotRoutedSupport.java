@@ -21,6 +21,7 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
@@ -191,8 +192,8 @@ final class SpotRoutedSupport implements AutoCloseable {
                 success = true;
                 boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
                 InternalAccess.messageFinishReceive(firstPart, hasMore);
-                RoutingId source = readRoutingIdOut(sourceRidOut);
-                RoutingId sourceSpot = readRoutingIdOut(spotRidOut);
+                RoutingId source = NativeRoutingIds.readOut(sourceRidOut);
+                RoutingId sourceSpot = NativeRoutingIds.readOut(spotRidOut);
                 long requestSeq = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
                 Received received = createRoutedReceived(source, sourceSpot,
                     firstPart, hasMore, requestSeq, flags.value());
@@ -744,33 +745,6 @@ final class SpotRoutedSupport implements AutoCloseable {
         if (flags != SendFlags.NONE) {
             throw new ZlinkSubmitException(SubmitResult.NOT_SUPPORTED);
         }
-    }
-
-    private static RoutingId readRoutingId(MemorySegment nativeRid) {
-        if (nativeRid == null || nativeRid.address() == 0) {
-            return null;
-        }
-        if (nativeRid.byteSize() == 0) {
-            nativeRid = nativeRid.reinterpret(NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        }
-        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
-          NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (size == 0) {
-            return null;
-        }
-        byte[] value = new byte[size];
-        MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-          MemorySegment.ofArray(value), 0, size);
-        return InternalAccess.routingIdFromTrusted(value);
-    }
-
-    private static RoutingId readRoutingIdOut(MemorySegment nativeRidOut) {
-        MemorySegment nativeRid = nativeRidOut.get(ValueLayout.ADDRESS, 0);
-        if (nativeRid.address() != 0) {
-            nativeRid = nativeRid.reinterpret(
-              NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        }
-        return readRoutingId(nativeRid);
     }
 
     private static MethodHandle callbackHandle(String name, MethodType type) {

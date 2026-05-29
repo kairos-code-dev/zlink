@@ -15,9 +15,10 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SocketMessageHandler;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeCallbackSupport;
 import systems.zlink.runtime.nativeapi.NativeErrno;
-import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -44,8 +45,8 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     private final NativeRouterSocket socket;
     private final boolean closeSocketOnClose;
     private volatile SocketMessageHandler dataHandler;
-    private volatile ExecutorService callbackExecutor;
-    private volatile RuntimeException callbackFailure;
+    private final NativeCallbackSupport callbacks =
+        new NativeCallbackSupport("zlink-router-callback");
     private Arena receiveCallbackArena;
     private boolean handlerRegistered;
     private volatile boolean closed;
@@ -59,17 +60,13 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     private static final ThreadLocal<RecvOutScratch> RECV_OUT_SCRATCH =
         ThreadLocal.withInitial(RecvOutScratch::new);
 
-    private static final class RecvOutScratch {
+    static final class RecvOutScratch {
         final MemorySegment sourceNodeRidOut;
         final MemorySegment sourceSpotRidOut;
         final MemorySegment requestSeqOut;
         final MemorySegment partsOut;
         final MemorySegment partCountOut;
         final MemorySegment hasMoreOut;
-        long lastNodeRidPtr;
-        byte[] lastNodeRidBytes;
-        long lastSpotRidPtr;
-        byte[] lastSpotRidBytes;
 
         RecvOutScratch() {
             Arena auto = Arena.ofAuto();
@@ -120,15 +117,10 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     public void onReceive(SocketMessageHandler handler) {
         Objects.requireNonNull(handler, "handler");
         ensureOpen();
-        ensureNoCallbackFailure();
+        callbacks.ensureNoFailure();
 
-        ExecutorService executor = callbackExecutor;
-        boolean createdExecutor = false;
-        if (executor == null) {
-            executor = newCallbackExecutor();
-            callbackExecutor = executor;
-            createdExecutor = true;
-        }
+        NativeCallbackSupport.ExecutorLease lease = callbacks.ensureExecutor();
+        ExecutorService executor = lease.executor();
 
         Arena arena = null;
         boolean createdHandler = false;
@@ -143,11 +135,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             int rc = NativeMessage.routerHandler(InternalAccess.socketHandle(socket), stub,
                 MemorySegment.NULL);
             if (rc != 0) {
-                if (createdExecutor) {
-                    callbackExecutor = null;
-                    RuntimeResources.shutdownExecutor(executor,
-                        1, TimeUnit.SECONDS);
-                }
+                callbacks.clearExecutorIfCreated(lease);
                 RuntimeResources.closeArena(arena);
                 throw ZlinkException.fromLastError("zlink_router_handler");
             }
@@ -164,11 +152,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                 receiveCallbackArena = null;
                 handlerRegistered = false;
             }
-            if (createdExecutor) {
-                callbackExecutor = null;
-                RuntimeResources.shutdownExecutor(executor,
-                    1, TimeUnit.SECONDS);
-            }
+            callbacks.clearExecutorIfCreated(lease);
             throw ex;
         }
     }
@@ -223,9 +207,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         }
         closed = true;
         dataHandler = null;
-        RuntimeResources.shutdownExecutor(callbackExecutor,
-            1, TimeUnit.SECONDS);
-        callbackExecutor = null;
+        callbacks.close(1, TimeUnit.SECONDS);
     }
 
     public void finishClose() {
@@ -240,7 +222,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                                        long partCount,
                                        MemorySegment userdata) {
         SocketMessageHandler handler = dataHandler;
-        ExecutorService executor = callbackExecutor;
+        ExecutorService executor = callbacks.executor();
         if (handler == null || executor == null) {
             NativeMessage.multipartClose(parts, partCount);
             return;
@@ -250,13 +232,13 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             snapshot = snapshotReceive(sourceNodeRid, sourceSpotRid,
                 requestSequence, parts, partCount);
         } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
             return;
         }
         try {
             executor.execute(() -> dispatchReceive(handler, snapshot));
         } catch (RejectedExecutionException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
         }
     }
 
@@ -271,8 +253,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         } finally {
             NativeMessage.multipartClose(parts, partCount);
         }
-        return new CallbackReceivedData(readRoutingId(sourceNodeRid),
-            readRoutingId(sourceSpotRid), requestSequence, snapshotParts);
+        return new CallbackReceivedData(NativeRoutingIds.read(sourceNodeRid),
+            NativeRoutingIds.read(sourceSpotRid), requestSequence,
+            snapshotParts);
     }
 
     private void dispatchReceive(SocketMessageHandler handler,
@@ -285,7 +268,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             replySender(nodeRid, spotRid, requestSequence))) {
             handler.onMessage(received);
         } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
         }
     }
 
@@ -335,8 +318,10 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
 
             if (!hasMore && requestSequence == 0L) {
                 // Routed echo hot path: populate caller storage in place.
-                byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
-                byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
+                byte[] nodeRidBytes =
+                    NativeRoutingIds.readBytesOut(sourceNodeRidOut);
+                byte[] spotRidBytes =
+                    NativeRoutingIds.readBytesOut(sourceSpotRidOut);
                 firstPartConsumed = true;
                 ContractAccess.receivedPopulateRoutedSinglePart(target,
                     nodeRidBytes, spotRidBytes, firstPart, 0L, false, null,
@@ -372,8 +357,8 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         MemorySegment hasMoreOut = scratch.hasMoreOut;
         Received fresh;
         if (!hasMore) {
-            RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
-            RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
+            RoutingId nodeRid = NativeRoutingIds.readOut(sourceNodeRidOut);
+            RoutingId spotRid = NativeRoutingIds.readOut(sourceSpotRidOut);
             fresh = InternalAccess.receivedLazy(nodeRid, spotRid, firstPart,
                 null, requestSequence, true,
                 replySender(nodeRid, spotRid, requestSequence),
@@ -407,12 +392,16 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             }
             Message[] partsArray = parts.toArray(new Message[0]);
             if (requestSequence == 0L) {
-                byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
-                byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
+                byte[] nodeRidBytes =
+                    NativeRoutingIds.readBytesOut(sourceNodeRidOut);
+                byte[] spotRidBytes =
+                    NativeRoutingIds.readBytesOut(sourceSpotRidOut);
                 fresh = InternalAccess.received(nodeRidBytes, spotRidBytes, partsArray, true, 0L, false, null, lazyCompletionRunnable);
             } else {
-                RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
-                RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
+                RoutingId nodeRid =
+                    NativeRoutingIds.readOut(sourceNodeRidOut);
+                RoutingId spotRid =
+                    NativeRoutingIds.readOut(sourceSpotRidOut);
                 fresh = InternalAccess.received(nodeRid, spotRid, partsArray,
                     true, requestSequence, true,
                     replySender(nodeRid, spotRid, requestSequence),
@@ -477,14 +466,18 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             if (!hasMore) {
                 firstPartConsumed = true;
                 if (requestSequence == 0L) {
-                    byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
-                    byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
+                    byte[] nodeRidBytes =
+                        NativeRoutingIds.readBytesOut(sourceNodeRidOut);
+                    byte[] spotRidBytes =
+                        NativeRoutingIds.readBytesOut(sourceSpotRidOut);
                     return InternalAccess.receivedLazy(nodeRidBytes, spotRidBytes,
                         firstPart, null,
                         0L, false, null, lazyCompletionRunnable);
                 }
-                RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
-                RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
+                RoutingId nodeRid =
+                    NativeRoutingIds.readOut(sourceNodeRidOut);
+                RoutingId spotRid =
+                    NativeRoutingIds.readOut(sourceSpotRidOut);
                 return InternalAccess.receivedLazy(nodeRid, spotRid, firstPart,
                     null, requestSequence, true,
                     replySender(nodeRid, spotRid, requestSequence),
@@ -519,12 +512,14 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             firstPartConsumed = true;
             Message[] partsArray = parts.toArray(new Message[0]);
             if (requestSequence == 0L) {
-                byte[] nodeRidBytes = readRoutingIdBytesOut(sourceNodeRidOut);
-                byte[] spotRidBytes = readRoutingIdBytesOut(sourceSpotRidOut);
+                byte[] nodeRidBytes =
+                    NativeRoutingIds.readBytesOut(sourceNodeRidOut);
+                byte[] spotRidBytes =
+                    NativeRoutingIds.readBytesOut(sourceSpotRidOut);
                 return InternalAccess.received(nodeRidBytes, spotRidBytes, partsArray, true, 0L, false, null, lazyCompletionRunnable);
             }
-            RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
-            RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
+            RoutingId nodeRid = NativeRoutingIds.readOut(sourceNodeRidOut);
+            RoutingId spotRid = NativeRoutingIds.readOut(sourceSpotRidOut);
             return InternalAccess.received(nodeRid, spotRid, partsArray, true,
                 requestSequence, true,
                 replySender(nodeRid, spotRid, requestSequence),
@@ -583,145 +578,6 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         if (closed || InternalAccess.socketHandle(socket) == null || InternalAccess.socketHandle(socket).address() == 0) {
             throw new IllegalStateException("socket is closed");
         }
-    }
-
-    private void ensureNoCallbackFailure() {
-        RuntimeException failure = callbackFailure;
-        if (failure != null) {
-            throw failure;
-        }
-    }
-
-    private void recordCallbackFailure(RuntimeException failure) {
-        callbackFailure = failure;
-        Thread current = Thread.currentThread();
-        Thread.UncaughtExceptionHandler uncaught =
-            current.getUncaughtExceptionHandler();
-        if (uncaught != null) {
-            uncaught.uncaughtException(current, failure);
-        }
-    }
-
-    private static ExecutorService newCallbackExecutor() {
-        return RuntimeResources.daemonSingleThreadExecutor(
-            "zlink-router-callback");
-    }
-
-    // Internal optimization for the existing recv() path: probes the
-    // RoutingId thread cache off inline (lo, hi, size) words before
-    // allocating a byte[]. On cache hit, the byte[] allocation in
-    // readRoutingId(...) is avoided. No public API change.
-    private static RoutingId readRoutingIdOut(MemorySegment nativeRidOut) {
-        MemorySegment nativeRid = nativeRidOut.get(ValueLayout.ADDRESS, 0);
-        if (nativeRid.address() == 0) {
-            return null;
-        }
-        nativeRid = nativeRid.reinterpret(
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (size == 0) {
-            return null;
-        }
-        if (size <= 16) {
-            long lo = nativeRid.get(ValueLayout.JAVA_LONG_UNALIGNED,
-                NativeLayouts.ROUTING_ID_DATA_OFFSET);
-            long hi = size > 8
-                ? nativeRid.get(ValueLayout.JAVA_LONG_UNALIGNED,
-                    NativeLayouts.ROUTING_ID_DATA_OFFSET + 8)
-                : 0L;
-            int loBits = (size >= 8 ? 8 : size) * 8;
-            long loMask = loBits == 64 ? -1L : ((1L << loBits) - 1L);
-            lo &= loMask;
-            int hiBytes = size > 8 ? size - 8 : 0;
-            int hiBits = hiBytes * 8;
-            long hiMask = hiBits == 64 ? -1L
-                : (hiBits == 0 ? 0L : ((1L << hiBits) - 1L));
-            hi &= hiMask;
-            RoutingId cached = RoutingId.tryFromInlineCached(size, lo, hi);
-            if (cached != null) {
-                return cached;
-            }
-        }
-        return readRoutingId(nativeRid);
-    }
-
-
-    private static byte[] readRoutingIdBytesOut(MemorySegment nativeRidOut) {
-        MemorySegment nativeRid = nativeRidOut.get(ValueLayout.ADDRESS, 0);
-        if (nativeRid.address() == 0) {
-            return null;
-        }
-        nativeRid = nativeRid.reinterpret(
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (size == 0) {
-            return null;
-        }
-        byte[] value = new byte[size];
-        MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-            MemorySegment.ofArray(value), 0, size);
-        return value;
-    }
-
-    private static byte[] readRoutingIdBytesCached(RecvOutScratch scratch,
-                                                   MemorySegment nativeRidOut,
-                                                   boolean spot) {
-        long ptr = nativeRidOut.get(ValueLayout.ADDRESS, 0).address();
-        if (ptr == 0L) {
-            return null;
-        }
-        long lastPtr = spot ? scratch.lastSpotRidPtr : scratch.lastNodeRidPtr;
-        byte[] lastBytes = spot ? scratch.lastSpotRidBytes
-            : scratch.lastNodeRidBytes;
-        if (ptr == lastPtr && lastBytes != null) {
-            return lastBytes;
-        }
-        MemorySegment nativeRid = MemorySegment.ofAddress(ptr).reinterpret(
-            NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (size == 0) {
-            if (spot) {
-                scratch.lastSpotRidPtr = ptr;
-                scratch.lastSpotRidBytes = null;
-            } else {
-                scratch.lastNodeRidPtr = ptr;
-                scratch.lastNodeRidBytes = null;
-            }
-            return null;
-        }
-        byte[] value = new byte[size];
-        MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-            MemorySegment.ofArray(value), 0, size);
-        if (spot) {
-            scratch.lastSpotRidPtr = ptr;
-            scratch.lastSpotRidBytes = value;
-        } else {
-            scratch.lastNodeRidPtr = ptr;
-            scratch.lastNodeRidBytes = value;
-        }
-        return value;
-    }
-
-    private static RoutingId readRoutingId(MemorySegment nativeRid) {
-        if (nativeRid == null || nativeRid.address() == 0) {
-            return null;
-        }
-        if (nativeRid.byteSize() < NativeLayouts.ROUTING_ID_LAYOUT.byteSize()) {
-            nativeRid = nativeRid.reinterpret(
-                NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        }
-        int size = nativeRid.get(ValueLayout.JAVA_BYTE,
-            NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (size == 0) {
-            return null;
-        }
-        byte[] value = new byte[size];
-        MemorySegment.copy(nativeRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-            MemorySegment.ofArray(value), 0, size);
-        return InternalAccess.routingIdFromTrusted(value);
     }
 
     private record CallbackReceivedData(RoutingId nodeRid, RoutingId spotRid,

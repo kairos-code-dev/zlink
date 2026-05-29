@@ -9,36 +9,30 @@ import java.lang.foreign.MemorySegment;
 import java.lang.invoke.MethodType;
 import java.util.concurrent.ExecutorService;
 import systems.zlink.contracts.errors.ZlinkException;
+import systems.zlink.runtime.nativeapi.NativeCallbackSupport;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
 
 final class SocketCallbackSupport implements AutoCloseable {
     private static final Linker LINKER = Linker.nativeLinker();
 
     private final SocketCore owner;
-    private volatile ExecutorService executor;
-    private volatile RuntimeException failure;
+    private final NativeCallbackSupport callbacks =
+        new NativeCallbackSupport("zlink-socket-callback");
 
     SocketCallbackSupport(SocketCore owner) {
         this.owner = owner;
     }
 
     ExecutorService executor() {
-        return executor;
+        return callbacks.executor();
     }
 
     Arena install(String callbackName, MethodType callbackType,
                   FunctionDescriptor descriptor, String nativeOperation,
                   CallbackRegistration registration) {
         owner.ensureOpen();
-        ensureNoFailure();
-        ExecutorService currentExecutor = executor;
-        boolean createdExecutor = false;
-        if (currentExecutor == null) {
-            currentExecutor = RuntimeResources.daemonSingleThreadExecutor(
-                "zlink-socket-callback");
-            executor = currentExecutor;
-            createdExecutor = true;
-        }
+        callbacks.ensureNoFailure();
+        NativeCallbackSupport.ExecutorLease lease = callbacks.ensureExecutor();
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(
             owner.callbackHandle(callbackName, callbackType), descriptor,
@@ -53,37 +47,23 @@ final class SocketCallbackSupport implements AutoCloseable {
             return arena;
         } finally {
             if (!success) {
-                if (createdExecutor) {
-                    executor = null;
-                    RuntimeResources.shutdownExecutor(currentExecutor);
-                }
+                callbacks.clearExecutorIfCreated(lease);
                 RuntimeResources.closeArena(arena);
             }
         }
     }
 
     void recordFailure(RuntimeException failure) {
-        this.failure = failure;
-        Thread current = Thread.currentThread();
-        Thread.UncaughtExceptionHandler uncaught =
-            current.getUncaughtExceptionHandler();
-        if (uncaught != null) {
-            uncaught.uncaughtException(current, failure);
-        }
+        callbacks.recordFailure(failure);
     }
 
     void ensureNoFailure() {
-        RuntimeException currentFailure = failure;
-        if (currentFailure != null) {
-            throw currentFailure;
-        }
+        callbacks.ensureNoFailure();
     }
 
     @Override
     public void close() {
-        failure = null;
-        RuntimeResources.shutdownExecutor(executor);
-        executor = null;
+        callbacks.close();
     }
 
     @FunctionalInterface

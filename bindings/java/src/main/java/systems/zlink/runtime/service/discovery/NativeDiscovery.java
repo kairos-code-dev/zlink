@@ -19,12 +19,12 @@ import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeListSnapshots;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.service.registry.NativeRegistryCodecs;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -280,27 +280,12 @@ public final class NativeDiscovery implements Discovery {
 
     /** Returns the current discovery member peers snapshot. */
     public List<MemberPeerEntry> memberPeers() {
-        int count = memberPeerCount();
-        if (count == 0)
-            return List.of();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT, count);
-            MemorySegment countOut = arena.allocate(ValueLayout.JAVA_LONG);
-            countOut.set(ValueLayout.JAVA_LONG, 0, count);
-            int rc = Native.discoveryMemberPeers(handle, entries, countOut);
-            if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_discovery_member_peers");
-            int actual = boundedCount(countOut.get(ValueLayout.JAVA_LONG, 0),
-              count);
-            long stride = NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT.byteSize();
-            ArrayList<MemberPeerEntry> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(NativeRegistryCodecs.memberPeerEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
-        }
+        return NativeListSnapshots.read(
+          NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT,
+          "zlink_discovery_member_peers",
+          (arena, entries, count) -> Native.discoveryMemberPeers(handle,
+            entries, count),
+          NativeRegistryCodecs::memberPeerEntryFromNative);
     }
 
     @Override
@@ -309,26 +294,6 @@ public final class NativeDiscovery implements Discovery {
             return;
         Native.discoveryDestroy(handle);
         handle = MemorySegment.NULL;
-    }
-
-    private int memberPeerCount() {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.discoveryMemberPeers(handle, MemorySegment.NULL,
-              count);
-            if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_discovery_member_peers");
-            return boundedCount(count.get(ValueLayout.JAVA_LONG, 0),
-              Integer.MAX_VALUE);
-        }
-    }
-
-    private static int boundedCount(long value, int max) {
-        if (value <= 0)
-            return 0;
-        if (value > max)
-            return max;
-        return (int) value;
     }
 
     private static byte[] readMessageBytes(MemorySegment message) {

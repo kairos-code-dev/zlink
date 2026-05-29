@@ -138,11 +138,4 @@ final class SpotNodeSnapshots {
           segment.get(ValueLayout.JAVA_LONG, 792));
     }
 
-    static int boundedCount(long value) {
-        if (value <= 0)
-            return 0;
-        if (value > Integer.MAX_VALUE)
-            return Integer.MAX_VALUE;
-        return (int) value;
-    }
 }

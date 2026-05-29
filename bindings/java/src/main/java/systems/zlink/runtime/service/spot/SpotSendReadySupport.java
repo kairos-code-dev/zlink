@@ -5,6 +5,7 @@ package systems.zlink.runtime.service.spot;
 import systems.zlink.contracts.sockets.SendReadyHandler;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeCallbackSupport;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -26,21 +27,14 @@ final class SpotSendReadySupport implements AutoCloseable {
     private SendReadyHandler handler;
     private Arena callbackArena;
     private MemorySegment callbackStub = MemorySegment.NULL;
-    private volatile ExecutorService callbackExecutor;
-    private volatile RuntimeException callbackFailure;
+    private final NativeCallbackSupport callbacks =
+        new NativeCallbackSupport("zlink-spot-callback");
 
     void install(MemorySegment spotHandle, SendReadyHandler nextHandler) {
         Objects.requireNonNull(spotHandle, "spotHandle");
         Objects.requireNonNull(nextHandler, "handler");
-        ensureNoCallbackFailure();
-        ExecutorService executor = callbackExecutor;
-        boolean createdExecutor = false;
-        if (executor == null) {
-            executor = RuntimeResources.daemonSingleThreadExecutor(
-                "zlink-spot-callback");
-            callbackExecutor = executor;
-            createdExecutor = true;
-        }
+        callbacks.ensureNoFailure();
+        NativeCallbackSupport.ExecutorLease lease = callbacks.ensureExecutor();
         Arena arena = Arena.ofShared();
         MemorySegment stub = LINKER.upcallStub(callbackHandle(
             "handleSendReadyCallback", MethodType.methodType(void.class,
@@ -61,31 +55,23 @@ final class SpotSendReadySupport implements AutoCloseable {
             handler = nextHandler;
         } finally {
             if (!success) {
-                if (createdExecutor) {
-                    callbackExecutor = null;
-                    RuntimeResources.shutdownExecutor(executor);
-                }
+                callbacks.clearExecutorIfCreated(lease);
                 RuntimeResources.closeArena(arena);
             }
         }
     }
 
     void ensureNoCallbackFailure() {
-        RuntimeException failure = callbackFailure;
-        if (failure != null)
-            throw failure;
+        callbacks.ensureNoFailure();
     }
 
     @Override
     public void close() {
-        ExecutorService executor = callbackExecutor;
         Arena arena = callbackArena;
         handler = null;
-        callbackFailure = null;
-        callbackExecutor = null;
+        callbacks.close();
         callbackArena = null;
         callbackStub = MemorySegment.NULL;
-        RuntimeResources.shutdownExecutor(executor);
         RuntimeResources.closeArena(arena);
     }
 
@@ -102,15 +88,15 @@ final class SpotSendReadySupport implements AutoCloseable {
     private void handleSendReadyCallback(MemorySegment subject,
                                          MemorySegment userdata) {
         SendReadyHandler currentHandler = handler;
-        ExecutorService executor = callbackExecutor;
+        ExecutorService executor = callbacks.executor();
         if (currentHandler == null || executor == null)
             return;
         try {
             executor.execute(() -> dispatchSendReady(currentHandler));
         } catch (RejectedExecutionException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
         } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
         }
     }
 
@@ -119,18 +105,9 @@ final class SpotSendReadySupport implements AutoCloseable {
         try {
             currentHandler.onReady();
         } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
         } finally {
             InternalAccess.leaveCallback();
         }
-    }
-
-    private void recordCallbackFailure(RuntimeException failure) {
-        callbackFailure = failure;
-        Thread current = Thread.currentThread();
-        Thread.UncaughtExceptionHandler uncaught =
-            current.getUncaughtExceptionHandler();
-        if (uncaught != null)
-            uncaught.uncaughtException(current, failure);
     }
 }

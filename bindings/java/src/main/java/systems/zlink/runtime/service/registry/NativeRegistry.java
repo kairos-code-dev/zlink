@@ -10,11 +10,11 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.internal.DurationConversions;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeListSnapshots;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -158,67 +158,27 @@ public final class NativeRegistry implements Registry {
     /** Returns the filtered service summary snapshot. */
     public List<RegistryServiceSummaryEntry> serviceSummary(
       RegistryServiceSummaryFilter filter) {
-        try (Arena arena = Arena.ofConfined()) {
+        return NativeListSnapshots.read(
+          NativeLayouts.REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT,
+          "zlink_registry_service_summary",
+          (arena, entries, count) -> {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : NativeRegistryCodecs.serviceSummaryFilterToNative(filter, arena);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.registryServiceSummary(handle, nativeFilter,
-              MemorySegment.NULL, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_registry_service_summary");
-            }
-            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-            if (available == 0)
-                return List.of();
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT, available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.registryServiceSummary(handle, nativeFilter,
+            return Native.registryServiceSummary(handle, nativeFilter,
               entries, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_registry_service_summary");
-            }
-            int actual = Math.min(available, boundedCount(
-              count.get(ValueLayout.JAVA_LONG, 0)));
-            long stride =
-              NativeLayouts.REGISTRY_SERVICE_SUMMARY_ENTRY_LAYOUT.byteSize();
-            ArrayList<RegistryServiceSummaryEntry> out =
-              new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(NativeRegistryCodecs.serviceSummaryEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
-        }
+          },
+          NativeRegistryCodecs::serviceSummaryEntryFromNative);
     }
 
     /** Returns member peers for one channel view. */
     public List<MemberPeerEntry> memberPeers(String channelName) {
         Objects.requireNonNull(channelName, "channelName");
-        int count = countMemberPeers(channelName);
-        if (count == 0)
-            return List.of();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT, count);
-            MemorySegment countOut = arena.allocate(ValueLayout.JAVA_LONG);
-            countOut.set(ValueLayout.JAVA_LONG, 0, count);
-            int rc = Native.registryMemberPeers(handle,
-              NativeHelpers.toCString(arena, channelName), entries, countOut);
-            if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_member_peers");
-            int actual = Math.min(count, boundedCount(
-              countOut.get(ValueLayout.JAVA_LONG, 0)));
-            long stride = NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT.byteSize();
-            ArrayList<MemberPeerEntry> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(NativeRegistryCodecs.memberPeerEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
-        }
+        return NativeListSnapshots.read(
+          NativeLayouts.MEMBER_PEER_ENTRY_LAYOUT,
+          "zlink_registry_member_peers",
+          (arena, entries, count) -> Native.registryMemberPeers(handle,
+            NativeHelpers.toCString(arena, channelName), entries, count),
+          NativeRegistryCodecs::memberPeerEntryFromNative);
     }
 
     /** Returns the full current topology snapshot. */
@@ -243,65 +203,18 @@ public final class NativeRegistry implements Registry {
 
     private List<RegistryTopologyEntry> readTopology(
       RegistryTopologyFilter filter) {
-        try (Arena arena = Arena.ofConfined()) {
+        return NativeListSnapshots.read(
+          NativeLayouts.REGISTRY_TOPOLOGY_ENTRY_LAYOUT,
+          "zlink_registry_topology",
+          (arena, entries, count) -> {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : NativeRegistryCodecs.topologyFilterToNative(filter, arena);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = filter == null
-              ? Native.registryTopology(handle, MemorySegment.NULL,
-                count)
-              : Native.registryTopology(handle, nativeFilter,
-                MemorySegment.NULL, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(filter == null
-                  ? "zlink_registry_topology"
-                  : "zlink_registry_topology");
-            }
-            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-            if (available == 0)
-                return List.of();
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.REGISTRY_TOPOLOGY_ENTRY_LAYOUT, available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = filter == null
+            return filter == null
               ? Native.registryTopology(handle, entries, count)
               : Native.registryTopology(handle, nativeFilter, entries,
                 count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(filter == null
-                  ? "zlink_registry_topology"
-                  : "zlink_registry_topology");
-            }
-            int actual = Math.min(available, boundedCount(
-              count.get(ValueLayout.JAVA_LONG, 0)));
-            long stride = NativeLayouts.REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteSize();
-            ArrayList<RegistryTopologyEntry> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(NativeRegistryCodecs.topologyEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
-        }
-    }
-
-    private int countMemberPeers(String channelName) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.registryMemberPeers(handle,
-              NativeHelpers.toCString(arena, channelName), MemorySegment.NULL,
-              count);
-            if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_member_peers");
-            return boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-        }
-    }
-
-    private static int boundedCount(long value) {
-        if (value <= 0)
-            return 0;
-        if (value > Integer.MAX_VALUE)
-            return Integer.MAX_VALUE;
-        return (int) value;
+          },
+          NativeRegistryCodecs::topologyEntryFromNative);
     }
 
 }

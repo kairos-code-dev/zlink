@@ -33,6 +33,7 @@ import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeCallbackSupport;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
 
@@ -49,7 +50,8 @@ final class SpotDispatchSupport implements AutoCloseable {
     private SpotDispatchEventHandler dispatchEventHandler;
     private Arena dispatchCallbackArena;
     private long dispatchCallbackId;
-    private volatile RuntimeException callbackFailure;
+    private final NativeCallbackSupport callbacks =
+        new NativeCallbackSupport("zlink-spot-dispatch-callback");
 
     SpotDispatchSupport(Spot spot) {
         this.spot = Objects.requireNonNull(spot, "spot");
@@ -80,15 +82,13 @@ final class SpotDispatchSupport implements AutoCloseable {
     }
 
     void ensureNoCallbackFailure() {
-        RuntimeException failure = callbackFailure;
-        if (failure != null) {
-            throw failure;
-        }
+        callbacks.ensureNoFailure();
     }
 
     @Override
     public void close() {
         releaseDispatchEventHandlerSlot();
+        callbacks.close();
     }
 
     private static void handleDispatchEventCallback(MemorySegment spotHandle,
@@ -117,9 +117,9 @@ final class SpotDispatchSupport implements AutoCloseable {
             }
             dispatchEvent(handler, dispatchInfo);
         } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
         } catch (Error ex) {
-            recordCallbackFailure(new RuntimeException(
+            callbacks.recordFailure(new RuntimeException(
                 "spot dispatch callback failed", ex));
         }
     }
@@ -130,7 +130,7 @@ final class SpotDispatchSupport implements AutoCloseable {
         try {
             handler.onEvent(info);
         } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
+            callbacks.recordFailure(ex);
         } finally {
             InternalAccess.leaveCallback();
         }
@@ -231,16 +231,6 @@ final class SpotDispatchSupport implements AutoCloseable {
             throw new IllegalStateException("spot is closed");
         }
         ensureNoCallbackFailure();
-    }
-
-    private void recordCallbackFailure(RuntimeException failure) {
-        callbackFailure = failure;
-        Thread current = Thread.currentThread();
-        Thread.UncaughtExceptionHandler uncaught =
-          current.getUncaughtExceptionHandler();
-        if (uncaught != null) {
-            uncaught.uncaughtException(current, failure);
-        }
     }
 
     private static MethodHandle callbackHandle(String name, MethodType type) {

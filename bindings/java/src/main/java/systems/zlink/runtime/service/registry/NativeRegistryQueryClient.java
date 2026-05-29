@@ -9,10 +9,9 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeListSnapshots;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
-import java.util.ArrayList;
 import java.util.List;
 
 public final class NativeRegistryQueryClient implements RegistryQueryClient {
@@ -46,34 +45,16 @@ public final class NativeRegistryQueryClient implements RegistryQueryClient {
     }
 
     public List<RegistryTopologyEntry> topology(RegistryTopologyFilter filter) {
-        try (Arena arena = Arena.ofConfined()) {
+        return NativeListSnapshots.read(
+          NativeLayouts.REGISTRY_TOPOLOGY_ENTRY_LAYOUT,
+          "zlink_registry_query_client_topology",
+          (arena, entries, count) -> {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : NativeRegistryCodecs.topologyFilterToNative(filter, arena);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.registryQuerySnapshot(handle, nativeFilter,
-              MemorySegment.NULL, count);
-            if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_query_client_topology");
-            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-            if (available == 0)
-                return List.of();
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.REGISTRY_TOPOLOGY_ENTRY_LAYOUT, available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.registryQuerySnapshot(handle, nativeFilter, entries,
+            return Native.registryQuerySnapshot(handle, nativeFilter, entries,
               count);
-            if (rc != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_query_client_topology");
-            int actual = Math.min(available, boundedCount(
-              count.get(ValueLayout.JAVA_LONG, 0)));
-            long stride = NativeLayouts.REGISTRY_TOPOLOGY_ENTRY_LAYOUT.byteSize();
-            ArrayList<RegistryTopologyEntry> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(NativeRegistryCodecs.topologyEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
-        }
+          },
+          NativeRegistryCodecs::topologyEntryFromNative);
     }
 
     @Override
@@ -84,11 +65,4 @@ public final class NativeRegistryQueryClient implements RegistryQueryClient {
         handle = MemorySegment.NULL;
     }
 
-    private static int boundedCount(long value) {
-        if (value <= 0)
-            return 0;
-        if (value > Integer.MAX_VALUE)
-            return Integer.MAX_VALUE;
-        return (int) value;
-    }
 }

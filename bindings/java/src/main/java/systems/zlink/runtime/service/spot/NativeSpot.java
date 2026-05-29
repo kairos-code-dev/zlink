@@ -31,13 +31,13 @@ import systems.zlink.runtime.messaging.MessageOperations;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeListSnapshots;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -684,34 +684,12 @@ public final class NativeSpot implements Spot {
 
     public List<ActorRef> actors() {
         ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotActors(handle, MemorySegment.NULL,
-              count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_actors");
-            }
-            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-            if (available == 0) {
-                return List.of();
-            }
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.ACTOR_REF_LAYOUT, available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotActors(handle, entries, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_actors");
-            }
-            int actual = Math.min(available, boundedCount(
-              count.get(ValueLayout.JAVA_LONG, 0)));
-            long stride = NativeLayouts.ACTOR_REF_LAYOUT.byteSize();
-            ArrayList<ActorRef> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(ActorInterop.actorRefFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
-        }
+        return NativeListSnapshots.read(
+          NativeLayouts.ACTOR_REF_LAYOUT,
+          "zlink_spot_actors",
+          (arena, entries, count) -> Native.spotActors(handle, entries,
+            count),
+          ActorInterop::actorRefFromNative);
     }
 
     @Override
@@ -729,14 +707,6 @@ public final class NativeSpot implements Spot {
         if (ownerNode != null) {
             InternalAccess.spotNodeReleaseSpot(ownerNode, this);
         }
-    }
-
-    private static int boundedCount(long value) {
-        if (value <= 0)
-            return 0;
-        if (value > Integer.MAX_VALUE)
-            return Integer.MAX_VALUE;
-        return (int) value;
     }
 
     void ensureOpen() {

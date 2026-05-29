@@ -172,6 +172,15 @@ public sealed partial class Received : IDisposable
             replyHandler);
     }
 
+    internal static Received Create(RoutingIdSnapshot routingId,
+        MultipartMessageCollection parts, ulong? requestSeq = null,
+        RoutingIdSnapshot spotRid = default,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        return new Received(routingId, parts, requestSeq, spotRid,
+            replyHandler);
+    }
+
     internal Received(RoutingId? routingId, Message[] parts,
         ulong? requestSeq = null, RoutingId? spotRid = null,
         ReceivedReplyHandler? replyHandler = null)
@@ -239,6 +248,16 @@ public sealed partial class Received : IDisposable
         _routingIdSnapshot = routingId;
         _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
         _singlePart = singlePart ?? throw new ArgumentNullException(nameof(singlePart));
+    }
+
+    internal Received(RoutingIdSnapshot routingId,
+        MultipartMessageCollection parts, ulong? requestSeq = null,
+        RoutingIdSnapshot spotRid = default,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        _routingIdSnapshot = routingId;
+        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
     }
 
     internal int Count => _singlePart != null ? 1 : PartsCollection.Count;

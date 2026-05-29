@@ -476,11 +476,8 @@ internal sealed partial class SocketKernel : IDisposable
                         (int)ErrorCode.EInval);
                 }
 
-                Message[] copied = new Message[replyParts.Count];
-                for (int i = 0; i < copied.Length; i++)
-                    copied[i] = replyParts[i];
                 SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
-                    copied, sendFlags);
+                    replyParts, sendFlags);
             });
         RoutingIdSnapshot requestRoutingId =
             RoutingIdSnapshot.FromBytes(routingIdBytes);
@@ -522,11 +519,8 @@ internal sealed partial class SocketKernel : IDisposable
                         (int)ErrorCode.EInval);
                 }
 
-                Message[] copied = new Message[replyParts.Count];
-                for (int i = 0; i < copied.Length; i++)
-                    copied[i] = replyParts[i];
                 SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
-                    copied, sendFlags);
+                    replyParts, sendFlags);
             });
         RoutingIdSnapshot requestRoutingId =
             RoutingIdSnapshot.FromBytes(routingIdBytes);
@@ -542,6 +536,15 @@ internal sealed partial class SocketKernel : IDisposable
         RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
         ulong requestSeq)
     {
+        if (requestSeq == 0)
+        {
+            Received received = Received.Create(routingId, parts,
+                spotRid: spotRid);
+            received.SetSendHandler(CreateRoutedSendHandler(routingId, spotRid),
+                CreateRoutedSendSingleHandler(routingId, spotRid));
+            return received;
+        }
+
         byte[]? routingIdBytes = routingId.ToByteArray();
         byte[]? spotRidBytes = spotRid.ToByteArray();
         return CreateRoutedReceived(parts, routingIdBytes, spotRidBytes,

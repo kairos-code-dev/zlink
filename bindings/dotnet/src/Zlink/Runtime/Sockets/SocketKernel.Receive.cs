@@ -279,11 +279,8 @@ internal sealed partial class SocketKernel
             if (replyRoutingId is null)
                 throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
                     (int)ErrorCode.EInval);
-            Message[] copied = new Message[replyParts.Count];
-            for (int i = 0; i < copied.Length; i++)
-                copied[i] = replyParts[i];
             SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
-                copied, sendFlags);
+                replyParts, sendFlags);
         };
 
         if (singlePart != null)

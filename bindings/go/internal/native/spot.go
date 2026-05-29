@@ -86,12 +86,12 @@ const (
 type SpotNodeOption int
 
 const (
-	SpotNodeOptionRouterHWMProfile   SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE)
-	SpotNodeOptionRouterHWM          SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM)
-	SpotNodeOptionPubSubHWMProfile   SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE)
-	SpotNodeOptionPubSubHWM          SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM)
-	SpotNodeOptionDispatchWorkersMin SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN)
-	SpotNodeOptionDispatchWorkersMax SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX)
+	SpotNodeOptionRouterHwmProfile    SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE)
+	SpotNodeOptionRouterHighWaterMark SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_ROUTER_HWM)
+	SpotNodeOptionPubSubHwmProfile    SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE)
+	SpotNodeOptionPubSubHighWaterMark SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_PUBSUB_HWM)
+	SpotNodeOptionDispatchWorkersMin  SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN)
+	SpotNodeOptionDispatchWorkersMax  SpotNodeOption = SpotNodeOption(C.ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX)
 )
 
 type SpotNodeOptions struct {
@@ -298,37 +298,37 @@ func (n *SpotNode) Option(option SpotNodeOption) (int, error) {
 	return int(raw), nil
 }
 
-func (n *SpotNode) SetRouterHWM(value int) error {
-	return n.SetOption(SpotNodeOptionRouterHWM, value)
+func (n *SpotNode) SetRouterHighWaterMark(value int) error {
+	return n.SetOption(SpotNodeOptionRouterHighWaterMark, value)
 }
 
-func (n *SpotNode) RouterHWM() (int, error) {
-	return n.Option(SpotNodeOptionRouterHWM)
+func (n *SpotNode) RouterHighWaterMark() (int, error) {
+	return n.Option(SpotNodeOptionRouterHighWaterMark)
 }
 
-func (n *SpotNode) SetPubSubHWM(value int) error {
-	return n.SetOption(SpotNodeOptionPubSubHWM, value)
+func (n *SpotNode) SetPubSubHighWaterMark(value int) error {
+	return n.SetOption(SpotNodeOptionPubSubHighWaterMark, value)
 }
 
-func (n *SpotNode) PubSubHWM() (int, error) {
-	return n.Option(SpotNodeOptionPubSubHWM)
+func (n *SpotNode) PubSubHighWaterMark() (int, error) {
+	return n.Option(SpotNodeOptionPubSubHighWaterMark)
 }
 
-func (n *SpotNode) SetRouterHWMProfile(value AutoHwmProfile) error {
-	return n.SetOption(SpotNodeOptionRouterHWMProfile, int(value))
+func (n *SpotNode) SetRouterHwmProfile(value AutoHwmProfile) error {
+	return n.SetOption(SpotNodeOptionRouterHwmProfile, int(value))
 }
 
-func (n *SpotNode) RouterHWMProfile() (AutoHwmProfile, error) {
-	value, err := n.Option(SpotNodeOptionRouterHWMProfile)
+func (n *SpotNode) RouterHwmProfile() (AutoHwmProfile, error) {
+	value, err := n.Option(SpotNodeOptionRouterHwmProfile)
 	return AutoHwmProfile(value), err
 }
 
-func (n *SpotNode) SetPubSubHWMProfile(value AutoHwmProfile) error {
-	return n.SetOption(SpotNodeOptionPubSubHWMProfile, int(value))
+func (n *SpotNode) SetPubSubHwmProfile(value AutoHwmProfile) error {
+	return n.SetOption(SpotNodeOptionPubSubHwmProfile, int(value))
 }
 
-func (n *SpotNode) PubSubHWMProfile() (AutoHwmProfile, error) {
-	value, err := n.Option(SpotNodeOptionPubSubHWMProfile)
+func (n *SpotNode) PubSubHwmProfile() (AutoHwmProfile, error) {
+	value, err := n.Option(SpotNodeOptionPubSubHwmProfile)
 	return AutoHwmProfile(value), err
 }
 
@@ -1015,11 +1015,11 @@ func (s *Spot) RoutingID() (RoutingID, error) {
 	return getHandleRoutingID(s.raw())
 }
 
-func (s *Spot) SetSendHWM(value int) error {
+func (s *Spot) SetSendHighWaterMark(value int) error {
 	return s.core.setIntOption(C.ZLINK_OPT_SNDHWM, int32(value))
 }
 
-func (s *Spot) SetRecvHWM(value int) error {
+func (s *Spot) SetReceiveHighWaterMark(value int) error {
 	return s.core.setIntOption(C.ZLINK_OPT_RCVHWM, int32(value))
 }
 
@@ -1027,7 +1027,7 @@ func (s *Spot) SetLinger(value time.Duration) error {
 	return s.core.setDurationOption(C.ZLINK_OPT_LINGER, value)
 }
 
-func (s *Spot) SetRecvTimeout(value time.Duration) error {
+func (s *Spot) SetReceiveTimeout(value time.Duration) error {
 	return s.core.setDurationOption(C.ZLINK_OPT_RCVTIMEO, value)
 }
 

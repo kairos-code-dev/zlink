@@ -49,7 +49,7 @@ func runSpot(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.ApplySingleBenchmarkSocketOptions(publisher, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(stopPublisher, cfg.transport)
 	perfcommon.ApplySingleBenchmarkSocketOptions(subscriber, cfg.transport)
-	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.SingleRecvTimeout()))
+	perfcommon.Must(subscriber.SetReceiveTimeout(perfcommon.SingleReceiveTimeout()))
 	poller := perfcommon.NewSocketPoller(subscriber, perfcommon.ZLinkPollIn)
 	defer poller.Close()
 

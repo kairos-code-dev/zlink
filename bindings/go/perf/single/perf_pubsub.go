@@ -40,7 +40,7 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), pubMon, subMon)
 
 	perfcommon.Must(subscriber.SetSubscription(""))
-	perfcommon.Must(subscriber.SetRecvTimeout(perfcommon.SinglePubSubRecvTimeout()))
+	perfcommon.Must(subscriber.SetReceiveTimeout(perfcommon.SinglePubSubReceiveTimeout()))
 	perfcommon.PostReadySettle(cfg.pattern)
 
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)

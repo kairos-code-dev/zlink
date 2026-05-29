@@ -43,11 +43,11 @@ import (
 	"unsafe"
 )
 
-type RIDDuplicatePolicy int
+type RidDuplicatePolicy int
 
 const (
-	RIDDuplicateReject   RIDDuplicatePolicy = 0
-	RIDDuplicateHandover RIDDuplicatePolicy = 1
+	RidDuplicateReject   RidDuplicatePolicy = 0
+	RidDuplicateHandover RidDuplicatePolicy = 1
 )
 
 type SubmitRetryMode int
@@ -140,20 +140,20 @@ func (o *CommonSocketOptions) Linger() (time.Duration, error) {
 	return o.socket.getDurationOption(C.ZLINK_OPT_LINGER)
 }
 
-func (o *CommonSocketOptions) SetSendHWM(value int) error {
+func (o *CommonSocketOptions) SetSendHighWaterMark(value int) error {
 	return o.socket.setIntOption(C.ZLINK_OPT_SNDHWM, int32(value))
 }
 
-func (o *CommonSocketOptions) SendHWM() (int, error) {
+func (o *CommonSocketOptions) SendHighWaterMark() (int, error) {
 	value, err := o.socket.getIntOption(C.ZLINK_OPT_SNDHWM)
 	return int(value), err
 }
 
-func (o *CommonSocketOptions) SetRecvHWM(value int) error {
+func (o *CommonSocketOptions) SetReceiveHighWaterMark(value int) error {
 	return o.socket.setIntOption(C.ZLINK_OPT_RCVHWM, int32(value))
 }
 
-func (o *CommonSocketOptions) RecvHWM() (int, error) {
+func (o *CommonSocketOptions) ReceiveHighWaterMark() (int, error) {
 	value, err := o.socket.getIntOption(C.ZLINK_OPT_RCVHWM)
 	return int(value), err
 }
@@ -166,11 +166,11 @@ func (o *CommonSocketOptions) SendTimeout() (time.Duration, error) {
 	return o.socket.getDurationOption(C.ZLINK_OPT_SNDTIMEO)
 }
 
-func (o *CommonSocketOptions) SetRecvTimeout(value time.Duration) error {
+func (o *CommonSocketOptions) SetReceiveTimeout(value time.Duration) error {
 	return o.socket.setDurationOption(C.ZLINK_OPT_RCVTIMEO, value)
 }
 
-func (o *CommonSocketOptions) RecvTimeout() (time.Duration, error) {
+func (o *CommonSocketOptions) ReceiveTimeout() (time.Duration, error) {
 	return o.socket.getDurationOption(C.ZLINK_OPT_RCVTIMEO)
 }
 
@@ -182,13 +182,13 @@ func (o *CommonSocketOptions) Immediate() (bool, error) {
 	return o.socket.getBoolOption(C.ZLINK_OPT_IMMEDIATE)
 }
 
-func (o *CommonSocketOptions) SetRIDDuplicatePolicy(value RIDDuplicatePolicy) error {
+func (o *CommonSocketOptions) SetRidDuplicatePolicy(value RidDuplicatePolicy) error {
 	return o.socket.setIntOption(C.ZLINK_OPT_RID_DUPLICATE_POLICY, int32(value))
 }
 
-func (o *CommonSocketOptions) RIDDuplicatePolicy() (RIDDuplicatePolicy, error) {
+func (o *CommonSocketOptions) RidDuplicatePolicy() (RidDuplicatePolicy, error) {
 	value, err := o.socket.getIntOption(C.ZLINK_OPT_RID_DUPLICATE_POLICY)
-	return RIDDuplicatePolicy(value), err
+	return RidDuplicatePolicy(value), err
 }
 
 func (o *CommonSocketOptions) SetConnectTimeout(value time.Duration) error {
@@ -247,11 +247,11 @@ func (o *CommonSocketOptions) HeartbeatTimeout() (time.Duration, error) {
 	return o.socket.getDurationOption(C.ZLINK_OPT_HEARTBEAT_TIMEOUT)
 }
 
-func (o *CommonSocketOptions) SetMaxMsgSize(value int64) error {
+func (o *CommonSocketOptions) SetMaxMessageSize(value int64) error {
 	return o.socket.setInt64Option(C.ZLINK_OPT_MAXMSGSIZE, value)
 }
 
-func (o *CommonSocketOptions) MaxMsgSize() (int64, error) {
+func (o *CommonSocketOptions) MaxMessageSize() (int64, error) {
 	return o.socket.getInt64Option(C.ZLINK_OPT_MAXMSGSIZE)
 }
 
@@ -1243,20 +1243,20 @@ type connectionSocket struct {
 	*socketCore
 }
 
-func (s *connectionSocket) SetSendHWM(value int) error {
+func (s *connectionSocket) SetSendHighWaterMark(value int) error {
 	return s.setIntOption(C.ZLINK_OPT_SNDHWM, int32(value))
 }
 
-func (s *connectionSocket) SendHWM() (int, error) {
+func (s *connectionSocket) SendHighWaterMark() (int, error) {
 	value, err := s.getIntOption(C.ZLINK_OPT_SNDHWM)
 	return int(value), err
 }
 
-func (s *connectionSocket) SetRecvHWM(value int) error {
+func (s *connectionSocket) SetReceiveHighWaterMark(value int) error {
 	return s.setIntOption(C.ZLINK_OPT_RCVHWM, int32(value))
 }
 
-func (s *connectionSocket) RecvHWM() (int, error) {
+func (s *connectionSocket) ReceiveHighWaterMark() (int, error) {
 	value, err := s.getIntOption(C.ZLINK_OPT_RCVHWM)
 	return int(value), err
 }
@@ -1265,7 +1265,7 @@ func (s *connectionSocket) SetLinger(value time.Duration) error {
 	return s.setDurationOption(C.ZLINK_OPT_LINGER, value)
 }
 
-func (s *connectionSocket) SetRecvTimeout(value time.Duration) error {
+func (s *connectionSocket) SetReceiveTimeout(value time.Duration) error {
 	return s.setDurationOption(C.ZLINK_OPT_RCVTIMEO, value)
 }
 
@@ -2341,28 +2341,28 @@ func (s *StreamSocket) Close() error {
 	return s.core.Close()
 }
 
-func (s *StreamSocket) SetSendHWM(value int) error {
-	return s.core.SetSendHWM(value)
+func (s *StreamSocket) SetSendHighWaterMark(value int) error {
+	return s.core.SetSendHighWaterMark(value)
 }
 
-func (s *StreamSocket) SendHWM() (int, error) {
-	return s.core.SendHWM()
+func (s *StreamSocket) SendHighWaterMark() (int, error) {
+	return s.core.SendHighWaterMark()
 }
 
-func (s *StreamSocket) SetRecvHWM(value int) error {
-	return s.core.SetRecvHWM(value)
+func (s *StreamSocket) SetReceiveHighWaterMark(value int) error {
+	return s.core.SetReceiveHighWaterMark(value)
 }
 
-func (s *StreamSocket) RecvHWM() (int, error) {
-	return s.core.RecvHWM()
+func (s *StreamSocket) ReceiveHighWaterMark() (int, error) {
+	return s.core.ReceiveHighWaterMark()
 }
 
 func (s *StreamSocket) SetLinger(value time.Duration) error {
 	return s.core.SetLinger(value)
 }
 
-func (s *StreamSocket) SetRecvTimeout(value time.Duration) error {
-	return s.core.SetRecvTimeout(value)
+func (s *StreamSocket) SetReceiveTimeout(value time.Duration) error {
+	return s.core.SetReceiveTimeout(value)
 }
 
 func (s *StreamSocket) SetSendTimeout(value time.Duration) error {

@@ -197,7 +197,7 @@ func runMultiSpotClient(cfg multiConfig, endpoint string) perfcommon.Result {
 	for i := 0; i < cfg.clients; i++ {
 		spot, err := dataNode.Spot()
 		perfcommon.Must(err)
-		perfcommon.Must(spot.SetRecvTimeout(perfcommon.MultiRecvTimeout()))
+		perfcommon.Must(spot.SetReceiveTimeout(perfcommon.MultiReceiveTimeout()))
 		perfcommon.Must(spot.SetRoutingID(zlink.NewRoutingID([]byte(fmt.Sprintf("a-go-multi-spot-client-spot-%06d", i)))))
 		perfcommon.Must(spot.SetSubscription(multiSpotTopic))
 		spots = append(spots, spot)

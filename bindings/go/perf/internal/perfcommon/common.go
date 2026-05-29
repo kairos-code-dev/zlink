@@ -292,7 +292,7 @@ func SingleSendTimeout() time.Duration {
 	return singleSocketTimeout(true)
 }
 
-func SingleRecvTimeout() time.Duration {
+func SingleReceiveTimeout() time.Duration {
 	return singleSocketTimeout(false)
 }
 
@@ -300,7 +300,7 @@ func MultiSendTimeout() time.Duration {
 	return multiSocketTimeout(true)
 }
 
-func MultiRecvTimeout() time.Duration {
+func MultiReceiveTimeout() time.Duration {
 	return multiSocketTimeout(false)
 }
 
@@ -340,19 +340,19 @@ func resolveIntEnv(name string, fallback int) int {
 }
 
 type hwmSocket interface {
-	SetSendHWM(int) error
-	SetRecvHWM(int) error
+	SetSendHighWaterMark(int) error
+	SetReceiveHighWaterMark(int) error
 }
 
 type spotNodeAdmission interface {
-	SetPubSubHWM(int) error
-	SetRouterHWM(int) error
+	SetPubSubHighWaterMark(int) error
+	SetRouterHighWaterMark(int) error
 }
 
 type benchmarkSocket interface {
 	SetLinger(time.Duration) error
 	SetSendTimeout(time.Duration) error
-	SetRecvTimeout(time.Duration) error
+	SetReceiveTimeout(time.Duration) error
 }
 
 // ApplySingleHWM mirrors bench_common_runtime.hpp apply_single_hwm:
@@ -366,10 +366,10 @@ func ApplySingleHWM(socket hwmSocket) {
 		return
 	}
 	if sndhwm := resolveManualSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", true); sndhwm > 0 {
-		Must(socket.SetSendHWM(sndhwm))
+		Must(socket.SetSendHighWaterMark(sndhwm))
 	}
 	if rcvhwm := resolveManualSocketHWM("PERF_SINGLE_HWM", "PERF_SINGLE_SNDHWM", "PERF_SINGLE_RCVHWM", false); rcvhwm > 0 {
-		Must(socket.SetRecvHWM(rcvhwm))
+		Must(socket.SetReceiveHighWaterMark(rcvhwm))
 	}
 }
 
@@ -397,8 +397,8 @@ func ApplySingleSpotNodeAdmission(node spotNodeAdmission) {
 		admission = recv
 	}
 	if admission > 0 {
-		Must(node.SetPubSubHWM(admission))
-		Must(node.SetRouterHWM(admission))
+		Must(node.SetPubSubHighWaterMark(admission))
+		Must(node.SetRouterHighWaterMark(admission))
 	}
 }
 
@@ -412,10 +412,10 @@ func ApplyMultiHWM(socket hwmSocket, pattern string) {
 		return
 	}
 	if sndhwm := resolveManualSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", true); sndhwm > 0 {
-		Must(socket.SetSendHWM(sndhwm))
+		Must(socket.SetSendHighWaterMark(sndhwm))
 	}
 	if rcvhwm := resolveManualSocketHWM("PERF_MULTI_HWM", "PERF_MULTI_SNDHWM", "PERF_MULTI_RCVHWM", false); rcvhwm > 0 {
-		Must(socket.SetRecvHWM(rcvhwm))
+		Must(socket.SetReceiveHighWaterMark(rcvhwm))
 	}
 }
 
@@ -443,8 +443,8 @@ func ApplyMultiSpotNodeAdmission(node spotNodeAdmission, pattern string) {
 		admission = recv
 	}
 	if admission > 0 {
-		Must(node.SetPubSubHWM(admission))
-		Must(node.SetRouterHWM(admission))
+		Must(node.SetPubSubHighWaterMark(admission))
+		Must(node.SetRouterHighWaterMark(admission))
 	}
 }
 
@@ -457,7 +457,7 @@ func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, transport string)
 	}
 	Must(socket.SetLinger(0))
 	Must(socket.SetSendTimeout(singleSocketTimeout(true)))
-	Must(socket.SetRecvTimeout(singleSocketTimeout(false)))
+	Must(socket.SetReceiveTimeout(singleSocketTimeout(false)))
 }
 
 func ApplyMultiBenchmarkSocketOptions(socket benchmarkSocket, transport string) {
@@ -469,7 +469,7 @@ func ApplyMultiBenchmarkSocketOptions(socket benchmarkSocket, transport string) 
 	}
 	Must(socket.SetLinger(0))
 	Must(socket.SetSendTimeout(multiSocketTimeout(true)))
-	Must(socket.SetRecvTimeout(multiSocketTimeout(false)))
+	Must(socket.SetReceiveTimeout(multiSocketTimeout(false)))
 }
 
 type boundEndpointSocket interface {

@@ -15,17 +15,17 @@ func TestCommonTypedOptions(t *testing.T) {
 	socket, _ := ctx.RouterSocket()
 	defer socket.Close()
 
-	if err := socket.SetSendHWM(1000); err != nil {
-		t.Fatalf("SetSendHWM() error = %v", err)
+	if err := socket.SetSendHighWaterMark(1000); err != nil {
+		t.Fatalf("SetSendHighWaterMark() error = %v", err)
 	}
-	if got, err := socket.SendHWM(); err != nil || got != 1000 {
-		t.Fatalf("SendHWM() = (%d, %v), want (1000, nil)", got, err)
+	if got, err := socket.SendHighWaterMark(); err != nil || got != 1000 {
+		t.Fatalf("SendHighWaterMark() = (%d, %v), want (1000, nil)", got, err)
 	}
-	if err := socket.SetRecvHWM(2000); err != nil {
-		t.Fatalf("SetRecvHWM() error = %v", err)
+	if err := socket.SetReceiveHighWaterMark(2000); err != nil {
+		t.Fatalf("SetReceiveHighWaterMark() error = %v", err)
 	}
-	if got, err := socket.RecvHWM(); err != nil || got != 2000 {
-		t.Fatalf("RecvHWM() = (%d, %v), want (2000, nil)", got, err)
+	if got, err := socket.ReceiveHighWaterMark(); err != nil || got != 2000 {
+		t.Fatalf("ReceiveHighWaterMark() = (%d, %v), want (2000, nil)", got, err)
 	}
 	if err := socket.SetLinger(50 * time.Millisecond); err != nil {
 		t.Fatalf("SetLinger() error = %v", err)
@@ -113,7 +113,7 @@ func TestSocketSpecificOptions(t *testing.T) {
 	if err := router.SetMandatory(true); err != nil {
 		t.Fatalf("SetMandatory() error = %v", err)
 	}
-	if err := router.SetRidDuplicatePolicy(int(zlink.RIDDuplicateHandover)); err != nil {
+	if err := router.SetRidDuplicatePolicy(int(zlink.RidDuplicateHandover)); err != nil {
 		t.Fatalf("SetRidDuplicatePolicy() error = %v", err)
 	}
 	if err := router.SetProbe(true); err != nil {

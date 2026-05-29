@@ -218,6 +218,24 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "RoutingID") {
 		t.Fatalf("SpotNode should expose RoutingID")
 	}
+	if !hasMethod((*zlink.SpotNode)(nil), "SetRouterHighWaterMark") {
+		t.Fatalf("SpotNode should expose SetRouterHighWaterMark")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "RouterHighWaterMark") {
+		t.Fatalf("SpotNode should expose RouterHighWaterMark")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "SetPubSubHighWaterMark") {
+		t.Fatalf("SpotNode should expose SetPubSubHighWaterMark")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "PubSubHighWaterMark") {
+		t.Fatalf("SpotNode should expose PubSubHighWaterMark")
+	}
+	if hasMethod((*zlink.SpotNode)(nil), "SetRouterHWM") {
+		t.Fatalf("SpotNode should not expose SetRouterHWM")
+	}
+	if hasMethod((*zlink.SpotNode)(nil), "SetPubSubHWM") {
+		t.Fatalf("SpotNode should not expose SetPubSubHWM")
+	}
 	if !hasMethod((*zlink.SpotNode)(nil), "DisconnectPeerRID") {
 		t.Fatalf("SpotNode should expose DisconnectPeerRID")
 	}
@@ -466,7 +484,7 @@ func TestSurfaceActorCapabilities(t *testing.T) {
 }
 
 func TestSurfaceTypedOptionMethods(t *testing.T) {
-	if !hasMethod((*zlink.PairSocket)(nil), "SetSendHWM") {
+	if !hasMethod((*zlink.PairSocket)(nil), "SetSendHighWaterMark") {
 		t.Fatalf("PairSocket should expose typed common options")
 	}
 	if !hasMethod((*zlink.PairSocket)(nil), "SetTLSServer") {

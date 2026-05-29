@@ -6,7 +6,7 @@ import impl "zlink.systems/zlink/internal/sockets"
 
 type (
 	SocketType              = impl.SocketType
-	RIDDuplicatePolicy      = impl.RIDDuplicatePolicy
+	RidDuplicatePolicy      = impl.RidDuplicatePolicy
 	SubmitRetryMode         = impl.SubmitRetryMode
 	CommonSocketOptions     = impl.CommonSocketOptions
 	PubSocketOptions        = impl.PubSocketOptions
@@ -42,10 +42,10 @@ const (
 	SocketTypeXPub                          = impl.SocketTypeXPub
 	SocketTypeXSub                          = impl.SocketTypeXSub
 	SocketTypeStream                        = impl.SocketTypeStream
-	RIDDuplicateReject                      = impl.RIDDuplicateReject
-	RIDDuplicateHandover                    = impl.RIDDuplicateHandover
-	SubmitRetryOff                         = impl.SubmitRetryOff
-	SubmitRetryLocalFailure                = impl.SubmitRetryLocalFailure
+	RidDuplicateReject                      = impl.RidDuplicateReject
+	RidDuplicateHandover                    = impl.RidDuplicateHandover
+	SubmitRetryOff                          = impl.SubmitRetryOff
+	SubmitRetryLocalFailure                 = impl.SubmitRetryLocalFailure
 	SendFlagsNone                           = impl.SendFlagsNone
 	SendFlagsDontWait                       = impl.SendFlagsDontWait
 	RecvFlagsNone                           = impl.RecvFlagsNone

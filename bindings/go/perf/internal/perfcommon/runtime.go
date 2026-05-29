@@ -95,7 +95,7 @@ func SingleIdleDrainDuration() time.Duration {
 	return durationFromEnv("PERF_SINGLE_RCVTIMEO_MS", 200*time.Millisecond)
 }
 
-func SinglePubSubRecvTimeout() time.Duration {
+func SinglePubSubReceiveTimeout() time.Duration {
 	return durationFromEnv("PERF_SINGLE_PUBSUB_RCVTIMEO_MS", SingleIdleDrainDuration())
 }
 

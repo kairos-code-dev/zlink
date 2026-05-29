@@ -48,31 +48,31 @@ type (
 )
 
 const (
-	SpotNodeModePubSub               = impl.SpotNodeModePubSub
-	SpotNodeModeRouted               = impl.SpotNodeModeRouted
-	SpotNodeModeAll                  = impl.SpotNodeModeAll
-	SpotNodeSocketOwnerAny           = impl.SpotNodeSocketOwnerAny
-	SpotNodeSocketOwnerNode          = impl.SpotNodeSocketOwnerNode
-	SpotNodeSocketOwnerSpot          = impl.SpotNodeSocketOwnerSpot
-	SpotNodeOptionRouterHWMProfile   = impl.SpotNodeOptionRouterHWMProfile
-	SpotNodeOptionRouterHWM          = impl.SpotNodeOptionRouterHWM
-	SpotNodeOptionPubSubHWMProfile   = impl.SpotNodeOptionPubSubHWMProfile
-	SpotNodeOptionPubSubHWM          = impl.SpotNodeOptionPubSubHWM
-	SpotNodeOptionDispatchWorkersMin = impl.SpotNodeOptionDispatchWorkersMin
-	SpotNodeOptionDispatchWorkersMax = impl.SpotNodeOptionDispatchWorkersMax
-	SpotNodeStateIdle                = impl.SpotNodeStateIdle
-	SpotNodeStateConnecting          = impl.SpotNodeStateConnecting
-	SpotNodeStatePartialReady        = impl.SpotNodeStatePartialReady
-	SpotNodeStateReady               = impl.SpotNodeStateReady
-	SpotNodeStateError               = impl.SpotNodeStateError
-	SpotPeerSourceManual             = impl.SpotPeerSourceManual
-	SpotPeerSourceDiscovery          = impl.SpotPeerSourceDiscovery
-	SpotPeerSourceMixed              = impl.SpotPeerSourceMixed
-	SpotPeerKindSpotMesh             = impl.SpotPeerKindSpotMesh
-	SpotPeerKindRouterChannel        = impl.SpotPeerKindRouterChannel
-	SpotPeerStateConfigured          = impl.SpotPeerStateConfigured
-	SpotPeerStateConnecting          = impl.SpotPeerStateConnecting
-	SpotPeerStateConnected           = impl.SpotPeerStateConnected
+	SpotNodeModePubSub                = impl.SpotNodeModePubSub
+	SpotNodeModeRouted                = impl.SpotNodeModeRouted
+	SpotNodeModeAll                   = impl.SpotNodeModeAll
+	SpotNodeSocketOwnerAny            = impl.SpotNodeSocketOwnerAny
+	SpotNodeSocketOwnerNode           = impl.SpotNodeSocketOwnerNode
+	SpotNodeSocketOwnerSpot           = impl.SpotNodeSocketOwnerSpot
+	SpotNodeOptionRouterHwmProfile    = impl.SpotNodeOptionRouterHwmProfile
+	SpotNodeOptionRouterHighWaterMark = impl.SpotNodeOptionRouterHighWaterMark
+	SpotNodeOptionPubSubHwmProfile    = impl.SpotNodeOptionPubSubHwmProfile
+	SpotNodeOptionPubSubHighWaterMark = impl.SpotNodeOptionPubSubHighWaterMark
+	SpotNodeOptionDispatchWorkersMin  = impl.SpotNodeOptionDispatchWorkersMin
+	SpotNodeOptionDispatchWorkersMax  = impl.SpotNodeOptionDispatchWorkersMax
+	SpotNodeStateIdle                 = impl.SpotNodeStateIdle
+	SpotNodeStateConnecting           = impl.SpotNodeStateConnecting
+	SpotNodeStatePartialReady         = impl.SpotNodeStatePartialReady
+	SpotNodeStateReady                = impl.SpotNodeStateReady
+	SpotNodeStateError                = impl.SpotNodeStateError
+	SpotPeerSourceManual              = impl.SpotPeerSourceManual
+	SpotPeerSourceDiscovery           = impl.SpotPeerSourceDiscovery
+	SpotPeerSourceMixed               = impl.SpotPeerSourceMixed
+	SpotPeerKindSpotMesh              = impl.SpotPeerKindSpotMesh
+	SpotPeerKindRouterChannel         = impl.SpotPeerKindRouterChannel
+	SpotPeerStateConfigured           = impl.SpotPeerStateConfigured
+	SpotPeerStateConnecting           = impl.SpotPeerStateConnecting
+	SpotPeerStateConnected            = impl.SpotPeerStateConnected
 )
 
 var RemoteActorRef = impl.RemoteActorRef

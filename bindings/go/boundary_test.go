@@ -27,8 +27,8 @@ func TestDurationOverflowFailsFast(t *testing.T) {
 	socket, _ := ctx.PairSocket()
 	defer socket.Close()
 
-	if err := socket.SetRecvTimeout((1<<31)*time.Millisecond + time.Second); err == nil {
-		t.Fatalf("SetRecvTimeout() overflow should fail")
+	if err := socket.SetReceiveTimeout((1<<31)*time.Millisecond + time.Second); err == nil {
+		t.Fatalf("SetReceiveTimeout() overflow should fail")
 	}
 }
 
@@ -40,8 +40,8 @@ func TestDurationMaxInt32MillisAccepted(t *testing.T) {
 	defer socket.Close()
 
 	maxDuration := time.Duration((1<<31)-1) * time.Millisecond
-	if err := socket.SetRecvTimeout(maxDuration); err != nil {
-		t.Fatalf("SetRecvTimeout(max int32 millis) error = %v", err)
+	if err := socket.SetReceiveTimeout(maxDuration); err != nil {
+		t.Fatalf("SetReceiveTimeout(max int32 millis) error = %v", err)
 	}
 }
 

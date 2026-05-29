@@ -478,7 +478,7 @@ func TestPairRecvPartRoundTrip(t *testing.T) {
 
 	_ = server.Bind(endpoint)
 	_ = client.Connect(endpoint)
-	_ = server.SetRecvTimeout(5 * time.Second)
+	_ = server.SetReceiveTimeout(5 * time.Second)
 
 	if _, err := client.Send().Message(newMessage(t, "hello-part")).Submit(nil); err != nil {
 		t.Fatalf("Send() error = %v", err)
@@ -539,7 +539,7 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 	_ = router.Bind(endpoint)
 	_ = dealer.SetRoutingID(rid)
 	_ = dealer.Connect(endpoint)
-	_ = dealer.SetRecvTimeout(5 * time.Second)
+	_ = dealer.SetReceiveTimeout(5 * time.Second)
 
 	if _, err := dealer.Send().Message(newMessage(t, "request")).Submit(nil); err != nil {
 		t.Fatalf("dealer Send() error = %v", err)
@@ -581,7 +581,7 @@ func TestRouterRecvPartRoundTrip(t *testing.T) {
 	_ = router.Bind(endpoint)
 	_ = dealer.SetRoutingID(rid)
 	_ = dealer.Connect(endpoint)
-	_ = router.SetRecvTimeout(5 * time.Second)
+	_ = router.SetReceiveTimeout(5 * time.Second)
 
 	if _, err := dealer.Send().Message(newMessage(t, "routed-part")).Submit(nil); err != nil {
 		t.Fatalf("dealer Send() error = %v", err)
@@ -623,7 +623,7 @@ func TestPubSubRoundTrip(t *testing.T) {
 	_ = pubSocket.Bind(endpoint)
 	_ = subSocket.Connect(endpoint)
 	_ = subSocket.SetSubscription("market.")
-	_ = subSocket.SetRecvTimeout(5 * time.Second)
+	_ = subSocket.SetReceiveTimeout(5 * time.Second)
 
 	if _, err := pubSocket.Publish("market.price").Message(newMessage(t, "42.5")).Submit(nil); err != nil {
 		t.Fatalf("Publish() error = %v", err)
@@ -657,7 +657,7 @@ func TestSubSubscribePartRoundTrip(t *testing.T) {
 	_ = pubSocket.Bind(endpoint)
 	_ = subSocket.Connect(endpoint)
 	_ = subSocket.SetSubscription("market.")
-	_ = subSocket.SetRecvTimeout(5 * time.Second)
+	_ = subSocket.SetReceiveTimeout(5 * time.Second)
 
 	if _, err := pubSocket.Publish("market.price").Message(newMessage(t, "42.5")).Submit(nil); err != nil {
 		t.Fatalf("Publish() error = %v", err)
@@ -742,8 +742,8 @@ func TestSpotSubscribePartRoundTrip(t *testing.T) {
 	if err := subscriber.SetSubscription("market.price"); err != nil {
 		t.Fatalf("SetSubscription() error = %v", err)
 	}
-	if err := subscriber.SetRecvTimeout(5 * time.Second); err != nil {
-		t.Fatalf("SetRecvTimeout() error = %v", err)
+	if err := subscriber.SetReceiveTimeout(5 * time.Second); err != nil {
+		t.Fatalf("SetReceiveTimeout() error = %v", err)
 	}
 
 	msg, err := zlink.NewMessageWithSize(0)

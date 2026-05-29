@@ -4,7 +4,6 @@ package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.discovery.Discovery;
-import systems.zlink.internal.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
@@ -27,7 +26,6 @@ import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
-import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
@@ -35,7 +33,6 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -57,11 +54,12 @@ final class NativeSocketRuntime implements AutoCloseable {
     static final int ERRNO_ETIMEDOUT_WIN = 10060;
     static final int TOPIC_CAPACITY = 256;
     private static final int OPT_RCVMORE = 13;
-    private static final byte[] EMPTY_BYTES = new byte[0];
 
     private final SocketCore socketCore;
     private final MessagePlane messagePlane;
     private final TopicPlane topicPlane;
+    private final ReceivePlane receivePlane;
+    private final NettySocketPlane nettyPlane;
     private MemorySegment handle;
     private final boolean own;
     private final SocketType socketTypeHint;
@@ -69,12 +67,6 @@ final class NativeSocketRuntime implements AutoCloseable {
       ThreadLocal.withInitial(SendScratch::new);
     private final ThreadLocal<RecvScratch> recvScratch =
       ThreadLocal.withInitial(RecvScratch::new);
-    private final ThreadLocal<MultipartReceiveState> multipartReceiveState =
-      ThreadLocal.withInitial(MultipartReceiveState::new);
-    private final ThreadLocal<Received> activeLazyReceive =
-      new ThreadLocal<>();
-    private final ThreadLocal<byte[]> nettySendScratch =
-      ThreadLocal.withInitial(() -> new byte[DEFAULT_IO_BUFFER_SIZE]);
 
     public static void ensureRegistered() {
     }
@@ -104,6 +96,8 @@ final class NativeSocketRuntime implements AutoCloseable {
         this.socketCore = new SocketCore(this);
         this.messagePlane = new MessagePlane(this);
         this.topicPlane = new TopicPlane(this);
+        this.receivePlane = new ReceivePlane(this);
+        this.nettyPlane = new NettySocketPlane(this);
     }
 
     NativeSocketRuntime(MemorySegment handle, boolean own, SocketType socketTypeHint) {
@@ -113,6 +107,8 @@ final class NativeSocketRuntime implements AutoCloseable {
         this.socketCore = new SocketCore(this);
         this.messagePlane = new MessagePlane(this);
         this.topicPlane = new TopicPlane(this);
+        this.receivePlane = new ReceivePlane(this);
+        this.nettyPlane = new NettySocketPlane(this);
     }
 
     /** Binds the socket to the endpoint. */
@@ -609,74 +605,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public boolean recvInto(Received result, ReceiveFlag flags) {
-        Objects.requireNonNull(result, "result");
-        Objects.requireNonNull(flags, "flags");
-        if (flags == ReceiveFlag.DONTWAIT
-            && !multipartReceiveState.get().hasPending()) {
-            return recvIntoNoWait(result);
-        }
-        Message frame = nextRecvFrame(flags, flags == ReceiveFlag.DONTWAIT);
-        if (frame == null) {
-            return false;
-        }
-        if (!frame.more()) {
-            ContractAccess.receivedPopulateRoutedSinglePart(result, null, null,
-                frame, 0L, false, null, null);
-            return true;
-        }
-
-        Received fresh = InternalAccess.receivedLazy((byte[]) null, null, frame,
-            new BasicReceiveCursor(flags.getValue()), 0L, false, null, null);
-        result.adoptFrom(fresh);
-        return true;
-    }
-
-    private boolean recvIntoNoWait(Received result) {
-        prepareRecvLikeOperation();
-        RecvScratch scratch = recvScratch.get();
-        while (true) {
-            Message frame = new Message();
-            boolean success = false;
-            try {
-                int rc = Native.recvPartNoWaitCritical(handle,
-                    scratch.sourceRidOut, InternalAccess.messageNativeHandle(frame),
-                    scratch.hasMoreOut, ReceiveFlag.DONTWAIT.getValue());
-                if (rc == 0) {
-                    success = true;
-                    boolean hasMore =
-                        scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                    InternalAccess.messageFinishReceive(frame, hasMore);
-                    if (!hasMore) {
-                        ContractAccess.receivedPopulateRoutedSinglePart(result,
-                            null, null, frame, 0L, false, null, null);
-                    } else {
-                        Received fresh = InternalAccess.receivedLazy((byte[]) null, null,
-                            frame,
-                            new BasicReceiveCursor(
-                                ReceiveFlag.DONTWAIT.getValue()),
-                            0L, false, null, null);
-                        result.adoptFrom(fresh);
-                    }
-                    return true;
-                }
-            } finally {
-                if (!success) {
-                    try {
-                        frame.close();
-                    } catch (RuntimeException ignored) {
-                    }
-                }
-            }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return false;
-            }
-            throw ZlinkException.fromLastError("zlink_recv_part");
-        }
+        return receivePlane.recvInto(result, flags);
     }
 
     public Optional<Received> recvNoWait() {
@@ -684,69 +613,11 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public Received recvLazy(ReceiveFlag flags) {
-        Received received = recvLazyOrNull(flags, false);
-        if (received == null) {
-            throw new ZlinkRecvException(RecvResult.NO_DATA, ERRNO_EAGAIN);
-        }
-        return received;
+        return receivePlane.recvLazy(flags);
     }
 
     public Received recvLazyNoWaitOrNull() {
-        return recvLazyOrNull(ReceiveFlag.DONTWAIT, true);
-    }
-
-    private Received recvLazyOrNull(ReceiveFlag flags, boolean allowNoData) {
-        Objects.requireNonNull(flags, "flags");
-        prepareRecvLikeOperation();
-        while (true) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
-                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-                Message firstPart = new Message();
-                boolean success = false;
-                try {
-                    int rc = Native.recv(handle, sourceRidOut,
-                        InternalAccess.messageNativeHandle(firstPart), hasMoreOut, flags.getValue());
-                    if (rc == 0) {
-                        success = true;
-                        boolean hasMore =
-                            hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                        InternalAccess.messageFinishReceive(firstPart, hasMore);
-                        byte[] routingId = decodeRoutingIdPtr(
-                            sourceRidOut.get(ValueLayout.ADDRESS, 0));
-                        ReceivedPartCursor cursor = hasMore
-                            ? new BasicReceiveCursor(flags.getValue())
-                            : null;
-                        Received[] ref = new Received[1];
-                        Runnable onTerminal = () -> {
-                            Received active = activeLazyReceive.get();
-                            if (active == ref[0]) {
-                                activeLazyReceive.remove();
-                            }
-                        };
-                        Received received = InternalAccess.receivedLazy(routingId, null, firstPart, cursor, 0L, false, null, onTerminal);
-                        ref[0] = received;
-                        return registerLazyReceive(received, hasMore);
-                    }
-                } finally {
-                    if (!success) {
-                        try {
-                            firstPart.close();
-                        } catch (RuntimeException ignored) {
-                        }
-                    }
-                }
-            }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            if (allowNoData
-                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                return null;
-            }
-            throw ZlinkException.fromLastError("zlink_recv_part");
-        }
+        return receivePlane.recvLazyNoWaitOrNull();
     }
 
     /** Receives a topic-aware delivery from a SUB/XSUB-style socket. */
@@ -764,164 +635,7 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public boolean subscribe(TopicMessage result, ReceiveFlag flags) {
-        Objects.requireNonNull(result, "result");
-        if (flags == ReceiveFlag.DONTWAIT) {
-            return subscribeIntoFastNoWait(result);
-        }
-        TopicMessage fresh = subscribe(flags);
-        if (fresh == null)
-            return false;
-        result.adoptFrom(fresh);
-        return true;
-    }
-
-    // Non-allocating subscribe hot path for the DONT_WAIT single-part case
-    // (the perf/streaming common path). Mirrors recvIntoNoWait: thread-local
-    // RecvScratch (no per-call Arena), critical downcall, cached topic
-    // String, and a reused result. Multipart payloads fall back to the
-    // general allocating path.
-    private boolean subscribeIntoFastNoWait(TopicMessage result) {
-        ensureOpen();
-        prepareRecvLikeOperation();
-        RecvScratch scratch = recvScratch.get();
-        while (true) {
-            scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0,
-                RecvScratch.TOPIC_CAPACITY);
-            Message part = new Message();
-            boolean success = false;
-            try {
-                int rc = Native.subscribePartNoWaitCritical(handle,
-                    scratch.sourceRidOut, scratch.topicOut,
-                    RecvScratch.TOPIC_CAPACITY, scratch.topicLenOut,
-                    InternalAccess.messageNativeHandle(part), scratch.hasMoreOut,
-                    ReceiveFlag.DONTWAIT.getValue());
-                if (rc == 0) {
-                    boolean hasMore =
-                        scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                    InternalAccess.messageFinishReceive(part, hasMore);
-                    if (hasMore) {
-                        // Rare multipart payload: hand the already-received
-                        // first part to the general path to assemble the
-                        // remainder, preserving exact semantics.
-                        success = true;
-                        TopicMessage fresh = subscribeAssembleRemainder(
-                            scratch, part);
-                        result.adoptFrom(fresh);
-                        return true;
-                    }
-                    RoutingId routingId = NativeSocketRuntime.toRoutingId(
-                        NativeSocketRuntime.decodeRoutingIdPtr(scratch.sourceRidOut.get(
-                            ValueLayout.ADDRESS, 0)));
-                    int topicLength = NativeSocketRuntime.normalizeTopicLength(
-                        scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
-                        scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                    String topicId = cachedTopicString(scratch,
-                        scratch.topicOut, topicLength);
-                    success = true;
-                    InternalAccess.topicMessageAdoptSingle(result, routingId, topicId, part);
-                    return true;
-                }
-            } finally {
-                if (!success) {
-                    try {
-                        part.close();
-                    } catch (RuntimeException ignored) {
-                    }
-                }
-            }
-
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
-                return false;
-            }
-            throw ZlinkException.fromLastError("zlink_subscribe_part");
-        }
-    }
-
-    // Decodes the topic id, reusing the last String when the raw topic bytes
-    // are unchanged (steady-state single-topic streams). Mirrors C reusing a
-    // fixed topic buffer and comparing against the expected constant.
-    private static String cachedTopicString(RecvScratch scratch,
-                                            MemorySegment topicOut,
-                                            int topicLength) {
-        if (topicLength == 0) {
-            return "";
-        }
-        byte[] cached = scratch.cachedTopicBytes;
-        if (cached != null && cached.length == topicLength) {
-            boolean same = true;
-            for (int i = 0; i < topicLength; i++) {
-                if (cached[i] != topicOut.get(ValueLayout.JAVA_BYTE, i)) {
-                    same = false;
-                    break;
-                }
-            }
-            if (same) {
-                return scratch.cachedTopicString;
-            }
-        }
-        byte[] raw = topicOut.asSlice(0, topicLength)
-            .toArray(ValueLayout.JAVA_BYTE);
-        String decoded = new String(raw, StandardCharsets.UTF_8);
-        scratch.cachedTopicBytes = raw;
-        scratch.cachedTopicString = decoded;
-        return decoded;
-    }
-
-    // Assembles a multipart subscribe payload whose first part has already
-    // been received into the fast path. Delegates the tail to the general
-    // allocating reader for exact parity.
-    private TopicMessage subscribeAssembleRemainder(RecvScratch scratch,
-                                                    Message firstPart) {
-        RoutingId routingId = NativeSocketRuntime.toRoutingId(
-            NativeSocketRuntime.decodeRoutingIdPtr(scratch.sourceRidOut.get(
-                ValueLayout.ADDRESS, 0)));
-        int topicLength = NativeSocketRuntime.normalizeTopicLength(
-            scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
-            scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-        String topicId = topicLength == 0 ? ""
-            : new String(scratch.topicOut.asSlice(0, topicLength)
-                .toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
-        java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
-        parts.add(firstPart);
-        while (true) {
-            Message next = new Message();
-            boolean ok = false;
-            try {
-                int rc = Native.subscribePart(handle, scratch.sourceRidOut,
-                    scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
-                    scratch.topicLenOut, InternalAccess.messageNativeHandle(next),
-                    scratch.hasMoreOut, ReceiveFlag.NONE.getValue());
-                if (rc == 0) {
-                    ok = true;
-                    boolean more =
-                        scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                    InternalAccess.messageFinishReceive(next, more);
-                    parts.add(next);
-                    if (!more) {
-                        return new TopicMessage(routingId, topicId,
-                            parts.toArray(Message[]::new));
-                    }
-                    continue;
-                }
-            } finally {
-                if (!ok) {
-                    try {
-                        next.close();
-                    } catch (RuntimeException ignored) {
-                    }
-                }
-            }
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
-                continue;
-            }
-            Message.closeAll(parts);
-            throw ZlinkException.fromLastError("zlink_subscribe_part");
-        }
+        return topicPlane.subscribe(result, flags);
     }
 
     public Optional<TopicMessage> subscribeNoWait() {
@@ -1003,81 +717,6 @@ final class NativeSocketRuntime implements AutoCloseable {
         socketCore.setSendReadyHandler(handler);
     }
 
-    private final class BasicReceiveCursor implements ReceivedPartCursor {
-        private final int flags;
-        private final Arena arena = Arena.ofConfined();
-        private final MemorySegment sourceRidOut = arena.allocate(
-            ValueLayout.ADDRESS);
-        private final MemorySegment hasMoreOut = arena.allocate(
-            ValueLayout.JAVA_INT);
-        private boolean hasMore = true;
-        private boolean closed;
-
-        private BasicReceiveCursor(int flags) {
-            this.flags = flags;
-        }
-
-        @Override
-        public Message nextPartOrNull() {
-            if (closed || !hasMore)
-                return null;
-            while (true) {
-                Message next = new Message();
-                boolean success = false;
-                try {
-                    int rc = Native.recv(handle, sourceRidOut,
-                        InternalAccess.messageNativeHandle(next), hasMoreOut, flags);
-                    if (rc == 0) {
-                        success = true;
-                        hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                        InternalAccess.messageFinishReceive(next, hasMore);
-                        if (!hasMore) {
-                            closeArena();
-                        }
-                        return next;
-                    }
-                } finally {
-                    if (!success) {
-                        try {
-                            next.close();
-                        } catch (RuntimeException ignored) {
-                        }
-                    }
-                }
-
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                closeArena();
-                throw ZlinkException.fromLastError("zlink_recv_part");
-            }
-        }
-
-        @Override
-        public void close() {
-            if (closed)
-                return;
-            while (hasMore) {
-                Message next = nextPartOrNull();
-                if (next == null)
-                    break;
-                try {
-                    next.close();
-                } catch (RuntimeException ignored) {
-                }
-            }
-            closed = true;
-            closeArena();
-        }
-
-        private void closeArena() {
-            hasMore = false;
-            if (arena.scope().isAlive()) {
-                arena.close();
-            }
-        }
-    }
-
     int send(byte[] data, int offset, int length, int sendFlags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
@@ -1117,78 +756,21 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     int send(ByteBuf buf, int sendFlags) {
-        Objects.requireNonNull(buf, "buf");
-        int len = buf.readableBytes();
-        if (len <= 0) {
-            try (Message msg = Message.from(EMPTY_BYTES)) {
-                sendMessageFrame(msg, SendFlag.fromValue(sendFlags));
-                return 0;
-            }
-        }
-
-        int readerIndex = buf.readerIndex();
-        MemorySegment directSeg = nettyReadableSegment(buf, readerIndex, len);
-        if (directSeg.address() != 0) {
-            int rc = send(directSeg, 0, len, sendFlags);
-            if (rc > 0) {
-                buf.readerIndex(readerIndex + rc);
-            }
-            return rc;
-        }
-        return sendNettyFallback(buf, readerIndex, len, sendFlags);
+        return nettyPlane.send(buf, sendFlags);
     }
 
     boolean sendNoWaitResult(ByteBuf buf, int sendFlags) {
-        Objects.requireNonNull(buf, "buf");
-        int len = buf.readableBytes();
-        if (len <= 0) {
-            try (Message msg = Message.from(EMPTY_BYTES)) {
-                return sendMessageFrameNoWaitResult(msg, SendFlag.fromValue(sendFlags));
-            }
-        }
-
-        int readerIndex = buf.readerIndex();
-        MemorySegment directSeg = nettyReadableSegment(buf, readerIndex, len);
-        if (directSeg.address() != 0) {
-            boolean sent = sendNoWaitResult(directSeg, 0, len, sendFlags);
-            if (sent) {
-                buf.readerIndex(readerIndex + len);
-            }
-            return sent;
-        }
-        return sendNettyFallbackNoWait(buf, readerIndex, len, sendFlags);
+        return nettyPlane.sendNoWaitResult(buf, sendFlags);
     }
 
     int recv(MemorySegment segment, long offset, long length,
              ReceiveFlag flags) {
-        Objects.requireNonNull(segment, "segment");
-        validateRange(segment.byteSize(), offset, length, "segment");
-        if (length == 0)
-            return 0;
-        try (Message frame = nextRecvFrame(flags, false)) {
-            int rc = Math.min(toIntLength(length), frame.size());
-            if (rc > 0) {
-                MemorySegment.copy(InternalAccess.messageDataSegment(frame), 0, segment, offset, rc);
-            }
-            return rc;
-        }
+        return receivePlane.recv(segment, offset, length, flags);
     }
 
     int recvNoWait(MemorySegment segment, long offset, long length,
                 ReceiveFlag flags) {
-        Objects.requireNonNull(segment, "segment");
-        validateRange(segment.byteSize(), offset, length, "segment");
-        if (length == 0)
-            return 0;
-        try (Message frame = nextRecvFrame(flags, true)) {
-            if (frame == null)
-                return -1;
-            int rc = Math.min(toIntLength(length), frame.size());
-            if (rc > 0) {
-                MemorySegment.copy(InternalAccess.messageDataSegment(frame), 0, segment, offset, rc);
-            }
-            return rc;
-        }
+        return receivePlane.recvNoWait(segment, offset, length, flags);
     }
 
 
@@ -1231,35 +813,11 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public int recvByteBufDirect(ByteBuf buf, ReceiveFlag flags) {
-        int writable = buf.writableBytes();
-        if (writable <= 0)
-            return 0;
-
-        int writerIndex = buf.writerIndex();
-        MemorySegment directSeg = nettyWritableSegment(buf, writerIndex, writable);
-        if (directSeg.address() != 0) {
-            int rc = recv(directSeg, 0, writable, flags);
-            if (rc > 0)
-                buf.writerIndex(writerIndex + rc);
-            return rc;
-        }
-        return recvNettyFallback(buf, writerIndex, writable, flags);
+        return nettyPlane.recvByteBufDirect(buf, flags);
     }
 
     public int recvByteBufDirectNoWait(ByteBuf buf, ReceiveFlag flags) {
-        int writable = buf.writableBytes();
-        if (writable <= 0)
-            return 0;
-
-        int writerIndex = buf.writerIndex();
-        MemorySegment directSeg = nettyWritableSegment(buf, writerIndex, writable);
-        if (directSeg.address() != 0) {
-            int rc = recvNoWait(directSeg, 0, writable, flags);
-            if (rc > 0)
-                buf.writerIndex(writerIndex + rc);
-            return rc;
-        }
-        return recvNettyFallbackNoWait(buf, writerIndex, writable, flags);
+        return nettyPlane.recvByteBufDirectNoWait(buf, flags);
     }
 
     static void validateRange(int total, int offset, int length, String name) {
@@ -1503,7 +1061,7 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     public int getSockOptInt(int optionId) {
         if (optionId == OPT_RCVMORE) {
-            return multipartReceiveState.get().pendingCount() > 0 ? 1 : 0;
+            return receivePlane.pendingFrameCount() > 0 ? 1 : 0;
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
@@ -1681,80 +1239,15 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public void recvMessageFrame(Message message, ReceiveFlag flag) {
-        Message frame = nextRecvFrame(flag, false);
-        try {
-            InternalAccess.messageMoveInto(frame, message, frame.more());
-        } finally {
-            frame.close();
-        }
+        receivePlane.recvMessageFrame(message, flag);
     }
 
     public int recvMessageFrameNoWait(Message message, ReceiveFlag flag) {
-        Message frame = nextRecvFrame(flag, true);
-        if (frame == null)
-            return -1;
-        try {
-            return InternalAccess.messageMoveInto(frame, message, frame.more());
-        } finally {
-            frame.close();
-        }
+        return receivePlane.recvMessageFrameNoWait(message, flag);
     }
 
     Message nextRecvFrame(ReceiveFlag flags, boolean nonBlocking) {
-        Objects.requireNonNull(flags, "flags");
-        prepareRecvLikeOperation();
-        MultipartReceiveState state = multipartReceiveState.get();
-        while (true) {
-            if (state.hasPending()) {
-                return state.poll();
-            }
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
-                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-                Message firstPart = new Message();
-                boolean success = false;
-                try {
-                    int rc = Native.recv(handle, sourceRidOut,
-                        InternalAccess.messageNativeHandle(firstPart), hasMoreOut, flags.getValue());
-                    if (rc == 0) {
-                        success = true;
-                        boolean hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                        InternalAccess.messageFinishReceive(firstPart, hasMore);
-                        byte[] routingId = decodeRoutingIdPtr(
-                            sourceRidOut.get(ValueLayout.ADDRESS, 0));
-                        if (routingId == null || routingId.length == 0) {
-                            return firstPart;
-                        }
-                        if (hasMore) {
-                            InternalAccess.messageSetMore(firstPart, true);
-                            state.replace(new Message[] {
-                                firstPart
-                            });
-                        } else {
-                            state.replace(new Message[] {firstPart});
-                        }
-                        Message routingFrame = Message.from(routingId);
-                        InternalAccess.messageSetMore(routingFrame, true);
-                        return routingFrame;
-                    }
-                } finally {
-                    if (!success) {
-                        try {
-                            firstPart.close();
-                        } catch (RuntimeException ignored) {
-                        }
-                    }
-                }
-            }
-            int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
-                continue;
-            if (nonBlocking
-                && (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN)) {
-                return null;
-            }
-            throw ZlinkException.fromLastError("zlink_recv_part");
-        }
+        return receivePlane.nextRecvFrame(flags, nonBlocking);
     }
 
     public void sendParts(RoutingId routingId, List<Message> parts,
@@ -1968,28 +1461,19 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     public void prepareRecvLikeOperation() {
-        multipartReceiveState.get().closeRemaining();
-        Received active = activeLazyReceive.get();
-        if (active != null) {
-            InternalAccess.receivedForceMaterialize(active);
-            activeLazyReceive.remove();
-        }
+        receivePlane.prepareRecvLikeOperation();
     }
 
     Runnable lazyReceiveCompletion(Received received) {
-        return () -> {
-            Received active = activeLazyReceive.get();
-            if (active == received) {
-                activeLazyReceive.remove();
-            }
-        };
+        return receivePlane.lazyReceiveCompletion(received);
     }
 
     public Received registerLazyReceive(Received received, boolean hasMore) {
-        if (hasMore) {
-            activeLazyReceive.set(received);
-        }
-        return received;
+        return receivePlane.registerLazyReceive(received, hasMore);
+    }
+
+    RecvScratch recvScratch() {
+        return recvScratch.get();
     }
 
     private static MemorySegment nativeRoutingId(Arena arena, RoutingId routingId) {
@@ -2156,24 +1640,6 @@ final class NativeSocketRuntime implements AutoCloseable {
         return socketCore.ensureSendScratch(length);
     }
 
-    private static MemorySegment nettyReadableSegment(ByteBuf buf, int index,
-                                                      int length) {
-        if (length <= 0 || !buf.hasMemoryAddress()) {
-            return MemorySegment.NULL;
-        }
-        return MemorySegment.ofAddress(buf.memoryAddress() + index)
-            .reinterpret(length);
-    }
-
-    private static MemorySegment nettyWritableSegment(ByteBuf buf, int index,
-                                                      int length) {
-        if (length <= 0 || !buf.hasMemoryAddress()) {
-            return MemorySegment.NULL;
-        }
-        return MemorySegment.ofAddress(buf.memoryAddress() + index)
-            .reinterpret(length);
-    }
-
     static int toIntLength(long length) {
         if (length > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("length too large: " + length);
@@ -2184,94 +1650,5 @@ final class NativeSocketRuntime implements AutoCloseable {
     public void ensureOpen() {
         socketCore.ensureOpen();
     }
-
-    private int sendNettyFallback(ByteBuf buf,
-                                  int readerIndex,
-                                  int length,
-                                  int sendFlags) {
-        int rc;
-        if (buf.hasArray()) {
-            rc = send(buf.array(),
-              buf.arrayOffset() + readerIndex, length, sendFlags);
-        } else {
-            byte[] tmp = nettySendArray(length);
-            buf.getBytes(readerIndex, tmp, 0, length);
-            rc = send(tmp, 0, length, sendFlags);
-        }
-        if (rc > 0)
-            buf.readerIndex(readerIndex + rc);
-        return rc;
-    }
-
-    private boolean sendNettyFallbackNoWait(ByteBuf buf,
-                                         int readerIndex,
-                                         int length,
-                                         int sendFlags) {
-        boolean sent;
-        if (buf.hasArray()) {
-            sent = sendNoWaitResult(buf.array(),
-              buf.arrayOffset() + readerIndex, length, sendFlags);
-        } else {
-            byte[] tmp = nettySendArray(length);
-            buf.getBytes(readerIndex, tmp, 0, length);
-            sent = sendNoWaitResult(tmp, 0, length, sendFlags);
-        }
-        if (sent)
-            buf.readerIndex(readerIndex + length);
-        return sent;
-    }
-
-    private byte[] nettySendArray(int length) {
-        if (length <= DEFAULT_IO_BUFFER_SIZE)
-            return nettySendScratch.get();
-        return new byte[length];
-    }
-
-    private int recvNettyFallback(ByteBuf buf,
-                                  int writerIndex,
-                                  int writable,
-                                  ReceiveFlag flags) {
-        try (Message frame = nextRecvFrame(flags, false)) {
-            int rc = Math.min(writable, frame.size());
-            if (rc > 0) {
-                if (buf.hasArray()) {
-                    MemorySegment.copy(InternalAccess.messageDataSegment(frame, rc), 0,
-                      MemorySegment.ofArray(buf.array()),
-                      (long) buf.arrayOffset() + writerIndex, rc);
-                } else {
-                    ByteBuffer src = InternalAccess.messageDataSegment(frame).asSlice(0, rc)
-                      .asByteBuffer();
-                    buf.setBytes(writerIndex, src);
-                }
-                buf.writerIndex(writerIndex + rc);
-            }
-            return rc;
-        }
-    }
-
-    private int recvNettyFallbackNoWait(ByteBuf buf,
-                                     int writerIndex,
-                                     int writable,
-                                     ReceiveFlag flags) {
-        try (Message frame = nextRecvFrame(flags, true)) {
-            if (frame == null)
-                return -1;
-            int rc = Math.min(writable, frame.size());
-            if (rc > 0) {
-                if (buf.hasArray()) {
-                    MemorySegment.copy(InternalAccess.messageDataSegment(frame, rc), 0,
-                      MemorySegment.ofArray(buf.array()),
-                      (long) buf.arrayOffset() + writerIndex, rc);
-                } else {
-                    ByteBuffer src = InternalAccess.messageDataSegment(frame).asSlice(0, rc)
-                      .asByteBuffer();
-                    buf.setBytes(writerIndex, src);
-                }
-                buf.writerIndex(writerIndex + rc);
-            }
-            return rc;
-        }
-    }
-
 
 }

@@ -14,7 +14,7 @@ final class NativeRouterReceive {
     private static final int ERRNO_EINTR = 4;
     private static final MethodHandle MH_JAVA_ROUTER_RECV =
         NativeSymbols.optionalDowncall(
-            "zlink_java_router_recv_compat",
+            "zlink_java_router_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                 ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                 ValueLayout.ADDRESS, ValueLayout.ADDRESS,

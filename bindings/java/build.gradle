@@ -125,13 +125,10 @@ tasks.register('integrationTest', Test) {
     }
 }
 
-tasks.register('runMessageOutboundMicrobench', JavaExec) {
+tasks.register('runMessageOutboundMicrobench') {
     group = 'benchmark'
     description = 'Run Java outbound message-path microbenchmarks'
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'systems.zlink.MessageOutboundMicrobench'
-    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    dependsOn ':perf-single:runMessageOutboundMicrobench'
 }
 
 javadoc {

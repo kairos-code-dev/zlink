@@ -1,4 +1,4 @@
-package systems.zlink;
+package systems.zlink.perf;
 
 import systems.zlink.contracts.messaging.Message;
 import java.nio.charset.StandardCharsets;

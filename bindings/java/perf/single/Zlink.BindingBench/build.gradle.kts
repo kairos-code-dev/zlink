@@ -45,3 +45,12 @@ tasks.withType<JavaExec>().configureEach {
 tasks.named<JavaExec>("run") {
     jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=4")
 }
+
+tasks.register<JavaExec>("runMessageOutboundMicrobench") {
+    group = "benchmark"
+    description = "Run Java outbound message-path microbenchmarks"
+    dependsOn("classes")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("systems.zlink.perf.MessageOutboundMicrobench")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "-server", "-XX:TieredStopAtLevel=4")
+}

@@ -15,7 +15,7 @@ public final class ProtobufCodec {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(parser, "parser");
         try {
-            return parser.parseFrom(message.toByteArray());
+            return parser.parseFrom(message.dataBuffer());
         } catch (InvalidProtocolBufferException ex) {
             throw new IllegalArgumentException(
                 "failed to decode protobuf payload", ex);

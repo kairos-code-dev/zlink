@@ -6,6 +6,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.Objects;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.messaging.Message;
@@ -17,6 +18,7 @@ import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeErrno;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 import systems.zlink.runtime.nativeapi.RecvScratch;
 
 final class ReceivePlane {
@@ -132,42 +134,38 @@ final class ReceivePlane {
             if (state.hasPending()) {
                 return state.poll();
             }
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
-                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-                Message firstPart = new Message();
-                boolean success = false;
-                try {
-                    int rc = Native.recv(socket.handle(), sourceRidOut,
-                        InternalAccess.messageNativeHandle(firstPart),
-                        hasMoreOut, flags.getValue());
-                    if (rc == 0) {
-                        success = true;
-                        boolean hasMore =
-                            hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                        InternalAccess.messageFinishReceive(firstPart, hasMore);
-                        byte[] routingId =
-                            NativeSocketRuntime.decodeRoutingIdPtr(
-                                sourceRidOut.get(ValueLayout.ADDRESS, 0));
-                        if (routingId == null || routingId.length == 0) {
-                            return firstPart;
-                        }
-                        if (hasMore) {
-                            InternalAccess.messageSetMore(firstPart, true);
-                            state.replace(new Message[] {firstPart});
-                        } else {
-                            state.replace(new Message[] {firstPart});
-                        }
-                        Message routingFrame = Message.from(routingId);
-                        InternalAccess.messageSetMore(routingFrame, true);
-                        return routingFrame;
+            RecvScratch scratch = socket.recvScratch();
+            Message firstPart = new Message();
+            boolean success = false;
+            try {
+                int rc = Native.recv(socket.handle(), scratch.sourceRidOut,
+                    InternalAccess.messageNativeHandle(firstPart),
+                    scratch.hasMoreOut, flags.getValue());
+                if (rc == 0) {
+                    success = true;
+                    boolean hasMore =
+                        scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    InternalAccess.messageFinishReceive(firstPart, hasMore);
+                    byte[] routingId = NativeRoutingIds.readBytesOut(
+                        scratch.sourceRidOut);
+                    if (routingId == null || routingId.length == 0) {
+                        return firstPart;
                     }
-                } finally {
-                    if (!success) {
-                        try {
-                            firstPart.close();
-                        } catch (RuntimeException ignored) {
-                        }
+                    if (hasMore) {
+                        InternalAccess.messageSetMore(firstPart, true);
+                        state.replace(new Message[] {firstPart});
+                    } else {
+                        state.replace(new Message[] {firstPart});
+                    }
+                    Message routingFrame = Message.from(routingId);
+                    InternalAccess.messageSetMore(routingFrame, true);
+                    return routingFrame;
+                }
+            } finally {
+                if (!success) {
+                    try {
+                        firstPart.close();
+                    } catch (RuntimeException ignored) {
                     }
                 }
             }
@@ -266,45 +264,41 @@ final class ReceivePlane {
         Objects.requireNonNull(flags, "flags");
         prepareRecvLikeOperation();
         while (true) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
-                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-                Message firstPart = new Message();
-                boolean success = false;
-                try {
-                    int rc = Native.recv(socket.handle(), sourceRidOut,
-                        InternalAccess.messageNativeHandle(firstPart),
-                        hasMoreOut, flags.getValue());
-                    if (rc == 0) {
-                        success = true;
-                        boolean hasMore =
-                            hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                        InternalAccess.messageFinishReceive(firstPart, hasMore);
-                        byte[] routingId =
-                            NativeSocketRuntime.decodeRoutingIdPtr(
-                                sourceRidOut.get(ValueLayout.ADDRESS, 0));
-                        ReceivedPartCursor cursor = hasMore
-                            ? new BasicReceiveCursor(flags.getValue())
-                            : null;
-                        Received[] ref = new Received[1];
-                        Runnable onTerminal = () -> {
-                            Received active = activeLazyReceive.get();
-                            if (active == ref[0]) {
-                                activeLazyReceive.remove();
-                            }
-                        };
-                        Received received = InternalAccess.receivedLazy(
-                            routingId, null, firstPart, cursor, 0L, false,
-                            null, onTerminal);
-                        ref[0] = received;
-                        return registerLazyReceive(received, hasMore);
-                    }
-                } finally {
-                    if (!success) {
-                        try {
-                            firstPart.close();
-                        } catch (RuntimeException ignored) {
+            RecvScratch scratch = socket.recvScratch();
+            Message firstPart = new Message();
+            boolean success = false;
+            try {
+                int rc = Native.recv(socket.handle(), scratch.sourceRidOut,
+                    InternalAccess.messageNativeHandle(firstPart),
+                    scratch.hasMoreOut, flags.getValue());
+                if (rc == 0) {
+                    success = true;
+                    boolean hasMore =
+                        scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
+                    InternalAccess.messageFinishReceive(firstPart, hasMore);
+                    RoutingId routingId = NativeRoutingIds.readOut(
+                        scratch.sourceRidOut);
+                    ReceivedPartCursor cursor = hasMore
+                        ? new BasicReceiveCursor(flags.getValue())
+                        : null;
+                    Received[] ref = new Received[1];
+                    Runnable onTerminal = () -> {
+                        Received active = activeLazyReceive.get();
+                        if (active == ref[0]) {
+                            activeLazyReceive.remove();
                         }
+                    };
+                    Received received = InternalAccess.receivedLazy(
+                        routingId, null, firstPart, cursor, 0L, false,
+                        null, onTerminal);
+                    ref[0] = received;
+                    return registerLazyReceive(received, hasMore);
+                }
+            } finally {
+                if (!success) {
+                    try {
+                        firstPart.close();
+                    } catch (RuntimeException ignored) {
                     }
                 }
             }

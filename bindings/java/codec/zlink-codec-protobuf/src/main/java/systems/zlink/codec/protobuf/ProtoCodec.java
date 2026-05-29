@@ -23,7 +23,7 @@ final class ProtoCodec<T extends com.google.protobuf.Message>
     public T fromMessage(systems.zlink.contracts.messaging.Message message) {
         Objects.requireNonNull(message, "message");
         try {
-            return parser.parseFrom(message.toByteArray());
+            return parser.parseFrom(message.dataBuffer());
         } catch (InvalidProtocolBufferException ex) {
             throw new IllegalArgumentException(
                 "failed to decode protobuf payload", ex);

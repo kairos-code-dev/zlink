@@ -11,6 +11,9 @@ public final class RecvScratch {
 
     public final Arena arena = Arena.ofAuto();
     public final MemorySegment sourceRidOut = arena.allocate(ValueLayout.ADDRESS);
+    public final MemorySegment routingIdOut = arena.allocate(
+        NativeLayouts.ROUTING_ID_LAYOUT);
+    public final MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
     public final MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
 
     // Subscribe hot path: persistent topic-out buffers (C uses a stack

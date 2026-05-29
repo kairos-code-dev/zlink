@@ -5,7 +5,6 @@ package systems.zlink.runtime.service.spot;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Optional;
@@ -21,6 +20,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 
 final class SpotSubscriptionSupport implements AutoCloseable {
     private static final int TOPIC_CAPACITY = 256;
@@ -240,12 +240,12 @@ final class SpotSubscriptionSupport implements AutoCloseable {
 
     private Optional<TopicMessage> assembleRemainder(SpotRecvScratch scratch,
                                                      Message firstPart) {
-        RoutingId routingId = readRoutingIdPtr(
+        RoutingId routingId = cachedSpotRoutingId(scratch,
           scratch.ridOut.get(ValueLayout.ADDRESS, 0));
         int topicLength = normalizeTopicLength(scratch.topicOut,
           TOPIC_CAPACITY,
           scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-        String topicId = decodeTopic(scratch.topicOut, topicLength);
+        String topicId = cachedSpotTopic(scratch, topicLength);
         java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
         parts.add(firstPart);
         while (true) {
@@ -288,108 +288,55 @@ final class SpotSubscriptionSupport implements AutoCloseable {
 
     private Optional<TopicMessage> receiveTopicMessage(boolean nonBlocking) {
         spot.ensureOpen();
+        SpotRecvScratch scratch = recvScratch.get();
         while (true) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment ridOut = arena.allocate(ValueLayout.ADDRESS);
-                MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
-                MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-                topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-                Message[] parts = new Message[4];
-                int partCount = 0;
-                RoutingId routingId = null;
-                String topicId = "";
-                while (true) {
-                    Message part = new Message();
-                    boolean success = false;
-                    int rc = RecvResult.INTERNAL_ERROR.value();
-                    try {
-                        rc = Native.spotSubscribePart(spot.handle(), ridOut,
-                          topicOut, TOPIC_CAPACITY, topicLenOut,
-                          InternalAccess.messageNativeHandle(part),
-                          hasMoreOut, nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
-                        if (rc == 0) {
-                            success = true;
-                            InternalAccess.messageFinishReceive(part,
-                              hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
-                            if (partCount == 0) {
-                                routingId = readRoutingIdPtr(
-                                  ridOut.get(ValueLayout.ADDRESS, 0));
-                                int topicLength = normalizeTopicLength(topicOut,
-                                  TOPIC_CAPACITY,
-                                  topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                                topicId = decodeTopic(topicOut, topicLength);
-                            }
-                            if (partCount == parts.length) {
-                                parts = Arrays.copyOf(parts, partCount * 2);
-                            }
-                            parts[partCount++] = part;
-                            if (!InternalAccess.messageMore(part)) {
-                                return Optional.of(InternalAccess.topicMessage(
-                                  routingId,
-                                  topicId,
-                                  partCount == parts.length ? parts
-                                    : Arrays.copyOf(parts, partCount)));
-                            }
-                            continue;
+            scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+            Message[] parts = new Message[4];
+            int partCount = 0;
+            RoutingId routingId = null;
+            String topicId = "";
+            while (true) {
+                Message part = new Message();
+                boolean success = false;
+                int rc = RecvResult.INTERNAL_ERROR.value();
+                try {
+                    rc = Native.spotSubscribePart(spot.handle(), scratch.ridOut,
+                      scratch.topicOut, TOPIC_CAPACITY, scratch.topicLenOut,
+                      InternalAccess.messageNativeHandle(part),
+                      scratch.hasMoreOut,
+                      nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
+                    if (rc == 0) {
+                        success = true;
+                        InternalAccess.messageFinishReceive(part,
+                          scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
+                        if (partCount == 0) {
+                            routingId = cachedSpotRoutingId(scratch,
+                              scratch.ridOut.get(ValueLayout.ADDRESS, 0));
+                            int topicLength = normalizeTopicLength(
+                              scratch.topicOut, TOPIC_CAPACITY,
+                              scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+                            topicId = cachedSpotTopic(scratch, topicLength);
                         }
-                    } finally {
-                        if (!success) {
-                            try {
-                                part.close();
-                            } catch (RuntimeException ignored) {
-                            }
+                        if (partCount == parts.length) {
+                            parts = Arrays.copyOf(parts, partCount * 2);
                         }
+                        parts[partCount++] = part;
+                        if (!InternalAccess.messageMore(part)) {
+                            return Optional.of(InternalAccess.topicMessage(
+                              routingId,
+                              topicId,
+                              partCount == parts.length ? parts
+                                : Arrays.copyOf(parts, partCount)));
+                        }
+                        continue;
                     }
-                    RecvResult result;
-                    try {
-                        result = RecvResult.fromValue(rc);
-                    } catch (IllegalArgumentException ex) {
-                        int errno = Native.errno();
-                        if (errno == NativeErrno.EINTR)
-                            break;
-                        throw InternalAccess.zlinkExceptionFromLastError(
-                          "zlink_spot_subscribe_part");
-                    }
-                    for (int i = 0; i < partCount; i++) {
+                } finally {
+                    if (!success) {
                         try {
-                            parts[i].close();
+                            part.close();
                         } catch (RuntimeException ignored) {
                         }
                     }
-                    if (nonBlocking && (result == RecvResult.NO_DATA
-                        || result == RecvResult.BUSY)) {
-                        return Optional.empty();
-                    }
-                    throw new ZlinkRecvException(result, Native.errno());
-                }
-            }
-        }
-    }
-
-    private Optional<SubscriptionEvent> receiveSubscriptionEvent(
-      boolean nonBlocking) {
-        spot.ensureOpen();
-        while (true) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-                rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-                  (byte) 0);
-                MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
-                MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
-                MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-                topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-
-                int rc = Native.subscriptionEvent(spot.handle(), rid, subscribedOut,
-                  topicOut, topicLenOut,
-                  nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
-                if (rc == 0) {
-                    int topicLength = normalizeTopicLength(topicOut,
-                      TOPIC_CAPACITY, topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                    String topicId = decodeTopic(topicOut, topicLength);
-                    return Optional.of(new SubscriptionEvent(
-                      Optional.ofNullable(readRoutingId(rid)),
-                      topicId, subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
                 }
                 RecvResult result;
                 try {
@@ -397,20 +344,64 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                 } catch (IllegalArgumentException ex) {
                     int errno = Native.errno();
                     if (errno == NativeErrno.EINTR)
-                        continue;
-                    throw InternalAccess.zlinkExceptionFromLastError("zlink_xpub_recv_part");
+                        break;
+                    throw InternalAccess.zlinkExceptionFromLastError(
+                      "zlink_spot_subscribe_part");
                 }
-                if (result == RecvResult.NO_DATA && nonBlocking) {
-                    return Optional.empty();
+                for (int i = 0; i < partCount; i++) {
+                    try {
+                        parts[i].close();
+                    } catch (RuntimeException ignored) {
+                    }
                 }
-                if (result == RecvResult.NO_DATA) {
-                    throw new ZlinkRecvException(result, Native.errno());
-                }
-                if (result == RecvResult.BUSY && nonBlocking) {
+                if (nonBlocking && (result == RecvResult.NO_DATA
+                    || result == RecvResult.BUSY)) {
                     return Optional.empty();
                 }
                 throw new ZlinkRecvException(result, Native.errno());
             }
+        }
+    }
+
+    private Optional<SubscriptionEvent> receiveSubscriptionEvent(
+      boolean nonBlocking) {
+        spot.ensureOpen();
+        SpotRecvScratch scratch = recvScratch.get();
+        while (true) {
+            resetSubscriptionScratch(scratch);
+            int rc = Native.subscriptionEvent(spot.handle(),
+              scratch.subscriptionRid, scratch.subscribedOut,
+              scratch.topicOut, scratch.topicLenOut,
+              nonBlocking ? RECV_DONTWAIT : RECV_BLOCKING);
+            if (rc == 0) {
+                int topicLength = normalizeTopicLength(scratch.topicOut,
+                  TOPIC_CAPACITY, scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+                String topicId = cachedSpotTopic(scratch, topicLength);
+                return Optional.of(new SubscriptionEvent(
+                  Optional.ofNullable(NativeRoutingIds.read(
+                    scratch.subscriptionRid)),
+                  topicId, scratch.subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0));
+            }
+            RecvResult result;
+            try {
+                result = RecvResult.fromValue(rc);
+            } catch (IllegalArgumentException ex) {
+                int errno = Native.errno();
+                if (errno == NativeErrno.EINTR)
+                    continue;
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_xpub_recv_part");
+            }
+            if (result == RecvResult.NO_DATA && nonBlocking) {
+                return Optional.empty();
+            }
+            if (result == RecvResult.NO_DATA) {
+                throw new ZlinkRecvException(result, Native.errno());
+            }
+            if (result == RecvResult.BUSY && nonBlocking) {
+                return Optional.empty();
+            }
+            throw new ZlinkRecvException(result, Native.errno());
         }
     }
 
@@ -435,39 +426,11 @@ final class SpotSubscriptionSupport implements AutoCloseable {
         return (int) value;
     }
 
-    private static RoutingId readRoutingId(MemorySegment sourceRid) {
-        if (sourceRid == null || sourceRid.address() == 0)
-            return null;
-        MemorySegment routingId = sourceRid.reinterpret(
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize());
-        int size = routingId.get(ValueLayout.JAVA_BYTE,
-          NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-        if (size == 0)
-            return null;
-        byte[] value = new byte[size];
-        MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-          MemorySegment.ofArray(value), 0, size);
-        return InternalAccess.routingIdFromTrusted(value);
-    }
-
-    private static RoutingId readRoutingIdPtr(MemorySegment nativeRidPtr) {
-        if (nativeRidPtr == null || nativeRidPtr.address() == 0)
-            return null;
-        return readRoutingId(nativeRidPtr.reinterpret(
-          NativeLayouts.ROUTING_ID_LAYOUT.byteSize()));
-    }
-
-    private static String decodeTopic(MemorySegment topic, long topicLen) {
-        int length = Math.max(0, Math.toIntExact(topicLen));
-        if (length == 0)
-            return "";
-        MemorySegment topicBytes = topic.reinterpret(length);
-        if (length > 0 && topicBytes.get(ValueLayout.JAVA_BYTE, length - 1) == 0)
-            length--;
-        if (length == 0)
-            return "";
-        ByteBuffer buffer = topicBytes.asSlice(0, length).asByteBuffer();
-        return StandardCharsets.UTF_8.decode(buffer).toString();
+    private static void resetSubscriptionScratch(SpotRecvScratch scratch) {
+        scratch.subscriptionRid.set(ValueLayout.JAVA_BYTE,
+          NativeLayouts.ROUTING_ID_SIZE_OFFSET, (byte) 0);
+        scratch.subscribedOut.set(ValueLayout.JAVA_INT, 0, 0);
+        scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
     }
 
     private static final class SpotRecvScratch {
@@ -477,6 +440,9 @@ final class SpotSubscriptionSupport implements AutoCloseable {
         final MemorySegment topicLenOut =
           arena.allocate(ValueLayout.JAVA_LONG);
         final MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
+        final MemorySegment subscriptionRid =
+          arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+        final MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
         byte[] cachedTopicBytes;
         String cachedTopicString = "";
         byte[] cachedRoutingIdBytes;

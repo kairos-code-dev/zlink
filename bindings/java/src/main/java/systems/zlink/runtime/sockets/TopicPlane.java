@@ -25,6 +25,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
+import systems.zlink.runtime.nativeapi.NativeRoutingIds;
 import systems.zlink.runtime.nativeapi.RecvScratch;
 
 final class TopicPlane {
@@ -104,23 +105,16 @@ final class TopicPlane {
         Objects.requireNonNull(flags, "flags");
         socket.ensureOpen();
         socket.prepareRecvLikeOperation();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-            rid.set(ValueLayout.JAVA_BYTE, NativeLayouts.ROUTING_ID_SIZE_OFFSET,
-                (byte) 0);
-            MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment topicOut = arena.allocate(
-                NativeSocketRuntime.TOPIC_CAPACITY);
-            MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-            topicLenOut.set(ValueLayout.JAVA_LONG, 0,
-                NativeSocketRuntime.TOPIC_CAPACITY);
-
-            int rc = Native.subscriptionEvent(socket.handle(), rid,
-                subscribedOut, topicOut, topicLenOut, flags.getValue());
+        RecvScratch scratch = socket.recvScratch();
+        while (true) {
+            resetSubscriptionScratch(scratch);
+            int rc = Native.subscriptionEvent(socket.handle(),
+                scratch.routingIdOut, scratch.subscribedOut,
+                scratch.topicOut, scratch.topicLenOut, flags.getValue());
             if (rc != 0) {
                 int errno = Native.errno();
                 if (errno == NativeErrno.EINTR) {
-                    return subscriptionEvent(flags);
+                    continue;
                 }
                 if (flags == ReceiveFlag.DONTWAIT
                     && (errno == NativeErrno.EAGAIN
@@ -129,37 +123,21 @@ final class TopicPlane {
                 }
                 throw ZlinkException.fromErrno("zlink_xpub_recv_part", errno);
             }
-
-            return subscriptionEventFromNative(rid, subscribedOut, topicOut,
-                topicLenOut);
+            return subscriptionEventFromNative(scratch);
         }
     }
 
     Optional<SubscriptionEvent> trySubscriptionEvent() {
         socket.ensureOpen();
         socket.prepareRecvLikeOperation();
+        RecvScratch scratch = socket.recvScratch();
         while (true) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment rid = arena.allocate(
-                    NativeLayouts.ROUTING_ID_LAYOUT);
-                rid.set(ValueLayout.JAVA_BYTE,
-                    NativeLayouts.ROUTING_ID_SIZE_OFFSET, (byte) 0);
-                MemorySegment subscribedOut = arena.allocate(
-                    ValueLayout.JAVA_INT);
-                MemorySegment topicOut = arena.allocate(
-                    NativeSocketRuntime.TOPIC_CAPACITY);
-                MemorySegment topicLenOut = arena.allocate(
-                    ValueLayout.JAVA_LONG);
-                topicLenOut.set(ValueLayout.JAVA_LONG, 0,
-                    NativeSocketRuntime.TOPIC_CAPACITY);
-
-                int rc = Native.subscriptionEvent(socket.handle(), rid,
-                    subscribedOut, topicOut, topicLenOut,
-                    ReceiveFlag.DONTWAIT.getValue());
-                if (rc == 0) {
-                    return Optional.of(subscriptionEventFromNative(rid,
-                        subscribedOut, topicOut, topicLenOut));
-                }
+            resetSubscriptionScratch(scratch);
+            int rc = Native.subscriptionEvent(socket.handle(),
+                scratch.routingIdOut, scratch.subscribedOut, scratch.topicOut,
+                scratch.topicLenOut, ReceiveFlag.DONTWAIT.getValue());
+            if (rc == 0) {
+                return Optional.of(subscriptionEventFromNative(scratch));
             }
 
             int errno = Native.errno();
@@ -178,66 +156,65 @@ final class TopicPlane {
                                            boolean allowNoData) {
         socket.ensureOpen();
         socket.prepareRecvLikeOperation();
+        RecvScratch scratch = socket.recvScratch();
         while (true) {
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment ridOut = arena.allocate(ValueLayout.ADDRESS);
-                MemorySegment topicOut = arena.allocate(
-                    NativeSocketRuntime.TOPIC_CAPACITY);
-                MemorySegment topicLenOut = arena.allocate(
-                    ValueLayout.JAVA_LONG);
-                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-                topicLenOut.set(ValueLayout.JAVA_LONG, 0,
-                    NativeSocketRuntime.TOPIC_CAPACITY);
-                ArrayList<Message> parts = new ArrayList<>();
-                RoutingId routingId = null;
-                String topicId = "";
-                while (true) {
-                    Message part = new Message();
-                    boolean success = false;
-                    try {
-                        int rc = Native.subscribePart(socket.handle(), ridOut,
-                            topicOut, NativeSocketRuntime.TOPIC_CAPACITY,
-                            topicLenOut,
-                            InternalAccess.messageNativeHandle(part),
-                            hasMoreOut, flags.getValue());
-                        if (rc == 0) {
-                            success = true;
-                            InternalAccess.messageFinishReceive(part,
-                                hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
-                            if (parts.isEmpty()) {
-                                routingId = NativeSocketRuntime.toRoutingId(
-                                    NativeSocketRuntime.decodeRoutingIdPtr(
-                                        ridOut.get(ValueLayout.ADDRESS, 0)));
-                                topicId = decodeTopic(topicOut, topicLenOut);
-                            }
-                            parts.add(part);
-                            if (!part.more()) {
-                                return new TopicMessage(routingId, topicId,
-                                    parts.toArray(Message[]::new));
-                            }
-                            continue;
+            scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0,
+                RecvScratch.TOPIC_CAPACITY);
+            ArrayList<Message> parts = new ArrayList<>();
+            RoutingId routingId = null;
+            String topicId = "";
+            while (true) {
+                Message part = new Message();
+                boolean success = false;
+                try {
+                    int rc = Native.subscribePart(socket.handle(),
+                        scratch.sourceRidOut, scratch.topicOut,
+                        RecvScratch.TOPIC_CAPACITY, scratch.topicLenOut,
+                        InternalAccess.messageNativeHandle(part),
+                        scratch.hasMoreOut, flags.getValue());
+                    if (rc == 0) {
+                        success = true;
+                        InternalAccess.messageFinishReceive(part,
+                            scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
+                        if (parts.isEmpty()) {
+                            routingId = NativeRoutingIds.readOut(
+                                scratch.sourceRidOut);
+                            int topicLength =
+                                NativeSocketRuntime.normalizeTopicLength(
+                                    scratch.topicOut,
+                                    RecvScratch.TOPIC_CAPACITY,
+                                    scratch.topicLenOut.get(
+                                        ValueLayout.JAVA_LONG, 0));
+                            topicId = cachedTopicString(scratch,
+                                scratch.topicOut, topicLength);
                         }
-                    } finally {
-                        if (!success) {
-                            try {
-                                part.close();
-                            } catch (RuntimeException ignored) {
-                            }
+                        parts.add(part);
+                        if (!part.more()) {
+                            return new TopicMessage(routingId, topicId,
+                                parts.toArray(Message[]::new));
+                        }
+                        continue;
+                    }
+                } finally {
+                    if (!success) {
+                        try {
+                            part.close();
+                        } catch (RuntimeException ignored) {
                         }
                     }
-
-                    int errno = Native.errno();
-                    Message.closeAll(parts);
-                    if (errno == NativeErrno.EINTR) {
-                        break;
-                    }
-                    if (allowNoData
-                        && (errno == NativeErrno.EAGAIN
-                            || errno == NativeErrno.EWOULDBLOCK_WIN)) {
-                        return null;
-                    }
-                    throw ZlinkException.fromLastError("zlink_subscribe_part");
                 }
+
+                int errno = Native.errno();
+                Message.closeAll(parts);
+                if (errno == NativeErrno.EINTR) {
+                    break;
+                }
+                if (allowNoData
+                    && (errno == NativeErrno.EAGAIN
+                        || errno == NativeErrno.EWOULDBLOCK_WIN)) {
+                    return null;
+                }
+                throw ZlinkException.fromLastError("zlink_subscribe_part");
             }
         }
     }
@@ -271,9 +248,8 @@ final class TopicPlane {
                         result.adoptFrom(fresh);
                         return true;
                     }
-                    RoutingId routingId = NativeSocketRuntime.toRoutingId(
-                        NativeSocketRuntime.decodeRoutingIdPtr(
-                            scratch.sourceRidOut.get(ValueLayout.ADDRESS, 0)));
+                    RoutingId routingId = NativeRoutingIds.readOut(
+                        scratch.sourceRidOut);
                     int topicLength = NativeSocketRuntime.normalizeTopicLength(
                         scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
                         scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
@@ -334,15 +310,12 @@ final class TopicPlane {
 
     private TopicMessage subscribeAssembleRemainder(RecvScratch scratch,
                                                     Message firstPart) {
-        RoutingId routingId = NativeSocketRuntime.toRoutingId(
-            NativeSocketRuntime.decodeRoutingIdPtr(
-                scratch.sourceRidOut.get(ValueLayout.ADDRESS, 0)));
+        RoutingId routingId = NativeRoutingIds.readOut(scratch.sourceRidOut);
         int topicLength = NativeSocketRuntime.normalizeTopicLength(
             scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
             scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-        String topicId = topicLength == 0 ? ""
-            : new String(scratch.topicOut.asSlice(0, topicLength)
-                .toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+        String topicId = cachedTopicString(scratch, scratch.topicOut,
+            topicLength);
         ArrayList<Message> parts = new ArrayList<>();
         parts.add(firstPart);
         while (true) {
@@ -442,32 +415,24 @@ final class TopicPlane {
     }
 
     private static SubscriptionEvent subscriptionEventFromNative(
-        MemorySegment rid,
-        MemorySegment subscribedOut,
-        MemorySegment topicOut,
-        MemorySegment topicLenOut) {
-        int topicLength = NativeSocketRuntime.normalizeTopicLength(topicOut,
-            NativeSocketRuntime.TOPIC_CAPACITY,
-            topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-        String filter = topicLength == 0 ? ""
-            : new String(topicOut.asSlice(0, topicLength).toArray(
-                ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+        RecvScratch scratch) {
+        int topicLength = NativeSocketRuntime.normalizeTopicLength(
+            scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
+            scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
+        String filter = cachedTopicString(scratch, scratch.topicOut,
+            topicLength);
         return new SubscriptionEvent(Optional.ofNullable(
-            NativeSocketRuntime.toRoutingId(
-                NativeSocketRuntime.decodeRoutingId(rid))),
-            filter, subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0);
+            NativeRoutingIds.read(scratch.routingIdOut)),
+            filter, scratch.subscribedOut.get(ValueLayout.JAVA_INT, 0) != 0);
     }
 
-    private static String decodeTopic(MemorySegment topicOut,
-                                      MemorySegment topicLenOut) {
-        int topicLength = NativeSocketRuntime.normalizeTopicLength(topicOut,
-            NativeSocketRuntime.TOPIC_CAPACITY,
-            topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-        if (topicLength == 0) {
-            return "";
-        }
-        return new String(topicOut.asSlice(0, topicLength)
-            .toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+    private static void resetSubscriptionScratch(RecvScratch scratch) {
+        scratch.routingIdOut.set(ValueLayout.JAVA_BYTE,
+            NativeLayouts.ROUTING_ID_SIZE_OFFSET,
+            (byte) 0);
+        scratch.subscribedOut.set(ValueLayout.JAVA_INT, 0, 0);
+        scratch.topicLenOut.set(ValueLayout.JAVA_LONG, 0,
+            RecvScratch.TOPIC_CAPACITY);
     }
 
     private static void validateTopicUtf8(String topicId, String name) {

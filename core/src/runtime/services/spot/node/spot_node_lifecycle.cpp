@@ -8,6 +8,7 @@
 #include "services/spot/pubsub/spot_pub.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
 #include "services/spot/pubsub/spot_sub.hpp"
+#include "services/spot/node/spot_node_router_channel_arg.hpp"
 
 #include "services/common/monitor_decode.hpp"
 #include "services/actor/service_spot_actor_internal.hpp"
@@ -31,38 +32,6 @@ namespace
 static bool valid_channel_name_local (const char *channel_name_)
 {
     return channel_name_ && channel_name_[0] != '\0';
-}
-
-static std::string router_channel_peer_arg_local (
-  const std::string &channel_name_, const std::string &endpoint_)
-{
-    return channel_name_ + "\n" + endpoint_;
-}
-
-static char hex_digit_local (unsigned char value_)
-{
-    return static_cast<char> (value_ < 10 ? '0' + value_ : 'a' + value_ - 10);
-}
-
-static std::string routing_id_hex_local (const zlink_routing_id_t &rid_)
-{
-    std::string hex;
-    hex.reserve (static_cast<size_t> (rid_.size) * 2);
-    for (uint8_t i = 0; i < rid_.size; ++i) {
-        const unsigned char value = rid_.data[i];
-        hex.push_back (hex_digit_local (static_cast<unsigned char> (value >> 4)));
-        hex.push_back (hex_digit_local (static_cast<unsigned char> (value & 0x0f)));
-    }
-    return hex;
-}
-
-static std::string router_channel_peer_arg_local (
-  const std::string &channel_name_,
-  const zlink_routing_id_t &peer_rid_,
-  const std::string &endpoint_)
-{
-    return channel_name_ + "\n" + routing_id_hex_local (peer_rid_) + "\n"
-           + endpoint_;
 }
 
 static bool valid_attached_socket_type_local (socket_base_t *socket_,
@@ -403,7 +372,7 @@ int spot_node_t::connect_router_channel_peer (const char *channel_name_,
     }
 
     const std::string arg =
-      router_channel_peer_arg_local (channel_name, endpoint);
+      spot_node_router_channel_arg::from_endpoint (channel_name, endpoint);
     if (send_data_plane_command (
           spot_control_protocol::cmd_connect_router_channel_peer, arg.c_str ())
         != 0) {
@@ -470,7 +439,8 @@ int spot_node_t::connect_router_channel_peer_rid (
     }
 
     const std::string arg =
-      router_channel_peer_arg_local (channel_name, *peer_rid_, endpoint);
+      spot_node_router_channel_arg::from_routing_id (
+        channel_name, *peer_rid_, endpoint);
     if (send_data_plane_command (
           spot_control_protocol::cmd_connect_router_channel_peer_rid,
           arg.c_str ())
@@ -540,7 +510,7 @@ int spot_node_t::disconnect_router_channel_peer (const char *channel_name_,
     }
 
     const std::string arg =
-      router_channel_peer_arg_local (channel_name, endpoint);
+      spot_node_router_channel_arg::from_endpoint (channel_name, endpoint);
     if (send_data_plane_command (
           spot_control_protocol::cmd_disconnect_router_channel_peer,
           arg.c_str ())
@@ -614,7 +584,8 @@ int spot_node_t::disconnect_router_channel_peer_rid (
     const std::string channel_name (channel_name_);
     for (size_t i = 0; i < endpoints.size (); ++i) {
         const std::string arg =
-          router_channel_peer_arg_local (channel_name, endpoints[i]);
+          spot_node_router_channel_arg::from_endpoint (channel_name,
+                                                       endpoints[i]);
         if (send_data_plane_command (
               spot_control_protocol::cmd_disconnect_router_channel_peer,
               arg.c_str ())
@@ -1754,7 +1725,7 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
             _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     }
     for (size_t i = 0; i < router_channel_disconnects.size (); ++i) {
-        const std::string arg = router_channel_peer_arg_local (
+        const std::string arg = spot_node_router_channel_arg::from_endpoint (
           router_channel_disconnects[i].first,
           router_channel_disconnects[i].second);
         (void) send_data_plane_command (

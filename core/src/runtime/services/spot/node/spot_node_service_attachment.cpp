@@ -6,6 +6,7 @@
 #include "services/spot/common/spot_auto_hwm_internal.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
 #include "services/spot/common/spot_debug.hpp"
+#include "services/spot/node/spot_node_router_channel_arg.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
 
 #include "core/recv_internal.hpp"
@@ -47,11 +48,6 @@ static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
     va_end (args);
 }
 
-static std::string router_channel_peer_arg_local (
-  const std::string &channel_name_, const std::string &endpoint_)
-{
-    return channel_name_ + "\n" + endpoint_;
-}
 }
 
 socket_base_t *spot_node_t::select_service_router (
@@ -244,7 +240,7 @@ void spot_node_t::refresh_router_channel_discovery_peers ()
             if (active.count (*it) != 0)
                 continue;
             const std::string arg =
-              router_channel_peer_arg_local (channel_name, *it);
+              spot_node_router_channel_arg::from_endpoint (channel_name, *it);
             if (send_data_plane_command (
                   spot_control_protocol::cmd_connect_router_channel_peer,
                   arg.c_str ())
@@ -269,7 +265,7 @@ void spot_node_t::refresh_router_channel_discovery_peers ()
             if (desired.count (*it) != 0)
                 continue;
             const std::string arg =
-              router_channel_peer_arg_local (channel_name, *it);
+              spot_node_router_channel_arg::from_endpoint (channel_name, *it);
             if (send_data_plane_command (
                   spot_control_protocol::cmd_disconnect_router_channel_peer,
                   arg.c_str ())

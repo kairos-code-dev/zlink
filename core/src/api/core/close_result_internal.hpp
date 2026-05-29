@@ -3,7 +3,7 @@
 #ifndef __ZLINK_CLOSE_RESULT_INTERNAL_HPP_INCLUDED__
 #define __ZLINK_CLOSE_RESULT_INTERNAL_HPP_INCLUDED__
 
-#include "core/internal_errno.hpp"
+#include "api/message/result_errno_internal.hpp"
 
 namespace zlink
 {
@@ -32,8 +32,7 @@ inline zlink_close_result_t from_rc (int rc_)
     if (rc_ == 0)
         return ZLINK_CLOSE_OK;
 
-    const int saved_errno = errno;
-    return from_errno (saved_errno != 0 ? saved_errno : EIO);
+    return from_errno (zlink::result_errno_internal::rc_errno_or_io ());
 }
 }
 }

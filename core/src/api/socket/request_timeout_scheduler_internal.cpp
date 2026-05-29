@@ -57,11 +57,22 @@ struct task_t
 
 namespace
 {
-std::mutex g_timeout_mutex;
-std::condition_variable g_timeout_cv;
-schedule_map_t g_timeout_schedule;
-std::thread g_timeout_thread;
-bool g_timeout_started = false;
+struct scheduler_state_t
+{
+    std::mutex mutex;
+    std::condition_variable cv;
+    schedule_map_t schedule;
+    std::thread thread;
+    bool started;
+
+    scheduler_state_t () : started (false) {}
+};
+
+scheduler_state_t &scheduler_state ()
+{
+    static scheduler_state_t state;
+    return state;
+}
 
 uint64_t monotonic_now_ns ()
 {
@@ -73,34 +84,35 @@ uint64_t monotonic_now_ns ()
 
 void run_timeout_loop ()
 {
+    scheduler_state_t &state = scheduler_state ();
     for (;;) {
         std::shared_ptr<task_t> task;
         {
-            std::unique_lock<std::mutex> lock (g_timeout_mutex);
-            while (g_timeout_schedule.empty ()) {
-                if (g_timeout_cv.wait_for (
+            std::unique_lock<std::mutex> lock (state.mutex);
+            while (state.schedule.empty ()) {
+                if (state.cv.wait_for (
                       lock, std::chrono::nanoseconds (idle_exit_wait_ns))
                     == std::cv_status::timeout
-                    && g_timeout_schedule.empty ()) {
-                    g_timeout_started = false;
+                    && state.schedule.empty ()) {
+                    state.started = false;
                     return;
                 }
             }
 
             for (;;) {
-                if (g_timeout_schedule.empty ())
+                if (state.schedule.empty ())
                     break;
 
                 const uint64_t now_ns = monotonic_now_ns ();
-                const schedule_map_t::iterator next = g_timeout_schedule.begin ();
+                const schedule_map_t::iterator next = state.schedule.begin ();
                 if (next->first > now_ns) {
-                    g_timeout_cv.wait_for (
+                    state.cv.wait_for (
                       lock, std::chrono::nanoseconds (next->first - now_ns));
                     continue;
                 }
 
                 task = next->second;
-                g_timeout_schedule.erase (next);
+                state.schedule.erase (next);
                 task->registered = false;
                 task->schedule_it = schedule_map_t::iterator ();
                 break;
@@ -137,12 +149,13 @@ void run_timeout_loop ()
 
 void ensure_started ()
 {
-    std::lock_guard<std::mutex> lock (g_timeout_mutex);
-    if (g_timeout_started)
+    scheduler_state_t &state = scheduler_state ();
+    std::lock_guard<std::mutex> lock (state.mutex);
+    if (state.started)
         return;
-    g_timeout_thread = std::thread (run_timeout_loop);
-    g_timeout_thread.detach ();
-    g_timeout_started = true;
+    state.thread = std::thread (run_timeout_loop);
+    state.thread.detach ();
+    state.started = true;
 }
 }
 
@@ -166,11 +179,12 @@ std::shared_ptr<task_t> schedule (uint32_t timeout_ms_,
     task->registered = true;
 
     {
-        std::lock_guard<std::mutex> lock (g_timeout_mutex);
+        scheduler_state_t &state = scheduler_state ();
+        std::lock_guard<std::mutex> lock (state.mutex);
         task->schedule_it =
-          g_timeout_schedule.insert (std::make_pair (task->deadline_ns, task));
+          state.schedule.insert (std::make_pair (task->deadline_ns, task));
     }
-    g_timeout_cv.notify_all ();
+    scheduler_state ().cv.notify_all ();
     return task;
 }
 
@@ -181,17 +195,18 @@ void cancel (const std::shared_ptr<task_t> &task_)
 
     bool removed_from_schedule = false;
     {
-        std::lock_guard<std::mutex> schedule_lock (g_timeout_mutex);
+        scheduler_state_t &state = scheduler_state ();
+        std::lock_guard<std::mutex> schedule_lock (state.mutex);
         if (task_->registered) {
-            if (task_->schedule_it != g_timeout_schedule.end ())
-                g_timeout_schedule.erase (task_->schedule_it);
+            if (task_->schedule_it != state.schedule.end ())
+                state.schedule.erase (task_->schedule_it);
             task_->registered = false;
             task_->schedule_it = schedule_map_t::iterator ();
             removed_from_schedule = true;
         }
     }
     if (removed_from_schedule)
-        g_timeout_cv.notify_all ();
+        scheduler_state ().cv.notify_all ();
 
     std::unique_lock<std::mutex> lock (task_->mutex);
     task_->canceled = true;

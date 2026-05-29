@@ -3,7 +3,7 @@
 #ifndef __ZLINK_REQUEST_RESULT_INTERNAL_HPP_INCLUDED__
 #define __ZLINK_REQUEST_RESULT_INTERNAL_HPP_INCLUDED__
 
-#include "core/internal_errno.hpp"
+#include "api/message/result_errno_internal.hpp"
 
 namespace zlink
 {

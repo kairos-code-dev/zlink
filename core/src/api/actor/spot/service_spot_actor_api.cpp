@@ -7,6 +7,8 @@
 #include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
 #include "api/spot/dispatch/service_spot_dispatch_context_internal.hpp"
 #include "services/actor/async/service_spot_actor_async_internal.hpp"
+#include "services/actor/gateway/service_spot_actor_gateway_protocol_internal.hpp"
+#include "services/actor/lifecycle/service_spot_actor_lifecycle_context_internal.hpp"
 #include "services/actor/service_spot_actor_internal.hpp"
 #include "services/actor/multipart/service_spot_actor_multipart_internal.hpp"
 #include "services/actor/packet/service_spot_actor_packet_internal.hpp"
@@ -56,80 +58,8 @@ actor_runtime_t &actor_runtime ()
     return runtime;
 }
 
-struct actor_lifecycle_callback_context_t
-{
-    actor_lifecycle_callback_context_t () :
-        active (false),
-        spot (NULL)
-    {
-        memset (&previous_actor, 0, sizeof (previous_actor));
-        memset (&current_actor, 0, sizeof (current_actor));
-    }
-
-    bool active;
-    spot_handle_t *spot;
-    zlink_actor_ref_t previous_actor;
-    zlink_actor_ref_t current_actor;
-};
-
-actor_lifecycle_callback_context_t &actor_lifecycle_context ()
-{
-    static thread_local actor_lifecycle_callback_context_t context;
-    return context;
-}
-
-enum actor_gateway_packet_kind_t
-{
-    actor_gateway_packet_session_to_actor = 1,
-    actor_gateway_packet_actor_to_session = 2
-};
-
-struct actor_gateway_frame_t
-{
-    actor_gateway_frame_t () :
-        kind (0),
-        part_flag (ZLINK_PART_FINAL),
-        generation (0)
-    {
-        memset (&session_rid, 0, sizeof (session_rid));
-        memset (actor_id, 0, sizeof (actor_id));
-    }
-
-    uint8_t kind;
-    zlink_part_flag_t part_flag;
-    zlink_routing_id_t session_rid;
-    char actor_id[ZLINK_ACTOR_ID_MAX];
-    uint64_t generation;
-};
-
-const unsigned char actor_gateway_magic[4] = { 'Z', 'A', 'G', '1' };
-const char actor_gateway_endpoint_name[] = "__zlink.actor-gateway";
 const bool actor_gateway_debug_on =
   zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
-
-class actor_lifecycle_handler_scope_t
-{
-  public:
-    actor_lifecycle_handler_scope_t (
-      spot_handle_t *spot_, const zlink_spot_actor_lifecycle_info_t &info_) :
-        _previous (actor_lifecycle_context ())
-    {
-        actor_lifecycle_callback_context_t &context =
-          actor_lifecycle_context ();
-        context.active = true;
-        context.spot = spot_;
-        context.previous_actor = info_.previous_actor;
-        context.current_actor = info_.current_actor;
-    }
-
-    ~actor_lifecycle_handler_scope_t ()
-    {
-        actor_lifecycle_context () = _previous;
-    }
-
-  private:
-    actor_lifecycle_callback_context_t _previous;
-};
 
 uint64_t now_ms ();
 uint64_t next_generation_for_node_locked (zlink::spot_node_t *node_);
@@ -164,87 +94,6 @@ bool same_logical_spot (const spot_handle_t *lhs_, const spot_handle_t *rhs_)
     if (lhs_ == rhs_)
         return true;
     return lhs_->logical_state && lhs_->logical_state == rhs_->logical_state;
-}
-
-bool init_actor_gateway_control_msg (uint8_t kind_,
-                                     const zlink_routing_id_t &session_rid_,
-                                     const char *actor_id_,
-                                     uint64_t generation_,
-                                     zlink_part_flag_t part_flag_,
-                                     zlink_msg_t *out_)
-{
-    if (!actor_id_ || !out_ || !valid_routing_id (&session_rid_)
-        || !valid_actor_id (actor_id_)) {
-        errno = EINVAL;
-        return false;
-    }
-    const size_t actor_id_len = strlen (actor_id_);
-    if (actor_id_len > UINT16_MAX
-        || session_rid_.size > sizeof (session_rid_.data)) {
-        errno = EINVAL;
-        return false;
-    }
-
-    const size_t header_size = 18u + session_rid_.size + actor_id_len;
-    memset (out_, 0, sizeof (*out_));
-    if (zlink_msg_init_size (out_, header_size) != ZLINK_CONFIG_OK)
-        return false;
-
-    unsigned char *data = static_cast<unsigned char *> (zlink_msg_data (out_));
-    memcpy (data, actor_gateway_magic, sizeof (actor_gateway_magic));
-    data[4] = kind_;
-    data[5] = static_cast<unsigned char> (part_flag_);
-    data[6] = session_rid_.size;
-    data[7] = 0;
-    zlink::put_uint64 (data + 8, generation_);
-    zlink::put_uint16 (data + 16, static_cast<uint16_t> (actor_id_len));
-    if (session_rid_.size > 0)
-        memcpy (data + 18, session_rid_.data, session_rid_.size);
-    if (actor_id_len > 0)
-        memcpy (data + 18 + session_rid_.size, actor_id_, actor_id_len);
-    return true;
-}
-
-bool parse_actor_gateway_control_msg (zlink_msg_t *msg_,
-                                      actor_gateway_frame_t *out_)
-{
-    if (!msg_ || !out_) {
-        errno = EINVAL;
-        return false;
-    }
-    const size_t size = zlink_msg_size (msg_);
-    const unsigned char *data =
-      static_cast<const unsigned char *> (zlink_msg_data (msg_));
-    if (size < 18u || memcmp (data, actor_gateway_magic,
-                              sizeof (actor_gateway_magic))
-                       != 0) {
-        errno = EPROTO;
-        return false;
-    }
-    const uint8_t session_size = data[6];
-    const uint16_t actor_id_len = zlink::get_uint16 (data + 16);
-    if (session_size == 0 || actor_id_len == 0
-        || actor_id_len >= ZLINK_ACTOR_ID_MAX
-        || size != 18u + session_size + actor_id_len) {
-        errno = EPROTO;
-        return false;
-    }
-
-    actor_gateway_frame_t frame;
-    frame.kind = data[4];
-    frame.part_flag = static_cast<zlink_part_flag_t> (data[5]);
-    frame.session_rid.size = session_size;
-    memcpy (frame.session_rid.data, data + 18, session_size);
-    frame.generation = zlink::get_uint64 (data + 8);
-    memcpy (frame.actor_id, data + 18 + session_size, actor_id_len);
-    frame.actor_id[actor_id_len] = '\0';
-    if (!valid_routing_id (&frame.session_rid)
-        || !valid_actor_id (frame.actor_id)) {
-        errno = EPROTO;
-        return false;
-    }
-    *out_ = frame;
-    return true;
 }
 
 spot_logical_state_t *join_queue_key (
@@ -895,26 +744,6 @@ actor_handle_t *actor_node_registry_t::find_unique_actor_by_id (
     return match;
 }
 
-bool actor_lifecycle_reenters_same_actor (
-  const zlink_actor_ref_t *actor_ref_)
-{
-    if (!actor_ref_)
-        return false;
-    const actor_lifecycle_callback_context_t &context =
-      actor_lifecycle_context ();
-    return context.active
-           && (same_actor_ref_identity (*actor_ref_, context.previous_actor)
-               || same_actor_ref_identity (*actor_ref_,
-                                           context.current_actor));
-}
-
-bool actor_lifecycle_reenters_same_spot (const spot_handle_t *spot_)
-{
-    const actor_lifecycle_callback_context_t &context =
-      actor_lifecycle_context ();
-    return context.active && same_logical_spot (spot_, context.spot);
-}
-
 bool is_stream_socket (void *stream_)
 {
     zlink::socket_base_t *stream = try_as_socket (stream_);
@@ -1285,8 +1114,8 @@ zlink_submit_result_t send_actor_gateway_packet (
         return errno_to_submit_result (errno);
 
     zlink_msg_t control;
-    if (!init_actor_gateway_control_msg (kind_, session_rid_, actor_id_,
-                                         generation_, part_flag_, &control))
+    if (!zlink::spot_actor_gateway::init_control_msg (
+          kind_, session_rid_, actor_id_, generation_, part_flag_, &control))
         return errno_to_submit_result (errno);
 
     zlink_msg_t payload_copy;
@@ -1304,10 +1133,10 @@ zlink_submit_result_t send_actor_gateway_packet (
     if (zlink::spot_reqrep_internal::build_spot_routed_message (
           zlink::spot_routed_protocol::actor_gateway_endpoint_class,
           source_node,
-          actor_gateway_endpoint_name,
+          zlink::spot_actor_gateway::endpoint_name,
           zlink::spot_routed_protocol::actor_gateway_endpoint_class,
           target_node,
-          actor_gateway_endpoint_name,
+          zlink::spot_actor_gateway::endpoint_name,
           packet_parts,
           2,
           &combined)
@@ -1321,7 +1150,7 @@ zlink_submit_result_t send_actor_gateway_packet (
       origin_node_,
       zlink::spot_reqrep_internal::routed_spot_delivery_direct,
       false,
-      actor_gateway_endpoint_name,
+      zlink::spot_actor_gateway::endpoint_name,
       flags_,
       0,
       &combined);
@@ -2598,7 +2427,7 @@ zlink_submit_result_t enqueue_bound_actor_part_locked (
         const zlink_submit_result_t send_rc = send_actor_gateway_packet (
           stream_owner_,
           entry_->ref.node_rid,
-          actor_gateway_packet_session_to_actor,
+          zlink::spot_actor_gateway::packet_session_to_actor,
           *session_rid_,
           actor_id_,
           entry_->ref.generation,
@@ -2653,7 +2482,7 @@ zlink_submit_result_t enqueue_bound_actor_part_locked (
 int enqueue_actor_gateway_session_to_actor_locked (
   zlink::spot_node_t *node_,
   const zlink_routing_id_t *source_node_rid_,
-  const actor_gateway_frame_t &frame_,
+  const zlink::spot_actor_gateway::frame_t &frame_,
   zlink_msg_t *payload_,
   actor_handle_t **readable_actor_out_)
 {
@@ -2705,7 +2534,8 @@ int enqueue_actor_gateway_session_to_actor_locked (
 }
 
 actor_session_state_t::binding_map_t::iterator
-find_remote_session_binding_locked (const actor_gateway_frame_t &frame_)
+find_remote_session_binding_locked (
+  const zlink::spot_actor_gateway::frame_t &frame_)
 {
     for (actor_session_state_t::binding_map_t::iterator binding_it =
            actor_runtime().sessions.bindings.begin ();
@@ -2728,7 +2558,7 @@ find_remote_session_binding_locked (const actor_gateway_frame_t &frame_)
 
 int deliver_actor_gateway_actor_to_session_locked (
   zlink::spot_node_t *node_,
-  const actor_gateway_frame_t &frame_,
+  const zlink::spot_actor_gateway::frame_t &frame_,
   zlink_msg_t *payload_)
 {
     if (!node_ || !payload_) {
@@ -2798,18 +2628,19 @@ int zlink::spot_actor_internal::process_gateway_delivery (
         return -1;
     }
 
-    actor_gateway_frame_t frame;
-    if (!parse_actor_gateway_control_msg (&parts_[0], &frame))
+    zlink::spot_actor_gateway::frame_t frame;
+    if (!zlink::spot_actor_gateway::parse_control_msg (&parts_[0], &frame))
         return -1;
 
     actor_handle_t *readable_actor = NULL;
     int rc = -1;
     {
         std::lock_guard<std::timed_mutex> lock (actor_runtime().mutex);
-        if (frame.kind == actor_gateway_packet_session_to_actor) {
+        if (frame.kind == zlink::spot_actor_gateway::packet_session_to_actor) {
             rc = enqueue_actor_gateway_session_to_actor_locked (
               node, source_node_rid_, frame, &parts_[1], &readable_actor);
-        } else if (frame.kind == actor_gateway_packet_actor_to_session) {
+        } else if (frame.kind
+                   == zlink::spot_actor_gateway::packet_actor_to_session) {
             rc = deliver_actor_gateway_actor_to_session_locked (
               node, frame, &parts_[1]);
         } else {
@@ -3141,7 +2972,7 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_destroy (
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
     }
-    if (actor_lifecycle_reenters_same_actor (actor_)) {
+    if (zlink::spot_actor_lifecycle::reenters_same_actor (actor_)) {
         errno = EDEADLK;
         return ZLINK_SUBMIT_INVALID_STATE;
     }
@@ -3190,7 +3021,7 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_spot (
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
-    if (actor_lifecycle_reenters_same_actor (actor_ref_)) {
+    if (zlink::spot_actor_lifecycle::reenters_same_actor (actor_ref_)) {
         errno = EDEADLK;
         return ZLINK_SUBMIT_INVALID_STATE;
     }
@@ -3366,7 +3197,7 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_join_entry_spot (
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
-    if (actor_lifecycle_reenters_same_actor (actor_)) {
+    if (zlink::spot_actor_lifecycle::reenters_same_actor (actor_)) {
         errno = EDEADLK;
         return ZLINK_SUBMIT_INVALID_STATE;
     }
@@ -3450,7 +3281,7 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_leave_spot (
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
     }
-    if (actor_lifecycle_reenters_same_actor (actor_ref_)) {
+    if (zlink::spot_actor_lifecycle::reenters_same_actor (actor_ref_)) {
         errno = EDEADLK;
         return ZLINK_SUBMIT_INVALID_STATE;
     }
@@ -3865,7 +3696,7 @@ extern "C" zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg (
         return send_actor_gateway_packet (
           request_node,
           remote_session_node_rid,
-          actor_gateway_packet_actor_to_session,
+          zlink::spot_actor_gateway::packet_actor_to_session,
           session_rid,
           actor_ref_->actor_id,
           actor_generation,

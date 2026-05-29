@@ -996,6 +996,8 @@ set(runtime-service-registry-sources
     src/runtime/services/registry/registry_state.cpp)
 
 set(runtime-service-actor-sources
+    src/runtime/services/actor/gateway/service_spot_actor_gateway_protocol_internal.cpp
+    src/runtime/services/actor/lifecycle/service_spot_actor_lifecycle_context_internal.cpp
     src/runtime/services/actor/async/service_spot_actor_async_internal.cpp
     src/runtime/services/actor/multipart/service_spot_actor_multipart_internal.cpp
     src/runtime/services/actor/packet/service_spot_actor_packet_internal.cpp

@@ -1252,7 +1252,20 @@ request_js_state_t *create_request_js_state(napi_env env, napi_value handler)
     return state;
 }
 
-bool build_msg_vector(napi_env env, napi_value arr,
+bool init_msg_from_value(napi_env env, napi_value value, zlink_msg_t *msg);
+
+static void close_built_msg_vector(std::vector<zlink_msg_t> *parts,
+                                   size_t built)
+{
+    if (!parts)
+        return;
+    for (size_t i = 0; i < built; ++i)
+        zlink_msg_close(&(*parts)[i]);
+    parts->clear();
+}
+
+bool build_msg_vector(napi_env env,
+                      napi_value arr,
                       std::vector<zlink_msg_t> *out)
 {
     uint32_t len = 0;
@@ -1271,54 +1284,28 @@ bool build_msg_vector(napi_env env, napi_value arr,
             napi_throw_type_error(env, NULL, "parts element read failed");
             return false;
         }
-        zlink_msg_t *msg = &(*out)[i];
-        bool is_buf = false;
-        if (napi_is_buffer(env, val, &is_buf) == napi_ok && is_buf) {
-            void *data = NULL;
-            size_t sz = 0;
-            if (napi_get_buffer_info(env, val, &data, &sz) != napi_ok) {
-                for (size_t j = 0; j < built; j++)
-                    zlink_msg_close(&(*out)[j]);
-                napi_throw_type_error(env, NULL, "buffer info failed");
-                return false;
-            }
-            if (zlink_msg_init_size(msg, sz) != 0) {
-                for (size_t j = 0; j < built; j++)
-                    zlink_msg_close(&(*out)[j]);
-                throw_last_error(env, "msg_init_size failed");
-                return false;
-            }
-            if (sz > 0 && data)
-                memcpy(zlink_msg_data(msg), data, sz);
-            built++;
-            continue;
-        }
-
-        napi_value data_value;
-        if (napi_get_named_property(env, val, "data", &data_value) != napi_ok) {
-            for (size_t j = 0; j < built; j++)
-                zlink_msg_close(&(*out)[j]);
-            napi_throw_type_error(env, NULL, "parts must be Buffers or message snapshots");
+        if (!init_msg_from_value(env, val, &(*out)[i])) {
+            close_built_msg_vector(out, built);
             return false;
         }
-        void *data = NULL;
-        size_t sz = 0;
-        if (napi_get_buffer_info(env, data_value, &data, &sz) != napi_ok) {
-            for (size_t j = 0; j < built; j++)
-                zlink_msg_close(&(*out)[j]);
-            napi_throw_type_error(env, NULL, "message snapshot data must be a Buffer");
-            return false;
-        }
-        if (zlink_msg_init_size(msg, sz) != 0) {
-            for (size_t j = 0; j < built; j++)
-                zlink_msg_close(&(*out)[j]);
-            throw_last_error(env, "msg_init_size failed");
-            return false;
-        }
-        if (sz > 0 && data)
-            memcpy(zlink_msg_data(msg), data, sz);
-
         built++;
+    }
+    return true;
+}
+
+bool build_msg_vector_or_single(napi_env env,
+                                napi_value value,
+                                std::vector<zlink_msg_t> *out)
+{
+    bool is_array = false;
+    if (napi_is_array(env, value, &is_array) == napi_ok && is_array)
+        return build_msg_vector(env, value, out);
+
+    out->clear();
+    out->resize(1);
+    if (!init_msg_from_value(env, value, &(*out)[0])) {
+        out->clear();
+        return false;
     }
     return true;
 }
@@ -2100,6 +2087,35 @@ napi_value socket_send_routing(napi_env env, napi_callback_info info)
     napi_value out;
     napi_create_int32(env, static_cast<int32_t>(len), &out);
     return out;
+}
+
+napi_value socket_send_routing_parts(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    zlink_routing_id_t routing_id;
+    if (!parse_routing_id(env, argv[1], &routing_id))
+        return NULL;
+
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector(env, argv[2], &parts))
+        return NULL;
+
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[3], &flags);
+    int rc = send_parts_rid(
+      sock, &routing_id, parts.data(), parts.size(),
+      static_cast<zlink_send_flags_t>(flags));
+    if (rc != ZLINK_SUBMIT_OK)
+        return throw_last_error(env, "sendPartsTo failed");
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }
 
 napi_value socket_recv_message(napi_env env, napi_callback_info info)

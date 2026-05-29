@@ -1690,7 +1690,7 @@ napi_value router_spot_send(napi_env env, napi_callback_info info)
     if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[3], &parts))
+    if (!build_msg_vector_or_single(env, argv[3], &parts))
         return NULL;
     int32_t flags = 0;
     if (argc >= 5)
@@ -1726,7 +1726,7 @@ napi_value spot_reply_spot(napi_env env, napi_callback_info info)
     uint64_t request_seq = 0;
     napi_get_value_bigint_uint64(env, argv[3], &request_seq, &lossless);
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[4], &parts))
+    if (!build_msg_vector_or_single(env, argv[4], &parts))
         return NULL;
     int rc = spot_reply_spot_parts(spot,
                                    &dest_node_rid,
@@ -1756,7 +1756,7 @@ napi_value spot_send_spot(napi_env env, napi_callback_info info)
     if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[3], &parts))
+    if (!build_msg_vector_or_single(env, argv[3], &parts))
         return NULL;
     int32_t flags = 0;
     if (argc >= 5)
@@ -1788,7 +1788,7 @@ napi_value spot_reply_router(napi_env env, napi_callback_info info)
     uint64_t request_seq = 0;
     napi_get_value_bigint_uint64(env, argv[2], &request_seq, &lossless);
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[3], &parts))
+    if (!build_msg_vector_or_single(env, argv[3], &parts))
         return NULL;
     int rc = spot_reply_router_parts(
       spot, &peer_rid, request_seq, parts.data(), parts.size());
@@ -2014,7 +2014,7 @@ napi_value spot_actor_join_reply(napi_env env, napi_callback_info info)
     int32_t join_result_code = 0;
     napi_get_value_int32(env, argv[2], &join_result_code);
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[3], &parts))
+    if (!build_msg_vector_or_single(env, argv[3], &parts))
         return NULL;
     int rc = zlink_spot_actor_join_reply(
       spot,
@@ -2077,7 +2077,7 @@ napi_value router_spot_request(napi_env env, napi_callback_info info)
     if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[3], &parts))
+    if (!build_msg_vector_or_single(env, argv[3], &parts))
         return NULL;
     napi_valuetype handler_type = napi_undefined;
     napi_typeof(env, argv[4], &handler_type);
@@ -2145,7 +2145,7 @@ napi_value router_spot_reply(napi_env env, napi_callback_info info)
         return NULL;
     }
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[4], &parts))
+    if (!build_msg_vector_or_single(env, argv[4], &parts))
         return NULL;
     int rc = router_reply_spot_parts(router,
                                      &dest_node_rid,
@@ -3060,7 +3060,7 @@ napi_value spot_node_actor_join_spot(napi_env env, napi_callback_info info)
     if (!parse_routing_id_value(env, argv[3], &spot_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[4], &parts))
+    if (!build_msg_vector_or_single(env, argv[4], &parts))
         return NULL;
     napi_valuetype handler_type = napi_undefined;
     napi_typeof(env, argv[5], &handler_type);
@@ -3240,7 +3240,7 @@ napi_value spot_node_actor_send_bound_session_msg(napi_env env, napi_callback_in
     if (!parse_actor_ref_value(env, argv[1], &ref))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[2], &parts))
+    if (!build_msg_vector_or_single(env, argv[2], &parts))
         return NULL;
     if (parts.size() != 1) {
         close_msg_vector(parts);
@@ -3429,7 +3429,7 @@ napi_value stream_send_bound_actor_part(napi_env env, napi_callback_info info)
         return NULL;
     std::string actor_id = get_string(env, argv[2]);
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[3], &parts))
+    if (!build_msg_vector_or_single(env, argv[3], &parts))
         return NULL;
     int32_t flags = 0;
     if (argc >= 5)
@@ -3572,7 +3572,7 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
         if (len > 0)
             memcpy(zlink_msg_data(&parts[0]), data, len);
     } else {
-        if (!build_msg_vector(env, argv[2], &parts))
+        if (!build_msg_vector_or_single(env, argv[2], &parts))
             return NULL;
     }
 
@@ -3599,7 +3599,7 @@ napi_value spot_send_channel(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &spot);
     std::string channel_name = get_string(env, argv[1]);
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[2], &parts))
+    if (!build_msg_vector_or_single(env, argv[2], &parts))
         return NULL;
     int32_t flags = 0;
     napi_get_value_int32(env, argv[3], &flags);
@@ -3632,7 +3632,7 @@ napi_value spot_request_channel(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &spot);
     std::string channel_name = get_string(env, argv[1]);
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[2], &parts))
+    if (!build_msg_vector_or_single(env, argv[2], &parts))
         return NULL;
     napi_valuetype handler_type = napi_undefined;
     napi_typeof(env, argv[3], &handler_type);
@@ -3690,7 +3690,7 @@ napi_value spot_request_spot(napi_env env, napi_callback_info info)
     if (!parse_routing_id_value(env, argv[2], &dest_spot_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[3], &parts))
+    if (!build_msg_vector_or_single(env, argv[3], &parts))
         return NULL;
     napi_valuetype handler_type = napi_undefined;
     napi_typeof(env, argv[4], &handler_type);
@@ -3742,7 +3742,7 @@ napi_value spot_request_router(napi_env env, napi_callback_info info)
     if (!parse_routing_id_value(env, argv[1], &peer_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[2], &parts))
+    if (!build_msg_vector_or_single(env, argv[2], &parts))
         return NULL;
     napi_valuetype handler_type = napi_undefined;
     napi_typeof(env, argv[3], &handler_type);

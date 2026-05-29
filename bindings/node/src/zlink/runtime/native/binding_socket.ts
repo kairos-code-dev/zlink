@@ -94,6 +94,12 @@ export interface SocketNativeBinding {
     payload: unknown,
     flags: number
   ) => void;
+  socketSendRoutingParts: (
+    socket: NativeHandle,
+    routingId: Buffer,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
   socketSendRoutingNoWaitResult: (
     socket: NativeHandle,
     routingId: Buffer,
@@ -159,7 +165,7 @@ export interface SocketNativeBinding {
     stream: NativeHandle,
     sessionRid: Buffer,
     actorId: string,
-    parts: readonly unknown[],
+    parts: unknown,
     flags: number
   ) => void;
   streamUnbindActor: (

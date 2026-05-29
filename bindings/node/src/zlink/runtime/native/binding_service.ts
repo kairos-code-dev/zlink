@@ -105,7 +105,7 @@ export interface ServiceNativeBinding {
     spot: NativeHandle,
     info: Record<string, unknown>,
     joinResultCode: number,
-    parts: readonly unknown[]
+    parts: unknown
   ) => void;
   spotActors: (spot: NativeHandle) => ActorRefRaw[];
   spotDestroy: (spot: NativeHandle) => void;
@@ -139,7 +139,7 @@ export interface ServiceNativeBinding {
     actor: ActorRefRaw,
     destNodeRid: Buffer,
     destSpotRid: Buffer,
-    parts: readonly unknown[],
+    parts: unknown,
     callback: NativeActorJoinCallback,
     flags: number,
     timeoutMs: number
@@ -161,7 +161,7 @@ export interface ServiceNativeBinding {
   spotNodeActorSendBoundSessionMsg: (
     node: NativeHandle,
     actor: ActorRefRaw,
-    parts: readonly unknown[],
+    parts: unknown,
     flags: number
   ) => void;
   spotNodeActors: (node: NativeHandle) => SpotNodeActorEntryRaw[];
@@ -233,7 +233,7 @@ export interface ServiceNativeBinding {
   spotPublish: (
     spot: NativeHandle,
     topic: string,
-    parts: readonly unknown[],
+    parts: unknown,
     flags: number
   ) => void;
   spotRecv: (spot: NativeHandle, flags: number) => NativeTopicMessageRaw | null;
@@ -244,19 +244,19 @@ export interface ServiceNativeBinding {
     spot: NativeHandle,
     peerRid: Buffer,
     requestSeq: bigint,
-    parts: readonly Buffer[]
+    parts: unknown
   ) => void;
   spotReplySpot: (
     spot: NativeHandle,
     destNodeRid: Buffer,
     destSpotRid: Buffer,
     requestSeq: bigint,
-    parts: readonly Buffer[]
+    parts: unknown
   ) => void;
   spotRequestChannel: (
     spot: NativeHandle,
     channelName: string,
-    parts: readonly unknown[],
+    parts: unknown,
     callback: NativeRequestCallback,
     flags: number,
     timeoutMs: number
@@ -264,7 +264,7 @@ export interface ServiceNativeBinding {
   spotRequestRouter: (
     spot: NativeHandle,
     peerRid: Buffer,
-    parts: readonly unknown[],
+    parts: unknown,
     callback: NativeRequestCallback,
     flags: number,
     timeoutMs: number
@@ -273,7 +273,7 @@ export interface ServiceNativeBinding {
     spot: NativeHandle,
     destNodeRid: Buffer,
     destSpotRid: Buffer,
-    parts: readonly unknown[],
+    parts: unknown,
     callback: NativeRequestCallback,
     flags: number,
     timeoutMs: number
@@ -281,7 +281,7 @@ export interface ServiceNativeBinding {
   spotSendChannel: (
     spot: NativeHandle,
     channelName: string,
-    parts: readonly unknown[],
+    parts: unknown,
     flags: number
   ) => void;
   spotSendReadyHandler: (spot: NativeHandle, handler: unknown) => void;
@@ -289,7 +289,7 @@ export interface ServiceNativeBinding {
     spot: NativeHandle,
     destNodeRid: Buffer,
     destSpotRid: Buffer,
-    parts: readonly unknown[],
+    parts: unknown,
     flags: number
   ) => void;
   spotSetOption: (spot: NativeHandle, option: number, value: Buffer) => void;

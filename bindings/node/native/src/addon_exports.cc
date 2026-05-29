@@ -52,6 +52,7 @@ void define_core_exports(napi_env env, napi_value exports)
         ZLINK_METHOD("socketSendRoutingNoWaitResult", socket_try_send_routing),
         ZLINK_METHOD("socketSendRoutingNoWaitResultParts", socket_try_send_routing_parts),
         ZLINK_METHOD("socketSendRouting", socket_send_routing),
+        ZLINK_METHOD("socketSendRoutingParts", socket_send_routing_parts),
         ZLINK_METHOD("socketRecvMessage", socket_recv_message),
         ZLINK_METHOD("socketRecvMessageNoWait", socket_try_recv_message),
         ZLINK_METHOD("socketSubscribeMessage", socket_subscribe_message),

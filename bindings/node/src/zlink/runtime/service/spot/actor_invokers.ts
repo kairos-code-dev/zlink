@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { toMessageParts } from '../../buffers/message_conversion';
+import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { submitNativeError } from '../../errors/native_errors';
 import { messagesFromNativeBuffers } from '../../messaging/request_executor';
@@ -43,7 +43,7 @@ export function invokeActorJoin(
       actorRefToRaw(actor),
       normalizeRoutingId(destNodeRid, 'destNodeRid'),
       normalizeRoutingId(destSpotRid, 'destSpotRid'),
-      toMessageParts(parts),
+      normalizeOperationPayload(parts),
       (rawResult: ActorJoinResultRaw | null, replyParts: Buffer[] | null) => {
         callback(actorJoinResultFromRaw(rawResult), messagesFromNativeBuffers(replyParts));
       },
@@ -158,7 +158,7 @@ export function invokeActorSendBoundSession(
     requireNative().spotNodeActorSendBoundSessionMsg(
       nodeHandle,
       actorRefToRaw(actor),
-      toMessageParts(parts),
+      normalizeOperationPayload(parts),
       flags | 0,
     );
   } catch (error) {
@@ -229,7 +229,7 @@ export function invokeStreamSendBoundActor(
       streamHandle,
       sessionRid,
       actorId,
-      toMessageParts(parts),
+      normalizeOperationPayload(parts),
       flags | 0,
     );
   } catch (error) {

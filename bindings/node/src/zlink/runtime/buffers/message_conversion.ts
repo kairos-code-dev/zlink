@@ -36,10 +36,6 @@ export function normalizeOperationPayload(parts: MessageLike | readonly MessageL
   return toMessageParts(parts);
 }
 
-export function toOwnedMessage(message: MessageLike): Message {
-  return message instanceof Message ? message : Message.from(message);
-}
-
 export function messageFromNativeBuffer(buffer: Buffer | null | undefined): Message {
   return Message.fromSnapshot({ data: buffer ?? Buffer.alloc(0) });
 }

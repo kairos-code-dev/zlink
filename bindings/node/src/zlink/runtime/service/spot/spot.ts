@@ -14,7 +14,7 @@ import {
   normalizeReplyFlags,
   submitErrorFromResult,
 } from '../../sockets/socket_submit_errors';
-import { toMessageParts, toOwnedMessage } from '../../buffers/message_conversion';
+import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { Message, Received, RoutingId, TopicMessage, type MessageLike } from '../../../contracts';
 import { RecvFlags, SendFlags } from '../../../contracts/sockets/socket_constants';
 import { SubmitResult } from '../../../contracts/errors/errors';
@@ -91,7 +91,7 @@ export class Spot extends NativeHandle {
       requireNative().spotPublish(
         this._native,
         validateCString(topic, 'topic', Number.MAX_SAFE_INTEGER),
-        toMessageParts(payloadParts),
+        normalizeOperationPayload(payloadParts),
         flags | 0
       );
     });
@@ -148,7 +148,7 @@ export class Spot extends NativeHandle {
       requireNative().spotSendChannel(
         this._native,
         validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER),
-        toMessageParts(payloadParts),
+        normalizeOperationPayload(payloadParts),
         flags | 0
       );
     });
@@ -162,7 +162,7 @@ export class Spot extends NativeHandle {
         this._native,
         normalizeRoutingId(destNodeRid),
         normalizeRoutingId(destSpotRid),
-        toMessageParts(payloadParts),
+        normalizeOperationPayload(payloadParts),
         flags | 0
       );
     });
@@ -252,13 +252,13 @@ export class Spot extends NativeHandle {
     errorMessage: string,
     invoke: (
       spotHandle: unknown,
-      parts: ReturnType<typeof toMessageParts>,
+      parts: ReturnType<typeof normalizeOperationPayload>,
       callback: (result: number, replyParts: Buffer[] | null) => void,
       flags: SendFlags,
       timeoutMs: number
     ) => void,
   ): Promise<Message[]> | boolean {
-    const parts = toMessageParts(partsInput);
+    const parts = normalizeOperationPayload(partsInput);
     const spotHandle = this._native;
     return executeNativeRequest({
       callbackOrTimeout,
@@ -274,12 +274,12 @@ export class Spot extends NativeHandle {
     });
   }
   replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOperation {
-    return new RuntimeReplyOperation((parts, opFlags) => this.replyToSpotInternal(destNodeRid, destSpotRid, requestSeq, parts.map(toOwnedMessage), opFlags));
+    return new RuntimeReplyOperation((parts, opFlags) => this.replyToSpotInternal(destNodeRid, destSpotRid, requestSeq, parts, opFlags));
   }
   replyToRouter(peerRid: RoutingId, requestSeq: bigint): ReplyOperation {
-    return new RuntimeReplyOperation((parts, opFlags) => this.replyToRouterInternal(peerRid, requestSeq, parts.map(toOwnedMessage), opFlags));
+    return new RuntimeReplyOperation((parts, opFlags) => this.replyToRouterInternal(peerRid, requestSeq, parts, opFlags));
   }
-  private replyToSpotInternal(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: readonly Message[], flags: SendFlags): void {
+  private replyToSpotInternal(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags: SendFlags): void {
     normalizeReplyFlags(flags);
     const normalizedDestNodeRid = normalizeRoutingId(destNodeRid);
     const normalizedDestSpotRid = normalizeRoutingId(destSpotRid);
@@ -289,13 +289,13 @@ export class Spot extends NativeHandle {
         normalizedDestNodeRid,
         normalizedDestSpotRid,
         requestSeq,
-        parts.map((part) => part.data())
+        normalizeOperationPayload(parts)
       );
     } catch (error) {
       throw submitNativeError(error, flags, 'spot replyToSpot failed');
     }
   }
-  private replyToRouterInternal(peerRid: RoutingId, requestSeq: bigint, parts: readonly Message[], flags: SendFlags): void {
+  private replyToRouterInternal(peerRid: RoutingId, requestSeq: bigint, parts: readonly MessageLike[], flags: SendFlags): void {
     normalizeReplyFlags(flags);
     const normalizedPeerRid = normalizeRoutingId(peerRid);
     try {
@@ -303,7 +303,7 @@ export class Spot extends NativeHandle {
         this._native,
         normalizedPeerRid,
         requestSeq,
-        parts.map((part) => part.data())
+        normalizeOperationPayload(parts)
       );
     } catch (error) {
       throw submitNativeError(error, flags, 'spot replyToRouter failed');
@@ -393,7 +393,7 @@ export class Spot extends NativeHandle {
     const rawInfo = actorJoinInfoToRaw(request.info);
     const code = joinResultCode | 0;
     return new RuntimeActorJoinReplyOperation((partsInput) => {
-      const parts = toMessageParts(partsInput);
+      const parts = normalizeOperationPayload(partsInput);
       try {
         requireNative().spotActorJoinReply(spotHandle, rawInfo, code, parts);
       } catch (error) {

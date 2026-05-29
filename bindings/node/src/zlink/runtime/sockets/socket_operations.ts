@@ -221,9 +221,13 @@ export class RoutedMessageSocket extends ConnectableSocket {
       }
       return true;
     }
-    const parts = [routingId, ...normalized];
     try {
-      requireNative().socketSendParts(this.nativeHandle(), parts, flags | 0);
+      requireNative().socketSendRoutingParts(
+        this.nativeHandle(),
+        routingId,
+        normalized,
+        flags | 0
+      );
     } catch (error) {
       throw submitNativeError(error, flags, 'send failed');
     }

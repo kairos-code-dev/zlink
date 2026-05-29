@@ -1067,6 +1067,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/node/spot_node_service_attachment_cache.cpp
     src/runtime/services/spot/node/spot_node_service_attachment_recv.cpp
     src/runtime/services/spot/node/spot_node_summary.cpp
+    src/runtime/services/spot/node/spot_node_spot_state.cpp
     src/runtime/services/spot/node/spot_node_tls.cpp
     src/runtime/services/spot/pubsub/spot_pub.cpp
     src/runtime/services/spot/dispatch/spot_dispatch_context.cpp

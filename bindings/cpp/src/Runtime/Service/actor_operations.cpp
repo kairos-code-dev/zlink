@@ -2,7 +2,6 @@
 
 #include <zlink/Contracts/Service/spot.hpp>
 #include <Runtime/Core/duration_conversion.hpp>
-#include <Runtime/Core/operation_state_owner.hpp>
 #include <Runtime/Service/actor_detail.hpp>
 #include <Runtime/Service/spot_access.hpp>
 #include <Runtime/Native/native_parts.hpp>
@@ -20,19 +19,19 @@ actor_join_operation_t &actor_join_operation_t::operator= (
 
 actor_join_operation_t::actor_join_operation_t (
   detail::actor_join_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_join_state_t> (std::move (state_)))
 {
 }
 
 detail::actor_join_state_t &actor_join_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_join_state_t &
 actor_join_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_join_submit_operation_t
@@ -50,19 +49,19 @@ actor_join_submit_operation_t &actor_join_submit_operation_t::operator= (
 
 actor_join_submit_operation_t::actor_join_submit_operation_t (
   detail::actor_join_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_join_state_t> (std::move (state_)))
 {
 }
 
 detail::actor_join_state_t &actor_join_submit_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_join_state_t &
 actor_join_submit_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_join_submit_operation_t &&
@@ -118,20 +117,20 @@ actor_join_callback_submit_operation_t::operator= (
 
 actor_join_callback_submit_operation_t::actor_join_callback_submit_operation_t (
   detail::actor_join_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_join_state_t> (std::move (state_)))
 {
 }
 
 detail::actor_join_state_t &
 actor_join_callback_submit_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_join_state_t &
 actor_join_callback_submit_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_join_callback_submit_operation_t &&
@@ -184,20 +183,21 @@ actor_join_entry_spot_operation_t::operator= (
 
 actor_join_entry_spot_operation_t::actor_join_entry_spot_operation_t (
   detail::actor_payloadless_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_payloadless_state_t> (
+      std::move (state_)))
 {
 }
 
 detail::actor_payloadless_state_t &
 actor_join_entry_spot_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_payloadless_state_t &
 actor_join_entry_spot_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_join_entry_spot_operation_t &&actor_join_entry_spot_operation_t::timeout (
@@ -252,20 +252,21 @@ actor_join_reply_operation_t &actor_join_reply_operation_t::operator= (
 
 actor_join_reply_operation_t::actor_join_reply_operation_t (
   detail::actor_join_reply_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_join_reply_state_t> (
+      std::move (state_)))
 {
 }
 
 detail::actor_join_reply_state_t &
 actor_join_reply_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_join_reply_state_t &
 actor_join_reply_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_join_reply_operation_t &&
@@ -312,19 +313,20 @@ actor_leave_operation_t &actor_leave_operation_t::operator= (
 
 actor_leave_operation_t::actor_leave_operation_t (
   detail::actor_payloadless_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_payloadless_state_t> (
+      std::move (state_)))
 {
 }
 
 detail::actor_payloadless_state_t &actor_leave_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_payloadless_state_t &
 actor_leave_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_leave_operation_t &&
@@ -377,19 +379,20 @@ actor_destroy_operation_t &actor_destroy_operation_t::operator= (
 
 actor_destroy_operation_t::actor_destroy_operation_t (
   detail::actor_payloadless_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_payloadless_state_t> (
+      std::move (state_)))
 {
 }
 
 detail::actor_payloadless_state_t &actor_destroy_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_payloadless_state_t &
 actor_destroy_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_destroy_operation_t &&
@@ -440,19 +443,20 @@ actor_lookup_operation_t &actor_lookup_operation_t::operator= (
 
 actor_lookup_operation_t::actor_lookup_operation_t (
   detail::actor_payloadless_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_payloadless_state_t> (
+      std::move (state_)))
 {
 }
 
 detail::actor_payloadless_state_t &actor_lookup_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_payloadless_state_t &
 actor_lookup_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_lookup_operation_t &&
@@ -505,19 +509,19 @@ actor_bind_operation_t &actor_bind_operation_t::operator= (
 
 actor_bind_operation_t::actor_bind_operation_t (
   detail::actor_bind_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_bind_state_t> (std::move (state_)))
 {
 }
 
 detail::actor_bind_state_t &actor_bind_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_bind_state_t &
 actor_bind_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_bind_operation_t &&
@@ -572,19 +576,19 @@ actor_unbind_operation_t &actor_unbind_operation_t::operator= (
 
 actor_unbind_operation_t::actor_unbind_operation_t (
   detail::actor_bind_state_t &&state_) :
-    _state (zlink::detail::make_operation_state (std::move (state_)))
+    _state (std::make_unique<detail::actor_bind_state_t> (std::move (state_)))
 {
 }
 
 detail::actor_bind_state_t &actor_unbind_operation_t::state () noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 const detail::actor_bind_state_t &
 actor_unbind_operation_t::state () const noexcept
 {
-    return zlink::detail::operation_state (_state);
+    return (*_state);
 }
 
 actor_unbind_operation_t &&

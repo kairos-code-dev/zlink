@@ -10,7 +10,6 @@
 #include "core/session_base.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "utils/config.hpp"
-#include "utils/env.hpp"
 #include "utils/err.hpp"
 #include "utils/heap_owner.hpp"
 #include "utils/ip.hpp"
@@ -38,10 +37,10 @@
 namespace
 {
 const bool ws_gather_write_on =
-  zlink::env::flag_enabled ("ZLINK_ASIO_GATHER_WRITE");
+  zlink::asio_stream_fastpath_policy::gather_write_enabled ();
 
 const size_t ws_gather_threshold =
-  zlink::env::positive_size ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
+  zlink::asio_stream_fastpath_policy::gather_threshold ();
 
 const size_t stream_target_initial_cap = 64 * 1024;
 const size_t ws_stream_initial_target = 64 * 1024;

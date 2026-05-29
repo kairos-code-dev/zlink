@@ -12,7 +12,7 @@ import type {
 export interface SocketNativeBinding {
   dealerRequest: (
     socket: NativeHandle,
-    parts: readonly unknown[],
+    parts: unknown,
     callback: unknown,
     flags: number,
     timeoutMs: number
@@ -26,12 +26,12 @@ export interface SocketNativeBinding {
     socket: NativeHandle,
     peerRid: Buffer,
     requestSeq: bigint,
-    parts: readonly unknown[]
+    parts: unknown
   ) => void;
   routerRequest: (
     socket: NativeHandle,
     peerRid: Buffer,
-    parts: readonly unknown[],
+    parts: unknown,
     callback: NativeRequestCallback,
     flags: number,
     timeoutMs: number
@@ -41,13 +41,13 @@ export interface SocketNativeBinding {
     destNodeRid: Buffer,
     destSpotRid: Buffer,
     requestSeq: bigint,
-    parts: readonly unknown[]
+    parts: unknown
   ) => void;
   routerSpotRequest: (
     socket: NativeHandle,
     destNodeRid: Buffer,
     destSpotRid: Buffer,
-    parts: readonly unknown[],
+    parts: unknown,
     callback: NativeRequestCallback,
     flags: number,
     timeoutMs: number
@@ -56,7 +56,7 @@ export interface SocketNativeBinding {
     socket: NativeHandle,
     destNodeRid: Buffer,
     destSpotRid: Buffer,
-    parts: readonly unknown[],
+    parts: unknown,
     flags: number
   ) => void;
   socketAttachDiscovery: (socket: NativeHandle, discovery: NativeHandle) => void;

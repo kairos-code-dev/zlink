@@ -79,11 +79,22 @@ export class StreamSocket extends SocketBase {
       if (result === SubmitResult.Backpressured) return false;
       throw submitErrorFromResult(result as SubmitResult, 'send failed');
     }
-    const parts = Array.isArray(normalized)
-      ? [normalizedRoutingId, ...normalized]
-      : [normalizedRoutingId, normalized];
     try {
-      requireNative().socketSendParts(this.nativeHandle(), parts, flags | 0);
+      if (Array.isArray(normalized)) {
+        requireNative().socketSendRoutingParts(
+          this.nativeHandle(),
+          normalizedRoutingId,
+          normalized,
+          flags | 0
+        );
+      } else {
+        requireNative().socketSendRouting(
+          this.nativeHandle(),
+          normalizedRoutingId,
+          normalized,
+          flags | 0
+        );
+      }
     } catch (error) {
       throw submitNativeError(error, flags, 'send failed');
     }

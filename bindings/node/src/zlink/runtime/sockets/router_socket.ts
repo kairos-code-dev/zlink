@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { RouterSocketOptions } from './socket_options';
-import { normalizeMessageLikePayload, toMessageParts } from '../buffers/message_conversion';
+import { normalizeOperationPayload } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
 import {
   RuntimeReplyOperation,
@@ -58,7 +58,7 @@ export class RouterSocket extends RoutedMessageSocket {
     flagsOrTimeout?: SendFlags | number,
     maybeTimeout?: number,
   ): Promise<Message[]> | boolean {
-    const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
+    const parts = normalizeOperationPayload(payloadOrParts);
     const peer = normalizeRoutingId(peerRid, 'peerRid');
     const nativeHandle = this.nativeHandle();
     return executeNativeRequest({
@@ -90,7 +90,7 @@ export class RouterSocket extends RoutedMessageSocket {
         this.nativeHandle(),
         normalizeRoutingId(destNodeRid),
         normalizeRoutingId(destSpotRid),
-        Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)],
+        normalizeOperationPayload(payloadOrParts),
         flags | 0
       );
       return true;
@@ -111,7 +111,7 @@ export class RouterSocket extends RoutedMessageSocket {
     );
   }
   private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
-    const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
+    const parts = normalizeOperationPayload(payloadOrParts);
     const nodeRid = normalizeRoutingId(destNodeRid);
     const spotRid = normalizeRoutingId(destSpotRid);
     const nativeHandle = this.nativeHandle();
@@ -143,7 +143,7 @@ export class RouterSocket extends RoutedMessageSocket {
     normalizeReplyFlags(flags);
     const normalizedDestNodeRid = normalizeRoutingId(destNodeRid);
     const normalizedDestSpotRid = normalizeRoutingId(destSpotRid);
-    const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
+    const parts = normalizeOperationPayload(payloadOrParts);
     try {
       requireNative().routerSpotReply(
         this.nativeHandle(),
@@ -162,7 +162,7 @@ export class RouterSocket extends RoutedMessageSocket {
   private replyDirect(peerRid: RoutingId, requestSeq: bigint, payloadOrParts: readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
     normalizeReplyFlags(flags);
     const normalizedPeerRid = normalizeRoutingId(peerRid, 'peerRid');
-    const parts = Array.isArray(payloadOrParts) ? toMessageParts(payloadOrParts) : [normalizeMessageLikePayload(payloadOrParts)];
+    const parts = normalizeOperationPayload(payloadOrParts);
     try {
       requireNative().routerReply(
         this.nativeHandle(),

@@ -1823,7 +1823,7 @@ napi_value socket_send_parts(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
 
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[1], &parts))
+    if (!build_msg_vector_or_single(env, argv[1], &parts))
         return NULL;
 
     int32_t flags = 0;
@@ -1987,7 +1987,7 @@ napi_value socket_try_send_parts(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &sock);
 
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[1], &parts))
+    if (!build_msg_vector_or_single(env, argv[1], &parts))
         return NULL;
 
     int rc = send_parts(sock, parts.data(), parts.size(), ZLINK_SEND_FLAGS_DONTWAIT);
@@ -2043,7 +2043,7 @@ napi_value socket_try_send_routing_parts(napi_env env, napi_callback_info info)
         return NULL;
 
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[2], &parts))
+    if (!build_msg_vector_or_single(env, argv[2], &parts))
         return NULL;
 
     int rc = send_parts_rid(
@@ -2102,7 +2102,7 @@ napi_value socket_send_routing_parts(napi_env env, napi_callback_info info)
         return NULL;
 
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[2], &parts))
+    if (!build_msg_vector_or_single(env, argv[2], &parts))
         return NULL;
 
     int32_t flags = 0;
@@ -2661,7 +2661,7 @@ napi_value dealer_request(napi_env env, napi_callback_info info)
     void *dealer = NULL;
     napi_get_value_external(env, argv[0], &dealer);
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[1], &parts))
+    if (!build_msg_vector_or_single(env, argv[1], &parts))
         return NULL;
     napi_valuetype handler_type = napi_undefined;
     napi_typeof(env, argv[2], &handler_type);
@@ -2716,7 +2716,7 @@ napi_value router_request(napi_env env, napi_callback_info info)
     if (!parse_routing_id(env, argv[1], &peer_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[2], &parts))
+    if (!build_msg_vector_or_single(env, argv[2], &parts))
         return NULL;
     napi_valuetype handler_type = napi_undefined;
     napi_typeof(env, argv[3], &handler_type);
@@ -2776,7 +2776,7 @@ napi_value router_reply(napi_env env, napi_callback_info info)
         return NULL;
     }
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[3], &parts))
+    if (!build_msg_vector_or_single(env, argv[3], &parts))
         return NULL;
     int rc =
       router_reply_parts(router, &peer_rid, request_seq, parts.data(), parts.size());

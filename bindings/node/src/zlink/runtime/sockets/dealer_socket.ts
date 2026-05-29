@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { DealerSocketOptions } from './socket_options';
-import { normalizeMessageLikePayload, toMessageParts } from '../buffers/message_conversion';
+import { normalizeOperationPayload } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
 import {
   MessageSocket,
@@ -63,9 +63,7 @@ export class DealerSocket extends MessageSocket {
     flagsOrTimeout?: SendFlags | number,
     maybeTimeout?: number,
   ): Promise<Message[]> | boolean {
-    const parts = Array.isArray(payloadOrParts)
-      ? toMessageParts(payloadOrParts)
-      : [normalizeMessageLikePayload(payloadOrParts)];
+    const parts = normalizeOperationPayload(payloadOrParts);
     const nativeHandle = this.nativeHandle();
     return executeNativeRequest({
       callbackOrTimeout,

@@ -129,22 +129,14 @@ bindings/python/
 |   |   |   +-- core/
 |   |   |   |   +-- context.py
 |   |   |   +-- handles/
-|   |   |   |   +-- native_handle.py
+|   |   |   |   +-- native_support.py
 |   |   |   +-- messaging/
 |   |   |   |   +-- message_materializer.py
-|   |   |   |   +-- request_progress.py
 |   |   |   +-- buffers/
 |   |   |   |   +-- payload_buffers.py
 |   |   |   +-- sockets/
 |   |   |   |   +-- socket_base.py
-|   |   |   |   +-- pair_socket.py
-|   |   |   |   +-- dealer_socket.py
-|   |   |   |   +-- router_socket.py
-|   |   |   |   +-- pub_socket.py
-|   |   |   |   +-- sub_socket.py
-|   |   |   |   +-- xpub_socket.py
-|   |   |   |   +-- xsub_socket.py
-|   |   |   |   +-- stream_socket.py
+|   |   |   |   +-- socket_base_impl.py
 |   |   |   +-- eventing/
 |   |   |   |   +-- poller.py
 |   |   |   |   +-- timer.py
@@ -160,7 +152,6 @@ bindings/python/
 |   |   |   |   |   +-- actor.py
 |   |   |   +-- errors/
 |   |   |   |   +-- native_errors.py
-|   |   |   |   +-- validation.py
 |   |   |   +-- options/
 |   |   |   |   +-- option_mapping.py
 |   |   +-- _native/
@@ -284,8 +275,7 @@ Python에서 빠르게 찾을 수 있도록 동일한 개념적 파일 그룹화
 미러링하지만 구현만을 담는다.
 
 - `core/`: context 구현과 context 옵션 헬퍼.
-- `messaging/`: 메시지 materialization, request 진행, request 실행, 네이티브
-  버퍼 변환 헬퍼.
+- `messaging/`: 메시지 materialization, request 실행, 네이티브 버퍼 변환 헬퍼.
 - `sockets/`: 소켓 베이스 클래스, 소켓 커널, 모든 소켓 패밀리의 소켓 구현, 콜백
   어댑터, operation 구현 클래스.
 - `eventing/`: poller/timer/monitor 구현과 이벤트 materialization 헬퍼.

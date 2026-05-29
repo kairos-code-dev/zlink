@@ -7,7 +7,7 @@ from typing import Any, TypeVar, cast
 
 import msgpack
 
-from zlink import Message
+from zlink import Message, create_message_from
 
 T = TypeVar("T")
 
@@ -55,4 +55,4 @@ def _normalize_encoded(value: Any) -> Any:
 
 
 def _new_message(data: bytes) -> Message:
-    return Message.from_(data)
+    return create_message_from(data)

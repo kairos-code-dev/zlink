@@ -207,15 +207,10 @@ Go는 import 경로가 공개 API이므로 공개 통합 `contracts` 패키지 �
 런타임 소스는 [.NET 바인딩 청사진](../dotnet/README.ko.md)의 런타임 분류를 미러링하되 private으로 유지한다.
 
 - `internal/core`, `internal/messaging`, `internal/sockets`,
-  `internal/eventing`, `internal/service`, `internal/errors`가 private 런타임
-  구현을 소유한다.
-- `internal/handles`는 네이티브 핸들 소유권, close 상태, 생명주기 검사,
-  reference tracking을 소유한다.
-- `internal/buffers`는 byte slice/native buffer 변환, copy/borrow 정책,
-  pooled/pinned storage 헬퍼를 소유한다.
-- `internal/options`는 option 검증과 native option id/value 매핑을 소유한다.
+  `internal/eventing`, `internal/service`, `internal/errors`가 네이티브 런타임
+  구현 위의 private facade를 소유한다.
 - `internal/native`가 cgo 선언, 네이티브 로딩, raw 핸들, marshalling, 콜백
-  trampoline, request 진행 헬퍼를 소유한다.
+  trampoline, request 진행 헬퍼, option marshalling, buffer 변환 헬퍼를 소유한다.
 
 Private 런타임 코드는 공개 계약 타입에 의존할 수 있다. 공개 계약 코드는 private
 구현 세부에 의존해서는 안 된다.

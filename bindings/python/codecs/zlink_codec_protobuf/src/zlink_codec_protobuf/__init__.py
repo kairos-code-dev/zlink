@@ -6,7 +6,7 @@ from typing import TypeVar
 
 from google.protobuf.message import Message as ProtobufMessage
 
-from zlink import Message
+from zlink import Message, create_message_from
 
 T = TypeVar("T", bound=ProtobufMessage)
 
@@ -24,4 +24,4 @@ def encode(v: T) -> Message:
 
 
 def _new_message(data: bytes) -> Message:
-    return Message.from_(data)
+    return create_message_from(data)

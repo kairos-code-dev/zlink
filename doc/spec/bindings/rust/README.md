@@ -92,7 +92,6 @@ bindings/rust/
 |   +-- contracts/
 |   |   +-- core/
 |   |   |   +-- context.rs
-|   |   |   +-- zlink.rs
 |   |   |   +-- routing_id.rs
 |   |   +-- messaging/
 |   |   |   +-- message.rs
@@ -110,7 +109,6 @@ bindings/rust/
 |   |   +-- eventing/
 |   |   |   +-- monitor.rs
 |   |   |   +-- poller.rs
-|   |   |   +-- timer.rs
 |   |   +-- service/
 |   |   |   +-- registry/
 |   |   |   |   +-- registry.rs
@@ -118,7 +116,6 @@ bindings/rust/
 |   |   |   |   +-- registry_models.rs
 |   |   |   +-- discovery/
 |   |   |   |   +-- discovery.rs
-|   |   |   |   +-- discovery_models.rs
 |   |   |   +-- spot/
 |   |   |   |   +-- spot_node.rs
 |   |   |   |   +-- spot.rs
@@ -129,15 +126,12 @@ bindings/rust/
 |   |   |   +-- errors.rs
 |   |   |   +-- results.rs
 |   +-- runtime/
-|   |   +-- core/
-|   |   |   +-- context.rs
 |   |   +-- handles/
-|   |   |   +-- native_handle.rs
+|   |   |   +-- ctx.rs
 |   |   +-- messaging/
-|   |   |   +-- message_materializer.rs
+|   |   |   +-- message.rs
+|   |   |   +-- domain.rs
 |   |   |   +-- request_progress.rs
-|   |   +-- buffers/
-|   |   |   +-- payload_buffers.rs
 |   |   +-- sockets/
 |   |   |   +-- socket_base.rs
 |   |   |   +-- pair_socket.rs
@@ -163,9 +157,8 @@ bindings/rust/
 |   |   |   |   +-- actor.rs
 |   |   +-- errors/
 |   |   |   +-- native_errors.rs
-|   |   |   +-- validation.rs
 |   |   +-- options/
-|   |   |   +-- option_mapping.rs
+|   |   |   +-- options.rs
 |   |   +-- native/
 |   |   |   +-- native.rs
 +-- crates/
@@ -288,8 +281,7 @@ The contract source must use the same classification as the
 conceptual file grouping so a developer who knows another binding can find the
 same public concept in Rust quickly.
 
-- `core/`: `context.rs`, `zlink.rs`, `routing_id.rs`, and core option/value
-  files.
+- `core/`: `context.rs`, `routing_id.rs`, and core option/value files.
 - `messaging/`: `message.rs`, `received.rs`, `topic_message.rs`,
   `subscription_event.rs`, `operation_contracts.rs`, and common operation
   payload types.

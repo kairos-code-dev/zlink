@@ -106,7 +106,6 @@ bindings/python/
 |   |   |   |   +-- received.py
 |   |   |   |   +-- topic_message.py
 |   |   |   |   +-- subscription_event.py
-|   |   |   |   +-- operation_contracts.py
 |   |   |   +-- sockets/
 |   |   |   |   +-- socket.py
 |   |   |   |   +-- message_socket_contracts.py
@@ -139,22 +138,14 @@ bindings/python/
 |   |   |   +-- core/
 |   |   |   |   +-- context.py
 |   |   |   +-- handles/
-|   |   |   |   +-- native_handle.py
+|   |   |   |   +-- native_support.py
 |   |   |   +-- messaging/
 |   |   |   |   +-- message_materializer.py
-|   |   |   |   +-- request_progress.py
 |   |   |   +-- buffers/
 |   |   |   |   +-- payload_buffers.py
 |   |   |   +-- sockets/
 |   |   |   |   +-- socket_base.py
-|   |   |   |   +-- pair_socket.py
-|   |   |   |   +-- dealer_socket.py
-|   |   |   |   +-- router_socket.py
-|   |   |   |   +-- pub_socket.py
-|   |   |   |   +-- sub_socket.py
-|   |   |   |   +-- xpub_socket.py
-|   |   |   |   +-- xsub_socket.py
-|   |   |   |   +-- stream_socket.py
+|   |   |   |   +-- socket_base_impl.py
 |   |   |   +-- eventing/
 |   |   |   |   +-- poller.py
 |   |   |   |   +-- timer.py
@@ -170,7 +161,6 @@ bindings/python/
 |   |   |   |   |   +-- actor.py
 |   |   |   +-- errors/
 |   |   |   |   +-- native_errors.py
-|   |   |   |   +-- validation.py
 |   |   |   +-- options/
 |   |   |   |   +-- option_mapping.py
 |   |   +-- _native/
@@ -285,8 +275,7 @@ the same public concept in Python quickly.
 - `core/`: `context.py`, `zlink.py`, `routing_id.py`, and core option/value
   files.
 - `messaging/`: `message.py`, `received.py`, `topic_message.py`,
-  `subscription_event.py`, `operation_contracts.py`, and common operation
-  payload types.
+  `subscription_event.py`, and common operation payload types.
 - `sockets/`: `socket.py`, `message_socket_contracts.py`,
   `routed_socket_contracts.py`, `pubsub_socket_contracts.py`,
   `stream_socket.py`, socket option types, stream packet handler contracts, and
@@ -311,8 +300,8 @@ Runtime source mirrors the runtime classification in the
 - `core/`: context implementation and context option helpers.
 - `handles/`: native handle ownership, close state, lifetime checks, and
   reference tracking.
-- `messaging/`: message materialization, request progress, request execution,
-  and multipart progress helpers.
+- `messaging/`: message materialization, request execution, and multipart
+  progress helpers.
 - `buffers/`: native buffer conversion, copy/borrow policy, and any pooled or
   pinned storage helpers.
 - `sockets/`: socket base classes, socket kernels, socket implementations for

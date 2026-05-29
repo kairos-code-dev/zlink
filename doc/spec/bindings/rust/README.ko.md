@@ -76,7 +76,6 @@ bindings/rust/
 |   +-- contracts/
 |   |   +-- core/
 |   |   |   +-- context.rs
-|   |   |   +-- zlink.rs
 |   |   |   +-- routing_id.rs
 |   |   +-- messaging/
 |   |   |   +-- message.rs
@@ -95,7 +94,6 @@ bindings/rust/
 |   |   +-- eventing/
 |   |   |   +-- monitor.rs
 |   |   |   +-- poller.rs
-|   |   |   +-- timer.rs
 |   |   +-- service/
 |   |   |   +-- registry/
 |   |   |   |   +-- registry.rs
@@ -103,7 +101,6 @@ bindings/rust/
 |   |   |   |   +-- registry_models.rs
 |   |   |   +-- discovery/
 |   |   |   |   +-- discovery.rs
-|   |   |   |   +-- discovery_models.rs
 |   |   |   +-- spot/
 |   |   |   |   +-- spot_node.rs
 |   |   |   |   +-- spot.rs
@@ -114,10 +111,9 @@ bindings/rust/
 |   |   |   +-- errors.rs
 |   |   |   +-- results.rs
 |   +-- runtime/
-|   |   +-- core/
-|   |   |   +-- context.rs
 |   |   +-- messaging/
-|   |   |   +-- message_materializer.rs
+|   |   |   +-- message.rs
+|   |   |   +-- domain.rs
 |   |   |   +-- request_progress.rs
 |   |   +-- sockets/
 |   |   |   +-- socket_base.rs
@@ -144,7 +140,6 @@ bindings/rust/
 |   |   |   |   +-- actor.rs
 |   |   +-- errors/
 |   |   |   +-- native_errors.rs
-|   |   |   +-- validation.rs
 |   |   +-- native/
 |   |   |   +-- native.rs
 +-- crates/
@@ -256,8 +251,7 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
 동일한 개념적 파일 그룹화를 유지하여, 다른 바인딩을 아는 개발자가 Rust에서도 같은
 공개 개념을 빠르게 찾을 수 있도록 한다.
 
-- `core/`: `context.rs`, `zlink.rs`, `routing_id.rs`, 그리고 core option/value
-  파일들.
+- `core/`: `context.rs`, `routing_id.rs`, 그리고 core option/value 파일들.
 - `messaging/`: `message.rs`, `received.rs`, `topic_message.rs`,
   `subscription_event.rs`, 공통 operation payload 타입.
 - `sockets/`: socket 타입/trait, socket option 타입, send/request/reply builder

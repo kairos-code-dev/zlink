@@ -236,14 +236,10 @@ Runtime source mirrors the runtime classification in the
 
 - `internal/core`, `internal/messaging`, `internal/sockets`,
   `internal/eventing`, `internal/service`, and `internal/errors` own private
-  runtime implementations.
-- `internal/handles` owns native handle ownership, close state, lifetime
-  checks, and reference tracking.
-- `internal/buffers` owns byte slice/native buffer conversion, copy/borrow
-  policy, and any pooled or pinned storage helpers.
-- `internal/options` owns option validation and native option id/value mapping.
+  facades over native runtime implementations.
 - `internal/native` owns cgo declarations, native loading, raw handles,
-  marshalling, callback trampolines, and request progress helpers.
+  marshalling, callback trampolines, request progress helpers, option
+  marshalling, and buffer conversion helpers.
 
 Private runtime code may depend on public contract types. Public contract code
 must not depend on private implementation details.

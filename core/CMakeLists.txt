@@ -1248,6 +1248,18 @@ set(public_contract_subheaders
     include/zlink/registry.h
     include/zlink/discovery.h
     include/zlink/service.h)
+set(public_contract_group_headers
+    include/zlink/core/api.h
+    include/zlink/eventing/api.h
+    include/zlink/message/api.h
+    include/zlink/service/actor.h
+    include/zlink/service/api.h
+    include/zlink/service/discovery.h
+    include/zlink/service/registry.h
+    include/zlink/service/spot.h
+    include/zlink/socket/api.h
+    include/zlink/socket/options.h
+    include/zlink/socket/parts.h)
 
 set(readme-docs
     ${ZLINK_REPO_ROOT}/LICENSE)
@@ -1690,6 +1702,14 @@ endforeach()
 install(
   FILES ${public_contract_subheaders}
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zlink)
+
+foreach(group_header ${public_contract_group_headers})
+  get_filename_component(group_header_dir "${group_header}" DIRECTORY)
+  string(REPLACE "include/" "" group_install_dir "${group_header_dir}")
+  install(
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/${group_header}"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${group_install_dir}")
+endforeach()
 
 if(WITH_DOC)
   if(NOT ZLINK_BUILD_FRAMEWORK)

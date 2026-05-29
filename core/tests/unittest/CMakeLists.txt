@@ -22,6 +22,7 @@ set(unittests
     unittest_spot_subject_access
     unittest_registry_access
     unittest_typed_option
+    unittest_public_contract_headers
     unittest_request_timeout_scheduler
     unittest_result_enum_mapping)
 

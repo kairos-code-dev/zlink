@@ -1,0 +1,6 @@
+#ifndef ZLINK_SOCKET_API_H_INCLUDED
+#define ZLINK_SOCKET_API_H_INCLUDED
+
+#include <zlink/socket.h>
+
+#endif

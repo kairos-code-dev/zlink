@@ -142,6 +142,62 @@ test('node binding does not expose borrowed buffer send helpers', () => {
     assert.doesNotMatch(body, /socketSendRoutingBorrowedNoWaitResult/);
     assert.doesNotMatch(body, /init_msg_borrowed_from_bytes/);
 });
+test('native addon registration stays limited to runtime-owned methods', () => {
+    const body = fs.readFileSync(path.join(ROOT, 'native', 'src', 'addon.cc'), 'utf8');
+    const removedExports = [
+        'socketPerfDealerDealerSendLoop',
+        'socketPerfDealerRouterEchoLoop',
+        'socketSendFrom',
+        'socketRecvHandler',
+        'socketSubscribePayloadInto',
+        'socketSubscribeHandler',
+        'socketRecvInto',
+        'socketRecvMsgInto',
+        'socketStreamAttachPacketEcho',
+        'socketRouteEchoStep',
+        'socketStreamDetach',
+        'socketStreamPeerRoutingId',
+        'socketStreamSend',
+        'routerHandlerMessage',
+        'routerRecvInto',
+        'routerRecvPayloadInto',
+        'pollerWaitMany',
+        'registryStart',
+        'registrySetSockOpt',
+        'discoveryProviderCount',
+        'discoveryServiceAvailable',
+        'providerNew',
+        'providerBind',
+        'providerConnectRegistry',
+        'providerRegister',
+        'providerUpdateWeight',
+        'providerUnregister',
+        'providerRegisterResult',
+        'providerSetTlsServer',
+        'providerRouter',
+        'providerRouterPeers',
+        'providerSetSockOpt',
+        'providerDestroy',
+        'spotNodeRegister',
+        'spotNodeUnregister',
+        'spotNodePubSocket',
+        'spotNodeSubSocket',
+        'spotNodePubPeers',
+        'spotNodeSubPeers',
+        'spotTryPublish',
+        'spotSendToSpotFrom',
+        'spotRequestSpotFrom',
+        'spotAttachRouteEcho',
+        'spotPerfSendSendLoop',
+        'spotRecvRoutedPayloadInto',
+        'spotSubscribePattern',
+        'spotRecvPayloadInto',
+        'spotSubscribeHandler'
+    ];
+    for (const name of removedExports) {
+        assert.doesNotMatch(body, new RegExp(`ZLINK_METHOD\\("${name}"`));
+    }
+});
 test('router payload recv maps nonblocking no-data without exceptions', () => {
     const file = path.join(ROOT, 'native', 'src', 'addon_core.cc');
     const body = fs.readFileSync(file, 'utf8');

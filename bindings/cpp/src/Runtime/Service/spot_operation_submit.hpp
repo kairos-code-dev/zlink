@@ -154,6 +154,34 @@ inline bool submit_bound_session_send_state (spot_operation_state_t &state_)
     if (!state_.node || !state_.actor)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
+    if (state_.single_part.has_value () || state_.single_part_source) {
+        message_t &part = send_single_part (state_);
+        if (!part.valid ())
+            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+
+        zlink_msg_t native;
+        zlink::detail::move_to_native (part, &native);
+        if (part.valid ()) {
+            (void) zlink_msg_close (&native);
+            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+        }
+        const submit_result_t rc = static_cast<submit_result_t> (
+          zlink_spot_node_actor_send_bound_session_msg (
+            zlink::detail::native_handle (*state_.node),
+            zlink::detail::actor_ref_native (*state_.actor), &native,
+            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags))));
+        if (rc == submit_result_t::ok)
+            return true;
+
+        const int err = zlink_errno ();
+        part.init ();
+        (void) zlink_msg_move (zlink::detail::native_handle (part), &native);
+        if (state_.flags == send_flags_t::dontwait
+            && rc == submit_result_t::backpressured)
+            return false;
+        throw submit_error_t (rc, err);
+    }
+
     std::vector<message_t> parts = take_send_parts (state_);
     for (size_t i = 0; i < parts.size (); ++i) {
         zlink_msg_t native;

@@ -250,15 +250,13 @@ request_submit_operation_t::submit_async () &&
                 throw submit_error_t (submit_result_t::invalid_argument,
                                       EINVAL);
             return state.spot->request_to_spot (
-              *state.first_rid, *state.second_rid,
-              std::move (state.parts.front ()), state.timeout);
+              *state.first_rid, *state.second_rid, state.parts, state.timeout);
         case detail::spot_operation_kind_t::request_to_router:
             if (!state.first_rid)
                 throw submit_error_t (submit_result_t::invalid_argument,
                                       EINVAL);
             return state.spot->request_to_router (
-              *state.first_rid, std::move (state.parts.front ()),
-              state.timeout);
+              *state.first_rid, state.parts, state.timeout);
         default:
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     }
@@ -294,16 +292,15 @@ bool request_callback_submit_operation_t::submit (
                 throw submit_error_t (submit_result_t::invalid_argument,
                                       EINVAL);
             return state.spot->request_to_spot (
-              *state.first_rid, *state.second_rid,
-              std::move (state.parts.front ()), std::move (callback_),
-              state.flags, state.timeout);
+              *state.first_rid, *state.second_rid, state.parts,
+              std::move (callback_), state.flags, state.timeout);
         case detail::spot_operation_kind_t::request_to_router:
             if (!state.first_rid)
                 throw submit_error_t (submit_result_t::invalid_argument,
                                       EINVAL);
             return state.spot->request_to_router (
-              *state.first_rid, std::move (state.parts.front ()),
-              std::move (callback_), state.flags, state.timeout);
+              *state.first_rid, state.parts, std::move (callback_),
+              state.flags, state.timeout);
         default:
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     }

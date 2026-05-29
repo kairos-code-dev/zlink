@@ -92,10 +92,24 @@ class spot_t
                      message_t message_,
                      std::chrono::milliseconds timeout_ = {});
 
+    async_result_t<std::vector<message_t> >
+    request_to_spot (const routing_id_t &dest_node_rid_,
+                     const routing_id_t &dest_spot_rid_,
+                     std::vector<message_t> &parts_,
+                     std::chrono::milliseconds timeout_ = {});
+
     bool request_to_spot (
       const routing_id_t &dest_node_rid_,
       const routing_id_t &dest_spot_rid_,
       message_t message_,
+      std::function<void (request_result_t, std::vector<message_t>)> callback_,
+      send_flags_t flags_ = send_flags_t::none,
+      std::chrono::milliseconds timeout_ = {});
+
+    bool request_to_spot (
+      const routing_id_t &dest_node_rid_,
+      const routing_id_t &dest_spot_rid_,
+      std::vector<message_t> &parts_,
       std::function<void (request_result_t, std::vector<message_t>)> callback_,
       send_flags_t flags_ = send_flags_t::none,
       std::chrono::milliseconds timeout_ = {});
@@ -109,9 +123,21 @@ class spot_t
                        message_t message_,
                        std::chrono::milliseconds timeout_ = {});
 
+    async_result_t<std::vector<message_t> >
+    request_to_router (const routing_id_t &peer_rid_,
+                       std::vector<message_t> &parts_,
+                       std::chrono::milliseconds timeout_ = {});
+
     bool request_to_router (
       const routing_id_t &peer_rid_,
       message_t message_,
+      std::function<void (request_result_t, std::vector<message_t>)> callback_,
+      send_flags_t flags_ = send_flags_t::none,
+      std::chrono::milliseconds timeout_ = {});
+
+    bool request_to_router (
+      const routing_id_t &peer_rid_,
+      std::vector<message_t> &parts_,
       std::function<void (request_result_t, std::vector<message_t>)> callback_,
       send_flags_t flags_ = send_flags_t::none,
       std::chrono::milliseconds timeout_ = {});

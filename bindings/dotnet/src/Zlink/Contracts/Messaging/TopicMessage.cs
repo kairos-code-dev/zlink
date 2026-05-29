@@ -7,6 +7,9 @@ using System.Threading;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Represents topic message.
+/// </summary>
 public sealed class TopicMessage : IDisposable
 {
     private MultipartMessageCollection? _parts;
@@ -19,6 +22,9 @@ public sealed class TopicMessage : IDisposable
     private byte[]? _topicWriteBuffer;
     private int _topicLength;
 
+    /// <summary>
+    /// Creates a topic message instance.
+    /// </summary>
     public TopicMessage()
     {
     }
@@ -53,6 +59,9 @@ public sealed class TopicMessage : IDisposable
         PopulateSinglePart(routingId, topic, singlePart);
     }
 
+    /// <summary>
+    /// Gets or sets the routing id.
+    /// </summary>
     public RoutingId? RoutingId
     {
         get
@@ -63,22 +72,42 @@ public sealed class TopicMessage : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gets or sets the topic.
+    /// </summary>
     public string Topic => _topic ??= DecodeTopicBytes();
 
+    /// <summary>
+    /// Gets or sets the parts.
+    /// </summary>
     public IReadOnlyList<Message> Parts => PartsCollection;
 
+    /// <summary>
+    /// Gets or sets the is single part.
+    /// </summary>
     public bool IsSinglePart => _singlePart != null || PartsCollection.IsSinglePart;
 
+    /// <summary>
+    /// Returns the first message part without transferring ownership.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public Message FirstPart()
     {
         return _singlePart ?? PartsCollection.First();
     }
 
+    /// <summary>
+    /// Returns the only message part or throws when the envelope is multipart.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public Message SinglePartOrThrow()
     {
         return _singlePart ?? PartsCollection.Single();
     }
 
+    /// <summary>
+    /// Releases resources owned by this instance.
+    /// </summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0)

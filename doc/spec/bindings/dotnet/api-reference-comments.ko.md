@@ -3,13 +3,15 @@
 이 문서는 .NET 바인딩 공개 API reference에 쓰이는 XML 문서 주석의
 작성 기준을 정의한다.
 
-`bindings/dotnet/src/Zlink/Contracts/`의 XML 주석은 계약 문구다. 호출자가
+`bindings/dotnet/src/Zlink/Contracts/`의 XML 주석은 계약 문구다. 이 폴더의
+public으로 보이는 모든 type과 member에는 XML 문서가 있어야 한다. 호출자가
 API를 올바르게 쓰기 위해 알아야 하는 공개 동작을 설명해야 하며,
 `core/include/zlink.h`와 바인딩 계약 문서와 맞아야 한다.
 
 ## 범위
 
-공개 멤버가 아래 계약 결정을 드러내면 XML 주석을 작성한다.
+모든 공개 계약 멤버에는 XML 주석을 작성한다. 특히 아래 계약 결정을 드러내는
+멤버는 더 신중하게 작성한다.
 
 - `Message`와 `Received` payload의 소유권, 해제, 소유권 이동.
 - 빌린 view와 복사된 buffer의 차이.
@@ -22,10 +24,15 @@ API를 올바르게 쓰기 위해 알아야 하는 공개 동작을 설명해야
 전략, wire encoding, progress pump 세부 사항은 runtime 주석이나
 `doc/internals/`에 둔다.
 
+메인 `Zlink.csproj`에서는 `CS1591`을 억제하지 않는다. XML 문서 경고를 켠
+상태의 clean rebuild가 contract assembly의 누락 검증 기준이다. codec project는
+별도 package이므로 자체 정책을 둘 수 있다.
+
 ## 주석 형태
 
 - XML 주석 본문은 영어로 작성한다.
 - summary는 짧고 호출자 관점으로 작성한다.
+- 단순 enum 값과 DTO field는 짧은 한 줄 summary로 충분하다.
 - 한 줄 summary에 담기 어려운 계약 세부 사항만 `<remarks>`에 적는다.
 - owns, borrows, copies, transfers, disposes처럼 소유권을 명확히 드러내는
   표현을 우선 사용한다.
@@ -45,6 +52,8 @@ API reference 주석은 튜토리얼이 아니다. 각 type 또는 member의 정
 
 공개 계약이 바뀌면 코드와 함께 XML 주석을 검토한다.
 
+- `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj --no-restore -t:Rebuild`
+  실행 결과 XML 문서 경고가 0개인가?
 - 호출자가 반환된 모든 `Message`의 소유자를 알 수 있는가?
 - buffer view가 빌린 것인지 복사된 것인지 분명한가?
 - false, timeout, cancellation, callback 경로가 설명되어 있는가?

@@ -13,9 +13,21 @@ namespace Systems.Zlink;
 /// </summary>
 public enum ReceivedMessageType
 {
+    /// <summary>
+    /// Represents the Raw value.
+    /// </summary>
     Raw = 0,
+    /// <summary>
+    /// Represents the Request value.
+    /// </summary>
     Request = 1,
+    /// <summary>
+    /// Represents the Reply value.
+    /// </summary>
     Reply = 2,
+    /// <summary>
+    /// Represents the ErrorReply value.
+    /// </summary>
     ErrorReply = 3
 }
 
@@ -417,6 +429,9 @@ public sealed partial class Received : IDisposable
             _message = message;
         }
 
+        /// <summary>
+        /// Gets or sets the count.
+        /// </summary>
         public int Count => 1;
 
         public Message this[int index]
@@ -429,6 +444,10 @@ public sealed partial class Received : IDisposable
             }
         }
 
+        /// <summary>
+        /// Gets the enumerator.
+        /// </summary>
+        /// <returns>The operation result.</returns>
         public IEnumerator<Message> GetEnumerator()
         {
             yield return _message;

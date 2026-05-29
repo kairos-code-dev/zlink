@@ -142,20 +142,62 @@ public interface ReplySubmitOperation
     void Submit();
 }
 
+/// <summary>
+/// Defines request result values.
+/// </summary>
 public enum RequestResult
 {
+    /// <summary>
+    /// Represents the Ok value.
+    /// </summary>
     Ok = 0,
+    /// <summary>
+    /// Represents the TimedOut value.
+    /// </summary>
     TimedOut = 101,
+    /// <summary>
+    /// Represents the NotFound value.
+    /// </summary>
     NotFound = 102,
+    /// <summary>
+    /// Represents the Terminated value.
+    /// </summary>
     Terminated = 103,
+    /// <summary>
+    /// Represents the ProtocolError value.
+    /// </summary>
     ProtocolError = 104,
+    /// <summary>
+    /// Represents the InternalError value.
+    /// </summary>
     InternalError = 105,
+    /// <summary>
+    /// Represents the Rejected value.
+    /// </summary>
     Rejected = 106,
+    /// <summary>
+    /// Represents the Conflict value.
+    /// </summary>
     Conflict = 107,
+    /// <summary>
+    /// Represents the Busy value.
+    /// </summary>
     Busy = 108,
+    /// <summary>
+    /// Represents the NotConnected value.
+    /// </summary>
     NotConnected = 109,
+    /// <summary>
+    /// Represents the InvalidArgument value.
+    /// </summary>
     InvalidArgument = 110,
+    /// <summary>
+    /// Represents the InvalidState value.
+    /// </summary>
     InvalidState = 111,
+    /// <summary>
+    /// Represents the NotSupported value.
+    /// </summary>
     NotSupported = 112
 }
 

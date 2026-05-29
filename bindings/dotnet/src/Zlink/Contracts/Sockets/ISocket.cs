@@ -11,32 +11,71 @@ public interface IZlinkSocket
 {
 }
 
+/// <summary>
+/// Defines the socket contract.
+/// </summary>
 public interface ISocket : IZlinkSocket, IDisposable, IAsyncDisposable
 {
+    /// <summary>
+    /// Gets or sets the options.
+    /// </summary>
     CommonSocketOptions Options { get; }
 
+    /// <summary>
+    /// Binds the endpoint.
+    /// </summary>
     void Bind(string address);
 
+    /// <summary>
+    /// Unbinds the endpoint.
+    /// </summary>
     void Unbind(string address);
 
+    /// <summary>
+    /// Gets or sets the monitor open.
+    /// </summary>
     ISocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All);
 
+    /// <summary>
+    /// Sets the channel name.
+    /// </summary>
     void SetChannelName(string channelName);
 
+    /// <summary>
+    /// Sets the tls server.
+    /// </summary>
     void SetTlsServer(string certPath, string keyPath,
         bool requireClientCert = false);
 
+    /// <summary>
+    /// Sets the tls client.
+    /// </summary>
     void SetTlsClient(string caCertPath, string hostname,
         bool trustSystem = false);
 
+    /// <summary>
+    /// Closes the resource.
+    /// </summary>
     void Close();
 }
 
+/// <summary>
+/// Defines the connectable socket contract.
+/// </summary>
 public interface IConnectableSocket : ISocket
 {
+    /// <summary>
+    /// Connects to the endpoint.
+    /// </summary>
     void Connect(string address);
 
+    /// <summary>
+    /// Disconnects from the endpoint.
+    /// </summary>
     void Disconnect(string address);
 
+    /// <summary>
+    /// Disconnects from the endpoint.
+    /// </summary>
     void DisconnectRid(RoutingId peerRid);
 }

@@ -7,6 +7,9 @@ using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Represents received.
+/// </summary>
 public sealed partial class Received : IDisposable
 {
     internal void ReplyCore(IReadOnlyList<Message> parts,

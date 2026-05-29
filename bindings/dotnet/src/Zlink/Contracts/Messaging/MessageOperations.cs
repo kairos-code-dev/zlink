@@ -5,8 +5,15 @@ using System.Collections.Generic;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Represents message operations.
+/// </summary>
 public static class MessageOperations
 {
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static SendSubmitOperation Messages(
         this SendOperation operation,
         IReadOnlyList<Message> messages)
@@ -15,6 +22,10 @@ public static class MessageOperations
         return operation.Message(messages[0]).Messages(messages, 1);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static SendSubmitOperation Messages(
         this SendSubmitOperation operation,
         IReadOnlyList<Message> messages)
@@ -23,6 +34,10 @@ public static class MessageOperations
         return operation.Messages(messages, 0);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static RequestSubmitOperation Messages(
         this RequestOperation operation,
         IReadOnlyList<Message> messages)
@@ -31,6 +46,10 @@ public static class MessageOperations
         return operation.Message(messages[0]).Messages(messages, 1);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static RequestSubmitOperation Messages(
         this RequestSubmitOperation operation,
         IReadOnlyList<Message> messages)
@@ -39,6 +58,10 @@ public static class MessageOperations
         return operation.Messages(messages, 0);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static RequestCallbackSubmitOperation Messages(
         this RequestCallbackSubmitOperation operation,
         IReadOnlyList<Message> messages)
@@ -47,6 +70,10 @@ public static class MessageOperations
         return operation.Messages(messages, 0);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static ReplySubmitOperation Messages(
         this ReplyOperation operation,
         IReadOnlyList<Message> messages)
@@ -55,6 +82,10 @@ public static class MessageOperations
         return operation.Message(messages[0]).Messages(messages, 1);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static ReplySubmitOperation Messages(
         this ReplySubmitOperation operation,
         IReadOnlyList<Message> messages)
@@ -63,6 +94,10 @@ public static class MessageOperations
         return operation.Messages(messages, 0);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static ActorJoinSubmitOperation Messages(
         this ActorJoinOperation operation,
         IReadOnlyList<Message> messages)
@@ -71,6 +106,10 @@ public static class MessageOperations
         return operation.Message(messages[0]).Messages(messages, 1);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static ActorJoinSubmitOperation Messages(
         this ActorJoinSubmitOperation operation,
         IReadOnlyList<Message> messages)
@@ -79,6 +118,10 @@ public static class MessageOperations
         return operation.Messages(messages, 0);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static ActorJoinCallbackSubmitOperation Messages(
         this ActorJoinCallbackSubmitOperation operation,
         IReadOnlyList<Message> messages)
@@ -87,6 +130,10 @@ public static class MessageOperations
         return operation.Messages(messages, 0);
     }
 
+    /// <summary>
+    /// Adds message parts to the operation.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public static ActorJoinReplyOperation Messages(
         this ActorJoinReplyOperation operation,
         IReadOnlyList<Message> messages)

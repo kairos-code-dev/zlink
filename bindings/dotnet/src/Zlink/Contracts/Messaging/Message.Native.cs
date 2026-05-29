@@ -7,6 +7,9 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Represents message.
+/// </summary>
 public sealed partial class Message : IDisposable, IAsyncDisposable
 {
     internal ref ZlinkMsg Handle
@@ -97,6 +100,10 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Creates a copy of this message payload.
+    /// </summary>
+    /// <returns>The operation result.</returns>
     public Message Copy()
     {
         EnsureValid();

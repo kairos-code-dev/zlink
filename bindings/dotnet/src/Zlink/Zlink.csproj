@@ -4,7 +4,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <Version>6.0.3</Version>
     <AssemblyName>Systems.Zlink</AssemblyName>
     <PackageId>Systems.Zlink</PackageId>

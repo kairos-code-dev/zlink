@@ -4,6 +4,9 @@ using System;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Represents common socket options.
+/// </summary>
 public class CommonSocketOptions
 {
     private protected readonly ISocketOptionEndpoint Socket;
@@ -32,36 +35,54 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Gets or sets the max message size.
+    /// </summary>
     public long MaxMessageSize
     {
         get => Socket.GetOption(SocketOptions.MaxMsgSize);
         set => Socket.SetOption(SocketOptions.MaxMsgSize, value);
     }
 
+    /// <summary>
+    /// Starts a send operation.
+    /// </summary>
     public int SendHighWaterMark
     {
         get => Socket.GetOption(SocketOptions.SndHwm);
         set => Socket.SetOption(SocketOptions.SndHwm, value);
     }
 
+    /// <summary>
+    /// Receives the next available item.
+    /// </summary>
     public int ReceiveHighWaterMark
     {
         get => Socket.GetOption(SocketOptions.RcvHwm);
         set => Socket.SetOption(SocketOptions.RcvHwm, value);
     }
 
+    /// <summary>
+    /// Starts a send operation.
+    /// </summary>
     public int SendBufferSize
     {
         get => Socket.GetOption(SocketOptions.SndBuf);
         set => Socket.SetOption(SocketOptions.SndBuf, value);
     }
 
+    /// <summary>
+    /// Receives the next available item.
+    /// </summary>
     public int ReceiveBufferSize
     {
         get => Socket.GetOption(SocketOptions.RcvBuf);
         set => Socket.SetOption(SocketOptions.RcvBuf, value);
     }
 
+    /// <summary>
+    /// Gets or sets the linger.
+    /// </summary>
     public TimeSpan? Linger
     {
         get => DecodeDuration(Socket.GetOption(SocketOptions.Linger));
@@ -69,6 +90,9 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Gets or sets the reconnect interval.
+    /// </summary>
     public TimeSpan? ReconnectInterval
     {
         get => DecodeDuration(Socket.GetOption(SocketOptions.ReconnectIvl));
@@ -76,6 +100,9 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Gets or sets the reconnect interval max.
+    /// </summary>
     public TimeSpan? ReconnectIntervalMax
     {
         get => DecodeDuration(Socket.GetOption(SocketOptions.ReconnectIvlMax));
@@ -83,6 +110,9 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Gets or sets the backlog.
+    /// </summary>
     public int Backlog
     {
         get => Socket.GetOption(SocketOptions.Backlog);
@@ -95,6 +125,9 @@ public class CommonSocketOptions
         set => Socket.SetOption(SocketOptions.MulticastHops, value);
     }
 
+    /// <summary>
+    /// Receives the next available item.
+    /// </summary>
     public TimeSpan? ReceiveTimeout
     {
         get => DecodeDuration(Socket.GetOption(SocketOptions.RcvTimeo));
@@ -102,6 +135,9 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Starts a send operation.
+    /// </summary>
     public TimeSpan? SendTimeout
     {
         get => DecodeDuration(Socket.GetOption(SocketOptions.SndTimeo));
@@ -109,6 +145,9 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Connects to the endpoint.
+    /// </summary>
     public TimeSpan? ConnectTimeout
     {
         get => DecodeDuration(Socket.GetOption(SocketOptions.ConnectTimeout));
@@ -123,6 +162,9 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Gets or sets the tcp keep alive.
+    /// </summary>
     public int TcpKeepAlive
     {
         get => Socket.GetOption(SocketOptions.TcpKeepalive);
@@ -153,6 +195,9 @@ public class CommonSocketOptions
         set => Socket.SetOption(SocketOptions.TcpMaxRt, value);
     }
 
+    /// <summary>
+    /// Gets or sets the heartbeat interval.
+    /// </summary>
     public TimeSpan? HeartbeatInterval
     {
         get => DecodeDuration(Socket.GetOption(SocketOptions.HeartbeatIvl));
@@ -160,6 +205,9 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Gets or sets the heartbeat ttl.
+    /// </summary>
     public TimeSpan? HeartbeatTtl
     {
         get => DecodeDuration(Socket.GetOption(SocketOptions.HeartbeatTtl));
@@ -167,6 +215,9 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Gets or sets the heartbeat timeout.
+    /// </summary>
     public TimeSpan? HeartbeatTimeout
     {
         get => DecodeDuration(Socket.GetOption(SocketOptions.HeartbeatTimeout));
@@ -174,12 +225,18 @@ public class CommonSocketOptions
             EncodeDuration(value, nameof(value)));
     }
 
+    /// <summary>
+    /// Gets or sets the ipv6.
+    /// </summary>
     public bool IPv6
     {
         get => Socket.GetOption(SocketOptions.Ipv6) != 0;
         set => Socket.SetOption(SocketOptions.Ipv6, value ? 1 : 0);
     }
 
+    /// <summary>
+    /// Gets or sets the tcp no delay.
+    /// </summary>
     public bool TcpNoDelay
     {
         get => Socket.GetOption(SocketOptions.TcpNoDelay) != 0;
@@ -204,6 +261,9 @@ public class CommonSocketOptions
         set => Socket.SetOption(SocketOptions.BindToDevice, value);
     }
 
+    /// <summary>
+    /// Gets or sets the immediate.
+    /// </summary>
     public bool Immediate
     {
         get => Socket.GetOption(SocketOptions.Immediate) != 0;
@@ -228,18 +288,27 @@ public class CommonSocketOptions
         set => Socket.SetOption(SocketOptions.InvertMatching, value ? 1 : 0);
     }
 
+    /// <summary>
+    /// Gets or sets the submit retry mode.
+    /// </summary>
     public SubmitRetryMode SubmitRetryMode
     {
         get => (SubmitRetryMode)Socket.GetOption(SocketOptions.SubmitRetryMode);
         set => Socket.SetOption(SocketOptions.SubmitRetryMode, (int)value);
     }
 
+    /// <summary>
+    /// Gets or sets the submit retry timeout milliseconds.
+    /// </summary>
     public int SubmitRetryTimeoutMilliseconds
     {
         get => Socket.GetOption(SocketOptions.SubmitRetryTimeout);
         set => Socket.SetOption(SocketOptions.SubmitRetryTimeout, value);
     }
 
+    /// <summary>
+    /// Gets or sets the submit retry attempts.
+    /// </summary>
     public int SubmitRetryAttempts
     {
         get => Socket.GetOption(SocketOptions.SubmitRetryAttempts);
@@ -301,6 +370,9 @@ public class CommonSocketOptions
         set => Socket.SetOption(SocketOptions.TlsPassword, value);
     }
 
+    /// <summary>
+    /// Gets or sets the routing id duplicate policy.
+    /// </summary>
     public RidDuplicatePolicy RoutingIdDuplicatePolicy
     {
         get => (RidDuplicatePolicy)Socket.GetOption(
@@ -308,6 +380,9 @@ public class CommonSocketOptions
         set => Socket.SetOption(SocketOptions.RidDuplicatePolicy, (int)value);
     }
 
+    /// <summary>
+    /// Gets or sets the last endpoint.
+    /// </summary>
     public string LastEndpoint => Socket.GetOption(SocketOptions.LastEndpoint);
 
     internal int FileDescriptor => Socket.GetOption(SocketOptions.Fd);

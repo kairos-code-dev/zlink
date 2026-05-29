@@ -5,13 +5,22 @@ using System.Globalization;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Represents zlink exception.
+/// </summary>
 public abstract class ZlinkException : Exception
 {
+    /// <summary>
+    /// Gets or sets the zlink exception.
+    /// </summary>
     protected ZlinkException(int code)
         : this(code, 0)
     {
     }
 
+    /// <summary>
+    /// Gets or sets the zlink exception.
+    /// </summary>
     protected ZlinkException(int code, int internalErrno)
         : base(BuildMessage(code, internalErrno))
     {
@@ -19,10 +28,19 @@ public abstract class ZlinkException : Exception
         InternalErrno = internalErrno;
     }
 
+    /// <summary>
+    /// Gets or sets the code.
+    /// </summary>
     public int Code { get; }
 
+    /// <summary>
+    /// Gets or sets the internal errno.
+    /// </summary>
     public int InternalErrno { get; }
 
+    /// <summary>
+    /// Gets or sets the message.
+    /// </summary>
     public override string Message => base.Message;
 
     internal static ZlinkException FromLastError()

@@ -7,6 +7,9 @@ using Systems.Zlink.Native;
 
 namespace Systems.Zlink;
 
+/// <summary>
+/// Represents message.
+/// </summary>
 public sealed partial class Message : IDisposable, IAsyncDisposable
 {
     // Pool-aware adoption used by the routed single-part receive fast path,

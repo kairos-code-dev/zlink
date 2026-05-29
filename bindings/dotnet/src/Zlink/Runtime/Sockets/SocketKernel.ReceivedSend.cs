@@ -28,8 +28,8 @@ internal sealed partial class SocketKernel : IDisposable
                 throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
                     (int)ErrorCode.EInval);
             }
-            return SendToSpotCore(target.Value, targetSpot.Value,
-                new[] { part }, flags);
+            return SendSingleToSpotCore(target.Value, targetSpot.Value, part,
+                flags);
         }
 
         ZlinkRoutingId nativeRoutingId = default;
@@ -106,8 +106,8 @@ internal sealed partial class SocketKernel : IDisposable
                 return null;
             RoutingId nodeRid = targetNode.Value;
             RoutingId spotTarget = targetSpot.Value;
-            return (sendPart, sendFlags) => SendToSpotCore(nodeRid, spotTarget,
-                new[] { sendPart }, sendFlags);
+            return (sendPart, sendFlags) => SendSingleToSpotCore(nodeRid,
+                spotTarget, sendPart, sendFlags);
         }
 
         RoutingId? target = routingId.ToRoutingId();
@@ -155,6 +155,48 @@ internal sealed partial class SocketKernel : IDisposable
         {
             RequestReplySupport.DisposeParts(cloned);
             throw;
+        }
+    }
+
+    private unsafe bool SendSingleToSpotCore(RoutingId destNodeRid,
+        RoutingId destSpotRid, Message part, SendFlags flags)
+    {
+        if (part == null)
+            throw new ArgumentNullException(nameof(part));
+
+        ZlinkRoutingId nodeRid = destNodeRid.ToNative();
+        ZlinkRoutingId spotRid = destSpotRid.ToNative();
+        Message cloned = RequestReplySupport.CloneMessage(part);
+        ZlinkMsg nativePart = default;
+        bool submitted = false;
+        try
+        {
+            cloned.MoveTo(ref nativePart);
+            int rc = NativeMethods.zlink_router_send_spot_part(Handle,
+                ref nodeRid, ref spotRid, ref nativePart, (int)flags,
+                NativeMethods.ZlinkPartFlag.Final);
+            submitted = true;
+            if (rc != 0)
+                throw ZlinkException.CreateSubmitException(
+                    NativeMethods.zlink_errno());
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
+        {
+            cloned.Dispose();
+            return false;
+        }
+        catch
+        {
+            cloned.Dispose();
+            throw;
+        }
+        finally
+        {
+            if (!submitted)
+                NativeMethods.zlink_msg_close(ref nativePart);
         }
     }
 }

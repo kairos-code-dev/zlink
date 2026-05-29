@@ -7,6 +7,7 @@
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_runtime_base.hpp"
 #include "services/discovery/route_limits_internal.hpp"
+#include "services/registry/registry_route_hash.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/clock.hpp"
 #include "utils/mutex.hpp"
@@ -110,9 +111,7 @@ class registry_t
         uint64_t registration_id;
 
         owner_identity_t () :
-            service_role (0),
-            source_registry (0),
-            registration_id (0)
+            service_role (0), source_registry (0), registration_id (0)
         {
         }
         bool operator< (const owner_identity_t &other_) const
@@ -222,108 +221,17 @@ class registry_t
         }
     };
 
-    static size_t hash_combine (size_t seed_, size_t value_)
-    {
-        return seed_ ^ (value_ + 0x9e3779b97f4a7c15ULL + (seed_ << 6)
-                        + (seed_ >> 2));
-    }
-
-    static uint64_t route_hash_rotl64 (uint64_t value_, int shift_)
-    {
-        return (value_ << shift_) | (value_ >> (64 - shift_));
-    }
-
-    static uint64_t route_hash_read_le64 (const unsigned char *data_)
-    {
-        uint64_t value = 0;
-        for (int i = 0; i < 8; ++i)
-            value |= static_cast<uint64_t> (data_[i]) << (i * 8);
-        return value;
-    }
-
-    static void route_hash_sip_round (uint64_t *v0_,
-                                      uint64_t *v1_,
-                                      uint64_t *v2_,
-                                      uint64_t *v3_)
-    {
-        *v0_ += *v1_;
-        *v1_ = route_hash_rotl64 (*v1_, 13);
-        *v1_ ^= *v0_;
-        *v0_ = route_hash_rotl64 (*v0_, 32);
-        *v2_ += *v3_;
-        *v3_ = route_hash_rotl64 (*v3_, 16);
-        *v3_ ^= *v2_;
-        *v0_ += *v3_;
-        *v3_ = route_hash_rotl64 (*v3_, 21);
-        *v3_ ^= *v0_;
-        *v2_ += *v1_;
-        *v1_ = route_hash_rotl64 (*v1_, 17);
-        *v1_ ^= *v2_;
-        *v2_ = route_hash_rotl64 (*v2_, 32);
-    }
-
-    static uint64_t route_hash_sip24 (const unsigned char *data_, size_t len_)
-    {
-        const uint64_t k0 = 0x0706050403020100ULL;
-        const uint64_t k1 = 0x0f0e0d0c0b0a0908ULL;
-        uint64_t v0 = 0x736f6d6570736575ULL ^ k0;
-        uint64_t v1 = 0x646f72616e646f6dULL ^ k1;
-        uint64_t v2 = 0x6c7967656e657261ULL ^ k0;
-        uint64_t v3 = 0x7465646279746573ULL ^ k1;
-
-        const unsigned char *p = data_;
-        size_t remaining = len_;
-        while (remaining >= 8) {
-            const uint64_t m = route_hash_read_le64 (p);
-            v3 ^= m;
-            route_hash_sip_round (&v0, &v1, &v2, &v3);
-            route_hash_sip_round (&v0, &v1, &v2, &v3);
-            v0 ^= m;
-            p += 8;
-            remaining -= 8;
-        }
-
-        uint64_t b = static_cast<uint64_t> (len_) << 56;
-        for (size_t i = 0; i < remaining; ++i)
-            b |= static_cast<uint64_t> (p[i]) << (i * 8);
-
-        v3 ^= b;
-        route_hash_sip_round (&v0, &v1, &v2, &v3);
-        route_hash_sip_round (&v0, &v1, &v2, &v3);
-        v0 ^= b;
-        v2 ^= 0xff;
-        route_hash_sip_round (&v0, &v1, &v2, &v3);
-        route_hash_sip_round (&v0, &v1, &v2, &v3);
-        route_hash_sip_round (&v0, &v1, &v2, &v3);
-        route_hash_sip_round (&v0, &v1, &v2, &v3);
-        return v0 ^ v1 ^ v2 ^ v3;
-    }
-
-    static size_t route_hash_bytes (const void *data_, size_t len_)
-    {
-        const unsigned char *bytes =
-          static_cast<const unsigned char *> (data_);
-        return static_cast<size_t> (route_hash_sip24 (bytes, len_));
-    }
-
-    static size_t route_hash_u64 (uint64_t value_)
-    {
-        unsigned char bytes[8];
-        for (int i = 0; i < 8; ++i)
-            bytes[i] =
-              static_cast<unsigned char> ((value_ >> (i * 8)) & 0xff);
-        return route_hash_bytes (bytes, sizeof (bytes));
-    }
-
     struct route_key_hash_t
     {
         size_t operator() (const route_key_t &key_) const
         {
-            size_t seed = route_hash_bytes (key_.channel_name.data (),
-                                            key_.channel_name.size ());
-            seed = hash_combine (seed, route_hash_u64 (key_.kind));
-            return hash_combine (
-              seed, route_hash_bytes (key_.key.data (), key_.key.size ()));
+            size_t seed = registry_route_hash::bytes (
+              key_.channel_name.data (), key_.channel_name.size ());
+            seed = registry_route_hash::combine (
+              seed, registry_route_hash::u64 (key_.kind));
+            return registry_route_hash::combine (
+              seed,
+              registry_route_hash::bytes (key_.key.data (), key_.key.size ()));
         }
     };
 
@@ -331,16 +239,17 @@ class registry_t
     {
         size_t operator() (const owner_identity_t &owner_) const
         {
-            size_t seed = route_hash_bytes (owner_.channel_name.data (),
-                                            owner_.channel_name.size ());
-            seed = hash_combine (seed, route_hash_u64 (owner_.service_role));
-            seed = hash_combine (
-              seed, route_hash_bytes (owner_.routing_id_key.data (),
-                                      owner_.routing_id_key.size ()));
-            seed = hash_combine (seed,
-                                 route_hash_u64 (owner_.source_registry));
-            return hash_combine (seed,
-                                 route_hash_u64 (owner_.registration_id));
+            size_t seed = registry_route_hash::bytes (
+              owner_.channel_name.data (), owner_.channel_name.size ());
+            seed = registry_route_hash::combine (
+              seed, registry_route_hash::u64 (owner_.service_role));
+            seed = registry_route_hash::combine (
+              seed, registry_route_hash::bytes (owner_.routing_id_key.data (),
+                                                owner_.routing_id_key.size ()));
+            seed = registry_route_hash::combine (
+              seed, registry_route_hash::u64 (owner_.source_registry));
+            return registry_route_hash::combine (
+              seed, registry_route_hash::u64 (owner_.registration_id));
         }
     };
 
@@ -354,9 +263,7 @@ class registry_t
         uint64_t updated_at_ms;
         uint32_t advertising_registry;
 
-        route_entry_t () : updated_at_ms (0), advertising_registry (0)
-        {
-        }
+        route_entry_t () : updated_at_ms (0), advertising_registry (0) {}
     };
 
     struct route_observation_key_t
@@ -379,29 +286,31 @@ class registry_t
         size_t operator() (const route_observation_key_t &key_) const
         {
             size_t seed = route_key_hash_t () (key_.route_key);
-            seed = hash_combine (seed, owner_identity_hash_t () (key_.owner));
-            return hash_combine (
+            seed = registry_route_hash::combine (
+              seed, owner_identity_hash_t () (key_.owner));
+            return registry_route_hash::combine (
               seed, std::hash<uint32_t> () (key_.advertising_registry));
         }
     };
 
-    #include "services/registry/registry_route_materialized_table.inc"
+#include "services/registry/registry_route_materialized_table.inc"
 
     typedef route_materialized_table_t route_map_t;
-    typedef std::unordered_map<owner_identity_t, route_key_set_t,
-                               owner_identity_hash_t>
-      route_owner_index_t;
+    typedef std::
+      unordered_map<owner_identity_t, route_key_set_t, owner_identity_hash_t>
+        route_owner_index_t;
     typedef std::unordered_map<uint32_t, route_key_set_t>
       route_advertiser_index_t;
     typedef std::unordered_set<route_observation_key_t,
                                route_observation_key_hash_t>
       route_observation_key_set_t;
-    typedef std::unordered_map<route_observation_key_t, route_entry_t,
+    typedef std::unordered_map<route_observation_key_t,
+                               route_entry_t,
                                route_observation_key_hash_t>
       route_observation_map_t;
-    typedef std::unordered_map<route_key_t, route_observation_key_set_t,
-                               route_key_hash_t>
-      route_observations_by_route_t;
+    typedef std::
+      unordered_map<route_key_t, route_observation_key_set_t, route_key_hash_t>
+        route_observations_by_route_t;
 
     struct route_store_limits_t
     {
@@ -464,8 +373,7 @@ class registry_t
         bool active;
     };
 
-    private:
-
+  private:
     struct channel_contract_t
     {
         uint16_t auto_connect_type;
@@ -473,9 +381,7 @@ class registry_t
         uint32_t owner_registry_id;
 
         channel_contract_t () :
-            auto_connect_type (0),
-            created_at (0),
-            owner_registry_id (0)
+            auto_connect_type (0), created_at (0), owner_registry_id (0)
         {
         }
     };
@@ -486,10 +392,12 @@ class registry_t
     void close_sockets ();
     void handle_router (void *router_);
     void handle_peer (void *sub_);
-    void handle_register (void *router_, const zlink_msg_t *frames_,
+    void handle_register (void *router_,
+                          const zlink_msg_t *frames_,
                           size_t frame_count_,
                           const zlink_routing_id_t &sender_id_);
-    void handle_unregister (void *router_, const zlink_msg_t *frames_,
+    void handle_unregister (void *router_,
+                            const zlink_msg_t *frames_,
                             size_t frame_count_,
                             const zlink_routing_id_t &sender_id_);
     void handle_heartbeat (const zlink_msg_t *frames_, size_t frame_count_);
@@ -530,10 +438,10 @@ class registry_t
                               const zlink_routing_id_t &sender_id_,
                               uint8_t status_,
                               const std::string &error_);
-    void send_topology_reply (void *router_,
-                              const zlink_routing_id_t &sender_id_,
-                              const std::vector<zlink_registry_topology_entry_t>
-                                &entries_);
+    void send_topology_reply (
+      void *router_,
+      const zlink_routing_id_t &sender_id_,
+      const std::vector<zlink_registry_topology_entry_t> &entries_);
     void send_route_reply (void *router_,
                            const zlink_routing_id_t &sender_id_,
                            uint8_t status_,
@@ -595,7 +503,8 @@ class registry_t
     void materialize_route_winner_locked (const route_key_t &route_key_);
     void materialize_dirty_routes_locked (const route_key_set_t &dirty_routes_);
     void promote_owner_route_records_locked (const owner_identity_t &owner_);
-    void cleanup_advertised_route_records_locked (uint32_t advertising_registry_);
+    void
+    cleanup_advertised_route_records_locked (uint32_t advertising_registry_);
     void send_service_list (void *pub_);
     void send_route_list (void *pub_);
     void remove_expired (uint64_t now_ms_);
@@ -618,8 +527,9 @@ class registry_t
                                   socket_base_t **old_pub_out_,
                                   socket_base_t **old_router_out_);
     int ensure_peer_sub_socket ();
-    void connect_peer_sub_endpoints (void *peer_sub_,
-                                     const std::vector<std::string> &peer_pubs_);
+    void
+    connect_peer_sub_endpoints (void *peer_sub_,
+                                const std::vector<std::string> &peer_pubs_);
 
     mutex_t _sync;
 

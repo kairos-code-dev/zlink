@@ -168,6 +168,8 @@ add_library(zlink_cpp STATIC
   src/Runtime/Service/registry.cpp
   src/Runtime/Service/request_reply.cpp
   src/Runtime/Service/spot.cpp
+  src/Runtime/Service/spot_receive.cpp
+  src/Runtime/Service/spot_send.cpp
   src/Runtime/Service/spot_node.cpp
 )
 

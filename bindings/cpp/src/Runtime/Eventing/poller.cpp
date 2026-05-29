@@ -20,16 +20,36 @@ namespace zlink
 namespace
 {
 
-poll_source_kind_t to_source_kind (zlink_poller_source_kind_t source_kind_) noexcept
+struct poller_item_t
+{
+    void *socket_handle = NULL;
+    int fd = 0;
+    void *timer_handle = NULL;
+    zlink_timer_t *timer = NULL;
+    poll_source_kind_t source_kind = poll_source_kind_t::socket;
+    poll_event_flag_t events = poll_event_flag_t::none;
+    std::uintptr_t slot = 0;
+    bool native_poller_only = false;
+};
+
+bool is_socket_poll_item_active (const poller_item_t &item_,
+                                 short events_) noexcept
+{
+    return events_ != 0 && !item_.native_poller_only
+           && item_.source_kind == poll_source_kind_t::socket;
+}
+
+poll_source_kind_t
+to_source_kind (zlink_poller_source_kind_t source_kind_) noexcept
 {
     switch (source_kind_) {
-    case 2:
-        return poll_source_kind_t::fd;
-    case 3:
-        return poll_source_kind_t::timer;
-    case 1:
-    default:
-        return poll_source_kind_t::socket;
+        case 2:
+            return poll_source_kind_t::fd;
+        case 3:
+            return poll_source_kind_t::timer;
+        case 1:
+        default:
+            return poll_source_kind_t::socket;
     }
 }
 
@@ -37,20 +57,8 @@ poll_source_kind_t to_source_kind (zlink_poller_source_kind_t source_kind_) noex
 
 struct poller_t::impl
 {
-    struct item_t
-    {
-        void *socket_handle = NULL;
-        int fd = 0;
-        void *timer_handle = NULL;
-        zlink_timer_t *timer = NULL;
-        poll_source_kind_t source_kind = poll_source_kind_t::socket;
-        poll_event_flag_t events = poll_event_flag_t::none;
-        std::uintptr_t slot = 0;
-        bool native_poller_only = false;
-    };
-
     void *poller = NULL;
-    std::vector<std::unique_ptr<item_t>> items;
+    std::vector<std::unique_ptr<poller_item_t> > items;
     std::vector<zlink_poller_event_t> native_events;
     std::vector<zlink_pollitem_t> poll_items;
     std::vector<size_t> poll_item_indexes;
@@ -70,8 +78,8 @@ struct poller_t::impl
     void ensure_addable () const
     {
         if (!poller)
-            throw config_error_t (
-              config_result_t::invalid_handle, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_handle,
+                                  detail::current_errno ());
     }
 
     void delete_items () noexcept
@@ -163,16 +171,18 @@ struct poller_t::impl
         socket_item_indexes.clear ();
         socket_item_indexes.reserve (items.size ());
         for (size_t i = 0; i < items.size (); ++i) {
-            const item_t &item = *items[i];
+            const poller_item_t &item = *items[i];
             if (item.source_kind == poll_source_kind_t::socket)
                 socket_item_indexes[item.socket_handle] = i;
         }
     }
 
-    void commit_added_item (std::unique_ptr<item_t> item_, config_result_t rc_)
+    void commit_added_item (std::unique_ptr<poller_item_t> item_,
+                            config_result_t rc_)
     {
         detail::throw_if_failed<config_error_t> (rc_);
-        const bool socket_item = item_->source_kind == poll_source_kind_t::socket;
+        const bool socket_item =
+          item_->source_kind == poll_source_kind_t::socket;
         const void *socket_handle = item_->socket_handle;
         const size_t index = items.size ();
         items.push_back (std::move (item_));
@@ -190,19 +200,19 @@ struct poller_t::impl
         if (native_poller_only_)
             sync_socket_native_events_if_needed ();
         if (find_socket (socket_handle_) >= 0)
-            throw config_error_t (
-              config_result_t::invalid_argument, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_argument,
+                                  detail::current_errno ());
 
-        std::unique_ptr<item_t> item (new item_t ());
+        std::unique_ptr<poller_item_t> item (new poller_item_t ());
         item->socket_handle = socket_handle_;
         item->source_kind = poll_source_kind_t::socket;
         item->events = events_;
         item->slot = slot_;
         item->native_poller_only = native_poller_only_;
 
-        item_t *raw_item = item.get ();
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_add (
+        poller_item_t *raw_item = item.get ();
+        const config_result_t rc =
+          static_cast<config_result_t> (zlink_poller_add (
             poller, socket_handle_, raw_item, static_cast<short> (events_)));
         commit_added_item (std::move (item), rc);
         if (native_poller_only_)
@@ -214,18 +224,19 @@ struct poller_t::impl
         ensure_addable ();
         sync_socket_native_events_if_needed ();
         if (find_fd (fd_) >= 0)
-            throw config_error_t (
-              config_result_t::invalid_argument, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_argument,
+                                  detail::current_errno ());
 
-        std::unique_ptr<item_t> item (new item_t ());
+        std::unique_ptr<poller_item_t> item (new poller_item_t ());
         item->fd = fd_;
         item->source_kind = poll_source_kind_t::fd;
         item->events = events_;
         item->slot = slot_;
 
-        item_t *raw_item = item.get ();
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_add_fd (poller, fd_, raw_item, static_cast<short> (events_)));
+        poller_item_t *raw_item = item.get ();
+        const config_result_t rc =
+          static_cast<config_result_t> (zlink_poller_add_fd (
+            poller, fd_, raw_item, static_cast<short> (events_)));
         commit_added_item (std::move (item), rc);
         ++non_socket_item_count;
     }
@@ -236,17 +247,17 @@ struct poller_t::impl
         sync_socket_native_events_if_needed ();
         void *timer_handle = detail::native_handle (timer_);
         if (find_timer (timer_handle) >= 0)
-            throw config_error_t (
-              config_result_t::invalid_argument, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_argument,
+                                  detail::current_errno ());
 
-        std::unique_ptr<item_t> item (new item_t ());
+        std::unique_ptr<poller_item_t> item (new poller_item_t ());
         item->timer_handle = timer_handle;
         item->timer = &timer_;
         item->source_kind = poll_source_kind_t::timer;
         item->events = poll_event_flag_t::pollin;
         item->slot = slot_;
 
-        item_t *raw_item = item.get ();
+        poller_item_t *raw_item = item.get ();
         const config_result_t rc = static_cast<config_result_t> (
           zlink_poller_add_timer (poller, timer_handle, raw_item));
         commit_added_item (std::move (item), rc);
@@ -256,22 +267,22 @@ struct poller_t::impl
     void modify_socket (void *socket_handle_, poll_event_flag_t events_)
     {
         if (!poller)
-            throw config_error_t (
-              config_result_t::invalid_handle, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_handle,
+                                  detail::current_errno ());
         const int index = find_socket (socket_handle_);
         if (index < 0)
-            throw config_error_t (
-              config_result_t::invalid_argument, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_argument,
+                                  detail::current_errno ());
 
         if (is_socket_only ()) {
             socket_native_events_dirty = true;
-            update_socket_poll_item_if_clean (
-              static_cast<size_t> (index), events_);
+            update_socket_poll_item_if_clean (static_cast<size_t> (index),
+                                              events_);
             return;
         }
 
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_modify (
+        const config_result_t rc =
+          static_cast<config_result_t> (zlink_poller_modify (
             poller, socket_handle_, static_cast<short> (events_)));
         detail::throw_if_failed<config_error_t> (rc);
         items[static_cast<size_t> (index)]->events = events_;
@@ -280,12 +291,12 @@ struct poller_t::impl
     void modify_fd (int fd_, poll_event_flag_t events_)
     {
         if (!poller)
-            throw config_error_t (
-              config_result_t::invalid_handle, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_handle,
+                                  detail::current_errno ());
         const int index = find_fd (fd_);
         if (index < 0)
-            throw config_error_t (
-              config_result_t::invalid_argument, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_argument,
+                                  detail::current_errno ());
 
         const config_result_t rc = static_cast<config_result_t> (
           zlink_poller_modify_fd (poller, fd_, static_cast<short> (events_)));
@@ -296,12 +307,12 @@ struct poller_t::impl
     bool remove_socket (void *socket_handle_)
     {
         if (!poller)
-            throw config_error_t (
-              config_result_t::invalid_handle, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_handle,
+                                  detail::current_errno ());
         const int index = find_socket (socket_handle_);
         if (index < 0)
-            throw config_error_t (
-              config_result_t::invalid_argument, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_argument,
+                                  detail::current_errno ());
 
         const config_result_t rc = static_cast<config_result_t> (
           zlink_poller_remove (poller, socket_handle_));
@@ -320,12 +331,12 @@ struct poller_t::impl
     bool remove_timer (zlink_timer_t &timer_)
     {
         if (!poller)
-            throw config_error_t (
-              config_result_t::invalid_handle, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_handle,
+                                  detail::current_errno ());
         const int index = find_timer (detail::native_handle (timer_));
         if (index < 0)
-            throw config_error_t (
-              config_result_t::invalid_argument, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_argument,
+                                  detail::current_errno ());
 
         const config_result_t rc = static_cast<config_result_t> (
           zlink_poller_remove_timer (poller, detail::native_handle (timer_)));
@@ -341,15 +352,15 @@ struct poller_t::impl
     bool remove_fd (int fd_)
     {
         if (!poller)
-            throw config_error_t (
-              config_result_t::invalid_handle, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_handle,
+                                  detail::current_errno ());
         const int index = find_fd (fd_);
         if (index < 0)
-            throw config_error_t (
-              config_result_t::invalid_argument, detail::current_errno ());
+            throw config_error_t (config_result_t::invalid_argument,
+                                  detail::current_errno ());
 
-        const config_result_t rc = static_cast<config_result_t> (
-          zlink_poller_remove_fd (poller, fd_));
+        const config_result_t rc =
+          static_cast<config_result_t> (zlink_poller_remove_fd (poller, fd_));
         detail::throw_if_failed<config_error_t> (rc);
 
         items.erase (items.begin () + index);
@@ -362,8 +373,8 @@ struct poller_t::impl
     void fill_event (poll_event_t &event_,
                      const zlink_poller_event_t &native_event_) const noexcept
     {
-        const item_t *item =
-          static_cast<const item_t *> (native_event_.user_data);
+        const poller_item_t *item =
+          static_cast<const poller_item_t *> (native_event_.user_data);
         event_.source_kind =
           item ? item->source_kind : to_source_kind (native_event_.source_kind);
         event_.slot = item ? item->slot : 0;
@@ -373,7 +384,7 @@ struct poller_t::impl
     }
 
     void fill_event_from_item (poll_event_t &event_,
-                               const item_t &item_,
+                               const poller_item_t &item_,
                                short revents_) const noexcept
     {
         event_.source_kind = item_.source_kind;
@@ -385,8 +396,8 @@ struct poller_t::impl
     size_t wait (poll_event_t *events_, size_t capacity_, long timeout_)
     {
         if (!poller)
-            throw recv_error_t (
-              recv_result_t::invalid_handle, detail::current_errno ());
+            throw recv_error_t (recv_result_t::invalid_handle,
+                                detail::current_errno ());
         if (!events_ || capacity_ == 0)
             throw config_error_t (config_result_t::invalid_argument, EINVAL);
         if (items.empty ())
@@ -399,8 +410,9 @@ struct poller_t::impl
 
         native_events.resize (capacity);
         zlink_config_result_t error = static_cast<zlink_config_result_t> (0);
-        const int rc = zlink_poller_wait (
-          poller, &native_events[0], static_cast<int> (capacity), timeout_, &error);
+        const int rc =
+          zlink_poller_wait (poller, &native_events[0],
+                             static_cast<int> (capacity), timeout_, &error);
         if (rc <= 0) {
             if (rc == 0)
                 return 0;
@@ -413,9 +425,8 @@ struct poller_t::impl
         }
 
         for (int i = 0; i < rc; ++i)
-            fill_event (
-              events_[static_cast<size_t> (i)],
-              native_events[static_cast<size_t> (i)]);
+            fill_event (events_[static_cast<size_t> (i)],
+                        native_events[static_cast<size_t> (i)]);
         return static_cast<size_t> (rc);
     }
 
@@ -424,20 +435,19 @@ struct poller_t::impl
         if (!socket_native_events_dirty)
             return;
         for (size_t i = 0; i < items.size (); ++i) {
-            const item_t &item = *items[i];
+            const poller_item_t &item = *items[i];
             if (item.source_kind != poll_source_kind_t::socket)
                 continue;
-            const config_result_t rc = static_cast<config_result_t> (
-              zlink_poller_modify (
+            const config_result_t rc =
+              static_cast<config_result_t> (zlink_poller_modify (
                 poller, item.socket_handle, static_cast<short> (item.events)));
             detail::throw_if_failed<config_error_t> (rc);
         }
         socket_native_events_dirty = false;
     }
 
-    size_t wait_socket_items (poll_event_t *events_,
-                              size_t capacity_,
-                              long timeout_)
+    size_t
+    wait_socket_items (poll_event_t *events_, size_t capacity_, long timeout_)
     {
         const size_t capacity = std::min (capacity_, items.size ());
         rebuild_socket_poll_items_if_needed ();
@@ -449,8 +459,9 @@ struct poller_t::impl
             poll_items[i].revents = 0;
 
         zlink_config_result_t error = static_cast<zlink_config_result_t> (0);
-        const int rc = zlink_poll (
-          &poll_items[0], static_cast<int> (poll_items.size ()), timeout_, &error);
+        const int rc =
+          zlink_poll (&poll_items[0], static_cast<int> (poll_items.size ()),
+                      timeout_, &error);
         if (rc <= 0) {
             if (rc == 0)
                 return 0;
@@ -467,8 +478,8 @@ struct poller_t::impl
             const short revents = poll_items[i].revents;
             if (revents == 0)
                 continue;
-            fill_event_from_item (
-              events_[out], *items[poll_item_indexes[i]], revents);
+            fill_event_from_item (events_[out], *items[poll_item_indexes[i]],
+                                  revents);
             ++out;
         }
         return out;
@@ -486,7 +497,7 @@ struct poller_t::impl
         poll_item_indexes.reserve (items.size ());
 
         for (size_t i = 0; i < items.size (); ++i) {
-            const item_t &item = *items[i];
+            const poller_item_t &item = *items[i];
             if (item.source_kind != poll_source_kind_t::socket
                 || item.native_poller_only)
                 continue;
@@ -510,7 +521,7 @@ struct poller_t::impl
     void update_socket_poll_item_if_clean (size_t index_,
                                            poll_event_flag_t events_)
     {
-        item_t &item = *items[index_];
+        poller_item_t &item = *items[index_];
         if (socket_poll_items_dirty) {
             item.events = events_;
             return;
@@ -524,10 +535,8 @@ struct poller_t::impl
 
         const short old_events = static_cast<short> (item.events);
         const short new_events = static_cast<short> (events_);
-        const bool old_active = old_events != 0 && !item.native_poller_only
-                                && item.source_kind == poll_source_kind_t::socket;
-        const bool new_active = new_events != 0 && !item.native_poller_only
-                                && item.source_kind == poll_source_kind_t::socket;
+        const bool old_active = is_socket_poll_item_active (item, old_events);
+        const bool new_active = is_socket_poll_item_active (item, new_events);
 
         item.events = events_;
 
@@ -565,14 +574,17 @@ struct poller_t::impl
             poll_item.events = new_events;
             poll_item.revents = 0;
             poll_items.insert (poll_items.begin () + insert_at, poll_item);
-            poll_item_indexes.insert (poll_item_indexes.begin () + insert_at, index_);
+            poll_item_indexes.insert (poll_item_indexes.begin () + insert_at,
+                                      index_);
             for (size_t i = insert_at; i < poll_item_indexes.size (); ++i)
                 poll_item_positions[poll_item_indexes[i]] = i;
         }
     }
 };
 
-poller_t::poller_t () : _impl (new impl ()) {}
+poller_t::poller_t () : _impl (new impl ())
+{
+}
 
 poller_t::~poller_t () = default;
 
@@ -606,15 +618,16 @@ void poller_t::add (service::spot_t &spot_,
                     poll_event_flag_t events_,
                     std::uintptr_t slot_)
 {
-    _impl->add_socket (zlink::detail::native_handle (spot_), events_, slot_, true);
+    _impl->add_socket (zlink::detail::native_handle (spot_), events_, slot_,
+                       true);
 }
 
 void poller_t::add (socket_monitor_t &monitor_,
                     poll_event_flag_t events_,
                     std::uintptr_t slot_)
 {
-    _impl->add_socket (
-      zlink::detail::native_handle (monitor_), events_, slot_, true);
+    _impl->add_socket (zlink::detail::native_handle (monitor_), events_, slot_,
+                       true);
 }
 
 void poller_t::add (socket_t &socket_,
@@ -625,8 +638,8 @@ void poller_t::add (socket_t &socket_,
       (static_cast<short> (events_)
        & static_cast<short> (poll_event_flag_t::pollcompletion))
       != 0;
-    _impl->add_socket (
-      zlink::detail::native_handle (socket_), events_, slot_, native_only);
+    _impl->add_socket (zlink::detail::native_handle (socket_), events_, slot_,
+                       native_only);
 }
 
 void poller_t::modify_fd (int fd_, poll_event_flag_t events_)
@@ -673,7 +686,8 @@ size_t poller_t::wait (poll_event_t *events_,
                        size_t capacity_,
                        std::chrono::milliseconds timeout_)
 {
-    return _impl->wait (events_, capacity_, static_cast<long> (timeout_.count ()));
+    return _impl->wait (events_, capacity_,
+                        static_cast<long> (timeout_.count ()));
 }
 
 void poller_t::close ()

@@ -256,10 +256,7 @@ umbrella header [`include/zlink.hpp`](/home/hep7/project/kairos/zlink/bindings/c
 - `service_monitor.hpp`
 - `poller.hpp`
 - `runtime.hpp`
-- `atomic_counter.hpp`
 - `timers.hpp`
-- `stopwatch.hpp`
-- `thread.hpp`
 
 ### 서비스
 
@@ -659,16 +656,14 @@ CTest 등록 방식:
 - [`include/zlink/poller.hpp`](/home/hep7/project/kairos/zlink/bindings/cpp/include/zlink/poller.hpp)
 - [`include/zlink/runtime.hpp`](/home/hep7/project/kairos/zlink/bindings/cpp/include/zlink/runtime.hpp)
 - [`include/zlink/timers.hpp`](/home/hep7/project/kairos/zlink/bindings/cpp/include/zlink/timers.hpp)
-- [`include/zlink/thread.hpp`](/home/hep7/project/kairos/zlink/bindings/cpp/include/zlink/thread.hpp)
-- [`include/zlink/stopwatch.hpp`](/home/hep7/project/kairos/zlink/bindings/cpp/include/zlink/stopwatch.hpp)
-- [`include/zlink/atomic_counter.hpp`](/home/hep7/project/kairos/zlink/bindings/cpp/include/zlink/atomic_counter.hpp)
 
 핵심 작업:
 
 - `poller_t`를 최신 generic poller API에 맞춰 단순화한다.
 - `spot`/`receiver` 전용 poller helper처럼 `core`에 없는 얕은 wrapper는 제거한다.
 - `runtime.hpp`는 version/proxy/has만 남기되 최신 function signature에 맞춘다.
-- ancillary wrapper는 최신 `core`에 존재하는 API만 유지한다.
+- timer wrapper는 최신 `core`에 존재하는 API만 유지한다.
+- atomic counter, stopwatch, thread 같은 보조 wrapper는 공개 계약에서 제거한다.
 
 주의:
 

@@ -354,81 +354,16 @@ int socket_t::publish_no_wait_result (send_result_t &result_,
 
 int socket_t::subscribe (topic_message_t &message_, recv_flags_t flags_)
 {
-    char topic_buffer[256];
-    size_t topic_size = sizeof (topic_buffer);
-    const zlink_routing_id_t *source_rid = nullptr;
-    std::string topic;
-    message_t first_part;
-
-    for (;;) {
-        zlink_msg_t native_part;
-        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        if (zlink_msg_init (&native_part) != 0)
-            return -1;
-
-        topic_size = sizeof (topic_buffer);
-        const int rc = zlink_subscribe_part (
-          detail::native_handle (*this), &source_rid, topic_buffer,
-          sizeof (topic_buffer), &topic_size, &native_part, &has_more,
-          static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
-        if (rc != ZLINK_RECV_OK) {
-            (void) zlink_msg_close (&native_part);
-            return static_cast<int> (rc);
-        }
-
-        topic.assign (topic_buffer, topic_size);
-
-        if (zlink_msg_move (detail::native_handle (first_part), &native_part)
-            != 0) {
-            (void) zlink_msg_close (&native_part);
-            return -1;
-        }
-        (void) zlink_msg_close (&native_part);
-
-        if (has_more == ZLINK_PART_FINAL) {
-            message_ =
-              topic_message_t (detail::optional_native_routing_id (source_rid),
-                               std::move (topic), std::move (first_part));
-            break;
-        }
-
-        std::vector<message_t> parts;
-        parts.push_back (std::move (first_part));
-
-        for (;;) {
-            if (zlink_msg_init (&native_part) != 0)
-                return -1;
-
-            topic_size = sizeof (topic_buffer);
-            const int more_rc = zlink_subscribe_part (
-              detail::native_handle (*this), &source_rid, topic_buffer,
-              sizeof (topic_buffer), &topic_size, &native_part, &has_more,
-              static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
-            if (more_rc != ZLINK_RECV_OK) {
-                (void) zlink_msg_close (&native_part);
-                return static_cast<int> (more_rc);
-            }
-
-            parts.emplace_back ();
-            if (zlink_msg_move (detail::native_handle (parts.back ()),
-                                &native_part)
-                != 0) {
-                (void) zlink_msg_close (&native_part);
-                return -1;
-            }
-            (void) zlink_msg_close (&native_part);
-
-            if (has_more == ZLINK_PART_FINAL) {
-                message_ = topic_message_t (
-                  detail::optional_native_routing_id (source_rid),
-                  std::move (topic), std::move (parts));
-                break;
-            }
-        }
-        break;
-    }
-
-    return 0;
+    return detail::read_subscription_message (
+      message_,
+      [&] (const zlink_routing_id_t **source_rid_out_, char *topic_out_,
+           size_t topic_capacity_, size_t *topic_size_out_,
+           zlink_msg_t *part_out_, zlink_part_flag_t *has_more_out_) {
+          return static_cast<int> (zlink_subscribe_part (
+            detail::native_handle (*this), source_rid_out_, topic_out_,
+            topic_capacity_, topic_size_out_, part_out_, has_more_out_,
+            static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
+      });
 }
 
 int socket_t::subscribe_part (std::optional<routing_id_t> &source_rid_out_,

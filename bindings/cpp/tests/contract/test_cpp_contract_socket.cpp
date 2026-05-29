@@ -797,6 +797,51 @@ void test_pair_send_recv_multipart ()
     assert (inbound.parts ()[1].to_string () == "two");
 }
 
+void test_pubsub_subscribe_multipart ()
+{
+    zlink::context_t ctx;
+    zlink::xpub_socket_t publisher (ctx);
+    zlink::sub_socket_t subscriber (ctx);
+    zlink::socket_monitor_t pub_monitor = publisher.monitor_open ();
+    zlink::socket_monitor_t sub_monitor = subscriber.monitor_open ();
+
+    const std::string endpoint =
+      zlink_cpp_contract::unique_inproc ("pubsub-multipart");
+    publisher.bind (endpoint);
+    subscriber.connect (endpoint);
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      pub_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+    assert (zlink_cpp_contract::wait_for_socket_monitor_event (
+      sub_monitor,
+      static_cast<uint64_t> (zlink::monitor_event::connection_ready), 2000));
+
+    const std::string topic = "topic:multipart";
+    subscriber.set_subscription (topic);
+
+    zlink::subscription_event_t event;
+    assert (publisher.receive_subscription_event (event)
+            == static_cast<int> (zlink::recv_result_t::ok));
+    assert (event.subscribed);
+    assert (event.topic == topic);
+
+    std::vector<zlink::message_t> outbound;
+    outbound.push_back (zlink_cpp_contract::make_message ("alpha"));
+    outbound.push_back (zlink_cpp_contract::make_message ("beta"));
+    assert (publisher.publish (topic)
+              .message (outbound[0])
+              .message (outbound[1])
+              .submit ());
+
+    zlink::topic_message_t inbound;
+    assert (subscriber.subscribe (inbound)
+            == static_cast<int> (zlink::recv_result_t::ok));
+    assert (inbound.topic () == topic);
+    assert (inbound.parts ().size () == 2);
+    assert (inbound.parts ()[0].to_string () == "alpha");
+    assert (inbound.parts ()[1].to_string () == "beta");
+}
+
 void test_pair_ipc_large_message_shutdown ()
 {
     zlink::context_t ctx;
@@ -844,6 +889,7 @@ int main ()
     test_router_direct_recv_no_data_preserves_output ();
     test_router_direct_recv_multipart_failure_preserves_output ();
     test_pair_send_recv_multipart ();
+    test_pubsub_subscribe_multipart ();
     test_pair_ipc_large_message_shutdown ();
     return 0;
 }

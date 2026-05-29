@@ -12,6 +12,11 @@
 namespace zlink
 {
 
+namespace detail
+{
+struct topic_message_access_t;
+}
+
 class topic_message_t
 {
   public:
@@ -60,6 +65,7 @@ class topic_message_t
     std::string _topic;
     mutable std::optional<message_t> _single_part;
     mutable std::vector<message_t> _parts;
+    friend struct detail::topic_message_access_t;
     friend class socket_t;
     friend class service::spot_t;
 };

@@ -16,6 +16,8 @@ namespace detail
 namespace
 {
 
+constexpr size_t max_queued_async_waits = 4096u;
+
 class async_wait_scheduler_t
 {
   public:
@@ -33,21 +35,33 @@ class async_wait_scheduler_t
 
     ~async_wait_scheduler_t ()
     {
+        {
+            std::lock_guard<std::mutex> lock (_mutex);
+            _stopping = true;
+        }
+        _ready.notify_all ();
         for (std::jthread &worker : _workers)
             worker.request_stop ();
-        _ready.notify_all ();
     }
 
     async_wait_scheduler_t (const async_wait_scheduler_t &) = delete;
     async_wait_scheduler_t &operator= (const async_wait_scheduler_t &) = delete;
 
-    void schedule (std::function<void ()> task_)
+    [[nodiscard]] bool schedule (std::function<void ()> task_) noexcept
     {
-        {
-            std::lock_guard<std::mutex> lock (_mutex);
-            _tasks.push_back (std::move (task_));
+        try {
+            {
+                std::lock_guard<std::mutex> lock (_mutex);
+                if (_stopping || _tasks.size () >= max_queued_async_waits)
+                    return false;
+                _tasks.push_back (std::move (task_));
+            }
+            _ready.notify_one ();
+            return true;
         }
-        _ready.notify_one ();
+        catch (...) {
+            return false;
+        }
     }
 
   private:
@@ -58,7 +72,8 @@ class async_wait_scheduler_t
             {
                 std::unique_lock<std::mutex> lock (_mutex);
                 _ready.wait (lock, [&] {
-                    return stop_.stop_requested () || !_tasks.empty ();
+                    return stop_.stop_requested () || _stopping
+                           || !_tasks.empty ();
                 });
                 if (_tasks.empty ())
                     continue;
@@ -73,6 +88,7 @@ class async_wait_scheduler_t
     std::condition_variable _ready;
     std::deque<std::function<void ()> > _tasks;
     std::vector<std::jthread> _workers;
+    bool _stopping = false;
 };
 
 async_wait_scheduler_t &async_wait_scheduler ()
@@ -83,9 +99,9 @@ async_wait_scheduler_t &async_wait_scheduler ()
 
 } // namespace
 
-void schedule_async_wait (std::function<void ()> task_)
+bool schedule_async_wait (std::function<void ()> task_) noexcept
 {
-    async_wait_scheduler ().schedule (std::move (task_));
+    return async_wait_scheduler ().schedule (std::move (task_));
 }
 
 } // namespace detail

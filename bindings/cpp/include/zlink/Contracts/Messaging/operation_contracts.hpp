@@ -20,7 +20,7 @@ namespace zlink
 
 namespace detail
 {
-void schedule_async_wait (std::function<void ()> task_);
+[[nodiscard]] bool schedule_async_wait (std::function<void ()> task_) noexcept;
 } // namespace detail
 
 template <typename T> class async_result_t
@@ -121,16 +121,22 @@ template <typename T> class async_result_t
     {
         std::shared_ptr<shared_state_t> state = _state;
         state->waiter_started.store (true);
-        detail::schedule_async_wait ([state, continuation_] () mutable {
-            try {
-                wait_until_ready (*state);
-                state->value = std::make_unique<T> (state->future.get ());
-            }
-            catch (...) {
-                state->error = std::current_exception ();
-            }
+        auto task = [state, continuation_] () mutable {
+            complete_awaited_state (*state);
             continuation_.resume ();
-        });
+        };
+        try {
+            if (detail::schedule_async_wait (std::move (task)))
+                return;
+        }
+        catch (...) {
+            state->error = std::current_exception ();
+            continuation_.resume ();
+            return;
+        }
+
+        complete_awaited_state (*state);
+        continuation_.resume ();
     }
 
     [[nodiscard]] T await_resume ()
@@ -173,6 +179,17 @@ template <typename T> class async_result_t
                != std::future_status::ready) {
             state_.progress ();
             (void) state_.future.wait_for (progress_slice ());
+        }
+    }
+
+    static void complete_awaited_state (shared_state_t &state_)
+    {
+        try {
+            wait_until_ready (state_);
+            state_.value = std::make_unique<T> (state_.future.get ());
+        }
+        catch (...) {
+            state_.error = std::current_exception ();
         }
     }
 

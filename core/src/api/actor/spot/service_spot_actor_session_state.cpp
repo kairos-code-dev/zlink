@@ -1,5 +1,50 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+#include "utils/precompiled.hpp"
+
+#include "api/socket/socket_api_internal.hpp"
+#include "services/actor/validation/service_spot_actor_validation_internal.hpp"
+#include "services/spot/node/spot_node.hpp"
+#include "api/actor/spot/service_spot_actor_state_internal.hpp"
+#include "utils/clock.hpp"
+
+namespace
+{
+
+using zlink::spot_actor_internal::same_routing_id;
+using zlink::spot_actor_internal::valid_routing_id;
+
+void fill_ref (const zlink::spot_actor_api_internal::actor_handle_t *actor_,
+               zlink_actor_ref_t *out_)
+{
+    memset (out_, 0, sizeof (*out_));
+    out_->node_rid = actor_->node_rid;
+    strncpy (out_->actor_id, actor_->actor_id.c_str (), ZLINK_ACTOR_ID_MAX - 1);
+    out_->generation = actor_->generation;
+}
+
+void clear_actor_bound_session_fields (
+  zlink::spot_actor_api_internal::actor_handle_t *actor_,
+  bool update_changed_time_)
+{
+    if (!actor_)
+        return;
+    actor_->bound_session_node = NULL;
+    memset (&actor_->bound_session_node_rid, 0,
+            sizeof (actor_->bound_session_node_rid));
+    actor_->bound_stream = NULL;
+    memset (&actor_->bound_session_rid, 0, sizeof (actor_->bound_session_rid));
+    if (update_changed_time_)
+        actor_->last_changed_ms = zlink::clock_t ().now_ms ();
+}
+
+}
+
+namespace zlink
+{
+namespace spot_actor_api_internal
+{
+
 session_binding_key_t session_key (void *stream_,
                                    const zlink_routing_id_t *session_rid_)
 {
@@ -214,7 +259,7 @@ void actor_session_state_t::erase_bindings_for_stream (void *stream_)
              actor_it != it->second.actors.end (); ++actor_it) {
             actor_handle_t *actor = actor_it->second.actor;
             if (actor && actor->bound_stream == stream_)
-                clear_actor_bound_session_locked (actor, true);
+                clear_actor_bound_session_fields (actor, true);
         }
         it = bindings.erase (it);
     }
@@ -294,4 +339,7 @@ int actor_session_state_t::try_set_explicit_stream_owner (
     }
     set_explicit_stream_owner (stream_, node_);
     return 0;
+}
+
+}
 }

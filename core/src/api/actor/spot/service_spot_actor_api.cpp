@@ -585,16 +585,6 @@ zlink_submit_result_t send_actor_gateway_packet (
 
 }
 
-namespace zlink
-{
-namespace spot_actor_api_internal
-{
-
-#include "api/actor/spot/service_spot_actor_session_state.inc"
-
-}
-}
-
 namespace
 {
 

@@ -2,7 +2,6 @@
 /// Applied to all socket types.
 macro_rules! impl_base_socket {
     ($ty:ident, $inner:path, $inner_mut:path) => {
-        #[allow(dead_code)]
         impl $ty {
             pub fn close(&mut self) -> Result<(), crate::error::CloseError> {
                 $inner_mut(self).close()
@@ -53,13 +52,9 @@ macro_rules! impl_base_socket {
             ) -> Result<(), crate::error::ConfigError> {
                 $inner(self).set_tls_client(ca_cert, hostname, trust_system)
             }
-            pub(crate) fn handle(&self) -> *mut std::ffi::c_void {
-                $inner(self).handle
-            }
         }
     };
     ($ty:ident) => {
-        #[allow(dead_code)]
         impl $ty {
             pub fn close(&mut self) -> Result<(), crate::error::CloseError> {
                 self.inner.close()
@@ -110,9 +105,6 @@ macro_rules! impl_base_socket {
             ) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_tls_client(ca_cert, hostname, trust_system)
             }
-            pub(crate) fn handle(&self) -> *mut std::ffi::c_void {
-                self.inner.handle
-            }
         }
     };
 }
@@ -120,7 +112,6 @@ macro_rules! impl_base_socket {
 /// Routing-id get/set for DEALER and ROUTER sockets.
 macro_rules! impl_routing_id_options {
     ($ty:ident, $inner:path) => {
-        #[allow(dead_code)]
         impl $ty {
             pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), crate::error::ConfigError> {
                 $inner(self).set_routing_id(id)
@@ -131,7 +122,6 @@ macro_rules! impl_routing_id_options {
         }
     };
     ($ty:ident) => {
-        #[allow(dead_code)]
         impl $ty {
             pub fn set_routing_id(&self, id: &RoutingId) -> Result<(), crate::error::ConfigError> {
                 self.inner.set_routing_id(id)
@@ -146,7 +136,6 @@ macro_rules! impl_routing_id_options {
 /// Connect and disconnect for non-STREAM sockets.
 macro_rules! impl_connect {
     ($ty:ident, $inner:path) => {
-        #[allow(dead_code)]
         impl $ty {
             pub fn connect(&self, addr: &str) -> Result<(), crate::error::ConnectError> {
                 $inner(self).connect(addr)
@@ -163,7 +152,6 @@ macro_rules! impl_connect {
         }
     };
     ($ty:ident) => {
-        #[allow(dead_code)]
         impl $ty {
             pub fn connect(&self, addr: &str) -> Result<(), crate::error::ConnectError> {
                 self.inner.connect(addr)
@@ -184,7 +172,6 @@ macro_rules! impl_connect {
 /// Attach a socket to a discovery-owned lifecycle.
 macro_rules! impl_attach_discovery {
     ($ty:ident, $inner:path) => {
-        #[allow(dead_code)]
         impl $ty {
             pub fn attach_discovery(
                 &self,
@@ -195,7 +182,6 @@ macro_rules! impl_attach_discovery {
         }
     };
     ($ty:ident) => {
-        #[allow(dead_code)]
         impl $ty {
             pub fn attach_discovery(
                 &self,

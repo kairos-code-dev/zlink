@@ -80,7 +80,6 @@ unsafe fn drop_erased<F>(ptr: *mut c_void) {
 // SocketInner – shared handle + callback storage
 // ---------------------------------------------------------------------------
 
-#[allow(dead_code)]
 pub(crate) struct SocketInner {
     pub(crate) handle: *mut c_void,
     send_ready_cb: Option<CallbackBox>,
@@ -89,7 +88,6 @@ pub(crate) struct SocketInner {
 
 unsafe impl Send for SocketInner {}
 
-#[allow(dead_code)]
 impl SocketInner {
     pub fn create(
         ctx: &crate::core_context::Context,
@@ -179,11 +177,6 @@ impl SocketInner {
         }
     }
 
-    pub(crate) fn recv_no_wait(&self) -> Result<Option<Received>, RecvError> {
-        recv_basic_parts(self.handle, ffi::ZLINK_DONTWAIT)
-            .map(|opt| opt.map(|(routing_id, parts)| Received::new(routing_id, parts)))
-    }
-
     // -- Subscribe (blocking recv) -----------------------------------------
 
     pub fn subscribe_recv(
@@ -199,13 +192,6 @@ impl SocketInner {
             }
             None => Ok(false),
         }
-    }
-
-    pub(crate) fn subscribe_recv_no_wait(&self) -> Result<Option<TopicMessage>, RecvError> {
-        let mut topic_buf = [0i8; 256];
-        recv_subscribed_parts(self.handle, &mut topic_buf, ffi::ZLINK_DONTWAIT).map(|opt| {
-            opt.map(|(routing_id, topic, parts)| TopicMessage::new(routing_id, topic, parts))
-        })
     }
 
     // -- Subscription management -------------------------------------------
@@ -261,15 +247,6 @@ impl SocketInner {
             topic,
         ));
         Ok(true)
-    }
-
-    pub(crate) fn try_receive_subscription_event(
-        &self,
-    ) -> Result<Option<SubscriptionEvent>, RecvError> {
-        let mut event = SubscriptionEvent::empty();
-        Ok(self
-            .receive_subscription_event(&mut event, RecvFlags::DONT_WAIT)?
-            .then_some(event))
     }
 
     // -- Callback installation ---------------------------------------------
@@ -400,14 +377,6 @@ impl SocketInner {
         )
     }
 
-    pub fn set_send_buffer_size(&self, bytes: i32) -> Result<(), ConfigError> {
-        set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_SNDBUF, bytes)
-    }
-
-    pub fn set_recv_buffer_size(&self, bytes: i32) -> Result<(), ConfigError> {
-        set_int_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_RCVBUF, bytes)
-    }
-
     pub fn set_max_message_size(&self, bytes: i64) -> Result<(), ConfigError> {
         let v = bytes;
         check_config_rc(unsafe {
@@ -444,30 +413,6 @@ impl SocketInner {
         get_bool_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_TCP_KEEPALIVE)
     }
 
-    pub fn set_tcp_keepalive_idle(&self, seconds: i32) -> Result<(), ConfigError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_TCP_KEEPALIVE_IDLE,
-            seconds,
-        )
-    }
-
-    pub fn set_tcp_keepalive_interval(&self, seconds: i32) -> Result<(), ConfigError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_TCP_KEEPALIVE_INTVL,
-            seconds,
-        )
-    }
-
-    pub fn set_tcp_keepalive_count(&self, count: i32) -> Result<(), ConfigError> {
-        set_int_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_TCP_KEEPALIVE_CNT,
-            count,
-        )
-    }
-
     pub fn set_tcp_no_delay(&self, enabled: bool) -> Result<(), ConfigError> {
         set_bool_opt(
             self.handle,
@@ -500,14 +445,6 @@ impl SocketInner {
         get_bool_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_IMMEDIATE)
     }
 
-    pub fn set_conflate(&self, enabled: bool) -> Result<(), ConfigError> {
-        set_bool_opt(
-            self.handle,
-            ffi::zlink_option_t::ZLINK_OPT_CONFLATE,
-            enabled,
-        )
-    }
-
     pub fn set_connect_timeout(&self, d: Duration) -> Result<(), ConfigError> {
         set_duration_opt(
             self.handle,
@@ -533,10 +470,6 @@ impl SocketInner {
             self.handle,
             ffi::zlink_option_t::ZLINK_OPT_RID_DUPLICATE_POLICY,
         )
-    }
-
-    pub fn set_handshake_interval(&self, d: Duration) -> Result<(), ConfigError> {
-        set_duration_opt(self.handle, ffi::zlink_option_t::ZLINK_OPT_HANDSHAKE_IVL, d)
     }
 
     pub fn set_heartbeat_interval(&self, d: Duration) -> Result<(), ConfigError> {

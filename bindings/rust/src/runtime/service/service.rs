@@ -44,8 +44,8 @@ use crate::spot_models::{
     SpotDispatchInfo, SpotKind, SpotNodeMode, SpotNodeOptions, SpotNodePeerEntry,
     SpotNodePeerFilter, SpotNodeSocketEntry, SpotNodeSocketFilter, SpotNodeSocketOwner,
     SpotNodeSpotEntry, SpotNodeState, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
-    SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SpotServiceAttachmentRole, SubjectKind,
-    TopologySource, TopologyState,
+    SpotPeerKind, SpotPeerSource, SpotPeerState, SpotRole, SubjectKind, TopologySource,
+    TopologyState,
 };
 use crate::spot_node_resource::{SpotNode, SpotNodeRuntime};
 use crate::spot_operations::{
@@ -169,7 +169,6 @@ impl Registry {
         )
     }
 
-    #[allow(dead_code)]
     pub(crate) fn raw(&self) -> *mut c_void {
         registry_native(self).handle
     }
@@ -523,37 +522,6 @@ impl SpotNodeSocketEntry {
     }
 }
 
-#[allow(dead_code)]
-impl SpotServiceAttachmentRole {
-    fn to_raw(self) -> ffi::zlink_spot_service_attachment_role_t {
-        match self {
-            Self::Router => {
-                ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER
-            }
-            Self::Pub => {
-                ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_PUB
-            }
-            Self::Sub => {
-                ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_SUB
-            }
-        }
-    }
-
-    fn from_raw(raw: ffi::zlink_spot_service_attachment_role_t) -> Self {
-        match raw {
-            ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_PUB => {
-                Self::Pub
-            }
-            ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_SUB => {
-                Self::Sub
-            }
-            ffi::zlink_spot_service_attachment_role_t::ZLINK_SPOT_SERVICE_ATTACHMENT_ROUTER => {
-                Self::Router
-            }
-        }
-    }
-}
-
 impl RegistryStatus {
     fn from_raw(raw: &ffi::zlink_registry_status_t) -> Self {
         Self {
@@ -800,7 +768,6 @@ impl Discovery {
         set_tls_client_config(self.raw(), ca_cert_pem, hostname, trust_system)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn raw(&self) -> *mut c_void {
         discovery_native(self).handle
     }
@@ -1772,7 +1739,6 @@ impl SpotNode {
             .collect())
     }
 
-    #[allow(dead_code)]
     pub(crate) fn raw(&self) -> *mut c_void {
         spot_node_handle(self)
     }
@@ -3922,11 +3888,6 @@ impl Spot {
             }
             None => Ok(false),
         }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn raw(&self) -> *mut c_void {
-        spot_handle(self)
     }
 
     pub fn close(&mut self) -> Result<(), CloseError> {

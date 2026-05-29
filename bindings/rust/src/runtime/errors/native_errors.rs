@@ -1,5 +1,3 @@
-use std::ffi::CStr;
-
 use crate::error::{
     BindError, BindResult, CloseError, CloseResult, ConfigError, ConfigResult, ConnectError,
     ConnectResult, HandlerError, HandlerResult, RecvError, RecvResult, RequestError, RequestResult,
@@ -9,21 +7,6 @@ use crate::ffi;
 
 pub(crate) fn last_errno() -> i32 {
     unsafe { ffi::zlink_errno() }
-}
-
-fn strerror(errnum: i32) -> String {
-    let ptr = unsafe { ffi::zlink_strerror(errnum) };
-    if ptr.is_null() {
-        return "unknown error".to_string();
-    }
-    unsafe { CStr::from_ptr(ptr) }
-        .to_string_lossy()
-        .into_owned()
-}
-
-#[allow(dead_code)]
-pub(crate) fn last_message() -> String {
-    strerror(last_errno())
 }
 
 fn zlink_error_last() -> ZlinkError {

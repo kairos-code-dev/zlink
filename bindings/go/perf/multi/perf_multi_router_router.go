@@ -380,7 +380,7 @@ func drainMultiRouterRouterServerRecvPart(
 }
 
 // startMultiRouterEchoServer returns a `done` channel closed when the
-// echo loop exits after observing a wire-level stop token. The legacy
+// echo loop exits after observing a wire-level stop token. The previous
 // callers expected a (stop, done) pair where `stop` was closed by the
 // caller to request shutdown; PERF_MULTI_TEST_POLICY § 1.3.1 routes
 // shutdown over the wire instead, so the returned `stop` channel is now

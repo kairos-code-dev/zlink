@@ -91,7 +91,6 @@ from ...handles.native_support import (
     _clone_native_msg,
     _decode_topic_text,
     _is_eagain,
-    _init_msg_from_buffer,
     _msg_to_bytes,
     _report_unhandled_callback_exception,
     _raise_config_error_from_errno,
@@ -116,12 +115,18 @@ from .request_progress import (
     acquire_external_request_progress as _acquire_external_request_progress,
     release_external_request_progress as _release_external_request_progress,
 )
+from .native_parts import (
+    clone_payload as _clone_payload_parts,
+    close_native_parts as _close_native_parts,
+    close_native_parts_array as _close_native_parts_array,
+    prepare_native_parts as _prepare_native_parts,
+    submit_parts as _submit_parts,
+)
 
 
 _ERRNO_ETERM = getattr(errno, "ETERM", 156)
 _ERRNO_ENOTSUP = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
 _SPOT_INIT_TOKEN = object()
-_UNSET = object()
 _REQUEST_PROGRESS_IDLE_GRACE_S = 0.1
 
 _SPOT_ROUTED_HANDLER = ctypes.CFUNCTYPE(
@@ -505,47 +510,7 @@ def _payload_parts(payload):
 
 
 def _clone_payload(payload):
-    native_parts = []
-    for part in _payload_parts(payload):
-        if isinstance(part, Message):
-            native_parts.append(_clone_native_msg(part._msg))
-            continue
-        native = ZlinkMsg()
-        _init_msg_from_buffer(native, part, borrow=False)
-        native_parts.append(native)
-    return native_parts
-
-
-def _prepare_native_parts(native_parts):
-    parts_array = (ZlinkMsg * len(native_parts))()
-    for index, native in enumerate(native_parts):
-        parts_array[index] = native
-    return parts_array
-
-
-def _part_flag(part_index, part_count):
-    return ZLINK_PART_FINAL if part_index == part_count - 1 else ZLINK_PART_MORE
-
-
-def _close_native_parts(native_parts, start=0):
-    for native in native_parts[start:]:
-        lib().zlink_msg_close(ctypes.byref(native))
-
-
-def _close_native_parts_array(parts_array, part_count):
-    for index in range(part_count):
-        lib().zlink_msg_close(ctypes.byref(parts_array[index]))
-
-
-def _submit_parts(native_parts, submit_part):
-    part_count = len(native_parts)
-    for index, native in enumerate(native_parts):
-        rc = submit_part(ctypes.byref(native), _part_flag(index, part_count))
-        if rc != 0:
-            err = lib().zlink_errno()
-            _close_native_parts(native_parts, index)
-            return rc, err
-    return 0, 0
+    return _clone_payload_parts(_payload_parts(payload))
 
 
 def _make_received_owner(parts_ptr, part_count):
@@ -1400,7 +1365,7 @@ class SpotNode:
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
         pending = self._actor_join_pending.pop(handle, None)
         if pending is None:
-            # Fall back to plain reply path (legacy destroy/leave/bind/unbind).
+            # Fall back to the plain reply path used by destroy/leave/bind/unbind.
             if not result_ptr:
                 self._on_actor_reply(int(RequestResult.INTERNAL_ERROR), parts, part_count, userdata)
                 return
@@ -2551,15 +2516,7 @@ class Spot:
             parts = [payload]
         if not parts:
             raise ValueError("parts must not be empty")
-        native_parts = []
-        for part in parts:
-            if isinstance(part, Message):
-                native_parts.append(_clone_native_msg(part._msg))
-                continue
-            native = ZlinkMsg()
-            _ = _init_msg_from_buffer(native, part, borrow=False)
-            native_parts.append(native)
-        return native_parts
+        return _clone_payload_parts(parts)
 
     def publish(self, topic):
         return SendOp(

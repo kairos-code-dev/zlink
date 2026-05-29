@@ -11,41 +11,6 @@ namespace zlink
 namespace service
 {
 
-namespace
-{
-
-template <typename Submit>
-async_result_t<std::vector<message_t> >
-submit_actor_request_async (Submit submit_)
-{
-    std::unique_ptr<detail::request_state_t> request_state (
-      detail::make_future_request_state ());
-    std::future<std::vector<message_t> > future =
-      request_state->promise->get_future ();
-    const submit_result_t rc =
-      static_cast<submit_result_t> (submit_ (request_state.get ()));
-    if (rc != submit_result_t::ok)
-        throw submit_error_t (rc, zlink_errno ());
-    request_state.release ();
-    return async_result_t<std::vector<message_t> > (std::move (future));
-}
-
-template <typename Submit>
-bool submit_actor_request_callback (request_callback_t callback_,
-                                    Submit submit_)
-{
-    std::unique_ptr<detail::request_state_t> request_state (
-      detail::make_callback_request_state (std::move (callback_)));
-    const submit_result_t rc =
-      static_cast<submit_result_t> (submit_ (request_state.get ()));
-    if (rc != submit_result_t::ok)
-        throw submit_error_t (rc, zlink_errno ());
-    request_state.release ();
-    return true;
-}
-
-} // namespace
-
 actor_join_operation_t::~actor_join_operation_t () = default;
 actor_join_operation_t::actor_join_operation_t (
   actor_join_operation_t &&) noexcept = default;
@@ -218,8 +183,8 @@ actor_join_entry_spot_operation_t::operator= (
 
 actor_join_entry_spot_operation_t::actor_join_entry_spot_operation_t (
   detail::actor_payloadless_state_t &&state_) :
-    _state (
-      std::make_unique<detail::actor_payloadless_state_t> (std::move (state_)))
+    _state (std::make_unique<detail::actor_payloadless_state_t> (
+      std::move (state_)))
 {
 }
 
@@ -287,8 +252,8 @@ actor_join_reply_operation_t &actor_join_reply_operation_t::operator= (
 
 actor_join_reply_operation_t::actor_join_reply_operation_t (
   detail::actor_join_reply_state_t &&state_) :
-    _state (
-      std::make_unique<detail::actor_join_reply_state_t> (std::move (state_)))
+    _state (std::make_unique<detail::actor_join_reply_state_t> (
+      std::move (state_)))
 {
 }
 
@@ -319,9 +284,9 @@ void actor_join_reply_operation_t::submit () &&
     zlink_actor_join_info_t native_info =
       zlink::detail::actor_model_access_t::to_native (state ().info);
     if (state ().parts.empty ()) {
-        const submit_result_t rc = static_cast<submit_result_t> (
-          zlink_spot_actor_join_reply (state ().spot, &native_info,
-                                       state ().join_result_code, nullptr, 0u));
+        const submit_result_t rc =
+          static_cast<submit_result_t> (zlink_spot_actor_join_reply (
+            state ().spot, &native_info, state ().join_result_code, nullptr, 0u));
         if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
         return;
@@ -348,8 +313,8 @@ actor_leave_operation_t &actor_leave_operation_t::operator= (
 
 actor_leave_operation_t::actor_leave_operation_t (
   detail::actor_payloadless_state_t &&state_) :
-    _state (
-      std::make_unique<detail::actor_payloadless_state_t> (std::move (state_)))
+    _state (std::make_unique<detail::actor_payloadless_state_t> (
+      std::move (state_)))
 {
 }
 
@@ -374,26 +339,36 @@ actor_leave_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 async_result_t<std::vector<message_t> >
 actor_leave_operation_t::submit_async () &&
 {
-    return submit_actor_request_async (
-      [&] (detail::request_state_t *request_state) {
-          return zlink_spot_node_actor_leave_spot (
-            state ().node, zlink::detail::actor_ref_native (state ().actor),
-            zlink::detail::routing_id_native (state ().aux_rid),
-            &detail::request_callback_trampoline, request_state,
-            zlink::detail::native_timeout_ms (state ().timeout));
-      });
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_future_request_state ());
+    std::future<std::vector<message_t> > future =
+      request_state->promise->get_future ();
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_leave_spot (
+        state ().node, zlink::detail::actor_ref_native (state ().actor),
+        zlink::detail::routing_id_native (state ().aux_rid),
+        &detail::request_callback_trampoline, request_state.get (),
+        zlink::detail::native_timeout_ms (state ().timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return async_result_t<std::vector<message_t> > (std::move (future));
 }
 
 bool actor_leave_operation_t::submit (request_callback_t callback_) &&
 {
-    return submit_actor_request_callback (
-      std::move (callback_), [&] (detail::request_state_t *request_state) {
-          return zlink_spot_node_actor_leave_spot (
-            state ().node, zlink::detail::actor_ref_native (state ().actor),
-            zlink::detail::routing_id_native (state ().aux_rid),
-            &detail::request_callback_trampoline, request_state,
-            zlink::detail::native_timeout_ms (state ().timeout));
-      });
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_callback_request_state (std::move (callback_)));
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_leave_spot (
+        state ().node, zlink::detail::actor_ref_native (state ().actor),
+        zlink::detail::routing_id_native (state ().aux_rid),
+        &detail::request_callback_trampoline, request_state.get (),
+        zlink::detail::native_timeout_ms (state ().timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return true;
 }
 
 actor_destroy_operation_t::~actor_destroy_operation_t () = default;
@@ -404,8 +379,8 @@ actor_destroy_operation_t &actor_destroy_operation_t::operator= (
 
 actor_destroy_operation_t::actor_destroy_operation_t (
   detail::actor_payloadless_state_t &&state_) :
-    _state (
-      std::make_unique<detail::actor_payloadless_state_t> (std::move (state_)))
+    _state (std::make_unique<detail::actor_payloadless_state_t> (
+      std::move (state_)))
 {
 }
 
@@ -430,24 +405,34 @@ actor_destroy_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 async_result_t<std::vector<message_t> >
 actor_destroy_operation_t::submit_async () &&
 {
-    return submit_actor_request_async (
-      [&] (detail::request_state_t *request_state) {
-          return zlink_spot_node_actor_destroy (
-            state ().node, zlink::detail::actor_ref_native (state ().actor),
-            &detail::request_callback_trampoline, request_state,
-            zlink::detail::native_timeout_ms (state ().timeout));
-      });
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_future_request_state ());
+    std::future<std::vector<message_t> > future =
+      request_state->promise->get_future ();
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_destroy (
+        state ().node, zlink::detail::actor_ref_native (state ().actor),
+        &detail::request_callback_trampoline, request_state.get (),
+        zlink::detail::native_timeout_ms (state ().timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return async_result_t<std::vector<message_t> > (std::move (future));
 }
 
 bool actor_destroy_operation_t::submit (request_callback_t callback_) &&
 {
-    return submit_actor_request_callback (
-      std::move (callback_), [&] (detail::request_state_t *request_state) {
-          return zlink_spot_node_actor_destroy (
-            state ().node, zlink::detail::actor_ref_native (state ().actor),
-            &detail::request_callback_trampoline, request_state,
-            zlink::detail::native_timeout_ms (state ().timeout));
-      });
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_callback_request_state (std::move (callback_)));
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_destroy (
+        state ().node, zlink::detail::actor_ref_native (state ().actor),
+        &detail::request_callback_trampoline, request_state.get (),
+        zlink::detail::native_timeout_ms (state ().timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return true;
 }
 
 actor_lookup_operation_t::~actor_lookup_operation_t () = default;
@@ -458,8 +443,8 @@ actor_lookup_operation_t &actor_lookup_operation_t::operator= (
 
 actor_lookup_operation_t::actor_lookup_operation_t (
   detail::actor_payloadless_state_t &&state_) :
-    _state (
-      std::make_unique<detail::actor_payloadless_state_t> (std::move (state_)))
+    _state (std::make_unique<detail::actor_payloadless_state_t> (
+      std::move (state_)))
 {
 }
 
@@ -549,28 +534,38 @@ actor_bind_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 async_result_t<std::vector<message_t> >
 actor_bind_operation_t::submit_async () &&
 {
-    return submit_actor_request_async (
-      [&] (detail::request_state_t *request_state) {
-          return zlink_stream_bind_actor (
-            state ().stream,
-            zlink::detail::routing_id_native (state ().session_rid),
-            zlink::detail::actor_ref_native (state ().actor),
-            &detail::request_callback_trampoline, request_state,
-            zlink::detail::native_timeout_ms (state ().timeout));
-      });
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_future_request_state ());
+    std::future<std::vector<message_t> > future =
+      request_state->promise->get_future ();
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_stream_bind_actor (
+        state ().stream,
+        zlink::detail::routing_id_native (state ().session_rid),
+        zlink::detail::actor_ref_native (state ().actor),
+        &detail::request_callback_trampoline, request_state.get (),
+        zlink::detail::native_timeout_ms (state ().timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return async_result_t<std::vector<message_t> > (std::move (future));
 }
 
 bool actor_bind_operation_t::submit (request_callback_t callback_) &&
 {
-    return submit_actor_request_callback (
-      std::move (callback_), [&] (detail::request_state_t *request_state) {
-          return zlink_stream_bind_actor (
-            state ().stream,
-            zlink::detail::routing_id_native (state ().session_rid),
-            zlink::detail::actor_ref_native (state ().actor),
-            &detail::request_callback_trampoline, request_state,
-            zlink::detail::native_timeout_ms (state ().timeout));
-      });
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_callback_request_state (std::move (callback_)));
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_stream_bind_actor (
+        state ().stream,
+        zlink::detail::routing_id_native (state ().session_rid),
+        zlink::detail::actor_ref_native (state ().actor),
+        &detail::request_callback_trampoline, request_state.get (),
+        zlink::detail::native_timeout_ms (state ().timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return true;
 }
 
 actor_unbind_operation_t::~actor_unbind_operation_t () = default;
@@ -606,26 +601,38 @@ actor_unbind_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 async_result_t<std::vector<message_t> >
 actor_unbind_operation_t::submit_async () &&
 {
-    return submit_actor_request_async (
-      [&] (detail::request_state_t *request_state) {
-          return zlink_stream_unbind_actor (
-            state ().stream,
-            zlink::detail::routing_id_native (state ().session_rid),
-            state ().actor_id.c_str (), &detail::request_callback_trampoline,
-            request_state, zlink::detail::native_timeout_ms (state ().timeout));
-      });
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_future_request_state ());
+    std::future<std::vector<message_t> > future =
+      request_state->promise->get_future ();
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_stream_unbind_actor (
+        state ().stream,
+        zlink::detail::routing_id_native (state ().session_rid),
+        state ().actor_id.c_str (), &detail::request_callback_trampoline,
+        request_state.get (),
+        zlink::detail::native_timeout_ms (state ().timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return async_result_t<std::vector<message_t> > (std::move (future));
 }
 
 bool actor_unbind_operation_t::submit (request_callback_t callback_) &&
 {
-    return submit_actor_request_callback (
-      std::move (callback_), [&] (detail::request_state_t *request_state) {
-          return zlink_stream_unbind_actor (
-            state ().stream,
-            zlink::detail::routing_id_native (state ().session_rid),
-            state ().actor_id.c_str (), &detail::request_callback_trampoline,
-            request_state, zlink::detail::native_timeout_ms (state ().timeout));
-      });
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_callback_request_state (std::move (callback_)));
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_stream_unbind_actor (
+        state ().stream,
+        zlink::detail::routing_id_native (state ().session_rid),
+        state ().actor_id.c_str (), &detail::request_callback_trampoline,
+        request_state.get (),
+        zlink::detail::native_timeout_ms (state ().timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return true;
 }
 
 actor_bind_operation_t

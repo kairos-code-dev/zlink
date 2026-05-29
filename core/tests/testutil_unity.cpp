@@ -288,15 +288,14 @@ static void internal_manage_test_sockets (void *socket_, bool add_)
                 if (test_sockets[i] == socket_) {
                     found = true;
                 }
-                if (found) {
-                    if (i < test_socket_count)
-                        test_sockets[i] = test_sockets[i + 1];
-                }
+                if (found && i + 1 < test_socket_count)
+                    test_sockets[i] = test_sockets[i + 1];
             }
             TEST_ASSERT_TRUE_MESSAGE (found,
                                       "Attempted to close a socket that was "
                                       "not created by test_context_socket");
             --test_socket_count;
+            test_sockets[test_socket_count] = NULL;
         }
     }
 }
@@ -313,9 +312,6 @@ void *get_test_context ()
 
 void teardown_test_context ()
 {
-    // this condition allows an explicit call to teardown_test_context from a
-    // test. if this is never used, it should probably be removed, to detect
-    // misuses
     if (get_test_context ()) {
         internal_manage_test_sockets (NULL, false);
         internal_manage_test_context (false, true);

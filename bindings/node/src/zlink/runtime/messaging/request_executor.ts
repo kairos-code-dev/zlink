@@ -49,34 +49,33 @@ export function requestErrorFromResult(result: RequestResult, message: string): 
   return new RequestError(result, 0, message);
 }
 
-export function executeNativeRequest(options: NativeRequestOptions): Promise<Message[]> | boolean {
-  if (typeof options.callbackOrTimeout === 'function') {
-    const callback = options.callbackOrTimeout;
-    const { flags, timeoutMs } = normalizeCallbackFlagsAndTimeout(
-      options.flagsOrTimeout,
-      options.maybeTimeout
+function executeCallbackRequest(options: NativeRequestOptions, callback: RequestCallback): boolean {
+  const { flags, timeoutMs } = normalizeCallbackFlagsAndTimeout(
+    options.flagsOrTimeout,
+    options.maybeTimeout
+  );
+  const releaseProgress = options.startProgress();
+  try {
+    options.invoke(
+      (result, replyParts) => {
+        releaseProgress();
+        callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
+      },
+      flags,
+      timeoutMs
     );
-    const releaseProgress = options.startProgress();
-    try {
-      options.invoke(
-        (result, replyParts) => {
-          releaseProgress();
-          callback(result as RequestResult, messagesFromNativeBuffers(replyParts));
-        },
-        flags,
-        timeoutMs
-      );
-      return true;
-    } catch (error) {
-      releaseProgress();
-      const submitError = submitNativeError(error, flags, options.submitErrorMessage);
-      if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
-        return false;
-      }
-      throw submitError;
+    return true;
+  } catch (error) {
+    releaseProgress();
+    const submitError = submitNativeError(error, flags, options.submitErrorMessage);
+    if (((flags | 0) & (SendFlags.DontWait | 0)) && submitError.result === SubmitResult.Backpressured) {
+      return false;
     }
+    throw submitError;
   }
+}
 
+function executePromiseRequest(options: NativeRequestOptions): Promise<Message[]> {
   const timeoutMs = typeof options.callbackOrTimeout === 'number'
     ? options.callbackOrTimeout
     : options.promiseTimeoutMayUseFlagsOrTimeout
@@ -103,4 +102,11 @@ export function executeNativeRequest(options: NativeRequestOptions): Promise<Mes
       reject(submitNativeError(error, SendFlags.None, options.submitErrorMessage));
     }
   });
+}
+
+export function executeNativeRequest(options: NativeRequestOptions): Promise<Message[]> | boolean {
+  if (typeof options.callbackOrTimeout === 'function') {
+    return executeCallbackRequest(options, options.callbackOrTimeout);
+  }
+  return executePromiseRequest(options);
 }

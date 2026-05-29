@@ -1,65 +1,31 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import {
-  CommonSocketOptions,
-  DealerSocketOptions,
-  PubSocketOptions,
-  RouterSocketOptions,
-  StreamSocketOptions,
-  SubSocketOptions,
-} from './socket_options';
-import { SocketBase } from './socket_base';
-import { messageFromNativeBuffer, normalizeMessageLikePayload, toMessageParts } from '../buffers/message_conversion';
+import { RouterSocketOptions } from './socket_options';
+import { normalizeMessageLikePayload, toMessageParts } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
 import {
-  MessageSocket,
   NativeSocketType,
-  PublisherSocket,
-  RecvFlags,
-  Received,
   RuntimeRequestOperation,
   RoutedMessageSocket,
   SendFlags,
   RuntimeSendOperation,
   SocketOption,
-  SubscriberSocket,
-  SubscriptionEvent,
   SubmitResult,
-  TopicMessage,
   RoutingId,
-  wrapRoutingId,
-  validateCString,
   requireNative,
   configCall,
-  handlerCall,
-  recvNativeError,
   submitNativeError,
-  submitErrorFromResult,
-  normalizeBufferLike,
   normalizeReplyFlags,
-  materializeReceived,
-  materializeReceivedInto,
-  materializeTopicMessage,
-  adoptTopicMessage,
   executeNativeRequest,
   startRequestProgress,
   RuntimeReplyOperation,
-  RecvResult,
-  requestErrorFromResult,
-  type ActorBindOperation,
-  type ActorRef,
-  type ActorUnbindOperation,
-  type BufferLike,
   type Context,
   type Message,
   type MessageLike,
-  type MessageSnapshot,
   type RequestCallback,
   type RequestOperation,
   type ReplyOperation,
   type SendOperation,
-  type SocketSendReadyHandler,
-  type StreamPacketHandler,
 } from './socket_operations';
 
 export class RouterSocket extends RoutedMessageSocket {
@@ -106,10 +72,7 @@ export class RouterSocket extends RoutedMessageSocket {
       callbackOrTimeout,
       flagsOrTimeout,
       maybeTimeout,
-      startProgress: () => startRequestProgress(
-        nativeHandle,
-        (handle) => { void handle; }
-      ),
+      startProgress: () => startRequestProgress(nativeHandle),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().routerRequest(
           nativeHandle,
@@ -161,10 +124,7 @@ export class RouterSocket extends RoutedMessageSocket {
       flagsOrTimeout,
       maybeTimeout,
       promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(
-        nativeHandle,
-        (handle) => { void handle; }
-      ),
+      startProgress: () => startRequestProgress(nativeHandle),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().routerSpotRequest(
           nativeHandle,

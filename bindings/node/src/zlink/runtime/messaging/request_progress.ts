@@ -2,8 +2,6 @@
 
 import { requireNative } from '../native/native';
 
-export type RequestProgressFn = (handle: unknown) => void;
-
 interface RequestProgressState {
   refCount: number;
   poller: unknown;
@@ -13,8 +11,7 @@ interface RequestProgressState {
 const requestProgressByHandle = new Map<unknown, RequestProgressState>();
 const externalProgressByHandle = new Map<unknown, number>();
 
-export function startRequestProgress(handle: unknown, pump: RequestProgressFn): () => void {
-  void pump;
+export function startRequestProgress(handle: unknown): () => void {
   if ((externalProgressByHandle.get(handle) ?? 0) > 0) {
     return () => {};
   }

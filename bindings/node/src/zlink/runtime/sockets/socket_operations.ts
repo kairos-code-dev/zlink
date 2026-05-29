@@ -1,50 +1,27 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { RuntimeContext as Context } from '../core/context';
-
-// SPDX-License-Identifier: MPL-2.0
-
-import { randomBytes } from 'node:crypto';
 import { requireNative } from '../native/native';
 import {
-  bindCall,
-  closeCall,
   configCall,
-  connectCall,
   handlerCall,
-  lastError,
-  nativeErrorMessage,
-  readErrno,
   recvNativeError,
   submitNativeError
 } from '../errors/native_errors';
-import {
-  acquireExternalRequestProgress,
-  releaseExternalRequestProgress,
-  startRequestProgress
-} from '../messaging/request_progress';
-import {
-  executeNativeRequest,
-  messagesFromNativeBuffers,
-  normalizeCallbackFlagsAndTimeout,
-  requestErrorFromResult
-} from '../messaging/request_executor';
+import { executeNativeRequest } from '../messaging/request_executor';
+import { startRequestProgress } from '../messaging/request_progress';
 import {
   adoptTopicMessage,
-  materializeReceived,
   materializeReceivedInto,
   materializeTopicMessage
 } from '../messaging/message_materializer';
 import {
-  messageFromNativeBuffer,
   normalizeMessageLikePayload,
   normalizeOperationPayload,
-  toMessageParts
 } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
 import { ConnectableSocket } from './socket_base';
 export { Thread } from '../eventing/thread';
-import { normalizeBufferLike, type BufferLike } from '../../contracts/core/buffer_like';
+import { normalizeBufferLike } from '../../contracts/core/buffer_like';
 import {
   Message,
   Received,
@@ -57,7 +34,7 @@ import {
 import { validateCString } from '../options/validation';
 import {
   SocketType as NativeSocketType, SendFlags, RecvFlags, RidDuplicatePolicy,
-  PollEventFlag, type PollEventFlagValue, type RidDuplicatePolicy as RidDuplicatePolicyValue
+  PollEventFlag
 } from '../../contracts/sockets/socket_constants';
 import { SocketOption } from '../options/option_mapping';
 import {
@@ -78,114 +55,38 @@ import {
   SubmitError,
   SubmitResult,
   ZlinkError,
-  createError
 } from '../../contracts/errors/errors';
 
-import {
-  AutoHwmProfile,
-  type AutoHwmProfileValue,
-} from '../../contracts/core';
-
-import {
-  SpotDispatchEvent,
-  SpotDispatchSubjectKind,
-  AutoConnectType,
-  ServiceRole,
-  ServiceKind,
-  SpotRole,
-  SpotPeerSource,
-  SpotPeerKind,
-  SpotPeerState,
-  SpotNodeState,
-  SpotNodeMode,
-  SpotNodeSocketOwner,
-  RegistryState,
-  TopologySource,
-  TopologyState,
-  type SpotDispatchSubjectKind as SpotDispatchSubjectKindValue,
-  type ServiceRoleValue,
-  type ServiceKindValue,
-  type SpotRoleValue,
-  type SpotPeerSourceValue,
-  type SpotPeerKindValue,
-  type SpotPeerStateValue,
-  type SpotKindValue,
-  type SpotNodeStateValue,
-  type SpotNodeSocketOwnerValue,
-  type RegistryStateValue,
-  type TopologySourceValue,
-  type TopologyStateValue,
-  type SpotNodeModeValue,
-  type MemberPeerEntry,
-  type RegistryTopologyEntry,
-  type RegistryServiceSummaryEntry,
-  type RegistryStatus,
-  type SpotNodeStatus,
-  type SpotNodePeerEntry,
-  type SpotNodeSubjectEntry,
-  type SpotNodeSocketFilter,
-  type SpotNodeSocketEntry,
-  type RegistryServiceSummaryFilter,
-  type RegistryTopologyFilter,
-  type SpotNodePeerFilter,
-  type SpotNodeSubjectFilter,
-  type SubscriptionEntry,
-  type SocketSendReadyHandler,
-  type StreamPacketHandler,
-  type SocketMonitorHandler,
-  type SpotSendReadyHandler,
-  type ActorRef,
-  type ActorRoute,
-  type SpotRoute,
-  type ActorRecvInfo,
-  type ActorJoinInfo,
-  type ActorPart,
-  type ActorJoinRequest,
-  type ActorJoinResult,
-  type ActorJoinEntrySpotResult,
-  type ActorLookupResult,
-  type SpotActorLifecycleInfo,
-  type SpotActorLifecycleEvent,
-  type ActorJoinHandler,
-  type ActorJoinEntrySpotHandler,
-  type ActorLookupHandler,
-  type ReplyHandler,
-  type SpotNodeSpotEntry,
-  type SpotNodeActorEntry,
-  type SpotDispatchInfo,
-  type SpotDispatchEventHandler,
-  type RequestCallback,
-  type SendOperation,
-  type SendSubmitOperation,
-  type RequestOperation,
-  type RequestSubmitOperation,
-  type RequestCallbackSubmitOperation,
-  type ReplyOperation,
-  type ReplySubmitOperation,
-  type ActorJoinOperation,
-  type ActorJoinSubmitOperation,
-  type ActorJoinCallbackSubmitOperation,
-  type ActorJoinEntrySpotOperation,
-  type ActorJoinReplyOperation,
-  type ActorLeaveOperation,
-  type ActorDestroyOperation,
-  type ActorLookupOperation,
-  type ActorBindOperation,
-  type ActorUnbindOperation,
+import type {
+  SubscriptionEntry,
+  SocketSendReadyHandler,
+  RequestCallback,
+  SendOperation,
+  SendSubmitOperation,
+  RequestOperation,
+  RequestSubmitOperation,
+  RequestCallbackSubmitOperation,
+  ReplyOperation,
+  ReplySubmitOperation,
 } from '../../contracts/service';
 import { wrapRoutingId } from '../../contracts/service/spot/spot_models';
-import {
-  MonitorSourceKind,
-  MonitorEventType,
-  MonitorEvent,
-  type MonitorSourceKindValue,
-  type MonitorStatus,
-  type MonitorStatusRaw,
-  type MonitorEventValueRaw,
-  type TimerHandler,
-} from '../../contracts/eventing';
-
-export type { BufferLike, MessageLike };
+export { RuntimeContext as Context } from '../core/context';
+export {
+  bindCall,
+  closeCall,
+  connectCall,
+  lastError,
+  nativeErrorMessage,
+  readErrno,
+} from '../errors/native_errors';
+export {
+  messagesFromNativeBuffers,
+  normalizeCallbackFlagsAndTimeout,
+  requestErrorFromResult,
+} from '../messaging/request_executor';
+export { materializeReceived } from '../messaging/message_materializer';
+export type { BufferLike } from '../../contracts/core/buffer_like';
+export type { MessageLike };
 export type { PollEventFlagValue, RidDuplicatePolicy as RidDuplicatePolicyValue, SocketTypeValue } from '../../contracts/sockets/socket_constants';
 export {
   AutoHwmProfile,
@@ -729,28 +630,17 @@ export class RoutedMessageSocket extends ConnectableSocket {
 }
 
 export {
-  Context,
   NativeSocketType,
   SocketOption,
   requireNative,
   validateCString,
-  bindCall,
-  closeCall,
   configCall,
-  connectCall,
   handlerCall,
-  lastError,
-  nativeErrorMessage,
-  readErrno,
   recvNativeError,
   submitNativeError,
   executeNativeRequest,
-  messagesFromNativeBuffers,
-  normalizeCallbackFlagsAndTimeout,
-  requestErrorFromResult,
   startRequestProgress,
   adoptTopicMessage,
-  materializeReceived,
   materializeReceivedInto,
   materializeTopicMessage,
   normalizeBufferLike,

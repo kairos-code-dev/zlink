@@ -6,10 +6,9 @@ import { SendFlags } from '../sockets/socket_constants';
 import { Message } from './message';
 import { RoutingId } from '../core/routing_id';
 import {
+  MultipartEnvelope,
   freezeMessageParts,
   freezeOwnedMessageParts,
-  invalidMultipartError,
-  missingPartError
 } from './envelope';
 
 const RECEIVED_CREATE_TOKEN = Symbol('received.create');
@@ -130,8 +129,7 @@ function invalidSendContextError(): SubmitError {
   );
 }
 
-export class Received {
-  parts: Message[];
+export class Received extends MultipartEnvelope {
   routingId: RoutingId | null;
   spotRid: RoutingId | null;
   requestSeq: bigint | null;
@@ -158,7 +156,7 @@ export class Received {
     sendContext: SendContext | null = null
   ) {
     if (token === undefined && parts === undefined) {
-      this.parts = freezeMessageParts([]);
+      super([]);
       this.routingId = null;
       this.spotRid = null;
       this.requestSeq = null;
@@ -169,7 +167,7 @@ export class Received {
     if (token !== RECEIVED_CREATE_TOKEN) {
       throw new TypeError('Received values are created by recv operations');
     }
-    this.parts = freezeMessageParts(parts ?? []);
+    super(parts ?? []);
     this.routingId = routingId;
     this.spotRid = spotRid;
     this.requestSeq = requestSeq;
@@ -229,24 +227,6 @@ export class Received {
     return new Received(RECEIVED_CREATE_TOKEN, parts, routingId, requestSeq, spotRid, replyContext, sendContext);
   }
 
-  isSinglePart(): boolean {
-    return this.parts.length === 1;
-  }
-
-  firstPart(): Message {
-    if (this.parts.length === 0) {
-      throw missingPartError();
-    }
-    return this.parts[0];
-  }
-
-  singlePartOrThrow(): Message {
-    if (!this.isSinglePart()) {
-      throw invalidMultipartError(this.parts.length);
-    }
-    return this.parts[0];
-  }
-
   reply(): ReceivedReplyOperation {
     if (!this.requestSeq || !this._replyContext) {
       throw invalidReplyContextError();
@@ -261,11 +241,5 @@ export class Received {
     }
     const sendContext = this._sendContext;
     return new ReceivedSendOperation((parts, flags) => sendContext.send(parts, flags));
-  }
-
-  close(): void {
-    for (const part of this.parts) {
-      part.close();
-    }
   }
 }

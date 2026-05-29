@@ -14,7 +14,7 @@ import { toMessageParts, toOwnedMessage } from '../../buffers/message_conversion
 import { Message, Received, RoutingId, SubscriptionEvent, TopicMessage, type MessageLike, type MessageSnapshot } from '../../../contracts';
 import { RecvFlags, SendFlags } from '../../../contracts/sockets/socket_constants';
 import { SubmitResult } from '../../../contracts/errors/errors';
-import { SpotDispatchEvent, SpotDispatchSubjectKind, type ActorJoinRequest, type ActorJoinReplyOperation, type ActorPart, type ActorRef, type ReplyOperation, type RequestCallback, type RequestOperation, type SendOperation, type SpotActorLifecycleEvent, type SpotDispatchEventHandler, type SpotDispatchEvent as SpotDispatchEventValue, type SpotDispatchSubjectKind as SpotDispatchSubjectKindValue, type SpotSendReadyHandler, type SubscriptionEntry } from '../../../contracts/service';
+import { SpotDispatchEvent, SpotDispatchSubjectKind, type ActorJoinRequest, type ActorJoinReplyOperation, type ActorPart, type ActorRef, type ReplyOperation, type RequestCallback, type RequestOperation, type SendOperation, type SpotActorLifecycleEvent, type SpotDispatchEventHandler, type SpotSendReadyHandler, type SubscriptionEntry } from '../../../contracts/service';
 import { wrapRoutingId } from '../../../contracts/service/spot/spot_models';
 import { SpotOption } from './spot_options';
 import { RuntimeActorJoinReplyOperation, actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFromRaw, spotActorLifecycleInfoFromRaw, type SpotActorLifecycleInfoRaw } from './spot_operations';
@@ -215,13 +215,12 @@ export class Spot extends NativeHandle {
     const parts = toMessageParts(partsInput);
     const normalizedChannelName = validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER);
     const progressHandle = this._native;
-    const progressPump = (handle: unknown) => { void handle; };
     return executeNativeRequest({
       callbackOrTimeout,
       flagsOrTimeout,
       maybeTimeout,
       promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(progressHandle, progressPump),
+      startProgress: () => startRequestProgress(progressHandle),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().spotRequestChannel(
           this._native,
@@ -256,7 +255,7 @@ export class Spot extends NativeHandle {
       flagsOrTimeout,
       maybeTimeout,
       promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(spotHandle, (handle) => { void handle; }),
+      startProgress: () => startRequestProgress(spotHandle),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().spotRequestSpot(
           spotHandle,
@@ -281,7 +280,7 @@ export class Spot extends NativeHandle {
       flagsOrTimeout,
       maybeTimeout,
       promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(spotHandle, (handle) => { void handle; }),
+      startProgress: () => startRequestProgress(spotHandle),
       invoke: (callback, flags, timeoutMs) => {
         requireNative().spotRequestRouter(
           spotHandle,

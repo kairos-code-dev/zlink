@@ -11,25 +11,8 @@ import {
 } from '../errors/native_errors';
 import { validateCString } from '../options/validation';
 import { requireNative } from '../native/native';
+import { NativeHandle } from '../handles/native_handle';
 import { ContextOption } from './context_options';
-
-class NativeHandle {
-  /** @internal */
-  protected _native: unknown | null;
-
-  protected constructor(native: unknown) {
-    this._native = native;
-  }
-
-  /** @internal */
-  nativeHandle(): unknown {
-    return this._native;
-  }
-
-  close(): void {
-    this._native = null;
-  }
-}
 
 const OPTION_CREATE_TOKEN = Symbol('OptionFacade.create');
 

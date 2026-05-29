@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { requireNative } from '../../native/native';
-import { configCall, submitNativeError } from '../../errors/native_errors';
+import { submitNativeError } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
 import { messageFromNativeBuffer, toMessageParts } from '../../buffers/message_conversion';
 import { normalizeRoutingId } from '../../core/routing_id';
@@ -11,7 +11,7 @@ import { RequestResult, SubmitResult } from '../../../contracts/errors/errors';
 import { SendFlags } from '../../../contracts/sockets/socket_constants';
 import { type ActorBindOperation, type ActorDestroyOperation, type ActorJoinCallbackSubmitOperation, type ActorJoinEntrySpotHandler, type ActorJoinEntrySpotOperation, type ActorJoinEntrySpotResult, type ActorJoinHandler, type ActorJoinInfo, type ActorJoinOperation, type ActorJoinReplyOperation, type ActorJoinResult, type ActorJoinSubmitOperation, type ActorLeaveOperation, type ActorLookupHandler, type ActorLookupOperation, type ActorLookupResult, type ActorPart, type ActorRecvInfo, type ActorRef, type ActorRoute, type ActorUnbindOperation, type ReplyHandler, type SpotActorLifecycleInfo, type SpotKindValue, type SpotNodeActorEntry, type SpotNodeSpotEntry } from '../../../contracts/service';
 import { wrapRoutingId } from '../../../contracts/service/spot/spot_models';
-import { OperationPayload, submitErrorFromResult } from '../../sockets/socket_operations';
+import { OperationPayload } from '../../sockets/socket_operations';
 
 
 export function actorRefFromRaw(raw: { nodeRid: Buffer; actorId: string; generation: bigint | number }): ActorRef {
@@ -155,22 +155,48 @@ export interface SpotActorLifecycleInfoRaw {
   flags: number;
 }
 
+function emptyRoutingId(): RoutingId {
+  return RoutingId.from(Buffer.alloc(1));
+}
+
+function failedActorRef(): ActorRef {
+  return {
+    nodeRid: emptyRoutingId(),
+    actorId: '',
+    generation: 0n,
+  };
+}
+
+function failedActorJoinResult(): ActorJoinResult {
+  return {
+    result: RequestResult.InternalError,
+    joinResultCode: 0,
+    actor: failedActorRef(),
+    joinedSpotRid: emptyRoutingId(),
+    joinEpoch: 0n,
+    flags: 0,
+  };
+}
+
+function failedActorJoinEntrySpotResult(): ActorJoinEntrySpotResult {
+  return {
+    result: RequestResult.InternalError,
+    actor: failedActorRef(),
+    targetNodeRid: emptyRoutingId(),
+    joinEpoch: 0n,
+    flags: 0,
+  };
+}
+
 export function actorJoinResultFromRaw(raw: ActorJoinResultRaw | null): ActorJoinResult {
   if (!raw) {
-    return {
-      result: RequestResult.InternalError,
-      joinResultCode: 0,
-      actor: { nodeRid: RoutingId.from(Buffer.alloc(1)), actorId: '', generation: 0n },
-      joinedSpotRid: RoutingId.from(Buffer.alloc(1)),
-      joinEpoch: 0n,
-      flags: 0,
-    };
+    return failedActorJoinResult();
   }
   return {
     result: raw.result as RequestResult,
     joinResultCode: raw.joinResultCode ?? 0,
     actor: actorRefFromRaw(raw.actor),
-    joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? RoutingId.from(Buffer.alloc(1)),
+    joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? emptyRoutingId(),
     joinEpoch: BigInt(raw.joinEpoch ?? 0),
     flags: raw.flags | 0,
   };
@@ -178,18 +204,12 @@ export function actorJoinResultFromRaw(raw: ActorJoinResultRaw | null): ActorJoi
 
 export function actorJoinEntrySpotResultFromRaw(raw: ActorJoinEntrySpotResultRaw | null): ActorJoinEntrySpotResult {
   if (!raw) {
-    return {
-      result: RequestResult.InternalError,
-      actor: { nodeRid: RoutingId.from(Buffer.alloc(1)), actorId: '', generation: 0n },
-      targetNodeRid: RoutingId.from(Buffer.alloc(1)),
-      joinEpoch: 0n,
-      flags: 0,
-    };
+    return failedActorJoinEntrySpotResult();
   }
   return {
     result: raw.result as RequestResult,
     actor: actorRefFromRaw(raw.actor),
-    targetNodeRid: (wrapRoutingId(raw.targetNodeRid ?? null) as RoutingId) ?? RoutingId.from(Buffer.alloc(1)),
+    targetNodeRid: (wrapRoutingId(raw.targetNodeRid ?? null) as RoutingId) ?? emptyRoutingId(),
     joinEpoch: BigInt(raw.joinEpoch ?? 0),
     flags: raw.flags | 0,
   };

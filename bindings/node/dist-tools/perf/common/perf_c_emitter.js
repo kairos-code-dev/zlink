@@ -13,6 +13,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const { resolveLatencyTriplet, fixed, padStart, padEnd } = require('./perf_c_format');
 const STREAM_VARIANT_PATTERNS = new Set(['MULTI_STREAM']);
 function envGet(name) {
     const value = process.env[name];
@@ -28,30 +29,6 @@ function parseEnvInt(name, fallback) {
 }
 function parseEnvPairInt(primary, fallbackName, fallback) {
     return parseEnvInt(primary, parseEnvInt(fallbackName, fallback));
-}
-// --- shared latency triplet (C resolve_latency_triplet) -----------------
-function resolveLatencyTriplet(latency, latencyP95, latencyP99) {
-    const mean = latency;
-    let p95 = latencyP95 !== undefined && latencyP95 !== null ? latencyP95 : mean;
-    if (p95 === undefined || p95 === null) {
-        p95 = mean;
-    }
-    let p99 = latencyP99 !== undefined && latencyP99 !== null ? latencyP99 : p95;
-    if (p99 === undefined || p99 === null) {
-        p99 = (p95 !== undefined && p95 !== null) ? p95 : mean;
-    }
-    return [mean, p95, p99];
-}
-// Python-style fixed formatting helpers (f"{v:W.Pf}").
-function fixed(value, decimals, width) {
-    const text = Number(value).toFixed(decimals);
-    return width > 0 ? text.padStart(width) : text;
-}
-function padStart(value, width) {
-    return String(value).padStart(width);
-}
-function padEnd(value, width) {
-    return String(value).padEnd(width);
 }
 // --- single table format (C single/run_comparison.py) -------------------
 function singleTableHeaderLine() {

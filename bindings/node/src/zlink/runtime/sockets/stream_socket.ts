@@ -1,31 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import {
-  CommonSocketOptions,
-  DealerSocketOptions,
-  PubSocketOptions,
-  RouterSocketOptions,
-  StreamSocketOptions,
-  SubSocketOptions,
-} from './socket_options';
+import { StreamSocketOptions } from './socket_options';
 import { SocketBase } from './socket_base';
-import { messageFromNativeBuffer, normalizeMessageLikePayload, toMessageParts } from '../buffers/message_conversion';
+import { messageFromNativeBuffer, normalizeMessageLikePayload } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
 import {
-  MessageSocket,
   NativeSocketType,
-  PublisherSocket,
   RecvFlags,
   Received,
-  RuntimeRequestOperation,
-  RoutedMessageSocket,
   SendFlags,
   RuntimeSendOperation,
   SocketOption,
-  SubscriberSocket,
-  SubscriptionEvent,
   SubmitResult,
-  TopicMessage,
   RoutingId,
   wrapRoutingId,
   validateCString,
@@ -35,28 +21,15 @@ import {
   recvNativeError,
   submitNativeError,
   submitErrorFromResult,
-  normalizeBufferLike,
-  normalizeReplyFlags,
   materializeReceived,
   materializeReceivedInto,
-  materializeTopicMessage,
-  adoptTopicMessage,
-  executeNativeRequest,
-  startRequestProgress,
-  RuntimeReplyOperation,
-  RecvResult,
-  requestErrorFromResult,
   type ActorBindOperation,
   type ActorRef,
   type ActorUnbindOperation,
-  type BufferLike,
   type Context,
   type Message,
   type MessageLike,
   type MessageSnapshot,
-  type RequestCallback,
-  type RequestOperation,
-  type ReplyOperation,
   type SendOperation,
   type SocketSendReadyHandler,
   type StreamPacketHandler,

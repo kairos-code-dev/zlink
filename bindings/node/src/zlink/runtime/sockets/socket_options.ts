@@ -205,11 +205,6 @@ export class StreamSocketOptions extends CommonSocketOptions {
 }
 
 export class PubSocketOptions extends CommonSocketOptions {
-  private _verbose = false;
-  private _verboser = false;
-  private _noDrop = true;
-  private _manual = false;
-  private _manualLastValue = false;
   private _welcomeMessage = Buffer.alloc(0);
 
   /** @internal */
@@ -218,33 +213,28 @@ export class PubSocketOptions extends CommonSocketOptions {
   static create(socket: SocketBase): PubSocketOptions {
     return new PubSocketOptions(OPTION_CREATE_TOKEN, socket);
   }
-  get verbose(): boolean { return this._verbose; }
+  get verbose(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_VERBOSE), 'verbose'); }
   set verbose(value: boolean) {
     this._socket.setSockOptRaw(SocketOption.XPUB_VERBOSE, boolBuffer(value));
-    this._verbose = value;
-    this._verboser = false;
+    this._socket.setSockOptRaw(SocketOption.XPUB_VERBOSER, boolBuffer(false));
   }
-  get verboser(): boolean { return this._verboser; }
+  get verboser(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_VERBOSER), 'verboser'); }
   set verboser(value: boolean) {
+    this._socket.setSockOptRaw(SocketOption.XPUB_VERBOSE, boolBuffer(value));
     this._socket.setSockOptRaw(SocketOption.XPUB_VERBOSER, boolBuffer(value));
-    this._verbose = value;
-    this._verboser = value;
   }
-  get noDrop(): boolean { return this._noDrop; }
+  get noDrop(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_NODROP), 'noDrop'); }
   set noDrop(value: boolean) {
     this._socket.setSockOptRaw(SocketOption.XPUB_NODROP, boolBuffer(value));
-    this._noDrop = value;
   }
-  get manual(): boolean { return this._manual; }
+  get manual(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_MANUAL), 'manual'); }
   set manual(value: boolean) {
     this._socket.setSockOptRaw(SocketOption.XPUB_MANUAL, boolBuffer(value));
-    this._manual = value;
   }
-  get manualLastValue(): boolean { return this._manualLastValue; }
+  get manualLastValue(): boolean { return readBoolOption(this._socket.getSockOptRaw(SocketOption.XPUB_MANUAL_LAST_VALUE), 'manualLastValue'); }
   set manualLastValue(value: boolean) {
+    this._socket.setSockOptRaw(SocketOption.XPUB_MANUAL, boolBuffer(value));
     this._socket.setSockOptRaw(SocketOption.XPUB_MANUAL_LAST_VALUE, boolBuffer(value));
-    this._manual = value;
-    this._manualLastValue = value;
   }
   get topicsCount(): number { return readInt32Option(this._socket.getSockOptRaw(SocketOption.XPUB_TOPICS_COUNT), 'topicsCount'); }
   welcomeMessage(): Message { return Message.from(this._welcomeMessage); }

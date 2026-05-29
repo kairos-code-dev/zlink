@@ -22,8 +22,6 @@ import {
 } from './registry_support';
 
 export class Registry extends NativeHandle {
-  private _bound = false;
-
   constructor(ctx: Context) {
     super(requireNative().registryNew(ctx.nativeHandle()));
   }
@@ -37,7 +35,6 @@ export class Registry extends NativeHandle {
     bindCall('registry bind failed', () => {
       requireNative().registrySetEndpoints(this._native, normalizedPubEndpoint, normalizedRouterEndpoint);
     });
-    this._bound = true;
   }
 
   setId(id: number): void {

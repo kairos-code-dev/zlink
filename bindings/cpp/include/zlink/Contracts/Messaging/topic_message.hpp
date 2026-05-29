@@ -66,8 +66,6 @@ class topic_message_t
     mutable std::optional<message_t> _single_part;
     mutable std::vector<message_t> _parts;
     friend struct detail::topic_message_access_t;
-    friend class socket_t;
-    friend class service::spot_t;
 };
 
 } // namespace zlink

@@ -1,9 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/Contracts/Sockets/pubsub_socket_contracts.hpp>
-#include <zlink/Contracts/Sockets/pubsub_socket_contracts.hpp>
-#include <zlink/Contracts/Sockets/pubsub_socket_contracts.hpp>
-#include <zlink/Contracts/Sockets/pubsub_socket_contracts.hpp>
 #include <Runtime/Sockets/detail.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
 #include <Runtime/Service/spot_state.hpp>

@@ -73,6 +73,77 @@ bool submit_actor_lookup_callback (actor_lookup_callback_t callback_,
     return true;
 }
 
+async_result_t<actor_join_result_t>
+submit_actor_join_async (detail::actor_join_state_t &state_)
+{
+    std::unique_ptr<detail::actor_join_result_state_t> request_state (
+      detail::make_future_actor_join_state ());
+    std::future<actor_join_result_t> future =
+      request_state->promise->get_future ();
+    const int rc = detail::submit_actor_join (state_, request_state.get ());
+    if (rc != ZLINK_SUBMIT_OK)
+        throw submit_error_t (static_cast<submit_result_t> (rc),
+                              zlink_errno ());
+    request_state.release ();
+    return async_result_t<actor_join_result_t> (std::move (future));
+}
+
+bool submit_actor_join_callback (detail::actor_join_state_t &state_,
+                                 actor_join_callback_t callback_)
+{
+    std::unique_ptr<detail::actor_join_result_state_t> request_state (
+      detail::make_callback_actor_join_state (std::move (callback_)));
+    const int rc = detail::submit_actor_join (state_, request_state.get ());
+    if (rc != ZLINK_SUBMIT_OK) {
+        if (state_.flags == send_flags_t::dontwait
+            && static_cast<submit_result_t> (rc)
+                 == submit_result_t::backpressured)
+            return false;
+        throw submit_error_t (static_cast<submit_result_t> (rc),
+                              zlink_errno ());
+    }
+    request_state.release ();
+    return true;
+}
+
+async_result_t<actor_join_entry_spot_result_t>
+submit_actor_join_entry_spot_async (detail::actor_payloadless_state_t &state_)
+{
+    std::unique_ptr<detail::actor_join_entry_spot_result_state_t>
+      request_state (detail::make_future_actor_join_entry_spot_state ());
+    std::future<actor_join_entry_spot_result_t> future =
+      request_state->promise->get_future ();
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_join_entry_spot (
+        state_.node, zlink::detail::actor_ref_native (state_.actor),
+        zlink::detail::routing_id_native (state_.aux_rid),
+        &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
+        zlink::detail::native_timeout_ms (state_.timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return async_result_t<actor_join_entry_spot_result_t> (std::move (future));
+}
+
+bool submit_actor_join_entry_spot_callback (
+  detail::actor_payloadless_state_t &state_,
+  actor_join_entry_spot_callback_t callback_)
+{
+    std::unique_ptr<detail::actor_join_entry_spot_result_state_t>
+      request_state (detail::make_callback_actor_join_entry_spot_state (
+        std::move (callback_)));
+    const submit_result_t rc =
+      static_cast<submit_result_t> (zlink_spot_node_actor_join_entry_spot (
+        state_.node, zlink::detail::actor_ref_native (state_.actor),
+        zlink::detail::routing_id_native (state_.aux_rid),
+        &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
+        zlink::detail::native_timeout_ms (state_.timeout)));
+    if (rc != submit_result_t::ok)
+        throw submit_error_t (rc, zlink_errno ());
+    request_state.release ();
+    return true;
+}
+
 } // namespace
 
 actor_join_operation_t::~actor_join_operation_t () = default;
@@ -152,17 +223,7 @@ actor_join_submit_operation_t::flags (int flags_) &&
 async_result_t<actor_join_result_t>
 actor_join_submit_operation_t::submit_async () &&
 {
-    std::unique_ptr<detail::actor_join_result_state_t> request_state (
-      detail::make_future_actor_join_state ());
-    std::future<actor_join_result_t> future =
-      request_state->promise->get_future ();
-    const int rc = detail::submit_actor_join (state (), request_state.get ());
-    if (rc != ZLINK_SUBMIT_OK) {
-        throw submit_error_t (static_cast<submit_result_t> (rc),
-                              zlink_errno ());
-    }
-    request_state.release ();
-    return async_result_t<actor_join_result_t> (std::move (future));
+    return submit_actor_join_async (state ());
 }
 
 bool actor_join_submit_operation_t::submit (actor_join_callback_t callback_) &&
@@ -222,19 +283,7 @@ actor_join_callback_submit_operation_t::flags (int flags_) &&
 bool actor_join_callback_submit_operation_t::submit (
   actor_join_callback_t callback_) &&
 {
-    std::unique_ptr<detail::actor_join_result_state_t> request_state (
-      detail::make_callback_actor_join_state (std::move (callback_)));
-    const int rc = detail::submit_actor_join (state (), request_state.get ());
-    if (rc != ZLINK_SUBMIT_OK) {
-        if (state ().flags == send_flags_t::dontwait
-            && static_cast<submit_result_t> (rc)
-                 == submit_result_t::backpressured)
-            return false;
-        throw submit_error_t (static_cast<submit_result_t> (rc),
-                              zlink_errno ());
-    }
-    request_state.release ();
-    return true;
+    return submit_actor_join_callback (state (), std::move (callback_));
 }
 
 actor_join_entry_spot_operation_t::~actor_join_entry_spot_operation_t () =
@@ -274,38 +323,14 @@ actor_join_entry_spot_operation_t &&actor_join_entry_spot_operation_t::timeout (
 async_result_t<actor_join_entry_spot_result_t>
 actor_join_entry_spot_operation_t::submit_async () &&
 {
-    std::unique_ptr<detail::actor_join_entry_spot_result_state_t>
-      request_state (detail::make_future_actor_join_entry_spot_state ());
-    std::future<actor_join_entry_spot_result_t> future =
-      request_state->promise->get_future ();
-    const submit_result_t rc =
-      static_cast<submit_result_t> (zlink_spot_node_actor_join_entry_spot (
-        state ().node, zlink::detail::actor_ref_native (state ().actor),
-        zlink::detail::routing_id_native (state ().aux_rid),
-        &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
-        zlink::detail::native_timeout_ms (state ().timeout)));
-    if (rc != submit_result_t::ok)
-        throw submit_error_t (rc, zlink_errno ());
-    request_state.release ();
-    return async_result_t<actor_join_entry_spot_result_t> (std::move (future));
+    return submit_actor_join_entry_spot_async (state ());
 }
 
 bool actor_join_entry_spot_operation_t::submit (
   actor_join_entry_spot_callback_t callback_) &&
 {
-    std::unique_ptr<detail::actor_join_entry_spot_result_state_t>
-      request_state (detail::make_callback_actor_join_entry_spot_state (
-        std::move (callback_)));
-    const submit_result_t rc =
-      static_cast<submit_result_t> (zlink_spot_node_actor_join_entry_spot (
-        state ().node, zlink::detail::actor_ref_native (state ().actor),
-        zlink::detail::routing_id_native (state ().aux_rid),
-        &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
-        zlink::detail::native_timeout_ms (state ().timeout)));
-    if (rc != submit_result_t::ok)
-        throw submit_error_t (rc, zlink_errno ());
-    request_state.release ();
-    return true;
+    return submit_actor_join_entry_spot_callback (state (),
+                                                 std::move (callback_));
 }
 
 actor_join_reply_operation_t::~actor_join_reply_operation_t () = default;

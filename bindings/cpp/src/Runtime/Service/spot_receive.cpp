@@ -69,37 +69,19 @@ void spot_t::subscription_at (size_t index_,
                               std::string &filter_out_,
                               bool *is_pattern_out_) const
 {
-    size_t capacity = 256u;
-    const size_t max_capacity = 64u * 1024u;
-
-    while (capacity <= max_capacity) {
-        std::vector<char> buffer (capacity);
-        size_t length = capacity;
-        int is_pattern = 0;
-        const config_result_t rc =
-          static_cast<config_result_t> (zlink_subscription_at (
-            _impl->handle, index_, buffer.data (), &length, &is_pattern));
-        if (rc == config_result_t::ok) {
-            const size_t bounded =
-              length <= buffer.size () ? length : buffer.size ();
-            size_t out_size = bounded;
-            if (out_size > 0 && buffer[out_size - 1] == '\0')
-                --out_size;
-            filter_out_.assign (buffer.data (), out_size);
-            if (is_pattern_out_)
-                *is_pattern_out_ = is_pattern != 0;
-            return;
-        }
-
-        if (errno != EINVAL || capacity == max_capacity)
-            throw config_error_t (rc, zlink_errno ());
-
-        capacity *= 2u;
-        if (capacity > max_capacity)
-            capacity = max_capacity;
-    }
-
-    throw config_error_t (config_result_t::invalid_argument, EINVAL);
+    int is_pattern = 0;
+    config_result_t result = config_result_t::ok;
+    const int rc = zlink::detail::read_growing_string (
+      [&] (char *buffer_, size_t, size_t *length_out_) {
+          result = static_cast<config_result_t> (zlink_subscription_at (
+            _impl->handle, index_, buffer_, length_out_, &is_pattern));
+          return result == config_result_t::ok ? 0 : -1;
+      },
+      256u, filter_out_);
+    if (rc != 0)
+        throw config_error_t (result, zlink_errno ());
+    if (is_pattern_out_)
+        *is_pattern_out_ = is_pattern != 0;
 }
 
 subscription_filter_t spot_t::subscription_at (size_t index_) const
@@ -298,81 +280,19 @@ spot_t::publish_impl (const char *topic_, message_t &part_, send_flags_t flags_)
         return -1;
     }
 
-    char topic_buffer[256];
-    size_t topic_length = sizeof (topic_buffer);
-    const zlink_routing_id_t *source_rid = nullptr;
-
-    zlink_msg_t first_part;
-    if (zlink_msg_init (&first_part) != 0)
-        return -1;
-
-    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    const zlink_routing_id_t *part_source_rid = nullptr;
-    size_t part_topic_length = sizeof (topic_buffer);
-    const int first_rc = zlink_spot_subscribe_part (
-      _impl->handle, &part_source_rid, topic_buffer, sizeof (topic_buffer),
-      &part_topic_length, &first_part, &has_more,
-      static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
-    if (first_rc != ZLINK_RECV_OK) {
-        const int err = errno;
-        (void) zlink_msg_close (&first_part);
-        errno = err;
-        return first_rc;
-    }
-
-    source_rid = part_source_rid;
-    topic_length = part_topic_length;
-
-    const size_t topic_size =
-      zlink::detail::bounded_topic_size (topic_length, sizeof (topic_buffer));
-    std::string topic (topic_buffer, topic_size);
-    const std::optional<routing_id_t> source =
-      zlink::detail::optional_native_routing_id (source_rid);
-
-    if (!has_more) {
-        message_t part;
-        zlink::detail::adopt_native_message (part, &first_part);
-        message_out_ =
-          topic_message_t (source, std::move (topic), std::move (part));
-    } else {
-        std::vector<zlink_msg_t> parts_native;
-        parts_native.push_back (first_part);
-
-        for (;;) {
-            parts_native.emplace_back ();
-            zlink_msg_t &native_part = parts_native.back ();
-            if (zlink_msg_init (&native_part) != 0) {
-                parts_native.pop_back ();
-                detail::close_native_parts (parts_native);
-                return -1;
-            }
-
-            zlink_part_flag_t more = ZLINK_PART_FINAL;
-            size_t ignored_topic_length = 0u;
-            const int rc = zlink_spot_subscribe_part (
-              _impl->handle, &part_source_rid, nullptr, 0u,
-              &ignored_topic_length, &native_part, &more,
-              ZLINK_RECV_FLAGS_DONTWAIT);
-            if (rc != ZLINK_RECV_OK) {
-                const int err = errno;
-                (void) zlink_msg_close (&native_part);
-                parts_native.pop_back ();
-                detail::close_native_parts (parts_native);
-                errno = err;
-                return rc;
-            }
-
-            if (!more)
-                break;
-        }
-
-        std::vector<message_t> parts;
-        if (detail::assign_parts_from_native (parts_native, parts) != 0)
-            return -1;
-        message_out_ =
-          topic_message_t (source, std::move (topic), std::move (parts));
-    }
-    return 0;
+    return zlink::detail::read_subscription_message (
+      message_out_,
+      [&] (const zlink_routing_id_t **source_rid_out_, char *topic_out_,
+           size_t topic_capacity_, size_t *topic_size_out_,
+           zlink_msg_t *part_out_, zlink_part_flag_t *has_more_out_) {
+          const zlink_recv_flags_t native_flags =
+            topic_out_
+              ? static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))
+              : ZLINK_RECV_FLAGS_DONTWAIT;
+          return static_cast<int> (zlink_spot_subscribe_part (
+            _impl->handle, source_rid_out_, topic_out_, topic_capacity_,
+            topic_size_out_, part_out_, has_more_out_, native_flags));
+      });
 }
 
 [[nodiscard]] int

@@ -6,6 +6,7 @@
 #include <zlink/Contracts/Sockets/socket_options.hpp>
 #include <Runtime/Core/duration_conversion.hpp>
 #include <Runtime/Core/routing_id_access.hpp>
+#include <Runtime/Native/native_options.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
 #include <Runtime/Options/option_ids.hpp>
 
@@ -15,7 +16,6 @@
 #include <cstring>
 #include <optional>
 #include <string>
-#include <vector>
 
 namespace zlink
 {
@@ -64,28 +64,18 @@ std::string get_option_string_value (void *handle_,
                                      Getter getter_)
 {
     ensure_config_handle (handle_);
-    size_t cap = initial_cap_;
-    const size_t max_cap = 64u * 1024u;
-    while (cap <= max_cap) {
-        std::vector<char> buffer (cap);
-        size_t size = cap;
-        const config_result_t result = static_cast<config_result_t> (
-          getter_ (handle_, option_, buffer.data (), &size));
-        if (result == config_result_t::ok) {
-            const size_t bounded =
-              size <= buffer.size () ? size : buffer.size ();
-            size_t out_size = bounded;
-            if (out_size > 0 && buffer[out_size - 1] == '\0')
-                --out_size;
-            return std::string (buffer.data (), out_size);
-        }
-        if (errno != EINVAL || cap == max_cap)
-            throw config_error_t (result, zlink_errno ());
-        cap *= 2u;
-        if (cap > max_cap)
-            cap = max_cap;
-    }
-    throw config_error_t (config_result_t::invalid_argument, EINVAL);
+    config_result_t result = config_result_t::ok;
+    std::string value;
+    const int rc = detail::read_growing_string (
+      [&] (char *buffer_, size_t, size_t *size_out_) {
+          result = static_cast<config_result_t> (
+            getter_ (handle_, option_, buffer_, size_out_));
+          return result == config_result_t::ok ? 0 : -1;
+      },
+      initial_cap_, value);
+    if (rc == 0)
+        return value;
+    throw config_error_t (result, zlink_errno ());
 }
 
 template <typename T>

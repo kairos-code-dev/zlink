@@ -4,6 +4,7 @@
 
 #include <Runtime/Sockets/detail.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
+#include <Runtime/Native/native_options.hpp>
 #include <Runtime/Service/spot_state.hpp>
 #include <zlink/Contracts/Service/spot.hpp>
 
@@ -68,18 +69,20 @@ void dealer_socket_t::channel_name (const std::string &value_)
 
 std::string dealer_socket_t::channel_name () const
 {
-    size_t size = 0;
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_socket_get_channel_name (
-          const_cast<void *> (detail::native_handle (*this)), nullptr, 0, &size)));
-    std::vector<char> buffer (size);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (
-        zlink_socket_get_channel_name (
-          const_cast<void *> (detail::native_handle (*this)),
-          buffer.empty () ? nullptr : buffer.data (), buffer.size (), &size)));
-    return std::string (buffer.data (), size);
+    config_result_t result = config_result_t::ok;
+    std::string value;
+    const int rc = detail::read_growing_string (
+      [&] (char *buffer_, size_t capacity_, size_t *size_out_) {
+          result = static_cast<config_result_t> (
+            zlink_socket_get_channel_name (
+              const_cast<void *> (detail::native_handle (*this)), buffer_,
+              capacity_, size_out_));
+          return result == config_result_t::ok ? 0 : -1;
+      },
+      256u, value);
+    if (rc != 0)
+        throw config_error_t (result, zlink_errno ());
+    return value;
 }
 
 } // namespace zlink

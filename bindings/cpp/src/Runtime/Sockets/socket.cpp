@@ -451,34 +451,18 @@ int socket_t::subscription_at (size_t index_,
                                std::string &filter_,
                                bool *is_pattern_)
 {
-    size_t cap = 256;
-    const size_t max_cap = 64u * 1024u;
-    while (cap <= max_cap) {
-        std::vector<char> buffer (cap);
-        size_t size = cap;
-        int pattern = 0;
-        const int rc =
-          zlink_subscription_at (detail::native_handle (*this), index_,
-                                 buffer.data (), &size, &pattern);
-        if (rc == 0) {
-            const size_t bounded =
-              size <= buffer.size () ? size : buffer.size ();
-            filter_.assign (buffer.data (), bounded);
-            if (is_pattern_)
-                *is_pattern_ = pattern != 0;
-            return 0;
-        }
-
-        if (errno != EINVAL || cap == max_cap)
-            return -1;
-
-        cap *= 2u;
-        if (cap > max_cap)
-            cap = max_cap;
-    }
-
-    errno = EINVAL;
-    return -1;
+    int pattern = 0;
+    const int rc = detail::read_growing_string (
+      [&] (char *buffer_, size_t, size_t *size_out_) {
+          return zlink_subscription_at (detail::native_handle (*this), index_,
+                                        buffer_, size_out_, &pattern);
+      },
+      256u, filter_);
+    if (rc != 0)
+        return rc;
+    if (is_pattern_)
+        *is_pattern_ = pattern != 0;
+    return 0;
 }
 
 int socket_t::subscription_event (subscription_event_t &event_,

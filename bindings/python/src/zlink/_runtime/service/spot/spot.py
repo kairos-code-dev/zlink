@@ -1432,14 +1432,14 @@ class SpotNode:
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def set_router_hwm(self, value: int):
+    def set_router_high_water_mark(self, value: int):
         native = ctypes.c_int32(_validated_int32(value))
         self._set_spot_node_option(
             SpotNodeOption.ROUTER_HWM,
             ctypes.string_at(ctypes.byref(native), ctypes.sizeof(native)),
         )
 
-    def set_pubsub_hwm(self, value: int):
+    def set_pubsub_high_water_mark(self, value: int):
         native = ctypes.c_int32(_validated_int32(value))
         self._set_spot_node_option(
             SpotNodeOption.PUBSUB_HWM,
@@ -1469,12 +1469,12 @@ class SpotNode:
         self.set_router_hwm_profile(value)
 
     @property
-    def router_hwm(self):
+    def router_high_water_mark(self):
         return self._get_spot_node_option_int32(SpotNodeOption.ROUTER_HWM)
 
-    @router_hwm.setter
-    def router_hwm(self, value):
-        self.set_router_hwm(value)
+    @router_high_water_mark.setter
+    def router_high_water_mark(self, value):
+        self.set_router_high_water_mark(value)
 
     @property
     def pubsub_hwm_profile(self):
@@ -1485,12 +1485,12 @@ class SpotNode:
         self.set_pubsub_hwm_profile(value)
 
     @property
-    def pubsub_hwm(self):
+    def pubsub_high_water_mark(self):
         return self._get_spot_node_option_int32(SpotNodeOption.PUBSUB_HWM)
 
-    @pubsub_hwm.setter
-    def pubsub_hwm(self, value):
-        self.set_pubsub_hwm(value)
+    @pubsub_high_water_mark.setter
+    def pubsub_high_water_mark(self, value):
+        self.set_pubsub_high_water_mark(value)
 
     @property
     def dispatch_workers_min(self):

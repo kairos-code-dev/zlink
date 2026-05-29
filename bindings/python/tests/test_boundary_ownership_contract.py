@@ -43,13 +43,13 @@ class BoundaryValidationContractTests(unittest.TestCase):
                 ctx.options.io_threads = -(1 << 31) - 1
 
             with zlink.RouterSocket(ctx) as socket:
-                socket.options.max_msg_size = (1 << 63) - 1
-                self.assertEqual(socket.options.max_msg_size, (1 << 63) - 1)
+                socket.options.max_message_size = (1 << 63) - 1
+                self.assertEqual(socket.options.max_message_size, (1 << 63) - 1)
 
                 with self.assertRaises(OverflowError):
-                    socket.options.max_msg_size = 1 << 63
+                    socket.options.max_message_size = 1 << 63
                 with self.assertRaises(OverflowError):
-                    socket.options.max_msg_size = -(1 << 63) - 1
+                    socket.options.max_message_size = -(1 << 63) - 1
 
     def test_submit_retry_mode_enum_values_are_public(self):
         self.assertEqual(zlink.SubmitRetryMode.OFF, 0)

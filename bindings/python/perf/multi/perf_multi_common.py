@@ -252,9 +252,9 @@ def apply_multi_spot_node_admission(*nodes):
     recv_hwm = resolve_multi_recv_hwm()
     for node in nodes:
         if send_hwm > 0:
-            node.set_pubsub_hwm(send_hwm)
+            node.set_pubsub_high_water_mark(send_hwm)
         if recv_hwm > 0:
-            node.set_router_hwm(recv_hwm)
+            node.set_router_high_water_mark(recv_hwm)
 
 
 def bind_spot_node_endpoint(node, transport, prefix):

@@ -146,15 +146,15 @@ class CommonSocketOptions(_ContractCommonSocketOptions):
         self._socket._set_common_int_option(SocketOption.HEARTBEAT_TIMEOUT, value)
 
     @property
-    def max_msg_size(self):
+    def max_message_size(self):
         return _read_int64(self._socket._get_raw_option(
             lib().zlink_get_option,
             SocketOption.MAXMSGSIZE,
             ctypes.sizeof(ctypes.c_int64),
         ))
 
-    @max_msg_size.setter
-    def max_msg_size(self, value):
+    @max_message_size.setter
+    def max_message_size(self, value):
         self._socket._set_raw_option(
             lib().zlink_set_option,
             SocketOption.MAXMSGSIZE,

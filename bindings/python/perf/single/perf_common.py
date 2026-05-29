@@ -212,9 +212,9 @@ def apply_single_spot_node_admission(*nodes):
     recv_hwm = resolve_single_recv_hwm()
     for node in nodes:
         if send_hwm > 0:
-            node.set_pubsub_hwm(send_hwm)
+            node.set_pubsub_high_water_mark(send_hwm)
         if recv_hwm > 0:
-            node.set_router_hwm(recv_hwm)
+            node.set_router_high_water_mark(recv_hwm)
 
 
 def _recv_storage(method):

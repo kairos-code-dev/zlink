@@ -71,7 +71,7 @@ class CommonSocketOptions:
     heartbeat_interval_ms = _contract_property()
     heartbeat_ttl_ms = _contract_property()
     heartbeat_timeout_ms = _contract_property()
-    max_msg_size = _contract_property()
+    max_message_size = _contract_property()
     backlog = _contract_property()
     reconnect_interval_ms = _contract_property()
     reconnect_interval_max_ms = _contract_property()

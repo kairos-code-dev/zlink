@@ -838,13 +838,13 @@ void request_reply_callback_trampoline(zlink_request_result_t errnum_,
         payload->parts.resize(part_count_);
         for (size_t i = 0; i < part_count_; ++i) {
             if (zlink_msg_init(&payload->parts[i]) != 0) {
-                close_recv_parts(parts_, part_count_);
-                return;
+                payload->errnum = ZLINK_REQUEST_INTERNAL_ERROR;
+                break;
             }
             payload->part_count = i + 1;
             if (zlink_msg_move(&payload->parts[i], &parts_[i]) != 0) {
-                close_recv_parts(parts_, part_count_);
-                return;
+                payload->errnum = ZLINK_REQUEST_INTERNAL_ERROR;
+                break;
             }
         }
     }
@@ -1951,11 +1951,8 @@ napi_value socket_try_publish(napi_env env, napi_callback_info info)
                     use_single_part ? &single_part : parts.data(),
                     use_single_part ? 1 : parts.size(),
                     ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc == ZLINK_SUBMIT_OK) {
-        rc = ZLINK_SUBMIT_OK;
-    } else {
+    if (rc != ZLINK_SUBMIT_OK)
         rc = classify_try_send_errno();
-    }
     if (rc < 0) {
         return throw_last_error(env, "publishNoWaitResult failed");
     }
@@ -1975,9 +1972,7 @@ napi_value socket_try_send(napi_env env, napi_callback_info info)
     if (!init_msg_from_value(env, argv[1], &msg))
         return throw_last_error(env, "sendNoWaitResult failed");
     int rc = send_parts(sock, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc == ZLINK_SUBMIT_OK)
-        rc = ZLINK_SUBMIT_OK;
-    else
+    if (rc != ZLINK_SUBMIT_OK)
         rc = classify_try_send_errno();
     if (rc < 0)
         return throw_last_error(env, "sendNoWaitResult failed");
@@ -1999,9 +1994,7 @@ napi_value socket_try_send_parts(napi_env env, napi_callback_info info)
         return NULL;
 
     int rc = send_parts(sock, parts.data(), parts.size(), ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc == ZLINK_SUBMIT_OK)
-        rc = ZLINK_SUBMIT_OK;
-    else
+    if (rc != ZLINK_SUBMIT_OK)
         rc = classify_try_send_errno();
     if (rc < 0) {
         return throw_last_error(env, "trySendParts failed");
@@ -2027,9 +2020,7 @@ napi_value socket_try_send_routing(napi_env env, napi_callback_info info)
     if (!init_msg_from_value(env, argv[2], &msg))
         return throw_last_error(env, "trySendTo failed");
     int rc = send_parts_rid(sock, &routing_id, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc == ZLINK_SUBMIT_OK)
-        rc = ZLINK_SUBMIT_OK;
-    else
+    if (rc != ZLINK_SUBMIT_OK)
         rc = classify_try_send_errno();
     if (rc < 0)
         return throw_last_error(env, "trySendTo failed");
@@ -2056,9 +2047,7 @@ napi_value socket_try_send_routing_parts(napi_env env, napi_callback_info info)
 
     int rc = send_parts_rid(
       sock, &routing_id, parts.data(), parts.size(), ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc == ZLINK_SUBMIT_OK)
-        rc = ZLINK_SUBMIT_OK;
-    else
+    if (rc != ZLINK_SUBMIT_OK)
         rc = classify_try_send_errno();
     if (rc < 0) {
         return throw_last_error(env, "trySendPartsTo failed");

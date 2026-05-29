@@ -1390,8 +1390,7 @@ static void request_reply_callback_trampoline(zlink_request_result_t errnum_,
       new request_result_js_payload_t());
     payload->errnum = errnum_;
     if (errnum_ == 0 && !move_recv_parts_to_payload(parts_, part_count_, payload.get())) {
-        close_recv_parts(parts_, part_count_);
-        return;
+        payload->errnum = ZLINK_REQUEST_INTERNAL_ERROR;
     }
     close_recv_parts(parts_, part_count_);
 
@@ -1428,8 +1427,7 @@ static void actor_join_callback_trampoline(
     }
     if (payload->errnum == 0
         && !move_recv_parts_to_payload(parts_, part_count_, payload.get())) {
-        close_recv_parts(parts_, part_count_);
-        return;
+        payload->errnum = ZLINK_REQUEST_INTERNAL_ERROR;
     }
     close_recv_parts(parts_, part_count_);
 

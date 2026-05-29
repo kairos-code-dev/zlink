@@ -7,30 +7,6 @@ namespace {
 
 static const int k_snapshot_retry_limit = 4;
 
-void set_uint32_property(napi_env env, napi_value obj, const char *name, uint32_t value)
-{
-    napi_value out;
-    napi_create_uint32(env, value, &out);
-    napi_set_named_property(env, obj, name, out);
-}
-
-void set_int64_property(napi_env env, napi_value obj, const char *name, int64_t value)
-{
-    napi_value out;
-    napi_create_int64(env, value, &out);
-    napi_set_named_property(env, obj, name, out);
-}
-
-void set_string_property(napi_env env,
-                         napi_value obj,
-                         const char *name,
-                         const char *value)
-{
-    napi_value out;
-    napi_create_string_utf8(env, value ? value : "", NAPI_AUTO_LENGTH, &out);
-    napi_set_named_property(env, obj, name, out);
-}
-
 napi_value create_routing_id_value(napi_env env, const zlink_routing_id_t &rid)
 {
     if (rid.size == 0) {

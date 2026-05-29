@@ -59,12 +59,6 @@ import java.util.function.BiConsumer;
  * service model.
  */
 public final class NativeSpot implements Spot {
-    private static final int ERRNO_ENOTCONN = 107;
-    private static final int ERRNO_ENOTCONN_WIN = 10057;
-    private static final int ERRNO_EHOSTUNREACH = 113;
-    private static final int ERRNO_EHOSTUNREACH_WIN = 10065;
-    private static final int ERRNO_ETIMEDOUT = 110;
-    private static final int ERRNO_ETIMEDOUT_WIN = 10060;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_SEND_READY_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);

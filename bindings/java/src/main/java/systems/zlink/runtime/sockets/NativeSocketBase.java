@@ -25,18 +25,6 @@ import java.util.Optional;
  * Common contract facade for zlink typed socket resources.
  */
 abstract class NativeSocketBase implements Socket {
-    static final int DEFAULT_IO_BUFFER_SIZE = 8192;
-    static final int ERRNO_EINTR = 4;
-    static final int ERRNO_EAGAIN = 11;
-    static final int ERRNO_EWOULDBLOCK_WIN = 10035;
-    static final int ERRNO_ENOTCONN = 107;
-    static final int ERRNO_ENOTCONN_WIN = 10057;
-    static final int ERRNO_EHOSTUNREACH = 113;
-    static final int ERRNO_EHOSTUNREACH_WIN = 10065;
-    static final int ERRNO_ETIMEDOUT = 110;
-    static final int ERRNO_ETIMEDOUT_WIN = 10060;
-    static final int TOPIC_CAPACITY = 256;
-
     private final CommonSocketOptions options;
     private final NativeSocketRuntime runtime;
 
@@ -179,7 +167,6 @@ abstract class NativeSocketBase implements Socket {
                     "socket is not backed by the native zlink runtime");
             }
         });
-        NativeSocketRuntime.ensureRegistered();
     }
 
     protected NativeSocketBase(Context ctx, SocketType type) {
@@ -303,7 +290,7 @@ abstract class NativeSocketBase implements Socket {
     SendResult publishNoWaitPartsResult(String topicId, List<Message> parts) { return runtime.publishNoWaitPartsResult(topicId, parts); }
     void prepareRecvLikeOperation() { runtime.prepareRecvLikeOperation(); }
     Received registerLazyReceive(Received received, boolean hasMore) { return runtime.registerLazyReceive(received, hasMore); }
-    byte[] subscriptionAt(long index, MemorySegment lenInOut, MemorySegment topicOut) { return runtime.subscriptionAt(index, lenInOut, topicOut, TOPIC_CAPACITY); }
+    byte[] subscriptionAt(long index, MemorySegment lenInOut, MemorySegment topicOut) { return runtime.subscriptionAt(index, lenInOut, topicOut, NativeSocketRuntime.TOPIC_CAPACITY); }
     void ensureOpen() { runtime.ensureOpen(); }
     void setDealerIntOption(int option, int value) { runtime.setDealerIntOption(option, value); }
     int getDealerIntOption(int option) { return runtime.getDealerIntOption(option); }

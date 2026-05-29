@@ -194,32 +194,8 @@ final class SpotRoutedSupport implements AutoCloseable {
                 RoutingId source = readRoutingIdOut(sourceRidOut);
                 RoutingId sourceSpot = readRoutingIdOut(spotRidOut);
                 long requestSeq = requestSeqOut.get(ValueLayout.JAVA_LONG, 0);
-                ReceivedPartCursor cursor = hasMore
-                    ? new SpotReceiveCursor(flags.value()) : null;
-                Received[] ref = new Received[1];
-                Runnable onTerminal = () -> {
-                    Received pending = activeLazyReceive.get();
-                    if (pending == ref[0]) {
-                        activeLazyReceive.remove();
-                    }
-                };
-	                Received received = InternalAccess.receivedLazy(source,
-	                    sourceSpot, firstPart, cursor, requestSeq,
-	                    requestSeq != 0L, requestSeq == 0L ? null
-	                    : (replyParts, sendFlags) -> {
-                        if (sourceSpot != null) {
-                            replyToSpot(source, sourceSpot, requestSeq,
-                                replyParts, sendFlags);
-                        } else {
-                            replyToRouter(source, requestSeq, replyParts,
-                                sendFlags);
-	                        }
-	                    }, onTerminal);
-	                if (source != null && sourceSpot != null) {
-	                    InternalAccess.receivedSetSendSender(received, (sendParts, sendFlags) ->
-	                        sendToSpot(source, sourceSpot, sendParts, sendFlags));
-	                }
-                ref[0] = received;
+                Received received = createRoutedReceived(source, sourceSpot,
+                    firstPart, hasMore, requestSeq, flags.value());
                 if (hasMore) {
                     activeLazyReceive.set(received);
                 }
@@ -233,6 +209,42 @@ final class SpotRoutedSupport implements AutoCloseable {
                 }
             }
         }
+    }
+
+    private Received createRoutedReceived(RoutingId source,
+                                          RoutingId sourceSpot,
+                                          Message firstPart,
+                                          boolean hasMore,
+                                          long requestSeq,
+                                          int recvFlags) {
+        ReceivedPartCursor cursor = hasMore
+            ? new SpotReceiveCursor(recvFlags) : null;
+        Received[] ref = new Received[1];
+        Runnable onTerminal = () -> {
+            Received pending = activeLazyReceive.get();
+            if (pending == ref[0]) {
+                activeLazyReceive.remove();
+            }
+        };
+        BiConsumer<List<Message>, SendFlags> replySender =
+            requestSeq == 0L ? null : (replyParts, sendFlags) -> {
+                if (sourceSpot != null) {
+                    replyToSpot(source, sourceSpot, requestSeq, replyParts,
+                        sendFlags);
+                } else {
+                    replyToRouter(source, requestSeq, replyParts, sendFlags);
+                }
+            };
+        Received received = InternalAccess.receivedLazy(source, sourceSpot,
+            firstPart, cursor, requestSeq, requestSeq != 0L, replySender,
+            onTerminal);
+        if (source != null && sourceSpot != null) {
+            InternalAccess.receivedSetSendSender(received,
+                (sendParts, sendFlags) -> sendToSpot(source, sourceSpot,
+                    sendParts, sendFlags));
+        }
+        ref[0] = received;
+        return received;
     }
 
     public void setDispatchHandler(SpotDispatchEventHandler handler) {

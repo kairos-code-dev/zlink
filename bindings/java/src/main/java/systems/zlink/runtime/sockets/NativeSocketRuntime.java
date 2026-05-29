@@ -47,8 +47,6 @@ final class NativeSocketRuntime implements AutoCloseable {
     static final int ERRNO_ENOTCONN_WIN = 10057;
     static final int ERRNO_EHOSTUNREACH = 113;
     static final int ERRNO_EHOSTUNREACH_WIN = 10065;
-    static final int ERRNO_ETIMEDOUT = 110;
-    static final int ERRNO_ETIMEDOUT_WIN = 10060;
     static final int TOPIC_CAPACITY = 256;
     private static final int OPT_RCVMORE = 13;
 
@@ -63,9 +61,6 @@ final class NativeSocketRuntime implements AutoCloseable {
     private final SocketType socketTypeHint;
     private final ThreadLocal<RecvScratch> recvScratch =
       ThreadLocal.withInitial(RecvScratch::new);
-
-    public static void ensureRegistered() {
-    }
 
     public void disconnectRid(RoutingId peerRid) {
         socketCore.disconnectRid(peerRid);

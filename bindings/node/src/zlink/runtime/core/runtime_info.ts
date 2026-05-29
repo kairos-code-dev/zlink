@@ -7,16 +7,16 @@ import { requireNative } from '../native/native';
 import type { RuntimeBaseSocket as BaseSocket } from '../sockets';
 
 export function version(): [number, number, number] {
-  return requireNative().version() as [number, number, number];
+  return requireNative().version();
 }
 
 export function strerror(code: number): string {
-  return requireNative().strerror(code) as string;
+  return requireNative().strerror(code);
 }
 
 export function has(capability: string): boolean {
   const normalized = validateCString(capability, 'capability', Number.MAX_SAFE_INTEGER);
-  return requireNative().has(normalized) as boolean;
+  return requireNative().has(normalized);
 }
 
 export function proxy(frontend: BaseSocket, backend: BaseSocket, capture?: BaseSocket): void {

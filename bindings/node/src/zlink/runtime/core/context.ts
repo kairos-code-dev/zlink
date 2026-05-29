@@ -94,7 +94,7 @@ export class Context extends NativeHandle {
   /** @internal */
   getOptionRawInternal(option: number): number {
     try {
-      return requireNative().ctxGetOpt(this._native, option | 0) as number;
+      return requireNative().ctxGetOpt(this._native, option | 0);
     } catch (error) {
       if (
         (option | 0) === ContextOption.THREAD_PRIORITY ||
@@ -109,7 +109,7 @@ export class Context extends NativeHandle {
   /** @internal */
   getOptionRawStrictInternal(option: number): number {
     try {
-      return requireNative().ctxGetOpt(this._native, option | 0) as number;
+      return requireNative().ctxGetOpt(this._native, option | 0);
     } catch (error) {
       const message = error instanceof Error && error.message
         ? error.message

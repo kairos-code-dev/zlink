@@ -1,24 +1,39 @@
 // SPDX-License-Identifier: MPL-2.0
 
 type NativeFn = (...args: unknown[]) => unknown;
+type NativeHandle = unknown;
+type NativeBuffer = Buffer;
+type NullableNativeHandle = NativeHandle | null;
+type NativeVersion = [number, number, number];
+type NativeVoidFn = (...args: unknown[]) => void;
+type NativeHandleFn = (...args: unknown[]) => NativeHandle;
 
 interface CoreNativeBinding {
-  errno: NativeFn;
-  has: NativeFn;
-  proxy: NativeFn;
-  proxySteerable: NativeFn;
-  sleep: NativeFn;
-  strerror: NativeFn;
-  version: NativeFn;
+  errno: () => number;
+  has: (capability: string) => boolean;
+  proxy: (
+    frontend: NativeHandle,
+    backend: NativeHandle,
+    capture: NullableNativeHandle
+  ) => void;
+  proxySteerable: (
+    frontend: NativeHandle,
+    backend: NativeHandle,
+    capture: NullableNativeHandle,
+    control: NativeHandle
+  ) => void;
+  sleep: (seconds: number) => void;
+  strerror: (code: number) => string;
+  version: () => NativeVersion;
 }
 
 interface ContextNativeBinding {
-  ctxGetOpt: NativeFn;
-  ctxNew: NativeFn;
-  ctxRecalculateAutoHwm: NativeFn;
-  ctxSetOpt: NativeFn;
-  ctxShutdown: NativeFn;
-  ctxTerm: NativeFn;
+  ctxGetOpt: (ctx: NativeHandle, option: number) => number;
+  ctxNew: () => NativeHandle;
+  ctxRecalculateAutoHwm: (ctx: NativeHandle) => void;
+  ctxSetOpt: (ctx: NativeHandle, option: number, value: number | NativeBuffer) => void;
+  ctxShutdown: (ctx: NativeHandle) => void;
+  ctxTerm: (ctx: NativeHandle) => void;
 }
 
 interface SocketNativeBinding {
@@ -77,10 +92,10 @@ interface EventingNativeBinding {
   atomicCounterDec: NativeFn;
   atomicCounterDestroy: NativeFn;
   atomicCounterInc: NativeFn;
-  atomicCounterNew: NativeFn;
+  atomicCounterNew: NativeHandleFn;
   atomicCounterSet: NativeFn;
   atomicCounterValue: NativeFn;
-  monitorClose: NativeFn;
+  monitorClose: NativeVoidFn;
   monitorHandler: NativeFn;
   monitorRecv: NativeFn;
   monitorRecvNoWait: NativeFn;

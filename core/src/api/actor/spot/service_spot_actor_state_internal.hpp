@@ -14,6 +14,15 @@
 #include <string>
 #include <vector>
 
+struct spot_handle_t;
+struct spot_logical_state_t;
+
+namespace zlink
+{
+class socket_base_t;
+class spot_node_t;
+}
+
 namespace zlink
 {
 namespace spot_actor_api_internal

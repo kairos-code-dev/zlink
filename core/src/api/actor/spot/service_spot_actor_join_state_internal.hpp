@@ -48,6 +48,10 @@ struct queued_join_request_t
     bool indexed;
 };
 
+spot_logical_state_t *join_queue_key (
+  const std::shared_ptr<spot_logical_state_t> &state_);
+spot_logical_state_t *join_queue_key (const queued_join_request_t *request_);
+
 struct actor_join_state_t
 {
     typedef std::map<spot_logical_state_t *,

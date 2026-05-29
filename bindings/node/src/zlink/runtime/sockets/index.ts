@@ -17,7 +17,6 @@ export {
   StreamSocketOptions as RuntimeStreamSocketOptions,
   SubSocketOptions as RuntimeSubSocketOptions,
 } from './socket_options';
-export * from './socket_runtime_exports';
 export { MonitorSocket as RuntimeMonitorSocket } from '../eventing/monitor_socket';
 export { PairSocket as RuntimePairSocket } from './pair_socket';
 export { PubSocket as RuntimePubSocket } from './pub_socket';

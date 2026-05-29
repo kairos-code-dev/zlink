@@ -29,32 +29,67 @@ import {
 
 const TOPIC = 'bench';
 
-function trySpotPublish(spot: any, payload: Buffer, flags = zlink.SendFlags.DontWait): boolean {
+interface SpotPublishOperation {
+  message(payload: Buffer): {
+    flags(flags: number): { submit(): boolean };
+  };
+}
+
+interface SpotLike {
+  publish(topic: string): SpotPublishOperation;
+  subscribe(result: unknown, flags: number): boolean;
+  setRoutingId(routingId: unknown): void;
+  setSubscription(topic: string): void;
+  close(): void;
+}
+
+interface SpotBenchmarkOptions {
+  duration: number;
+  hwm?: number;
+  libName: string;
+  msgSize: number;
+  recvHwm?: number;
+  runId?: number;
+  sendHwm?: number;
+  transport: string;
+}
+
+interface SpotReceivedSample {
+  size: number;
+  topic: string;
+  routingId: unknown;
+}
+
+function trySpotPublish(spot: SpotLike, payload: Buffer, flags = zlink.SendFlags.DontWait): boolean {
   try {
     return spot.publish(TOPIC).message(payload).flags(flags).submit();
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const submitError = error as { result?: unknown };
     if (error instanceof zlink.SubmitError &&
-        (error.result === zlink.SubmitResult.Backpressured ||
-         error.result === zlink.SubmitResult.NotConnected ||
-         error.result === zlink.SubmitResult.NotFound)) {
+        (submitError.result === zlink.SubmitResult.Backpressured ||
+         submitError.result === zlink.SubmitResult.NotConnected ||
+         submitError.result === zlink.SubmitResult.NotFound)) {
       return false;
     }
-    const text = String(error && error.message ? error.message : error);
-    if ((error && error.code === 'EAGAIN') ||
-        /Resource temporarily unavailable|temporarily unavailable|would block|Host unreachable|not connected/i.test(text)) {
+    const code = typeof error === 'object' && error !== null && 'code' in error
+      ? (error as { code?: unknown }).code
+      : undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    if ((code === 'EAGAIN') ||
+        /Resource temporarily unavailable|temporarily unavailable|would block|Host unreachable|not connected/i.test(message)) {
       return false;
     }
     throw error;
   }
 }
 
-async function publishStopToken(spot: any) {
+async function publishStopToken(spot: SpotLike) {
   // PERF_SINGLE_TEST_POLICY § 1.4: emit the wire-level stop token. Spot
   // stop delivery is a required phase-end signal, so failure is surfaced.
   spot.publish(TOPIC).message(STOP_TOKEN_BYTES).flags(zlink.SendFlags.None).submit();
 }
 
-function trySpotSubscribe(spot: any, buffer: Buffer) {
+function trySpotSubscribe(spot: SpotLike, buffer: Buffer): SpotReceivedSample | null {
   try {
     const received = new zlink.TopicMessage();
     if (!spot.subscribe(received, zlink.RecvFlags.DontWait)) {
@@ -63,16 +98,17 @@ function trySpotSubscribe(spot: any, buffer: Buffer) {
     const data = received.singlePartOrThrow().data();
     data.copy(buffer, 0, 0, Math.min(buffer.length, data.length));
     return { size: data.length, topic: received.topic, routingId: received.routingId };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const recvError = error as { result?: unknown; internalErrno?: unknown };
     if (error instanceof zlink.RecvError &&
-        (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
+        (recvError.result === zlink.RecvResult.NoData || recvError.internalErrno === 2)) {
       return null;
     }
     throw error;
   }
 }
 
-function drainSpot(spot: any, buffer: Buffer, onMessage: (received: any) => void): boolean {
+function drainSpot(spot: SpotLike, buffer: Buffer, onMessage: (received: SpotReceivedSample) => void): boolean {
   let processed = false;
   while (true) {
     const received = trySpotSubscribe(spot, buffer);
@@ -84,14 +120,14 @@ function drainSpot(spot: any, buffer: Buffer, onMessage: (received: any) => void
   }
 }
 
-async function runSpotBenchmark(msgSize: number, options: any) {
+async function runSpotBenchmark(msgSize: number, options: SpotBenchmarkOptions) {
   const ctx = zlink.createContext();
   applyContextPolicy(ctx);
   const publisherNode = zlink.createSpotNode(ctx);
   const subscriberNode = zlink.createSpotNode(ctx);
-  let publisher: any = null;
-  let subscriber: any = null;
-  let stopPublisher: any = null;
+  let publisher: SpotLike | null = null;
+  let subscriber: SpotLike | null = null;
+  let stopPublisher: SpotLike | null = null;
 
   try {
     const publisherEndpoint = await benchmarkEndpoint(options.transport, `spot-publisher-${msgSize}`);

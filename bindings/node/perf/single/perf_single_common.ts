@@ -2,6 +2,8 @@
 
 'use strict';
 
+import type { Worker as NodeWorker } from 'node:worker_threads';
+
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 const zlink = require('@zlink-systems/zlink');
@@ -61,6 +63,30 @@ interface SingleSocketPolicyOptions {
 
 interface RecordUntilOptions {
   recordUntilNs?: bigint | number | string;
+}
+
+interface WorkerMessage {
+  type?: string;
+  [key: string]: unknown;
+}
+
+type WorkerWaiter = (message: WorkerMessage) => boolean;
+
+type SenderWorker = NodeWorker;
+
+interface SenderWorkerState {
+  seenMessages: WorkerMessage[];
+  waiters: WorkerWaiter[];
+}
+
+const senderWorkerStates = new WeakMap<SenderWorker, SenderWorkerState>();
+
+function senderWorkerState(worker: SenderWorker): SenderWorkerState {
+  const state = senderWorkerStates.get(worker);
+  if (!state) {
+    throw new Error('sender worker is not managed by perf_single_common');
+  }
+  return state;
 }
 
 function applySocketPolicy(socket, options: SingleSocketPolicyOptions = {}) {
@@ -691,16 +717,16 @@ function parseSingleBinaryArgs(argv) {
   };
 }
 
-function spawnSenderWorker(workerData) {
+function spawnSenderWorker(workerData): SenderWorker {
   const worker = new Worker(
     path.join(__dirname, 'perf_single_sender_worker.js'),
     { workerData }
-  );
-  worker.__seenMessages = [];
-  worker.__waiters = [];
-  worker.on('message', (message) => {
-    worker.__seenMessages.push(message);
-    for (const waiter of worker.__waiters.slice()) {
+  ) as SenderWorker;
+  senderWorkerStates.set(worker, { seenMessages: [], waiters: [] });
+  worker.on('message', (message: WorkerMessage) => {
+    const state = senderWorkerState(worker);
+    state.seenMessages.push(message);
+    for (const waiter of state.waiters.slice()) {
       if (waiter(message)) {
         return;
       }
@@ -709,11 +735,16 @@ function spawnSenderWorker(workerData) {
   return worker;
 }
 
-function waitForWorkerMessage(worker, expectedType, timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 1000)) {
-  return new Promise<any>((resolve, reject) => {
-    const seen = worker.__seenMessages.find((message) => message && message.type === expectedType);
+function waitForWorkerMessage<T extends WorkerMessage = WorkerMessage>(
+  worker: SenderWorker,
+  expectedType: string,
+  timeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 1000)
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const state = senderWorkerState(worker);
+    const seen = state.seenMessages.find((message) => message && message.type === expectedType);
     if (seen) {
-      resolve(seen);
+      resolve(seen as T);
       return;
     }
 
@@ -736,28 +767,29 @@ function waitForWorkerMessage(worker, expectedType, timeoutMs = integerEnv('PERF
     };
     worker.once('exit', onExit);
 
-    worker.__waiters.push((message) => {
+    state.waiters.push((message: WorkerMessage) => {
       if (done || !message || message.type !== expectedType) {
         return false;
       }
       done = true;
       clearTimeout(timeout);
       worker.off('exit', onExit);
-      resolve(message);
+      resolve(message as T);
       return true;
     });
   });
 }
 
-function waitForWorkerError(worker) {
-  return new Promise<any>((resolve) => {
-    const seen = worker.__seenMessages.find((message) => message && message.type === 'error');
+function waitForWorkerError(worker: SenderWorker): Promise<WorkerMessage> {
+  return new Promise<WorkerMessage>((resolve) => {
+    const state = senderWorkerState(worker);
+    const seen = state.seenMessages.find((message) => message && message.type === 'error');
     if (seen) {
       resolve(seen);
       return;
     }
 
-    worker.__waiters.push((message) => {
+    state.waiters.push((message: WorkerMessage) => {
       if (!message || message.type !== 'error') {
         return false;
       }
@@ -767,13 +799,13 @@ function waitForWorkerError(worker) {
   });
 }
 
-function waitForWorkerDone(worker, durationSeconds) {
+function waitForWorkerDone(worker: SenderWorker, durationSeconds) {
   const readyTimeoutMs = integerEnv('PERF_CONNECT_READY_TIMEOUT_MS', 1000);
   const activeMs = Math.ceil(Math.max(0, Number(durationSeconds) || 0) * 1000);
   return waitForWorkerMessage(worker, 'done', activeMs + readyTimeoutMs);
 }
 
-async function closeSenderWorker(worker) {
+async function closeSenderWorker(worker?: NodeWorker | null) {
   if (!worker) {
     return;
   }

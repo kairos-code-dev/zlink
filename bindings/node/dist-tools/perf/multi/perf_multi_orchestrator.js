@@ -5,6 +5,14 @@ const { once } = require('node:events');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const { benchmarkEndpoint, reservePort } = require('./perf_multi_common');
+const processCaptureStates = new WeakMap();
+function processCaptureState(processRef) {
+    const state = processCaptureStates.get(processRef);
+    if (!state) {
+        throw new Error('process output is not managed by perf_multi_orchestrator');
+    }
+    return state;
+}
 function collectLines(stream, onLine) {
     let buffered = '';
     stream.setEncoding('utf8');
@@ -26,7 +34,8 @@ function collectLines(stream, onLine) {
 async function waitForLine(processRef, expected, label, timeoutMs) {
     return new Promise((resolve, reject) => {
         let done = false;
-        if (processRef.__seenLines.includes(expected)) {
+        const state = processCaptureState(processRef);
+        if (state.seenLines.includes(expected)) {
             resolve();
             return;
         }
@@ -43,7 +52,7 @@ async function waitForLine(processRef, expected, label, timeoutMs) {
                 reject(new Error(`${label} exited before ${expected}: ${code}`));
             }
         });
-        processRef.__waiters.push((line) => {
+        state.waiters.push((line) => {
             if (!done && line === expected) {
                 done = true;
                 clearTimeout(timeout);
@@ -57,7 +66,8 @@ async function waitForLine(processRef, expected, label, timeoutMs) {
 async function waitForPrefix(processRef, prefix, label, timeoutMs) {
     return new Promise((resolve, reject) => {
         let done = false;
-        const seen = processRef.__seenLines.find((line) => line.startsWith(prefix));
+        const state = processCaptureState(processRef);
+        const seen = state.seenLines.find((line) => line.startsWith(prefix));
         if (seen) {
             resolve(seen);
             return;
@@ -75,7 +85,7 @@ async function waitForPrefix(processRef, prefix, label, timeoutMs) {
                 reject(new Error(`${label} exited before ${prefix}: ${code}`));
             }
         });
-        processRef.__waiters.push((line) => {
+        state.waiters.push((line) => {
             if (!done && line.startsWith(prefix)) {
                 done = true;
                 clearTimeout(timeout);
@@ -96,12 +106,11 @@ function isControlLine(line) {
         || line.startsWith('DATA_ENDPOINT,');
 }
 function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
-    child.__waiters = [];
-    child.__seenLines = [];
-    child.__stderrLines = [];
+    processCaptureStates.set(child, { seenLines: [], stderrLines: [], waiters: [] });
     collectLines(child.stdout, (line) => {
-        child.__seenLines.push(line);
-        for (const waiter of child.__waiters) {
+        const state = processCaptureState(child);
+        state.seenLines.push(line);
+        for (const waiter of state.waiters) {
             if (waiter(line)) {
                 return;
             }
@@ -118,17 +127,20 @@ function attachProcessCapture(child, resultLines, resultPrefix = 'RESULT,') {
         }
     });
     collectLines(child.stderr, (line) => {
-        child.__stderrLines.push(line);
+        processCaptureState(child).stderrLines.push(line);
         console.error(line);
     });
 }
 function hasProtocolUnsupported(processRef) {
-    return Array.isArray(processRef.__stderrLines)
-        && processRef.__stderrLines.some((line) => line.toLowerCase().includes('protocol not supported'));
+    return processCaptureState(processRef).stderrLines
+        .some((line) => line.toLowerCase().includes('protocol not supported'));
 }
 function hasAddressInUse(processRef) {
-    return Array.isArray(processRef.__stderrLines)
-        && processRef.__stderrLines.some((line) => /address already in use/i.test(line));
+    return processCaptureState(processRef).stderrLines
+        .some((line) => /address already in use/i.test(line));
+}
+function stderrText(processRef) {
+    return processCaptureState(processRef).stderrLines.join('\n');
 }
 function startupBindRetryCount(args) {
     const value = Number(args.__startupBindRetry || 0);
@@ -255,9 +267,9 @@ async function stopServer(server, label, timeoutMs = 5000) {
         await waitForExit(server);
     }
     catch (error) {
-        const stderrText = Array.isArray(server.__stderrLines) ? server.__stderrLines.join('\n') : '';
-        if (stderrText) {
-            error.message = `${error.message}\n${stderrText}`;
+        const stderr = stderrText(server);
+        if (stderr) {
+            error.message = `${error.message}\n${stderr}`;
         }
         throw error;
     }
@@ -502,9 +514,9 @@ async function spawnMultiPair(serverScript, clientScript, args) {
                 __startupBindRetry: startupBindRetryCount(args) + 1
             });
         }
-        const stderrText = Array.isArray(server.__stderrLines) ? server.__stderrLines.join('\n') : '';
-        if (stderrText) {
-            error.message = `${error.message}\n${stderrText}`;
+        const stderr = stderrText(server);
+        if (stderr) {
+            error.message = `${error.message}\n${stderr}`;
         }
         throw error;
     }
@@ -522,9 +534,9 @@ async function spawnMultiPair(serverScript, clientScript, args) {
                     __startupBindRetry: startupBindRetryCount(args) + 1
                 });
             }
-            const stderrText = Array.isArray(server.__stderrLines) ? server.__stderrLines.join('\n') : '';
-            if (stderrText) {
-                error.message = `${error.message}\n${stderrText}`;
+            const stderr = stderrText(server);
+            if (stderr) {
+                error.message = `${error.message}\n${stderr}`;
             }
             throw error;
         }
@@ -565,18 +577,18 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     }
     catch (error) {
         await Promise.allSettled([terminateProcessTree(server, 1000), terminateProcessTree(client, 1000)]);
-        const stderrText = Array.isArray(client.__stderrLines) ? client.__stderrLines.join('\n') : '';
-        if (stderrText) {
-            error.message = `${error.message}\n${stderrText}`;
+        const stderr = stderrText(client);
+        if (stderr) {
+            error.message = `${error.message}\n${stderr}`;
         }
         throw error;
     }
     if (clientExitCode !== 0) {
-        const stderrText = Array.isArray(client.__stderrLines) ? client.__stderrLines.join('\n') : '';
+        const stderr = stderrText(client);
         await Promise.allSettled([terminateProcessTree(server, 1000)]);
         const error = new Error(`client failed (${clientScript}): ${clientExitCode}`);
-        if (stderrText) {
-            error.message = `${error.message}\n${stderrText}`;
+        if (stderr) {
+            error.message = `${error.message}\n${stderr}`;
         }
         throw error;
     }
@@ -593,7 +605,7 @@ async function spawnMultiPair(serverScript, clientScript, args) {
     // RESULT and this resolves immediately.
     if (!resultLines.some((line) => line.startsWith('RESULT,'))
         && server.exitCode === null && server.signalCode === null) {
-        // Poll resultLines (do NOT register a __waiters consumer — that would
+        // Poll resultLines; a waiter would consume RESULT before capture stores it.
         // intercept the RESULT line before attachProcessCapture pushes it).
         const resultDeadline = Date.now() + clientTimeoutMs;
         while (Date.now() < resultDeadline

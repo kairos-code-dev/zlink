@@ -47,6 +47,14 @@ function patternDirectionLabel(patternName) {
 const PATTERN_SEPARATOR =
   '===============================================================================';
 
+interface PerfMetrics {
+  throughput: number;
+  bandwidth: number;
+  latency: number;
+  latency_p95?: number;
+  latency_p99?: number;
+}
+
 function usage() {
   console.log(`Usage: bindings/node/perf/run_benchmarks_multi.sh [options]
 
@@ -320,7 +328,7 @@ async function main() {
         emit(`      ${multiTableSeparatorLine()}`);
       }
 
-      const samples = new Map<number, any[]>(msgSizes.map((size) => [size, []]));
+      const samples = new Map<number, PerfMetrics[]>(msgSizes.map((size) => [size, []]));
       const failedSizes = new Map();
       const sectionEmitted = new Set();
       let transportUnsupported = false;

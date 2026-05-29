@@ -75,7 +75,7 @@ test('typed numeric options fail fast on int32 and int64 boundary violations', (
         pair.options.connectTimeout = 1.5;
     }, /must be an integer/);
     assert.throws(() => {
-        pair.options.maxMsgSize = Number.MAX_SAFE_INTEGER + 1;
+        Reflect.set(pair.options, 'maxMsgSize', Number.MAX_SAFE_INTEGER + 1);
     }, /bigint/);
     assert.throws(() => {
         pair.options.maxMsgSize = 1n << 63n;

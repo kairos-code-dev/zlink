@@ -11,15 +11,19 @@ function trySpotPublish(spot, payload, flags = zlink.SendFlags.DontWait) {
         return spot.publish(TOPIC).message(payload).flags(flags).submit();
     }
     catch (error) {
+        const submitError = error;
         if (error instanceof zlink.SubmitError &&
-            (error.result === zlink.SubmitResult.Backpressured ||
-                error.result === zlink.SubmitResult.NotConnected ||
-                error.result === zlink.SubmitResult.NotFound)) {
+            (submitError.result === zlink.SubmitResult.Backpressured ||
+                submitError.result === zlink.SubmitResult.NotConnected ||
+                submitError.result === zlink.SubmitResult.NotFound)) {
             return false;
         }
-        const text = String(error && error.message ? error.message : error);
-        if ((error && error.code === 'EAGAIN') ||
-            /Resource temporarily unavailable|temporarily unavailable|would block|Host unreachable|not connected/i.test(text)) {
+        const code = typeof error === 'object' && error !== null && 'code' in error
+            ? error.code
+            : undefined;
+        const message = error instanceof Error ? error.message : String(error);
+        if ((code === 'EAGAIN') ||
+            /Resource temporarily unavailable|temporarily unavailable|would block|Host unreachable|not connected/i.test(message)) {
             return false;
         }
         throw error;
@@ -41,8 +45,9 @@ function trySpotSubscribe(spot, buffer) {
         return { size: data.length, topic: received.topic, routingId: received.routingId };
     }
     catch (error) {
+        const recvError = error;
         if (error instanceof zlink.RecvError &&
-            (error.result === zlink.RecvResult.NoData || error.internalErrno === 2)) {
+            (recvError.result === zlink.RecvResult.NoData || recvError.internalErrno === 2)) {
             return null;
         }
         throw error;

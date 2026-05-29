@@ -36,6 +36,14 @@ const PATTERNS = {
   SPOT: { script: 'perf_spot.js' }
 };
 
+interface PerfMetrics {
+  throughput: number;
+  bandwidth: number;
+  latency: number;
+  latency_p95?: number;
+  latency_p99?: number;
+}
+
 function policyTransports(pattern) {
   const raw = pattern === 'SPOT'
     ? ['tcp', 'tls', 'ws', 'wss']
@@ -358,7 +366,7 @@ async function main() {
         emit(`      ${singleTableSeparatorLine()}`);
       }
 
-      const samples = new Map<number, any[]>(sizes.map((size) => [size, []]));
+      const samples = new Map<number, PerfMetrics[]>(sizes.map((size) => [size, []]));
       const failedSizes = new Map();
       const failedRecords = new Map();
       let transportUnsupported = false;

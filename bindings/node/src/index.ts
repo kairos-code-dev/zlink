@@ -3,25 +3,6 @@
 export * from './zlink/contracts';
 
 import {
-  createRuntimeAtomicCounter,
-  createRuntimeContext,
-  createRuntimeDealerSocket,
-  createRuntimeDiscovery,
-  createRuntimePairSocket,
-  createRuntimePoller,
-  createRuntimePollEvents,
-  createRuntimePubSocket,
-  createRuntimeRegistry,
-  createRuntimeRegistryQueryClient,
-  createRuntimeRouterSocket,
-  createRuntimeSpotNode,
-  createRuntimeStopwatch,
-  createRuntimeStreamSocket,
-  createRuntimeSubSocket,
-  createRuntimeThread,
-  createRuntimeTimer,
-  createRuntimeXPubSocket,
-  createRuntimeXSubSocket,
   has as runtimeHas,
   multipartClose as runtimeMultipartClose,
   proxy as runtimeProxy,
@@ -29,7 +10,32 @@ import {
   sleep as runtimeSleep,
   strerror as runtimeStrerror,
   version as runtimeVersion,
-} from './zlink/runtime/defaults';
+} from './zlink/runtime/core/runtime_info';
+import { RuntimeContext } from './zlink/runtime/core/context';
+import {
+  RuntimeAtomicCounter,
+  RuntimePoller,
+  RuntimePollEvents,
+  RuntimeStopwatch,
+  RuntimeThread,
+  RuntimeTimer,
+} from './zlink/runtime/eventing';
+import {
+  RuntimeDealerSocket,
+  RuntimePairSocket,
+  RuntimePubSocket,
+  RuntimeRouterSocket,
+  RuntimeStreamSocket,
+  RuntimeSubSocket,
+  RuntimeXPubSocket,
+  RuntimeXSubSocket,
+} from './zlink/runtime/sockets';
+import {
+  RuntimeDiscovery,
+  RuntimeRegistry,
+  RuntimeRegistryQueryClient,
+  RuntimeSpotNode,
+} from './zlink/runtime/service';
 import {
   asPublicContract,
   asRuntimeContext,
@@ -60,47 +66,47 @@ import type {
 import type { BaseSocket, Message, SpotNodeModeValue } from './zlink/contracts';
 
 export function createContext(): Context {
-  return asPublicContract<Context>(createRuntimeContext());
+  return asPublicContract<Context>(new RuntimeContext());
 }
 
 export function createPairSocket(ctx: Context): PairSocket {
-  return asPublicContract<PairSocket>(createRuntimePairSocket(asRuntimeContext(ctx)));
+  return asPublicContract<PairSocket>(new RuntimePairSocket(asRuntimeContext(ctx)));
 }
 
 export function createPubSocket(ctx: Context): PubSocket {
-  return asPublicContract<PubSocket>(createRuntimePubSocket(asRuntimeContext(ctx)));
+  return asPublicContract<PubSocket>(new RuntimePubSocket(asRuntimeContext(ctx)));
 }
 
 export function createSubSocket(ctx: Context): SubSocket {
-  return asPublicContract<SubSocket>(createRuntimeSubSocket(asRuntimeContext(ctx)));
+  return asPublicContract<SubSocket>(new RuntimeSubSocket(asRuntimeContext(ctx)));
 }
 
 export function createXPubSocket(ctx: Context): XPubSocket {
-  return asPublicContract<XPubSocket>(createRuntimeXPubSocket(asRuntimeContext(ctx)));
+  return asPublicContract<XPubSocket>(new RuntimeXPubSocket(asRuntimeContext(ctx)));
 }
 
 export function createXSubSocket(ctx: Context): XSubSocket {
-  return asPublicContract<XSubSocket>(createRuntimeXSubSocket(asRuntimeContext(ctx)));
+  return asPublicContract<XSubSocket>(new RuntimeXSubSocket(asRuntimeContext(ctx)));
 }
 
 export function createDealerSocket(ctx: Context): DealerSocket {
-  return asPublicContract<DealerSocket>(createRuntimeDealerSocket(asRuntimeContext(ctx)));
+  return asPublicContract<DealerSocket>(new RuntimeDealerSocket(asRuntimeContext(ctx)));
 }
 
 export function createRouterSocket(ctx: Context): RouterSocket {
-  return asPublicContract<RouterSocket>(createRuntimeRouterSocket(asRuntimeContext(ctx)));
+  return asPublicContract<RouterSocket>(new RuntimeRouterSocket(asRuntimeContext(ctx)));
 }
 
 export function createStreamSocket(ctx: Context): StreamSocket {
-  return asPublicContract<StreamSocket>(createRuntimeStreamSocket(asRuntimeContext(ctx)));
+  return asPublicContract<StreamSocket>(new RuntimeStreamSocket(asRuntimeContext(ctx)));
 }
 
 export function createRegistry(ctx: Context): Registry {
-  return asPublicContract<Registry>(createRuntimeRegistry(asRuntimeContext(ctx)));
+  return asPublicContract<Registry>(new RuntimeRegistry(asRuntimeContext(ctx)));
 }
 
 export function createRegistryQueryClient(ctx: Context): RegistryQueryClient {
-  return asPublicContract<RegistryQueryClient>(createRuntimeRegistryQueryClient(asRuntimeContext(ctx)));
+  return asPublicContract<RegistryQueryClient>(new RuntimeRegistryQueryClient(asRuntimeContext(ctx)));
 }
 
 export function createDiscovery(
@@ -108,35 +114,35 @@ export function createDiscovery(
   autoConnectType: AutoConnectTypeValue,
   channelName: string
 ): Discovery {
-  return asPublicContract<Discovery>(createRuntimeDiscovery(asRuntimeContext(ctx), autoConnectType, channelName));
+  return asPublicContract<Discovery>(new RuntimeDiscovery(asRuntimeContext(ctx), autoConnectType, channelName));
 }
 
 export function createSpotNode(ctx: Context, mode?: SpotNodeModeValue): SpotNode {
-  return asPublicContract<SpotNode>(createRuntimeSpotNode(asRuntimeContext(ctx), mode));
+  return asPublicContract<SpotNode>(new RuntimeSpotNode(asRuntimeContext(ctx), mode));
 }
 
 export function createPoller(): Poller {
-  return asPublicContract<Poller>(createRuntimePoller());
+  return asPublicContract<Poller>(new RuntimePoller());
 }
 
 export function createPollEvents(capacity: number): PollEvents {
-  return asPublicContract<PollEvents>(createRuntimePollEvents(capacity));
+  return asPublicContract<PollEvents>(new RuntimePollEvents(capacity));
 }
 
 export function createTimer(): Timer {
-  return asPublicContract<Timer>(createRuntimeTimer());
+  return asPublicContract<Timer>(new RuntimeTimer());
 }
 
 export function createThread(handler: () => void): Thread {
-  return asPublicContract<Thread>(createRuntimeThread(handler));
+  return asPublicContract<Thread>(new RuntimeThread(handler));
 }
 
 export function createStopwatch(): Stopwatch {
-  return asPublicContract<Stopwatch>(createRuntimeStopwatch());
+  return asPublicContract<Stopwatch>(new RuntimeStopwatch());
 }
 
 export function createAtomicCounter(initialValue = 0): AtomicCounter {
-  return asPublicContract<AtomicCounter>(createRuntimeAtomicCounter(initialValue));
+  return asPublicContract<AtomicCounter>(new RuntimeAtomicCounter(initialValue));
 }
 
 export function version(): [number, number, number] {

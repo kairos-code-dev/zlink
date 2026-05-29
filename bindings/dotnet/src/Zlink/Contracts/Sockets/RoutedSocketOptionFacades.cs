@@ -21,7 +21,7 @@ public sealed class DealerSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the probe.
+    /// Gets the probe.
     /// </summary>
     public bool Probe
     {
@@ -38,7 +38,7 @@ public sealed class DealerSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the peer weight.
+    /// Gets the peer weight.
     /// </summary>
     public int PeerWeight
     {
@@ -64,7 +64,7 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the mandatory.
+    /// Gets the mandatory.
     /// </summary>
     public bool Mandatory
     {
@@ -73,7 +73,7 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the handover.
+    /// Gets the handover.
     /// </summary>
     public bool Handover
     {
@@ -84,7 +84,7 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the probe.
+    /// Gets the probe.
     /// </summary>
     public bool Probe
     {
@@ -124,7 +124,7 @@ public sealed class RouterSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the peer weight.
+    /// Gets the peer weight.
     /// </summary>
     public int PeerWeight
     {

@@ -20,7 +20,7 @@ public delegate void SpotDispatchHandler(SpotDispatchInfo info);
 public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets or sets the routing id.
+    /// Gets the routing id.
     /// </summary>
     RoutingId RoutingId { get; }
     /// <summary>
@@ -61,7 +61,7 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
     /// </summary>
     void SetRoutingId(RoutingId routingId);
     /// <summary>
-    /// Gets or sets the publish.
+    /// Starts a publish operation.
     /// </summary>
     SendOperation Publish(string topic);
     /// <summary>
@@ -102,11 +102,11 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
     /// </summary>
     void UnsetSubscription(string topicOrPattern);
     /// <summary>
-    /// Gets or sets the subscription at.
+    /// Gets the subscription at the specified index.
     /// </summary>
     SubscriptionEntry? SubscriptionAt(int index);
     /// <summary>
-    /// Gets or sets the subscribe.
+    /// Receives a subscribed topic message.
     /// </summary>
     bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None);
     /// <summary>
@@ -134,7 +134,7 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
     ActorJoinReplyOperation ReplyActorJoin(ActorJoinRequest request,
         int joinResultCode);
     /// <summary>
-    /// Gets or sets the actors.
+    /// Gets actor entries.
     /// </summary>
     ActorRef[] Actors();
 

@@ -48,7 +48,7 @@ public delegate void ActorJoinEntrySpotHandler(
 public interface ActorJoinOperation
 {
     /// <summary>
-    /// Gets or sets the message.
+    /// Adds a message part to the operation.
     /// </summary>
     ActorJoinSubmitOperation Message(Message message);
 }
@@ -59,24 +59,24 @@ public interface ActorJoinOperation
 public interface ActorJoinSubmitOperation
 {
     /// <summary>
-    /// Gets or sets the message.
+    /// Adds a message part to the operation.
     /// </summary>
     ActorJoinSubmitOperation Message(Message message);
     /// <summary>
-    /// Gets or sets the timeout.
+    /// Sets the operation timeout.
     /// </summary>
     ActorJoinSubmitOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Gets or sets the flags.
+    /// Sets operation flags.
     /// </summary>
     ActorJoinCallbackSubmitOperation Flags(SendFlags flags);
     /// <summary>
-    /// Gets or sets the submit async.
+    /// Submits the operation and returns the result asynchronously.
     /// </summary>
     Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> SubmitAsync(
         CancellationToken ct = default);
     /// <summary>
-    /// Gets or sets the submit.
+    /// Submits the operation.
     /// </summary>
     bool Submit(ActorJoinHandler callback);
 }
@@ -87,19 +87,19 @@ public interface ActorJoinSubmitOperation
 public interface ActorJoinCallbackSubmitOperation
 {
     /// <summary>
-    /// Gets or sets the message.
+    /// Adds a message part to the operation.
     /// </summary>
     ActorJoinCallbackSubmitOperation Message(Message message);
     /// <summary>
-    /// Gets or sets the timeout.
+    /// Sets the operation timeout.
     /// </summary>
     ActorJoinCallbackSubmitOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Gets or sets the flags.
+    /// Sets operation flags.
     /// </summary>
     ActorJoinCallbackSubmitOperation Flags(SendFlags flags);
     /// <summary>
-    /// Gets or sets the submit.
+    /// Submits the operation.
     /// </summary>
     bool Submit(ActorJoinHandler callback);
 }
@@ -110,15 +110,15 @@ public interface ActorJoinCallbackSubmitOperation
 public interface ActorJoinEntrySpotOperation
 {
     /// <summary>
-    /// Gets or sets the timeout.
+    /// Sets the operation timeout.
     /// </summary>
     ActorJoinEntrySpotOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Gets or sets the submit async.
+    /// Submits the operation and returns the result asynchronously.
     /// </summary>
     Task<ActorJoinEntrySpotResult> SubmitAsync(CancellationToken ct = default);
     /// <summary>
-    /// Gets or sets the submit.
+    /// Submits the operation.
     /// </summary>
     bool Submit(ActorJoinEntrySpotHandler callback);
 }
@@ -129,11 +129,11 @@ public interface ActorJoinEntrySpotOperation
 public interface ActorJoinReplyOperation
 {
     /// <summary>
-    /// Gets or sets the message.
+    /// Adds a message part to the operation.
     /// </summary>
     ActorJoinReplyOperation Message(Message message);
     /// <summary>
-    /// Gets or sets the submit.
+    /// Submits the operation.
     /// </summary>
     void Submit();
 }

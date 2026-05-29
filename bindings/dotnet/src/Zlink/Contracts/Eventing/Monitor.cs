@@ -88,95 +88,95 @@ public sealed class MonitorStatus
     }
 
     /// <summary>
-    /// Gets or sets the source kind.
+    /// Gets the source kind.
     /// </summary>
     public MonitorSourceKind SourceKind { get; }
     /// <summary>
-    /// Gets or sets the state flags.
+    /// Gets the state flags.
     /// </summary>
     public uint StateFlags { get; }
     /// <summary>
-    /// Gets or sets the detail flags.
+    /// Gets the detail flags.
     /// </summary>
     public uint DetailFlags { get; }
     /// <summary>
-    /// Gets or sets the snd pending msgs.
+    /// Gets the send pending message count.
     /// </summary>
     public ulong SndPendingMsgs { get; }
     /// <summary>
-    /// Gets or sets the rcv pending msgs.
+    /// Gets the receive pending message count.
     /// </summary>
     public ulong RcvPendingMsgs { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark enabled.
+    /// Gets the automatic high water mark enabled.
     /// </summary>
     public bool AutoHwmEnabled { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark profile.
+    /// Gets the automatic high water mark profile.
     /// </summary>
     public uint AutoHwmProfile { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark role.
+    /// Gets the automatic high water mark role.
     /// </summary>
     public uint AutoHwmRole { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark policy class.
+    /// Gets the automatic high water mark policy class.
     /// </summary>
     public uint AutoHwmPolicyClass { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark unit budget bytes.
+    /// Gets the automatic high water mark unit budget bytes.
     /// </summary>
     public ulong AutoHwmUnitBudgetBytes { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark size cap.
+    /// Gets the automatic high water mark size cap.
     /// </summary>
     public uint AutoHwmSizeCap { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark socket message slots.
+    /// Gets the automatic high water mark socket message slots.
     /// </summary>
     public ulong AutoHwmSocketMessageSlots { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark effective message bytes.
+    /// Gets the automatic high water mark effective message bytes.
     /// </summary>
     public ulong AutoHwmEffectiveMessageBytes { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark applied snd hwm.
+    /// Gets the automatic high water mark applied snd hwm.
     /// </summary>
     public int AutoHwmAppliedSndHwm { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark applied rcv hwm.
+    /// Gets the automatic high water mark applied rcv hwm.
     /// </summary>
     public int AutoHwmAppliedRcvHwm { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark effective sndbuf.
+    /// Gets the automatic high water mark effective sndbuf.
     /// </summary>
     public int AutoHwmEffectiveSndbuf { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark effective rcvbuf.
+    /// Gets the automatic high water mark effective rcvbuf.
     /// </summary>
     public int AutoHwmEffectiveRcvbuf { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark last recalc ms.
+    /// Gets the automatic high water mark last recalc ms.
     /// </summary>
     public ulong AutoHwmLastRecalcMs { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark last recalc reason.
+    /// Gets the automatic high water mark last recalc reason.
     /// </summary>
     public uint AutoHwmLastRecalcReason { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark send blocked ratio ppm.
+    /// Gets the automatic high water mark send blocked ratio ppm.
     /// </summary>
     public uint AutoHwmSendBlockedRatioPpm { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark deferred snd hwm.
+    /// Gets the automatic high water mark deferred snd hwm.
     /// </summary>
     public int AutoHwmDeferredSndHwm { get; }
     /// <summary>
-    /// Gets or sets the automatic high water mark deferred rcv hwm.
+    /// Gets the automatic high water mark deferred rcv hwm.
     /// </summary>
     public int AutoHwmDeferredRcvHwm { get; }
     /// <summary>
-    /// Gets or sets the is ready.
+    /// Gets whether the ready.
     /// </summary>
     public bool IsReady => SourceKind == MonitorSourceKind.Socket
         && (StateFlags & 0x1u) != 0;

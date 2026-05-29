@@ -8,19 +8,19 @@ namespace Systems.Zlink;
 public enum RegistryOption
 {
     /// <summary>
-    /// Represents the Id value.
+    /// Indicates the id registry option.
     /// </summary>
     Id = 0x3801,
     /// <summary>
-    /// Represents the HeartbeatIntervalMs value.
+    /// Indicates the heartbeat interval milliseconds registry option.
     /// </summary>
     HeartbeatIntervalMs = 0x3802,
     /// <summary>
-    /// Represents the HeartbeatTimeoutMs value.
+    /// Indicates the heartbeat timeout milliseconds registry option.
     /// </summary>
     HeartbeatTimeoutMs = 0x3803,
     /// <summary>
-    /// Represents the BroadcastIntervalMs value.
+    /// Indicates the broadcast interval milliseconds registry option.
     /// </summary>
     BroadcastIntervalMs = 0x3804
 }
@@ -31,31 +31,31 @@ public enum RegistryOption
 public enum SpotDispatchEvent
 {
     /// <summary>
-    /// Represents the SubscribeReadable value.
+    /// Indicates the subscribe readable spot dispatch event.
     /// </summary>
     SubscribeReadable = 1,
     /// <summary>
-    /// Represents the RoutedReadable value.
+    /// Indicates the routed readable spot dispatch event.
     /// </summary>
     RoutedReadable = 2,
     /// <summary>
-    /// Represents the TimerReadable value.
+    /// Indicates the timer readable spot dispatch event.
     /// </summary>
     TimerReadable = 3,
     /// <summary>
-    /// Represents the ChannelReplyReadable value.
+    /// Indicates the channel reply readable spot dispatch event.
     /// </summary>
     ChannelReplyReadable = 4,
     /// <summary>
-    /// Represents the ActorReadable value.
+    /// Indicates the actor readable spot dispatch event.
     /// </summary>
     ActorReadable = 5,
     /// <summary>
-    /// Represents the ActorJoinReadable value.
+    /// Indicates the actor join readable spot dispatch event.
     /// </summary>
     ActorJoinReadable = 6,
     /// <summary>
-    /// Represents the ActorLifecycleReadable value.
+    /// Indicates the actor lifecycle readable spot dispatch event.
     /// </summary>
     ActorLifecycleReadable = 7
 }
@@ -66,19 +66,19 @@ public enum SpotDispatchEvent
 public enum SpotDispatchSubjectKind
 {
     /// <summary>
-    /// Represents the Spot value.
+    /// Indicates the spot spot dispatch subject kind.
     /// </summary>
     Spot = 1,
     /// <summary>
-    /// Represents the Timer value.
+    /// Indicates the timer spot dispatch subject kind.
     /// </summary>
     Timer = 2,
     /// <summary>
-    /// Represents the ChannelDealer value.
+    /// Indicates the channel dealer spot dispatch subject kind.
     /// </summary>
     ChannelDealer = 3,
     /// <summary>
-    /// Represents the Actor value.
+    /// Indicates the actor spot dispatch subject kind.
     /// </summary>
     Actor = 4
 }

@@ -10,7 +10,7 @@ namespace Systems.Zlink;
 public interface IDiscovery : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets or sets the route value max size.
+    /// Gets the route value max size.
     /// </summary>
     int RouteValueMaxSize { get; }
 
@@ -46,17 +46,17 @@ public interface IDiscovery : IDisposable, IAsyncDisposable
     long GetValue();
 
     /// <summary>
-    /// Gets or sets the member peers.
+    /// Gets registry member peer entries.
     /// </summary>
     MemberPeerEntry[] MemberPeers();
 
     /// <summary>
-    /// Gets or sets the resolve spot.
+    /// Resolves a spot route.
     /// </summary>
     SpotRoute ResolveSpot(RoutingId spotRid);
 
     /// <summary>
-    /// Gets or sets the resolve actor.
+    /// Resolves an actor route.
     /// </summary>
     ActorRoute ResolveActor(string actorId);
 
@@ -71,7 +71,7 @@ public interface IDiscovery : IDisposable, IAsyncDisposable
     void UnbindRoute(uint kind, ReadOnlySpan<byte> key);
 
     /// <summary>
-    /// Gets or sets the resolve route.
+    /// Resolves a discovery route.
     /// </summary>
     DiscoveryRoute ResolveRoute(uint kind, ReadOnlySpan<byte> key);
 
@@ -87,19 +87,19 @@ public interface IDiscovery : IDisposable, IAsyncDisposable
 public static class DiscoveryRouteKind
 {
     /// <summary>
-    /// Gets or sets the invalid.
+    /// Gets the invalid.
     /// </summary>
     public const uint Invalid = 0;
     /// <summary>
-    /// Gets or sets the actor.
+    /// Gets the actor.
     /// </summary>
     public const uint Actor = 1;
     /// <summary>
-    /// Gets or sets the spot name.
+    /// Gets the spot name.
     /// </summary>
     public const uint SpotName = 2;
     /// <summary>
-    /// Gets or sets the actor session.
+    /// Gets the actor session.
     /// </summary>
     public const uint ActorSession = 3;
 }
@@ -128,12 +128,12 @@ public sealed class DiscoveryRoute : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Gets or sets the owner routing id.
+    /// Gets the owner routing id.
     /// </summary>
     public RoutingId OwnerRoutingId { get; }
 
     /// <summary>
-    /// Gets or sets the value.
+    /// Gets the value.
     /// </summary>
     public Message Value { get; }
 

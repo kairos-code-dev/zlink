@@ -126,12 +126,12 @@ public readonly struct RoutingId : IEquatable<RoutingId>
     }
 
     /// <summary>
-    /// Gets or sets the size.
+    /// Gets the size.
     /// </summary>
     public int Size => _bytes?.Length ?? 0;
 
     /// <summary>
-    /// Gets or sets the is empty.
+    /// Gets whether the empty.
     /// </summary>
     public bool IsEmpty => Size == 0;
 

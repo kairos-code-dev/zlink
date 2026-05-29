@@ -33,15 +33,15 @@ public delegate void ReplyHandler(RequestResult result,
 public interface ActorLeaveOperation
 {
     /// <summary>
-    /// Gets or sets the timeout.
+    /// Sets the operation timeout.
     /// </summary>
     ActorLeaveOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Gets or sets the submit async.
+    /// Submits the operation and returns the result asynchronously.
     /// </summary>
     Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
     /// <summary>
-    /// Gets or sets the submit.
+    /// Submits the operation.
     /// </summary>
     bool Submit(ReplyHandler callback);
 }
@@ -52,15 +52,15 @@ public interface ActorLeaveOperation
 public interface ActorDestroyOperation
 {
     /// <summary>
-    /// Gets or sets the timeout.
+    /// Sets the operation timeout.
     /// </summary>
     ActorDestroyOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Gets or sets the submit async.
+    /// Submits the operation and returns the result asynchronously.
     /// </summary>
     Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
     /// <summary>
-    /// Gets or sets the submit.
+    /// Submits the operation.
     /// </summary>
     bool Submit(ReplyHandler callback);
 }
@@ -71,15 +71,15 @@ public interface ActorDestroyOperation
 public interface ActorLookupOperation
 {
     /// <summary>
-    /// Gets or sets the timeout.
+    /// Sets the operation timeout.
     /// </summary>
     ActorLookupOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Gets or sets the submit async.
+    /// Submits the operation and returns the result asynchronously.
     /// </summary>
     Task<ActorLookupResult> SubmitAsync(CancellationToken ct = default);
     /// <summary>
-    /// Gets or sets the submit.
+    /// Submits the operation.
     /// </summary>
     bool Submit(ActorLookupHandler callback);
 }
@@ -90,15 +90,15 @@ public interface ActorLookupOperation
 public interface ActorBindOperation
 {
     /// <summary>
-    /// Gets or sets the timeout.
+    /// Sets the operation timeout.
     /// </summary>
     ActorBindOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Gets or sets the submit async.
+    /// Submits the operation and returns the result asynchronously.
     /// </summary>
     Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
     /// <summary>
-    /// Gets or sets the submit.
+    /// Submits the operation.
     /// </summary>
     bool Submit(ReplyHandler callback);
 }
@@ -109,15 +109,15 @@ public interface ActorBindOperation
 public interface ActorUnbindOperation
 {
     /// <summary>
-    /// Gets or sets the timeout.
+    /// Sets the operation timeout.
     /// </summary>
     ActorUnbindOperation Timeout(TimeSpan timeout);
     /// <summary>
-    /// Gets or sets the submit async.
+    /// Submits the operation and returns the result asynchronously.
     /// </summary>
     Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
     /// <summary>
-    /// Gets or sets the submit.
+    /// Submits the operation.
     /// </summary>
     bool Submit(ReplyHandler callback);
 }

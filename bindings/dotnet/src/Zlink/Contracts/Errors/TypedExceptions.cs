@@ -14,59 +14,59 @@ public sealed class ZlinkSubmitException : ZlinkException
     public enum ErrorCode
     {
         /// <summary>
-        /// Represents the Ok value.
+        /// Indicates the successful error code.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Represents the Backpressured value.
+        /// Indicates the backpressured error code.
         /// </summary>
         Backpressured = 1,
         /// <summary>
-        /// Represents the NotConnected value.
+        /// Indicates the not connected error code.
         /// </summary>
         NotConnected = 2,
         /// <summary>
-        /// Represents the NotFound value.
+        /// Indicates the not found error code.
         /// </summary>
         NotFound = 3,
         /// <summary>
-        /// Represents the Terminated value.
+        /// Indicates the terminated error code.
         /// </summary>
         Terminated = 4,
         /// <summary>
-        /// Represents the InvalidHandle value.
+        /// Indicates the invalid handle error code.
         /// </summary>
         InvalidHandle = 5,
         /// <summary>
-        /// Represents the InvalidArgument value.
+        /// Indicates the invalid argument error code.
         /// </summary>
         InvalidArgument = 6,
         /// <summary>
-        /// Represents the NotSupported value.
+        /// Indicates the not supported error code.
         /// </summary>
         NotSupported = 7,
         /// <summary>
-        /// Represents the InvalidState value.
+        /// Indicates the invalid state error code.
         /// </summary>
         InvalidState = 8,
         /// <summary>
-        /// Represents the ThreadViolation value.
+        /// Indicates the thread violation error code.
         /// </summary>
         ThreadViolation = 9,
         /// <summary>
-        /// Represents the OutOfMemory value.
+        /// Indicates the out of memory error code.
         /// </summary>
         OutOfMemory = 10,
         /// <summary>
-        /// Represents the SeqExhausted value.
+        /// Indicates the seq exhausted error code.
         /// </summary>
         SeqExhausted = 11,
         /// <summary>
-        /// Represents the InternalError value.
+        /// Indicates the internal error error code.
         /// </summary>
         InternalError = 12,
         /// <summary>
-        /// Represents the NotAdmitted value.
+        /// Indicates the not admitted error code.
         /// </summary>
         NotAdmitted = 13
     }
@@ -99,7 +99,7 @@ public sealed class ZlinkSubmitException : ZlinkException
     }
 
     /// <summary>
-    /// Gets or sets the result.
+    /// Gets the result.
     /// </summary>
     public ErrorCode Result { get; }
 }
@@ -115,55 +115,55 @@ public sealed class ZlinkRequestException : ZlinkException
     public enum ErrorCode
     {
         /// <summary>
-        /// Represents the Ok value.
+        /// Indicates the successful error code.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Represents the TimedOut value.
+        /// Indicates the timed out error code.
         /// </summary>
         TimedOut = 101,
         /// <summary>
-        /// Represents the NotFound value.
+        /// Indicates the not found error code.
         /// </summary>
         NotFound = 102,
         /// <summary>
-        /// Represents the Terminated value.
+        /// Indicates the terminated error code.
         /// </summary>
         Terminated = 103,
         /// <summary>
-        /// Represents the ProtocolError value.
+        /// Indicates the protocol error error code.
         /// </summary>
         ProtocolError = 104,
         /// <summary>
-        /// Represents the InternalError value.
+        /// Indicates the internal error error code.
         /// </summary>
         InternalError = 105,
         /// <summary>
-        /// Represents the Rejected value.
+        /// Indicates the rejected error code.
         /// </summary>
         Rejected = 106,
         /// <summary>
-        /// Represents the Conflict value.
+        /// Indicates the conflict error code.
         /// </summary>
         Conflict = 107,
         /// <summary>
-        /// Represents the Busy value.
+        /// Indicates the busy error code.
         /// </summary>
         Busy = 108,
         /// <summary>
-        /// Represents the NotConnected value.
+        /// Indicates the not connected error code.
         /// </summary>
         NotConnected = 109,
         /// <summary>
-        /// Represents the InvalidArgument value.
+        /// Indicates the invalid argument error code.
         /// </summary>
         InvalidArgument = 110,
         /// <summary>
-        /// Represents the InvalidState value.
+        /// Indicates the invalid state error code.
         /// </summary>
         InvalidState = 111,
         /// <summary>
-        /// Represents the NotSupported value.
+        /// Indicates the not supported error code.
         /// </summary>
         NotSupported = 112
     }
@@ -196,7 +196,7 @@ public sealed class ZlinkRequestException : ZlinkException
     }
 
     /// <summary>
-    /// Gets or sets the result.
+    /// Gets the result.
     /// </summary>
     public ErrorCode Result { get; }
 }
@@ -212,31 +212,31 @@ public sealed class ZlinkRecvException : ZlinkException
     public enum ErrorCode
     {
         /// <summary>
-        /// Represents the Ok value.
+        /// Indicates the successful error code.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Represents the NoData value.
+        /// Indicates the no data error code.
         /// </summary>
         NoData = 201,
         /// <summary>
-        /// Represents the Busy value.
+        /// Indicates the busy error code.
         /// </summary>
         Busy = 202,
         /// <summary>
-        /// Represents the Terminated value.
+        /// Indicates the terminated error code.
         /// </summary>
         Terminated = 203,
         /// <summary>
-        /// Represents the InvalidHandle value.
+        /// Indicates the invalid handle error code.
         /// </summary>
         InvalidHandle = 204,
         /// <summary>
-        /// Represents the NotSupported value.
+        /// Indicates the not supported error code.
         /// </summary>
         NotSupported = 205,
         /// <summary>
-        /// Represents the InternalError value.
+        /// Indicates the internal error error code.
         /// </summary>
         InternalError = 206
     }
@@ -269,7 +269,7 @@ public sealed class ZlinkRecvException : ZlinkException
     }
 
     /// <summary>
-    /// Gets or sets the result.
+    /// Gets the result.
     /// </summary>
     public ErrorCode Result { get; }
 }
@@ -285,31 +285,31 @@ public sealed class ZlinkHandlerException : ZlinkException
     public enum ErrorCode
     {
         /// <summary>
-        /// Represents the Ok value.
+        /// Indicates the successful error code.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Represents the InvalidArgument value.
+        /// Indicates the invalid argument error code.
         /// </summary>
         InvalidArgument = 301,
         /// <summary>
-        /// Represents the Busy value.
+        /// Indicates the busy error code.
         /// </summary>
         Busy = 302,
         /// <summary>
-        /// Represents the NotSupported value.
+        /// Indicates the not supported error code.
         /// </summary>
         NotSupported = 303,
         /// <summary>
-        /// Represents the Deadlock value.
+        /// Indicates the deadlock error code.
         /// </summary>
         Deadlock = 304,
         /// <summary>
-        /// Represents the InvalidHandle value.
+        /// Indicates the invalid handle error code.
         /// </summary>
         InvalidHandle = 305,
         /// <summary>
-        /// Represents the InternalError value.
+        /// Indicates the internal error error code.
         /// </summary>
         InternalError = 306
     }
@@ -342,7 +342,7 @@ public sealed class ZlinkHandlerException : ZlinkException
     }
 
     /// <summary>
-    /// Gets or sets the result.
+    /// Gets the result.
     /// </summary>
     public ErrorCode Result { get; }
 }
@@ -358,23 +358,23 @@ public sealed class ZlinkCloseException : ZlinkException
     public enum ErrorCode
     {
         /// <summary>
-        /// Represents the Ok value.
+        /// Indicates the successful error code.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Represents the Busy value.
+        /// Indicates the busy error code.
         /// </summary>
         Busy = 401,
         /// <summary>
-        /// Represents the Shutdown value.
+        /// Indicates the shutdown error code.
         /// </summary>
         Shutdown = 402,
         /// <summary>
-        /// Represents the InvalidHandle value.
+        /// Indicates the invalid handle error code.
         /// </summary>
         InvalidHandle = 403,
         /// <summary>
-        /// Represents the InternalError value.
+        /// Indicates the internal error error code.
         /// </summary>
         InternalError = 404
     }
@@ -407,7 +407,7 @@ public sealed class ZlinkCloseException : ZlinkException
     }
 
     /// <summary>
-    /// Gets or sets the result.
+    /// Gets the result.
     /// </summary>
     public ErrorCode Result { get; }
 }
@@ -423,27 +423,27 @@ public sealed class ZlinkBindException : ZlinkException
     public enum ErrorCode
     {
         /// <summary>
-        /// Represents the Ok value.
+        /// Indicates the successful error code.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Represents the InvalidArgument value.
+        /// Indicates the invalid argument error code.
         /// </summary>
         InvalidArgument = 501,
         /// <summary>
-        /// Represents the AddrInUse value.
+        /// Indicates the addr in use error code.
         /// </summary>
         AddrInUse = 502,
         /// <summary>
-        /// Represents the NotSupported value.
+        /// Indicates the not supported error code.
         /// </summary>
         NotSupported = 503,
         /// <summary>
-        /// Represents the InvalidHandle value.
+        /// Indicates the invalid handle error code.
         /// </summary>
         InvalidHandle = 504,
         /// <summary>
-        /// Represents the InternalError value.
+        /// Indicates the internal error error code.
         /// </summary>
         InternalError = 505
     }
@@ -476,7 +476,7 @@ public sealed class ZlinkBindException : ZlinkException
     }
 
     /// <summary>
-    /// Gets or sets the result.
+    /// Gets the result.
     /// </summary>
     public ErrorCode Result { get; }
 }
@@ -492,35 +492,35 @@ public sealed class ZlinkConnectException : ZlinkException
     public enum ErrorCode
     {
         /// <summary>
-        /// Represents the Ok value.
+        /// Indicates the successful error code.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Represents the InvalidArgument value.
+        /// Indicates the invalid argument error code.
         /// </summary>
         InvalidArgument = 601,
         /// <summary>
-        /// Represents the NotSupported value.
+        /// Indicates the not supported error code.
         /// </summary>
         NotSupported = 602,
         /// <summary>
-        /// Represents the InvalidHandle value.
+        /// Indicates the invalid handle error code.
         /// </summary>
         InvalidHandle = 603,
         /// <summary>
-        /// Represents the InternalError value.
+        /// Indicates the internal error error code.
         /// </summary>
         InternalError = 604,
         /// <summary>
-        /// Represents the NotFound value.
+        /// Indicates the not found error code.
         /// </summary>
         NotFound = 605,
         /// <summary>
-        /// Represents the Conflict value.
+        /// Indicates the conflict error code.
         /// </summary>
         Conflict = 606,
         /// <summary>
-        /// Represents the Busy value.
+        /// Indicates the busy error code.
         /// </summary>
         Busy = 607
     }
@@ -553,7 +553,7 @@ public sealed class ZlinkConnectException : ZlinkException
     }
 
     /// <summary>
-    /// Gets or sets the result.
+    /// Gets the result.
     /// </summary>
     public ErrorCode Result { get; }
 }
@@ -569,31 +569,31 @@ public sealed class ZlinkConfigException : ZlinkException
     public enum ErrorCode
     {
         /// <summary>
-        /// Represents the Ok value.
+        /// Indicates the successful error code.
         /// </summary>
         Ok = 0,
         /// <summary>
-        /// Represents the InvalidHandle value.
+        /// Indicates the invalid handle error code.
         /// </summary>
         InvalidHandle = 701,
         /// <summary>
-        /// Represents the InvalidArgument value.
+        /// Indicates the invalid argument error code.
         /// </summary>
         InvalidArgument = 702,
         /// <summary>
-        /// Represents the NotSupported value.
+        /// Indicates the not supported error code.
         /// </summary>
         NotSupported = 703,
         /// <summary>
-        /// Represents the InternalError value.
+        /// Indicates the internal error error code.
         /// </summary>
         InternalError = 704,
         /// <summary>
-        /// Represents the InvalidState value.
+        /// Indicates the invalid state error code.
         /// </summary>
         InvalidState = 705,
         /// <summary>
-        /// Represents the NotFound value.
+        /// Indicates the not found error code.
         /// </summary>
         NotFound = 706
     }
@@ -626,7 +626,7 @@ public sealed class ZlinkConfigException : ZlinkException
     }
 
     /// <summary>
-    /// Gets or sets the result.
+    /// Gets the result.
     /// </summary>
     public ErrorCode Result { get; }
 }

@@ -10,12 +10,12 @@ namespace Systems.Zlink;
 public interface IZlinkStopwatch : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets or sets the intermediate.
+    /// Gets the elapsed intermediate time.
     /// </summary>
     ulong Intermediate();
 
     /// <summary>
-    /// Gets or sets the stop.
+    /// Stops the timer.
     /// </summary>
     ulong Stop();
 }

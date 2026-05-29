@@ -36,20 +36,20 @@ public sealed class SpotDispatchInfo
     }
 
     /// <summary>
-    /// Gets or sets the event.
+    /// Gets the event.
     /// </summary>
     public SpotDispatchEvent Event { get; }
     /// <summary>
-    /// Gets or sets the subject kind.
+    /// Gets the subject kind.
     /// </summary>
     public SpotDispatchSubjectKind SubjectKind { get; }
     internal IntPtr Subject => _channelDealerSubject;
     /// <summary>
-    /// Gets or sets the timer.
+    /// Gets the timer.
     /// </summary>
     public IZlinkTimer? Timer { get; }
     /// <summary>
-    /// Gets or sets the actor messages.
+    /// Gets the actor messages.
     /// </summary>
     public IReadOnlyList<ActorReceived> ActorMessages { get; }
 

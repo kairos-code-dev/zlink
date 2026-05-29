@@ -10,7 +10,7 @@ namespace Systems.Zlink;
 public interface IPublisherSocket : IConnectableSocket
 {
     /// <summary>
-    /// Gets or sets the publish.
+    /// Starts a publish operation.
     /// </summary>
     SendOperation Publish(string topic);
 
@@ -36,12 +36,12 @@ public interface ISubscriberSocket : IConnectableSocket
     void UnsetSubscription(string topicOrPattern);
 
     /// <summary>
-    /// Gets or sets the subscription at.
+    /// Gets the subscription at the specified index.
     /// </summary>
     SubscriptionEntry? SubscriptionAt(int index);
 
     /// <summary>
-    /// Gets or sets the subscribe.
+    /// Receives a subscribed topic message.
     /// </summary>
     bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None);
 }
@@ -52,12 +52,12 @@ public interface ISubscriberSocket : IConnectableSocket
 public interface IPubSocket : IPublisherSocket
 {
     /// <summary>
-    /// Gets or sets the options.
+    /// Gets the options.
     /// </summary>
     new PubSocketOptions Options { get; }
 
     /// <summary>
-    /// Gets or sets the attach discovery.
+    /// Attaches a discovery service.
     /// </summary>
     void AttachDiscovery(IDiscovery discovery);
 }
@@ -68,12 +68,12 @@ public interface IPubSocket : IPublisherSocket
 public interface ISubSocket : ISubscriberSocket
 {
     /// <summary>
-    /// Gets or sets the options.
+    /// Gets the options.
     /// </summary>
     new SubSocketOptions Options { get; }
 
     /// <summary>
-    /// Gets or sets the attach discovery.
+    /// Attaches a discovery service.
     /// </summary>
     void AttachDiscovery(IDiscovery discovery);
 }
@@ -84,7 +84,7 @@ public interface ISubSocket : ISubscriberSocket
 public interface IXPubSocket : IPublisherSocket
 {
     /// <summary>
-    /// Gets or sets the options.
+    /// Gets the options.
     /// </summary>
     new PubSocketOptions Options { get; }
 
@@ -101,7 +101,7 @@ public interface IXPubSocket : IPublisherSocket
 public interface IXSubSocket : ISubscriberSocket
 {
     /// <summary>
-    /// Gets or sets the options.
+    /// Gets the options.
     /// </summary>
     new SubSocketOptions Options { get; }
 }

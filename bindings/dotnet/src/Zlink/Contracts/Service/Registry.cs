@@ -62,7 +62,7 @@ public interface IRegistry : IDisposable, IAsyncDisposable
     RegistryStatus Status();
 
     /// <summary>
-    /// Gets or sets the service summary.
+    /// Gets registry service summary entries.
     /// </summary>
     RegistryServiceSummaryEntry[] ServiceSummary(
         RegistryServiceSummaryFilter? filter = null);
@@ -74,7 +74,7 @@ public interface IRegistry : IDisposable, IAsyncDisposable
         RegistryTopologyFilter? filter = null);
 
     /// <summary>
-    /// Gets or sets the member peers.
+    /// Gets registry member peer entries.
     /// </summary>
     MemberPeerEntry[] MemberPeers(string channelName);
 

@@ -24,19 +24,19 @@ public readonly struct ActorRef : IEquatable<ActorRef>
     }
 
     /// <summary>
-    /// Gets or sets the node routing id.
+    /// Gets the node routing id.
     /// </summary>
     public RoutingId NodeRid { get; }
     /// <summary>
-    /// Gets or sets the actor id.
+    /// Gets the actor id.
     /// </summary>
     public string ActorId { get; }
     /// <summary>
-    /// Gets or sets the generation.
+    /// Gets the generation.
     /// </summary>
     public ulong Generation { get; }
     /// <summary>
-    /// Gets or sets the is unchecked.
+    /// Gets whether the unchecked.
     /// </summary>
     public bool IsUnchecked => Generation == 0;
 
@@ -138,11 +138,11 @@ public sealed record SpotActorLifecycleInfo(ActorRef PreviousActor,
 public enum SpotActorLifecycleEventKind
 {
     /// <summary>
-    /// Represents the Joined value.
+    /// Indicates the joined spot actor lifecycle event kind.
     /// </summary>
     Joined = 1,
     /// <summary>
-    /// Represents the Left value.
+    /// Indicates the left spot actor lifecycle event kind.
     /// </summary>
     Left = 2
 }
@@ -167,7 +167,7 @@ public sealed record ActorReceived(ActorRecvInfo Info,
     private int _closed;
 
     /// <summary>
-    /// Gets or sets the message.
+    /// Returns the first message part without transferring ownership.
     /// </summary>
     public Message Message => FirstPart();
 
@@ -231,15 +231,15 @@ public sealed class ActorJoinRequest
     }
 
     /// <summary>
-    /// Gets or sets the info.
+    /// Gets the info.
     /// </summary>
     public ActorJoinInfo Info { get; }
     /// <summary>
-    /// Gets or sets the message.
+    /// Gets the message.
     /// </summary>
     public Message Message { get; }
     /// <summary>
-    /// Gets or sets the parts.
+    /// Gets the parts.
     /// </summary>
     public IReadOnlyList<Message> Parts { get; }
     internal object? RuntimeState { get; }
@@ -251,7 +251,7 @@ public sealed class ActorJoinRequest
 public interface IActor : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets or sets the ref.
+    /// Gets the actor reference.
     /// </summary>
     ActorRef Ref { get; }
 

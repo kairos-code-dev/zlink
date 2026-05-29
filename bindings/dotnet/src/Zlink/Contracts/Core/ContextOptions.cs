@@ -20,7 +20,7 @@ public interface IContextOptions
     int MaxSockets { get; set; }
 
     /// <summary>
-    /// Gets or sets the socket limit.
+    /// Gets the socket limit.
     /// </summary>
     int SocketLimit { get; }
 
@@ -40,7 +40,7 @@ public interface IContextOptions
     int MaxMessageSize { get; set; }
 
     /// <summary>
-    /// Gets or sets the message thread size.
+    /// Gets the message thread size.
     /// </summary>
     int MessageThreadSize { get; }
 

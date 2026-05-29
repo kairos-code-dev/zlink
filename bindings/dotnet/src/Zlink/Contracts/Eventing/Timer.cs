@@ -10,12 +10,12 @@ namespace Systems.Zlink;
 public interface IZlinkTimer : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets or sets the start.
+    /// Starts the timer.
     /// </summary>
     void Start(TimeSpan interval, ulong repeatCount);
 
     /// <summary>
-    /// Gets or sets the stop.
+    /// Stops the timer.
     /// </summary>
     void Stop();
 

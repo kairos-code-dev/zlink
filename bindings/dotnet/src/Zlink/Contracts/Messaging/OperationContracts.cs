@@ -148,55 +148,55 @@ public interface ReplySubmitOperation
 public enum RequestResult
 {
     /// <summary>
-    /// Represents the Ok value.
+    /// Indicates the successful request result.
     /// </summary>
     Ok = 0,
     /// <summary>
-    /// Represents the TimedOut value.
+    /// Indicates the timed out request result.
     /// </summary>
     TimedOut = 101,
     /// <summary>
-    /// Represents the NotFound value.
+    /// Indicates the not found request result.
     /// </summary>
     NotFound = 102,
     /// <summary>
-    /// Represents the Terminated value.
+    /// Indicates the terminated request result.
     /// </summary>
     Terminated = 103,
     /// <summary>
-    /// Represents the ProtocolError value.
+    /// Indicates the protocol error request result.
     /// </summary>
     ProtocolError = 104,
     /// <summary>
-    /// Represents the InternalError value.
+    /// Indicates the internal error request result.
     /// </summary>
     InternalError = 105,
     /// <summary>
-    /// Represents the Rejected value.
+    /// Indicates the rejected request result.
     /// </summary>
     Rejected = 106,
     /// <summary>
-    /// Represents the Conflict value.
+    /// Indicates the conflict request result.
     /// </summary>
     Conflict = 107,
     /// <summary>
-    /// Represents the Busy value.
+    /// Indicates the busy request result.
     /// </summary>
     Busy = 108,
     /// <summary>
-    /// Represents the NotConnected value.
+    /// Indicates the not connected request result.
     /// </summary>
     NotConnected = 109,
     /// <summary>
-    /// Represents the InvalidArgument value.
+    /// Indicates the invalid argument request result.
     /// </summary>
     InvalidArgument = 110,
     /// <summary>
-    /// Represents the InvalidState value.
+    /// Indicates the invalid state request result.
     /// </summary>
     InvalidState = 111,
     /// <summary>
-    /// Represents the NotSupported value.
+    /// Indicates the not supported request result.
     /// </summary>
     NotSupported = 112
 }

@@ -24,11 +24,11 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     int PubSubHighWaterMark { get; set; }
     /// <summary>
-    /// Gets or sets the publisher no drop.
+    /// Sets whether publisher sends should avoid dropping messages.
     /// </summary>
     bool PublisherNoDrop { set; }
     /// <summary>
-    /// Gets or sets the publisher send timeout.
+    /// Sets the publisher send timeout.
     /// </summary>
     TimeSpan? PublisherSendTimeout { set; }
     /// <summary>
@@ -40,11 +40,11 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     int DispatchWorkersMax { get; set; }
     /// <summary>
-    /// Gets or sets the routing id.
+    /// Gets the routing id.
     /// </summary>
     RoutingId RoutingId { get; }
     /// <summary>
-    /// Gets or sets the last endpoint.
+    /// Gets the last endpoint.
     /// </summary>
     string LastEndpoint { get; }
 
@@ -92,24 +92,24 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     void DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid);
     /// <summary>
-    /// Gets or sets the attach discovery.
+    /// Attaches a discovery service.
     /// </summary>
     void AttachDiscovery(IDiscovery discovery);
     /// <summary>
-    /// Gets or sets the attach spot route channel discovery.
+    /// Attaches discovery for a spot route channel.
     /// </summary>
     void AttachSpotRouteChannelDiscovery(string channelName,
         IDiscovery discovery);
     /// <summary>
-    /// Gets or sets the attach channel dealer.
+    /// Attaches a channel dealer socket.
     /// </summary>
     void AttachChannelDealer(IDiscovery discovery, IDealerSocket dealer);
     /// <summary>
-    /// Gets or sets the attach channel dealer manual.
+    /// Attaches a manually named channel dealer socket.
     /// </summary>
     void AttachChannelDealerManual(string channelName, IDealerSocket dealer);
     /// <summary>
-    /// Gets or sets the attach pub ingress.
+    /// Attaches a publisher ingress socket.
     /// </summary>
     void AttachPubIngress(IPubSocket pub);
     /// <summary>
@@ -117,7 +117,7 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     ISpot CreateSpot();
     /// <summary>
-    /// Gets or sets the entry spot.
+    /// Gets the entry spot.
     /// </summary>
     ISpot EntrySpot();
     /// <summary>
@@ -125,7 +125,7 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     ISpot GetOrCreateSpot(RoutingId spotRid, out bool created);
     /// <summary>
-    /// Gets or sets the spot lookup.
+    /// Looks up a spot by routing id.
     /// </summary>
     ISpot? SpotLookup(RoutingId spotRid);
     /// <summary>
@@ -133,7 +133,7 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     IActor CreateActor(string actorId);
     /// <summary>
-    /// Gets or sets the actor lookup.
+    /// Looks up an actor by actor id.
     /// </summary>
     ActorRef ActorLookup(string actorId);
     /// <summary>
@@ -145,12 +145,12 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     void CloseActorBoundSession(ActorRef actor, TimeSpan timeout = default);
     /// <summary>
-    /// Gets or sets the remote actor get ref.
+    /// Gets a remote actor reference.
     /// </summary>
     ActorLookupOperation RemoteActorGetRef(RoutingId targetNodeRid,
         string actorId);
     /// <summary>
-    /// Gets or sets the destroy actor.
+    /// Starts an actor destroy operation.
     /// </summary>
     ActorDestroyOperation DestroyActor(ActorRef actor);
     /// <summary>
@@ -182,29 +182,29 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     SpotNodeStatus Status();
     /// <summary>
-    /// Gets or sets the peers.
+    /// Gets peer entries.
     /// </summary>
     SpotNodePeerEntry[] Peers();
     /// <summary>
-    /// Gets or sets the peers query.
+    /// Gets peer entries matching a filter.
     /// </summary>
     SpotNodePeerEntry[] PeersQuery(SpotNodePeerFilter filter);
     /// <summary>
-    /// Gets or sets the subjects.
+    /// Gets subject entries matching a filter.
     /// </summary>
     SpotNodeSubjectEntry[] Subjects(
         SpotNodeSubjectFilter? filter = null);
     /// <summary>
-    /// Gets or sets the internal sockets.
+    /// Gets internal socket entries matching a filter.
     /// </summary>
     SpotNodeSocketEntry[] InternalSockets(
         SpotNodeSocketFilter? filter = null);
     /// <summary>
-    /// Gets or sets the spots.
+    /// Gets spot entries.
     /// </summary>
     SpotNodeSpotEntry[] Spots();
     /// <summary>
-    /// Gets or sets the actors.
+    /// Gets actor entries.
     /// </summary>
     SpotNodeActorEntry[] Actors();
     /// <summary>

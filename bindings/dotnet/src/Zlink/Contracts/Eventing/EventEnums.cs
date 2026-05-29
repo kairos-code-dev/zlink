@@ -11,71 +11,71 @@ namespace Systems.Zlink;
 public enum SocketEvent
 {
     /// <summary>
-    /// Represents the Connected value.
+    /// Indicates the connected socket event.
     /// </summary>
     Connected = 0x0001,
     /// <summary>
-    /// Represents the ConnectDelayed value.
+    /// Indicates the connect delayed socket event.
     /// </summary>
     ConnectDelayed = 0x0002,
     /// <summary>
-    /// Represents the ConnectRetried value.
+    /// Indicates the connect retried socket event.
     /// </summary>
     ConnectRetried = 0x0004,
     /// <summary>
-    /// Represents the Listening value.
+    /// Indicates the listening socket event.
     /// </summary>
     Listening = 0x0008,
     /// <summary>
-    /// Represents the BindFailed value.
+    /// Indicates the bind failed socket event.
     /// </summary>
     BindFailed = 0x0010,
     /// <summary>
-    /// Represents the Accepted value.
+    /// Indicates the accepted socket event.
     /// </summary>
     Accepted = 0x0020,
     /// <summary>
-    /// Represents the AcceptFailed value.
+    /// Indicates the accept failed socket event.
     /// </summary>
     AcceptFailed = 0x0040,
     /// <summary>
-    /// Represents the Closed value.
+    /// Indicates the closed socket event.
     /// </summary>
     Closed = 0x0080,
     /// <summary>
-    /// Represents the CloseFailed value.
+    /// Indicates the close failed socket event.
     /// </summary>
     CloseFailed = 0x0100,
     /// <summary>
-    /// Represents the Disconnected value.
+    /// Indicates the disconnected socket event.
     /// </summary>
     Disconnected = 0x0200,
     /// <summary>
-    /// Represents the MonitorStopped value.
+    /// Indicates the monitor stopped socket event.
     /// </summary>
     MonitorStopped = 0x0400,
     /// <summary>
-    /// Represents the HandshakeFailedNoDetail value.
+    /// Indicates the handshake failed no detail socket event.
     /// </summary>
     HandshakeFailedNoDetail = 0x0800,
     /// <summary>
-    /// Represents the ConnectionReady value.
+    /// Indicates the connection ready socket event.
     /// </summary>
     ConnectionReady = 0x1000,
     /// <summary>
-    /// Represents the HandshakeFailedProtocol value.
+    /// Indicates the handshake failed protocol socket event.
     /// </summary>
     HandshakeFailedProtocol = 0x2000,
     /// <summary>
-    /// Represents the HandshakeFailedAuth value.
+    /// Indicates the handshake failed auth socket event.
     /// </summary>
     HandshakeFailedAuth = 0x4000,
     /// <summary>
-    /// Represents the PeerWeightChanged value.
+    /// Indicates the peer weight changed socket event.
     /// </summary>
     PeerWeightChanged = 0x8000,
     /// <summary>
-    /// Represents the All value.
+    /// Indicates the all socket event.
     /// </summary>
     All = 0xFFFF
 }
@@ -86,67 +86,67 @@ public enum SocketEvent
 public enum MonitorEventType
 {
     /// <summary>
-    /// Represents the Connected value.
+    /// Indicates the connected monitor event type.
     /// </summary>
     Connected = 0x0001,
     /// <summary>
-    /// Represents the ConnectDelayed value.
+    /// Indicates the connect delayed monitor event type.
     /// </summary>
     ConnectDelayed = 0x0002,
     /// <summary>
-    /// Represents the ConnectRetried value.
+    /// Indicates the connect retried monitor event type.
     /// </summary>
     ConnectRetried = 0x0004,
     /// <summary>
-    /// Represents the Listening value.
+    /// Indicates the listening monitor event type.
     /// </summary>
     Listening = 0x0008,
     /// <summary>
-    /// Represents the BindFailed value.
+    /// Indicates the bind failed monitor event type.
     /// </summary>
     BindFailed = 0x0010,
     /// <summary>
-    /// Represents the Accepted value.
+    /// Indicates the accepted monitor event type.
     /// </summary>
     Accepted = 0x0020,
     /// <summary>
-    /// Represents the AcceptFailed value.
+    /// Indicates the accept failed monitor event type.
     /// </summary>
     AcceptFailed = 0x0040,
     /// <summary>
-    /// Represents the Closed value.
+    /// Indicates the closed monitor event type.
     /// </summary>
     Closed = 0x0080,
     /// <summary>
-    /// Represents the CloseFailed value.
+    /// Indicates the close failed monitor event type.
     /// </summary>
     CloseFailed = 0x0100,
     /// <summary>
-    /// Represents the Disconnected value.
+    /// Indicates the disconnected monitor event type.
     /// </summary>
     Disconnected = 0x0200,
     /// <summary>
-    /// Represents the MonitorStopped value.
+    /// Indicates the monitor stopped monitor event type.
     /// </summary>
     MonitorStopped = 0x0400,
     /// <summary>
-    /// Represents the HandshakeFailedNoDetail value.
+    /// Indicates the handshake failed no detail monitor event type.
     /// </summary>
     HandshakeFailedNoDetail = 0x0800,
     /// <summary>
-    /// Represents the ConnectionReady value.
+    /// Indicates the connection ready monitor event type.
     /// </summary>
     ConnectionReady = 0x1000,
     /// <summary>
-    /// Represents the HandshakeFailedProtocol value.
+    /// Indicates the handshake failed protocol monitor event type.
     /// </summary>
     HandshakeFailedProtocol = 0x2000,
     /// <summary>
-    /// Represents the HandshakeFailedAuth value.
+    /// Indicates the handshake failed auth monitor event type.
     /// </summary>
     HandshakeFailedAuth = 0x4000,
     /// <summary>
-    /// Represents the PeerWeightChanged value.
+    /// Indicates the peer weight changed monitor event type.
     /// </summary>
     PeerWeightChanged = 0x8000
 }
@@ -157,15 +157,15 @@ public enum MonitorEventType
 public enum MonitorSourceKind
 {
     /// <summary>
-    /// Represents the Socket value.
+    /// Indicates the socket monitor source kind.
     /// </summary>
     Socket = 1,
     /// <summary>
-    /// Represents the SpotPub value.
+    /// Indicates the spot pub monitor source kind.
     /// </summary>
     SpotPub = 3,
     /// <summary>
-    /// Represents the SpotSub value.
+    /// Indicates the spot sub monitor source kind.
     /// </summary>
     SpotSub = 4
 }
@@ -176,15 +176,15 @@ public enum MonitorSourceKind
 public enum PollSourceKind
 {
     /// <summary>
-    /// Represents the Socket value.
+    /// Indicates the socket poll source kind.
     /// </summary>
     Socket = 1,
     /// <summary>
-    /// Represents the Fd value.
+    /// Indicates the file descriptor poll source kind.
     /// </summary>
     Fd = 2,
     /// <summary>
-    /// Represents the Timer value.
+    /// Indicates the timer poll source kind.
     /// </summary>
     Timer = 3
 }
@@ -195,27 +195,27 @@ public enum PollSourceKind
 public enum PollEventFlags
 {
     /// <summary>
-    /// Represents the None value.
+    /// Indicates the none poll event flags.
     /// </summary>
     None = 0,
     /// <summary>
-    /// Represents the PollIn value.
+    /// Indicates the poll in poll event flags.
     /// </summary>
     PollIn = 1,
     /// <summary>
-    /// Represents the PollOut value.
+    /// Indicates the poll out poll event flags.
     /// </summary>
     PollOut = 2,
     /// <summary>
-    /// Represents the PollErr value.
+    /// Indicates the poll err poll event flags.
     /// </summary>
     PollErr = 4,
     /// <summary>
-    /// Represents the PollPri value.
+    /// Indicates the poll pri poll event flags.
     /// </summary>
     PollPri = 8,
     /// <summary>
-    /// Represents the PollCompletion value.
+    /// Indicates the poll completion poll event flags.
     /// </summary>
     PollCompletion = 32
 }

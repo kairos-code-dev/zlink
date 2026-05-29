@@ -10,7 +10,7 @@ namespace Systems.Zlink;
 public interface IAtomicCounter : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets or sets the value.
+    /// Gets the value.
     /// </summary>
     int Value { get; }
 
@@ -20,12 +20,12 @@ public interface IAtomicCounter : IDisposable, IAsyncDisposable
     void Set(int value);
 
     /// <summary>
-    /// Gets or sets the increment.
+    /// Increments the counter and returns the new value.
     /// </summary>
     int Increment();
 
     /// <summary>
-    /// Gets or sets the decrement.
+    /// Decrements the counter and returns the new value.
     /// </summary>
     int Decrement();
 }

@@ -8,27 +8,27 @@ namespace Systems.Zlink;
 public enum AutoConnectType
 {
     /// <summary>
-    /// Represents the Invalid value.
+    /// Indicates the invalid auto connect type.
     /// </summary>
     Invalid = 0,
     /// <summary>
-    /// Represents the RouteMesh value.
+    /// Indicates the route mesh auto connect type.
     /// </summary>
     RouteMesh = 1,
     /// <summary>
-    /// Represents the ClientServer value.
+    /// Indicates the client server auto connect type.
     /// </summary>
     ClientServer = 2,
     /// <summary>
-    /// Represents the DealerMesh value.
+    /// Indicates the dealer mesh auto connect type.
     /// </summary>
     DealerMesh = 3,
     /// <summary>
-    /// Represents the Fanout value.
+    /// Indicates the fanout auto connect type.
     /// </summary>
     Fanout = 4,
     /// <summary>
-    /// Represents the SpotMesh value.
+    /// Indicates the spot mesh auto connect type.
     /// </summary>
     SpotMesh = 5
 }
@@ -39,19 +39,19 @@ public enum AutoConnectType
 public enum ServiceKind
 {
     /// <summary>
-    /// Represents the Discovery value.
+    /// Indicates the discovery service kind.
     /// </summary>
     Discovery = 1,
     /// <summary>
-    /// Represents the SpotSub value.
+    /// Indicates the spot sub service kind.
     /// </summary>
     SpotSub = 3,
     /// <summary>
-    /// Represents the SpotPub value.
+    /// Indicates the spot pub service kind.
     /// </summary>
     SpotPub = 4,
     /// <summary>
-    /// Represents the Socket value.
+    /// Indicates the socket service kind.
     /// </summary>
     Socket = 5
 }
@@ -62,27 +62,27 @@ public enum ServiceKind
 public enum ServiceRole
 {
     /// <summary>
-    /// Represents the Invalid value.
+    /// Indicates the invalid service role.
     /// </summary>
     Invalid = 0,
     /// <summary>
-    /// Represents the Spot value.
+    /// Indicates the spot service role.
     /// </summary>
     Spot = 2,
     /// <summary>
-    /// Represents the Router value.
+    /// Indicates the router service role.
     /// </summary>
     Router = 3,
     /// <summary>
-    /// Represents the Dealer value.
+    /// Indicates the dealer service role.
     /// </summary>
     Dealer = 4,
     /// <summary>
-    /// Represents the Pub value.
+    /// Indicates the pub service role.
     /// </summary>
     Pub = 5,
     /// <summary>
-    /// Represents the Sub value.
+    /// Indicates the sub service role.
     /// </summary>
     Sub = 6
 }
@@ -93,15 +93,15 @@ public enum ServiceRole
 public enum TopologySource
 {
     /// <summary>
-    /// Represents the Manual value.
+    /// Indicates the manual topology source.
     /// </summary>
     Manual = 1,
     /// <summary>
-    /// Represents the Discovery value.
+    /// Indicates the discovery topology source.
     /// </summary>
     Discovery = 2,
     /// <summary>
-    /// Represents the Registry value.
+    /// Indicates the registry topology source.
     /// </summary>
     Registry = 3
 }
@@ -112,27 +112,27 @@ public enum TopologySource
 public enum TopologyState
 {
     /// <summary>
-    /// Represents the Discovered value.
+    /// Indicates the discovered topology state.
     /// </summary>
     Discovered = 1,
     /// <summary>
-    /// Represents the Connecting value.
+    /// Indicates the connecting topology state.
     /// </summary>
     Connecting = 2,
     /// <summary>
-    /// Represents the Ready value.
+    /// Indicates the ready topology state.
     /// </summary>
     Ready = 3,
     /// <summary>
-    /// Represents the Lost value.
+    /// Indicates the lost topology state.
     /// </summary>
     Lost = 4,
     /// <summary>
-    /// Represents the Error value.
+    /// Indicates the error topology state.
     /// </summary>
     Error = 5,
     /// <summary>
-    /// Represents the Stopped value.
+    /// Indicates the stopped topology state.
     /// </summary>
     Stopped = 6
 }

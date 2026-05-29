@@ -9,39 +9,39 @@ namespace Systems.Zlink;
 public enum SocketType
 {
     /// <summary>
-    /// Represents the Any value.
+    /// Indicates the any socket type.
     /// </summary>
     Any = 0,
     /// <summary>
-    /// Represents the Pair value.
+    /// Indicates the pair socket type.
     /// </summary>
     Pair = 0x1001,
     /// <summary>
-    /// Represents the Pub value.
+    /// Indicates the pub socket type.
     /// </summary>
     Pub = 0x1002,
     /// <summary>
-    /// Represents the Sub value.
+    /// Indicates the sub socket type.
     /// </summary>
     Sub = 0x1003,
     /// <summary>
-    /// Represents the Dealer value.
+    /// Indicates the dealer socket type.
     /// </summary>
     Dealer = 0x1004,
     /// <summary>
-    /// Represents the Router value.
+    /// Indicates the router socket type.
     /// </summary>
     Router = 0x1005,
     /// <summary>
-    /// Represents the XPub value.
+    /// Indicates the xpub socket type.
     /// </summary>
     XPub = 0x1006,
     /// <summary>
-    /// Represents the XSub value.
+    /// Indicates the xsub socket type.
     /// </summary>
     XSub = 0x1007,
     /// <summary>
-    /// Represents the Stream value.
+    /// Indicates the stream socket type.
     /// </summary>
     Stream = 0x1008
 }
@@ -52,19 +52,19 @@ public enum SocketType
 public enum AutoHwmProfile
 {
     /// <summary>
-    /// Represents the Compact value.
+    /// Indicates the compact auto hwm profile.
     /// </summary>
     Compact = 0,
     /// <summary>
-    /// Represents the LowLatency value.
+    /// Indicates the low latency auto hwm profile.
     /// </summary>
     LowLatency = 1,
     /// <summary>
-    /// Represents the Balanced value.
+    /// Indicates the balanced auto hwm profile.
     /// </summary>
     Balanced = 2,
     /// <summary>
-    /// Represents the Throughput value.
+    /// Indicates the throughput auto hwm profile.
     /// </summary>
     Throughput = 3
 }
@@ -75,11 +75,11 @@ public enum AutoHwmProfile
 public enum RidDuplicatePolicy
 {
     /// <summary>
-    /// Represents the Reject value.
+    /// Indicates the reject rid duplicate policy.
     /// </summary>
     Reject = 0,
     /// <summary>
-    /// Represents the Handover value.
+    /// Indicates the handover rid duplicate policy.
     /// </summary>
     Handover = 1
 }
@@ -90,11 +90,11 @@ public enum RidDuplicatePolicy
 public enum SubmitRetryMode
 {
     /// <summary>
-    /// Represents the Off value.
+    /// Indicates the off submit retry mode.
     /// </summary>
     Off = 0,
     /// <summary>
-    /// Represents the LocalFailure value.
+    /// Indicates the local failure submit retry mode.
     /// </summary>
     LocalFailure = 1
 }
@@ -106,11 +106,11 @@ public enum SubmitRetryMode
 public enum SendFlags
 {
     /// <summary>
-    /// Represents the None value.
+    /// Indicates the none send flags.
     /// </summary>
     None = 0,
     /// <summary>
-    /// Represents the DontWait value.
+    /// Indicates the non-blocking send flags.
     /// </summary>
     DontWait = 1
 }
@@ -122,11 +122,11 @@ public enum SendFlags
 public enum RecvFlags
 {
     /// <summary>
-    /// Represents the None value.
+    /// Indicates the none recv flags.
     /// </summary>
     None = 0,
     /// <summary>
-    /// Represents the DontWait value.
+    /// Indicates the non-blocking recv flags.
     /// </summary>
     DontWait = 1
 }

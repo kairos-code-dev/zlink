@@ -14,19 +14,19 @@ namespace Systems.Zlink;
 public enum ReceivedMessageType
 {
     /// <summary>
-    /// Represents the Raw value.
+    /// Indicates the raw received message type.
     /// </summary>
     Raw = 0,
     /// <summary>
-    /// Represents the Request value.
+    /// Indicates the request received message type.
     /// </summary>
     Request = 1,
     /// <summary>
-    /// Represents the Reply value.
+    /// Indicates the reply received message type.
     /// </summary>
     Reply = 2,
     /// <summary>
-    /// Represents the ErrorReply value.
+    /// Indicates the error reply received message type.
     /// </summary>
     ErrorReply = 3
 }
@@ -430,7 +430,7 @@ public sealed partial class Received : IDisposable
         }
 
         /// <summary>
-        /// Gets or sets the count.
+        /// Gets the count.
         /// </summary>
         public int Count => 1;
 

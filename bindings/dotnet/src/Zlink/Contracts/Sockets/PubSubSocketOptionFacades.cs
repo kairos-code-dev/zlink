@@ -15,7 +15,7 @@ public sealed class StreamSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the notify.
+    /// Gets the notify.
     /// </summary>
     public bool Notify
     {
@@ -35,7 +35,7 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the verbose.
+    /// Gets the verbose.
     /// </summary>
     public bool Verbose
     {
@@ -44,7 +44,7 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the verboser.
+    /// Gets the verboser.
     /// </summary>
     public bool Verboser
     {
@@ -53,7 +53,7 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the manual.
+    /// Gets the manual.
     /// </summary>
     public bool Manual
     {
@@ -62,7 +62,7 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the manual last value.
+    /// Gets the manual last value.
     /// </summary>
     public bool ManualLastValue
     {
@@ -72,7 +72,7 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the no drop.
+    /// Gets the no drop.
     /// </summary>
     public bool NoDrop
     {
@@ -81,7 +81,7 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the welcome message.
+    /// Gets the welcome message.
     /// </summary>
     public Message WelcomeMessage
     {
@@ -91,7 +91,7 @@ public sealed class PubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the topics count.
+    /// Gets the option.
     /// </summary>
     public int TopicsCount => Socket.GetOption(SocketOptions.TopicsCount);
 
@@ -123,7 +123,7 @@ public sealed class SubSocketOptions : CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the topics count.
+    /// Gets the option.
     /// </summary>
     public int TopicsCount => Socket.GetOption(SocketOptions.SubTopicsCount);
 }

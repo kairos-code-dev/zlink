@@ -8,19 +8,19 @@ namespace Systems.Zlink;
 public enum RegistryState
 {
     /// <summary>
-    /// Represents the Idle value.
+    /// Indicates the idle registry state.
     /// </summary>
     Idle = 1,
     /// <summary>
-    /// Represents the Active value.
+    /// Indicates the active registry state.
     /// </summary>
     Active = 2,
     /// <summary>
-    /// Represents the Degraded value.
+    /// Indicates the degraded registry state.
     /// </summary>
     Degraded = 3,
     /// <summary>
-    /// Represents the Error value.
+    /// Indicates the error registry state.
     /// </summary>
     Error = 4
 }

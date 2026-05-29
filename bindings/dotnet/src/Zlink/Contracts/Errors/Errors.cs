@@ -11,7 +11,7 @@ namespace Systems.Zlink;
 public abstract class ZlinkException : Exception
 {
     /// <summary>
-    /// Gets or sets the zlink exception.
+    /// Creates a new instance.
     /// </summary>
     protected ZlinkException(int code)
         : this(code, 0)
@@ -19,7 +19,7 @@ public abstract class ZlinkException : Exception
     }
 
     /// <summary>
-    /// Gets or sets the zlink exception.
+    /// Creates a new instance.
     /// </summary>
     protected ZlinkException(int code, int internalErrno)
         : base(BuildMessage(code, internalErrno))
@@ -29,17 +29,17 @@ public abstract class ZlinkException : Exception
     }
 
     /// <summary>
-    /// Gets or sets the code.
+    /// Gets the code.
     /// </summary>
     public int Code { get; }
 
     /// <summary>
-    /// Gets or sets the internal errno.
+    /// Gets the internal errno value.
     /// </summary>
     public int InternalErrno { get; }
 
     /// <summary>
-    /// Gets or sets the message.
+    /// Gets the message.
     /// </summary>
     public override string Message => base.Message;
 

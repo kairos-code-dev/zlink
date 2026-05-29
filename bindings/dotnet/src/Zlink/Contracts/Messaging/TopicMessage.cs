@@ -60,7 +60,7 @@ public sealed class TopicMessage : IDisposable
     }
 
     /// <summary>
-    /// Gets or sets the routing id.
+    /// Gets the routing id.
     /// </summary>
     public RoutingId? RoutingId
     {
@@ -73,17 +73,17 @@ public sealed class TopicMessage : IDisposable
     }
 
     /// <summary>
-    /// Gets or sets the topic.
+    /// Decodes topic bytes to a topic string.
     /// </summary>
     public string Topic => _topic ??= DecodeTopicBytes();
 
     /// <summary>
-    /// Gets or sets the parts.
+    /// Gets the parts.
     /// </summary>
     public IReadOnlyList<Message> Parts => PartsCollection;
 
     /// <summary>
-    /// Gets or sets the is single part.
+    /// Gets whether the single part.
     /// </summary>
     public bool IsSinglePart => _singlePart != null || PartsCollection.IsSinglePart;
 

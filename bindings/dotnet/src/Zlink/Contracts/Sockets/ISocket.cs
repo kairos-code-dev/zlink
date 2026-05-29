@@ -17,7 +17,7 @@ public interface IZlinkSocket
 public interface ISocket : IZlinkSocket, IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets or sets the options.
+    /// Gets the options.
     /// </summary>
     CommonSocketOptions Options { get; }
 
@@ -32,7 +32,7 @@ public interface ISocket : IZlinkSocket, IDisposable, IAsyncDisposable
     void Unbind(string address);
 
     /// <summary>
-    /// Gets or sets the monitor open.
+    /// Opens a socket monitor.
     /// </summary>
     ISocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All);
 

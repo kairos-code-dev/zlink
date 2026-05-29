@@ -18,7 +18,7 @@ public delegate void StreamPacketHandler(RoutingId routingId, Message header,
 public interface IStreamSocket : IRoutedMessageSocket
 {
     /// <summary>
-    /// Gets or sets the options.
+    /// Gets the options.
     /// </summary>
     new StreamSocketOptions Options { get; }
 
@@ -38,7 +38,7 @@ public interface IStreamSocket : IRoutedMessageSocket
     void OnPacket(StreamPacketHandler handler);
 
     /// <summary>
-    /// Gets or sets the detach stream.
+    /// Detaches a stream peer.
     /// </summary>
     void DetachStream();
 
@@ -48,7 +48,7 @@ public interface IStreamSocket : IRoutedMessageSocket
     void DisconnectRid(RoutingId peerRid);
 
     /// <summary>
-    /// Gets or sets the attach actor gateway.
+    /// Attaches an actor gateway to the stream socket.
     /// </summary>
     void AttachActorGateway(ISpotNode node);
 
@@ -68,7 +68,7 @@ public interface IStreamSocket : IRoutedMessageSocket
     SendOperation SendBoundActor(RoutingId sessionRid, string actorId);
 
     /// <summary>
-    /// Gets or sets the bound actors.
+    /// Gets actor bindings for the stream socket.
     /// </summary>
     IReadOnlyList<ActorRef> BoundActors(RoutingId sessionRid);
 }

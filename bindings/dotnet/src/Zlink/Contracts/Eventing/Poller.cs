@@ -10,7 +10,7 @@ namespace Systems.Zlink;
 public interface IPoller : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets or sets the size.
+    /// Gets the size.
     /// </summary>
     int Size { get; }
 
@@ -30,12 +30,12 @@ public interface IPoller : IDisposable, IAsyncDisposable
     void Add(IZlinkTimer timer, nuint slot);
 
     /// <summary>
-    /// Gets or sets the modify.
+    /// Modifies a registered poll source.
     /// </summary>
     void Modify(IZlinkSocket socket, PollEventFlags events);
 
     /// <summary>
-    /// Gets or sets the modify fd.
+    /// Modifies a registered file descriptor poll source.
     /// </summary>
     void ModifyFd(int fd, PollEventFlags events);
 
@@ -65,7 +65,7 @@ public interface IPoller : IDisposable, IAsyncDisposable
     void Close();
 
     /// <summary>
-    /// Gets or sets the wait.
+    /// Waits for poll events.
     /// </summary>
     int Wait(Span<PollEvent> destination, TimeSpan timeout);
 }

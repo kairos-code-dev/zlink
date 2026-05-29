@@ -11,7 +11,7 @@ namespace Systems.Zlink;
 public static class Zlink
 {
     /// <summary>
-    /// Gets or sets the unhandled callback exception.
+    /// Gets the unhandled callback exception.
     /// </summary>
     public static event Action<Exception>? UnhandledCallbackException
     {
@@ -34,7 +34,7 @@ public static class Zlink
     }
 
     /// <summary>
-    /// Gets or sets the version.
+    /// Gets the native zlink version.
     /// </summary>
     public static (int Major, int Minor, int Patch) Version()
     {

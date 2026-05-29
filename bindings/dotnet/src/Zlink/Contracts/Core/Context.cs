@@ -10,7 +10,7 @@ namespace Systems.Zlink;
 public interface IContext : IDisposable, IAsyncDisposable
 {
     /// <summary>
-    /// Gets or sets the options.
+    /// Gets the options.
     /// </summary>
     IContextOptions Options { get; }
 
@@ -81,7 +81,7 @@ public interface IContext : IDisposable, IAsyncDisposable
     ISpotNode CreateSpotNode(SpotNodeMode mode);
 
     /// <summary>
-    /// Gets or sets the shutdown.
+    /// Shuts down the context.
     /// </summary>
     void Shutdown();
 

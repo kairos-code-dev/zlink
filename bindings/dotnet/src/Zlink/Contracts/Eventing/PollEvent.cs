@@ -17,19 +17,19 @@ public readonly struct PollEvent
     }
 
     /// <summary>
-    /// Gets or sets the source kind.
+    /// Gets the source kind.
     /// </summary>
     public PollSourceKind SourceKind { get; }
     /// <summary>
-    /// Gets or sets the slot.
+    /// Gets the slot.
     /// </summary>
     public nuint Slot { get; }
     /// <summary>
-    /// Gets or sets the revents.
+    /// Gets the returned poll events.
     /// </summary>
     public PollEventFlags Revents { get; }
     /// <summary>
-    /// Gets or sets the fd.
+    /// Gets the file descriptor.
     /// </summary>
     public int Fd { get; }
 }

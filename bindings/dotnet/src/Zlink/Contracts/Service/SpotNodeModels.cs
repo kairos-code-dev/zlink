@@ -8,23 +8,23 @@ namespace Systems.Zlink;
 public enum SpotNodeState
 {
     /// <summary>
-    /// Represents the Idle value.
+    /// Indicates the idle spot node state.
     /// </summary>
     Idle = 1,
     /// <summary>
-    /// Represents the Connecting value.
+    /// Indicates the connecting spot node state.
     /// </summary>
     Connecting = 2,
     /// <summary>
-    /// Represents the PartialReady value.
+    /// Indicates the partial ready spot node state.
     /// </summary>
     PartialReady = 3,
     /// <summary>
-    /// Represents the Ready value.
+    /// Indicates the ready spot node state.
     /// </summary>
     Ready = 4,
     /// <summary>
-    /// Represents the Error value.
+    /// Indicates the error spot node state.
     /// </summary>
     Error = 5
 }
@@ -35,15 +35,15 @@ public enum SpotNodeState
 public enum SpotPeerSource
 {
     /// <summary>
-    /// Represents the Manual value.
+    /// Indicates the manual spot peer source.
     /// </summary>
     Manual = 1,
     /// <summary>
-    /// Represents the Discovery value.
+    /// Indicates the discovery spot peer source.
     /// </summary>
     Discovery = 2,
     /// <summary>
-    /// Represents the Mixed value.
+    /// Indicates the mixed spot peer source.
     /// </summary>
     Mixed = 3
 }
@@ -54,11 +54,11 @@ public enum SpotPeerSource
 public enum SpotPeerKind
 {
     /// <summary>
-    /// Represents the SpotMesh value.
+    /// Indicates the spot mesh spot peer kind.
     /// </summary>
     SpotMesh = 1,
     /// <summary>
-    /// Represents the RouterChannel value.
+    /// Indicates the router channel spot peer kind.
     /// </summary>
     RouterChannel = 2
 }
@@ -69,15 +69,15 @@ public enum SpotPeerKind
 public enum SpotPeerState
 {
     /// <summary>
-    /// Represents the Configured value.
+    /// Indicates the configured spot peer state.
     /// </summary>
     Configured = 1,
     /// <summary>
-    /// Represents the Connecting value.
+    /// Indicates the connecting spot peer state.
     /// </summary>
     Connecting = 2,
     /// <summary>
-    /// Represents the Connected value.
+    /// Indicates the connected spot peer state.
     /// </summary>
     Connected = 3
 }
@@ -88,15 +88,15 @@ public enum SpotPeerState
 public enum SpotKind
 {
     /// <summary>
-    /// Represents the Invalid value.
+    /// Indicates the invalid spot kind.
     /// </summary>
     Invalid = 0,
     /// <summary>
-    /// Represents the Entry value.
+    /// Indicates the entry spot kind.
     /// </summary>
     Entry = 1,
     /// <summary>
-    /// Represents the User value.
+    /// Indicates the user spot kind.
     /// </summary>
     User = 2
 }
@@ -107,15 +107,15 @@ public enum SpotKind
 public enum SubjectKind
 {
     /// <summary>
-    /// Represents the None value.
+    /// Indicates the none subject kind.
     /// </summary>
     None = 0,
     /// <summary>
-    /// Represents the Topic value.
+    /// Indicates the topic subject kind.
     /// </summary>
     Topic = 1,
     /// <summary>
-    /// Represents the Pattern value.
+    /// Indicates the pattern subject kind.
     /// </summary>
     Pattern = 2
 }
@@ -126,11 +126,11 @@ public enum SubjectKind
 public enum SpotRole
 {
     /// <summary>
-    /// Represents the Pub value.
+    /// Indicates the pub spot role.
     /// </summary>
     Pub = 1,
     /// <summary>
-    /// Represents the Sub value.
+    /// Indicates the sub spot role.
     /// </summary>
     Sub = 2
 }
@@ -234,15 +234,15 @@ public sealed record SpotNodeSubjectEntry(
 public enum SpotNodeMode
 {
     /// <summary>
-    /// Represents the PubSub value.
+    /// Indicates the pub/sub spot node mode.
     /// </summary>
     PubSub = 1,
     /// <summary>
-    /// Represents the Routed value.
+    /// Indicates the routed spot node mode.
     /// </summary>
     Routed = 2,
     /// <summary>
-    /// Represents the All value.
+    /// Indicates the all spot node mode.
     /// </summary>
     All = 3
 }
@@ -253,15 +253,15 @@ public enum SpotNodeMode
 public enum SpotNodeSocketOwner
 {
     /// <summary>
-    /// Represents the Any value.
+    /// Indicates the any spot node socket owner.
     /// </summary>
     Any = 0,
     /// <summary>
-    /// Represents the Node value.
+    /// Indicates the node spot node socket owner.
     /// </summary>
     Node = 1,
     /// <summary>
-    /// Represents the Spot value.
+    /// Indicates the spot spot node socket owner.
     /// </summary>
     Spot = 2
 }
@@ -272,39 +272,39 @@ public enum SpotNodeSocketOwner
 public enum SpotNodeSocketType
 {
     /// <summary>
-    /// Represents the Any value.
+    /// Indicates the any spot node socket type.
     /// </summary>
     Any = 0,
     /// <summary>
-    /// Represents the Pair value.
+    /// Indicates the pair spot node socket type.
     /// </summary>
     Pair = 0x1001,
     /// <summary>
-    /// Represents the Pub value.
+    /// Indicates the pub spot node socket type.
     /// </summary>
     Pub = 0x1002,
     /// <summary>
-    /// Represents the Sub value.
+    /// Indicates the sub spot node socket type.
     /// </summary>
     Sub = 0x1003,
     /// <summary>
-    /// Represents the Dealer value.
+    /// Indicates the dealer spot node socket type.
     /// </summary>
     Dealer = 0x1004,
     /// <summary>
-    /// Represents the Router value.
+    /// Indicates the router spot node socket type.
     /// </summary>
     Router = 0x1005,
     /// <summary>
-    /// Represents the XPub value.
+    /// Indicates the xpub spot node socket type.
     /// </summary>
     XPub = 0x1006,
     /// <summary>
-    /// Represents the XSub value.
+    /// Indicates the xsub spot node socket type.
     /// </summary>
     XSub = 0x1007,
     /// <summary>
-    /// Represents the Stream value.
+    /// Indicates the stream spot node socket type.
     /// </summary>
     Stream = 0x1008
 }

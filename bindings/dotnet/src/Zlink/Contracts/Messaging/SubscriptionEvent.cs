@@ -28,17 +28,17 @@ public sealed class SubscriptionEvent
     }
 
     /// <summary>
-    /// Gets or sets the routing id.
+    /// Gets the routing id.
     /// </summary>
     public RoutingId? RoutingId { get; private set; }
 
     /// <summary>
-    /// Gets or sets the topic.
+    /// Gets the topic.
     /// </summary>
     public string Topic { get; private set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the subscribed.
+    /// Gets whether this event subscribed or unsubscribed the topic.
     /// </summary>
     public bool Subscribed { get; private set; }
 

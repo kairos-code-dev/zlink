@@ -36,7 +36,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the max message size.
+    /// Gets the max message size.
     /// </summary>
     public long MaxMessageSize
     {
@@ -81,7 +81,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the linger.
+    /// Gets the linger.
     /// </summary>
     public TimeSpan? Linger
     {
@@ -91,7 +91,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the reconnect interval.
+    /// Gets the reconnect interval.
     /// </summary>
     public TimeSpan? ReconnectInterval
     {
@@ -101,7 +101,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the reconnect interval max.
+    /// Gets the reconnect interval max.
     /// </summary>
     public TimeSpan? ReconnectIntervalMax
     {
@@ -111,7 +111,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the backlog.
+    /// Gets the backlog.
     /// </summary>
     public int Backlog
     {
@@ -163,7 +163,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the tcp keep alive.
+    /// Gets the tcp keep alive.
     /// </summary>
     public int TcpKeepAlive
     {
@@ -196,7 +196,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the heartbeat interval.
+    /// Gets the heartbeat interval.
     /// </summary>
     public TimeSpan? HeartbeatInterval
     {
@@ -206,7 +206,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the heartbeat ttl.
+    /// Gets the heartbeat ttl.
     /// </summary>
     public TimeSpan? HeartbeatTtl
     {
@@ -216,7 +216,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the heartbeat timeout.
+    /// Gets the heartbeat timeout.
     /// </summary>
     public TimeSpan? HeartbeatTimeout
     {
@@ -226,7 +226,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the ipv6.
+    /// Gets the ipv6.
     /// </summary>
     public bool IPv6
     {
@@ -235,7 +235,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the tcp no delay.
+    /// Gets the tcp no delay.
     /// </summary>
     public bool TcpNoDelay
     {
@@ -262,7 +262,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the immediate.
+    /// Gets the immediate.
     /// </summary>
     public bool Immediate
     {
@@ -289,7 +289,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the submit retry mode.
+    /// Gets the submit retry mode.
     /// </summary>
     public SubmitRetryMode SubmitRetryMode
     {
@@ -298,7 +298,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the submit retry timeout milliseconds.
+    /// Gets the submit retry timeout milliseconds.
     /// </summary>
     public int SubmitRetryTimeoutMilliseconds
     {
@@ -307,7 +307,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the submit retry attempts.
+    /// Gets the submit retry attempts.
     /// </summary>
     public int SubmitRetryAttempts
     {
@@ -371,7 +371,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the routing id duplicate policy.
+    /// Gets the routing id duplicate policy.
     /// </summary>
     public RidDuplicatePolicy RoutingIdDuplicatePolicy
     {
@@ -381,7 +381,7 @@ public class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the last endpoint.
+    /// Gets the option.
     /// </summary>
     public string LastEndpoint => Socket.GetOption(SocketOptions.LastEndpoint);
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-ROOT="/home/hep7/project/kairos/zlink/bindings/dotnet/samples"
-VERSION_FILE="/home/hep7/project/kairos/zlink/VERSION"
-CORE_LIB_DIR="/home/hep7/project/kairos/zlink/core/build/lib"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${ROOT}/../../.." && pwd)"
+VERSION_FILE="${REPO_ROOT}/VERSION"
+CORE_LIB_DIR="${REPO_ROOT}/core/build/lib"
 CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so.${CORE_VERSION}"
 

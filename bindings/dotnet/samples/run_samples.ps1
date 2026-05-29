@@ -1,6 +1,9 @@
 $ErrorActionPreference = "Stop"
-$root = "/home/hep7/project/kairos/zlink/bindings/dotnet/samples"
-$coreLib = "/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so"
+$root = $PSScriptRoot
+$repoRoot = Resolve-Path (Join-Path $root "../../..")
+$versionFile = Join-Path $repoRoot "VERSION"
+$coreVersion = (Select-String -Path $versionFile -Pattern "^LIBZLINK_VERSION=(.+)$").Matches[0].Groups[1].Value
+$coreLib = Join-Path $repoRoot "core/build/lib/libzlink.so.$coreVersion"
 
 if (Test-Path $coreLib) {
     $env:ZLINK_LIBRARY_PATH = $coreLib
@@ -16,6 +19,9 @@ $samples = @(
     "StreamPacketCallback/StreamPacketCallback.csproj"
     "SpotRecv/SpotRecv.csproj"
     "SpotRequestAsync/SpotRequestAsync.csproj"
+    "ActorRoomServer/ActorRoomServer.csproj"
+    "ActorGatewayRelay/ActorGatewayRelay.csproj"
+    "ActorSinglePlayerQueue/ActorSinglePlayerQueue.csproj"
     "DiscoveryRegistry/DiscoveryRegistry.csproj"
     "RegistryQuery/RegistryQuery.csproj"
 )

@@ -428,8 +428,10 @@ jobs:
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/dotnet/runtimes/linux-x64/native/libzlink.so.${{ needs.resolve.outputs.version }}
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/dotnet/runtimes/linux-x64/native/libzlink.so.5
-          ln -sfn libzlink.so.5 bindings/dotnet/runtimes/linux-x64/native/libzlink.so
+          major="${{ needs.resolve.outputs.version }}"
+          major="${major%%.*}"
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/dotnet/runtimes/linux-x64/native/libzlink.so.${major}
+          ln -sfn libzlink.so.${major} bindings/dotnet/runtimes/linux-x64/native/libzlink.so
 
       - uses: actions/setup-dotnet@v4
         with:

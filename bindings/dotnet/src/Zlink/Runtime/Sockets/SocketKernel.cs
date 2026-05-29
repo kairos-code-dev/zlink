@@ -2634,32 +2634,6 @@ internal sealed partial class SocketKernel : IDisposable
         }
     }
 
-    private static void PrepareNativeParts(ReadOnlySpan<Message> parts,
-        Span<ZlinkMsg> nativeParts, string paramName, ref int built)
-    {
-        for (int i = 0; i < parts.Length; i++)
-        {
-            if (parts[i] == null)
-            {
-                throw new ArgumentException(
-                    "Parts must not contain null messages.", paramName);
-            }
-        }
-
-        for (int i = 0; i < parts.Length; i++)
-        {
-            parts[i].MoveTo(ref nativeParts[i]);
-            built++;
-        }
-    }
-
-    private static void RestoreManagedParts(ReadOnlySpan<Message> parts,
-        Span<ZlinkMsg> nativeParts, int start, int count)
-    {
-        for (int i = start + count - 1; i >= start; i--)
-            parts[i].RestoreFrom(ref nativeParts[i]);
-    }
-
     private static string DecodeTopic(byte[] topicBuffer, nuint topicLength)
     {
         int boundedLength = topicLength > (nuint)topicBuffer.Length

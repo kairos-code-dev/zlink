@@ -8,19 +8,6 @@ using System.Threading.Tasks;
 
 namespace Systems.Zlink;
 
-// --- Raw socket operation builder implementations ---
-
-internal enum RawSocketSendKind
-{
-    MessageSend,
-    Publish,
-    RoutedSend,
-    StreamSendByRoutingId,
-    StreamSendBoundActor,
-    ActorSendBoundSession,
-    ReceivedSend
-}
-
 internal sealed class MessageSocketSendOperation : SendOperation,
     SendSubmitOperation
 {

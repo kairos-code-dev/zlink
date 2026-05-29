@@ -95,7 +95,8 @@ internal sealed partial class SocketKernel
         int submitted = 0;
         try
         {
-            PrepareNativeParts(parts, nativeParts, paramName, ref built);
+            NativeMessageParts.MoveToNative(parts, nativeParts, paramName,
+                ref built);
             byte[]? publishTopicUtf8 = kind == MultipartSubmitKind.Publish
                 ? GetPublishTopicUtf8(topic!)
                 : null;
@@ -134,8 +135,8 @@ internal sealed partial class SocketKernel
                     SendResult? sendResult = TryMapSendResultFromErrno();
                     if (sendResult != null)
                     {
-                        RestoreManagedParts(parts, nativeParts, submitted,
-                            built - submitted);
+                        NativeMessageParts.RestoreManaged(parts, nativeParts,
+                            submitted, built - submitted);
                         return sendResult.Value;
                     }
                 }
@@ -146,7 +147,8 @@ internal sealed partial class SocketKernel
         }
         catch
         {
-            RestoreManagedParts(parts, nativeParts, submitted, built - submitted);
+            NativeMessageParts.RestoreManaged(parts, nativeParts, submitted,
+                built - submitted);
             throw;
         }
         finally

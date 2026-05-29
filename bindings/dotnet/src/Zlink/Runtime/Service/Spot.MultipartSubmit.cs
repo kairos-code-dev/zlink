@@ -64,20 +64,8 @@ internal sealed partial class Spot
         int submitted = 0;
         try
         {
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (parts[i] == null)
-                {
-                    throw new ArgumentException(
-                        "Parts must not contain null messages.", paramName);
-                }
-            }
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                parts[i].MoveTo(ref nativeParts[i]);
-                built++;
-            }
+            NativeMessageParts.MoveToNative(parts, nativeParts, paramName,
+                ref built);
 
             byte[]? publishTopicUtf8 = kind == SpotMultipartSubmitKind.Publish
                 ? GetPublishTopicUtf8(subject)
@@ -111,8 +99,8 @@ internal sealed partial class Spot
                     SendResult? sendResult = TryMapSendResultFromErrno();
                     if (sendResult != null)
                     {
-                        for (int j = submitted; j < built; j++)
-                            parts[j].RestoreFrom(ref nativeParts[j]);
+                        NativeMessageParts.RestoreManaged(parts, nativeParts,
+                            submitted, built - submitted);
                         return sendResult.Value;
                     }
                 }
@@ -123,8 +111,8 @@ internal sealed partial class Spot
         }
         catch
         {
-            for (int i = submitted; i < built; i++)
-                parts[i].RestoreFrom(ref nativeParts[i]);
+            NativeMessageParts.RestoreManaged(parts, nativeParts, submitted,
+                built - submitted);
             throw;
         }
         finally

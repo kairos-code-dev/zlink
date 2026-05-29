@@ -14,7 +14,7 @@ import { wrapRoutingId } from '../../../contracts/service/spot/spot_models';
 import { OperationPayload } from '../../sockets/socket_operations';
 
 
-export function actorRefFromRaw(raw: { nodeRid: Buffer; actorId: string; generation: bigint | number }): ActorRef {
+export function actorRefFromRaw(raw: ActorRefRaw): ActorRef {
   const generation = BigInt(raw.generation);
   return Object.freeze({
     nodeRid: RoutingId.from(raw.nodeRid),
@@ -31,12 +31,26 @@ export function actorRefToRaw(actor: ActorRef): { nodeRid: Buffer; actorId: stri
   };
 }
 
-export function actorRecvInfoFromRaw(raw: {
-  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
+export interface ActorRefRaw {
+  nodeRid: Buffer;
+  actorId: string;
+  generation: bigint | number;
+}
+
+export interface ActorRecvInfoRaw {
+  actor: ActorRefRaw;
   sourceNodeRid: Buffer;
   sourceSessionRid: Buffer;
   flags: number;
-}): ActorRecvInfo {
+}
+
+export interface ActorPartRaw {
+  info: ActorRecvInfoRaw;
+  message: Buffer;
+  more: boolean;
+}
+
+export function actorRecvInfoFromRaw(raw: ActorRecvInfoRaw): ActorRecvInfo {
   return {
     actor: actorRefFromRaw(raw.actor),
     sourceNodeRid: RoutingId.from(raw.sourceNodeRid),
@@ -45,16 +59,7 @@ export function actorRecvInfoFromRaw(raw: {
   };
 }
 
-export function actorPartFromRaw(raw: {
-  info: {
-    actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
-    sourceNodeRid: Buffer;
-    sourceSessionRid: Buffer;
-    flags: number;
-  };
-  message: Buffer;
-  more: boolean;
-}): ActorPart {
+export function actorPartFromRaw(raw: ActorPartRaw): ActorPart {
   return {
     info: actorRecvInfoFromRaw(raw.info),
     message: messageFromNativeBuffer(raw.message),

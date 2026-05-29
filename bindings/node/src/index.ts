@@ -53,49 +53,63 @@ import type {
   XSubSocket,
 } from './zlink/contracts';
 import type { BaseSocket, Message, SpotNodeModeValue } from './zlink/contracts';
+import type { RuntimeContext } from './zlink/runtime/core/context';
+import type { RuntimeBaseSocket } from './zlink/runtime/sockets';
+
+function runtimeContext(ctx: Context): RuntimeContext {
+  return ctx as unknown as RuntimeContext;
+}
+
+function runtimeSocket(socket: BaseSocket): RuntimeBaseSocket {
+  return socket as unknown as RuntimeBaseSocket;
+}
+
+function publicContract<T>(value: unknown): T {
+  return value as T;
+}
 
 export function createContext(): Context {
-  return createRuntimeContext() as unknown as Context;
+  return publicContract<Context>(createRuntimeContext());
 }
 
 export function createPairSocket(ctx: Context): PairSocket {
-  return createRuntimePairSocket(ctx as never) as unknown as PairSocket;
+  return publicContract<PairSocket>(createRuntimePairSocket(runtimeContext(ctx)));
 }
 
 export function createPubSocket(ctx: Context): PubSocket {
-  return createRuntimePubSocket(ctx as never) as unknown as PubSocket;
+  return publicContract<PubSocket>(createRuntimePubSocket(runtimeContext(ctx)));
 }
 
 export function createSubSocket(ctx: Context): SubSocket {
-  return createRuntimeSubSocket(ctx as never) as unknown as SubSocket;
+  return publicContract<SubSocket>(createRuntimeSubSocket(runtimeContext(ctx)));
 }
 
 export function createXPubSocket(ctx: Context): XPubSocket {
-  return createRuntimeXPubSocket(ctx as never) as unknown as XPubSocket;
+  return publicContract<XPubSocket>(createRuntimeXPubSocket(runtimeContext(ctx)));
 }
 
 export function createXSubSocket(ctx: Context): XSubSocket {
-  return createRuntimeXSubSocket(ctx as never) as unknown as XSubSocket;
+  return publicContract<XSubSocket>(createRuntimeXSubSocket(runtimeContext(ctx)));
 }
 
 export function createDealerSocket(ctx: Context): DealerSocket {
-  return createRuntimeDealerSocket(ctx as never) as unknown as DealerSocket;
+  return publicContract<DealerSocket>(createRuntimeDealerSocket(runtimeContext(ctx)));
 }
 
 export function createRouterSocket(ctx: Context): RouterSocket {
-  return createRuntimeRouterSocket(ctx as never) as unknown as RouterSocket;
+  return publicContract<RouterSocket>(createRuntimeRouterSocket(runtimeContext(ctx)));
 }
 
 export function createStreamSocket(ctx: Context): StreamSocket {
-  return createRuntimeStreamSocket(ctx as never) as unknown as StreamSocket;
+  return publicContract<StreamSocket>(createRuntimeStreamSocket(runtimeContext(ctx)));
 }
 
 export function createRegistry(ctx: Context): Registry {
-  return createRuntimeRegistry(ctx as never) as unknown as Registry;
+  return publicContract<Registry>(createRuntimeRegistry(runtimeContext(ctx)));
 }
 
 export function createRegistryQueryClient(ctx: Context): RegistryQueryClient {
-  return createRuntimeRegistryQueryClient(ctx as never) as unknown as RegistryQueryClient;
+  return publicContract<RegistryQueryClient>(createRuntimeRegistryQueryClient(runtimeContext(ctx)));
 }
 
 export function createDiscovery(
@@ -103,35 +117,35 @@ export function createDiscovery(
   autoConnectType: AutoConnectTypeValue,
   channelName: string
 ): Discovery {
-  return createRuntimeDiscovery(ctx as never, autoConnectType as never, channelName) as unknown as Discovery;
+  return publicContract<Discovery>(createRuntimeDiscovery(runtimeContext(ctx), autoConnectType, channelName));
 }
 
 export function createSpotNode(ctx: Context, mode?: SpotNodeModeValue): SpotNode {
-  return createRuntimeSpotNode(ctx as never, mode as never) as unknown as SpotNode;
+  return publicContract<SpotNode>(createRuntimeSpotNode(runtimeContext(ctx), mode));
 }
 
 export function createPoller(): Poller {
-  return createRuntimePoller() as unknown as Poller;
+  return publicContract<Poller>(createRuntimePoller());
 }
 
 export function createPollEvents(capacity: number): PollEvents {
-  return createRuntimePollEvents(capacity) as unknown as PollEvents;
+  return publicContract<PollEvents>(createRuntimePollEvents(capacity));
 }
 
 export function createTimer(): Timer {
-  return createRuntimeTimer() as unknown as Timer;
+  return publicContract<Timer>(createRuntimeTimer());
 }
 
 export function createThread(handler: () => void): Thread {
-  return createRuntimeThread(handler) as unknown as Thread;
+  return publicContract<Thread>(createRuntimeThread(handler));
 }
 
 export function createStopwatch(): Stopwatch {
-  return createRuntimeStopwatch() as unknown as Stopwatch;
+  return publicContract<Stopwatch>(createRuntimeStopwatch());
 }
 
 export function createAtomicCounter(initialValue = 0): AtomicCounter {
-  return createRuntimeAtomicCounter(initialValue) as unknown as AtomicCounter;
+  return publicContract<AtomicCounter>(createRuntimeAtomicCounter(initialValue));
 }
 
 export function version(): [number, number, number] {
@@ -147,7 +161,7 @@ export function has(capability: string): boolean {
 }
 
 export function proxy(frontend: BaseSocket, backend: BaseSocket, capture?: BaseSocket): void {
-  runtimeProxy(frontend as never, backend as never, capture as never);
+  runtimeProxy(runtimeSocket(frontend), runtimeSocket(backend), capture ? runtimeSocket(capture) : undefined);
 }
 
 export function proxySteerable(
@@ -156,7 +170,12 @@ export function proxySteerable(
   capture: BaseSocket | null,
   control: BaseSocket
 ): void {
-  runtimeProxySteerable(frontend as never, backend as never, capture as never, control as never);
+  runtimeProxySteerable(
+    runtimeSocket(frontend),
+    runtimeSocket(backend),
+    capture ? runtimeSocket(capture) : undefined,
+    runtimeSocket(control)
+  );
 }
 
 export function sleep(seconds: number): void {

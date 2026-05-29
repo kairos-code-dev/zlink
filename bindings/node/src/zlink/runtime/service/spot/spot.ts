@@ -7,7 +7,7 @@ import { validateCString } from '../../options/validation';
 import { executeNativeRequest } from '../../messaging/request_executor';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { startRequestProgress } from '../../messaging/request_progress';
-import { adoptTopicMessage, materializeReceived, materializeTopicMessage } from '../../messaging/message_materializer';
+import { adoptTopicMessage, materializeReceived, materializeTopicMessage, type NativeTopicMessageRaw } from '../../messaging/message_materializer';
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
 import { RuntimeReplyOperation, RuntimeRequestOperation, RuntimeSendOperation, normalizeReplyFlags, submitErrorFromResult } from '../../sockets/socket_operations';
 import { toMessageParts, toOwnedMessage } from '../../buffers/message_conversion';
@@ -116,8 +116,8 @@ export class Spot extends NativeHandle {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? requireNative().spotRecvNoWait(this._native) as any
-        : requireNative().spotRecv(this._native, flags | 0) as any;
+        ? requireNative().spotRecvNoWait(this._native) as NativeTopicMessageRaw | null
+        : requireNative().spotRecv(this._native, flags | 0) as NativeTopicMessageRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'subscribe failed');
     }
@@ -199,7 +199,7 @@ export class Spot extends NativeHandle {
   }
   requestToChannel(channelName: string): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
-      this.requestChannelDirect(channelName, parts, cbOrTimeout as any, opFlags as any, opTimeout)
+      this.requestChannelDirect(channelName, parts, cbOrTimeout, opFlags, opTimeout)
     );
   }
   private requestChannelDirect(channelName: string, partsInput: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
@@ -224,12 +224,12 @@ export class Spot extends NativeHandle {
   }
   requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
-      this.requestToSpotDirect(destNodeRid, destSpotRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
+      this.requestToSpotDirect(destNodeRid, destSpotRid, parts, cbOrTimeout, opFlags, opTimeout)
     );
   }
   requestToRouter(peerRid: RoutingId): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
-      this.requestToRouterDirect(peerRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
+      this.requestToRouterDirect(peerRid, parts, cbOrTimeout, opFlags, opTimeout)
     );
   }
   private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, partsInput: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {

@@ -449,7 +449,6 @@ export class SubscriberSocket extends ConnectableSocket {
   }
 }
 
-export type RouterSocket = { sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], flags?: SendFlags): boolean };
 export class RoutedMessageSocket extends ConnectableSocket {
   send(routingId: RoutingId): SendOperation {
     return new RuntimeSendOperation((parts, flags) => this.sendDirect(routingId, parts, flags));
@@ -489,6 +488,10 @@ export class RoutedMessageSocket extends ConnectableSocket {
     }
     return true;
   }
+  protected sendToSpotFromRoutedMessage(_destNodeRid: RoutingId, _destSpotRid: RoutingId, _parts: readonly Message[], _flags: SendFlags): boolean {
+    throw submitErrorFromResult(SubmitResult.InvalidState, 'spot-routed send is only supported by RouterSocket');
+  }
+
   /**
    * Canonical caller-provided storage recv. See {@link MessageSocket.recv}.
    */
@@ -507,7 +510,7 @@ export class RoutedMessageSocket extends ConnectableSocket {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
         }
         if (raw.spotRid) {
-          return (this as unknown as RouterSocket).sendToSpotDirect(
+          return this.sendToSpotFromRoutedMessage(
             RoutingId.from(raw.routingId),
             RoutingId.from(raw.spotRid),
             parts,

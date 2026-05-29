@@ -63,7 +63,7 @@ export class DealerSocket extends MessageSocket {
   }
   request(): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
-      this.requestDirect(parts, cbOrTimeout as any, opFlags as any, opTimeout)
+      this.requestDirect(parts, cbOrTimeout, opFlags, opTimeout)
     );
   }
   private requestDirect(

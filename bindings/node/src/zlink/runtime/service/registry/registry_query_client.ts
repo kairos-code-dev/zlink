@@ -12,6 +12,7 @@ import type {
 import {
   mapRegistryTopologyEntry,
   normalizeTopologyFilter,
+  type RegistryTopologyEntryRaw,
 } from './registry_support';
 
 export class RegistryQueryClient extends NativeHandle {
@@ -29,9 +30,9 @@ export class RegistryQueryClient extends NativeHandle {
   topology(filter?: RegistryTopologyFilter): RegistryTopologyEntry[] {
     const normalizedFilter = normalizeTopologyFilter(filter);
     return (configCall('registry query topology failed', () =>
-      requireNative().registryQueryTopology(this._native, normalizedFilter) as Array<Record<string, unknown>>
+      requireNative().registryQueryTopology(this._native, normalizedFilter) as RegistryTopologyEntryRaw[]
     ))
-      .map((entry) => mapRegistryTopologyEntry(entry as any));
+      .map(mapRegistryTopologyEntry);
   }
 
   close(): void {

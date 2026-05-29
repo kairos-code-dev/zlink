@@ -55,7 +55,7 @@ export class RouterSocket extends RoutedMessageSocket {
   }
   request(peerRid: RoutingId): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
-      this.requestDirect(peerRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
+      this.requestDirect(peerRid, parts, cbOrTimeout, opFlags, opTimeout)
     );
   }
   private requestDirect(
@@ -109,9 +109,12 @@ export class RouterSocket extends RoutedMessageSocket {
       throw submitError;
     }
   }
+  protected sendToSpotFromRoutedMessage(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly Message[], flags: SendFlags): boolean {
+    return this.sendToSpotDirect(destNodeRid, destSpotRid, parts, flags);
+  }
   requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOperation {
     return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
-      this.requestToSpotDirect(destNodeRid, destSpotRid, parts, cbOrTimeout as any, opFlags as any, opTimeout)
+      this.requestToSpotDirect(destNodeRid, destSpotRid, parts, cbOrTimeout, opFlags, opTimeout)
     );
   }
   private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {

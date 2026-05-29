@@ -2,26 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-
-function loadRealMessageClass() {
-  const attempts = [
-    ["@zlink-systems/zlink", () => require("@zlink-systems/zlink").Message],
-    ["../../dist/message.js", () => require("../../dist/message.js").Message],
-  ];
-
-  for (const [label, loader] of attempts) {
-    try {
-      const Message = loader();
-      if (typeof Message?.from === "function") {
-        return { Message, source: label };
-      }
-    } catch {
-      // Try the next location.
-    }
-  }
-
-  return { Message: null, source: null };
-}
+const codec = require("./dist/index.js");
 
 function createTestType(protobuf) {
   return {
@@ -72,18 +53,13 @@ try {
 
   const sample = { id: 23, name: "codec" };
   const type = createTestType(protobuf);
-  const real = loadRealMessageClass();
   const bytes = type.encode(sample).finish();
 
-  if (real.Message) {
-    const message = real.Message.from(bytes);
-    assert.equal(message.constructor, real.Message);
-    assert.deepEqual(type.decode(message.data()), sample);
-    console.log(`[protobuf] PASS real Message roundtrip via ${real.source}`);
-  } else {
-    assert.deepEqual(type.decode(bytes), sample);
-    console.log("[protobuf] PASS direct protobuf roundtrip; real Message binding unavailable");
-  }
+  const message = codec.encode(sample, type);
+  assert.equal(message.constructor.name, "Message");
+  assert.deepEqual(codec.decode(message, type), sample);
+  assert.deepEqual(type.decode(bytes), sample);
+  console.log("[protobuf] PASS codec Message roundtrip");
 } catch (error) {
   console.error("[protobuf] FAIL", error);
   process.exitCode = 1;

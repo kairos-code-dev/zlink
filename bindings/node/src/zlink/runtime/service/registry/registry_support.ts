@@ -17,7 +17,7 @@ import {
 } from '../../../contracts/service';
 import { normalizeRoutingId } from '../../core/routing_id';
 
-export function mapMemberPeerEntry(entry: {
+export interface MemberPeerEntryRaw {
   autoConnectType: number;
   serviceRole: number;
   channelName: string;
@@ -25,19 +25,9 @@ export function mapMemberPeerEntry(entry: {
   routingId: Buffer;
   weight: number;
   value: number | bigint;
-}): MemberPeerEntry {
-  return {
-    autoConnectType: entry.autoConnectType as AutoConnectType,
-    serviceRole: entry.serviceRole as ServiceRoleValue,
-    channelName: entry.channelName,
-    endpoint: entry.endpoint,
-    routingId: RoutingId.from(entry.routingId),
-    weight: entry.weight,
-    value: BigInt(entry.value)
-  };
 }
 
-export function mapRegistryTopologyEntry(entry: {
+export interface RegistryTopologyEntryRaw {
   autoConnectType: number;
   routingId: Buffer;
   serviceKind: number;
@@ -51,7 +41,45 @@ export function mapRegistryTopologyEntry(entry: {
   errorCode: number;
   lastReportedMs: number | bigint;
   spotKind: number;
-}): RegistryTopologyEntry {
+}
+
+export interface RegistryStatusRaw {
+  registryId: number;
+  bindEndpoint: string;
+  state: number;
+  topologyEntryCount: number;
+  peerRegistryCount: number;
+  connectedPeerRegistryCount: number;
+  listSeq: number | bigint;
+  lastError: number;
+  lastChangedMs: number | bigint;
+}
+
+export interface RegistryServiceSummaryEntryRaw {
+  autoConnectType: number;
+  serviceRole: number;
+  channelName: string;
+  totalCount: number;
+  connectingCount: number;
+  readyCount: number;
+  errorCount: number;
+  stoppedCount: number;
+  lastReportedMs: number | bigint;
+}
+
+export function mapMemberPeerEntry(entry: MemberPeerEntryRaw): MemberPeerEntry {
+  return {
+    autoConnectType: entry.autoConnectType as AutoConnectType,
+    serviceRole: entry.serviceRole as ServiceRoleValue,
+    channelName: entry.channelName,
+    endpoint: entry.endpoint,
+    routingId: RoutingId.from(entry.routingId),
+    weight: entry.weight,
+    value: BigInt(entry.value)
+  };
+}
+
+export function mapRegistryTopologyEntry(entry: RegistryTopologyEntryRaw): RegistryTopologyEntry {
   return {
     autoConnectType: entry.autoConnectType as AutoConnectType,
     routingId: RoutingId.from(entry.routingId),
@@ -69,17 +97,7 @@ export function mapRegistryTopologyEntry(entry: {
   };
 }
 
-export function mapRegistryStatus(entry: {
-  registryId: number;
-  bindEndpoint: string;
-  state: number;
-  topologyEntryCount: number;
-  peerRegistryCount: number;
-  connectedPeerRegistryCount: number;
-  listSeq: number | bigint;
-  lastError: number;
-  lastChangedMs: number | bigint;
-}): RegistryStatus {
+export function mapRegistryStatus(entry: RegistryStatusRaw): RegistryStatus {
   return {
     registryId: entry.registryId,
     bindEndpoint: entry.bindEndpoint,
@@ -93,17 +111,7 @@ export function mapRegistryStatus(entry: {
   };
 }
 
-export function mapRegistryServiceSummaryEntry(entry: {
-  autoConnectType: number;
-  serviceRole: number;
-  channelName: string;
-  totalCount: number;
-  connectingCount: number;
-  readyCount: number;
-  errorCount: number;
-  stoppedCount: number;
-  lastReportedMs: number | bigint;
-}): RegistryServiceSummaryEntry {
+export function mapRegistryServiceSummaryEntry(entry: RegistryServiceSummaryEntryRaw): RegistryServiceSummaryEntry {
   return {
     autoConnectType: entry.autoConnectType as AutoConnectType,
     serviceRole: entry.serviceRole as ServiceRoleValue,

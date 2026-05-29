@@ -17,9 +17,27 @@ import {
   type SpotRoute,
   type AutoConnectType,
 } from '../../../contracts/service';
-import { mapMemberPeerEntry } from '../registry/registry_support';
+import { mapMemberPeerEntry, type MemberPeerEntryRaw } from '../registry/registry_support';
 
-function actorRefFromRaw(raw: { nodeRid: Buffer; actorId: string; generation: bigint | number }): ActorRef {
+interface ActorRefRaw {
+  nodeRid: Buffer;
+  actorId: string;
+  generation: bigint | number;
+}
+
+interface ActorRouteRaw {
+  actor: ActorRefRaw;
+  currentSpotRid: Buffer;
+  currentSpotKind: number;
+}
+
+interface SpotRouteRaw {
+  spotRid: Buffer;
+  ownerNodeRid: Buffer;
+  spotKind: number;
+}
+
+function actorRefFromRaw(raw: ActorRefRaw): ActorRef {
   return {
     nodeRid: RoutingId.from(raw.nodeRid),
     actorId: raw.actorId,
@@ -27,11 +45,7 @@ function actorRefFromRaw(raw: { nodeRid: Buffer; actorId: string; generation: bi
   };
 }
 
-function actorRouteFromRaw(raw: {
-  actor: { nodeRid: Buffer; actorId: string; generation: bigint | number };
-  currentSpotRid: Buffer;
-  currentSpotKind: number;
-}): ActorRoute {
+function actorRouteFromRaw(raw: ActorRouteRaw): ActorRoute {
   return {
     actor: actorRefFromRaw(raw.actor),
     currentSpotRid: RoutingId.from(raw.currentSpotRid),
@@ -76,11 +90,7 @@ export class Discovery extends NativeHandle {
   resolveSpot(spotRid: RoutingId): SpotRoute {
     const normalizedSpotRid = normalizeRoutingId(spotRid);
     const raw = configCall('discovery spot resolve failed', () =>
-      requireNative().discoveryResolveSpot(this._native, normalizedSpotRid) as {
-        spotRid: Buffer;
-        ownerNodeRid: Buffer;
-        spotKind: number;
-      }
+      requireNative().discoveryResolveSpot(this._native, normalizedSpotRid) as SpotRouteRaw
     );
     return {
       spotRid: RoutingId.from(raw.spotRid),
@@ -96,7 +106,7 @@ export class Discovery extends NativeHandle {
         requireNative().discoveryResolveActor(
           this._native,
           normalizedActorId
-        ) as any
+        ) as ActorRouteRaw
       )
     );
   }
@@ -143,9 +153,9 @@ export class Discovery extends NativeHandle {
 
   memberPeers(): MemberPeerEntry[] {
     return (configCall('discovery member peer query failed', () =>
-      requireNative().discoveryGetProviders(this._native) as Array<Record<string, unknown>>
+      requireNative().discoveryGetProviders(this._native) as MemberPeerEntryRaw[]
     ))
-      .map((entry) => mapMemberPeerEntry(entry as any));
+      .map(mapMemberPeerEntry);
   }
 
   setTlsClient(ca: string, hostname: string, trustSystem: boolean = false): void {

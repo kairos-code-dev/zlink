@@ -19,6 +19,10 @@ import {
   mapRegistryStatus,
   mapRegistryTopologyEntry,
   normalizeTopologyFilter,
+  type MemberPeerEntryRaw,
+  type RegistryServiceSummaryEntryRaw,
+  type RegistryStatusRaw,
+  type RegistryTopologyEntryRaw,
 } from './registry_support';
 
 export class Registry extends NativeHandle {
@@ -80,31 +84,31 @@ export class Registry extends NativeHandle {
 
   status(): RegistryStatus {
     return mapRegistryStatus(configCall('registry status snapshot failed', () =>
-      requireNative().registryStatus(this._native)
+      requireNative().registryStatus(this._native) as RegistryStatusRaw
     ));
   }
 
   serviceSummary(filter?: RegistryServiceSummaryFilter): RegistryServiceSummaryEntry[] {
     return (configCall('registry service summary snapshot failed', () =>
-      requireNative().registryServiceSummary(this._native, filter ?? undefined) as Array<Record<string, unknown>>
+      requireNative().registryServiceSummary(this._native, filter ?? undefined) as RegistryServiceSummaryEntryRaw[]
     ))
-      .map((entry) => mapRegistryServiceSummaryEntry(entry as any));
+      .map(mapRegistryServiceSummaryEntry);
   }
 
   topology(filter?: RegistryTopologyFilter): RegistryTopologyEntry[] {
     const normalizedFilter = normalizeTopologyFilter(filter);
     return (configCall('registry topology failed', () =>
-      requireNative().registryTopology(this._native, normalizedFilter) as Array<Record<string, unknown>>
+      requireNative().registryTopology(this._native, normalizedFilter) as RegistryTopologyEntryRaw[]
     ))
-      .map((entry) => mapRegistryTopologyEntry(entry as any));
+      .map(mapRegistryTopologyEntry);
   }
 
   memberPeers(channelName: string): MemberPeerEntry[] {
     const normalizedChannelName = validateCString(channelName, 'channelName');
     return (configCall('registry member peer query failed', () =>
-      requireNative().registryMemberPeers(this._native, normalizedChannelName) as Array<Record<string, unknown>>
+      requireNative().registryMemberPeers(this._native, normalizedChannelName) as MemberPeerEntryRaw[]
     ))
-      .map((entry) => mapMemberPeerEntry(entry as any));
+      .map(mapMemberPeerEntry);
   }
 
   close(): void {

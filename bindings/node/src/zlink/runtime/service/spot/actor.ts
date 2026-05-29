@@ -8,7 +8,7 @@ import type { ActorJoinOperation, ActorLeaveOperation, ActorPart, ActorRef, Send
 import { RuntimeSendOperation } from '../../sockets/socket_operations';
 import { RuntimeActorJoinOperation, RuntimeActorLeaveOperation } from './spot_operations';
 import { Spot } from './spot';
-import { actorPartFromRaw, actorRefToRaw, invokeActorJoin, invokeActorLeave, invokeActorSendBoundSession } from './spot_operations';
+import { actorPartFromRaw, actorRefToRaw, invokeActorJoin, invokeActorLeave, invokeActorSendBoundSession, type ActorPartRaw } from './spot_operations';
 
 export class Actor extends NativeHandle {
   private static readonly CREATE_TOKEN = Symbol('Actor.create');
@@ -70,7 +70,7 @@ export class Actor extends NativeHandle {
         this._native,
         actorRefToRaw(this.ref()),
         flags | 0
-      ) as any | null;
+      ) as ActorPartRaw | null;
     } catch (error) {
       throw recvNativeError(error, flags, 'actor part recv failed');
     }

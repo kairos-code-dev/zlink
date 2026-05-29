@@ -9,7 +9,11 @@
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@zlink-systems/zlink": ["src/zlink_peer.d.ts"]
+    }
   },
   "include": ["src"]
 }

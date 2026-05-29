@@ -1039,6 +1039,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/data_plane/spot_data_plane_runtime.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_pending.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_protocol.cpp
+    src/runtime/services/spot/data_plane/spot_data_plane_router_channel_control.cpp
     src/runtime/services/spot/data_plane/spot_mesh_pub_hwm.cpp
     src/runtime/services/spot/request_reply/spot_request_reply_local_dispatch.cpp
     src/runtime/services/spot/pubsub/spot_subject_access.cpp

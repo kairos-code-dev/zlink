@@ -14,13 +14,13 @@ namespace zlink
 namespace detail
 {
 
-void *base_socket_access_t::native_handle (socket_t &socket_) noexcept
+void *socket_access_t::native_handle (socket_t &socket_) noexcept
 {
     return socket_._socket ? detail::native_handle (*socket_._socket) : NULL;
 }
 
 const void *
-base_socket_access_t::native_handle (const socket_t &socket_) noexcept
+socket_access_t::native_handle (const socket_t &socket_) noexcept
 {
     return socket_._socket ? detail::native_handle (*socket_._socket) : NULL;
 }

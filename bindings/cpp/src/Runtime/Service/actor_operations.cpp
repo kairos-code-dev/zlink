@@ -610,13 +610,13 @@ bool actor_unbind_operation_t::submit (request_callback_t callback_) &&
     return true;
 }
 
-actor_bind_operation_t detail_make_actor_bind_op (
+actor_bind_operation_t detail_make_actor_bind_operation (
   detail::actor_bind_state_t &&state_)
 {
     return actor_bind_operation_t (std::move (state_));
 }
 
-actor_unbind_operation_t detail_make_actor_unbind_op (
+actor_unbind_operation_t detail_make_actor_unbind_operation (
   detail::actor_bind_state_t &&state_)
 {
     return actor_unbind_operation_t (std::move (state_));
@@ -683,8 +683,8 @@ actor_lookup_operation_t spot_node_t::remote_actor_get_ref (
 
 send_operation_t spot_node_t::send_bound_session_msg (const actor_ref_t &actor_)
 {
-    detail::spot_op_state_t state;
-    state.kind = detail::spot_op_kind_t::bound_session_send;
+    detail::spot_operation_state_t state;
+    state.kind = detail::spot_operation_kind_t::bound_session_send;
     state.node = this;
     state.actor = actor_;
     return send_operation_t (std::move (state));

@@ -154,7 +154,7 @@ add_library(zlink_cpp STATIC
   src/Runtime/Eventing/timers.cpp
   src/Runtime/Messaging/message.cpp
   src/Runtime/Options/socket_options.cpp
-  src/Runtime/Sockets/base_socket.cpp
+  src/Runtime/Sockets/socket.cpp
   src/Runtime/Sockets/dealer.cpp
   src/Runtime/Sockets/pair.cpp
   src/Runtime/Sockets/proxy.cpp
@@ -162,7 +162,7 @@ add_library(zlink_cpp STATIC
   src/Runtime/Sockets/router.cpp
   src/Runtime/Sockets/stream.cpp
   src/Runtime/Service/actor.cpp
-  src/Runtime/Service/actor_ops.cpp
+  src/Runtime/Service/actor_operations.cpp
   src/Runtime/Service/discovery.cpp
   src/Runtime/Service/query.cpp
   src/Runtime/Service/registry.cpp

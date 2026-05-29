@@ -14,7 +14,7 @@ namespace service
 namespace detail
 {
 
-inline std::vector<message_t> take_send_parts (spot_op_state_t &state_)
+inline std::vector<message_t> take_send_parts (spot_operation_state_t &state_)
 {
     std::vector<message_t> parts;
     if (state_.single_part.has_value ()) {
@@ -29,7 +29,7 @@ inline std::vector<message_t> take_send_parts (spot_op_state_t &state_)
     return parts;
 }
 
-inline bool submit_raw_send_state (spot_op_state_t &state_)
+inline bool submit_raw_send_state (spot_operation_state_t &state_)
 {
     const auto throw_invalid_argument = [&] () {
         restore_single_send_part_to_source (state_);
@@ -40,12 +40,12 @@ inline bool submit_raw_send_state (spot_op_state_t &state_)
     const zlink_routing_id_t *first_rid = state_first_rid_native (state_);
     const zlink_routing_id_t *second_rid = state_second_rid_native (state_);
 
-    if (state_.kind == spot_op_kind_t::raw_routed_send && !first_rid)
+    if (state_.kind == spot_operation_kind_t::raw_routed_send && !first_rid)
         throw_invalid_argument ();
-    if (state_.kind == spot_op_kind_t::raw_router_send_spot
+    if (state_.kind == spot_operation_kind_t::raw_router_send_spot
         && (!first_rid || !second_rid))
         throw_invalid_argument ();
-    if (state_.kind == spot_op_kind_t::raw_publish && state_.topic.empty ())
+    if (state_.kind == spot_operation_kind_t::raw_publish && state_.topic.empty ())
         throw_invalid_argument ();
 
     if (state_.single_part.has_value () || state_.single_part_source) {
@@ -55,24 +55,24 @@ inline bool submit_raw_send_state (spot_op_state_t &state_)
 
         zlink_submit_result_t direct_rc = ZLINK_SUBMIT_INVALID_ARGUMENT;
         switch (state_.kind) {
-        case spot_op_kind_t::raw_send:
+        case spot_operation_kind_t::raw_send:
             direct_rc = zlink_send_part (
               state_.raw_socket, zlink::detail::native_handle (part),
               static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)), ZLINK_PART_FINAL);
             break;
-        case spot_op_kind_t::raw_routed_send:
+        case spot_operation_kind_t::raw_routed_send:
             direct_rc = zlink_send_part_rid (
               state_.raw_socket, first_rid,
               zlink::detail::native_handle (part),
               static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)), ZLINK_PART_FINAL);
             break;
-        case spot_op_kind_t::raw_publish:
+        case spot_operation_kind_t::raw_publish:
             direct_rc = zlink_publish_part (
               state_.raw_socket, state_.topic.c_str (),
               zlink::detail::native_handle (part),
               static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)), ZLINK_PART_FINAL);
             break;
-        case spot_op_kind_t::raw_router_send_spot:
+        case spot_operation_kind_t::raw_router_send_spot:
             direct_rc = zlink_router_send_spot_part (
               state_.raw_socket, first_rid, second_rid,
               zlink::detail::native_handle (part),
@@ -105,19 +105,19 @@ inline bool submit_raw_send_state (spot_op_state_t &state_)
         native, failed_index,
         [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
             switch (state_.kind) {
-            case spot_op_kind_t::raw_send:
+            case spot_operation_kind_t::raw_send:
                 return zlink_send_part (
                   state_.raw_socket, part_out_,
                   static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)), part_flag_);
-            case spot_op_kind_t::raw_routed_send:
+            case spot_operation_kind_t::raw_routed_send:
                 return zlink_send_part_rid (
                   state_.raw_socket, first_rid, part_out_,
                   static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)), part_flag_);
-            case spot_op_kind_t::raw_publish:
+            case spot_operation_kind_t::raw_publish:
                 return zlink_publish_part (
                   state_.raw_socket, state_.topic.c_str (), part_out_,
                   static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)), part_flag_);
-            case spot_op_kind_t::raw_router_send_spot:
+            case spot_operation_kind_t::raw_router_send_spot:
                 return zlink_router_send_spot_part (
                   state_.raw_socket, first_rid, second_rid, part_out_,
                   static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)), part_flag_);
@@ -137,7 +137,7 @@ inline bool submit_raw_send_state (spot_op_state_t &state_)
     return true;
 }
 
-inline bool submit_bound_session_send_state (spot_op_state_t &state_)
+inline bool submit_bound_session_send_state (spot_operation_state_t &state_)
 {
     if (!state_.node || !state_.actor)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
@@ -166,7 +166,7 @@ inline bool submit_bound_session_send_state (spot_op_state_t &state_)
     return true;
 }
 
-inline bool submit_stream_bound_actor_send_state (spot_op_state_t &state_)
+inline bool submit_stream_bound_actor_send_state (spot_operation_state_t &state_)
 {
     if (!state_.stream || !state_.first_rid || state_.actor_id.empty ())
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);

@@ -3,7 +3,7 @@
 #include <zlink/Contracts/Service/spot.hpp>
 #include <Runtime/Service/actor_model_access.hpp>
 #include <Runtime/Service/actor_detail.hpp>
-#include <Runtime/Service/spot_submit.hpp>
+#include <Runtime/Service/spot_operation_submit.hpp>
 #include <Runtime/Service/spot_access.hpp>
 
 namespace zlink
@@ -11,16 +11,16 @@ namespace zlink
 
 service::send_operation_t received_t::send ()
 {
-    service::detail::spot_op_state_t state;
-    state.kind = service::detail::spot_op_kind_t::received_send;
+    service::detail::spot_operation_state_t state;
+    state.kind = service::detail::spot_operation_kind_t::received_send;
     state.received = this;
     return service::send_operation_t (std::move (state));
 }
 
 service::reply_operation_t received_t::reply ()
 {
-    service::detail::spot_op_state_t state;
-    state.kind = service::detail::spot_op_kind_t::received_reply;
+    service::detail::spot_operation_state_t state;
+    state.kind = service::detail::spot_operation_kind_t::received_reply;
     state.received = this;
     return service::reply_operation_t (std::move (state));
 }
@@ -125,9 +125,9 @@ std::chrono::milliseconds spot_t::request_timeout() const
 send_operation_t spot_t::publish(const std::string &topic_)
 {
         zlink::detail::validate_no_embedded_null (topic_, "topic");
-        detail::spot_op_state_t state;
+        detail::spot_operation_state_t state;
         state.spot = this;
-        state.kind = detail::spot_op_kind_t::publish;
+        state.kind = detail::spot_operation_kind_t::publish;
         state.topic = topic_;
         return send_operation_t (std::move (state));
     }
@@ -135,9 +135,9 @@ send_operation_t spot_t::publish(const std::string &topic_)
 send_operation_t spot_t::send_channel(const std::string &channel_name_)
 {
         validate_channel_name (channel_name_);
-        detail::spot_op_state_t state;
+        detail::spot_operation_state_t state;
         state.spot = this;
-        state.kind = detail::spot_op_kind_t::send_channel;
+        state.kind = detail::spot_operation_kind_t::send_channel;
         state.channel_name = channel_name_;
         return send_operation_t (std::move (state));
     }
@@ -145,9 +145,9 @@ send_operation_t spot_t::send_channel(const std::string &channel_name_)
 request_operation_t spot_t::request_channel(const std::string &channel_name_)
 {
         validate_channel_name (channel_name_);
-        detail::spot_op_state_t state;
+        detail::spot_operation_state_t state;
         state.spot = this;
-        state.kind = detail::spot_op_kind_t::request_channel;
+        state.kind = detail::spot_operation_kind_t::request_channel;
         state.channel_name = channel_name_;
         return request_operation_t (std::move (state));
     }
@@ -330,9 +330,9 @@ bool spot_t::send_to_spot(const routing_id_t &dest_node_rid_,
     send_operation_t spot_t::send_to_spot(const routing_id_t &dest_node_rid_,
                             const routing_id_t &dest_spot_rid_)
 {
-        detail::spot_op_state_t state;
+        detail::spot_operation_state_t state;
         state.spot = this;
-        state.kind = detail::spot_op_kind_t::send_to_spot;
+        state.kind = detail::spot_operation_kind_t::send_to_spot;
         state.first_rid = dest_node_rid_;
         state.second_rid = dest_spot_rid_;
         return send_operation_t (std::move (state));
@@ -341,9 +341,9 @@ bool spot_t::send_to_spot(const routing_id_t &dest_node_rid_,
 request_operation_t spot_t::request_to_spot(const routing_id_t &dest_node_rid_,
                                   const routing_id_t &dest_spot_rid_)
 {
-        detail::spot_op_state_t state;
+        detail::spot_operation_state_t state;
         state.spot = this;
-        state.kind = detail::spot_op_kind_t::request_to_spot;
+        state.kind = detail::spot_operation_kind_t::request_to_spot;
         state.first_rid = dest_node_rid_;
         state.second_rid = dest_spot_rid_;
         return request_operation_t (std::move (state));
@@ -439,9 +439,9 @@ bool spot_t::request_to_spot(
 
     request_operation_t spot_t::request_to_router(const routing_id_t &peer_rid_)
 {
-        detail::spot_op_state_t state;
+        detail::spot_operation_state_t state;
         state.spot = this;
-        state.kind = detail::spot_op_kind_t::request_to_router;
+        state.kind = detail::spot_operation_kind_t::request_to_router;
         state.first_rid = peer_rid_;
         return request_operation_t (std::move (state));
     }
@@ -1280,9 +1280,9 @@ routing_id_t spot_t::routing_id() const
                               const routing_id_t &dest_spot_rid_,
                               uint64_t request_seq_)
 {
-        detail::spot_op_state_t state;
+        detail::spot_operation_state_t state;
         state.spot = this;
-        state.kind = detail::spot_op_kind_t::reply_to_spot;
+        state.kind = detail::spot_operation_kind_t::reply_to_spot;
         state.first_rid = dest_node_rid_;
         state.second_rid = dest_spot_rid_;
         state.request_seq = request_seq_;
@@ -1318,9 +1318,9 @@ routing_id_t spot_t::routing_id() const
     reply_operation_t spot_t::reply_to_router(const routing_id_t &peer_rid_,
                                 uint64_t request_seq_)
 {
-        detail::spot_op_state_t state;
+        detail::spot_operation_state_t state;
         state.spot = this;
-        state.kind = detail::spot_op_kind_t::reply_to_router;
+        state.kind = detail::spot_operation_kind_t::reply_to_router;
         state.first_rid = peer_rid_;
         state.request_seq = request_seq_;
         return reply_operation_t (std::move (state));

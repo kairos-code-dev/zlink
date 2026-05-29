@@ -9,7 +9,7 @@ namespace zlink
 namespace detail
 {
 
-struct base_socket_access_t
+struct socket_access_t
 {
     static void *native_handle (socket_t &socket_) noexcept;
     static const void *native_handle (const socket_t &socket_) noexcept;
@@ -17,12 +17,12 @@ struct base_socket_access_t
 
 inline void *native_handle (socket_t &socket_) noexcept
 {
-    return base_socket_access_t::native_handle (socket_);
+    return socket_access_t::native_handle (socket_);
 }
 
 inline const void *native_handle (const socket_t &socket_) noexcept
 {
-    return base_socket_access_t::native_handle (socket_);
+    return socket_access_t::native_handle (socket_);
 }
 
 } // namespace detail

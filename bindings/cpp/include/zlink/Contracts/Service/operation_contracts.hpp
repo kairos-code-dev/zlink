@@ -27,8 +27,8 @@ class actor_join_submit_operation_t;
 class actor_bind_operation_t;
 class actor_unbind_operation_t;
 
-actor_bind_operation_t detail_make_actor_bind_op (detail::actor_bind_state_t &&state_);
-actor_unbind_operation_t detail_make_actor_unbind_op (
+actor_bind_operation_t detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_);
+actor_unbind_operation_t detail_make_actor_unbind_operation (
   detail::actor_bind_state_t &&state_);
 
 class actor_join_operation_t
@@ -227,7 +227,7 @@ class actor_bind_operation_t
 
     std::unique_ptr<detail::actor_bind_state_t> _state;
     friend actor_bind_operation_t
-    detail_make_actor_bind_op (detail::actor_bind_state_t &&state_);
+    detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_);
 };
 
 class actor_unbind_operation_t
@@ -249,7 +249,7 @@ class actor_unbind_operation_t
 
     std::unique_ptr<detail::actor_bind_state_t> _state;
     friend actor_unbind_operation_t
-    detail_make_actor_unbind_op (detail::actor_bind_state_t &&state_);
+    detail_make_actor_unbind_operation (detail::actor_bind_state_t &&state_);
 };
 
 } // namespace service

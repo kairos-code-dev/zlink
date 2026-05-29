@@ -195,7 +195,7 @@ namespace service
 {
 namespace detail
 {
-struct spot_op_state_t;
+struct spot_operation_state_t;
 } // namespace detail
 
 class send_submit_operation_t
@@ -211,12 +211,12 @@ class send_submit_operation_t
     bool submit () &&;
 
   private:
-    explicit send_submit_operation_t (detail::spot_op_state_t &&state_);
+    explicit send_submit_operation_t (detail::spot_operation_state_t &&state_);
 
-    detail::spot_op_state_t &state () noexcept;
-    const detail::spot_op_state_t &state () const noexcept;
+    detail::spot_operation_state_t &state () noexcept;
+    const detail::spot_operation_state_t &state () const noexcept;
 
-    std::unique_ptr<detail::spot_op_state_t> _state;
+    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class send_operation_t;
 };
 
@@ -231,12 +231,12 @@ class send_operation_t
     send_submit_operation_t message (message_t &&part_) &&;
 
   private:
-    explicit send_operation_t (detail::spot_op_state_t &&state_);
+    explicit send_operation_t (detail::spot_operation_state_t &&state_);
 
-    detail::spot_op_state_t &state () noexcept;
-    const detail::spot_op_state_t &state () const noexcept;
+    detail::spot_operation_state_t &state () noexcept;
+    const detail::spot_operation_state_t &state () const noexcept;
 
-    std::unique_ptr<detail::spot_op_state_t> _state;
+    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class zlink::pair_socket_t;
     friend class zlink::dealer_socket_t;
     friend class zlink::router_socket_t;
@@ -265,12 +265,12 @@ class request_submit_operation_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit request_submit_operation_t (detail::spot_op_state_t &&state_);
+    explicit request_submit_operation_t (detail::spot_operation_state_t &&state_);
 
-    detail::spot_op_state_t &state () noexcept;
-    const detail::spot_op_state_t &state () const noexcept;
+    detail::spot_operation_state_t &state () noexcept;
+    const detail::spot_operation_state_t &state () const noexcept;
 
-    std::unique_ptr<detail::spot_op_state_t> _state;
+    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class request_operation_t;
     friend class request_callback_submit_operation_t;
 };
@@ -285,12 +285,12 @@ class request_operation_t
     request_submit_operation_t message (message_t &part_) &&;
 
   private:
-    explicit request_operation_t (detail::spot_op_state_t &&state_);
+    explicit request_operation_t (detail::spot_operation_state_t &&state_);
 
-    detail::spot_op_state_t &state () noexcept;
-    const detail::spot_op_state_t &state () const noexcept;
+    detail::spot_operation_state_t &state () noexcept;
+    const detail::spot_operation_state_t &state () const noexcept;
 
-    std::unique_ptr<detail::spot_op_state_t> _state;
+    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class spot_t;
     friend class zlink::dealer_socket_t;
     friend class zlink::router_socket_t;
@@ -311,12 +311,12 @@ class request_callback_submit_operation_t
     bool submit (request_callback_t callback_) &&;
 
   private:
-    explicit request_callback_submit_operation_t (detail::spot_op_state_t &&state_);
+    explicit request_callback_submit_operation_t (detail::spot_operation_state_t &&state_);
 
-    detail::spot_op_state_t &state () noexcept;
-    const detail::spot_op_state_t &state () const noexcept;
+    detail::spot_operation_state_t &state () noexcept;
+    const detail::spot_operation_state_t &state () const noexcept;
 
-    std::unique_ptr<detail::spot_op_state_t> _state;
+    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class request_submit_operation_t;
 };
 
@@ -332,12 +332,12 @@ class reply_submit_operation_t
     void submit () &&;
 
   private:
-    explicit reply_submit_operation_t (detail::spot_op_state_t &&state_);
+    explicit reply_submit_operation_t (detail::spot_operation_state_t &&state_);
 
-    detail::spot_op_state_t &state () noexcept;
-    const detail::spot_op_state_t &state () const noexcept;
+    detail::spot_operation_state_t &state () noexcept;
+    const detail::spot_operation_state_t &state () const noexcept;
 
-    std::unique_ptr<detail::spot_op_state_t> _state;
+    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class reply_operation_t;
 };
 
@@ -351,12 +351,12 @@ class reply_operation_t
     reply_submit_operation_t message (message_t &part_) &&;
 
   private:
-    explicit reply_operation_t (detail::spot_op_state_t &&state_);
+    explicit reply_operation_t (detail::spot_operation_state_t &&state_);
 
-    detail::spot_op_state_t &state () noexcept;
-    const detail::spot_op_state_t &state () const noexcept;
+    detail::spot_operation_state_t &state () noexcept;
+    const detail::spot_operation_state_t &state () const noexcept;
 
-    std::unique_ptr<detail::spot_op_state_t> _state;
+    std::unique_ptr<detail::spot_operation_state_t> _state;
     friend class spot_t;
     friend class spot_node_t;
     friend class zlink::received_t;

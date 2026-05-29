@@ -33,7 +33,7 @@ class socket_t;
 namespace detail
 {
 class socket_handle_t;
-struct base_socket_access_t;
+struct socket_access_t;
 } // namespace detail
 
 
@@ -208,7 +208,7 @@ class socket_t
     }
 
   private:
-    friend struct detail::base_socket_access_t;
+    friend struct detail::socket_access_t;
 
     std::unique_ptr<detail::socket_handle_t> _socket;
 };

@@ -20,8 +20,8 @@ pub_socket_t::pub_socket_t (context_t &ctx_)
 service::send_operation_t pub_socket_t::publish (const std::string &topic_id_)
 {
     detail::validate_no_embedded_null (topic_id_, "topic");
-    service::detail::spot_op_state_t state;
-    state.kind = service::detail::spot_op_kind_t::raw_publish;
+    service::detail::spot_operation_state_t state;
+    state.kind = service::detail::spot_operation_kind_t::raw_publish;
     state.raw_socket = detail::native_handle (*this);
     state.topic = topic_id_;
     return service::send_operation_t (std::move (state));
@@ -35,8 +35,8 @@ xpub_socket_t::xpub_socket_t (context_t &ctx_)
 service::send_operation_t xpub_socket_t::publish (const std::string &topic_id_)
 {
     detail::validate_no_embedded_null (topic_id_, "topic");
-    service::detail::spot_op_state_t state;
-    state.kind = service::detail::spot_op_kind_t::raw_publish;
+    service::detail::spot_operation_state_t state;
+    state.kind = service::detail::spot_operation_kind_t::raw_publish;
     state.raw_socket = detail::native_handle (*this);
     state.topic = topic_id_;
     return service::send_operation_t (std::move (state));

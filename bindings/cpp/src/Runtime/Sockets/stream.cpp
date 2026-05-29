@@ -19,8 +19,8 @@ stream_socket_t::stream_socket_t (context_t &ctx_)
 
 service::send_operation_t stream_socket_t::send (const routing_id_t &target_rid_)
 {
-    service::detail::spot_op_state_t state;
-    state.kind = service::detail::spot_op_kind_t::raw_routed_send;
+    service::detail::spot_operation_state_t state;
+    state.kind = service::detail::spot_operation_kind_t::raw_routed_send;
     state.raw_socket = detail::native_handle (*this);
     state.first_rid = target_rid_;
     return service::send_operation_t (std::move (state));
@@ -93,7 +93,7 @@ stream_socket_t::bind_actor (const routing_id_t &session_rid_,
     state.stream = detail::native_handle (*this);
     state.session_rid = session_rid_;
     state.actor = actor_;
-    return service::detail_make_actor_bind_op (std::move (state));
+    return service::detail_make_actor_bind_operation (std::move (state));
 }
 
 service::actor_unbind_operation_t
@@ -106,7 +106,7 @@ stream_socket_t::unbind_actor (const routing_id_t &session_rid_,
     state.stream = detail::native_handle (*this);
     state.session_rid = session_rid_;
     state.actor_id = actor_id_;
-    return service::detail_make_actor_unbind_op (std::move (state));
+    return service::detail_make_actor_unbind_operation (std::move (state));
 }
 
 service::send_operation_t
@@ -115,8 +115,8 @@ stream_socket_t::send_bound_actor (const routing_id_t &session_rid_,
 {
     detail::validate_bounded_c_string (
       actor_id_, ZLINK_ACTOR_ID_MAX - 1u, "actor_id");
-    service::detail::spot_op_state_t state;
-    state.kind = service::detail::spot_op_kind_t::stream_bound_actor_send;
+    service::detail::spot_operation_state_t state;
+    state.kind = service::detail::spot_operation_kind_t::stream_bound_actor_send;
     state.stream = detail::native_handle (*this);
     state.first_rid = session_rid_;
     state.actor_id = actor_id_;

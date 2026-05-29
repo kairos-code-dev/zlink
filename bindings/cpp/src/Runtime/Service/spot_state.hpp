@@ -19,7 +19,7 @@ class spot_node_t;
 
 namespace detail
 {
-enum class spot_op_kind_t
+enum class spot_operation_kind_t
 {
     raw_send,
     raw_routed_send,
@@ -38,20 +38,20 @@ enum class spot_op_kind_t
     request_to_router,
     reply_to_spot,
     reply_to_router,
-    // Op kinds for built-in received_t.send()/reply() builders. The state uses
+    // Operation kinds for built-in received_t.send()/reply() builders. The state uses
     // a borrowed reference to the originating received_t.
     received_send,
     received_reply,
-    // Op kind for spot_node_t::send_bound_session_msg(actor).
+    // Operation kind for spot_node_t::send_bound_session_msg(actor).
     bound_session_send,
-    // Op kind for stream_socket_t::send_bound_actor(session, actor_id).
+    // Operation kind for stream_socket_t::send_bound_actor(session, actor_id).
     stream_bound_actor_send
 };
 
-struct spot_op_state_t
+struct spot_operation_state_t
 {
     spot_t *spot = NULL;
-    spot_op_kind_t kind = spot_op_kind_t::publish;
+    spot_operation_kind_t kind = spot_operation_kind_t::publish;
     std::string topic;
     std::string channel_name;
     std::optional<routing_id_t> first_rid;
@@ -70,7 +70,7 @@ struct spot_op_state_t
     // Borrowed raw socket handle for raw socket send/publish builders.
     void *raw_socket = NULL;
     // Borrowed reference to the originating received_t for received_send /
-    // received_reply ops. Lifetime is managed by the caller.
+    // received_reply operations. Lifetime is managed by the caller.
     received_t *received = NULL;
     // Borrowed spot_node_t for actor-based operations (bound_session_send).
     spot_node_t *node = NULL;
@@ -82,7 +82,7 @@ struct spot_op_state_t
     std::string actor_id;
 };
 
-inline void cache_first_rid_native (spot_op_state_t &state_,
+inline void cache_first_rid_native (spot_operation_state_t &state_,
                                     const routing_id_t &rid_) noexcept
 {
     state_.first_rid_native_cache =
@@ -91,7 +91,7 @@ inline void cache_first_rid_native (spot_op_state_t &state_,
     state_.first_rid.reset ();
 }
 
-inline void cache_second_rid_native (spot_op_state_t &state_,
+inline void cache_second_rid_native (spot_operation_state_t &state_,
                                      const routing_id_t &rid_) noexcept
 {
     state_.second_rid_native_cache =
@@ -101,7 +101,7 @@ inline void cache_second_rid_native (spot_op_state_t &state_,
 }
 
 inline const zlink_routing_id_t *
-state_first_rid_native (const spot_op_state_t &state_) noexcept
+state_first_rid_native (const spot_operation_state_t &state_) noexcept
 {
     if (state_.has_first_rid_native_cache)
         return &state_.first_rid_native_cache;
@@ -111,7 +111,7 @@ state_first_rid_native (const spot_op_state_t &state_) noexcept
 }
 
 inline const zlink_routing_id_t *
-state_second_rid_native (const spot_op_state_t &state_) noexcept
+state_second_rid_native (const spot_operation_state_t &state_) noexcept
 {
     if (state_.has_second_rid_native_cache)
         return &state_.second_rid_native_cache;
@@ -120,20 +120,20 @@ state_second_rid_native (const spot_op_state_t &state_) noexcept
     return NULL;
 }
 
-inline bool has_send_parts (const spot_op_state_t &state_) noexcept
+inline bool has_send_parts (const spot_operation_state_t &state_) noexcept
 {
     return state_.single_part.has_value () || state_.single_part_source
            || !state_.parts.empty ();
 }
 
-inline size_t send_part_count (const spot_op_state_t &state_) noexcept
+inline size_t send_part_count (const spot_operation_state_t &state_) noexcept
 {
     return state_.single_part.has_value () || state_.single_part_source
              ? 1u
              : state_.parts.size ();
 }
 
-inline message_t &send_single_part (spot_op_state_t &state_) noexcept
+inline message_t &send_single_part (spot_operation_state_t &state_) noexcept
 {
     if (state_.single_part.has_value ())
         return *state_.single_part;
@@ -142,7 +142,7 @@ inline message_t &send_single_part (spot_op_state_t &state_) noexcept
     return state_.parts.front ();
 }
 
-inline void append_send_part (spot_op_state_t &state_, message_t &part_)
+inline void append_send_part (spot_operation_state_t &state_, message_t &part_)
 {
     if (state_.single_part.has_value ()) {
         state_.parts.push_back (std::move (*state_.single_part));
@@ -155,21 +155,21 @@ inline void append_send_part (spot_op_state_t &state_, message_t &part_)
     state_.parts.push_back (std::move (part_));
 }
 
-inline bool can_borrow_single_send_part (spot_op_kind_t kind_) noexcept
+inline bool can_borrow_single_send_part (spot_operation_kind_t kind_) noexcept
 {
     switch (kind_) {
-    case spot_op_kind_t::raw_send:
-    case spot_op_kind_t::raw_routed_send:
-    case spot_op_kind_t::raw_publish:
-    case spot_op_kind_t::raw_router_send_spot:
-    case spot_op_kind_t::publish:
+    case spot_operation_kind_t::raw_send:
+    case spot_operation_kind_t::raw_routed_send:
+    case spot_operation_kind_t::raw_publish:
+    case spot_operation_kind_t::raw_router_send_spot:
+    case spot_operation_kind_t::publish:
         return true;
     default:
         return false;
     }
 }
 
-inline void restore_single_send_part_to_source (spot_op_state_t &state_) noexcept
+inline void restore_single_send_part_to_source (spot_operation_state_t &state_) noexcept
 {
     if (!state_.single_part_source || !state_.single_part.has_value ()
         || !state_.single_part->valid ())
@@ -179,7 +179,7 @@ inline void restore_single_send_part_to_source (spot_op_state_t &state_) noexcep
 }
 
 inline void restore_single_send_part_to_source (
-  spot_op_state_t &state_, std::vector<message_t> &parts_) noexcept
+  spot_operation_state_t &state_, std::vector<message_t> &parts_) noexcept
 {
     if (!state_.single_part_source || parts_.size () != 1u || !parts_[0].valid ())
         return;

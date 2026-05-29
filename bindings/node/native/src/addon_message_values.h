@@ -104,3 +104,95 @@ inline void set_string_property(napi_env env,
     napi_create_string_utf8(env, value ? value : "", NAPI_AUTO_LENGTH, &out);
     napi_set_named_property(env, obj, name, out);
 }
+
+enum message_snapshot_flags_t
+{
+    MESSAGE_SNAPSHOT_DEFAULT = 0,
+    MESSAGE_SNAPSHOT_ALWAYS_REF_COUNT = 1 << 0,
+    MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES = 1 << 1
+};
+
+inline bool message_has_snapshot_properties(const zlink_routing_id_t *routing_id,
+                                            zlink_msg_t *msg)
+{
+    return zlink_msg_gets(msg, "Socket-Type")
+        || zlink_msg_gets(msg, "User-Id")
+        || zlink_msg_gets(msg, "Peer-Address")
+        || zlink_msg_gets(msg, "Routing-Id")
+        || zlink_msg_gets(msg, "Identity")
+        || (routing_id && routing_id->size > 0);
+}
+
+inline napi_value create_message_properties_snapshot(
+  napi_env env,
+  const zlink_routing_id_t *routing_id,
+  zlink_msg_t *msg)
+{
+    napi_value props;
+    napi_create_object(env, &props);
+
+    const auto set_property = [env, props](const char *name, const char *value) {
+        if (!value)
+            return;
+        napi_value out;
+        napi_create_string_utf8(env, value, NAPI_AUTO_LENGTH, &out);
+        napi_set_named_property(env, props, name, out);
+    };
+
+    set_property("Socket-Type", zlink_msg_gets(msg, "Socket-Type"));
+    set_property("User-Id", zlink_msg_gets(msg, "User-Id"));
+    set_property("Peer-Address", zlink_msg_gets(msg, "Peer-Address"));
+
+    const char *routing_id_value = zlink_msg_gets(msg, "Routing-Id");
+    if (!routing_id_value && routing_id && routing_id->size > 0) {
+        napi_value out;
+        napi_create_string_utf8(
+          env,
+          reinterpret_cast<const char *>(routing_id->data),
+          routing_id->size,
+          &out);
+        napi_set_named_property(env, props, "Routing-Id", out);
+        napi_set_named_property(env, props, "Identity", out);
+    } else {
+        set_property("Routing-Id", routing_id_value);
+        if (routing_id_value)
+            set_property("Identity", routing_id_value);
+    }
+
+    if (!routing_id_value)
+        set_property("Identity", zlink_msg_gets(msg, "Identity"));
+
+    return props;
+}
+
+inline napi_value create_message_snapshot_value(
+  napi_env env,
+  const zlink_routing_id_t *routing_id,
+  zlink_msg_t *msg,
+  int flags = MESSAGE_SNAPSHOT_DEFAULT)
+{
+    napi_value obj;
+    napi_create_object(env, &obj);
+
+    zlink_config_result_t refcnt_err = ZLINK_CONFIG_OK;
+    const int refcnt = zlink_msg_refcnt(msg, &refcnt_err);
+    if (refcnt_err != ZLINK_CONFIG_OK)
+        return throw_last_error(env, "message refcnt failed");
+
+    napi_value data = create_message_data_buffer(env, msg);
+    if (!data)
+        return NULL;
+
+    napi_set_named_property(env, obj, "data", data);
+    if (refcnt != 1 || (flags & MESSAGE_SNAPSHOT_ALWAYS_REF_COUNT)) {
+        napi_value ref_count;
+        napi_create_int32(env, refcnt, &ref_count);
+        napi_set_named_property(env, obj, "refCount", ref_count);
+    }
+    if (message_has_snapshot_properties(routing_id, msg)
+        || (flags & MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES)) {
+        napi_value props = create_message_properties_snapshot(env, routing_id, msg);
+        napi_set_named_property(env, obj, "properties", props);
+    }
+    return obj;
+}

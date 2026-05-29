@@ -3,6 +3,7 @@
 #include "addon_spot_api.h"
 #include "addon_message_values.h"
 #include "addon_message_parts.h"
+#include "addon_tsfn_slots.h"
 #include <chrono>
 #include <condition_variable>
 #include <memory>
@@ -13,9 +14,6 @@
 
 namespace {
 
-static napi_value create_message_snapshot_value(napi_env env,
-                                                const zlink_routing_id_t *routing_id,
-                                                zlink_msg_t *msg);
 static napi_value create_monitor_status_value(
   napi_env env, const zlink_monitor_status_t &snapshot);
 static bool build_spot_node_socket_filter(
@@ -54,6 +52,18 @@ struct spot_send_ready_js_state_t
 static std::mutex g_spot_send_ready_slots_mu;
 static spot_send_ready_js_state_t
   g_spot_send_ready_slots[k_spot_send_ready_slot_count];
+
+static napi_value create_spot_message_snapshot_value(
+  napi_env env,
+  const zlink_routing_id_t *routing_id,
+  zlink_msg_t *msg)
+{
+    return create_message_snapshot_value(
+      env,
+      routing_id,
+      msg,
+      MESSAGE_SNAPSHOT_ALWAYS_REF_COUNT | MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES);
+}
 
 static bool parse_routing_id_value(napi_env env,
                                    napi_value value,
@@ -886,7 +896,7 @@ static napi_value create_spot_routed_value(napi_env env,
     napi_create_array_with_length(env, part_count, &parts_array);
     for (size_t i = 0; i < part_count; ++i) {
         napi_value part =
-          create_message_snapshot_value(env, source_rid, &parts[i]);
+          create_spot_message_snapshot_value(env, source_rid, &parts[i]);
         napi_set_element(env, parts_array, static_cast<uint32_t>(i), part);
     }
     napi_set_named_property(env, obj, "parts", parts_array);
@@ -905,33 +915,26 @@ static napi_value create_spot_routed_event_value(napi_env env,
 
 static spot_dispatch_event_js_state_t *find_spot_dispatch_event_slot_by_spot_unsafe(void *spot)
 {
-    for (size_t i = 0; i < k_spot_dispatch_event_slot_count; ++i) {
-        if (g_spot_dispatch_event_slots[i].used
-            && g_spot_dispatch_event_slots[i].spot == spot) {
-            return &g_spot_dispatch_event_slots[i];
-        }
-    }
-    return NULL;
+    return find_tsfn_slot_by_subject(
+      g_spot_dispatch_event_slots,
+      k_spot_dispatch_event_slot_count,
+      &spot_dispatch_event_js_state_t::spot,
+      spot);
 }
 
 static spot_dispatch_event_js_state_t *find_free_spot_dispatch_event_slot_unsafe()
 {
-    for (size_t i = 0; i < k_spot_dispatch_event_slot_count; ++i) {
-        if (!g_spot_dispatch_event_slots[i].used)
-            return &g_spot_dispatch_event_slots[i];
-    }
-    return NULL;
+    return find_free_tsfn_slot(
+      g_spot_dispatch_event_slots, k_spot_dispatch_event_slot_count);
 }
 
 static void reset_spot_dispatch_event_slot_unsafe(spot_dispatch_event_js_state_t *state)
 {
     if (!state)
         return;
-    state->used = false;
+    reset_tsfn_slot_base(state);
     state->spot = NULL;
     state->node = NULL;
-    state->env = NULL;
-    state->tsfn = NULL;
 }
 
 static void spot_dispatch_event_tsfn_finalize(napi_env env,
@@ -1069,32 +1072,25 @@ static void spot_dispatch_event_dispatch(void *spot_,
 
 spot_send_ready_js_state_t *find_spot_send_ready_slot_by_spot_unsafe(void *spot)
 {
-    for (size_t i = 0; i < k_spot_send_ready_slot_count; ++i) {
-        if (g_spot_send_ready_slots[i].used
-            && g_spot_send_ready_slots[i].spot == spot) {
-            return &g_spot_send_ready_slots[i];
-        }
-    }
-    return NULL;
+    return find_tsfn_slot_by_subject(
+      g_spot_send_ready_slots,
+      k_spot_send_ready_slot_count,
+      &spot_send_ready_js_state_t::spot,
+      spot);
 }
 
 spot_send_ready_js_state_t *find_free_spot_send_ready_slot_unsafe()
 {
-    for (size_t i = 0; i < k_spot_send_ready_slot_count; ++i) {
-        if (!g_spot_send_ready_slots[i].used)
-            return &g_spot_send_ready_slots[i];
-    }
-    return NULL;
+    return find_free_tsfn_slot(
+      g_spot_send_ready_slots, k_spot_send_ready_slot_count);
 }
 
 void reset_spot_send_ready_slot_unsafe(spot_send_ready_js_state_t *state)
 {
     if (!state)
         return;
-    state->used = false;
+    reset_tsfn_slot_base(state);
     state->spot = NULL;
-    state->env = NULL;
-    state->tsfn = NULL;
 }
 
 void spot_send_ready_tsfn_finalize(napi_env env,
@@ -1212,71 +1208,6 @@ bool attach_spot_send_ready_handler(napi_env env, void *spot, napi_value handler
         return false;
     }
     return true;
-}
-
-napi_value create_message_properties_snapshot(napi_env env,
-                                              const zlink_routing_id_t *routing_id,
-                                              zlink_msg_t *msg)
-{
-    napi_value props;
-    napi_create_object(env, &props);
-
-    const auto set_property = [env, props](const char *name, const char *value) {
-        if (!value)
-            return;
-        napi_value out;
-        napi_create_string_utf8(env, value, NAPI_AUTO_LENGTH, &out);
-        napi_set_named_property(env, props, name, out);
-    };
-
-    const char *routing_id_value = zlink_msg_gets(msg, "Routing-Id");
-    if (!routing_id_value && routing_id && routing_id->size > 0) {
-        napi_value out;
-        napi_create_string_utf8(
-          env,
-          reinterpret_cast<const char *>(routing_id->data),
-          routing_id->size,
-          &out);
-        napi_set_named_property(env, props, "Routing-Id", out);
-        napi_set_named_property(env, props, "Identity", out);
-    } else {
-        set_property("Routing-Id", routing_id_value);
-        if (routing_id_value)
-            set_property("Identity", routing_id_value);
-    }
-
-    if (!routing_id_value)
-        set_property("Identity", zlink_msg_gets(msg, "Identity"));
-
-    set_property("Socket-Type", zlink_msg_gets(msg, "Socket-Type"));
-    set_property("User-Id", zlink_msg_gets(msg, "User-Id"));
-    set_property("Peer-Address", zlink_msg_gets(msg, "Peer-Address"));
-
-    return props;
-}
-
-napi_value create_message_snapshot_value(napi_env env,
-                                        const zlink_routing_id_t *routing_id,
-                                        zlink_msg_t *msg)
-{
-    napi_value obj;
-    napi_create_object(env, &obj);
-
-    zlink_config_result_t refcnt_err = ZLINK_CONFIG_OK;
-    const int refcnt = zlink_msg_refcnt(msg, &refcnt_err);
-    if (refcnt_err != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "message refcnt failed");
-    napi_value ref_count;
-    napi_create_int32(env, refcnt, &ref_count);
-    napi_value props = create_message_properties_snapshot(env, routing_id, msg);
-    napi_value data = create_message_data_buffer(env, msg);
-    if (!data)
-        return NULL;
-
-    napi_set_named_property(env, obj, "data", data);
-    napi_set_named_property(env, obj, "refCount", ref_count);
-    napi_set_named_property(env, obj, "properties", props);
-    return obj;
 }
 
 static void request_tsfn_finalize(napi_env env,
@@ -1442,8 +1373,7 @@ static void request_reply_callback_trampoline(zlink_request_result_t errnum_,
         == napi_ok) {
         payload.release();
     }
-    (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_release);
-    state->tsfn = NULL;
+    release_request_tsfn(state);
 }
 
 static void actor_join_callback_trampoline(
@@ -1478,8 +1408,7 @@ static void actor_join_callback_trampoline(
         == napi_ok) {
         payload.release();
     }
-    (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_release);
-    state->tsfn = NULL;
+    release_request_tsfn(state);
 }
 
 static void actor_join_entry_spot_callback_trampoline(
@@ -1506,8 +1435,7 @@ static void actor_join_entry_spot_callback_trampoline(
         == napi_ok) {
         payload.release();
     }
-    (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_release);
-    state->tsfn = NULL;
+    release_request_tsfn(state);
 }
 
 static void actor_lookup_callback_trampoline(
@@ -1532,8 +1460,7 @@ static void actor_lookup_callback_trampoline(
         == napi_ok) {
         payload.release();
     }
-    (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_release);
-    state->tsfn = NULL;
+    release_request_tsfn(state);
 }
 
 struct sync_request_state_t
@@ -2002,7 +1929,7 @@ napi_value spot_actor_join_recv(napi_env env, napi_callback_info info)
     napi_value parts_array;
     napi_create_array_with_length(env, part_count, &parts_array);
     for (size_t i = 0; i < part_count; ++i) {
-        napi_value part = create_message_snapshot_value(env, NULL, &parts[i]);
+        napi_value part = create_spot_message_snapshot_value(env, NULL, &parts[i]);
         napi_set_element(env, parts_array, static_cast<uint32_t>(i), part);
     }
     napi_set_named_property(env, out, "parts", parts_array);
@@ -2015,7 +1942,7 @@ napi_value spot_actor_join_recv(napi_env env, napi_callback_info info)
             zlink_multipart_close(parts, part_count);
             return throw_last_error(env, "spotActorJoinRecv failed");
         }
-        message = create_message_snapshot_value(env, NULL, &empty);
+        message = create_spot_message_snapshot_value(env, NULL, &empty);
         zlink_msg_close(&empty);
     }
     napi_set_named_property(env, out, "message", message);
@@ -3937,7 +3864,7 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
             napi_create_array_with_length(env, parts.size(), &arr);
             for (size_t i = 0; i < parts.size(); ++i) {
                 napi_value part =
-                  create_message_snapshot_value(env, &routing_id, &parts[i]);
+                  create_spot_message_snapshot_value(env, &routing_id, &parts[i]);
                 napi_set_element(env, arr, static_cast<uint32_t>(i), part);
             }
             close_msg_vector(parts);
@@ -3985,7 +3912,7 @@ napi_value spot_try_recv(napi_env env, napi_callback_info info)
             napi_create_array_with_length(env, parts.size(), &arr);
             for (size_t i = 0; i < parts.size(); ++i) {
                 napi_value part =
-                  create_message_snapshot_value(env, &routing_id, &parts[i]);
+                  create_spot_message_snapshot_value(env, &routing_id, &parts[i]);
                 napi_set_element(env, arr, static_cast<uint32_t>(i), part);
             }
             close_msg_vector(parts);

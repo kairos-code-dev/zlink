@@ -1,0 +1,173 @@
+// SPDX-License-Identifier: MPL-2.0
+
+import type {
+  ActorRefRaw,
+  NativeHandle,
+  NativeReceivedRaw,
+  NativeRequestCallback,
+  NativeTopicMessageRaw,
+  SubscriptionEntry
+} from './binding_types';
+
+export interface SocketNativeBinding {
+  dealerRequest: (
+    socket: NativeHandle,
+    parts: readonly unknown[],
+    callback: unknown,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  handleGetRoutingId: (handle: NativeHandle) => Buffer;
+  handleSetRoutingId: (handle: NativeHandle, routingId: Buffer) => void;
+  monitorOpen: (socket: NativeHandle, eventMask: number) => NativeHandle;
+  routerRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
+  routerRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
+  routerReply: (
+    socket: NativeHandle,
+    peerRid: Buffer,
+    requestSeq: bigint,
+    parts: readonly unknown[]
+  ) => void;
+  routerRequest: (
+    socket: NativeHandle,
+    peerRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  routerSpotReply: (
+    socket: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    requestSeq: bigint,
+    parts: readonly unknown[]
+  ) => void;
+  routerSpotRequest: (
+    socket: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  routerSpotSend: (
+    socket: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  socketAttachDiscovery: (socket: NativeHandle, discovery: NativeHandle) => void;
+  socketBind: (socket: NativeHandle, endpoint: string) => void;
+  socketClose: (socket: NativeHandle) => void;
+  socketConnect: (socket: NativeHandle, endpoint: string) => void;
+  socketDisconnect: (socket: NativeHandle, endpoint: string) => void;
+  socketDisconnectRid: (socket: NativeHandle, routingId: Buffer) => void;
+  socketGetChannelName: (socket: NativeHandle) => string;
+  socketGetOpt: (socket: NativeHandle, option: number) => Buffer;
+  socketNew: (ctx: NativeHandle, type: number) => NativeHandle;
+  socketPublish: (
+    socket: NativeHandle,
+    topic: string,
+    payload: unknown,
+    flags: number
+  ) => number;
+  socketRecvMessage: (socket: NativeHandle, flags: number) => NativeReceivedRaw | null;
+  socketRecvMessageNoWait: (socket: NativeHandle) => NativeReceivedRaw | null;
+  socketSend: (socket: NativeHandle, payload: unknown, flags: number) => void;
+  socketSendNoWaitResult: (socket: NativeHandle, payload: unknown) => number;
+  socketSendNoWaitResultParts: (
+    socket: NativeHandle,
+    parts: readonly unknown[]
+  ) => number;
+  socketSendParts: (
+    socket: NativeHandle,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  socketSendReadyHandler: (socket: NativeHandle, handler: unknown) => void;
+  socketSendRouting: (
+    socket: NativeHandle,
+    routingId: Buffer,
+    payload: unknown,
+    flags: number
+  ) => void;
+  socketSendRoutingNoWaitResult: (
+    socket: NativeHandle,
+    routingId: Buffer,
+    payload: unknown
+  ) => number;
+  socketSendRoutingNoWaitResultParts: (
+    socket: NativeHandle,
+    routingId: Buffer,
+    parts: readonly unknown[]
+  ) => number;
+  socketSetChannelName: (socket: NativeHandle, channelName: string) => void;
+  socketSetOpt: (socket: NativeHandle, option: number, value: Buffer) => void;
+  socketSetSubscription: (socket: NativeHandle, topic: string) => void;
+  socketSetTlsClient: (
+    socket: NativeHandle,
+    ca: string,
+    hostname: string,
+    trustSystem: number
+  ) => void;
+  socketSetTlsServer: (
+    socket: NativeHandle,
+    cert: string,
+    key: string,
+    requireClientCert: number
+  ) => void;
+  socketStreamAttach: (
+    socket: NativeHandle,
+    handler: (routingId: Buffer | null, packets: Buffer[]) => number,
+    packetCount: number
+  ) => void;
+  socketSubscribeMessage: (
+    socket: NativeHandle,
+    flags: number
+  ) => NativeTopicMessageRaw | null;
+  socketSubscriptionEvent: (
+    socket: NativeHandle,
+    flags: number
+  ) => { routingId?: Buffer | null; topic: string; subscribed: boolean } | null;
+  socketTryPublish: (
+    socket: NativeHandle,
+    topic: string,
+    payload: unknown
+  ) => number;
+  socketTrySubscribeMessage: (socket: NativeHandle) => NativeTopicMessageRaw | null;
+  socketTrySubscriptionEvent: (
+    socket: NativeHandle
+  ) => { routingId?: Buffer | null; topic: string; subscribed: boolean } | null;
+  socketUnbind: (socket: NativeHandle, endpoint: string) => void;
+  socketUnsetSubscription: (socket: NativeHandle, topic: string) => void;
+  streamAttachActorGateway: (socket: NativeHandle, node: NativeHandle) => void;
+  streamBindActor: (
+    stream: NativeHandle,
+    sessionRid: Buffer,
+    actor: ActorRefRaw,
+    callback: NativeRequestCallback,
+    timeoutMs: number
+  ) => void;
+  streamBoundActors: (
+    stream: NativeHandle,
+    sessionRid: Buffer
+  ) => ActorRefRaw[];
+  streamSendBoundActorPart: (
+    stream: NativeHandle,
+    sessionRid: Buffer,
+    actorId: string,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  streamUnbindActor: (
+    stream: NativeHandle,
+    sessionRid: Buffer,
+    actorId: string,
+    callback: NativeRequestCallback,
+    timeoutMs: number
+  ) => void;
+  subscriptionAt: (socket: NativeHandle, index: number) => SubscriptionEntry | null;
+}

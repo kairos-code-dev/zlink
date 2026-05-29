@@ -18,6 +18,29 @@ function readNativeRegistrationSources() {
   ].map((file) => fs.readFileSync(file, 'utf8')).join('\n');
 }
 
+function readTypedNativeBindingMethods() {
+  const files = [
+    'binding_core.ts',
+    'binding_context.ts',
+    'binding_socket.ts',
+    'binding_eventing.ts',
+    'binding_service.ts'
+  ];
+  const methods = new Set();
+
+  for (const file of files) {
+    const body = fs.readFileSync(
+      path.join(TS_SRC, 'zlink', 'runtime', 'native', file),
+      'utf8'
+    );
+    for (const match of body.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9_]*)\??\s*:/gm)) {
+      methods.add(match[1]);
+    }
+  }
+
+  return [...methods].sort();
+}
+
 const aggregateSymbols = [
   'zlink_send',
   'zlink_recv',
@@ -240,16 +263,10 @@ test('native addon registration stays limited to runtime-owned methods', () => {
 
 test('native addon registration matches the typed native binding surface', () => {
   const addon = readNativeRegistrationSources();
-  const binding = fs.readFileSync(
-    path.join(ROOT, 'src', 'zlink', 'runtime', 'native', 'binding.ts'),
-    'utf8'
-  );
   const registered = [...addon.matchAll(/ZLINK_METHOD\("([^"]+)"/g)]
     .map((match) => match[1])
     .sort();
-  const typed = [...binding.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9_]*)\??\s*:/gm)]
-    .map((match) => match[1])
-    .sort();
+  const typed = readTypedNativeBindingMethods();
 
   assert.deepEqual(registered, typed);
 });

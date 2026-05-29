@@ -5,6 +5,7 @@
 #include "addon_core_perf.h"
 #include "addon_message_values.h"
 #include "addon_message_parts.h"
+#include "addon_tsfn_slots.h"
 #include <algorithm>
 #include <errno.h>
 #include <atomic>
@@ -126,72 +127,53 @@ static socket_monitor_handler_js_state_t
 
 stream_js_state_t *find_stream_slot_by_socket_unsafe(void *socket)
 {
-    for (size_t i = 0; i < k_stream_slot_count; ++i) {
-        if (g_stream_slots[i].used && g_stream_slots[i].socket == socket)
-            return &g_stream_slots[i];
-    }
-    return NULL;
+    return find_tsfn_slot_by_subject(
+      g_stream_slots, k_stream_slot_count, &stream_js_state_t::socket, socket);
 }
 
 send_ready_handler_js_state_t *find_send_ready_handler_slot_by_socket_unsafe(
   void *socket)
 {
-    for (size_t i = 0; i < k_send_ready_handler_slot_count; ++i) {
-        if (g_send_ready_handler_slots[i].used
-            && g_send_ready_handler_slots[i].socket == socket) {
-            return &g_send_ready_handler_slots[i];
-        }
-    }
-    return NULL;
+    return find_tsfn_slot_by_subject(
+      g_send_ready_handler_slots,
+      k_send_ready_handler_slot_count,
+      &send_ready_handler_js_state_t::socket,
+      socket);
 }
 
 send_ready_handler_js_state_t *find_free_send_ready_handler_slot_unsafe()
 {
-    for (size_t i = 0; i < k_send_ready_handler_slot_count; ++i) {
-        if (!g_send_ready_handler_slots[i].used)
-            return &g_send_ready_handler_slots[i];
-    }
-    return NULL;
+    return find_free_tsfn_slot(
+      g_send_ready_handler_slots, k_send_ready_handler_slot_count);
 }
 
 socket_monitor_handler_js_state_t *find_socket_monitor_handler_slot_by_monitor_unsafe(
   void *monitor)
 {
-    for (size_t i = 0; i < k_socket_monitor_handler_slot_count; ++i) {
-        if (g_socket_monitor_handler_slots[i].used
-            && g_socket_monitor_handler_slots[i].monitor == monitor) {
-            return &g_socket_monitor_handler_slots[i];
-        }
-    }
-    return NULL;
+    return find_tsfn_slot_by_subject(
+      g_socket_monitor_handler_slots,
+      k_socket_monitor_handler_slot_count,
+      &socket_monitor_handler_js_state_t::monitor,
+      monitor);
 }
 
 socket_monitor_handler_js_state_t *find_free_socket_monitor_handler_slot_unsafe()
 {
-    for (size_t i = 0; i < k_socket_monitor_handler_slot_count; ++i) {
-        if (!g_socket_monitor_handler_slots[i].used)
-            return &g_socket_monitor_handler_slots[i];
-    }
-    return NULL;
+    return find_free_tsfn_slot(
+      g_socket_monitor_handler_slots, k_socket_monitor_handler_slot_count);
 }
 
 stream_js_state_t *find_free_stream_slot_unsafe()
 {
-    for (size_t i = 0; i < k_stream_slot_count; ++i) {
-        if (!g_stream_slots[i].used)
-            return &g_stream_slots[i];
-    }
-    return NULL;
+    return find_free_tsfn_slot(g_stream_slots, k_stream_slot_count);
 }
 
 void reset_stream_slot_unsafe(stream_js_state_t *state)
 {
     if (!state)
         return;
-    state->used = false;
+    reset_tsfn_slot_base(state);
     state->socket = NULL;
-    state->env = NULL;
-    state->tsfn = NULL;
     state->stop_requested.store(0, std::memory_order_release);
     state->peer_routing_ids.clear();
 }
@@ -200,10 +182,8 @@ void reset_send_ready_handler_slot_unsafe(send_ready_handler_js_state_t *state)
 {
     if (!state)
         return;
-    state->used = false;
+    reset_tsfn_slot_base(state);
     state->socket = NULL;
-    state->env = NULL;
-    state->tsfn = NULL;
 }
 
 void reset_socket_monitor_handler_slot_unsafe(
@@ -211,10 +191,8 @@ void reset_socket_monitor_handler_slot_unsafe(
 {
     if (!state)
         return;
-    state->used = false;
+    reset_tsfn_slot_base(state);
     state->monitor = NULL;
-    state->env = NULL;
-    state->tsfn = NULL;
 }
 
 extern "C" {
@@ -531,24 +509,6 @@ int router_reply_parts(void *router,
     return ZLINK_SUBMIT_OK;
 }
 
-napi_value create_message_properties_snapshot(napi_env env,
-                                              const zlink_routing_id_t *routing_id,
-                                              zlink_msg_t *msg);
-napi_value create_message_snapshot_value(napi_env env,
-                                        const zlink_routing_id_t *routing_id,
-                                        zlink_msg_t *msg);
-
-bool message_has_snapshot_properties(const zlink_routing_id_t *routing_id,
-                                     zlink_msg_t *msg)
-{
-    return zlink_msg_gets(msg, "Socket-Type")
-        || zlink_msg_gets(msg, "User-Id")
-        || zlink_msg_gets(msg, "Peer-Address")
-        || zlink_msg_gets(msg, "Routing-Id")
-        || zlink_msg_gets(msg, "Identity")
-        || (routing_id && routing_id->size > 0);
-}
-
 napi_value create_recv_message_value(napi_env env,
                                      const zlink_routing_id_t &routing_id,
                                      zlink_msg_t *parts,
@@ -674,75 +634,6 @@ napi_value create_subscribed_value(napi_env env,
     napi_set_named_property(env, obj, "routingId", rid);
     napi_set_named_property(env, obj, "topic", topic_value);
     napi_set_named_property(env, obj, "parts", parts_array);
-    return obj;
-}
-
-napi_value create_message_properties_snapshot(napi_env env,
-                                              const zlink_routing_id_t *routing_id,
-                                              zlink_msg_t *msg)
-{
-    napi_value props;
-    napi_create_object(env, &props);
-
-    const auto set_property = [env, props](const char *name, const char *value) {
-        if (!value)
-            return;
-        napi_value out;
-        napi_create_string_utf8(env, value, NAPI_AUTO_LENGTH, &out);
-        napi_set_named_property(env, props, name, out);
-    };
-
-    set_property("Socket-Type", zlink_msg_gets(msg, "Socket-Type"));
-    set_property("User-Id", zlink_msg_gets(msg, "User-Id"));
-    set_property("Peer-Address", zlink_msg_gets(msg, "Peer-Address"));
-
-    const char *routing_id_value = zlink_msg_gets(msg, "Routing-Id");
-    if (!routing_id_value && routing_id && routing_id->size > 0) {
-        napi_value out;
-        napi_create_string_utf8(
-          env,
-          reinterpret_cast<const char *>(routing_id->data),
-          routing_id->size,
-          &out);
-        napi_set_named_property(env, props, "Routing-Id", out);
-        napi_set_named_property(env, props, "Identity", out);
-    } else {
-        set_property("Routing-Id", routing_id_value);
-        if (routing_id_value)
-            set_property("Identity", routing_id_value);
-    }
-
-    if (!routing_id_value)
-        set_property("Identity", zlink_msg_gets(msg, "Identity"));
-
-    return props;
-}
-
-napi_value create_message_snapshot_value(napi_env env,
-                                        const zlink_routing_id_t *routing_id,
-                                        zlink_msg_t *msg)
-{
-    napi_value obj;
-    napi_create_object(env, &obj);
-
-    zlink_config_result_t refcnt_err = ZLINK_CONFIG_OK;
-    const int refcnt = zlink_msg_refcnt(msg, &refcnt_err);
-    if (refcnt_err != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "message refcnt failed");
-    napi_value data = create_message_data_buffer(env, msg);
-    if (!data)
-        return NULL;
-
-    napi_set_named_property(env, obj, "data", data);
-    if (refcnt != 1) {
-        napi_value ref_count;
-        napi_create_int32(env, refcnt, &ref_count);
-        napi_set_named_property(env, obj, "refCount", ref_count);
-    }
-    if (message_has_snapshot_properties(routing_id, msg)) {
-        napi_value props = create_message_properties_snapshot(env, routing_id, msg);
-        napi_set_named_property(env, obj, "properties", props);
-    }
     return obj;
 }
 
@@ -959,8 +850,7 @@ void request_reply_callback_trampoline(zlink_request_result_t errnum_,
         == napi_ok) {
         payload.release();
     }
-    (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_release);
-    state->tsfn = NULL;
+    release_request_tsfn(state);
 }
 
 void remember_stream_peer_unsafe(stream_js_state_t *state,
@@ -3284,30 +3174,24 @@ static timer_handler_js_state_t g_timer_handler_slots[k_timer_handler_slot_count
 
 static timer_handler_js_state_t *find_timer_handler_slot_by_timer_unsafe(void *timer)
 {
-    for (size_t i = 0; i < k_timer_handler_slot_count; ++i) {
-        if (g_timer_handler_slots[i].used && g_timer_handler_slots[i].timer == timer)
-            return &g_timer_handler_slots[i];
-    }
-    return NULL;
+    return find_tsfn_slot_by_subject(
+      g_timer_handler_slots,
+      k_timer_handler_slot_count,
+      &timer_handler_js_state_t::timer,
+      timer);
 }
 
 static timer_handler_js_state_t *find_free_timer_handler_slot_unsafe()
 {
-    for (size_t i = 0; i < k_timer_handler_slot_count; ++i) {
-        if (!g_timer_handler_slots[i].used)
-            return &g_timer_handler_slots[i];
-    }
-    return NULL;
+    return find_free_tsfn_slot(g_timer_handler_slots, k_timer_handler_slot_count);
 }
 
 static void reset_timer_handler_slot_unsafe(timer_handler_js_state_t *state)
 {
     if (!state)
         return;
-    state->used = false;
+    reset_tsfn_slot_base(state);
     state->timer = NULL;
-    state->env = NULL;
-    state->tsfn = NULL;
 }
 
 static void timer_handler_tsfn_finalize(napi_env env,

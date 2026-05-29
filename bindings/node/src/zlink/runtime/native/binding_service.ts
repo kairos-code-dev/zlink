@@ -1,0 +1,298 @@
+// SPDX-License-Identifier: MPL-2.0
+
+import type {
+  ActorPartRaw,
+  ActorRefRaw,
+  DiscoveryActorRouteRaw,
+  DiscoverySpotRouteRaw,
+  MemberPeerEntryRaw,
+  NativeActorEntryJoinCallback,
+  NativeActorJoinCallback,
+  NativeActorLookupCallback,
+  NativeHandle,
+  NativeRequestCallback,
+  NativeTopicMessageRaw,
+  RegistryServiceSummaryEntryRaw,
+  RegistryServiceSummaryFilter,
+  RegistryStatusRaw,
+  RegistryTopologyEntryRaw,
+  RegistryTopologyFilter,
+  SpotActorJoinRecvRaw,
+  SpotActorLifecycleRaw,
+  SpotDispatchRaw,
+  SpotNodeActorEntryRaw,
+  SpotNodePeerEntryRaw,
+  SpotNodeSocketEntryRaw,
+  SpotNodeSpotEntryRaw,
+  SpotNodeSpotGetOrNewRaw,
+  SpotNodeStatusRaw,
+  SpotNodeSubjectEntryRaw,
+  SpotRoutedRaw
+} from './binding_types';
+
+export interface ServiceNativeBinding {
+  discoveryConnectRegistry: (discovery: NativeHandle, endpoint: string) => void;
+  discoveryDestroy: (discovery: NativeHandle) => void;
+  discoveryGetProviders: (discovery: NativeHandle) => MemberPeerEntryRaw[];
+  discoveryGetValue: (discovery: NativeHandle) => number;
+  discoveryNew: (
+    ctx: NativeHandle,
+    autoConnectType: number,
+    channelName: string
+  ) => NativeHandle;
+  discoveryResolveActor: (discovery: NativeHandle, actorId: string) => DiscoveryActorRouteRaw;
+  discoveryResolveSpot: (discovery: NativeHandle, spotRid: Buffer) => DiscoverySpotRouteRaw;
+  discoverySetTlsClient: (
+    discovery: NativeHandle,
+    ca: string,
+    hostname: string,
+    trustSystem: number
+  ) => void;
+  discoverySetValue: (discovery: NativeHandle, value: number) => void;
+  registryAddPeer: (registry: NativeHandle, pubEndpoint: string) => void;
+  registryDestroy: (registry: NativeHandle) => void;
+  registryMemberPeers: (registry: NativeHandle, channelName: string) => MemberPeerEntryRaw[];
+  registryNew: (ctx: NativeHandle) => NativeHandle;
+  registryQueryClientConnect: (client: NativeHandle, endpoint: string) => void;
+  registryQueryClientNew: (ctx: NativeHandle) => NativeHandle;
+  registryQueryDestroy: (client: NativeHandle) => void;
+  registryQueryTopology: (
+    client: NativeHandle,
+    filter?: RegistryTopologyFilter
+  ) => RegistryTopologyEntryRaw[];
+  registryServiceSummary: (
+    registry: NativeHandle,
+    filter?: RegistryServiceSummaryFilter
+  ) => RegistryServiceSummaryEntryRaw[];
+  registrySetBroadcastInterval: (registry: NativeHandle, intervalMs: number) => void;
+  registrySetEndpoints: (
+    registry: NativeHandle,
+    pubEndpoint: string,
+    routerEndpoint: string
+  ) => void;
+  registrySetHeartbeat: (
+    registry: NativeHandle,
+    intervalMs: number,
+    timeoutMs: number
+  ) => void;
+  registrySetId: (registry: NativeHandle, id: number) => void;
+  registrySetTlsClient: (
+    registry: NativeHandle,
+    ca: string,
+    hostname: string,
+    trustSystem: number
+  ) => void;
+  registrySetTlsServer: (
+    registry: NativeHandle,
+    cert: string,
+    key: string,
+    requireClientCert: number
+  ) => void;
+  registryStatus: (registry: NativeHandle) => RegistryStatusRaw;
+  registryTopology: (
+    registry: NativeHandle,
+    filter?: RegistryTopologyFilter
+  ) => RegistryTopologyEntryRaw[];
+  remoteActorGetRef: (
+    node: NativeHandle,
+    targetNodeRid: Buffer,
+    actorId: string,
+    callback: NativeActorLookupCallback,
+    timeoutMs: number
+  ) => void;
+  spotActorJoinRecv: (spot: NativeHandle, flags: number) => SpotActorJoinRecvRaw | null;
+  spotActorJoinReply: (
+    spot: NativeHandle,
+    info: Record<string, unknown>,
+    joinResultCode: number,
+    parts: readonly unknown[]
+  ) => void;
+  spotActors: (spot: NativeHandle) => ActorRefRaw[];
+  spotDestroy: (spot: NativeHandle) => void;
+  spotDispatchEventHandler: (
+    spot: NativeHandle,
+    node: NativeHandle,
+    handler: (event: SpotDispatchRaw) => void
+  ) => void;
+  spotGetOption: (spot: NativeHandle, option: number) => Buffer;
+  spotNew: (node: NativeHandle) => NativeHandle;
+  spotNodeActorCloseBoundSession: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    timeoutMs: number
+  ) => void;
+  spotNodeActorDestroy: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    callbackOrTimeout: NativeRequestCallback | number,
+    timeoutMs?: number
+  ) => void;
+  spotNodeActorJoinEntrySpot: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    destNodeRid: Buffer,
+    callback: NativeActorEntryJoinCallback,
+    timeoutMs: number
+  ) => void;
+  spotNodeActorJoinSpot: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeActorJoinCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotNodeActorLeaveSpot: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    currentSpotRid: Buffer,
+    callback: NativeRequestCallback,
+    timeoutMs: number
+  ) => void;
+  spotNodeActorLookup: (node: NativeHandle, actorId: string) => ActorRefRaw;
+  spotNodeActorNew: (node: NativeHandle, actorId: string) => ActorRefRaw;
+  spotNodeActorRecvPart: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    flags: number
+  ) => ActorPartRaw | null;
+  spotNodeActorSendBoundSessionMsg: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  spotNodeActors: (node: NativeHandle) => SpotNodeActorEntryRaw[];
+  spotNodeAttachChannelDealer: (
+    node: NativeHandle,
+    discovery: NativeHandle,
+    dealer: NativeHandle
+  ) => void;
+  spotNodeAttachChannelDealerManual: (
+    node: NativeHandle,
+    channelName: string,
+    dealer: NativeHandle
+  ) => void;
+  spotNodeAttachPubIngress: (node: NativeHandle, pub: NativeHandle) => void;
+  spotNodeAttachRouterChannelDiscovery: (
+    node: NativeHandle,
+    channelName: string,
+    discovery: NativeHandle
+  ) => void;
+  spotNodeConnectPeerPub: (node: NativeHandle, endpoint: string) => void;
+  spotNodeConnectRouterChannelPeer: (
+    node: NativeHandle,
+    channelName: string,
+    endpoint: string
+  ) => void;
+  spotNodeDestroy: (node: NativeHandle) => void;
+  spotNodeDisconnectPeerPub: (node: NativeHandle, endpoint: string) => void;
+  spotNodeDisconnectPeerRidPub: (node: NativeHandle, targetNodeRid: Buffer) => void;
+  spotNodeDisconnectRouterChannelPeer: (
+    node: NativeHandle,
+    channelName: string,
+    endpoint: string
+  ) => void;
+  spotNodeDisconnectRouterChannelPeerRid: (
+    node: NativeHandle,
+    channelName: string,
+    peerRid: Buffer
+  ) => void;
+  spotNodeEntrySpot: (node: NativeHandle) => NativeHandle;
+  spotNodeGetOption: (node: NativeHandle, option: number) => Buffer;
+  spotNodeInternalSockets: (node: NativeHandle, filter?: unknown) => SpotNodeSocketEntryRaw[];
+  spotNodeNew: (ctx: NativeHandle, options: { mode: number }) => NativeHandle;
+  spotNodePeers: (node: NativeHandle) => SpotNodePeerEntryRaw[];
+  spotNodePeersQuery: (node: NativeHandle, filter?: unknown) => SpotNodePeerEntryRaw[];
+  spotNodeSetDiscovery: (node: NativeHandle, discovery: NativeHandle) => void;
+  spotNodeSetOption: (node: NativeHandle, option: number, value: Buffer) => void;
+  spotNodeSetPubBind: (node: NativeHandle, endpoint: string) => void;
+  spotNodeSetRouterBind: (node: NativeHandle, endpoint: string) => void;
+  spotNodeSetTlsClient: (
+    node: NativeHandle,
+    ca: string,
+    hostname: string,
+    trustSystem: number
+  ) => void;
+  spotNodeSetTlsServer: (
+    node: NativeHandle,
+    cert: string,
+    key: string,
+    requireClientCert: number
+  ) => void;
+  spotNodeSpotGetOrNew: (
+    node: NativeHandle,
+    spotRid: Buffer
+  ) => SpotNodeSpotGetOrNewRaw;
+  spotNodeSpotLookup: (node: NativeHandle, spotRid: Buffer) => NativeHandle | null;
+  spotNodeSpots: (node: NativeHandle) => SpotNodeSpotEntryRaw[];
+  spotNodeStatus: (node: NativeHandle) => SpotNodeStatusRaw;
+  spotNodeSubjects: (node: NativeHandle, filter?: unknown) => SpotNodeSubjectEntryRaw[];
+  spotPublish: (
+    spot: NativeHandle,
+    topic: string,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  spotRecv: (spot: NativeHandle, flags: number) => NativeTopicMessageRaw | null;
+  spotRecvActorLifecycle: (spot: NativeHandle, flags: number) => SpotActorLifecycleRaw | null;
+  spotRecvNoWait: (spot: NativeHandle) => NativeTopicMessageRaw | null;
+  spotRecvRouted: (spot: NativeHandle, flags: number) => SpotRoutedRaw | null;
+  spotReplyRouter: (
+    spot: NativeHandle,
+    peerRid: Buffer,
+    requestSeq: bigint,
+    parts: readonly Buffer[]
+  ) => void;
+  spotReplySpot: (
+    spot: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    requestSeq: bigint,
+    parts: readonly Buffer[]
+  ) => void;
+  spotRequestChannel: (
+    spot: NativeHandle,
+    channelName: string,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotRequestRouter: (
+    spot: NativeHandle,
+    peerRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotRequestSpot: (
+    spot: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotSendChannel: (
+    spot: NativeHandle,
+    channelName: string,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  spotSendReadyHandler: (spot: NativeHandle, handler: unknown) => void;
+  spotSendToSpot: (
+    spot: NativeHandle,
+    destNodeRid: Buffer,
+    destSpotRid: Buffer,
+    parts: readonly unknown[],
+    flags: number
+  ) => void;
+  spotSetOption: (spot: NativeHandle, option: number, value: Buffer) => void;
+  spotSubscribe: (spot: NativeHandle, topic: string) => void;
+  spotUnsubscribe: (spot: NativeHandle, topic: string) => void;
+}

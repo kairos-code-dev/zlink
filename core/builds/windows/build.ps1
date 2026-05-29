@@ -36,7 +36,7 @@ if ($LibzlinkVersion) {
 } elseif ($FILE_LIBZLINK_VERSION) {
     $LIBZLINK_VERSION = $FILE_LIBZLINK_VERSION
 } else {
-    $LIBZLINK_VERSION = "4.3.5"
+    $LIBZLINK_VERSION = "6.0.3"
 }
 
 # Set architecture-specific configurations

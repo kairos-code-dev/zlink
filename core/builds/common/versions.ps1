@@ -2,7 +2,7 @@
 
 param()
 
-$script:LIBZLINK_VERSION = "4.3.5"
+$script:LIBZLINK_VERSION = "6.0.3"
 
 # Export variables to caller scope
 if ($MyInvocation.InvocationName -ne '.') {

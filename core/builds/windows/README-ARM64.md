@@ -45,7 +45,7 @@ Or explicitly:
 ```powershell
 .\core\builds\windows\build.ps1 `
     -Architecture arm64 `
-    -LibzlinkVersion "4.3.5" `
+    -LibzlinkVersion "6.0.3" `
     -BuildType Release `
     -OutputDir "core\dist\windows-arm64"
 ```
@@ -106,9 +106,9 @@ libzlink-native/
 ├── deps/
 │   ├── vcpkg/               # Shared vcpkg installation
 │   ├── windows-x64/         # x64 dependencies
-│   │   └── zlink-4.3.5/
+│   │   └── zlink-6.0.3/
 │   └── windows-arm64/       # ARM64 dependencies
-│       └── zlink-4.3.5/
+│       └── zlink-6.0.3/
 └── core/dist/
     ├── windows-x64/         # x64 output binaries
     │   ├── zlink.dll
@@ -150,7 +150,7 @@ Get-Job | Wait-Job | Receive-Job
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `-Architecture` | String (x64/arm64) | `x64` | Target architecture for compilation |
-| `-LibzlinkVersion` | String | `4.3.5` | Version label (defaults to VERSION file) |
+| `-LibzlinkVersion` | String | `6.0.3` | Version label (defaults to VERSION file) |
 | `-BuildType` | String | `Release` | CMake build type (Release/Debug) |
 | `-OutputDir` | String | `dist\windows-{arch}` | Custom output directory for binaries |
 

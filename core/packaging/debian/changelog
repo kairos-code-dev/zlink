@@ -1,5 +1,5 @@
-zlink (4.3.5-0.1) UNRELEASED; urgency=low
+zlink (6.0.3-0.1) UNRELEASED; urgency=low
 
   * Initial packaging.
 
- -- libzlink Developers <zlink-dev@lists.zlink.org>  Wed, 31 Dec 2014 00:00:00 +0000
+ -- zlink Developers <ulalax@kairoscode.dev>  Fri, 29 May 2026 00:00:00 +0900

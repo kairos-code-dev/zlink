@@ -48,7 +48,6 @@
 // VOS_DOS_WINDOWS16 = 0x10001 : File was designed for 16-bit Windows running with MS-DOS.
 // VOS_DOS_WINDOWS32 = 0x10004 : File was designed for 32-bit Windows running with MS-DOS.
 // VOS_NT_WINDOWS32  = 0x40004 : File was designed for 32-bit Windows.
-// NB: appears obsolete, nothing for x64.
 	FILEOS 0x4L
 
 // General type of file.

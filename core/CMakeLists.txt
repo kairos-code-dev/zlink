@@ -1048,6 +1048,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/node/spot_node_handles.cpp
     src/runtime/services/spot/node/spot_node_lifecycle.cpp
     src/runtime/services/spot/node/spot_node_peer.cpp
+    src/runtime/services/spot/node/spot_node_router_channel.cpp
     src/runtime/services/spot/node/spot_node_shutdown.cpp
     src/runtime/services/spot/node/spot_node_service_attachment.cpp
     src/runtime/services/spot/node/spot_node_service_attachment_cache.cpp
@@ -1738,13 +1739,13 @@ if(WITH_DOC)
 endif()
 
 if(WIN32)
-  set(ZEROMQ_CMAKECONFIG_INSTALL_DIR
+  set(ZLINK_CMAKECONFIG_INSTALL_DIR
       "CMake"
       CACHE STRING "install path for ZlinkConfig.cmake")
 else()
   # CMake search path wants either "share" (AKA GNUInstallDirs DATAROOTDIR) for arch-independent, or LIBDIR for arch-
   # dependent, plus "cmake" as prefix
-  set(ZEROMQ_CMAKECONFIG_INSTALL_DIR
+  set(ZLINK_CMAKECONFIG_INSTALL_DIR
       "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}"
       CACHE STRING "install path for ZlinkConfig.cmake")
 endif()
@@ -1754,7 +1755,7 @@ if((NOT CMAKE_VERSION VERSION_LESS 3.0) AND (BUILD_SHARED OR BUILD_STATIC))
 endif()
 configure_package_config_file(
   ${PROJECT_SOURCE_DIR}/builds/cmake/ZlinkConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-  INSTALL_DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
+  INSTALL_DESTINATION ${ZLINK_CMAKECONFIG_INSTALL_DIR})
 write_basic_package_version_file(
   ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
   VERSION ${ZLINK_VERSION_MAJOR}.${ZLINK_VERSION_MINOR}.${ZLINK_VERSION_PATCH}
@@ -1763,10 +1764,10 @@ if(BUILD_SHARED OR BUILD_STATIC)
   install(
     EXPORT ${PROJECT_NAME}-targets
     FILE ${PROJECT_NAME}Targets.cmake
-    DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
+    DESTINATION ${ZLINK_CMAKECONFIG_INSTALL_DIR})
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
                 ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
-          DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
+          DESTINATION ${ZLINK_CMAKECONFIG_INSTALL_DIR})
 endif()
 
 option(ENABLE_CPACK "Enables cpack rules" ON)
@@ -1787,25 +1788,12 @@ if(MSVC AND ENABLE_CPACK)
   set(CPACK_NSIS_DISPLAY_NAME "Zlink ${ZLINK_VERSION_MAJOR}.${ZLINK_VERSION_MINOR}.${ZLINK_VERSION_PATCH}(${arch_name})")
   set(CPACK_PACKAGE_FILE_NAME "Zlink-${ZLINK_VERSION_MAJOR}.${ZLINK_VERSION_MINOR}.${ZLINK_VERSION_PATCH}-${arch_name}")
 
-  # TODO: I think this part was intended to be used when running cpack separately from cmake but I don't know how that
-  # works.
-  #
-  # macro(add_crt_version version) set(rel_dir
-  # "${CMAKE_CURRENT_BINARY_DIR}/build/${arch_name}/${version};Zlink;ALL;/")
-  # set(debug_dir
-  # "${CMAKE_CURRENT_BINARY_DIR}/debug/${arch_name}/${version};Zlink;ALL;/")
-  # if(EXISTS ${rel_dir}) list(APPEND CPACK_INSTALL_CMAKE_PROJECTS ${rel_dir}) endif()
-
-  # if(EXISTS ${debug_dir}) list(APPEND CPACK_INSTALL_CMAKE_PROJECTS ${rel_dir}) endmacro() endmacro()
-
-  # add_crt_version(v110) add_crt_version(v100) add_crt_version(v90)
-
   list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_BINARY_DIR})
   set(CPACK_GENERATOR "NSIS")
   set(CPACK_PACKAGE_NAME "Zlink")
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Zlink lightweight messaging kernel")
   set(CPACK_PACKAGE_VENDOR "Miru")
-  set(CPACK_NSIS_CONTACT "Steven McCoy <Steven.McCoy@miru.hk>")
+  set(CPACK_NSIS_CONTACT "zlink Developers <ulalax@kairoscode.dev>")
   set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_BINARY_DIR}\\\\LICENSE.txt")
   # set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_BINARY_DIR}\\\\README.txt") set(CPACK_RESOURCE_FILE_WELCOME
   # "${CMAKE_CURRENT_BINARY_DIR}\\\\WELCOME.txt") There is a bug in NSI that does not handle full unix paths properly.
@@ -1861,8 +1849,8 @@ if(MSVC AND ENABLE_CPACK)
   cpack_add_install_type(MinInstall DISPLAY_NAME "Minimal install, runtime only")
 endif()
 
-# Export this for library to help build this as a sub-project
-set(ZEROMQ_LIBRARY
+# Export this for library to help build this as a sub-project.
+set(ZLINK_LIBRARY
     libzlink
     CACHE STRING "Zlink library")
 

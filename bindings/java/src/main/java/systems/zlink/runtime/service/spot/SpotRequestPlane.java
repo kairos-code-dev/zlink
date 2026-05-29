@@ -23,6 +23,7 @@ import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
@@ -30,8 +31,7 @@ import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
 
 final class SpotRequestPlane {
-    private static final int ERRNO_EINTR = 4;
-    private static final Linker LINKER = Linker.nativeLinker();
+        private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_REPLY_CALLBACK =
         FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
             ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
@@ -99,7 +99,7 @@ final class SpotRequestPlane {
                     if (rc == 0)
                         break;
                     int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
+                    if (errno == NativeErrno.EINTR)
                         continue;
                     throw submitFailure("zlink_spot_request_channel_part");
                 }

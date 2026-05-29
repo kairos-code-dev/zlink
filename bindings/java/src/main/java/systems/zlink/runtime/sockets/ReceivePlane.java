@@ -16,6 +16,7 @@ import systems.zlink.internal.ContractAccess;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.RecvScratch;
 
 final class ReceivePlane {
@@ -56,7 +57,7 @@ final class ReceivePlane {
         Received received = recvLazyOrNull(flags, false);
         if (received == null) {
             throw new ZlinkRecvException(RecvResult.NO_DATA,
-                NativeSocketRuntime.ERRNO_EAGAIN);
+                NativeErrno.EAGAIN);
         }
         return received;
     }
@@ -171,11 +172,11 @@ final class ReceivePlane {
                 }
             }
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR)
+            if (errno == NativeErrno.EINTR)
                 continue;
             if (nonBlocking
-                && (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                    || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN)) {
+                && (errno == NativeErrno.EAGAIN
+                    || errno == NativeErrno.EWOULDBLOCK_WIN)) {
                 return null;
             }
             throw ZlinkException.fromLastError("zlink_recv_part");
@@ -250,11 +251,11 @@ final class ReceivePlane {
             }
 
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR) {
+            if (errno == NativeErrno.EINTR) {
                 continue;
             }
-            if (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN) {
+            if (errno == NativeErrno.EAGAIN
+                || errno == NativeErrno.EWOULDBLOCK_WIN) {
                 return false;
             }
             throw ZlinkException.fromLastError("zlink_recv_part");
@@ -309,11 +310,11 @@ final class ReceivePlane {
             }
 
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR)
+            if (errno == NativeErrno.EINTR)
                 continue;
             if (allowNoData
-                && (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                    || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN)) {
+                && (errno == NativeErrno.EAGAIN
+                    || errno == NativeErrno.EWOULDBLOCK_WIN)) {
                 return null;
             }
             throw ZlinkException.fromLastError("zlink_recv_part");
@@ -364,7 +365,7 @@ final class ReceivePlane {
                 }
 
                 int errno = Native.errno();
-                if (errno == NativeSocketRuntime.ERRNO_EINTR)
+                if (errno == NativeErrno.EINTR)
                     continue;
                 closeArena();
                 throw ZlinkException.fromLastError("zlink_recv_part");

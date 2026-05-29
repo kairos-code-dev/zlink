@@ -18,6 +18,7 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
@@ -43,8 +44,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 final class SpotRoutedSupport implements AutoCloseable {
-    private static final int ERRNO_EINTR = 4;
-    private static final int SEND_DONTWAIT = 1;
+        private static final int SEND_DONTWAIT = 1;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_REPLY_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -311,7 +311,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                     if (rc == 0)
                         return;
                     int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
+                    if (errno == NativeErrno.EINTR)
                         continue;
                     throw submitFailure("zlink_spot_reply_spot_part");
                 }
@@ -356,7 +356,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                     if (rc == 0)
                         return;
                     int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
+                    if (errno == NativeErrno.EINTR)
                         continue;
                     throw submitFailure("zlink_spot_request_spot_part");
                 }
@@ -412,7 +412,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                 if (rc == 0)
                     break;
                 int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
+                if (errno == NativeErrno.EINTR)
                     continue;
                 throw submitFailure(apiName);
             }
@@ -589,7 +589,7 @@ final class SpotRoutedSupport implements AutoCloseable {
                 }
 
                 int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
+                if (errno == NativeErrno.EINTR)
                     continue;
                 closeArena();
                 throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_recv_part");

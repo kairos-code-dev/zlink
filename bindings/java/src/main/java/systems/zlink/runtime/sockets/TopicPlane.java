@@ -23,6 +23,7 @@ import systems.zlink.contracts.sockets.SendFlag;
 import systems.zlink.contracts.sockets.SendResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.RecvScratch;
 
@@ -118,12 +119,12 @@ final class TopicPlane {
                 subscribedOut, topicOut, topicLenOut, flags.getValue());
             if (rc != 0) {
                 int errno = Native.errno();
-                if (errno == NativeSocketRuntime.ERRNO_EINTR) {
+                if (errno == NativeErrno.EINTR) {
                     return subscriptionEvent(flags);
                 }
                 if (flags == ReceiveFlag.DONTWAIT
-                    && (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                        || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN)) {
+                    && (errno == NativeErrno.EAGAIN
+                        || errno == NativeErrno.EWOULDBLOCK_WIN)) {
                     throw new ZlinkRecvException(RecvResult.NO_DATA, errno);
                 }
                 throw ZlinkException.fromErrno("zlink_xpub_recv_part", errno);
@@ -162,11 +163,11 @@ final class TopicPlane {
             }
 
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR) {
+            if (errno == NativeErrno.EINTR) {
                 continue;
             }
-            if (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN) {
+            if (errno == NativeErrno.EAGAIN
+                || errno == NativeErrno.EWOULDBLOCK_WIN) {
                 return Optional.empty();
             }
             throw ZlinkException.fromLastError("zlink_xpub_recv_part");
@@ -227,12 +228,12 @@ final class TopicPlane {
 
                     int errno = Native.errno();
                     Message.closeAll(parts);
-                    if (errno == NativeSocketRuntime.ERRNO_EINTR) {
+                    if (errno == NativeErrno.EINTR) {
                         break;
                     }
                     if (allowNoData
-                        && (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                            || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN)) {
+                        && (errno == NativeErrno.EAGAIN
+                            || errno == NativeErrno.EWOULDBLOCK_WIN)) {
                         return null;
                     }
                     throw ZlinkException.fromLastError("zlink_subscribe_part");
@@ -293,11 +294,11 @@ final class TopicPlane {
             }
 
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR) {
+            if (errno == NativeErrno.EINTR) {
                 continue;
             }
-            if (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN) {
+            if (errno == NativeErrno.EAGAIN
+                || errno == NativeErrno.EWOULDBLOCK_WIN) {
                 return false;
             }
             throw ZlinkException.fromLastError("zlink_subscribe_part");
@@ -374,7 +375,7 @@ final class TopicPlane {
                 }
             }
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR) {
+            if (errno == NativeErrno.EINTR) {
                 continue;
             }
             Message.closeAll(parts);

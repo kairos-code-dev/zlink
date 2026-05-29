@@ -5,6 +5,7 @@ package systems.zlink.contracts.sockets;
 import systems.zlink.internal.ContractAccess;
 
 import java.time.Duration;
+import systems.zlink.internal.DurationConversions;
 import java.util.Objects;
 
 public class CommonSocketOptions {
@@ -36,7 +37,7 @@ public class CommonSocketOptions {
 
     void recoveryInterval(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.RECOVERY_IVL, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.RECOVERY_IVL, DurationConversions.toIntMillis(value, "value"));
     }
 
     public Duration linger() {
@@ -45,7 +46,7 @@ public class CommonSocketOptions {
 
     public void linger(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.LINGER, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.LINGER, DurationConversions.toIntMillis(value, "value"));
     }
 
     public int sendHwm() {
@@ -86,7 +87,7 @@ public class CommonSocketOptions {
 
     public void sendTimeout(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.SNDTIMEO, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.SNDTIMEO, DurationConversions.toIntMillis(value, "value"));
     }
 
     public Duration recvTimeout() {
@@ -95,7 +96,7 @@ public class CommonSocketOptions {
 
     public void recvTimeout(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.RCVTIMEO, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.RCVTIMEO, DurationConversions.toIntMillis(value, "value"));
     }
 
     Duration handshakeInterval() {
@@ -104,7 +105,7 @@ public class CommonSocketOptions {
 
     void handshakeInterval(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.HANDSHAKE_IVL, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.HANDSHAKE_IVL, DurationConversions.toIntMillis(value, "value"));
     }
 
     public boolean immediate() {
@@ -139,7 +140,7 @@ public class CommonSocketOptions {
 
     public void connectTimeout(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.CONNECT_TIMEOUT, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.CONNECT_TIMEOUT, DurationConversions.toIntMillis(value, "value"));
     }
 
     public boolean ipv6() {
@@ -237,7 +238,7 @@ public class CommonSocketOptions {
 
     public void heartbeatInterval(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.HEARTBEAT_IVL, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.HEARTBEAT_IVL, DurationConversions.toIntMillis(value, "value"));
     }
 
     public Duration heartbeatTtl() {
@@ -246,7 +247,7 @@ public class CommonSocketOptions {
 
     public void heartbeatTtl(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.HEARTBEAT_TTL, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.HEARTBEAT_TTL, DurationConversions.toIntMillis(value, "value"));
     }
 
     public Duration heartbeatTimeout() {
@@ -255,7 +256,7 @@ public class CommonSocketOptions {
 
     public void heartbeatTimeout(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.HEARTBEAT_TIMEOUT, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.HEARTBEAT_TIMEOUT, DurationConversions.toIntMillis(value, "value"));
     }
 
     boolean conflate() {
@@ -304,7 +305,7 @@ public class CommonSocketOptions {
 
     public void reconnectInterval(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.RECONNECT_IVL, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.RECONNECT_IVL, DurationConversions.toIntMillis(value, "value"));
     }
 
     public Duration reconnectIntervalMax() {
@@ -313,7 +314,7 @@ public class CommonSocketOptions {
 
     public void reconnectIntervalMax(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.RECONNECT_IVL_MAX, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.RECONNECT_IVL_MAX, DurationConversions.toIntMillis(value, "value"));
     }
 
     public SubmitRetryMode submitRetryMode() {
@@ -332,7 +333,7 @@ public class CommonSocketOptions {
 
     public void submitRetryTimeout(Duration value) {
         Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.SUBMIT_RETRY_TIMEOUT, toIntMillis(value, "value"));
+        ContractAccess.socketSetOption(socket, SocketOptions.SUBMIT_RETRY_TIMEOUT, DurationConversions.toIntMillis(value, "value"));
     }
 
     public int submitRetryAttempts() {
@@ -362,14 +363,5 @@ public class CommonSocketOptions {
     void zmpMetadata(String value) {
         Objects.requireNonNull(value, "value");
         ContractAccess.socketSetOption(socket, SocketOptions.ZMP_METADATA, value);
-    }
-
-    private static int toIntMillis(Duration timeout, String name) {
-        long millis = timeout.toMillis();
-        if (millis < Integer.MIN_VALUE || millis > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(name + " millis out of int range: "
-                + millis);
-        }
-        return (int) millis;
     }
 }

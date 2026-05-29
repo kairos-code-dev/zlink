@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class Native {
-    private static final int ERRNO_EINTR = 4;
     public static final int PART_FINAL = 0;
     public static final int PART_MORE = 1;
     private static final ThreadLocal<NativeMultipartScratch>
@@ -1616,7 +1615,7 @@ public final class Native {
                                 hasMoreOut, flags);
                             if (rc != 0) {
                                 Message.closeAll(receivedParts);
-                                if (errno() == ERRNO_EINTR) {
+                                if (errno() == NativeErrno.EINTR) {
                                     break;
                                 }
                                 return rc;

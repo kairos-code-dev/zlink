@@ -8,8 +8,6 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.ZlinkConfigException;
-import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.runtime.nativeapi.RecvScratch;
 import systems.zlink.contracts.core.RoutingId;
@@ -21,6 +19,7 @@ import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
@@ -29,7 +28,6 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -40,24 +38,14 @@ import java.util.Optional;
 final class NativeSocketRuntime implements AutoCloseable {
     static final int ERRNO_EFSM = 156384763;
     static final int DEFAULT_IO_BUFFER_SIZE = 8192;
-    static final int ERRNO_EINTR = 4;
-    static final int ERRNO_EAGAIN = 11;
-    static final int ERRNO_EWOULDBLOCK_WIN = 10035;
-    static final int ERRNO_ENOTCONN = 107;
-    static final int ERRNO_ENOTCONN_WIN = 10057;
-    static final int ERRNO_EHOSTUNREACH = 113;
-    static final int ERRNO_EHOSTUNREACH_WIN = 10065;
-    private static final int ERRNO_ENOENT = 2;
-    private static final int ERRNO_EINVAL = 22;
     static final int TOPIC_CAPACITY = 256;
-    private static final int OPT_RCVMORE = 13;
-
     private final SocketCore socketCore;
     private final MessagePlane messagePlane;
     private final TopicPlane topicPlane;
     private final ReceivePlane receivePlane;
     private final NettySocketPlane nettyPlane;
     private final SocketSendPlane sendPlane;
+    private final SocketOptionSupport optionSupport;
     private MemorySegment handle;
     private final boolean own;
     private final SocketType socketTypeHint;
@@ -92,6 +80,7 @@ final class NativeSocketRuntime implements AutoCloseable {
         this.receivePlane = new ReceivePlane(this);
         this.nettyPlane = new NettySocketPlane(this);
         this.sendPlane = new SocketSendPlane(this);
+        this.optionSupport = new SocketOptionSupport(this);
     }
 
     NativeSocketRuntime(MemorySegment handle, boolean own, SocketType socketTypeHint) {
@@ -104,6 +93,7 @@ final class NativeSocketRuntime implements AutoCloseable {
         this.receivePlane = new ReceivePlane(this);
         this.nettyPlane = new NettySocketPlane(this);
         this.sendPlane = new SocketSendPlane(this);
+        this.optionSupport = new SocketOptionSupport(this);
     }
 
     /** Binds the socket to the endpoint. */
@@ -229,59 +219,19 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     void setDealerIntOption(int option, int value) {
-        setNativeIntOption(option, value, Native::setDealerOption);
+        optionSupport.setDealerIntOption(option, value);
     }
 
     int getDealerIntOption(int option) {
-        return getNativeIntOption(option, Native::getDealerOption);
+        return optionSupport.getDealerIntOption(option);
     }
 
     int getRouterIntOption(int option) {
-        return getNativeIntOption(option, Native::getRouterOption);
+        return optionSupport.getRouterIntOption(option);
     }
 
     void setRouterIntOption(int option, int value) {
-        setNativeIntOption(option, value, Native::setRouterOption);
-    }
-
-    private int getNativeIntOption(int option, NativeIntOptionGetter getter) {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = getter.get(handle, option, nativeValue, len);
-            if (rc != 0) {
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-            }
-            return nativeValue.get(ValueLayout.JAVA_INT, 0);
-        }
-    }
-
-    private void setNativeIntOption(int option, int value,
-                                    NativeIntOptionSetter setter) {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeValue = arena.allocate(ValueLayout.JAVA_INT);
-            nativeValue.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = setter.set(handle, option, nativeValue,
-              ValueLayout.JAVA_INT.byteSize());
-            if (rc != 0) {
-                throw new ZlinkConfigException(ConfigResult.fromValue(rc));
-            }
-        }
-    }
-
-    @FunctionalInterface
-    private interface NativeIntOptionGetter {
-        int get(MemorySegment handle, int option, MemorySegment value,
-                MemorySegment len);
-    }
-
-    @FunctionalInterface
-    private interface NativeIntOptionSetter {
-        int set(MemorySegment handle, int option, MemorySegment value,
-                long len);
+        optionSupport.setRouterIntOption(option, value);
     }
 
     @SuppressWarnings("unchecked")
@@ -681,12 +631,7 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     @SuppressWarnings("unchecked")
     public <T> T readOption(SocketOptionKey<T> option) {
-        return switch (option.valueType()) {
-            case INT32 -> (T) Integer.valueOf(getSockOptInt(option.optionId()));
-            case INT64 -> (T) Long.valueOf(getSockOptLong(option.optionId()));
-            case STRING -> (T) getTypedStringOption(option);
-            case BYTES -> (T) getTypedBytesOption(option);
-        };
+        return optionSupport.readOption(option);
     }
 
     public int recvByteBufDirect(ByteBuf buf, ReceiveFlag flags) {
@@ -774,7 +719,7 @@ final class NativeSocketRuntime implements AutoCloseable {
         };
     }
 
-    private SocketType resolveSocketType() {
+    SocketType resolveSocketType() {
         if (socketTypeHint != null)
             return socketTypeHint;
         try {
@@ -785,178 +730,46 @@ final class NativeSocketRuntime implements AutoCloseable {
     }
 
     void setSockOptRaw(int optionId, MemorySegment value, long len) {
-        var route = optionRoute(optionId);
-        int rc = switch (route.family()) {
-            case ROUTER -> Native.setRouterOption(handle, route.optionId(), value, len);
-            case PUB -> Native.setPubOption(handle, route.optionId(), value, len);
-            case SUB -> Native.setSubOption(handle, route.optionId(), value, len);
-            case STREAM -> Native.setStreamOption(handle, route.optionId(), value, len);
-            case COMMON -> Native.setSockOpt(handle,
-                route.nativeCommonOptionId(), value, len);
-        };
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_setsockopt");
+        optionSupport.setSockOptRaw(optionId, value, len);
     }
 
     public void setSockOptBytes(int optionId, byte[] value, int offset,
                          int length) {
-        MemorySegment buf = length == 0 ? MemorySegment.NULL
-            : ensureSendScratch(length);
-        if (length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0,
-                length);
-        }
-        setSockOptRaw(optionId, buf, length);
+        optionSupport.setSockOptBytes(optionId, value, offset, length);
     }
 
     public void setTypedBytesOption(int optionId, byte[] value, int offset,
                              int length) {
-        if (optionId == SocketOptions.ROUTING_ID.optionId()) {
-            setRoutingIdBytes(value, offset, length);
-            return;
-        }
-        if (optionId == 6) {
-            setSubscriptionBytes(value, offset, length, true);
-            return;
-        }
-        if (optionId == 7) {
-            setSubscriptionBytes(value, offset, length, false);
-            return;
-        }
-        setSockOptBytes(optionId, value, offset, length);
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T getTypedStringOption(SocketOptionKey<T> option) {
-        if (option.optionId() == SocketOptions.ROUTING_ID.optionId()) {
-            return (T) new String(getRoutingIdBytes(), StandardCharsets.UTF_8);
-        }
-        return (T) decodeCString(
-          getSockOptBytes(option.optionId(), option.maxReadLength()));
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T getTypedBytesOption(SocketOptionKey<T> option) {
-        if (option.optionId() == SocketOptions.ROUTING_ID.optionId()) {
-            return (T) getRoutingIdBytes();
-        }
-        return (T) getSockOptBytes(option.optionId(), option.maxReadLength());
+        optionSupport.setTypedBytesOption(optionId, value, offset, length);
     }
 
     public void setRoutingIdBytes(byte[] value, int offset, int length) {
-        MemorySegment buf = length == 0 ? MemorySegment.NULL
-          : ensureSendScratch(length);
-        if (length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0,
-              length);
-        }
-        int rc = Native.setRoutingId(handle, buf, length);
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_set_routing_id");
+        optionSupport.setRoutingIdBytes(value, offset, length);
     }
 
     public byte[] getRoutingIdBytes() {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment outRid = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-            int rc = Native.getRoutingId(handle, outRid);
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_get_routing_id");
-            int size = outRid.get(ValueLayout.JAVA_BYTE,
-              NativeLayouts.ROUTING_ID_SIZE_OFFSET) & 0xFF;
-            byte[] out = new byte[size];
-            if (size > 0) {
-                MemorySegment.copy(outRid, NativeLayouts.ROUTING_ID_DATA_OFFSET,
-                  MemorySegment.ofArray(out), 0, size);
-            }
-            return out;
-        }
+        return optionSupport.getRoutingIdBytes();
     }
 
     public void setSubscriptionBytes(byte[] value, int offset, int length,
                               boolean subscribe) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment filter = length == 0 ? arena.allocate(1)
-              : arena.allocate(length + 1L);
-            if (length > 0) {
-                MemorySegment.copy(MemorySegment.ofArray(value), offset, filter,
-                  0, length);
-            }
-            filter.set(ValueLayout.JAVA_BYTE, length, (byte) 0);
-            int rc = subscribe ? Native.setSubscription(handle, filter)
-              : Native.unsetSubscription(handle, filter);
-            if (rc != 0) {
-                throw ZlinkException.fromLastError(subscribe
-                  ? "zlink_set_subscription" : "zlink_unset_subscription");
-            }
-        }
+        optionSupport.setSubscriptionBytes(value, offset, length, subscribe);
     }
 
     public void setSockOptInt(int optionId, int value) {
-        MemorySegment buf = ensureSendScratch(Integer.BYTES);
-        buf.set(ValueLayout.JAVA_INT, 0, value);
-        setSockOptRaw(optionId, buf, Integer.BYTES);
+        optionSupport.setSockOptInt(optionId, value);
     }
 
     public void setSockOptLong(int optionId, long value) {
-        MemorySegment buf = ensureSendScratch(Long.BYTES);
-        buf.set(ValueLayout.JAVA_LONG, 0, value);
-        setSockOptRaw(optionId, buf, Long.BYTES);
+        optionSupport.setSockOptLong(optionId, value);
     }
 
     public byte[] getSockOptBytes(int optionId, int maxLen) {
-        if (maxLen < 0)
-            throw new IllegalArgumentException("maxLen must be >= 0");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buf = maxLen == 0 ? MemorySegment.NULL
-                : arena.allocate(maxLen);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, maxLen);
-            var route = optionRoute(optionId);
-            int rc = switch (route.family()) {
-                case ROUTER -> Native.getRouterOption(handle, route.optionId(), buf, len);
-                case PUB -> Native.getPubOption(handle, route.optionId(), buf, len);
-                case SUB -> Native.getSubOption(handle, route.optionId(), buf, len);
-                case STREAM -> Native.getStreamOption(handle, route.optionId(), buf, len);
-                case COMMON -> Native.getSockOpt(handle,
-                    route.nativeCommonOptionId(), buf, len);
-            };
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_getsockopt");
-            long actualLong = len.get(ValueLayout.JAVA_LONG, 0);
-            if (actualLong < 0)
-                actualLong = 0;
-            if (actualLong > maxLen)
-                actualLong = maxLen;
-            int actual = (int) actualLong;
-            if (actual == 0)
-                return new byte[0];
-            byte[] out = new byte[actual];
-            MemorySegment.copy(buf, 0, MemorySegment.ofArray(out), 0, actual);
-            return out;
-        }
+        return optionSupport.getSockOptBytes(optionId, maxLen);
     }
 
     public int getSockOptInt(int optionId) {
-        if (optionId == OPT_RCVMORE) {
-            return receivePlane.pendingFrameCount() > 0 ? 1 : 0;
-        }
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            var route = optionRoute(optionId);
-            int rc = switch (route.family()) {
-                case ROUTER -> Native.getRouterOption(handle, route.optionId(), buf, len);
-                case PUB -> Native.getPubOption(handle, route.optionId(), buf, len);
-                case SUB -> Native.getSubOption(handle, route.optionId(), buf, len);
-                case STREAM -> Native.getStreamOption(handle, route.optionId(), buf, len);
-                case COMMON -> Native.getSockOpt(handle,
-                    route.nativeCommonOptionId(), buf, len);
-            };
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_getsockopt");
-            return buf.get(ValueLayout.JAVA_INT, 0);
-        }
+        return optionSupport.getSockOptInt(optionId);
     }
 
     public void sendMessageFrame(Message message, SendFlag flag) {
@@ -1081,6 +894,10 @@ final class NativeSocketRuntime implements AutoCloseable {
         return recvScratch.get();
     }
 
+    int pendingFrameCount() {
+        return receivePlane.pendingFrameCount();
+    }
+
     byte[] subscriptionAt(long index, MemorySegment lenInOut,
                           MemorySegment isPatternOut, int initialCapacity) {
         int capacity = Math.max(initialCapacity, 0);
@@ -1102,52 +919,15 @@ final class NativeSocketRuntime implements AutoCloseable {
                     return out;
                 }
                 int errno = Native.errno();
-                if (errno == ERRNO_ENOENT)
+                if (errno == NativeErrno.ENOENT)
                     return null;
-                if (errno == ERRNO_EINVAL) {
+                if (errno == NativeErrno.EINVAL) {
                     capacity = toIntLength(lenInOut.get(ValueLayout.JAVA_LONG, 0));
                     continue;
                 }
                 throw ZlinkException.fromLastError("zlink_subscription_at");
             }
         }
-    }
-
-    private long getSockOptLong(int optionId) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buf = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_LONG.byteSize());
-            var route = optionRoute(optionId);
-            int rc = switch (route.family()) {
-                case ROUTER -> Native.getRouterOption(handle, route.optionId(), buf, len);
-                case PUB -> Native.getPubOption(handle, route.optionId(), buf, len);
-                case SUB -> Native.getSubOption(handle, route.optionId(), buf, len);
-                case STREAM -> Native.getStreamOption(handle, route.optionId(), buf, len);
-                case COMMON -> Native.getSockOpt(handle,
-                    route.nativeCommonOptionId(), buf, len);
-            };
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_getsockopt");
-            return buf.get(ValueLayout.JAVA_LONG, 0);
-        }
-    }
-
-    private SocketOptionRouter.Route optionRoute(int optionId) {
-        return SocketOptionRouter.route(optionId, resolveSocketType());
-    }
-
-    private static String decodeCString(byte[] raw) {
-        int len = raw.length;
-        for (int i = 0; i < raw.length; i++) {
-            if (raw[i] == 0) {
-                len = i;
-                break;
-            }
-        }
-        if (len == 0)
-            return "";
-        return new String(raw, 0, len, StandardCharsets.UTF_8);
     }
 
     MemorySegment ensureSendScratch(int length) {

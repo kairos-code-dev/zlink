@@ -13,13 +13,13 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 
 final class SpotSendPlane {
-    private static final int ERRNO_EINTR = 4;
-    private static final int SEND_DONTWAIT = 1;
+        private static final int SEND_DONTWAIT = 1;
     private static final int TOPIC_CAPACITY = 256;
     private static final int TOPIC_CACHE_LIMIT = 1024;
     private static final int TOPIC_SCRATCH_INITIAL_CAPACITY = 64;
@@ -57,7 +57,7 @@ final class SpotSendPlane {
             if (rc == 0)
                 return true;
             int errno = Native.errno();
-            if (errno == ERRNO_EINTR)
+            if (errno == NativeErrno.EINTR)
                 continue;
             throw submitFailure("zlink_spot_publish_part");
         }
@@ -79,7 +79,7 @@ final class SpotSendPlane {
                     if (rc == 0)
                         break;
                     int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
+                    if (errno == NativeErrno.EINTR)
                         continue;
                     throw submitFailure("zlink_spot_publish_part");
                 }
@@ -106,7 +106,7 @@ final class SpotSendPlane {
                     if (rc == 0)
                         break;
                     int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
+                    if (errno == NativeErrno.EINTR)
                         continue;
                     throw submitFailure("zlink_spot_send_channel_part");
                 }

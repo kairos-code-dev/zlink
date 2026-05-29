@@ -14,6 +14,7 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
@@ -27,7 +28,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 final class NativeRouterRequestSupport {
-    private static final int ERRNO_EINTR = 4;
 
     private NativeRouterRequestSupport() {
     }
@@ -88,7 +88,7 @@ final class NativeRouterRequestSupport {
                     break;
                 }
                 int errno = Native.errno();
-                if (errno == ERRNO_EINTR) {
+                if (errno == NativeErrno.EINTR) {
                     continue;
                 }
                 throw submitFailure("zlink_router_reply_part");

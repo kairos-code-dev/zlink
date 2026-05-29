@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class NativeRouterReceive {
-    private static final int ERRNO_EINTR = 4;
     private static final MethodHandle MH_JAVA_ROUTER_RECV =
         NativeSymbols.optionalDowncall(
             "zlink_java_router_recv",
@@ -71,7 +70,7 @@ final class NativeRouterReceive {
                         if (receivedParts != null) {
                             Message.closeAll(receivedParts);
                         }
-                        if (Native.errno() == ERRNO_EINTR) {
+                        if (Native.errno() == NativeErrno.EINTR) {
                             break;
                         }
                         return rc;

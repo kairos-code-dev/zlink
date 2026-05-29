@@ -5,6 +5,7 @@ package systems.zlink.contracts.sockets;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.internal.ContractAccess;
 import java.time.Duration;
+import systems.zlink.internal.DurationConversions;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -60,7 +61,7 @@ public final class RouterSocketOptions extends CommonSocketOptions {
 
     public void requestTimeout(Duration value) {
         Objects.requireNonNull(value, "value");
-        setIntOption(OPT_REQUEST_TIMEOUT_MS, toIntMillis(value, "value"));
+        setIntOption(OPT_REQUEST_TIMEOUT_MS, DurationConversions.toIntMillis(value, "value"));
     }
 
     public int peerWeight() {
@@ -77,14 +78,5 @@ public final class RouterSocketOptions extends CommonSocketOptions {
 
     private void setIntOption(int option, int value) {
         ContractAccess.socketSetRouterIntOption(socket, option, value);
-    }
-
-    private static int toIntMillis(Duration timeout, String name) {
-        long millis = timeout.toMillis();
-        if (millis < Integer.MIN_VALUE || millis > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(name + " millis out of int range: "
-                + millis);
-        }
-        return (int) millis;
     }
 }

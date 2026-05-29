@@ -15,6 +15,7 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SocketMessageHandler;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
@@ -34,8 +35,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 final class NativeRouterReceiveSupport implements AutoCloseable {
-    private static final int ERRNO_EINTR = 4;
-    private static final int ERRNO_EAGAIN = 11;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_ROUTER_HANDLER =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -111,7 +110,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             Received received = recvNoWaitOrNull();
             if (received == null) {
                 throw new ZlinkRecvException(RecvResult.NO_DATA,
-                    ERRNO_EAGAIN);
+                    NativeErrno.EAGAIN);
             }
             return received;
         }
@@ -322,7 +321,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                     flags.value());
                 if (rc == 0) break;
                 int errno = Native.errno();
-                if (errno == ERRNO_EINTR) continue;
+                if (errno == NativeErrno.EINTR) continue;
                 RecvResult result = RecvResult.fromValue(rc);
                 if (nullOnNoData && (result == RecvResult.NO_DATA
                     || result == RecvResult.BUSY)) {
@@ -463,7 +462,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                     flags.value());
                 if (rc == 0) break;
                 int errno = Native.errno();
-                if (errno == ERRNO_EINTR) continue;
+                if (errno == NativeErrno.EINTR) continue;
                 RecvResult result = RecvResult.fromValue(rc);
                 if (nullOnNoData && (result == RecvResult.NO_DATA
                     || result == RecvResult.BUSY)) {

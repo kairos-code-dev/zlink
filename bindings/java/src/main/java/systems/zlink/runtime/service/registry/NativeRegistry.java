@@ -7,6 +7,7 @@ import systems.zlink.contracts.service.registry.*;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.internal.DurationConversions;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import java.lang.foreign.Arena;
@@ -91,15 +92,18 @@ public final class NativeRegistry implements Registry {
 
     /** Configures heartbeat interval and timeout. */
     public void setHeartbeat(Duration interval, Duration timeout) {
-        int intervalMs = toIntMillis(interval, "interval");
-        int timeoutMs = toIntMillis(timeout, "timeout");
+        int intervalMs = DurationConversions.toNativeTimeoutMillis(interval,
+            "interval");
+        int timeoutMs = DurationConversions.toNativeTimeoutMillis(timeout,
+            "timeout");
         setOption(OPTION_HEARTBEAT_INTERVAL_MS, intervalMs);
         setOption(OPTION_HEARTBEAT_TIMEOUT_MS, timeoutMs);
     }
 
     /** Configures the topology broadcast interval. */
     public void setBroadcastInterval(Duration interval) {
-        int intervalMs = toIntMillis(interval, "interval");
+        int intervalMs = DurationConversions.toNativeTimeoutMillis(interval,
+            "interval");
         setOption(OPTION_BROADCAST_INTERVAL_MS, intervalMs);
     }
 
@@ -298,25 +302,6 @@ public final class NativeRegistry implements Registry {
         if (value > Integer.MAX_VALUE)
             return Integer.MAX_VALUE;
         return (int) value;
-    }
-
-    private static int toIntMillis(Duration duration, String name) {
-        Objects.requireNonNull(duration, name);
-        long nanos;
-        try {
-            nanos = duration.toNanos();
-        } catch (ArithmeticException ex) {
-            throw new IllegalArgumentException(name + " is too large", ex);
-        }
-        if (nanos % 1_000_000L != 0L) {
-            throw new IllegalArgumentException(name + " must be millisecond aligned");
-        }
-        long millis = nanos / 1_000_000L;
-        if (millis < 0 || millis > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(
-              name + " is outside native millisecond range");
-        }
-        return (int) millis;
     }
 
 }

@@ -19,16 +19,12 @@ import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 
 final class SpotSubscriptionSupport implements AutoCloseable {
     private static final int TOPIC_CAPACITY = 256;
     private static final int TOPIC_SCRATCH_INITIAL_CAPACITY = 64;
-    private static final int ERRNO_EINTR = 4;
-    private static final int ERRNO_ENOENT = 2;
-    private static final int ERRNO_EAGAIN = 11;
-    private static final int ERRNO_EINVAL = 22;
-    private static final int ERRNO_EWOULDBLOCK_WIN = 10035;
     private static final int RECV_BLOCKING = 0;
     private static final int RECV_DONTWAIT = 1;
 
@@ -81,9 +77,9 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                       isPatternOut.get(ValueLayout.JAVA_INT, 0) != 0));
                 }
                 int errno = Native.errno();
-                if (errno == ERRNO_ENOENT)
+                if (errno == NativeErrno.ENOENT)
                     return Optional.empty();
-                if (errno == ERRNO_EINVAL) {
+                if (errno == NativeErrno.EINVAL) {
                     capacity = boundedCount(
                       lenInOut.get(ValueLayout.JAVA_LONG, 0));
                     continue;
@@ -170,10 +166,11 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                 }
             }
             int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
+            if (errno == NativeErrno.EINTR) {
                 continue;
             }
-            if (errno == ERRNO_EAGAIN || errno == ERRNO_EWOULDBLOCK_WIN) {
+            if (errno == NativeErrno.EAGAIN
+                || errno == NativeErrno.EWOULDBLOCK_WIN) {
                 return false;
             }
             throw InternalAccess.zlinkExceptionFromLastError("zlink_spot_subscribe_part");
@@ -281,7 +278,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                 }
             }
             int errno = Native.errno();
-            if (errno == ERRNO_EINTR) {
+            if (errno == NativeErrno.EINTR) {
                 continue;
             }
             Message.closeAll(parts.toArray(Message[]::new));
@@ -349,7 +346,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                         result = RecvResult.fromValue(rc);
                     } catch (IllegalArgumentException ex) {
                         int errno = Native.errno();
-                        if (errno == ERRNO_EINTR)
+                        if (errno == NativeErrno.EINTR)
                             break;
                         throw InternalAccess.zlinkExceptionFromLastError(
                           "zlink_spot_subscribe_part");
@@ -399,7 +396,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                     result = RecvResult.fromValue(rc);
                 } catch (IllegalArgumentException ex) {
                     int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
+                    if (errno == NativeErrno.EINTR)
                         continue;
                     throw InternalAccess.zlinkExceptionFromLastError("zlink_xpub_recv_part");
                 }

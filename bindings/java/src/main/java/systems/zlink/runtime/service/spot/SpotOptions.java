@@ -11,6 +11,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.time.Duration;
+import systems.zlink.internal.DurationConversions;
 import java.util.Objects;
 
 final class SpotOptions {
@@ -28,7 +29,7 @@ final class SpotOptions {
 
     public void requestTimeout(Duration value) {
         Objects.requireNonNull(value, "value");
-        setIntOption(OPT_REQUEST_TIMEOUT_MS, toIntMillis(value, "value"));
+        setIntOption(OPT_REQUEST_TIMEOUT_MS, DurationConversions.toIntMillis(value, "value"));
     }
 
     private int getIntOption(int option) {
@@ -53,14 +54,5 @@ final class SpotOptions {
             if (rc != 0)
                 throw new ZlinkConfigException(ConfigResult.fromValue(rc));
         }
-    }
-
-    private static int toIntMillis(Duration timeout, String name) {
-        long millis = timeout.toMillis();
-        if (millis < Integer.MIN_VALUE || millis > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(name + " millis out of int range: "
-                + millis);
-        }
-        return (int) millis;
     }
 }

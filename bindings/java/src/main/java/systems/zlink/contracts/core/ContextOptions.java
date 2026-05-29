@@ -4,6 +4,7 @@ package systems.zlink.contracts.core;
 
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.internal.ContractAccess;
+import systems.zlink.internal.DurationConversions;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -105,7 +106,8 @@ public final class ContextOptions {
     public void autoHwmRecalcDebounce(Duration value) {
         Objects.requireNonNull(value, "value");
         ContractAccess.contextSetOption(context,
-          ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS, toIntMillis(value, "value"));
+          ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS,
+          DurationConversions.toIntMillis(value, "value"));
     }
 
     public AutoHwmProfile autoHwmProfile() {
@@ -142,12 +144,4 @@ public final class ContextOptions {
             ContextOption.THREAD_AFFINITY_CPU_REMOVE, cpu);
     }
 
-    private static int toIntMillis(Duration timeout, String name) {
-        long millis = timeout.toMillis();
-        if (millis < Integer.MIN_VALUE || millis > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(name + " millis out of int range: "
-                + millis);
-        }
-        return (int) millis;
-    }
 }

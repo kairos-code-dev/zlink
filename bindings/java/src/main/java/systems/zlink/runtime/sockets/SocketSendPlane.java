@@ -15,6 +15,7 @@ import systems.zlink.contracts.sockets.SendResult;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
@@ -55,7 +56,7 @@ final class SocketSendPlane {
             if (rc == 0)
                 return SendResult.SENT;
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR)
+            if (errno == NativeErrno.EINTR)
                 continue;
             return classifyNonBlockingSendErrno("zlink_send_part_rid");
         }
@@ -72,11 +73,11 @@ final class SocketSendPlane {
             if (rc == 0)
                 return true;
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR)
+            if (errno == NativeErrno.EINTR)
                 continue;
             if ((flags.getValue() & SendFlag.DONTWAIT.getValue()) != 0
-                && (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                    || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN)) {
+                && (errno == NativeErrno.EAGAIN
+                    || errno == NativeErrno.EWOULDBLOCK_WIN)) {
                 return false;
             }
             throwPartSubmitFailure("zlink_send_part_rid");
@@ -143,7 +144,7 @@ final class SocketSendPlane {
             if (rc == 0)
                 return;
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR)
+            if (errno == NativeErrno.EINTR)
                 continue;
             throwPartSubmitFailure("zlink_publish_part");
         }
@@ -158,7 +159,7 @@ final class SocketSendPlane {
             if (rc == 0)
                 return SendResult.SENT;
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR)
+            if (errno == NativeErrno.EINTR)
                 continue;
             return classifyNonBlockingSendErrno("zlink_publish_part");
         }
@@ -189,10 +190,10 @@ final class SocketSendPlane {
             if (rc == 0)
                 return true;
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR)
+            if (errno == NativeErrno.EINTR)
                 continue;
-            if (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN) {
+            if (errno == NativeErrno.EAGAIN
+                || errno == NativeErrno.EWOULDBLOCK_WIN) {
                 return false;
             }
             throw ZlinkException.fromLastError("zlink_send_part");
@@ -207,7 +208,7 @@ final class SocketSendPlane {
             if (rc == 0)
                 return SendResult.SENT;
             int errno = Native.errno();
-            if (errno == NativeSocketRuntime.ERRNO_EINTR)
+            if (errno == NativeErrno.EINTR)
                 continue;
             return classifyNonBlockingSendErrno("zlink_send_part");
         }
@@ -229,11 +230,11 @@ final class SocketSendPlane {
                 if (rc == 0)
                     break;
                 int errno = Native.errno();
-                if (errno == NativeSocketRuntime.ERRNO_EINTR)
+                if (errno == NativeErrno.EINTR)
                     continue;
                 if ((nonBlocking || explicitNonBlocking)
-                    && (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                        || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN)) {
+                    && (errno == NativeErrno.EAGAIN
+                        || errno == NativeErrno.EWOULDBLOCK_WIN)) {
                     throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED,
                         errno);
                 }
@@ -256,7 +257,7 @@ final class SocketSendPlane {
                 if (rc == 0)
                     break;
                 int errno = Native.errno();
-                if (errno == NativeSocketRuntime.ERRNO_EINTR)
+                if (errno == NativeErrno.EINTR)
                     continue;
                 return classifyNonBlockingSendErrno(
                     routingId == null ? "zlink_send_part"
@@ -283,11 +284,11 @@ final class SocketSendPlane {
                 if (rc == 0)
                     break;
                 int errno = Native.errno();
-                if (errno == NativeSocketRuntime.ERRNO_EINTR)
+                if (errno == NativeErrno.EINTR)
                     continue;
                 if ((nonBlocking || explicitNonBlocking)
-                    && (errno == NativeSocketRuntime.ERRNO_EAGAIN
-                        || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN)) {
+                    && (errno == NativeErrno.EAGAIN
+                        || errno == NativeErrno.EWOULDBLOCK_WIN)) {
                     throw new ZlinkSubmitException(SubmitResult.BACKPRESSURED,
                         errno);
                 }
@@ -309,7 +310,7 @@ final class SocketSendPlane {
                 if (rc == 0)
                     break;
                 int errno = Native.errno();
-                if (errno == NativeSocketRuntime.ERRNO_EINTR)
+                if (errno == NativeErrno.EINTR)
                     continue;
                 return classifyNonBlockingSendErrno("zlink_publish_part");
             }
@@ -518,12 +519,12 @@ final class SocketSendPlane {
     }
 
     private static boolean isTransientBlockingSendErrno(int errno) {
-        return errno == NativeSocketRuntime.ERRNO_EINTR
-            || errno == NativeSocketRuntime.ERRNO_EAGAIN
-            || errno == NativeSocketRuntime.ERRNO_EWOULDBLOCK_WIN
-            || errno == NativeSocketRuntime.ERRNO_ENOTCONN
-            || errno == NativeSocketRuntime.ERRNO_ENOTCONN_WIN
-            || errno == NativeSocketRuntime.ERRNO_EHOSTUNREACH
-            || errno == NativeSocketRuntime.ERRNO_EHOSTUNREACH_WIN;
+        return errno == NativeErrno.EINTR
+            || errno == NativeErrno.EAGAIN
+            || errno == NativeErrno.EWOULDBLOCK_WIN
+            || errno == NativeErrno.ENOTCONN
+            || errno == NativeErrno.ENOTCONN_WIN
+            || errno == NativeErrno.EHOSTUNREACH
+            || errno == NativeErrno.EHOSTUNREACH_WIN;
     }
 }

@@ -31,6 +31,7 @@ import systems.zlink.contracts.service.spot.SpotNodeSpotEntry;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectFilter;
+import systems.zlink.internal.DurationConversions;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.InternalAccess;
@@ -42,7 +43,6 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.IdentityHashMap;
@@ -604,35 +604,11 @@ public final class NativeSpotNode implements SpotNode {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : SpotNodeSnapshots.subjectFilterToNative(filter, arena);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotNodeSubjects(handle, nativeFilter,
-              MemorySegment.NULL, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_subjects");
-            }
-            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-            if (available == 0)
-                return List.of();
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.SPOT_NODE_SUBJECT_ENTRY_LAYOUT, available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodeSubjects(handle, nativeFilter, entries,
-              count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_subjects");
-            }
-            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
-              count.get(ValueLayout.JAVA_LONG, 0)));
-            long stride =
-              NativeLayouts.SPOT_NODE_SUBJECT_ENTRY_LAYOUT.byteSize();
-            ArrayList<SpotNodeSubjectEntry> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(SpotNodeSnapshots.subjectEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
+            return SpotNodeSnapshotReader.read("zlink_spot_node_subjects",
+                NativeLayouts.SPOT_NODE_SUBJECT_ENTRY_LAYOUT,
+                (entries, count) -> Native.spotNodeSubjects(handle,
+                    nativeFilter, entries, count),
+                SpotNodeSnapshots::subjectEntryFromNative);
         }
     }
 
@@ -646,69 +622,17 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     public List<SpotNodeSpotEntry> spots() {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotNodeSpots(handle, MemorySegment.NULL,
-              count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_spots");
-            }
-            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-            if (available == 0) {
-                return List.of();
-            }
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.SPOT_NODE_SPOT_ENTRY_LAYOUT, available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodeSpots(handle, entries, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_spots");
-            }
-            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
-              count.get(ValueLayout.JAVA_LONG, 0)));
-            long stride = NativeLayouts.SPOT_NODE_SPOT_ENTRY_LAYOUT.byteSize();
-            ArrayList<SpotNodeSpotEntry> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(ActorInterop.spotEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
-        }
+        return SpotNodeSnapshotReader.read("zlink_spot_node_spots",
+            NativeLayouts.SPOT_NODE_SPOT_ENTRY_LAYOUT,
+            (entries, count) -> Native.spotNodeSpots(handle, entries, count),
+            ActorInterop::spotEntryFromNative);
     }
 
     public List<SpotNodeActorEntry> actors() {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotNodeActors(handle, MemorySegment.NULL,
-              count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_actors");
-            }
-            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-            if (available == 0) {
-                return List.of();
-            }
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.SPOT_NODE_ACTOR_ENTRY_LAYOUT, available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodeActors(handle, entries, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_actors");
-            }
-            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
-              count.get(ValueLayout.JAVA_LONG, 0)));
-            long stride = NativeLayouts.SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteSize();
-            ArrayList<SpotNodeActorEntry> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(ActorInterop.actorEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
-        }
+        return SpotNodeSnapshotReader.read("zlink_spot_node_actors",
+            NativeLayouts.SPOT_NODE_ACTOR_ENTRY_LAYOUT,
+            (entries, count) -> Native.spotNodeActors(handle, entries, count),
+            ActorInterop::actorEntryFromNative);
     }
 
     /** Returns diagnostic socket snapshot rows matching the supplied filter. */
@@ -717,36 +641,12 @@ public final class NativeSpotNode implements SpotNode {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : SpotNodeSnapshots.socketFilterToNative(filter, arena);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.spotNodeInternalSockets(handle,
-              nativeFilter, MemorySegment.NULL, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_internal_sockets");
-            }
-            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-            if (available == 0)
-                return List.of();
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT, available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = Native.spotNodeInternalSockets(handle, nativeFilter,
-              entries, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_internal_sockets");
-            }
-            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
-              count.get(ValueLayout.JAVA_LONG, 0)));
-            long stride =
-              NativeLayouts.SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteSize();
-            ArrayList<SpotNodeSocketEntry> out =
-              new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(SpotNodeSnapshots.socketEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
+            return SpotNodeSnapshotReader.read(
+                "zlink_spot_node_internal_sockets",
+                NativeLayouts.SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT,
+                (entries, count) -> Native.spotNodeInternalSockets(handle,
+                    nativeFilter, entries, count),
+                SpotNodeSnapshots::socketEntryFromNative);
         }
     }
 
@@ -832,39 +732,13 @@ public final class NativeSpotNode implements SpotNode {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
               : SpotNodeSnapshots.peerFilterToNative(filter, arena);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = filter == null
-              ? Native.spotNodePeers(handle, MemorySegment.NULL, count)
-              : Native.spotNodePeersQuery(handle, nativeFilter,
-                MemorySegment.NULL, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(filter == null
-                  ? "zlink_spot_node_peers"
-                  : "zlink_spot_node_peers");
-            }
-            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
-            if (available == 0)
-                return List.of();
-            MemorySegment entries = arena.allocate(
-              NativeLayouts.SPOT_NODE_PEER_ENTRY_LAYOUT, available);
-            count.set(ValueLayout.JAVA_LONG, 0, available);
-            rc = filter == null
-              ? Native.spotNodePeers(handle, entries, count)
-              : Native.spotNodePeersQuery(handle, nativeFilter, entries, count);
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(filter == null
-                  ? "zlink_spot_node_peers"
-                  : "zlink_spot_node_peers");
-            }
-            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
-              count.get(ValueLayout.JAVA_LONG, 0)));
-            long stride = NativeLayouts.SPOT_NODE_PEER_ENTRY_LAYOUT.byteSize();
-            ArrayList<SpotNodePeerEntry> out = new ArrayList<>(actual);
-            for (int i = 0; i < actual; i++) {
-                out.add(SpotNodeSnapshots.peerEntryFromNative(entries.asSlice(
-                  (long) i * stride, stride)));
-            }
-            return List.copyOf(out);
+            return SpotNodeSnapshotReader.read("zlink_spot_node_peers",
+                NativeLayouts.SPOT_NODE_PEER_ENTRY_LAYOUT,
+                (entries, count) -> filter == null
+                    ? Native.spotNodePeers(handle, entries, count)
+                    : Native.spotNodePeersQuery(handle, nativeFilter, entries,
+                        count),
+                SpotNodeSnapshots::peerEntryFromNative);
         }
     }
 
@@ -877,11 +751,7 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     static int timeoutMillis(Duration timeout) {
-        if (timeout == null || timeout.isZero()) {
-            return 0;
-        }
-        long millis = Math.max(1L, timeout.toMillis());
-        return millis >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) millis;
+        return DurationConversions.timeoutMillis(timeout);
     }
 
 }

@@ -26,6 +26,7 @@ import systems.zlink.contracts.sockets.XPubSocket;
 import systems.zlink.contracts.sockets.XSubSocket;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.service.discovery.NativeDiscovery;
 import systems.zlink.runtime.service.registry.NativeRegistry;
@@ -41,8 +42,7 @@ import java.nio.file.StandardOpenOption;
 public final class NativeContext implements Context {
     private static final boolean DEBUG_REQREP =
       Boolean.getBoolean("zlink.reqrep.debug");
-    private static final int ERRNO_EINTR = 4;
-    private final ContextOptions options;
+        private final ContextOptions options;
     private MemorySegment handle;
 
     static {
@@ -203,13 +203,13 @@ public final class NativeContext implements Context {
         debug("ctxTerm begin");
         while (true) {
             int shutdownRc = Native.ctxShutdown(handle);
-            if (shutdownRc == 0 || Native.errno() != ERRNO_EINTR) {
+            if (shutdownRc == 0 || Native.errno() != NativeErrno.EINTR) {
                 break;
             }
         }
         while (true) {
             int termRc = Native.ctxTerm(handle);
-            if (termRc == 0 || Native.errno() != ERRNO_EINTR) {
+            if (termRc == 0 || Native.errno() != NativeErrno.EINTR) {
                 break;
             }
         }

@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.internal.DurationConversions;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 
 public final class NativePoller implements Poller {
@@ -223,7 +224,7 @@ public final class NativePoller implements Poller {
         }
         MemorySegment nativeEvents = NativePollEvents.create(events.capacity());
         int readyCount = Native.pollerWait(handle, nativeEvents, events.capacity(),
-            toIntMillis(timeout));
+            DurationConversions.toIntMillis(timeout, "timeout"));
         if (readyCount < 0)
             throw ZlinkException.fromLastError("zlink_poller_wait");
         for (int i = 0; i < readyCount; i++) {
@@ -310,15 +311,6 @@ public final class NativePoller implements Poller {
     private static void validateSlot(long slot) {
         if (slot < 0)
             throw new IllegalArgumentException("slot must be >= 0");
-    }
-
-    private static int toIntMillis(Duration timeout) {
-        long millis = Objects.requireNonNull(timeout, "timeout").toMillis();
-        if (millis < Integer.MIN_VALUE || millis > Integer.MAX_VALUE) {
-            throw new IllegalArgumentException(
-                "timeout millis out of int range: " + millis);
-        }
-        return (int) millis;
     }
 
     private static int combine(PollEventFlags... flags) {

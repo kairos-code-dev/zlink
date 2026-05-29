@@ -4,7 +4,6 @@ package systems.zlink.runtime.sockets;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
-import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
@@ -31,7 +30,6 @@ import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
 
 final class SocketCore {
-    private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_RECV_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
@@ -83,7 +81,8 @@ final class SocketCore {
     private StreamFramedPacketHandler streamFramedPacketHandler;
     private StreamUInt32FramedPacketHandler streamUInt32FramedPacketHandler;
     private StreamUInt32FramedNativeHandler streamUInt32FramedNativeHandler;
-    private volatile ExecutorService callbackExecutor;
+    private final SocketCallbackSupport callbackSupport =
+      new SocketCallbackSupport(this);
     private Arena receiveCallbackArena;
     private Arena subscribeCallbackArena;
     private Arena sendReadyCallbackArena;
@@ -91,7 +90,6 @@ final class SocketCore {
     private Arena streamPacketCallbackArena;
     private final ConcurrentHashMap<Integer, RoutingId> routingIdCache =
       new ConcurrentHashMap<>();
-    private volatile RuntimeException callbackFailure;
     private volatile boolean discoveryAttached;
 
     SocketCore(NativeSocketRuntime socket) {
@@ -425,9 +423,7 @@ final class SocketCore {
     }
 
     void ensureNoCallbackFailure() {
-        RuntimeException failure = callbackFailure;
-        if (failure != null)
-            throw failure;
+        callbackSupport.ensureNoFailure();
     }
 
     void closeCommonState() {
@@ -439,10 +435,8 @@ final class SocketCore {
         streamFramedPacketHandler = null;
         streamUInt32FramedPacketHandler = null;
         streamUInt32FramedNativeHandler = null;
-        callbackFailure = null;
         discoveryAttached = false;
-        RuntimeResources.shutdownExecutor(callbackExecutor);
-        callbackExecutor = null;
+        callbackSupport.close();
         RuntimeResources.closeArena(receiveCallbackArena);
         RuntimeResources.closeArena(subscribeCallbackArena);
         RuntimeResources.closeArena(sendReadyCallbackArena);
@@ -468,39 +462,13 @@ final class SocketCore {
                                   MethodType callbackType,
                                   FunctionDescriptor descriptor,
                                   String nativeOperation,
-                                  CallbackRegistration registration) {
-        ensureOpen();
-        ensureNoCallbackFailure();
-        ExecutorService executor = callbackExecutor;
-        boolean createdExecutor = false;
-        if (executor == null) {
-            executor = newCallbackExecutor();
-            callbackExecutor = executor;
-            createdExecutor = true;
-        }
-        Arena arena = Arena.ofShared();
-        MemorySegment stub = LINKER.upcallStub(callbackHandle(callbackName,
-            callbackType), descriptor, arena);
-        boolean success = false;
-        try {
-            int rc = registration.register(stub);
-            if (rc != 0) {
-                throw ZlinkException.fromLastError(nativeOperation);
-            }
-            success = true;
-            return arena;
-        } finally {
-            if (!success) {
-                if (createdExecutor) {
-                    callbackExecutor = null;
-                    RuntimeResources.shutdownExecutor(executor);
-                }
-                RuntimeResources.closeArena(arena);
-            }
-        }
+                                  SocketCallbackSupport.CallbackRegistration
+                                      registration) {
+        return callbackSupport.install(callbackName, callbackType, descriptor,
+            nativeOperation, registration);
     }
 
-    private MethodHandle callbackHandle(String name, MethodType type) {
+    MethodHandle callbackHandle(String name, MethodType type) {
         try {
             return MethodHandles.lookup().findVirtual(SocketCore.class, name, type)
               .bindTo(this);
@@ -514,7 +482,7 @@ final class SocketCore {
                                        long partCount,
                                        MemorySegment userdata) {
         SocketMessageHandler handler = receiveHandler;
-        ExecutorService executor = callbackExecutor;
+        ExecutorService executor = callbackSupport.executor();
         if (handler == null || executor == null)
             return;
         CallbackReceivedData snapshot = null;
@@ -554,7 +522,7 @@ final class SocketCore {
                                          long partCount,
                                          MemorySegment userdata) {
         SubscribeHandler handler = subscribeHandler;
-        ExecutorService executor = callbackExecutor;
+        ExecutorService executor = callbackSupport.executor();
         if (handler == null || executor == null)
             return;
         CallbackSubscribeData snapshot = null;
@@ -592,7 +560,7 @@ final class SocketCore {
     private void handleSendReadyCallback(MemorySegment subject,
                                          MemorySegment userdata) {
         SendReadyHandler handler = sendReadyHandler;
-        ExecutorService executor = callbackExecutor;
+        ExecutorService executor = callbackSupport.executor();
         if (handler == null || executor == null)
             return;
         try {
@@ -862,26 +830,7 @@ final class SocketCore {
     }
 
     private void recordCallbackFailure(RuntimeException failure) {
-        callbackFailure = failure;
-        Thread current = Thread.currentThread();
-        Thread.UncaughtExceptionHandler uncaught = current.getUncaughtExceptionHandler();
-        if (uncaught != null) {
-            uncaught.uncaughtException(current, failure);
-        }
-    }
-
-    private static ExecutorService newCallbackExecutor() {
-        return RuntimeResources.daemonSingleThreadExecutor(
-            "zlink-socket-callback");
-    }
-
-    private static void closeReceived(Received received) {
-        if (received != null) {
-            try {
-                received.close();
-            } catch (RuntimeException ignored) {
-            }
-        }
+        callbackSupport.recordFailure(failure);
     }
 
     private static void closeSnapshot(CallbackReceivedData snapshot) {
@@ -912,9 +861,4 @@ final class SocketCore {
 
     private record CallbackSubscribeData(RoutingId routingId, String topicId,
                                          Message[] parts) {}
-
-    @FunctionalInterface
-    private interface CallbackRegistration {
-        int register(MemorySegment stub);
-    }
 }

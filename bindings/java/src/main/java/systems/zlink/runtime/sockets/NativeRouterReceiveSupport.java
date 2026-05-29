@@ -187,7 +187,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
      * Canonical caller-provided storage recv. Populates {@code target}
      * directly when the routed recv yields a single-part non-request-seq
      * message (the routed-echo hot path); for multipart or request-seq
-     * results falls through to the legacy allocate-and-adopt path so the
+     * results falls through to the allocation fallback path so the
      * surface keeps the same observable semantics across recv shapes.
      * Returns {@code true} on data, {@code false} on EAGAIN with
      * {@link RecvFlags#DONT_WAIT}.
@@ -302,7 +302,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
      * single-part non-request-seq routed message (no spot, no request
      * sequence — the routed echo hot path), populates {@code target} in
      * place via {@link Received#populateRoutedSinglePart}, avoiding the
-     * fresh {@link Received} allocation that the legacy path makes.
+     * fresh {@link Received} allocation used by the fallback path.
      * Other paths fall back to the existing impl + {@link Received#adoptFrom}.
      */
     private boolean recvDirectOnceIntoImpl(Received target, RecvFlags flags,
@@ -355,7 +355,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                 return true;
             }
 
-            // Cold path (multipart or request-seq): fall back to the legacy
+            // Cold path (multipart or request-seq): fall back to the
             // allocate-and-adopt implementation so surface semantics stay
             // identical for non-echo routed recv shapes (request-reply,
             // multipart envelopes).

@@ -67,6 +67,12 @@ public final class PollEvents {
         return (revents(index) & event.mask()) != 0;
     }
 
+    public PollEvent eventAt(int index) {
+        checkReadyIndex(index);
+        return new PollEvent(sourceKinds[index], slots[index], revents[index],
+            fds[index]);
+    }
+
     public int fd(int index) {
         checkReadyIndex(index);
         return fds[index];

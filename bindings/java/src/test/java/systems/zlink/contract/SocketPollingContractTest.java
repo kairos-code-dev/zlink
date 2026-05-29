@@ -5,6 +5,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PairSocket;
+import systems.zlink.contracts.eventing.PollEvent;
 import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.eventing.PollEvents;
 import systems.zlink.contracts.eventing.PollSourceKind;
@@ -51,6 +52,10 @@ public class SocketPollingContractTest {
             assertEquals(PollSourceKind.SOCKET, events.sourceKind(0));
             assertEquals(7L, events.slot(0));
             assertTrue(events.hasEvent(0, PollEventFlags.POLLIN));
+            PollEvent event = events.eventAt(0);
+            assertEquals(PollSourceKind.SOCKET, event.sourceKind());
+            assertEquals(7L, event.slot());
+            assertTrue((event.revents() & PollEventFlags.POLLIN.mask()) != 0);
         }
     }
 

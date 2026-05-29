@@ -202,7 +202,7 @@ public final class Received implements AutoCloseable {
     /**
      * Populate this Received in place with a single-part routed recv
      * result. Avoids the intermediate {@link Received} allocation that
-     * the legacy {@code recv() -> Received} pattern incurs. Caller-side
+     * the allocating {@code recv() -> Received} pattern incurs. Caller-side
      * close + adoptFrom would otherwise dominate the GC profile of the
      * canonical ref-out recv hot path.
      */

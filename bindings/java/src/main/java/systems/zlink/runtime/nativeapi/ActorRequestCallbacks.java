@@ -218,8 +218,9 @@ public final class ActorRequestCallbacks {
         long id = userdata.address();
         JoinPending join = JOIN_PENDING.remove(id);
         if (join == null) {
-            // fall back to legacy reply-pending path for callers that still
-            // register through register(...)
+            // Some actor operations share the generic reply callback shape.
+            // Complete that pending reply when no join-specific registration
+            // owns this callback id.
             int code = result == MemorySegment.NULL
               ? RequestResult.INTERNAL_ERROR.value()
               : result.get(ValueLayout.JAVA_INT, 0);

@@ -16,6 +16,7 @@ import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 final class SampleSupport {
     private static final Duration TIMEOUT = Duration.ofSeconds(180);
@@ -27,15 +28,34 @@ final class SampleSupport {
     static final String PUBSUB_PAYLOAD = "101.25";
     static final String SPOT_TOPIC = "room:lobby";
     static final String SPOT_PAYLOAD = "hello-spot";
+    private static final int TCP_PORT_BASE =
+        40_000 + (int) (ProcessHandle.current().pid() % 10_000);
+    private static final AtomicInteger NEXT_TCP_PORT =
+        new AtomicInteger(TCP_PORT_BASE);
 
     private SampleSupport() {
     }
 
     static String tcpEndpoint() {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return "tcp://127.0.0.1:" + socket.getLocalPort();
+        return "tcp://127.0.0.1:" + nextTcpPort();
+    }
+
+    private static int nextTcpPort() {
+        for (int attempt = 0; attempt < 200; attempt++) {
+            int port = NEXT_TCP_PORT.getAndIncrement();
+            if (isBindable(port)) {
+                return port;
+            }
+        }
+        throw new IllegalStateException("failed to allocate tcp port");
+    }
+
+    private static boolean isBindable(int port) {
+        try (ServerSocket server = new ServerSocket(port)) {
+            server.setReuseAddress(false);
+            return true;
         } catch (IOException ex) {
-            throw new IllegalStateException("failed to allocate tcp port", ex);
+            return false;
         }
     }
 

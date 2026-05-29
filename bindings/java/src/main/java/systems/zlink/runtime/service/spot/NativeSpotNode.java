@@ -658,7 +658,7 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_status");
             }
-            return statusFromNative(out);
+            return SpotNodeSnapshots.statusFromNative(out);
         }
     }
 
@@ -683,7 +683,7 @@ public final class NativeSpotNode implements SpotNode {
       SpotNodeSubjectFilter filter) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
-              : subjectFilterToNative(filter, arena);
+              : SpotNodeSnapshots.subjectFilterToNative(filter, arena);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = Native.spotNodeSubjects(handle, nativeFilter,
               MemorySegment.NULL, count);
@@ -691,7 +691,7 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_subjects");
             }
-            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
+            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
                 return List.of();
             MemorySegment entries = arena.allocate(
@@ -703,13 +703,13 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_subjects");
             }
-            int actual = Math.min(available, boundedCount(
+            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
             long stride =
               NativeLayouts.SPOT_NODE_SUBJECT_ENTRY_LAYOUT.byteSize();
             ArrayList<SpotNodeSubjectEntry> out = new ArrayList<>(actual);
             for (int i = 0; i < actual; i++) {
-                out.add(subjectEntryFromNative(entries.asSlice(
+                out.add(SpotNodeSnapshots.subjectEntryFromNative(entries.asSlice(
                   (long) i * stride, stride)));
             }
             return List.copyOf(out);
@@ -734,7 +734,7 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_spots");
             }
-            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
+            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0) {
                 return List.of();
             }
@@ -746,7 +746,7 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_spots");
             }
-            int actual = Math.min(available, boundedCount(
+            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
             long stride = NativeLayouts.SPOT_NODE_SPOT_ENTRY_LAYOUT.byteSize();
             ArrayList<SpotNodeSpotEntry> out = new ArrayList<>(actual);
@@ -767,7 +767,7 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_actors");
             }
-            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
+            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0) {
                 return List.of();
             }
@@ -779,7 +779,7 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_actors");
             }
-            int actual = Math.min(available, boundedCount(
+            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
             long stride = NativeLayouts.SPOT_NODE_ACTOR_ENTRY_LAYOUT.byteSize();
             ArrayList<SpotNodeActorEntry> out = new ArrayList<>(actual);
@@ -796,7 +796,7 @@ public final class NativeSpotNode implements SpotNode {
       SpotNodeSocketFilter filter) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
-              : socketFilterToNative(filter, arena);
+              : SpotNodeSnapshots.socketFilterToNative(filter, arena);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = Native.spotNodeInternalSockets(handle,
               nativeFilter, MemorySegment.NULL, count);
@@ -804,7 +804,7 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_internal_sockets");
             }
-            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
+            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
                 return List.of();
             MemorySegment entries = arena.allocate(
@@ -816,14 +816,14 @@ public final class NativeSpotNode implements SpotNode {
                 throw InternalAccess.zlinkExceptionFromLastError(
                   "zlink_spot_node_internal_sockets");
             }
-            int actual = Math.min(available, boundedCount(
+            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
             long stride =
               NativeLayouts.SPOT_NODE_SOCKET_SNAPSHOT_ENTRY_LAYOUT.byteSize();
             ArrayList<SpotNodeSocketEntry> out =
               new ArrayList<>(actual);
             for (int i = 0; i < actual; i++) {
-                out.add(socketEntryFromNative(entries.asSlice(
+                out.add(SpotNodeSnapshots.socketEntryFromNative(entries.asSlice(
                   (long) i * stride, stride)));
             }
             return List.copyOf(out);
@@ -936,7 +936,7 @@ public final class NativeSpotNode implements SpotNode {
     private List<SpotNodePeerEntry> readPeerEntries(SpotNodePeerFilter filter) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeFilter = filter == null ? MemorySegment.NULL
-              : peerFilterToNative(filter, arena);
+              : SpotNodeSnapshots.peerFilterToNative(filter, arena);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             int rc = filter == null
               ? Native.spotNodePeers(handle, MemorySegment.NULL, count)
@@ -947,7 +947,7 @@ public final class NativeSpotNode implements SpotNode {
                   ? "zlink_spot_node_peers"
                   : "zlink_spot_node_peers");
             }
-            int available = boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
+            int available = SpotNodeSnapshots.boundedCount(count.get(ValueLayout.JAVA_LONG, 0));
             if (available == 0)
                 return List.of();
             MemorySegment entries = arena.allocate(
@@ -961,144 +961,16 @@ public final class NativeSpotNode implements SpotNode {
                   ? "zlink_spot_node_peers"
                   : "zlink_spot_node_peers");
             }
-            int actual = Math.min(available, boundedCount(
+            int actual = Math.min(available, SpotNodeSnapshots.boundedCount(
               count.get(ValueLayout.JAVA_LONG, 0)));
             long stride = NativeLayouts.SPOT_NODE_PEER_ENTRY_LAYOUT.byteSize();
             ArrayList<SpotNodePeerEntry> out = new ArrayList<>(actual);
             for (int i = 0; i < actual; i++) {
-                out.add(peerEntryFromNative(entries.asSlice(
+                out.add(SpotNodeSnapshots.peerEntryFromNative(entries.asSlice(
                   (long) i * stride, stride)));
             }
             return List.copyOf(out);
         }
-    }
-
-    private static SpotNodeStatus statusFromNative(MemorySegment segment) {
-        int routingSize = segment.get(ValueLayout.JAVA_BYTE, 512) & 0xFF;
-        byte[] routing = new byte[routingSize];
-        if (routingSize > 0) {
-            MemorySegment.copy(segment, 513, MemorySegment.ofArray(routing), 0,
-              routingSize);
-        }
-        return new SpotNodeStatus(
-          NativeHelpers.fromCString(segment.asSlice(0, 256), 256),
-          NativeHelpers.fromCString(segment.asSlice(256, 256), 256),
-          RoutingId.from(routing),
-          EnumCodecs.spotNodeStateFromValue(segment.get(ValueLayout.JAVA_INT, 768)),
-          segment.get(ValueLayout.JAVA_INT, 772),
-          segment.get(ValueLayout.JAVA_INT, 776),
-          segment.get(ValueLayout.JAVA_INT, 780),
-          segment.get(ValueLayout.JAVA_INT, 784),
-          segment.get(ValueLayout.JAVA_INT, 788),
-          segment.get(ValueLayout.JAVA_INT, 792),
-          segment.get(ValueLayout.JAVA_INT, 796),
-          segment.get(ValueLayout.JAVA_INT, 800),
-          segment.get(ValueLayout.JAVA_LONG_UNALIGNED, 808));
-    }
-
-    private static MemorySegment subjectFilterToNative(
-      SpotNodeSubjectFilter filter,
-      Arena arena) {
-        MemorySegment segment = arena.allocate(
-          NativeLayouts.SPOT_NODE_SUBJECT_FILTER_LAYOUT);
-        segment.set(ValueLayout.JAVA_INT, 0,
-          filter.role() == null ? 0 : EnumCodecs.spotRoleValue(filter.role()));
-        if (filter.subject() != null && !filter.subject().isEmpty()) {
-            MemorySegment nativeSubject =
-              NativeHelpers.toCString(arena, filter.subject());
-            MemorySegment.copy(nativeSubject, 0, segment, 4,
-              Math.min(nativeSubject.byteSize(), 256));
-        }
-        segment.set(ValueLayout.JAVA_INT, 260,
-          filter.subjectKind() == null ? 0
-            : EnumCodecs.serviceEventSubjectKindValue(filter.subjectKind()));
-        return segment;
-    }
-
-    private static SpotNodeSubjectEntry subjectEntryFromNative(
-      MemorySegment segment) {
-        return new SpotNodeSubjectEntry(
-          EnumCodecs.spotRoleFromValue(segment.get(ValueLayout.JAVA_INT, 0)),
-          NativeHelpers.fromCString(segment.asSlice(4, 256), 256),
-          EnumCodecs.serviceEventSubjectKindFromValue(
-              segment.get(ValueLayout.JAVA_INT, 260)),
-          segment.get(ValueLayout.JAVA_INT, 264),
-          segment.get(ValueLayout.JAVA_INT, 268),
-          segment.get(ValueLayout.JAVA_LONG, 272));
-    }
-
-    private static MemorySegment socketFilterToNative(
-      SpotNodeSocketFilter filter,
-      Arena arena) {
-        MemorySegment segment = arena.allocate(
-          NativeLayouts.SPOT_NODE_SOCKET_SNAPSHOT_FILTER_LAYOUT);
-        segment.set(ValueLayout.JAVA_INT, 0,
-          filter.owner() == null ? 0
-            : EnumCodecs.spotNodeSocketOwnerValue(filter.owner()));
-        segment.set(ValueLayout.JAVA_INT, 4,
-          filter.socketType() == null ? 0
-            : EnumCodecs.socketTypeValue(filter.socketType()));
-        if (filter.socketName() != null && !filter.socketName().isEmpty()) {
-            MemorySegment nativeName =
-              NativeHelpers.toCString(arena, filter.socketName());
-            MemorySegment.copy(nativeName, 0, segment, 8,
-              Math.min(nativeName.byteSize(), 64));
-        }
-        return segment;
-    }
-
-    private static SpotNodeSocketEntry socketEntryFromNative(
-      MemorySegment segment) {
-        return new SpotNodeSocketEntry(
-          EnumCodecs.spotNodeSocketOwnerFromValue(
-              segment.get(ValueLayout.JAVA_INT, 0)),
-          segment.get(ValueLayout.JAVA_LONG_UNALIGNED, 8),
-          NativeHelpers.fromCString(segment.asSlice(16, 64), 64),
-          NativeHelpers.fromCString(segment.asSlice(80, 64), 64),
-          EnumCodecs.socketTypeFromValue(segment.get(ValueLayout.JAVA_INT, 144)),
-          segment.get(ValueLayout.JAVA_INT, 148) != 0,
-          NativeMonitorStatuses.fromNative(segment.asSlice(152,
-            NativeLayouts.MONITOR_SNAPSHOT_LAYOUT.byteSize())));
-    }
-
-    private static MemorySegment peerFilterToNative(SpotNodePeerFilter filter,
-                                                    Arena arena) {
-        MemorySegment segment = arena.allocate(
-          NativeLayouts.SPOT_NODE_PEER_FILTER_LAYOUT);
-        if (filter.peerEndpoint() != null && !filter.peerEndpoint().isEmpty()) {
-            MemorySegment endpoint =
-              NativeHelpers.toCString(arena, filter.peerEndpoint());
-            MemorySegment.copy(endpoint, 0, segment, 0,
-              Math.min(endpoint.byteSize(), 256));
-        }
-        segment.set(ValueLayout.JAVA_INT, 256,
-          filter.source() == null ? 0
-            : EnumCodecs.spotPeerSourceValue(filter.source()));
-        segment.set(ValueLayout.JAVA_INT, 260,
-          filter.state() == null ? 0
-            : EnumCodecs.spotPeerStateValue(filter.state()));
-        return segment;
-    }
-
-    private static SpotNodePeerEntry peerEntryFromNative(MemorySegment segment) {
-        return new SpotNodePeerEntry(
-          NativeHelpers.fromCString(segment.asSlice(0, 256), 256),
-          NativeHelpers.fromCString(segment.asSlice(256, 256), 256),
-          NativeHelpers.fromCString(segment.asSlice(512, 256), 256),
-          EnumCodecs.spotPeerSourceFromValue(segment.get(ValueLayout.JAVA_INT, 768)),
-          EnumCodecs.spotPeerKindFromValue(segment.get(ValueLayout.JAVA_INT, 772)),
-          EnumCodecs.spotPeerStateFromValue(segment.get(ValueLayout.JAVA_INT, 776)),
-          segment.get(ValueLayout.JAVA_INT, 780),
-          segment.get(ValueLayout.JAVA_LONG, 784),
-          segment.get(ValueLayout.JAVA_LONG, 792));
-    }
-
-    private static int boundedCount(long value) {
-        if (value <= 0)
-            return 0;
-        if (value > Integer.MAX_VALUE)
-            return Integer.MAX_VALUE;
-        return (int) value;
     }
 
     private static String requireChannelName(String channelName) {

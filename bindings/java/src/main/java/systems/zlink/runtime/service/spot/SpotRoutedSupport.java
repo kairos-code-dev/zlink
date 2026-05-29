@@ -4,8 +4,6 @@ package systems.zlink.runtime.service.spot;
 
 import systems.zlink.contracts.service.spot.*;
 
-import systems.zlink.contracts.errors.ZlinkHandlerException;
-import systems.zlink.contracts.errors.HandlerResult;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.errors.ZlinkRecvException;
@@ -15,15 +13,9 @@ import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.sockets.SpotDispatchEvent;
 import systems.zlink.contracts.sockets.SpotDispatchEventHandler;
-import systems.zlink.contracts.sockets.SpotDispatchInfo;
-import systems.zlink.contracts.sockets.SpotDispatchSubjectKind;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.internal.ContractAccess;
-import systems.zlink.runtime.nativeapi.ActorInterop;
-import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
@@ -32,7 +24,6 @@ import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
-import systems.zlink.runtime.nativeapi.RuntimeResources;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -48,7 +39,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
@@ -59,32 +49,23 @@ final class SpotRoutedSupport implements AutoCloseable {
     private static final FunctionDescriptor FD_REPLY_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
-    private static final FunctionDescriptor FD_DISPATCH_HANDLER =
-      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS);
     private static final Arena CALLBACK_ARENA = Arena.ofShared();
     private static final MemorySegment REPLY_CALLBACK = LINKER.upcallStub(
       callbackHandle("handleReplyCallback", MethodType.methodType(void.class,
         int.class, MemorySegment.class, long.class, MemorySegment.class)),
       FD_REPLY_CALLBACK, CALLBACK_ARENA);
     private static final AtomicLong NEXT_REQUEST_ID = new AtomicLong(1L);
-    private static final AtomicLong NEXT_CALLBACK_ID = new AtomicLong(1L);
     private static final ConcurrentMap<Long, CompletableFuture<Received>> PENDING =
       new ConcurrentHashMap<>();
     private static final ConcurrentMap<Long, PendingCallback> PENDING_CALLBACKS =
       new ConcurrentHashMap<>();
-    private static final ConcurrentMap<Long, SpotRoutedSupport> DISPATCH_RECEIVERS =
-      new ConcurrentHashMap<>();
     private final Spot spot;
-    private SpotDispatchEventHandler dispatchEventHandler;
-    private ExecutorService callbackExecutor;
-    private Arena dispatchCallbackArena;
-    private long dispatchCallbackId;
-    private volatile RuntimeException callbackFailure;
+    private final SpotDispatchSupport dispatchSupport;
     private final ThreadLocal<Received> activeLazyReceive = new ThreadLocal<>();
 
-    public SpotRoutedSupport(Spot spot) {
+    SpotRoutedSupport(Spot spot) {
         this.spot = Objects.requireNonNull(spot, "spot");
+        this.dispatchSupport = new SpotDispatchSupport(spot);
     }
 
     public boolean sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
@@ -254,158 +235,8 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
-    private static void handleDispatchEventCallback(MemorySegment spotHandle,
-                                                    MemorySegment info,
-                                                    MemorySegment userdata) {
-        if (userdata == null || userdata.address() == 0L) {
-            return;
-        }
-        SpotRoutedSupport receiver = DISPATCH_RECEIVERS.get(userdata.address());
-        if (receiver == null) {
-            return;
-        }
-        receiver.handleDispatchEventCallbackImpl(spotHandle, info);
-    }
-
-    private void handleDispatchEventCallbackImpl(MemorySegment spotHandle,
-                                                 MemorySegment info) {
-        SpotDispatchEventHandler handler = dispatchEventHandler;
-        if (handler == null) {
-            return;
-        }
-        try {
-            SpotDispatchInfo dispatchInfo = decodeDispatchInfo(info);
-            if (dispatchInfo == null) {
-                return;
-            }
-            dispatchEvent(handler, dispatchInfo);
-        } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
-        } catch (Error ex) {
-            recordCallbackFailure(new RuntimeException(
-                "spot dispatch callback failed", ex));
-        }
-    }
-
-    private void dispatchEvent(SpotDispatchEventHandler handler,
-                               SpotDispatchInfo info) {
-        InternalAccess.enterCallback();
-        try {
-            handler.onEvent(info);
-        } catch (RuntimeException ex) {
-            recordCallbackFailure(ex);
-        } finally {
-            InternalAccess.leaveCallback();
-        }
-    }
-
-    private SpotDispatchInfo decodeDispatchInfo(MemorySegment info) {
-        if (info == null || info.address() == 0) {
-            return null;
-        }
-        info = info.reinterpret(NativeLayouts.SPOT_DISPATCH_INFO_LAYOUT.byteSize());
-        SpotDispatchEvent event = EnumCodecs.spotDispatchEventFromValue(info.get(
-          ValueLayout.JAVA_INT, NativeLayouts.SPOT_DISPATCH_INFO_EVENT_OFFSET));
-        SpotDispatchSubjectKind subjectKind = EnumCodecs.spotDispatchSubjectKindFromValue(
-          info.get(ValueLayout.JAVA_INT,
-            NativeLayouts.SPOT_DISPATCH_INFO_SUBJECT_KIND_OFFSET));
-        if (event == null || subjectKind == null) {
-            return null;
-        }
-        MemorySegment subject = info.get(ValueLayout.ADDRESS,
-          NativeLayouts.SPOT_DISPATCH_INFO_SUBJECT_OFFSET);
-        if (event == SpotDispatchEvent.ACTOR_READABLE
-            && subjectKind == SpotDispatchSubjectKind.ACTOR
-            && subject != null && subject.address() != 0) {
-            return ContractAccess.spotDispatchInfo(event, subjectKind, subject,
-              drainActorReceiveds(subject));
-        }
-        if (event == SpotDispatchEvent.TIMER_READABLE
-            && subjectKind == SpotDispatchSubjectKind.TIMER
-            && subject != null && subject.address() != 0) {
-            return ContractAccess.spotDispatchInfo(event, subjectKind, subject,
-              InternalAccess.timerFromBorrowedHandle(subject), null, List.of());
-        }
-        return ContractAccess.spotDispatchInfo(event, subjectKind, subject);
-    }
-
-    private List<ActorReceived> drainActorReceiveds(MemorySegment actor) {
-        MemorySegment node = InternalAccess.spotOwnerNodeHandle(spot);
-        if (node == null || node.address() == 0) {
-            return List.of();
-        }
-        ArrayList<ActorReceived> parts = new ArrayList<>();
-        try (Arena arena = Arena.ofConfined()) {
-            while (true) {
-                MemorySegment infoOut = arena.allocate(
-                  NativeLayouts.ACTOR_RECV_INFO_LAYOUT);
-                MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
-                Message message = new Message();
-                boolean success = false;
-                try {
-                    int rc = Native.spotNodeActorRecvPart(node, actor, infoOut,
-                      InternalAccess.messageNativeHandle(message), hasMoreOut,
-                      RecvFlags.DONT_WAIT.value());
-                    if (rc != 0) {
-                        message.close();
-                        if (rc == RecvResult.NO_DATA.value()) {
-                            break;
-                        }
-                        throw new ZlinkRecvException(RecvResult.fromValue(rc));
-                    }
-                    boolean hasMore =
-                      hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                    InternalAccess.messageFinishReceive(message, hasMore);
-                    success = true;
-                    parts.add(new ActorReceived(
-                      ActorInterop.actorRecvInfoFromNative(infoOut), message,
-                      hasMore));
-                } finally {
-                    if (!success) {
-                        try {
-                            message.close();
-                        } catch (RuntimeException ignored) {
-                        }
-                    }
-                }
-            }
-        }
-        return List.copyOf(parts);
-    }
-
     public void setDispatchHandler(SpotDispatchEventHandler handler) {
-        Objects.requireNonNull(handler, "handler");
-        ensureOpen();
-        releaseDispatchEventHandlerSlot();
-        Arena arena = Arena.ofShared();
-        long callbackId = NEXT_CALLBACK_ID.getAndIncrement();
-        MemorySegment callback = LINKER.upcallStub(
-          callbackHandle("handleDispatchEventCallback",
-            MethodType.methodType(void.class, MemorySegment.class,
-              MemorySegment.class, MemorySegment.class)),
-          FD_DISPATCH_HANDLER, arena);
-        int rc = Native.spotDispatchEventHandler(handle(), callback,
-          MemorySegment.ofAddress(callbackId));
-        if (rc != 0) {
-            RuntimeResources.closeArena(arena);
-            throw new ZlinkHandlerException(HandlerResult.fromValue(rc),
-              Native.errno());
-        }
-        dispatchEventHandler = handler;
-        dispatchCallbackArena = arena;
-        dispatchCallbackId = callbackId;
-        DISPATCH_RECEIVERS.put(callbackId, this);
-    }
-
-    private void releaseDispatchEventHandlerSlot() {
-        long callbackId = dispatchCallbackId;
-        if (callbackId != 0L) {
-            DISPATCH_RECEIVERS.remove(callbackId);
-            dispatchCallbackId = 0L;
-        }
-        RuntimeResources.closeArena(dispatchCallbackArena);
-        dispatchCallbackArena = null;
-        dispatchEventHandler = null;
+        dispatchSupport.setDispatchHandler(handler);
     }
 
     private CompletableFuture<List<Message>> requestViaNative(List<Message> parts,
@@ -828,41 +659,12 @@ final class SpotRoutedSupport implements AutoCloseable {
         if (handle == null || handle.address() == 0) {
             throw new IllegalStateException("spot is closed");
         }
-        ensureNoCallbackFailure();
-    }
-
-    private void ensureNoCallbackFailure() {
-        RuntimeException failure = callbackFailure;
-        if (failure != null) {
-            throw failure;
-        }
-    }
-
-    private ExecutorService ensureCallbackExecutor(String threadName) {
-        ExecutorService executor = callbackExecutor;
-        if (executor != null) {
-            return executor;
-        }
-        executor = RuntimeResources.daemonSingleThreadExecutor(threadName);
-        callbackExecutor = executor;
-        return executor;
-    }
-
-    private void recordCallbackFailure(RuntimeException failure) {
-        callbackFailure = failure;
-        Thread current = Thread.currentThread();
-        Thread.UncaughtExceptionHandler uncaught =
-          current.getUncaughtExceptionHandler();
-        if (uncaught != null) {
-            uncaught.uncaughtException(current, failure);
-        }
+        dispatchSupport.ensureNoCallbackFailure();
     }
 
     @Override
     public void close() {
-        releaseDispatchEventHandlerSlot();
-        RuntimeResources.shutdownExecutor(callbackExecutor);
-        callbackExecutor = null;
+        dispatchSupport.close();
     }
 
     private static CompletableFuture<Received> registerPending(long requestId,

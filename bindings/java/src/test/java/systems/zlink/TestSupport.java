@@ -8,10 +8,15 @@ import org.junit.jupiter.api.Assertions;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
 public final class TestSupport {
     public static final int DEFAULT_TIMEOUT_MS = 5000;
+    private static final int TCP_PORT_BASE =
+        20_000 + (int) (ProcessHandle.current().pid() % 20_000);
+    private static final AtomicInteger NEXT_TCP_PORT =
+        new AtomicInteger(TCP_PORT_BASE);
 
     private TestSupport() {
     }
@@ -30,7 +35,7 @@ public final class TestSupport {
     }
 
     public static String tcpEndpoint() {
-        return "tcp://127.0.0.1:" + randomPort();
+        return "tcp://127.0.0.1:" + nextTcpPort();
     }
 
     public static MonitorEvent awaitMonitorEvent(SocketMonitor monitor,
@@ -74,12 +79,22 @@ public final class TestSupport {
         }
     }
 
-    private static int randomPort() {
-        try (ServerSocket server = new ServerSocket(0)) {
-            server.setReuseAddress(true);
-            return server.getLocalPort();
+    private static int nextTcpPort() {
+        for (int attempt = 0; attempt < 200; attempt++) {
+            int port = NEXT_TCP_PORT.getAndIncrement();
+            if (isBindable(port)) {
+                return port;
+            }
+        }
+        throw new IllegalStateException("failed to allocate tcp port");
+    }
+
+    private static boolean isBindable(int port) {
+        try (ServerSocket server = new ServerSocket(port)) {
+            server.setReuseAddress(false);
+            return true;
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            return false;
         }
     }
 }

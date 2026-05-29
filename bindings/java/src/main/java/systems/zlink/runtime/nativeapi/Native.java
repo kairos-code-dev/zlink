@@ -1734,13 +1734,6 @@ public final class Native {
         }
     }
 
-    public static int monitor(MemorySegment socket, MemorySegment endpoint,
-                              int events) {
-        throw new UnsupportedOperationException(
-            "legacy zlink_socket_monitor is not supported; "
-                + "use zlink_socket_monitor_open");
-    }
-
     public static MonitorEvent monitorRecv(MemorySegment socket, int flags) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment evt = arena.allocate(NativeLayouts.MONITOR_EVENT_LAYOUT);

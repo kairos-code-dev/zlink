@@ -3,7 +3,6 @@ using Microsoft.Extensions.Hosting;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -110,17 +109,12 @@ public abstract partial class StreamTestSupport
     protected sealed class CallbackExceptionCapture : IDisposable
     {
         private readonly ConcurrentQueue<Exception> _exceptions = new();
-        private readonly EventInfo _eventInfo;
         private readonly Action<Exception> _handlerDelegate;
 
         private CallbackExceptionCapture()
         {
-            _eventInfo = typeof(global::Systems.Zlink.Zlink).Assembly
-                .GetType("Systems.Zlink.Runtime", throwOnError: true)!
-                .GetEvent("UnhandledCallbackException", BindingFlags.Public | BindingFlags.Static)!
-                ?? throw new InvalidOperationException("Could not locate Systems.Zlink.Runtime.UnhandledCallbackException.");
             _handlerDelegate = OnUnhandledCallbackException;
-            _eventInfo.AddEventHandler(null, _handlerDelegate);
+            global::Systems.Zlink.Zlink.UnhandledCallbackException += _handlerDelegate;
         }
 
         public bool IsEmpty => _exceptions.IsEmpty;
@@ -132,7 +126,7 @@ public abstract partial class StreamTestSupport
 
         public void Dispose()
         {
-            _eventInfo.RemoveEventHandler(null, _handlerDelegate);
+            global::Systems.Zlink.Zlink.UnhandledCallbackException -= _handlerDelegate;
         }
 
         public void ThrowIfAny()

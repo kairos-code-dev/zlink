@@ -545,7 +545,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             return null;
         }
 
-        var parameters = RequireParameterCount(handlerType, method, 5, "SPOT actor packet handler");
+        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 5, "SPOT actor packet handler");
         var spotType = parameters[0].ParameterType;
         var actorType = parameters[1].ParameterType;
         var expectedContextType = request is null
@@ -558,13 +558,13 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         }
 
         var messageType = parameters[3].ParameterType;
-        RequireCancellationToken(handlerType, method, parameters[4], "SPOT actor packet handler");
+        ZLinkHandlerMethodShape.RequireCancellationToken(handlerType, method, parameters[4], "SPOT actor packet handler");
         ValidateSpotType(handlerType, expectedSpotType, spotType);
         ValidateActorType(handlerType, expectedActorType, actorType);
         var replyType = request is null ? null : GetReplyType(method.ReturnType);
         if (send is not null)
         {
-            RequireNoReply(handlerType, method, "SPOT actor send handler");
+            ZLinkHandlerMethodShape.RequireNoReply(handlerType, method, "SPOT actor send handler");
         }
 
         var packetName = packetNameOverride ?? send?.PacketName ?? request?.PacketName;
@@ -599,7 +599,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             return null;
         }
 
-        var parameters = RequireParameterCount(handlerType, method, 4, "SPOT actor lifecycle handler");
+        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 4, "SPOT actor lifecycle handler");
         var spotType = parameters[0].ParameterType;
         var actorType = parameters[1].ParameterType;
         if (parameters[2].ParameterType != typeof(ZLinkSpotActorChangeResult))
@@ -608,8 +608,8 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
                 $"SPOT actor lifecycle handler '{handlerType}' method '{method.Name}' must use ZLinkSpotActorChangeResult as the third parameter.");
         }
 
-        RequireCancellationToken(handlerType, method, parameters[3], "SPOT actor lifecycle handler");
-        RequireNoReply(handlerType, method, "SPOT actor lifecycle handler");
+        ZLinkHandlerMethodShape.RequireCancellationToken(handlerType, method, parameters[3], "SPOT actor lifecycle handler");
+        ZLinkHandlerMethodShape.RequireNoReply(handlerType, method, "SPOT actor lifecycle handler");
         ValidateSpotType(handlerType, expectedSpotType, spotType);
         ValidateActorType(handlerType, expectedActorType, actorType);
         var descriptor = new ZLinkSpotActorLifecycleDescriptor
@@ -637,11 +637,11 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             return null;
         }
 
-        var parameters = RequireParameterCount(handlerType, method, 3, "SPOT actor disconnected handler");
+        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 3, "SPOT actor disconnected handler");
         var spotType = parameters[0].ParameterType;
         var actorType = parameters[1].ParameterType;
-        RequireCancellationToken(handlerType, method, parameters[2], "SPOT actor disconnected handler");
-        RequireNoReply(handlerType, method, "SPOT actor disconnected handler");
+        ZLinkHandlerMethodShape.RequireCancellationToken(handlerType, method, parameters[2], "SPOT actor disconnected handler");
+        ZLinkHandlerMethodShape.RequireNoReply(handlerType, method, "SPOT actor disconnected handler");
         ValidateSpotType(handlerType, expectedSpotType, spotType);
         ValidateActorType(handlerType, expectedActorType, actorType);
         return new ZLinkSpotActorLifecycleDescriptor
@@ -654,65 +654,6 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
         };
     }
 
-    private static ParameterInfo[] RequireParameterCount(
-        Type handlerType,
-        MethodInfo method,
-        int expectedCount,
-        string description)
-    {
-        var parameters = method.GetParameters();
-        if (parameters.Length != expectedCount)
-        {
-            throw new InvalidOperationException(
-                $"{description} '{handlerType}' method '{method.Name}' must declare exactly {expectedCount} parameters.");
-        }
-
-        return parameters;
-    }
-
-    private static void RequireCancellationToken(
-        Type handlerType,
-        MethodInfo method,
-        ParameterInfo parameter,
-        string description)
-    {
-        if (parameter.ParameterType != typeof(CancellationToken))
-        {
-            throw new InvalidOperationException(
-                $"{description} '{handlerType}' method '{method.Name}' must use CancellationToken as the last parameter.");
-        }
-    }
-
     private static Type GetReplyType(Type returnType)
-    {
-        if (returnType.IsGenericType
-            && (returnType.GetGenericTypeDefinition() == typeof(ValueTask<>)
-                || returnType.GetGenericTypeDefinition() == typeof(Task<>)))
-        {
-            return returnType.GetGenericArguments()[0];
-        }
-
-        if (returnType == typeof(ValueTask)
-            || returnType == typeof(Task)
-            || returnType == typeof(void))
-        {
-            throw new InvalidOperationException("SPOT actor request handler must return a reply value.");
-        }
-
-        return returnType;
-    }
-
-    private static void RequireNoReply(Type handlerType, MethodInfo method, string description)
-    {
-        var returnType = method.ReturnType;
-        if (returnType == typeof(void)
-            || returnType == typeof(ValueTask)
-            || returnType == typeof(Task))
-        {
-            return;
-        }
-
-        throw new InvalidOperationException(
-            $"{description} '{handlerType}' method '{method.Name}' must not return a reply value.");
-    }
+        => ZLinkHandlerMethodShape.RequireReplyType(returnType, "SPOT actor request handler");
 }

@@ -220,27 +220,30 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    private ValueTask SendToSpotViaRouteEgressChannelAsync(
+    private async ValueTask SendToSpotViaRouteEgressChannelAsync(
         string localEgressChannelName,
         string targetSpotNodeChannelName,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        var targetPeerRid = ResolveRouteEgressTargetPeerRid(
-            localEgressChannelName,
-            targetSpotNodeChannelName);
+        var targetPeerRid = await ResolveRouteEgressTargetPeerRidAsync(
+                localEgressChannelName,
+                targetSpotNodeChannelName)
+            .ConfigureAwait(false);
         var relayHeader = ZLinkRoutedSpotRelayPackets.CreateRelayHeader(
             ZLinkMessageKind.Command,
             targetSpotNodeChannelName);
         var relayPayload = ZLinkRoutedSpotRelayPackets.CreateRelayPayloadParts(
             targetSpotRid,
             parts);
-        return GetRouteChannel(localEgressChannelName).SubmitSendPartsAsync(
-            targetPeerRid,
-            relayHeader,
-            relayPayload,
-            cancellationToken);
+        await GetRouteChannel(localEgressChannelName)
+            .SubmitSendPartsAsync(
+                targetPeerRid,
+                relayHeader,
+                relayPayload,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<IReadOnlyList<Message>> RequestToSpotViaRouteEgressChannelAsync(
@@ -251,9 +254,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var targetPeerRid = ResolveRouteEgressTargetPeerRid(
-            localEgressChannelName,
-            targetSpotNodeChannelName);
+        var targetPeerRid = await ResolveRouteEgressTargetPeerRidAsync(
+                localEgressChannelName,
+                targetSpotNodeChannelName)
+            .ConfigureAwait(false);
         var relayHeader = ZLinkRoutedSpotRelayPackets.CreateRelayHeader(
             ZLinkMessageKind.Request,
             targetSpotNodeChannelName,
@@ -272,7 +276,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         return reply.ToMessages();
     }
 
-    private RoutingId ResolveRouteEgressTargetPeerRid(
+    private async ValueTask<RoutingId> ResolveRouteEgressTargetPeerRidAsync(
         string localEgressChannelName,
         string targetSpotNodeChannelName)
     {
@@ -285,11 +289,11 @@ internal sealed partial class ZLinkFrameworkRuntime
             return discoveryPeerRid;
         }
 
-        if (TryResolveRouteEgressPeerFromRegistryQuery(
-                targetSpotNodeChannelName,
-                out var registryPeerRid))
+        var registryPeerRid = await TryResolveRouteEgressPeerFromRegistryQueryAsync(targetSpotNodeChannelName)
+            .ConfigureAwait(false);
+        if (registryPeerRid is not null)
         {
-            return registryPeerRid;
+            return registryPeerRid.Value;
         }
 
         if (_registration.RouteChannels.TryGetValue(targetSpotNodeChannelName, out var targetRoute)
@@ -359,15 +363,13 @@ internal sealed partial class ZLinkFrameworkRuntime
         return true;
     }
 
-    private bool TryResolveRouteEgressPeerFromRegistryQuery(
-        string targetSpotNodeChannelName,
-        out RoutingId routingId)
+    private async ValueTask<RoutingId?> TryResolveRouteEgressPeerFromRegistryQueryAsync(
+        string targetSpotNodeChannelName)
     {
-        routingId = default;
         var discoveryEndpoints = _registration.Discovery?.Endpoints;
         if (discoveryEndpoints is null || discoveryEndpoints.Count == 0)
         {
-            return false;
+            return null;
         }
 
         var state = GetOrStartState();
@@ -398,7 +400,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             }
             finally
             {
-                queryClient.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                await queryClient.DisposeAsync().ConfigureAwait(false);
             }
         }
 
@@ -410,7 +412,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     $"Routed SPOT route mesh egress found target channel '{targetSpotNodeChannelName}' in registry, but the peer does not expose a routing id.");
             }
 
-            return false;
+            return null;
         }
 
         if (candidates.Count > 1)
@@ -419,8 +421,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 $"Routed SPOT route mesh egress found multiple route peers for target channel '{targetSpotNodeChannelName}'. Use a unique target SPOT node route channel for this egress.");
         }
 
-        routingId = candidates.Single();
-        return true;
+        return candidates.Single();
     }
 
     internal async ValueTask<IReadOnlyList<Message>> RequestToSpotViaRouterChannelAsync(

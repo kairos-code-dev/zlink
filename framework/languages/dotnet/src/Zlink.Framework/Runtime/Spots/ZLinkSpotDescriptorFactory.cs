@@ -193,16 +193,16 @@ internal static class ZLinkSpotDescriptorFactory
         Type? expectedRequestType,
         Type? expectedReplyType)
     {
-        var parameters = RequireParameterCount(handlerType, method, 4, "SPOT actor join handler");
+        var parameters = ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 4, "SPOT actor join handler");
         var spotType = parameters[0].ParameterType;
         var actorType = parameters[1].ParameterType;
         var requestType = parameters[2].ParameterType;
-        var cancellationType = parameters[3].ParameterType;
-        if (cancellationType != typeof(CancellationToken))
-        {
-            throw new InvalidOperationException(
-                $"SPOT actor join handler '{handlerType}' method '{method.Name}' must use CancellationToken as the fourth parameter.");
-        }
+        ZLinkHandlerMethodShape.RequireCancellationToken(
+            handlerType,
+            method,
+            parameters[3],
+            "SPOT actor join handler",
+            "fourth");
 
         ValidateSpotType(handlerType, expectedSpotType, spotType);
         ValidateActorType(handlerType, expectedActorType, actorType);
@@ -243,39 +243,7 @@ internal static class ZLinkSpotDescriptorFactory
     }
 
     private static Type GetReplyType(Type returnType)
-    {
-        if (returnType.IsGenericType
-            && (returnType.GetGenericTypeDefinition() == typeof(ValueTask<>)
-                || returnType.GetGenericTypeDefinition() == typeof(Task<>)))
-        {
-            return returnType.GetGenericArguments()[0];
-        }
-
-        if (returnType == typeof(ValueTask)
-            || returnType == typeof(Task)
-            || returnType == typeof(void))
-        {
-            throw new InvalidOperationException("SPOT actor join handler must return a reply value.");
-        }
-
-        return returnType;
-    }
-
-    private static ParameterInfo[] RequireParameterCount(
-        Type handlerType,
-        MethodInfo method,
-        int expectedCount,
-        string description)
-    {
-        var parameters = method.GetParameters();
-        if (parameters.Length != expectedCount)
-        {
-            throw new InvalidOperationException(
-                $"{description} '{handlerType}' method '{method.Name}' must declare exactly {expectedCount} parameters.");
-        }
-
-        return parameters;
-    }
+        => ZLinkHandlerMethodShape.RequireReplyType(returnType, "SPOT actor join handler");
 
     private static IEnumerable<MethodInfo> EnumerateAttributedMethods<TAttribute>(Type handlerType)
         where TAttribute : Attribute

@@ -24,9 +24,9 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkSpotDiscoveryReconciler _discoveryReconciler;
     private readonly ZLinkSpotDiscoveryLoop _discoveryLoop;
     private readonly ZLinkSpotPeerConnector _peerConnector;
+    private readonly ZLinkEntrySpotActorDispatch _entryActorDispatch;
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private IZLinkBackendSpot? _entrySpot;
-    private ZLinkEntrySpotActivation? _entrySpotActivation;
 
     public ZLinkSpotNodeRuntime(
         IServiceProvider services,
@@ -47,6 +47,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             new ZLinkRuntimeErrorSink(),
             _stopSource.Token);
         _monitoringSnapshots = new ZLinkSpotMonitoringSnapshotProvider(node);
+        _entryActorDispatch = new ZLinkEntrySpotActorDispatch(registration.SpotNodeName);
         _discoveryReconciler = new ZLinkSpotDiscoveryReconciler(
             spotChannelName,
             node,
@@ -89,7 +90,9 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
 
-    internal ZLinkEntrySpotActivation? EntrySpotActivation => _entrySpotActivation;
+    internal ZLinkEntrySpotActivation? EntrySpotActivation => _entryActorDispatch.Activation;
+
+    internal ZLinkEntrySpotActorDispatch EntrySpotActorDispatch => _entryActorDispatch;
 
     public IZLinkBackendDiscovery? SpotDiscovery { get; set; }
 
@@ -122,102 +125,15 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         _entrySpot ??= Node.EntrySpot();
         var entrySpot = _entrySpot;
 
-        _entrySpotActivation = await CreateEntrySpotActivationAsync(entrySpot)
+        var activation = await CreateEntrySpotActivationAsync(entrySpot)
             .ConfigureAwait(false);
+        if (activation is not null)
+        {
+            _entryActorDispatch.Attach(activation);
+        }
 
-        new ZLinkEntrySpotDispatchPump(_runtime, _entrySpotActivation, _taskRunner)
+        new ZLinkEntrySpotDispatchPump(_runtime, activation, _taskRunner)
             .Attach(entrySpot);
-    }
-
-    public bool TryResolveEntrySpotActorPacket(
-        Type actorType,
-        ZlinkStreamHeader header,
-        out ZLinkSpotActorPacketDescriptor? descriptor)
-    {
-        descriptor = null;
-        return _entrySpotActivation is not null
-            && _entrySpotActivation.TryResolveActorPacket(actorType, header, out descriptor);
-    }
-
-    public ValueTask InvokeEntrySpotActorPacketAsync(
-        ZLinkSpotActorPacketDescriptor descriptor,
-        IZLinkActor actor,
-        ZlinkStreamHeader header,
-        Message body,
-        CancellationToken cancellationToken)
-    {
-        return RequireEntrySpotActivation().InvokeActorPacketAsync(
-            descriptor,
-            actor,
-            header,
-            body,
-            cancellationToken);
-    }
-
-    public ValueTask<ZLinkActorReply> InvokeEntrySpotActorPacketForReplyAsync(
-        ZLinkSpotActorPacketDescriptor descriptor,
-        IZLinkActor actor,
-        ZlinkStreamHeader header,
-        Message body,
-        CancellationToken cancellationToken)
-    {
-        return RequireEntrySpotActivation().InvokeActorPacketForReplyAsync(
-            descriptor,
-            actor,
-            header,
-            body,
-            cancellationToken);
-    }
-
-    public bool TryResolveEntrySpotActorJoined(
-        Type actorType,
-        out ZLinkSpotActorLifecycleDescriptor? descriptor)
-    {
-        descriptor = null;
-        return _entrySpotActivation is not null
-            && _entrySpotActivation.TryResolveActorJoined(actorType, out descriptor);
-    }
-
-    public bool TryResolveEntrySpotActorLeft(
-        Type actorType,
-        out ZLinkSpotActorLifecycleDescriptor? descriptor)
-    {
-        descriptor = null;
-        return _entrySpotActivation is not null
-            && _entrySpotActivation.TryResolveActorLeft(actorType, out descriptor);
-    }
-
-    public bool TryResolveEntrySpotActorDisconnected(
-        Type actorType,
-        out ZLinkSpotActorLifecycleDescriptor? descriptor)
-    {
-        descriptor = null;
-        return _entrySpotActivation is not null
-            && _entrySpotActivation.TryResolveActorDisconnected(actorType, out descriptor);
-    }
-
-    public ValueTask InvokeEntrySpotActorLifecycleAsync(
-        ZLinkSpotActorLifecycleDescriptor descriptor,
-        IZLinkActor actor,
-        ZLinkSpotActorChangeResult context,
-        CancellationToken cancellationToken)
-    {
-        return RequireEntrySpotActivation().InvokeActorLifecycleAsync(
-            descriptor,
-            actor,
-            context,
-            cancellationToken);
-    }
-
-    public ValueTask InvokeEntrySpotActorDisconnectedAsync(
-        ZLinkSpotActorLifecycleDescriptor descriptor,
-        IZLinkActor actor,
-        CancellationToken cancellationToken)
-    {
-        return RequireEntrySpotActivation().InvokeActorDisconnectedAsync(
-            descriptor,
-            actor,
-            cancellationToken);
     }
 
     public void StartDiscoveryPeerReconciliation()
@@ -414,12 +330,6 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             && _frameworkRegistration.ActorFactories.Count > 0;
     }
 
-    private ZLinkEntrySpotActivation RequireEntrySpotActivation()
-    {
-        return _entrySpotActivation
-            ?? throw new InvalidOperationException($"SPOT node '{Name}' does not have an Entry Spot.");
-    }
-
     private async ValueTask DisposeEntrySpotAsync()
     {
         if (_entrySpot is null)
@@ -427,10 +337,10 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             return;
         }
 
-        if (_entrySpotActivation is not null)
+        if (_entryActorDispatch.Activation is { } activation)
         {
-            await _entrySpotActivation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
-            await _entrySpotActivation.DisposeAsync().ConfigureAwait(false);
+            await activation.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+            await activation.DisposeAsync().ConfigureAwait(false);
         }
 
         await _entrySpot.DisposeAsync();

@@ -217,6 +217,14 @@ bindings/**/*.user
 bindings/**/*.suo
 bindings/**/*.userosscache
 bindings/**/*.sln.docstates
+framework/languages/dotnet/**/bin/
+framework/languages/dotnet/**/obj/
+framework/languages/dotnet/**/.vs/
+framework/languages/dotnet/**/TestResults/
+framework/languages/dotnet/**/*.user
+framework/languages/dotnet/**/*.suo
+framework/languages/dotnet/**/*.userosscache
+framework/languages/dotnet/**/*.sln.docstates
 
 ## Documentation output
 bindings/**/docs/_build/

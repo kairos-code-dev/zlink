@@ -14,13 +14,14 @@ internal sealed class ZLinkEntrySpotActorRouter
     {
         foreach (var node in state.SpotNodes.Values)
         {
-            if (!node.TryResolveEntrySpotActorPacket(actor.GetType(), header, out var descriptor)
+            var dispatch = node.EntrySpotActorDispatch;
+            if (!dispatch.TryResolvePacket(actor.GetType(), header, out var descriptor)
                 || descriptor is null)
             {
                 continue;
             }
 
-            await node.InvokeEntrySpotActorPacketAsync(
+            await dispatch.InvokePacketAsync(
                         descriptor,
                         actor,
                         header,
@@ -44,13 +45,14 @@ internal sealed class ZLinkEntrySpotActorRouter
     {
         foreach (var node in state.SpotNodes.Values)
         {
-            if (!node.TryResolveEntrySpotActorPacket(actor.GetType(), header, out var descriptor)
+            var dispatch = node.EntrySpotActorDispatch;
+            if (!dispatch.TryResolvePacket(actor.GetType(), header, out var descriptor)
                 || descriptor is null)
             {
                 continue;
             }
 
-            var reply = await node.InvokeEntrySpotActorPacketForReplyAsync(
+            var reply = await dispatch.InvokePacketForReplyAsync(
                         descriptor,
                         actor,
                         header,
@@ -90,7 +92,7 @@ internal sealed class ZLinkEntrySpotActorRouter
             context,
             targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
-                node.TryResolveEntrySpotActorJoined(actorType, out descriptor),
+                node.EntrySpotActorDispatch.TryResolveJoined(actorType, out descriptor),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -107,7 +109,7 @@ internal sealed class ZLinkEntrySpotActorRouter
             context,
             targetNodeRid,
             static (ZLinkSpotNodeRuntime node, Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
-                node.TryResolveEntrySpotActorLeft(actorType, out descriptor),
+                node.EntrySpotActorDispatch.TryResolveLeft(actorType, out descriptor),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -125,13 +127,14 @@ internal sealed class ZLinkEntrySpotActorRouter
                 continue;
             }
 
-            if (!node.TryResolveEntrySpotActorDisconnected(actor.GetType(), out var descriptor)
+            var dispatch = node.EntrySpotActorDispatch;
+            if (!dispatch.TryResolveDisconnected(actor.GetType(), out var descriptor)
                 || descriptor is null)
             {
                 continue;
             }
 
-            await node.InvokeEntrySpotActorDisconnectedAsync(
+            await dispatch.InvokeDisconnectedAsync(
                     descriptor,
                     actor,
                     cancellationToken)
@@ -163,7 +166,7 @@ internal sealed class ZLinkEntrySpotActorRouter
                 if (resolve(node, actor.GetType(), out var descriptor)
                     && descriptor is not null)
                 {
-                    await node.InvokeEntrySpotActorLifecycleAsync(
+                    await node.EntrySpotActorDispatch.InvokeLifecycleAsync(
                             descriptor,
                             actor,
                             context,

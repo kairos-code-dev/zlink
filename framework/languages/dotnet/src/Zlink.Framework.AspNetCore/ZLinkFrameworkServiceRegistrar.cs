@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using System.Reflection;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.AspNetCore;
@@ -208,164 +207,9 @@ internal static class ZLinkFrameworkServiceRegistrar
             }
         }
 
-        AddEnumerableConstructorDependencies(services, EnumerateRegisteredApplicationTypes(registration));
+        ZLinkApplicationDependencyRegistrar.AddConstructorDiscoveredDependencies(services, registration);
 
         return services;
-    }
-
-    private static IEnumerable<Type> EnumerateRegisteredApplicationTypes(
-        ZLinkFrameworkRegistration registration)
-    {
-        foreach (var filterType in registration.Filters)
-        {
-            yield return filterType;
-        }
-
-        foreach (var actorFactoryType in registration.ActorFactories.Values)
-        {
-            yield return actorFactoryType;
-        }
-
-        foreach (var stream in registration.StreamNodes.Values)
-        {
-            if (stream.HeaderSessionType is not null)
-            {
-                yield return stream.HeaderSessionType;
-            }
-        }
-
-        foreach (var spotNode in registration.SpotNodes.Values)
-        {
-            if (spotNode.EntrySpotType is not null)
-            {
-                yield return spotNode.EntrySpotType;
-            }
-
-            foreach (var spotType in spotNode.SpotFactories)
-            {
-                yield return spotType;
-            }
-        }
-
-        foreach (var channel in registration.Channels.Values)
-        {
-            foreach (var handler in channel.SendHandlers)
-            {
-                yield return handler.HandlerType;
-            }
-
-            foreach (var handler in channel.RequestHandlers)
-            {
-                yield return handler.HandlerType;
-            }
-
-            foreach (var handler in channel.PublishHandlers)
-            {
-                yield return handler.HandlerType;
-            }
-        }
-
-        foreach (var routed in registration.RouteChannels.Values)
-        {
-            foreach (var handler in routed.SendHandlers)
-            {
-                yield return handler.HandlerType;
-            }
-
-            foreach (var handler in routed.RequestHandlers)
-            {
-                yield return handler.HandlerType;
-            }
-        }
-
-        foreach (var assembly in registration.HandlerAssemblies)
-        {
-            foreach (var endpoint in ZLinkHandlerScanner.Scan(assembly))
-            {
-                yield return endpoint.DeclaringType;
-            }
-
-            foreach (var endpoint in ZLinkHandlerScanner.ScanRoute(assembly))
-            {
-                yield return endpoint.DeclaringType;
-            }
-        }
-    }
-
-    private static void AddEnumerableConstructorDependencies(
-        IServiceCollection services,
-        IEnumerable<Type> registeredTypes)
-    {
-        foreach (var registeredType in registeredTypes.Distinct())
-        {
-            foreach (var serviceType in FindEnumerableConstructorServices(registeredType))
-            {
-                AddAssemblyImplementations(services, registeredType.Assembly, serviceType);
-                AddAssemblyImplementations(services, serviceType.Assembly, serviceType);
-            }
-
-            foreach (var serviceType in FindSessionPacketHandlerConstructorServices(registeredType))
-            {
-                AddAssemblyImplementations(services, registeredType.Assembly, serviceType);
-                AddAssemblyImplementations(services, serviceType.Assembly, serviceType);
-            }
-        }
-    }
-
-    private static IEnumerable<Type> FindEnumerableConstructorServices(Type type)
-    {
-        foreach (var constructor in type.GetConstructors())
-        {
-            foreach (var parameter in constructor.GetParameters())
-            {
-                var parameterType = parameter.ParameterType;
-                if (!parameterType.IsGenericType
-                    || parameterType.GetGenericTypeDefinition() != typeof(IEnumerable<>))
-                {
-                    continue;
-                }
-
-                var serviceType = parameterType.GetGenericArguments()[0];
-                if (serviceType.IsInterface)
-                {
-                    yield return serviceType;
-                }
-            }
-        }
-    }
-
-    private static IEnumerable<Type> FindSessionPacketHandlerConstructorServices(Type type)
-    {
-        foreach (var constructor in type.GetConstructors())
-        {
-            foreach (var parameter in constructor.GetParameters())
-            {
-                var parameterType = parameter.ParameterType;
-                if (!parameterType.IsGenericType
-                    || parameterType.GetGenericTypeDefinition() != typeof(IZLinkSessionPacketDispatcher<>))
-                {
-                    continue;
-                }
-
-                var contextType = parameterType.GetGenericArguments()[0];
-                yield return typeof(IZLinkSessionPacketHandler<>).MakeGenericType(contextType);
-            }
-        }
-    }
-
-    private static void AddAssemblyImplementations(
-        IServiceCollection services,
-        Assembly assembly,
-        Type serviceType)
-    {
-        foreach (var implementationType in assembly.GetTypes()
-                     .Where(type => type is { IsClass: true, IsAbstract: false }
-                         && type != serviceType
-                         && serviceType.IsAssignableFrom(type)))
-        {
-            services.TryAddEnumerable(ServiceDescriptor.Scoped(serviceType, implementationType));
-            services.TryAddScoped(implementationType);
-        }
     }
 
     private static bool HasSpotNode(ZLinkFrameworkRegistration registration)
@@ -379,9 +223,4 @@ internal static class ZLinkFrameworkServiceRegistrar
             spotNode.AttachedSpotPublisherClients.Count > 0);
     }
 
-    private static bool HasRoutedSpotEgress(ZLinkFrameworkRegistration registration)
-    {
-        return registration.Channels.Values.Any(static channel => channel.SpotRouteEgress is not null)
-            || registration.RouteChannels.Values.Any(static channel => channel.SpotRouteEgress is not null);
-    }
 }

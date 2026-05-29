@@ -28,7 +28,7 @@ namespace detail
 using zlink::detail::assign_parts_from_native;
 using zlink::detail::close_message_array;
 using zlink::detail::close_native_parts;
-using zlink::detail::collect_parts_from_recv;
+using zlink::detail::classify_nonblocking_send_errno;
 using zlink::detail::get_string_option;
 using zlink::detail::last_error;
 using zlink::detail::move_parts_to_native;
@@ -37,69 +37,9 @@ using zlink::detail::submit_native_parts;
 using zlink::detail::take_parts_from_native;
 using zlink::detail::throw_if_failed;
 
-inline void request_progress_spot (void *spot_) noexcept
-{
-    void *poller = zlink_poller_new ();
-    if (!poller)
-        return;
-    if (zlink_poller_add (poller, spot_, NULL, ZLINK_POLLCOMPLETION)
-        == ZLINK_CONFIG_OK) {
-        zlink_poller_event_t event;
-        (void) zlink_poller_wait (poller, &event, 1, 0, NULL);
-        (void) zlink_poller_remove (poller, spot_);
-    }
-    (void) zlink_poller_destroy (&poller);
-}
-
-inline void request_progress_spot_channel (
-  void *spot_,
-  const std::string &channel_name_) noexcept
-{
-    (void) channel_name_;
-    request_progress_spot (spot_);
-}
-
 inline std::function<void()> make_spot_request_progress (void *spot_)
 {
-    return [spot_]() { request_progress_spot (spot_); };
-}
-
-inline std::function<void()>
-make_spot_request_progress (void *spot_, const std::string &channel_name_)
-{
-    return [spot_, channel_name_]() {
-        request_progress_spot_channel (spot_, channel_name_);
-    };
-}
-
-inline send_result_t to_send_result (int result_) noexcept
-{
-    switch (result_) {
-    case ZLINK_SUBMIT_OK:
-        return send_result_t::sent;
-    case ZLINK_SUBMIT_BACKPRESSURED:
-        return send_result_t::backpressured;
-    case ZLINK_SUBMIT_NOT_CONNECTED:
-        return send_result_t::not_ready;
-    default:
-        return send_result_t::sent;
-    }
-}
-
-inline bool classify_nonblocking_send_errno (int err_,
-                                             send_result_t &result_) noexcept
-{
-    switch (err_) {
-    case EAGAIN:
-        result_ = send_result_t::backpressured;
-        return true;
-    case ENOTCONN:
-    case EHOSTUNREACH:
-        result_ = send_result_t::not_ready;
-        return true;
-    default:
-        return false;
-    }
+    return zlink::detail::make_request_progress_callback (spot_);
 }
 
 struct request_state_t
@@ -110,18 +50,20 @@ struct request_state_t
 
 inline request_state_t *make_future_request_state ()
 {
-    request_state_t *state = new request_state_t ();
-    state->promise.reset (new std::promise<std::vector<message_t>> ());
-    return state;
+    std::unique_ptr<request_state_t> state =
+      std::make_unique<request_state_t> ();
+    state->promise = std::make_unique<std::promise<std::vector<message_t>>> ();
+    return state.release ();
 }
 
 inline request_state_t *
 make_callback_request_state (
   std::function<void(request_result_t, std::vector<message_t>)> callback_)
 {
-    request_state_t *state = new request_state_t ();
+    std::unique_ptr<request_state_t> state =
+      std::make_unique<request_state_t> ();
     state->on_complete = std::move (callback_);
-    return state;
+    return state.release ();
 }
 
 inline void complete_request_state (request_state_t *state_,

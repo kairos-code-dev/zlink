@@ -14,7 +14,7 @@ void proxy (socket_t &frontend_, socket_t &backend_)
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         zlink_proxy (detail::native_handle (frontend_),
-                     detail::native_handle (backend_), NULL)));
+                     detail::native_handle (backend_), nullptr)));
 }
 
 void proxy (socket_t &frontend_,

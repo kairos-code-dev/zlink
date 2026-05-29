@@ -1,6 +1,7 @@
 # zlink C++ Binding API Reference
 
-This reference is generated from the header-only C++ wrapper in `bindings/cpp/include/zlink`.
+This reference is generated from the C++20 public contract headers in
+`bindings/cpp/include/zlink`.
 
 ## Generate
 
@@ -17,9 +18,9 @@ bindings/cpp/doxygen/html/index.html
 
 ## Scope
 
-- Public C++ wrapper headers in `include/zlink/`
-- Service wrappers in `include/zlink/services/`
-- Runtime/helper wrappers (`context_t`, `socket_t`, `message_t`, `poller_t`, etc.)
+- Public C++20 contract headers in `include/zlink/`
+- Contract projections for core, messaging, sockets, eventing, service, and errors
+- Runtime-backed public types (`context_t`, `socket_t`, `message_t`, `poller_t`, etc.)
 - `context_t::options()` exposes the typed `context_options_t` facade
 - `message_t` diagnostics use `get_property()` and `ref_count()`
 - `socket_monitor_t` is the public monitoring wrapper for socket-level events and snapshots

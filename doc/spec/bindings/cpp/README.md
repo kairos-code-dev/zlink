@@ -254,6 +254,12 @@ Do not copy a Java or .NET interface-heavy layout into C++; C++ uses installed
 headers, RAII classes, concrete values, and opaque implementation state as its
 natural boundary.
 
+C++20 is the minimum supported language level. The `std::coroutine_handle`
+based `co_await` surface is part of the public contract, not an optional
+feature. Do not add compatibility macros, alternate include paths, or public API
+shrinkage for C++17 or compiler/library combinations that do not provide
+standard C++20 coroutine support.
+
 ## Repository Layout
 
 The completed C++ binding uses these paths consistently. The file names below

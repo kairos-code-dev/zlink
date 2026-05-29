@@ -11,7 +11,7 @@ namespace service
 
 struct spot_t::impl
 {
-    void *handle = NULL;
+    void *handle = nullptr;
     int last_error = 0;
     std::chrono::milliseconds default_request_timeout;
     std::function<void ()> send_ready_handler;

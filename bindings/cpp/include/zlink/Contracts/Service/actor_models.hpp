@@ -319,8 +319,8 @@ struct spot_dispatch_info_t
     spot_dispatch_info_t ()
         : event (spot_dispatch_event_t::subscribe_readable),
           subject_kind (spot_dispatch_subject_kind_t::spot),
-          timer (NULL),
-          channel_dealer (NULL),
+          timer (nullptr),
+          channel_dealer (nullptr),
           channel_name (std::nullopt),
           actor (std::nullopt),
           actor_parts ()

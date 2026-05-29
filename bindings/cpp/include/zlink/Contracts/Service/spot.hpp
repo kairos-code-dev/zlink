@@ -165,7 +165,7 @@ class spot_t
 
     void subscription_at (size_t index_,
                           std::string &filter_out_,
-                          bool *is_pattern_out_ = NULL) const;
+                          bool *is_pattern_out_ = nullptr) const;
 
     subscription_filter_t subscription_at (size_t index_) const;
 

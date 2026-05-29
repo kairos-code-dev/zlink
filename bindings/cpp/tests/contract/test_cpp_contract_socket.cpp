@@ -188,7 +188,7 @@ template<typename SocketT> class has_raw_common_option_get_t
     template<typename T>
     static auto test (int)
       -> decltype (std::declval<T &> ().get_option (
-                      0, static_cast<int *> (NULL)),
+                      0, static_cast<int *> (nullptr)),
                     std::true_type ());
 
     template<typename> static std::false_type test (...);

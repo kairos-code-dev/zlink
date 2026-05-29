@@ -23,32 +23,8 @@ fi
 echo "[cpp-samples] configure: ${BUILD_DIR}"
 cmake -S "${CPP_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
 
-sample_bins=(
-  sample_cpp_request_reply_async_sample
-  sample_cpp_pair_recv_sample
-  sample_cpp_pubsub_recv_sample
-  sample_cpp_dealer_router_recv_sample
-  sample_cpp_stream_recv_sample
-  sample_cpp_stream_packet_callback_sample
-  sample_cpp_spot_recv_sample
-  sample_cpp_spot_request_async_sample
-  sample_cpp_monitor_recv_sample
-  sample_cpp_discovery_registry_sample
-  sample_cpp_registry_query_sample
-  sample_cpp_actor_room_server_sample
-  sample_cpp_actor_gateway_relay_sample
-  sample_cpp_actor_single_player_queue_sample
-)
-
 echo "[cpp-samples] build"
-cmake --build "${BUILD_DIR}" --target "${sample_bins[@]}" -j"$(nproc)"
+cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
-pass_count=0
-
-for sample_bin in "${sample_bins[@]}"; do
-  echo "[sample] ${sample_bin}"
-  "${BUILD_DIR}/${sample_bin}"
-  pass_count=$((pass_count + 1))
-done
-
-echo "[cpp-samples] sample summary: ${pass_count}/${#sample_bins[@]} passed"
+echo "[cpp-samples] run sample smoke tests"
+ctest --test-dir "${BUILD_DIR}" --output-on-failure -L sample-smoke

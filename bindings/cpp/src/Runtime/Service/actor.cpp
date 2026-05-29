@@ -24,7 +24,7 @@ actor_t::actor_t (actor_t &&other) noexcept
       _active (other._active),
       _last_error (other._last_error)
 {
-    other._node = NULL;
+    other._node = nullptr;
     other._active = false;
     other._last_error = 0;
 }
@@ -42,7 +42,7 @@ actor_t &actor_t::operator= (actor_t &&other) noexcept
     _ref = other._ref;
     _active = other._active;
     _last_error = other._last_error;
-    other._node = NULL;
+    other._node = nullptr;
     other._active = false;
     other._last_error = 0;
     return *this;
@@ -71,18 +71,18 @@ void actor_t::close (std::chrono::milliseconds timeout_)
     if (!_active)
         return;
 
-    detail::request_state_t *state = detail::make_future_request_state ();
+    std::unique_ptr<detail::request_state_t> state (
+      detail::make_future_request_state ());
     std::future<std::vector<message_t>> future = state->promise->get_future ();
     const submit_result_t rc = static_cast<submit_result_t> (
       zlink_spot_node_actor_destroy (
         zlink::detail::native_handle (*_node),
         zlink::detail::actor_ref_native (_ref),
-        &detail::request_callback_trampoline, state,
+        &detail::request_callback_trampoline, state.get (),
         static_cast<uint32_t> (timeout_.count ())));
-    if (rc != submit_result_t::ok) {
-        delete state;
+    if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
-    }
+    state.release ();
     (void) future.get ();
     _active = false;
 }

@@ -24,7 +24,7 @@ namespace zlink::service
 
 struct spot_node_t::impl
 {
-    void *handle = NULL;
+    void *handle = nullptr;
 };
 
 } // namespace zlink::service
@@ -34,13 +34,13 @@ namespace zlink::detail
 
 void *spot_node_access_t::native_handle (service::spot_node_t &node_) noexcept
 {
-    return node_._impl ? node_._impl->handle : NULL;
+    return node_._impl ? node_._impl->handle : nullptr;
 }
 
 const void *
 spot_node_access_t::native_handle (const service::spot_node_t &node_) noexcept
 {
-    return node_._impl ? node_._impl->handle : NULL;
+    return node_._impl ? node_._impl->handle : nullptr;
 }
 
 } // namespace zlink::detail
@@ -87,10 +87,11 @@ void throw_connect_result (zlink_connect_result_t result_)
 
 } // namespace
 
-spot_node_t::spot_node_t (context_t &ctx_) : _impl (new impl), _last_error (0)
+spot_node_t::spot_node_t (context_t &ctx_) :
+    _impl (std::make_unique<impl> ()), _last_error (0)
 {
     _impl->handle =
-      zlink_spot_node_new (zlink::detail::native_handle (ctx_), NULL);
+      zlink_spot_node_new (zlink::detail::native_handle (ctx_), nullptr);
     if (!_impl->handle)
         _last_error = errno != 0 ? errno : EFAULT;
 }
@@ -98,7 +99,7 @@ spot_node_t::spot_node_t (context_t &ctx_) : _impl (new impl), _last_error (0)
 spot_node_t::spot_node_t (context_t &ctx_,
                           spot_node_mode_t mode_,
                           mode_ctor_tag_t) :
-    _impl (new impl), _last_error (0)
+    _impl (std::make_unique<impl> ()), _last_error (0)
 {
     zlink_spot_node_options_t options;
     std::memset (&options, 0, sizeof (options));
@@ -123,7 +124,7 @@ spot_node_t::spot_node_t (spot_node_t &&other_) noexcept
       _last_error (other_._last_error)
 {
     if (!other_._impl)
-        other_._impl.reset (new impl);
+        other_._impl = std::make_unique<impl> ();
     other_._last_error = 0;
 }
 
@@ -139,14 +140,14 @@ spot_node_t &spot_node_t::operator= (spot_node_t &&other_) noexcept
     _impl = std::move (other_._impl);
     _last_error = other_._last_error;
     if (!other_._impl)
-        other_._impl.reset (new impl);
+        other_._impl = std::make_unique<impl> ();
     other_._last_error = 0;
     return *this;
 }
 
 bool spot_node_t::valid () const noexcept
 {
-    return _impl && _impl->handle != NULL;
+    return _impl && _impl->handle != nullptr;
 }
 
 void spot_node_t::set_router_bind (const std::string &endpoint_)
@@ -322,8 +323,8 @@ void spot_node_t::set_tls_client (const std::string &ca_cert_,
                                   const std::string &hostname_,
                                   bool trust_system_)
 {
-    const char *ca = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
-    const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
+    const char *ca = ca_cert_.empty () ? nullptr : ca_cert_.c_str ();
+    const char *hostname = hostname_.empty () ? nullptr : hostname_.c_str ();
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (zlink_set_tls_client (
         _impl->handle, ca, hostname, trust_system_ ? 1 : 0)));
@@ -341,11 +342,11 @@ std::vector<spot_node_peer_entry_t> spot_node_t::peers () const
 {
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_peers (_impl->handle, NULL, NULL, &count)));
+      zlink_spot_node_peers (_impl->handle, nullptr, nullptr, &count)));
     std::vector<zlink_spot_node_peer_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-          zlink_spot_node_peers (_impl->handle, NULL, native.data (), &count)));
+          zlink_spot_node_peers (_impl->handle, nullptr, native.data (), &count)));
         native.resize (count);
     }
     std::vector<spot_node_peer_entry_t> entries;
@@ -374,7 +375,7 @@ spot_node_t::peers_query (const spot_node_peer_filter_t &filter_) const
 
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_peers (_impl->handle, &native_filter, NULL, &count)));
+      zlink_spot_node_peers (_impl->handle, &native_filter, nullptr, &count)));
     std::vector<zlink_spot_node_peer_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (
@@ -394,7 +395,7 @@ std::vector<spot_node_subject_entry_t>
 spot_node_t::subjects (const spot_node_subject_filter_t *filter_) const
 {
     zlink_spot_node_subject_filter_t native_filter;
-    const zlink_spot_node_subject_filter_t *filter_ptr = NULL;
+    const zlink_spot_node_subject_filter_t *filter_ptr = nullptr;
     if (filter_) {
         std::memset (&native_filter, 0, sizeof (native_filter));
         if (filter_->role ())
@@ -412,7 +413,7 @@ spot_node_t::subjects (const spot_node_subject_filter_t *filter_) const
 
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_subjects (_impl->handle, filter_ptr, NULL, &count)));
+      zlink_spot_node_subjects (_impl->handle, filter_ptr, nullptr, &count)));
     std::vector<zlink_spot_node_subject_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (
@@ -432,7 +433,7 @@ std::vector<spot_node_socket_entry_t>
 spot_node_t::internal_sockets (const spot_node_socket_filter_t *filter_) const
 {
     zlink_spot_node_socket_filter_t native_filter;
-    const zlink_spot_node_socket_filter_t *filter_ptr = NULL;
+    const zlink_spot_node_socket_filter_t *filter_ptr = nullptr;
     if (filter_) {
         std::memset (&native_filter, 0, sizeof (native_filter));
         if (filter_->owner ())
@@ -451,7 +452,7 @@ spot_node_t::internal_sockets (const spot_node_socket_filter_t *filter_) const
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (zlink_spot_node_internal_sockets (
-        _impl->handle, filter_ptr, NULL, &count)));
+        _impl->handle, filter_ptr, nullptr, &count)));
     std::vector<zlink_spot_node_socket_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (
@@ -494,7 +495,7 @@ std::vector<spot_node_spot_entry_t> spot_node_t::spots () const
 {
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_spots (_impl->handle, NULL, &count)));
+      zlink_spot_node_spots (_impl->handle, nullptr, &count)));
     std::vector<zlink_spot_node_spot_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
@@ -513,7 +514,7 @@ std::vector<spot_node_actor_entry_t> spot_node_t::actors () const
 {
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_actors (_impl->handle, NULL, &count)));
+      zlink_spot_node_actors (_impl->handle, nullptr, &count)));
     std::vector<zlink_spot_node_actor_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
@@ -536,7 +537,7 @@ void spot_node_t::close ()
     void *tmp = _impl->handle;
     detail::throw_if_failed<close_error_t> (
       static_cast<close_result_t> (zlink_spot_node_destroy (&tmp)));
-    _impl->handle = NULL;
+    _impl->handle = nullptr;
 }
 
 spot_t spot_node_t::create_spot ()
@@ -546,7 +547,7 @@ spot_t spot_node_t::create_spot ()
 
 spot_t spot_node_t::entry_spot ()
 {
-    void *handle = NULL;
+    void *handle = nullptr;
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
       zlink_spot_node_entry_spot (_impl->handle, &handle)));
     return zlink::detail::spot_access_t::adopt_native_handle (handle);
@@ -555,7 +556,7 @@ spot_t spot_node_t::entry_spot ()
 std::pair<spot_t, bool>
 spot_node_t::get_or_create_spot (const routing_id_t &spot_rid_)
 {
-    void *handle = NULL;
+    void *handle = nullptr;
     uint32_t created = 0;
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (zlink_spot_node_spot_get_or_new (
@@ -567,7 +568,7 @@ spot_node_t::get_or_create_spot (const routing_id_t &spot_rid_)
 
 std::optional<spot_t> spot_node_t::spot_lookup (const routing_id_t &spot_rid_)
 {
-    void *handle = NULL;
+    void *handle = nullptr;
     const config_result_t rc =
       static_cast<config_result_t> (zlink_spot_node_spot_lookup (
         _impl->handle, zlink::detail::routing_id_native (spot_rid_), &handle));

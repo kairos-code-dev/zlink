@@ -233,7 +233,7 @@ void test_routing_id_rejects_null_pointer_for_non_empty_bytes ()
 {
     bool threw = false;
     try {
-        (void) zlink::routing_id_t::from_bytes (NULL, 1);
+        (void) zlink::routing_id_t::from_bytes (nullptr, 1);
     } catch (const std::invalid_argument &) {
         threw = true;
     }

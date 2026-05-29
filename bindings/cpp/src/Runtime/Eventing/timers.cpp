@@ -12,7 +12,7 @@ namespace zlink
 
 struct zlink_timer_t::impl
 {
-    void *handle = NULL;
+    void *handle = nullptr;
     std::function<void(uint64_t)> handler;
 };
 
@@ -21,17 +21,17 @@ namespace detail
 
 void *timer_access_t::native_handle (zlink_timer_t &timer_) noexcept
 {
-    return timer_._impl ? timer_._impl->handle : NULL;
+    return timer_._impl ? timer_._impl->handle : nullptr;
 }
 
 const void *timer_access_t::native_handle (const zlink_timer_t &timer_) noexcept
 {
-    return timer_._impl ? timer_._impl->handle : NULL;
+    return timer_._impl ? timer_._impl->handle : nullptr;
 }
 
 } // namespace detail
 
-zlink_timer_t::zlink_timer_t () : _impl (new impl)
+zlink_timer_t::zlink_timer_t () : _impl (std::make_unique<impl> ())
 {
     _impl->handle = zlink_timer_new ();
 }
@@ -64,7 +64,7 @@ zlink_timer_t zlink_timer_t::from_spot (service::spot_t &spot_)
     if (out._impl->handle) {
         void *tmp = out._impl->handle;
         (void) zlink_timer_destroy (&tmp);
-        out._impl->handle = NULL;
+        out._impl->handle = nullptr;
     }
     out._impl->handle =
       zlink_spot_timer_new (zlink::detail::native_handle (spot_));
@@ -73,7 +73,7 @@ zlink_timer_t zlink_timer_t::from_spot (service::spot_t &spot_)
     return out;
 }
 
-bool zlink_timer_t::valid () const noexcept { return _impl && _impl->handle != NULL; }
+bool zlink_timer_t::valid () const noexcept { return _impl && _impl->handle != nullptr; }
 
 void zlink_timer_t::start_ns (uint64_t interval_ns_, uint64_t repeat_count_)
 {
@@ -122,7 +122,7 @@ void zlink_timer_t::close ()
         return;
 
     void *timer = _impl->handle;
-    _impl->handle = NULL;
+    _impl->handle = nullptr;
     detail::throw_if_failed<close_error_t> (
       static_cast<close_result_t> (zlink_timer_destroy (&timer)));
 }

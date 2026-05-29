@@ -16,7 +16,7 @@ namespace zlink::service
 
 struct registry_query_client_t::impl
 {
-    void *handle = NULL;
+    void *handle = nullptr;
 };
 
 } // namespace zlink::service
@@ -27,13 +27,13 @@ namespace zlink::detail
 void *registry_access_t::native_handle (
   service::registry_query_client_t &client_) noexcept
 {
-    return client_._impl ? client_._impl->handle : NULL;
+    return client_._impl ? client_._impl->handle : nullptr;
 }
 
 const void *registry_access_t::native_handle (
   const service::registry_query_client_t &client_) noexcept
 {
-    return client_._impl ? client_._impl->handle : NULL;
+    return client_._impl ? client_._impl->handle : nullptr;
 }
 
 } // namespace zlink::detail
@@ -42,7 +42,7 @@ namespace zlink::service
 {
 
 registry_query_client_t::registry_query_client_t (context_t &ctx_)
-    : _impl (new impl), _last_error (0)
+    : _impl (std::make_unique<impl> ()), _last_error (0)
 {
     _impl->handle =
       zlink_registry_query_client_new (zlink::detail::native_handle (ctx_));
@@ -63,7 +63,7 @@ registry_query_client_t::registry_query_client_t (
     : _impl (std::move (other._impl)), _last_error (other._last_error)
 {
     if (!other._impl)
-        other._impl.reset (new impl);
+        other._impl = std::make_unique<impl> ();
     other._last_error = 0;
 }
 
@@ -80,14 +80,14 @@ registry_query_client_t &registry_query_client_t::operator= (
     _impl = std::move (other._impl);
     _last_error = other._last_error;
     if (!other._impl)
-        other._impl.reset (new impl);
+        other._impl = std::make_unique<impl> ();
     other._last_error = 0;
     return *this;
 }
 
 bool registry_query_client_t::valid () const noexcept
 {
-    return _impl && _impl->handle != NULL;
+    return _impl && _impl->handle != nullptr;
 }
 
 void registry_query_client_t::connect (const std::string &endpoint_)
@@ -104,7 +104,7 @@ registry_query_client_t::topology (
   const registry_topology_filter_t *filter_) const
 {
     zlink_registry_topology_filter_t native_filter;
-    const zlink_registry_topology_filter_t *filter_ptr = NULL;
+    const zlink_registry_topology_filter_t *filter_ptr = nullptr;
     if (filter_) {
         std::memset (&native_filter, 0, sizeof (native_filter));
         if (filter_->auto_connect_type ())
@@ -137,7 +137,7 @@ registry_query_client_t::topology (
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         zlink_registry_query_client_topology (
-          _impl->handle, filter_ptr, NULL, &count)));
+          _impl->handle, filter_ptr, nullptr, &count)));
     std::vector<zlink_registry_topology_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (
@@ -163,7 +163,7 @@ void registry_query_client_t::close ()
     detail::throw_if_failed<close_error_t> (
       static_cast<close_result_t> (
         zlink_registry_query_client_destroy (&tmp)));
-    _impl->handle = NULL;
+    _impl->handle = nullptr;
 }
 
 } // namespace zlink::service

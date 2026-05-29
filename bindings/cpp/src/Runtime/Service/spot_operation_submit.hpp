@@ -19,10 +19,10 @@ inline std::vector<message_t> take_send_parts (spot_operation_state_t &state_)
     std::vector<message_t> parts;
     if (state_.single_part.has_value ()) {
         parts.push_back (std::move (*state_.single_part));
-        state_.single_part_source = NULL;
+        state_.single_part_source = nullptr;
     } else if (state_.single_part_source) {
         parts.push_back (std::move (*state_.single_part_source));
-        state_.single_part_source = NULL;
+        state_.single_part_source = nullptr;
     } else {
         parts = std::move (state_.parts);
     }

@@ -28,7 +28,7 @@ int spot_t::subscribe_part (std::string &topic_out_,
                             bool &has_more_out_,
                             recv_flags_t flags_)
 {
-    return subscribe_part_impl (NULL, topic_out_, part_out_, has_more_out_,
+    return subscribe_part_impl (nullptr, topic_out_, part_out_, has_more_out_,
                                 flags_);
 }
 
@@ -299,14 +299,14 @@ spot_t::publish_impl (const char *topic_, message_t &part_, send_flags_t flags_)
 
     char topic_buffer[256];
     size_t topic_length = sizeof (topic_buffer);
-    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_rid = nullptr;
 
     zlink_msg_t first_part;
     if (zlink_msg_init (&first_part) != 0)
         return -1;
 
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    const zlink_routing_id_t *part_source_rid = NULL;
+    const zlink_routing_id_t *part_source_rid = nullptr;
     size_t part_topic_length = sizeof (topic_buffer);
     const int first_rc = zlink_spot_subscribe_part (
       _impl->handle, &part_source_rid, topic_buffer, sizeof (topic_buffer),
@@ -353,7 +353,7 @@ spot_t::publish_impl (const char *topic_, message_t &part_, send_flags_t flags_)
             zlink_part_flag_t more = ZLINK_PART_FINAL;
             size_t ignored_topic_length = 0u;
             const int rc = zlink_spot_subscribe_part (
-              _impl->handle, &part_source_rid, NULL, 0u, &ignored_topic_length,
+              _impl->handle, &part_source_rid, nullptr, 0u, &ignored_topic_length,
               &native_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
             if (rc != ZLINK_RECV_OK) {
                 const int err = errno;
@@ -409,7 +409,7 @@ spot_t::subscribe_part_impl (std::optional<routing_id_t> *source_rid_out_,
 
     char topic_buffer[256];
     size_t topic_length = sizeof (topic_buffer);
-    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_rid = nullptr;
 
     zlink_msg_t native_part;
     if (zlink_msg_init (&native_part) != 0)
@@ -452,7 +452,7 @@ spot_t::subscription_event_impl (routing_id_t &source_rid_out_,
     char topic_buffer[256];
     size_t topic_length = 0;
     int subscribed = 0;
-    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_rid = nullptr;
     const int rc = zlink_spot_recv_subscription_event (
       _impl->handle, &source_rid, &subscribed, topic_buffer,
       sizeof (topic_buffer), &topic_length,

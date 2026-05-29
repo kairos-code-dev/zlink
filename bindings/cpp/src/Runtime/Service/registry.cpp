@@ -16,7 +16,7 @@ namespace zlink::service
 
 struct registry_t::impl
 {
-    void *handle = NULL;
+    void *handle = nullptr;
 };
 
 } // namespace zlink::service
@@ -26,13 +26,13 @@ namespace zlink::detail
 
 void *registry_access_t::native_handle (service::registry_t &registry_) noexcept
 {
-    return registry_._impl ? registry_._impl->handle : NULL;
+    return registry_._impl ? registry_._impl->handle : nullptr;
 }
 
 const void *registry_access_t::native_handle (
   const service::registry_t &registry_) noexcept
 {
-    return registry_._impl ? registry_._impl->handle : NULL;
+    return registry_._impl ? registry_._impl->handle : nullptr;
 }
 
 } // namespace zlink::detail
@@ -41,7 +41,7 @@ namespace zlink::service
 {
 
 registry_t::registry_t (context_t &ctx_)
-    : _impl (new impl), _last_error (0)
+    : _impl (std::make_unique<impl> ()), _last_error (0)
 {
     _impl->handle = zlink_registry_new (zlink::detail::native_handle (ctx_));
     if (!_impl->handle)
@@ -60,7 +60,7 @@ registry_t::registry_t (registry_t &&other) noexcept
     : _impl (std::move (other._impl)), _last_error (other._last_error)
 {
     if (!other._impl)
-        other._impl.reset (new impl);
+        other._impl = std::make_unique<impl> ();
     other._last_error = 0;
 }
 
@@ -76,14 +76,14 @@ registry_t &registry_t::operator= (registry_t &&other) noexcept
     _impl = std::move (other._impl);
     _last_error = other._last_error;
     if (!other._impl)
-        other._impl.reset (new impl);
+        other._impl = std::make_unique<impl> ();
     other._last_error = 0;
     return *this;
 }
 
 bool registry_t::valid () const noexcept
 {
-    return _impl && _impl->handle != NULL;
+    return _impl && _impl->handle != nullptr;
 }
 
 void registry_t::bind (
@@ -141,8 +141,8 @@ void registry_t::set_tls_client (
   const std::string &ca_cert_, const std::string &hostname_,
   bool trust_system_)
 {
-    const char *ca = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
-    const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
+    const char *ca = ca_cert_.empty () ? nullptr : ca_cert_.c_str ();
+    const char *hostname = hostname_.empty () ? nullptr : hostname_.c_str ();
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         zlink_set_tls_client (
@@ -163,7 +163,7 @@ registry_t::service_summary (
   const registry_service_summary_filter_t *filter_) const
 {
     zlink_registry_service_summary_filter_t native_filter;
-    const zlink_registry_service_summary_filter_t *filter_ptr = NULL;
+    const zlink_registry_service_summary_filter_t *filter_ptr = nullptr;
     if (filter_) {
         std::memset (&native_filter, 0, sizeof (native_filter));
         if (filter_->auto_connect_type ())
@@ -184,7 +184,7 @@ registry_t::service_summary (
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         zlink_registry_service_summary (
-          _impl->handle, filter_ptr, NULL, &count)));
+          _impl->handle, filter_ptr, nullptr, &count)));
     std::vector<zlink_registry_service_summary_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (
@@ -206,13 +206,13 @@ std::vector<registry_topology_entry_t> registry_t::topology () const
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
-        zlink_registry_topology (_impl->handle, NULL, NULL, &count)));
+        zlink_registry_topology (_impl->handle, nullptr, nullptr, &count)));
     std::vector<zlink_registry_topology_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (
           static_cast<config_result_t> (
             zlink_registry_topology (
-              _impl->handle, NULL, native.data (), &count)));
+              _impl->handle, nullptr, native.data (), &count)));
         native.resize (count);
     }
     std::vector<registry_topology_entry_t> entries;
@@ -255,7 +255,7 @@ registry_t::topology (const registry_topology_filter_t &filter_) const
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
-        zlink_registry_topology (_impl->handle, &native_filter, NULL, &count)));
+        zlink_registry_topology (_impl->handle, &native_filter, nullptr, &count)));
     std::vector<zlink_registry_topology_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (
@@ -281,7 +281,7 @@ registry_t::member_peers (const std::string &channel_name_) const
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         zlink_registry_member_peers (
-          _impl->handle, channel_name_.c_str (), NULL, &count)));
+          _impl->handle, channel_name_.c_str (), nullptr, &count)));
     std::vector<zlink_member_peer_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (
@@ -306,7 +306,7 @@ void registry_t::close ()
     void *tmp = _impl->handle;
     detail::throw_if_failed<close_error_t> (
       static_cast<close_result_t> (zlink_registry_destroy (&tmp)));
-    _impl->handle = NULL;
+    _impl->handle = nullptr;
 }
 
 } // namespace zlink::service

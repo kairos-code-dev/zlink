@@ -284,7 +284,7 @@ void actor_join_reply_operation_t::submit () &&
     if (state ().parts.empty ()) {
         const submit_result_t rc =
           static_cast<submit_result_t> (zlink_spot_actor_join_reply (
-            state ().spot, &native_info, state ().join_result_code, NULL, 0u));
+            state ().spot, &native_info, state ().join_result_code, nullptr, 0u));
         if (rc != submit_result_t::ok)
             throw submit_error_t (rc, zlink_errno ());
         return;

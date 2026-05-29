@@ -7,10 +7,7 @@
 
 #include <atomic>
 #include <chrono>
-#if defined(__cpp_impl_coroutine) || defined(__cpp_coroutines)
 #include <coroutine>
-#define CPP_BINDING_HAS_COROUTINE_SUPPORT 1
-#endif
 #include <exception>
 #include <functional>
 #include <future>
@@ -30,7 +27,7 @@ template<typename T> class async_result_t
     }
 
     async_result_t (std::future<T> future_, std::function<void()> progress_)
-        : _state (new shared_state_t (std::move (future_)))
+        : _state (std::make_shared<shared_state_t> (std::move (future_)))
     {
         _state->progress = std::move (progress_);
     }
@@ -121,7 +118,6 @@ template<typename T> class async_result_t
         return _state->future.get ();
     }
 
-#if defined(CPP_BINDING_HAS_COROUTINE_SUPPORT)
     [[nodiscard]] bool await_ready () const
     {
         return wait_for (std::chrono::milliseconds (0))
@@ -134,7 +130,7 @@ template<typename T> class async_result_t
         state->waiter_started.store (true);
         std::thread ([state, continuation_]() mutable {
             try {
-                state->value.reset (new T (state->future.get ()));
+                state->value = std::make_unique<T> (state->future.get ());
             } catch (...) {
                 state->error = std::current_exception ();
             }
@@ -150,7 +146,6 @@ template<typename T> class async_result_t
             std::rethrow_exception (_state->error);
         return std::move (*_state->value);
     }
-#endif
 
   private:
     struct shared_state_t
@@ -163,10 +158,8 @@ template<typename T> class async_result_t
         std::future<T> future;
         std::function<void()> progress;
         std::atomic<bool> waiter_started;
-#if defined(CPP_BINDING_HAS_COROUTINE_SUPPORT)
         std::unique_ptr<T> value;
         std::exception_ptr error;
-#endif
     };
 
     static std::chrono::milliseconds progress_slice ()

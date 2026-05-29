@@ -16,7 +16,7 @@ inline const void *native_handle (const socket_handle_t &socket_) noexcept;
 class socket_handle_t
 {
   public:
-    socket_handle_t () noexcept : _socket (NULL), _own (false) {}
+    socket_handle_t () noexcept : _socket (nullptr), _own (false) {}
 
     explicit socket_handle_t (void *socket_, bool own_ = true) noexcept
         : _socket (socket_), _own (own_)
@@ -28,7 +28,7 @@ class socket_handle_t
     socket_handle_t (socket_handle_t &&other) noexcept
         : _socket (other._socket), _own (other._own)
     {
-        other._socket = NULL;
+        other._socket = nullptr;
         other._own = false;
     }
 
@@ -40,7 +40,7 @@ class socket_handle_t
         (void) close ();
         _socket = other._socket;
         _own = other._own;
-        other._socket = NULL;
+        other._socket = nullptr;
         other._own = false;
         return *this;
     }
@@ -48,7 +48,7 @@ class socket_handle_t
     socket_handle_t (const socket_handle_t &) = delete;
     socket_handle_t &operator= (const socket_handle_t &) = delete;
 
-    bool valid () const noexcept { return _socket != NULL; }
+    bool valid () const noexcept { return _socket != nullptr; }
 
     [[nodiscard]] int close () noexcept
     {
@@ -58,14 +58,14 @@ class socket_handle_t
         }
 
         if (!_own) {
-            _socket = NULL;
+            _socket = nullptr;
             return 0;
         }
 
         void *socket = _socket;
         const int rc = zlink_close (socket);
         if (rc == 0) {
-            _socket = NULL;
+            _socket = nullptr;
             _own = false;
         }
         return rc;

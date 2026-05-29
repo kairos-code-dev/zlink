@@ -138,7 +138,7 @@ class socket_t
     [[nodiscard]] int set_subscription (const std::string &filter_);
     [[nodiscard]] int unset_subscription (const std::string &filter_);
     [[nodiscard]] int
-    subscription_at (size_t index_, std::string &filter_, bool *is_pattern_ = NULL);
+    subscription_at (size_t index_, std::string &filter_, bool *is_pattern_ = nullptr);
 
     [[nodiscard]] int
     subscribe (topic_message_t &message_,

@@ -17,7 +17,7 @@ namespace zlink::service
 
 struct discovery_t::impl
 {
-    void *handle = NULL;
+    void *handle = nullptr;
 };
 
 } // namespace zlink::service
@@ -28,13 +28,13 @@ namespace zlink::detail
 void *discovery_access_t::native_handle (
   service::discovery_t &discovery_) noexcept
 {
-    return discovery_._impl ? discovery_._impl->handle : NULL;
+    return discovery_._impl ? discovery_._impl->handle : nullptr;
 }
 
 const void *discovery_access_t::native_handle (
   const service::discovery_t &discovery_) noexcept
 {
-    return discovery_._impl ? discovery_._impl->handle : NULL;
+    return discovery_._impl ? discovery_._impl->handle : nullptr;
 }
 
 } // namespace zlink::detail
@@ -44,8 +44,8 @@ namespace zlink::service
 
 discovery_t::discovery_t (
   context_t &ctx_, auto_connect_type auto_connect_type_,
-  const std::string &channel_name_)
-    : _impl (new impl), _last_error (0)
+    const std::string &channel_name_)
+    : _impl (std::make_unique<impl> ()), _last_error (0)
 {
     zlink::detail::validate_bounded_c_string (
       channel_name_, 255u, "channel_name");
@@ -69,7 +69,7 @@ discovery_t::discovery_t (discovery_t &&other) noexcept
     : _impl (std::move (other._impl)), _last_error (other._last_error)
 {
     if (!other._impl)
-        other._impl.reset (new impl);
+        other._impl = std::make_unique<impl> ();
     other._last_error = 0;
 }
 
@@ -85,14 +85,14 @@ discovery_t &discovery_t::operator= (discovery_t &&other) noexcept
     _impl = std::move (other._impl);
     _last_error = other._last_error;
     if (!other._impl)
-        other._impl.reset (new impl);
+        other._impl = std::make_unique<impl> ();
     other._last_error = 0;
     return *this;
 }
 
 bool discovery_t::valid () const noexcept
 {
-    return _impl && _impl->handle != NULL;
+    return _impl && _impl->handle != nullptr;
 }
 
 void discovery_t::connect_registry (const std::string &endpoint_)
@@ -108,8 +108,8 @@ void discovery_t::set_tls_client (
   const std::string &ca_cert_, const std::string &hostname_,
   bool trust_system_)
 {
-    const char *ca = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
-    const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
+    const char *ca = ca_cert_.empty () ? nullptr : ca_cert_.c_str ();
+    const char *hostname = hostname_.empty () ? nullptr : hostname_.c_str ();
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         zlink_set_tls_client (
@@ -177,7 +177,7 @@ std::vector<member_peer_entry_t> discovery_t::member_peers () const
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
-        zlink_discovery_member_peers (_impl->handle, NULL, &count)));
+        zlink_discovery_member_peers (_impl->handle, nullptr, &count)));
     std::vector<zlink_member_peer_entry_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (
@@ -227,7 +227,7 @@ void discovery_t::close ()
     void *tmp = _impl->handle;
     detail::throw_if_failed<close_error_t> (
       static_cast<close_result_t> (zlink_discovery_destroy (&tmp)));
-    _impl->handle = NULL;
+    _impl->handle = nullptr;
 }
 
 } // namespace zlink::service

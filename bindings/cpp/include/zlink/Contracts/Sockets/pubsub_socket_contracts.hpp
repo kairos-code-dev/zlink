@@ -32,7 +32,7 @@ class subscriber_socket_t : public socket_t
 
     [[nodiscard]] int subscription_at (size_t index_,
                                              std::string &filter_,
-                                             bool *is_pattern_ = NULL)
+                                             bool *is_pattern_ = nullptr)
     {
         return socket_t::subscription_at (index_, filter_, is_pattern_);
     }
@@ -107,7 +107,7 @@ class sub_socket_t : public subscriber_socket_t
     void unset_subscription (const std::string &filter_);
 
     void subscription_at (size_t index_, std::string &filter_out_,
-                          bool *is_pattern_out_ = NULL);
+                          bool *is_pattern_out_ = nullptr);
 
     subscription_filter_t subscription_at (size_t index_)
     {
@@ -205,7 +205,7 @@ class xsub_socket_t : public subscriber_socket_t
     void unset_subscription (const std::string &filter_);
 
     void subscription_at (size_t index_, std::string &filter_out_,
-                          bool *is_pattern_out_ = NULL);
+                          bool *is_pattern_out_ = nullptr);
 
     subscription_filter_t subscription_at (size_t index_)
     {

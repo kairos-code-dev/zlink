@@ -13,18 +13,18 @@ namespace zlink
 
 struct context_t::impl
 {
-    void *ctx = NULL;
+    void *ctx = nullptr;
     std::string thread_name_prefix;
 };
 
 context_t::context_t ()
-    : _impl (new impl)
+    : _impl (std::make_unique<impl> ())
 {
     _impl->ctx = zlink_ctx_new ();
 }
 
 context_t::context_t (io_thread_count_t io_threads_)
-    : _impl (new impl)
+    : _impl (std::make_unique<impl> ())
 {
     _impl->ctx = zlink_ctx_new ();
     if (_impl->ctx)
@@ -38,7 +38,7 @@ context_t::context_t (context_t &&other_) noexcept
     : _impl (std::move (other_._impl))
 {
     if (!other_._impl)
-        other_._impl.reset (new impl);
+        other_._impl = std::make_unique<impl> ();
 }
 
 context_t &context_t::operator= (context_t &&other_) noexcept
@@ -48,13 +48,13 @@ context_t &context_t::operator= (context_t &&other_) noexcept
     term_noexcept ();
     _impl = std::move (other_._impl);
     if (!other_._impl)
-        other_._impl.reset (new impl);
+        other_._impl = std::make_unique<impl> ();
     return *this;
 }
 
 bool context_t::valid () const noexcept
 {
-    return _impl && _impl->ctx != NULL;
+    return _impl && _impl->ctx != nullptr;
 }
 
 void context_t::shutdown ()
@@ -70,7 +70,7 @@ void context_t::term ()
     if (!_impl || !_impl->ctx)
         return;
     void *ctx = _impl->ctx;
-    _impl->ctx = NULL;
+    _impl->ctx = nullptr;
     detail::throw_if_failed<close_error_t> (
       static_cast<close_result_t> (zlink_ctx_term (ctx)));
 }
@@ -88,7 +88,7 @@ void context_t::term_noexcept () noexcept
     if (!_impl || !_impl->ctx)
         return;
     void *ctx = _impl->ctx;
-    _impl->ctx = NULL;
+    _impl->ctx = nullptr;
     (void) zlink_ctx_term (ctx);
 }
 
@@ -135,12 +135,12 @@ namespace detail
 
 void *context_access_t::native_handle (context_t &ctx_) noexcept
 {
-    return ctx_._impl ? ctx_._impl->ctx : NULL;
+    return ctx_._impl ? ctx_._impl->ctx : nullptr;
 }
 
 const void *context_access_t::native_handle (const context_t &ctx_) noexcept
 {
-    return ctx_._impl ? ctx_._impl->ctx : NULL;
+    return ctx_._impl ? ctx_._impl->ctx : nullptr;
 }
 
 } // namespace detail

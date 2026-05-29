@@ -28,6 +28,7 @@
   `bindings/cpp/include/zlink/Contracts/...`.
 - 컴파일된 라이브러리: C++ 바인딩은 코어 네이티브 `zlink` 라이브러리와 별도로 `zlink_cpp`
   같은 C++ 라이브러리 타깃을 빌드하고 설치한다.
+- 언어 기준: C++20.
 - 네임스페이스: 모든 공개 타입은 `zlink` 아래에 둔다. service 타입은 `zlink::service`
   아래에 둔다.
 - 내부 구현: 네이티브 브리지 헬퍼, 콜백 트램펄린, 요청 진행 헬퍼, 비공개 `detail` 헬퍼,
@@ -41,6 +42,10 @@ C++는 더 이상 header-only 바인딩으로 모델링하지 않는다. 두 번
 `Contracts/`는 사용자 표면을 선언하고, `src/Runtime/`은 그 표면을 위한 구현 지원을 담는다.
 Java나 .NET의 인터페이스 중심 레이아웃을 C++에 그대로 복사하지 않는다. C++는 설치되는
 헤더, RAII 클래스, 구체 값, 불투명 구현 상태를 자연스러운 경계로 사용한다.
+
+C++20은 최소 지원 범위다. `std::coroutine_handle` 기반 `co_await` 표면은 조건부 기능이
+아니라 공개 계약의 일부다. C++17 이하 또는 coroutine이 빠진 컴파일러 조합을 위한
+compatibility 매크로, 대체 include 경로, public API 축소는 추가하지 않는다.
 
 ## 저장소 레이아웃
 

@@ -555,11 +555,10 @@ projection이다. C는 예외로, `core/include/zlink.h`가 public C ABI의 단�
 - public contract 검증은 배포된 binding consumer가 보게 되는 entrypoint를
   기준으로 한다. 소스 트리 내부에 internal symbol이 존재한다는 이유로 public으로
   간주하지 않는다.
-- C++처럼 header-only 또는 header 중심으로 배포되는 바인딩은 설치되는
-  `include/` tree 안에서 `Contracts/`와 `Runtime/`을 직접 분리한다.
-  C++에서는 `bindings/cpp/src/`를 별도 계약 소유 위치로 만들지 않는다.
-  aggregate 호환 헤더는 유지할 수 있지만, public class를 찾는 유일한 진입점이
-  되어서는 안 된다.
+- C++처럼 설치 헤더와 컴파일된 바인딩 라이브러리를 함께 배포하는 바인딩은
+  설치되는 `include/` tree 안에 공개 `Contracts/`를 두고, 구현은
+  `bindings/cpp/src/Runtime/` 아래 비공개 파일로 숨긴다. aggregate 헤더는
+  유지할 수 있지만, public class를 찾는 유일한 진입점이 되어서는 안 된다.
 - internal 구조를 리팩터링할 자유는 보장하되, 그 자유는 public contract를
   유지하는 범위 안에서만 허용된다.
 
@@ -573,7 +572,8 @@ C를 제외한 wrapper binding은 public contract와 runtime implementation을 �
 언어별 README는 실제 repository path와 실제 package/module path를 함께 지정해야
 한다. `Contracts`와 `Runtime`은 공통 logical category 이름이며, 모든 언어에서
 그 단어를 그대로 public package 또는 import path로 만들라는 뜻이 아니다.
-C++는 header-only binding이므로 library root가 `bindings/cpp/include/zlink/`다.
+C++는 C++20 바인딩이며, 공개 계약 root는 `bindings/cpp/include/zlink/Contracts/`이고
+런타임 구현 root는 `bindings/cpp/src/Runtime/`이다.
 Java는 package path가 곧 source folder이므로 `systems.zlink.contracts.*`와
 `systems.zlink.runtime.*` 같은 lower-case Java package로 역할 구조를 드러낸다.
 Go, Rust, Python처럼 folder path가 package/module/import path와 직접 연결되는
@@ -705,7 +705,7 @@ bindings/<lang>/
 | Binding | 적용 기준 |
 |---|---|
 | C | `core/include/zlink.h`가 public C ABI의 단일 기준이다. `bindings/c`는 별도 contract/runtime 계층을 추가하지 않고, C API 기준의 mapping, sample, test, perf, packaging 정책만 정렬한다. |
-| C++ | `bindings/cpp/include/zlink/Contracts/`가 공개 C++ 계약 위치다. `bindings/cpp/include/zlink/Runtime/`은 header-only 구현 세부 위치다. `bindings/cpp/src/`를 계약/런타임 소유 위치로 쓰지 않는다. RAII class와 concrete value를 우선하고, public class를 virtual interface로 과도하게 감싸지 않는다. |
+| C++ | `bindings/cpp/include/zlink/Contracts/`가 공개 C++ 계약 위치다. `bindings/cpp/src/Runtime/`은 비공개 구현 위치다. C++20, RAII class, concrete value를 우선하고, public class를 virtual interface로 과도하게 감싸지 않는다. |
 | .NET | 세부 기준은 [.NET 바인딩 청사진](dotnet/README.ko.md)을 따른다. 이 문서에서는 .NET 세부 파일 구조를 복사하지 않는다. |
 | Java | `bindings/java/src/main/java/systems/zlink/contracts/` 아래의 public contract package가 공개 계약 위치다. Java는 URL 기반 package layout을 따르므로 lower-case `contracts`와 `runtime` package를 실제 폴더에 반영한다. native bridge는 non-exported `systems.zlink.runtime.nativeapi` 아래에 둔다. |
 | Node | `bindings/node/src/index.ts`와 `package.json` exports가 public contract projection이다. contract source는 `bindings/node/src/zlink/contracts/` 같은 lower-case source path에 두고, runtime/native addon 구현은 `bindings/node/src/zlink/runtime/` 아래에 숨긴다. |
@@ -734,7 +734,7 @@ perf와 함께 단계적으로 맞춘다. public package, namespace, module, imp
 
 | Binding | Contract root | Runtime root | Public projection |
 |---|---|---|---|
-| C++ | `bindings/cpp/include/zlink/Contracts/` | `bindings/cpp/include/zlink/Runtime/` | `#include <zlink.hpp>` and installed `include/zlink/...` headers |
+| C++ | `bindings/cpp/include/zlink/Contracts/` | `bindings/cpp/src/Runtime/` | `#include <zlink.hpp>` and installed `include/zlink/...` headers |
 | .NET | [dotnet/README.ko.md](dotnet/README.ko.md) 참조 | [dotnet/README.ko.md](dotnet/README.ko.md) 참조 | [dotnet/README.ko.md](dotnet/README.ko.md) 참조 |
 | Java | `bindings/java/src/main/java/systems/zlink/contracts/` | `bindings/java/src/main/java/systems/zlink/runtime/` | exported `systems.zlink.contracts.*` JPMS packages and Maven artifact |
 | Node | `bindings/node/src/index.ts` and `bindings/node/src/zlink/contracts/` | `bindings/node/src/zlink/runtime/` | package root export, generated `.d.ts`, and `package.json` exports |
@@ -5070,7 +5070,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 
 | Binding | 언어 버전 | 런타임/프레임워크 | 빌드 툴 |
 |---------|-----------|-------------------|---------|
-| C++ | C++17 | — | CMake 3.10+ |
+| C++ | C++20 | — | CMake 3.10+ |
 | .NET | C# 12 | .NET 8.0 | MSBuild |
 | Java | Java 22 | JDK 22 | Gradle 8.10.2 |
 | Go | Go 1.22+ | — | Go modules |

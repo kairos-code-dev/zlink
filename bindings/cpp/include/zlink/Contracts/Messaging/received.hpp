@@ -5,6 +5,12 @@
 #include "../Sockets/results.hpp"
 #include "message.hpp"
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <vector>
+
 namespace zlink
 {
 
@@ -187,13 +193,13 @@ class received_t
     {
         if (!state_)
             return std::unique_ptr<runtime_state_t> ();
-        return std::unique_ptr<runtime_state_t> (new runtime_state_t (*state_));
+        return std::make_unique<runtime_state_t> (*state_);
     }
 
     void ensure_runtime_state ()
     {
         if (!_runtime)
-            _runtime.reset (new runtime_state_t ());
+            _runtime = std::make_unique<runtime_state_t> ();
     }
 
     std::optional<routing_id_t> _routing_id;

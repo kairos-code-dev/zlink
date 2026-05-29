@@ -1,6 +1,4 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-#include <zlink/Contracts/Messaging/received.hpp>
-#include <zlink/Contracts/Messaging/topic_message.hpp>
 #include <zlink/Contracts/Errors/errors.hpp>
 #include <zlink/Contracts/Sockets/socket_options.hpp>
 #include <Runtime/Core/routing_id_access.hpp>
@@ -183,19 +181,6 @@ inline void set_stream_option_value (void *handle_,
 {
     set_option_value<T> (handle_, static_cast<zlink_stream_option_t> (option_),
                          value_, zlink_set_stream_option);
-}
-
-inline recv_error_t invalid_single_part_error ()
-{
-    return recv_error_t (recv_result_t::not_supported, EMSGSIZE);
-}
-
-void close_parts (std::vector<message_t> &parts_)
-{
-    for (std::vector<message_t>::iterator it = parts_.begin ();
-         it != parts_.end (); ++it)
-        it->close ();
-    parts_.clear ();
 }
 
 } // namespace detail
@@ -849,105 +834,6 @@ int sub_socket_options_t::topics_count () const
     return detail::get_sub_option_value<int> (
       detail::native_option_handle (_socket),
       detail::sub_option_id::topics_count);
-}
-
-message_t &received_t::first_part ()
-{
-    if (!is_single_part ())
-        throw detail::invalid_single_part_error ();
-    if (_single_part.has_value ())
-        return *_single_part;
-    return _parts.front ();
-}
-
-void received_t::materialize_parts () const
-{
-    if (!_single_part.has_value ())
-        return;
-    message_t part = std::move (*_single_part);
-    _single_part.reset ();
-    _parts.push_back (std::move (part));
-}
-
-const std::vector<message_t> &received_t::parts () const
-{
-    materialize_parts ();
-    return _parts;
-}
-
-std::vector<message_t> &received_t::parts ()
-{
-    materialize_parts ();
-    return _parts;
-}
-
-message_t topic_message_t::single_part_or_throw ()
-{
-    if (!is_single_part ())
-        throw detail::invalid_single_part_error ();
-    if (_single_part.has_value ())
-        return *_single_part;
-    return _parts.front ();
-}
-
-message_t &topic_message_t::first_part ()
-{
-    if (!is_single_part ())
-        throw detail::invalid_single_part_error ();
-    if (_single_part.has_value ())
-        return *_single_part;
-    return _parts.front ();
-}
-
-void topic_message_t::materialize_parts () const
-{
-    if (!_single_part.has_value ())
-        return;
-    message_t part = std::move (*_single_part);
-    _single_part.reset ();
-    _parts.push_back (std::move (part));
-}
-
-const std::vector<message_t> &topic_message_t::parts () const
-{
-    materialize_parts ();
-    return _parts;
-}
-
-std::vector<message_t> &topic_message_t::parts ()
-{
-    materialize_parts ();
-    return _parts;
-}
-
-message_t received_t::single_part_or_throw ()
-{
-    if (!is_single_part ())
-        throw detail::invalid_single_part_error ();
-    if (_single_part.has_value ())
-        return *_single_part;
-    return _parts.front ();
-}
-
-// received_t::send() and received_t::reply() are defined in
-// zlink/services/spot.hpp, after send_operation_t and reply_operation_t are fully defined.
-
-void received_t::close ()
-{
-    if (_single_part.has_value ()) {
-        _single_part->close ();
-        _single_part.reset ();
-    }
-    detail::close_parts (_parts);
-}
-
-void topic_message_t::close ()
-{
-    if (_single_part.has_value ()) {
-        _single_part->close ();
-        _single_part.reset ();
-    }
-    detail::close_parts (_parts);
 }
 
 } // namespace zlink

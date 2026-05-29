@@ -13,7 +13,7 @@ namespace detail
 template <typename State>
 std::unique_ptr<State> make_operation_state (State &&state_)
 {
-    return std::unique_ptr<State> (new State (std::move (state_)));
+    return std::make_unique<State> (std::move (state_));
 }
 
 template <typename State>

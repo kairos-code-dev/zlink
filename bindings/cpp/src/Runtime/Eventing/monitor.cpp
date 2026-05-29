@@ -65,7 +65,7 @@ monitor_status_t make_monitor_status (const zlink_monitor_status_t &native_)
 
 struct socket_monitor_t::impl
 {
-    void *handle = NULL;
+    void *handle = nullptr;
     std::function<void(const monitor_event_t &)> event_function_handler;
 };
 
@@ -74,18 +74,18 @@ namespace detail
 
 void *monitor_access_t::native_handle (socket_monitor_t &monitor_) noexcept
 {
-    return monitor_._impl ? monitor_._impl->handle : NULL;
+    return monitor_._impl ? monitor_._impl->handle : nullptr;
 }
 
 const void *
 monitor_access_t::native_handle (const socket_monitor_t &monitor_) noexcept
 {
-    return monitor_._impl ? monitor_._impl->handle : NULL;
+    return monitor_._impl ? monitor_._impl->handle : nullptr;
 }
 
 } // namespace detail
 
-socket_monitor_t::socket_monitor_t () : _impl (new impl) {}
+socket_monitor_t::socket_monitor_t () : _impl (std::make_unique<impl> ()) {}
 
 socket_monitor_t::~socket_monitor_t () { close_noexcept (); }
 
@@ -103,7 +103,7 @@ socket_monitor_t::operator= (socket_monitor_t &&other) noexcept
 
 bool socket_monitor_t::valid () const noexcept
 {
-    return _impl && _impl->handle != NULL;
+    return _impl && _impl->handle != nullptr;
 }
 
 socket_monitor_t socket_monitor_t::open (
@@ -172,7 +172,7 @@ void socket_monitor_t::close ()
       static_cast<close_result_t> (zlink_monitor_close (&monitor));
     if (result != close_result_t::ok)
         throw close_error_t (result, zlink_errno ());
-    _impl->handle = NULL;
+    _impl->handle = nullptr;
     _impl->event_function_handler = nullptr;
 }
 
@@ -182,7 +182,7 @@ void socket_monitor_t::close_noexcept () noexcept
         return;
     void *monitor = _impl->handle;
     (void) zlink_monitor_close (&monitor);
-    _impl->handle = NULL;
+    _impl->handle = nullptr;
     _impl->event_function_handler = nullptr;
 }
 

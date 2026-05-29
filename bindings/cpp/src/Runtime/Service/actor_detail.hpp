@@ -19,7 +19,7 @@ namespace detail
 
 struct actor_join_state_t
 {
-    void *node = NULL;
+    void *node = nullptr;
     actor_ref_t actor;
     routing_id_t dest_node_rid {zlink::detail::unchecked_empty_routing_id ()};
     routing_id_t dest_spot_rid {zlink::detail::unchecked_empty_routing_id ()};
@@ -30,7 +30,7 @@ struct actor_join_state_t
 
 struct actor_join_reply_state_t
 {
-    void *spot = NULL;
+    void *spot = nullptr;
     actor_join_info_t info;
     int32_t join_result_code = 0;
     std::vector<message_t> parts;
@@ -38,7 +38,7 @@ struct actor_join_reply_state_t
 
 struct actor_payloadless_state_t
 {
-    void *node = NULL;
+    void *node = nullptr;
     actor_ref_t actor;
     routing_id_t aux_rid {zlink::detail::unchecked_empty_routing_id ()};
     bool has_aux_rid = false;
@@ -48,7 +48,7 @@ struct actor_payloadless_state_t
 
 struct actor_bind_state_t
 {
-    void *stream = NULL;
+    void *stream = nullptr;
     routing_id_t session_rid {zlink::detail::unchecked_empty_routing_id ()};
     actor_ref_t actor;
     std::string actor_id;
@@ -71,37 +71,35 @@ struct actor_join_entry_spot_result_state_t
 
 inline actor_join_result_state_t *make_future_actor_join_state ()
 {
-    actor_join_result_state_t *state = new actor_join_result_state_t ();
-    state->promise.reset (new std::promise<actor_join_result_t> ());
-    return state;
+    auto state = std::make_unique<actor_join_result_state_t> ();
+    state->promise = std::make_unique<std::promise<actor_join_result_t>> ();
+    return state.release ();
 }
 
 inline actor_join_result_state_t *
 make_callback_actor_join_state (actor_join_callback_t callback_)
 {
-    actor_join_result_state_t *state = new actor_join_result_state_t ();
+    auto state = std::make_unique<actor_join_result_state_t> ();
     state->on_complete = std::move (callback_);
-    return state;
+    return state.release ();
 }
 
 inline actor_join_entry_spot_result_state_t *
 make_future_actor_join_entry_spot_state ()
 {
-    actor_join_entry_spot_result_state_t *state =
-      new actor_join_entry_spot_result_state_t ();
-    state->promise.reset (
-      new std::promise<actor_join_entry_spot_result_t> ());
-    return state;
+    auto state = std::make_unique<actor_join_entry_spot_result_state_t> ();
+    state->promise =
+      std::make_unique<std::promise<actor_join_entry_spot_result_t>> ();
+    return state.release ();
 }
 
 inline actor_join_entry_spot_result_state_t *
 make_callback_actor_join_entry_spot_state (
   actor_join_entry_spot_callback_t callback_)
 {
-    actor_join_entry_spot_result_state_t *state =
-      new actor_join_entry_spot_result_state_t ();
+    auto state = std::make_unique<actor_join_entry_spot_result_state_t> ();
     state->on_complete = std::move (callback_);
-    return state;
+    return state.release ();
 }
 
 inline void actor_join_result_trampoline (
@@ -175,17 +173,17 @@ struct actor_lookup_result_state_t
 
 inline actor_lookup_result_state_t *make_future_actor_lookup_state ()
 {
-    actor_lookup_result_state_t *state = new actor_lookup_result_state_t ();
-    state->promise.reset (new std::promise<actor_lookup_result_t> ());
-    return state;
+    auto state = std::make_unique<actor_lookup_result_state_t> ();
+    state->promise = std::make_unique<std::promise<actor_lookup_result_t>> ();
+    return state.release ();
 }
 
 inline actor_lookup_result_state_t *
 make_callback_actor_lookup_state (actor_lookup_callback_t callback_)
 {
-    actor_lookup_result_state_t *state = new actor_lookup_result_state_t ();
+    auto state = std::make_unique<actor_lookup_result_state_t> ();
     state->on_complete = std::move (callback_);
-    return state;
+    return state.release ();
 }
 
 inline void actor_lookup_result_trampoline (

@@ -42,8 +42,8 @@ zlink_submit_result_t submit_raw_request_part (
 {
     const uint32_t timeout =
       is_final_ ? static_cast<uint32_t> (state_.timeout.count ()) : 0u;
-    auto callback = is_final_ ? &detail::request_callback_trampoline : NULL;
-    void *userdata = is_final_ ? request_state_ : NULL;
+    auto callback = is_final_ ? &detail::request_callback_trampoline : nullptr;
+    void *userdata = is_final_ ? request_state_ : nullptr;
 
     switch (state_.kind) {
         case detail::spot_operation_kind_t::raw_request:
@@ -71,15 +71,13 @@ submit_raw_request_async (detail::spot_operation_state_t &state_)
 {
     ensure_raw_request_state (state_);
 
-    detail::request_state_t *request_state =
-      detail::make_future_request_state ();
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_future_request_state ());
     std::future<std::vector<message_t>> future =
       request_state->promise->get_future ();
     std::vector<zlink_msg_t> native;
-    if (detail::move_parts_to_native (state_.parts, native) != 0) {
-        delete request_state;
+    if (detail::move_parts_to_native (state_.parts, native) != 0)
         throw last_error ();
-    }
 
     size_t failed_index = 0;
     const int rc = detail::submit_native_parts (
@@ -88,14 +86,14 @@ submit_raw_request_async (detail::spot_operation_state_t &state_)
            bool is_final_) {
           return submit_raw_request_part (state_, part_out_, part_flag_,
                                           is_final_, ZLINK_SEND_FLAGS_NONE,
-                                          request_state);
+                                          request_state.get ());
       });
     if (rc != 0) {
         detail::close_native_parts (native, failed_index);
-        delete request_state;
         throw last_error ();
     }
 
+    request_state.release ();
     return async_result_t<std::vector<message_t>> (
       std::move (future),
       zlink::detail::make_socket_request_progress (state_.raw_socket));
@@ -106,13 +104,11 @@ bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
 {
     ensure_raw_request_state (state_);
 
-    detail::request_state_t *request_state =
-      detail::make_callback_request_state (std::move (callback_));
+    std::unique_ptr<detail::request_state_t> request_state (
+      detail::make_callback_request_state (std::move (callback_)));
     std::vector<zlink_msg_t> native;
-    if (detail::move_parts_to_native (state_.parts, native) != 0) {
-        delete request_state;
+    if (detail::move_parts_to_native (state_.parts, native) != 0)
         throw last_error ();
-    }
 
     size_t failed_index = 0;
     const int rc = detail::submit_native_parts (
@@ -122,11 +118,10 @@ bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
           return submit_raw_request_part (
             state_, part_out_, part_flag_, is_final_,
             static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
-            request_state);
+            request_state.get ());
       });
     if (rc != 0) {
         detail::close_native_parts (native, failed_index);
-        delete request_state;
         const submit_error_t err (static_cast<submit_result_t> (rc),
                                   zlink_errno ());
         if (state_.flags == send_flags_t::dontwait
@@ -134,6 +129,7 @@ bool submit_raw_request_callback (detail::spot_operation_state_t &state_,
             return false;
         throw err;
     }
+    request_state.release ();
     return true;
 }
 
@@ -207,7 +203,7 @@ send_submit_operation_t &&
 send_submit_operation_t::message (message_t &&part_) &&
 {
     state ().single_part.emplace (std::move (part_));
-    state ().single_part_source = NULL;
+    state ().single_part_source = nullptr;
     state ().discard_single_part_on_backpressure = true;
     return std::move (*this);
 }
@@ -249,7 +245,7 @@ send_submit_operation_t send_operation_t::message (message_t &part_) &&
 send_submit_operation_t send_operation_t::message (message_t &&part_) &&
 {
     state ().single_part.emplace (std::move (part_));
-    state ().single_part_source = NULL;
+    state ().single_part_source = nullptr;
     state ().discard_single_part_on_backpressure = true;
     return send_submit_operation_t (std::move (state ()));
 }

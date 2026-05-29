@@ -89,7 +89,7 @@ class registry_t
 
     std::vector<registry_service_summary_entry_t>
     service_summary (
-      const registry_service_summary_filter_t *filter_ = NULL) const;
+      const registry_service_summary_filter_t *filter_ = nullptr) const;
 
     std::vector<registry_service_summary_entry_t>
     service_summary (
@@ -137,7 +137,7 @@ class registry_query_client_t
     void connect (const std::string &endpoint_);
 
     std::vector<registry_topology_entry_t>
-    topology (const registry_topology_filter_t *filter_ = NULL) const;
+    topology (const registry_topology_filter_t *filter_ = nullptr) const;
 
     void close ();
 

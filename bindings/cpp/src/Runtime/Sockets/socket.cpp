@@ -17,12 +17,12 @@ namespace detail
 
 void *socket_access_t::native_handle (socket_t &socket_) noexcept
 {
-    return socket_._socket ? detail::native_handle (*socket_._socket) : NULL;
+    return socket_._socket ? detail::native_handle (*socket_._socket) : nullptr;
 }
 
 const void *socket_access_t::native_handle (const socket_t &socket_) noexcept
 {
-    return socket_._socket ? detail::native_handle (*socket_._socket) : NULL;
+    return socket_._socket ? detail::native_handle (*socket_._socket) : nullptr;
 }
 
 routing_id_t routing_id_from_native_pointer (const void *native_) noexcept
@@ -118,8 +118,8 @@ void socket_t::set_tls_client (const std::string &ca_cert_,
                                const std::string &hostname_,
                                bool trust_system_)
 {
-    const char *ca = ca_cert_.empty () ? NULL : ca_cert_.c_str ();
-    const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
+    const char *ca = ca_cert_.empty () ? nullptr : ca_cert_.c_str ();
+    const char *hostname = hostname_.empty () ? nullptr : hostname_.c_str ();
     const int rc = zlink_set_tls_client (detail::native_handle (*this), ca,
                                          hostname, trust_system_ ? 1 : 0);
     if (rc != 0)
@@ -133,12 +133,13 @@ int socket_t::attach_discovery (service::discovery_t &discovery_)
       detail::native_handle (*this), zlink::detail::native_handle (discovery_));
 }
 
-socket_t::socket_t () noexcept : _socket (new detail::socket_handle_t ())
+socket_t::socket_t () noexcept :
+    _socket (std::make_unique<detail::socket_handle_t> ())
 {
 }
 
 socket_t::socket_t (context_t &ctx_, socket_type type_) :
-    _socket (new detail::socket_handle_t (
+    _socket (std::make_unique<detail::socket_handle_t> (
       zlink_socket (detail::native_handle (ctx_),
                     static_cast<zlink_socket_type_t> (type_)),
       true))
@@ -354,7 +355,7 @@ int socket_t::subscribe (topic_message_t &message_, recv_flags_t flags_)
 {
     char topic_buffer[256];
     size_t topic_size = sizeof (topic_buffer);
-    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_rid = nullptr;
     std::string topic;
     message_t first_part;
 
@@ -443,7 +444,7 @@ int socket_t::subscribe_part (std::optional<routing_id_t> &source_rid_out_,
 {
     char topic_buffer[256];
     size_t topic_size = sizeof (topic_buffer);
-    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_rid = nullptr;
     zlink_msg_t native_part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     if (zlink_msg_init (&native_part) != 0)
@@ -477,7 +478,7 @@ int socket_t::subscription_event (routing_id_t &source_rid_out_,
     if (zlink_msg_init (&part) != 0)
         return -1;
 
-    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_rid = nullptr;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     const int rc = zlink_recv_part (
       detail::native_handle (*this), &source_rid, &part, &has_more,

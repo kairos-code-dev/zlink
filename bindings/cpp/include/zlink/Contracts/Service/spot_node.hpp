@@ -233,7 +233,7 @@ class spot_node_t
     peers_query (const spot_node_peer_filter_t &filter_) const;
 
     std::vector<spot_node_subject_entry_t>
-    subjects (const spot_node_subject_filter_t *filter_ = NULL) const;
+    subjects (const spot_node_subject_filter_t *filter_ = nullptr) const;
 
     std::vector<spot_node_subject_entry_t>
     subjects (const spot_node_subject_filter_t &filter_) const
@@ -243,7 +243,7 @@ class spot_node_t
 
     std::vector<spot_node_socket_entry_t>
     internal_sockets (
-      const spot_node_socket_filter_t *filter_ = NULL) const;
+      const spot_node_socket_filter_t *filter_ = nullptr) const;
 
     std::vector<spot_node_socket_entry_t>
     internal_sockets (

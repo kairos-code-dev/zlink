@@ -153,6 +153,7 @@ add_library(zlink_cpp STATIC
   src/Runtime/Eventing/monitor.cpp
   src/Runtime/Eventing/timers.cpp
   src/Runtime/Messaging/message.cpp
+  src/Runtime/Messaging/received.cpp
   src/Runtime/Options/socket_options.cpp
   src/Runtime/Sockets/socket.cpp
   src/Runtime/Sockets/dealer.cpp
@@ -186,6 +187,7 @@ target_link_libraries(zlink_cpp PUBLIC ${ZLINK_CPP_CORE_TARGET})
 target_compile_features(zlink_cpp PUBLIC cxx_std_20)
 set_target_properties(zlink_cpp PROPERTIES
   POSITION_INDEPENDENT_CODE ON
+  CXX_EXTENSIONS OFF
 )
 
 install(TARGETS zlink_cpp
@@ -287,63 +289,29 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     endif()
   endfunction()
 
-  add_cpp_sample(
-    sample_cpp_request_reply_async_sample
-    samples/request_reply_async_sample.cpp
+  set(ZLINK_CPP_SAMPLE_SOURCES
+    request_reply_async_sample.cpp
+    pair_recv_sample.cpp
+    pubsub_recv_sample.cpp
+    dealer_router_recv_sample.cpp
+    stream_recv_sample.cpp
+    stream_packet_callback_sample.cpp
+    spot_recv_sample.cpp
+    spot_request_async_sample.cpp
+    monitor_recv_sample.cpp
+    discovery_registry_sample.cpp
+    registry_query_sample.cpp
+    actor_room_server_sample.cpp
+    actor_gateway_relay_sample.cpp
+    actor_single_player_queue_sample.cpp
   )
-  target_compile_features(sample_cpp_request_reply_async_sample PRIVATE cxx_std_20)
-  add_cpp_sample(
-    sample_cpp_pair_recv_sample
-    samples/pair_recv_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_pubsub_recv_sample
-    samples/pubsub_recv_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_dealer_router_recv_sample
-    samples/dealer_router_recv_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_stream_recv_sample
-    samples/stream_recv_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_stream_packet_callback_sample
-    samples/stream_packet_callback_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_spot_recv_sample
-    samples/spot_recv_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_spot_request_async_sample
-    samples/spot_request_async_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_monitor_recv_sample
-    samples/monitor_recv_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_discovery_registry_sample
-    samples/discovery_registry_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_registry_query_sample
-    samples/registry_query_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_actor_room_server_sample
-    samples/actor_room_server_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_actor_gateway_relay_sample
-    samples/actor_gateway_relay_sample.cpp
-  )
-  add_cpp_sample(
-    sample_cpp_actor_single_player_queue_sample
-    samples/actor_single_player_queue_sample.cpp
-  )
+  foreach(sample_source IN LISTS ZLINK_CPP_SAMPLE_SOURCES)
+    get_filename_component(sample_name "${sample_source}" NAME_WE)
+    add_cpp_sample(
+      "sample_cpp_${sample_name}"
+      "samples/${sample_source}"
+    )
+  endforeach()
 endif()
 
 if(ZLINK_CPP_BUILD_TESTS)
@@ -364,50 +332,26 @@ if(ZLINK_CPP_BUILD_TESTS)
     endif()
   endfunction()
 
-  add_cpp_contract_test(
-    test_cpp_contract_message
-    tests/contract/test_cpp_contract_message.cpp
+  set(ZLINK_CPP_CONTRACT_TEST_SOURCES
+    test_cpp_contract_message.cpp
+    test_cpp_contract_socket.cpp
+    test_cpp_contract_request_reply.cpp
+    test_cpp_contract_callback_mode.cpp
+    test_cpp_contract_options.cpp
+    test_cpp_contract_monitor.cpp
+    test_cpp_contract_service.cpp
+    test_cpp_contract_actor_header.cpp
+    test_cpp_contract_layout_headers.cpp
+    test_cpp_contract_behavior.cpp
+    test_cpp_contract_optimization_guard.cpp
   )
-  add_cpp_contract_test(
-    test_cpp_contract_socket
-    tests/contract/test_cpp_contract_socket.cpp
-  )
-  add_cpp_contract_test(
-    test_cpp_contract_request_reply
-    tests/contract/test_cpp_contract_request_reply.cpp
-  )
-  add_cpp_contract_test(
-    test_cpp_contract_callback_mode
-    tests/contract/test_cpp_contract_callback_mode.cpp
-  )
-  add_cpp_contract_test(
-    test_cpp_contract_options
-    tests/contract/test_cpp_contract_options.cpp
-  )
-  add_cpp_contract_test(
-    test_cpp_contract_monitor
-    tests/contract/test_cpp_contract_monitor.cpp
-  )
-  add_cpp_contract_test(
-    test_cpp_contract_service
-    tests/contract/test_cpp_contract_service.cpp
-  )
-  add_cpp_contract_test(
-    test_cpp_contract_actor_header
-    tests/contract/test_cpp_contract_actor_header.cpp
-  )
-  add_cpp_contract_test(
-    test_cpp_contract_layout_headers
-    tests/contract/test_cpp_contract_layout_headers.cpp
-  )
-  add_cpp_contract_test(
-    test_cpp_contract_behavior
-    tests/contract/test_cpp_contract_behavior.cpp
-  )
-  add_cpp_contract_test(
-    test_cpp_contract_optimization_guard
-    tests/contract/test_cpp_contract_optimization_guard.cpp
-  )
+  foreach(test_source IN LISTS ZLINK_CPP_CONTRACT_TEST_SOURCES)
+    get_filename_component(test_name "${test_source}" NAME_WE)
+    add_cpp_contract_test(
+      "${test_name}"
+      "tests/contract/${test_source}"
+    )
+  endforeach()
 endif()
 
 option(ZLINK_CPP_BUILD_BENCHMARKS "Build C++ binding benchmarks" OFF)

@@ -61,7 +61,7 @@ struct actor_sample_stream_session_t
         stream.bind ("tcp://127.0.0.1:0");
         const std::string endpoint = stream.options ().last_endpoint ();
         assert (!endpoint.empty ());
-        client.reset (new detail::raw_tcp_client_t (endpoint));
+        client = std::make_unique<detail::raw_tcp_client_t> (endpoint);
         assert (detail::wait_stream_connected (monitor));
         client->send_all ("session", 7);
 

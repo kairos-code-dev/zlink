@@ -39,7 +39,7 @@ int dealer_socket_t::recv (received_t &out_, recv_flags_t flags_)
 
 int dealer_socket_t::recv (message_t &part_out_, recv_flags_t flags_)
 {
-    return detail::recv_single_part_message (detail::native_handle (*this), NULL, part_out_, flags_);
+    return detail::recv_single_part_message (detail::native_handle (*this), nullptr, part_out_, flags_);
 }
 
 void dealer_socket_t::set_routing_id (const routing_id_t &routing_id_)
@@ -72,13 +72,13 @@ std::string dealer_socket_t::channel_name () const
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         zlink_socket_get_channel_name (
-          const_cast<void *> (detail::native_handle (*this)), NULL, 0, &size)));
+          const_cast<void *> (detail::native_handle (*this)), nullptr, 0, &size)));
     std::vector<char> buffer (size);
     detail::throw_if_failed<config_error_t> (
       static_cast<config_result_t> (
         zlink_socket_get_channel_name (
           const_cast<void *> (detail::native_handle (*this)),
-          buffer.empty () ? NULL : buffer.data (), buffer.size (), &size)));
+          buffer.empty () ? nullptr : buffer.data (), buffer.size (), &size)));
     return std::string (buffer.data (), size);
 }
 

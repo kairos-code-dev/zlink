@@ -48,7 +48,7 @@ int xpub_socket_t::receive_subscription_event (
     subscription_event_t event;
     std::vector<char> topic_buffer (256);
     size_t topic_size = topic_buffer.size ();
-    const zlink_routing_id_t *source_rid = NULL;
+    const zlink_routing_id_t *source_rid = nullptr;
     int subscribed = 0;
     zlink_recv_result_t rc = static_cast<zlink_recv_result_t> (206);
 

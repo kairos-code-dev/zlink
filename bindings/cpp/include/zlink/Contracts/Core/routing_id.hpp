@@ -304,7 +304,7 @@ class routing_id_t
     static routing_id_t from_bytes (const std::vector<uint8_t> &bytes_)
     {
         return routing_id_t (
-          bytes_.empty () ? NULL : bytes_.data (), bytes_.size ());
+          bytes_.empty () ? nullptr : bytes_.data (), bytes_.size ());
     }
 
     static routing_id_t from (const uint8_t *bytes_, size_t size_)

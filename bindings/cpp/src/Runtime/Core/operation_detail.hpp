@@ -16,7 +16,7 @@ namespace detail
 
 inline std::function<void()> make_socket_request_progress (void *socket_)
 {
-    return [socket_]() { zlink::detail::request_progress_socket (socket_); };
+    return zlink::detail::make_request_progress_callback (socket_);
 }
 
 inline std::chrono::milliseconds

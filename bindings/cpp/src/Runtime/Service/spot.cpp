@@ -30,12 +30,12 @@ namespace detail
 
 void *spot_access_t::native_handle (service::spot_t &spot_) noexcept
 {
-    return spot_._impl ? spot_._impl->handle : NULL;
+    return spot_._impl ? spot_._impl->handle : nullptr;
 }
 
 const void *spot_access_t::native_handle (const service::spot_t &spot_) noexcept
 {
-    return spot_._impl ? spot_._impl->handle : NULL;
+    return spot_._impl ? spot_._impl->handle : nullptr;
 }
 
 service::spot_t spot_access_t::adopt_native_handle (void *handle_) noexcept
@@ -80,7 +80,7 @@ spot_t &spot_t::operator= (spot_t &&other) noexcept
 
 bool spot_t::valid () const noexcept
 {
-    return _impl && _impl->handle != NULL;
+    return _impl && _impl->handle != nullptr;
 }
 
 void spot_t::request_timeout (std::chrono::milliseconds timeout_)
@@ -132,14 +132,15 @@ request_operation_t spot_t::request_channel (const std::string &channel_name_)
     return request_operation_t (std::move (state));
 }
 
-spot_t::spot_t (spot_node_t &node_) : _impl (new impl)
+spot_t::spot_t (spot_node_t &node_) : _impl (std::make_unique<impl> ())
 {
     _impl->handle = zlink_spot_new (zlink::detail::native_handle (node_));
     if (!_impl->handle)
         _impl->last_error = errno != 0 ? errno : EFAULT;
 }
 
-spot_t::spot_t (native_handle_ctor_tag_t) noexcept : _impl (new impl)
+spot_t::spot_t (native_handle_ctor_tag_t) noexcept :
+    _impl (std::make_unique<impl> ())
 {
 }
 
@@ -246,8 +247,8 @@ reply_operation_t spot_t::reply_to_router (const routing_id_t &peer_rid_,
 
 std::optional<received_t> spot_t::recv_routed_optional (recv_flags_t flags_)
 {
-    const zlink_routing_id_t *source_node_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
+    const zlink_routing_id_t *source_node_rid = nullptr;
+    const zlink_routing_id_t *source_spot_rid = nullptr;
     uint64_t request_seq = 0;
     std::vector<zlink_msg_t> parts_native;
     for (;;) {
@@ -259,8 +260,8 @@ std::optional<received_t> spot_t::recv_routed_optional (recv_flags_t flags_)
             throw last_error ();
         }
 
-        const zlink_routing_id_t *part_source_node_rid = NULL;
-        const zlink_routing_id_t *part_source_spot_rid = NULL;
+        const zlink_routing_id_t *part_source_node_rid = nullptr;
+        const zlink_routing_id_t *part_source_spot_rid = nullptr;
         uint64_t part_request_seq = 0;
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
         const recv_result_t rc =
@@ -462,7 +463,7 @@ spot_t::recv_actor_join (recv_flags_t flags_)
 {
     zlink_actor_join_info_t native_info;
     std::memset (&native_info, 0, sizeof (native_info));
-    zlink_msg_t *parts = NULL;
+    zlink_msg_t *parts = nullptr;
     size_t part_count = 0;
     const recv_result_t rc =
       static_cast<recv_result_t> (zlink_spot_actor_join_recv (
@@ -501,7 +502,7 @@ std::vector<actor_ref_t> spot_t::actors () const
 {
     size_t count = 0;
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_actors (_impl->handle, NULL, &count)));
+      zlink_spot_actors (_impl->handle, nullptr, &count)));
     std::vector<zlink_actor_ref_t> native (count);
     if (count > 0) {
         detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
@@ -524,7 +525,7 @@ void spot_t::close ()
     void *tmp = _impl->handle;
     detail::throw_if_failed<close_error_t> (
       static_cast<close_result_t> (zlink_spot_destroy (&tmp)));
-    _impl->handle = NULL;
+    _impl->handle = nullptr;
 }
 
 } // namespace service

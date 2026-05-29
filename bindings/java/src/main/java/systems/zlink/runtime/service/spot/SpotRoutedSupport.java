@@ -297,15 +297,6 @@ final class SpotRoutedSupport implements AutoCloseable {
         }
     }
 
-    private void sendViaNative(List<Message> parts, NativeSubmit submitter) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = submitter.invoke(arena, parts);
-            if (rc != 0) {
-                throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
-            }
-        }
-    }
-
     private void submitSpotReplySpot(RoutingId destNodeRid,
                                      RoutingId destSpotRid,
                                      long requestSeq,
@@ -320,25 +311,14 @@ final class SpotRoutedSupport implements AutoCloseable {
                     if (rc == 0)
                         return;
                     int errno = Native.errno();
-                    if (errno == 4)
+                    if (errno == ERRNO_EINTR)
                         continue;
                     throw submitFailure("zlink_spot_reply_spot_part");
                 }
             }
-            for (int i = 0; i < payload.size(); i++) {
-                int partFlag = i + 1 < payload.size()
-                    ? Native.PART_MORE : Native.PART_FINAL;
-                while (true) {
-                    int rc = spotReplySpotPartOnce(nodeRid, spotRid,
-                        requestSeq, payload.get(i), partFlag, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == 4)
-                        continue;
-                    throw submitFailure("zlink_spot_reply_spot_part");
-                }
-            }
+            submitParts(payload, "zlink_spot_reply_spot_part",
+                (index, partFlag) -> spotReplySpotPartOnce(nodeRid, spotRid,
+                    requestSeq, payload.get(index), partFlag, arena));
         }
     }
 
@@ -350,20 +330,9 @@ final class SpotRoutedSupport implements AutoCloseable {
             MemorySegment nodeRid = nativeRoutingId(arena, destNodeRid);
             MemorySegment spotRid = nativeRoutingId(arena, destSpotRid);
             int flags = nonBlocking ? SEND_DONTWAIT : 0;
-            for (int i = 0; i < payload.size(); i++) {
-                int partFlag = i + 1 < payload.size()
-                    ? Native.PART_MORE : Native.PART_FINAL;
-                while (true) {
-                    int rc = spotSendSpotPartOnce(nodeRid, spotRid,
-                        payload.get(i), flags, partFlag, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
-                        continue;
-                    throw submitFailure("zlink_spot_send_spot_part");
-                }
-            }
+            submitParts(payload, "zlink_spot_send_spot_part",
+                (index, partFlag) -> spotSendSpotPartOnce(nodeRid, spotRid,
+                    payload.get(index), flags, partFlag, arena));
         }
     }
 
@@ -392,22 +361,14 @@ final class SpotRoutedSupport implements AutoCloseable {
                     throw submitFailure("zlink_spot_request_spot_part");
                 }
             }
-            for (int i = 0; i < payload.size(); i++) {
-                boolean last = i + 1 >= payload.size();
-                int partFlag = last ? Native.PART_FINAL : Native.PART_MORE;
-                while (true) {
-                    int rc = spotRequestSpotPartOnce(nodeRid, spotRid,
-                      payload.get(i), last ? handler : MemorySegment.NULL,
-                      last ? userData : MemorySegment.NULL, flags, partFlag,
-                      last ? timeoutMs : 0, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
-                        continue;
-                    throw submitFailure("zlink_spot_request_spot_part");
-                }
-            }
+            submitParts(payload, "zlink_spot_request_spot_part",
+                (index, partFlag) -> {
+                    boolean last = partFlag == Native.PART_FINAL;
+                    return spotRequestSpotPartOnce(nodeRid, spotRid,
+                        payload.get(index), last ? handler : MemorySegment.NULL,
+                        last ? userData : MemorySegment.NULL, flags, partFlag,
+                        last ? timeoutMs : 0, arena);
+                });
         }
     }
 
@@ -420,22 +381,14 @@ final class SpotRoutedSupport implements AutoCloseable {
         Objects.requireNonNull(peerRid, "peerRid");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeRid = nativeRoutingId(arena, peerRid);
-            for (int i = 0; i < payload.size(); i++) {
-                boolean last = i + 1 >= payload.size();
-                int partFlag = last ? Native.PART_FINAL : Native.PART_MORE;
-                while (true) {
-                    int rc = spotRequestRouterPartOnce(nativeRid, payload.get(i),
-                      last ? handler : MemorySegment.NULL,
-                      last ? userData : MemorySegment.NULL, flags, partFlag,
-                      last ? timeoutMs : 0, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == ERRNO_EINTR)
-                        continue;
-                    throw submitFailure("zlink_spot_request_router_part");
-                }
-            }
+            submitParts(payload, "zlink_spot_request_router_part",
+                (index, partFlag) -> {
+                    boolean last = partFlag == Native.PART_FINAL;
+                    return spotRequestRouterPartOnce(nativeRid,
+                        payload.get(index), last ? handler : MemorySegment.NULL,
+                        last ? userData : MemorySegment.NULL, flags, partFlag,
+                        last ? timeoutMs : 0, arena);
+                });
         }
     }
 
@@ -443,19 +396,25 @@ final class SpotRoutedSupport implements AutoCloseable {
                                        List<Message> payload) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeRid = nativeRoutingId(arena, peerRid);
-            for (int i = 0; i < payload.size(); i++) {
-                int partFlag = i + 1 < payload.size()
-                    ? Native.PART_MORE : Native.PART_FINAL;
-                while (true) {
-                    int rc = spotReplyRouterPartOnce(nativeRid, requestSeq,
-                        payload.get(i), partFlag, arena);
-                    if (rc == 0)
-                        break;
-                    int errno = Native.errno();
-                    if (errno == 4)
-                        continue;
-                    throw submitFailure("zlink_spot_reply_router_part");
-                }
+            submitParts(payload, "zlink_spot_reply_router_part",
+                (index, partFlag) -> spotReplyRouterPartOnce(nativeRid,
+                    requestSeq, payload.get(index), partFlag, arena));
+        }
+    }
+
+    private void submitParts(List<Message> payload, String apiName,
+                             PartSubmitter submitter) {
+        for (int i = 0; i < payload.size(); i++) {
+            int partFlag = i + 1 < payload.size()
+                ? Native.PART_MORE : Native.PART_FINAL;
+            while (true) {
+                int rc = submitter.submit(i, partFlag);
+                if (rc == 0)
+                    break;
+                int errno = Native.errno();
+                if (errno == ERRNO_EINTR)
+                    continue;
+                throw submitFailure(apiName);
             }
         }
     }
@@ -840,8 +799,8 @@ final class SpotRoutedSupport implements AutoCloseable {
     }
 
     @FunctionalInterface
-    private interface NativeSubmit {
-        int invoke(Arena arena, List<Message> payload);
+    private interface PartSubmitter {
+        int submit(int index, int partFlag);
     }
 
 }

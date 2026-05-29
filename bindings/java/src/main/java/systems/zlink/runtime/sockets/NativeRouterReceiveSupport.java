@@ -11,13 +11,13 @@ import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RouterSocket;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SocketMessageHandler;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
-import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -31,12 +31,10 @@ import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.LockSupport;
+import java.util.function.BiConsumer;
 
 final class NativeRouterReceiveSupport implements AutoCloseable {
-    private static final int ERRNO_EINTR = 4;
     private static final int ERRNO_EAGAIN = 11;
-    private static final long BLOCKING_RECV_POLL_NANOS = 100_000L;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_ROUTER_HANDLER =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -282,15 +280,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         RoutingId nodeRid = snapshot.nodeRid();
         RoutingId spotRid = snapshot.spotRid();
         long requestSequence = snapshot.requestSequence();
-        try (Received received = InternalAccess.received(nodeRid, spotRid, snapshot.parts(), true, requestSequence, requestSequence != 0L, requestSequence == 0L ? null : (replyParts, sendFlags) -> {
-                if (spotRid != null) {
-                    InternalAccess.routerReplyToSpot(socket, nodeRid, spotRid, requestSequence,
-                            replyParts, sendFlags);
-                } else {
-                    InternalAccess.routerReply(socket, nodeRid,
-                        requestSequence, replyParts, sendFlags);
-                }
-            })) {
+        try (Received received = InternalAccess.received(nodeRid, spotRid,
+            snapshot.parts(), true, requestSequence, requestSequence != 0L,
+            replySender(nodeRid, spotRid, requestSequence))) {
             handler.onMessage(received);
         } catch (RuntimeException ex) {
             recordCallbackFailure(ex);
@@ -383,17 +375,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
             RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
             fresh = InternalAccess.receivedLazy(nodeRid, spotRid, firstPart,
-                null,
-                requestSequence, true,
-                (replyParts, sendFlags) -> {
-                    if (spotRid != null) {
-                        InternalAccess.routerReplyToSpot(socket, nodeRid, spotRid, requestSequence,
-                            replyParts, sendFlags);
-                    } else {
-                        InternalAccess.routerReply(socket, nodeRid,
-                            requestSequence, replyParts, sendFlags);
-                    }
-                }, lazyCompletionRunnable);
+                null, requestSequence, true,
+                replySender(nodeRid, spotRid, requestSequence),
+                lazyCompletionRunnable);
         } else {
             java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
             parts.add(firstPart);
@@ -429,15 +413,10 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             } else {
                 RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
                 RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
-                fresh = InternalAccess.received(nodeRid, spotRid, partsArray, true, requestSequence, true, (replyParts, sendFlags) -> {
-                        if (spotRid != null) {
-                            InternalAccess.routerReplyToSpot(socket, nodeRid, spotRid, requestSequence,
-                            replyParts, sendFlags);
-                        } else {
-                            InternalAccess.routerReply(socket, nodeRid,
-                                requestSequence, replyParts, sendFlags);
-                        }
-                    }, lazyCompletionRunnable);
+                fresh = InternalAccess.received(nodeRid, spotRid, partsArray,
+                    true, requestSequence, true,
+                    replySender(nodeRid, spotRid, requestSequence),
+                    lazyCompletionRunnable);
             }
         }
         target.adoptFrom(fresh);
@@ -507,17 +486,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                 RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
                 RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
                 return InternalAccess.receivedLazy(nodeRid, spotRid, firstPart,
-                    null,
-                    requestSequence, true,
-                    (replyParts, sendFlags) -> {
-                        if (spotRid != null) {
-                            InternalAccess.routerReplyToSpot(socket, nodeRid, spotRid, requestSequence,
-                            replyParts, sendFlags);
-                        } else {
-                            InternalAccess.routerReply(socket, nodeRid,
-                                requestSequence, replyParts, sendFlags);
-                        }
-                    }, lazyCompletionRunnable);
+                    null, requestSequence, true,
+                    replySender(nodeRid, spotRid, requestSequence),
+                    lazyCompletionRunnable);
             }
 
             java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
@@ -554,16 +525,10 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             }
             RoutingId nodeRid = readRoutingIdOut(sourceNodeRidOut);
             RoutingId spotRid = readRoutingIdOut(sourceSpotRidOut);
-            final long capturedSeq = requestSequence;
-            return InternalAccess.received(nodeRid, spotRid, partsArray, true, capturedSeq, true, (replyParts, sendFlags) -> {
-                    if (spotRid != null) {
-                        InternalAccess.routerReplyToSpot(socket, nodeRid, spotRid, capturedSeq,
-                            replyParts, sendFlags);
-                    } else {
-                        InternalAccess.routerReply(socket, nodeRid,
-                            capturedSeq, replyParts, sendFlags);
-                    }
-                }, lazyCompletionRunnable);
+            return InternalAccess.received(nodeRid, spotRid, partsArray, true,
+                requestSequence, true,
+                replySender(nodeRid, spotRid, requestSequence),
+                lazyCompletionRunnable);
         } finally {
             if (!firstPartConsumed) {
                 try {
@@ -574,15 +539,20 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         }
     }
 
-    private Runnable lazyCompletion() {
-        return lazyCompletionRunnable;
-    }
-
-    private Received registerLazyReceive(Received received, boolean hasMore) {
-        if (hasMore) {
-            activeLazyReceive.set(received);
+    private BiConsumer<java.util.List<Message>, SendFlags> replySender(
+      RoutingId nodeRid, RoutingId spotRid, long requestSequence) {
+        if (requestSequence == 0L) {
+            return null;
         }
-        return received;
+        return (replyParts, sendFlags) -> {
+            if (spotRid != null) {
+                InternalAccess.routerReplyToSpot(socket, nodeRid, spotRid,
+                    requestSequence, replyParts, sendFlags);
+            } else {
+                InternalAccess.routerReply(socket, nodeRid, requestSequence,
+                    replyParts, sendFlags);
+            }
+        };
     }
 
     private int routerRecvPart(MemorySegment sourceNodeRidOut,
@@ -598,155 +568,6 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         }
         return Native.routerRecvPart(InternalAccess.socketHandle(socket), sourceNodeRidOut,
             sourceSpotRidOut, requestSeqOut, partOut, hasMoreOut, flags);
-    }
-
-    private final class RouterReceiveCursor implements ReceivedPartCursor {
-        private final Arena arena = Arena.ofConfined();
-        private final MemorySegment sourceNodeRidOut = arena.allocate(
-            ValueLayout.ADDRESS);
-        private final MemorySegment sourceSpotRidOut = arena.allocate(
-            ValueLayout.ADDRESS);
-        private final MemorySegment requestSeqOut = arena.allocate(
-            ValueLayout.JAVA_LONG);
-        private final MemorySegment hasMoreOut = arena.allocate(
-            ValueLayout.JAVA_INT);
-        private boolean hasMore = true;
-        private boolean closed;
-
-        @Override
-        public Message nextPartOrNull() {
-            if (closed || !hasMore)
-                return null;
-            while (true) {
-                Message next = new Message();
-                boolean success = false;
-                try {
-                    int rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
-                        requestSeqOut,
-                        InternalAccess.messageNativeHandle(next), hasMoreOut,
-                        RecvFlags.DONT_WAIT.value());
-                    if (rc == 0) {
-                        success = true;
-                        hasMore = hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0;
-                        InternalAccess.messageFinishReceive(next, hasMore);
-                        if (!hasMore) {
-                            closeArena();
-                        }
-                        return next;
-                    }
-                    if (rc == RecvResult.NO_DATA.value()) {
-                        LockSupport.parkNanos(BLOCKING_RECV_POLL_NANOS);
-                        continue;
-                    }
-                } finally {
-                    if (!success) {
-                        try {
-                            next.close();
-                        } catch (RuntimeException ignored) {
-                        }
-                    }
-                }
-
-                int errno = Native.errno();
-                if (errno == ERRNO_EINTR)
-                    continue;
-                closeArena();
-                throw ZlinkException.fromLastError("zlink_router_recv_part");
-            }
-        }
-
-        @Override
-        public void close() {
-            if (closed)
-                return;
-            while (hasMore) {
-                Message next = nextPartOrNull();
-                if (next == null)
-                    break;
-                try {
-                    next.close();
-                } catch (RuntimeException ignored) {
-                }
-            }
-            closed = true;
-            closeArena();
-        }
-
-        private void closeArena() {
-            hasMore = false;
-            if (arena.scope().isAlive()) {
-                arena.close();
-            }
-        }
-    }
-
-    private final class AggregateRouterReceiveCursor
-      implements ReceivedPartCursor {
-        private final MemorySegment partsAddr;
-        private final long partCount;
-        private final MemorySegment parts;
-        private long nextIndex;
-        private boolean closed;
-        private boolean vectorClosed;
-
-        private AggregateRouterReceiveCursor(MemorySegment partsAddr,
-                                             long partCount) {
-            this.partsAddr = partsAddr;
-            this.partCount = Math.max(0L, partCount);
-            long messageSize = NativeLayouts.MESSAGE_LAYOUT.byteSize();
-            this.parts = this.partCount == 0 || partsAddr == null
-                || partsAddr.address() == 0
-                ? MemorySegment.NULL
-                : MemorySegment.ofAddress(partsAddr.address()).reinterpret(
-                    messageSize * this.partCount);
-        }
-
-        @Override
-        public Message nextPartOrNull() {
-            if (closed || nextIndex >= partCount)
-                return null;
-            long messageSize = NativeLayouts.MESSAGE_LAYOUT.byteSize();
-            Message next = new Message();
-            boolean success = false;
-            try {
-                MemorySegment src = parts.asSlice(nextIndex * messageSize, messageSize);
-                int rc = NativeMessage.messageMove(InternalAccess.messageNativeHandle(next), src);
-                if (rc != 0) {
-                    throw ZlinkException.fromLastError("zlink_msg_move");
-                }
-                nextIndex++;
-                InternalAccess.messageFinishReceive(next, nextIndex < partCount);
-                success = true;
-                if (nextIndex >= partCount) {
-                    closeVector();
-                }
-                return next;
-            } finally {
-                if (!success) {
-                    try {
-                        next.close();
-                    } catch (RuntimeException ignored) {
-                    }
-                }
-            }
-        }
-
-        @Override
-        public void close() {
-            if (closed)
-                return;
-            closed = true;
-            closeVector();
-        }
-
-        private void closeVector() {
-            if (!vectorClosed && partsAddr != null && partsAddr.address() != 0) {
-                vectorClosed = true;
-                // Native.routerRecv() exposes a thread-local multipart view.
-                // Close the moved-from parts, but do not free the backing array.
-                NativeMessage.multipartClose(partsAddr, partCount);
-            }
-        }
     }
 
     private MethodHandle callbackHandle(String name, MethodType type) {
